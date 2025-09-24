@@ -4,7 +4,11 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://openplaces.readthedocs.io/en/latest/)
 
-**openplaces** is an open-source data and analytics platform for integrating parcel boundaries, environmental indicators, and socio‑economic data at scale. Maintained by researchers at academic institutions and released under the **Apache-2.0** license, it supports reproducible research for conservation, land policy, and environmental analytics.
+**openplaces** is an open-source data and analytics platform for integrating parcel boundaries, environmental indicators, and socio‑economic data at scale.
+
+Maintained by researchers at academic institutions and released under the **Apache-2.0** license, it supports reproducible research for conservation, land policy, and environmental analytics.
+
+This repository is an inital commit with a sceleton structure and will be populated with code from sister projects 2025-2026.
 
 ---
 
@@ -45,7 +49,7 @@ pip install "openplaces[dev,docs]"
 
 ## 🚀 Quick Start
 
-> The public API is evolving. The snippet below is illustrative for intended use — consult the docs for the current interface.
+> The snippet below is illustrative for intended use — consult the docs for the current interface.
 
 ```python
 import openplaces as op
@@ -70,47 +74,15 @@ print(values.describe())
 
 - **User Guide:** https://openplaces.readthedocs.io/
 - **API Reference:** https://openplaces.readthedocs.io/en/latest/api/
-- **Tutorials:** https://openplaces.readthedocs.io/en/latest/tutorials/
 
 ---
 
 ## 🧭 Governance & Sustainability
 
 - **License:** Apache-2.0 (see [LICENSE.md](LICENSE.md)).
-- **Consortium:** International academic collaborators; new partners welcome.
-- **Roadmap & RFCs:** Use GitHub Issues/Discussions for proposals and design review.
-- **Superusers:** Organizations with large-scale or mission‑critical deployments are encouraged to support sustainability via **consortium membership**, **sponsored features**, or **service agreements**—while the core remains free and open.
+- **Consortium:** Currently: informal network of international academic collaborators; new partners welcome.
 
 Contact: **contact@openplaces.io**
-
----
-
-## 🤝 Contributing
-
-We welcome issues, feature requests, and pull requests from researchers and practitioners worldwide.
-
-1. Review the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-2. See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup, testing, and style (black, ruff, isort).
-3. For substantial changes, open an RFC in Discussions before starting work.
-
-Suggested dev environment:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -U pip wheel setuptools
-pip install -e ".[dev]"
-```
-
----
-
-## 🧪 Testing
-
-```bash
-pytest -q
-```
-
-CI runs formatting (black, isort), linting (ruff), and tests for supported Python versions/platforms.
 
 ---
 
