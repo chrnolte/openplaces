@@ -1,0 +1,177 @@
+
+# =========================================
+# Core
+# =========================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.ipynb_venv/
+.pythonenv/
+
+# Environment / secrets
+*.env
+*.env.*
+.envrc
+.secrets/
+.token
+*.key
+*.pem
+
+# OS files
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editors / IDE
+.vscode/
+*.code-workspace
+.idea/
+*.sublime-project
+*.sublime-workspace
+.spyproject
+.ropeproject
+
+# =========================================
+# Python packaging & distribution
+# =========================================
+# Build artifacts (DO NOT COMMIT)
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Pyenv / Poetry / PDM
+.python-version
+# If using Poetry or PDM, typically commit lockfile; do not ignore by default
+# poetry.lock
+# pdm.lock
+
+# =========================================
+# Testing / QA
+# =========================================
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+.tox/
+.nox/
+
+# =========================================
+# Jupyter & docs
+# =========================================
+.ipynb_checkpoints/
+# Sphinx
+docs/_build/
+# MkDocs
+site/
+
+# =========================================
+# Logs / runtime
+# =========================================
+logs/
+*.log
+*.pid
+*.out
+
+# Dask / Ray / joblib temp
+dask-worker-space/
+ray_results/
+joblib/
+
+# =========================================
+# Cookiecutter Data Science structure
+# see: https://drivendata.github.io/cookiecutter-data-science/
+# =========================================
+# Data (keep directories, not the large files)
+data/raw/**
+data/interim/**
+data/processed/**
+data/external/**
+
+# Keep placeholders so directories exist
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!data/external/.gitkeep
+
+# Models & results (often large/binary)
+models/**
+results/**
+!models/.gitkeep
+!results/.gitkeep
+
+# Reports (exported figures/assets)
+reports/figures/**
+!reports/figures/.gitkeep
+
+# =======================================================
+# Geospatial / large binaries (recommend Git LFS instead)
+# =======================================================
+*.tif
+*.tiff
+*.jp2
+*.img
+*.vrt
+*.nc
+*.hdf
+*.h5
+*.las
+*.laz
+*.sid
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.parquet
+*.feather
+*.gpkg
+*.sqlite
+*.mbtiles
+
+# GDAL/OGR sidecars & overviews (regenerateable)
+*.aux.xml
+*.ovr
+*.rrd
+*.msk
+*.cpg
+*.qml
+
+# =========================================
+# Local tooling caches
+# =========================================
+.cache/
+.ruff_cache/
+pytestdebug.log
+
+
+# Conda/Mamba environments
+*.conda
+*.mamba
+
+# Jupyter Lab extensions (if using JupyterLab)
+.jupyter/
+
+# Python wheels in development
+*.whl
