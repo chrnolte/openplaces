@@ -1,0 +1,72 @@
+# environment.yml
+# IMPORTANT: Keep dependencies in sync with pyproject.toml
+# - Core deps match [project.dependencies]
+# - Optional deps match [project.optional-dependencies.*]
+# When updating dependencies, update BOTH files!
+
+name: openplaces
+channels:
+  - conda-forge
+dependencies:
+  # Python version
+  - python>=3.12
+
+  # Core geospatial dependencies (better via conda due to C/C++ libs)
+  # KEEP IN SYNC WITH pyproject.toml [project.dependencies]
+  - geopandas>=1.0.0
+  - rasterio>=1.3.0
+  - pyproj>=3.5.0
+  - shapely>=2.0.0
+  - pyogrio>=0.7.0
+  - numpy>=1.24.0
+  - pandas>=2.0.0
+  - pyarrow>=10.0.0
+  - requests>=2.28.0
+  - tqdm>=4.65.0
+
+  # Optional: analysis
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.analysis]
+  - statsmodels>=0.14.0
+  - scikit-learn>=1.3.0
+  - rasterstats>=0.19.0
+
+  # Optional: viz
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.viz]
+  - matplotlib>=3.7.0
+  - plotly>=5.15.0
+  - folium>=0.15.0
+  - seaborn>=0.12.0
+
+  # Optional: raster
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.raster]
+  - rioxarray>=0.15.0
+  - rio-cogeo>=4.0.0
+  - scikit-image>=0.21.0
+  - numba>=0.58.0
+
+  # Optional: excel
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.excel]
+  - openpyxl>=3.1.0
+
+  # Dev tools
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
+  - jupyter>=1.0.0
+  - jupyterlab>=4.0.0
+  - jupyterlab_code_formatter>=3.0.0
+  - isort>=5.12.0
+  - black>=23.0.0
+  - ruff>=0.1.0
+  - pytest>=7.4.0
+  - pytest-cov>=4.1.0
+  - sphinx>=7.0.0
+  - sphinx-rtd-theme>=1.3.0
+
+  # Conda-specific packages that enhance development
+  - ipython
+
+  # pip for installing your package
+  - pip
+
+  - pip:
+    - altair>=5.0.0  # Not available in conda-forge main
+    - -e .
