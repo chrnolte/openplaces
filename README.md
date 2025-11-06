@@ -12,7 +12,7 @@ This repository is an inital commit with a sceleton structure and will be popula
 
 ---
 
-## ✨ Features (goals)
+## Features (goals)
 
 - Standardized **parcel-level** data ingestion and harmonization.
 - Connectors to **remote-sensing archives** (Landsat (LS), Sentinel, NAIP) and environmental datasets.
@@ -22,7 +22,7 @@ This repository is an inital commit with a sceleton structure and will be popula
 
 ---
 
-## 📦 Installation
+## Installation
 
 From PyPI:
 
@@ -47,7 +47,7 @@ pip install "openplaces[dev,docs]"
 
 ---
 
-## 🚀 Quick Start
+## Quick start
 
 > The snippet below is illustrative for intended use — consult the docs for the current interface.
 
@@ -70,14 +70,14 @@ print(values.describe())
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 - **User Guide:** https://openplaces.readthedocs.io/
 - **API Reference:** https://openplaces.readthedocs.io/en/latest/api/
 
 ---
 
-## 🧭 Governance & Sustainability
+## Governance & Sustainability
 
 - **License:** Apache-2.0 (see [LICENSE.md](LICENSE.md)).
 - **Consortium:** Currently: informal network of international academic collaborators; new partners welcome.
@@ -86,20 +86,20 @@ Contact: **contact@openplaces.io**
 
 ---
 
-## 📜 License
+## License
 
 Released under the **Apache License 2.0**. See [LICENSE.md](LICENSE.md) for details.  
-© 2025 The openplaces Consortium.
+© 2025 Christoph Nolte
 
 ---
 
-## 📢 Citation
+## Citation
 
 If you use **openplaces** in academic work, please cite:
 
 ```bibtex
 @misc{openplaces2025,
-  author       = {Christoph Nolte, openplaces Consortium},
+  author       = {Christoph Nolte},
   title        = {openplaces: Global property data and analytics platform},
   year         = {2025},
   howpublished = {\url{https://github.com/chrnolte/openplaces}}
@@ -108,8 +108,8 @@ If you use **openplaces** in academic work, please cite:
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-This work has been supported in part by the U.S. National Science Foundation (NSF) and the National Aeronautics and Space Administration (NASA), together with partner institutions across multiple countries.
+This codebases brings together code contributions created under various research grants supported by the U.S. National Science Foundation (NSF) and the National Aeronautics and Space Administration (NASA), together with partner institutions across multiple countries.
 
 Any opinions, findings, and conclusions or recommendations expressed are those of the authors and do not necessarily reflect the views of the supporting agencies.
