@@ -1,0 +1,85 @@
+.gui {
+    background-color: #f0f0f0;
+    padding: 0px 6px;
+    color: #000;
+    border-radius: 5px;
+    display: inline-block;
+    font-size: 90%;
+}
+
+.file {
+    color: #aa4100;
+    background-color: white;
+    border: 1px solid #dee2e6;
+    padding: 0px 6px;
+    border-radius: 5px;
+    display: inline-block;
+    font-size: 90%;
+}
+
+.input {
+    color: black;
+    background-color: white;
+    border: 1px solid #dee2e6;
+    padding: 0px 6px;
+    border-radius: 5px;
+    display: inline-block;
+    font-size: 90%;
+}
+
+.url {
+    color: royalblue;
+    background-color: lavender;
+    border: 1px solid #dee2e6;
+    padding: 0px 6px;
+    border-radius: 5px;
+    display: inline-block;
+    font-size: 90%;
+}
+
+
+/* Format ``inline code`` */
+code.docutils.literal.notranslate {
+    padding: 5px 6px 3px;
+    background-color: #f7f7f7;
+    border-radius: 5px;
+}
+.pre {
+    color:#4F459D;
+    font-size: 110%;
+}
+
+/* Format code blocks */
+.rst-content div[class^="highlight"] {
+    border-radius: 5px;
+}
+.rst-content div[class^="highlight"] pre {
+    color: #4453C3;
+    font-size: 85%;
+}
+
+/* Let table text wrap */
+.wy-table-responsive table td {
+    text-wrap-mode: normal;
+    white-space: normal;
+}
+
+
+/*
+Decrease the bottom margin for paragraphs preceding
+indented text (ul, ol, blockquote)
+*/
+p:has(+ ul), p:has(+ ol), p:has(+ blockquote) {
+    margin: 0 0 6px;
+}
+
+/* Table formatting */
+
+html.writer-html5 .rst-content table.docutils td, html.writer-html5 .rst-content table.docutils th {
+    vertical-align:top;
+    text-align:left;
+}
+
+html.writer-html5 .rst-content table.docutils td > p:not(:last-child) {
+    margin-bottom:6px;
+}
