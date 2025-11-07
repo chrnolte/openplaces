@@ -11,21 +11,38 @@ Parcel data can come with a wide range of attributes used by the tax assessor to
 Understand your parcel data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-What does the data need to be split into parcels, properties, and sales?
+Internal structure
+------------------
 
--  How does the dataset distinguish parcels and properties?
+Parcel datasets often blend several sources of data that refer to distinct entities related to property (parcels, buildings, units within buildings, transactions)
 
-   Multiple properties can exist on a single parcel (e.g. multi-unit housing, condos). Parcel datasets handle that in a variety of ways: some duplicate parcel geometries for each property, leading to duplicates. Others provide a database with separate layers/tables for parcels and properties.
+Multiple units properties can exist on a single parcel (e.g. multi-unit housing, condos). Parcel datasets handle that in a variety of ways: some duplicate parcel geometries for each property, leading to duplicates. Others provide a database with separate tables for parcels and properties.
 
-   Is there a unique property identifier for every row in the data table?
+Which columns of your parcel data refer to parcels (e.g. boundary), buildings (e.g. number of stories), property units (e.g. number of bedrooms), and transactions (e.g. sales prices)?
 
-   Is there a separate table of properties linked to parcels via a parcel identifier?
+Does your dataset provide these data in separate tables?
 
--  How does the dataset distinguish parcels and transactions?
+If your dataset blends these sources, is there a unique property identifier for every row in the parcel data table? Does it appear to refer to land parcels (property boundaries) or to taxable properties?
 
-   Some parcel datasets contains last sale data.
+(How) does the dataset distinguish parcels and transactions?
 
-   Are they provided as a separate table or as part of the parcel/property data?
+Geometries
+----------
 
--  Are there empty geometries? What do you want to do with them?
+Are there invalid geometries that need fixing (e.g. with a zero-buffer)?
 
+Are there empty geometries? What do you want to do with them?
+
+Attributes
+----------
+
+What attributes exist?
+
+Can you map or translate all of them to the `variable dictionary <https://docs.google.com/spreadsheets/d/1_m3d3l8ngTYXXI7onRNsz0zau6UVejIn1rF1IgxF0ns/edit?gid=369370336#gid=369370336>`_?
+
+If not, which columns would you like to keep and add to the variable dictionary?
+
+Administrative referencing
+--------------------------
+
+Is it easy to break down the larger parcel dataset by administrative subdivisions (e.g., a county in the United States) for faster processing? For instance, is the data already provided by subdivision, or is there a column that allows you identify the administrative subdivision?
