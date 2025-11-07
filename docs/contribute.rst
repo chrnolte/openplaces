@@ -9,5 +9,5 @@ Contribute
    :maxdepth: 2
    :caption: Contents
 
-   contribute/codestyle
    contribute/environment
+   contribute/codestyle
