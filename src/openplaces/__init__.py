@@ -5,3 +5,5 @@ __author__ = "Christoph Nolte"
 __email__ = "chrnolte@bu.edu"
 
 from .main import *
+
+from .config import cfg

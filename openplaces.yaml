@@ -1,0 +1,56 @@
+# openplaces.yaml - Project Configuration
+# Safe to commit to version control
+# Provides default values for all openplaces installations
+
+# Directory structure (relative paths will be resolved to user home)
+# These are overridden by user-specific configs
+# ~/.config/openplaces/<username>.yaml
+
+directories:
+  data_root: null           # Root directory used for relative filepaths
+  core: data/core           # Processed, analysis-ready data
+  external: data/external   # Downloaded data from third-party sources
+  raw: data/raw             # Raw data from own data collection
+  cache: data/cache         # Intermediate processing files
+  heap: data/cache/_heap    # Freshly unzipped data
+  out: data/out             # Output and results
+  share: data/share         # Shared data between users
+  share: models             # Shared data between users
+
+# Coordinate Reference Systems
+crs_lat_long: "epsg:4326"   # WGS84 Geographic
+crs_area: "epsg:6933"       # Equal Area Cylindrical (EPSG:6933)
+crs_poi: "epsg:3395"        # World Mercator
+
+# Raster configuration (Hansen forest cover tiles)
+raster_xmin: -180.00
+raster_ymin: -60.00
+raster_xmax: 180.00
+raster_ymax: 80.00
+raster_res: 0.00025
+raster_crs: "epsg:4326"
+
+# String separator for concatenated fields
+sep_str: " ~~ "
+
+# Administrative units
+admin_poi_prec_ratio: 0.05  # Precision ratio for poles of inaccessibility
+
+# Geometry settings
+geo_ha_min: 0.0001          # Minimum area in hectares
+geo_ubid_codelength: 11     # UBID code length
+
+# CRITICAL: Geohashing configuration (DO NOT CHANGE)
+# These values ensure consistent geographic identifiers across all installations
+geo_id_salt: "g1I9qtkKzxA3P98m80DLhuc0"
+geo_id_lat_long_crs: "epsg:4326"
+geo_id_lat_long_prec: 0.00001
+geo_id_ha_crs: "epsg:6933"
+geo_id_ha_trans: "arcsinh"
+geo_id_ha_trans_upr: 20
+geo_id_ha_prec: 0.002
+geo_id_poi_crs: "epsg:4326"
+geo_id_poi_prec_ratio: 0.05
+
+# Rasterization settings
+raster_zonals_resolution_m: 15
