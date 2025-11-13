@@ -3,12 +3,12 @@
 openplaces
 ==========
 
-Welcome to the documentation of ``openplaces``.
+This is the documentation of ``openplaces``.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
 
    concepts
-   operations
+   getting-started
+   usage
    contribute

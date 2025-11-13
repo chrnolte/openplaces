@@ -7,7 +7,6 @@ Contribute
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents
 
    contribute/environment
    contribute/codestyle
