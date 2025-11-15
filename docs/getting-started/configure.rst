@@ -1,18 +1,16 @@
-Setting filepaths and preferences
-=================================
+Set filepaths and preferences
+=============================
 
-Upon your first ``import`` of or from ``openplaces``, you will be asked to configure your installation so that it works with your computer's file system.
+Upon your first ``import`` of ``openplaces``, you will be asked to configure your installation.
 
-You can also set specific preferences, e.g. a root geography other than Earth, if you plan to only ever work with data from one country, state, county, city, or town.
-
-I often find it helpful to separate data by steps in the processing chain: input data (external downloads, own raw data), scratch directories, analysis-ready data, output data, shared data, fitted models, and reports / publications.
-
-This make it easy to set data-specific permissions and manage folders across different data storage options (local, cloud).
+One of the first things ``openplaces`` needs to know is where your data will live.
 
 Standard directories
 ~~~~~~~~~~~~~~~~~~~~
 
-Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (grateful it exists!), ``openplaces`` sets the following standard directories:
+It is usually helpful to have different directories for different stages in your analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications. This simplifies data sharing across different machines and cloud services and the setting of team and user-specific permissions. 
+
+Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (Boettinger @ Berkeley), ``openplaces`` works with these directories:
 
 .. list-table::
    :widths: 15 25 15 45

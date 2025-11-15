@@ -15,11 +15,10 @@ On first use, users are prompted to customize directory paths or accept defaults
 import getpass
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-import numpy as np
 import yaml
-from platformdirs import user_cache_dir, user_config_dir, user_data_dir
+from platformdirs import user_config_dir
 from pyproj import CRS
 
 # Application name and author to locate user configuration files
@@ -33,7 +32,6 @@ __all__ = [
     'reset_config',
     'edit_config',
     'reload_config',
-    'add_custom_directory',
     'OpenPlacesConfig',
 ]
 
@@ -122,7 +120,7 @@ class OpenPlacesConfig:
     }
 
     def __init__(
-        self, project_config_path: Optional[Path] = None, interactive: bool = True
+        self, project_config_path: Path | None = None, interactive: bool = True
     ):
         """
         Initialize configuration system.
@@ -172,7 +170,7 @@ class OpenPlacesConfig:
         """Get path to user-specific configuration file."""
         return Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
 
-    def _find_project_config(self) -> Optional[Path]:
+    def _find_project_config(self) -> Path | None:
         """Search for project configuration file in current directory."""
         for filename in ['openplaces.yaml', '.openplaces.yaml']:
             config_file = self.code_root / filename
@@ -201,7 +199,7 @@ class OpenPlacesConfig:
         print('Welcome to openplaces!')
         print('=' * 70)
         print(f'\nUser: {self.username}')
-        print(f'\nThis appears to be your first time using openplaces.')
+        print('\nThis appears to be your first time using openplaces.')
         print('Let\'s set up your data directories.\n\n')
         print('Root directory for data, models, and reports:')
         print('Change to separate code and data directories.')
@@ -217,8 +215,8 @@ class OpenPlacesConfig:
         print('-' * 70)
         print(
             '(a) Single-user: Individual installation on a personal machine\n'
-            '                 No user-specific subfolders for processed data & models.\n'
-            '(b) Multi-user:  For teams sharing data folders and infrastructure.\n'
+            '                 No user-specific subfolders for processed data & models.'
+            '\n(b) Multi-user:  For teams sharing data folders and infrastructure.\n'
             '                 User-specific subfolders for processed data & models.'
         )
         print()
@@ -235,7 +233,7 @@ class OpenPlacesConfig:
             print(f'Default: {self.username_dir} (from your system user folder)')
             print()
 
-            custom_name = input(f'Press Enter to accept, or type custom name: ').strip()
+            custom_name = input('Press Enter to accept, or type custom name: ').strip()
             self.user_data_dir = custom_name if custom_name else self.username_dir
 
             # Update directories with user subfolder
@@ -306,12 +304,6 @@ class OpenPlacesConfig:
 
         print('\n' + '=' * 70 + '\n')
 
-    # def _create_user_config_template(self):
-    #     """Create a minimal marker file to indicate setup is complete."""
-    #     self.user_config_path.parent.mkdir(parents=True, exist_ok=True)
-    #     with open(self.user_config_path, 'w', encoding='utf-8') as f:
-    #         f.write(self._generate_user_config_template())
-
     def _custom_directory_setup(self):
         """Allow user to customize directory paths."""
         print('\n' + '=' * 70)
@@ -335,7 +327,7 @@ class OpenPlacesConfig:
 
         self._create_user_config(custom_dirs)
 
-    def _create_user_config(self, directories: Dict[str, str]):
+    def _create_user_config(self, directories: dict[str, str]):
         """Create user configuration file with specified directories."""
         self.user_config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -354,10 +346,10 @@ class OpenPlacesConfig:
                 allow_unicode=True,
             )
 
-    def _load_yaml_config(self, path: Path) -> Dict[str, Any]:
+    def _load_yaml_config(self, path: Path) -> dict[str, Any]:
         """Load YAML configuration file."""
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, encoding='utf-8') as f:
                 config = yaml.safe_load(f) or {}
                 # Remove comment fields
                 return {k: v for k, v in config.items() if not k.startswith('_')}
@@ -365,7 +357,7 @@ class OpenPlacesConfig:
             print(f'Warning: Could not load config from {path}: {e}')
             return {}
 
-    def _load_hierarchical_config(self) -> Dict[str, Any]:
+    def _load_hierarchical_config(self) -> dict[str, Any]:
         """Load configuration from all sources with correct priority."""
         # Start with built-in defaults
         config = self.DEFAULTS.copy()
@@ -454,7 +446,7 @@ class OpenPlacesConfig:
             raise KeyError(f"Directory '{name}' not found in configuration")
         return self.config['directories'][name]
 
-    def list_directories(self) -> Dict[str, Path]:
+    def list_directories(self) -> dict[str, Path]:
         """Return dictionary of all configured directories."""
         return self.config.get('directories', {}).copy()
 
@@ -614,9 +606,9 @@ def show_config():
     print(f'Exists: {config_path.exists()}')
 
     if config_path.exists():
-        print(f'\nContents:')
+        print('\nContents:')
         print('-' * 70)
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, encoding='utf-8') as f:
             print(f.read())
         print('-' * 70)
     else:
@@ -723,10 +715,8 @@ def main():
         reset_config()
         print('\nStarting interactive setup:')
         print('-' * 70)
-        # Trigger interactive setup by importing
-        global _cfg
-        _cfg = None
-        cfg = get_config(interactive=True)
+        # Trigger interactive setup
+        get_config(interactive=True)
         print('\n✓ Configuration complete!')
     elif args.show:
         show_config()
