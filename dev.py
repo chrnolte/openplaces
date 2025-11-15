@@ -4,10 +4,9 @@
 This script helps developers set up and manage their local development
 environment. End users installing via 'pip install openplaces' don't need this.
 """
+import shutil
 import subprocess
 import sys
-import shutil
-from pathlib import Path
 
 
 # Detect which package manager to use
@@ -65,7 +64,7 @@ def setup():
         print("✗ Failed to create environment")
         return
 
-    print(f"\nInstalling openplaces in editable mode...")
+    print("\nInstalling openplaces in editable mode...")
     run(f"{PKG_MGR} run -n {env_name} pip install -e . --no-deps")
 
     print("\n✓ Development environment ready!")

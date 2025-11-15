@@ -165,10 +165,9 @@ python_files = [
 ]
 
 [tool.coverage.run]
-source = ["openplaces"]
+source = ["src/openplaces"]
 omit = [
     "*/tests/*",
-    "*/test_*",
 ]
 
 [tool.coverage.report]
