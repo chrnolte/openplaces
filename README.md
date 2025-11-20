@@ -73,7 +73,6 @@ print(values.describe())
 ## Documentation
 
 - **User Guide:** https://openplaces.readthedocs.io/
-- **API Reference:** https://openplaces.readthedocs.io/en/latest/api/
 
 ---
 
