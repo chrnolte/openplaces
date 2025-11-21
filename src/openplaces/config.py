@@ -178,21 +178,6 @@ class OpenPlacesConfig:
                 return config_file
         return None
 
-    #     def _generate_user_config_template(self) -> str:
-    #         """Generate user config template based on current directories."""
-    #         dirs_yaml = "\n".join(
-    #             f"#   {key}: {path}" for key, path in self.default_dirs.items()
-    #         )
-    #         return f"""# openplaces user configuration
-    # # Edit the settings below to customize your configuration
-
-    # # directories:
-    # {dirs_yaml}
-
-    # # Example: Override other settings
-    # # geo_ha_min: 0.1
-    # """
-
     def _interactive_setup(self):
         """Interactive first-use configuration setup."""
         print('\n' + '=' * 70)
@@ -333,7 +318,7 @@ class OpenPlacesConfig:
 
         config_content = {
             '_comment': f'openplaces user configuration for {self.username}',
-            '_note': 'This file has highest priority and overrides project defaults',
+            '_note': 'This file has highest priority and overrides project defaults (openplaces.yaml).',
             'directories': directories,
         }
 
