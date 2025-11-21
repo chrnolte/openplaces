@@ -1,5 +1,7 @@
 .. openplaces
 
+.. _import_parcels:
+
 Parcel data
 ===========
 
@@ -11,20 +13,32 @@ Parcel data can come with a wide range of attributes used by the tax assessor to
 Understand your parcel data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Internal structure
+Multiple entities?
 ------------------
 
-Parcel datasets often blend several sources of data that refer to distinct entities related to property (parcels, buildings, units within buildings, transactions)
+Parcel datasets are usually a merger of multiple sources of data. Frequently, attributes (columns) refer to different :ref:`entities` (rows, e.g. parcels, buildings, units within buildings, sales transactions, etc.).
 
-Multiple units properties can exist on a single parcel (e.g. multi-unit housing, condos). Parcel datasets handle that in a variety of ways: some duplicate parcel geometries for each property, leading to duplicates. Others provide a database with separate tables for parcels and properties.
+-  For instance, multiple :ref:`properties` can exist on a single :ref:`parcel`: duplexes, apartments, condominium associations, manufactured home parks, high-rises, etc.
 
-Which columns of your parcel data refer to parcels (e.g. boundary), buildings (e.g. number of stories), property units (e.g. number of bedrooms), and transactions (e.g. sales prices)?
+   Parcel datasets handle this multi-entity problem in different ways. Some contain one row per property, but then duplicate parcel attributes and geometries for each. Multi-table datasets (e.g. geodatabases :file:`.gdb`) often provide separate tables for parcels (often called geometries or GIS) and properties (often called tax roll, assessment, or similar).
 
-Does your dataset provide these data in separate tables?
+-  Some parcel datasets provide last sales prices, sometimes multiple ones (in multiple columns), which refer to :ref:`transactions`
 
-If your dataset blends these sources, is there a unique property identifier for every row in the parcel data table? Does it appear to refer to land parcels (property boundaries) or to taxable properties?
+Which columns of your parcel data refer to:
 
-(How) does the dataset distinguish parcels and transactions?
+-  parcels (e.g., boundary, parcel ID)?
+
+-  property (e.g., tax value)
+
+-  buildings (e.g., roof type)?
+
+-  units in buildings (e.g. number of bathrooms)?
+
+-  transactions (e.g. sales prices)?
+
+Does your dataset provide these data in separate tables or as columns in one large (merged) table?
+
+If the dataset is merged, can you de-compose the data into its original entities (i.e., a separate table for each)? Is there a unique property identifier for every row in the parcel data table? Does it appear to refer to land parcels (property boundaries) or to taxable properties?
 
 Geometries
 ----------
@@ -45,4 +59,6 @@ If not, which columns would you like to keep and add to the variable dictionary?
 Administrative referencing
 --------------------------
 
-Is it easy to break down the larger parcel dataset by administrative subdivisions (e.g., a county in the United States) for faster processing? For instance, is the data already provided by subdivision, or is there a column that allows you identify the administrative subdivision?
+Is it easy to break down the larger parcel dataset by administrative subdivisions (e.g., a county in the United States) for subsequent data processing?
+
+For instance, is the data already provided by subdivision, or is there a column that allows you identify the administrative subdivision?

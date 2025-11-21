@@ -1,25 +1,29 @@
 .. openplaces
 
+.. _entities:
+
 Entities
 ========
-
 
 Parcels
 ~~~~~~~
 
-Parcels refer to geospatial parcel boundaries that define a spatial unit of property (a lot of land).
+Parcels refer to geo-referenced parcel boundaries that describe a spatial unit of property: a lot of land, a piece of Earth.
 
-Parcel data is usually created by local land surveyors and tax assessors for all land within a given administrative unit or jurisdiction.
+Parcel data is most often created by local land surveyors and tax assessors, usually with the goal to cover all taxable property within a given administrative unit / jurisdiction.
 
 
 Properties
 ~~~~~~~~~~
 
-Unit at which property is assigned and taxed.
+Unit at which property is assigned (and taxed).
 
 For single-unit parcels (e.g. single-family homes) and vacant lots, the property *is* the parcel and everything on it.
 
 For multi-unit parcels (e.g. an apartment complex), parcels and properties are not identical and need to be treated separately.
+
+
+.. _transactions:
 
 
 Transactions
@@ -31,8 +35,9 @@ Transactions are events in which a **property** changes hands, often in the form
 Buildings
 ~~~~~~~~~
 
-Buildings are structures on land, often identified as a footprint derived from high-resolution satellite data, or from a tax assessor dataset on buildings.
+Buildings refer to any human-built structures with roofs.
 
+Buildings are often identified by their building **footprint**, as observed in high-resolution satellite data. Some detailed tax assessor datasets also collect building information separately from property information (e.g. in the case of multi-unit houses, condominiums, etc.).
 
 Administrative units
 ~~~~~~~~~~~~~~~~~~~~
