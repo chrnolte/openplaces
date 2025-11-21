@@ -15,30 +15,56 @@ directories:
   heap: data/cache/_heap    # Freshly unzipped data
   out: data/out             # Output and results
   share: data/share         # Shared data between users
-  share: models             # Shared data between users
+  models: models            # Trained and serialized models
+  reports: reports          # Reports, publications, figures 
+
+# String separator to use *within* the main parts of a OpenPlacesPath
+string_separator_within_ids: "-"
+# String separator to use *between* the main parts of a OpenPlacesPath
+string_separator_between_ids: "_"
+# Escape directory (to signal end of administrative folder depth)
+escape_dir: "_"
 
 # Coordinate Reference Systems
+# Projection for latitudes and longitudes
 crs_lat_long: "epsg:4326"   # WGS84 Geographic
+
+# Projection for area computations
 crs_area: "epsg:6933"       # Equal Area Cylindrical (EPSG:6933)
+
+# Projection for the identification of Poles of Inaccessibility (PoI)
 crs_poi: "epsg:3395"        # World Mercator
 
-# Raster configuration (Hansen forest cover tiles)
-raster_xmin: -180.00
+# Default raster configuration used for global raster snapping.
+raster_xmin: -180.00        # Global Forest Watch tiles, Hansen/Baccini
 raster_ymin: -60.00
 raster_xmax: 180.00
 raster_ymax: 80.00
 raster_res: 0.00025
 raster_crs: "epsg:4326"
 
-# String separator for concatenated fields
+# Standard separator for string aggregations (concatenations)
+# This string must be unique enough to not occur in any interpreted
+# string values in the database (including identifiers used by data
+# contributors, e.g. for parcel numbers), so the aggregation can be
+# reversed (string splitting) without loss of information. It should
+# ideally also be free of special characters used in regular expressions
+# (some string splitting functions interpret the separator as a regular
+# expression).
 sep_str: " ~~ "
 
 # Administrative units
 admin_poi_prec_ratio: 0.05  # Precision ratio for poles of inaccessibility
 
 # Geometry settings
-geo_ha_min: 0.0001          # Minimum area in hectares
-geo_ubid_codelength: 11     # UBID code length
+# Minimum area in hectares
+geo_ha_min: 0.0001          
+
+# Code length for geometry identifiers based on UBID (unique bldg. ID)
+# Current default (11) is based on the observation that in several
+# U.S. counties, the former default (10) created duplicate IDs for
+# distinct parcels and buildings, whereas a length of 11 did not.
+geo_ubid_codelength: 11     
 
 # CRITICAL: Geohashing configuration (DO NOT CHANGE)
 # These values ensure consistent geographic identifiers across all installations
@@ -54,3 +80,4 @@ geo_id_poi_prec_ratio: 0.05
 
 # Rasterization settings
 raster_zonals_resolution_m: 15
+

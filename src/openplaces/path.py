@@ -18,29 +18,35 @@ from pathlib import Path
 
 from openplaces.config import cfg
 
-# __all__ = [
-#     'core_path',
-#     'external_path',
-#     'raw_path',
-#     'cache_path',
-#     'heap_path',
-#     'out_path',
-#     'share_path',
-#     'models_path',
-#     'reports_path',
-# ]
+# from openplaces.admin import AdminId
 
-# Directories that use administrative referencing
-ADMIN_REFERENCED_DIRS = {
-    'core',
-    'external',
-    'cache',
-    'heap',
-    'out',
-    'share',
-    'models',
-    'reports',
-}
+__all__ = [
+    'path',
+    'core_path',
+    'external_path',
+    'raw_path',
+    'cache_path',
+    'heap_path',
+    'out_path',
+    'share_path',
+    'models_path',
+    'reports_path',
+    'code_path',
+    'recipe_path',
+    'OpenPlacesPath',
+]
+
+# # Directories that use administrative referencing
+# ADMIN_REFERENCED_DIRS = {
+#     'core',
+#     'external',
+#     'cache',
+#     'heap',
+#     'out',
+#     'share',
+#     # 'models',
+#     # 'reports',
+# }
 
 ENTITY_TYPES = [
     'admin',
@@ -58,19 +64,11 @@ TOP_LEVEL_THEMATIC_DOMAINS = [
     'water',  # rivers, lakes, coasts
     'bio',  # vegetation, species, land cover
     'built',  # buildings, infrastructure, roads & accessibility
-    'people',  # demographics, ownership
+    'people',  # demographic data (aggregate)
+    'persons'  # data of persons, e.g. property owners (sensitive)
     'risk',  # floods, storms, wildfires
     'rules',  # zoning, conservation
 ]
-
-# Escape directory (to signal end of administrative folder depth)
-ESCAPE_DIR = '_'
-
-# String separator to use *between* the main parts of a OpenPlacesPath
-STRING_SEPARATOR_BETWEEN = '_'
-
-# String separator to use *within* the main parts of a OpenPlacesPath
-STRING_SEPARATOR_WITHIN = '-'
 
 # # Syntax of an administrative ID (e.g., 'USMAMI')
 # AID_REGEX = '^[A-Z]{2}(?:[A-Z]{2}(?:[A-Z]{2}(?:[0-9]+)?)?)?$'
@@ -118,8 +116,8 @@ class AdminId:
         """Initialize AdminId with administrative levels."""
         if len(levels) == 0 or levels[0] is None:
             self.levels = []
-        elif len(levels) == 1 and STRING_SEPARATOR_WITHIN in levels[0]:
-            self.levels = levels[0].split(STRING_SEPARATOR_WITHIN)
+        elif len(levels) == 1 and cfg.string_separator_within_ids in levels[0]:
+            self.levels = levels[0].split(cfg.string_separator_within_ids)
         elif isinstance(levels, (list, tuple, set)):
             self.levels = list(levels)
         else:
@@ -129,21 +127,21 @@ class AdminId:
         """Return string representation
 
         (e.g., 'US-MA-MI-001' or '' for global)"""
-        return STRING_SEPARATOR_WITHIN.join(self.levels)
+        return cfg.string_separator_within_ids.join(self.levels)
 
     def to_prefix(self) -> str:
         """Return prefix string with separator
 
         (e.g., 'US-MA-MI-001_' or '' for global)"""
         admin_id_str = str(self)
-        return admin_id_str + STRING_SEPARATOR_BETWEEN if admin_id_str else ''
+        return admin_id_str + cfg.string_separator_between_ids if admin_id_str else ''
 
     def to_path(self) -> Path:
         """Return path directory structure with escape directories."""
         if not self.levels:
-            return Path(ESCAPE_DIR)
+            return Path(cfg.escape_dir)
 
-        parts = list(self.levels) + [ESCAPE_DIR]
+        parts = list(self.levels) + [cfg.escape_dir]
 
         return Path(*parts)
 
@@ -207,8 +205,11 @@ class Entity:
 
         # If the first passed string contains separators, assume it
         # contains the other parameters
-        if isinstance(entity_type, str) and STRING_SEPARATOR_WITHIN in entity_type:
-            parts = entity_type.split(STRING_SEPARATOR_WITHIN)
+        if (
+            isinstance(entity_type, str)
+            and cfg.string_separator_within_ids in entity_type
+        ):
+            parts = entity_type.split(cfg.string_separator_within_ids)
 
             if len(parts) == 3:
                 entity_type, source, version = parts
@@ -234,7 +235,7 @@ class Entity:
 
     def __str__(self) -> str:
         parts = [self.entity_type, self.source, self.version]
-        return STRING_SEPARATOR_WITHIN.join(
+        return cfg.string_separator_within_ids.join(
             [str(part) for part in parts if part is not None]
         )
 
@@ -248,7 +249,7 @@ class Entity:
     def to_prefix(self) -> Path:
         """Return path directory structure."""
 
-        return str(self) + STRING_SEPARATOR_BETWEEN
+        return str(self) + cfg.string_separator_between_ids
 
 
 @dataclass
@@ -270,9 +271,9 @@ class Theme:
         if (
             len(levels) == 1
             and isinstance(levels[0], str)
-            and STRING_SEPARATOR_WITHIN in levels[0]
+            and cfg.string_separator_within_ids in levels[0]
         ):
-            levels = levels[0].split(STRING_SEPARATOR_WITHIN)
+            levels = levels[0].split(cfg.string_separator_within_ids)
 
         if levels[0] not in TOP_LEVEL_THEMATIC_DOMAINS:
             raise ValueError(
@@ -288,12 +289,12 @@ class Theme:
 
     def __str__(self) -> str:
         """Return string representation"""
-        return STRING_SEPARATOR_WITHIN.join(self.levels)
+        return cfg.string_separator_within_ids.join(self.levels)
 
     def to_path(self) -> Path:
         """Return path directory structure with escape directories."""
         if not self.levels:
-            return Path(ESCAPE_DIR)
+            return Path(cfg.escape_dir)
 
         parts = list(self.levels)
 
@@ -302,7 +303,7 @@ class Theme:
     def to_prefix(self) -> Path:
         """Return path directory structure."""
 
-        return str(self) + STRING_SEPARATOR_BETWEEN
+        return str(self) + cfg.string_separator_between_ids
 
 
 @dataclass
@@ -324,9 +325,9 @@ class DataSet:
         if (
             source is None
             and isinstance(theme, str)
-            and STRING_SEPARATOR_WITHIN in theme
+            and cfg.string_separator_within_ids in theme
         ):
-            parts = theme.split(STRING_SEPARATOR_WITHIN)
+            parts = theme.split(cfg.string_separator_within_ids)
             for i, part in enumerate(parts[::-1]):
                 if i == 0:
                     # Last
@@ -357,7 +358,7 @@ class DataSet:
             self.version = datetime.now().strftime("%Y%m%d")
 
     def __str__(self) -> str:
-        return STRING_SEPARATOR_WITHIN.join(
+        return cfg.string_separator_within_ids.join(
             [str(self.theme), str(self.source), str(self.version)]
         )
 
@@ -371,7 +372,7 @@ class DataSet:
     def to_prefix(self) -> Path:
         """Return path directory structure."""
 
-        return str(self) + STRING_SEPARATOR_BETWEEN
+        return str(self) + cfg.string_separator_between_ids
 
 
 @dataclass
@@ -518,7 +519,7 @@ class OpenPlacesPath:
                     'with `use_prefix`.'
                 )
 
-        return dir_path / STRING_SEPARATOR_BETWEEN.join(filename_parts)
+        return dir_path / cfg.string_separator_between_ids.join(filename_parts)
 
     def __str__(self) -> str:
         """Return the full path as string."""
@@ -584,5 +585,18 @@ def models_path(*args, root=cfg.models_dir, by_admin=False, use_prefix=False, **
 
 def reports_path(
     *args, root=cfg.reports_dir, by_admin=False, use_prefix=False, **kwargs
+):
+    return path(*args, root=root, use_prefix=use_prefix, **kwargs)
+
+
+def code_path(*args):
+    return cfg.code_root.joinpath(*args)
+
+
+def recipe_path(
+    *args,
+    root=cfg.code_root.joinpath('src', 'openplaces', 'recipes'),
+    use_prefix=False,
+    **kwargs,
 ):
     return path(*args, root=root, use_prefix=use_prefix, **kwargs)
