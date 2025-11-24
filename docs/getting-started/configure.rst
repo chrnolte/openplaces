@@ -46,6 +46,10 @@ Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.
      - :file:`data/cache/_heap`
      - 👤 User (multi-user)
      - Freshly unzipped data, not yet with standard prefixes
+   * - ``logs``
+     - :file:`data/cache/_logs`
+     - 👤 User (multi-user)
+     - Logs from script runs with timing and metadata
    * - ``out``
      - :file:`data/out`
      - 👤 User (multi-user)
@@ -116,14 +120,15 @@ Best when you're the only user.
    data_root/
    ├── data/
    │   ├── cache/         # Intermediate files (reproducible, deletable)
-   │   │   └── _heap/     # Unzipped data
+   │   │   ├── _heap/     # Freshly unzipped data
+   │   │   └── _logs/     # Logs from runs with timing and arguments
    │   ├── core/          # Processed, analysis-ready data
    │   ├── external/      # External data (downloaded)
    │   ├── out/           # Outputs and results data
    │   ├── raw/           # Raw data
    │   └── share/         # Shared data
-   ├── models/             # Models, trained and serialized, predictions
-   └── reports/            # Reports and figures
+   ├── models/            # Models, trained and serialized, predictions
+   └── reports/           # Reports and figures
 
 * No user subfolders created
 * Minimal config file created (commented template)
@@ -151,7 +156,8 @@ Best for team projects where multiple people work on the same codebase.
    │   ├── share/                 # 🌍 Shared
    │   └── YourUsername/          # 👤 Yours
    │       ├── cache/             # 👤 Yours
-   │       │   └── _heap/         # 👤 Yours
+   │       │   ├── _heap/         # 👤 Yours
+   │       │   └── _logs/         # 👤 Yours
    │       ├── core/              # 👤 Yours
    │       └── out/               # 👤 Yours
    ├── models/                    # 🌍 Shared
@@ -159,7 +165,7 @@ Best for team projects where multiple people work on the same codebase.
    └── reports/                   # 🌍 Shared
        └── YourUsername/          # 👤 Yours
 
-* User-specific subfolders for: ``cache``, ``core``, ``heap``, ``out``
+* User-specific subfolders for: ``cache``, ``heap``, ``logs``, ``core``, ``out``
 * Shared folders for: ``external``, ``raw``, ``share``
 * User subfolders in ``models``, ``reports``
 * Full config file created with your directory settings
@@ -169,4 +175,4 @@ Basic usage
 
 After executing the places setup scripts and creating the ``openplaces`` environment, open and run this Jupyter notebook:
 
-   :file:`notebooks/tutorials/01_config_tutorial.ipynb`
+   :file:`notebooks/01_setup/01_first_steps.ipynb`

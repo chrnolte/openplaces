@@ -36,6 +36,7 @@ dependencies:
   - plotly>=5.15.0
   - folium>=0.15.0
   - seaborn>=0.12.0
+  - contextily>=1.6.2
 
   # Optional: raster
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.raster]
@@ -68,5 +69,6 @@ dependencies:
   - pip
 
   - pip:
+    - python-polylabel>=0.6
     - altair>=5.0.0  # Not available in conda-forge main
     - -e .
