@@ -1,0 +1,51 @@
+# Recipe to import the Global Administrative Database
+
+# Administrative unit identifier: where does this data come from?
+# NULL: global
+# US: United States
+# US-WI: Wisconsin
+# US-WI-DA: Dane county
+admin_id: NULL
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+   # What is the source and URL of a dataset that identifies each unit?
+  source: 
+    source_id: gadm
+    url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
+  version: 4.1
+
+# Path to compressed file (set to stop re-downloading)
+# compressed_file_name: "gadm_410-gpkg.zip"
+compressed_file_name: "gadm_410-levels.zip"
+
+# Path to uncompressed file path (set to stop re-downloading)
+uncompressed_file_name: "gadm_410-levels.gpkg"  # Gigabytes
+
+# Layer that identifies top-level administrative units
+layer: ADM_0
+
+# Columns from `openplaces` dictionary -> columns in imported table
+columns:
+  name: COUNTRY
+  admin0_id_a3: GID_0
+
+# Do you want to pre-compute label positions (Poles of Inaccessibility)?
+# This is an expensive operation and can take a while with large tables.
+compute_poi: True
+
+# Function that returns an indexed version of the input 1GeoDataFrame1
+# (usually a custom function designed for a specific case)
+index_function: "openplaces.io.admin.index_from_admin0_id_a3"
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+cache_filename: 'admin0'
+
+# Create and save additional geometry layer with simplified coverage?
+# Takes a long time to process once for the benefit of quicker plotting.
+# Outcome is saved under same filename with suffix '_simplified'.
+simplify_coverage_tolerance: 0.1

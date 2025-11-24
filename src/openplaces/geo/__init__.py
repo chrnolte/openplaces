@@ -1,4 +1,5 @@
-# geo/__init__.py
+# src/openplaces/geo/__init__.py
 
-from .vector import *
-from .raster import *
+# Nothing to see here, yet. Everything is in:
+# - src/openplaces/geo/raster.py
+# - src/openplaces/geo/vector.py

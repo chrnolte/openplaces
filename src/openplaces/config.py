@@ -21,6 +21,11 @@ import yaml
 from platformdirs import user_config_dir
 from pyproj import CRS
 
+# from openplaces.core.constants import (
+# GEO_MIN_AREA_M2,
+# RASTER_ZONAL_STATISTICS_RESOLUTION_M,
+# )
+
 # Application name and author to locate user configuration files
 APPNAME = 'openplaces'
 APPAUTHOR = 'placeslab'
@@ -48,27 +53,32 @@ class OpenPlacesConfig:
         },
         'core': {
             'default': 'data/core',
-            'description': 'Processed, standardized, analysis-ready data *',
+            'description': 'Processed, standardized, analysis-ready data',
             'shared': False,
         },
         'external': {
             'default': 'data/external',
-            'description': 'Downloaded data from third party sources *',
+            'description': 'Downloaded data from third party sources',
             'shared': True,
         },
         'raw': {
             'default': 'data/raw',
-            'description': 'Raw data from own data collection efforts *',
+            'description': 'Raw data from own data collection efforts',
             'shared': True,
         },
         'cache': {
             'default': 'data/cache',
-            'description': 'Interim data, can be safely deleted or regenerated *',
+            'description': 'Interim data, can be safely deleted or regenerated',
             'shared': False,
         },
         'heap': {
             'default': 'data/cache/_heap',
-            'description': 'Freshly unzipped data, to be deleted after use *',
+            'description': 'Freshly unzipped data, to be deleted after use',
+            'shared': False,
+        },
+        'logs': {
+            'default': 'data/cache/_logs',
+            'description': 'Logs from script runs for performance profiling',
             'shared': False,
         },
         'out': {
@@ -94,29 +104,8 @@ class OpenPlacesConfig:
     }
 
     DEFAULTS = {
-        'crs_lat_long': 'epsg:4326',
-        'crs_area': 'epsg:6933',
-        'crs_poi': 'epsg:3395',
-        'raster_xmin': -180.00,
-        'raster_ymin': -60.00,
-        'raster_xmax': 180.00,
-        'raster_ymax': 80.00,
-        'raster_res': 0.00025,
-        'raster_crs': 'epsg:4326',
-        'sep_str': ' ~~ ',
-        'admin_poi_prec_ratio': 0.05,
-        'geo_ha_min': 0.0001,
-        'geo_ubid_codelength': 11,
-        'geo_id_salt': 'g1I9qtkKzxA3P98m80DLhuc0',
-        'geo_id_lat_long_crs': 'epsg:4326',
-        'geo_id_lat_long_prec': 1e-05,
-        'geo_id_ha_crs': 'epsg:6933',
-        'geo_id_ha_trans': 'arcsinh',
-        'geo_id_ha_trans_upr': 20,
-        'geo_id_ha_prec': 0.002,
-        'geo_id_poi_crs': 'epsg:4326',
-        'geo_id_poi_prec_ratio': 0.05,
-        'raster_zonals_resolution_m': 15,
+        # 'geo_min_area_m2': GEO_MIN_AREA_M2,
+        # 'raster_zonal_statistics_resolution_m': RASTER_ZONAL_STATISTICS_RESOLUTION_M,
     }
 
     def __init__(
@@ -146,7 +135,6 @@ class OpenPlacesConfig:
         self.config = self._load_hierarchical_config()
         self._validate_config()
         self._resolve_directories()
-        self._setup_special_attributes()
 
     def _set_platform_defaults(self):
         """Set platform-appropriate default directory paths."""
@@ -395,19 +383,6 @@ class OpenPlacesConfig:
                 dir_path = root / dir_path
             self.config['directories'][dir_key] = dir_path.resolve()
 
-    def _setup_special_attributes(self):
-        """Set up computed attributes and type conversions."""
-
-        # Create raster configuration dict
-        self.config['raster_cfg'] = {
-            'xmin': self.config['raster_xmin'],
-            'ymin': self.config['raster_ymin'],
-            'xmax': self.config['raster_xmax'],
-            'ymax': self.config['raster_ymax'],
-            'res': self.config['raster_res'],
-            'crs': CRS(self.config['raster_crs']),
-        }
-
     def get_dir(self, name: str) -> Path:
         """
         Get directory path by name.
@@ -495,6 +470,11 @@ class OpenPlacesConfig:
     def heap_dir(self) -> Path:
         """Heap directory for freshly unzipped data."""
         return self.get_dir('heap')
+
+    @property
+    def logs_dir(self) -> Path:
+        """Heap directory for freshly unzipped data."""
+        return self.get_dir('logs')
 
     @property
     def out_dir(self) -> Path:
