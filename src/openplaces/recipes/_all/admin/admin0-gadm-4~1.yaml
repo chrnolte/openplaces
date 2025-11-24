@@ -32,13 +32,13 @@ columns:
   name: COUNTRY
   admin0_id_a3: GID_0
 
+# Function that returns an indexed version of the input 1GeoDataFrame1
+# (usually a custom function designed for a specific case)
+index_function: "openplaces.io.admin.admin0_id_index_from_admin0_id_a3"
+
 # Do you want to pre-compute label positions (Poles of Inaccessibility)?
 # This is an expensive operation and can take a while with large tables.
 compute_poi: True
-
-# Function that returns an indexed version of the input 1GeoDataFrame1
-# (usually a custom function designed for a specific case)
-index_function: "openplaces.io.admin.index_from_admin0_id_a3"
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.

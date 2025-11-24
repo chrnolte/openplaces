@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 
-def ingest_recipe(recipe, timer=None):
+def ingest_recipe(recipe, timer=None, redo=False):
     """
     Execute the import recipe for the dataset.
 
@@ -43,33 +43,50 @@ def ingest_recipe(recipe, timer=None):
         Data import recipe. From `openplaces.recipes.get_recipe()`
     timer : openplaces.timing.Timer
         Timer. From `openplaces.timing.get_timer()`
+    redo : bool
+        If True, will overwrite existing files
     """
     if timer is None:
         timer = get_timer('import_recipe', verbose=True)
 
-    gdf = get_recipe_data(recipe, timer=timer)
-
-    if isinstance(gdf, gpd.GeoDataFrame):
-        gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
-
-    # Save
+    # Outcome path
     parquet_path = cache_path(
         recipe['admin_id'],
         recipe['entity'],
         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
     )
-    to_parquet(gdf, parquet_path)
-    timer.mark('Save as parquet')
 
-    if (
-        isinstance(gdf, gpd.GeoDataFrame)
-        and 'simplify_coverage_tolerance' in recipe
-        and isinstance(recipe['simplify_coverage_tolerance'], float)
-        and recipe['simplify_coverage_tolerance'] > 0
-    ):
-        # Create and save geometry-simplified versions
-        save_simplified_coverage(gdf, recipe, timer)
+    if not parquet_path.exists() or redo:
+        gdf = get_recipe_data(recipe, timer=timer)
 
+        if isinstance(gdf, gpd.GeoDataFrame):
+            gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
+
+        # Reorder columns
+        if 'columns' in recipe:
+            cols_order = [c for c in recipe['columns'] if c in gdf]
+            cols_order += [
+                c for c in gdf if c not in (list(recipe['columns']) + ['geometry'])
+            ]
+            if 'geometry' in gdf:
+                cols_order += ['geometry']
+            gdf = gdf[cols_order]
+
+        to_parquet(gdf, parquet_path)
+        timer.mark('Save as parquet')
+
+        if (
+            isinstance(gdf, gpd.GeoDataFrame)
+            and 'simplify_coverage_tolerance' in recipe
+            and isinstance(recipe['simplify_coverage_tolerance'], float)
+            and recipe['simplify_coverage_tolerance'] > 0
+        ):
+            # Create and save geometry-simplified versions
+            save_simplified_coverage(gdf, recipe, timer)
+
+    else:
+        gdf = gpd.read_parquet(parquet_path)
+        timer.mark('Loaded parquet')
     return gdf
 
 
@@ -191,11 +208,8 @@ def get_recipe_data(recipe, timer=True):
         # Rename columns
         gdf = gdf.rename(columns={v: k for k, v in recipe['columns'].items()})
 
-        # Reorder columns
-        cols_order = [c for c in recipe['columns'] if c in gdf]
-        if 'geometry' in gdf:
-            cols_order += ['geometry']
-        gdf = gdf[cols_order]
+    if 'query' in recipe:
+        gdf = gdf.query(recipe['query'])
 
     if 'set_index' in recipe:
         # Set column as index

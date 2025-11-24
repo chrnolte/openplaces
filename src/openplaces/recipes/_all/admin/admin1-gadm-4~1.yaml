@@ -29,30 +29,28 @@ layer: ADM_1
 
 # Columns from `openplaces` dictionary -> columns in imported table
 columns:
+  name: NAME_1
+  type: ENGTYPE_1 
+  admin0_name: COUNTRY
+  name_original: NL_NAME_1
+  name_alternatives: VARNAME_1
+  type_original: TYPE_1 
+  admin0_id_a3: GID_0
   admin1_id_gadm: GID_1 
   admin1_id_hasc: HASC_1 
   admin1_id_iso: ISO_1 
   admin1_id_original: CC_1
-  name: NAME_1
-  name_original: NL_NAME_1
-  name_alternatives: VARNAME_1
-  type: ENGTYPE_1 
-  type_original: TYPE_1 
-  admin0_id_a3: GID_0
-  admin0_name: COUNTRY
 
-# Value that will be replaced with `None`
-none_value: NA
+# Query 
+query: "type != 'Water body'"
+
+# Function that returns an indexed version of the input 1GeoDataFrame1
+# (usually a custom function designed for a specific case)
+index_function: "openplaces.io.admin.admin1_id_index_from_admin1_gadm"
 
 # Do you want to pre-compute label positions (Poles of Inaccessibility)?
 # This is an expensive operation and can take a while with large tables.
 compute_poi: True
-
-# Column that will be used to set as the index
-set_index: admin1_id_gadm
-
-# Function that returns an indexed version of the input GeoDataFrame
-# index_function: "openplaces.admin.index_from_admin0_id_a3"
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.

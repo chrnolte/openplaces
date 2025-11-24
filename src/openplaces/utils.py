@@ -7,6 +7,8 @@ General-purpose utility functions for formatting, display, and debugging.
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -197,3 +199,20 @@ def _to_serializable(obj: Any, max_depth: int = 10, current_depth: int = 0) -> A
 
 
 __all__ = ['pretty_print']
+
+
+def remove_accents(x):
+    """Turns latin-derived special characters into ascii alphabet."""
+    x = unicodedata.normalize('NFKD', x)
+    for from_char, to_char in {'ə': 'e', 'ı': 'i', 'ħ': 'h'}.items():
+        x = x.replace(from_char, to_char)
+    return x.encode('ASCII', 'ignore').decode('ascii')
+
+
+def standardize_names(x):
+    """Standardize country name characters"""
+    x = remove_accents(x)
+    check = re.compile('[A-Za-z- ]')
+    x = ''.join([a for a in x if check.match(a)]).title()
+    x = x.replace(' Apskritis', '').strip()  # Latvia
+    return x

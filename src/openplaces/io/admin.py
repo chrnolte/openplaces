@@ -6,17 +6,21 @@ Worldwide administrative referencing and mapping
 - Manage global admin files
 - Manage globally unique identifiers (admin_ids)
 """
-import pandas as pd
 from dataclasses import dataclass, field
+from itertools import combinations
 from pathlib import Path
 
-from openplaces.recipe import get_recipe
+import pandas as pd
 
-# # Regex patterns of ISO and HASC codes
-# AA_AA = '^[A-Z]{2}\\-[A-Z]{2}$'
-# AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
-# HASC1 = '^[A-Z]{2}\\.[A-Z]{2}$'
-# HASC2 = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
+from openplaces.core.constants import (
+    RE_ADMIN1_IDS_AA_AA,
+    RE_ADMIN1_IDS_AA_AA_EXTRACT,
+    RE_ADMIN1_IDS_HASC,
+    RE_ADMIN2_IDS_HASC,
+    STRING_SEPARATOR_WITHIN_IDS,
+)
+from openplaces.recipe import get_recipe
+from openplaces.utils import standardize_names
 
 
 def get_admin0_iso():
@@ -82,7 +86,7 @@ def get_admin0_iso():
     return admin0_iso
 
 
-def index_from_admin0_id_a3(gdf):
+def admin0_id_index_from_admin0_id_a3(gdf):
     """Give dataframe `gdf` an `admin0_id` index from `admin0_id_a3`
 
     Single-use function to create linkage between GADM and ISO
@@ -92,13 +96,9 @@ def index_from_admin0_id_a3(gdf):
         get_admin0_iso().reset_index().set_index('admin0_id_a3')['admin0_id']
     )
 
-    try:
-        gdf_indexed = gdf.join(admin0_id_a3_to_admin0_id, on='admin0_id_a3').set_index(
-            'admin0_id'
-        )
-    except:
-        print(gdf)
-        raise
+    gdf_indexed = gdf.join(admin0_id_a3_to_admin0_id, on='admin0_id_a3').set_index(
+        'admin0_id'
+    )
 
     if gdf_indexed.index.isnull().any():
         print('Missing indices')
@@ -107,7 +107,103 @@ def index_from_admin0_id_a3(gdf):
     return gdf_indexed
 
 
-"""Get dataframe with state/province ISO3116-2 codes and names"""
+def admin1_id_index_from_admin1_gadm(admin1):
+    """Give dataframe `admin` an `admin1_id` index based on GADM data"""
+
+    # Inner join because there is a row of 'NA'
+    admin1 = admin1.join(
+        get_admin0_iso().reset_index().set_index('admin0_id_a3')['admin0_id'],
+        on='admin0_id_a3',
+        how='inner',
+    )
+    if admin1['admin0_id'].isnull().any():
+        raise ValueError('Empty `\'admin0_id\'` found in `admin1`.')
+
+    admin1['_name'] = admin1['name'].apply(standardize_names)
+
+    # Read ISO
+    admin1_iso = get_admin1_iso()
+    admin1_iso['_name'] = admin1_iso['name'].apply(standardize_names)
+    admin1_iso_join = admin1_iso.reset_index().set_index(['admin0_id', '_name'])
+    admin1 = admin1.join(
+        admin1_iso_join['admin1_id_iso3166'], on=['admin0_id', '_name']
+    )
+
+    # Initiate empty admin ID
+    admin1['admin1_id'] = pd.Series(None, dtype='object')
+    admin1['admin1_id_source'] = pd.Series(None, dtype='object')
+
+    # First priority: official ISO3166-2 codes
+    i = admin1['admin1_id_iso3166'].str.contains(RE_ADMIN1_IDS_AA_AA, na=False)
+    hasc_from_iso = admin1[i]['admin1_id_iso3166'].str.extract(
+        RE_ADMIN1_IDS_AA_AA_EXTRACT
+    )
+    admin1.loc[i, 'admin1_id'] = hasc_from_iso.apply(
+        STRING_SEPARATOR_WITHIN_IDS.join, 1
+    )
+    admin1.loc[i, 'admin1_id_source'] = 'iso'
+
+    # Second priority: existing HASC codes that are unique,
+    # not already used by ISO3166-2, and use correct country-level code
+    admin1_id_from_hasc1 = admin1['admin1_id_hasc'].str.replace(
+        '.', STRING_SEPARATOR_WITHIN_IDS, regex=False
+    )
+    i = (
+        admin1['admin1_id'].isnull()
+        & admin1['admin1_id_hasc'].str.contains(RE_ADMIN1_IDS_HASC)
+        & admin1['admin1_id_hasc'].str.slice(0, 2).eq(admin1['admin0_id'])
+        & ~admin1['admin1_id_hasc'].duplicated(False)
+        & ~admin1_id_from_hasc1.isin(admin1['admin1_id'])
+    )
+    admin1.loc[i, 'admin1_id'] = admin1_id_from_hasc1[i]
+    admin1.loc[i, 'admin1_id_source'] = 'hasc1'
+
+    # Third priority: capitalized letters
+    admin1 = admin1.sort_values(['admin0_id', '_name'])
+    i_fill = admin1['admin1_id'].isnull()
+    admin1_id_caps = admin1[i_fill]['_name'].str.extract('^([A-Z]).*?([A-Z])')
+    admin1_id_caps = admin1_id_caps[admin1_id_caps.notnull().mean(1).eq(1)].apply(
+        STRING_SEPARATOR_WITHIN_IDS.join, 1
+    )
+    admin1_id_caps = admin1.loc[admin1_id_caps.index]['admin0_id'] + admin1_id_caps
+    admin1_id_caps = admin1_id_caps[
+        ~admin1_id_caps.isin(admin1['admin1_id']) & ~admin1_id_caps.duplicated()
+    ]
+    admin1.loc[admin1_id_caps.index, 'admin1_id'] = admin1_id_caps
+    admin1.loc[admin1_id_caps.index, 'admin1_id_source'] = 'own.caps'
+
+    # Fourth priority: first two letters
+    i_fill = admin1['admin1_id'].isnull()
+    admin1_id_two = (
+        admin1[i_fill]['admin0_id']
+        + STRING_SEPARATOR_WITHIN_IDS
+        + admin1[i_fill]['_name'].str.upper().str.slice(0, 2)
+    )
+    admin1_id_two = admin1_id_two[
+        ~admin1_id_two.isin(admin1['admin1_id']) & ~admin1_id_two.duplicated()
+    ]
+    admin1.loc[admin1_id_two.index, 'admin1_id'] = admin1_id_two
+    admin1.loc[admin1_id_two.index, 'admin1_id_source'] = 'own.first'
+
+    # Fifth priority: any two letters from the name
+    i_fill = admin1['admin1_id'].isnull()
+    for ix in admin1[i_fill].index:
+        admin0_id = admin1.loc[ix, 'admin0_id']
+        name = admin1.loc[ix, '_name'].replace(' ', '').replace('-', '')
+        for x1, x2 in combinations(name.upper(), 2):
+            admin1_id = admin0_id + STRING_SEPARATOR_WITHIN_IDS + x1 + x2
+            if admin1_id not in set(admin1['admin1_id']):
+                admin1.loc[ix, 'admin1_id'] = admin1_id
+                admin1.loc[ix, 'admin1_id_source'] = 'own.any'
+                break
+
+    if admin1['admin1_id'].isnull().any() or admin1['admin1_id'].duplicated().any():
+        raise Exception('Unable to resolve all admin1_ids')
+
+    if admin1['admin1_id'].isnull().any() or admin1['admin1_id'].duplicated().any():
+        raise Exception('Unable to resolve all `admin1_ids`.')
+
+    return admin1.set_index('admin1_id').drop(columns='_name')
 
 
 def get_admin1_iso():
@@ -137,3 +233,278 @@ def get_admin1_iso():
         ['name', 'admin0_id', 'admin0_name']
     ].sort_index()
     return admin1_iso
+
+
+# def build_admin2_gadm(timeit=False):
+#     """Build admin-2 level from GADM and A-1.
+
+#     Imports GADM-2, joins A-1, creates admin2_id (own unique identifier).
+
+#     Parameters
+#     ----------
+#     timeit : bool
+#         If True, will save and print the processing time for each step
+#     """
+
+#     print('Creating Admin-2 from scratch.')
+
+#     admin1 = get_admin1(all_columns=True)
+
+#     # Prefer GADM country names
+#     admin2 = gpd.read_file(path_in('admin.gadm/gadm36_2.shp'), encoding='UTF-8')
+#     admin2.columns = [v.lower().replace('_', '') for v in admin2.columns]
+#     admin2 = admin2.rename(columns={'name2': 'name', 'type2': 'type'})
+
+#     # Join a1, which also drops lakes
+#     admin2 = admin2.join(
+#         admin1.reset_index()
+#         .set_index('gid1')
+#         .rename(columns={'admin_id': 'admin1_id'})[['admin1_id', 'admin0_id']],
+#         on='gid1',
+#         how='inner',
+#     )
+#     # Drop remaining lakes
+#     admin2 = admin2[~admin2['type'].isin(['Water Body', 'Water body'])]
+#     admin2 = admin2[
+#         [
+#             'name',
+#             'type',
+#             'name1',
+#             'admin1_id',
+#             'name0',
+#             'admin0_id',
+#             'gid0',
+#             'gid1',
+#             'gid2',
+#             'hasc2',
+#             'geometry',
+#         ]
+#     ]
+#     if timeit:
+#         l('Admin-2 reading')
+
+#     # Initiate empty AID
+#     admin2['admin_id'] = pd.Series(None, dtype='object')
+#     admin2['admin_id_source'] = pd.Series(None, dtype='object')
+
+#     # Standardize names and sort
+#     admin2['_name'] = admin2['name'].fillna('').apply(standardize_names)
+#     admin2 = admin2.sort_values(['admin1_id', '_name'])
+
+#     # First priority: unique existing HASC 2 codes, corrected for admin1_id
+#     aid_from_hasc2 = admin2['hasc2'].str.replace('.', '', regex=False)
+#     aid_from_hasc2_c = admin2['admin1_id'] + aid_from_hasc2.str.slice(4, 6)
+#     i = (
+#         aid_from_hasc2_c.notnull()
+#         & aid_from_hasc2_c.str.len().ge(6)
+#         & ~aid_from_hasc2_c.duplicated(False)
+#     )
+#     admin2.loc[i, 'admin_id'] = aid_from_hasc2_c[i]
+#     admin2.loc[i, 'admin_id_source'] = np.where(
+#         aid_from_hasc2_c[i] == aid_from_hasc2[i], 'hasc2', 'hasc2.mod'
+#     )
+
+#     # Second priority: unique existing HASC 1 codes, corrected for admin1_id
+#     # Countries using HASC1 code at a2 level
+#     admin0_id_HASC1_A2 = ['AZ', 'BE', 'FR', 'GB', 'GN', 'IT', 'LV']
+#     i = (
+#         admin2['admin0_id'].isin(admin0_id_HASC1_A2)
+#         & admin2['hasc2'].str.contains(HASC1).fillna(False)
+#         & ~admin2['hasc2'].duplicated(False)
+#     )
+#     admin2.loc[i, 'admin_id'] = admin2[i]['admin1_id'] + admin2[i]['hasc2'].str.slice(
+#         3, 5
+#     )
+#     admin2.loc[i, 'admin_id_source'] = 'hasc1'
+
+#     # Exception: Brazil has too many subdivisions, gets three-letter codes
+#     # (Minas Gerais has 854 subdivisions, São Paulo 644, 10 others > 200)
+#     # Brazil, first try: initials
+#     i_br = admin2['admin0_id'].eq('BR')
+#     admin2.loc[i_br, 'admin_id'], admin2.loc[i_br, 'admin_id_source'] = np.nan, np.nan
+#     regexes = [
+#         '^([A-Z]).*? ([A-Z]).*? ([A-Z])',
+#         '^([A-Z][a-z]).*?([A-Z])',
+#         '^([A-Z]).*?([A-Z][a-z])',
+#         '^([A-Z][a-z]{2})',
+#     ]
+#     for regex in regexes:
+#         i_fill = (
+#             admin2['admin_id'].isnull()
+#             & admin2['_name'].notnull()
+#             & admin2['admin0_id'].eq('BR')
+#         )
+#         aids = admin2[i_fill]['_name'].str.extract(regex)
+#         aids = aids[aids.notnull().mean(1).eq(1)].apply(''.join, 1)
+#         aids = admin2.loc[aids.index]['admin1_id'] + aids.str.upper()
+#         aids = aids[~aids.isin(admin2['admin_id']) & ~aids.duplicated()]
+#         admin2.loc[aids.index, 'admin_id'] = aids
+#         admin_id_source = 'own.br.init' if regex == regexes[0] else 'own.br.first'
+#         admin2.loc[aids.index, 'admin_id_source'] = admin_id_source
+
+#     # Brazil, second try: any three
+#     i_fill = (
+#         admin2['admin_id'].isnull()
+#         & admin2['_name'].notnull()
+#         & admin2['admin0_id'].eq('BR')
+#     )
+#     ixs = admin2[i_fill].index
+#     aids = set(admin2['admin_id'])
+#     for ix in ixs:
+#         admin1_id = admin2.loc[ix, 'admin1_id']
+#         name = admin2.loc[ix, '_name'].upper().replace(' ', '').replace('-', '')
+#         for x1, x2, x3 in combinations(name, 3):
+#             admin_id = admin1_id + x1 + x2 + x3
+#             if aid not in aids:
+#                 admin2.loc[ix, 'admin_id'] = aid
+#                 admin2.loc[ix, 'admin_id_source'] = 'own.br.any'
+#                 aids.add(aid)
+#                 break
+
+#     # Exception: Uruguay has no names, gets generic codes (X01, X02, etc.)
+#     i_uy = admin2['admin0_id'].eq('UY')
+#     numbers = pd.Series(
+#         admin2[i_uy]
+#         .groupby('admin1_id')
+#         .apply(lambda x: pd.Series(range(1, len(x) + 1)))
+#     )
+#     numbers.index = admin2[i_uy].index
+#     admin2.loc[i_uy, 'admin_id'] = (
+#         admin2[i_uy]['admin1_id'] + 'X' + numbers.astype(str).str.zfill(2)
+#     )
+#     admin2.loc[i_uy, 'admin_id_source'] = 'own.uy'
+
+#     # Exception: Unnamed units with generic digits
+#     # Usually zones in cities, found in Vietnam, Praha (Prague), Guatemala
+#     N_DIGITS_PER_AID1_MIN = 3
+#     i = admin2['admin_id'].isnull() & admin2['name'].str.contains(
+#         ' [0-9]{1,2}$'
+#     ).fillna(False)
+#     initials = admin2['_name'].str.slice(0, 1)
+#     n_digits = i.groupby([admin2[i]['admin1_id'], initials[i]]).size()
+#     for admin1_id, initial in n_digits[n_digits.ge(N_DIGITS_PER_AID1_MIN)].index:
+#         i_fill = i & admin2['admin1_id'].eq(admin1_id) & initials.eq(initial)
+#         digits = admin2[i_fill]['name'].str.extract(' ([0-9]{1,2})$')[0]
+#         # If digits are not unique, overwrite with unique digits
+#         if not len(set(digits)) == len(digits):
+#             digits = pd.Series(range(1, len(digits) + 1), index=digits.index).astype(
+#                 str
+#             )
+#         n_zfill = int(np.ceil(np.log(i_fill.sum()) / np.log(10)))
+#         aids = admin1_id + initial + digits.str.zfill(n_zfill)
+#         admin2.loc[i_fill, 'admin_id'] = aids
+#         admin2.loc[i_fill, 'admin_id_source'] = 'own.a00'
+
+#     # Third priority: initials of first two words
+#     i_fill = admin2['admin_id'].isnull() & admin2['_name'].notnull()
+#     aid_caps = admin2[i_fill]['_name'].str.extract('^([A-Z]).*?([A-Z])')
+#     aid_caps = aid_caps[aid_caps.notnull().mean(1).eq(1)].apply(''.join, 1)
+#     aid_caps = admin2.loc[aid_caps.index]['admin1_id'] + aid_caps
+#     aid_caps = aid_caps[~aid_caps.isin(admin2['admin_id']) & ~aid_caps.duplicated()]
+#     admin2.loc[aid_caps.index, 'admin_id'] = aid_caps
+#     admin2.loc[aid_caps.index, 'admin_id_source'] = 'own.init'
+
+#     # Fourth priority: first two letters
+#     i_fill = admin2['admin_id'].isnull() & admin2['_name'].notnull()
+#     aid_two = admin2[i_fill]['admin1_id'] + admin2[i_fill][
+#         '_name'
+#     ].str.upper().str.slice(0, 2)
+#     aid_two = aid_two[
+#         ~aid_two.isin(admin2['admin_id'])
+#         & ~aid_two.duplicated()
+#         & aid_two.str.len().ge(6)
+#     ]
+#     admin2.loc[aid_two.index, 'admin_id'] = aid_two
+#     admin2.loc[aid_two.index, 'admin_id_source'] = 'own.first'
+
+#     # Fifth priority: any two letters from the name
+#     i_fill = admin2['admin_id'].isnull() & admin2['_name'].notnull()
+#     ixs = admin2[i_fill].index
+#     aids = set(admin2['admin_id'])
+#     for ix in ixs:
+#         admin1_id = admin2.loc[ix, 'admin1_id']
+#         name = admin2.loc[ix, '_name'].upper().replace(' ', '').replace('-', '')
+#         for x1, x2 in combinations(name, 2):
+#             admin_id = admin1_id + x1 + x2
+#             if aid not in aids:
+#                 admin2.loc[ix, 'admin_id'] = aid
+#                 admin2.loc[ix, 'admin_id_source'] = 'own.any'
+#                 aids.add(aid)
+#                 break
+
+#     # Sixth priority: rename existing aids to make space for others
+#     i_fill = admin2['admin_id'].isnull() & admin2['_name'].notnull()
+#     ixs = admin2[i_fill].index
+#     aids = set(admin2['admin_id'])
+#     for ix in ixs:
+#         admin1_id = admin2.loc[ix, 'admin1_id']
+#         name = admin2.loc[ix, '_name'].upper().replace(' ', '').replace('-', '')
+#         for x1, x2 in combinations(name, 2):
+#             admin_id = admin1_id + x1 + x2
+
+#             rep = admin2[admin2['admin_id'].eq(aid)]
+#             if len(rep) == 0:
+#                 print('How did I miss this? ' + aid)
+#                 continue
+
+#             ix2 = rep.iloc[0].name
+#             name_rep = rep.iloc[0]['_name'].upper().replace(' ', '').replace('-', '')
+
+#             replacement_found = False
+#             for y1, y2 in combinations(name_rep, 2):
+#                 aid_rep = admin1_id + y1 + y2
+#                 if aid_rep not in aids:
+#                     replacement_found = True
+#                     admin2.loc[ix2, 'admin_id'] = aid_rep
+#                     admin2.loc[ix2, 'admin_id_source'] = 'own.rep'
+#                     aids.add(aid_rep)
+#                     break
+
+#             if replacement_found:
+#                 admin2.loc[ix, 'admin_id'] = aid
+#                 admin2.loc[ix, 'admin_id_source'] = 'own.any'
+#                 break
+
+#     # Last resort: filling in NAs
+#     i_fill = admin2['admin_id'].isnull()
+#     numbers = pd.Series(
+#         admin2[i_fill]
+#         .groupby('admin1_id')
+#         .apply(lambda x: pd.Series(range(1, len(x) + 1)))
+#     )
+#     numbers.index = admin2[i_fill].index
+#     admin2.loc[i_fill, 'admin_id'] = (
+#         admin2[i_fill]['admin1_id'] + 'X' + numbers.astype(str)
+#     )
+#     admin2.loc[i_fill, 'admin_id_source'] = 'own.na'
+
+#     if admin2['admin_id'].isnull().any() or admin2['admin_id'].duplicated().any():
+#         raise Exception('Unable to resolve all AIDs')
+#     if timeit:
+#         t('Admin-2 AIDs')
+
+#     admin2 = admin2.set_index('aid').drop(columns='_name')
+
+#     # Join latitude and longitude
+#     admin2 = admin2.join(get_centroids(a2))
+#     if timeit:
+#         l('Admin-2 latitude and longitude')
+
+#     # Join areas
+#     admin2 = admin2.join(get_areas(a2))
+#     if timeit:
+#         l('Admin-2 areas')
+
+#     # Get coordinates of poles of inaccessibility (for labeling)
+#     admin2 = admin2.join(get_pois(a2, how='df', prec_ratio=cfg.admin_poi_prec_ratio))
+#     if timeit:
+#         l('Admin-2 POIs')
+
+#     # Put geometry column last
+#     admin2 = admin2[[v for v in admin2.columns.drop('geometry')] + ['geometry']]
+
+#     # Save
+#     to_pqt(a2, path('admin/admin2.pqt'))
+#     to_gpqt(a2, path('admin/admin2.gpqt'))
+#     if timeit:
+#         l('Admin-2 writing')

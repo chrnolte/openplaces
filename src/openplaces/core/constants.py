@@ -15,7 +15,9 @@ ESCAPE_DIR = '_all'
 ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
 
 
-# STRING SEPARATORS
+# STRING
+
+# String separators
 
 # Standard separator for string aggregations (concatenations)
 # This string must be unique enough to not occur in any interpreted
@@ -28,10 +30,18 @@ ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
 
 STRING_SEPARATOR_AGGREGATION = ' ~~ '
 
+# Schema-related stings
+
 STRING_SEPARATOR_WITHIN_IDS = '-'
 
 STRING_SEPARATOR_BETWEEN_IDS = '_'
 
+# Regex patterns
+# Admin1: ISO and HASC codes
+RE_ADMIN1_IDS_AA_AA = '^[A-Z]{2}\\-[A-Z]{2}$'
+RE_ADMIN1_IDS_AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
+RE_ADMIN1_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
+RE_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
 
 # Essential unit conversions
 
