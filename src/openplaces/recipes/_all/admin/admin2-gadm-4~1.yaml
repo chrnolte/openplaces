@@ -25,36 +25,39 @@ compressed_file_name: "gadm_410-levels.zip"
 uncompressed_file_name: "gadm_410-levels.gpkg"  # Gigabytes
 
 # Layer that identifies first-level country subdivisions
-layer: ADM_1
+layer: ADM_2
 
 # Columns from `openplaces` dictionary -> columns in imported table
 columns:
-  name: NAME_1
-  type: ENGTYPE_1 
+  name: NAME_2
+  type: ENGTYPE_2 
+  admin1_name: NAME_1
   admin0_name: COUNTRY
-  name_original: NL_NAME_1
-  name_alternatives: VARNAME_1
-  type_original: TYPE_1 
+  name_original: NL_NAME_2
+  name_alternatives: VARNAME_2
+  type_original: TYPE_2
+  admin1_type: TYPE_1 
+  admin1_name_original: NL_NAME_1
+  admin2_id_gadm: GID_2
+  admin2_id_original: CC_2
+  admin2_id_hasc: HASC_2
   admin1_id_gadm: GID_1 
-  admin1_id_hasc: HASC_1 
-  admin1_id_iso: ISO_1 
-  admin1_id_original: CC_1
   admin0_id_a3: GID_0
 
-# Filter query to select rows
-filter_query: "type != 'Water body'"
+# Keep columns that aren't named in the above list
+# keep_unnamed_columns: True
 
-# Values to be interpreted as empty (None)
-null_value_strings: ["?"]
+# Filter query to select rows
+filter_query: "type not in ('Water body', 'Water Body')"
 
 # Function that returns an indexed version of the input 1GeoDataFrame1
 # (usually a custom function designed for a specific case)
-index_function: "openplaces.io.admin.admin1_id_index_from_admin1_gadm"
+index_function: "openplaces.io.admin.admin2_id_index_from_admin2_gadm"
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin1'
+cache_filename: 'admin2'
 
 # Do you want to pre-compute label positions (Poles of Inaccessibility)?
 # This is an expensive operation and can take a while with large tables.

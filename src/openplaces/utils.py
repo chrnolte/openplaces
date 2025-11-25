@@ -203,6 +203,8 @@ __all__ = ['pretty_print']
 
 def remove_accents(x):
     """Turns latin-derived special characters into ascii alphabet."""
+    if x is None:
+        return x
     x = unicodedata.normalize('NFKD', x)
     for from_char, to_char in {'ə': 'e', 'ı': 'i', 'ħ': 'h'}.items():
         x = x.replace(from_char, to_char)
@@ -211,6 +213,8 @@ def remove_accents(x):
 
 def standardize_names(x):
     """Standardize country name characters"""
+    if x is None:
+        return x
     x = remove_accents(x)
     check = re.compile('[A-Za-z- ]')
     x = ''.join([a for a in x if check.match(a)]).title()
