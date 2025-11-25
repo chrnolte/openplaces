@@ -227,7 +227,7 @@ def external_path(*args, root=cfg.external_dir, use_prefix=False, **kwargs):
 
 
 def external_dir(*args, **kwargs):
-    return path(*args, as_dir=True, **kwargs)
+    return external_path(*args, as_dir=True, **kwargs)
 
 
 def raw_path(*args, root=cfg.raw_dir, use_prefix=False, **kwargs):
