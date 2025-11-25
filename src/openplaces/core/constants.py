@@ -43,6 +43,9 @@ RE_ADMIN1_IDS_AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
 RE_ADMIN1_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
 RE_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
 
+# Countries using HASC1 code for Admin-2 level
+ADMIN0_ID_HASC1_A2 = ['AZ', 'BE', 'FR', 'GB', 'GN', 'IT', 'LV']
+
 # Essential unit conversions
 
 # Acres to square feet

@@ -8,17 +8,19 @@ Input/output utilities
 import importlib
 import shutil
 import tempfile
+from itertools import product
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from zipfile import BadZipFile, ZipFile
 
 import geopandas as gpd
+import pandas as pd
 import requests
 from tqdm import tqdm
 
 from openplaces.config import cfg
 from openplaces.core.constants import GEOPANDAS_EXTENSIONS, ZIP_EXTENSIONS
-from openplaces.geo.vector import add_geometry_derivatives, get_simplified_coverage
+from openplaces.geo.vector import add_geometry_derivatives, get_simplified_geometries
 from openplaces.io import to_parquet
 from openplaces.path import cache_path, external_dir, heap_dir
 from openplaces.timing import get_timer, log_step
@@ -29,9 +31,9 @@ __all__ = [
 ]
 
 
-def ingest_recipe(recipe, timer=None, redo=False):
+def ingest_recipe(recipe, timer=None, return_result=False, redo=False):
     """
-    Execute the import recipe for the dataset.
+    Execute the ingestion recipe for the dataset.
 
     Might involve download, reading, cleanup, geoprocessing.
 
@@ -40,9 +42,11 @@ def ingest_recipe(recipe, timer=None, redo=False):
     Parameters
     ----------
     recipe : dict
-        Data import recipe. From `openplaces.recipes.get_recipe()`
+        Data ingestion recipe. From `openplaces.recipes.get_recipe()`
     timer : openplaces.timing.Timer
         Timer. From `openplaces.timing.get_timer()`
+    return_result : bool
+        Should result be returned (should they be loaded if they exist)?
     redo : bool
         If True, will overwrite existing files
     """
@@ -56,8 +60,15 @@ def ingest_recipe(recipe, timer=None, redo=False):
         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
     )
 
+    parquet_geo_path = cache_path(
+        recipe['admin_id'],
+        recipe['entity'],
+        filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
+        + '_geo',
+    )
     if not parquet_path.exists() or redo:
         gdf = get_recipe_data(recipe, timer=timer)
+        timer.mark('Get recipe data')
 
         if isinstance(gdf, gpd.GeoDataFrame):
             gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
@@ -72,8 +83,16 @@ def ingest_recipe(recipe, timer=None, redo=False):
                 cols_order += ['geometry']
             gdf = gdf[cols_order]
 
-        to_parquet(gdf, parquet_path)
-        timer.mark('Save as parquet')
+        if isinstance(gdf, gpd.GeoDataFrame):
+            # Create two files for tabular and geospatial ('_geo') data
+            to_parquet(gdf[[v for v in gdf if v != 'geometry']], parquet_path)
+            timer.mark('Save attributes as parquet')
+
+            to_parquet(gdf[['geometry']], parquet_geo_path)
+            timer.mark('Save geometries as parquet')
+        else:
+            to_parquet(gdf, parquet_path)
+            timer.mark('Save as parquet')
 
         if (
             isinstance(gdf, gpd.GeoDataFrame)
@@ -82,18 +101,25 @@ def ingest_recipe(recipe, timer=None, redo=False):
             and recipe['simplify_coverage_tolerance'] > 0
         ):
             # Create and save geometry-simplified versions
-            save_simplified_coverage(gdf, recipe, timer)
+            save_simplified_geometries(gdf, recipe, timer)
 
-    else:
-        gdf = gpd.read_parquet(parquet_path)
+    elif return_result:
+        gdf = pd.read_parquet(parquet_path)
+        if parquet_geo_path.exists():
+            # Join geometries if they exist
+            gdf = gpd.read_parquet(parquet_geo_path).join(gdf)[
+                list(gdf.columns) + ['geometry']
+            ]
         timer.mark('Loaded parquet')
-    return gdf
+
+    if return_result:
+        return gdf
 
 
-def save_simplified_coverage(gdf, recipe, timer=None):
+def save_simplified_geometries(gdf, recipe, timer=None):
     """Saves the recipe geodataframe with simplified geometries"""
     if timer is None:
-        timer = get_timer('save_simplified_coverage', verbose=True)
+        timer = get_timer('save_simplified_geometries', verbose=True)
 
     # Catching argument errors: enforce positive float
     if 'simplify_coverage_tolerance' not in recipe:
@@ -111,16 +137,18 @@ def save_simplified_coverage(gdf, recipe, timer=None):
 
     if timer.verbose:
         print('Creating simplified geometries. This can take some time.')
-    gdf_simplified = get_simplified_coverage(gdf, recipe['simplify_coverage_tolerance'])
+    gdf_simplified = get_simplified_geometries(
+        gdf, recipe['simplify_coverage_tolerance']
+    )
     timer.mark('Simplify coverage')
 
     parquet_simplified_path = cache_path(
         recipe['admin_id'],
         recipe['entity'],
         filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-        + '_simplified',
+        + '_geo_simplified',
     )
-    to_parquet(gdf_simplified, parquet_simplified_path)
+    to_parquet(gdf_simplified[['geometry']], parquet_simplified_path)
     timer.mark('Save simplified coverage as geoparquet')
 
 
@@ -138,6 +166,8 @@ def get_recipe_data(recipe, timer=True):
         True: create timer
         openplaces.timing.Timer: use that one.
     """
+    if timer is True:
+        timer = get_timer('save_simplified_coverage', verbose=True)
 
     if not isinstance(recipe, dict):
         raise TypeError(
@@ -204,6 +234,14 @@ def get_recipe_data(recipe, timer=True):
                     filepath, layer=recipe['layer'] if 'layer' in recipe else None
                 )
 
+    # Replacing known NA value strings with `None`.
+    if 'null_value_strings' in recipe:
+        for col, na_value in product(gdf.columns, recipe['null_value_strings']):
+            i_has_na_value = gdf[col].eq(na_value)
+            if i_has_na_value.sum():
+                gdf.loc[i_has_na_value, col] = None
+
+    # Indexing and filtering
     if 'columns' in recipe:
         # Rename columns
         gdf = gdf.rename(columns={v: k for k, v in recipe['columns'].items()})
@@ -225,7 +263,8 @@ def get_recipe_data(recipe, timer=True):
             module, name = path.rsplit('.', 1)
             return getattr(importlib.import_module(module), name)
 
-        index_function = load_function(recipe['index_function'])
+        with log_step('Generate indices', timer=timer):
+            index_function = load_function(recipe['index_function'])
 
         gdf = index_function(gdf)
 
@@ -239,6 +278,17 @@ def get_recipe_data(recipe, timer=True):
             'Change index function or column:\n'
             + str(gdf[gdf.index.duplicated(keep=False)].sort_index().head().iloc[:, :5])
         )
+
+    # Reorder columns
+    if 'columns' in recipe:
+        cols_order = [c for c in recipe['columns'] if c in gdf]
+        if 'keep_unnamed_columns' in recipe and recipe['keep_unnamed_columns']:
+            cols_order += [
+                c for c in gdf if c not in (list(recipe['columns']) + ['geometry'])
+            ]
+        if 'geometry' in gdf:
+            cols_order += ['geometry']
+        gdf = gdf[cols_order]
 
     return gdf
 
