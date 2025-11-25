@@ -22,20 +22,26 @@ This repository is an inital commit with a sceleton structure and will be popula
 
 ---
 
+## Documentation
+
+- User guide: https://openplaces.readthedocs.io/
+
+---
+
 ## Installation
-
-From PyPI:
-
-```bash
-pip install openplaces
-```
 
 From source (development):
 
 ```bash
 git clone https://github.com/chrnolte/openplaces.git
 cd openplaces
-pip install -e .
+python dev.py setup
+```
+
+From PyPI (future):
+
+```bash
+pip install openplaces
 ```
 
 Optional (recommended) extras:
@@ -52,7 +58,7 @@ pip install "openplaces[dev,docs]"
 > The snippet below is illustrative for intended use — consult the docs for the current interface.
 
 ```python
-import openplaces as op
+import openplaces.api as op
 
 # Load parcels for Middlesex, Massachusetts, United States
 parcels = op.load_parcels("US-MA-MI")
@@ -70,16 +76,9 @@ print(values.describe())
 
 ---
 
-## Documentation
-
-- **User Guide:** https://openplaces.readthedocs.io/
-
----
-
 ## Governance & Sustainability
 
-- **License:** Apache-2.0 (see [LICENSE.md](LICENSE.md)).
-- **Consortium:** Currently: informal network of international academic collaborators; new partners welcome.
+Currently developed by an informal network of academic collaborators; new partners are welcome.
 
 Contact: **contact@openplaces.io**
 
