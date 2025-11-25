@@ -464,15 +464,15 @@ def add_geometry_derivatives(gdf, timer, **kwargs):
     return gdf
 
 
-def get_simplified_coverage(gdf, tolerance):
-    """Returns the geodataframe with simplified geometries
+def get_simplified_geometries(gdf, tolerance):
+    """Returns a GeoDataFrame with simplified polygon geometries
 
     Uses `.simplify_coverage()` from `geopandas` to preserve topology
 
     Parameters
     ----------
     gdf : geopandas.GeoDataFrame
-        Geodataframe
+        GeoDataFrame
     tolerance : float
         Simplification tolerance in CRS units
     """
