@@ -17,3 +17,8 @@
 *.ico binary
 *.parquet binary
 *.zip binary
+
+# Strip outputs and execution logs from notebooks
+*.ipynb filter=nbstripout
+*.zpln filter=nbstripout
+*.ipynb diff=ipynb

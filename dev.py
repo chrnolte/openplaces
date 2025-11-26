@@ -67,6 +67,9 @@ def setup():
     print("\nInstalling openplaces in editable mode...")
     run(f"{PKG_MGR} run -n {env_name} pip install -e . --no-deps")
 
+    print("\nSetting up nbstripout for automatic notebook cleaning...")
+    run(f"{PKG_MGR} run -n {env_name} nbstripout --install")
+
     print("\n✓ Development environment ready!")
     print("\nNext steps:")
     print(f"  1. {PKG_MGR} activate {env_name}")
@@ -87,6 +90,9 @@ def update():
 
     print("\nReinstalling openplaces...")
     run(f"{PKG_MGR} run -n {env_name} pip install -e . --no-deps")
+
+    print("\nEnsuring nbstripout is configured...")
+    run(f"{PKG_MGR} run -n {env_name} nbstripout --install")
 
     print("\n✓ Environment updated!")
 

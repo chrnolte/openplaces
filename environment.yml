@@ -61,6 +61,7 @@ dependencies:
   - pytest-cov>=4.1.0
   - sphinx>=7.0.0
   - sphinx-rtd-theme>=1.3.0
+  - nbstripout>=0.8.2
 
   # Conda-specific packages that enhance development
   - ipython
