@@ -18,7 +18,7 @@ Multiple entities?
 
 Parcel datasets are usually a merger of multiple sources of data. Frequently, attributes (columns) refer to different :ref:`entities` (rows, e.g. parcels, buildings, units within buildings, sales transactions, etc.).
 
--  For instance, multiple :ref:`properties` can exist on a single :ref:`parcel`: duplexes, apartments, condominium associations, manufactured home parks, high-rises, etc.
+-  For instance, multiple :ref:`properties` can exist on a single :ref:`parcel <parcels>`: duplexes, apartments, condominium associations, manufactured home parks, high-rises, etc.
 
    Parcel datasets handle this multi-entity problem in different ways. Some contain one row per property, but then duplicate parcel attributes and geometries for each. Multi-table datasets (e.g. geodatabases :file:`.gdb`) often provide separate tables for parcels (often called geometries or GIS) and properties (often called tax roll, assessment, or similar).
 

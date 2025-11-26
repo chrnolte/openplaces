@@ -1,9 +1,12 @@
-Set filepaths and preferences
-=============================
+Configure your file system
+==========================
 
-Upon your first ``import`` of ``openplaces``, you will be asked to configure your installation.
+Before you start using ``openplaces``, you need to configure your installation.
 
-One of the first things ``openplaces`` needs to know is where your data will live.
+After :ref:`installing your environment <install>`, the first call of ``import openplaces`` (in a Jupyter notebook or directly in Python) will launch an interactive configuration script.
+
+The first th that allows you to choose your directory structure.
+
 
 Standard directories
 ~~~~~~~~~~~~~~~~~~~~

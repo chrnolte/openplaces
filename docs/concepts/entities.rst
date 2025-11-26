@@ -5,6 +5,8 @@
 Entities
 ========
 
+.. _parcels:
+
 Parcels
 ~~~~~~~
 
@@ -12,6 +14,8 @@ Parcels refer to geo-referenced parcel boundaries that describe a spatial unit o
 
 Parcel data is most often created by local land surveyors and tax assessors, usually with the goal to cover all taxable property within a given administrative unit / jurisdiction.
 
+
+.. _properties:
 
 Properties
 ~~~~~~~~~~
@@ -25,12 +29,13 @@ For multi-unit parcels (e.g. an apartment complex), parcels and properties are n
 
 .. _transactions:
 
-
 Transactions
 ~~~~~~~~~~~~
 
 Transactions are events in which a **property** changes hands, often in the form of a sale. They are recorded in deeds or similar property documents. They identify the seller, buyer, the property, and the date.
 
+
+.. _buildings:
 
 Buildings
 ~~~~~~~~~
@@ -38,6 +43,8 @@ Buildings
 Buildings refer to any human-built structures with roofs.
 
 Buildings are often identified by their building **footprint**, as observed in high-resolution satellite data. Some detailed tax assessor datasets also collect building information separately from property information (e.g. in the case of multi-unit houses, condominiums, etc.).
+
+.. _administrative_units:
 
 Administrative units
 ~~~~~~~~~~~~~~~~~~~~
@@ -55,10 +62,10 @@ Administrative units are the geographic regions at which property data generatio
 
 - Level 1 (``admin1``): states, departments
 
-   ``'USMA'`` for the state of Massachusetts, U.S.
-   ``'COAN'`` for the department of Antioquia, Colombia
+   ``'US-MA'`` for the state of Massachusetts, U.S.
+   ``'CO-AN'`` for the department of Antioquia, Colombia
 
 - Level 2 (``admin2``): counties, municipalities, etc.
 
-   ``'USMAMI'`` for Middlesex county, Massachusetts, U.S.
-   ``'COANME'`` for the municipality of Medellín, Antioquia, Colombia
+   ``'US-MA-MI'`` for Middlesex county, Massachusetts, U.S.
+   ``'CO-AN-ME'`` for the municipality of Medellín, Antioquia, Colombia
