@@ -8,5 +8,4 @@ Contribute
 .. toctree::
    :maxdepth: 2
 
-   contribute/environment
    contribute/codestyle
