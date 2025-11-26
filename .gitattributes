@@ -1,0 +1,19 @@
+# Auto detect text files and normalize line endings to LF in the repository
+* text=auto
+
+# Files whose line endings should be normalized across operating systems
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Files that are binary and don't need auto-detection of text
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.parquet binary
+*.zip binary
