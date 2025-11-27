@@ -19,11 +19,11 @@ You need to have a version of the Anaconda package manager installed (``conda`` 
 
 1. Open :gui:`Terminal`.
 
-2. Navigate to the folder in which you want to create the ``openplaces`` codebase, for instance:
+2. Change to the directory where you want to install the ``openplaces`` codebase:
 
    .. code-block:: bash
 
-      cd ~/code
+      cd ~/code  # Example: 'code' folder in the user directory
 
 3. Clone the ``openplaces`` Github repository:
 
@@ -39,9 +39,9 @@ You need to have a version of the Anaconda package manager installed (``conda`` 
 
 5. Run the setup script:
 
-.. code-block:: bash
+   .. code-block:: bash
 
-   python dev.py setup
+      python dev.py setup
 
 
 Uninstall
