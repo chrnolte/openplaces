@@ -9,3 +9,4 @@ Contribute
    :maxdepth: 2
 
    contribute/codestyle
+   contribute/cluster

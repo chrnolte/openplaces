@@ -3,17 +3,23 @@ Configure your file system
 
 Before you start using ``openplaces``, you need to configure your installation.
 
-After :ref:`installing your environment <install>`, the first call of ``import openplaces`` (in a Jupyter notebook or directly in Python) will launch an interactive configuration script.
+After :ref:`installing your environment <install>`, open and run this Jupyter notebook:
 
-The first th that allows you to choose your directory structure.
+   :file:`notebooks/01_setup/01_first_steps.ipynb`
+
+The first call of ``import openplaces`` will launch an interactive configuration script.
+
+Your first task is to define your local directory structure.
 
 
 Standard directories
 ~~~~~~~~~~~~~~~~~~~~
 
-It is usually helpful to have different directories for different stages in your analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications. This simplifies data sharing across different machines and cloud services and the setting of team and user-specific permissions. 
+It is helpful to have different directories for different stages in your analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications.
 
-Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (Boettinger @ Berkeley), ``openplaces`` works with these directories:
+This simplifies data sharing across different machines and cloud services and the setting of team and user-specific permissions. 
+
+Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (thank you, Carl Boettinger @ Berkeley), ``openplaces`` works with these directories:
 
 .. list-table::
    :widths: 15 25 15 45
@@ -78,9 +84,9 @@ Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.
 Configuration files
 ~~~~~~~~~~~~~~~~~~~
 
-``openplaces`` uses a flexible, hierarchical configuration system that makes it easy to set up and customize your data directories and settings.
+``openplaces`` uses a hierarchical configuration system to customize data directories and settings.
 
-Configuration files are located in priority order: **user > project > defaults**.
+Configuration files are used in priority order: **user > project > defaults**.
 
 1. **User configuration** (highest priority)
    
@@ -172,10 +178,3 @@ Best for team projects where multiple people work on the same codebase.
 * Shared folders for: ``external``, ``raw``, ``share``
 * User subfolders in ``models``, ``reports``
 * Full config file created with your directory settings
-
-Basic usage
-~~~~~~~~~~~
-
-After executing the places setup scripts and creating the ``openplaces`` environment, open and run this Jupyter notebook:
-
-   :file:`notebooks/01_setup/01_first_steps.ipynb`
