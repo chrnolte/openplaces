@@ -210,7 +210,7 @@ class OpenPlacesConfig:
             self.user_data_dir = custom_name if custom_name else self.username_dir
 
             # Update directories with user subfolder
-            user_subdir = f'data/{self.user_data_dir}'
+            user_subdir = f'{self.user_data_dir}'
             for key, dir_info in self.STANDARD_DIRS.items():
                 if key == 'data_root':
                     continue  # Don't modify root
