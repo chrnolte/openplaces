@@ -4,18 +4,24 @@
 This script helps developers set up and manage their local development
 environment. End users installing via 'pip install openplaces' don't need this.
 """
+import os
 import shutil
 import subprocess
 import sys
 
+DEFAULT_ENV_NAME = "openplaces"
 
-# Detect which package manager to use
+
 def get_package_manager():
     """Detect if mamba is available, otherwise use conda."""
-    if shutil.which("mamba"):
-        return "mamba"
-    elif shutil.which("conda"):
-        return "conda"
+    # Get the full path to ensure we use the executable, not shell functions
+    mamba_path = shutil.which("mamba")
+    conda_path = shutil.which("conda")
+
+    if mamba_path:
+        return mamba_path
+    elif conda_path:
+        return conda_path
     else:
         print("✗ Error: Neither mamba nor conda found in PATH")
         print("\nPlease install one of the following:")
@@ -27,7 +33,6 @@ def get_package_manager():
 
 
 PKG_MGR = get_package_manager()
-DEFAULT_ENV_NAME = "openplaces"
 
 
 def get_env_name():
@@ -50,12 +55,15 @@ def run(cmd, check=True):
 
 def setup():
     """Create conda environment and install package in editable mode."""
+
+    pkg_mgr = PKG_MGR.split(os.sep)[-1]
+
     print("This will create a development environment for `openplaces`.\n")
-    print(f"Found package manager: {PKG_MGR}.\n")
+    print(f"Found package manager: {PKG_MGR}\n")
 
     env_name = get_env_name()
 
-    print(f"\nUsing package manager: {PKG_MGR}")
+    print(f"\nUsing package manager: {pkg_mgr}")
     print(f"Creating environment: {env_name}")
 
     # Create environment with specified name
@@ -72,7 +80,8 @@ def setup():
 
     print("\n✓ Development environment ready!")
     print("\nNext steps:")
-    print(f"  1. {PKG_MGR} activate {env_name}")
+
+    print(f"  1. {pkg_mgr} activate {env_name}")
     print("  2. cd notebooks")
     print("  3. jupyter notebook")
     print("  4. Start coding!")
