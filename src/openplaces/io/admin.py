@@ -248,7 +248,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
 
 
 def admin2_id_index_from_admin2_gadm(admin2):
-    admin1 = get_admin1()
+    admin1 = get_admin1(columns=['admin1_id_gadm'])
 
     # Join admin1
     admin2 = admin2.join(

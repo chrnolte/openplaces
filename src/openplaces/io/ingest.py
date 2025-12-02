@@ -19,7 +19,11 @@ import requests
 from tqdm import tqdm
 
 from openplaces.config import cfg
-from openplaces.core.constants import GEOPANDAS_EXTENSIONS, ZIP_EXTENSIONS
+from openplaces.core.constants import (
+    GEOPANDAS_EXTENSIONS,
+    PANDAS_EXTENSIONS,
+    ZIP_EXTENSIONS,
+)
 from openplaces.geo.vector import add_geometry_derivatives, get_simplified_geometries
 from openplaces.io import to_parquet
 from openplaces.path import cache_path, external_dir, heap_dir
@@ -66,12 +70,19 @@ def ingest_recipe(recipe, timer=None, return_result=False, redo=False):
         filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
         + '_geo',
     )
+
     if not parquet_path.exists() or redo:
+        # Get data from recipe (may involve downloads, unzipping, reading)
         gdf = get_recipe_data(recipe, timer=timer)
         timer.mark('Get recipe data')
 
-        if isinstance(gdf, gpd.GeoDataFrame):
-            gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
+        if (
+            isinstance(gdf, gpd.GeoDataFrame)
+            and 'add_geometry_derivatives' in recipe
+            and recipe['add_geometry_derivatives']
+        ):
+            with log_step('Add geometry derivatives', timer=timer):
+                gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
 
         # Reorder columns
         if 'columns' in recipe:
@@ -155,8 +166,8 @@ def save_simplified_geometries(gdf, recipe, timer=None):
 def get_recipe_data(recipe, timer=True):
     """Get data described in a recipe
 
-    Includes potential data downloading (to `external` directory) and
-    unzipping.
+    Handles downloading (to `external` directory), unzipping, reading,
+    column renaming, indexing, querying, null value filling.
 
     Parameters
     ----------
@@ -190,7 +201,7 @@ def get_recipe_data(recipe, timer=True):
     else:
         filepath = None
 
-    if not filepath.exists():
+    if filepath is None or not filepath.exists():
         if 'compressed_file_name' in recipe:
             downloaded_path = recipe_external_dir / recipe['compressed_file_name']
         elif 'uncompressed_file_name' in recipe:
@@ -200,6 +211,12 @@ def get_recipe_data(recipe, timer=True):
 
         # Download if necessary
         if not downloaded_path or not downloaded_path.exists():
+            if 'requires_registration' in recipe and recipe['requires_registration']:
+                raise ValueError(
+                    f"Source {recipe['entity']['source']} requires manual download "
+                    f"with registration at: \n{recipe['entity']['source']['url']}"
+                )
+
             with log_step('Download', timer=timer):
                 downloaded_path = download(
                     recipe['entity'].source.url, recipe_external_dir
@@ -229,10 +246,15 @@ def get_recipe_data(recipe, timer=True):
             with log_step('Read parquet', timer=timer, path=filepath):
                 gdf = gpd.read_parquet(filepath)
         else:
-            with log_step('Read file', timer=timer, path=filepath):
+            with log_step('Read vector file', timer=timer, path=filepath):
                 gdf = gpd.read_file(
                     filepath, layer=recipe['layer'] if 'layer' in recipe else None
                 )
+    elif filepath.suffix in PANDAS_EXTENSIONS:
+        with log_step('Read data file', timer=timer, path=filepath):
+            gdf = pd.read_file(filepath)
+    else:
+        raise ValueError(f'Filepath suffix {filepath.suffix} not yet interpreted.')
 
     # Replacing known NA value strings with `None`.
     if 'null_value_strings' in recipe:
@@ -256,6 +278,13 @@ def get_recipe_data(recipe, timer=True):
                 'Column not found to use as index: ' + str(recipe['set_index'])
             )
         gdf = gdf.set_index(recipe['set_index'])
+    elif 'create_index' in recipe:
+        if recipe['create_index']['method'] == 'prefix':
+            gdf.index = pd.Index(
+                recipe['create_index']['prefix']
+                + gdf[recipe['create_index']['column']],
+                name=recipe['create_index']['name'],
+            )
     elif 'index_function' in recipe:
         # Create index with custom function
 
@@ -270,6 +299,9 @@ def get_recipe_data(recipe, timer=True):
 
     # Sort by index
     gdf = gdf.sort_index()
+
+    if 'drop' in recipe:
+        gdf = gdf.drop(recipe['drop'])
 
     # Double-check that the index has no duplicates
     if gdf.index.duplicated().any():
