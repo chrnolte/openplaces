@@ -14,6 +14,33 @@ ESCAPE_DIR = '_all'
 # Extensions for compressed files (can be uncompressed with `zipfile`)
 ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
 
+# Vector file extensions read with `geopandas` into a `GeoDataFrame`
+GEOPANDAS_EXTENSIONS = {
+    '.shp',
+    '.geojson',
+    '.gpkg',
+    '.gdb',
+    '.kml',
+    '.kmz',
+    '.gml',
+    '.fgb',
+    '.parquet',
+    '.feather',
+    '.gpx',
+    '.tab',
+    '.mif',
+    '.dxf',
+    '.sqlite',
+    '.db',
+}
+
+# Tabular data file extensions read with `pandas` into a `DataFrame`
+PANDAS_EXTENSIONS = {
+    '.csv',
+    '.xlsx',
+    '.xls',
+}
+
 
 # STRING
 
@@ -142,24 +169,3 @@ GEO_ID_POI_CRS = 'epsg:4326'
 
 # Precision ratio for PoI used in geohashing
 GEO_ID_POI_PRECISION_RATIO = 0.05
-
-
-# Vector file extensions read with `geopandas` into a `GeoDataFrame`
-GEOPANDAS_EXTENSIONS = {
-    '.shp',
-    '.geojson',
-    '.gpkg',
-    '.gdb',
-    '.kml',
-    '.kmz',
-    '.gml',
-    '.fgb',
-    '.parquet',
-    '.feather',
-    '.gpx',
-    '.tab',
-    '.mif',
-    '.dxf',
-    '.sqlite',
-    '.db',
-}

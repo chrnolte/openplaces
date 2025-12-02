@@ -48,10 +48,10 @@ columns:
 # keep_unnamed_columns: True
 
 # Filter query to select rows
-filter_query: "type not in ('Water body', 'Water Body')"
+query: "type not in ('Water body', 'Waterbody', 'Water Body')"
 
-# Function that returns an indexed version of the input 1GeoDataFrame1
-# (usually a custom function designed for a specific case)
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
 index_function: "openplaces.io.admin.admin2_id_index_from_admin2_gadm"
 
 # Internal filename after import. This is only needed if the filename

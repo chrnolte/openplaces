@@ -14,30 +14,57 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source: 
     source_id: wiscedu
-    url: "https://web.s3.wisc.edu/parcels/v11_parcels/V11.0.0_Wisconsin_Parcels_2025_10.3_Compressed.zip"
+    url: "https://web.s3.wisc.edu/parcels/v11_parcels/V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.zip"
   version: v11
 
-# Path to compressed file (set to stop re-downloading)
-# compressed_file_name: "gadm_410-gpkg.zip"
-# compressed_file_name: "gadm_410-levels.zip"
+# Path to compressed file (set to skip re-downloading)
+compressed_file_name: "V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.zip"
 
-# Path to uncompressed file path (set to stop re-downloading)
-# uncompressed_file_name: "gadm_410-levels.gpkg"  # Gigabytes
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.gdb"
 
-# Layer that identifies top-level administrative units
-# layer: ADM_0
+# Layer that identifies parcels
+layer: V1100_WisconsinParcels_2025 
 
-# Original columns and how to rename them
-# columns:
-  # COUNTRY: name
-  # GID_0: admin0_id_a3
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  parcel_id_admin1: STATEID
+  parcel_id_admin2: PARCELID
+  parcel_id_tax: TAXPARCELID
+  owner_name: OWNERNME1
+  owner2_name: OWNERNME2
+  owner_address: PSTLADRESS
+  address: SITEADRESS
+  address_number: ADDNUM
+  address_street_name: STREETNAME
+  address_street_type: STREETTYPE
+  unit_type: UNITTYPE
+  unit_id: UNITID
+  city: PLACENAME
+  zip_code: ZIPCODE
+  school_district_name: SCHOOLDIST
+  school_district_id: SCHOOLDISTNO
+  total_value_assessed: CNTASSDVALUE
+  land_value_assessed: LNDVALUE
+  building_value_assessed: IMPVALUE
+  current_use_value: MFLVALUE
+  total_value_market: ESTFMKVALUE
+  tax_value_net: NETPRPTA
+  tax_value_gross: GRSPRPTA
+  tax_year: TAXROLLYEAR
+  area_assessed_ac: ASSDACRES
+  area_deed_ac: DEEDACRES
+  area_gis_ac: GISACRES
+  admin2_name: CONAME
+  admin2_id_admin1: PARCELFIPS
+  property_type: PROPCLASS
+  source_date: LOADDATE
+
+# Keep columns that aren't named in the above list
+keep_unnamed_columns: True
 
 # Function that returns an indexed version of the input GeoDataFrame
 # index_function: "openplaces.admin.index_from_admin0_id_a3"
 
-# Internal filename
-# filename: 'admin0'
-
-# Create and save additional geometry layer with simplified coverage
-# for quicker plots. Use same filename, with suffix '_simplified'.
-# simplify_coverage: 0.2
+# Column used to split up 
+cache_by: admin2_id

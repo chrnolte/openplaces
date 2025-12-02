@@ -220,3 +220,27 @@ def standardize_names(x):
     x = ''.join([a for a in x if check.match(a)]).title()
     x = x.replace(' Apskritis', '').strip()  # Latvia
     return x
+
+
+# Some standard conversions, currently specific to linking up US counties
+CONVERSIONS = {
+    'sainte': 'st',
+    'saint': 'st',
+    'de kalb': 'dekalb',
+    'la salle': 'lasalle',
+    'de baca': 'debaca',
+}
+
+
+def create_comparable_name_link(x, replace_dict=CONVERSIONS):
+    if x is None:
+        return x
+    x = remove_accents(x)
+    check = re.compile('[A-Za-z- ]')
+    x = ''.join([a for a in x if check.match(a)]).lower()
+
+    if isinstance(replace_dict, dict):
+        for k, v in replace_dict.items():
+            x = x.replace(k, v)
+
+    return x

@@ -1,0 +1,43 @@
+# Recipe to import counties for the United States (2024)
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: uscensus
+    url: "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_county_500k.zip"
+  version: 2024
+
+# Filename of compressed file (set to skip re-downloading)
+compressed_file_name: "cb_2024_us_county_500k.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "cb_2024_us_county_500k.shp"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin2_id_admin0: GEOID
+  admin2_id_ansi: COUNTYNS
+  admin1_name: STATE_NAME
+  admin1_id_admin0: STATEFP
+  admin1_id_leaf: STUSPS
+  statistical_area_id: LSAD
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin0` according to ISO)
+query: "admin1_id_admin0 <= '56'"
+
+# Keep columns that aren't named in the above list
+# keep_unnamed_columns: True
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+cache_filename: 'admin2'
