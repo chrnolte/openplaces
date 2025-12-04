@@ -5,7 +5,10 @@ Input/output utilities
 
 """
 
+import glob
 import importlib
+import os
+import re
 import shutil
 import tempfile
 from itertools import product
@@ -22,10 +25,12 @@ from openplaces.config import cfg
 from openplaces.core.constants import (
     GEOPANDAS_EXTENSIONS,
     PANDAS_EXTENSIONS,
+    REGEX_FILENAME_IN_URL,
+    REGEX_HAS_GLOB_WILDCARDS,
     ZIP_EXTENSIONS,
 )
 from openplaces.geo.vector import add_geometry_derivatives, get_simplified_geometries
-from openplaces.io import to_parquet
+from openplaces.io import download, find_latest_file, to_parquet, unzip
 from openplaces.path import cache_path, external_dir, heap_dir
 from openplaces.timing import get_timer, log_step
 
@@ -188,7 +193,7 @@ def get_recipe_data(recipe, timer=True):
     recipe_heap_dir = heap_dir(recipe['admin_id'], recipe['entity'])
     recipe_external_dir = external_dir(recipe['admin_id'], recipe['entity'])
 
-    # Set path of file to import (to see whether it's already saved)
+    # Identify path of file to import (to see whether it's already saved)
     if 'compressed_file_name' in recipe:
         if 'uncompressed_file_name' in recipe:
             # Assume that uncompressed file will be read
@@ -202,24 +207,62 @@ def get_recipe_data(recipe, timer=True):
         filepath = None
 
     if filepath is None or not filepath.exists():
+        # Find the path of the downloaded file.
         if 'compressed_file_name' in recipe:
             downloaded_path = recipe_external_dir / recipe['compressed_file_name']
         elif 'uncompressed_file_name' in recipe:
             downloaded_path = recipe_external_dir / recipe['uncompressed_file_name']
+        elif recipe['entity'].source.download_url:
+            # Try to extract filename from URL
+            re_match = re.search(
+                REGEX_FILENAME_IN_URL, recipe['entity'].source.download_url
+            )
+            if re_match:
+                filename = re_match.group(1)
+                print(f'Name of downloaded file inferred from URL: {filename}')
+                downloaded_path = recipe_external_dir / filename
+            else:
+                downloaded_path = None
         else:
             downloaded_path = None
 
+        # If no filepath is provided
+        if (
+            downloaded_path is not None
+            and not downloaded_path.exists()
+            and re.search(REGEX_HAS_GLOB_WILDCARDS, str(downloaded_path))
+        ):
+            filepaths = glob.glob(str(downloaded_path))
+            if len(filepaths) > 0:
+                downloaded_path = Path(max(filepaths, key=os.path.getmtime))
+                if len(filepaths) > 1:
+                    print(
+                        f'Found more than one file. Selected most recent one:'
+                        '{download_path}'
+                    )
+
         # Download if necessary
         if not downloaded_path or not downloaded_path.exists():
-            if 'requires_registration' in recipe and recipe['requires_registration']:
-                raise ValueError(
-                    f"Source {recipe['entity']['source']} requires manual download "
-                    f"with registration at: \n{recipe['entity']['source']['url']}"
+            if not recipe['entity'].source.download_url:
+                error_message = ''
+                if downloaded_path:
+                    error_message += (
+                        '\n\nSource data file not found in the `openplaces` filesystem:'
+                        f'\n\n{downloaded_path.relative_to(cfg.data_root)}\n\n'
+                    )
+                error_message += (
+                    f'Source `{recipe["entity"].source}` has no direct download URL. '
+                    'Download the data manually here:\n\n'
+                    + f'{recipe["entity"].source.portal_url}'
+                    + f'\n\nSave it in this location:\n\n'
+                    + str(downloaded_path)
+                    + '\n\nThen re-run this data ingestion script.'
                 )
+                raise FileNotFoundError(error_message)
 
             with log_step('Download', timer=timer):
                 downloaded_path = download(
-                    recipe['entity'].source.url, recipe_external_dir
+                    recipe['entity'].source.download_url, recipe_external_dir
                 )
 
         # Unzip if necessary
@@ -228,12 +271,12 @@ def get_recipe_data(recipe, timer=True):
             and Path(downloaded_path).suffix.lower() in ZIP_EXTENSIONS
         ):
             with log_step('Unzip', timer=timer):
-                last_member_path = unzip(downloaded_path, recipe_heap_dir)
+                unzip(downloaded_path, recipe_heap_dir)
 
         # Pick last extracted file to load if no filepath is provided
-        if filepath is None:
-            print(f'Opening: {last_member_path}')
-            filepath = last_member_path
+        if filepath is None or re.search(REGEX_HAS_GLOB_WILDCARDS, str(filepath)):
+            filepath = find_latest_file(recipe_heap_dir)
+            print(f'Inferred file to read:\n{filepath.relative_to(recipe_heap_dir)}')
         else:
             if not filepath.exists():
                 raise FileNotFoundError(
@@ -323,177 +366,3 @@ def get_recipe_data(recipe, timer=True):
         gdf = gdf[cols_order]
 
     return gdf
-
-
-def download(from_url, to_path, chunk_size=8192, timeout=None):
-    """Download file from URL with progress bar.
-
-    Parameters
-    ----------
-    from_url : str
-        Source URL
-    to_path : str or Path
-        Target file path or directory
-        If a directory is passed (.suffix == ''), filename is inferred
-        from response headers or url.
-    chunk_size : int, default 8192
-        Download chunk size in bytes
-    timeout : int, optional
-        Request timeout in seconds (uses cfg.download_timeout if None)
-
-    Returns
-    -------
-    Path
-        Path to downloaded file
-
-    Raises
-    ------
-    requests.RequestException
-        If download fails
-    """
-
-    to_path = Path(to_path)
-
-    if to_path.suffix == '':
-        # Assumption: `to_path` refers to a directory
-        to_path.mkdir(parents=True, exist_ok=True)
-    else:
-        to_path.parent.mkdir(parents=True, exist_ok=True)
-
-    timeout = timeout or cfg.download_timeout
-
-    # Get file size for progress bar
-    try:
-        response = requests.head(from_url, timeout=timeout)
-        response.raise_for_status()
-        total_size = int(response.headers.get('content-length', 0))
-    except Exception:
-        total_size = 0
-
-    # Download with progress bar
-    response = requests.get(from_url, stream=True, timeout=timeout)
-    response.raise_for_status()
-
-    if to_path.suffix == '':
-        # Assumption: `to_path` refers to a directory
-        # Extract filename and add it to `to_path`
-
-        # Try Content-Disposition header first if response provided
-        if response and 'content-disposition' in response.headers:
-            content_disp = response.headers['content-disposition']
-            if 'filename=' in content_disp:
-                filename = content_disp.split('filename=')[1].strip('"\'')
-                return unquote(filename)
-
-        # Fall back to URL parsing
-        parsed = urlparse(from_url)
-        path = unquote(parsed.path)
-        filename = Path(path).name
-        to_path /= filename
-
-    # Download to temp location first, then move to final destination
-    temp_path = Path(tempfile.gettempdir()) / f'{to_path.name}.part'
-
-    try:
-        with open(temp_path, 'wb') as f:
-            with tqdm(
-                total=total_size,
-                unit='B',
-                unit_scale=True,
-                desc='\u2913 ' + to_path.name,
-            ) as pbar:
-                for chunk in response.iter_content(chunk_size=chunk_size):
-                    if chunk:
-                        f.write(chunk)
-                        pbar.update(len(chunk))
-
-        # Move completed download to final destination
-        shutil.move(str(temp_path), str(to_path))
-
-    except Exception:
-        # Clean up partial download on any error
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
-
-    return to_path
-
-
-def unzip(in_path, out_path=None, members=None):
-    """Extract files from a zip archive.
-
-    Parameters
-    ----------
-    in_path : str or Path
-        Path to input zip file
-    out_path : str or Path, optional
-        Output directory. If None, extracts to directory named after
-        the zip file (without extension) in the same location.
-        Example: 'data.zip' -> 'data/'
-    members : list of str, optional
-        Specific files to extract. If None, extracts all files.
-
-    Returns
-    -------
-    Path
-        Path to output directory
-
-    Raises
-    ------
-    BadZipFile
-        If the file is not a valid zip archive
-    FileNotFoundError
-        If input file doesn't exist
-
-    Examples
-    --------
-    >>> unzip('data/raw/parcels.zip')  # -> data/raw/parcels/
-    >>> unzip('data.zip', 'data/heap')  # -> data/heap/
-    >>> unzip('data.zip', members=['file1.txt', 'file2.csv'])
-    """
-    in_path = Path(in_path)
-    if not in_path.exists():
-        raise FileNotFoundError(f"Zip file not found: {in_path}")
-
-    if out_path is None:
-        out_path = in_path.parent / in_path.stem
-    else:
-        out_path = Path(out_path)
-    out_path.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with ZipFile(in_path, 'r') as z:
-            member_list = members or z.namelist()
-            total_size = sum(z.getinfo(m).file_size for m in member_list)
-
-            with tqdm(
-                total=total_size, unit='B', unit_scale=True, desc='Extracting'
-            ) as pbar:
-                for member in member_list:
-                    target = out_path / member
-                    if member.endswith('/'):
-                        target.mkdir(parents=True, exist_ok=True)
-                    else:
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        with z.open(member) as src, open(target, 'wb') as dst:
-                            while chunk := src.read(8192):
-                                dst.write(chunk)
-                                pbar.update(len(chunk))
-    except BadZipFile as e:
-        raise BadZipFile(f"Invalid zip file: {in_path}") from e
-
-    # Return path of last extracted member
-    return out_path / member
-
-
-def _ensure_parent_dir(filepath: str | Path) -> Path:
-    """Ensure parent directory exists and return Path object."""
-    filepath = Path(filepath)
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    return filepath
-
-
-def _remove_if_exists(filepath: Path) -> None:
-    """Remove file if it exists (needed for some formats like gpkg)."""
-    if filepath.exists():
-        filepath.unlink()
