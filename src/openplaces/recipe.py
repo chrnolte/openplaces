@@ -36,14 +36,9 @@ def get_recipe(*args, **kwargs):
 
     filepath = recipe_path(*args, **path_kwargs)
 
-    if (
-        filepath.stem.endswith('.csv')
-        or filepath.stem.endswith('.xlsx')
-        or filepath.stem.endswith('.xlsx')
-        or filepath.stem.endswith('.yaml')
-    ):
+    if filepath.suffix in ['.csv', '.xlsx', '.xlsx']:
         raise Exception(
-            f"Remove extension when requesting recipe table: {filepath.stem}"
+            f"Remove extension when requesting recipe table: {filepath.name}"
         )
 
     if filepath.with_suffix('.yaml').exists():

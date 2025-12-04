@@ -9,6 +9,7 @@ import shutil
 import tempfile
 import warnings
 from pathlib import Path
+from typing import Optional
 from urllib.parse import unquote, urlparse
 from zipfile import BadZipFile, ZipFile
 
@@ -18,6 +19,7 @@ import requests
 from tqdm import tqdm
 
 from openplaces.config import cfg
+from openplaces.core.constants import GEOPANDAS_EXTENSIONS, PANDAS_EXTENSIONS
 
 __all__ = [
     'download',
@@ -189,6 +191,44 @@ def unzip(in_path, out_path=None, members=None):
 
     # Return path of last extracted member
     return out_path / member
+
+
+def find_latest_file(
+    directory: str, extensions: list[str] = GEOPANDAS_EXTENSIONS | PANDAS_EXTENSIONS
+) -> Optional[Path]:
+    """
+    Find the most recently modified file in a directory with a specified extension.
+
+    Parameters
+    ----------
+    directory : str
+        Path to the directory to search
+    extensions : list[str]
+        List of accepted file extensions (e.g., ['.csv', '.txt', '.json'])
+
+    Returns
+    -------
+    Optional[Path]
+        Path to the most recent file, or None if no matching files found
+    """
+    dir_path = Path(directory)
+
+    if not dir_path.exists() or not dir_path.is_dir():
+        raise ValueError(f"Directory does not exist: {directory}")
+
+    # Normalize extensions to include leading dot
+    normalized_exts = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
+
+    # Find all files with matching extensions
+    matching_files = [
+        f for f in dir_path.iterdir() if f.is_file() and f.suffix in normalized_exts
+    ]
+
+    if not matching_files:
+        return None
+
+    # Return the file with the most recent modification time
+    return max(matching_files, key=lambda f: f.stat().st_mtime)
 
 
 def _ensure_parent_dir(filepath: str | Path) -> Path:

@@ -10,7 +10,7 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: uscensus
-    url: "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_county_500k.zip"
+    download_url: "https://www2.census.gov/geo/tiger/GENZ2024/shp/cb_2024_us_county_500k.zip"
   version: 2024
 
 # Filename of compressed file (set to skip re-downloading)

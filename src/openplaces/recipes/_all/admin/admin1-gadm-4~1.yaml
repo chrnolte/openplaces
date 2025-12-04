@@ -14,7 +14,7 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source: 
     source_id: gadm
-    url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
+    download_url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
   version: 4.1
 
 # Path to compressed file (set to skip re-downloading)

@@ -107,14 +107,24 @@ class Source:
     """Data source with metadata."""
 
     source_id: str
-    url: str | None = None
+    # URL for the website that permits data access (with registration)
+    portal_url: str | None = None
+    # Direct download URL (if set, allows automated download)
+    download_url: str | None = None
     doi: str | None = None
 
-    def __init__(self, source_id: str = None, url: str = None, doi: str = None):
+    def __init__(
+        self,
+        source_id: str = None,
+        portal_url: str = None,
+        download_url: str = None,
+        doi: str = None,
+    ):
         """Initialize AdminId with administrative levels."""
 
         self.source_id = sanitize(source_id) if source_id is not None else None
-        self.url = url
+        self.portal_url = portal_url
+        self.download_url = download_url
         self.doi = doi
 
     def __str__(self) -> str:

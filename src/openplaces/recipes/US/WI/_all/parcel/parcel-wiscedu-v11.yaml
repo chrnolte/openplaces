@@ -14,7 +14,7 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source: 
     source_id: wiscedu
-    url: "https://web.s3.wisc.edu/parcels/v11_parcels/V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.zip"
+    download_url: "https://web.s3.wisc.edu/parcels/v11_parcels/V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.zip"
   version: v11
 
 # Path to compressed file (set to skip re-downloading)

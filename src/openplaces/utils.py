@@ -203,7 +203,7 @@ __all__ = ['pretty_print']
 
 def remove_accents(x):
     """Turns latin-derived special characters into ascii alphabet."""
-    if x is None:
+    if not isinstance(x, str):
         return x
     x = unicodedata.normalize('NFKD', x)
     for from_char, to_char in {'ə': 'e', 'ı': 'i', 'ħ': 'h'}.items():
@@ -213,7 +213,7 @@ def remove_accents(x):
 
 def standardize_names(x):
     """Standardize country name characters"""
-    if x is None:
+    if not isinstance(x, str):
         return x
     x = remove_accents(x)
     check = re.compile('[A-Za-z- ]')
@@ -224,16 +224,13 @@ def standardize_names(x):
 
 # Some standard conversions, currently specific to linking up US counties
 CONVERSIONS = {
-    'sainte': 'st',
+    'sainte': 'ste',
     'saint': 'st',
-    'de kalb': 'dekalb',
-    'la salle': 'lasalle',
-    'de baca': 'debaca',
 }
 
 
 def create_comparable_name_link(x, replace_dict=CONVERSIONS):
-    if x is None:
+    if not isinstance(x, str):
         return x
     x = remove_accents(x)
     check = re.compile('[A-Za-z- ]')
