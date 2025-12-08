@@ -486,6 +486,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
 
 
 def admin2_id_index_from_admin2_US_nhgis(admin2_local):
+    # Join states
     admin1_recipe = get_recipe('US', 'admin', source='admin1-nhgis-2020')
     admin1_crosswalk = (
         get_admin1(recipe=admin1_recipe, columns=['admin1_id_admin0'])
@@ -493,11 +494,9 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
         .set_index('admin1_id_admin0')
     )
     admin2_local = admin2_local.join(admin1_crosswalk, on='admin1_id_admin0')
-    admin2_local['name_link'] = (
-        admin2_local['name']
-        # .str.replace(' County', '')
-        .apply(create_comparable_name_link)
-    )
+
+    # Create name-based identifier
+    admin2_local['name_link'] = admin2_local['name'].apply(create_comparable_name_link)
 
     # Add ' city' to the name_link for duplicate name + state
     # (e.g. Baltimore county vs. city)
@@ -506,33 +505,30 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
     ) & admin2_local['name_long'].eq(admin2_local['name'] + ' city')
     admin2_local.loc[i_city_duplicates, 'name_link'] += ' city'
 
+    # Load global reference layer (GADM)
     admin2 = get_admin2('US')
     admin2['admin1_id'] = admin2.index.str.slice(0, 5)
 
-    # Correct GADM names
+    # Correct (replace) names from global reference layer to official
     admin2_name_crosswalk = get_recipe(
         'US', 'admin', filename='admin2-gadm-4~1_names_to_official'
     )
-    for _, (
-        admin_1_id,
-        admin2_name_gadm,
-        admin2_name_official,
-        _,
-    ) in admin2_name_crosswalk.iterrows():
+    for _, row in admin2_name_crosswalk.iterrows():
         admin2.loc[
-            admin2['admin1_id'].eq(admin_1_id) & admin2['name'].eq(admin2_name_gadm),
+            admin2['admin1_id'].eq(row['admin1_id'])
+            & admin2['name'].eq(row['admin2_name_gadm']),
             'name',
-        ] = admin2_name_official
+        ] = row['admin2_name_official']
 
     admin2['name_link'] = admin2['name'].str.lower().apply(create_comparable_name_link)
 
-    ADMIN2_JOIN_COLUMNS = ['admin1_id', 'name_link']
-
+    # Join global admin-2 data (with identifier) to local admin-2 data
     admin2_local = admin2_local.join(
-        admin2.reset_index().set_index(ADMIN2_JOIN_COLUMNS)['admin2_id'],
-        on=ADMIN2_JOIN_COLUMNS,
+        admin2.reset_index().set_index(['admin1_id', 'name_link'])['admin2_id'],
+        on=['admin1_id', 'name_link'],
     )
 
+    # Set new admin2_ids for units that don't exist in the global layer
     new_admin2_ids = get_recipe(
         'US',
         'admin',
@@ -544,6 +540,7 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
             admin2_local['admin2_id_admin0'].eq(admin2_id_admin0), 'admin2_id'
         ] = admin2_id
 
+    # Ensure the IDs are complete and unique
     i_null = admin2_local['admin2_id'].isnull()
     if i_null.any():
         raise ValueError('Empty `admin2_id`:\n' + str(admin2_local[i_null]))

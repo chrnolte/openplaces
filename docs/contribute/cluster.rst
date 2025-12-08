@@ -123,7 +123,11 @@ Using the Terminal
 
    .. code-block:: bash
 
-      ssh -X your_username@scc4.bu.edu -L 7049:localhost:7049
+      ssh your_username@scc4.bu.edu -L 7049:localhost:7049 -X
+
+   -  The ``-L`` argument creates the tunnel from the internal port of the SCC to the port on your machine. If you use the same port number on both sides, you can copy & paste the displayed Jupyter link in your browser.
+
+   -  The ``-X`` argument is optional. Use it if you want to use graphical user interface (GUI) applications on the cluster (e.g. interactive backends for ``matplotlib``, :gui:`QGIS`). They will be more responsive. It's not needed for static ``matplotlib`` plots.
 
 -  Now you can copy & paste the link from the first :gui:`Terminal` into the address bar of your browser.
    
