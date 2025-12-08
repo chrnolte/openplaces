@@ -81,13 +81,16 @@ def ingest_recipe(recipe, timer=None, return_result=False, redo=False):
         gdf = get_recipe_data(recipe, timer=timer)
         timer.mark('Get recipe data')
 
-        if (
-            isinstance(gdf, gpd.GeoDataFrame)
-            and 'add_geometry_derivatives' in recipe
-            and recipe['add_geometry_derivatives']
-        ):
-            with log_step('Add geometry derivatives', timer=timer):
-                gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
+        if isinstance(gdf, gpd.GeoDataFrame):
+            if gdf.crs != cfg.crs:
+                gdf = gdf.to_crs(cfg.crs)
+                timer.mark(f'Reproject to {cfg.crs}.')
+            if (
+                'add_geometry_derivatives' in recipe
+                and recipe['add_geometry_derivatives']
+            ):
+                with log_step('Add geometry derivatives', timer=timer):
+                    gdf = add_geometry_derivatives(gdf, timer=timer, **recipe)
 
         # Reorder columns
         if 'columns' in recipe:
