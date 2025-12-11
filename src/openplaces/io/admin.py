@@ -201,9 +201,13 @@ def admin1_id_index_from_admin1_gadm(admin1):
     i_fill = admin1['admin1_id'].isnull()
     admin1_id_caps = admin1[i_fill]['_name'].str.extract('^([A-Z]).*?([A-Z])')
     admin1_id_caps = admin1_id_caps[admin1_id_caps.notnull().mean(1).eq(1)].apply(
-        STRING_SEPARATOR_WITHIN_IDS.join, 1
+        ''.join, 1
     )
-    admin1_id_caps = admin1.loc[admin1_id_caps.index]['admin0_id'] + admin1_id_caps
+    admin1_id_caps = (
+        admin1.loc[admin1_id_caps.index]['admin0_id']
+        + STRING_SEPARATOR_WITHIN_IDS
+        + admin1_id_caps
+    )
     admin1_id_caps = admin1_id_caps[
         ~admin1_id_caps.isin(admin1['admin1_id']) & ~admin1_id_caps.duplicated()
     ]
