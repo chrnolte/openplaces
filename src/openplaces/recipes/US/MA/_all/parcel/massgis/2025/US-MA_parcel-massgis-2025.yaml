@@ -80,5 +80,10 @@ additional_layers:
     keep_unnamed_columns: True
     admin_id_crosswalk: parcel-massgis-town-crosswalk
 
-# Column used to split up dataset
-cache_by: admin2_id
+# Administrative ID level at which data is saved
+# Set if you want to split the data into smaller chunks
+# (1: by state/department, 2: by county/municipality, 3: by town etc.)
+# The column ``adminX_id`` has to exist in the pre-processed data and
+# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI'). Add it in or
+# provide a crosswalk in the recipe if it doesn't.
+cache_by_admin_level: 3

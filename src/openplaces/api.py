@@ -11,10 +11,7 @@ from openplaces.core.schema import AdminId
 from openplaces.path import cache_path
 from openplaces.recipe import get_recipe
 
-ADMIN0_SOURCE = 'admin0-gadm-4~1'
-ADMIN1_SOURCE = 'admin1-gadm-4~1'
-ADMIN2_SOURCE = 'admin2-gadm-4~1'
-
+ADMIN_SOURCE = 'admin-gadm-4~1'
 ADMIN0_PRIMARY_COLUMNS = ['name', 'admin0_id_a3', 'lat', 'long', 'ha']
 ADMIN1_PRIMARY_COLUMNS = [
     'name',
@@ -51,7 +48,7 @@ def get_admin0(admin_id=None, geom=False, all_columns=False):
         If True, returns not only the most important columns
     """
 
-    recipe = get_recipe(AdminId(), 'admin', source=ADMIN0_SOURCE)
+    recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin0')
 
     parquet_path = cache_path(
         recipe['admin_id'],
@@ -115,7 +112,7 @@ def get_admin1(admin_id=None, geom=False, recipe=None, columns=None, all_columns
     """
 
     if recipe is None:
-        recipe = get_recipe(AdminId(), 'admin', source=ADMIN1_SOURCE)
+        recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin1')
 
     parquet_path = cache_path(
         recipe['admin_id'],
@@ -162,10 +159,11 @@ def get_admin1(admin_id=None, geom=False, recipe=None, columns=None, all_columns
     # Filter columns
     if not all_columns or columns:
         if columns:
-            if not isinstance(columns, list):
-                raise ValueError(f"`columns` must be a list: {columns}")
+            if isinstance(columns, str):
+                columns = [columns]
+            elif not isinstance(columns, list):
+                raise ValueError(f"`columns` must be a string or list: {columns}")
         columns_to_retain = columns if columns else ADMIN1_PRIMARY_COLUMNS
-
         admin1 = admin1[[x for x in columns_to_retain + ['geometry'] if x in admin1]]
 
     return admin1
@@ -192,7 +190,7 @@ def get_admin2(admin_id=None, geom=False, recipe=None, columns=None, all_columns
     """
 
     if recipe is None:
-        recipe = get_recipe(AdminId(), 'admin', source=ADMIN2_SOURCE)
+        recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin2')
 
     parquet_path = cache_path(
         recipe['admin_id'],
@@ -238,9 +236,111 @@ def get_admin2(admin_id=None, geom=False, recipe=None, columns=None, all_columns
     # Filter columns
     if not all_columns or columns:
         if columns:
-            if not isinstance(columns, list):
-                raise ValueError(f"`columns` must be a list: {columns}")
+            if isinstance(columns, str):
+                columns = [columns]
+            elif not isinstance(columns, list):
+                raise ValueError(f"`columns` must be a string or list: {columns}")
         columns_to_retain = columns if columns else ADMIN2_PRIMARY_COLUMNS
         admin2 = admin2[[x for x in columns_to_retain + ['geometry'] if x in admin2]]
 
     return admin2
+
+
+def get_admin3(admin_id=None, geom=False, recipe=None, columns=None, all_columns=False):
+    """Get units of admin level 2 (counties / municipalities).
+
+    Parameters
+    ----------
+    admin_id : str
+        Admin unit identifier.
+        Set to pick a single administrative unit
+        ('US-MA-MI' for Middlesex county, Massachusetts, US)
+    geom : bool
+        If False or None, return DataFrame without geometries.
+        If True, return GeoDataFrame with default polygon geometries.
+    recipe : str
+        If a valid recipe, will use outcomes of that recipe.
+    columns : str, list of str, or None
+        If a list of strings, will be used to select columns.
+    all_columns : bool
+        If True, returns all columns (not only primary ones)
+    """
+
+    if recipe is None:
+        raise NotImplementedError('No default recipe for `get_admin3()` defined yet.')
+
+    parquet_path = cache_path(
+        recipe['admin_id'],
+        recipe['entity'],
+        filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
+    )
+
+    admin3 = pd.read_parquet(parquet_path)
+
+    if geom:
+        parquet_geo_path = cache_path(
+            recipe['admin_id'],
+            recipe['entity'],
+            filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
+            + '_geo',
+        )
+
+        # Join polygons to table (keeping CRS), move geometry to end
+        admin3 = gpd.read_parquet(parquet_geo_path).join(admin3)[
+            list(admin3.columns) + ['geometry']
+        ]
+
+    if isinstance(admin_id, str):
+        admin_id = AdminId(admin_id)
+    if isinstance(admin_id, AdminId):
+        if len(admin_id.levels) < 4:
+            # Filter level-3 IDs for AdminId
+            admin3 = admin3.loc[
+                [x for x in admin3.index if x.startswith(str(admin_id))]
+            ]
+        elif len(admin_id.levels) == 4:
+            # Select admin1 level directly
+            admin3 = admin3.loc[[str(admin_id)]]
+        else:
+            raise ValueError(f'`admin_id` has too many levels: {admin_id}.')
+    elif isinstance(admin_id, list):
+        admin3 = admin3.loc[admin_id]
+    elif admin_id is not None:
+        raise ValueError(
+            f'Type of `admin_id` not yet supported: {admin_id} type: {type(admin_id)}'
+        )
+
+    # Filter columns
+    if not all_columns or columns:
+        if columns:
+            if isinstance(columns, str):
+                columns = [columns]
+            elif not isinstance(columns, list):
+                raise ValueError(f"`columns` must be a string or list: {columns}")
+        columns_to_retain = columns if columns else ADMIN2_PRIMARY_COLUMNS
+        admin3 = admin3[[x for x in columns_to_retain + ['geometry'] if x in admin3]]
+
+    return admin3
+
+
+def get_admin_by_level(level, *args, **kwargs):
+    """Get units of selected administrative units by level
+
+    Parameters
+    ----------
+    level : int
+        Admin level (0: countries, 1: states/departments, 2: counties)
+    args : list
+        Positional arguments (passed on to get_admin)
+    kwargs : list
+        Keyword arguments (passed on to get_admin)
+    """
+    level = int(level)
+    if level == 0:
+        return get_admin0(*args, **kwargs)
+    elif level == 1:
+        return get_admin1(*args, **kwargs)
+    elif level == 2:
+        return get_admin2(*args, **kwargs)
+    elif level == 3:
+        return get_admin3(*args, **kwargs)

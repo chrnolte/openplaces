@@ -39,7 +39,7 @@ def get_admin0_iso():
     }
 
     admin0_iso = (
-        get_recipe(entity='admin', filename='admin0_iso_alpha_2', keep_default_na=False)
+        get_recipe(None, 'admin-iso', filename='admin0-alpha-2', keep_default_na=False)
         .rename(columns=ADMIN0_ISO_RENAME_COLUMNS)
         .query('admin0_id != ""')
         .set_index('admin0_id')
@@ -47,7 +47,7 @@ def get_admin0_iso():
     )
 
     admin0_iso_additions = get_recipe(
-        None, 'admin', filename='admin0_iso_additions'
+        None, 'admin-iso', filename='admin0-additions'
     ).set_index('admin0_id')
     admin0_iso = pd.concat(
         [
@@ -63,8 +63,9 @@ def get_admin0_iso():
     # Joining regional groupings
     admin0_iso_regions = (
         get_recipe(
-            entity='admin',
-            filename='admin0_iso3166-country-regions',
+            None,
+            'admin-iso',
+            filename='admin0-regions-iso3166',
             keep_default_na=False,
         )
         .rename(columns={'alpha-2': 'admin0_id'})
@@ -127,8 +128,9 @@ def get_admin1_iso():
 
     admin1_iso = (
         get_recipe(
-            entity='admin',
-            filename='admin1_iso3166-2_2021-03-01',
+            None,
+            'admin-iso-20210301',
+            filename='admin1-iso3166-2',
             keep_default_na=False,
         )
         .rename(columns=ADMIN1_ISO_RENAME_COLUMNS)
@@ -491,7 +493,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
 
 def admin2_id_index_from_admin2_US_nhgis(admin2_local):
     # Join states
-    admin1_recipe = get_recipe('US', 'admin', source='admin1-nhgis-2020')
+    admin1_recipe = get_recipe('US', 'admin-nhgis-2020', filename='admin1')
     admin1_crosswalk = (
         get_admin1(recipe=admin1_recipe, columns=['admin1_id_admin0'])
         .reset_index()
@@ -515,7 +517,7 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
 
     # Correct (replace) names from global reference layer to official
     admin2_name_crosswalk = get_recipe(
-        'US', 'admin', filename='admin2-gadm-4~1_names_to_official'
+        'US', 'admin-nhgis-2020', filename='admin2-names-from-gadm'
     )
     for _, row in admin2_name_crosswalk.iterrows():
         admin2.loc[
@@ -535,8 +537,8 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
     # Set new admin2_ids for units that don't exist in the global layer
     new_admin2_ids = get_recipe(
         'US',
-        'admin',
-        filename='admin2-nhgis-admin2_ids',
+        'admin-nhgis-2020',
+        filename='admin2-ids',
         dtype={'admin2_id_admin0': str},
     ).set_index('admin2_id_admin0')
     for admin2_id_admin0, admin2_id in new_admin2_ids['admin2_id'].items():
