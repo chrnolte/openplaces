@@ -37,8 +37,11 @@ def get_recipe(*args, **kwargs):
     filepath = recipe_path(*args, **path_kwargs)
 
     if filepath.suffix in ['.csv', '.xlsx', '.xlsx']:
+        # To avoid ambiguity between versions, only one tabular format
+        # should exist for a given filename. Removing extensions in the
+        # arguments for the recipe filepath is one way to enforce that.
         raise Exception(
-            f"Remove extension when requesting recipe table: {filepath.name}"
+            f"Remove extensions in filepath when using `get_recipe()`: {filepath.name}"
         )
 
     if filepath.with_suffix('.yaml').exists():

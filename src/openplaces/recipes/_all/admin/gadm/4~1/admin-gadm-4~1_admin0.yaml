@@ -32,7 +32,7 @@ columns:
   name: COUNTRY
   admin0_id_a3: GID_0
 
-# Function that returns an indexed version of the input 1GeoDataFrame1
+# Function that returns an indexed version of the input (Geo)DataFrame
 # (usually a custom function designed for a specific case)
 index_function: "openplaces.io.admin.admin0_id_index_from_admin0_id_a3"
 
