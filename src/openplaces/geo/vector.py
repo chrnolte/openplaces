@@ -8,9 +8,11 @@ Functions for processing vector data (GeoDataFrames, geometries)
 
 """
 
-from warnings import filterwarnings, warn
+import hashlib
+import warnings
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 from polylabel import polylabel
 from pyproj import CRS
@@ -107,10 +109,10 @@ def crs_is_mea(crs):
                 + str(crs)
             )
 
-    # Still testing whether this makes the warning disapper
-    filterwarnings('ignore', category=UserWarning)
+    # Still testing whether this makes the warning disappear
+    warnings.filterwarnings('ignore', category=UserWarning)
     crs_dict = crs.to_dict()
-    filterwarnings('default', category=UserWarning)
+    warnings.filterwarnings('default', category=UserWarning)
 
     return (crs_dict['proj'] in ['cea', 'aea']) and (crs_dict['units'] == 'm')
 
@@ -139,9 +141,9 @@ def get_lat_long_centroids(gdf, crs='epsg:4326', geom=False):
         gdf = gdf.to_crs(crs)
 
     # Suppress warnings if centroids are in geographic CRS
-    filterwarnings('ignore', category=UserWarning)
+    warnings.filterwarnings('ignore', category=UserWarning)
     gdf['geometry'] = gdf['geometry'].centroid
-    filterwarnings('default', category=UserWarning)
+    warnings.filterwarnings('default', category=UserWarning)
 
     gdf['lat'] = gdf.geometry.y
     gdf['long'] = gdf.geometry.x
@@ -219,7 +221,7 @@ def get_pois(
             return pois[['x_poi', 'y_poi', 'r_poi', 'geometry']]
     else:
         if dg.crs.is_geographic and crs is None:
-            warn(
+            warnings.warn(
                 'Geographic CRS passed to lib.gis.get_pois(). '
                 'Consider using a projected CRS for the PoI computation.'
             )
@@ -446,20 +448,8 @@ def add_geometry_derivatives(gdf, timer, **kwargs):
     timer.mark('Get centroids')
 
     # Get coordinates of poles of inaccessibility (66s - for labeling)
-    if kwargs and 'compute_poi' in kwargs and kwargs['compute_poi']:
-        precision_ratio = (
-            kwargs['poi_precision_ratio']
-            if 'poi_precision_ratio' in kwargs
-            else GEO_ID_POI_PRECISION_RATIO
-        )
-        gdf = gdf.join(
-            get_pois(
-                gdf,
-                how='dataframe',
-                precision_ratio=precision_ratio,
-            )
-        )
-        timer.mark('Get poles of inaccessibility')
+    if kwargs and 'compute_poi' in kwargs:
+        warnings.warn('`compute_poi` is not part of ingestion recipes anymore')
 
     return gdf
 
@@ -485,4 +475,145 @@ def get_simplified_geometries(gdf, tolerance):
         raise ValueError(f'`tolerance` is not positive: {str(tolerance)}')
 
     gdf['geometry'] = gdf['geometry'].simplify_coverage(tolerance)
+    return gdf
+
+
+def get_geo_ids(
+    gdf,
+    grid_degrees=0.00003,  # ~3m at equator, ~2m at 45°N, ~1.5m at 60°N
+    hash_length=24,
+    handle_duplicates=True,
+):
+    """Generate stable, unique parcel IDs from polygon geometry.
+
+    Uses fixed degree grid in EPSG:4326 for full Earth coverage.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        GeoDataFrame with parcel geometries
+    grid_degrees : float
+        Grid size in degrees (default 0.00003)
+    hash_length : int
+        Number of hex characters in output (default 18 = 72 bits)
+    handle_duplicates : bool
+        If True, adds numeric suffix to duplicate GIDs (default True)
+
+    Returns
+    -------
+    pd.Series
+        Series of geo_ids with same index as input GeoDataFrame
+
+    Notes
+    -----
+    Why degrees instead of projected CRS:
+    - No projection covers entire Earth without distortion/singularities
+    - Degree grid is globally consistent (same grid cell = same x/y)
+    - Simple, fast (no reprojection needed)
+    - Works everywhere including poles
+
+    Trade-off:
+    - Grid "size" in meters varies by latitude (larger at equator)
+    - But parcels at same location always use same grid
+    - This guarantees non-overlapping parcels get different IDs
+    """
+
+    # Ensure EPSG:4326
+    if gdf.crs != 'epsg:4326':
+        print(f'Reprojecting vector data to WGS 84...')
+        gdf = gdf.to_crs('epsg:4326')
+
+    # Get bounds for each parcel
+    bounds = gdf.bounds
+
+    # Quantize bbox corners (consistent grid for all parcels)
+    minx_q = (bounds['minx'] / grid_degrees).round().astype(int)
+    miny_q = (bounds['miny'] / grid_degrees).round().astype(int)
+    maxx_q = (bounds['maxx'] / grid_degrees).round().astype(int)
+    maxy_q = (bounds['maxy'] / grid_degrees).round().astype(int)
+
+    # Area in square degrees (log scale)
+    # Note: Area in degrees² varies with latitude, but that's okay
+    # because we're comparing relative sizes at similar locations
+    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
+    area_deg2 = gdf.area
+    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
+    area_q = (
+        (np.log10(area_deg2 * 1e10 + 1) * 100).round().astype(int)
+    )  # Scale up for precision
+
+    # Compactness: perimeter²/area (dimensionless, so units don't matter)
+    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
+    compactness = (gdf.length**2) / (area_deg2 + 1e-10)
+    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
+    compact_q = (compactness * 10).round().astype(int)
+
+    # Create hash inputs
+    hash_inputs = (
+        minx_q.astype(str)
+        + ','
+        + miny_q.astype(str)
+        + ','
+        + maxx_q.astype(str)
+        + ','
+        + maxy_q.astype(str)
+        + ','
+        + area_q.astype(str)
+        + ','
+        + compact_q.astype(str)
+    )
+
+    # Generate hash
+    geo_ids = hash_inputs.apply(
+        lambda s: hashlib.sha256(s.encode()).hexdigest()[:hash_length]
+    )
+
+    # Check for duplicates
+    duplicates = geo_ids.duplicated(keep=False)
+
+    if duplicates.any():
+        n_dupl = duplicates.sum()
+        print(
+            f"Warning: {n_dupl} polygons with duplicate GIDs "
+            f"({n_dupl/len(geo_ids)*100:.4f}%)"
+        )
+
+        # Show some examples
+        print('\nExample duplicates:')
+        dup_examples = duplicates.head(min(10, duplicates.sum()))
+        print(
+            pd.concat(
+                [
+                    gdf.loc[dup_examples],
+                    hash_inputs[dup_examples].rename('hash_inputs'),
+                    geo_ids[dup_examples].rename('geo_id'),
+                ],
+                axis=1,
+            )
+        )
+
+        # Handle collisions with suffix if requested
+        if handle_duplicates:
+            print('Adding suffixes...')
+            for geo_id in geo_ids[duplicates].unique():
+                mask = geo_ids == geo_id
+                n = mask.sum()
+                geo_ids.loc[mask] = [f"{geo_id}-{i}" for i in range(1, n + 1)]
+
+    return geo_ids.rename('geo_id')
+
+
+def add_geo_id_index(gdf, handle_duplicates=None):
+    """Return the GeoDataFrame using `geo_id` as the index
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        Polygon data
+    """
+
+    gdf = gdf.copy()
+    gdf.index = pd.Index(
+        get_geo_ids(gdf, handle_duplicates=handle_duplicates), name='geo_id'
+    )
     return gdf
