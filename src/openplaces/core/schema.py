@@ -47,15 +47,22 @@ class AdminId:
     def __init__(self, *levels: str):
         """Initialize AdminId with administrative levels."""
         if len(levels) == 0 or levels[0] is None:
-            processed = ()
+            tuple_of_levels = ()
         elif len(levels) == 1 and STRING_SEPARATOR_WITHIN_IDS in levels[0]:
-            processed = tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS))
+            tuple_of_levels = tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS))
         elif isinstance(levels, (list, tuple, set)):
-            processed = tuple(levels)
+            tuple_of_levels = tuple(levels)
         else:
             raise ValueError(f'`levels` is {type(levels)}. Cannot interpret:\n{levels}')
 
-        object.__setattr__(self, 'levels', processed)
+        # Verify that AdminId is correct
+        for i, level in enumerate(tuple_of_levels):
+            if not isinstance(level, str) or not re.match('[A-Z0-9]{2,3}', level):
+                raise ValueError(
+                    f"Admin ID {levels} is invalid at level {i}: '{level}'."
+                )
+
+        object.__setattr__(self, 'levels', tuple_of_levels)
 
     def __str__(self) -> str:
         """Return string representation
