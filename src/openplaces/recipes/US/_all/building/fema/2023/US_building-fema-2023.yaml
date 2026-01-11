@@ -1,0 +1,71 @@
+# Recipe to import FEMA's USA Structures (2023)
+
+# Administrative unit identifier of the highest administrative geography
+# that the dataset covers (single files can cover a lower admin level)
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: building
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: fema
+    # Link to portal with metadata
+    portal_url: "https://disasters.geoplatform.gov/USA_Structures/"
+    # Link to website containing download URLs (e.g. if URLs change)
+    download_url_source: "https://disasters.geoplatform.gov/USA_Structures/"
+    # Regex to extract download URL from `download_url_source`
+    # Data partition placeholders {...} will be replaced before use.
+    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin1_id_leaf}.zip)' 
+  version: 2023
+
+# How is the download data partitioned?
+download_by: admin1
+
+# Filename of compressed file (set to skip re-downloading)
+compressed_file_name: "Deliverable*{admin1_id_leaf}.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "{admin1_id_leaf}_Structures.gdb"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  building_id_fema: BUILD_ID
+  admin2_id_admin0: FIPS
+  address: PROP_ADDR
+  purpose_group: OCC_CLS
+  purpose_subgroup: PRIM_OCC
+  height: HEIGHT
+  postal_code: PROP_ZIP
+  census_tract_id: CENSUSCODE
+  image_date: IMAGE_DATE
+  validation_method: VAL_METHOD
+  construction_code: B_CODE
+
+# Keep columns that aren't named in the above list
+# keep_unnamed_columns: False
+
+# Set the index from an existing column
+set_index: building_id_fema
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - purpose_group
+  - purpose_subgroup
+  - image_date
+  - validation_method
+  - building_code
+
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_col: admin2_id_admin0
+  admin_recipe_id: "US_admin-nhgis-2020_admin2"
+
+# Administrative ID level at which data is saved
+# Set if you want to split the data into smaller chunks
+# (1: by state/department, 2: by county/municipality, 3: by town etc.)
+# The column ``adminX_id`` has to exist in the pre-processed data and
+# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
+cache_by_admin_level: 2

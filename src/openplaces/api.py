@@ -7,7 +7,9 @@ Public API for openplaces.
 import geopandas as gpd
 import pandas as pd
 
+from openplaces import cfg
 from openplaces.core.schema import AdminId
+from openplaces.io import read_parquet
 from openplaces.path import cache_path
 from openplaces.recipe import get_recipe
 
@@ -56,20 +58,7 @@ def get_admin0(admin_id=None, geom=False, all_columns=False):
         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
     )
 
-    admin0 = pd.read_parquet(parquet_path)
-
-    if geom:
-        geo_parquet_path = cache_path(
-            recipe['admin_id'],
-            recipe['entity'],
-            filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-            + '_geo',
-        )
-
-        # Join polygons to table (to keep CRS), then rearrange columns
-        admin0 = gpd.read_parquet(geo_parquet_path).join(admin0)[
-            list(admin0.columns) + ['geometry']
-        ]
+    admin0 = read_parquet(parquet_path, geom=geom)
 
     # Filter to AdminId
     if isinstance(admin_id, str):
@@ -119,21 +108,7 @@ def get_admin1(admin_id=None, geom=False, recipe=None, columns=None, all_columns
         recipe['entity'],
         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
     )
-
-    admin1 = pd.read_parquet(parquet_path)
-
-    if geom:
-        parquet_geo_path = cache_path(
-            recipe['admin_id'],
-            recipe['entity'],
-            filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-            + '_geo',
-        )
-
-        # Join polygons to table (keeping CRS), move geometry to end
-        admin1 = gpd.read_parquet(parquet_geo_path).join(admin1)[
-            list(admin1.columns) + ['geometry']
-        ]
+    admin1 = read_parquet(parquet_path, geom=geom)
 
     # Filter to AdminId
     if isinstance(admin_id, str):
@@ -198,20 +173,7 @@ def get_admin2(admin_id=None, geom=False, recipe=None, columns=None, all_columns
         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
     )
 
-    admin2 = pd.read_parquet(parquet_path)
-
-    if geom:
-        parquet_geo_path = cache_path(
-            recipe['admin_id'],
-            recipe['entity'],
-            filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-            + '_geo',
-        )
-
-        # Join polygons to table (keeping CRS), move geometry to end
-        admin2 = gpd.read_parquet(parquet_geo_path).join(admin2)[
-            list(admin2.columns) + ['geometry']
-        ]
+    admin2 = read_parquet(parquet_path, geom=geom)
 
     if isinstance(admin_id, str):
         admin_id = AdminId(admin_id)
@@ -275,20 +237,7 @@ def get_admin3(admin_id=None, geom=False, recipe=None, columns=None, all_columns
         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
     )
 
-    admin3 = pd.read_parquet(parquet_path)
-
-    if geom:
-        parquet_geo_path = cache_path(
-            recipe['admin_id'],
-            recipe['entity'],
-            filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-            + '_geo',
-        )
-
-        # Join polygons to table (keeping CRS), move geometry to end
-        admin3 = gpd.read_parquet(parquet_geo_path).join(admin3)[
-            list(admin3.columns) + ['geometry']
-        ]
+    admin3 = read_parquet(parquet_path, geom=geom)
 
     if isinstance(admin_id, str):
         admin_id = AdminId(admin_id)

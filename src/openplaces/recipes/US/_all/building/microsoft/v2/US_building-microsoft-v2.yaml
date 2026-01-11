@@ -1,4 +1,4 @@
-# Recipe to import counties for the United States (2024)
+# Recipe to import Microsoft building footprints for the United States
 
 # Administrative unit identifier of the highest administrative geography
 # that the dataset covers (single files can cover a lower admin level)
@@ -38,8 +38,14 @@ columns_to_categorical:
 # Function to give the GeoDataFrame an index
 index_function: "openplaces.geo.vector.add_geo_id_index"
 
-# STEPS TO IMPLEMENT
-# - Spatial join to administrative units
+# Assign administrative IDs using spatial joins/overlays
+overlay_admin_ids:
+  admin_level: 2
+  admin_recipe: 'US_admin-nhgis-2020_admin2'
 
-# Building ID
-# set_index: "building_id"
+# Administrative ID level at which data is saved
+# Set if you want to split the data into smaller chunks
+# (1: by state/department, 2: by county/municipality, 3: by town etc.)
+# The column ``adminX_id`` has to exist in the pre-processed data and
+# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
+cache_by_admin_level: 2

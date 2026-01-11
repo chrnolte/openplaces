@@ -18,13 +18,16 @@ from polylabel import polylabel
 from pyproj import CRS
 from shapely.geometry import MultiPolygon, Point, Polygon
 
+from openplaces.api import get_admin_by_level
 from openplaces.core.constants import (
     AC_TO_HA,
     CRS_LAT_LONG,
     GEO_ID_POI_PRECISION_RATIO,
     M2_TO_SQFT,
+    STRING_SEPARATOR_BETWEEN_IDS,
 )
 from openplaces.path import path
+from openplaces.recipe import get_recipe
 from openplaces.timing import get_timer, log_step
 
 
@@ -616,4 +619,76 @@ def add_geo_id_index(gdf, handle_duplicates=None):
     gdf.index = pd.Index(
         get_geo_ids(gdf, handle_duplicates=handle_duplicates), name='geo_id'
     )
+    return gdf
+
+
+def overlay_admin_ids(
+    gdf, admin_id, admin_level=2, admin_recipe=None, include_overlays=False, timer=None
+):
+    """Add administrative unit IDs to GeoDataFrame using spatial joins
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        GeoDataFrame to join admin IDs to
+    admin_id : str
+        Administrative unit of the GeoDataFrame.
+        Determines which administrative units to consider.
+    admin_level : int
+        Administrative level for which administrative IDs are to be
+        joined. Typically a lower level (larger number) than the level
+        of `admin_id`.
+    admin_recipe : dict or str
+        Recipe of the administrative unit dataset to be used.
+        String identifier or resolved recipe (dictionary).
+        If None, the default recipe for administrations is used.
+    include_overlays : bool
+        If True, attempt a spatial polygon overlay for polygons for
+        which the spatial join (centroids) returned no results.
+    timer : openplaces.timing.Timer or None
+        Timer
+    """
+    if timer is None:
+        timer = get_timer('overlay_admin_ids', verbose=True)
+
+    if isinstance(admin_recipe, str):
+        # Assume recipe contained the complete filename, infer parts
+        # {admin_id}_{entity}_{filename.ext}
+        recipe_admin_id, entity, filename = admin_recipe.split(
+            STRING_SEPARATOR_BETWEEN_IDS
+        )
+        admin_recipe = get_recipe(recipe_admin_id, entity, filename=filename)
+
+    admin = get_admin_by_level(admin_level, admin_id, recipe=admin_recipe, geom=True)
+
+    # Cast admin index to pd.Categorical to later save space in the joined column
+    admin.index = pd.Index(pd.Categorical(admin.index), name=admin.index.name)
+    timer.mark('Get admin layer for overlay')
+
+    # Get centroid points with range index (for quicker processing)
+    gdf_centroids = get_lat_long_centroids(gdf.reset_index()[['geometry']], geom=True)[
+        ['geometry']
+    ]
+    timer.mark('Get centroids')
+
+    gdf_sjoin = gpd.sjoin(gdf_centroids, admin[['geometry']], how='left')
+    gdf[admin.index.name] = gdf_sjoin[admin.index.name].values
+    del gdf_sjoin
+    timer.mark('Spatial join')
+
+    if include_overlays:
+        mask = gdf['admin2_id'].isnull()
+        if mask.any():
+            gdf_overlay = (
+                gpd.overlay(
+                    gdf[mask][['geometry']].reset_index(),
+                    admin[['geometry']].reset_index(),
+                )
+                .drop(columns='geometry')
+                .set_index(gdf.index.name)
+            )
+            gdf.loc[mask, admin.index.name] = gdf_overlay[admin.index.name]
+            del gdf_overlay
+            timer.mark('Spatial overlay')
+
     return gdf

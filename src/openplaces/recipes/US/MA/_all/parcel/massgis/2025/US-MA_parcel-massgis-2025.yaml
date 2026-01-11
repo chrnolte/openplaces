@@ -37,7 +37,7 @@ columns:
 keep_unnamed_columns: True
 
 # Crosswalk (CSV file) from local to `openplaces` admin unit identifiers
-admin_id_crosswalk: US-MA_admin3_id_crosswalk_massgis
+admin_id_crosswalk: US-MA_admin-massgis-2025-admin3_id_crosswalk
 
 # Additional layers to import, from the same dataset, but might be for
 # a different entity (e.g., property table inside a parcel database)
@@ -84,6 +84,5 @@ additional_layers:
 # Set if you want to split the data into smaller chunks
 # (1: by state/department, 2: by county/municipality, 3: by town etc.)
 # The column ``adminX_id`` has to exist in the pre-processed data and
-# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI'). Add it in or
-# provide a crosswalk in the recipe if it doesn't.
+# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI-SO').
 cache_by_admin_level: 3

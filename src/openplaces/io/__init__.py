@@ -21,15 +21,15 @@ from tqdm import tqdm
 from openplaces.config import cfg
 from openplaces.core.constants import GEOPANDAS_EXTENSIONS, PANDAS_EXTENSIONS
 
-__all__ = [
-    'download',
-    'to_csv',
-    'to_parquet',
-    'to_gpkg',
-    'to_kmz',
-    'save',
-    'unzip',
-]
+# __all__ = [
+#     'download',
+#     'to_csv',
+#     'to_parquet',
+#     'to_gpkg',
+#     'to_kmz',
+#     'save',
+#     'unzip',
+# ]
 
 
 def download(from_url, to_path, chunk_size=8192, timeout=None):
@@ -170,14 +170,36 @@ def unzip(in_path, out_path=None, members=None):
 
     try:
         with ZipFile(in_path, 'r') as z:
-            member_list = members or z.namelist()
+            all_members = z.namelist()
+            member_list = members or all_members
+
+            # Check if all files are in a single top-level folder matching zip name
+            zip_stem = in_path.stem
+            prefix = f"{zip_stem}/"
+            strip_prefix = (
+                members is None
+                and all(  # Only auto-strip when extracting all files
+                    m.startswith(prefix) or m == zip_stem for m in all_members
+                )
+            )
+
             total_size = sum(z.getinfo(m).file_size for m in member_list)
 
             with tqdm(
                 total=total_size, unit='B', unit_scale=True, desc='Extracting'
             ) as pbar:
                 for member in member_list:
-                    target = out_path / member
+                    # Skip the top-level folder itself if stripping
+                    if strip_prefix and member == zip_stem:
+                        continue
+
+                    # Determine target path
+                    if strip_prefix:
+                        relative_path = member.removeprefix(prefix)
+                        target = out_path / relative_path
+                    else:
+                        target = out_path / member
+
                     if member.endswith('/'):
                         target.mkdir(parents=True, exist_ok=True)
                     else:
@@ -189,8 +211,8 @@ def unzip(in_path, out_path=None, members=None):
     except BadZipFile as e:
         raise BadZipFile(f"Invalid zip file: {in_path}") from e
 
-    # Return path of last extracted member
-    return out_path / member
+    # Return output path
+    return out_path
 
 
 def find_latest_file(
@@ -231,17 +253,39 @@ def find_latest_file(
     return max(matching_files, key=lambda f: f.stat().st_mtime)
 
 
-def _ensure_parent_dir(filepath: str | Path) -> Path:
-    """Ensure parent directory exists and return Path object."""
-    filepath = Path(filepath)
+def _ensure_parent_dir(filepath: Path):
+    """Ensure parent directory exists."""
     filepath.parent.mkdir(parents=True, exist_ok=True)
-    return filepath
 
 
 def _remove_if_exists(filepath: Path) -> None:
     """Remove file if it exists (needed for some formats like gpkg)."""
     if filepath.exists():
         filepath.unlink()
+
+
+def to_parquet(
+    df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs
+) -> None:
+    """Save dataframe to Parquet format.
+
+    Parameters
+    ----------
+    df : DataFrame or GeoDataFrame
+        Data to save
+    filepath : str or Path
+        Output parquet path (should end in .parquet)
+    **kwargs
+        Additional arguments passed to to_parquet()
+    """
+    _ensure_parent_dir(filepath)
+
+    if isinstance(df, gpd.GeoDataFrame):
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', '.*initial implementation of Parquet.*')
+            df.to_parquet(filepath, **kwargs)
+    else:
+        df.to_parquet(filepath, **kwargs)
 
 
 def to_csv(
@@ -265,54 +309,13 @@ def to_csv(
     **kwargs
         Additional arguments passed to df.to_csv()
     """
-    filepath = _ensure_parent_dir(filepath)
+    _ensure_parent_dir(filepath)
 
     # Drop geometry if present
     if isinstance(df, gpd.GeoDataFrame):
-        cols_to_drop = set(['geometry']) & set(df.columns)
-        if cols_to_drop:
-            df = pd.DataFrame(df.drop(columns=cols_to_drop))
+        df = df.drop(columns='geometry')
 
     df.to_csv(filepath, index=index, **kwargs)
-
-
-def to_parquet(
-    df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs
-) -> None:
-    """Save dataframe to Parquet format.
-
-    Automatically detects whether to use geopandas (for GeoDataFrames with geometry)
-    or pandas (for regular DataFrames or GeoDataFrames without geometry).
-
-    Parameters
-    ----------
-    df : DataFrame or GeoDataFrame
-        Data to save
-    filepath : str or Path
-        Output parquet path (should end in .parquet)
-    **kwargs
-        Additional arguments passed to to_parquet()
-
-    Notes
-    -----
-    - GeoDataFrames with geometry column are saved as GeoParquet
-    - GeoDataFrames without geometry or regular DataFrames use standard Parquet
-    """
-    filepath = _ensure_parent_dir(filepath)
-
-    # Determine if we need geoparquet
-    has_geometry = isinstance(df, gpd.GeoDataFrame) and 'geometry' in df.columns
-
-    if has_geometry:
-        # Save as geoparquet
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', '.*initial implementation of Parquet.*')
-            df.to_parquet(filepath, **kwargs)
-    else:
-        # Save as regular parquet (drop geometry if it's an empty GeoDataFrame)
-        if isinstance(df, gpd.GeoDataFrame):
-            df = pd.DataFrame(df.drop(columns=['geometry'], errors='ignore'))
-        df.to_parquet(filepath, **kwargs)
 
 
 def to_gpkg(
@@ -333,7 +336,7 @@ def to_gpkg(
     **kwargs
         Additional arguments passed to to_file()
     """
-    filepath = _ensure_parent_dir(filepath)
+    _ensure_parent_dir(filepath)
     _remove_if_exists(filepath)
 
     if not isinstance(gdf, gpd.GeoDataFrame):
@@ -354,7 +357,7 @@ def to_kmz(gdf: gpd.GeoDataFrame, filepath: str | Path) -> None:
     """
     import zipfile
 
-    filepath = _ensure_parent_dir(filepath)
+    _ensure_parent_dir(filepath)
     _remove_if_exists(filepath)
 
     if not isinstance(gdf, gpd.GeoDataFrame):
@@ -411,3 +414,40 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
             f"Unsupported file extension: {ext}. "
             f"Supported: .parquet, .gpkg, .csv, .kmz"
         )
+
+
+def read_parquet(parquet_path, geom=False, drop_join_id=True):
+    """Read parquet file from filesystem (with optional geometries)
+
+    Parameters
+    ----------
+    parquet_path : str
+        Filepath of Parquet file
+    geom : bool
+        If True, join geometries from Geoparquet file
+        (`parquet_path` with '_geo' suffix)
+    drop_join_id : bool
+        Drop column '_join_id' if it exists.
+    """
+    parquet_path = Path(parquet_path)
+
+    df = pd.read_parquet(parquet_path)
+    if 'geometry' in df:
+        raise ValueError(
+            "'geometry' column found in:\n"
+            + filepath
+            + '\n\n`read_parquet` expects split attribute (parquet) + '
+            'geometry (geoparquet) tables.'
+        )
+
+    if geom:
+        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
+        # Join polygons to table
+        df = gpd.GeoDataFrame(
+            df.join(gpd.read_parquet(geoparquet_path), on='_join_id'), crs=cfg.crs
+        )
+
+    if drop_join_id and '_join_id' in df:
+        df = df.drop(columns='_join_id')
+
+    return df

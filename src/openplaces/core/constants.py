@@ -57,7 +57,7 @@ PANDAS_EXTENSIONS = {
 
 STRING_SEPARATOR_AGGREGATION = ' ~~ '
 
-# Schema-related stings
+# Schema-related strings
 
 STRING_SEPARATOR_WITHIN_IDS = '-'
 
