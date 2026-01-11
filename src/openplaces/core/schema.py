@@ -116,8 +116,12 @@ class Source:
     source_id: str
     # URL for the website that permits data access (with registration)
     portal_url: str | None = None
-    # Direct download URL (if set, allows automated download)
+    # Option 1: direct download URL (if set, allows automated download)
     download_url: str | None = None
+    # Option 2: URL of website listing (changing) download URLs
+    download_url_source: str | None = None
+    # Option 2: Regular expression (string pattern) to extract URL
+    download_url_source_regex: str | None = None
     doi: str | None = None
 
     def __init__(
@@ -125,13 +129,29 @@ class Source:
         source_id: str = None,
         portal_url: str = None,
         download_url: str = None,
+        download_url_source: str = None,
+        download_url_source_regex: str = None,
         doi: str = None,
     ):
         """Initialize AdminId with administrative levels."""
 
+        if download_url and download_url_source:
+            raise ValueError(
+                'An entity can have a `download_url` or a `download_url_source`, '
+                'not both.'
+            )
+
+        if download_url_source and not download_url_source_regex:
+            raise ValueError(
+                'An entity with a `download_url_source` must also have a '
+                '`download_url_source_regex` (string pattern) to extract the URLs.'
+            )
+
         self.source_id = sanitize(source_id) if source_id is not None else None
         self.portal_url = portal_url
         self.download_url = download_url
+        self.download_url_source = download_url_source
+        self.download_url_source_regex = download_url_source_regex
         self.doi = doi
 
     def __str__(self) -> str:
@@ -333,9 +353,9 @@ def sanitize(s, max_length=255):
     Returns:
         Sanitized filename string with only alphanumeric, underscore, and dash
     """
-    # Replace any character that's not alphanumeric, underscore, or dash
-    # with tilde (yes, also the dot '.', so we can identify directories)
-    s = re.sub(r'[^a-zA-Z0-9_-]', '~', s)
+    # Replace any character that's not alphanumeric, underscore, dash
+    # or a standard wildcard (*, ?) with tilde
+    s = re.sub(r'[^a-zA-Z0-9*?_-]', '~', s)
 
     # Truncate to max length
     s = s[:max_length]

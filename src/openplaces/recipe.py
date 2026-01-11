@@ -122,3 +122,28 @@ def get_recipe_dict(filepath, *args, **kwargs):
             recipe_dict['dataset'] = DataSet(**recipe_dict['dataset'])
 
     return recipe_dict
+
+
+def get_recipe_by_id(recipe_id):
+    """Shortcut to get recipe_id by its parts
+
+    Assumes syntax: {admin_id}_{entity}_{filename}.{extension}
+
+    (Datasets for non-entities aren't yet supported)
+    """
+    if '.' in recipe_id:
+        filename_stem, extension = recipe_id.split('.')
+    else:
+        filename_stem = recipe_id
+        extension = None
+    filename_stem_parts = filename_stem.split('_')
+    if len(filename_stem_parts) == 2:
+        admin_id, entity = filename_stem_parts
+        filename = None
+    elif len(filename_stem_parts) == 3:
+        admin_id, entity, filename = filename_stem_parts
+    else:
+        raise ValueError(f'Could not split recipe_id into its parts: {recipe_id}')
+    return get_recipe(
+        admin_id, entity, filename=filename + ('.' + extension if extension else '')
+    )

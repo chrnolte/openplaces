@@ -7,6 +7,7 @@ Worldwide administrative referencing and mapping
 - Manage globally unique identifiers (admin_ids)
 """
 
+import glob
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
@@ -14,7 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from openplaces.api import get_admin1, get_admin2
+from openplaces.api import get_admin1, get_admin2, get_admin_by_level
 from openplaces.core.constants import (
     ADMIN0_ID_HASC1_A2,
     REGEX_ADMIN1_IDS_AA_AA,
@@ -23,12 +24,12 @@ from openplaces.core.constants import (
     REGEX_ADMIN2_IDS_HASC,
     STRING_SEPARATOR_WITHIN_IDS,
 )
-from openplaces.recipe import get_recipe
+from openplaces.path import recipe_path
+from openplaces.recipe import get_recipe, get_recipe_by_id
 from openplaces.utils import create_comparable_name_link, standardize_names
 
+
 # Admin 0: Countries
-
-
 def get_admin0_iso():
     """Get dataframe with country ISO alpha codes and names"""
 
@@ -556,3 +557,54 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
         raise ValueError('Duplicate `admin2_id`:\n' + str(admin2_local[i_dupl]))
 
     return admin2_local.set_index('admin2_id')
+
+
+def get_admin_id_crosswalk(admin_id, admin_level, admin_id_col, admin_recipe_id):
+    """Get a crosswalk Series (source admin ID > openplaces admin ID)
+
+    Parameters
+    ----------
+    admin_id : str
+        Administrative unit ID of the dataset
+    admin_level : int
+        Level of the administrative units that need to be crosswalked
+    admin_id_col : str
+        Name of the column in the recipe. Becomes index of crosswalk
+    admin_recipe_id : str
+        ID of the admin recipe that contains the crosswalk.
+    """
+
+    admin_id_crosswalk = get_admin_by_level(
+        admin_level,
+        admin_id,
+        columns=[admin_id_col],
+        recipe=get_recipe_by_id(admin_recipe_id),
+    )
+    return admin_id_crosswalk.reset_index().set_index(admin_id_col)[
+        f'admin{admin_level}_id'
+    ]
+
+
+def find_admin_recipe(admin_id, admin_level):
+    """Find an administrative data ingestion recipe
+
+    Parameters
+    ----------
+    admin_id : str
+        Administrative unit identifier
+    admin_level : int
+        Administrative level for which a recipe is sought.
+    """
+    glob_recipe_path = recipe_path(
+        admin_id, 'admin-*-*', filename=f'admin{admin_level}'
+    )
+    recipe_paths_found = glob.glob(str(glob_recipe_path))
+    if len(recipe_paths_found) > 1:
+        raise NotImplementedError(
+            f'Multiple admin recipes found for {admin_id} at level {admin_level}:\n\n'
+            + '\n'.join(recipe_paths_found)
+            + '\n\nRewrite `find_local_admin_recipe` to make your selection.'
+        )
+
+    recipe_id = Path(recipe_paths_found[0]).name
+    return get_recipe_by_id(recipe_id)

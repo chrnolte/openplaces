@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import tempfile
+import urllib
 from itertools import product
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -31,17 +32,21 @@ from openplaces.core.constants import (
     ZIP_EXTENSIONS,
 )
 from openplaces.core.schema import AdminId
-from openplaces.geo.vector import add_geometry_derivatives, get_geo_ids
+from openplaces.geo.vector import (
+    add_geometry_derivatives,
+    get_geo_ids,
+    overlay_admin_ids,
+)
 from openplaces.io import download, find_latest_file, to_parquet, unzip
+from openplaces.io.admin import find_admin_recipe, get_admin_id_crosswalk
+from openplaces.io.transform import apply_transformations
 from openplaces.path import cache_path, external_dir, heap_dir
 from openplaces.timing import get_timer, log_step
-
 
 __all__ = [
     'ingest_recipe_data',
     'get_recipe_data',
 ]
-
 
 # def save_simplified_geometries(gdf, recipe, timer=None):
 #     """Saves the recipe geodataframe with simplified geometries"""
@@ -99,7 +104,7 @@ def _catch_missing_partition_keys_error(recipe, admin_id, partition_id):
         )
 
 
-def get_admin_partition_key(recipe, placeholder, admin_id):
+def _get_admin_partition_key(recipe, placeholder, admin_id):
     """Get the key of an administrative unit used by a dataset partition
 
     Used to obtain the correct filename for partitioned datasets.
@@ -117,9 +122,34 @@ def get_admin_partition_key(recipe, placeholder, admin_id):
     """
     # Get partition key from admin data
     admin_level = int(recipe['download_by'].replace('admin', ''))
-    column = placeholder.replace(f"{recipe['download_by']}_", '')
-    partition_key = get_admin_by_level(admin_level, admin_id, columns=column).iloc[0, 0]
 
+    # Translate placeholders to admin columns / identifiers by cutting
+    # off 'adminX_' prefixes unless the prefix is 'adminX_id'
+    # 'admin1_name' -> 'name'
+    # 'admin1_id_leaf', 'admin1_id_admin0' -> keep as is
+    if placeholder.startswith(
+        f"{recipe['download_by']}_"
+    ) and not placeholder.startswith(f"{recipe['download_by']}_id"):
+        column = placeholder.replace(f"{recipe['download_by']}_", '')
+    else:
+        column = placeholder
+    if column == f"{recipe['download_by']}_id_leaf":
+        partition_key = AdminId(admin_id).levels[-1]
+    else:
+        try:
+            admin_recipe = find_admin_recipe(recipe['admin_id'], admin_level)
+            partition_key = get_admin_by_level(
+                admin_level,
+                admin_id,
+                recipe=admin_recipe,
+                columns=column,
+            ).iloc[0, 0]
+        except IndexError:
+            partition_key = get_admin_by_level(
+                admin_level, admin_id, columns=column
+            ).iloc[0, 0]
+
+    # Transform IDs if needed
     if (
         'download_partition_key_transform' in recipe
         and placeholder in recipe['download_partition_key_transform']
@@ -132,14 +162,17 @@ def get_admin_partition_key(recipe, placeholder, admin_id):
 
 
 def get_placeholders(url):
-    """Extract placeholders '{placeholder}' from URL."""
+    """Extract placeholders ('{placeholder}') from URL."""
     return list(dict.fromkeys(re.findall(r'\{([a-zA-Z0-9_-]+)\}', url)))
 
 
 def _resolve_placeholders(
     recipe, admin_id, partition_id, url_or_path, partition_keys=None
 ):
-    """Resolve placeholders (partition keys) in a URL or filepath"""
+    """Resolve placeholders (partition keys) in a URL or filepath
+
+    Example: {admin1_name}.geojson.zip => NorthCarolina.geojson.zip
+    """
     if partition_keys is None:
         partition_keys = {}
     placeholders = get_placeholders(url_or_path)
@@ -162,7 +195,7 @@ def _resolve_placeholders(
                 partition_key = admin_id
             else:
                 # Get partition key from admin data with transforms
-                partition_key = get_admin_partition_key(recipe, placeholder, admin_id)
+                partition_key = _get_admin_partition_key(recipe, placeholder, admin_id)
 
             partition_keys[placeholder] = partition_key
 
@@ -171,7 +204,7 @@ def _resolve_placeholders(
     return url_or_path, partition_keys
 
 
-def resolve_download_url(
+def _resolve_download_url(
     recipe, admin_id=None, partition_id=None, return_partition_keys=False
 ):
     """Resolve the download URL of a recipe (add in partition keys)
@@ -192,28 +225,44 @@ def resolve_download_url(
     if 'entity' not in recipe:
         raise ValueError('recipe needs an `entity` with a `source` for the download.')
 
-    # Start with original download URL:
-    download_url = recipe['entity'].source.download_url
+    if recipe['entity'].source.download_url is not None:
+        download_url = recipe['entity'].source.download_url
 
-    if not download_url:
-        return None, None
+        # Shortcut: if there are no partitions, just return the URL
+        if not 'download_by' in recipe or not recipe['download_by']:
+            # Catch error if the URL has placeholder
+            placeholders_in_url = get_placeholders(download_url)
+            if placeholders_in_url:
+                raise ValueError(
+                    'Set `download_by` to resolve partition placeholders in download URL:\n'
+                    f'{placeholders_in_url}'
+                )
+            partition_keys = None
+        else:
+            _catch_missing_partition_keys_error(recipe, admin_id, partition_id)
 
-    # Shortcut: if there are no partitions, just return the URL
-    if not recipe['download_by']:
-        # Verify is has no placeholders.
-        placeholders_in_url = get_placeholders(download_url)
-        if placeholders_in_url:
-            raise ValueError(
-                'Set `download_by` to resolve partition placeholders in download URL:\n'
-                f'{placeholders_in_url}'
+            download_url, partition_keys = _resolve_placeholders(
+                recipe, admin_id, partition_id, download_url
             )
-        return download_url
+    elif recipe['entity'].source.download_url_source is not None:
+        if not recipe['download_by']:
+            raise ValueError(
+                '`download_url_source` provided, but `download_by` not set.'
+            )
+        # Scrape website providing download URLs
+        with urllib.request.urlopen(recipe['entity'].source.download_url_source) as fp:
+            html = fp.read().decode("utf8")
 
-    _catch_missing_partition_keys_error(recipe, admin_id, partition_id)
-
-    download_url, partition_keys = _resolve_placeholders(
-        recipe, admin_id, partition_id, download_url
-    )
+        download_url_source_regex, partition_keys = _resolve_placeholders(
+            recipe,
+            admin_id,
+            partition_id,
+            recipe['entity'].source.download_url_source_regex,
+        )
+        download_url = re.compile(download_url_source_regex).findall(html)[0]
+    else:
+        download_url = None
+        partition_keys = None
 
     if return_partition_keys:
         return download_url, partition_keys
@@ -221,7 +270,7 @@ def resolve_download_url(
         return download_url
 
 
-def resolve_downloaded_and_data_paths(
+def _resolve_downloaded_and_data_paths(
     recipe, admin_id=None, partition_id=None, download_url=None, partition_keys=None
 ):
     """Get the resolvable paths for the data ingestion files of a recipe
@@ -235,21 +284,21 @@ def resolve_downloaded_and_data_paths(
     recipe : dict
         Data ingestion recipe. Needs to have 'entity' and 'download_url'
     admin_id : AdminId
-        Administrative level for which to resolve URL.
+        Administrative level for which to resolve the URL.
     partition_id : str
         Partition key (other than administrative) to identify the sub-
         dataset, e.g. a value '2025-09' to replace 'year-month'
     download_url : str
-        Resolved download URL (from resolve_download_url) can be passed
+        Resolved download URL (from _resolve_download_url) can be passed
         here to reduce impact on filesystem.
     partition_keys : str
-        Partition keys (from resolve_download_url) can be passed here
+        Partition keys (from _resolve_download_url) can be passed here
         to reduce impact on filesystem.
     """
 
     if 'download_by' in recipe:
         if download_url is None or partition_keys is None:
-            download_url, partition_keys = resolve_download_url(
+            download_url, partition_keys = _resolve_download_url(
                 recipe, admin_id, partition_id, return_partition_keys=True
             )
 
@@ -332,7 +381,10 @@ def resolve_downloaded_and_data_paths(
 
 
 def _catch_missing_download_url_error(recipe, downloaded_path):
-    if not recipe['entity'].source.download_url:
+    if (
+        not recipe['entity'].source.download_url
+        and not recipe['entity'].source.download_url_source
+    ):
         error_message = ''
         if downloaded_path:
             error_message += (
@@ -340,7 +392,7 @@ def _catch_missing_download_url_error(recipe, downloaded_path):
                 f'\n\n{downloaded_path.relative_to(cfg.data_root)}\n\n'
             )
         error_message += (
-            f'Source `{recipe["entity"].source}` has no direct download URL. '
+            f'Recipe for `{recipe["entity"].source}` has no direct download URL.\n'
             'Download the data manually here:\n\n'
             + f'{recipe["entity"].source.portal_url}'
             + f'\n\nSave it in this location:\n\n'
@@ -374,7 +426,7 @@ def download_and_unzip_recipe_data(
     if timer is None:
         timer = get_timer('download_and_unzip_recipe_data', verbose=True)
 
-    if data_path.exists() and not redo:
+    if data_path is not None and data_path.exists() and not redo:
         return data_path
 
     recipe_external_dir = external_dir(recipe['admin_id'], recipe['entity'])
@@ -477,11 +529,6 @@ def preprocess_recipe_data(df, recipe, timer=True):
             if i_has_na_value.sum():
                 df.loc[i_has_na_value, col] = None
 
-    if 'columns_to_categorical' in recipe:
-        cols = recipe['columns_to_categorical']
-        assert isinstance(cols, list)
-        df[cols] = df[cols].astype('category')
-
     # Rename columns
     if 'columns' in recipe:
         # Rename columns
@@ -490,6 +537,12 @@ def preprocess_recipe_data(df, recipe, timer=True):
     # Filter rows
     if 'query' in recipe:
         df = df.query(recipe['query'])
+
+    # Cast columns to categorical
+    if 'columns_to_categorical' in recipe:
+        cols = [v for v in recipe['columns_to_categorical'] if v in df]
+        assert isinstance(cols, list)
+        df[cols] = df[cols].astype('category')
 
     # Set index
     if 'set_index' in recipe:
@@ -517,9 +570,6 @@ def preprocess_recipe_data(df, recipe, timer=True):
 
             df = index_function(df)
 
-    # Sort by index
-    df = df.sort_index()
-
     # Drop observations by index
     if 'drop' in recipe:
         df = df.drop(recipe['drop'])
@@ -528,7 +578,7 @@ def preprocess_recipe_data(df, recipe, timer=True):
     if df.index.duplicated().any():
         raise ValueError(
             'Duplicated indices are not allowed in imported data.\n'
-            'Change index function or column:\n'
+            'Change `index_function`, `create_index` or `set_index` column:\n'
             + str(df[df.index.duplicated(keep=False)].sort_index().head().iloc[:, :5])
         )
 
@@ -543,6 +593,9 @@ def preprocess_recipe_data(df, recipe, timer=True):
             cols_order += ['geometry']
         df = df[cols_order]
 
+    if 'transformations' in recipe:
+        df = apply_transformations(df, recipe)
+
     return df
 
 
@@ -550,7 +603,7 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
     """Get data described in a recipe.
 
     Handles downloading (to `external` directory), unzipping, reading,
-    and preprocessing (columns, indices, queries, NAn values).
+    and preprocessing (columns, indices, queries, null/na values).
 
     Parameters
     ----------
@@ -575,13 +628,13 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
         )
 
     # Resolve download URL
-    download_url, partition_keys = resolve_download_url(
+    download_url, partition_keys = _resolve_download_url(
         recipe, admin_id, return_partition_keys=True
     )
 
     # Resolve downloaded path and data path
-    downloaded_path, data_path = resolve_downloaded_and_data_paths(
-        recipe, admin_id, download_url=download_url, partition_keys=partition_keys
+    downloaded_path, data_path = _resolve_downloaded_and_data_paths(
+        recipe, admin_id, partition_id, download_url, partition_keys=partition_keys
     )
 
     # Download and unzip the data (if it has not happened yet)
@@ -595,11 +648,23 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
     # Reproject vector data to default CRS
     if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
         gdf = gdf.to_crs(cfg.crs)
-        timer.mark(f'Reproject to {cfg.crs}.')
+        timer.mark(f'Reproject to {cfg.crs}')
 
     # Preprocess recipe data
     # (column names, indices, remapping, NAs, categoricals)
-    gdf = preprocess_recipe_data(gdf, recipe)
+    gdf = preprocess_recipe_data(gdf, recipe, timer=timer)
+
+    # Attribute entities to administrative unit IDs
+    if 'admin_id_crosswalk' in recipe:
+        admin_id_crosswalk = get_admin_id_crosswalk(
+            admin_id, **recipe['admin_id_crosswalk']
+        )
+        gdf = gdf.join(admin_id_crosswalk, on=admin_id_crosswalk.index.name)
+    elif 'overlay_admin_ids' in recipe:
+        gdf = overlay_admin_ids(
+            gdf, admin_id, **recipe['overlay_admin_ids'], timer=timer
+        )
+        timer.mark('Overlay admin IDs')
 
     return gdf
 
@@ -609,7 +674,6 @@ def save_recipe_data(
     recipe,
     admin_id=None,
     partition_id=None,
-    timer=None,
 ):
     """Save data from an ingested recipe
 
@@ -620,92 +684,142 @@ def save_recipe_data(
     recipe : dict
         `openplaces` recipe. Should be a dictionary (not a DataFrame).
     admin_id : str
-        Identifier of the administrative unit to download.
-        Required if data downloads are partitioned by admin unit.
-    partition_id : str
-        Identifier of other partitions to download (e.g. year-month)
-    timer : openplaces.timing.Timer or None
-        Timer
-    """
-    if timer is None:
-        timer = get_timer('save_recipe_data', verbose=True)
+        Identifier of the administrative unit of the GeoDataFrame
 
+        Required if the `admin_id` cannot be inferred from the recipe,
+        because the recipe partitions data downloads by admin unit.
+
+        If the recipe splits the data by lower-level administrative
+        units (i.e., if 'cache_by_admin_level' is set) and `admin_id`
+        belongs to that level, save only data for that `admin_id`.
+    partition_id : str
+        Identifier of other partitions to save (e.g. year-month)
+    """
     if partition_id is not None:
         raise NotImplementedError(f'Not yet implemented: partition_id={partition_id}')
 
-    parquet_path = cache_path(
-        admin_id,
-        recipe['entity'],
-        filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
-    )
+    if 'cache_by_admin_level' in recipe:
+        admin_level = recipe['cache_by_admin_level']
+        admin_id_col = f"admin{admin_level}_id"
+        if not admin_id_col in gdf:
+            raise ValueError(
+                f"'cache_by_admin_level' is set, but column "
+                f"'{admin_id_col}' does not exist in DataFrame:\n\n"
+                + str(gdf.sample(1).T)
+            )
+        admin_ids_to_save = sorted(set(gdf[admin_id_col].dropna()))
 
-    if isinstance(gdf, gpd.GeoDataFrame):
-        # Create two files for tabular and geospatial ('_geo') data
-        to_parquet(gdf[[v for v in gdf if v != 'geometry']], parquet_path)
-        timer.mark('Save attributes as parquet')
+        # If the passed `admin_id` has the same level as the cached
+        # partitions, save only the data for that unit (lightweight)
+        if admin_id is not None and len(AdminId(admin_id).levels) == admin_level + 1:
+            if not admin_id in admin_ids_to_save:
+                raise ValueError(
+                    f'`admin_id` {admin_id} not found in column `{admin_id_col}`.'
+                    'Choose from:\n' + ', '.join(admin_ids_to_save)
+                )
+            admin_ids_to_save = [admin_id]
 
-        parquet_geo_path = cache_path(
-            recipe['admin_id'],
-            recipe['entity'],
-            filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-            + '_geo',
+    elif admin_id:
+        admin_ids_to_save = [admin_id]
+    elif not 'download_by' in recipe or not recipe['download_by'].startswith('admin'):
+        admin_ids_to_save = [recipe['admin_id']]
+    else:
+        raise ValueError(
+            'Recipe downloads are partitioned by administrative unit.'
+            '`admin_id` is required.'
         )
 
-        to_parquet(gdf[['geometry']], parquet_geo_path)
-        timer.mark('Save geometries as parquet')
-    else:
-        to_parquet(gdf, parquet_path)
-        timer.mark('Save as parquet')
+    for admin_id_to_save in admin_ids_to_save:
+        if 'cache_by_admin_level' in recipe:
+            gdf_to_save = (
+                gdf[gdf[admin_id_col].eq(admin_id_to_save)]
+                .copy()
+                .drop(columns=admin_id_col)
+            )
+        else:
+            gdf_to_save = gdf
+
+        # Create space-efficient integer ID to join all future data
+        # tables saved alongside this dataset
+        gdf_to_save['_join_id'] = range(1, len(gdf_to_save) + 1)
+
+        parquet_path = cache_path(
+            admin_id_to_save,
+            recipe['entity'],
+            filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
+        )
+
+        if isinstance(gdf_to_save, gpd.GeoDataFrame):
+            # Create two files for tabular and geospatial ('_geo') data
+            to_parquet(
+                gdf_to_save[[v for v in gdf_to_save if v != 'geometry']], parquet_path
+            )
+
+            parquet_geo_path = cache_path(
+                admin_id_to_save,
+                recipe['entity'],
+                filename='_'.join(
+                    ([recipe['cache_filename']] if 'cache_filename' in recipe else [])
+                    + ['geo']
+                ),
+            )
+
+            to_parquet(
+                gdf_to_save.set_index('_join_id')[['geometry']], parquet_geo_path
+            )
+        else:
+            to_parquet(gdf_to_save, parquet_path)
 
 
-def load_recipe_data(
-    recipe,
-    admin_id=None,
-    partition_id=None,
-    timer=None,
-):
-    """Load data from an ingested recipe
+# def load_recipe_data(
+#     recipe,
+#     admin_id=None,
+#     partition_id=None,
+#     timer=None,
+# ):
+#     """Load data from an ingested recipe
 
-    Parameters
-    ----------
-    recipe : dict
-        `openplaces` recipe. Should be a dictionary (not a DataFrame).
-    admin_id : str
-        Identifier of the administrative unit to download.
-        Required if data downloads are partitioned by admin unit.
-    partition_id : str
-        Identifier of other partitions to download (e.g. year-month)
-    timer : openplaces.timing.Timer or None
-        Timer
-    """
-    if timer is None:
-        timer = get_timer('load_recipe_data', verbose=True)
+#     Parameters
+#     ----------
+#     recipe : dict
+#         `openplaces` recipe. Should be a dictionary (not a DataFrame).
+#     admin_id : str
+#         Identifier of the administrative unit to download.
+#         Required if data downloads are partitioned by admin unit.
+#     partition_id : str
+#         Identifier of other partitions to download (e.g. year-month)
+#     timer : openplaces.timing.Timer or None
+#         Timer
+#     """
+#     if timer is None:
+#         timer = get_timer('load_recipe_data', verbose=True)
 
-    if partition_id is not None:
-        raise NotImplementedError(f'Not yet implemented: partition_id={partition_id}')
+#     if partition_id is not None:
+#         raise NotImplementedError(f'Not yet implemented: partition_id={partition_id}')
 
-    parquet_path = cache_path(
-        admin_id,
-        recipe['entity'],
-        filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
-    )
+#     parquet_path = cache_path(
+#         admin_id,
+#         recipe['entity'],
+#         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
+#     )
 
-    parquet_geo_path = cache_path(
-        recipe['admin_id'],
-        recipe['entity'],
-        filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-        + '_geo',
-    )
+#     parquet_geo_path = cache_path(
+#         admin_id,
+#         recipe['entity'],
+#         filename='_'.join(
+#             ([recipe['cache_filename']] if 'cache_filename' in recipe else []) + ['geo']
+#         ),
+#     )
 
-    df = pd.read_parquet(parquet_path)
-    timer.mark('Load parquet')
+#     df = pd.read_parquet(parquet_path)
+#     timer.mark('Load parquet')
 
-    if not parquet_geo_path.exists():
-        return df
-    else:
-        gdf = gpd.read_parquet(parquet_geo_path)
-        timer.mark('Load geoparquet')
-        return gpd.GeoDataFrame(df.join(gdf), crs=gdf.crs)
+#     if not parquet_geo_path.exists():
+#         return df
+#     else:
+#         gdf = gpd.read_parquet(parquet_geo_path)
+#         timer.mark('Load geoparquet')
+#         return gpd.GeoDataFrame(df.join(gdf), crs=gdf.crs)
 
 
 def ingest_recipe_data(
@@ -727,8 +841,8 @@ def ingest_recipe_data(
     recipe : dict
         Data ingestion recipe
     admin_id : str
-        Identifier of the administrative unit to download.
-        Required if data downloads are partitioned by admin unit.
+        Identifier of the administrative unit.
+        Required if recipe partitions data downloads by admin unit.
     partition_id : str
         Identifier of other partitions to download (e.g. year-month)
     timer : openplaces.timing.Timer
@@ -742,24 +856,27 @@ def ingest_recipe_data(
     if timer is None:
         timer = get_timer('ingest_recipe_data', verbose=True)
 
-    parquet_path = cache_path(
-        admin_id,
-        recipe['entity'],
-        filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
-    )
+    # Needs to be re-written to accommodate datasets partitioned by
+    # lower administrative units
 
-    if not parquet_path.exists():
-        # Get data from recipe (may involve downloads, unzipping, reading)
-        gdf = get_recipe_data(
-            recipe, admin_id=admin_id, partition_id=partition_id, timer=timer, redo=redo
-        )
-        timer.mark('Get recipe data')
+    # parquet_path = cache_path(
+    #     admin_id,
+    #     recipe['entity'],
+    #     filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
+    # )
 
-        # Save recipe data
-        save_recipe_data(gdf, recipe, admin_id, partition_id, timer)
+    # if not parquet_path.exists() or redo:
 
-    elif return_result:
-        gdf = load_recipe_data(recipe, admin_id, partition_id, timer)
+    # Get data from recipe (may involve downloads, unzipping, reading)
+    gdf = get_recipe_data(recipe, admin_id, partition_id, timer, redo)
+    timer.mark('Get recipe data')
+
+    # Save recipe data
+    save_recipe_data(gdf, recipe, admin_id, partition_id)
+    timer.mark('Save recipe data')
+
+    # elif return_result:
+    #     gdf = load_recipe_data(recipe, admin_id, partition_id, timer)
 
     if return_result:
         return gdf
