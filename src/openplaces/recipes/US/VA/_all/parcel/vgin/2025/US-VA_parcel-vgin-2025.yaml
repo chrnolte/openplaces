@@ -14,7 +14,7 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source: 
     source_id: vgin
-    # URL do download
+    # URL to download
     download_url: "https://www.arcgis.com/sharing/rest/content/items/29627d7c051a47dc8ce71b4484531ab3/data"
   version: 2025
 
