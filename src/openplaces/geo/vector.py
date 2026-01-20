@@ -486,6 +486,7 @@ def get_geo_ids(
     grid_degrees=0.00003,  # ~3m at equator, ~2m at 45°N, ~1.5m at 60°N
     hash_length=24,
     handle_duplicates=True,
+    verbose=False,
 ):
     """Generate stable, unique parcel IDs from polygon geometry.
 
@@ -501,6 +502,8 @@ def get_geo_ids(
         Number of hex characters in output (default 18 = 72 bits)
     handle_duplicates : bool
         If True, adds numeric suffix to duplicate GIDs (default True)
+    verbose: bool
+        If True, prints information on duplicates
 
     Returns
     -------
@@ -523,11 +526,12 @@ def get_geo_ids(
 
     # Ensure EPSG:4326
     if gdf.crs != 'epsg:4326':
-        print(f'Reprojecting vector data to WGS 84...')
+        print(f'Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
         gdf = gdf.to_crs('epsg:4326')
 
     # Get bounds for each parcel
-    bounds = gdf.bounds
+    # (using fillna(0) to avoid checking for empty geometries)
+    bounds = gdf.bounds.fillna(0)
 
     # Quantize bbox corners (consistent grid for all parcels)
     minx_q = (bounds['minx'] / grid_degrees).round().astype(int)
@@ -539,17 +543,17 @@ def get_geo_ids(
     # Note: Area in degrees² varies with latitude, but that's okay
     # because we're comparing relative sizes at similar locations
     warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    area_deg2 = gdf.area
+    area_deg2 = gdf.area.fillna(0)
     warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
     area_q = (
-        (np.log10(area_deg2 * 1e10 + 1) * 100).round().astype(int)
+        (np.log10(area_deg2 * 1e10 + 1) * 100).round().fillna(0).astype(int)
     )  # Scale up for precision
 
     # Compactness: perimeter²/area (dimensionless, so units don't matter)
     warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
     compactness = (gdf.length**2) / (area_deg2 + 1e-10)
     warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    compact_q = (compactness * 10).round().astype(int)
+    compact_q = (compactness * 10).round().fillna(0).astype(int)
 
     # Create hash inputs
     hash_inputs = (
@@ -574,51 +578,70 @@ def get_geo_ids(
     # Check for duplicates
     duplicates = geo_ids.duplicated(keep=False)
 
+    geo_ids.loc[gdf['geometry'].is_empty] = 'no-geometry'
+
     if duplicates.any():
         n_dupl = duplicates.sum()
-        print(
-            f"Warning: {n_dupl} polygons with duplicate GIDs "
-            f"({n_dupl/len(geo_ids)*100:.4f}%)"
-        )
-
-        # Show some examples
-        print('\nExample duplicates:')
-        dup_examples = duplicates.head(min(10, duplicates.sum()))
-        print(
-            pd.concat(
-                [
-                    gdf.loc[dup_examples],
-                    hash_inputs[dup_examples].rename('hash_inputs'),
-                    geo_ids[dup_examples].rename('geo_id'),
-                ],
-                axis=1,
+        if verbose:
+            print(
+                f"Warning: {n_dupl} polygons with duplicate GIDs "
+                f"({n_dupl/len(geo_ids)*100:.2g}%)"
             )
-        )
 
-        # Handle collisions with suffix if requested
+            # Show some examples
+            print('\nExample duplicates:')
+            dup_examples = (
+                geo_ids[duplicates].sort_values().head(min(10, duplicates.sum())).index
+            )
+            print(
+                pd.concat(
+                    [
+                        geo_ids[dup_examples].rename('geo_id'),
+                        hash_inputs[dup_examples].rename('hash_inputs'),
+                        gdf.loc[dup_examples],
+                    ],
+                    axis=1,
+                )
+            )
+
         if handle_duplicates:
-            print('Adding suffixes...')
-            for geo_id in geo_ids[duplicates].unique():
-                mask = geo_ids == geo_id
-                n = mask.sum()
-                geo_ids.loc[mask] = [f"{geo_id}-{i}" for i in range(1, n + 1)]
+            # Handle collisions with suffix
+            if verbose:
+                print('Adding suffixes...')
+            counts = (
+                geo_ids[duplicates].groupby(geo_ids[duplicates], sort=False).cumcount()
+                + 1
+            )
+            geo_ids.loc[duplicates] = (
+                geo_ids[duplicates].astype(str) + '-' + counts.astype(str)
+            )
 
     return geo_ids.rename('geo_id')
 
 
-def add_geo_id_index(gdf, handle_duplicates=None):
+def add_geo_id_index(gdf, handle_duplicates=True, verbose=False):
     """Return the GeoDataFrame using `geo_id` as the index
 
     Parameters
     ----------
     gdf : GeoDataFrame
         Polygon data
+    handle_duplicates : bool
+        If True, adds numeric suffix to duplicate GIDs (default True)
+    verbose: bool
+        If True, prints information on duplicates
     """
 
     gdf = gdf.copy()
     gdf.index = pd.Index(
-        get_geo_ids(gdf, handle_duplicates=handle_duplicates), name='geo_id'
+        get_geo_ids(gdf, handle_duplicates=handle_duplicates, verbose=verbose),
+        name='geo_id',
     )
+    if gdf.index.duplicated().any():
+        raise ValueError(
+            'Unhandled duplicates found in `geo_id` index. '
+            'Set `handle_duplicates=True` or pick a different indexing method.'
+        )
     return gdf
 
 
