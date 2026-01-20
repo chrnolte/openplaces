@@ -12,6 +12,7 @@ import re
 import shutil
 import tempfile
 import urllib
+import warnings
 from itertools import product
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -22,7 +23,7 @@ import pandas as pd
 import requests
 from tqdm import tqdm
 
-from openplaces.api import get_admin_by_level
+from openplaces.api import get_admin_by_level, get_admin_ids
 from openplaces.config import cfg
 from openplaces.core.constants import (
     GEOPANDAS_EXTENSIONS,
@@ -37,10 +38,12 @@ from openplaces.geo.vector import (
     get_geo_ids,
     overlay_admin_ids,
 )
-from openplaces.io import download, find_latest_file, to_parquet, unzip
-from openplaces.io.admin import find_admin_recipe, get_admin_id_crosswalk
-from openplaces.io.transform import apply_transformations
+from openplaces.io import download, find_latest_file_or_gdb, to_parquet, unzip
+from openplaces.io.admin import find_admin_recipe  # , get_admin_id_crosswalk
+from openplaces.io.parcel import drop_problematic_parcels
+from openplaces.io.transform import apply_transformations, get_crosswalk
 from openplaces.path import cache_path, external_dir, heap_dir
+from openplaces.recipe import get_recipe_by_id
 from openplaces.timing import get_timer, log_step
 
 __all__ = [
@@ -48,43 +51,10 @@ __all__ = [
     'get_recipe_data',
 ]
 
-# def save_simplified_geometries(gdf, recipe, timer=None):
-#     """Saves the recipe geodataframe with simplified geometries"""
-#     if timer is None:
-#         timer = get_timer('save_simplified_geometries', verbose=True)
-
-#     # Catching argument errors: enforce positive float
-#     if 'simplify_coverage_tolerance' not in recipe:
-#         raise KeyError('`simplify_coverage_tolerance` not found in recipe.')
-#     if not isinstance(recipe['simplify_coverage_tolerance'], float):
-#         raise ValueError(
-#             '`simplify_coverage_tolerance` is not a float: '
-#             + str(recipe['simplify_coverage_tolerance'])
-#         )
-#     if not recipe['simplify_coverage_tolerance'] > 0:
-#         raise ValueError(
-#             '`simplify_coverage_tolerance` is not positive: '
-#             + str(recipe['simplify_coverage_tolerance'])
-#         )
-
-#     if timer.verbose:
-#         print('Creating simplified geometries. This can take some time.')
-#     gdf_simplified = get_simplified_geometries(
-#         gdf, recipe['simplify_coverage_tolerance']
-#     )
-#     timer.mark('Simplify coverage')
-
-#     parquet_simplified_path = cache_path(
-#         recipe['admin_id'],
-#         recipe['entity'],
-#         filename=(recipe['cache_filename'] if 'cache_filename' in recipe else '')
-#         + '_geo_simplified',
-#     )
-#     to_parquet(gdf_simplified[['geometry']], parquet_simplified_path)
-#     timer.mark('Save simplified coverage as geoparquet')
-
 
 # Downloads
+
+
 def _catch_missing_partition_keys_error(recipe, admin_id, partition_id):
     # Error checks
     download_by = recipe['download_by']
@@ -448,19 +418,25 @@ def download_and_unzip_recipe_data(
             unzip(downloaded_path, recipe_heap_dir)
 
     # Pick last extracted file to load if no filepath is provided
-    if data_path is None or re.search(REGEX_HAS_GLOB_WILDCARDS, str(data_path)):
-        data_path = find_latest_file(recipe_heap_dir)
-        print(f'Inferred file to read:\n{data_path.relative_to(recipe_heap_dir)}')
-    else:
-        if not data_path.exists():
-            raise FileNotFoundError(
-                f'Did not succeed in downloading / unzipping:\n{data_path}'
+    if (
+        data_path is None or re.search(REGEX_HAS_GLOB_WILDCARDS, str(data_path))
+    ) and recipe_heap_dir.exists():
+        data_path = find_latest_file_or_gdb(recipe_heap_dir)
+        if data_path is None:
+            raise ValueError(
+                'find_latest_file_or_gdb(recipe_heap_dir) did not find a valid dataset'
             )
+        print(f'Inferred file to read:\n{data_path.relative_to(recipe_heap_dir)}')
+
+    if data_path is not None and not data_path.exists():
+        raise FileNotFoundError(
+            f'Did not succeed in downloading / unzipping:\n{data_path}'
+        )
 
     return data_path
 
 
-def read_recipe_data(recipe, data_path, timer=None):
+def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
     """Read a data file from a recipe
 
     Parameters
@@ -469,37 +445,101 @@ def read_recipe_data(recipe, data_path, timer=None):
         Data ingestion recipe (needed to read a specific layer)
     data_path : pathlib.Path
         Path to data file
+    admin_id : str
+        Identifier of the administrative unit to download / process.
+        Used to query (access subsets of) large data files.
     timer : openplaces.timing.Timer or None
         Timer
     """
     if timer is None:
         timer = get_timer('read_recipe_data', verbose=True)
 
+    # Resolve `where` clause
+    if admin_id is not None:
+        if 'process_by' not in recipe:
+            raise NotImplementedError(
+                f"`admin_id` is {admin_id} but no 'process_by' in `recipe`."
+            )
+        admin_id_col = recipe['process_by']['admin_id_col']
+
+        # Attribute entities to administrative unit IDs
+        if 'admin_id_crosswalk' in recipe['process_by']:
+            # Use custom crosswalk
+            admin_id_crosswalk_dict = recipe['process_by']['admin_id_crosswalk']
+        elif 'admin_id_crosswalk' in recipe:
+            # Use recipe crosswalk (backup)
+            admin_id_crosswalk_dict = recipe['admin_id_crosswalk']
+        else:
+            admin_id_crosswalk_dict = None
+
+        if admin_id_crosswalk_dict:
+            admin_id_crosswalk_dict['admin_id'] = recipe['admin_id']
+            admin_id_crosswalk = get_crosswalk(admin_id_crosswalk_dict)
+            admin_id_value = admin_id_crosswalk.loc[admin_id]
+        else:
+            admin_id_value = admin_id
+
+        if isinstance(admin_id_value, str):
+            where = f"{admin_id_col} = '{admin_id_value}'"
+        else:
+            where = f"{admin_id_col} = {admin_id_value}"
+    else:
+        where = None
+
+    layer = recipe['layer'] if 'layer' in recipe else None
+
+    # Silence warnings from reading complex polygons
+    warnings.filterwarnings('ignore', 'received a polygon with more than 100 parts')
+
     if data_path.suffix in GEOPANDAS_EXTENSIONS:
         if data_path.suffix == 'parquet':
-            with log_step('Read parquet file', timer=timer, path=data_path):
-                gdf = gpd.read_parquet(data_path)
+            gdf = gpd.read_parquet(data_path)
+            timer.mark('Read parquet file', path=data_path)
         else:
-            with log_step('Read vector file', timer=timer, path=data_path):
-                gdf = gpd.read_file(
-                    data_path, layer=recipe['layer'] if 'layer' in recipe else None
-                )
+            try:
+                gdf = gpd.read_file(data_path, layer=layer, where=where)
+            except (RuntimeWarning, Exception) as e:
+                if 'CDF' in str(e) or 'Permission denied' in str(e):
+                    gdf = gpd.read_file(
+                        data_path, layer=layer, where=where, engine='fiona'
+                    )
+                else:
+                    raise
+            timer.mark('Read vector file', path=data_path)
     elif data_path.suffix in PANDAS_EXTENSIONS:
-        with log_step('Read data table', timer=timer, path=data_path):
-            gdf = pd.read_file(data_path)
+        gdf = pd.read_file(data_path)
+        timer.mark('Read data table', where=where, path=data_path)
     elif data_path.suffix in ZIP_EXTENSIONS:
         try:
-            with log_step('Read compressed file', timer=timer, path=data_path):
-                # Try to read with `geopandas`
-                gdf = gpd.read_file(
-                    data_path, layer=recipe['layer'] if 'layer' in recipe else None
+            # Try to read with `geopandas`
+            gdf = gpd.read_file(data_path, layer=layer, where=where)
+            timer.mark('Read compressed file', path=data_path)
+        except (RuntimeWarning, Exception) as e:
+            recipe_heap_dir = heap_dir(recipe['admin_id'], recipe['entity'])
+            if not recipe_heap_dir.exists():
+                unzip(data_path, recipe_heap_dir)
+
+            data_path = find_latest_file_or_gdb(recipe_heap_dir)
+            if data_path is None:
+                raise IOError(
+                    f'`geopandas` could not read compressed file:\n\n{data_path}.\n\n'
+                    f'After unzipping, could not find a valid dataset in:\n\n{heap_dir}'
                 )
-        except:
-            raise IOError(
-                f'Unable to read compressed file with `geopandas`:\n\n{data_path}'
-            )
+
+            try:
+                gdf = gpd.read_file(data_path, layer=layer, where=where)
+            except:
+                if 'CDF' in str(e) or 'Permission denied' in str(e):
+                    gdf = gpd.read_file(
+                        data_path, layer=layer, where=where, engine='fiona'
+                    )
+                else:
+                    raise
+            timer.mark('Read unzipped file', path=data_path)
     else:
         raise ValueError(f'Filepath suffix not yet interpreted: {data_path.suffix}')
+
+    warnings.filterwarnings('default', 'received a polygon with more than 100 parts')
 
     return gdf
 
@@ -550,6 +590,17 @@ def preprocess_recipe_data(df, recipe, timer=True):
         if recipe['set_index'] not in df:
             raise ValueError(
                 'Column not found to use as index: ' + str(recipe['set_index'])
+            )
+        if df[recipe['set_index']].duplicated().any():
+            raise ValueError(
+                f"Duplicates found in '{recipe['set_index']}'. Choose other index.\n\n"
+                + str(
+                    df[df[recipe['set_index']].duplicated(keep=False)][
+                        recipe['set_index']
+                    ]
+                    .sort_values()
+                    .head(5)
+                )
             )
         df = df.set_index(recipe['set_index'])
     elif 'create_index' in recipe:
@@ -610,8 +661,9 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
     recipe : dict
         `openplaces` recipe. Should be a dictionary (not a DataFrame).
     admin_id : str
-        Identifier of the administrative unit to download.
+        Identifier of the administrative unit to download / process.
         Required if data downloads are partitioned by admin unit.
+        Can be used to query (access subsets of) large data files.
     partition_id : str
         Identifier of other partitions to download (e.g. year-month)
     timer : openplaces.timing.Timer or None
@@ -643,7 +695,7 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
     )
 
     # Read data
-    gdf = read_recipe_data(recipe, data_path)
+    gdf = read_recipe_data(recipe, data_path, admin_id=admin_id, timer=timer)
 
     # Reproject vector data to default CRS
     if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
@@ -656,15 +708,23 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
 
     # Attribute entities to administrative unit IDs
     if 'admin_id_crosswalk' in recipe:
-        admin_id_crosswalk = get_admin_id_crosswalk(
-            admin_id, **recipe['admin_id_crosswalk']
-        )
+        admin_id_crosswalk_dict = recipe['admin_id_crosswalk']
+        admin_id_crosswalk_dict['admin_id'] = recipe['admin_id']
+        admin_id_crosswalk = get_crosswalk(admin_id_crosswalk_dict, flip=True)
         gdf = gdf.join(admin_id_crosswalk, on=admin_id_crosswalk.index.name)
     elif 'overlay_admin_ids' in recipe:
         gdf = overlay_admin_ids(
             gdf, admin_id, **recipe['overlay_admin_ids'], timer=timer
         )
         timer.mark('Overlay admin IDs')
+
+    if 'drop_problematic_parcels' in recipe:
+        gdf = drop_problematic_parcels(
+            gdf,
+            recipe['columns'].keys() if 'columns' in recipe else None,
+            **recipe['drop_problematic_parcels'],
+        )
+        timer.mark('Drop problematic parcels')
 
     return gdf
 
@@ -737,10 +797,9 @@ def save_recipe_data(
                 .drop(columns=admin_id_col)
             )
         else:
-            gdf_to_save = gdf
+            gdf_to_save = gdf.copy()
 
-        # Create space-efficient integer ID to join all future data
-        # tables saved alongside this dataset
+        # Create space-efficient integer ID to join data tables
         gdf_to_save['_join_id'] = range(1, len(gdf_to_save) + 1)
 
         parquet_path = cache_path(
@@ -771,57 +830,6 @@ def save_recipe_data(
             to_parquet(gdf_to_save, parquet_path)
 
 
-# def load_recipe_data(
-#     recipe,
-#     admin_id=None,
-#     partition_id=None,
-#     timer=None,
-# ):
-#     """Load data from an ingested recipe
-
-#     Parameters
-#     ----------
-#     recipe : dict
-#         `openplaces` recipe. Should be a dictionary (not a DataFrame).
-#     admin_id : str
-#         Identifier of the administrative unit to download.
-#         Required if data downloads are partitioned by admin unit.
-#     partition_id : str
-#         Identifier of other partitions to download (e.g. year-month)
-#     timer : openplaces.timing.Timer or None
-#         Timer
-#     """
-#     if timer is None:
-#         timer = get_timer('load_recipe_data', verbose=True)
-
-#     if partition_id is not None:
-#         raise NotImplementedError(f'Not yet implemented: partition_id={partition_id}')
-
-#     parquet_path = cache_path(
-#         admin_id,
-#         recipe['entity'],
-#         filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
-#     )
-
-#     parquet_geo_path = cache_path(
-#         admin_id,
-#         recipe['entity'],
-#         filename='_'.join(
-#             ([recipe['cache_filename']] if 'cache_filename' in recipe else []) + ['geo']
-#         ),
-#     )
-
-#     df = pd.read_parquet(parquet_path)
-#     timer.mark('Load parquet')
-
-#     if not parquet_geo_path.exists():
-#         return df
-#     else:
-#         gdf = gpd.read_parquet(parquet_geo_path)
-#         timer.mark('Load geoparquet')
-#         return gpd.GeoDataFrame(df.join(gdf), crs=gdf.crs)
-
-
 def ingest_recipe_data(
     recipe,
     admin_id=None,
@@ -843,6 +851,7 @@ def ingest_recipe_data(
     admin_id : str
         Identifier of the administrative unit.
         Required if recipe partitions data downloads by admin unit.
+        Can be used to query (access subsets of) large data files.
     partition_id : str
         Identifier of other partitions to download (e.g. year-month)
     timer : openplaces.timing.Timer
@@ -856,27 +865,44 @@ def ingest_recipe_data(
     if timer is None:
         timer = get_timer('ingest_recipe_data', verbose=True)
 
-    # Needs to be re-written to accommodate datasets partitioned by
-    # lower administrative units
+    # Resolve which administrative units will be processed (chunking)
+    if 'process_by' in recipe:
+        _admin_recipe_id = (
+            recipe['process_by']['admin_recipe_id']
+            if 'admin_recipe_id' in recipe['process_by']
+            else None
+        )
+        admin_ids_to_process = get_admin_ids(
+            recipe['process_by']['admin_level'],
+            recipe['admin_id'],
+            _admin_recipe_id,
+        )
+        if admin_id is not None:
+            if admin_id in admin_ids_to_process:
+                admin_ids_to_process = [admin_id]
+            else:
+                raise ValueError(
+                    f'{admin_id} not found. Admin recipe: {_admin_recipe_id}`.'
+                )
+    else:
+        admin_ids_to_process = [admin_id]
 
-    # parquet_path = cache_path(
-    #     admin_id,
-    #     recipe['entity'],
-    #     filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
-    # )
+    for admin_id_to_process in admin_ids_to_process:
+        if len(admin_ids_to_process) > 1:
+            print(f'Processing {admin_id_to_process}...')
 
-    # if not parquet_path.exists() or redo:
+        # Get data from recipe (may involve downloads, unzipping, reading)
+        gdf = get_recipe_data(recipe, admin_id_to_process, partition_id, timer, redo)
+        timer.mark('Get recipe data', admin_id=admin_id_to_process)
 
-    # Get data from recipe (may involve downloads, unzipping, reading)
-    gdf = get_recipe_data(recipe, admin_id, partition_id, timer, redo)
-    timer.mark('Get recipe data')
-
-    # Save recipe data
-    save_recipe_data(gdf, recipe, admin_id, partition_id)
-    timer.mark('Save recipe data')
-
-    # elif return_result:
-    #     gdf = load_recipe_data(recipe, admin_id, partition_id, timer)
+        # Save recipe data
+        save_recipe_data(gdf, recipe, admin_id_to_process, partition_id)
+        timer.mark('Save recipe data', admin_id=admin_id_to_process)
 
     if return_result:
+        if len(admin_ids_to_process) > 1:
+            warnings.warn(
+                f'Multiple administrative units were processed. '
+                'Returning data for {admin_id_to_process}.'
+            )
         return gdf

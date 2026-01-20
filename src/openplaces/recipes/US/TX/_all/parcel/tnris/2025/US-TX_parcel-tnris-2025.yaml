@@ -1,0 +1,70 @@
+# Recipe to import the parcel database of the state of Florida, US
+
+# Administrative unit identifier: where does this data come from?
+# NULL: global
+# US: United States
+# US-WI: Wisconsin
+# US-WI-DA: Dane county
+admin_id: US-TX
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: parcel
+   # What is the source and URL of a dataset that identifies each unit?
+  source: 
+    source_id: tnris
+    portal_url: "https://tnris.org/stratmap/land-parcels.html"
+    # URL to download
+    download_url: "https://tnris-data-warehouse.s3.us-east-1.amazonaws.com/LCD/collection/stratmap-2025-land-parcels/stratmap25-landparcels_48_lp.zip"
+  version: 2025
+
+# Path to compressed file (set to skip re-downloading)
+compressed_file_name: "stratmap25-landparcels_48_lp.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "stratmap25-landparcels_48.gdb"
+
+# Column that splits the data into chunks for processing
+# (avoids reading very large geodatabase into memory)
+process_by:
+  admin_level: 2
+  admin_id_col: FIPS
+  admin_id_crosswalk:
+    admin_level: 2
+    admin_id_col: admin2_id_admin0
+    admin_recipe_id: "US_admin-nhgis-2020_admin2"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  parcel_id_admin1: Prop_ID
+  parcel_id_admin1_2: GEO_ID
+  legal_description: LEGAL_DESC
+  address: SITUS_ADDR
+  address_number: SITUS_NUM
+  address_street_directional: SITUS_STRE
+  address_street: SITUS_ST_1
+  address_street_2: SITUS_ST_2
+  city: SITUS_CITY
+  legal_area: LEGAL_AREA
+  legal_area_unit: LGL_AREA_UNIT
+  land_use_group_admin1: STAT_LAND_USE
+  land_use_group_admin2: LOC_LAND_USE
+  year_built: YEAR_BUILT
+  owner_name: OWNER_NAME
+  owner_name_co: NAME_CARE
+  owner_address: MAIL_ADDR
+  owner_address_street: MAIL_LINE1
+  owner_address_street_2: MAIL_LINE2
+  owner_city: MAIL_CITY
+  owner_admin2_id_admin1: MAIL_STAT
+  owner_postal_code: MAIL_ZIP
+  tax_year: TAX_YEAR
+  land_value: LAND_VALUE
+  building_value: IMP_VALUE
+  market_value: MKT_VALUE
+  source_date: DATE_ACQ
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - legal_area_unit
