@@ -11,7 +11,7 @@ from openplaces import cfg
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.path import cache_path
-from openplaces.recipe import get_recipe
+from openplaces.recipe import get_recipe, get_recipe_by_id
 
 ADMIN_SOURCE = 'admin-gadm-4~1'
 ADMIN0_PRIMARY_COLUMNS = ['name', 'admin0_id_a3', 'lat', 'long', 'ha']
@@ -293,3 +293,13 @@ def get_admin_by_level(level, *args, **kwargs):
         return get_admin2(*args, **kwargs)
     elif level == 3:
         return get_admin3(*args, **kwargs)
+
+
+def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
+    """Gets list of administrative unit IDs for a given level/recipe"""
+    return get_admin_by_level(
+        admin_level,
+        admin_id,
+        columns=[],
+        recipe=get_recipe_by_id(admin_recipe) if admin_recipe is not None else None,
+    ).index.tolist()
