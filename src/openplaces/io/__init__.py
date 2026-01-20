@@ -89,14 +89,15 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
         if response and 'content-disposition' in response.headers:
             content_disp = response.headers['content-disposition']
             if 'filename=' in content_disp:
-                filename = content_disp.split('filename=')[1].strip('"\'')
-                return unquote(filename)
-
-        # Fall back to URL parsing
-        parsed = urlparse(from_url)
-        path = unquote(parsed.path)
-        filename = Path(path).name
-        to_path /= filename
+                filename_part = content_disp.split('filename=')[1]
+                filename = filename_part.split(';')[0].strip('"\'')
+                to_path /= unquote(filename)
+        else:
+            # Fall back to URL parsing
+            parsed = urlparse(from_url)
+            path = unquote(parsed.path)
+            filename = Path(path).name
+            to_path /= filename
 
     # Download to temp location first, then move to final destination
     temp_path = Path(tempfile.gettempdir()) / f'{to_path.name}.part'
@@ -215,11 +216,11 @@ def unzip(in_path, out_path=None, members=None):
     return out_path
 
 
-def find_latest_file(
+def find_latest_file_or_gdb(
     directory: str, extensions: list[str] = GEOPANDAS_EXTENSIONS | PANDAS_EXTENSIONS
 ) -> Optional[Path]:
     """
-    Find the most recently modified file in a directory with a specified extension.
+    Find the most recently modified file or .gdb directory in a directory.
 
     Parameters
     ----------
@@ -231,10 +232,9 @@ def find_latest_file(
     Returns
     -------
     Optional[Path]
-        Path to the most recent file, or None if no matching files found
+        Path to the most recent file or .gdb directory, or None if no matches found
     """
     dir_path = Path(directory)
-
     if not dir_path.exists() or not dir_path.is_dir():
         raise ValueError(f"Directory does not exist: {directory}")
 
@@ -246,11 +246,17 @@ def find_latest_file(
         f for f in dir_path.iterdir() if f.is_file() and f.suffix in normalized_exts
     ]
 
-    if not matching_files:
+    # Find all .gdb directories
+    gdb_dirs = [d for d in dir_path.iterdir() if d.is_dir() and d.suffix == '.gdb']
+
+    # Combine files and .gdb directories
+    all_matches = matching_files + gdb_dirs
+
+    if not all_matches:
         return None
 
-    # Return the file with the most recent modification time
-    return max(matching_files, key=lambda f: f.stat().st_mtime)
+    # Return the item with the most recent modification time
+    return max(all_matches, key=lambda f: f.stat().st_mtime)
 
 
 def _ensure_parent_dir(filepath: Path):
@@ -414,6 +420,35 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
             f"Unsupported file extension: {ext}. "
             f"Supported: .parquet, .gpkg, .csv, .kmz"
         )
+
+
+def save_parquet(gdf, parquet_path):
+    """Save parquet file (with geometries in joinable geoparquet file)
+
+    Parameters
+    ----------
+    gdf : DataFrame or GeoDataFrame
+        Data to save
+    parquet_path : str
+        Filepath of Parquet file
+    """
+    parquet_path = Path(parquet_path)
+    gdf = gdf.copy()
+    if isinstance(gdf, gpd.GeoDataFrame):
+        # Create space-efficient integer ID column to join data tables
+        gdf['_join_id'] = range(1, len(gdf) + 1)
+
+        # Create two files for tabular and geospatial ('_geo') data
+        to_parquet(gdf[[v for v in gdf if v != 'geometry']], parquet_path)
+
+        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
+
+        print(geoparquet_path)
+        to_parquet(gdf.set_index('_join_id')[['geometry']], geoparquet_path)
+    elif isinstance(gdf, pd.DataFrame):
+        to_parquet(gdf, parquet_path)
+    else:
+        raise ValueError('`gdf` has to be a DataFrame or GeoDataFrame.')
 
 
 def read_parquet(parquet_path, geom=False, drop_join_id=True):

@@ -20,6 +20,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from openplaces.api import get_admin_by_level
+from openplaces.recipe import get_recipe_by_id
+
 # Operations
 
 UNARY_OPS: Dict[str, Callable] = {
@@ -86,6 +89,8 @@ STRING_OPS: Dict[str, Callable] = {
     'strip': lambda x: x.str.strip(),
     'replace': lambda x, old, new: x.str.replace(old, new, regex=False),
     'concat': lambda cols, sep='': pd.Series(sep.join(c.astype(str) for c in cols)),
+    'add_prefix': lambda x, prefix: prefix + x.astype(str),
+    'add_suffix': lambda x, suffix: x.astype(str) + suffix,
 }
 
 # Helper functions for aggregate operations
@@ -409,6 +414,12 @@ def _apply_string(
         old = args['old']
         new = args['new']
         return STRING_OPS[operation](input_series, old, new)
+    elif operation == 'add_prefix':
+        prefix = args['prefix']
+        return STRING_OPS[operation](input_series, prefix)
+    elif operation == 'add_suffix':
+        suffix = args['suffix']
+        return STRING_OPS[operation](input_series, suffix)
     else:
         # Operations with no arguments (upper, lower, strip)
         return STRING_OPS[operation](input_series)
@@ -553,28 +564,43 @@ def _apply_remap_conditional(
     return result
 
 
-# ============================================================================
-# Convenience functions
-# ============================================================================
+def get_crosswalk(crosswalk_dict, flip=False):
+    """Get a crosswalk (Series of default keys -> source keys)
 
-
-def list_available_operations() -> Dict[str, List[str]]:
+    Parameters
+    ----------
+    crosswalk_dict : dict
+        Dictionary with crosswalk arguments
+    flip : bool
+        Flips keys (index) and value column (usually for joining)
     """
-    List all available operations by category.
+    if not isinstance(crosswalk_dict, dict):
+        raise ValueError('crosswalk_dict must be dict.')
 
-    Returns
-    -------
-    dict
-        Dictionary with operation categories as keys and lists of operation
-        names as values
-    """
-    return {
-        'unary': list(UNARY_OPS.keys()),
-        'binary': list(BINARY_OPS.keys()),
-        'aggregate': list(AGGREGATE_OPS.keys()),
-        'conditional': list(CONDITIONAL_OPS.keys()),
-        'datetime': list(DATETIME_OPS.keys()),
-        'string': list(STRING_OPS.keys()),
-        'remap': ['remap', 'remap_pattern', 'remap_file', 'remap_conditional'],
-        'expression': ['expression'],
-    }
+    if 'recipe_id' in crosswalk_dict:
+        crosswalk_table = get_recipe_by_id(
+            crosswalk_dict['recipe_id'],
+            dtype=crosswalk_dict['dtype'] if 'dtype' in crosswalk_dict else None,
+        )
+        # Create a pd.Series from the first two columns:
+        crosswalk_series = crosswalk_table.set_index(crosswalk_table.columns[0])[
+            crosswalk_table.columns[1]
+        ]
+    elif 'admin_level' in crosswalk_dict:
+        admin_id_crosswalk = get_admin_by_level(
+            crosswalk_dict['admin_level'],
+            crosswalk_dict['admin_id'],
+            columns=[crosswalk_dict['admin_id_col']],
+            recipe=get_recipe_by_id(crosswalk_dict['admin_recipe_id']),
+        )
+
+        crosswalk_series = admin_id_crosswalk[crosswalk_dict['admin_id_col']]
+    else:
+        raise ValueError(f'Crosswalk dictionary not interpretable:\n\n{crosswalk_dict}')
+
+    if flip:
+        crosswalk_series = crosswalk_series.reset_index().set_index(
+            crosswalk_dict['admin_id_col']
+        )
+
+    return crosswalk_series

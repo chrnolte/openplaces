@@ -14,7 +14,7 @@ entity:
   # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: massgis
-    download_url: "https://www.mass.gov/forms/massgis-request-statewide-parcel-data"
+    portal_url: "https://www.mass.gov/forms/massgis-request-statewide-parcel-data"
   version: 2025
 
 # Filename of compressed file (set to skip re-downloading)

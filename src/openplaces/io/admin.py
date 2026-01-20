@@ -559,30 +559,30 @@ def admin2_id_index_from_admin2_US_nhgis(admin2_local):
     return admin2_local.set_index('admin2_id')
 
 
-def get_admin_id_crosswalk(admin_id, admin_level, admin_id_col, admin_recipe_id):
-    """Get a crosswalk Series (source admin ID > openplaces admin ID)
+# def get_admin_id_crosswalk(admin_id, admin_level, admin_id_col, admin_recipe_id):
+#     """Get a crosswalk Series (source admin ID > openplaces admin ID)
 
-    Parameters
-    ----------
-    admin_id : str
-        Administrative unit ID of the dataset
-    admin_level : int
-        Level of the administrative units that need to be crosswalked
-    admin_id_col : str
-        Name of the column in the recipe. Becomes index of crosswalk
-    admin_recipe_id : str
-        ID of the admin recipe that contains the crosswalk.
-    """
+#     Parameters
+#     ----------
+#     admin_id : str
+#         Administrative unit ID of the dataset
+#     admin_level : int
+#         Level of the administrative units that need to be crosswalked
+#     admin_id_col : str
+#         Name of the column in the recipe. Becomes index of crosswalk
+#     admin_recipe_id : str
+#         ID of the admin recipe that contains the crosswalk.
+#     """
 
-    admin_id_crosswalk = get_admin_by_level(
-        admin_level,
-        admin_id,
-        columns=[admin_id_col],
-        recipe=get_recipe_by_id(admin_recipe_id),
-    )
-    return admin_id_crosswalk.reset_index().set_index(admin_id_col)[
-        f'admin{admin_level}_id'
-    ]
+#     admin_id_crosswalk = get_admin_by_level(
+#         admin_level,
+#         admin_id,
+#         columns=[admin_id_col],
+#         recipe=get_recipe_by_id(admin_recipe_id),
+#     )
+#     return admin_id_crosswalk.reset_index().set_index(admin_id_col)[
+#         f'admin{admin_level}_id'
+#     ]
 
 
 def find_admin_recipe(admin_id, admin_level):
