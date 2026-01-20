@@ -71,7 +71,7 @@ REGEX_ADMIN1_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
 REGEX_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
 
 # Extract filename from URL
-REGEX_FILENAME_IN_URL = r'/([^/?]+)(?:\?|$)'
+REGEX_FILENAME_IN_URL = r'/([^/?]+\.[a-zA-Z0-9]+)(?:\?|$)'
 
 # Check whether a filepath has wildcards to search the filesystem
 REGEX_HAS_GLOB_WILDCARDS = r'[*?\[\]]'
