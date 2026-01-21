@@ -1,0 +1,51 @@
+# Recipe to import Microsoft building footprints for the United States
+
+# Administrative unit identifier of the highest administrative geography
+# that the dataset covers (single files can cover a lower admin level)
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: building
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: microsoft
+    # Link to portal with metadata
+    portal_url: "https://github.com/microsoft/USBuildingFootprints"
+    # Link to direct download
+    download_url: "https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{admin1_name}.geojson.zip"
+  version: v2
+
+# How is the download data partitioned?
+download_by: admin1
+# Transformations needed to obtain the data partition admin identifier
+# used by the source URL (e.g. lowercase, sanitize, etc.)
+download_partition_key_transform:
+  admin1_name: "remove_spaces"
+
+# Filename of compressed file (set to skip re-downloading)
+compressed_file_name: "{admin1_name}.geojson.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "{admin1_name}.geojson"
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - release
+  - capture_dates_range
+
+# Function to give the GeoDataFrame an index
+index_function: "openplaces.geo.vector.add_geo_id_index"
+
+# Assign administrative IDs using spatial joins/overlays
+overlay_admin_ids:
+  admin_level: 2
+  admin_recipe: 'US_admin-nhgis-2020_admin2'
+
+# Administrative ID level at which data is saved
+# Set if you want to split the data into smaller chunks
+# (1: by state/department, 2: by county/municipality, 3: by town etc.)
+# The column ``adminX_id`` has to exist in the pre-processed data and
+# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
+cache_by_admin_level: 2

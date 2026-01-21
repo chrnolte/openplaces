@@ -1,0 +1,61 @@
+# Recipe to import the parcel database of the state of Florida, US
+
+# Administrative unit identifier: where does this data come from?
+# NULL: global
+# US: United States
+# US-WI: Wisconsin
+# US-WI-DA: Dane county
+admin_id: US-VA
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: parcel
+   # What is the source and URL of a dataset that identifies each unit?
+  source: 
+    source_id: vgin
+    # URL to download
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/29627d7c051a47dc8ce71b4484531ab3/data"
+  version: 2025
+
+# Path to compressed file (set to skip re-downloading)
+compressed_file_name: "Virginia_Parcels.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "Virginia_Parcel_Dataset_2025Q4.gdb"   # ArcGIS format
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+# columns:
+#   parcel_id_admin1: STATEID
+#   parcel_id_admin2: PARCELID
+#   parcel_id_tax: TAXPARCELID
+#   owner_name: OWNERNME1
+#   owner2_name: OWNERNME2
+#   owner_address: PSTLADRESS
+#   address: SITEADRESS
+#   address_number: ADDNUM
+#   address_street_name: STREETNAME
+#   address_street_type: STREETTYPE
+#   unit_type: UNITTYPE
+#   unit_id: UNITID
+#   city: PLACENAME
+#   zip_code: ZIPCODE
+#   school_district_name: SCHOOLDIST
+#   school_district_id: SCHOOLDISTNO
+#   total_value_assessed: CNTASSDVALUE
+#   land_value_assessed: LNDVALUE
+#   building_value_assessed: IMPVALUE
+#   current_use_value: MFLVALUE
+#   total_value_market: ESTFMKVALUE
+#   tax_value_net: NETPRPTA
+#   tax_value_gross: GRSPRPTA
+#   tax_year: TAXROLLYEAR
+#   area_assessed_ac: ASSDACRES
+#   area_deed_ac: DEEDACRES
+#   admin2_name: CONAME
+#   admin2_id_admin1: PARCELFIPS
+#   property_type: PROPCLASS
+#   source_date: LOADDATE
+
+# Keep columns that aren't named in the above list
+keep_unnamed_columns: True

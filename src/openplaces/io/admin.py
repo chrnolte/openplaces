@@ -7,6 +7,7 @@ Worldwide administrative referencing and mapping
 - Manage globally unique identifiers (admin_ids)
 """
 
+import glob
 from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
@@ -14,21 +15,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from openplaces.api import get_admin1
+from openplaces.api import get_admin1, get_admin2, get_admin_by_level
 from openplaces.core.constants import (
     ADMIN0_ID_HASC1_A2,
-    RE_ADMIN1_IDS_AA_AA,
-    RE_ADMIN1_IDS_AA_AA_EXTRACT,
-    RE_ADMIN1_IDS_HASC,
-    RE_ADMIN2_IDS_HASC,
+    REGEX_ADMIN1_IDS_AA_AA,
+    REGEX_ADMIN1_IDS_AA_AA_EXTRACT,
+    REGEX_ADMIN1_IDS_HASC,
+    REGEX_ADMIN2_IDS_HASC,
     STRING_SEPARATOR_WITHIN_IDS,
 )
-from openplaces.recipe import get_recipe
-from openplaces.utils import standardize_names
+from openplaces.path import recipe_path
+from openplaces.recipe import get_recipe, get_recipe_by_id
+from openplaces.utils import create_comparable_name_link, standardize_names
+
 
 # Admin 0: Countries
-
-
 def get_admin0_iso():
     """Get dataframe with country ISO alpha codes and names"""
 
@@ -39,7 +40,7 @@ def get_admin0_iso():
     }
 
     admin0_iso = (
-        get_recipe(entity='admin', filename='admin0_iso_alpha_2', keep_default_na=False)
+        get_recipe(None, 'admin-iso', filename='admin0-alpha-2', keep_default_na=False)
         .rename(columns=ADMIN0_ISO_RENAME_COLUMNS)
         .query('admin0_id != ""')
         .set_index('admin0_id')
@@ -47,7 +48,7 @@ def get_admin0_iso():
     )
 
     admin0_iso_additions = get_recipe(
-        None, 'admin', filename='admin0_iso_additions'
+        None, 'admin-iso', filename='admin0-additions'
     ).set_index('admin0_id')
     admin0_iso = pd.concat(
         [
@@ -63,8 +64,9 @@ def get_admin0_iso():
     # Joining regional groupings
     admin0_iso_regions = (
         get_recipe(
-            entity='admin',
-            filename='admin0_iso3166-country-regions',
+            None,
+            'admin-iso',
+            filename='admin0-regions-iso3166',
             keep_default_na=False,
         )
         .rename(columns={'alpha-2': 'admin0_id'})
@@ -127,8 +129,9 @@ def get_admin1_iso():
 
     admin1_iso = (
         get_recipe(
-            entity='admin',
-            filename='admin1_iso3166-2_2021-03-01',
+            None,
+            'admin-iso-20210301',
+            filename='admin1-iso3166-2',
             keep_default_na=False,
         )
         .rename(columns=ADMIN1_ISO_RENAME_COLUMNS)
@@ -172,9 +175,9 @@ def admin1_id_index_from_admin1_gadm(admin1):
     admin1['admin1_id_source'] = pd.Series(None, dtype='object')
 
     # First priority: official ISO3166-2 codes
-    i = admin1['admin1_id_iso3166'].str.contains(RE_ADMIN1_IDS_AA_AA, na=False)
+    i = admin1['admin1_id_iso3166'].str.contains(REGEX_ADMIN1_IDS_AA_AA, na=False)
     hasc_from_iso = admin1[i]['admin1_id_iso3166'].str.extract(
-        RE_ADMIN1_IDS_AA_AA_EXTRACT
+        REGEX_ADMIN1_IDS_AA_AA_EXTRACT
     )
     admin1.loc[i, 'admin1_id'] = hasc_from_iso.apply(
         STRING_SEPARATOR_WITHIN_IDS.join, 1
@@ -188,7 +191,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
     )
     i = (
         admin1['admin1_id'].isnull()
-        & admin1['admin1_id_hasc'].str.contains(RE_ADMIN1_IDS_HASC)
+        & admin1['admin1_id_hasc'].str.contains(REGEX_ADMIN1_IDS_HASC)
         & admin1['admin1_id_hasc'].str.slice(0, 2).eq(admin1['admin0_id'])
         & ~admin1['admin1_id_hasc'].duplicated(False)
         & ~admin1_id_from_hasc1.isin(admin1['admin1_id'])
@@ -201,9 +204,13 @@ def admin1_id_index_from_admin1_gadm(admin1):
     i_fill = admin1['admin1_id'].isnull()
     admin1_id_caps = admin1[i_fill]['_name'].str.extract('^([A-Z]).*?([A-Z])')
     admin1_id_caps = admin1_id_caps[admin1_id_caps.notnull().mean(1).eq(1)].apply(
-        STRING_SEPARATOR_WITHIN_IDS.join, 1
+        ''.join, 1
     )
-    admin1_id_caps = admin1.loc[admin1_id_caps.index]['admin0_id'] + admin1_id_caps
+    admin1_id_caps = (
+        admin1.loc[admin1_id_caps.index]['admin0_id']
+        + STRING_SEPARATOR_WITHIN_IDS
+        + admin1_id_caps
+    )
     admin1_id_caps = admin1_id_caps[
         ~admin1_id_caps.isin(admin1['admin1_id']) & ~admin1_id_caps.duplicated()
     ]
@@ -248,7 +255,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
 
 
 def admin2_id_index_from_admin2_gadm(admin2):
-    admin1 = get_admin1()
+    admin1 = get_admin1(columns=['admin1_id_gadm'])
 
     # Join admin1
     admin2 = admin2.join(
@@ -289,7 +296,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
     # Countries using HASC1 code for level-2 administrative units
     i = (
         admin2['admin0_id'].isin(ADMIN0_ID_HASC1_A2)
-        & admin2['admin2_id_hasc'].str.contains(RE_ADMIN2_IDS_HASC).fillna(False)
+        & admin2['admin2_id_hasc'].str.contains(REGEX_ADMIN2_IDS_HASC).fillna(False)
         & ~admin2['admin2_id_hasc'].duplicated(False)
     )
     admin2.loc[i, 'admin2_id'] = (
@@ -483,3 +490,121 @@ def admin2_id_index_from_admin2_gadm(admin2):
         raise Exception('Unable to resolve all AdminIds from GADM Level-2.')
 
     return admin2.set_index('admin2_id').drop(columns='_name')
+
+
+def admin2_id_index_from_admin2_US_nhgis(admin2_local):
+    # Join states
+    admin1_recipe = get_recipe('US', 'admin-nhgis-2020', filename='admin1')
+    admin1_crosswalk = (
+        get_admin1(recipe=admin1_recipe, columns=['admin1_id_admin0'])
+        .reset_index()
+        .set_index('admin1_id_admin0')
+    )
+    admin2_local = admin2_local.join(admin1_crosswalk, on='admin1_id_admin0')
+
+    # Create name-based identifier
+    admin2_local['name_link'] = admin2_local['name'].apply(create_comparable_name_link)
+
+    # Add ' city' to the name_link for duplicate name + state
+    # (e.g. Baltimore county vs. city)
+    i_city_duplicates = admin2_local[['admin1_id', 'name']].duplicated(
+        keep=False
+    ) & admin2_local['name_long'].eq(admin2_local['name'] + ' city')
+    admin2_local.loc[i_city_duplicates, 'name_link'] += ' city'
+
+    # Load global reference layer (GADM)
+    admin2 = get_admin2('US')
+    admin2['admin1_id'] = admin2.index.str.slice(0, 5)
+
+    # Correct (replace) names from global reference layer to official
+    admin2_name_crosswalk = get_recipe(
+        'US', 'admin-nhgis-2020', filename='admin2-names-from-gadm'
+    )
+    for _, row in admin2_name_crosswalk.iterrows():
+        admin2.loc[
+            admin2['admin1_id'].eq(row['admin1_id'])
+            & admin2['name'].eq(row['admin2_name_gadm']),
+            'name',
+        ] = row['admin2_name_official']
+
+    admin2['name_link'] = admin2['name'].str.lower().apply(create_comparable_name_link)
+
+    # Join global admin-2 data (with identifier) to local admin-2 data
+    admin2_local = admin2_local.join(
+        admin2.reset_index().set_index(['admin1_id', 'name_link'])['admin2_id'],
+        on=['admin1_id', 'name_link'],
+    )
+
+    # Set new admin2_ids for units that don't exist in the global layer
+    new_admin2_ids = get_recipe(
+        'US',
+        'admin-nhgis-2020',
+        filename='admin2-ids',
+        dtype={'admin2_id_admin0': str},
+    ).set_index('admin2_id_admin0')
+    for admin2_id_admin0, admin2_id in new_admin2_ids['admin2_id'].items():
+        admin2_local.loc[
+            admin2_local['admin2_id_admin0'].eq(admin2_id_admin0), 'admin2_id'
+        ] = admin2_id
+
+    # Ensure the IDs are complete and unique
+    i_null = admin2_local['admin2_id'].isnull()
+    if i_null.any():
+        raise ValueError('Empty `admin2_id`:\n' + str(admin2_local[i_null]))
+
+    i_dupl = admin2_local['admin2_id'].duplicated(keep=False)
+    if i_dupl.any():
+        raise ValueError('Duplicate `admin2_id`:\n' + str(admin2_local[i_dupl]))
+
+    return admin2_local.set_index('admin2_id')
+
+
+# def get_admin_id_crosswalk(admin_id, admin_level, admin_id_col, admin_recipe_id):
+#     """Get a crosswalk Series (source admin ID > openplaces admin ID)
+
+#     Parameters
+#     ----------
+#     admin_id : str
+#         Administrative unit ID of the dataset
+#     admin_level : int
+#         Level of the administrative units that need to be crosswalked
+#     admin_id_col : str
+#         Name of the column in the recipe. Becomes index of crosswalk
+#     admin_recipe_id : str
+#         ID of the admin recipe that contains the crosswalk.
+#     """
+
+#     admin_id_crosswalk = get_admin_by_level(
+#         admin_level,
+#         admin_id,
+#         columns=[admin_id_col],
+#         recipe=get_recipe_by_id(admin_recipe_id),
+#     )
+#     return admin_id_crosswalk.reset_index().set_index(admin_id_col)[
+#         f'admin{admin_level}_id'
+#     ]
+
+
+def find_admin_recipe(admin_id, admin_level):
+    """Find an administrative data ingestion recipe
+
+    Parameters
+    ----------
+    admin_id : str
+        Administrative unit identifier
+    admin_level : int
+        Administrative level for which a recipe is sought.
+    """
+    glob_recipe_path = recipe_path(
+        admin_id, 'admin-*-*', filename=f'admin{admin_level}'
+    )
+    recipe_paths_found = glob.glob(str(glob_recipe_path))
+    if len(recipe_paths_found) > 1:
+        raise NotImplementedError(
+            f'Multiple admin recipes found for {admin_id} at level {admin_level}:\n\n'
+            + '\n'.join(recipe_paths_found)
+            + '\n\nRewrite `find_local_admin_recipe` to make your selection.'
+        )
+
+    recipe_id = Path(recipe_paths_found[0]).name
+    return get_recipe_by_id(recipe_id)

@@ -1,0 +1,49 @@
+# Recipe to import counties for the United States (2024)
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: nhgis
+    portal_url: "https://data2.nhgis.org/main"
+  version: 2020
+
+# Filename of compressed file (set to skip re-downloading)
+compressed_file_name: "nhgis*_shapefile_tl2020_us_county_2020.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+uncompressed_file_name: "US_county_2020.shp"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin2_id_admin1: COUNTYFP
+  admin2_id_admin0: GEOID
+  admin2_id_ansi: COUNTYNS
+  admin2_id_nhgis: GISJOIN
+  admin1_id_admin0: STATEFP
+  stats_area_id: CSAFP
+  stats_area_id_metro: CBSAFP
+  stats_area_id_legal: LSAD
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin0` according to ISO)
+query: "admin1_id_admin0 <= '56'"
+
+# Keep columns that aren't named in the above list
+# keep_unnamed_columns: True
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
+index_function: "openplaces.io.admin.admin2_id_index_from_admin2_US_nhgis"
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+cache_filename: 'admin2'

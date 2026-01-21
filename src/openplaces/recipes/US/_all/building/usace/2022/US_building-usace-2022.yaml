@@ -1,0 +1,95 @@
+# Recipe to import USACE's National Structure Inventory (2022)
+
+# Administrative unit identifier of the highest administrative geography
+# that the dataset covers (single files can cover a lower admin level)
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: building
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: usace
+    # Link to portal with metadata
+    portal_url: "https://www.hec.usace.army.mil/confluence/nsi"
+    # Link to direct download
+    download_url: "https://nsi.sec.usace.army.mil/downloads/nsi_2022/nsi_2022_{admin1_id_admin0}.gpkg.zip"
+  version: 2022
+
+# How is the download data partitioned?
+download_by: admin1
+# Transformations needed to obtain the data partition admin identifier
+# used by the source URL (e.g. lowercase, sanitize, etc.)
+download_partition_key_transform:
+  admin1_name: "remove_spaces"
+
+# Filename of compressed file (set to skip re-downloading)
+compressed_file_name: "nsi_2022_{admin1_id_admin0}.gpkg.zip"
+
+# Path to uncompressed file path (set to skip re-extracting)
+# uncompressed_file_name: "{admin1_id_leaf}_Structures.gdb"
+
+# Columns: `openplaces` variable name -> variable name in imported table
+columns:
+  building_id_usace: fd_id
+  purpose_group: st_damcat
+  purpose_subgroup: occtype
+  n_stories: num_story
+  area_sqft: sqft
+  construction_type: bldgtype
+  foundation_type: found_type
+  foundation_height: found_ht
+  ground_elevation_m: grnd_elv_m
+  structure_value: val_struct 
+  content_value: val_cont 
+  vehicle_value: val_vehic
+  flood_zone: firmzone 
+  year_built_block_median: med_yr_blt
+  n_people_night_lt65: pop2amu65
+  n_people_night_gt65: pop2amo65
+  n_people_day_lt65: pop2pmu65
+  n_people_day_gt65: pop2pmo65
+  n_people_cnty_lt65_disabled: u65disable
+  n_people_cnty_gt65_disabled: o65disable
+  n_students_school: students
+  census_block_id: cbfips
+  source: source
+  building_id_ubid: bid
+  footprint_id: ftprntid
+  footprint_source: ftprntsrc
+
+# Set the index from an existing column
+set_index: building_id_usace
+
+transformations:
+  # Get county FIPS identifier: first 5 characters of census_block_id 
+  - output: admin2_id_admin0
+    type: string
+    operation: substring
+    input: census_block_id
+    args:
+      start: 0
+      end: 5
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - purpose_group
+  - purpose_subgroup
+  - construction_type
+  - foundation_type
+  - source
+  - footprint_source
+
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_col: admin2_id_admin0
+  admin_recipe_id: "US_admin-nhgis-2020_admin2"
+
+# Administrative ID level at which data is saved
+# Set if you want to split the data into smaller chunks
+# (1: by state/department, 2: by county/municipality, 3: by town etc.)
+# The column ``adminX_id`` has to exist in the pre-processed data and
+# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
+cache_by_admin_level: 2

@@ -2,18 +2,9 @@
 src/openplaces/path.py
 
 Standardized path generation for `openplaces` data files.
-
-Implements consistent naming conventions:
-- AdminId_Entity-SourceId-Timestamp_Theme-Attribute-SourceId-Timestamp_filename.ext
-- Entity examples: human, parcel, property, transaction, building
-- Timestamps: flexible format (YYYY, YYYYMMDD, YYYYMMDDHHmmss, etc.)
-
-Administrative Referencing:
-- Directories with admin referencing use structure
-  - Global data uses "_" placeholder: _/building/filename
-- Directories without admin referencing use flat structure
 """
 
+import inspect
 import os
 import re
 from dataclasses import dataclass, field
@@ -26,14 +17,13 @@ from openplaces.core.schema import AdminId, DataSet, Entity
 
 __all__ = [
     'path',
-    'core_path',
     'external_path',
     'external_dir',
     'raw_path',
     'cache_path',
     'heap_path',
     'heap_dir',
-    'log_path',
+    'logs_path',
     'out_path',
     'share_path',
     'models_path',
@@ -65,7 +55,7 @@ class OpenPlacesReference:
     """
     Reference for `openplaces` files and directories.
 
-    Combines admin_id, entity, theme, filename, root directory.
+    Combines admin_id, entity, dataset, filename, and root directory.
     """
 
     admin_id: AdminId
@@ -273,17 +263,29 @@ def code_path(*args):
 def recipe_path(
     *args,
     root=cfg.code_root.joinpath('src', 'openplaces', 'recipes'),
-    use_prefix=False,
-    source=None,
     **kwargs,
 ):
-    if source and 'filename' in kwargs:
-        raise ValueError(
-            "`source` implies `filename='{source}.yaml'`. "
-            'Use `filename` without source.'
+    # Get integer position of `filename` argument in OpenPlacesReference
+    pos_filename = list(inspect.signature(OpenPlacesReference).parameters.keys()).index(
+        'filename'
+    )
+
+    # Infer filename
+    if 'filename' in kwargs:
+        filename = kwargs.pop('filename')
+    elif len(args) == pos_filename + 1:
+        filename = args[pos_filename]
+        args = args[:pos_filename]
+    elif len(args) < pos_filename + 1:
+        filename = ''
+    else:
+        raise NotImplementedError(
+            f'Not implemented: `recipe_path` with more than {pos_filename + 1} unnamed '
+            'arguments.'
         )
 
-    if source:
-        kwargs['filename'] = f'{source}.yaml'
+    # If extension is absent, add default extension for recipes (.yaml)
+    if not '.' in filename:
+        filename += '.yaml'
 
-    return path(*args, root=root, use_prefix=use_prefix, **kwargs)
+    return path(*args, filename=filename, root=root, **kwargs)

@@ -47,15 +47,22 @@ class AdminId:
     def __init__(self, *levels: str):
         """Initialize AdminId with administrative levels."""
         if len(levels) == 0 or levels[0] is None:
-            processed = ()
+            tuple_of_levels = ()
         elif len(levels) == 1 and STRING_SEPARATOR_WITHIN_IDS in levels[0]:
-            processed = tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS))
+            tuple_of_levels = tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS))
         elif isinstance(levels, (list, tuple, set)):
-            processed = tuple(levels)
+            tuple_of_levels = tuple(levels)
         else:
             raise ValueError(f'`levels` is {type(levels)}. Cannot interpret:\n{levels}')
 
-        object.__setattr__(self, 'levels', processed)
+        # Verify that AdminId is correct
+        for i, level in enumerate(tuple_of_levels):
+            if not isinstance(level, str) or not re.match('[A-Z0-9]{2,3}', level):
+                raise ValueError(
+                    f"Admin ID {levels} is invalid at level {i}: '{level}'."
+                )
+
+        object.__setattr__(self, 'levels', tuple_of_levels)
 
     def __str__(self) -> str:
         """Return string representation
@@ -107,14 +114,44 @@ class Source:
     """Data source with metadata."""
 
     source_id: str
-    url: str | None = None
+    # URL for the website that permits data access (with registration)
+    portal_url: str | None = None
+    # Option 1: direct download URL (if set, allows automated download)
+    download_url: str | None = None
+    # Option 2: URL of website listing (changing) download URLs
+    download_url_source: str | None = None
+    # Option 2: Regular expression (string pattern) to extract URL
+    download_url_source_regex: str | None = None
     doi: str | None = None
 
-    def __init__(self, source_id: str = None, url: str = None, doi: str = None):
+    def __init__(
+        self,
+        source_id: str = None,
+        portal_url: str = None,
+        download_url: str = None,
+        download_url_source: str = None,
+        download_url_source_regex: str = None,
+        doi: str = None,
+    ):
         """Initialize AdminId with administrative levels."""
 
+        if download_url and download_url_source:
+            raise ValueError(
+                'An entity can have a `download_url` or a `download_url_source`, '
+                'not both.'
+            )
+
+        if download_url_source and not download_url_source_regex:
+            raise ValueError(
+                'An entity with a `download_url_source` must also have a '
+                '`download_url_source_regex` (string pattern) to extract the URLs.'
+            )
+
         self.source_id = sanitize(source_id) if source_id is not None else None
-        self.url = url
+        self.portal_url = portal_url
+        self.download_url = download_url
+        self.download_url_source = download_url_source
+        self.download_url_source_regex = download_url_source_regex
         self.doi = doi
 
     def __str__(self) -> str:
@@ -316,9 +353,9 @@ def sanitize(s, max_length=255):
     Returns:
         Sanitized filename string with only alphanumeric, underscore, and dash
     """
-    # Replace any character that's not alphanumeric, underscore, or dash
-    # with tilde (yes, also the dot '.', so we can identify directories)
-    s = re.sub(r'[^a-zA-Z0-9_-]', '~', s)
+    # Replace any character that's not alphanumeric, underscore, dash
+    # or a standard wildcard (*, ?) with tilde
+    s = re.sub(r'[^a-zA-Z0-9*?_-]', '~', s)
 
     # Truncate to max length
     s = s[:max_length]

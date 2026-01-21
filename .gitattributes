@@ -4,8 +4,8 @@
 # Files whose line endings should be normalized across operating systems
 *.py text eol=lf
 *.md text eol=lf
-*.txt text eol=lf
 *.yml text eol=lf
+*.txt text eol=lf
 *.yaml text eol=lf
 *.json text eol=lf
 
@@ -19,6 +19,5 @@
 *.zip binary
 
 # Strip outputs and execution logs from notebooks
-*.ipynb filter=nbstripout
+*.ipynb filter=nbstripout diff=ipynb text eol=lf
 *.zpln filter=nbstripout
-*.ipynb diff=ipynb
