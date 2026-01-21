@@ -24,3 +24,6 @@ raster_zonals_resolution_m: 15
 
 # Input / output
 download_timeout: 600
+
+# Default coordinate reference system
+crs: 'epsg:4326'

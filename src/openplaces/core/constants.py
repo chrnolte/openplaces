@@ -14,6 +14,33 @@ ESCAPE_DIR = '_all'
 # Extensions for compressed files (can be uncompressed with `zipfile`)
 ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
 
+# Vector file extensions read with `geopandas` into a `GeoDataFrame`
+GEOPANDAS_EXTENSIONS = {
+    '.shp',
+    '.geojson',
+    '.gpkg',
+    '.gdb',
+    '.kml',
+    '.kmz',
+    '.gml',
+    '.fgb',
+    '.parquet',
+    '.feather',
+    '.gpx',
+    '.tab',
+    '.mif',
+    '.dxf',
+    '.sqlite',
+    '.db',
+}
+
+# Tabular data file extensions read with `pandas` into a `DataFrame`
+PANDAS_EXTENSIONS = {
+    '.csv',
+    '.xlsx',
+    '.xls',
+}
+
 
 # STRING
 
@@ -30,7 +57,7 @@ ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
 
 STRING_SEPARATOR_AGGREGATION = ' ~~ '
 
-# Schema-related stings
+# Schema-related strings
 
 STRING_SEPARATOR_WITHIN_IDS = '-'
 
@@ -38,10 +65,16 @@ STRING_SEPARATOR_BETWEEN_IDS = '_'
 
 # Regex patterns
 # Admin1: ISO and HASC codes
-RE_ADMIN1_IDS_AA_AA = '^[A-Z]{2}\\-[A-Z]{2}$'
-RE_ADMIN1_IDS_AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
-RE_ADMIN1_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
-RE_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
+REGEX_ADMIN1_IDS_AA_AA = '^[A-Z]{2}\\-[A-Z]{2}$'
+REGEX_ADMIN1_IDS_AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
+REGEX_ADMIN1_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
+REGEX_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
+
+# Extract filename from URL
+REGEX_FILENAME_IN_URL = r'/([^/?]+\.[a-zA-Z0-9]+)(?:\?|$)'
+
+# Check whether a filepath has wildcards to search the filesystem
+REGEX_HAS_GLOB_WILDCARDS = r'[*?\[\]]'
 
 # Countries using HASC1 code for Admin-2 level
 ADMIN0_ID_HASC1_A2 = ['AZ', 'BE', 'FR', 'GB', 'GN', 'IT', 'LV']
@@ -142,24 +175,3 @@ GEO_ID_POI_CRS = 'epsg:4326'
 
 # Precision ratio for PoI used in geohashing
 GEO_ID_POI_PRECISION_RATIO = 0.05
-
-
-# Vector file extensions read with `geopandas` into a `GeoDataFrame`
-GEOPANDAS_EXTENSIONS = {
-    '.shp',
-    '.geojson',
-    '.gpkg',
-    '.gdb',
-    '.kml',
-    '.kmz',
-    '.gml',
-    '.fgb',
-    '.parquet',
-    '.feather',
-    '.gpx',
-    '.tab',
-    '.mif',
-    '.dxf',
-    '.sqlite',
-    '.db',
-}
