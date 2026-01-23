@@ -55,17 +55,23 @@ Administrative units are the geographic regions at which property data generatio
 
 - Level 0 (``admin0``): countries
 
-   Identified mostly by ISO Alpha-2 code, with gaps filled.
+  Identified mostly by ISO Alpha-2 code, with gaps filled.
 
-   ``'US'`` for United States
-   ``'CO'`` for Colombia
+  - ``'US'`` for United States
+  - ``'CO'`` for Colombia
 
 - Level 1 (``admin1``): states, departments
 
-   ``'US-MA'`` for the state of Massachusetts, U.S.
-   ``'CO-AN'`` for the department of Antioquia, Colombia
+  - ``'US-MA'`` for the state of Massachusetts, U.S.
+  - ``'CO-AN'`` for the department of Antioquia, Colombia
 
 - Level 2 (``admin2``): counties, municipalities, etc.
 
-   ``'US-MA-MI'`` for Middlesex county, Massachusetts, U.S.
-   ``'CO-AN-ME'`` for the municipality of Medellín, Antioquia, Colombia
+  - ``'US-MA-MI'`` for Middlesex county, Massachusetts, U.S.
+  - ``'CO-AN-ME'`` for the municipality of Medellín, Antioquia, Colombia
+
+- Level 3 (``admin3``): cities, towns, subdivisions, etc.
+
+  *Not globally supported: requires custom recipe for country/region*
+
+  - ``'US-MA-MI-SO'`` for the town of Somerville, Middlesex, Massachusetts, U.S.

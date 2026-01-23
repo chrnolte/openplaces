@@ -1,3 +1,6 @@
+
+/* Custom text highlights for GUI text, files, inputs, and URLs */
+
 .gui {
     background-color: #f0f0f0;
     padding: 0px 6px;
@@ -83,3 +86,34 @@ html.writer-html5 .rst-content table.docutils td, html.writer-html5 .rst-content
 html.writer-html5 .rst-content table.docutils td > p:not(:last-child) {
     margin-bottom:6px;
 }
+
+
+/* List formatting */
+
+/* 1) Default spacing before top-level lists */
+.rst-content ul,
+.rst-content ol {
+  /*background: rgba(0, 255, 0, 0.15) !important; */
+  margin-top: 1em !important;
+}
+
+/* 2) But nested lists should NOT introduce extra top spacing */
+.rst-content li > ul,
+.rst-content li > ol {
+  /*background: rgba(255, 0, 0, 0.15) !important;*/
+  margin-top: 0 !important;
+  margin-bottom: 0.75em !important;
+}
+
+.rst-content ol > li > p,
+.rst-content ul > li > p,
+.rst-content ol > li > a,
+.rst-content ul > li > a {
+    /*background: rgba(0, 0, 255, 0.15) !important;*/
+    margin-bottom: 0.25em !important;
+}
+
+/*Activate to check if CSS is loading*/
+/*.rst-content {
+  outline: 5px solid red !important;
+}*/

@@ -15,15 +15,18 @@ This is the default mode for most users, especially those wanting to contribute 
 Install
 -------
 
-You need to have a version of the Anaconda package manager installed (``conda`` or ``mamba`` needs to be accessible from the :gui:`Terminal` (:gui:`Anaconda Prompt` on Windows).
+You need to have a version of the Anaconda package manager installed.
 
-1. Open :gui:`Terminal`.
+``conda`` or ``mamba`` needs to be executable in the :gui:`Terminal` (OSx, Linux) or :gui:`Anaconda Prompt` (Windows).
+
+1. Open :gui:`Terminal` / :gui:`Anaconda Prompt`.
 
 2. Change to the directory where you want to install the ``openplaces`` codebase:
 
    .. code-block:: bash
 
-      cd ~/code  # Example: 'code' folder in the user directory
+      # Example: 'code' folder in the user directory
+      cd ~/code  
 
 3. Clone the ``openplaces`` Github repository:
 
@@ -57,13 +60,15 @@ To remove your environment, use:
 As a PyPi package
 ~~~~~~~~~~~~~~~~~
 
-``openplaces`` will ultimately be available as a Python package. However, the version on PyPi lags behind the development on Github.
+``openplaces`` is being developed to function as a Python package.
+
+However, during the development stage, the version on PyPi will lag behind the Github repository.
 
 .. code-block:: bash
 
    pip install openplaces
 
-You can also choose to install sub-components of ``openplaces``:
+Install sub-components of ``openplaces``:
 
 .. code-block:: bash
 

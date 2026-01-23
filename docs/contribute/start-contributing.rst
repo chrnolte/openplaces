@@ -1,10 +1,32 @@
-Code style
-~~~~~~~~~~
+Getting started
+~~~~~~~~~~~~~~~
 
-Jupyter notebooks
------------------
+Code on your own branch
+-----------------------
+
+If you want to make edits to the ``openplaces`` source code:
+
+1. Create your own branch for development purposes (use a shorthand that identifies you, e.g. your Github username, or the left part of your professional / BU email address).
+
+2. Change your code.
+
+3. Test your code.
+
+4. Submit a pull request to have your code change reviewed. If they pass review, they'll become part of the ``main`` branch of the repository.
+
+
+Code style
+----------
 
 ``openplaces`` code is formatted using the ``black`` and ``isort`` code formatters.
+
+The only exception to their rulesets is that ``openplaces`` uses single quotes for strings (``'hello'`` not ``"hello"``), as it's cleaner & faster to type on US keyboards.
+
+
+Jupyter notebooks
+^^^^^^^^^^^^^^^^^
+
+``black`` and ``isort`` come preinstalled with the ``openplaces`` ``conda`` environment (see :ref:`install`):
 
 -  :gui:`Menu` > :gui:`Settings` > :gui:`Settings Editor`
 -  Click on :gui:`JSON Settings Editor` (Advanced Settings) in the upper right corner.
@@ -13,7 +35,7 @@ Jupyter notebooks
 
 .. code-block:: json
 
-   {   
+   {
 
        "preferences": {
            "default_formatter": {
@@ -45,6 +67,6 @@ Jupyter notebooks
 
 
 Python files
-------------
+^^^^^^^^^^^^
 
 Run ``python dev.py format`` (uses ``ruff``)
