@@ -90,26 +90,24 @@ Configuration files are used in priority order: **user > project > defaults**.
 
 1. **User configuration** (highest priority)
    
-   * File location: ``~/.config/openplaces/config.yaml``
+   * A user configuration file is created interactively upon the first time a new user runs ``import openplaces``.
      
-     The file is created interactively upon the first time a new user runs ``import openplaces``.
-     
+     Its location depends on your operating system:
+
      * macOS: ``~/Library/Application Support/openplaces/config.yaml``
      * Linux: ``~/.config/openplaces/config.yaml``
      * Windows: ``%APPDATA%\openplaces\config.yaml``
-   * User-specific overrides to the project configuration.
-   * Not committed to version control (``git``).
+   * It contains user-specific overrides to the project configuration and is not committed to version control (``git``).
 
 2. **Project configuration** (default values)
    
-   * Location: ``./openplaces.yaml`` in project root directory
-   * Project-wide defaults
-   * Committed to version control
-   * Shared by all users of an installation
+   * Location: ``/openplaces.yaml`` (root directory of repository).
+   * Project-wide defaults committed to version control.
+   * Shared by all users of an installation.
 
 3. **Built-in defaults** (fallback)
    
-   * Hardcoded in ``config.py`` with platform-appropriate paths
+   * Hardcoded in ``config.py``.
 
 
 First time setup
