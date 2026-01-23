@@ -247,6 +247,7 @@ def _resolve_downloaded_and_data_paths(
 
     Returns a tuple of:
     - downloaded_path: the path where the downloaded file is stored
+      (will return `None` if `data_path` exists: no download needed)
     - data_path: the path of the readable data file (can be compressed)
 
     Parameters
@@ -385,6 +386,7 @@ def download_and_unzip_recipe_data(
         URL from which to download the data
     downloaded_path : str
         Path of the downloaded data file (might be compressed)
+        Can be None, if `data_path` is not None and exists.
     data_path : str
         Path of the file to read (compressed or uncompressed)
     redo : bool
@@ -403,7 +405,9 @@ def download_and_unzip_recipe_data(
     recipe_heap_dir = heap_dir(recipe['admin_id'], recipe['entity'])
 
     # Download if necessary
-    if not downloaded_path or not downloaded_path.exists():
+    if (not downloaded_path or not downloaded_path.exists()) and (
+        not data_path or not data_path.exists()
+    ):
         _catch_missing_download_url_error(recipe, downloaded_path)
 
         with log_step('Download', timer=timer):
@@ -690,9 +694,10 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
     )
 
     # Download and unzip the data (if it has not happened yet)
-    data_path = download_and_unzip_recipe_data(
-        recipe, download_url, downloaded_path, data_path, redo
-    )
+    if data_path is None or not data_path.exists():
+        data_path = download_and_unzip_recipe_data(
+            recipe, download_url, downloaded_path, data_path, redo
+        )
 
     # Read data
     gdf = read_recipe_data(recipe, data_path, admin_id=admin_id, timer=timer)
