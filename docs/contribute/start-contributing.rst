@@ -20,7 +20,7 @@ Code style
 
 ``openplaces`` code is formatted using the ``black`` and ``isort`` code formatters.
 
-The only exception to their rulesets is that ``openplaces`` uses single quotes for strings (``'hello'`` not ``"hello"``), as it's cleaner & faster to type on US keyboards.
+With only one exception: we use single quotes for strings (``'hello'`` not ``"hello"``), as it looks cleaner and is faster to type on US keyboards.
 
 
 Jupyter notebooks
