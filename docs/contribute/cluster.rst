@@ -11,14 +11,21 @@ Connect
 
 -  Open :gui:`Terminal`.
 
--  Log onto BU's cluster:
+-  Log onto BU's cluster via the ``geo`` server (Earth & Environment):
 
    .. code-block:: bash
 
-      # When accessing restricted data (default)
-      ssh your_username@scc4.bu.edu
+      ssh your_username@geo.bu.edu
 
    You will be prompted for your password and two-factor authentication.
+
+.. note::
+
+   When accessing restricted data, you need to log onto ``scc4``
+
+   .. code-block:: bash
+
+      ssh your_username@scc4.bu.edu
 
 
 Get your own copy of the code
@@ -91,7 +98,7 @@ Using OnDemand
 
    Wait a little bit until your request has cleared and your interactive session has been created.
 
-   After a bit, a new button will apear: :input:`Connect to Jupyter`.
+   After a bit, a new button will appear: :input:`Connect to Jupyter`.
 
    Click it and start coding!
 
