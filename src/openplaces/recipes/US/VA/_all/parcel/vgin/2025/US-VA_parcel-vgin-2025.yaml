@@ -15,14 +15,14 @@ entity:
   source: 
     source_id: vgin
     # URL to download
-    download_url: "https://www.arcgis.com/sharing/rest/content/items/29627d7c051a47dc8ce71b4484531ab3/data"
+    download_url: "https://vginmaps.vdem.virginia.gov/download/BaseMapData/SHP/VirginiaParcel.shp.zip"
   version: 2025
 
 # Path to compressed file (set to skip re-downloading)
-compressed_file_name: "Virginia_Parcels.zip"
+compressed_file_name: "VirginiaParcel.shp.zip"
 
 # Path to uncompressed file path (set to skip re-extracting)
-uncompressed_file_name: "Virginia_Parcel_Dataset_2025Q4.gdb"   # ArcGIS format
+uncompressed_file_name: "VirginiaParcel.shp"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 # columns:
