@@ -1,5 +1,5 @@
-Configure your file system
-==========================
+Configuration
+=============
 
 Before you start using ``openplaces``, you need to configure your installation.
 
@@ -94,9 +94,9 @@ Configuration files are used in priority order: **user > project > defaults**.
      
      Its location depends on your operating system:
 
+     * Windows: ``%APPDATA%\openplaces\config.yaml``
      * macOS: ``~/Library/Application Support/openplaces/config.yaml``
      * Linux: ``~/.config/openplaces/config.yaml``
-     * Windows: ``%APPDATA%\openplaces\config.yaml``
    * It contains user-specific overrides to the project configuration and is not committed to version control (``git``).
 
 2. **Project configuration** (default values)
@@ -172,7 +172,6 @@ Best for team projects where multiple people work on the same codebase.
    └── reports/                   # 🌍 Shared
        └── YourUsername/          # 👤 Yours
 
-* User-specific subfolders for: ``cache``, ``heap``, ``logs``, ``core``, ``out``
+* User subfolders for: ``cache``, ``heap``, ``logs``, ``core``, ``out``
 * Shared folders for: ``external``, ``raw``, ``share``
 * User subfolders in ``models``, ``reports``
-* Full config file created with your directory settings
