@@ -440,6 +440,15 @@ def download_and_unzip_recipe_data(
     return data_path
 
 
+def _admin_id_is_below_dataset_admin_id(recipe, admin_id):
+    admin_id_level = len(AdminId(admin_id).levels) - 1
+    if 'download_by' in recipe and recipe['download_by'].startswith('admin'):
+        dataset_level = int(recipe['download_by'].replace('admin', ''))
+    else:
+        dataset_level = len(AdminId(recipe['admin_id']).levels) - 1
+    return admin_id_level > dataset_level
+
+
 def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
     """Read a data file from a recipe
 
@@ -450,7 +459,7 @@ def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
     data_path : pathlib.Path
         Path to data file
     admin_id : str
-        Identifier of the administrative unit to download / process.
+        Identifier of the administrative unit to read.
         Used to query (access subsets of) large data files.
     timer : openplaces.timing.Timer or None
         Timer
@@ -458,8 +467,7 @@ def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
     if timer is None:
         timer = get_timer('read_recipe_data', verbose=True)
 
-    # Resolve `where` clause
-    if admin_id is not None:
+    if admin_id is not None and _admin_id_is_below_dataset_admin_id(recipe, admin_id):
         if 'process_by' not in recipe:
             raise NotImplementedError(
                 f"`admin_id` is {admin_id} but no 'process_by' in `recipe`."
