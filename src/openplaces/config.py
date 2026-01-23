@@ -21,10 +21,7 @@ import yaml
 from platformdirs import user_config_dir
 from pyproj import CRS
 
-# from openplaces.core.constants import (
-# GEO_MIN_AREA_M2,
-# RASTER_ZONAL_STATISTICS_RESOLUTION_M,
-# )
+from openplaces.core.constants import CRS_LAT_LONG, GEO_MIN_AREA_M2
 
 # Application name and author to locate user configuration files
 APPNAME = 'openplaces'
@@ -104,8 +101,8 @@ class OpenPlacesConfig:
     }
 
     DEFAULTS = {
-        # 'geo_min_area_m2': GEO_MIN_AREA_M2,
-        # 'raster_zonal_statistics_resolution_m': RASTER_ZONAL_STATISTICS_RESOLUTION_M,
+        'crs': CRS_LAT_LONG,
+        'geo_min_area_m2': GEO_MIN_AREA_M2,
     }
 
     def __init__(
