@@ -24,3 +24,6 @@ geo_min_area_m2: 1
 
 # Default coordinate reference system
 crs: 'epsg:4326'
+
+# Timeout for downloads
+download_timeout: 600
