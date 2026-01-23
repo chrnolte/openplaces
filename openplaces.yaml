@@ -19,11 +19,8 @@ directories:
   models: models            # Trained and serialized models
   reports: reports          # Reports, publications, figures 
 
-# Rasterization settings
-raster_zonals_resolution_m: 15
-
-# Input / output
-download_timeout: 600
+# Smallest area of imported polygons
+geo_min_area_m2: 1
 
 # Default coordinate reference system
 crs: 'epsg:4326'
