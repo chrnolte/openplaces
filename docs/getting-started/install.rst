@@ -2,8 +2,8 @@
 
 .. _install:
 
-Install openplaces
-==================
+Installation
+============
 
 As an application
 ~~~~~~~~~~~~~~~~~
