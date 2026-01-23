@@ -19,16 +19,9 @@ entity:
 
 # How is the download data partitioned?
 download_by: admin1
-# Transformations needed to obtain the data partition admin identifier
-# used by the source URL (e.g. lowercase, sanitize, etc.)
-download_partition_key_transform:
-  admin1_name: "remove_spaces"
 
 # Filename of compressed file (set to skip re-downloading)
 compressed_file_name: "nsi_2022_{admin1_id_admin0}.gpkg.zip"
-
-# Path to uncompressed file path (set to skip re-extracting)
-# uncompressed_file_name: "{admin1_id_leaf}_Structures.gdb"
 
 # Columns: `openplaces` variable name -> variable name in imported table
 columns:
@@ -50,8 +43,8 @@ columns:
   n_people_night_gt65: pop2amo65
   n_people_day_lt65: pop2pmu65
   n_people_day_gt65: pop2pmo65
-  n_people_cnty_lt65_disabled: u65disable
-  n_people_cnty_gt65_disabled: o65disable
+  perc_people_cnty_lt65_disabled: u65disable
+  perc_people_cnty_gt65_disabled: o65disable
   n_students_school: students
   census_block_id: cbfips
   source: source
