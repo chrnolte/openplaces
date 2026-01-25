@@ -25,6 +25,9 @@ compressed_file_name: "nc-parcels-gdb-most-recent.zip"
 # Path to uncompressed file path (set to skip re-extracting)
 uncompressed_file_name: "NC_Parcels_all.gdb"
 
+# Layer to parcel polygons
+layer: nc_parcels_poly
+
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
