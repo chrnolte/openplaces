@@ -127,14 +127,14 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
     return to_path
 
 
-def unzip(in_path, out_path=None, members=None):
+def unzip(in_path, out_dir=None, members=None):
     """Extract files from a zip archive.
 
     Parameters
     ----------
     in_path : str or Path
         Path to input zip file
-    out_path : str or Path, optional
+    out_dir : str or Path, optional
         Output directory. If None, extracts to directory named after
         the zip file (without extension) in the same location.
         Example: 'data.zip' -> 'data/'
@@ -163,26 +163,40 @@ def unzip(in_path, out_path=None, members=None):
     if not in_path.exists():
         raise FileNotFoundError(f"Zip file not found: {in_path}")
 
-    if out_path is None:
-        out_path = in_path.parent / in_path.stem
+    if out_dir is None:
+        out_dir = in_path.parent / in_path.stem
     else:
-        out_path = Path(out_path)
-    out_path.mkdir(parents=True, exist_ok=True)
+        out_dir = Path(out_dir)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         with ZipFile(in_path, 'r') as z:
             all_members = z.namelist()
             member_list = members or all_members
 
-            # Check if all files are in a single top-level folder matching zip name
-            zip_stem = in_path.stem
-            prefix = f"{zip_stem}/"
-            strip_prefix = (
-                members is None
-                and all(  # Only auto-strip when extracting all files
-                    m.startswith(prefix) or m == zip_stem for m in all_members
-                )
-            )
+            # Determine if we should strip a common prefix
+            strip_prefix = None
+
+            # Get top-level items from member_list
+            # Items with '/' are directories, items without are files
+            top_level_items = set()
+            for m in member_list:
+                if not m:
+                    continue
+                # Get first path component
+                first_component = m.split('/')[0]
+                top_level_items.add(first_component)
+
+            # If all members share a single top-level directory (not file)
+            # Check if there's more than just the top-level item itself
+            if len(top_level_items) == 1:
+                common_prefix = list(top_level_items)[0]
+                # Only strip if it's actually a directory (has nested content)
+                # and is not a geodatabase
+                has_nested = any('/' in m for m in member_list)
+                if has_nested and not common_prefix.endswith('.gdb'):
+                    strip_prefix = f"{common_prefix}/"
 
             total_size = sum(z.getinfo(m).file_size for m in member_list)
 
@@ -191,15 +205,17 @@ def unzip(in_path, out_path=None, members=None):
             ) as pbar:
                 for member in member_list:
                     # Skip the top-level folder itself if stripping
-                    if strip_prefix and member == zip_stem:
+                    if strip_prefix and member == strip_prefix.rstrip('/'):
                         continue
 
                     # Determine target path
-                    if strip_prefix:
-                        relative_path = member.removeprefix(prefix)
-                        target = out_path / relative_path
+                    if strip_prefix and member.startswith(strip_prefix):
+                        relative_path = member.removeprefix(strip_prefix)
+                        if not relative_path:
+                            continue
+                        target = out_dir / relative_path
                     else:
-                        target = out_path / member
+                        target = out_dir / member
 
                     if member.endswith('/'):
                         target.mkdir(parents=True, exist_ok=True)
@@ -209,11 +225,11 @@ def unzip(in_path, out_path=None, members=None):
                             while chunk := src.read(8192):
                                 dst.write(chunk)
                                 pbar.update(len(chunk))
+
     except BadZipFile as e:
         raise BadZipFile(f"Invalid zip file: {in_path}") from e
 
-    # Return output path
-    return out_path
+    return out_dir
 
 
 def find_latest_file_or_gdb(
