@@ -445,7 +445,7 @@ def _admin_id_is_below_dataset_admin_id(recipe, admin_id):
     if 'download_by' in recipe and recipe['download_by'].startswith('admin'):
         dataset_level = int(recipe['download_by'].replace('admin', ''))
     else:
-        dataset_level = len(AdminId(recipe['admin_id']).levels) - 1
+        dataset_level = len(recipe['admin_id'].levels) - 1
     return admin_id_level > dataset_level
 
 
