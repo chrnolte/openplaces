@@ -296,10 +296,11 @@ def get_admin_by_level(level, *args, **kwargs):
 
 
 def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
-    """Gets list of administrative unit IDs for a given level/recipe"""
-    return get_admin_by_level(
+    """Get list of administrative unit IDs for a given level/recipe"""
+    admin_ids = get_admin_by_level(
         admin_level,
         admin_id,
         columns=[],
         recipe=get_recipe_by_id(admin_recipe) if admin_recipe is not None else None,
     ).index.tolist()
+    return sorted(admin_ids)
