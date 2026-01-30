@@ -23,16 +23,18 @@ ADMIN1_PRIMARY_COLUMNS = [
 ]
 ADMIN2_PRIMARY_COLUMNS = [
     'name',
+    'name_long',
     'type',
     'admin1_name',
     'admin0_name',
+    'admin2_id_admin0',
     'lat',
     'long',
     'ha',
 ]
 
 
-def get_admin0(admin_id=None, geom=False, all_columns=False):
+def get_admin0(admin_id=None, geom=False, recipe=None, all_columns=False):
     """Get units of admin level 0 (countries).
 
     Parameters
@@ -43,11 +45,16 @@ def get_admin0(admin_id=None, geom=False, all_columns=False):
     geom : bool
         If False or None, return DataFrame without geometries.
         If True, return GeoDataFrame with default polygon geometries.
+    recipe : str
+        If a valid recipe, will use outcomes of that recipe.
     all_columns : bool
         If True, returns not only the most important columns
     """
 
-    recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin0')
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    elif recipe is None:
+        recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin0')
 
     parquet_path = cache_path(
         recipe['admin_id'],
@@ -97,7 +104,9 @@ def get_admin1(admin_id=None, geom=False, recipe=None, columns=None, all_columns
         If True, returns not only the most important columns
     """
 
-    if recipe is None:
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    elif recipe is None:
         recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin1')
 
     parquet_path = cache_path(
@@ -161,7 +170,9 @@ def get_admin2(admin_id=None, geom=False, recipe=None, columns=None, all_columns
         If True, returns all columns (not only primary ones)
     """
 
-    if recipe is None:
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    elif recipe is None:
         recipe = get_recipe(AdminId(), ADMIN_SOURCE, filename='admin2')
 
     parquet_path = cache_path(
