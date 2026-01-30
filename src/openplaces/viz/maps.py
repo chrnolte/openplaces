@@ -358,7 +358,7 @@ def show_building(
             if verbose:
                 print(f'Parcel GID: {_gid}')
             txt_p_list += [
-                f'Parcel # {_p_txt['parcel_id_admin2']}\n'
+                f'Parcel ID {_p_txt['parcel_id_admin2']}\n'
                 # + f'{_p_txt['geo_zone_name'].title().split(' - ')[1][:25]}\n'
                 + f'{_p_txt['purpose_group'].title()[:25]}\n'
                 + f'{_p_txt['address'].title()}\n'
@@ -411,14 +411,14 @@ def show_building(
                 )
             txt_nsi_list = []
             for (
-                building_id_usace,
-                buildings_nsi_on_parcel_item,
+                _,
+                buildings_nsi_on_parcel_item
             ) in buildings_nsi_on_parcel.head(N_MAX_NSI).iterrows():
                 nsi_use_code = nsi_use_codes[
                     buildings_nsi_on_parcel_item['purpose_subgroup']
                 ]
                 txt_nsi_list += [
-                    f'NSI # {building_id_usace}\n'
+                    f'NSI ID {buildings_nsi_on_parcel_item['building_id_usace']}\n'
                     + f'{nsi_use_code}\n'
                     + 'Bldg value (2021): '
                     + f'${int(buildings_nsi_on_parcel_item['structure_value']):,d}'
@@ -485,7 +485,7 @@ def show_building(
             txt_fema_list = []
             city = None
             for (
-                building_id_fema,
+                _,
                 fema_building_on_parcel,
             ) in buildings_fema_on_parcel.head(N_MAX_FEMA).iterrows():
                 txt_use = (
@@ -494,7 +494,7 @@ def show_building(
                 )
                 address = (fema_building_on_parcel['address'] or 'No address')
                 txt_fema_list += [
-                    f'FEMA # {int(building_id_fema)}\n'
+                    f'FEMA ID {int(fema_building_on_parcel['building_id_fema'])}\n'
                     + f'{txt_use.title()}\n'
                     + f'{address.title()}\n'
                     + (
