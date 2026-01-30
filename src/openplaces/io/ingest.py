@@ -34,7 +34,7 @@ from openplaces.io import download, find_latest_file_or_gdb, to_parquet, unzip
 from openplaces.io.admin import find_admin_recipe  # , get_admin_id_crosswalk
 from openplaces.io.parcel import drop_problematic_parcels
 from openplaces.io.transform import apply_transformations, get_crosswalk
-from openplaces.path import cache_path, external_dir, heap_dir
+from openplaces.path import cache_path, external_dir, heap_dir, recipe_path
 from openplaces.timing import get_timer, log_step
 
 __all__ = [
@@ -146,10 +146,10 @@ def _resolve_placeholders(
                     partition_key = partition_id
                 else:
                     raise NotImplementedError(
-                        f'URL placeholders different from `download_by` are only'
+                        "URL placeholders different from `download_by` are only"
                         f'implemented for administrative units:\n\n'
                         f'Placeholder: `{placeholder}`, '
-                        f'`download_by`: `{recipe['download_by']}`'
+                        f"`download_by`: `{recipe['download_by']}`"
                     )
             elif placeholder == recipe['download_by'] + '_id':
                 # Special case: `adminX_id`
@@ -540,6 +540,32 @@ def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
     return gdf
 
 
+def get_labels(recipe, column):
+    """Get dictionary of codes > labels for a column in a recipe
+
+    Parameters
+    ----------
+    recipe : dict
+        openplaces recipe
+    column : str
+        Column for which to find a CSV file with labels near the recipe
+        Underscores will be converted to dashes.
+        Example: if the column is 'purpose_group', the label CSV is:
+        '<recipe_id>_purpose-group-labels.csv'
+    """
+    labels_path = recipe_path(
+        recipe['admin_id'],
+        recipe['entity'],
+        filename=column.replace('_', '-') + '-labels.csv',
+    )
+    if labels_path.exists():
+        labels = pd.read_csv(labels_path)
+        labels = labels.set_index(labels.columns[0])[labels.columns[1]].to_dict()
+        return labels
+    else:
+        return None
+
+
 def preprocess_recipe_data(df, recipe, timer=True):
     """Preprocess imported dataset
 
@@ -576,9 +602,23 @@ def preprocess_recipe_data(df, recipe, timer=True):
 
     # Cast columns to categorical
     if 'columns_to_categorical' in recipe:
-        cols = [v for v in recipe['columns_to_categorical'] if v in df]
-        assert isinstance(cols, list)
-        df[cols] = df[cols].astype('category')
+        columns_to_cast = [v for v in recipe['columns_to_categorical'] if v in df]
+        for column_to_cast in columns_to_cast:
+            # If labels are provided, use labels as categories
+            # (more human-readable)
+            labels = get_labels(recipe, column_to_cast)
+            if labels is not None:
+                values = df[column_to_cast].replace(labels)
+                categories = labels.values()
+                ordered = True
+            else:
+                values = df[column_to_cast]
+                categories = None
+                ordered = False
+            df[column_to_cast] = pd.Series(
+                pd.Categorical(values, categories, ordered),
+                index=values.index,
+            )
 
     # Set index
     if 'set_index' in recipe:

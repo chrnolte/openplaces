@@ -375,9 +375,10 @@ def show_building(
                 + f'Bldg value (2025): ${int(_p_txt['building_value']):,d}\n'
                 + f'Owner: {_p_txt['owner_name'].title()[:25]}'
             ]
-        if len(parcel) > N_MAX_PARCEL_TEXT:
+        n_omitted = len(parcel) - N_MAX_PARCEL_TEXT
+        if n_omitted > 0:
             txt_p_list += [
-                f'... and {len(parcel)-N_MAX_PARCEL_TEXT} more'
+                f'... and {n_omitted} more'
             ]
         txt_parcel = '\n\n'.join(txt_p_list)
         ax.text(
@@ -394,18 +395,13 @@ def show_building(
             ),
         )
 
-
     if parcel_found and 'buildings_nsi' in geodatasets:
 
         nsi_use_codes = (
-            get_recipe_by_id('US_building-usace-2022_purpose-group-codebook')
-            .set_index('code')['label']
+            get_recipe_by_id('US_building-usace-2022_purpose-subgroup-labels')
+            .set_index('purpose_subgroup')['purpose_subgroup_label']
             .to_dict()
         )
-        nsi_use_codes = {
-            k: v.replace(' Residential', '').replace(' housing', '')
-            for k, v in nsi_use_codes.items()
-        }
 
         buildings_nsi_on_parcel = gpd.sjoin(
             parcel[['geometry']].iloc[[0]],
@@ -436,7 +432,7 @@ def show_building(
                     + f'${int(buildings_nsi_on_parcel_item['structure_value']):,d}'
                 ]
 
-            n_omitted = len(buildings_nsi_on_parcel) > N_MAX_BUILDINGS_NSI_TEXT
+            n_omitted = len(buildings_nsi_on_parcel) - N_MAX_BUILDINGS_NSI_TEXT
             if n_omitted > 0:
                 txt_nsi_list += [
                     f'... and {n_omitted} more'
@@ -510,8 +506,7 @@ def show_building(
                         if fema_building_on_parcel['frac_sqft'] < 0.99
                         else ''
                     )
-                    + f'{fema_building_on_parcel['footprint_area_sqft']:,.0f} '
-                    + r'ft$^2$'
+                    + f'{fema_building_on_parcel['footprint_area_sqft']:,.0f} sqft'
                     + f'\n{fema_building_on_parcel['validation_method'].title()}'
                 ]
                 city = fema_building_on_parcel['city'] or city
