@@ -6,7 +6,6 @@ General-purpose utility functions for formatting, display, and debugging.
 
 from __future__ import annotations
 
-import json
 import re
 import unicodedata
 from dataclasses import asdict, is_dataclass
@@ -24,10 +23,12 @@ def pretty_print(
     """
     Pretty print nested dictionaries, lists, and Python class instances.
 
-    Converts dataclasses and objects with __dict__ to dictionaries recursively,
-    then formats them in YAML-style (no quotes around keys, indentation-based).
+    Converts dataclasses and objects with __dict__ to dictionaries
+    recursively, then formats them in YAML-style (no quotes around keys,
+    indentation-based).
 
-    By default, prints the output directly. Set return_string=True to get the string instead.
+    By default, prints the output directly. Set return_string=True to
+    get the string instead.
 
     Parameters
     ----------
@@ -45,7 +46,8 @@ def pretty_print(
     Returns
     -------
     str | None
-        If return_string=True, returns formatted string. Otherwise prints and returns None.
+        If return_string=True, returns formatted string. Otherwise
+        prints and returns None.
 
     Examples
     --------

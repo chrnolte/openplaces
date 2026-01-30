@@ -1,7 +1,6 @@
 import numpy as np
 from pyproj import CRS
 
-
 # DIRECTORY STRUCTURE
 
 # Escape directory (to signal end of administrative folder depth)

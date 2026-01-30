@@ -151,9 +151,13 @@ def get_recipe_by_id(recipe_id, **kwargs):
         admin_id, entity, filename = filename_stem_parts
     else:
         raise ValueError(f'Could not split recipe_id into its parts: {recipe_id}')
+
+    if isinstance(filename, str) and isinstance(extension, str):
+        filename += '.' + extension
+
     return get_recipe(
         admin_id,
         entity,
-        filename=filename + ('.' + extension if extension else ''),
+        filename=filename,
         **kwargs,
     )

@@ -14,7 +14,8 @@ YAML recipe specifications. It supports:
 """
 
 import warnings
-from typing import Any, Callable, Dict, List, Union
+from collections.abc import Callable
+from typing import Any
 
 import geopandas as gpd
 import numpy as np
@@ -25,7 +26,7 @@ from openplaces.recipe import get_recipe_by_id
 
 # Operations
 
-UNARY_OPS: Dict[str, Callable] = {
+UNARY_OPS: dict[str, Callable] = {
     'log': np.log,
     'arcsinh': np.arcsinh,
     'arcsinh_median_centered': lambda x: np.arcsinh(x / x.median()),
@@ -35,7 +36,7 @@ UNARY_OPS: Dict[str, Callable] = {
     'power': lambda x, exponent: x**exponent,
 }
 
-BINARY_OPS: Dict[str, Callable] = {
+BINARY_OPS: dict[str, Callable] = {
     'add': lambda x, y: x + y,
     'subtract': lambda x, y: x - y,
     'multiply': lambda x, y: x * y,
@@ -44,7 +45,7 @@ BINARY_OPS: Dict[str, Callable] = {
     'mod': lambda x, y: x % y,
 }
 
-AGGREGATE_OPS: Dict[str, Callable] = {
+AGGREGATE_OPS: dict[str, Callable] = {
     'sum': lambda cols, fill_na=None: _aggregate_cols(cols, 'sum', fill_na),
     'min': lambda cols, fill_na=None: _aggregate_cols(cols, 'min', fill_na),
     'max': lambda cols, fill_na=None: _aggregate_cols(cols, 'max', fill_na),
@@ -60,7 +61,7 @@ AGGREGATE_OPS: Dict[str, Callable] = {
     ),
 }
 
-CONDITIONAL_OPS: Dict[str, Callable] = {
+CONDITIONAL_OPS: dict[str, Callable] = {
     'less_than': lambda x, threshold: (x < threshold).astype(int),
     'less_equal': lambda x, threshold: (x <= threshold).astype(int),
     'greater_than': lambda x, threshold: (x > threshold).astype(int),
@@ -69,7 +70,7 @@ CONDITIONAL_OPS: Dict[str, Callable] = {
     'not_equal': lambda x, threshold: (x != threshold).astype(int),
 }
 
-DATETIME_OPS: Dict[str, Callable] = {
+DATETIME_OPS: dict[str, Callable] = {
     'year': lambda x: x.dt.year,
     'month': lambda x: x.dt.month,
     'year_month': lambda x: x.dt.month + '-' + x.dt.month,
@@ -82,7 +83,7 @@ DATETIME_OPS: Dict[str, Callable] = {
     'year_continuous': lambda x: x.dt.year + x.dt.dayofyear.div(365),
 }
 
-STRING_OPS: Dict[str, Callable] = {
+STRING_OPS: dict[str, Callable] = {
     'substring': lambda x, start, end=None: x.str[start:end],
     'upper': lambda x: x.str.upper(),
     'lower': lambda x: x.str.lower(),
@@ -96,7 +97,7 @@ STRING_OPS: Dict[str, Callable] = {
 # Helper functions for aggregate operations
 
 
-def _aggregate_cols(cols: List[pd.Series], operation: str, fill_na) -> pd.Series:
+def _aggregate_cols(cols: list[pd.Series], operation: str, fill_na) -> pd.Series:
     """Aggregate multiple columns with an operation."""
     df_temp = pd.concat(cols, axis=1)
     if fill_na is not None:
@@ -105,7 +106,7 @@ def _aggregate_cols(cols: List[pd.Series], operation: str, fill_na) -> pd.Series
 
 
 def _any_threshold(
-    cols: List[pd.Series], threshold: float, fill_na, comparison: str
+    cols: list[pd.Series], threshold: float, fill_na, comparison: str
 ) -> pd.Series:
     """Check if any column meets threshold condition."""
     df_temp = pd.concat(cols, axis=1)
@@ -118,7 +119,7 @@ def _any_threshold(
 
 
 def _all_threshold(
-    cols: List[pd.Series], threshold: float, fill_na, comparison: str
+    cols: list[pd.Series], threshold: float, fill_na, comparison: str
 ) -> pd.Series:
     """Check if all columns meet threshold condition."""
     df_temp = pd.concat(cols, axis=1)
@@ -145,10 +146,10 @@ def _get_input_value(df, input_ref):
 
 
 def apply_transformations(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame],
-    recipe: Dict[str, Any],
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    recipe: dict[str, Any],
     silent: bool = False,
-) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
+) -> pd.DataFrame | gpd.GeoDataFrame:
     """
     Apply transformations from recipe to dataframe.
 
@@ -192,10 +193,10 @@ def apply_transformations(
 
 
 def _apply_transformation(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame],
-    config: Dict[str, Any],
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    config: dict[str, Any],
     silent: bool = False,
-) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
+) -> pd.DataFrame | gpd.GeoDataFrame:
     """Apply a single transformation based on configuration."""
     transform_type = config['type']
     output_col = config['output']
@@ -259,7 +260,7 @@ def _apply_transformation(
 
 
 def _apply_unary(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply unary operation to single column."""
     operation = config['operation']
@@ -278,7 +279,7 @@ def _apply_unary(
 
 
 def _apply_binary(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply binary operation to two columns."""
     operation = config['operation']
@@ -296,7 +297,7 @@ def _apply_binary(
 
 
 def _apply_aggregate(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply aggregate operation across multiple columns."""
     operation = config['operation']
@@ -333,7 +334,7 @@ def _apply_aggregate(
 
 
 def _apply_conditional(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply conditional operation to create binary indicator."""
     operation = config['operation']
@@ -347,7 +348,7 @@ def _apply_conditional(
 
 
 def _apply_datetime(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply datetime extraction operation."""
     operation = config['operation']
@@ -369,7 +370,7 @@ def _apply_datetime(
 
 
 def _apply_string(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply string operation to column(s)."""
     operation = config['operation']
@@ -426,7 +427,7 @@ def _apply_string(
 
 
 def _apply_expression(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame], config: Dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
 ) -> pd.Series:
     """Apply complex expression using eval or formatting."""
     expression = config['expression']
@@ -456,10 +457,10 @@ def _apply_expression(
 
 
 def _apply_transformation_pattern(
-    df: Union[pd.DataFrame, gpd.GeoDataFrame],
-    config: Dict[str, Any],
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    config: dict[str, Any],
     silent: bool = False,
-) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
+) -> pd.DataFrame | gpd.GeoDataFrame:
     """Apply pattern-based transformation to multiple columns."""
     pattern = config['pattern']
     transform_type = config['type']
@@ -491,7 +492,8 @@ def _apply_transformation_pattern(
 
         else:
             raise ValueError(
-                f"Pattern-based transformation only supports 'unary' type, got '{transform_type}'"
+                "Pattern-based transformation only supports 'unary' type, "
+                f"got '{transform_type}'"
             )
 
         df = _apply_transformation(df, individual_config, silent)
@@ -500,7 +502,7 @@ def _apply_transformation_pattern(
 
 
 def _apply_remap(
-    series: pd.Series, mapping: Dict[str, Any], default: Any = None
+    series: pd.Series, mapping: dict[str, Any], default: Any = None
 ) -> pd.Series:
     """Apply simple dictionary mapping to series."""
     result = series.map(mapping)
@@ -510,7 +512,7 @@ def _apply_remap(
 
 
 def _apply_remap_pattern(
-    series: pd.Series, patterns: List[Dict], default: Any = None
+    series: pd.Series, patterns: list[dict], default: Any = None
 ) -> pd.Series:
     """Apply regex pattern-based mapping."""
     result = pd.Series(default, index=series.index)
@@ -537,7 +539,7 @@ def _apply_remap_file(
 
 
 def _apply_remap_conditional(
-    series: pd.Series, conditions: List[Dict], default: Any = None
+    series: pd.Series, conditions: list[dict], default: Any = None
 ) -> pd.Series:
     """Apply conditional logic for remapping."""
     result = pd.Series(default, index=series.index)

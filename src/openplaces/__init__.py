@@ -6,4 +6,4 @@ __email__ = "chrnolte@bu.edu"
 
 # Make `openplaces.cfg` available.
 # Also ensures that configuration setup is triggered upon first import
-from .config import cfg
+from .config import cfg as cfg

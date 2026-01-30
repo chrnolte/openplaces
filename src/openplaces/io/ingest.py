@@ -9,19 +9,13 @@ import glob
 import importlib
 import os
 import re
-import shutil
-import tempfile
 import urllib
 import warnings
 from itertools import product
 from pathlib import Path
-from urllib.parse import unquote, urlparse
-from zipfile import BadZipFile, ZipFile
 
 import geopandas as gpd
 import pandas as pd
-import requests
-from tqdm import tqdm
 
 from openplaces.api import get_admin_by_level, get_admin_ids
 from openplaces.config import cfg
@@ -34,8 +28,6 @@ from openplaces.core.constants import (
 )
 from openplaces.core.schema import AdminId
 from openplaces.geo.vector import (
-    add_geometry_derivatives,
-    get_geo_ids,
     overlay_admin_ids,
 )
 from openplaces.io import download, find_latest_file_or_gdb, to_parquet, unzip
@@ -43,7 +35,6 @@ from openplaces.io.admin import find_admin_recipe  # , get_admin_id_crosswalk
 from openplaces.io.parcel import drop_problematic_parcels
 from openplaces.io.transform import apply_transformations, get_crosswalk
 from openplaces.path import cache_path, external_dir, heap_dir
-from openplaces.recipe import get_recipe_by_id
 from openplaces.timing import get_timer, log_step
 
 __all__ = [
@@ -157,7 +148,8 @@ def _resolve_placeholders(
                     raise NotImplementedError(
                         f'URL placeholders different from `download_by` are only'
                         f'implemented for administrative units:\n\n'
-                        f'Placeholder: `{placeholder}`, `download_by`: `{download_by}`'
+                        f'Placeholder: `{placeholder}`, '
+                        f'`download_by`: `{recipe['download_by']}`'
                     )
             elif placeholder == recipe['download_by'] + '_id':
                 # Special case: `adminX_id`
@@ -199,13 +191,13 @@ def _resolve_download_url(
         download_url = recipe['entity'].source.download_url
 
         # Shortcut: if there are no partitions, just return the URL
-        if not 'download_by' in recipe or not recipe['download_by']:
+        if 'download_by' not in recipe or not recipe['download_by']:
             # Catch error if the URL has placeholder
             placeholders_in_url = get_placeholders(download_url)
             if placeholders_in_url:
                 raise ValueError(
-                    'Set `download_by` to resolve partition placeholders in download URL:\n'
-                    f'{placeholders_in_url}'
+                    'Set `download_by` to resolve partition placeholders in download '
+                    f'URL:\n{placeholders_in_url}'
                 )
             partition_keys = None
         else:
@@ -363,12 +355,12 @@ def _catch_missing_download_url_error(recipe, downloaded_path):
                 f'\n\n{downloaded_path.relative_to(cfg.data_root)}\n\n'
             )
         error_message += (
-            f'Recipe for `{recipe["entity"].source}` has no direct download URL.\n'
-            'Download the data manually here:\n\n'
+            f'Recipe for `{recipe["entity"].source}` has no direct download URL.\n\n'
+            '1. Download the data manually here:\n\n'
             + f'{recipe["entity"].source.portal_url}'
-            + f'\n\nSave it in this location:\n\n'
+            + '\n\n2. Save it in this location:\n\n'
             + str(downloaded_path)
-            + '\n\nThen re-run this data ingestion script.'
+            + '\n\n3. Re-run this data ingestion script.'
         )
         raise FileNotFoundError(error_message)
 
@@ -526,27 +518,19 @@ def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
             # Try to read with `geopandas`
             gdf = gpd.read_file(data_path, layer=layer, where=where)
             timer.mark('Read compressed file', path=data_path)
-        except (RuntimeWarning, Exception) as e:
+        except (RuntimeWarning, Exception):
             recipe_heap_dir = heap_dir(recipe['admin_id'], recipe['entity'])
             if not recipe_heap_dir.exists():
                 unzip(data_path, recipe_heap_dir)
 
             data_path = find_latest_file_or_gdb(recipe_heap_dir)
             if data_path is None:
-                raise IOError(
+                raise OSError(
                     f'`geopandas` could not read compressed file:\n\n{data_path}.\n\n'
                     f'After unzipping, could not find a valid dataset in:\n\n{heap_dir}'
                 )
 
-            try:
-                gdf = gpd.read_file(data_path, layer=layer, where=where)
-            except:
-                if 'CDF' in str(e) or 'Permission denied' in str(e):
-                    gdf = gpd.read_file(
-                        data_path, layer=layer, where=where, engine='fiona'
-                    )
-                else:
-                    raise
+            gdf = gpd.read_file(data_path, layer=layer, where=where)
             timer.mark('Read unzipped file', path=data_path)
     else:
         raise ValueError(f'Filepath suffix not yet interpreted: {data_path.suffix}')
@@ -774,7 +758,7 @@ def save_recipe_data(
     if 'cache_by_admin_level' in recipe:
         admin_level = recipe['cache_by_admin_level']
         admin_id_col = f"admin{admin_level}_id"
-        if not admin_id_col in gdf:
+        if admin_id_col not in gdf:
             raise ValueError(
                 f"'cache_by_admin_level' is set, but column "
                 f"'{admin_id_col}' does not exist in DataFrame:\n\n"
@@ -785,7 +769,7 @@ def save_recipe_data(
         # If the passed `admin_id` has the same level as the cached
         # partitions, save only the data for that unit (lightweight)
         if admin_id is not None and len(AdminId(admin_id).levels) == admin_level + 1:
-            if not admin_id in admin_ids_to_save:
+            if admin_id not in admin_ids_to_save:
                 raise ValueError(
                     f'`admin_id` {admin_id} not found in column `{admin_id_col}`.'
                     'Choose from:\n' + ', '.join(admin_ids_to_save)
@@ -794,7 +778,7 @@ def save_recipe_data(
 
     elif admin_id:
         admin_ids_to_save = [admin_id]
-    elif not 'download_by' in recipe or not recipe['download_by'].startswith('admin'):
+    elif 'download_by' not in recipe or not recipe['download_by'].startswith('admin'):
         admin_ids_to_save = [recipe['admin_id']]
     else:
         raise ValueError(
@@ -915,7 +899,7 @@ def ingest_recipe_data(
     if return_result:
         if len(admin_ids_to_process) > 1:
             warnings.warn(
-                f'Multiple administrative units were processed. '
+                'Multiple administrative units were processed. '
                 'Returning data for {admin_id_to_process}.'
             )
         return gdf

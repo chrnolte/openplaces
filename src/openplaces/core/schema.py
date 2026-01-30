@@ -5,7 +5,6 @@ Defines AdminId, Entity, EntityType, Dataset, Source, Theme etc.
 """
 
 import re
-
 from dataclasses import dataclass, field
 from pathlib import Path
 

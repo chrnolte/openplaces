@@ -19,7 +19,6 @@ from typing import Any
 
 import yaml
 from platformdirs import user_config_dir
-from pyproj import CRS
 
 from openplaces.core.constants import CRS_LAT_LONG, GEO_MIN_AREA_M2
 
@@ -303,7 +302,8 @@ class OpenPlacesConfig:
 
         config_content = {
             '_comment': f'openplaces user configuration for {self.username}',
-            '_note': 'This file has highest priority and overrides project defaults (openplaces.yaml).',
+            '_note': 'This file has highest priority and overrides project defaults '
+            '(openplaces.yaml).',
             'directories': directories,
         }
 
