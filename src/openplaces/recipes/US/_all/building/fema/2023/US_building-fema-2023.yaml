@@ -32,19 +32,19 @@ uncompressed_file_name: "{admin1_id_leaf}_Structures.gdb"
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
   building_id_fema: BUILD_ID
-  admin2_id_admin0: FIPS
   address: PROP_ADDR
+  city: PROP_CITY
   purpose_group: OCC_CLS
   purpose_subgroup: PRIM_OCC
   height: HEIGHT
-  postal_code: PROP_ZIP
-  census_tract_id: CENSUSCODE
+  construction_code: B_CODE
+  footprint_area_m2: SQMETERS
+  footprint_area_sqft: SQFEET
   image_date: IMAGE_DATE
   validation_method: VAL_METHOD
-  construction_code: B_CODE
-
-# Keep columns that aren't named in the above list
-# keep_unnamed_columns: False
+  postal_code: PROP_ZIP
+  census_tract_id: CENSUSCODE
+  admin2_id_admin0: FIPS
 
 # Set the index from an existing column
 set_index: building_id_fema
