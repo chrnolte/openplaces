@@ -32,12 +32,12 @@ columns:
   area_sqft: sqft
   construction_type: bldgtype
   foundation_type: found_type
-  foundation_height: found_ht
+  foundation_height_ft: found_ht
   ground_elevation_m: grnd_elv_m
-  structure_value: val_struct 
-  content_value: val_cont 
+  structure_value: val_struct
+  content_value: val_cont
   vehicle_value: val_vehic
-  flood_zone: firmzone 
+  flood_zone: firmzone
   year_built_block_median: med_yr_blt
   n_people_night_lt65: pop2amu65
   n_people_night_gt65: pop2amo65

@@ -1,0 +1,41 @@
+﻿purpose_subgroup,purpose_subgroup_label
+RES1-1SNB,"Single Family, 1 story, no basement"
+RES1-1SWB,"Single Family, 1 story, with basement"
+RES1-2SNB,"Single Family, 2 story, no basement"
+RES1-2SWB,"Single Family, 2 story, with basement"
+RES1-3SNB,"Single Family, 3 story, no basement"
+RES1-3SWB,"Single Family, 3 story, with basement"
+RES1-SLNB,"Single Family, split-level, no basement"
+RES1-SLWB,"Single Family, split-level, with basement"
+RES2,Manufactured Home
+RES3A,"Multi-Family, 2 units"
+RES3B,"Multi-Family, 3-4 units"
+RES3C,"Multi-Family, 5-10 units"
+RES3D,"Multi-Family, 10-19 units"
+RES3E,"Multi-Family, 20-50 units"
+RES3F,"Multi-Family, 50 plus units"
+RES4,Hotel
+RES5,Institutional Dormitory
+RES6,Nursing Home
+COM1,Retail
+COM2,Wholesale
+COM3,Personal & Repair Services
+COM4,Professional Technical Services
+COM5,Bank
+COM6,Hospital
+COM7,Medical Office
+COM8,Entertainment/Recreation
+COM9,Theater
+COM10,Garage
+IND1,Heavy Industrial
+IND2,Light Industrial
+IND3,Food/Drug/Chemical
+IND4,Metals/Minerals processing
+IND5,High Technology
+IND6,Construction
+AGR1,Agricultural
+REL1,Church
+GOV1,Government Services
+GOV2,Emergency Response
+EDU1,Average School
+EDU2,College/University
