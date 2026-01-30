@@ -48,7 +48,7 @@ If you use **openplaces** in academic work, please cite:
 ```bibtex
 @misc{openplaces2025,
   author       = {Christoph Nolte},
-  title        = {openplaces: Global property data and analytics platform},
+  title        = {openplaces: A Python package for place-based geospatial analysis},
   year         = {2025},
   howpublished = {\url{https://github.com/chrnolte/openplaces}}
 }
