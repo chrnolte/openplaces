@@ -223,6 +223,15 @@ def show_building(
         If True, prints IDs of parcels and FEMA polygons.
     """
 
+    # Maximum number of entities for which text info is shown
+    # ('and [x] more...' will be added if entities are ommitted)
+    N_MAX_PARCEL_TEXT = 4
+    N_MAX_BUILDINGS_NSI_TEXT = 4
+    N_MAX_BUILDINGS_FEMA_TEXT = 4
+
+    # Minimum size over overlap (ignore slivers)
+    MIN_SQFT_FEMA = 10 * 10.7639 # 10 m2 in sqft
+
     to_3857 = Transformer.from_crs('EPSG:4326', 'EPSG:3857').transform
     to_4326 = Transformer.from_crs('EPSG:3857', 'EPSG:4326').transform
 
@@ -328,7 +337,7 @@ def show_building(
         else:
             parcel_found = True
             if len(parcel) > 1:
-                print('Warning: multiple overlapping parcels found.')
+                print('Multiple (overlapping) parcels found at `location`.')
 
     if parcel_found:
 
@@ -354,7 +363,7 @@ def show_building(
         )
 
         txt_p_list = []
-        for _gid, _p_txt in parcel.iterrows():
+        for _gid, _p_txt in parcel.head(N_MAX_PARCEL_TEXT).iterrows():
             if verbose:
                 print(f'Parcel GID: {_gid}')
             txt_p_list += [
@@ -365,6 +374,10 @@ def show_building(
                 + f'Value (2025): ${int(_p_txt['value']):,d}\n'
                 + f'Bldg value (2025): ${int(_p_txt['building_value']):,d}\n'
                 + f'Owner: {_p_txt['owner_name'].title()[:25]}'
+            ]
+        if len(parcel) > N_MAX_PARCEL_TEXT:
+            txt_p_list += [
+                f'... and {len(parcel)-N_MAX_PARCEL_TEXT} more'
             ]
         txt_parcel = '\n\n'.join(txt_p_list)
         ax.text(
@@ -381,8 +394,7 @@ def show_building(
             ),
         )
 
-    # Add NSI info
-    N_MAX_NSI = 4
+
     if parcel_found and 'buildings_nsi' in geodatasets:
 
         nsi_use_codes = (
@@ -413,7 +425,7 @@ def show_building(
             for (
                 _,
                 buildings_nsi_on_parcel_item
-            ) in buildings_nsi_on_parcel.head(N_MAX_NSI).iterrows():
+            ) in buildings_nsi_on_parcel.head(N_MAX_BUILDINGS_NSI_TEXT).iterrows():
                 nsi_use_code = nsi_use_codes[
                     buildings_nsi_on_parcel_item['purpose_subgroup']
                 ]
@@ -423,9 +435,11 @@ def show_building(
                     + 'Bldg value (2021): '
                     + f'${int(buildings_nsi_on_parcel_item['structure_value']):,d}'
                 ]
-            if len(buildings_nsi_on_parcel) > N_MAX_NSI:
+
+            n_omitted = len(buildings_nsi_on_parcel) > N_MAX_BUILDINGS_NSI_TEXT
+            if n_omitted > 0:
                 txt_nsi_list += [
-                    f'... and {len(buildings_nsi_on_parcel)-N_MAX_NSI} more'
+                    f'... and {n_omitted} more'
                 ]
             txt_nsi = '\n\n'.join(txt_nsi_list)
             ax.text(
@@ -443,12 +457,6 @@ def show_building(
                 ),
             )
 
-    # Maximum listings of footprints
-    N_MAX_FEMA = 4
-
-    # Minimum size over overlap (ignore slivers)
-    M2_TO_SQFT = 10.7639
-    MIN_SQFT_FEMA = 10 * M2_TO_SQFT
 
     if parcel_found and 'buildings_fema' in geodatasets:
         buildings_fema_on_parcel = gpd.overlay(
@@ -487,7 +495,7 @@ def show_building(
             for (
                 _,
                 fema_building_on_parcel,
-            ) in buildings_fema_on_parcel.head(N_MAX_FEMA).iterrows():
+            ) in buildings_fema_on_parcel.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
                 txt_use = (
                     fema_building_on_parcel['purpose_subgroup']
                     or 'No primary use'
@@ -502,13 +510,15 @@ def show_building(
                         if fema_building_on_parcel['frac_sqft'] < 0.99
                         else ''
                     )
-                    + f'{fema_building_on_parcel['footprint_area_sqft']:,.0f} ft²\n'
-                    + f'{fema_building_on_parcel['validation_method'].title()}'
+                    + f'{fema_building_on_parcel['footprint_area_sqft']:,.0f} '
+                    + r'ft$^2$'
+                    + f'\n{fema_building_on_parcel['validation_method'].title()}'
                 ]
                 city = fema_building_on_parcel['city'] or city
-            if len(buildings_fema_on_parcel) > N_MAX_FEMA:
+            n_omitted = len(buildings_fema_on_parcel) > N_MAX_BUILDINGS_FEMA_TEXT
+            if n_omitted > 0:
                 txt_fema_list += [
-                    f'... and {len(buildings_fema_on_parcel) - N_MAX_FEMA} more.'
+                    f'... and {n_omitted} more'
                 ]
             txt_fema = '\n\n'.join(txt_fema_list)
             ax.text(
