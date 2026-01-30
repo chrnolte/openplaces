@@ -145,7 +145,7 @@ def drop_problematic_parcels(
 
     # Identify parcels lacking most attribute data
     if attribute_columns is None:
-        attribute_columns = gdf.columns.drop('geometry')
+        attribute_columns = parcels.columns.drop('geometry')
     columns_with_attribute_data = [
         v
         for v in sorted(set(attribute_columns) - set([parcel_id_col]))

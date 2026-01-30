@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 
 """
 vector.py
@@ -14,21 +13,27 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyproj
 from polylabel import polylabel
-from pyproj import CRS
 from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.ops import transform
 
 from openplaces.api import get_admin_by_level
 from openplaces.core.constants import (
     AC_TO_HA,
-    CRS_LAT_LONG,
-    GEO_ID_POI_PRECISION_RATIO,
     M2_TO_SQFT,
     STRING_SEPARATOR_BETWEEN_IDS,
 )
-from openplaces.path import path
 from openplaces.recipe import get_recipe
-from openplaces.timing import get_timer, log_step
+from openplaces.timing import get_timer
+
+PROJ4 = {
+    'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
+    '+ellps=WGS84 +units=m +no_defs',
+    'moon': '+proj=nsper +h=384400000 +lon_0={LON} +lat_0={LAT} ' '+ellps=WGS84',
+    'landsat': '+proj=nsper +h=705000 +lon_0={LON} +lat_0={LAT} ' '+ellps=WGS84',
+    'eck': '+proj=eck4 +ellps=WGS84',
+}
 
 
 def fix_geometries(gdf):
@@ -45,7 +50,7 @@ def fix_geometries(gdf):
     return gdf
 
 
-def get_areas(gdf, unit='ha', crs='epsg:6933', timeit=False):
+def get_areas(gdf, unit='ha', crs='epsg:6933'):
     """Compute areas of polygons in a GeoDataFrame
 
     Parameters
@@ -58,8 +63,6 @@ def get_areas(gdf, unit='ha', crs='epsg:6933', timeit=False):
     crs : coordinate reference system
         Coordinate system in which computation takes places
         Has to be equal-area and use meters as its unit.
-    timeit : bool
-        If True, will save and print the processing time for each step.
     """
 
     if not crs_is_mea(crs):
@@ -73,8 +76,6 @@ def get_areas(gdf, unit='ha', crs='epsg:6933', timeit=False):
 
     if gdf.crs != crs:
         gdf = gdf.to_crs(crs)
-        if timeit:
-            l('Reproject')
 
     if unit == 'm2':
         return gdf.area.rename('m2')
@@ -101,12 +102,12 @@ def crs_is_mea(crs):
         Coordinate Reference System
     """
 
-    if type(crs) != CRS:
-        if type(crs) == str:
-            crs = CRS(crs)
+    if not isinstance(crs, pyproj.CRS):
+        if isinstance(crs, str):
+            crs = pyproj.CRS(crs)
         else:
             raise Exception(
-                'CRS type not yet implemented in crs_is_mea: '
+                'CRS type not yet implemented in `openplaces.geo.vector.crs_is_mea`: '
                 + str(type(crs))
                 + ': '
                 + str(crs)
@@ -196,9 +197,9 @@ def get_pois(
         Slower, but closer to real POI than using any single projection.
     """
 
-    if type(d) == gpd.GeoDataFrame:
+    if isinstance(d, gpd.GeoDataFrame):
         dg = d['geometry'].copy()
-    elif type(d) == gpd.GeoSeries:
+    elif isinstance(d, gpd.GeoSeries):
         dg = d.copy()
     else:
         raise Exception('d must be GeoDataFrame or GeoSeries.')
@@ -306,7 +307,7 @@ def get_poi(geom, precision_ratio=0.001, prec_min=0.5):
     (None, None, None).
     """
 
-    if type(geom) == Polygon:
+    if isinstance(geom, Polygon):
         prec = max(geom.area**0.5 * precision_ratio, prec_min)
         if geom.area < prec * prec / 4:
             return None, None, None
@@ -315,7 +316,7 @@ def get_poi(geom, precision_ratio=0.001, prec_min=0.5):
             precision=prec,
             with_distance=True,
         )
-    elif type(geom) == MultiPolygon:
+    elif isinstance(geom, MultiPolygon):
         x, y, r = None, None, None
         for poly in geom.geoms:
             prec = max(poly.area**0.5 * precision_ratio, prec_min)
@@ -368,8 +369,8 @@ def get_poi_ortho(
     # Prepare transformers
     orig = pyproj.CRS(crs_orig)
     ortho = pyproj.CRS(get_proj4('ortho', lat, lon))
-    to_ortho = Transformer.from_crs(orig, ortho, always_xy=True).transform
-    to_orig = Transformer.from_crs(ortho, orig, always_xy=True).transform
+    to_ortho = pyproj.Transformer.from_crs(orig, ortho, always_xy=True).transform
+    to_orig = pyproj.Transformer.from_crs(ortho, orig, always_xy=True).transform
 
     # Identify Point of Inaccessibility in orthogonal projection
     x_ortho, y_ortho, r = get_poi(transform(to_ortho, poly), precision_ratio, prec_min)
@@ -526,7 +527,7 @@ def get_geo_ids(
 
     # Ensure EPSG:4326
     if gdf.crs != 'epsg:4326':
-        print(f'Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
+        print('Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
         gdf = gdf.to_crs('epsg:4326')
 
     # Get bounds for each parcel
@@ -715,3 +716,23 @@ def overlay_admin_ids(
             timer.mark('Spatial overlay')
 
     return gdf
+
+
+def get_proj4(proj, lat=0, lon=0, ellps='WGS84'):
+    """Get proj4 string for a projection from lat/long.
+
+    Parameters
+    ----------
+    proj: str
+        Projection type. Currently: 'ortho' or 'nsper'.
+    lat : numeric
+        Latitude
+    lon : numeric
+        Longitude
+    ellps : str
+        Ellipsoid
+    """
+    proj4 = PROJ4[proj].replace('{LAT}', str(lat)).replace('{LON}', str(lon))
+    if ellps != 'WGS84':
+        proj4.replace('WGS84', ellps)
+    return proj4

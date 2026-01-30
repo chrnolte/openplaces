@@ -5,11 +5,8 @@ Standardized path generation for `openplaces` data files.
 """
 
 import inspect
-import os
-import re
-from dataclasses import dataclass, field
-from pathlib import Path, PosixPath, WindowsPath
-from warnings import warn
+from dataclasses import dataclass
+from pathlib import Path
 
 from openplaces.config import cfg
 from openplaces.core.constants import STRING_SEPARATOR_BETWEEN_IDS
@@ -32,14 +29,6 @@ __all__ = [
     'recipe_path',
     'OpenPlacesReference',
 ]
-
-
-def dataset_to_path(dataset) -> Path:
-    """Return path directory structure."""
-
-    parts = [theme_to_path(dataset.theme), str(dataset.source), str(dataset.version)]
-
-    return Path(*parts)
 
 
 class OpenPlacesPath(type(Path())):
@@ -277,7 +266,7 @@ def recipe_path(
         filename = args[pos_filename]
         args = args[:pos_filename]
     elif len(args) < pos_filename + 1:
-        filename = ''
+        filename = None
     else:
         raise NotImplementedError(
             f'Not implemented: `recipe_path` with more than {pos_filename + 1} unnamed '
@@ -285,7 +274,7 @@ def recipe_path(
         )
 
     # If extension is absent, add default extension for recipes (.yaml)
-    if not '.' in filename:
+    if isinstance(filename, str) and '.' not in filename:
         filename += '.yaml'
 
     return path(*args, filename=filename, root=root, **kwargs)

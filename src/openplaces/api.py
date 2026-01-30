@@ -4,10 +4,7 @@ src/openplaces/api.py
 Public API for openplaces.
 """
 
-import geopandas as gpd
-import pandas as pd
 
-from openplaces import cfg
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.path import cache_path
@@ -296,7 +293,7 @@ def get_admin_by_level(level, *args, **kwargs):
 
 
 def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
-    """Get list of administrative unit IDs for a given level/recipe"""
+    """Get list of administrative unit IDs"""
     admin_ids = get_admin_by_level(
         admin_level,
         admin_id,
@@ -304,3 +301,26 @@ def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
         recipe=get_recipe_by_id(admin_recipe) if admin_recipe is not None else None,
     ).index.tolist()
     return sorted(admin_ids)
+
+
+def read_entities(admin_id, recipe, geom=False):
+    """Generic function to load a processed Parquet table for entities
+
+    Entities are administrative units (`admin`), parcels, buildings,
+    transactions, etc., as defined by the `recipe`, and carry
+
+    Parameters
+    ----------
+    admin_id : str or AdminId
+        Administrative unit for which to load the data
+    recipe : str or dict
+        Recipe that defines the entity. Can be a loaded recipe (dict) or
+        a string of the `recipe_id` (which includes admin_id)
+    geom : bool
+        If True, include geometries and return a GeoDataFrame
+    """
+
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    parquet_path = cache_path(admin_id, recipe['entity'])
+    return read_parquet(parquet_path, geom=geom)

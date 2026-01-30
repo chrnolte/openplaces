@@ -9,7 +9,6 @@ import shutil
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Optional
 from urllib.parse import unquote, urlparse
 from zipfile import BadZipFile, ZipFile
 
@@ -21,15 +20,17 @@ from tqdm import tqdm
 from openplaces.config import cfg
 from openplaces.core.constants import GEOPANDAS_EXTENSIONS, PANDAS_EXTENSIONS
 
-# __all__ = [
-#     'download',
-#     'to_csv',
-#     'to_parquet',
-#     'to_gpkg',
-#     'to_kmz',
-#     'save',
-#     'unzip',
-# ]
+__all__ = [
+    'download',
+    'read_parquet',
+    'save',
+    'save_parquet',
+    'to_csv',
+    'to_parquet',
+    'to_gpkg',
+    'to_kmz',
+    'unzip',
+]
 
 
 def download(from_url, to_path, chunk_size=8192, timeout=None):
@@ -234,7 +235,7 @@ def unzip(in_path, out_dir=None, members=None):
 
 def find_latest_file_or_gdb(
     directory: str, extensions: list[str] = GEOPANDAS_EXTENSIONS | PANDAS_EXTENSIONS
-) -> Optional[Path]:
+) -> Path | None:
     """
     Find the most recently modified file or .gdb directory in a directory.
 
@@ -485,8 +486,8 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True):
     df = pd.read_parquet(parquet_path)
     if 'geometry' in df:
         raise ValueError(
-            "'geometry' column found in:\n"
-            + filepath
+            "'geometry' column found in:\n\n"
+            + parquet_path
             + '\n\n`read_parquet` expects split attribute (parquet) + '
             'geometry (geoparquet) tables.'
         )
