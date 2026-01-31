@@ -230,7 +230,7 @@ def show_building(
     N_MAX_BUILDINGS_FEMA_TEXT = 4
 
     # Minimum size over overlap (ignore slivers)
-    MIN_SQFT_FEMA = 10 * 10.7639 # 10 m2 in sqft
+    MIN_SQFT_FEMA = 10 * 10.7639  # 10 m2 in sqft
 
     to_3857 = Transformer.from_crs('EPSG:4326', 'EPSG:3857').transform
     to_4326 = Transformer.from_crs('EPSG:3857', 'EPSG:4326').transform
@@ -340,7 +340,6 @@ def show_building(
                 print('Multiple (overlapping) parcels found at `location`.')
 
     if parcel_found:
-
         parcel_3857 = parcel.to_crs('epsg:3857')
 
         # Draw property boundaries for parcel
@@ -367,19 +366,17 @@ def show_building(
             if verbose:
                 print(f'Parcel GID: {_gid}')
             txt_p_list += [
-                f'Parcel ID {_p_txt['parcel_id_admin2']}\n'
-                # + f'{_p_txt['geo_zone_name'].title().split(' - ')[1][:25]}\n'
-                + f'{_p_txt['purpose_group'].title()[:25]}\n'
-                + f'{_p_txt['address'].title()}\n'
-                + f'Value (2025): ${int(_p_txt['value']):,d}\n'
-                + f'Bldg value (2025): ${int(_p_txt['building_value']):,d}\n'
-                + f'Owner: {_p_txt['owner_name'].title()[:25]}'
+                f'Parcel ID {_p_txt["parcel_id_admin2"]}\n'
+                + f'{_p_txt["address"].title()}\n'
+                + f'{_p_txt["purpose_group"].title()[:25]}\n'
+                + f'{_p_txt["purpose_subgroup"].title()[:25]}\n'
+                + f'Value (2025): ${int(_p_txt["value"]):,d}\n'
+                + f'Bldg value (2025): ${int(_p_txt["building_value"]):,d}\n'
+                + f'Owner: {_p_txt["owner_name"].title()[:25]}'
             ]
         n_omitted = len(parcel) - N_MAX_PARCEL_TEXT
         if n_omitted > 0:
-            txt_p_list += [
-                f'... and {n_omitted} more'
-            ]
+            txt_p_list += [f'... and {n_omitted} more']
         txt_parcel = '\n\n'.join(txt_p_list)
         ax.text(
             xmin + radius / 25,
@@ -396,13 +393,6 @@ def show_building(
         )
 
     if parcel_found and 'buildings_nsi' in geodatasets:
-
-        nsi_use_codes = (
-            get_recipe_by_id('US_building-usace-2022_purpose-subgroup-labels')
-            .set_index('purpose_subgroup')['purpose_subgroup_label']
-            .to_dict()
-        )
-
         buildings_nsi_on_parcel = gpd.sjoin(
             parcel[['geometry']].iloc[[0]],
             geodatasets['buildings_nsi'].cx[long_min:long_max, lat_min:lat_max],
@@ -418,31 +408,26 @@ def show_building(
                     )
                 )
             txt_nsi_list = []
-            for (
-                _,
-                buildings_nsi_on_parcel_item
-            ) in buildings_nsi_on_parcel.head(N_MAX_BUILDINGS_NSI_TEXT).iterrows():
-                nsi_use_code = nsi_use_codes[
-                    buildings_nsi_on_parcel_item['purpose_subgroup']
-                ]
+            for _, _building_nsi in buildings_nsi_on_parcel.head(
+                N_MAX_BUILDINGS_NSI_TEXT
+            ).iterrows():
                 txt_nsi_list += [
-                    f'NSI ID {buildings_nsi_on_parcel_item['building_id_usace']}\n'
-                    + f'{nsi_use_code}\n'
+                    f'NSI ID {_building_nsi["building_id_usace"]}\n'
+                    + f'{_building_nsi["purpose_subgroup"]}\n'
+                    + f'Construction: {_building_nsi["construction_type"]}\n'
+                    + f'Foundation: {_building_nsi["foundation_type"]}\n'
                     + 'Bldg value (2021): '
-                    + f'${int(buildings_nsi_on_parcel_item['structure_value']):,d}'
+                    + f'${int(_building_nsi["structure_value"]):,d}'
                 ]
 
             n_omitted = len(buildings_nsi_on_parcel) - N_MAX_BUILDINGS_NSI_TEXT
             if n_omitted > 0:
-                txt_nsi_list += [
-                    f'... and {n_omitted} more'
-                ]
+                txt_nsi_list += [f'... and {n_omitted} more']
             txt_nsi = '\n\n'.join(txt_nsi_list)
             ax.text(
                 xmin + radius / 25,
                 ymin + radius / 15,
                 txt_nsi,
-                # backgroundcolor='#ffffffcc',
                 va='bottom',
                 bbox=dict(
                     facecolor='#ffffffdd',
@@ -452,7 +437,6 @@ def show_building(
                     pad=0.5,
                 ),
             )
-
 
     if parcel_found and 'buildings_fema' in geodatasets:
         buildings_fema_on_parcel = gpd.overlay(
@@ -493,28 +477,25 @@ def show_building(
                 fema_building_on_parcel,
             ) in buildings_fema_on_parcel.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
                 txt_use = (
-                    fema_building_on_parcel['purpose_subgroup']
-                    or 'No primary use'
+                    fema_building_on_parcel['purpose_subgroup'] or 'No primary use'
                 )
-                address = (fema_building_on_parcel['address'] or 'No address')
+                address = fema_building_on_parcel['address'] or 'No address'
                 txt_fema_list += [
-                    f'FEMA ID {int(fema_building_on_parcel['building_id_fema'])}\n'
-                    + f'{txt_use.title()}\n'
+                    f'FEMA ID {int(fema_building_on_parcel["building_id_fema"])}\n'
                     + f'{address.title()}\n'
+                    + f'{txt_use.title()}\n'
                     + (
-                        f'{fema_building_on_parcel['frac_sqft']:,.0%} of '
-                        if fema_building_on_parcel['frac_sqft'] < 0.99
+                        f'{fema_building_on_parcel["frac_sqft"]:,.0%} of '
+                        if fema_building_on_parcel["frac_sqft"] < 0.99
                         else ''
                     )
-                    + f'{fema_building_on_parcel['footprint_area_sqft']:,.0f} sqft'
-                    + f'\n{fema_building_on_parcel['validation_method'].title()}'
+                    + f'{fema_building_on_parcel["footprint_area_sqft"]:,.0f} sqft\n'
+                    + f'Validation: \n{fema_building_on_parcel["validation_method"].title()}'
                 ]
                 city = fema_building_on_parcel['city'] or city
             n_omitted = len(buildings_fema_on_parcel) > N_MAX_BUILDINGS_FEMA_TEXT
             if n_omitted > 0:
-                txt_fema_list += [
-                    f'... and {n_omitted} more'
-                ]
+                txt_fema_list += [f'... and {n_omitted} more']
             txt_fema = '\n\n'.join(txt_fema_list)
             ax.text(
                 xmax - radius / 25,
@@ -530,6 +511,7 @@ def show_building(
                     pad=0.5,
                 ),
             )
+
             if city:
                 ax.text(
                     x,
@@ -538,4 +520,11 @@ def show_building(
                     backgroundcolor='#ffffffcc',
                     va='top',
                     ha='center',
+                    bbox=dict(
+                        facecolor='#ffffffdd',
+                        edgecolor='#00ffff',
+                        boxstyle='round',
+                        linewidth=1,
+                        pad=0.5,
+                    ),
                 )
