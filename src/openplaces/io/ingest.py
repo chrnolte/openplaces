@@ -366,7 +366,7 @@ def _catch_missing_download_url_error(recipe, downloaded_path):
 
 
 def download_and_unzip_recipe_data(
-    recipe, download_url, downloaded_path, data_path, redo=False, timer=None
+    recipe, download_url, downloaded_path, data_path, redownload=False, timer=None
 ):
     """Download and unzip dataset from the original source
 
@@ -381,7 +381,7 @@ def download_and_unzip_recipe_data(
         Can be None, if `data_path` is not None and exists.
     data_path : str
         Path of the file to read (compressed or uncompressed)
-    redo : bool
+    redownload : bool
         Set to True to skip checking for existing files (overwrite)
     timer : openplaces.timing.Timer or None
         Timer
@@ -390,25 +390,30 @@ def download_and_unzip_recipe_data(
     if timer is None:
         timer = get_timer('download_and_unzip_recipe_data', verbose=True)
 
-    if data_path is not None and data_path.exists() and not redo:
+    if data_path is not None and data_path.exists() and not redownload:
         return data_path
 
     recipe_external_dir = external_dir(recipe['admin_id'], recipe['entity'])
     recipe_heap_dir = heap_dir(recipe['admin_id'], recipe['entity'])
 
     # Download if necessary
-    if (not downloaded_path or not downloaded_path.exists()) and (
-        not data_path or not data_path.exists()
-    ):
+    if (
+        (not downloaded_path or not downloaded_path.exists())
+        and (not data_path or not data_path.exists())
+    ) or redownload:
         _catch_missing_download_url_error(recipe, downloaded_path)
 
         with log_step('Download', timer=timer):
             downloaded_path = download(download_url, recipe_external_dir)
 
     # Unzip if necessary
-    if 'compressed_file_path' in recipe or (
-        downloaded_path is not None
-        and Path(downloaded_path).suffix.lower() in ZIP_EXTENSIONS
+    if (
+        'compressed_file_path' in recipe
+        or (
+            downloaded_path is not None
+            and Path(downloaded_path).suffix.lower() in ZIP_EXTENSIONS
+        )
+        or redownload
     ):
         with log_step('Unzip', timer=timer):
             unzip(downloaded_path, recipe_heap_dir)
@@ -686,7 +691,13 @@ def preprocess_recipe_data(df, recipe, timer=True):
     return df
 
 
-def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=False):
+def get_recipe_data(
+    recipe,
+    admin_id=None,
+    partition_id=None,
+    timer=True,
+    redownload=True,
+):
     """Get data described in a recipe.
 
     Handles downloading (to `external` directory), unzipping, reading,
@@ -704,8 +715,8 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
         Identifier of other partitions to download (e.g. year-month)
     timer : openplaces.timing.Timer or None
         Timer
-    redo : bool
-        If True, re-downloads and re-processes the data
+    redownload : bool
+        If True, will re-download and unzip original data
     """
     if timer is True:
         timer = get_timer('get_recipe_data', verbose=True)
@@ -726,9 +737,9 @@ def get_recipe_data(recipe, admin_id=None, partition_id=None, timer=True, redo=F
     )
 
     # Download and unzip the data (if it has not happened yet)
-    if data_path is None or not data_path.exists():
+    if data_path is None or not data_path.exists() or redownload:
         data_path = download_and_unzip_recipe_data(
-            recipe, download_url, downloaded_path, data_path, redo
+            recipe, download_url, downloaded_path, data_path, redownload
         )
 
     # Read data
@@ -873,7 +884,7 @@ def ingest_recipe_data(
     partition_id=None,
     timer=None,
     return_result=False,
-    redo=False,
+    redownload=False,
 ):
     """Execute the ingestion recipe for the dataset.
 
@@ -895,12 +906,15 @@ def ingest_recipe_data(
         Timer.
     return_result : bool
         Should result be returned (should they be loaded if they exist)?
-    redo : bool
-        If True, will overwrite existing files
+    redownload : bool
+        If True, will re-download and unzip original data
     """
 
     if timer is None:
         timer = get_timer('ingest_recipe_data', verbose=True)
+
+    if redownload:
+        reprocess = True
 
     # Resolve which administrative units will be processed (chunking)
     if 'process_by' in recipe:
@@ -929,7 +943,9 @@ def ingest_recipe_data(
             print(f'Processing {admin_id_to_process}...')
 
         # Get data from recipe (may involve downloads, unzipping, reading)
-        gdf = get_recipe_data(recipe, admin_id_to_process, partition_id, timer, redo)
+        gdf = get_recipe_data(
+            recipe, admin_id_to_process, partition_id, timer, redownload
+        )
         timer.mark('Get recipe data', admin_id=admin_id_to_process)
 
         # Save recipe data
