@@ -53,7 +53,9 @@ def get_recipe(*args, **kwargs):
     elif filepath.with_suffix('.xls').exists():
         recipe_table = pd.read_excel(filepath.with_suffix('.xls'), **read_kwargs)
     else:
-        raise Exception('Not found: ' + str(filepath) + '.(yaml|csv|xlsx|xls)')
+        raise Exception(
+            'Not found: ' + str(filepath.with_suffix('.(yaml|csv|xlsx|xls)'))
+        )
 
     return recipe_table
 
