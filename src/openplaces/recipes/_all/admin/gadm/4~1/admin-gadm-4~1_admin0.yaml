@@ -40,12 +40,3 @@ index_function: "openplaces.io.admin.admin0_id_index_from_admin0_id_a3"
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
 cache_filename: 'admin0'
-
-# Do you want to pre-compute label positions (Poles of Inaccessibility)?
-# This is an expensive operation and can take a while with large tables.
-compute_poi: True
-
-# Create and save additional geometry layer with simplified coverage?
-# Takes a long time to process once for the benefit of quicker plotting.
-# Outcome is saved under same filename with suffix '_simplified'.
-simplify_coverage_tolerance: 0.1

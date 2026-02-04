@@ -273,23 +273,27 @@ def admin2_id_index_from_admin2_gadm(admin2):
     admin2 = admin2.sort_values(['admin1_id', '_name'])
 
     # First priority: unique existing HASC 2 codes, corrected for admin1_id
-    aid_from_hasc2 = admin2['admin2_id_hasc'].str.replace(
-        '.', STRING_SEPARATOR_WITHIN_IDS, regex=False
+    HASC2_REGEX_EXTRACT = r"([A-Z0-9]{2})\.([A-Z0-9]{2})\.([A-Z0-9]{2})"
+    i_has_hasc = (
+        admin2['admin2_id_hasc'].str.match(HASC2_REGEX_EXTRACT)
+        & ~admin2['admin2_id_hasc'].duplicated(keep=False)
+        & ~admin2['admin0_id'].isin(ADMIN0_ID_HASC1_A2)
     )
-    aid_from_hasc2_c = (
-        admin2['admin1_id']
+    admin2_hasc_parts = admin2[i_has_hasc]['admin2_id_hasc'].str.extract(
+        HASC2_REGEX_EXTRACT, expand=True
+    )
+    admin2_id_from_hasc2_harmonized = (
+        admin2[i_has_hasc]['admin1_id']
         + STRING_SEPARATOR_WITHIN_IDS
-        + aid_from_hasc2.str.slice(4, 6)
+        + admin2_hasc_parts[2]
     )
-    i = (
-        aid_from_hasc2_c.notnull()
-        & aid_from_hasc2_c.str.len().ge(6)
-        & ~aid_from_hasc2_c.duplicated(False)
-    )
-    admin2.loc[i, 'admin2_id'] = aid_from_hasc2_c[i]
-    admin2.loc[i, 'admin2_id_source'] = np.where(
-        aid_from_hasc2_c[i] == aid_from_hasc2[i], 'hasc2', 'hasc2.mod'
-    )
+
+    # Remove duplicates introduced through harmonization (Admin1)
+    mask_is_unique = ~admin2_id_from_hasc2_harmonized.duplicated(keep=False)
+    i = admin2.index.isin(admin2_id_from_hasc2_harmonized[mask_is_unique].index)
+
+    admin2.loc[i, 'admin2_id'] = admin2_id_from_hasc2_harmonized
+    admin2.loc[i, 'admin2_id_source'] = 'hasc'
 
     # Second priority: unique existing HASC 1 codes, corrected for admin1_id
     # Countries using HASC1 code for level-2 administrative units
@@ -407,7 +411,11 @@ def admin2_id_index_from_admin2_gadm(admin2):
     admin2.loc[aid_caps.index, 'admin2_id_source'] = 'own.init'
 
     # Fourth priority: first two letters
-    i_fill = admin2['admin2_id'].isnull() & admin2['_name'].notnull()
+    i_fill = (
+        admin2['admin2_id'].isnull()
+        & admin2['_name'].notnull()
+        & admin2['_name'].ne('')
+    )
     aid_two = (
         admin2[i_fill]['admin1_id']
         + STRING_SEPARATOR_WITHIN_IDS
@@ -485,8 +493,20 @@ def admin2_id_index_from_admin2_gadm(admin2):
     )
     admin2.loc[i_fill, 'admin2_id_source'] = 'own.na'
 
-    if admin2['admin2_id'].isnull().any() or admin2['admin2_id'].duplicated().any():
-        raise Exception('Unable to resolve all AdminIds from GADM Level-2.')
+    # Catch issues with nulls and duplicates
+    admin2_id_isnull = admin2['admin2_id'].isnull()
+    admin2_id_duplicated = admin2['admin2_id'].duplicated(keep=False)
+    if admin2_id_isnull.any() or admin2_id_duplicated.any():
+        message = 'Unable to resolve all AdminIds from GADM Level-2.\n\n'
+        if admin2_id_isnull.any():
+            message += 'Nulls:\n\n' + str(admin2[admin2_id_isnull])
+        if admin2_id_duplicated.any():
+            message += 'Duplicates:\n\n' + str(
+                admin2[admin2_id_duplicated].sort_values('admin2_id')[
+                    ['admin2_id_hasc', 'admin2_id', 'name']
+                ]
+            )
+        raise Exception(message)
 
     return admin2.set_index('admin2_id').drop(columns='_name')
 

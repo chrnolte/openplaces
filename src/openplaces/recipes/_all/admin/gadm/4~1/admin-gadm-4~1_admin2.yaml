@@ -45,7 +45,7 @@ columns:
   admin0_id_a3: GID_0
 
 # Keep columns that aren't named in the above list
-# keep_unnamed_columns: True
+keep_unnamed_columns: True
 
 # Filter query to select rows
 query: "type not in ('Water body', 'Waterbody', 'Water Body')"
@@ -58,11 +58,3 @@ index_function: "openplaces.io.admin.admin2_id_index_from_admin2_gadm"
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
 cache_filename: 'admin2'
-
-# Do you want to pre-compute label positions (Poles of Inaccessibility)?
-# This is an expensive operation and can take a while with large tables.
-compute_poi: True
-
-# Create and save additional geometry layer with simplified coverage
-# for quicker plots. Use same filename, with suffix '_simplified'.
-simplify_coverage_tolerance: 0.1
