@@ -31,12 +31,14 @@ layer: ADM_3
 
 # Columns from `openplaces` dictionary -> columns in imported table
 columns:
-  name: VARNAME_3
-  type: TYPE_3 
+  name: NAME_3
+  type: ENGTYPE_3
   admin2_name: NAME_2
   admin1_name: NAME_1
   admin0_name: COUNTRY
+  name_alternatives: VARNAME_3
   name_original: NL_NAME_3
+  type_original: TYPE_3
   admin2_name_original: NL_NAME_2
   admin2_name_alternatives: VARNAME_2
   admin1_name_original: NL_NAME_1
@@ -59,11 +61,3 @@ query: "type not in ('Water body', 'Waterbody', 'Water Body')"
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
 cache_filename: 'admin3'
-
-# Do you want to pre-compute label positions (Poles of Inaccessibility)?
-# This is an expensive operation and can take a while with large tables.
-# compute_poi: True
-
-# Create and save additional geometry layer with simplified coverage
-# for quicker plots. Use same filename, with suffix '_simplified'.
-# simplify_coverage_tolerance: 0.1
