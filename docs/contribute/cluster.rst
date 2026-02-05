@@ -28,8 +28,8 @@ Connect
       ssh your_username@scc4.bu.edu
 
 
-Get your own copy of the code
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Create your copy of the code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 -  Navigate to the ``openplaces`` user code directory:
 
@@ -56,7 +56,7 @@ Get your own copy of the code
 
       cd openplaces
 
-   No need to run the setup script (:ref:`install`), unless you want to manage your own Anaconda environment.
+   No need to run the setup script (:ref:`install`) unless you want to manage your own Anaconda environment.
 
 -  Create a symbolic link to your repository. Call it ``openplaces`` and leave it in your user directory (``~``):
 
@@ -64,7 +64,7 @@ Get your own copy of the code
 
       ln -s /project/openplaces/code/user/your_username ~/openplaces
 
-   Next time you log onto the server, you only need to type ``cd openplaces`` and you'll be in your repository.
+   Next time you log onto the server, you can type ``cd openplaces`` to change to your repository directory.
 
 
 Coding in Jupyter
@@ -80,7 +80,7 @@ Using OnDemand
 -  In the form that opens, edit these fields:
 
    List of modules to load (space separated)
-      *Keep the Python version*
+      :input:`miniconda/25.3.1` (remove python if present)
 
    Pre-Launch Command (optional):
       :input:`conda activate /projectnb/openplaces/.conda/envs/openplaces`
@@ -91,16 +91,19 @@ Using OnDemand
    Working Directory
       :input:`/project/openplaces/code/user/your_username/notebooks`
 
+   Number of GPUs
+      :input:`0` (unless you really need them)
+
    Project
       :input:`openplaces`
 
+   Check :gui:`Save settings`, so you don't have to enter these again.
+
 -  :gui:`Launch` the request.
 
-   Wait a little bit until your request has cleared and your interactive session has been created.
+   Wait until your interactive session has been created.
 
-   After a bit, a new button will appear: :input:`Connect to Jupyter`.
-
-   Click it and start coding!
+   After a while, a new button will appear: :input:`Connect to Jupyter`. Click it and start coding!
 
 
 Using the Terminal
@@ -110,6 +113,7 @@ Using the Terminal
 
    .. code-block:: bash
 
+      module load miniconda
       conda activate openplaces
 
 -  Go to the :file:`notebooks` folder:
