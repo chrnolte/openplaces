@@ -8,7 +8,7 @@ If you want to make edits to the ``openplaces`` source code:
 
 1. Create your own branch for development purposes (use a shorthand that identifies you, e.g. your Github username, or the left part of your professional / BU email address).
 
-2. Change your code.
+2. Edit your code.
 
 3. Test your code.
 
@@ -52,7 +52,6 @@ Jupyter notebooks
        "isort": {
            "multi_line_output": 3,
            "include_trailing_comma": true,
-           "force_grid_wrap": 0,
            "use_parentheses": true,
            "ensure_newline_before_comments": true,
            "line_length": 88,
@@ -62,7 +61,7 @@ Jupyter notebooks
 
    }
 
--  Click on the "Save" (disc) symbol in the upper right corner
+-  Click on the "Save" symbol in the upper right corner
 -  Now you can format Jupyter cells with :input:`Ctrl + Shift + I`
 
 
