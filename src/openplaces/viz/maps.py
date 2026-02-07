@@ -4,6 +4,7 @@ This module provides the main entry points for creating maps with sensible
 defaults and automatic performance optimization.
 """
 
+import requests
 import warnings
 
 import contextily as cx
@@ -203,14 +204,18 @@ def show_building(
 ):
     """Show building in its context with basemap
 
+    Current version is for US building inventories
+
     Parameters
     ----------
     location : tuple or gpd.GeoDataFrame
         A single-row GeoDataFrame
-    geodatasets: dict of gpd.GeoDataFrame or dict of lists of GeoDataFrames
+    geodatasets: dict of lists of GeoDataFrames
         Loaded geodatasets to be plotted alongside location.
         'parcels': parcel GeoDataFrame
-        'buildings': building GeoDataFrame
+        'buildings_nsi': building GeoDataFrame (USACE: NSI)
+        'buildings_fema': building GeoDataFrame (FEMA: USA Structures)
+        'buildings_microsoft': building GeoDataFrame (Microsoft)
     radius : float
         Radius of plot in EPSG:3857 "meters" (~1.3m in NY)
     size : float
@@ -229,7 +234,7 @@ def show_building(
     N_MAX_BUILDINGS_NSI_TEXT = 4
     N_MAX_BUILDINGS_FEMA_TEXT = 4
 
-    # Minimum size over overlap (ignore slivers)
+    # Minimum size of overlap between parcels & FEMA (ignore slivers)
     MIN_SQFT_FEMA = 10 * 10.7639  # 10 m2 in sqft
 
     to_3857 = Transformer.from_crs('EPSG:4326', 'EPSG:3857').transform
@@ -267,19 +272,16 @@ def show_building(
 
     # Try to show basemap
     if show_basemap:
-        # try:
-        cx.add_basemap(
-            ax,
-            crs='epsg:3857',
-            source=cx.providers.Esri.WorldImagery,
-            alpha=0.8,
-        )
-        # except:
-        # print(
-        #     'No internet connection: could not add basemap. '
-        #     'Set `show_basemap` to `False`.'
-        # )
-        # show_basemap = False
+        try:
+            cx.add_basemap(
+                ax,
+                crs='epsg:3857',
+                source=cx.providers.Esri.WorldImagery,
+                alpha=0.8,
+            )
+        except requests.exceptions.ConnectionError:
+            print('No internet connection: could not add basemap. ')
+            show_basemap = False
 
     color_parcel = 'yellow' if show_basemap else 'gold'
 
@@ -337,7 +339,7 @@ def show_building(
         else:
             parcel_found = True
             if len(parcel) > 1:
-                print('Multiple (overlapping) parcels found at `location`.')
+                print('Multiple (overlapping) parcels found at location.')
 
     if parcel_found:
         parcel_3857 = parcel.to_crs('epsg:3857')
@@ -365,15 +367,19 @@ def show_building(
         for _gid, _p_txt in parcel.head(N_MAX_PARCEL_TEXT).iterrows():
             if verbose:
                 print(f'Parcel GID: {_gid}')
-            txt_p_list += [
-                f'Parcel ID {_p_txt["parcel_id_admin2"]}\n'
-                + f'{_p_txt["address"].title()}\n'
-                + f'{_p_txt["purpose_group"].title()[:25]}\n'
-                + f'{_p_txt["purpose_subgroup"].title()[:25]}\n'
-                + f'Value (2025): ${int(_p_txt["value"]):,d}\n'
-                + f'Bldg value (2025): ${int(_p_txt["building_value"]):,d}\n'
-                + f'Owner: {_p_txt["owner_name"].title()[:25]}'
-            ]
+
+            txt_p = f'Parcel ID {_p_txt["parcel_id_admin2"]}\n'
+            for var in ['address', 'purpose_group', 'purpose_subgroup']:
+                if _p_txt[var]:
+                    txt_p += (
+                        f'{_p_txt[var].title()[:25]}'
+                        + ('...' if len(_p_txt[var].title()) > 25 else '')
+                        + '\n'
+                    )
+            txt_p += f'Value (2025): ${int(_p_txt["value"]):,d}\n'
+            txt_p += f'Bldg value (2025): ${int(_p_txt["building_value"]):,d}\n'
+            txt_p += f'Owner: {_p_txt["owner_name"].title()[:25]}'
+            txt_p_list += [txt_p]
         n_omitted = len(parcel) - N_MAX_PARCEL_TEXT
         if n_omitted > 0:
             txt_p_list += [f'... and {n_omitted} more']
@@ -392,11 +398,21 @@ def show_building(
             ),
         )
 
-    if parcel_found and 'buildings_nsi' in geodatasets:
-        buildings_nsi_on_parcel = gpd.sjoin(
-            parcel[['geometry']].iloc[[0]],
-            geodatasets['buildings_nsi'].cx[long_min:long_max, lat_min:lat_max],
-        ).sort_values('area_sqft', ascending=False)
+    location_is_nsi = (
+        isinstance(location, gpd.GeoSeries)
+        and location.index.name == 'building_id_usace'
+    )
+    if 'buildings_nsi' in geodatasets and (parcel_found or location_is_nsi):
+        if location_is_nsi:
+            buildings_nsi_on_parcel = (
+                geodatasets['buildings_nsi'].loc[[location.index[0]]].reset_index()
+            )
+        elif parcel_found:
+            buildings_nsi_on_parcel = gpd.sjoin(
+                parcel[['geometry']].iloc[[0]],
+                geodatasets['buildings_nsi'].cx[long_min:long_max, lat_min:lat_max],
+            ).sort_values('area_sqft', ascending=False)
+
         if len(buildings_nsi_on_parcel) == 0:
             print('No NSI points found on parcel in plot frame.')
         else:
