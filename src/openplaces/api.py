@@ -68,7 +68,10 @@ def get_admin0(admin_id=None, geom=False, recipe=None, all_columns=False):
     if isinstance(admin_id, str):
         admin0 = admin0.loc[[admin_id]]
     elif isinstance(admin_id, AdminId):
-        admin0 = admin0.loc[[str(admin_id)]]
+        if len(admin_id.levels) == 1:
+            admin0 = admin0.loc[[str(admin_id)]]
+        elif len(admin_id.levels) > 1:
+            raise ValueError(f'`admin_id` has too many levels: {admin_id}.')
     elif isinstance(admin_id, list):
         admin0 = admin0.loc[admin_id]
     elif admin_id is not None:
