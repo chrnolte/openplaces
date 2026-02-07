@@ -12,7 +12,6 @@ Github: https://github.com/chrnolte/openplaces
 .. toctree::
    :maxdepth: 2
 
-   concepts
+   overview
    getting-started
-   usage
    contribute
