@@ -26,7 +26,7 @@ compressed_file_name: "nsi_2022_{admin1_id_admin0}.gpkg.zip"
 
 # Columns: `openplaces` variable name -> variable name in imported table
 columns:
-  building_id_usace: fd_id
+  building_id_nsi: fd_id
   purpose_group: st_damcat
   purpose_subgroup: occtype
   n_stories: num_story
@@ -54,7 +54,7 @@ columns:
   footprint_source: ftprntsrc
 
 # Set the index from an existing column
-set_index: building_id_usace
+set_index: building_id_nsi
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:

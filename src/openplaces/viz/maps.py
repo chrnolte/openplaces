@@ -399,8 +399,7 @@ def show_building(
         )
 
     location_is_nsi = (
-        isinstance(location, gpd.GeoSeries)
-        and location.index.name == 'building_id_usace'
+        isinstance(location, gpd.GeoSeries) and location.index.name == 'building_id_nsi'
     )
     if 'buildings_nsi' in geodatasets and (parcel_found or location_is_nsi):
         if location_is_nsi:
@@ -428,7 +427,7 @@ def show_building(
                 N_MAX_BUILDINGS_NSI_TEXT
             ).iterrows():
                 txt_nsi_list += [
-                    f'NSI ID {_building_nsi["building_id_usace"]}\n'
+                    f'NSI ID {_building_nsi["building_id_nsi"]}\n'
                     + f'{_building_nsi["purpose_subgroup"]}\n'
                     + f'Construction: {_building_nsi["construction_type"]}\n'
                     + f'Foundation: {_building_nsi["foundation_type"]}\n'
