@@ -131,6 +131,8 @@ def get_recipe_by_id(recipe_id, **kwargs):
 
     Assumes syntax: {admin_id}_{entity}_{filename}.{extension}
 
+    admin_id or filename can be missing
+
     (Datasets for non-entities aren't yet supported)
 
     Parameters
@@ -147,8 +149,14 @@ def get_recipe_by_id(recipe_id, **kwargs):
         extension = None
     filename_stem_parts = filename_stem.split('_')
     if len(filename_stem_parts) == 2:
-        admin_id, entity = filename_stem_parts
-        filename = None
+        part1, part2 = filename_stem_parts
+        try:
+            AdminId(part1)
+            admin_id, entity = part1, part2
+            filename = None
+        except ValueError:
+            admin_id = None
+            entity, filename = part1, part2
     elif len(filename_stem_parts) == 3:
         admin_id, entity, filename = filename_stem_parts
     else:

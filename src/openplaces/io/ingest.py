@@ -28,12 +28,17 @@ from openplaces.core.constants import (
 )
 from openplaces.core.schema import AdminId
 from openplaces.geo.vector import (
+    get_geo_ids,
     overlay_admin_ids,
 )
 from openplaces.io import download, find_latest_file_or_gdb, to_parquet, unzip
 from openplaces.io.admin import find_admin_recipe  # , get_admin_id_crosswalk
 from openplaces.io.parcel import drop_problematic_parcels
-from openplaces.io.transform import apply_transformations, get_crosswalk
+from openplaces.io.transform import (
+    add_unique_suffix,
+    apply_transformations,
+    get_crosswalk,
+)
 from openplaces.path import cache_path, external_dir, heap_dir, recipe_path
 from openplaces.timing import get_timer, log_step
 
@@ -83,6 +88,12 @@ def _get_admin_partition_key(recipe, placeholder, admin_id):
     """
     # Get partition key from admin data
     admin_level = int(recipe['download_by'].replace('admin', ''))
+
+    # If admin_id is for lower level, shorten it.
+    if len(AdminId(admin_id).levels) > (admin_level + 1):
+        print(admin_id)
+        admin_id = AdminId(*AdminId(admin_id).levels[:-1])
+        print(admin_id)
 
     # Translate placeholders to admin columns / identifiers by cutting
     # off 'adminX_' prefixes unless the prefix is 'adminX_id'
@@ -467,7 +478,7 @@ def read_recipe_data(recipe, data_path, admin_id=None, timer=None):
     if admin_id is not None and _admin_id_is_below_dataset_admin_id(recipe, admin_id):
         if 'process_by' not in recipe:
             raise NotImplementedError(
-                f"`admin_id` is {admin_id} but no 'process_by' in `recipe`."
+                f"`admin_id` is {admin_id}, but no 'process_by' in `recipe`."
             )
         admin_id_col = recipe['process_by']['admin_id_col']
 
@@ -626,7 +637,15 @@ def preprocess_recipe_data(df, recipe, timer=True):
             )
 
     # Set index
-    if 'set_index' in recipe:
+    if str(recipe['entity'].entity_type) == 'parcel' and isinstance(
+        df, gpd.GeoDataFrame
+    ):
+        # Parcels get a standardized ID: 'geo_ids' without duplicates
+        # Column 'geo_id' (with possible duplicates) is also stored
+        # to link up geometries and parcels.
+        df['geo_id'] = get_geo_ids(df, handle_duplicates=False)
+        df.index = pd.Index(add_unique_suffix(df['geo_id']), name='parcel_id')
+    elif 'set_index' in recipe:
         # Set column as index
         if recipe['set_index'] not in df:
             raise ValueError(
@@ -676,13 +695,19 @@ def preprocess_recipe_data(df, recipe, timer=True):
 
     # Reorder columns
     if 'columns' in recipe:
+        # Start with columns named in the recipe
         cols_order = [c for c in recipe['columns'] if c in df]
+        # If requested, add any other non-geometry columns
         if 'keep_unnamed_columns' in recipe and recipe['keep_unnamed_columns']:
             cols_order += [
-                c for c in df if c not in (list(recipe['columns']) + ['geometry'])
+                c
+                for c in df
+                if c not in (list(recipe['columns']) + ['geo_id', 'geometry'])
             ]
-        if 'geometry' in df:
-            cols_order += ['geometry']
+        # Finish by adding geometry columns
+        for geo_col in ['geo_id', 'geometry']:
+            if geo_col in df:
+                cols_order += [geo_col]
         df = df[cols_order]
 
     if 'transformations' in recipe:
@@ -848,7 +873,12 @@ def save_recipe_data(
             gdf_to_save = gdf.copy()
 
         # Create space-efficient integer ID to join data tables
-        gdf_to_save['_join_id'] = range(1, len(gdf_to_save) + 1)
+        if isinstance(gdf_to_save, gpd.GeoDataFrame):
+            if 'geo_id' in gdf_to_save:
+                join_id_column = 'geo_id'
+            else:
+                gdf_to_save['_join_id'] = range(1, len(gdf_to_save) + 1)
+                join_id_column = '_join_id'
 
         parquet_path = cache_path(
             admin_id_to_save,
@@ -872,7 +902,7 @@ def save_recipe_data(
             )
 
             to_parquet(
-                gdf_to_save.set_index('_join_id')[['geometry']], parquet_geo_path
+                gdf_to_save.set_index(join_id_column)[['geometry']], parquet_geo_path
             )
         else:
             to_parquet(gdf_to_save, parquet_path)

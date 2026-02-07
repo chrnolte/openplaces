@@ -21,13 +21,28 @@ entity:
   version: 2023
 
 # How is the download data partitioned?
-download_by: admin1
+download_by:
+  admin_level: 1
 
 # Filename of compressed file (set to skip re-downloading)
 compressed_file_name: "Deliverable*{admin1_id_leaf}.zip"
 
 # Path to uncompressed file path (set to skip re-extracting)
 uncompressed_file_name: "{admin1_id_leaf}_Structures.gdb"
+
+# Read and process data in chunks
+# (avoids reading very large geodatabases into memory)
+process_by:
+  # Administrative level at which processing is chunked
+  admin_level: 2
+  # Column in original data used to identify the administrative level
+  admin_id_column: FIPS
+  # Crosswalk from administrative identifiers in the original data
+  # (e.g. county FIPS) to `openplaces` AdminIDs.
+  admin_id_crosswalk:
+    admin_level: 2
+    admin_id_column: admin2_id_admin0
+    admin_recipe_id: "US_admin-nhgis-2020_admin2"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
@@ -56,16 +71,3 @@ columns_to_categorical:
   - image_date
   - validation_method
   - building_code
-
-# Translate `admin_id` information from source to `openplaces` admin_ids
-admin_id_crosswalk:
-  admin_level: 2
-  admin_id_col: admin2_id_admin0
-  admin_recipe_id: "US_admin-nhgis-2020_admin2"
-
-# Administrative ID level at which data is saved
-# Set if you want to split the data into smaller chunks
-# (1: by state/department, 2: by county/municipality, 3: by town etc.)
-# The column ``adminX_id`` has to exist in the pre-processed data and
-# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
-cache_by_admin_level: 2

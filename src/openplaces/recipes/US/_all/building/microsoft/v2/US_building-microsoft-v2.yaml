@@ -18,11 +18,12 @@ entity:
   version: v2
 
 # How is the download data partitioned?
-download_by: admin1
-# Transformations needed to obtain the data partition admin identifier
-# used by the source URL (e.g. lowercase, sanitize, etc.)
-download_partition_key_transform:
-  admin1_name: "remove_spaces"
+download_by:
+  admin_level: 1
+  # Transformations needed to obtain the data partition admin identifier
+  # used by the source URL (e.g. lowercase, sanitize, etc.)
+  admin_key_transform:
+    admin1_name: "remove_spaces"
 
 # Filename of compressed file (set to skip re-downloading)
 compressed_file_name: "{admin1_name}.geojson.zip"
@@ -43,9 +44,10 @@ overlay_admin_ids:
   admin_level: 2
   admin_recipe: 'US_admin-nhgis-2020_admin2'
 
-# Administrative ID level at which data is saved
+# Administrative ID level at which data is saved in cache
 # Set if you want to split the data into smaller chunks
 # (1: by state/department, 2: by county/municipality, 3: by town etc.)
 # The column ``adminX_id`` has to exist in the pre-processed data and
 # contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
-cache_by_admin_level: 2
+cache_by:
+  admin_level: 2
