@@ -10,7 +10,7 @@ entity:
   entity_type: building
    # What is the source and URL of a dataset that identifies each unit?
   source:
-    source_id: usace
+    source_id: nsi
     # Link to portal with metadata
     portal_url: "https://www.hec.usace.army.mil/confluence/nsi"
     # Link to direct download
@@ -18,7 +18,8 @@ entity:
   version: 2022
 
 # How is the download data partitioned?
-download_by: admin1
+download_by:
+  admin_level: 1
 
 # Filename of compressed file (set to skip re-downloading)
 compressed_file_name: "nsi_2022_{admin1_id_admin0}.gpkg.zip"
@@ -55,6 +56,15 @@ columns:
 # Set the index from an existing column
 set_index: building_id_usace
 
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - purpose_group
+  - purpose_subgroup
+  - construction_type
+  - foundation_type
+  - source
+  - footprint_source
+
 transformations:
   # Get county FIPS identifier: first 5 characters of census_block_id 
   - output: admin2_id_admin0
@@ -65,19 +75,10 @@ transformations:
       start: 0
       end: 5
 
-# Columns to be cast to categorical (saves space)
-columns_to_categorical:
-  - purpose_group
-  - purpose_subgroup
-  - construction_type
-  - foundation_type
-  - source
-  - footprint_source
-
 # Translate `admin_id` information from source to `openplaces` admin_ids
 admin_id_crosswalk:
   admin_level: 2
-  admin_id_col: admin2_id_admin0
+  admin_id_column: admin2_id_admin0
   admin_recipe_id: "US_admin-nhgis-2020_admin2"
 
 # Administrative ID level at which data is saved
@@ -85,4 +86,5 @@ admin_id_crosswalk:
 # (1: by state/department, 2: by county/municipality, 3: by town etc.)
 # The column ``adminX_id`` has to exist in the pre-processed data and
 # contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
-cache_by_admin_level: 2
+cache_by:
+  admin_level: 2

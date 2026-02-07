@@ -85,6 +85,53 @@ class AdminId:
 
         return Path(*parts)
 
+    def is_parent_of(self, admin_id: "AdminId") -> bool:
+        """Check if this AdminId is a parent of another AdminId.
+
+        A parent AdminId has fewer levels and matches all its levels
+        with the start of the child's levels.
+
+        Args:
+            admin_id: The potential child AdminId to check
+
+        Returns:
+            True if self is a parent of admin_id, False otherwise
+
+        Examples:
+            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA', 'MI'))
+            True
+            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'CA'))
+            False
+            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA'))
+            False
+        """
+        if len(self.levels) >= len(admin_id.levels):
+            return False
+
+        return admin_id.levels[: len(self.levels)] == self.levels
+
+    def is_parent_or_equal_of(self, admin_id: "AdminId") -> bool:
+        """Check if this AdminId is a parent or equal of another AdminId.
+
+        A parent AdminId has fewer levels and matches all its levels
+        with the start of the child's levels.
+
+        Args:
+            admin_id: The potential child AdminId to check
+
+        Examples:
+            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA', 'MI'))
+            True
+            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'CA'))
+            False
+            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA'))
+            True
+        """
+        if len(self.levels) > len(admin_id.levels):
+            return False
+
+        return admin_id.levels[: len(self.levels)] == self.levels
+
 
 @dataclass
 class EntityType:

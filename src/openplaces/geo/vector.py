@@ -26,6 +26,7 @@ from openplaces.core.constants import (
 )
 from openplaces.recipe import get_recipe
 from openplaces.timing import get_timer
+from openplaces.io.transform import add_unique_suffix
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
@@ -609,13 +610,8 @@ def get_geo_ids(
             # Handle collisions with suffix
             if verbose:
                 print('Adding suffixes...')
-            counts = (
-                geo_ids[duplicates].groupby(geo_ids[duplicates], sort=False).cumcount()
-                + 1
-            )
-            geo_ids.loc[duplicates] = (
-                geo_ids[duplicates].astype(str) + '-' + counts.astype(str)
-            )
+
+            geo_ids.loc[duplicates] = add_unique_suffix(geo_ids[duplicates])
 
     return geo_ids.rename('geo_id')
 
@@ -687,18 +683,18 @@ def overlay_admin_ids(
 
     # Cast admin index to pd.Categorical to later save space in the joined column
     admin.index = pd.Index(pd.Categorical(admin.index), name=admin.index.name)
-    timer.mark('Get admin layer for overlay')
+    timer.mark('Admin overlay: get admin layer')
 
     # Get centroid points with range index (for quicker processing)
     gdf_centroids = get_lat_long_centroids(gdf.reset_index()[['geometry']], geom=True)[
         ['geometry']
     ]
-    timer.mark('Get centroids')
+    timer.mark('Admin overlay: get centroids')
 
     gdf_sjoin = gpd.sjoin(gdf_centroids, admin[['geometry']], how='left')
     gdf[admin.index.name] = gdf_sjoin[admin.index.name].values
     del gdf_sjoin
-    timer.mark('Spatial join')
+    timer.mark('Admin overlay: spatial join')
 
     if include_overlays:
         mask = gdf['admin2_id'].isnull()
@@ -713,7 +709,7 @@ def overlay_admin_ids(
             )
             gdf.loc[mask, admin.index.name] = gdf_overlay[admin.index.name]
             del gdf_overlay
-            timer.mark('Spatial overlay')
+            timer.mark('Admin overlay: spatial overlay')
 
     return gdf
 

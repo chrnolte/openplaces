@@ -4,6 +4,7 @@ src/openplaces/path.py
 Standardized path generation for `openplaces` data files.
 """
 
+import fnmatch
 import inspect
 from dataclasses import dataclass
 from pathlib import Path
@@ -278,3 +279,30 @@ def recipe_path(
         filename += '.yaml'
 
     return path(*args, filename=filename, root=root, **kwargs)
+
+
+def path_matches_pattern(path: str, pattern: str) -> bool:
+    """Check if path is a resolved instance of pattern with wildcards.
+
+    Args:
+        path: Concrete path to check
+        pattern: Path pattern with wildcards (*, ?, [seq], etc.)
+
+    Returns:
+        True if path matches the pattern
+    """
+    # Convert to Path objects for normalization
+    concrete_path = Path(path)
+    pattern_path = Path(pattern)
+
+    # Must have same number of parts
+    if len(pattern_path.parts) != len(concrete_path.parts):
+        return False
+
+    # Check each part against pattern
+    return all(
+        fnmatch.fnmatch(concrete_path_part, pattern_path_part)
+        for pattern_path_part, concrete_path_part in zip(
+            pattern_path.parts, concrete_path.parts
+        )
+    )

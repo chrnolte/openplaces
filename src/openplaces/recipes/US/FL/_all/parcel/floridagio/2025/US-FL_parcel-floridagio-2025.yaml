@@ -32,7 +32,7 @@ layer: CADASTRAL_DOR
 # (avoids reading very large geodatabase into memory)
 process_by:
   admin_level: 2
-  admin_id_col: CO_NO
+  admin_id_column: CO_NO
   admin_id_crosswalk:
     recipe_id: "US-FL_parcel-floridagio-2025_admin2-crosswalk"
 

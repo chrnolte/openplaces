@@ -182,17 +182,17 @@ def apply_transformations(
     # Apply individual transformations
     if 'transformations' in recipe:
         for transform_config in recipe['transformations']:
-            df = _apply_transformation(df, transform_config, silent)
+            df = apply_transformation(df, transform_config, silent)
 
     # Apply pattern-based transformations
     if 'transformation_patterns' in recipe:
         for pattern_config in recipe['transformation_patterns']:
-            df = _apply_transformation_pattern(df, pattern_config, silent)
+            df = apply_transformation_pattern(df, pattern_config, silent)
 
     return df
 
 
-def _apply_transformation(
+def apply_transformation(
     df: pd.DataFrame | gpd.GeoDataFrame,
     config: dict[str, Any],
     silent: bool = False,
@@ -456,7 +456,7 @@ def _apply_expression(
         raise RuntimeError(f"Error evaluating formatted expression '{expression}': {e}")
 
 
-def _apply_transformation_pattern(
+def apply_transformation_pattern(
     df: pd.DataFrame | gpd.GeoDataFrame,
     config: dict[str, Any],
     silent: bool = False,
@@ -496,7 +496,7 @@ def _apply_transformation_pattern(
                 f"got '{transform_type}'"
             )
 
-        df = _apply_transformation(df, individual_config, silent)
+        df = apply_transformation(df, individual_config, silent)
 
     return df
 
@@ -592,17 +592,34 @@ def get_crosswalk(crosswalk_dict, flip=False):
         admin_id_crosswalk = get_admin_by_level(
             crosswalk_dict['admin_level'],
             crosswalk_dict['admin_id'],
-            columns=[crosswalk_dict['admin_id_col']],
+            columns=[crosswalk_dict['admin_id_column']],
             recipe=get_recipe_by_id(crosswalk_dict['admin_recipe_id']),
         )
 
-        crosswalk_series = admin_id_crosswalk[crosswalk_dict['admin_id_col']]
+        crosswalk_series = admin_id_crosswalk[crosswalk_dict['admin_id_column']]
     else:
         raise ValueError(f'Crosswalk dictionary not interpretable:\n\n{crosswalk_dict}')
 
     if flip:
         crosswalk_series = crosswalk_series.reset_index().set_index(
-            crosswalk_dict['admin_id_col']
+            crosswalk_series.name
         )
 
     return crosswalk_series
+
+
+def add_unique_suffix(s):
+    """Make string Series unique by appending unique integer suffices
+
+    Parameters
+    ----------
+    s : pd.Series
+        String Series containing duplicate entries
+    """
+    # Avoid warnings about setting slices
+    s = s.copy()
+    duplicates = s.duplicated(keep=False)
+    # Handle collisions with suffix
+    counts = s[duplicates].groupby(s[duplicates], sort=False).cumcount() + 1
+    s.loc[duplicates] = s.loc[duplicates].astype(str) + '-' + counts.astype(str)
+    return s

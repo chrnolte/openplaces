@@ -32,10 +32,10 @@ layer: nc_parcels_poly
 # (avoids reading very large geodatabase into memory)
 process_by:
   admin_level: 2
-  admin_id_col: stcntyfips
+  admin_id_column: stcntyfips
   admin_id_crosswalk:
     admin_level: 2
-    admin_id_col: admin2_id_admin0
+    admin_id_column: admin2_id_admin0
     admin_recipe_id: "US_admin-nhgis-2020_admin2"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table

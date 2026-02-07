@@ -27,6 +27,23 @@ uncompressed_file_name: "V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.gdb"
 # Layer that identifies parcels
 layer: V1100_WisconsinParcels_2025
 
+# Column that splits the data into chunks for processing
+# (avoids reading very large geodatabase into memory)
+process_by:
+  admin_level: 2
+  admin_id_column: PARCELFIPS
+  admin_id_transformation:
+    # Get 5-digit county fips code by prefixing 3-digit code with Wisconsin's FIPS code
+    output: admin2_id_admin0
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "55"
+  admin_id_crosswalk:
+    admin_level: 2
+    admin_id_column: admin2_id_admin0
+    admin_recipe_id: "US_admin-nhgis-2020_admin2"
+
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
   parcel_id_admin1: STATEID
@@ -56,51 +73,11 @@ columns:
   area_assessed_ac: ASSDACRES
   area_deed_ac: DEEDACRES
   admin2_name: CONAME
-  admin2_id_admin1: PARCELFIPS
   property_type: PROPCLASS
   source_date: LOADDATE
-
-# Keep columns that aren't named in the above list
-# keep_unnamed_columns: True
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - city
   - school_district_name
   - admin2_name
-
-transformations:
-  # Get 5-digit county fips code by prefixing 3-digit code with Wisconsin's FIPS code
-  - output: admin2_id_admin0
-    input: admin2_id_admin1
-    type: string
-    operation: add_prefix
-    args:
-      prefix: "55"
-
-# Translate `admin_id` information from source to `openplaces` admin_ids
-admin_id_crosswalk:
-  admin_level: 2
-  admin_id_col: admin2_id_admin0
-  admin_recipe_id: "US_admin-nhgis-2020_admin2"
-
-# Drop problematic parcels?
-# (Parcels with many vertices and little value, e.g. road gaps, lakes)
-drop_problematic_parcels:
-  # Column of official parcel ID: will be searched for conspicous IDs
-  parcel_id_col: parcel_id_admin2
-
-# Separate data into property attributes (table) and unique parcel 
-# geometries. This is usually necessary if the database contains
-# duplicate parcel geometries to account for multiple properties on
-# the same parcel (condos, multiple buildings). Data will be saved as
-# a separate property parquet table and a parcel geometry geoparquet.
-# (Wisconsin: most duplicate parcels refer to developments with 
-# multiple properties, sometimes multiple buildings)
-# separate_properties_from_unique_parcels: True
-
-# Function that returns an indexed version of the input GeoDataFrame
-# index_function: "openplaces.geo.vector.add_geo_id_index"
-
-# Column used to split up 
-# cache_by: admin2_id

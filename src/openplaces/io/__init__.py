@@ -449,23 +449,38 @@ def save_parquet(gdf, parquet_path):
     parquet_path : str
         Filepath of Parquet file
     """
-    parquet_path = Path(parquet_path)
+    if isinstance(parquet_path, str):
+        parquet_path = Path(parquet_path)
+
+    # Break link to avoid warnings of setting on slice
     gdf = gdf.copy()
-    if isinstance(gdf, gpd.GeoDataFrame):
-        # Create space-efficient integer ID column to join data tables
-        gdf['_join_id'] = range(1, len(gdf) + 1)
 
-        # Create two files for tabular and geospatial ('_geo') data
-        to_parquet(gdf[[v for v in gdf if v != 'geometry']], parquet_path)
-
-        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
-
-        print(geoparquet_path)
-        to_parquet(gdf.set_index('_join_id')[['geometry']], geoparquet_path)
-    elif isinstance(gdf, pd.DataFrame):
-        to_parquet(gdf, parquet_path)
+    if isinstance(gdf, gpd.GeoDataFrame) and (
+        'geo_id' in gdf or gdf.index.name == 'geo_id'
+    ):
+        join_id_column = 'geo_id'
     else:
-        raise ValueError('`gdf` has to be a DataFrame or GeoDataFrame.')
+        join_id_column = '_join_id'
+        if gdf.index.name != join_id_column and join_id_column not in gdf:
+            # Create space-efficient integer ID to join source table
+            # to geospatial data and other attribute tables
+            gdf[join_id_column] = range(1, len(gdf) + 1)
+
+    if isinstance(gdf, gpd.GeoDataFrame):
+        # Save attribute table without geometry
+        to_parquet(
+            gdf[[v for v in gdf if v != 'geometry']],
+            parquet_path,
+        )
+
+        # Save geometries separately, with the join ID as the index
+        if join_id_column == gdf.index.name:
+            gdf_geo = gdf
+        else:
+            gdf_geo = gdf.set_index(join_id_column)[['geometry']]
+        to_parquet(gdf_geo, parquet_path.with_stem(parquet_path.stem + '_geo'))
+    else:
+        to_parquet(gdf, parquet_path)
 
 
 def read_parquet(parquet_path, geom=False, drop_join_id=True):
@@ -495,9 +510,9 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True):
     if geom:
         geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
         # Join polygons to table
-        df = gpd.GeoDataFrame(
-            df.join(gpd.read_parquet(geoparquet_path), on='_join_id'), crs=cfg.crs
-        )
+
+        gdf = gpd.read_parquet(geoparquet_path)
+        df = gpd.GeoDataFrame(df.join(gdf, on=gdf.index.name), crs=cfg.crs)
 
     if drop_join_id and '_join_id' in df:
         df = df.drop(columns='_join_id')

@@ -13,7 +13,7 @@ entity:
   entity_type: parcel
    # What is the source and URL of a dataset that identifies each unit?
   source: 
-    source_id: tnris
+    source_id: txgio
     portal_url: "https://tnris.org/stratmap/land-parcels.html"
     # URL to download
     download_url: "https://tnris-data-warehouse.s3.us-east-1.amazonaws.com/LCD/collection/stratmap-2025-land-parcels/stratmap25-landparcels_48_lp.zip"
@@ -29,10 +29,10 @@ uncompressed_file_name: "stratmap25-landparcels_48.gdb"
 # (avoids reading very large geodatabase into memory)
 process_by:
   admin_level: 2
-  admin_id_col: FIPS
+  admin_id_column: FIPS
   admin_id_crosswalk:
     admin_level: 2
-    admin_id_col: admin2_id_admin0
+    admin_id_column: admin2_id_admin0
     admin_recipe_id: "US_admin-nhgis-2020_admin2"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
