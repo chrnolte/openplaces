@@ -1,7 +1,6 @@
 # Recipe to import Microsoft building footprints for the United States
 
-# Administrative unit identifier of the highest administrative geography
-# that the dataset covers (single files can cover a lower admin level)
+# Administrative unit identifier of the geography that the data covers
 admin_id: US
 
 # Entity: what is the unit of analysis of the imported data?
@@ -37,12 +36,15 @@ columns_to_categorical:
   - capture_dates_range
 
 # Function to give the GeoDataFrame an index
-index_function: "openplaces.geo.vector.add_geo_id_index"
+create_index:
+  function: "openplaces.geo.vector.add_geo_id_index"
+  args:
+    name: footprint_id
 
 # Assign administrative IDs using spatial joins/overlays
 overlay_admin_ids:
   admin_level: 2
-  admin_recipe: 'US_admin-nhgis-2020_admin2'
+  admin_recipe_id: 'US_admin-nhgis-2020_admin2'
 
 # Administrative ID level at which data is saved in cache
 # Set if you want to split the data into smaller chunks
