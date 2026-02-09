@@ -13,6 +13,7 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import pyogrio
 import pyproj
 from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
@@ -616,13 +617,20 @@ def get_geo_ids(
     return geo_ids.rename('geo_id')
 
 
-def add_geo_id_index(gdf, handle_duplicates=True, verbose=False):
+def add_geo_id_index(
+    gdf,
+    name='geo_id',
+    handle_duplicates=True,
+    verbose=False,
+):
     """Return the GeoDataFrame using `geo_id` as the index
 
     Parameters
     ----------
     gdf : GeoDataFrame
         Polygon data
+    name : str
+        Name of index column
     handle_duplicates : bool
         If True, adds numeric suffix to duplicate GIDs (default True)
     verbose: bool
@@ -632,7 +640,7 @@ def add_geo_id_index(gdf, handle_duplicates=True, verbose=False):
     gdf = gdf.copy()
     gdf.index = pd.Index(
         get_geo_ids(gdf, handle_duplicates=handle_duplicates, verbose=verbose),
-        name='geo_id',
+        name=name,
     )
     if gdf.index.duplicated().any():
         raise ValueError(
@@ -643,7 +651,13 @@ def add_geo_id_index(gdf, handle_duplicates=True, verbose=False):
 
 
 def overlay_admin_ids(
-    gdf, admin_id, admin_level=2, admin_recipe=None, include_overlays=False, timer=None
+    gdf,
+    admin_geometries=None,
+    admin_level=2,
+    admin_id=None,
+    admin_recipe=None,
+    include_overlays=False,
+    timer=None,
 ):
     """Add administrative unit IDs to GeoDataFrame using spatial joins
 
@@ -651,13 +665,16 @@ def overlay_admin_ids(
     ----------
     gdf : GeoDataFrame
         GeoDataFrame to join admin IDs to
-    admin_id : str
-        Administrative unit of the GeoDataFrame.
-        Determines which administrative units to consider.
+    admin_geometries : gpd.GeoSeries
+        GeoSeries of admin geometries with AdminID index.
+        Pass this or `admin_level`
     admin_level : int
         Administrative level for which administrative IDs are to be
         joined. Typically a lower level (larger number) than the level
         of `admin_id`.
+    admin_id : str
+        Administrative unit of the GeoDataFrame.
+        Determines which administrative units to consider.
     admin_recipe : dict or str
         Recipe of the administrative unit dataset to be used.
         String identifier or resolved recipe (dictionary).
@@ -679,7 +696,12 @@ def overlay_admin_ids(
         )
         admin_recipe = get_recipe(recipe_admin_id, entity, filename=filename)
 
-    admin = get_admin_by_level(admin_level, admin_id, recipe=admin_recipe, geom=True)
+    if admin_geometries is None:
+        admin = get_admin_by_level(
+            admin_level, admin_id, recipe=admin_recipe, columns=[], geom=True
+        )
+    else:
+        admin = admin_geometries.to_frame()
 
     # Cast admin index to pd.Categorical to later save space in the joined column
     admin.index = pd.Index(pd.Categorical(admin.index), name=admin.index.name)
@@ -697,7 +719,7 @@ def overlay_admin_ids(
     timer.mark('Admin overlay: spatial join')
 
     if include_overlays:
-        mask = gdf['admin2_id'].isnull()
+        mask = gdf[admin.index.name].isnull()
         if mask.any():
             gdf_overlay = (
                 gpd.overlay(
@@ -732,3 +754,59 @@ def get_proj4(proj, lat=0, lon=0, ellps='WGS84'):
     if ellps != 'WGS84':
         proj4.replace('WGS84', ellps)
     return proj4
+
+
+def get_intersection_over_union(
+    gdf_left,
+    gdf_right,
+    suffixes=('left', 'right'),
+    area_unit='m2',
+    drop_geometries=True,
+):
+    """Compute interaction over union of two GeoDataFrames"""
+
+    # Make sure area column exists in both GeoDataFrames
+    if area_unit not in gdf_left:
+        gdf_left = gdf_left.copy()
+        gdf_left[area_unit] = get_areas(gdf_left, area_unit)
+    if area_unit not in gdf_right:
+        gdf_right = gdf_right.copy()
+        gdf_right[area_unit] = get_areas(gdf_right, area_unit)
+
+    left_area_col = f'{area_unit}_{suffixes[0]}'
+    right_area_col = f'{area_unit}_{suffixes[1]}'
+    intersection_area_col = f'{area_unit}_intersection'
+
+    # Overlay
+    gdf_overlay = gpd.overlay(
+        gdf_left[[area_unit, 'geometry']]
+        .rename(columns={area_unit: left_area_col})
+        .reset_index(),
+        gdf_right[[area_unit, 'geometry']]
+        .rename(columns={area_unit: f'm2_{suffixes[1]}'})
+        .reset_index(),
+    ).set_index([gdf_left.index.name, gdf_right.index.name])
+
+    # Calculate area of overlap
+    gdf_overlay[intersection_area_col] = get_areas(gdf_overlay, area_unit)
+
+    # Calculate interaction over union
+    gdf_overlay['iou'] = gdf_overlay[intersection_area_col] / (
+        gdf_overlay[left_area_col]
+        + gdf_overlay[right_area_col]
+        - gdf_overlay[intersection_area_col]
+    )
+
+    if drop_geometries:
+        gdf_overlay = gdf_overlay.drop(columns=['geometry'])
+    return gdf_overlay
+
+
+def get_crs(filepath):
+    """Get the CRS from the metadata of a file using `pyogrio`"""
+    geo_metadata = pyogrio.read_info(filepath)
+    if not 'crs' in geo_metadata:
+        warnings.warn('No CRS found in input data.')
+        return None
+
+    return geo_metadata['crs']
