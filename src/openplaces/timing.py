@@ -284,10 +284,11 @@ def get_timer(
     admin_id: str | None = None,
     logger: logging.Logger | None = None,
     verbose: bool = False,
+    overwrite: bool = False,
     **metadata,
 ) -> Timer:
     """Get or create a named timer."""
-    if name not in _timers:
+    if name not in _timers or overwrite:
         if logger is None and verbose:
             logger = logging.getLogger(f'openplaces.timing.{name}')
             if not logger.handlers:
