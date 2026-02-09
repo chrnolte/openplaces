@@ -47,6 +47,10 @@ query: "type != 'Water body'"
 # Values to be interpreted as empty (None)
 null_value_strings: ["?"]
 
+# Keep columns that aren't named in the above list
+# (`True` to ensure that columns from `index_function` are kept)
+keep_unnamed_columns: True
+
 # Function that returns an indexed version of the input 1GeoDataFrame1
 # (usually a custom function designed for a specific case)
 index_function: "openplaces.io.admin.admin1_id_index_from_admin1_gadm"

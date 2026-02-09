@@ -45,6 +45,7 @@ columns:
   admin0_id_a3: GID_0
 
 # Keep columns that aren't named in the above list
+# (`True` to ensure that columns from `index_function` are kept)
 keep_unnamed_columns: True
 
 # Filter query to select rows

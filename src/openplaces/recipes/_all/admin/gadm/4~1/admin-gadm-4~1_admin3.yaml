@@ -36,8 +36,8 @@ columns:
   admin2_name: NAME_2
   admin1_name: NAME_1
   admin0_name: COUNTRY
-  name_alternatives: VARNAME_3
   name_original: NL_NAME_3
+  name_alternatives: VARNAME_3
   type_original: TYPE_3
   admin2_name_original: NL_NAME_2
   admin2_name_alternatives: VARNAME_2
@@ -55,7 +55,7 @@ columns:
 keep_unnamed_columns: True
 
 # Filter query to select rows
-query: "type not in ('Water body', 'Waterbody', 'Water Body')"
+query: "type not in ('Water body', 'Waterbody', 'Water Body') and admin2_name != 'Water body'"
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
