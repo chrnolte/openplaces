@@ -39,8 +39,8 @@ create_index:
   column: admin1_id_admin0_alpha
   prefix: US-
 
-# # Filter query to select rows
-# # Keeps 50 states and DC (territories are in `admin0` according to ISO)
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin0` according to ISO)
 query: "admin1_id_admin0 <= '56'"
 
 # Internal filename after import. This is only needed if the filename
