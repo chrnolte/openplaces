@@ -196,7 +196,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
         & ~admin1_id_from_hasc1.isin(admin1['admin1_id'])
     )
     admin1.loc[i, 'admin1_id'] = admin1_id_from_hasc1[i]
-    admin1.loc[i, 'admin1_id_source'] = 'hasc1'
+    admin1.loc[i, 'admin1_id_source'] = 'hasc'
 
     # Third priority: capitalized letters
     admin1 = admin1.sort_values(['admin0_id', '_name'])
@@ -214,7 +214,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
         ~admin1_id_caps.isin(admin1['admin1_id']) & ~admin1_id_caps.duplicated()
     ]
     admin1.loc[admin1_id_caps.index, 'admin1_id'] = admin1_id_caps
-    admin1.loc[admin1_id_caps.index, 'admin1_id_source'] = 'own.caps'
+    admin1.loc[admin1_id_caps.index, 'admin1_id_source'] = 'capitalized'
 
     # Fourth priority: first two letters
     i_fill = admin1['admin1_id'].isnull()
@@ -227,7 +227,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
         ~admin1_id_two.isin(admin1['admin1_id']) & ~admin1_id_two.duplicated()
     ]
     admin1.loc[admin1_id_two.index, 'admin1_id'] = admin1_id_two
-    admin1.loc[admin1_id_two.index, 'admin1_id_source'] = 'own.first'
+    admin1.loc[admin1_id_two.index, 'admin1_id_source'] = 'first2'
 
     # Fifth priority: any two letters from the name
     i_fill = admin1['admin1_id'].isnull()
@@ -238,7 +238,7 @@ def admin1_id_index_from_admin1_gadm(admin1):
             admin1_id = admin0_id + STRING_SEPARATOR_WITHIN_IDS + x1 + x2
             if admin1_id not in set(admin1['admin1_id']):
                 admin1.loc[ix, 'admin1_id'] = admin1_id
-                admin1.loc[ix, 'admin1_id_source'] = 'own.any'
+                admin1.loc[ix, 'admin1_id_source'] = 'any2'
                 break
 
     if admin1['admin1_id'].isnull().any() or admin1['admin1_id'].duplicated().any():
@@ -307,7 +307,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
         + STRING_SEPARATOR_WITHIN_IDS
         + admin2[i]['admin2_id_hasc'].str.slice(3, 5)
     )
-    admin2.loc[i, 'admin2_id_source'] = 'hasc1'
+    admin2.loc[i, 'admin2_id_source'] = 'hasc'
 
     # Exception: Brazil has too many subdivisions, gets three-letter codes
     # (Minas Gerais has 854 subdivisions, São Paulo 644, 10 others > 200)
@@ -335,7 +335,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
         )
         aids = aids[~aids.isin(admin2['admin2_id']) & ~aids.duplicated()]
         admin2.loc[aids.index, 'admin2_id'] = aids
-        admin2_id_source = 'own.br.init' if regex == regexes[0] else 'own.br.first'
+        admin2_id_source = 'br.initials' if regex == regexes[0] else 'br.first3'
         admin2.loc[aids.index, 'admin2_id_source'] = admin2_id_source
 
     # Brazil, second try: any three
@@ -353,7 +353,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
             admin2_id = admin1_id + STRING_SEPARATOR_WITHIN_IDS + x1 + x2 + x3
             if admin2_id not in aids:
                 admin2.loc[ix, 'admin2_id'] = admin2_id
-                admin2.loc[ix, 'admin2_id_source'] = 'own.br.any'
+                admin2.loc[ix, 'admin2_id_source'] = 'br.any3'
                 aids.add(admin2_id)
                 break
 
@@ -371,7 +371,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
         + 'X'
         + numbers.astype(str).str.zfill(2)
     )
-    admin2.loc[i_uy, 'admin2_id_source'] = 'own.uy'
+    admin2.loc[i_uy, 'admin2_id_source'] = 'uy'
 
     # Exception: Unnamed units with generic digits
     # Usually zones in cities, found in Vietnam, Praha (Prague), Guatemala
@@ -397,7 +397,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
             + digits.str.zfill(n_zfill)
         )
         admin2.loc[i_fill, 'admin2_id'] = aids
-        admin2.loc[i_fill, 'admin2_id_source'] = 'own.a00'
+        admin2.loc[i_fill, 'admin2_id_source'] = 'a00'
 
     # Third priority: initials of first two words
     i_fill = admin2['admin2_id'].isnull() & admin2['_name'].notnull()
@@ -408,7 +408,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
     )
     aid_caps = aid_caps[~aid_caps.isin(admin2['admin2_id']) & ~aid_caps.duplicated()]
     admin2.loc[aid_caps.index, 'admin2_id'] = aid_caps
-    admin2.loc[aid_caps.index, 'admin2_id_source'] = 'own.init'
+    admin2.loc[aid_caps.index, 'admin2_id_source'] = 'initials'
 
     # Fourth priority: first two letters
     i_fill = (
@@ -427,7 +427,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
         & aid_two.str.len().ge(6)
     ]
     admin2.loc[aid_two.index, 'admin2_id'] = aid_two
-    admin2.loc[aid_two.index, 'admin2_id_source'] = 'own.first'
+    admin2.loc[aid_two.index, 'admin2_id_source'] = 'first2'
 
     # Fifth priority: any two letters from the name
     i_fill = admin2['admin2_id'].isnull() & admin2['_name'].notnull()
@@ -440,7 +440,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
             admin2_id = admin1_id + STRING_SEPARATOR_WITHIN_IDS + x1 + x2
             if admin2_id not in aids:
                 admin2.loc[ix, 'admin2_id'] = admin2_id
-                admin2.loc[ix, 'admin2_id_source'] = 'own.any'
+                admin2.loc[ix, 'admin2_id_source'] = 'any2'
                 aids.add(admin2_id)
                 break
 
@@ -468,13 +468,13 @@ def admin2_id_index_from_admin2_gadm(admin2):
                 if admin2_id_rep not in aids:
                     replacement_found = True
                     admin2.loc[ix2, 'admin2_id'] = admin2_id_rep
-                    admin2.loc[ix2, 'admin2_id_source'] = 'own.rep'
+                    admin2.loc[ix2, 'admin2_id_source'] = 'replaced'
                     aids.add(admin2_id_rep)
                     break
 
             if replacement_found:
                 admin2.loc[ix, 'admin2_id'] = admin2_id
-                admin2.loc[ix, 'admin2_id_source'] = 'own.any'
+                admin2.loc[ix, 'admin2_id_source'] = 'any2'
                 break
 
     # Last resort: filling in NAs
@@ -491,7 +491,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
         + 'X'
         + numbers.astype(str)
     )
-    admin2.loc[i_fill, 'admin2_id_source'] = 'own.na'
+    admin2.loc[i_fill, 'admin2_id_source'] = 'filled'
 
     # Catch issues with nulls and duplicates
     admin2_id_isnull = admin2['admin2_id'].isnull()
