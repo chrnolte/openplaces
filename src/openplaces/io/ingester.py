@@ -25,6 +25,7 @@ from openplaces.core.constants import (
 )
 from openplaces.core.schema import AdminId
 from openplaces.geo.vector import (
+    get_crs,
     get_geo_ids,
     overlay_admin_ids,
 )
@@ -793,11 +794,27 @@ class Ingester:
                     "but no 'process_by' argument found in `recipe`."
                 )
 
-            if not 'admin_id_fids' in self.download_partition:
-                self._prepare_admin_id_crosswalk(admin_id_to_process)
-                self._prepare_admin_id_filter_column(admin_id_to_process)
-            _fids = self.download_partition['admin_id_fids']
-            read_data_kwargs['fids'] = list(_fids[_fids.eq(admin_id_to_process)].index)
+            if 'use_spatial_mask' in self.recipe['process_by']:
+                # Reading part of geodatabase by passing polygon
+                if self.verbose:
+                    print('Reading with bounding box. This can be slow.')
+                if 'admin_geometries' not in self.download_partition:
+                    self._load_admin_geometries()
+                admin_bbox_bounds = (
+                    self.download_partition['admin_geometries']
+                    .loc[admin_id_to_process]
+                    .geometry.bounds
+                )
+                read_data_kwargs['bbox'] = admin_bbox_bounds
+            else:
+                # Reading part of geodatabase by passing feature IDs
+                if 'admin_id_fids' not in self.download_partition:
+                    self._prepare_admin_id_crosswalk(admin_id_to_process)
+                    self._prepare_admin_id_filter_column(admin_id_to_process)
+                _fids = self.download_partition['admin_id_fids']
+                read_data_kwargs['fids'] = list(
+                    _fids[_fids.eq(admin_id_to_process)].index
+                )
 
         gdf = self._read_recipe_data(**read_data_kwargs)
 
@@ -866,6 +883,30 @@ class Ingester:
             f'admin{admin_level_to_process}_id'
         ]
 
+    def _load_admin_geometries(self):
+        if (
+            'process_by' in self.recipe
+            and 'use_spatial_index' in self.recipe['process_by']
+            and self.recipe['process_by']['use_spatial_index']
+        ):
+            admin_specs = self.recipe['process_by']
+        elif 'overlay_admin_ids' in self.recipe:
+            admin_specs = self.recipe['overlay_admin_ids']
+
+        admin_recipe = (
+            admin_specs['admin_recipe'] if 'admin_recipe' in admin_specs else None
+        )
+        admin_geometries = get_admin_by_level(
+            admin_specs['admin_level'],
+            self.download_partition['admin_id_to_download'],
+            recipe=admin_recipe,
+            geom=True,
+        )['geometry']
+        data_crs = get_crs(self.download_partition['data_path'])
+        if data_crs != admin_geometries.crs:
+            admin_geometries = admin_geometries.to_crs(data_crs)
+        self.download_partition['admin_geometries'] = admin_geometries
+
     def _read_recipe_data(self, columns=None, **kwargs):
         """Read a recipe dataset
 
@@ -881,6 +922,9 @@ class Ingester:
         """
         # Silence warnings from reading complex polygons
         warnings.filterwarnings('ignore', 'received a polygon with more than 100 parts')
+
+        if 'encoding' in self.recipe:
+            kwargs['encoding'] = self.recipe['encoding']
 
         if columns:
             timer_message_suffix = (
@@ -898,7 +942,9 @@ class Ingester:
         if data_path.suffix in GEOPANDAS_EXTENSIONS:
             if data_path.suffix == 'parquet':
                 if 'fids' in kwargs:
-                    raise ValueError('Parquet fie')
+                    raise ValueError(
+                        '`fid`-based selection might not work with `parquet`.'
+                    )
                 gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
                 self.timer.mark(
                     'Read parquet file' + timer_message_suffix, path=data_path
@@ -1023,21 +1069,28 @@ class Ingester:
                 )
             df = df.set_index(self.recipe['set_index'])
         elif 'create_index' in self.recipe:
-            if self.recipe['create_index']['method'] == 'prefix':
-                df.index = pd.Index(
-                    self.recipe['create_index']['prefix']
-                    + df[self.recipe['create_index']['column']],
-                    name=self.recipe['create_index']['name'],
+            if 'function' in self.recipe['create_index']:
+                index_function = self._load_function(
+                    self.recipe['create_index']['function']
                 )
+                index_function_kwargs = (
+                    self.recipe['create_index']['args']
+                    if 'args' in self.recipe['create_index']
+                    else {}
+                )
+                df = index_function(df, **index_function_kwargs)
+            elif 'method' in self.recipe['create_index']:
+                if self.recipe['create_index']['method'] == 'prefix':
+                    df.index = pd.Index(
+                        self.recipe['create_index']['prefix']
+                        + df[self.recipe['create_index']['column']],
+                        name=self.recipe['create_index']['name'],
+                    )
         elif 'index_function' in self.recipe:
             # Create index with custom function
 
-            def load_function(path):
-                module, name = path.rsplit('.', 1)
-                return getattr(importlib.import_module(module), name)
-
             with log_step('Generate indices', timer=self.timer):
-                index_function = load_function(self.recipe['index_function'])
+                index_function = self._load_function(self.recipe['index_function'])
 
                 df = index_function(df)
 
@@ -1078,6 +1131,14 @@ class Ingester:
         if 'transformations' in self.recipe:
             df = apply_transformations(df, self.recipe)
 
+        self.timer.mark('Preprocessing')
+
+        use_spatial_mask = (
+            'process_by' in self.recipe
+            and 'use_spatial_mask' in self.recipe['process_by']
+            and self.recipe['process_by']['use_spatial_mask']
+        )
+
         # Attribute entities to administrative unit IDs
         if 'admin_id_crosswalk' in self.recipe:
             admin_id_crosswalk_dict = self.recipe['admin_id_crosswalk']
@@ -1086,21 +1147,37 @@ class Ingester:
             ]
             admin_id_crosswalk = get_crosswalk(admin_id_crosswalk_dict, flip=True)
             df = df.join(admin_id_crosswalk, on=admin_id_crosswalk.index.name)
-        elif 'overlay_admin_ids' in self.recipe:
+        elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
             if self.verbose:
                 print(
                     'Overlaying polygons with administrative boundaries. '
                     'This can take a while.'
                 )
-            with log_step('Overlay admin IDs', timer=self.timer):
-                df = overlay_admin_ids(
-                    df,
-                    self.processing_chunk['admin_id_to_process'],
-                    **self.recipe['overlay_admin_ids'],
-                    timer=self.timer,
+            if 'admin_geometries' not in self.download_partition:
+                self._load_admin_geometries()
+            if use_spatial_mask:
+                admin_specs = self.recipe['process_by']
+                # Spatial bounding box already applied. Intersect only
+                # with the administrative unit of interest.
+                admin_geometries = (
+                    self.download_partition['admin_geometries']
+                    .loc[[self.processing_chunk['admin_id_to_process']]]
+                    .copy()
                 )
+            elif 'overlay_admin_ids' in self.recipe:
+                admin_specs = self.recipe['overlay_admin_ids']
+                admin_geometries = self.download_partition['admin_geometries']
+            df = overlay_admin_ids(
+                df,
+                admin_geometries=admin_geometries,
+                timer=self.timer,
+            )
 
         return df
+
+    def _load_function(self, path):
+        module, name = path.rsplit('.', 1)
+        return getattr(importlib.import_module(module), name)
 
     def _get_labels(self, column):
         """Get dictionary of codes > labels for a column in a recipe
@@ -1113,13 +1190,13 @@ class Ingester:
             Example: if the column is 'purpose_group', the label CSV is:
             '<recipe_id>_purpose-group-labels.csv'
         """
-        labels_path = recipe_path(
+        labels_recipe_path = recipe_path(
             self.recipe['admin_id'],
             self.recipe['entity'],
             filename=column.replace('_', '-') + '-labels.csv',
         )
-        if labels_path.exists():
-            labels = pd.read_csv(labels_path)
+        if labels_recipe_path.exists():
+            labels = pd.read_csv(labels_recipe_path)
             labels = labels.set_index(labels.columns[0])[labels.columns[1]].to_dict()
             return labels
         else:
@@ -1172,22 +1249,18 @@ class Ingester:
                 end = ', ' if admin_id_to_save != admin_ids_to_save[-1] else ''
                 print(admin_id_to_save, end=end)
             if split_dataset_by_admin:
+                redundant_admin_id_columns = [
+                    v for v in gdf if v.startswith(f"admin{admin_level}_id")
+                ]
                 gdf_to_save = (
                     gdf[gdf[admin_id_col].eq(admin_id_to_save)]
                     .copy()
-                    .drop(columns=admin_id_col)
+                    .drop(columns=redundant_admin_id_columns)
                 )
             else:
                 gdf_to_save = gdf.copy()
 
-            parquet_path = cache_path(
-                admin_id_to_save,
-                self.recipe['entity'],
-                filename=self.recipe['cache_filename']
-                if 'cache_filename' in self.recipe
-                else None,
-            )
-
+            parquet_path = self._get_parquet_path(admin_id_to_save)
             save_parquet(gdf_to_save, parquet_path)
 
         if print_admin_id_progress:
