@@ -9,6 +9,7 @@ import warnings
 
 import contextily as cx
 import geopandas as gpd
+import pandas as pd
 import matplotlib.pyplot as plt
 from pyproj import Transformer
 from shapely.geometry import LineString, MultiLineString, MultiPolygon, Point, Polygon
@@ -199,6 +200,8 @@ def show_building(
     radius=150,
     size=10,
     show_basemap=True,
+    show_crosshair=True,
+    show_location=True,
     return_fig_ax=False,
     verbose=False,
 ):
@@ -222,6 +225,10 @@ def show_building(
         Size of plot in inches (both height and width of `figsize`)
     show_basemap : bool
         If True, a basemap is added, and colors of parcels are adjusted.
+    show_crosshair : bool
+        Display crosshair of the centerpoint
+    show_location : bool
+        Display latitude/longitude of location
     return_fig_ax : bool
         If True, return the plot's Figure and Axes objects
     verbose : bool
@@ -242,7 +249,7 @@ def show_building(
 
     # Get centroid coordinates in EPSG:3857
     if isinstance(location, tuple):
-        lat, long = location[0], location[1]
+        lat_center, long_center = location[0], location[1]
     elif isinstance(location, gpd.GeoDataFrame):
         # Compute centroid of first geometry
         warnings.filterwarnings('ignore', '.*geographic CRS.*')
@@ -250,21 +257,18 @@ def show_building(
         warnings.filterwarnings('default', '.*geographic CRS.*')
         if location.crs != 'epsg:4326':
             location = location['geometry'].to_crs('epsg:4326')
-        lat, long = location.iloc[0].y, location.iloc[0].x
+        lat_center, long_center = location.iloc[0].y, location.iloc[0].x
     else:
         raise TypeError(f'Type of `location` is not yet supported: {type(location)}.')
 
     # Get outer bounds in EPSG:3857
-    x, y = to_3857(lat, long)
+    x, y = to_3857(lat_center, long_center)
     xmin, xmax = x - radius, x + radius
     ymin, ymax = y - radius, y + radius
 
     # Convert outer bounds to lat/long for quick spatial selection with .cx
     lat_min, long_min = to_4326(xmin, ymin)
     lat_max, long_max = to_4326(xmax, ymax)
-    # if verbose:
-    #     print(f'cx[{long_min}:{long_max}, {lat_min}:{lat_max}]')
-    #     print(f'({xmin}, {xmax}), ({ymin}, {ymax})')
 
     fig, ax = plt.subplots(figsize=(size, size))
     ax.set_xlim(xmin, xmax)  # Needs to happen before adding a basemap
@@ -282,6 +286,28 @@ def show_building(
         except requests.exceptions.ConnectionError:
             print('No internet connection: could not add basemap. ')
             show_basemap = False
+
+    if show_crosshair:
+        crosshair_color = 'white' if show_basemap else 'black'
+        ax.plot([xmin, xmax], [ymin, ymax], color=crosshair_color, ls=':', linewidth=1)
+        ax.plot([xmin, xmax], [ymax, ymin], color=crosshair_color, ls=':', linewidth=1)
+
+    if show_location:
+        ax.text(
+            x,
+            ymin + radius / 15,
+            f'lat: {lat_center:.3f}, long: {long_center:.3f}',
+            backgroundcolor='#ffffffcc',
+            va='bottom',
+            ha='center',
+            bbox=dict(
+                facecolor='#ffffffdd',
+                edgecolor='crimson',
+                boxstyle='round',
+                linewidth=1,
+                pad=0.5,
+            ),
+        )
 
     color_parcel = 'yellow' if show_basemap else 'gold'
 
@@ -333,7 +359,9 @@ def show_building(
     # Add parcel info
     parcel_found = False
     if 'parcels' in geodatasets:
-        parcel = geodatasets['parcels'].cx[long:long, lat:lat]
+        parcel = geodatasets['parcels'].cx[
+            long_center:long_center, lat_center:lat_center
+        ]
         if len(parcel) == 0:
             print('No parcel found.')
         else:
@@ -363,7 +391,7 @@ def show_building(
             alpha=0.5,
         )
 
-        txt_p_list = []
+        txt_p_list = [f"geo_id {parcel.iloc[0]['geo_id']}"]
         for _gid, _p_txt in parcel.head(N_MAX_PARCEL_TEXT).iterrows():
             if verbose:
                 print(f'Parcel GID: {_gid}')
@@ -402,28 +430,41 @@ def show_building(
         isinstance(location, gpd.GeoSeries) and location.index.name == 'building_id_nsi'
     )
     if 'buildings_nsi' in geodatasets and (parcel_found or location_is_nsi):
+        buildings_nsi_to_label_list = []
         if location_is_nsi:
-            buildings_nsi_on_parcel = (
+            buildings_nsi_in_crosshair = (
                 geodatasets['buildings_nsi'].loc[[location.index[0]]].reset_index()
             )
-        elif parcel_found:
+            buildings_nsi_to_label_list = [buildings_nsi_in_crosshair]
+        if parcel_found:
             buildings_nsi_on_parcel = gpd.sjoin(
                 parcel[['geometry']].iloc[[0]],
                 geodatasets['buildings_nsi'].cx[long_min:long_max, lat_min:lat_max],
             ).sort_values('area_sqft', ascending=False)
 
-        if len(buildings_nsi_on_parcel) == 0:
+            if location_is_nsi:
+                not_in_crosshair = buildings_nsi_on_parcel[
+                    geodatasets['buildings_nsi'].index.name
+                ].ne(buildings_nsi_in_crosshair.index[0])
+                buildings_nsi_to_label_list += [
+                    buildings_nsi_on_parcel[not_in_crosshair]
+                ]
+            else:
+                buildings_nsi_to_label_list += [buildings_nsi_on_parcel]
+        buildings_nsi_to_label = pd.concat(buildings_nsi_to_label_list)
+
+        if len(buildings_nsi_to_label) == 0:
             print('No NSI points found on parcel in plot frame.')
         else:
             if verbose:
                 print(
-                    f'{len(buildings_nsi_on_parcel)} NSI points on parcel: '
+                    f'{len(buildings_nsi_to_label)} NSI points on parcel: '
                     + ', '.join(
-                        buildings_nsi_on_parcel['nsi_id'].astype(int).astype(str)
+                        buildings_nsi_to_label['nsi_id'].astype(int).astype(str)
                     )
                 )
             txt_nsi_list = []
-            for _, _building_nsi in buildings_nsi_on_parcel.head(
+            for _, _building_nsi in buildings_nsi_to_label.head(
                 N_MAX_BUILDINGS_NSI_TEXT
             ).iterrows():
                 txt_nsi_list += [
@@ -432,10 +473,11 @@ def show_building(
                     + f'Construction: {_building_nsi["construction_type"]}\n'
                     + f'Foundation: {_building_nsi["foundation_type"]}\n'
                     + 'Bldg value (2021): '
-                    + f'${int(_building_nsi["structure_value"]):,d}'
+                    + f'${int(_building_nsi["structure_value"]):,d}\n'
+                    + f'Source: {_building_nsi["source"]}'
                 ]
 
-            n_omitted = len(buildings_nsi_on_parcel) - N_MAX_BUILDINGS_NSI_TEXT
+            n_omitted = len(buildings_nsi_to_label) - N_MAX_BUILDINGS_NSI_TEXT
             if n_omitted > 0:
                 txt_nsi_list += [f'... and {n_omitted} more']
             txt_nsi = '\n\n'.join(txt_nsi_list)
@@ -454,6 +496,10 @@ def show_building(
             )
 
     if parcel_found and 'buildings_fema' in geodatasets:
+        building_fema_in_crosshair = geodatasets['buildings_fema'].cx[
+            long_center, lat_center
+        ]
+
         buildings_fema_on_parcel = gpd.overlay(
             parcel[['geometry']].iloc[[0]].reset_index(),
             geodatasets['buildings_fema']
@@ -474,14 +520,27 @@ def show_building(
             'overlap_area_sqft', ascending=False
         )
 
-        if len(buildings_fema_on_parcel) == 0:
-            print('No FEMA polygons points found on parcel in plot frame.')
+        if len(building_fema_in_crosshair) == 0:
+            buildings_fema_to_label = buildings_fema_on_parcel
+        else:
+            not_in_crosshair = buildings_fema_on_parcel[
+                building_fema_in_crosshair.index.name
+            ].ne(building_fema_in_crosshair.index[0])
+            buildings_fema_to_label = pd.concat(
+                [
+                    building_fema_in_crosshair.reset_index(),
+                    buildings_fema_on_parcel[not_in_crosshair],
+                ]
+            )
+
+        if len(buildings_fema_to_label) == 0:
+            print('No FEMA polygons identified by location.')
         else:
             if verbose:
                 print(
-                    f'{len(buildings_fema_on_parcel)} FEMA footprints on parcel: '
+                    f'{len(buildings_fema_to_label)} FEMA footprints on parcel: '
                     + ', '.join(
-                        buildings_fema_on_parcel['fema_id'].astype(int).astype(str)
+                        buildings_fema_to_label['fema_id'].astype(int).astype(str)
                     )
                 )
 
@@ -489,26 +548,24 @@ def show_building(
             city = None
             for (
                 _,
-                fema_building_on_parcel,
-            ) in buildings_fema_on_parcel.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
-                txt_use = (
-                    fema_building_on_parcel['purpose_subgroup'] or 'No primary use'
-                )
-                address = fema_building_on_parcel['address'] or 'No address'
+                building_fema_to_label,
+            ) in buildings_fema_to_label.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
+                txt_use = building_fema_to_label['purpose_subgroup'] or 'No primary use'
+                address = building_fema_to_label['address'] or 'No address'
                 txt_fema_list += [
-                    f'FEMA ID {int(fema_building_on_parcel["building_id_fema"])}\n'
+                    f'FEMA ID {int(building_fema_to_label["building_id_fema"])}\n'
                     + f'{address.title()}\n'
                     + f'{txt_use.title()}\n'
                     + (
-                        f'{fema_building_on_parcel["frac_sqft"]:,.0%} of '
-                        if fema_building_on_parcel["frac_sqft"] < 0.99
+                        f'{building_fema_to_label["frac_sqft"]:,.0%} of '
+                        if building_fema_to_label["frac_sqft"] < 0.99
                         else ''
                     )
-                    + f'{fema_building_on_parcel["footprint_area_sqft"]:,.0f} sqft\n'
-                    + f'Validation: \n{fema_building_on_parcel["validation_method"].title()}'
+                    + f'{building_fema_to_label["footprint_area_sqft"]:,.0f} sqft\n'
+                    + f'Validation: {building_fema_to_label["validation_method"].title()}'
                 ]
-                city = fema_building_on_parcel['city'] or city
-            n_omitted = len(buildings_fema_on_parcel) > N_MAX_BUILDINGS_FEMA_TEXT
+                city = building_fema_to_label['city'] or city
+            n_omitted = len(buildings_fema_to_label) - N_MAX_BUILDINGS_FEMA_TEXT
             if n_omitted > 0:
                 txt_fema_list += [f'... and {n_omitted} more']
             txt_fema = '\n\n'.join(txt_fema_list)
