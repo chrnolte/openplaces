@@ -477,13 +477,15 @@ def save_parquet(gdf, parquet_path):
         if join_id_column == gdf.index.name:
             gdf_geo = gdf
         else:
-            gdf_geo = gdf.set_index(join_id_column)[['geometry']]
-        to_parquet(gdf_geo, parquet_path.with_stem(parquet_path.stem + '_geo'))
+            gdf_geo = gdf.set_index(join_id_column)
+        to_parquet(
+            gdf_geo[['geometry']], parquet_path.with_stem(parquet_path.stem + '_geo')
+        )
     else:
         to_parquet(gdf, parquet_path)
 
 
-def read_parquet(parquet_path, geom=False, drop_join_id=True):
+def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None):
     """Read parquet file from filesystem (with optional geometries)
 
     Parameters
@@ -495,10 +497,12 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True):
         (`parquet_path` with '_geo' suffix)
     drop_join_id : bool
         Drop column '_join_id' if it exists.
+    filters : list of filters
+        Will be passed to pd.read_parquet
     """
     parquet_path = Path(parquet_path)
 
-    df = pd.read_parquet(parquet_path)
+    df = pd.read_parquet(parquet_path, filters=filters)
     if 'geometry' in df:
         raise ValueError(
             "'geometry' column found in:\n\n"
@@ -508,10 +512,22 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True):
         )
 
     if geom:
+        if '_join_id' in df:
+            join_id_column = '_join_id'
+        elif 'geo_id' in df:
+            join_id_column = 'geo_id'
+        else:
+            raise ValueError('Could not identify column to join GeoParquet.')
+        join_id_column = '_join_id' if '_join_id' in df else 'geo_id'
+
         geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
         # Join polygons to table
 
-        gdf = gpd.read_parquet(geoparquet_path)
+        geoparquet_filters = None
+        if filters is not None:
+            geoparquet_filters = [(join_id_column, 'in', df[join_id_column].tolist())]
+
+        gdf = gpd.read_parquet(geoparquet_path, filters=geoparquet_filters)
         df = gpd.GeoDataFrame(df.join(gdf, on=gdf.index.name), crs=cfg.crs)
 
     if drop_join_id and '_join_id' in df:
