@@ -67,8 +67,8 @@ Create your copy of the code
    Next time you log onto the server, you can type ``cd openplaces`` to change to your repository directory.
 
 
-Coding in Jupyter
-~~~~~~~~~~~~~~~~~
+Start Jupyter notebook
+~~~~~~~~~~~~~~~~~~~~~~
 
 Using OnDemand
 --------------
@@ -103,7 +103,9 @@ Using OnDemand
 
    Wait until your interactive session has been created.
 
-   After a while, a new button will appear: :input:`Connect to Jupyter`. Click it and start coding!
+   After a while, a new button will appear: :input:`Connect to Jupyter`. Click it!
+
+-  Continue with :ref:`cluster_data_folders`.
 
 
 Using the Terminal
@@ -148,6 +150,8 @@ Using the Terminal
 
    You can now open a Jupyter notebook and start coding.
 
+-  Continue with :ref:`cluster_data_folders`.
+
 .. caution::
 
    Keep both :gui:`Terminal` windows open while you work on the cluster. If you close the tunnel, you can't interact with the Jupyter notebook anymore.
@@ -166,6 +170,26 @@ You can edit :file:`~/.bashrc` and give this series of commands an alias:
    }
 
 This way, after logging onto the cluster, you just type ``openplaces`` and get an active Jupyter session.
+
+.. _cluster_data_folders:
+
+Set up your data folders
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Upon the first call of ``import openplaces``, a configuration script is launched.
+
+See :ref:`configuration` for the full explanation.
+
+On the cluster, you will have to pick this configuration:
+
+   Root directory for data, models, and reports
+      :input:`/projectnb/openplaces/data/earth`
+
+   Choose your configuration mode
+      :input:`b` (Multi-user)
+
+   Directory paths
+      :input:`a` (Choose defaults)
 
 
 Transfer files
