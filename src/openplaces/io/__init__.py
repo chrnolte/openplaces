@@ -485,7 +485,7 @@ def save_parquet(gdf, parquet_path):
         to_parquet(gdf, parquet_path)
 
 
-def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None):
+def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kwargs):
     """Read parquet file from filesystem (with optional geometries)
 
     Parameters
@@ -499,10 +499,19 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None):
         Drop column '_join_id' if it exists.
     filters : list of filters
         Will be passed to pd.read_parquet
+    kwargs : dict
+        Keywords arguments will be passed on to pd.read_parquet()
+        (e.g. columns)
     """
+
     parquet_path = Path(parquet_path)
 
-    df = pd.read_parquet(parquet_path, filters=filters)
+    if not parquet_path.exists():
+        raise FileNotFoundError(
+            'Could not read file from `openplaces` filesystem:\n' + str(parquet_path)
+        )
+
+    df = pd.read_parquet(parquet_path, filters=filters, **kwargs)
     if 'geometry' in df:
         raise ValueError(
             "'geometry' column found in:\n\n"
@@ -520,13 +529,12 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None):
             raise ValueError('Could not identify column to join GeoParquet.')
         join_id_column = '_join_id' if '_join_id' in df else 'geo_id'
 
-        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
         # Join polygons to table
-
-        geoparquet_filters = None
         if filters is not None:
             geoparquet_filters = [(join_id_column, 'in', df[join_id_column].tolist())]
-
+        else:
+            geoparquet_filters = None
+        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
         gdf = gpd.read_parquet(geoparquet_path, filters=geoparquet_filters)
         df = gpd.GeoDataFrame(df.join(gdf, on=gdf.index.name), crs=cfg.crs)
 

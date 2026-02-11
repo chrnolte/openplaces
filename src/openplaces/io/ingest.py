@@ -32,7 +32,7 @@ from openplaces.geo.vector import (
     overlay_admin_ids,
 )
 from openplaces.io import download, find_latest_file_or_gdb, to_parquet, unzip
-from openplaces.io.admin import find_admin_recipe  # , get_admin_id_crosswalk
+from openplaces.io.admin import find_admin_recipe
 from openplaces.io.parcel import drop_problematic_parcels
 from openplaces.io.transform import (
     add_unique_suffix,
@@ -97,8 +97,8 @@ def _get_admin_partition_key(recipe, placeholder, admin_id):
 
     # Translate placeholders to admin columns / identifiers by cutting
     # off 'adminX_' prefixes unless the prefix is 'adminX_id'
-    # 'admin1_name' -> 'name'
-    # 'admin1_id_leaf', 'admin1_id_admin0' -> keep as is
+    # 'admin2_name' -> 'name'
+    # 'admin2_id_leaf', 'admin2_id_admin1' -> keep as is
     if placeholder.startswith(
         f"{recipe['download_by']}_"
     ) and not placeholder.startswith(f"{recipe['download_by']}_id"):
@@ -143,7 +143,7 @@ def _resolve_placeholders(
 ):
     """Resolve placeholders (partition keys) in a URL or filepath
 
-    Example: {admin1_name}.geojson.zip => NorthCarolina.geojson.zip
+    Example: {admin2_name}.geojson.zip => NorthCarolina.geojson.zip
     """
     if partition_keys is None:
         partition_keys = {}

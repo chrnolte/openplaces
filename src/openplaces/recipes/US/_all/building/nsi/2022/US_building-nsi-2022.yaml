@@ -14,15 +14,15 @@ entity:
     # Link to portal with metadata
     portal_url: "https://www.hec.usace.army.mil/confluence/nsi"
     # Link to direct download
-    download_url: "https://nsi.sec.usace.army.mil/downloads/nsi_2022/nsi_2022_{admin1_id_admin0}.gpkg.zip"
+    download_url: "https://nsi.sec.usace.army.mil/downloads/nsi_2022/nsi_2022_{admin2_id_admin1}.gpkg.zip"
   version: 2022
 
 # How is the download data partitioned?
 download_by:
-  admin_level: 1
+  admin_level: 2
 
 # Filename of compressed file (set to skip re-downloading)
-compressed_file_name: "nsi_2022_{admin1_id_admin0}.gpkg.zip"
+compressed_file_name: "nsi_2022_{admin2_id_admin1}.gpkg.zip"
 
 # Columns: `openplaces` variable name -> variable name in imported table
 columns:
@@ -67,7 +67,7 @@ columns_to_categorical:
 
 transformations:
   # Get county FIPS identifier: first 5 characters of census_block_id 
-  - output: admin2_id_admin0
+  - output: admin3_id_admin1
     type: string
     operation: substring
     input: census_block_id
@@ -77,9 +77,9 @@ transformations:
 
 # Translate `admin_id` information from source to `openplaces` admin_ids
 admin_id_crosswalk:
-  admin_level: 2
-  admin_id_column: admin2_id_admin0
-  admin_recipe_id: "US_admin-nhgis-2020_admin2"
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-nhgis-2020_admin3"
 
 # Administrative ID level at which data is saved
 # Set if you want to split the data into smaller chunks
@@ -87,4 +87,4 @@ admin_id_crosswalk:
 # The column ``adminX_id`` has to exist in the pre-processed data and
 # contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
 cache_by:
-  admin_level: 2
+  admin_level: 3

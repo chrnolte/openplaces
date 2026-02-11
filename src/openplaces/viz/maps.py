@@ -396,7 +396,7 @@ def show_building(
             if verbose:
                 print(f'Parcel GID: {_gid}')
 
-            txt_p = f'Parcel ID {_p_txt["parcel_id_admin2"]}\n'
+            txt_p = f'Parcel ID {_p_txt["parcel_id_admin3"]}\n'
             for var in ['address', 'purpose_group', 'purpose_subgroup']:
                 if _p_txt[var]:
                     txt_p += (

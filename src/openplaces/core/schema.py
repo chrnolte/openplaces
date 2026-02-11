@@ -133,7 +133,7 @@ class AdminId:
         return admin_id.levels[: len(self.levels)] == self.levels
 
     def get_level(self):
-        return len(self.levels) - 1
+        return len(self.levels)
 
 
 @dataclass

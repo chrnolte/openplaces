@@ -1,4 +1,6 @@
-# Recipe to import the Global Administrative Database
+# Recipe to import the Global Administrative Database, Level 3
+
+# (unfinished, as GADM only covers a fraction of the world at Level 3)
 
 # Administrative unit identifier: where does this data come from?
 # NULL: global
@@ -24,41 +26,50 @@ compressed_file_name: "gadm_410-levels.zip"
 # Path to uncompressed file path (set to skip re-extracting)
 uncompressed_file_name: "gadm_410-levels.gpkg"  # Gigabytes
 
-# Layer that identifies third-level admin subdivisions (Level 2 in GADM)
-layer: ADM_2
+# Layer that identifies first-level country subdivisions
+layer: ADM_3
 
 # Columns from `openplaces` dictionary -> columns in imported table
 columns:
-  name: NAME_2
-  type: ENGTYPE_2 
+  name: NAME_3
+  type: ENGTYPE_3
+  admin3_name: NAME_2
   admin2_name: NAME_1
   admin1_name: COUNTRY
-  name_original: NL_NAME_2
-  name_alternatives: VARNAME_2
-  type_original: TYPE_2
-  admin2_type: TYPE_1 
+  name_original: NL_NAME_3
+  name_alternatives: VARNAME_3
+  type_original: TYPE_3
+  admin3_name_original: NL_NAME_2
+  admin3_name_alternatives: VARNAME_2
   admin2_name_original: NL_NAME_1
+  admin3_type: TYPE_2
+  admin2_type: TYPE_1
+  admin4_id_hasc: HASC_3
+  admin4_id_original: CC_3
+  admin4_id_gadm: GID_3
   admin3_id_gadm: GID_2
-  admin3_id_original: CC_2
-  admin3_id_hasc: HASC_2
-  admin2_id_gadm: GID_1 
+  admin2_id_gadm: GID_1
   admin1_id_a3: GID_0
 
 # Keep columns that aren't named in the above list
-# (`True` ensures that columns from `index_function` are kept)
 keep_unnamed_columns: True
 
 # Filter query to select rows
-query: "type not in ('Water body', 'Waterbody', 'Water Body')"
+query: "type not in ('Water body', 'Waterbody', 'Water Body') and admin3_name != 'Water body'"
 
-# Function that returns an indexed version of the input GeoDataFrame
-# (usually a custom function designed for a specific indexing case)
-index_function: "openplaces.io.admin.admin3_id_index_from_admin3_gadm"
+# # Function that returns an indexed version of the input GeoDataFrame
+# # (usually a custom function designed for a specific indexing case)
+# create_index:
+#   function: "openplaces.io.admin.generate_admin_ids"
+#   args:
+#     new_admin_id_col: admin4_id
+#     parent_admin_col: admin3_id
 
 # Sort by index?
-sort_index: True
+# sort_index: True
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin3'
+cache_filename: 'admin4'
+

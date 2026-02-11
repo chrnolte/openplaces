@@ -31,18 +31,18 @@ layer: nc_parcels_poly
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
-  admin_level: 2
+  admin_level: 3
   admin_id_column: stcntyfips
   admin_id_crosswalk:
-    admin_level: 2
-    admin_id_column: admin2_id_admin0
-    admin_recipe_id: "US_admin-nhgis-2020_admin2"
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-nhgis-2020_admin3"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
-  parcel_id_admin1: nparno
-  parcel_id_admin2: parno
-  parcel_id_admin2_2: altparno
+  parcel_id_admin2: nparno
+  parcel_id_admin3: parno
+  parcel_id_admin3_2: altparno
   address: siteadd
   address_unit: sunit
   city: scity
@@ -56,7 +56,7 @@ columns:
   owner_name_2: ownname2
   owner_address: mailadd
   owner_city: mcity
-  owner_admin2_id_admin1: mstate
+  owner_admin3_id_admin2: mstate
   owner_postal_code: mzip
   has_structure: struct
   n_buildings: structno

@@ -53,24 +53,24 @@ Administrative units are the geographic regions at which property data generatio
 
 ``openplaces`` comes with a globally usable hierarchical system for administrative unit identifiers, principally derived from the `Global Administrative Database <https://gadm.org/>`_.
 
-- Level 0 (``admin0``): countries
+- Level 1 (``admin1``): countries
 
   Identified mostly by ISO Alpha-2 code, with gaps filled.
 
   - ``'US'`` for United States
   - ``'CO'`` for Colombia
 
-- Level 1 (``admin1``): states, departments
+- Level 2 (``admin2``): states, departments
 
   - ``'US-MA'`` for the state of Massachusetts, U.S.
   - ``'CO-AN'`` for the department of Antioquia, Colombia
 
-- Level 2 (``admin2``): counties, municipalities, etc.
+- Level 3 (``admin3``): counties, municipalities, etc.
 
   - ``'US-MA-MI'`` for Middlesex county, Massachusetts, U.S.
   - ``'CO-AN-ME'`` for the municipality of Medellín, Antioquia, Colombia
 
-- Level 3 (``admin3``): cities, towns, subdivisions, etc.
+- Level 4 (``admin4``): cities, towns, subdivisions, etc.
 
   *Not globally supported: requires custom recipe for country/region*
 

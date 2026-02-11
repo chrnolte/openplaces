@@ -14,7 +14,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from openplaces.api import get_admin_by_level
+from openplaces.api import get_admin
 from openplaces.config import cfg
 from openplaces.core.constants import (
     GEOPANDAS_EXTENSIONS,
@@ -174,7 +174,7 @@ class Ingester:
             (as a result, they won't be re-processed).
             If True, keep all admin_ids, as all will be re-processed.
         """
-        save_by_admin_level = len(self.recipe['admin_id'].levels) - 1
+        save_by_admin_level = self.recipe['admin_id'].get_level()
         for by in ['download_by', 'process_by', 'cache_by']:
             if by in self.recipe and 'admin_level' in self.recipe[by]:
                 save_by_admin_level = max(
@@ -182,30 +182,28 @@ class Ingester:
                 )
 
         # Get all admin units at the level of where data will be saved
-        if save_by_admin_level == -1:
-            self.admin_ids_to_save = [None]
-            return
+        if save_by_admin_level == 0:
+            admin_ids_to_save = [None]
 
-        admin_all = get_admin_by_level(save_by_admin_level, self.recipe['admin_id'])
+        else:
+            admin_all = get_admin(self.recipe['admin_id'], save_by_admin_level)
 
-        # Pick Admin IDs from the level where data is to be saved
-        # that are related to the Admin IDs requested to be ingested
-        admin_ids_to_save = [
-            admin_id_str
-            for admin_id_requested in self.admin_ids
-            for admin_id_str in admin_all.index
-            if admin_id_requested.is_parent_or_equal_of(AdminId(admin_id_str))
-            or AdminId(admin_id_str).is_parent_of(admin_id_requested)
-        ]
-        # Retain only unique IDs
-        admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
+            # Pick Admin IDs from the level where data is to be saved
+            # that are related to the Admin IDs requested to be ingested
+            admin_ids_to_save = [
+                admin_id_str
+                for admin_id_requested in self.admin_ids
+                for admin_id_str in admin_all.index
+                if admin_id_requested.is_parent_or_equal_of(AdminId(admin_id_str))
+                or AdminId(admin_id_str).is_parent_of(admin_id_requested)
+            ]
+            # Retain only unique IDs
+            admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
 
         if reprocess:
-            # Keep all Admin IDs
             self.admin_ids_to_save = admin_ids_to_save
         else:
-            # Keep only Admin IDs for which the output data file does
-            # not exist
+            # Keep only Admin IDs for which output files do not exist
             admin_ids_to_save = [
                 admin_id
                 for admin_id in admin_ids_to_save
@@ -240,24 +238,31 @@ class Ingester:
         partitioned downloads or querying a large geodatabase by admin).
         """
 
-        process_by_admin_level = len(self.recipe['admin_id'].levels) - 1
+        process_by_admin_level = self.recipe['admin_id'].get_level()
         for by in ['download_by', 'process_by']:
             if by in self.recipe and 'admin_level' in self.recipe[by]:
                 process_by_admin_level = max(
                     process_by_admin_level, self.recipe[by]['admin_level']
                 )
 
-        if process_by_admin_level == -1:
-            self.admin_ids_to_process = [None]
-            return
-
-        # List of unique admin_ids, preserving order
-        admin_ids_to_process = list(
-            dict.fromkeys(
-                str(AdminId(*AdminId(admin_id).levels[: process_by_admin_level + 1]))
-                for admin_id in self.admin_ids_to_save
+        if process_by_admin_level == 0:
+            if self.admin_ids_to_save == [None]:
+                admin_ids_to_process = [None]
+            elif self.admin_ids_to_save == []:
+                admin_ids_to_process = []
+            else:
+                raise ValueError(
+                    'Error not captured self.admin_ids_to_save ='
+                    + self.admin_ids_to_save
+                )
+        else:
+            # List of unique admin_ids, preserving order
+            admin_ids_to_process = list(
+                dict.fromkeys(
+                    str(AdminId(*AdminId(admin_id).levels[:process_by_admin_level]))
+                    for admin_id in self.admin_ids_to_save
+                )
             )
-        )
 
         self.admin_ids_to_process = admin_ids_to_process
 
@@ -272,21 +277,29 @@ class Ingester:
         Used to check whether all files have been downloaded.
         """
 
-        download_by_admin_level = len(self.recipe['admin_id'].levels) - 1
+        download_by_admin_level = self.recipe['admin_id'].get_level()
         if 'download_by' in self.recipe:
             download_by_admin_level = self.recipe['download_by']['admin_level']
 
-        if download_by_admin_level == -1:
-            self.admin_ids_to_download = [None]
-            return
+        if download_by_admin_level == 0:
+            if self.admin_ids_to_process == [None]:
+                admin_ids_to_download = [None]
+            elif self.admin_ids_to_process == []:
+                admin_ids_to_download = []
+            else:
+                raise ValueError(
+                    'Error not captured self.admin_ids_to_download ='
+                    + self.admin_ids_to_download
+                )
 
-        # List of unique admin_ids, preserving order
-        admin_ids_to_download = list(
-            dict.fromkeys(
-                str(AdminId(*AdminId(admin_id).levels[: download_by_admin_level + 1]))
-                for admin_id in self.admin_ids_to_save
+        else:
+            # List of unique admin_ids, preserving order
+            admin_ids_to_download = list(
+                dict.fromkeys(
+                    str(AdminId(*AdminId(admin_id).levels[:download_by_admin_level]))
+                    for admin_id in self.admin_ids_to_save
+                )
             )
-        )
 
         self.admin_ids_to_download = admin_ids_to_download
 
@@ -384,14 +397,10 @@ class Ingester:
         # Get partition key from admin data
         admin_level = self.recipe['download_by']['admin_level']
 
-        # # If admin_id is for lower level, shorten it.
-        # if len(AdminId(admin_id).levels) > (admin_level + 1):
-        #     admin_id = AdminId(*AdminId(admin_id).levels[:-1])
-
         # Translate placeholders to admin columns / identifiers by cutting
         # off 'adminX_' prefixes unless the prefix is 'adminX_id'
-        # 'admin1_name' -> 'name'
-        # 'admin1_id_leaf', 'admin1_id_admin0' -> keep as is
+        # 'admin2_name' -> 'name'
+        # 'admin2_id_leaf', 'admin2_id_admin1' -> keep as is
         if placeholder.startswith(
             f"admin{admin_level}_"
         ) and not placeholder.startswith(f"admin{admin_level}_id"):
@@ -407,16 +416,23 @@ class Ingester:
         else:
             try:
                 admin_recipe = find_admin_recipe(self.recipe['admin_id'], admin_level)
-                partition_key = get_admin_by_level(
-                    admin_level,
+                partition_key = get_admin(
                     self.download_partition['admin_id_to_download'],
+                    admin_level,
                     recipe=admin_recipe,
                     columns=column,
                 ).iloc[0, 0]
-            except IndexError:
-                partition_key = get_admin_by_level(
-                    admin_level,
+
+                _admin = get_admin(
                     self.download_partition['admin_id_to_download'],
+                    admin_level,
+                    recipe=admin_recipe,
+                    columns=column,
+                )
+            except IndexError:
+                partition_key = get_admin(
+                    self.download_partition['admin_id_to_download'],
+                    admin_level,
                     columns=column,
                 ).iloc[0, 0]
 
@@ -448,7 +464,7 @@ class Ingester:
     ):
         """Resolve placeholders (partition keys) in a URL or filepath
 
-        Example: {admin1_name}.geojson.zip => NorthCarolina.geojson.zip
+        Example: {admin2_name}.geojson.zip => NorthCarolina.geojson.zip
         """
 
         # If partition keys aren't resolved yet, initiate empty dict
@@ -502,7 +518,7 @@ class Ingester:
         -------
 
         Download URL with placeholder:
-            https://[...]/nsi_2022/nsi_2022_{admin1_id_admin0}.gpkg.zip
+            https://[...]/nsi_2022/nsi_2022_{admin2_id_admin1}.gpkg.zip
         Resolved download URL (for North Carolina)
             https://[...]/nsi_2022/nsi_2022_37.gpkg.zip
 
@@ -756,7 +772,7 @@ class Ingester:
             else:
                 location = external_dir(self.recipe['admin_id'], self.recipe['entity'])
             error_message += (
-                f'Recipe for `{source}` has no direct download URL.\n\n'
+                f'Recipe for `{self.recipe["entity"]}` has no download URL.\n\n'
                 '1. Download the data manually here:\n\n'
                 + f'{source.portal_url}'
                 + '\n\n2. Save it in this location:\n\n'
@@ -896,9 +912,9 @@ class Ingester:
         admin_recipe = (
             admin_specs['admin_recipe'] if 'admin_recipe' in admin_specs else None
         )
-        admin_geometries = get_admin_by_level(
-            admin_specs['admin_level'],
+        admin_geometries = get_admin(
             self.download_partition['admin_id_to_download'],
+            admin_specs['admin_level'],
             recipe=admin_recipe,
             geom=True,
         )['geometry']
@@ -1224,29 +1240,37 @@ class Ingester:
                     + str(gdf.sample(1).T)
                 )
             admin_ids_in_data = sorted(set(gdf[admin_id_col].dropna()))
-
-            admin_ids_to_save = [
+            admin_ids_to_save_in_data = [
                 admin_id
                 for admin_id in self.admin_ids_to_save
                 if admin_id in admin_ids_in_data
             ]
+            admin_ids_to_save_expected = [
+                admin_id
+                for admin_id in self.admin_ids_to_save
+                if admin_id.startswith(self.processing_chunk['admin_id_to_process'])
+            ]
 
-            if len(admin_ids_to_save) < len(self.admin_ids_to_save):
-                missing_admin_ids = set(self.admin_ids_to_save) - set(admin_ids_to_save)
-                warnings.warn(
-                    f'{len(missing_admin_ids)} AdminIds to save not found in data: '
-                    'Missing:'
-                    ', '.join(sorted(missing_admin_ids)[:15])
+            missing_admin_ids = set(admin_ids_to_save_expected) - set(
+                admin_ids_to_save_in_data
+            )
+            if missing_admin_ids:
+                txt_warnings = (
+                    f'\n\n{len(missing_admin_ids)} AdminIds to save not found in data:'
+                    '\n' + ', '.join(sorted(missing_admin_ids)[:15]) + '\n'
                 )
+                warnings.warn(txt_warnings)
         else:
-            admin_ids_to_save = [self.processing_chunk['admin_id_to_process']]
+            admin_ids_to_save_in_data = [self.processing_chunk['admin_id_to_process']]
 
-        print_admin_id_progress = self.verbose and not len(admin_ids_to_save) == 1
+        print_admin_id_progress = (
+            self.verbose and not len(admin_ids_to_save_in_data) == 1
+        )
         if print_admin_id_progress:
             print('Saving ', end='')
-        for admin_id_to_save in admin_ids_to_save:
+        for admin_id_to_save in admin_ids_to_save_in_data:
             if print_admin_id_progress:
-                end = ', ' if admin_id_to_save != admin_ids_to_save[-1] else ''
+                end = ', ' if admin_id_to_save != admin_ids_to_save_in_data[-1] else ''
                 print(admin_id_to_save, end=end)
             if split_dataset_by_admin:
                 redundant_admin_id_columns = [

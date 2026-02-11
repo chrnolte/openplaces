@@ -17,43 +17,27 @@ entity:
     download_url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
   version: 4.1
 
-# Path to compressed file (set to skip re-downloading)
+# Path to compressed file (set to stop re-downloading)
 # compressed_file_name: "gadm_410-gpkg.zip"
 compressed_file_name: "gadm_410-levels.zip"
 
-# Path to uncompressed file path (set to skip re-extracting)
+# Path to uncompressed file path (set to stop re-downloading)
 uncompressed_file_name: "gadm_410-levels.gpkg"  # Gigabytes
 
-# Layer that identifies first-level country subdivisions
-layer: ADM_1
+# Layer that identifies top-level administrative units
+layer: ADM_0
 
 # Columns from `openplaces` dictionary -> columns in imported table
 columns:
-  name: NAME_1
-  type: ENGTYPE_1 
-  admin0_name: COUNTRY
-  name_original: NL_NAME_1
-  name_alternatives: VARNAME_1
-  type_original: TYPE_1 
-  admin1_id_gadm: GID_1 
-  admin1_id_hasc: HASC_1 
-  admin1_id_iso: ISO_1 
-  admin1_id_original: CC_1
-  admin0_id_a3: GID_0
+  name: COUNTRY
+  admin1_id_a3: GID_0
 
-# Filter query to select rows
-query: "type != 'Water body'"
-
-# Values to be interpreted as empty (None)
-null_value_strings: ["?"]
-
-# Keep columns that aren't named in the above list
-# (`True` to ensure that columns from `index_function` are kept)
-keep_unnamed_columns: True
-
-# Function that returns an indexed version of the input 1GeoDataFrame1
+# Function that returns an indexed version of the input (Geo)DataFrame
 # (usually a custom function designed for a specific case)
-index_function: "openplaces.io.admin.admin1_id_index_from_admin1_gadm"
+index_function: "openplaces.io.admin.admin1_id_index_from_admin1_id_a3"
+
+# Sort by index?
+sort_index: True
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.

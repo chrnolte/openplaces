@@ -28,17 +28,17 @@ uncompressed_file_name: "stratmap25-landparcels_48.gdb"
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
-  admin_level: 2
+  admin_level: 3
   admin_id_column: FIPS
   admin_id_crosswalk:
-    admin_level: 2
-    admin_id_column: admin2_id_admin0
-    admin_recipe_id: "US_admin-nhgis-2020_admin2"
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-nhgis-2020_admin3"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
-  parcel_id_admin1: Prop_ID
-  parcel_id_admin1_2: GEO_ID
+  parcel_id_admin2: Prop_ID
+  parcel_id_admin2_2: GEO_ID
   legal_description: LEGAL_DESC
   address: SITUS_ADDR
   address_number: SITUS_NUM
@@ -48,8 +48,8 @@ columns:
   city: SITUS_CITY
   legal_area: LEGAL_AREA
   legal_area_unit: LGL_AREA_UNIT
-  land_use_group_admin1: STAT_LAND_USE
-  land_use_group_admin2: LOC_LAND_USE
+  land_use_group_admin2: STAT_LAND_USE
+  land_use_group_admin3: LOC_LAND_USE
   year_built: YEAR_BUILT
   owner_name: OWNER_NAME
   owner_name_co: NAME_CARE
@@ -57,7 +57,7 @@ columns:
   owner_address_street: MAIL_LINE1
   owner_address_street_2: MAIL_LINE2
   owner_city: MAIL_CITY
-  owner_admin2_id_admin1: MAIL_STAT
+  owner_admin3_id_admin2: MAIL_STAT
   owner_postal_code: MAIL_ZIP
   tax_year: TAX_YEAR
   land_value: LAND_VALUE
