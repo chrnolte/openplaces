@@ -92,7 +92,10 @@ Using OnDemand
       :input:`/project/openplaces/code/user/your_username/notebooks`
 
    Number of GPUs
-      :input:`0` (unless you really need them)
+      :input:`0` (unless you need GPUs)
+
+   GPU compute capability
+      :input:`0` (unless you need GPUs)
 
    Project
       :input:`openplaces`
