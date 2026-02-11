@@ -64,10 +64,10 @@ STRING_SEPARATOR_BETWEEN_IDS = '_'
 
 # Regex patterns
 # Admin1: ISO and HASC codes
-REGEX_ADMIN1_IDS_AA_AA = '^[A-Z]{2}\\-[A-Z]{2}$'
-REGEX_ADMIN1_IDS_AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
-REGEX_ADMIN1_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
-REGEX_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
+REGEX_ADMIN2_IDS_AA_AA = '^[A-Z]{2}\\-[A-Z]{2}$'
+REGEX_ADMIN2_IDS_AA_AA_EXTRACT = '^([A-Z]{2})\\-([A-Z]{2})$'
+REGEX_ADMIN2_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}$'
+REGEX_ADMIN3_IDS_HASC = '^[A-Z]{2}\\.[A-Z]{2}\\.[A-Z]{2}$'
 
 # Extract filename from URL
 REGEX_FILENAME_IN_URL = r'/([^/?]+\.[a-zA-Z0-9]+)(?:\?|$)'
@@ -75,8 +75,9 @@ REGEX_FILENAME_IN_URL = r'/([^/?]+\.[a-zA-Z0-9]+)(?:\?|$)'
 # Check whether a filepath has wildcards to search the filesystem
 REGEX_HAS_GLOB_WILDCARDS = r'[*?\[\]]'
 
-# Countries using HASC1 code for Admin-2 level
-ADMIN0_ID_HASC1_A2 = ['AZ', 'BE', 'FR', 'GB', 'GN', 'IT', 'LV']
+# Admin IDs of countries (Admin-1) using HASC1 code for Admin-2 level
+ADMIN1_IDS_USING_HASC1_FOR_ADMIN2 = ['AZ', 'BE', 'FR', 'GB', 'GN', 'IT', 'LV']
+
 
 # Essential unit conversions
 

@@ -17,32 +17,32 @@ entity:
     download_url_source: "https://disasters.geoplatform.gov/USA_Structures/"
     # Regex to extract download URL from `download_url_source`
     # Data partition placeholders {...} will be replaced before use.
-    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin1_id_leaf}.zip)' 
+    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)' 
   version: 2023
 
 # How is the download data partitioned?
 download_by:
-  admin_level: 1
+  admin_level: 2
 
 # Filename of compressed file (set to skip re-downloading)
-compressed_file_name: "Deliverable*{admin1_id_leaf}.zip"
+compressed_file_name: "Deliverable*{admin2_id_leaf}.zip"
 
 # Path to uncompressed file path (set to skip re-extracting)
-uncompressed_file_name: "{admin1_id_leaf}_Structures.gdb"
+uncompressed_file_name: "{admin2_id_leaf}_Structures.gdb"
 
 # Read and process data in chunks
 # (avoids reading very large geodatabases into memory)
 process_by:
   # Administrative level at which processing is chunked
-  admin_level: 2
+  admin_level: 3
   # Column in original data used to identify the administrative level
   admin_id_column: FIPS
   # Crosswalk from administrative identifiers in the original data
   # (e.g. county FIPS) to `openplaces` AdminIDs.
   admin_id_crosswalk:
-    admin_level: 2
-    admin_id_column: admin2_id_admin0
-    admin_recipe_id: "US_admin-nhgis-2020_admin2"
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-nhgis-2020_admin3"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
@@ -59,7 +59,7 @@ columns:
   validation_method: VAL_METHOD
   postal_code: PROP_ZIP
   census_tract_id: CENSUSCODE
-  admin2_id_admin0: FIPS
+  admin3_id_admin1: FIPS
 
 # Set the index from an existing column
 set_index: building_id_fema

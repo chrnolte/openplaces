@@ -70,7 +70,7 @@ THINNESS_THRESHOLD = 500
 def drop_problematic_parcels(
     parcels,
     attribute_columns=None,
-    parcel_id_col='parcel_id_admin2',
+    parcel_id_col='parcel_id_admin3',
     parcel_n_vertices_threshold=PARCEL_N_VERTICES_THRESHOLD,
     thinness_threshold=THINNESS_THRESHOLD,
     parcel_id_blacklisted_endings=PARCEL_ID_BLACKLISTED_ENDINGS,

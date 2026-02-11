@@ -14,36 +14,42 @@ entity:
   version: 2020
 
 # Filename of compressed file (set to skip re-downloading)
-compressed_file_name: "nhgis*_shapefile_tl2020_us_state_2020.zip"
+compressed_file_name: "nhgis*_shapefile_tl2020_us_cty_sub_2020.zip"
 
 # Path to uncompressed file path (set to skip re-extracting)
-uncompressed_file_name: "US_state_2020.shp"
+uncompressed_file_name: "US_cty_sub_2020.shp"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
   name: NAME
-  admin1_id_admin0: STATEFP
-  admin1_id_admin0_alpha: STUSPS
-  admin1_id_ansi: STATENS
-  admin1_id_nhgis: GISJOIN
-  region_id_nhgis: REGION
-  division_id_nhgis: DIVISION
+  name_long: NAMELSAD
+  admin4_id_admin1: GEOID
+  admin4_id_admin3: COUSUBFP
+  admin4_id_ansi: COUSUBNS
+  admin4_id_nhgis: GISJOIN
+  admin3_id_admin2: COUNTYFP
+  admin2_id_admin1: STATEFP
+  type_source: CLASSFP
+  functional_status: FUNCSTAT
+  stats_area_id_legal: LSAD
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
 
 # Keep columns that aren't named in the above list
 # keep_unnamed_columns: True
 
-# Create index
-create_index:
-  name: admin1_id
-  method: prefix
-  column: admin1_id_admin0_alpha
-  prefix: US-
-
-# Filter query to select rows
-# Keeps 50 states and DC (territories are in `admin0` according to ISO)
-query: "admin1_id_admin0 <= '56'"
+# # Function that returns an indexed version of the input GeoDataFrame
+# # (usually a custom function designed for a specific indexing case)
+# # Function to give the GeoDataFrame an index
+# create_index:
+#   function: "openplaces.io.admin.generate_admin_ids"
+#   args:
+#     new_admin_id_col: admin4_id
+#     parent_admin_col: admin3_id
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin1'
+cache_filename: 'admin4'

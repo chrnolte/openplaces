@@ -21,7 +21,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from openplaces.api import get_admin_by_level
+from openplaces.api import get_admin
 from openplaces.recipe import get_recipe_by_id
 
 # Operations
@@ -589,9 +589,9 @@ def get_crosswalk(crosswalk_dict, flip=False):
             crosswalk_table.columns[1]
         ]
     elif 'admin_level' in crosswalk_dict:
-        admin_id_crosswalk = get_admin_by_level(
-            crosswalk_dict['admin_level'],
+        admin_id_crosswalk = get_admin(
             crosswalk_dict['admin_id'],
+            crosswalk_dict['admin_level'],
             columns=[crosswalk_dict['admin_id_column']],
             recipe=get_recipe_by_id(crosswalk_dict['admin_recipe_id']),
         )

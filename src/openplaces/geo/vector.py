@@ -19,7 +19,7 @@ from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.ops import transform
 
-from openplaces.api import get_admin_by_level
+from openplaces.api import get_admin
 from openplaces.core.constants import (
     AC_TO_HA,
     M2_TO_SQFT,
@@ -697,8 +697,8 @@ def overlay_admin_ids(
         admin_recipe = get_recipe(recipe_admin_id, entity, filename=filename)
 
     if admin_geometries is None:
-        admin = get_admin_by_level(
-            admin_level, admin_id, recipe=admin_recipe, columns=[], geom=True
+        admin = get_admin(
+            admin_id, admin_level, recipe=admin_recipe, columns=[], geom=True
         )
     else:
         admin = admin_geometries.to_frame()
