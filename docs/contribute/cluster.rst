@@ -183,7 +183,7 @@ See :ref:`configuration` for the full explanation.
 On the cluster, you will have to pick this configuration:
 
    Root directory for data, models, and reports
-      :input:`/projectnb/openplaces/data/earth`
+      :input:`/projectnb/openplaces/earth`
 
    Choose your configuration mode
       :input:`b` (Multi-user)
