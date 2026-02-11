@@ -31,17 +31,17 @@ layer: CADASTRAL_DOR
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
-  admin_level: 2
+  admin_level: 3
   admin_id_column: CO_NO
   admin_id_crosswalk:
-    recipe_id: "US-FL_parcel-floridagio-2025_admin2-crosswalk"
+    recipe_id: "US-FL_parcel-floridagio-2025_admin3-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
-  parcel_id_admin1: STATE_PAR_
-  parcel_id_admin1_2: MP_ID
-  parcel_id_admin2: PARCEL_ID
-  parcel_id_admin2_2: ALT_KEY
+  parcel_id_admin2: STATE_PAR_
+  parcel_id_admin2_2: MP_ID
+  parcel_id_admin3: PARCEL_ID
+  parcel_id_admin3_2: ALT_KEY
   address: PHY_ADDR1
   address2: PHY_ADDR2
   city: PHY_CITY
@@ -57,7 +57,7 @@ columns:
   living_area_sqft: TOT_LVG_AR
   n_units: NO_RES_UNT
   land_use_group: DOR_UC
-  land_use_group_admin2: PA_UC
+  land_use_group_admin3: PA_UC
   land_unit_code: LND_UNTS_C
   n_land_units: NO_LND_UNT
   last_inspection_date: DT_LAST_IN
@@ -67,9 +67,9 @@ columns:
   owner_address: OWN_ADDR1
   owner_address2: OWN_ADDR2
   owner_city: OWN_CITY
-  owner_admin2_id: OWN_STATE
+  owner_admin3_id: OWN_STATE
   owner_postal_code: OWN_ZIPCD
-  owner_admin2_id_domicile: OWN_STATE_
+  owner_admin3_id_domicile: OWN_STATE_
   owner_public_code: PUBLIC_LND
   tax_purpose_group: BAS_STRT
   tax_purpose_subgroup: ATV_STRT
