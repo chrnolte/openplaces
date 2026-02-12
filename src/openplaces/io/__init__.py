@@ -18,7 +18,11 @@ import requests
 from tqdm import tqdm
 
 from openplaces.config import cfg
-from openplaces.core.constants import GEOPANDAS_EXTENSIONS, PANDAS_EXTENSIONS
+from openplaces.core.constants import (
+    GEOPANDAS_EXTENSIONS,
+    PANDAS_EXTENSIONS,
+    SHAPEFILE_EXTENSIONS,
+)
 
 __all__ = [
     'download',
@@ -542,3 +546,49 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
         df = df.drop(columns='_join_id')
 
     return df
+
+
+def delete_data(data_path, delete_empty_parent_dirs=True):
+    """Delete dataset from openplaces filesystem
+
+    Parameters
+    ----------
+    data_path : Path
+        Path to file to be deleted. Extension determines how deletion
+        occurs (e.g. '.shp' files and '.gdb' folders are handled)
+    delete_empty_parent_dirs : bool
+        Deletes any parent directories that are now empty.
+    """
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f'File to delete not found: {data_path.relative_to(cfg.data_root)}'
+        )
+
+    if data_path.suffix == '.gdb':
+        shutil.rmtree(data_path)
+    elif data_path.suffix == '.shp':
+        for shapefile_extension in SHAPEFILE_EXTENSIONS:
+            data_path.with_suffix(shapefile_extension).unlink(missing_ok=True)
+    else:
+        data_path.unlink()
+
+    if delete_empty_parent_dirs:
+        current_dir = data_path.parent
+        while True:
+            if current_dir == cfg.data_root:
+                break
+
+            # Check if directory is empty
+            if current_dir.exists() and not any(current_dir.iterdir()):
+                try:
+                    current_dir.rmdir()
+                except PermissionError:
+                    warnings.warn(
+                        '\n\nUnable to delete empty directory due to permission error:'
+                        + f'\n\n{current_dir}\n\n'
+                        'Is a file sync app running (e.g., Dropbox)? '
+                        'If so, quit and retry.\n\n'
+                    )
+                current_dir = current_dir.parent
+            else:
+                break

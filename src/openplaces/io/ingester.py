@@ -29,7 +29,13 @@ from openplaces.geo.vector import (
     get_geo_ids,
     overlay_admin_ids,
 )
-from openplaces.io import download, find_latest_file_or_gdb, save_parquet, unzip
+from openplaces.io import (
+    delete_data,
+    download,
+    find_latest_file_or_gdb,
+    save_parquet,
+    unzip,
+)
 from openplaces.io.admin import find_admin_recipe
 from openplaces.io.transform import (
     add_unique_suffix,
@@ -120,7 +126,7 @@ class Ingester:
                 'Read in bulk or write code to use `where=`, if faster.'
             )
 
-    def ingest(self, reprocess=False, redownload=False):
+    def ingest(self, reprocess=False, redownload=False, delete_unzipped=True):
         """Run the full data ingestion
 
         Parameters
@@ -131,6 +137,9 @@ class Ingester:
         redownload : bool
             If True, re-downloads the original data file even if it
             already exists. Also sets `reprocess` to `True`.
+        delete_unzipped : bool
+            If True, deletes any unzipped files (in 'heap' folder) once
+            the download partition has been processed.
         """
 
         if redownload:
@@ -138,10 +147,14 @@ class Ingester:
 
         self._resolve_admin_ids_to_save(reprocess)
         if self.verbose:
-            print(
-                'Admin IDs of output files: '
-                + ', '.join([str(x) for x in self.admin_ids_to_save[:15]])
-            )
+            if not self.admin_ids_to_save:
+                print('All output files found. Processing skipped.\n')
+                return
+            else:
+                print(
+                    'Admin IDs of output files: '
+                    + ', '.join([str(x) for x in self.admin_ids_to_save[:15]])
+                )
 
         self._resolve_admin_ids_to_process()
         if self.verbose:
@@ -160,7 +173,11 @@ class Ingester:
         for admin_id_to_download in self.admin_ids_to_download:
             if self.verbose and admin_id_to_download is not None:
                 print(f'\nIngesting data for {admin_id_to_download}:')
-            self._ingest_download_partition(admin_id_to_download, redownload=redownload)
+            self._ingest_download_partition(
+                admin_id_to_download=admin_id_to_download,
+                redownload=redownload,
+                delete_unzipped=delete_unzipped,
+            )
 
     def _resolve_admin_ids_to_save(self, reprocess):
         """Create list of admin_ids for which to create output files
@@ -308,6 +325,7 @@ class Ingester:
         admin_id_to_download=None,
         partition_id_to_download=None,
         redownload=False,
+        delete_unzipped=True,
     ):
         """Run data ingestion for a download partition of the data"""
 
@@ -346,6 +364,14 @@ class Ingester:
                     else ''
                 )
             )
+
+        # Delete unzipped files in heap folder
+        if delete_unzipped and self.download_partition['data_path'].is_relative_to(
+            self.recipe_heap_dir
+        ):
+            if self.verbose:
+                print(f'Deleting unzipped data.')
+            delete_data(self.download_partition['data_path'])
 
     def _catch_missing_partition_ids_error(self):
         # Error checks
@@ -540,16 +566,13 @@ class Ingester:
 
                 download_url = self._resolve_placeholders(download_url)
             else:
-                # Shortcut: if there are no partitions, just return the URL
-
                 # Catch error if the URL has placeholder
                 placeholders_in_url = self._get_placeholders(download_url)
                 if placeholders_in_url:
                     raise ValueError(
-                        'Set `download_by` to resolve partition placeholders in download '
-                        f'URL:\n{placeholders_in_url}'
+                        'Set `download_by` in ingestion recipe to resolve partition '
+                        f'placeholders in download URL:\n{placeholders_in_url}'
                     )
-
         elif source.download_url_source is not None:
             if not self.recipe['download_by']:
                 raise ValueError(
@@ -572,15 +595,16 @@ class Ingester:
     def _resolve_downloaded_and_data_paths(self):
         """Get the paths for the data ingestion files of a recipe"""
 
+        # Set compressed file name, if given
         compressed_file_name = None
         if 'compressed_file_name' in self.recipe:
             compressed_file_name = self.recipe['compressed_file_name']
             if 'download_by' in self.recipe:
                 compressed_file_name = self._resolve_placeholders(compressed_file_name)
-
         if self.verbose:
             print('Compressed file name:', compressed_file_name)
 
+        # Set uncompressed file name, if given
         uncompressed_file_name = None
         if 'uncompressed_file_name' in self.recipe:
             uncompressed_file_name = self.recipe['uncompressed_file_name']
@@ -588,31 +612,30 @@ class Ingester:
                 uncompressed_file_name = self._resolve_placeholders(
                     uncompressed_file_name
                 )
-
         if self.verbose:
             print('Uncompressed file name:', uncompressed_file_name)
 
+        # Set external and heap directories
         if 'entity' not in self.recipe:
             raise NotImplementedError(
                 '_resolve_downloaded_and_data_paths only implemented for `entities`. '
                 'Requires an `entity` in the recipe.'
             )
-
-        recipe_heap_dir = heap_dir(self.recipe['admin_id'], self.recipe['entity'])
-        recipe_external_dir = external_dir(
+        self.recipe_heap_dir = heap_dir(self.recipe['admin_id'], self.recipe['entity'])
+        self.recipe_external_dir = external_dir(
             self.recipe['admin_id'], self.recipe['entity']
         )
 
         # Identify path of file to import (to see whether it's already saved)
         if compressed_file_name is not None:
             if uncompressed_file_name is not None:
-                # Assume that extracted file will be read (in heap folder)
-                data_path = recipe_heap_dir / uncompressed_file_name
+                # Assume that uncompressed file will be read
+                data_path = self.recipe_heap_dir / uncompressed_file_name
             else:
                 # Assume that compressed file will be read
-                data_path = recipe_external_dir / compressed_file_name
+                data_path = self.recipe_external_dir / compressed_file_name
         elif uncompressed_file_name is not None:
-            data_path = recipe_external_dir / uncompressed_file_name
+            data_path = self.recipe_external_dir / uncompressed_file_name
         else:
             data_path = None
 
@@ -621,9 +644,9 @@ class Ingester:
         if data_path is None or not data_path.exists():
             # Find the path of the downloaded file.
             if compressed_file_name is not None:
-                downloaded_path = recipe_external_dir / compressed_file_name
+                downloaded_path = self.recipe_external_dir / compressed_file_name
             elif uncompressed_file_name is not None:
-                downloaded_path = recipe_external_dir / uncompressed_file_name
+                downloaded_path = self.recipe_external_dir / uncompressed_file_name
             elif download_url:
                 # Try to extract filename from URL
                 re_match = re.search(
@@ -632,7 +655,7 @@ class Ingester:
                 if re_match:
                     filename = re_match.group(1)
                     print(f'Name of downloaded file inferred from URL: {filename}')
-                    downloaded_path = recipe_external_dir / filename
+                    downloaded_path = self.recipe_external_dir / filename
 
             # If the downloaded path contains wildcards, search for it
             if (
@@ -650,8 +673,6 @@ class Ingester:
                             'Others:\n\n'
                             + '\n'.join([x for x in filepaths if x != downloaded_path])
                         )
-        # elif uncompressed_file_name is None and data_path is not None:
-        # downloaded_path = data_path
 
         self.download_partition['downloaded_path'] = downloaded_path
         self.download_partition['data_path'] = data_path
@@ -670,22 +691,17 @@ class Ingester:
             and not redownload
         ):
             if self.verbose:
-                print('Source file found. Download skipped.')
+                print('Source file found. Download and unzipping skipped.')
             return
-
-        recipe_external_dir = external_dir(
-            self.recipe['admin_id'], self.recipe['entity']
-        )
-        recipe_heap_dir = heap_dir(self.recipe['admin_id'], self.recipe['entity'])
 
         # Download if neither downloaded file nor data file exist
         if redownload or (
             (
-                not self.download_partition['downloaded_path']
+                self.download_partition['downloaded_path'] is None
                 or not self.download_partition['downloaded_path'].exists()
             )
             and (
-                not self.download_partition['data_path']
+                self.download_partition['data_path'] is None
                 or not self.download_partition['data_path'].exists()
             )
         ):
@@ -694,7 +710,7 @@ class Ingester:
             if self.verbose:
                 print('Downloading...')
             downloaded_path = download(
-                self.download_partition['download_url'], recipe_external_dir
+                self.download_partition['download_url'], self.recipe_external_dir
             )
             self.timer.mark('Download')
 
@@ -711,10 +727,8 @@ class Ingester:
                     )
                 self.download_partition['downloaded_path'] = downloaded_path
         elif self.verbose:
-            print('Data found - skipping download')
+            print('Data found - skipping download.')
 
-        # Unzip if the downloaded file is a compressed file and not the
-        # file to read
         if redownload or (
             self.download_partition['downloaded_path'] is not None
             and self.download_partition['downloaded_path']
@@ -725,7 +739,7 @@ class Ingester:
             if self.verbose:
                 print('Unzipping...')
 
-            unzip(self.download_partition['downloaded_path'], recipe_heap_dir)
+            unzip(self.download_partition['downloaded_path'], self.recipe_heap_dir)
             self.timer.mark('Unzip')
 
         # Identify last extracted file if the data path is unknown
@@ -735,16 +749,18 @@ class Ingester:
             or re.search(
                 REGEX_HAS_GLOB_WILDCARDS, str(self.download_partition['data_path'])
             )
-        ) and recipe_heap_dir.exists():
+        ) and self.recipe_heap_dir.exists():
             self.download_partition['data_path'] = find_latest_file_or_gdb(
-                recipe_heap_dir
+                self.recipe_heap_dir
             )
             if self.download_partition['data_path'] is None:
                 raise ValueError(
-                    'Did not find a valid dataset in {recipe_heap_dir}.\n'
+                    f'Did not find a valid dataset in {self.recipe_heap_dir}.\n'
                     'Searched for: ' + str(self.download_partition['data_path'])
                 )
-            location = self.download_partition['data_path'].relative_to(recipe_heap_dir)
+            location = self.download_partition['data_path'].relative_to(
+                self.recipe_heap_dir
+            )
             if self.verbose:
                 print(f'Inferred file to read:\n{location}')
 
@@ -760,7 +776,7 @@ class Ingester:
         source = self.recipe['entity'].source
         if not source.download_url and not source.download_url_source:
             error_message = ''
-            if self.download_partition['downloaded_path']:
+            if self.download_partition['downloaded_path'] is not None:
                 filename = self.download_partition['downloaded_path'].relative_to(
                     cfg.data_root
                 )
@@ -975,17 +991,16 @@ class Ingester:
             self.timer.mark('Read data table' + timer_message_suffix, path=data_path)
         elif data_path.suffix in ZIP_EXTENSIONS:
             try:
-                # Try to read with `geopandas`
+                # Try to read compressed file with `geopandas`
+                # (hoping that it might be in a readable zipped format)
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
                 self.timer.mark(
                     'Read compressed file' + timer_message_suffix, path=data_path
                 )
             except (RuntimeWarning, Exception):
-                recipe_heap_dir = heap_dir(recipe['admin_id'], recipe['entity'])
-                if not recipe_heap_dir.exists():
-                    unzip(data_path, recipe_heap_dir)
+                unzip(data_path, self.recipe_heap_dir)
 
-                data_path = find_latest_file_or_gdb(recipe_heap_dir)
+                data_path = find_latest_file_or_gdb(self.recipe_heap_dir)
                 self.download_partition['data_path'] = data_path
                 if data_path is None:
                     raise OSError(
