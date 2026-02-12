@@ -10,9 +10,6 @@ ESCAPE_DIR = '_all'
 
 # FILE HANDLING
 
-# Extensions for compressed files (can be uncompressed with `zipfile`)
-ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
-
 # Vector file extensions read with `geopandas` into a `GeoDataFrame`
 GEOPANDAS_EXTENSIONS = {
     '.shp',
@@ -39,6 +36,23 @@ PANDAS_EXTENSIONS = {
     '.xlsx',
     '.xls',
 }
+
+# Extensions of companion files for shapefiles
+SHAPEFILE_EXTENSIONS = [
+    '.cpg',
+    '.dbf',
+    '.GISJOIN.atx',  # Found in US_admin-nhgis-2020
+    '.prj',
+    '.qpj',
+    '.shp',
+    '.shp.xml',
+    '.shx',
+    '.sbn',
+    '.sbx',
+]
+
+# Extensions for compressed files (can be uncompressed with `zipfile`)
+ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
 
 
 # STRING
