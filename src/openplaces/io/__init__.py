@@ -477,13 +477,14 @@ def save_parquet(gdf, parquet_path):
             parquet_path,
         )
 
-        # Save geometries separately, with the join ID as the index
+        # Save non-duplicate geometries separately
         if join_id_column == gdf.index.name:
             gdf_geo = gdf.reset_index()
         else:
             gdf_geo = gdf
+        mask_unique_join_id = ~gdf_geo[join_id_column].duplicated()
         to_parquet(
-            gdf_geo[[join_id_column, 'geometry']],
+            gdf_geo[mask_unique_join_id][[join_id_column, 'geometry']],
             parquet_path.with_stem(parquet_path.stem + '_geo'),
             index=False,
             schema_version='1.1.0',
