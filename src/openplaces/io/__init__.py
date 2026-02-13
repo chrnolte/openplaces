@@ -464,10 +464,10 @@ def save_parquet(gdf, parquet_path):
     ):
         join_id_column = 'geo_id'
     else:
+        # Create space-efficient integer ID to join source table
+        # to geospatial data and other attribute tables
         join_id_column = '_join_id'
         if gdf.index.name != join_id_column and join_id_column not in gdf:
-            # Create space-efficient integer ID to join source table
-            # to geospatial data and other attribute tables
             gdf[join_id_column] = range(1, len(gdf) + 1)
 
     if isinstance(gdf, gpd.GeoDataFrame):
@@ -479,11 +479,12 @@ def save_parquet(gdf, parquet_path):
 
         # Save geometries separately, with the join ID as the index
         if join_id_column == gdf.index.name:
-            gdf_geo = gdf
+            gdf_geo = gdf.reset_index()
         else:
-            gdf_geo = gdf.set_index(join_id_column)
+            gdf_geo = gdf
         to_parquet(
-            gdf_geo[['geometry']], parquet_path.with_stem(parquet_path.stem + '_geo')
+            gdf_geo[[join_id_column, 'geometry']].reset_index(),
+            parquet_path.with_stem(parquet_path.stem + '_geo'),
         )
     else:
         to_parquet(gdf, parquet_path)
@@ -531,8 +532,6 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
             join_id_column = 'geo_id'
         else:
             raise ValueError('Could not identify column to join GeoParquet.')
-        join_id_column = '_join_id' if '_join_id' in df else 'geo_id'
-
         # Join polygons to table
         if filters is not None:
             geoparquet_filters = [(join_id_column, 'in', df[join_id_column].tolist())]
@@ -540,7 +539,9 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
             geoparquet_filters = None
         geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
         gdf = gpd.read_parquet(geoparquet_path, filters=geoparquet_filters)
-        df = gpd.GeoDataFrame(df.join(gdf, on=gdf.index.name), crs=cfg.crs)
+        df = gpd.GeoDataFrame(
+            df.join(gdf.set_index(join_id_column), on=join_id_column), crs=gdf.crs
+        )
 
     if drop_join_id and '_join_id' in df:
         df = df.drop(columns='_join_id')
