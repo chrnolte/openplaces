@@ -8,8 +8,8 @@ name: openplaces
 channels:
   - conda-forge
 dependencies:
-  # Python version
-  - python>=3.12
+  # Python version (pinned to 3.12 to support `zipfile-deflate64`)
+  - python=3.12
 
   # Core geospatial dependencies (better via conda due to C/C++ libs)
   # KEEP IN SYNC WITH pyproject.toml [project.dependencies]
@@ -23,6 +23,7 @@ dependencies:
   - pyarrow>=10.0.0
   - requests>=2.28.0
   - tqdm>=4.65.0
+  - zipfile-deflate64>=0.2.0
 
   # Optional: analysis
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.analysis]

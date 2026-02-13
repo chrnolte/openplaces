@@ -8,6 +8,7 @@ Input/output utilities
 import shutil
 import tempfile
 import warnings
+import zipfile_deflate64
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 from zipfile import BadZipFile, ZipFile
