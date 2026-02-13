@@ -256,7 +256,7 @@ def show_building(
         location = location.iloc[[0]]['geometry'].centroid
         warnings.filterwarnings('default', '.*geographic CRS.*')
         if location.crs != 'epsg:4326':
-            location = location['geometry'].to_crs('epsg:4326')
+            location = location.to_crs('epsg:4326')
         lat_center, long_center = location.iloc[0].y, location.iloc[0].x
     else:
         raise TypeError(f'Type of `location` is not yet supported: {type(location)}.')
@@ -551,7 +551,11 @@ def show_building(
                 building_fema_to_label,
             ) in buildings_fema_to_label.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
                 txt_use = building_fema_to_label['purpose_subgroup'] or 'No primary use'
-                address = building_fema_to_label['address'] or 'No address'
+                address = (
+                    building_fema_to_label['address']
+                    if isinstance(building_fema_to_label['address'], str)
+                    else 'No address'
+                )
                 txt_fema_list += [
                     f'FEMA ID {int(building_fema_to_label["building_id_fema"])}\n'
                     + f'{address.title()}\n'
@@ -584,7 +588,7 @@ def show_building(
                 ),
             )
 
-            if city:
+            if isinstance(city, str):
                 ax.text(
                     x,
                     ymax - radius / 25,
