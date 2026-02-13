@@ -96,7 +96,7 @@ def get_admin(
         raise ValueError('The lowest level for admin units is 1. 0 is the planet.')
 
     # Pick default recipe for geometry attributes if None is provided
-    if geom is True and recipe is None:
+    if geom is True and recipe is None and level is not None:
         recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
 
     # Cast recipe to a dict if a str (id) is provided
@@ -107,7 +107,7 @@ def get_admin(
 
     # Default to countries
     if admin_id is None and level is None:
-        level = 0
+        level = 1
 
     # Cast scalar `admin_id` to list
     if isinstance(admin_id, (str, AdminId)):
