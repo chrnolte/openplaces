@@ -799,6 +799,11 @@ def get_intersection_over_union(
 
     if drop_geometries:
         gdf_overlay = gdf_overlay.drop(columns=['geometry'])
+    else:
+        # Move 'geometry' to the end
+        gdf_overlay = gdf_overlay[
+            [x for x in gdf_overlay if x != 'geometry'] + ['geometry']
+        ]
     return gdf_overlay
 
 
