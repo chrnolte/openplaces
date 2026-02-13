@@ -483,8 +483,10 @@ def save_parquet(gdf, parquet_path):
         else:
             gdf_geo = gdf
         to_parquet(
-            gdf_geo[[join_id_column, 'geometry']].reset_index(),
+            gdf_geo[[join_id_column, 'geometry']],
             parquet_path.with_stem(parquet_path.stem + '_geo'),
+            index=False,
+            schema_version='1.1.0',
         )
     else:
         to_parquet(gdf, parquet_path)
