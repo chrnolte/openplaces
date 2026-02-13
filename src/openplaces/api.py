@@ -92,7 +92,7 @@ def get_admin(
         Silence warnings
     """
 
-    if level is None or level < 1:
+    if level is not None and level < 1:
         raise ValueError('The lowest level for admin units is 1. 0 is the planet.')
 
     # Pick default recipe for geometry attributes if None is provided
