@@ -600,3 +600,5 @@ def show_building(
                         pad=0.5,
                     ),
                 )
+    if return_fig_ax:
+        return fig, ax
