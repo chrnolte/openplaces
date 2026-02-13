@@ -79,3 +79,6 @@ dependencies:
     - python-polylabel>=0.6
     - altair>=5.0.0  # Not available in conda-forge main
     - -e .
+
+variables:
+  PYTHONUTF8: "1"
