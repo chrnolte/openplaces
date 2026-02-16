@@ -21,7 +21,7 @@ entity:
 download_by:
   admin_level: 2
 
-# Filename of compressed file (set to skip re-downloading)
+# Name of compressed file (set to skip re-downloading)
 compressed_file_name: "nsi_2022_{admin2_id_admin1}.gpkg.zip"
 
 # Columns: `openplaces` variable name -> variable name in imported table

@@ -1,10 +1,7 @@
 # Recipe to import the Global Administrative Database
 
 # Administrative unit identifier: where does this data come from?
-# NULL: global
-# US: United States
-# US-WI: Wisconsin
-# US-WI-DA: Dane county
+
 admin_id: US-MA
 
 # Entity: what is the unit of analysis of the imported data?
@@ -17,10 +14,10 @@ entity:
     portal_url: "https://www.mass.gov/forms/massgis-request-statewide-parcel-data"
   version: 2025
 
-# Filename of compressed file (set to skip re-downloading)
+# Name of compressed file (set to skip re-downloading)
 compressed_file_name: "MassGIS_L3_Parcels_gdb.zip"
 
-# Path to uncompressed file path (set to skip re-extracting)
+# Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "MassGIS_L3_Parcels.gdb"
 
 # Layer that identifies parcels
@@ -28,16 +25,16 @@ layer: L3_TAXPAR_POLY
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
-  parcel_id_admin1: LOC_ID
-  parcel_id_admin3: MAP_PAR_ID
+  parcel_id_admin2: LOC_ID
+  parcel_id_admin4: MAP_PAR_ID
   source_date: LAST_EDIT
-  admin3_id_source: TOWN_ID
+  admin4_id_source: TOWN_ID
 
 # Keep columns that aren't named in the above list
 keep_unnamed_columns: True
 
 # Crosswalk (CSV file) from local to `openplaces` admin unit identifiers
-admin_id_crosswalk: US-MA_admin-massgis-2025-admin3_id_crosswalk
+admin_id_crosswalk: US-MA_admin-massgis-2025-admin4_id_crosswalk
 
 # Additional layers to import, from the same dataset, but might be for
 # a different entity (e.g., property table inside a parcel database)
@@ -46,9 +43,9 @@ additional_layers:
     entity_type: property
     columns:
       property_id_assessor: PROP_ID
-      property_id_admin1: MA_PROP_ID
-      parcel_id_admin1: LOC_ID
-      parcel_id_admin3: MAP_PAR_ID
+      property_id_admin2: MA_PROP_ID
+      parcel_id_admin2: LOC_ID
+      parcel_id_admin4: MAP_PAR_ID
       street: SITE_ADDR
       city: CITY
       zip: ZIP
@@ -76,7 +73,7 @@ additional_layers:
       last_sale_price: LS_PRICE
       last_sale_book: LS_BOOK
       last_sale_page: LS_PAGE
-      admin3_id_source: TOWN_ID
+      admin4_id_source: TOWN_ID
     keep_unnamed_columns: True
     admin_id_crosswalk: parcel-massgis-town-crosswalk
 
