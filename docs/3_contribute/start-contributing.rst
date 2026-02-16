@@ -1,8 +1,11 @@
-Getting started
-~~~~~~~~~~~~~~~
+Start contributing
+~~~~~~~~~~~~~~~~~~
+
+Instructions for ``git``
+------------------------
 
 Code on your own branch
------------------------
+^^^^^^^^^^^^^^^^^^^^^^^
 
 If you want to make edits to the ``openplaces`` source code:
 
@@ -14,6 +17,15 @@ If you want to make edits to the ``openplaces`` source code:
 
 4. Submit a pull request to have your code change reviewed. If they pass review, they'll become part of the ``main`` branch of the repository.
 
+
+Commit clean notebooks
+^^^^^^^^^^^^^^^^^^^^^^
+
+``openplaces`` uses ``nbstripout`` to remove outputs from Jupyter notebooks (e.g., figures, printed text, warnings, errors, timestamps) before adding them to the repository. This makes differences much easier to track.
+
+This should occur automatically: ``.gitattributes`` in the repository root is configured to run ``nbstripout`` for all notebook files (``.ipynb``).
+
+This means you must activate your ``openplaces`` environment (``conda activate openplaces``) before using ``git`` (e.g., ``git add``, ``git diff``). Otherwise, you'll get errors if you add notebooks and ``nbstripout`` can't be found.
 
 Code style
 ----------
