@@ -1101,6 +1101,13 @@ class Ingester:
             df = df.set_index(self.recipe['set_index'])
         elif 'create_index' in self.recipe:
             if 'function' in self.recipe['create_index']:
+                if not self.recipe['create_index']['function'].str.startswith(
+                    'openplaces.'
+                ):
+                    raise ValueError(
+                        'Function in `create_index` must start with `openplaces.`\n'
+                        'Changing this would create a security risk (run any function).'
+                    )
                 index_function = self._load_function(
                     self.recipe['create_index']['function']
                 )
@@ -1121,6 +1128,11 @@ class Ingester:
             # Create index with custom function
 
             with log_step('Generate indices', timer=self.timer):
+                if not self.recipe['index_function'].str.startswith('openplaces.'):
+                    raise ValueError(
+                        'Function in `index_function` must start with `openplaces.`\n'
+                        'Changing this would create a security risk (run any function).'
+                    )
                 index_function = self._load_function(self.recipe['index_function'])
 
                 df = index_function(df)
