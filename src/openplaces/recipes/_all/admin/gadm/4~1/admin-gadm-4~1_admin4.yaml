@@ -1,12 +1,8 @@
-# Recipe to import the Global Administrative Database, Level 3
+# Recipe to import the Global Administrative Database, Level 4
 
 # (unfinished, as GADM only covers a fraction of the world at Level 3)
 
 # Administrative unit identifier: where does this data come from?
-# NULL: global
-# US: United States
-# US-WI: Wisconsin
-# US-WI-DA: Dane county
 admin_id: NULL
 
 # Entity: what is the unit of analysis of the imported data?
@@ -19,11 +15,11 @@ entity:
     download_url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
   version: 4.1
 
-# Path to compressed file (set to skip re-downloading)
+# Name of compressed file (set to skip re-downloading)
 # compressed_file_name: "gadm_410-gpkg.zip"
 compressed_file_name: "gadm_410-levels.zip"
 
-# Path to uncompressed file path (set to skip re-extracting)
+# Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "gadm_410-levels.gpkg"  # Gigabytes
 
 # Layer that identifies first-level country subdivisions
