@@ -14,6 +14,8 @@ The first call of ``import openplaces`` will launch an interactive configuration
 Your first task is to define your local directory structure.
 
 
+.. _standard_directories:
+
 Standard directories
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -21,7 +23,7 @@ It is helpful to have different directories for different stages in your analyti
 
 This simplifies data sharing across different machines and cloud services and the setting of team and user-specific permissions. 
 
-Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (thank you, Carl Boettinger @ Berkeley), ``openplaces`` works with these directories:
+Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (thank you, Carl Boettiger @ Berkeley), ``openplaces`` works with these directories:
 
 .. list-table::
    :widths: 15 25 15 45
