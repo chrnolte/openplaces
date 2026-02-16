@@ -6,5 +6,5 @@ Getting started
 .. toctree::
    :maxdepth: 2
 
-   getting-started/install
-   getting-started/configure
+   2_getting-started/install
+   2_getting-started/configure

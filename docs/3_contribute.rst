@@ -8,5 +8,5 @@ Contribute
 .. toctree::
    :maxdepth: 2
 
-   contribute/start-contributing
-   contribute/cluster
+   3_contribute/start-contributing
+   3_contribute/cluster
