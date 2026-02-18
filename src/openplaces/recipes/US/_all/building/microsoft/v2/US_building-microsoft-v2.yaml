@@ -20,7 +20,7 @@ entity:
 download_by:
   admin_level: 2
   # Transformations needed to obtain the data partition admin identifier
-  # used by the source URL (e.g. lowercase, sanitize, etc.)
+  # used by the source URL (e.g., remove spaces)
   admin_key_transform:
     admin2_name: "remove_spaces"
 
