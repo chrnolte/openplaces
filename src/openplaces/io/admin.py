@@ -752,7 +752,7 @@ def clean_geographic_name(name):
     return clean_text, extracted_num, letter_suffix, detected_generic
 
 
-def generate_admin_ids_test_4(
+def generate_admin_ids(
     df,
     new_admin_id_col='admin4_id',
     parent_admin_id_col='admin3_id',
