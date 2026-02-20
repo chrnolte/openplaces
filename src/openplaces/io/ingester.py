@@ -33,6 +33,7 @@ from openplaces.io import (
     delete_data,
     download,
     find_latest_file_or_gdb,
+    read_gdb_with_domains,
     save_parquet,
     unzip,
 )
@@ -992,21 +993,18 @@ class Ingester:
         layer = self.recipe['layer'] if 'layer' in self.recipe else None
 
         data_path = self.download_partition['data_path']
-        if data_path.suffix in GEOPANDAS_EXTENSIONS:
-            if data_path.suffix == 'parquet':
-                if 'fids' in kwargs:
-                    raise ValueError(
-                        '`fid`-based selection might not work with `parquet`.'
-                    )
-                gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
-                self.timer.mark(
-                    'Read parquet file' + timer_message_suffix, path=data_path
-                )
-            else:
-                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-                self.timer.mark(
-                    'Read vector file' + timer_message_suffix, path=data_path
-                )
+        if data_path.suffix == '.parquet':
+            if 'fids' in kwargs:
+                raise ValueError('`fid`-based selection might not work with `parquet`.')
+            gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
+            self.timer.mark('Read parquet file' + timer_message_suffix, path=data_path)
+        elif data_path.suffix == '.gdb':
+            gdf = read_gdb_with_domains(
+                data_path, columns=columns, layer=layer, **kwargs
+            )
+        elif data_path.suffix in GEOPANDAS_EXTENSIONS:
+            gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
+            self.timer.mark('Read vector file' + timer_message_suffix, path=data_path)
         elif data_path.suffix in PANDAS_EXTENSIONS:
             gdf = pd.read_file(data_path, columns=columns)
             self.timer.mark('Read data table' + timer_message_suffix, path=data_path)
