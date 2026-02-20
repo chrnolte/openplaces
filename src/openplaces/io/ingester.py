@@ -512,16 +512,17 @@ class Ingester:
                     #     # Special case: `adminX_id`
                     #     # (unlikely, unless coming from `openplaces`)
                     #     partition_key = admin_id
+                elif (
+                    'partition' in self.recipe['download_by']
+                    and placeholder == self.recipe['download_by']['partition']
+                ):
+                    partition_key = partition_id
                 else:
-                    if placeholder == self.recipe['download_by']['partition']:
-                        partition_key = partition_id
-                    else:
-                        raise NotImplementedError(
-                            'Custom placeholder have not yet been implemented for '
-                            'partitions:\n'
-                            f'Placeholder: `{placeholder}`, '
-                            f"`download_by`: `{recipe['download_by']}`"
-                        )
+                    raise NotImplementedError(
+                        'Custom placeholder has not yet been implemented:\n'
+                        f'Placeholder: `{placeholder}`, '
+                        f"`download_by`: `{self.recipe['download_by']}`"
+                    )
 
                 self.download_partition['partition_key_dict'][
                     placeholder
@@ -580,13 +581,33 @@ class Ingester:
                     '`download_by` is not defined.'
                 )
             # Scrape website providing download URLs
-            with urllib.request.urlopen(source.download_url_source) as fp:
-                html = fp.read().decode("utf8")
+            req = urllib.request.Request(
+                source.download_url_source, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req) as response:
+                html = response.read().decode("utf8")
 
             download_url_source_regex = self._resolve_placeholders(
                 source.download_url_source_regex
             )
-            download_url = re.compile(download_url_source_regex).findall(html)[0]
+            download_url_found = re.compile(download_url_source_regex).findall(html)
+
+            if not download_url_found:
+                raise ValueError(
+                    f'Could not extract {download_url_source_regex} from html:\n{html}'
+                )
+
+            download_url = download_url_found[0]
+
+            if download_url.startswith('/'):
+                from urllib.parse import urlparse
+
+                # Filepaths are relative: add URL structure from download_url_source
+                parsed = urlparse(source.download_url_source)
+                domain_url = f"{parsed.scheme}://{parsed.netloc}"
+
+                download_url = domain_url + download_url
+
         else:
             download_url = None
 
@@ -727,7 +748,7 @@ class Ingester:
                     )
                 self.download_partition['downloaded_path'] = downloaded_path
         elif self.verbose:
-            print('Data found - skipping download.')
+            print('Downloaded data found. Skipping download.')
 
         if redownload or (
             self.download_partition['downloaded_path'] is not None
@@ -762,7 +783,7 @@ class Ingester:
                 self.recipe_heap_dir
             )
             if self.verbose:
-                print(f'Inferred file to read:\n{location}')
+                print(f'Inferred file to read: {location}')
 
         if (
             self.download_partition['data_path'] is not None
@@ -1066,6 +1087,7 @@ class Ingester:
                     values = df[column_to_cast]
                     categories = None
                     ordered = False
+
                 df[column_to_cast] = pd.Series(
                     pd.Categorical(values, categories, ordered),
                     index=values.index,
@@ -1101,7 +1123,7 @@ class Ingester:
             df = df.set_index(self.recipe['set_index'])
         elif 'create_index' in self.recipe:
             if 'function' in self.recipe['create_index']:
-                if not self.recipe['create_index']['function'].str.startswith(
+                if not self.recipe['create_index']['function'].startswith(
                     'openplaces.'
                 ):
                     raise ValueError(
@@ -1128,7 +1150,7 @@ class Ingester:
             # Create index with custom function
 
             with log_step('Generate indices', timer=self.timer):
-                if not self.recipe['index_function'].str.startswith('openplaces.'):
+                if not self.recipe['index_function'].startswith('openplaces.'):
                     raise ValueError(
                         'Function in `index_function` must start with `openplaces.`\n'
                         'Changing this would create a security risk (run any function).'
