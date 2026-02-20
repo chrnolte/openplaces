@@ -1,0 +1,154 @@
+# Recipe to import FEMA's USA Structures (2023)
+
+# Administrative unit identifier of the highest administrative geography
+# that the dataset covers (single files can cover a lower admin level)
+admin_id: US-NC
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: building
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: ncdps
+    # Link to portal with metadata
+    portal_url: "https://storymaps.arcgis.com/stories/dc7044c9c8db4839a1b0d3dd56f40034"
+    # Link to website containing download URLs (e.g. if URLs change)
+    download_url_source: "https://sdd.nc.gov/downloads/public/BuildingFootprintsbyCounty/2020-2022/"
+    # Regex to extract download URL from `download_url_source`
+    # Data partition placeholders {...} will be replaced before use.
+    download_url_source_regex: 'HREF="(/downloads/public/BuildingFootprintsbyCounty/2020-2022/{admin3_name}_202._Buildings.zip)' 
+  version: 2023
+
+# How is the download data partitioned?
+download_by:
+  admin_level: 3
+  # Transformations needed to obtain the data partition admin identifier
+  # used by the source URL (e.g., remove spaces)
+  admin_key_transform:
+    admin3_name: "remove_spaces"
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "{admin3_name}_202?_Buildings.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "{admin3_name}_202?_Buildings.gdb"
+
+# Layer to load
+layer: S_BUILDING_FP
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  building_id_admin1: BLDG_ID
+  parcel_id_admin2: PID
+  census_block_id: BLOCK_ID
+  photo_file: PHOTOFILE
+  occupancy_type: OCCUP_TYPE
+  construction_type: BUILD_TYPE
+  hurricane_model_building_type: HU_MBLD_TY
+  hurricane_scheme: HU_SCHEME
+  earthquake_model_building_type: EQ_MBLD_TY
+  earthquake_scheme: EQ_SCHEME
+  earthquake_design_level: EQ_DES_LVL
+  earthquake_zone: EQ_ZONE
+  flood_scheme: FL_SCHEME
+  flood_zone: FLD_ZONE
+  static_base_flood_elevation_zone: STATIC_BFE
+  wind_zone: WIND_ZONE
+  year_built: YEAR_BUILT
+  year_built_source: YRBUILTSRC
+  building_value: BLDG_VALUE
+  building_value_source: BLDVAL_SRC
+  building_adj_factor: BLDGADJFAC
+  building_replacement_value: BLDGREPVAL
+  contents_replacement_value: CONTREPVAL
+  inventory_replacement_value: INVREPVAL
+  heated_sqft: HTD_SQ_FT
+  heated_sqft_source: HTDSQFTSRC
+  first_floor_elevation: FFE
+  ffe_survey_type: FFE_TYP
+  lidar_lowest_adj_grade: LIDAR_LAG
+  lidar_highest_adj_grade: LIDAR_HAG
+  foundation_type: FOUND_TYPE
+  basement_type: BASMENT_TY
+  num_stories: NUM_STORY
+  building_rise: RISE
+  roof_shape: ROOF_SHAPE
+  roof_slope: ROOF_SLOPE
+  roof_cover_type: ROOF_CV_TY
+  roof_cover_quality: ROOF_CV_QL
+  secondary_water_resistance: S2_WTR_RES
+  roof_deck_attachment: RF_DECK_AT
+  roof_deck_age: RF_DECK_AG
+  roof_wall_connection: RF_WAL_CON
+  roof_frame_type: RF_FRAM_TY
+  metal_roof_deck_attachment: M_RFDCK_AT
+  hurricane_shutters: SHUTTERS
+  hurricane_tie_downs: TIE_DOWNS
+  window_area: WINDOW_AR
+  garage_door: GARAGEDOOR
+  masonry_reinforcing: MAS_REINFR
+  joist_spacing: JOIST_SPAC
+  num_units: NUM_UNITS
+  wind_debris_type: WINDDEBRIS
+  defensible_space: DEFN_SPACE
+  hazardous_fuels_reduction: HZFUELREDC
+  ignition_resistant_materials: IGNRESMATL
+  imagery_year: IMAGE_YEAR
+  exclude_from_conflation: EXCLUDE
+  parcel_id_status: PIDSTATUS
+  parcel_conflation_status: LPARCLSTAT
+  is_ghost_structure: ISGHOST
+  in_coastal_zone: ISCOASTAL
+  in_limwa_zone: ISLIMWA
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - occupancy_type
+  - construction_type
+  - hurricane_model_building_type
+  - hurricane_scheme
+  - earthquake_scheme
+  - earthquake_model_building_type
+  - earthquake_design_level
+  - earthquake_zone
+  - flood_scheme
+  - flood_zone
+  - static_bfe_zone
+  - wind_zone
+  - year_built_source
+  - building_value_source
+  - heated_sqft_source
+  - ffe_survey_type
+  - foundation_type
+  - basement_type
+  - num_stories
+  - building_rise
+  - roof_shape
+  - roof_slope
+  - roof_cover_type
+  - roof_cover_quality
+  - secondary_water_resistance
+  - roof_deck_attachment
+  - roof_deck_age
+  - roof_wall_connection
+  - roof_frame_type
+  - metal_roof_deck_attachment
+  - hurricane_shutters
+  - hurricane_tie_downs
+  - window_area
+  - garage_door
+  - masonry_reinforcing
+  - joist_spacing
+  - num_units
+  - wind_debris_type
+  - defensible_space
+  - hazardous_fuels_reduction
+  - ignition_resistant_materials
+  - parcel_conflation_status
+
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.geo.vector.add_geo_id_index"
+  args:
+    name: footprint_id
