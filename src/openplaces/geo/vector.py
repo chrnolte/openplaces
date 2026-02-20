@@ -761,6 +761,7 @@ def get_intersection_over_union(
     gdf_right,
     suffixes=('left', 'right'),
     area_unit='m2',
+    how='intersection',
     drop_geometries=True,
 ):
     """Compute interaction over union of two GeoDataFrames"""
@@ -785,6 +786,7 @@ def get_intersection_over_union(
         gdf_right[[area_unit, 'geometry']]
         .rename(columns={area_unit: f'm2_{suffixes[1]}'})
         .reset_index(),
+        how=how,
     ).set_index([gdf_left.index.name, gdf_right.index.name])
 
     # Calculate area of overlap
