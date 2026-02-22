@@ -615,28 +615,19 @@ from itertools import combinations
 
 def clean_geographic_name(name):
     """
-    Parse a raw geographic name into its constituent components for ID generation.
-
-    Handles messy real-world inputs including null-like values (None, N/A, NaN),
-    parenthetical numbers, Roman numerals, ordinal suffixes, common prefixes
-    (Al, San, El, La, The), "No." notation, and subdivision codes.
-
-    Returns
-    -------
-    tuple of (str, str, str, str)
-        clean_text    : alphabetic portion of the name, uppercased with digits
-                        and punctuation removed
-        digits        : first numeric string found in the name, or "" if none
-        letter_suffix : short alphabetic suffix trailing a number (e.g. "b" in
-                        "Ward 3B"), or "" if none
-        generic_word  : detected administrative keyword (e.g. "ward", "barangay",
-                        "district"), or "" if none
+    Comprehensive cleaning for admin4 geographic names.
+    Returns: (clean_text, digits, letter_suffix, generic_word)
     """
     # Handle None/NA/null cases
     if pd.isna(name) or str(name).strip().lower() in ['none', 'nan', 'null', '', 'n.a.', 'n/a']:
         return "", "", "", ""
 
     text = str(name).strip()
+    
+    # Initialize variables at the start
+    extracted_num = ""
+    letter_suffix = ""
+    detected_generic = ""
     
     # 1. FIRST: Special handling for "n.a. (1234)" pattern - treat as pure numeric
     na_num_pattern = re.search(r'^n\.?a\.?\s*\((\d+)\)$', text, re.I)
@@ -649,7 +640,6 @@ def clean_geographic_name(name):
         text = na_with_parens.group(2).strip()
     else:
         # 3. Handle other parentheses
-        extracted_num = ""
         paren_num_match = re.search(r'\((\d+)\)', text)
         if paren_num_match:
             extracted_num = paren_num_match.group(1)
@@ -666,22 +656,17 @@ def clean_geographic_name(name):
     else:
         text = re.sub(r'^(none|na|n\.?a\.?)\s+', '', text, flags=re.I).strip()
     
-    # 6. Remove "No." prefix (before removing other prefixes)
-    # This handles "Oljoro No. 5" → "Oljoro 5"
+    # 6. Remove "No." prefix
     text = re.sub(r'\bNo\.?\s+', '', text, flags=re.I).strip()
     
-    # 7. Remove prefixes (Al, San, El, La, The, Division No.)
-    # Note: "Division No." is handled separately below to preserve the number
+    # 7. Remove prefixes (Al, San, El, La, The)
     prefixes = r'\b(Al|San|El|La|The)\b'
     text = re.sub(prefixes, '', text, flags=re.I).strip()
     
-    # 8. Handle "Division No. X" pattern specially
-    # "Division No. 5, Subd. G" should become "5 G" (number + letter)
+    # 8. Handle "Division No. X" pattern
     div_pattern = re.search(r'Division\s+No\.?\s+(\d+)', text, re.I)
-    extracted_num = ""
-    if div_pattern:
+    if div_pattern and not extracted_num:  # Only set if not already set
         extracted_num = div_pattern.group(1)
-        # Remove the "Division No. X" part
         text = re.sub(r'Division\s+No\.?\s+\d+', '', text, flags=re.I).strip()
     
     # 9. Convert Roman numerals to Arabic
@@ -695,18 +680,16 @@ def clean_geographic_name(name):
     # 10. Remove ordinal suffixes
     text = re.sub(r'(\d+)(st|nd|rd|th)\b', r'\1', text, flags=re.I)
     
-    # 11. Handle letter suffixes
+    # 11. Handle letter suffixes (e.g., "5o", "3sam")
     num_letter_pattern = re.search(r'(\d+)\s*([a-z]+)$', text, re.I)
-    letter_suffix = ""
     if num_letter_pattern and len(num_letter_pattern.group(2)) <= 3:
-        if not extracted_num:
+        if not extracted_num:  # Only set if not already set
             extracted_num = num_letter_pattern.group(1)
         letter_suffix = num_letter_pattern.group(2).lower()
         text = re.sub(r'\d+\s*[a-z]+$', '', text, flags=re.I).strip()
     
     # 12. DETECT generic words
     generic_words = ['ward', 'zone', 'mariposa', 'barangay', 'bgy', 'district', 'division', 'subd', 'subdivision']
-    detected_generic = ""
     for word in generic_words:
         if re.search(rf'\b{word}\b', text, re.I):
             match = re.search(rf'\b({word})\b', text, re.I)
@@ -722,7 +705,8 @@ def clean_geographic_name(name):
             text = subd_code
             detected_generic = ""
         elif subd_code.isdigit():
-            extracted_num = subd_code
+            if not extracted_num:  # Only set if not already set
+                extracted_num = subd_code
             text = ""
             detected_generic = "subd"
     
@@ -737,20 +721,15 @@ def clean_geographic_name(name):
             if len(extracted_num) > 5:
                 extracted_num = ""
     
-    # 16. Extract clean text
+    # 16. Extract clean text (remove all digits)
     clean_text = re.sub(r'\d+', '', text)
     clean_text = "".join(re.findall(r'[A-Z\s]', clean_text.upper())).strip()
     
-    # 17. FINAL CHECK
+    # 17. FINAL CHECK: Remove any remaining parentheses
     clean_text = re.sub(r'[()]', '', clean_text)
-    if not letter_suffix:
-        letter_suffix = ""
     letter_suffix = re.sub(r'[()]', '', letter_suffix)
-    if not extracted_num:
-        extracted_num = ""
     
     return clean_text, extracted_num, letter_suffix, detected_generic
-
 
 def generate_admin_ids(
     df,
@@ -942,25 +921,23 @@ def generate_admin_ids(
     if verbose:
         print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
 
-    # Strategy 3: Initials from multi-word names — take first letter of first two words
-    # (e.g., "North East" → "NE")
+    # Strategy 3: Initials from multi-word names
     if verbose: print("Strategy 3: Initials from multi-word names...")
     mask = admin[new_admin_id_col].isna()
     if mask.any():
-        names = admin.loc[mask, '_name_clean'].str.replace('', ' ')
-        has_multiple_words = admin.loc[mask, '_name_words'].apply(lambda x: len(x) > 1)
-    
-        if has_multiple_words.any():
-            for idx in admin[mask & has_multiple_words].index:
-                words = admin.at[idx, '_name_words']
-                if len(words) >= 2:
-                    code = words[0][0] + words[1][0]
-                    candidate = admin.at[idx, parent_admin_id_col] + id_separator + code
-                    if candidate not in used_ids:
-                        admin.at[idx, new_admin_id_col] = candidate
-                        admin.at[idx, id_source_col] = 'initials'
-                        used_ids.add(candidate)
-                    
+        unassigned = admin.loc[mask]  # work on the subset
+        has_multiple_words = unassigned['_name_words'].apply(lambda x: len(x) > 1)
+
+        for idx in unassigned[has_multiple_words].index:
+            words = admin.at[idx, '_name_words']
+            if len(words) >= 2:
+                code = words[0][0] + words[1][0]
+                candidate = admin.at[idx, parent_admin_id_col] + id_separator + code
+                if candidate not in used_ids:
+                    admin.at[idx, new_admin_id_col] = candidate
+                    admin.at[idx, id_source_col] = 'initials'
+                    used_ids.add(candidate)
+                
     # Strategy 4: First two letters — unique within parent only
     if verbose: print("Strategy 4: First two letters...")
     mask = admin[new_admin_id_col].isna() & (admin['_name_clean'].str.len() >= 2)
@@ -1192,5 +1169,6 @@ def generate_admin_ids(
 
     # Cleanup temp columns
     admin = admin.drop(columns=['_name_clean', '_name_words', '_digits', '_letter_suffix', '_generic_word', '_needs_number'], errors='ignore')
+    admin = admin.set_index(new_admin_id_col)
     
     return admin
