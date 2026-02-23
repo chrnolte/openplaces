@@ -13,6 +13,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+from pyogrio.errors import DataSourceError
 
 from openplaces.api import get_admin
 from openplaces.config import cfg
@@ -1017,7 +1018,14 @@ class Ingester:
                 data_path, columns=columns, layer=layer, **kwargs
             )
         elif data_path.suffix in GEOPANDAS_EXTENSIONS:
-            gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
+            try:
+                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
+            except DataSourceError:
+                raise OSError(
+                    f'Failed to read data file:\n\n{data_path}\n\n'
+                    'Possibly an incompletely unzipped file? '
+                    'If so, delete manually, and re-run unzipping.'
+                )
             self.timer.mark('Read vector file' + timer_message_suffix, path=data_path)
         elif data_path.suffix in PANDAS_EXTENSIONS:
             gdf = pd.read_file(data_path, columns=columns)
@@ -1255,7 +1263,9 @@ class Ingester:
             ]
             # If requested, add any other non-geometry columns
             if self.recipe.get('keep_unnamed_columns'):
-                cols_order += [c for c in df if c not in cols_order]
+                cols_order += [
+                    c for c in df if c not in cols_order + ['geo_id', 'geometry']
+                ]
             # Finish by adding geometry columns
             for geo_col in ['geo_id', 'geometry']:
                 if geo_col in df:
