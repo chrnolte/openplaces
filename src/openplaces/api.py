@@ -96,27 +96,13 @@ def get_admin(
     if level is not None and level < 1:
         raise ValueError('The lowest level for admin units is 1. 0 is the planet.')
 
-    # Pick default recipe for geometry attributes if None is provided
-    if geom is True and recipe is None and level is not None:
-        recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
-
-    # Cast recipe to a dict if a str (id) is provided
-    if isinstance(recipe, str):
-        recipe = get_recipe_by_id(recipe)
-    if isinstance(recipe, dict) and admin_id is None:
-        admin_id = recipe['admin_id']
-
-    # Default to countries
-    if admin_id is None and level is None:
-        level = 1
-
     # Cast scalar `admin_id` to list
     if isinstance(admin_id, str | AdminId):
         admin_id = [admin_id]
     elif admin_id is not None and not isinstance(admin_id, list):
         raise ValueError(f'AdminID not recognized: {type(admin_id)} {admin_id}.')
 
-    # Cast all entries in the list to AdminId
+    # Cast all entries in the list to AdminId to get level for the recipe
     if admin_id is not None:
         admin_ids = []
         for _admin_id in admin_id:
@@ -133,11 +119,27 @@ def get_admin(
         admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
         if not isinstance(level, int):
             level = admin_id_level
-        if level < admin_id_level:
-            # Clip admin_ids to upper level (= load parent admin units)
-            admin_ids = [AdminId(*_admin_id.levels[:level]) for _admin_id in admin_ids]
-            admin_ids = list(dict.fromkeys(admin_ids))
-            print('Inferred Admin IDs: ' + admin_ids)
+
+    # Pick default recipe for geometry attributes if None is provided
+    if geom is True and recipe is None and level is not None:
+        recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
+
+    # Cast recipe to a dict if a str (id) is provided
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    if isinstance(recipe, dict) and admin_id is None:
+        admin_id = recipe['admin_id']
+        admin_ids = [admin_id]
+
+    # Default to countries
+    if admin_id is None and level is None:
+        level = 1
+
+    if admin_id is not None and level < admin_id_level:
+        # Clip admin_ids to upper level (= load parent admin units)
+        admin_ids = [AdminId(*_admin_id.levels[:level]) for _admin_id in admin_ids]
+        admin_ids = list(dict.fromkeys(admin_ids))
+        print('Inferred Admin IDs: ' + admin_ids)
 
     if isinstance(recipe, dict):
         # Set recipe_parquet_path: will be used twice
