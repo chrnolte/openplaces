@@ -251,7 +251,7 @@ def apply_transformation(
             )
 
         else:
-            raise ValueError(f"Unknown transformation type: {transform_type}")
+            raise ValueError(f'Unknown transformation type: {transform_type}')
 
     except Exception as e:
         raise RuntimeError(f"Error applying transformation '{config}': {e}") from e
@@ -267,7 +267,7 @@ def _apply_unary(
     input_col = config['input']
 
     if operation not in UNARY_OPS:
-        raise ValueError(f"Unknown unary operation: {operation}")
+        raise ValueError(f'Unknown unary operation: {operation}')
 
     input_series = df[input_col]
 
@@ -287,11 +287,11 @@ def _apply_binary(
 
     if len(inputs) != 2:
         raise ValueError(
-            f"Binary operation requires exactly 2 inputs, got {len(inputs)}"
+            f'Binary operation requires exactly 2 inputs, got {len(inputs)}'
         )
 
     if operation not in BINARY_OPS:
-        raise ValueError(f"Unknown binary operation: {operation}")
+        raise ValueError(f'Unknown binary operation: {operation}')
 
     return BINARY_OPS[operation](df[inputs[0]], df[inputs[1]])
 
@@ -304,12 +304,12 @@ def _apply_aggregate(
     inputs = config['inputs']
 
     if operation not in AGGREGATE_OPS:
-        raise ValueError(f"Unknown aggregate operation: {operation}")
+        raise ValueError(f'Unknown aggregate operation: {operation}')
 
     # Filter to only existing columns
     existing_inputs = [col for col in inputs if col in df.columns]
     if not existing_inputs:
-        raise ValueError(f"None of the input columns exist: {inputs}")
+        raise ValueError(f'None of the input columns exist: {inputs}')
 
     cols = [df[col] for col in existing_inputs]
 
@@ -342,7 +342,7 @@ def _apply_conditional(
     threshold = config['args']['threshold']
 
     if operation not in CONDITIONAL_OPS:
-        raise ValueError(f"Unknown conditional operation: {operation}")
+        raise ValueError(f'Unknown conditional operation: {operation}')
 
     return CONDITIONAL_OPS[operation](df[input_col], threshold)
 
@@ -355,7 +355,7 @@ def _apply_datetime(
     input_col = config['input']
 
     if operation not in DATETIME_OPS:
-        raise ValueError(f"Unknown datetime operation: {operation}")
+        raise ValueError(f'Unknown datetime operation: {operation}')
 
     # Ensure column is datetime type
     if not pd.api.types.is_datetime64_any_dtype(df[input_col]):
@@ -376,7 +376,7 @@ def _apply_string(
     operation = config['operation']
 
     if operation not in STRING_OPS:
-        raise ValueError(f"Unknown string operation: {operation}")
+        raise ValueError(f'Unknown string operation: {operation}')
 
     # Handle multi-column operations like concat
     if operation == 'concat':
@@ -384,7 +384,7 @@ def _apply_string(
         # Check if all input columns exist
         missing_cols = [col for col in inputs if col not in df.columns]
         if missing_cols:
-            raise ValueError(f"Missing columns for concat: {missing_cols}")
+            raise ValueError(f'Missing columns for concat: {missing_cols}')
 
         cols = [df[col] for col in inputs]
         sep = config.get('args', {}).get('sep', '')
@@ -436,7 +436,7 @@ def _apply_expression(
     # Check if all input columns exist
     missing_cols = [col for col in inputs if col not in df.columns]
     if missing_cols:
-        raise ValueError(f"Missing columns for expression: {missing_cols}")
+        raise ValueError(f'Missing columns for expression: {missing_cols}')
 
     # Try to use eval if expression doesn't contain formatting placeholders
     if '{' not in expression:
@@ -531,7 +531,7 @@ def _apply_remap_file(
     import os
 
     if not os.path.exists(crosswalk_file):
-        raise FileNotFoundError(f"Crosswalk file not found: {crosswalk_file}")
+        raise FileNotFoundError(f'Crosswalk file not found: {crosswalk_file}')
 
     crosswalk = pd.read_csv(crosswalk_file)
     mapping = dict(zip(crosswalk.iloc[:, key_col], crosswalk.iloc[:, value_col]))
@@ -559,7 +559,7 @@ def _apply_remap_conditional(
         elif condition_type == 'regex':
             mask = series.str.contains(cond['pattern'], na=False, regex=True)
         else:
-            raise ValueError(f"Unknown condition type: {condition_type}")
+            raise ValueError(f'Unknown condition type: {condition_type}')
 
         result.loc[mask] = output_value
 
@@ -593,7 +593,7 @@ def get_crosswalk(crosswalk_dict, flip=False):
             crosswalk_dict['admin_id'],
             crosswalk_dict['admin_level'],
             columns=[crosswalk_dict['admin_id_column']],
-            recipe=get_recipe_by_id(crosswalk_dict['admin_recipe_id']),
+            recipe=crosswalk_dict.get('admin_recipe_id'),
         )
 
         crosswalk_series = admin_id_crosswalk[crosswalk_dict['admin_id_column']]
@@ -601,8 +601,17 @@ def get_crosswalk(crosswalk_dict, flip=False):
         raise ValueError(f'Crosswalk dictionary not interpretable:\n\n{crosswalk_dict}')
 
     if flip:
-        crosswalk_series = crosswalk_series.reset_index().set_index(
-            crosswalk_series.name
+        crosswalk_series = (
+            crosswalk_series[crosswalk_series.notnull()]
+            .reset_index()
+            .set_index(crosswalk_series.name)
+        )
+
+    mask_index_duplicates = crosswalk_series.index.duplicated(keep=False)
+    if mask_index_duplicates.any():
+        raise ValueError(
+            'Crosswalk returned duplicated indices:\n\n'
+            + str(crosswalk_series[mask_index_duplicates])
         )
 
     return crosswalk_series

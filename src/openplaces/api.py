@@ -6,13 +6,13 @@ Public API for openplaces.
 
 import warnings
 
-import pandas as pd
 import geopandas as gpd
+import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.path import cache_path
-from openplaces.recipe import get_recipe, get_recipe_by_id
+from openplaces.recipe import get_recipe_by_id
 
 ADMIN_SOURCE_DEFAULT = 'admin-openplaces-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-gadm-4~1'
@@ -68,6 +68,7 @@ def get_admin(
     geom=False,
     columns=None,
     all_columns=False,
+    silent=True,
 ):
     """Get admin units of any administrative level
 
@@ -110,7 +111,7 @@ def get_admin(
         level = 1
 
     # Cast scalar `admin_id` to list
-    if isinstance(admin_id, (str, AdminId)):
+    if isinstance(admin_id, str | AdminId):
         admin_id = [admin_id]
     elif admin_id is not None and not isinstance(admin_id, list):
         raise ValueError(f'AdminID not recognized: {type(admin_id)} {admin_id}.')
@@ -151,19 +152,24 @@ def get_admin(
         # `keep_default_na` is `True` to keep `NA` (Namibia)
         admin = get_recipe_by_id(
             f'{ADMIN_SOURCE_DEFAULT}_admin{level}', dtype=str, keep_default_na=False
-        ).set_index(f'admin{level}_id')
-    except IOError:
+        )
+        if f'admin{level}_id' not in admin:
+            raise ValueError(f"'admin{level}_id' does not exist:\n\n" + str(admin))
+
+        admin = admin.set_index(f'admin{level}_id')
+
+    except OSError:
         # Should only happen before the spine exists.
         warnings.warn(
-            f'Admin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}. '
-            'Falling back to `admin_recipe`.'
+            f'\n\nAdmin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.\n\n'
+            'Falling back to `admin_recipe`.\n'
         )
         if isinstance(recipe, dict):
             # Load spine from recipe
             admin = pd.read_parquet(recipe_parquet_path)[[]]
         else:
-            raise IOError(
-                f'Admin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.'
+            raise OSError(
+                f'\n\nAdmin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.\n'
             )
 
     if isinstance(recipe, dict):
@@ -177,17 +183,18 @@ def get_admin(
         admin_ids_to_add_to_spine = sorted(
             set(admin_ids_from_recipe) - set(admin_ids_in_spine)
         )
-        if admin_ids_to_add_to_spine:
+        if admin_ids_to_add_to_spine and not silent:
             txt_warnings = (
-                '\n\nAdmin IDs from recipe `'
+                f'\n\n{len(admin_ids_to_add_to_spine):,d} admin IDs from recipe `'
                 + (
                     f'{recipe["admin_id"]}_'
-                    if recipe["admin_id"].get_level() > 1
+                    if recipe['admin_id'].get_level() > 1
                     else ''
                 )
                 + f'{recipe["entity"]}_admin{level}`'
-                ' not found in reference Admin IDs:\n\n'
-                + ', '.join(admin_ids_to_add_to_spine)
+                ' not found in reference Admin IDs:\n\n- '
+                + '\n- '.join(admin_ids_to_add_to_spine[:5])
+                + ('\n- ...' if len(admin_ids_to_add_to_spine) > 5 else '')
                 + '\n\nOptions to silence this warning:\n'
                 '- Add Admin IDs to reference list in '
                 f'`{ADMIN_SOURCE_DEFAULT}_admin{level}.csv`\n'
@@ -206,10 +213,14 @@ def get_admin(
         mask_select = pd.Series(False, index=admin.index)
         for _admin_id_to_get in admin_ids:
             mask_select |= admin.index.str.startswith(str(_admin_id_to_get))
+        if not mask_select.any():
+            warnings.warn(
+                'No admin IDs from reference spine selected. No filters applied.'
+            )
         admin = admin[mask_select].copy()
 
     if isinstance(recipe, dict):
-        if admin_id is None:
+        if admin_id is None or not mask_select.any():
             filters = None
         else:
             filters = [(f'admin{level}_id', 'in', sorted(set(admin.index)))]
@@ -233,7 +244,7 @@ def get_admin(
             if isinstance(columns, str):
                 columns = [columns]
             elif not isinstance(columns, list):
-                raise ValueError(f"`columns` must be a string or list: {columns}")
+                raise ValueError(f'`columns` must be a string or list: {columns}')
         columns_to_retain = columns if columns else ADMIN_PRIMARY_COLUMNS[level]
         admin = admin[
             [x for x in columns_to_retain + ['geometry'] if x in admin]

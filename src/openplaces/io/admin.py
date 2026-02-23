@@ -8,6 +8,7 @@ Worldwide administrative referencing and mapping
 """
 
 import glob
+import re
 from itertools import combinations
 from pathlib import Path
 
@@ -157,7 +158,7 @@ def admin2_id_index_from_admin2_gadm(admin2):
         how='inner',
     )
     if admin2['admin1_id'].isnull().any():
-        raise ValueError('Empty `\'admin1_id\'` found in `admin2`.')
+        raise ValueError("Empty `'admin1_id'` found in `admin2`.")
 
     admin2['_name'] = admin2['name'].apply(standardize_names).fillna('NA')
 
@@ -273,7 +274,7 @@ def admin3_id_index_from_admin3_gadm(admin3):
     admin3 = admin3.sort_values(['admin2_id', '_name'])
 
     # First priority: unique existing HASC 2 codes, corrected for admin2_id
-    HASC2_REGEX_EXTRACT = r"([A-Z0-9]{2})\.([A-Z0-9]{2})\.([A-Z0-9]{2})"
+    HASC2_REGEX_EXTRACT = r'([A-Z0-9]{2})\.([A-Z0-9]{2})\.([A-Z0-9]{2})'
     i_has_hasc = (
         admin3['admin3_id_hasc'].str.match(HASC2_REGEX_EXTRACT)
         & ~admin3['admin3_id_hasc'].duplicated(keep=False)
@@ -608,10 +609,7 @@ def find_admin_recipe(admin_id, admin_level):
 
     recipe_id = Path(recipe_paths_found[0]).name
     return get_recipe_by_id(recipe_id)
-# Updated Function - More Aggressive Parenthesis Removal
-import pandas as pd
-import re
-from itertools import combinations
+
 
 def clean_geographic_name(name):
     """
@@ -619,22 +617,30 @@ def clean_geographic_name(name):
     Returns: (clean_text, digits, letter_suffix, generic_word)
     """
     # Handle None/NA/null cases
-    if pd.isna(name) or str(name).strip().lower() in ['none', 'nan', 'null', '', 'n.a.', 'n/a']:
-        return "", "", "", ""
+    if pd.isna(name) or str(name).strip().lower() in [
+        'none',
+        'nan',
+        'null',
+        '',
+        'n.a.',
+        'n/a',
+    ]:
+        return '', '', '', ''
 
     text = str(name).strip()
-    
+
     # Initialize variables at the start
-    extracted_num = ""
-    letter_suffix = ""
-    detected_generic = ""
-    
+    extracted_num = ''
+    letter_suffix = ''
+    detected_generic = ''
+
     # 1. FIRST: Special handling for "n.a. (1234)" pattern - treat as pure numeric
     na_num_pattern = re.search(r'^n\.?a\.?\s*\((\d+)\)$', text, re.I)
     if na_num_pattern:
-        return "", na_num_pattern.group(1), "", ""
-    
-    # 2. Special handling: If text outside parens is NA/None, keep only parenthetical content
+        return '', na_num_pattern.group(1), '', ''
+
+    # 2. Special handling: If text outside parens is NA/None,
+    # keep only parenthetical content
     na_with_parens = re.match(r'^(none|na|n\.?a\.?)\s*\(([^)]+)\)\s*$', text, re.I)
     if na_with_parens:
         text = na_with_parens.group(2).strip()
@@ -646,40 +652,48 @@ def clean_geographic_name(name):
             text = re.sub(r'\s*\(\d+\)', '', text)
         else:
             text = re.sub(r'[()]', ' ', text)
-    
+
     # 4. Clean up extra whitespace
     text = ' '.join(text.split())
-    
+
     # 5. Handle remaining "NA" or "None" prefix
     if re.match(r'^(none|na|n\.?a\.?)$', text, re.I):
-        text = ""
+        text = ''
     else:
         text = re.sub(r'^(none|na|n\.?a\.?)\s+', '', text, flags=re.I).strip()
-    
+
     # 6. Remove "No." prefix
     text = re.sub(r'\bNo\.?\s+', '', text, flags=re.I).strip()
-    
+
     # 7. Remove prefixes (Al, San, El, La, The)
     prefixes = r'\b(Al|San|El|La|The)\b'
     text = re.sub(prefixes, '', text, flags=re.I).strip()
-    
+
     # 8. Handle "Division No. X" pattern
     div_pattern = re.search(r'Division\s+No\.?\s+(\d+)', text, re.I)
     if div_pattern and not extracted_num:  # Only set if not already set
         extracted_num = div_pattern.group(1)
         text = re.sub(r'Division\s+No\.?\s+\d+', '', text, flags=re.I).strip()
-    
+
     # 9. Convert Roman numerals to Arabic
     roman_map = {
-        'VIII': '8', 'VII': '7', 'VI': '6', 'V': '5', 'IV': '4',
-        'III': '3', 'II': '2', 'IX': '9', 'X': '10', 'I': '1'
+        'VIII': '8',
+        'VII': '7',
+        'VI': '6',
+        'V': '5',
+        'IV': '4',
+        'III': '3',
+        'II': '2',
+        'IX': '9',
+        'X': '10',
+        'I': '1',
     }
     for roman, digit in sorted(roman_map.items(), key=lambda x: -len(x[0])):
         text = re.sub(rf'\b{roman}\b', digit, text, flags=re.I)
-    
+
     # 10. Remove ordinal suffixes
     text = re.sub(r'(\d+)(st|nd|rd|th)\b', r'\1', text, flags=re.I)
-    
+
     # 11. Handle letter suffixes (e.g., "5o", "3sam")
     num_letter_pattern = re.search(r'(\d+)\s*([a-z]+)$', text, re.I)
     if num_letter_pattern and len(num_letter_pattern.group(2)) <= 3:
@@ -687,49 +701,60 @@ def clean_geographic_name(name):
             extracted_num = num_letter_pattern.group(1)
         letter_suffix = num_letter_pattern.group(2).lower()
         text = re.sub(r'\d+\s*[a-z]+$', '', text, flags=re.I).strip()
-    
+
     # 12. DETECT generic words
-    generic_words = ['ward', 'zone', 'mariposa', 'barangay', 'bgy', 'district', 'division', 'subd', 'subdivision']
+    generic_words = [
+        'ward',
+        'zone',
+        'mariposa',
+        'barangay',
+        'bgy',
+        'district',
+        'division',
+        'subd',
+        'subdivision',
+    ]
     for word in generic_words:
         if re.search(rf'\b{word}\b', text, re.I):
             match = re.search(rf'\b({word})\b', text, re.I)
             if match:
                 detected_generic = match.group(1).lower()
                 break
-    
+
     # 13. Special handling for "Subd. X"
     subd_pattern = re.search(r'subd\.?\s+([A-Z0-9]+)', text, re.I)
     if subd_pattern:
         subd_code = subd_pattern.group(1).upper()
         if subd_code.isalpha():
             text = subd_code
-            detected_generic = ""
+            detected_generic = ''
         elif subd_code.isdigit():
             if not extracted_num:  # Only set if not already set
                 extracted_num = subd_code
-            text = ""
-            detected_generic = "subd"
-    
+            text = ''
+            detected_generic = 'subd'
+
     # 14. Remove non-alphanumeric
     text = re.sub(r'[\-_\.,]', ' ', text)
-    
+
     # 15. Extract digits if not already extracted
     if not extracted_num:
         digit_matches = re.findall(r'\d+', text)
         if digit_matches:
             extracted_num = digit_matches[0]
             if len(extracted_num) > 5:
-                extracted_num = ""
-    
+                extracted_num = ''
+
     # 16. Extract clean text (remove all digits)
     clean_text = re.sub(r'\d+', '', text)
-    clean_text = "".join(re.findall(r'[A-Z\s]', clean_text.upper())).strip()
-    
+    clean_text = ''.join(re.findall(r'[A-Z\s]', clean_text.upper())).strip()
+
     # 17. FINAL CHECK: Remove any remaining parentheses
     clean_text = re.sub(r'[()]', '', clean_text)
     letter_suffix = re.sub(r'[()]', '', letter_suffix)
-    
+
     return clean_text, extracted_num, letter_suffix, detected_generic
+
 
 def generate_admin_ids(
     df,
@@ -739,7 +764,6 @@ def generate_admin_ids(
     id_separator='-',
     verbose=False,
 ):
-
     """
     Generate unique two-letter admin unit codes within parent units.
 
@@ -834,7 +858,7 @@ def generate_admin_ids(
 
     # Apply cleaning logic
     cleaned_data = admin[name_col].apply(clean_geographic_name)
-    admin['_name_clean'] = cleaned_data.apply(lambda x: x[0].replace(" ", ""))
+    admin['_name_clean'] = cleaned_data.apply(lambda x: x[0].replace(' ', ''))
     admin['_name_words'] = cleaned_data.apply(lambda x: x[0].split())
     admin['_digits'] = cleaned_data.apply(lambda x: x[1])
     admin['_letter_suffix'] = cleaned_data.apply(lambda x: x[2])
@@ -844,57 +868,78 @@ def generate_admin_ids(
     used_ids = set()
 
     # Priority 0: Pure Numeric Extraction - prefix with X
-    if verbose: print("Priority 0: Pure Numeric Extraction...")
-    mask = (admin['_digits'] != "") & (admin['_name_clean'] == "")
+    if verbose:
+        print('Priority 0: Pure Numeric Extraction...')
+    mask = (admin['_digits'] != '') & (admin['_name_clean'] == '')
     for idx, row in admin[mask].iterrows():
-        candidate = f"{row[parent_admin_id_col]}{id_separator}X{row['_digits']}"
+        candidate = f'{row[parent_admin_id_col]}{id_separator}X{row["_digits"]}'
         if candidate not in used_ids:
             admin.at[idx, new_admin_id_col] = candidate
             admin.at[idx, id_source_col] = 'numeric_only'
             used_ids.add(candidate)
-        
+
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
     # Strategy 1: Generic word + number — prefix number with generic word initial(s),
     # appending any letter suffix (e.g., "Ward 3B" → "W3B")
-    if verbose: print("Strategy 1: Generic word + number...")
-    mask = admin[new_admin_id_col].isna() & (admin['_digits'] != "") & (admin['_generic_word'] != "")
+    if verbose:
+        print('Strategy 1: Generic word + number...')
+    mask = (
+        admin[new_admin_id_col].isna()
+        & (admin['_digits'] != '')
+        & (admin['_generic_word'] != '')
+    )
     for idx, row in admin[mask].iterrows():
         generic_word = row['_generic_word']
         nums = row['_digits']
-        letter_suffix = str(row['_letter_suffix']).upper() if row['_letter_suffix'] else ""
+        letter_suffix = (
+            str(row['_letter_suffix']).upper() if row['_letter_suffix'] else ''
+        )
         letter_suffix = re.sub(r'[()]', '', letter_suffix)
-        
+
         prefix = generic_word[0].upper()
-        candidate = f"{row[parent_admin_id_col]}{id_separator}{prefix}{nums}{letter_suffix}"
-        
+        candidate = (
+            f'{row[parent_admin_id_col]}{id_separator}{prefix}{nums}{letter_suffix}'
+        )
+
         if candidate in used_ids:
             if len(generic_word) >= 2:
                 prefix = generic_word[:2].upper()
-                candidate = f"{row[parent_admin_id_col]}{id_separator}{prefix}{nums}{letter_suffix}"
-        
+                candidate = (
+                    f'{row[parent_admin_id_col]}{id_separator}{prefix}{nums}'
+                    f'{letter_suffix}'
+                )
+
         if candidate not in used_ids:
             admin.at[idx, new_admin_id_col] = candidate
             admin.at[idx, id_source_col] = 'generic_word_num'
             used_ids.add(candidate)
 
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
-    # Strategy 2: Name + number for duplicates — same base name appears more than once
-    # under the same parent; combine name initial(s) with the digit (and any letter suffix)
-    if verbose: print("Strategy 2: Name + number for duplicates...")
-    mask = admin[new_admin_id_col].isna() & (admin['_digits'] != "") & (admin['_generic_word'] == "")
-    
+    # Strategy 2: Name + number for duplicates — same base name appears
+    # more than once under the same parent; combine name initial(s) with
+    # the digit (and any letter suffix)
+    if verbose:
+        print('Strategy 2: Name + number for duplicates...')
+    mask = (
+        admin[new_admin_id_col].isna()
+        & (admin['_digits'] != '')
+        & (admin['_generic_word'] == '')
+    )
+
     admin['_needs_number'] = False
     for idx, row in admin[mask].iterrows():
         base_name = row['_name_clean']
         parent = row[parent_admin_id_col]
-        
-        same_parent_mask = (admin[parent_admin_id_col] == parent) & (admin['_name_clean'] == base_name)
+
+        same_parent_mask = (admin[parent_admin_id_col] == parent) & (
+            admin['_name_clean'] == base_name
+        )
         count = same_parent_mask.sum()
-        
+
         if count > 1:
             admin.at[idx, '_needs_number'] = True
 
@@ -902,27 +947,35 @@ def generate_admin_ids(
     for idx, row in admin[mask].iterrows():
         words = row['_name_words']
         nums = row['_digits']
-        letter_suffix = str(row['_letter_suffix']).upper() if row['_letter_suffix'] else ""
+        letter_suffix = (
+            str(row['_letter_suffix']).upper() if row['_letter_suffix'] else ''
+        )
         letter_suffix = re.sub(r'[()]', '', letter_suffix)
-        
+
         if words:
             prefix = words[0][0].upper()
-            candidate = f"{row[parent_admin_id_col]}{id_separator}{prefix}{nums}{letter_suffix}"
-            
+            candidate = (
+                f'{row[parent_admin_id_col]}{id_separator}{prefix}{nums}{letter_suffix}'
+            )
+
             if candidate in used_ids and len(words[0]) >= 2:
                 prefix = words[0][:2].upper()
-                candidate = f"{row[parent_admin_id_col]}{id_separator}{prefix}{nums}{letter_suffix}"
-            
+                candidate = (
+                    f'{row[parent_admin_id_col]}{id_separator}{prefix}{nums}'
+                    f'{letter_suffix}'
+                )
+
             if candidate not in used_ids:
                 admin.at[idx, new_admin_id_col] = candidate
                 admin.at[idx, id_source_col] = 'name_num_duplicate'
                 used_ids.add(candidate)
 
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
     # Strategy 3: Initials from multi-word names
-    if verbose: print("Strategy 3: Initials from multi-word names...")
+    if verbose:
+        print('Strategy 3: Initials from multi-word names...')
     mask = admin[new_admin_id_col].isna()
     if mask.any():
         unassigned = admin.loc[mask]  # work on the subset
@@ -937,12 +990,15 @@ def generate_admin_ids(
                     admin.at[idx, new_admin_id_col] = candidate
                     admin.at[idx, id_source_col] = 'initials'
                     used_ids.add(candidate)
-                
+
     # Strategy 4: First two letters — unique within parent only
-    if verbose: print("Strategy 4: First two letters...")
+    if verbose:
+        print('Strategy 4: First two letters...')
     mask = admin[new_admin_id_col].isna() & (admin['_name_clean'].str.len() >= 2)
     if mask.any():
-        codes = admin.loc[mask, '_name_clean'].str[:2].str.replace(r'[()]', '', regex=True)
+        codes = (
+            admin.loc[mask, '_name_clean'].str[:2].str.replace(r'[()]', '', regex=True)
+        )
         candidates = admin.loc[mask, parent_admin_id_col] + id_separator + codes
         is_unique = ~candidates.duplicated(keep=False) & ~candidates.isin(used_ids)
         admin.loc[mask & is_unique, new_admin_id_col] = candidates[is_unique]
@@ -950,13 +1006,17 @@ def generate_admin_ids(
         used_ids.update(candidates[is_unique])
 
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
         still_unassigned = admin[admin[new_admin_id_col].isna()]
         if len(still_unassigned) > 0:
-            print(f"  Still unassigned: {still_unassigned[[name_col, '_name_clean', '_name_words']].head()}")
-        
+            print(
+                '  Still unassigned:',
+                still_unassigned[[name_col, '_name_clean', '_name_words']].head(),
+            )
+
     # Strategy 5: Any two letters — try all pairwise combinations from the cleaned name
-    if verbose: print("Strategy 5: Any two letters...")
+    if verbose:
+        print('Strategy 5: Any two letters...')
     mask = admin[new_admin_id_col].isna()
     unassigned = admin[mask].copy()
 
@@ -980,18 +1040,25 @@ def generate_admin_ids(
                     break
 
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
     # Strategy 6: Letter + number combinations — any letter paired with any digit;
     # falls back to "X" + digit when no letters exist
-    if verbose: print("Strategy 6: Letter + number combinations...")
+    if verbose:
+        print('Strategy 6: Letter + number combinations...')
     mask = admin[new_admin_id_col].isna()
     unassigned = admin[mask].copy()
 
     if len(unassigned) > 0:
         indices = unassigned.index.tolist()
         parent_ids = unassigned[parent_admin_id_col].tolist()
-        names_upper = unassigned[name_col].fillna('').str.upper().str.replace(r'[()]', '', regex=True).tolist()
+        names_upper = (
+            unassigned[name_col]
+            .fillna('')
+            .str.upper()
+            .str.replace(r'[()]', '', regex=True)
+            .tolist()
+        )
 
         for idx, parent_id, name_upper in zip(indices, parent_ids, names_upper):
             letters = [c for c in name_upper if c.isalpha()]
@@ -1023,18 +1090,21 @@ def generate_admin_ids(
                         break
 
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
     # Strategy 7: Swapping — if a desired code is held by another row, attempt to
     # reassign that row to an alternative code, freeing the preferred code
-    if verbose: print("Strategy 7: Swapping...")
+    if verbose:
+        print('Strategy 7: Swapping...')
     mask = admin[new_admin_id_col].isna()
     swaps_made = 0
     unassigned = admin[mask].copy()
 
     if len(unassigned) > 0:
         indices = unassigned.index.tolist()
-        names_clean = unassigned['_name_clean'].str.replace(r'[()]', '', regex=True).tolist()
+        names_clean = (
+            unassigned['_name_clean'].str.replace(r'[()]', '', regex=True).tolist()
+        )
         parent_ids = unassigned[parent_admin_id_col].tolist()
 
         for idx, name_clean, parent_id in zip(indices, names_clean, parent_ids):
@@ -1051,7 +1121,9 @@ def generate_admin_ids(
                     if not existing_mask.any():
                         continue
                     existing_idx = existing_mask.idxmax()
-                    existing_name_clean = re.sub(r'[()]', '', admin.at[existing_idx, '_name_clean'])
+                    existing_name_clean = re.sub(
+                        r'[()]', '', admin.at[existing_idx, '_name_clean']
+                    )
                     existing_parent_id = admin.at[existing_idx, parent_admin_id_col]
 
                     if len(existing_name_clean) < 2:
@@ -1084,20 +1156,30 @@ def generate_admin_ids(
                 break
 
     if verbose:
-        print(f"  Swaps made: {swaps_made}")
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Swaps made: {swaps_made}')
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
-    # Strategy 8: Three-letter codes — first three letters, then all three-letter combinations
-    if verbose: print("Strategy 8: Three-letter codes...")
+    # Strategy 8: Three-letter codes — first three letters,
+    # then all three-letter combinations
+    if verbose:
+        print('Strategy 8: Three-letter codes...')
     mask = admin[new_admin_id_col].isna()
 
     if mask.any():
         has_three = admin.loc[mask, '_name_clean'].str.len() >= 3
         if has_three.any():
-            codes = admin.loc[mask & has_three, '_name_clean'].str[:3].str.replace(r'[()]', '', regex=True)
-            candidates = admin.loc[mask & has_three, parent_admin_id_col] + id_separator + codes
+            codes = (
+                admin.loc[mask & has_three, '_name_clean']
+                .str[:3]
+                .str.replace(r'[()]', '', regex=True)
+            )
+            candidates = (
+                admin.loc[mask & has_three, parent_admin_id_col] + id_separator + codes
+            )
             is_unique = ~candidates.duplicated(keep=False) & ~candidates.isin(used_ids)
-            admin.loc[mask & has_three & is_unique, new_admin_id_col] = candidates[is_unique]
+            admin.loc[mask & has_three & is_unique, new_admin_id_col] = candidates[
+                is_unique
+            ]
             admin.loc[mask & has_three & is_unique, id_source_col] = 'first3'
             used_ids.update(candidates[is_unique])
 
@@ -1106,7 +1188,9 @@ def generate_admin_ids(
 
     if len(unassigned) > 0:
         indices = unassigned.index.tolist()
-        names_clean = unassigned['_name_clean'].str.replace(r'[()]', '', regex=True).tolist()
+        names_clean = (
+            unassigned['_name_clean'].str.replace(r'[()]', '', regex=True).tolist()
+        )
         parent_ids = unassigned[parent_admin_id_col].tolist()
 
         for idx, name_clean, parent_id in zip(indices, names_clean, parent_ids):
@@ -1123,10 +1207,11 @@ def generate_admin_ids(
                     break
 
     if verbose:
-        print(f"  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
     # Strategy 9: Sequential fallback — X01, X02, … with letter disambiguator if needed
-    if verbose: print("Strategy 9: Sequential fallback (X01, X02, ...)...")
+    if verbose:
+        print('Strategy 9: Sequential fallback (X01, X02, ...)...')
     mask = admin[new_admin_id_col].isna()
     if mask.any():
         remaining = admin[mask].groupby(parent_admin_id_col)
@@ -1136,7 +1221,7 @@ def generate_admin_ids(
                 new_id = parent_id + id_separator + code
                 counter = 1
                 while new_id in used_ids:
-                    code = f'X{i:02d}{chr(64+counter)}'
+                    code = f'X{i:02d}{chr(64 + counter)}'
                     new_id = parent_id + id_separator + code
                     counter += 1
 
@@ -1145,30 +1230,42 @@ def generate_admin_ids(
                 used_ids.add(new_id)
 
     if verbose:
-        print(f"  Final assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}")
+        print(f'  Final assigned: {admin[new_admin_id_col].notna().sum()}/{len(admin)}')
 
     # Verify uniqueness
     if admin[new_admin_id_col].isna().any():
         n_missing = admin[new_admin_id_col].isna().sum()
-        raise ValueError(f"Failed to assign IDs to {n_missing} rows")
+        raise ValueError(f'Failed to assign IDs to {n_missing} rows')
 
     if admin[new_admin_id_col].duplicated().any():
         n_dupes = admin[new_admin_id_col].duplicated().sum()
         dupes = admin[admin[new_admin_id_col].duplicated(keep=False)][
             [new_admin_id_col, name_col, parent_admin_id_col]
         ]
-        raise ValueError(f"Found {n_dupes} duplicate IDs:\n{dupes}")
+        raise ValueError(f'Found {n_dupes} duplicate IDs:\n{dupes}')
 
     if verbose:
-        print("\n✓ All IDs assigned and verified unique!")
-        print("\nID Generation Summary:")
+        print('\n✓ All IDs assigned and verified unique!')
+        print('\nID Generation Summary:')
         print(admin[id_source_col].value_counts().to_string())
 
     # Final cleanup - remove any parentheses that might have slipped through
-    admin[new_admin_id_col] = admin[new_admin_id_col].str.replace(r'[()]', '', regex=True)
+    admin[new_admin_id_col] = admin[new_admin_id_col].str.replace(
+        r'[()]', '', regex=True
+    )
 
     # Cleanup temp columns
-    admin = admin.drop(columns=['_name_clean', '_name_words', '_digits', '_letter_suffix', '_generic_word', '_needs_number'], errors='ignore')
+    admin = admin.drop(
+        columns=[
+            '_name_clean',
+            '_name_words',
+            '_digits',
+            '_letter_suffix',
+            '_generic_word',
+            '_needs_number',
+        ],
+        errors='ignore',
+    )
     admin = admin.set_index(new_admin_id_col)
-    
+
     return admin
