@@ -4,6 +4,7 @@
 This script helps developers set up and manage their local development
 environment. End users installing via 'pip install openplaces' don't need this.
 """
+
 import os
 import shutil
 import subprocess
@@ -65,9 +66,7 @@ def ensure_7zip():
     try:
         if system == 'darwin':
             if not shutil.which('brew'):
-                print(
-                    'Homebrew not found. Install 7z manually: ' 'brew install sevenzip'
-                )
+                print('Homebrew not found. Install 7z manually: brew install sevenzip')
                 return False
             run('brew install sevenzip', check=False)
 
@@ -121,7 +120,7 @@ def ensure_7zip():
         default_path = r'C:\Program Files\7-Zip\7z.exe'
         if os.path.exists(default_path):
             print('✓ 7z installed successfully')
-            print(f'  Note: restart your terminal for 7z to be available in PATH.')
+            print('  Note: restart your terminal for 7z to be available in PATH.')
             return True
 
     print('7z installation may have failed — verify with: 7z i')
@@ -138,7 +137,13 @@ def setup():
 
     env_name = get_env_name()
     zip_response = (
-        input('\nInstall 7z for Deflate64 ZIP extraction? [Y/n] ').strip().lower()
+        input(
+            '\nEnsure `7z` is installed to unzip more ZIP formats?\n'
+            '(needed for Windows `deflate64`, e.g. recipe `US-VA_parcel.vgin.2025`) '
+            '[Y/n]'
+        )
+        .strip()
+        .lower()
     )
 
     print(f'\nUsing package manager: {pkg_mgr}')
@@ -162,6 +167,9 @@ def setup():
 
     print('\nSetting up nbstripout for automatic notebook cleaning...')
     run(f'{PKG_MGR} run -n {env_name} nbstripout --install')
+
+    print('\nInstalling pre-commit hooks...')
+    run(f'{PKG_MGR} run -n {env_name} pre-commit install')
 
     print('\n✓ Development environment ready!')
     print('\nNext steps:')
@@ -192,6 +200,9 @@ def update():
 
     print('\nEnsuring nbstripout is configured...')
     run(f'{PKG_MGR} run -n {env_name} nbstripout --install')
+
+    print('\nEnsuring pre-commit hooks are installed...')
+    run(f'{PKG_MGR} run -n {env_name} pre-commit install')
 
     print('\n✓ Environment updated!')
 
