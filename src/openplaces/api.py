@@ -135,11 +135,16 @@ def get_admin(
     if admin_id is None and level is None:
         level = 1
 
-    if admin_id is not None and level < admin_id_level:
-        # Clip admin_ids to upper level (= load parent admin units)
-        admin_ids = [AdminId(*_admin_id.levels[:level]) for _admin_id in admin_ids]
-        admin_ids = list(dict.fromkeys(admin_ids))
-        print('Inferred Admin IDs: ' + admin_ids)
+    if admin_id is not None:
+        # Recompute level (as it could have been set by recipe admin ID
+        admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
+
+        if level < admin_id_level:
+            # Clip admin_ids to upper level (= load parent admin units)
+            admin_ids = [AdminId(*_admin_id.levels[:level]) for _admin_id in admin_ids]
+            admin_ids = list(dict.fromkeys(admin_ids))
+            if not silent:
+                print('Inferred Admin IDs: ' + admin_ids)
 
     if isinstance(recipe, dict):
         # Set recipe_parquet_path: will be used twice
