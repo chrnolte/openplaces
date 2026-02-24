@@ -42,24 +42,6 @@ ADMIN_PRIMARY_COLUMNS = {
     ],
 }
 
-# Deprecated - delete after transition
-ADMIN_SOURCE = 'admin-gadm-4~1'
-ADMIN1_PRIMARY_COLUMNS = ['name', 'admin1_id_a3', 'lat', 'long', 'ha']
-ADMIN2_PRIMARY_COLUMNS = [
-    'name',
-    'type',
-    'admin1_name',
-    'admin2_id_admin1',
-]
-ADMIN3_PRIMARY_COLUMNS = [
-    'name',
-    'name_long',
-    'type',
-    'admin2_name',
-    'admin1_name',
-    'admin3_id_admin1',
-]
-
 
 def get_admin(
     admin_id=None,
@@ -190,24 +172,25 @@ def get_admin(
         admin_ids_to_add_to_spine = sorted(
             set(admin_ids_from_recipe) - set(admin_ids_in_spine)
         )
-        if admin_ids_to_add_to_spine and not silent:
-            txt_warnings = (
-                f'\n\n{len(admin_ids_to_add_to_spine):,d} admin IDs from recipe `'
-                + (
-                    f'{recipe["admin_id"]}_'
-                    if recipe['admin_id'].get_level() > 1
-                    else ''
+        if admin_ids_to_add_to_spine:
+            if not silent:
+                txt_warnings = (
+                    f'\n\n{len(admin_ids_to_add_to_spine):,d} admin IDs from recipe `'
+                    + (
+                        f'{recipe["admin_id"]}_'
+                        if recipe['admin_id'].get_level() > 1
+                        else ''
+                    )
+                    + f'{recipe["entity"]}_admin{level}`'
+                    ' not found in reference Admin IDs:\n\n- '
+                    + '\n- '.join(admin_ids_to_add_to_spine[:5])
+                    + ('\n- ...' if len(admin_ids_to_add_to_spine) > 5 else '')
+                    + '\n\nOptions to silence this warning:\n'
+                    '- Add Admin IDs to reference list in '
+                    f'`{ADMIN_SOURCE_DEFAULT}_admin{level}.csv`\n'
+                    '- Call get_admin() with silent=True.\n'
                 )
-                + f'{recipe["entity"]}_admin{level}`'
-                ' not found in reference Admin IDs:\n\n- '
-                + '\n- '.join(admin_ids_to_add_to_spine[:5])
-                + ('\n- ...' if len(admin_ids_to_add_to_spine) > 5 else '')
-                + '\n\nOptions to silence this warning:\n'
-                '- Add Admin IDs to reference list in '
-                f'`{ADMIN_SOURCE_DEFAULT}_admin{level}.csv`\n'
-                '- Call get_admin() with silent=True.\n'
-            )
-            warnings.warn(txt_warnings)
+                warnings.warn(txt_warnings)
 
             admin_to_add = pd.DataFrame(
                 index=pd.Index(admin_ids_to_add_to_spine, name=f'admin{level}_id'),
@@ -237,10 +220,13 @@ def get_admin(
             recipe_parquet_path, geom=geom, filters=filters
         )
 
+        # Get column order (retain admin, add recipe)
+        column_order = list(dict.fromkeys(list(admin) + list(admin_from_recipe)))
+
         # Join recipe data to spine, overwriting columns from spine
         admin = admin.drop(columns=set(admin) & set(admin_from_recipe)).join(
             admin_from_recipe, how='outer'
-        )
+        )[column_order]
         # Cast to GeoDataFrame if geometries are included
         if isinstance(admin_from_recipe, gpd.GeoDataFrame):
             admin = gpd.GeoDataFrame(admin, crs=admin_from_recipe.crs)
@@ -257,7 +243,10 @@ def get_admin(
             [x for x in columns_to_retain + ['geometry'] if x in admin]
         ].copy()
 
-    return admin
+    # Return without empty columns
+    column_is_empty = admin.eq('').all() | admin.isnull().all()
+    non_empty_columns = list(column_is_empty[~column_is_empty].index)
+    return admin[non_empty_columns]
 
 
 def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):

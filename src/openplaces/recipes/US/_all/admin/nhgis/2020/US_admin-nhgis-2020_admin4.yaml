@@ -27,7 +27,6 @@ columns:
   admin4_id_admin3: COUSUBFP
   admin4_id_ansi: COUSUBNS
   admin4_id_nhgis: GISJOIN
-  admin3_id_admin2: COUNTYFP
   admin2_id_admin1: STATEFP
   type_source: CLASSFP
   functional_status: FUNCSTAT

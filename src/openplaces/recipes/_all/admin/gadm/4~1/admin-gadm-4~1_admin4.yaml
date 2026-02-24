@@ -41,7 +41,7 @@ columns:
   admin3_type: TYPE_2
   admin2_type: TYPE_1
   admin4_id_hasc: HASC_3
-  admin4_id_original: CC_3
+  admin4_id_admin1: CC_3
   admin4_id_gadm: GID_3
   admin3_id_gadm: GID_2
   admin2_id_gadm: GID_1
