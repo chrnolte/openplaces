@@ -96,7 +96,13 @@ def ensure_7zip():
 
             if distro_id in ('ubuntu', 'debian', 'linuxmint', 'pop'):
                 run('sudo apt-get install -y 7zip', check=False)
-            elif distro_id in ('fedora', 'rhel', 'centos', 'rocky', 'almalinux'):
+            elif distro_id in (
+                'fedora',
+                'rhel',
+                'centos',
+                'rocky',
+                'almalinux',
+            ):
                 run('sudo dnf install -y p7zip p7zip-plugins', check=False)
             elif distro_id in ('arch', 'manjaro', 'endeavouros'):
                 run('sudo pacman -S --noconfirm p7zip', check=False)
@@ -139,8 +145,8 @@ def setup():
     zip_response = (
         input(
             '\nEnsure `7z` is installed to unzip more ZIP formats?\n'
-            '(needed for Windows `deflate64`, e.g. recipe `US-VA_parcel.vgin.2025`) '
-            '[Y/n]'
+            '(needed for Windows `deflate64`, e.g. recipe `US-VA_parcel-vgin-2025`) '
+            '[Y/n] '
         )
         .strip()
         .lower()
