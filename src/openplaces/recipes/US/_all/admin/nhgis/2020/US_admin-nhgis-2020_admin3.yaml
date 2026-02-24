@@ -23,7 +23,6 @@ uncompressed_file_name: "US_county_2020.shp"
 columns:
   name: NAME
   name_long: NAMELSAD
-  admin3_id_admin2: COUNTYFP
   admin3_id_admin1: GEOID
   admin3_id_ansi: COUNTYNS
   admin3_id_nhgis: GISJOIN

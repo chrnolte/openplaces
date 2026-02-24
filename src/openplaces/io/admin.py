@@ -1269,3 +1269,86 @@ def generate_admin_ids(
     admin = admin.set_index(new_admin_id_col)
 
     return admin
+
+
+def update_admin_spine(level, admin_recipe_id, test, silent=False):
+    """Update the `openplaces` admin spine with admin recipe info
+
+    Parameters
+    ----------
+    level : int
+        Administrative level of the spine to update
+    admin_recipe : str
+        ID of admin recipe to update the spine with
+        (This function assumes the recipe is already ingested.)
+    test : bool
+        If True, writes to '{file}_test.csv' instead of the original
+    silent : bool
+        If True, silences printouts when new admin IDs are added.
+    """
+
+    REGEX_ADMIN_TYPE_EXTRACT = '(Census Area|Borough|City|Municipality|Municipio)$'
+
+    # Load admin spine
+    admin_spine = get_admin(level=level, all_columns=True)
+    # Load admin recipe (silently: don't trigger warning from additions)
+    admin_local = get_admin(
+        level=level, recipe=admin_recipe_id, all_columns=True, silent=True
+    )
+
+    # Initiate new admin spine
+    new_admin_spine = admin_spine.copy()
+
+    # Create new entries
+    new_admin_ids = sorted(set(admin_local.index) - set(admin_spine.index))
+    if new_admin_ids:
+        if not silent:
+            print(
+                'Adding: '
+                + ', '.join(new_admin_ids[:5])
+                + (
+                    f', and {len(new_admin_ids) - 5:,d} more.'
+                    if len(new_admin_ids) > 5
+                    else ''
+                )
+            )
+
+        new_admin_entries = admin_local.loc[new_admin_ids].copy()
+
+        if 'name_long' in new_admin_entries:
+            # US-specific: extract 'Census Area', 'Borough', 'City', 'Municipality'
+            new_admin_entries['type'] = (
+                new_admin_entries['name_long']
+                .str.title()
+                .str.extract(REGEX_ADMIN_TYPE_EXTRACT)
+            )
+
+        # US-specific: add 'city' suffix to names of cities that have
+        # duplicate names with counties
+        new_admin_entries.loc[new_admin_entries['type'].eq('City'), 'name'] += ' city'
+
+        # Align columns
+        new_admin_entries = new_admin_entries[
+            [v for v in new_admin_entries if v in admin_spine]
+        ]
+
+        new_admin_spine = pd.concat([new_admin_spine, new_admin_entries]).sort_index()
+
+    # Save official IDs worth keeping (e.g. FIPS codes)
+    admin_id_columns = sorted(
+        c for c in admin_local.columns if re.match(rf'admin{level}_id_admin[0-9]$', c)
+    )
+    if admin_id_columns:
+        # Keep the first one of the sorted columns (should be highest
+        # official ID, one used by the country, over one used by state)
+        new_admin_spine.loc[admin_local.index, admin_id_columns[0]] = admin_local[
+            admin_id_columns[0]
+        ]
+
+    # Write
+    admin_recipe_path = recipe_path(
+        None,
+        'admin-openplaces-2026',
+        filename=f'admin{level}' + ('_test' if test else '') + '.csv',
+    )
+    new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8-sig')
