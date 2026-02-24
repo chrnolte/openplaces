@@ -1,13 +1,13 @@
-.. _configuration:
+.. _configure:
 
-Configuration
-=============
+Configure
+=========
 
 Before you start using ``openplaces``, you need to configure your installation.
 
 After :ref:`installing your environment <install>`, open and run this Jupyter notebook:
 
-   :file:`notebooks/01_setup/01_first_steps.ipynb`
+   `notebooks/01_setup/01_first_steps.ipynb <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/01_first_steps.ipynb>`_
 
 The first call of ``import openplaces`` will launch an interactive configuration script.
 
