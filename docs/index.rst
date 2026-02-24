@@ -13,5 +13,5 @@ Github: https://github.com/chrnolte/openplaces
    :maxdepth: 2
 
    1_overview
-   2_getting-started
+   2_get-started
    3_contribute

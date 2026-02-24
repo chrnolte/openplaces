@@ -181,7 +181,7 @@ Set up your data folders
 
 Upon the first call of ``import openplaces``, a configuration script is launched.
 
-See :ref:`configuration` for the full explanation.
+See :ref:`configuring your installation<configure>` for the full explanation.
 
 On the cluster, you will have to pick this configuration:
 
