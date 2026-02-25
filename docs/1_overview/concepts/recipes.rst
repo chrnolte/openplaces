@@ -24,11 +24,26 @@ Recipes are identified by their ``recipe_id``, a concatenation of:
 
 Examples:
 
--  :input:`admin-openplaces-2026_admin1` is a  recipe for identifiers of level-1 :ref:`administrative_units` (countries) as a table (:file:`.csv`).
--  :input:`admin-gadm-4~1_admin1` contains the recipe for ingesting global administrative geometries from the Global Administrative Database.
--  :input:`US_admin-nhgis-2020_admin3` contains the recipe for ingesting official county boundaries for the United States provided by NHGIS.
--  :input:`US_building-microsoft-v2` contains the recipe for ingesting US building footprints provided by Microsoft
--  :input:`US-NC_parcel-nconemap-2023` contains the recipe for ingesting parcel boundary data for North Carolina, United States, provided by NCOneMap.
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Recipe ID
+     - Description
+   * - ``admin-openplaces-2026_admin1``
+     - Global identifiers of countries/territories (administrative units, level 1: ``admin1``).
+
+       *This recipe is a table*
+   * - ``admin-gadm-4~1_admin1``
+     - Global administrative geometries from the Global Administrative Database (GADM)
+
+       *This recipe contains instructions on how to access the data*
+   * - ``US_admin-census-2021_admin3``
+     - United States: official county (``admin3``) boundaries from the US census
+   * - ``US_building-microsoft-v2``
+     - US building footprints provided by Microsoft
+   * - ``US-NC_parcel-nconemap-2023``
+     - Parcel boundary data for North Carolina, United States, provided by NCOneMap
 
 Location
 ~~~~~~~~

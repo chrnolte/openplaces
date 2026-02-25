@@ -3,13 +3,16 @@
 Configure
 =========
 
+First-time setup
+~~~~~~~~~~~~~~~~
+
 Upon you first ``import openplaces``, you will be asked to configure your installation.
 
 This is a required step. It's about where your data is stored and who will work with it.
 
 We have prepared a notebook that walks you through the configuration and showcases functions for updating and removing it:
 
-   `notebooks/01_setup/01_first_steps.ipynb <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/01_first_steps.ipynb>`_
+   :file:`notebooks/01_setup/01_first_steps.ipynb` `see on Github <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/01_first_steps.ipynb>`_
 
 Open and run this notebook after :ref:`installing<install>` and activating your environment:
 
@@ -18,8 +21,6 @@ Open and run this notebook after :ref:`installing<install>` and activating your 
       conda activate openplaces
       cd notebooks
       jupyter notebook
-
-Read on for a deeper explanation of the directory structure.
 
 .. _directory_structure:
 
@@ -93,10 +94,10 @@ Credits to `Cookiecutter Data Science <https://cookiecutter-data-science.drivend
 
 
 
-First time setup
-~~~~~~~~~~~~~~~~
+Single vs. multi-user mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Upon your first use of ``import openplaces``, an interactive setup prompt will ask you to define your directories and whether you're installing in single or multi-user mode.
+The configuration script will ask you to choose between single vs. multi-user mode for your data directories.
 
 Single-user mode
 ----------------
