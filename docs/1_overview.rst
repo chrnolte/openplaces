@@ -12,10 +12,10 @@ Its purpose is to make data-intensive, place-based research fully replicable.
   :alt: Overview of openplaces
   :align: right
 
-``openplaces`` can aggregate diverse geospatial property datasets (parcels, buildings, taxed properties, transactions) and link them to social and environmental geospatial information and modern data science tools.
+The package streamlines the aggregation of geospatial property datasets (parcels, buildings, taxed properties, transactions) and their linkage to social and environmental geospatial information and modern data science tools.
 
 .. toctree::
    :maxdepth: 2
 
    1_overview/concepts
-   1_overview/stages
+   1_overview/pipeline

@@ -1,3 +1,6 @@
+
+.. _writing-recipes:
+
 Writing recipes
 ===============
 
