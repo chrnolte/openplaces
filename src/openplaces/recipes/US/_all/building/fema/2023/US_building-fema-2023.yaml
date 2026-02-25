@@ -61,8 +61,11 @@ columns:
   census_tract_id: CENSUSCODE
   admin3_id_admin1: FIPS
 
-# Set the index from an existing column
-set_index: building_id_fema
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.geo.vector.add_openlocationcode_index"
+  args:
+    name: footprint_id
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
