@@ -1,0 +1,37 @@
+purpose_subgroup,openplaces_subgroup,hifld_source
+Single Family Dwelling,Single Family,
+Manufactured Home,Manufactured,
+Unclassified,,
+Multi - Family Dwelling,Multi-Family,
+Retail Trade,Retail Trade,
+Professional/Technical Services,Professional/Technical Services,Fortune 500 Corporate Headquarters
+Entertainment and Recreation,Entertainment and Recreation,
+Wholesale Trade,Wholesale Trade,"Ethanol trans loading facilities, Fedex Facilities, Liquified Natural Gas Import Exports and Terminals, Petroleum Ports, Petroleum Terminals, Pumping Stations, Private Non-Retail Shipping Facilities, Public Refrigerated Warehouses"
+General Services,General Services,"Courthouses, EPA Emergency Response Facilities, FDA Office Facilities, Government Financial Processing Centers, Governors Mansions, Major State Government Buildings, Public Health Departments, State Capitol Buildings, UPS Facilities, Veterans Health Administration Medical Facilities"
+Religious,Religious,All Places of Worship
+Personal and Repair Services,Personal and Repair Services,
+Pre-K - 12 Schools,Pre-K - 12 Schools,"Private Schools, Public Schools"
+Non-Civilian Structures,Non-Civilian Structures,"DOD Sites Boundaries Public, DOD Sites Points Public"
+Light,Light,General Manufacturing Facilities
+Medical Office/Clinic,Medical Office/Clinic,Urgent Care Facilities
+Emergency Response,Emergency Response,"Fire Station, Local Emergency Operations Centers, Local Law Enforcement Locations"
+Temporary Lodging,Temporary Lodging,
+Nursing Home,Nursing Home,Nursing Homes
+Other Educational Buildings,Other Educational Buildings,"Child Care Centers, Truck Driving Schools"
+Colleges/Universities,Colleges/Universities,"Colleges and Universities, Colleges and Universities campuses, Supplemental Colleges"
+Aviation,Aviation,
+Indoor Arena,Indoor Arena,Major Sport Venues
+Marine,Marine,
+Heavy,Heavy,
+Hospital,Hospital,Hospitals
+Food/Drugs/Chemicals,Food/Drugs/Chemicals,"Agricultural Minerals Operations, Bio Diesel Plants, Ethanol plants, Natural Gas Processing Plants, Oil and Natural Gas Platforms, Oil Refinery Polygon, Oil Refineries"
+Agriculture,Agriculture,
+Theaters,Theaters,
+Energy Control Monitoring,Energy Control Monitoring,Power Plants
+Community Center,Community Center,
+Ground,Ground,Solid Waste Landfill Facilities
+Institutional Dormitory,Institutional Dormitory,Prison Boundaries
+Veterinary/Pet ,Veterinary/Pet ,
+Banks,Banks,"FDIC Insured Banks, NCUA Insured Credit Unions"
+Convention Center,Convention Center,Convention Centers and State Fairgrounds
+Metals/Minerals Processing,Metals/Minerals Processing,"Ferrous Metal Mines, Ferrous Metal Process Plants, Mines and Mineral Resources, Miscellaneous Industrial Mineral Operations, Nonferrous Metal Mines, Nonferrous Metal Processing Plants, Sand and Gravel Operations"
