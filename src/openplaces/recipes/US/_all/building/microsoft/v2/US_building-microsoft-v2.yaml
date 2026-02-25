@@ -37,7 +37,7 @@ columns_to_categorical:
 
 # Function to give the GeoDataFrame an index
 create_index:
-  function: "openplaces.geo.vector.add_geo_id_index"
+  function: "openplaces.geo.vector.add_openlocationcode_index"
   args:
     name: footprint_id
 
