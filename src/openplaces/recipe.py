@@ -3,6 +3,7 @@
 # Functions to read data ingestion recipes
 
 import inspect
+from collections import Counter
 
 import pandas as pd
 import yaml
@@ -41,7 +42,7 @@ def get_recipe(*args, **kwargs):
         # should exist for a given filename. Removing extensions in the
         # arguments for the recipe filepath is one way to enforce that.
         raise Exception(
-            f"Remove extensions in filepath when using `get_recipe()`: {filepath.name}"
+            f'Remove extensions in filepath when using `get_recipe()`: {filepath.name}'
         )
 
     if filepath.with_suffix('.yaml').exists():
@@ -53,7 +54,7 @@ def get_recipe(*args, **kwargs):
     elif filepath.with_suffix('.xls').exists():
         recipe_table = pd.read_excel(filepath.with_suffix('.xls'), **read_kwargs)
     else:
-        raise IOError('Not found: ' + str(filepath.with_suffix('.(yaml|csv|xlsx|xls)')))
+        raise OSError('Not found: ' + str(filepath.with_suffix('.(yaml|csv|xlsx|xls)')))
 
     return recipe_table
 
@@ -97,8 +98,8 @@ def get_recipe_dict(filepath, *args, **kwargs):
     if admin_id_arg and (str(recipe_dict['admin_id']) != str(admin_id_arg)):
         raise ValueError(
             'Inconsistent `admin_id` in get_recipe(admin_id, ...) and recipe `.yaml`:\n'
-            f"get_recipe: {admin_id_arg} {type(admin_id_arg)}\n"
-            f".yaml file: {recipe_dict['admin_id']} {type(recipe_dict['admin_id'])}"
+            f'get_recipe: {admin_id_arg} {type(admin_id_arg)}\n'
+            f'.yaml file: {recipe_dict["admin_id"]} {type(recipe_dict["admin_id"])}'
         )
 
     # Cast Entity (if there is one)
@@ -140,25 +141,43 @@ def get_recipe_by_id(recipe_id, **kwargs):
     kwargs : dict
         Keyword arguments will be passed on to get_recipe()
     """
-    if '.' in recipe_id:
-        filename_stem, extension = recipe_id.split('.')
-    else:
+
+    n_dots = Counter(recipe_id)['.']
+    if n_dots == 0:
         filename_stem = recipe_id
         extension = None
-    filename_stem_parts = filename_stem.split('_')
-    if len(filename_stem_parts) == 2:
-        part1, part2 = filename_stem_parts
-        try:
-            AdminId(part1)
-            admin_id, entity = part1, part2
-            filename = None
-        except ValueError:
-            admin_id = None
-            entity, filename = part1, part2
-    elif len(filename_stem_parts) == 3:
-        admin_id, entity, filename = filename_stem_parts
+    elif n_dots == 1:
+        filename_stem, extension = recipe_id.split('.')
     else:
-        raise ValueError(f'Could not split recipe_id into its parts: {recipe_id}')
+        raise ValueError('Recipe name cannot contain more than one dot.')
+
+    remaining_parts = filename_stem.split('_')
+
+    # Split off admin_id, if valid
+    try:
+        admin_id = AdminId(remaining_parts[0])
+        remaining_parts = remaining_parts[1:]
+    except ValueError:
+        admin_id = None
+
+    # Split off entity, if valid
+    try:
+        entity = Entity(remaining_parts[0])
+        remaining_parts = remaining_parts[1:]
+    except ValueError:
+        entity = None
+
+    # Split off dataset, if valid
+    try:
+        dataset = DataSet(remaining_parts[0])
+        remaining_parts = remaining_parts[1:]
+    except (ValueError, IndexError):
+        dataset = None
+
+    filename = remaining_parts.pop(0) if remaining_parts else None
+
+    if remaining_parts:
+        raise ValueError(f'Cannot interpret recipe_id {recipe_id}')
 
     if isinstance(filename, str) and isinstance(extension, str):
         filename += '.' + extension
@@ -166,6 +185,7 @@ def get_recipe_by_id(recipe_id, **kwargs):
     return get_recipe(
         admin_id,
         entity,
+        dataset,
         filename=filename,
         **kwargs,
     )
