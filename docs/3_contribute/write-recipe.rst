@@ -87,11 +87,11 @@ File handling
 
 .. attribute:: compressed_file_name
 
-   Filename of the compressed file (usually in ``external`` folder, see :ref:`standard_directories`).
+   Filename of the compressed file (usually in ``external`` folder, see :ref:`directory_structure`).
 
    Providing this argument allows the skipping of downloads if file is found.
 
-   Can include placeholders (substituted by :attr:`download_by``).
+   Can include placeholders (substituted by :attr:`download_by`).
 
    Can include wildcards (will search for files matching pattern).
 
@@ -103,7 +103,7 @@ File handling
 
    If there is no :attr:`compressed_file_name`, the uncompressed file is assumed to be the original download, to be found in the :file:`external` folder.
 
-   Can include placeholders (substituted by :attr:`download_by``).
+   Can include placeholders (substituted by :attr:`download_by`).
 
    Can include wildcards (will search for files matching pattern).
 

@@ -24,10 +24,11 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_title = 'openplaces'
+html_logo = 'images/openplaces_icon_transparent_130.png'
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 html_theme_options = {
-    "navigation_depth": 5,
+    'navigation_depth': 5,
 }
 html_static_path = ['_static']
 html_css_files = ['custom.css']

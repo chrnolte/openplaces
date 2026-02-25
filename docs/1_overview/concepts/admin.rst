@@ -86,7 +86,7 @@ To import global geometries (GADM, >2 GB), run this notebook:
 
    `notebooks/01_setup/03_ingest_global_administrative_units.ipynb <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/03_ingest_global_administrative_units.ipynb>`_
 
-After that, you can make precise global maps (though these will be slow to generate 10s - 1min).
+After that, you can make precise global maps (though these will be slow to generate: >10 seconds).
 
 .. code-block:: python
 
