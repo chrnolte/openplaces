@@ -8,21 +8,12 @@ Install
 As an application
 ~~~~~~~~~~~~~~~~~
 
-You can install ``openplaces`` as an application with its own virtual environment.
+You can install ``openplaces`` as a standalone application with its own virtual environment.
 
-This is the default for users who want to use the most recent functionality or plan to contribute recipes or functionality to the public repository.
+This is the recommended setup for users who want to use the most recent functionality or plan to contribute code (recipes, functions, fixes).
 
-Install
--------
-
-You need to have a version of the Anaconda package manager installed.
-
-``conda`` or ``mamba`` needs to be executable in
-
-- :gui:`Terminal` (OSx, Linux)
-- :gui:`Anaconda Prompt` (Windows).
-
-``mamba`` is a fast solver for ``conda``. If ``conda`` takes too long, run ``conda install mamba`` first.
+Get the repository
+------------------
 
 1. Open :gui:`Terminal` / :gui:`Anaconda Prompt`.
 
@@ -45,19 +36,38 @@ You need to have a version of the Anaconda package manager installed.
 
       cd openplaces
 
-5. Run the setup script:
 
-   .. code-block:: bash
+Install the environment
+-----------------------
 
-      python dev.py setup
+You need to have a version of the Anaconda package manager installed.
 
-   The setup script will let you choose the name of your environment. It will also ask you whether you need ``7z`` (to unpack some Windows :file:`.zip` files).
+``conda`` or ``mamba`` needs to be executable from:
 
-6. Once the environment is installed, you need to :ref:`configure <configure>` your installation.
+- :gui:`Terminal` (OSx, Linux)
+- :gui:`Anaconda Prompt` (Windows).
+
+.. note::
+
+   ``mamba`` is a fast solver for ``conda`` and will likely speed up your installation. If you don't have it installed, run ``conda install mamba -y`` before running the setup script.
+
+Run the setup script:
+
+.. code-block:: bash
+
+   python dev.py setup
+
+The setup script will let you choose the name of your environment. It will also ask you whether you need ``7z`` (to unpack some Windows :file:`.zip` files).
 
 
-Uninstall
----------
+Configure the environment
+-------------------------
+
+Once the environment is installed, you need to :ref:`configure <configure>` your installation.
+
+
+Uninstall the environment
+-------------------------
 
 To remove your environment, use:
 
