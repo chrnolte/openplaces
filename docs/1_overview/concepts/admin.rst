@@ -9,8 +9,8 @@ Administrative units are the geographic regions at which property data is organi
 
 ``openplaces`` uses a globally resolvable, hierarchical (multi-level) set of identifiers for administrative units.
 
-Administrative levels
-~~~~~~~~~~~~~~~~~~~~~
+Levels
+~~~~~~
 
 Four levels of administrative units are currently supported:
 
@@ -51,8 +51,8 @@ Four levels of administrative units are currently supported:
 
        *Not all countries have level-4 IDs defined; may require a custom recipe*
 
-Administrative identifiers
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Identifiers
+~~~~~~~~~~~
 
 ``openplaces`` has its own table of global identifiers for administrative units to simplify data exchange amongst its users (``admin-openplaces-2026``, `see recipe here <https://github.com/chrnolte/openplaces/tree/main/src/openplaces/recipes/_all/admin/openplaces/2026>`_).
 
@@ -67,8 +67,8 @@ Example: ``US-MA-MI-SO`` (city of Somerville in the state of Massachusetts, U.S.
 -  ``SO`` (Somerville): generated internally (no prior standard)
 
 
-Administrative boundaries
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Boundaries
+~~~~~~~~~~
 
 If you want to make maps of administrative boundaries or use them for geoprocessing (e.g., identifying all building footprints within a county), you need to import the boundaries from their original source first.
 

@@ -3,27 +3,32 @@
 Configure
 =========
 
-Before you start using ``openplaces``, you need to configure your installation.
+Upon you first ``import openplaces``, you will be asked to configure your installation.
 
-After :ref:`installing your environment <install>`, open and run this Jupyter notebook:
+This is a required step. It's about where your data is stored and who will work with it.
+
+We have prepared a notebook that walks you through the configuration and showcases functions for updating and removing it:
 
    `notebooks/01_setup/01_first_steps.ipynb <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/01_first_steps.ipynb>`_
 
-The first call of ``import openplaces`` will launch an interactive configuration script.
+Open and run this notebook after :ref:`installing<install>` and activating your environment:
 
-Your first task is to define your local directory structure.
+   .. code-block:: bash
 
+      conda activate openplaces
+      cd notebooks
+      jupyter notebook
 
-.. _standard_directories:
+Read on for a deeper explanation of the directory structure.
 
-Standard directories
-~~~~~~~~~~~~~~~~~~~~
+.. _directory_structure:
 
-It is helpful to have different directories for different stages in your analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications.
+Directory structure
+~~~~~~~~~~~~~~~~~~~
+
+``openplaces`` uses different directories for different stages of the analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications.
 
 This simplifies data sharing across different machines and cloud services and the setting of team and user-specific permissions. 
-
-Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (thank you, Carl Boettiger @ Berkeley), ``openplaces`` works with these directories:
 
 .. list-table::
    :widths: 15 25 15 45
@@ -84,40 +89,14 @@ Loosely following `Cookiecutter Data Science <https://cookiecutter-data-science.
    In single-user mode, all directories are at the same level (no user subfolders).
    In multi-user mode, user-specific directories are in ``data/<username>/``.
 
+Credits to `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (Carl Boettiger's lab @ Berkeley) for inspiring this directory structure.
 
-Configuration files
-~~~~~~~~~~~~~~~~~~~
-
-``openplaces`` uses a hierarchical configuration system to customize data directories and settings.
-
-Configuration files are used in priority order: **user > project > defaults**.
-
-1. **User configuration** (highest priority)
-   
-   * A user configuration file is created interactively upon the first time a new user runs ``import openplaces``.
-     
-     Its location depends on your operating system:
-
-     * Windows: ``%APPDATA%\openplaces\config.yaml``
-     * macOS: ``~/Library/Application Support/openplaces/config.yaml``
-     * Linux: ``~/.config/openplaces/config.yaml``
-   * It contains user-specific overrides to the project configuration and is not committed to version control (``git``).
-
-2. **Project configuration** (default values)
-   
-   * Location: ``/openplaces.yaml`` (root directory of repository).
-   * Project-wide defaults committed to version control.
-   * Shared by all users of an installation.
-
-3. **Built-in defaults** (fallback)
-   
-   * Hardcoded in ``config.py``.
 
 
 First time setup
 ~~~~~~~~~~~~~~~~
 
-Upon your first use of ``import openplaces``, you'll get an interactive setup prompt that asks you to define your directories and whether you're installing in single or multi-user mode.
+Upon your first use of ``import openplaces``, an interactive setup prompt will ask you to define your directories and whether you're installing in single or multi-user mode.
 
 Single-user mode
 ----------------
@@ -179,3 +158,33 @@ Best for team projects where multiple people work on the same codebase.
 * User subfolders for: ``cache``, ``heap``, ``logs``, ``core``, ``out``
 * Shared folders for: ``external``, ``raw``, ``share``
 * User subfolders in ``models``, ``reports``
+
+
+Location of configuration files
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``openplaces`` uses a hierarchical configuration system to customize data directories and settings.
+
+Configuration files are used in priority order: **user > project > defaults**.
+
+1. **User configuration** (highest priority)
+   
+   * A user configuration file is created interactively upon the first time a new user runs ``import openplaces``.
+     
+     Its location depends on your operating system:
+
+     * Windows: ``%APPDATA%\openplaces\config.yaml``
+     * macOS: ``~/Library/Application Support/openplaces/config.yaml``
+     * Linux: ``~/.config/openplaces/config.yaml``
+   * It contains user-specific overrides to the project configuration and is not committed to version control (``git``).
+
+2. **Project configuration** (default values)
+   
+   * Location: ``/openplaces.yaml`` (root directory of repository).
+   * Project-wide defaults committed to version control.
+   * Shared by all users of an installation.
+
+3. **Built-in defaults** (fallback)
+   
+   * Hardcoded in ``config.py``.
+
