@@ -39,6 +39,7 @@ ADMIN_PRIMARY_COLUMNS = {
         'admin3_name',
         'admin2_name',
         'admin1_name',
+        'admin4_id_admin1',
     ],
 }
 

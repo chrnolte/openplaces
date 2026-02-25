@@ -1,0 +1,43 @@
+# Recipe to import counties for the United States (2021)
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: census
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2021/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2021/STATE/tl_2021_us_state.zip"
+  version: 2021
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "tl_2021_us_state.zip"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  name: NAME
+  admin2_id_leaf: STUSPS
+  admin2_id_admin1: STATEFP
+  admin2_id_ansi: STATENS
+  region_id: REGION
+  division_id: DIVISION
+
+# Create index
+create_index:
+  name: admin2_id
+  method: prefix
+  column: admin2_id_leaf
+  prefix: US-
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+cache_filename: 'admin2'

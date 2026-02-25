@@ -25,7 +25,7 @@ from openplaces.core.constants import (
     STRING_SEPARATOR_WITHIN_IDS,
 )
 from openplaces.path import recipe_path
-from openplaces.recipe import get_recipe, get_recipe_by_id
+from openplaces.recipe import get_recipe
 from openplaces.utils import create_comparable_name_link, standardize_names
 
 
@@ -586,8 +586,8 @@ def admin3_id_index_from_admin3_US_nhgis(admin3_local):
     return admin3_local.set_index('admin3_id')
 
 
-def find_admin_recipe(admin_id, admin_level):
-    """Find an administrative data ingestion recipe
+def find_admin_recipe_id(admin_id, admin_level):
+    """Find the ID of an administrative data ingestion recipe
 
     Parameters
     ----------
@@ -600,15 +600,23 @@ def find_admin_recipe(admin_id, admin_level):
         admin_id, 'admin-*-*', filename=f'admin{admin_level}'
     )
     recipe_paths_found = glob.glob(str(glob_recipe_path))
-    if len(recipe_paths_found) > 1:
-        raise NotImplementedError(
-            f'Multiple admin recipes found for {admin_id} at level {admin_level}:\n\n'
-            + '\n'.join(recipe_paths_found)
-            + '\n\nRewrite `find_local_admin_recipe` to make your selection.'
+    if len(recipe_paths_found) == 0:
+        print('No local admin recipes found: {admin_id} {admin_level}')
+        return None
+    elif len(recipe_paths_found) == 1:
+        recipe_id = recipe_paths_found[0].name
+    else:
+        recipe_paths_found = sorted(
+            recipe_paths_found, key=lambda p: Path(p).parent.name
         )
+        print(
+            f'Multiple admin recipes found for {admin_id} at level {admin_level}:\n'
+            + '\n'.join([Path(fp).name for fp in recipe_paths_found])
+        )
+        recipe_id = Path(recipe_paths_found[-1]).name
+        print(f'Picked last, sorted by version: {recipe_id}')
 
-    recipe_id = Path(recipe_paths_found[0]).name
-    return get_recipe_by_id(recipe_id)
+    return recipe_id
 
 
 def clean_geographic_name(name):

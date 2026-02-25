@@ -1,0 +1,44 @@
+# Recipe to import counties for the United States (2021)
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: census
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2021/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2021/COUNTY/tl_2021_us_county.zip"
+  version: 2021
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "tl_2021_us_county.zip"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin3_id_admin1: GEOID
+  admin3_id_ansi: COUNTYNS
+  admin2_name: STATE_NAME
+  admin2_id_leaf: STUSPS
+  admin2_id_admin1: STATEFP
+  stats_area_id: CSAFP
+  stats_area_id_metro: CBSAFP
+  stats_area_id_legal: LSAD
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
+index_function: "openplaces.io.admin.admin3_id_index_from_admin3_US_nhgis"
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+cache_filename: 'admin3'

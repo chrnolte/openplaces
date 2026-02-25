@@ -38,7 +38,7 @@ from openplaces.io import (
     save_parquet,
     unzip,
 )
-from openplaces.io.admin import find_admin_recipe
+from openplaces.io.admin import find_admin_recipe_id
 from openplaces.io.transform import (
     add_unique_suffix,
     apply_transformation,
@@ -423,6 +423,7 @@ class Ingester:
         """
         # Get partition key from admin data
         admin_level = self.recipe['download_by']['admin_level']
+        admin_recipe_id = self.recipe['download_by'].get('admin_recipe_id')
 
         # Translate placeholders to admin columns / identifiers by cutting
         # off 'adminX_' prefixes unless the prefix is 'adminX_id'
@@ -442,20 +443,17 @@ class Ingester:
             ).levels[-1]
         else:
             try:
-                admin_recipe = find_admin_recipe(self.recipe['admin_id'], admin_level)
+                # Find the key in an official admin dataset
+                if admin_recipe_id is None:
+                    admin_recipe_id = find_admin_recipe_id(
+                        self.recipe['admin_id'], admin_level
+                    )
                 partition_key = get_admin(
                     self.download_partition['admin_id_to_download'],
                     admin_level,
-                    recipe=admin_recipe,
+                    recipe=admin_recipe_id,
                     columns=column,
                 ).iloc[0, 0]
-
-                _admin = get_admin(
-                    self.download_partition['admin_id_to_download'],
-                    admin_level,
-                    recipe=admin_recipe,
-                    columns=column,
-                )
             except IndexError:
                 partition_key = get_admin(
                     self.download_partition['admin_id_to_download'],
