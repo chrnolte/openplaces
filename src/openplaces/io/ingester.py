@@ -962,13 +962,10 @@ class Ingester:
         elif 'overlay_admin_ids' in self.recipe:
             admin_specs = self.recipe['overlay_admin_ids']
 
-        admin_recipe = (
-            admin_specs['admin_recipe'] if 'admin_recipe' in admin_specs else None
-        )
         admin_geometries = get_admin(
             self.download_partition['admin_id_to_download'],
             admin_specs['admin_level'],
-            recipe=admin_recipe,
+            recipe=admin_specs.get('admin_recipe_id'),
             geom=True,
         )['geometry']
         data_crs = get_crs(self.download_partition['data_path'])
@@ -1170,11 +1167,15 @@ class Ingester:
             elif 'overlay_admin_ids' in self.recipe:
                 admin_specs = self.recipe['overlay_admin_ids']
                 admin_geometries = self.download_partition['admin_geometries']
+
+            kwargs_overlay = {
+                k: v for k, v in admin_specs.items() if k != 'admin_recipe_id'
+            }
             df = overlay_admin_ids(
                 df,
                 admin_geometries=admin_geometries,
                 timer=self.timer,
-                **admin_specs,
+                **kwargs_overlay,
             )
 
         # Set index
