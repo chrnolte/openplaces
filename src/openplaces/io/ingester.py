@@ -926,11 +926,8 @@ class Ingester:
         admin_level_to_process = self.recipe['process_by']['admin_level']
         admin_id_column_source = self.recipe['process_by']['admin_id_column']
 
-        layer = self.recipe['layer'] if 'layer' in self.recipe else None
-
         admin_id_filter = self._read_recipe_data(
             columns=[admin_id_column_source],
-            layer=layer,
             read_geometry=False,
             fid_as_index=True,
         )
