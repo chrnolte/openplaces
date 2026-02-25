@@ -103,7 +103,10 @@ def get_admin(
             level = admin_id_level
 
     # Pick default recipe for geometry attributes if None is provided
-    if geom is True and recipe is None and level is not None:
+    if geom is True and recipe is None:
+        if level is None:
+            # Default to countries
+            level = 1
         recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
 
     # Cast recipe to a dict if a str (id) is provided
@@ -113,8 +116,8 @@ def get_admin(
         admin_id = recipe['admin_id']
         admin_ids = [admin_id]
 
-    # Default to countries
     if admin_id is None and level is None:
+        # Default to countries
         level = 1
 
     if admin_id is not None:
