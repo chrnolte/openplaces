@@ -1,2 +1,5 @@
 [format]
 quote-style = "single"
+
+[lint.isort]
+known-first-party = ["openplaces"]
