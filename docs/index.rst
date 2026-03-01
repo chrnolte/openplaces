@@ -5,7 +5,7 @@ openplaces
 
 ``openplaces`` is a Python package for place-based geospatial analysis.
 
-Its purpose is to make property-based environmental analyses scalable, replicable, and internationally comparable.
+The purpose of ``openplaces`` is to make data-intensive, property-level research more replicable and comparable, globally.
 
 .. toctree::
    :maxdepth: 2
