@@ -1,8 +1,7 @@
-Working on the BU cluster
-=========================
+Using Boston University's cluster
+=================================
 
-These are the instructions for student working on the ``openplaces`` project on Boston University's shared computing cluster (SCC).
-
+These instructions are for Boston University students using the ``openplaces`` project on Boston University's shared computing cluster (SCC).
 
 Connect
 ~~~~~~~

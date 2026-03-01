@@ -10,7 +10,7 @@ As an application
 
 You can install ``openplaces`` as a standalone application with its own virtual environment.
 
-This is the recommended setup for users who want to use the most recent functionality or plan to contribute code (recipes, functions, fixes).
+This is the recommended setup for users who want to use the most recent functionality or plan to :ref:`contribute <contribute>` code (recipes, functions, fixes).
 
 Get the repository
 ------------------

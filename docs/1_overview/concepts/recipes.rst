@@ -48,9 +48,11 @@ Examples:
 Location
 ~~~~~~~~
 
-All recipes are in :file:`/src/openplaces/recipes/`, grouped by :ref:`administrative_units`, then by :ref:`entities` or :ref:`datasets`.
+Recipes live in :file:`src/openplaces/recipes/`.
+
+They are grouped by :ref:`administrative_units`, followed by :ref:`entities` or :ref:`datasets`.
 
 Understanding recipes
 ~~~~~~~~~~~~~~~~~~~~~
 
-See instructions on :ref:`writing-recipes` in the section for contributors.
+See instructions on :ref:`writing_recipes` in the section for contributors.
