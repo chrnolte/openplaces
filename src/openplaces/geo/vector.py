@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import pyogrio
 import pyproj
+from openlocationcode import openlocationcode as olc
 from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
 from shapely.ops import transform
@@ -25,15 +26,15 @@ from openplaces.core.constants import (
     M2_TO_SQFT,
     STRING_SEPARATOR_BETWEEN_IDS,
 )
+from openplaces.io.transform import add_unique_suffix
 from openplaces.recipe import get_recipe
 from openplaces.timing import get_timer
-from openplaces.io.transform import add_unique_suffix
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
     '+ellps=WGS84 +units=m +no_defs',
-    'moon': '+proj=nsper +h=384400000 +lon_0={LON} +lat_0={LAT} ' '+ellps=WGS84',
-    'landsat': '+proj=nsper +h=705000 +lon_0={LON} +lat_0={LAT} ' '+ellps=WGS84',
+    'moon': '+proj=nsper +h=384400000 +lon_0={LON} +lat_0={LAT} +ellps=WGS84',
+    'landsat': '+proj=nsper +h=705000 +lon_0={LON} +lat_0={LAT} +ellps=WGS84',
     'eck': '+proj=eck4 +ellps=WGS84',
 }
 
@@ -587,8 +588,8 @@ def get_geo_ids(
         n_dupl = duplicates.sum()
         if verbose:
             print(
-                f"Warning: {n_dupl} polygons with duplicate GIDs "
-                f"({n_dupl/len(geo_ids)*100:.2g}%)"
+                f'Warning: {n_dupl} polygons with duplicate GIDs '
+                f'({n_dupl / len(geo_ids) * 100:.2g}%)'
             )
 
             # Show some examples
@@ -645,6 +646,90 @@ def add_geo_id_index(
     if gdf.index.duplicated().any():
         raise ValueError(
             'Unhandled duplicates found in `geo_id` index. '
+            'Set `handle_duplicates=True` or pick a different indexing method.'
+        )
+    return gdf
+
+
+def get_openlocationcode(
+    gdf: gpd.GeoDataFrame,
+    name='openlocationcode',
+    codelength=11,
+    handle_duplicates=True,
+):
+    """Assign a footprint_id index based on Open Location Code of polygon centroids.
+
+    Parameters
+    ----------
+    gdf: GeoDataFrame
+        Vector data with polygon geometries in any CRS.
+    name : str
+        Name of index
+    codelength : int
+        `openlocationcode` code length
+    handle_duplicates : bool
+        If True, adds numeric suffix to duplicate GIDs (default True)
+    """
+    centroids = gdf.copy()
+    if centroids.crs != 'epsg:4326':
+        centroids = centroids.to_crs('epsg:4326')
+    # Suppress warnings if centroids are in geographic CRS
+    warnings.filterwarnings('ignore', category=UserWarning)
+    centroids['geometry'] = centroids['geometry'].centroid
+    warnings.filterwarnings('default', category=UserWarning)
+
+    raw_ids = [
+        olc.encode(pt.y, pt.x, codeLength=codelength) for pt in centroids.geometry
+    ]
+    if not handle_duplicates:
+        return pd.Series(raw_ids, index=gdf.index, name=name)
+
+    counts: dict[str, int] = {}
+    for code in raw_ids:
+        counts[code] = counts.get(code, 0) + 1
+
+    seen: dict[str, int] = {}
+    footprint_ids = []
+    for code in raw_ids:
+        if counts[code] == 1:
+            footprint_ids.append(code)
+        else:
+            seen[code] = seen.get(code, 0) + 1
+            footprint_ids.append(f'{code}-{seen[code]}')
+
+    return pd.Series(footprint_ids, index=gdf.index, name=name)
+
+
+def add_openlocationcode_index(
+    gdf,
+    name='openlocationcode',
+    codelength=11,
+    handle_duplicates=True,
+):
+    """Return the GeoDataFrame using `geo_id` as the index
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        Polygon data
+    name : str
+        Name of index column
+    codelength : int
+        `openlocationcode` code length
+    handle_duplicates : bool
+        If True, adds numeric suffix to duplicate GIDs (default True)
+    """
+
+    gdf = gdf.copy()
+    gdf.index = pd.Index(
+        get_openlocationcode(
+            gdf, name=name, codelength=codelength, handle_duplicates=handle_duplicates
+        ),
+        name=name,
+    )
+    if gdf.index.duplicated().any():
+        raise ValueError(
+            'Unhandled duplicates found in `openlocationcode` index. '
             'Set `handle_duplicates=True` or pick a different indexing method.'
         )
     return gdf
@@ -761,6 +846,7 @@ def get_intersection_over_union(
     gdf_right,
     suffixes=('left', 'right'),
     area_unit='m2',
+    how='intersection',
     drop_geometries=True,
 ):
     """Compute interaction over union of two GeoDataFrames"""
@@ -785,6 +871,7 @@ def get_intersection_over_union(
         gdf_right[[area_unit, 'geometry']]
         .rename(columns={area_unit: f'm2_{suffixes[1]}'})
         .reset_index(),
+        how=how,
     ).set_index([gdf_left.index.name, gdf_right.index.name])
 
     # Calculate area of overlap
@@ -810,8 +897,37 @@ def get_intersection_over_union(
 def get_crs(filepath):
     """Get the CRS from the metadata of a file using `pyogrio`"""
     geo_metadata = pyogrio.read_info(filepath)
-    if not 'crs' in geo_metadata:
+    if 'crs' not in geo_metadata:
         warnings.warn('No CRS found in input data.')
         return None
 
     return geo_metadata['crs']
+
+
+def _clean_geometries(gdf):
+    """
+    Drop or repair geometries that would cause exactextract to fail.
+    """
+    
+    original_len = len(gdf)
+    gdf = gdf.copy()
+
+    # 1. Remove null geometries and fix any invalid geometries
+    gdf = gdf[gdf.geometry.notna()]
+    
+    if (~gdf.geometry.is_valid).any():
+        gdf = fix_geometries(gdf)
+
+    # Drop invalid geometries
+    gdf = gdf[gdf.geometry.is_valid]
+
+    removed = original_len - len(gdf)
+    if removed > 0:
+        warnings.warn(
+            f"clean_geometry: removed {removed} of {original_len} features "
+            f"(null, empty, invalid, or non-polygon geometries). "
+            f"{len(gdf)} features remain.",
+            stacklevel=3,
+        )
+
+    return gdf
