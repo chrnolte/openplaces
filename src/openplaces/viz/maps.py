@@ -4,25 +4,24 @@ This module provides the main entry points for creating maps with sensible
 defaults and automatic performance optimization.
 """
 
-import requests
 import warnings
 
 import contextily as cx
 import geopandas as gpd
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
+import requests
 from pyproj import Transformer
 from shapely.geometry import LineString, MultiLineString, MultiPolygon, Point, Polygon
 
 from openplaces.geo.vector import get_areas
-from openplaces.recipe import get_recipe_by_id
 
 
 def show_polygon_context(
     gdf: gpd.GeoDataFrame,
     idx: int | str,
     buffer_factor: float = 3.0,
-    basemap_source: str = "Esri.WorldImagery",
+    basemap_source: str = 'Esri.WorldImagery',
     figsize: tuple = (12, 8),
     max_attrs: int = 20,
     title: str = None,
@@ -68,7 +67,7 @@ def show_polygon_context(
     if isinstance(target.geometry.iloc[0], Point):
         raise ValueError('`plot_polygon_context` is not for point geometries.')
     elif not isinstance(
-        target.geometry.iloc[0], (Polygon, MultiPolygon, LineString, MultiLineString)
+        target.geometry.iloc[0], Polygon | MultiPolygon | LineString | MultiLineString
     ):
         raise ValueError(
             '`geometry type not recognized: ' + str(type(target.geometry.iloc[0]))
@@ -100,7 +99,7 @@ def show_polygon_context(
     # Now reproject only the subset
     lon, lat = centroid.x, centroid.y
     ortho_crs = CRS.from_proj4(
-        f"+proj=ortho +lat_0={lat} +lon_0={lon} +x_0=0 +y_0=0 +datum=WGS84 +units=m"
+        f'+proj=ortho +lat_0={lat} +lon_0={lon} +x_0=0 +y_0=0 +datum=WGS84 +units=m'
     )
 
     target_ortho = target.to_crs(ortho_crs)
@@ -119,7 +118,7 @@ def show_polygon_context(
 
     # Plot context polygons
     context_ortho.plot(
-        ax=ax_map, facecolor='none', edgecolor='white', linewidth=0.5, alpha=0.6
+        ax=ax_map, facecolor='none', edgecolor='yellow', linewidth=1, alpha=0.6
     )
 
     # Plot target polygon
@@ -143,7 +142,7 @@ def show_polygon_context(
     )
 
     ax_map.set_axis_off()
-    ax_map.set_title(title if title else f"Polygon {idx}", fontsize=12, pad=10)
+    ax_map.set_title(title if title else f'Polygon {idx}', fontsize=12, pad=10)
 
     # Prepare attribute table
     attrs = target.iloc[0].drop('geometry')
@@ -391,7 +390,7 @@ def show_building(
             alpha=0.5,
         )
 
-        txt_p_list = [f"geo_id {parcel.iloc[0]['geo_id']}"]
+        txt_p_list = [f'geo_id {parcel.iloc[0]["geo_id"]}']
         for _gid, _p_txt in parcel.head(N_MAX_PARCEL_TEXT).iterrows():
             if verbose:
                 print(f'Parcel GID: {_gid}')
@@ -562,11 +561,12 @@ def show_building(
                     + f'{txt_use.title()}\n'
                     + (
                         f'{building_fema_to_label["frac_sqft"]:,.0%} of '
-                        if building_fema_to_label["frac_sqft"] < 0.99
+                        if building_fema_to_label['frac_sqft'] < 0.99
                         else ''
                     )
                     + f'{building_fema_to_label["footprint_area_sqft"]:,.0f} sqft\n'
-                    + f'Validation: {building_fema_to_label["validation_method"].title()}'
+                    + 'Validation:'
+                    f' {building_fema_to_label["validation_method"].title()}'
                 ]
                 city = building_fema_to_label['city'] or city
             n_omitted = len(buildings_fema_to_label) - N_MAX_BUILDINGS_FEMA_TEXT

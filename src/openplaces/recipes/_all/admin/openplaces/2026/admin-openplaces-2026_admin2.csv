@@ -1,4 +1,4 @@
-﻿admin2_id,name,type,name_original,name_alternatives,admin2_id_gadm,admin2_id_original,admin2_id_source
+﻿admin2_id,name,type,name_original,name_alternatives,admin2_id_gadm,admin2_id_admin1,admin2_id_source
 AD-AN,Andorra la Vella,Parish,,,AND.1_1,,hasc
 AD-CA,Canillo,Parish,,,AND.2_1,,hasc
 AD-EE,Escaldes-Engordany,Parish,,,AND.4_1,,hasc
@@ -589,39 +589,39 @@ CN-XU,Xinjiang Uygur,Autonomous Region,新疆維吾爾自治區|新疆维吾尔�
 CN-XZ,Xizang,Autonomous Region,西藏自治區|西藏自治区,Tibet|Xīzàng,CHN.29_1,,iso
 CN-YN,Yunnan,Province,雲南|云南,Yúnnán,CHN.30_1,,iso
 CN-ZJ,Zhejiang,Province,浙江,Zhèjiāng,CHN.31_1,,iso
+CO-AA,"Archipiélago de San Andrés, Providencia y Santa Catalina",Department,,,,,recipe
 CO-AM,Amazonas,Commissiary,,,COL.1_2,,hasc
 CO-AN,Antioquia,Department,,,COL.2_2,,hasc
 CO-AR,Arauca,Intendancy,,,COL.3_2,,hasc
 CO-AT,Atlántico,Department,,,COL.4_2,,hasc
-CO-BL,Bolívar,Department,,,COL.6_2,,hasc
+CO-BD,"Bogotá, D.C.",Capital District,,,,,recipe
+CO-BO,Bolívar,Department,,,,,recipe
 CO-BY,Boyacá,Department,,,COL.7_2,,hasc
 CO-CA,Cauca,Department,,,COL.11_2,,hasc
+CO-CC,Cauca,Department,,,,,recipe
 CO-CE,Cesar,Department,,El Cesar,COL.12_2,,hasc
 CO-CH,Chocó,Department,,,COL.13_2,,hasc
-CO-CL,Caldas,Department,,,COL.8_2,,hasc
-CO-CO,Córdoba,Department,,,COL.14_2,,hasc
 CO-CQ,Caquetá,Intendancy,,,COL.9_2,,hasc
+CO-CR,Córdoba,Department,,,,,recipe
 CO-CS,Casanare,Intendancy,,,COL.10_2,,hasc
 CO-CU,Cundinamarca,Department,,,COL.15_2,,hasc
-CO-DC,Bogotá D.C.,Capital District,,Distrito Capital de Bogotá,COL.5_2,,hasc
-CO-GN,Guainía,Commissiary,,Guania,COL.16_2,,hasc
-CO-GV,Guaviare,Commissiary,,,COL.17_2,,hasc
+CO-GA,Guaviare,Department,,,,,recipe
+CO-GJ,La Guajira,Department,,,,,recipe
+CO-GU,Guainía,Department,,,,,recipe
 CO-HU,Huila,Department,,,COL.18_2,,hasc
-CO-LG,La Guajira,Department,,Guajira|Goagira|La Goajira,COL.19_2,,hasc
 CO-MA,Magdalena,Department,,La Magdalena,COL.20_2,,hasc
 CO-ME,Meta,Department,,,COL.21_2,,hasc
 CO-NA,Nariño,Department,,,COL.22_2,,hasc
 CO-NS,Norte de Santander,Department,,Santander del Norte,COL.23_2,,hasc
 CO-PU,Putumayo,Intendancy,,,COL.24_2,,hasc
-CO-QD,Quindío,Department,,,COL.25_2,,hasc
+CO-QU,Quindio,Department,,,,,recipe
 CO-RI,Risaralda,Department,,,COL.26_2,,hasc
 CO-SA,San Andrés y Providencia,Department,,Saint Andrew and Providence,COL.27_1,,hasc
-CO-ST,Santander,Department,,,COL.28_2,,hasc
 CO-SU,Sucre,Department,,,COL.29_2,,hasc
 CO-TO,Tolima,Department,,,COL.30_2,,hasc
+CO-VA,Vaupés,Department,,,,,recipe
 CO-VC,Valle del Cauca,Department,,Valle,COL.31_2,,hasc
-CO-VD,Vichada,Commissiary,,,COL.33_2,,hasc
-CO-VP,Vaupés,Commissiary,,,COL.32_2,,hasc
+CO-VI,Vichada,Department,,,,,recipe
 CR-AL,Alajuela,Province,,,CRI.1_1,2,hasc
 CR-CA,Cartago,Province,,,CRI.2_1,3,hasc
 CR-GU,Guanacaste,Province,,,CRI.3_1,5,hasc
@@ -3354,57 +3354,57 @@ UM-MI,Midway,Island,,,UMI.6_1,,first2
 UM-NA,Navassa,Island,,,UMI.7_1,,first2
 UM-PA,Palmyra,Atoll,,,UMI.8_1,,first2
 UM-WA,Wake,Island,,,UMI.9_1,,first2
-US-AK,Alaska,State,,AK|Alaska,USA.2_1,,iso
-US-AL,Alabama,State,,AL|Ala.,USA.1_1,,iso
-US-AR,Arkansas,State,,AR|Ark.,USA.4_1,,iso
-US-AZ,Arizona,State,,AZ|Ariz.,USA.3_1,,iso
-US-CA,California,State,,CA|Calif.,USA.5_1,,iso
-US-CO,Colorado,State,,CO|Colo.,USA.6_1,,iso
-US-CT,Connecticut,State,,CT|Conn.,USA.7_1,,iso
-US-DC,District of Columbia,Federal District,,DC|D.C.,USA.9_1,,iso
-US-DE,Delaware,State,,DE|Del.,USA.8_1,,iso
-US-FL,Florida,State,,FL|Fla.,USA.10_1,,iso
-US-GA,Georgia,State,,GA|Ga.,USA.11_1,,iso
-US-HI,Hawaii,State,,HI|Hawaii,USA.12_1,,iso
-US-IA,Iowa,State,,IA|Iowa,USA.16_1,,iso
-US-ID,Idaho,State,,ID|Idaho,USA.13_1,,iso
-US-IL,Illinois,State,,IL|Ill.,USA.14_1,,iso
-US-IN,Indiana,State,,IN|Ind.,USA.15_1,,iso
-US-KS,Kansas,State,,KS|Kans.,USA.17_1,,iso
-US-KY,Kentucky,State,,Commonwealth of Kentucky|KY,USA.18_1,,iso
-US-LA,Louisiana,State,,LA,USA.19_1,,iso
-US-MA,Massachusetts,State,,Commonwealth of Massachusetts|MA,USA.22_1,,iso
-US-MD,Maryland,State,,MD,USA.21_1,,iso
-US-ME,Maine,State,,ME|Maine,USA.20_1,,iso
-US-MI,Michigan,State,,MI|Mich.,USA.23_1,,iso
-US-MN,Minnesota,State,,MN|Minn.,USA.24_1,,iso
-US-MO,Missouri,State,,MO,USA.26_1,,iso
-US-MS,Mississippi,State,,MS|Miss.,USA.25_1,,iso
-US-MT,Montana,State,,MT|Mont.,USA.27_1,,iso
-US-NC,North Carolina,State,,NC|N.C.,USA.34_1,,iso
-US-ND,North Dakota,State,,ND|N.D.,USA.35_1,,iso
-US-NE,Nebraska,State,,NE|Nebr.,USA.28_1,,iso
-US-NH,New Hampshire,State,,NH|N.H.,USA.30_1,,iso
-US-NJ,New Jersey,State,,NJ|N.J.,USA.31_1,,iso
-US-NM,New Mexico,State,,NM|N.M.,USA.32_1,,iso
-US-NV,Nevada,State,,NV|Nev.,USA.29_1,,iso
-US-NY,New York,State,,NY|N.Y.,USA.33_1,,iso
-US-OH,Ohio,State,,OH|Ohio,USA.36_1,,iso
-US-OK,Oklahoma,State,,OK|Okla.,USA.37_1,,iso
-US-OR,Oregon,State,,OR|Ore.,USA.38_1,,iso
-US-PA,Pennsylvania,State,,Commonwealth of Pennsylvania|PA,USA.39_1,,iso
-US-RI,Rhode Island,State,,State of Rhode Island and Provid,USA.40_1,,iso
-US-SC,South Carolina,State,,SC|S.C.,USA.41_1,,iso
-US-SD,South Dakota,State,,SD|S.D.,USA.42_1,,iso
-US-TN,Tennessee,State,,TN|Tenn.,USA.43_1,,iso
-US-TX,Texas,State,,TX|Tex.,USA.44_1,,iso
-US-UT,Utah,State,,UT,USA.45_1,,iso
-US-VA,Virginia,State,,VA,USA.47_1,,iso
-US-VT,Vermont,State,,VT,USA.46_1,,iso
-US-WA,Washington,State,,WA|Wash.,USA.48_1,,iso
-US-WI,Wisconsin,State,,WI|Wis.,USA.50_1,,iso
-US-WV,West Virginia,State,,WV|W.Va.,USA.49_1,,iso
-US-WY,Wyoming,State,,WY|Wyo.,USA.51_1,,iso
+US-AK,Alaska,State,,AK|Alaska,USA.2_1,02,iso
+US-AL,Alabama,State,,AL|Ala.,USA.1_1,01,iso
+US-AR,Arkansas,State,,AR|Ark.,USA.4_1,05,iso
+US-AZ,Arizona,State,,AZ|Ariz.,USA.3_1,04,iso
+US-CA,California,State,,CA|Calif.,USA.5_1,06,iso
+US-CO,Colorado,State,,CO|Colo.,USA.6_1,08,iso
+US-CT,Connecticut,State,,CT|Conn.,USA.7_1,09,iso
+US-DC,District of Columbia,Federal District,,DC|D.C.,USA.9_1,11,iso
+US-DE,Delaware,State,,DE|Del.,USA.8_1,10,iso
+US-FL,Florida,State,,FL|Fla.,USA.10_1,12,iso
+US-GA,Georgia,State,,GA|Ga.,USA.11_1,13,iso
+US-HI,Hawaii,State,,HI|Hawaii,USA.12_1,15,iso
+US-IA,Iowa,State,,IA|Iowa,USA.16_1,19,iso
+US-ID,Idaho,State,,ID|Idaho,USA.13_1,16,iso
+US-IL,Illinois,State,,IL|Ill.,USA.14_1,17,iso
+US-IN,Indiana,State,,IN|Ind.,USA.15_1,18,iso
+US-KS,Kansas,State,,KS|Kans.,USA.17_1,20,iso
+US-KY,Kentucky,State,,Commonwealth of Kentucky|KY,USA.18_1,21,iso
+US-LA,Louisiana,State,,LA,USA.19_1,22,iso
+US-MA,Massachusetts,State,,Commonwealth of Massachusetts|MA,USA.22_1,25,iso
+US-MD,Maryland,State,,MD,USA.21_1,24,iso
+US-ME,Maine,State,,ME|Maine,USA.20_1,23,iso
+US-MI,Michigan,State,,MI|Mich.,USA.23_1,26,iso
+US-MN,Minnesota,State,,MN|Minn.,USA.24_1,27,iso
+US-MO,Missouri,State,,MO,USA.26_1,29,iso
+US-MS,Mississippi,State,,MS|Miss.,USA.25_1,28,iso
+US-MT,Montana,State,,MT|Mont.,USA.27_1,30,iso
+US-NC,North Carolina,State,,NC|N.C.,USA.34_1,37,iso
+US-ND,North Dakota,State,,ND|N.D.,USA.35_1,38,iso
+US-NE,Nebraska,State,,NE|Nebr.,USA.28_1,31,iso
+US-NH,New Hampshire,State,,NH|N.H.,USA.30_1,33,iso
+US-NJ,New Jersey,State,,NJ|N.J.,USA.31_1,34,iso
+US-NM,New Mexico,State,,NM|N.M.,USA.32_1,35,iso
+US-NV,Nevada,State,,NV|Nev.,USA.29_1,32,iso
+US-NY,New York,State,,NY|N.Y.,USA.33_1,36,iso
+US-OH,Ohio,State,,OH|Ohio,USA.36_1,39,iso
+US-OK,Oklahoma,State,,OK|Okla.,USA.37_1,40,iso
+US-OR,Oregon,State,,OR|Ore.,USA.38_1,41,iso
+US-PA,Pennsylvania,State,,Commonwealth of Pennsylvania|PA,USA.39_1,42,iso
+US-RI,Rhode Island,State,,State of Rhode Island and Provid,USA.40_1,44,iso
+US-SC,South Carolina,State,,SC|S.C.,USA.41_1,45,iso
+US-SD,South Dakota,State,,SD|S.D.,USA.42_1,46,iso
+US-TN,Tennessee,State,,TN|Tenn.,USA.43_1,47,iso
+US-TX,Texas,State,,TX|Tex.,USA.44_1,48,iso
+US-UT,Utah,State,,UT,USA.45_1,49,iso
+US-VA,Virginia,State,,VA,USA.47_1,51,iso
+US-VT,Vermont,State,,VT,USA.46_1,50,iso
+US-WA,Washington,State,,WA|Wash.,USA.48_1,53,iso
+US-WI,Wisconsin,State,,WI|Wis.,USA.50_1,55,iso
+US-WV,West Virginia,State,,WV|W.Va.,USA.49_1,54,iso
+US-WY,Wyoming,State,,WY|Wyo.,USA.51_1,56,iso
 UY-AR,Artigas,Department,,,URY.1_2,,iso
 UY-CA,Canelones,Department,,,URY.2_2,,iso
 UY-CL,Cerro Largo,Department,,,URY.3_2,,iso

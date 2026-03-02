@@ -3,15 +3,17 @@
 openplaces
 ==========
 
-This is the documentation of ``openplaces``.
+``openplaces`` is a Python package for place-based geospatial analysis.
 
-``openplaces`` is an open-source data and analytics platform for integrating parcel boundaries, environmental indicators, and socio‑economic data at scale.
-
-Github: https://github.com/chrnolte/openplaces
+The purpose of ``openplaces`` is to make data-intensive, property-level research more replicable and comparable, globally.
 
 .. toctree::
    :maxdepth: 2
 
    1_overview
-   2_getting-started
+   2_get-started
    3_contribute
+
+Github: https://github.com/chrnolte/openplaces
+
+Developed at the `PLACES lab <https://placeslab.org>`_.

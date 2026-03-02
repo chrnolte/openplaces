@@ -52,7 +52,7 @@ columns:
   owner_name_2: ownname2
   owner_address: mailadd
   owner_city: mcity
-  owner_admin3_id_admin2: mstate
+  owner_admin2_id_admin1: mstate
   owner_postal_code: mzip
   has_structure: struct
   n_buildings: structno

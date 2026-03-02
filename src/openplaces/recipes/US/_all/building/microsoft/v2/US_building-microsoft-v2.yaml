@@ -20,7 +20,7 @@ entity:
 download_by:
   admin_level: 2
   # Transformations needed to obtain the data partition admin identifier
-  # used by the source URL (e.g. lowercase, sanitize, etc.)
+  # used by the source URL (e.g., remove spaces)
   admin_key_transform:
     admin2_name: "remove_spaces"
 
@@ -37,7 +37,7 @@ columns_to_categorical:
 
 # Function to give the GeoDataFrame an index
 create_index:
-  function: "openplaces.geo.vector.add_geo_id_index"
+  function: "openplaces.geo.vector.add_openlocationcode_index"
   args:
     name: footprint_id
 

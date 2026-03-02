@@ -1,7 +1,6 @@
 # Recipe to import the parcel database of the state of Florida, US
 
 # Administrative unit identifier: where does this data come from?
-
 admin_id: US-FL
 
 # Entity: what is the unit of analysis of the imported data?

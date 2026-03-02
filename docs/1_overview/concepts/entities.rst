@@ -5,6 +5,11 @@
 Entities
 ========
 
+Entities are the fundamental building blocks of property information.
+
+Most data we process in ``openplaces`` is ultimately attributed to one of these entities.
+
+
 .. _parcels:
 
 Parcels
@@ -32,7 +37,7 @@ For multi-unit parcels (e.g. an apartment complex), parcels and properties are n
 Transactions
 ~~~~~~~~~~~~
 
-Transactions are events in which a **property** changes hands, often in the form of a sale. They are recorded in deeds or similar property documents. They identify the seller, buyer, the property, and the date.
+Transactions are events in which one or more :ref:`properties` change full or partial ownership, often in the form of a sale or easement. They are recorded in deeds or similar property documents. They identify the seller, buyer, the property, and the date.
 
 
 .. _buildings:
@@ -44,34 +49,8 @@ Buildings refer to any human-built structures with roofs.
 
 Buildings are often identified by their building **footprint**, as observed in high-resolution satellite data. Some detailed tax assessor datasets also collect building information separately from property information (e.g. in the case of multi-unit houses, condominiums, etc.).
 
-.. _administrative_units:
 
 Administrative units
 ~~~~~~~~~~~~~~~~~~~~
 
-Administrative units are the geographic regions at which property data generation is organized.
-
-``openplaces`` comes with a globally usable hierarchical system for administrative unit identifiers, principally derived from the `Global Administrative Database <https://gadm.org/>`_.
-
-- Level 1 (``admin1``): countries
-
-  Identified mostly by ISO Alpha-2 code, with gaps filled.
-
-  - ``'US'`` for United States
-  - ``'CO'`` for Colombia
-
-- Level 2 (``admin2``): states, departments
-
-  - ``'US-MA'`` for the state of Massachusetts, U.S.
-  - ``'CO-AN'`` for the department of Antioquia, Colombia
-
-- Level 3 (``admin3``): counties, municipalities, etc.
-
-  - ``'US-MA-MI'`` for Middlesex county, Massachusetts, U.S.
-  - ``'CO-AN-ME'`` for the municipality of Medellín, Antioquia, Colombia
-
-- Level 4 (``admin4``): cities, towns, subdivisions, etc.
-
-  *Not globally supported: requires custom recipe for country/region*
-
-  - ``'US-MA-MI-SO'`` for the town of Somerville, Middlesex, Massachusetts, U.S.
+:ref:`Administrative units <administrative_units>` are a special type of entity. For more, see the :ref:`section on administrative units <administrative_units>`.

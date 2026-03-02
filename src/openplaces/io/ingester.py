@@ -13,6 +13,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+from pyogrio.errors import DataSourceError
 
 from openplaces.api import get_admin
 from openplaces.config import cfg
@@ -33,14 +34,15 @@ from openplaces.io import (
     delete_data,
     download,
     find_latest_file_or_gdb,
+    read_gdb_with_domains,
     save_parquet,
     unzip,
 )
-from openplaces.io.admin import find_admin_recipe
+from openplaces.io.admin import find_admin_recipe_id
 from openplaces.io.transform import (
     add_unique_suffix,
-    apply_transformations,
     apply_transformation,
+    apply_transformations,
     get_crosswalk,
 )
 from openplaces.path import (
@@ -101,7 +103,7 @@ class Ingester:
             self.admin_ids = [AdminId(admin_id) for admin_id in admin_ids]
         else:
             raise ValueError(
-                f'Admin ID type not supported: {type(admin_id)} ({admin_id})'
+                f'Admin ID type not supported: {type(admin_ids)} ({admin_ids})'
             )
 
         if timer is None:
@@ -224,11 +226,11 @@ class Ingester:
             admin_ids_to_save = [
                 admin_id
                 for admin_id in admin_ids_to_save
-                if not self._get_parquet_path(admin_id).exists()
+                if not self._get_output_path(admin_id).exists()
             ]
             self.admin_ids_to_save = admin_ids_to_save
 
-    def _get_parquet_path(self, admin_id):
+    def _get_output_path(self, admin_id):
         """Returns path of destination parquet file for admin unit
 
         Parameters
@@ -236,14 +238,13 @@ class Ingester:
         admin_id : AdminId
             Admin ID of file to save
         """
-        filename = (
-            self.recipe['cache_filename'] if 'cache_filename' in self.recipe else None
-        )
-        return cache_path(
+        output_path = cache_path(
             admin_id,
-            self.recipe['entity'],
-            filename=filename,
+            self.recipe.get('entity'),
+            self.recipe.get('dataset'),
+            filename=self.recipe.get('cache_filename'),
         )
+        return output_path
 
     def _resolve_admin_ids_to_process(self):
         """Create list of admin_ids to process
@@ -370,12 +371,12 @@ class Ingester:
             self.recipe_heap_dir
         ):
             if self.verbose:
-                print(f'Deleting unzipped data.')
+                print('Deleting unzipped data.')
             delete_data(self.download_partition['data_path'])
 
     def _catch_missing_partition_ids_error(self):
         # Error checks
-        if not 'download_by' in self.recipe:
+        if 'download_by' not in self.recipe:
             return
         download_by = self.recipe['download_by']
         if 'entity' in self.recipe:
@@ -393,8 +394,8 @@ class Ingester:
                 f'Download of {_type} from {source}` is by admin level `'
                 + str(download_by['admin_level'])
                 + '.\n\n'
-                f'Use `admin_ids` argument to identify the admin unit'
-                f' to download.'
+                'Use `admin_ids` argument to identify the admin unit'
+                ' to download.'
             )
         elif (
             'partition' in download_by
@@ -404,8 +405,8 @@ class Ingester:
                 f'Download of {_type} from {source} is by partition `'
                 + download_by['partition']
                 + '.\n\n'
-                f'Use `partition_ids` argument to identify the '
-                f'partition ID to download.'
+                'Use `partition_ids` argument to identify the '
+                'partition ID to download.'
             )
 
     def _get_admin_partition_key(self, placeholder):
@@ -422,39 +423,37 @@ class Ingester:
         """
         # Get partition key from admin data
         admin_level = self.recipe['download_by']['admin_level']
+        admin_recipe_id = self.recipe['download_by'].get('admin_recipe_id')
 
         # Translate placeholders to admin columns / identifiers by cutting
         # off 'adminX_' prefixes unless the prefix is 'adminX_id'
         # 'admin2_name' -> 'name'
         # 'admin2_id_leaf', 'admin2_id_admin1' -> keep as is
         if placeholder.startswith(
-            f"admin{admin_level}_"
-        ) and not placeholder.startswith(f"admin{admin_level}_id"):
-            column = placeholder.replace(f"admin{admin_level}_", '')
+            f'admin{admin_level}_'
+        ) and not placeholder.startswith(f'admin{admin_level}_id'):
+            column = placeholder.replace(f'admin{admin_level}_', '')
         else:
             column = placeholder
 
-        if column == f"admin{admin_level}_id_leaf":
+        if column == f'admin{admin_level}_id_leaf':
             # Special case, e.g. 'MA' for Massachusetts
             partition_key = AdminId(
                 self.download_partition['admin_id_to_download']
             ).levels[-1]
         else:
             try:
-                admin_recipe = find_admin_recipe(self.recipe['admin_id'], admin_level)
+                # Find the key in an official admin dataset
+                if admin_recipe_id is None:
+                    admin_recipe_id = find_admin_recipe_id(
+                        self.recipe['admin_id'], admin_level
+                    )
                 partition_key = get_admin(
                     self.download_partition['admin_id_to_download'],
                     admin_level,
-                    recipe=admin_recipe,
+                    recipe=admin_recipe_id,
                     columns=column,
                 ).iloc[0, 0]
-
-                _admin = get_admin(
-                    self.download_partition['admin_id_to_download'],
-                    admin_level,
-                    recipe=admin_recipe,
-                    columns=column,
-                )
             except IndexError:
                 partition_key = get_admin(
                     self.download_partition['admin_id_to_download'],
@@ -494,7 +493,7 @@ class Ingester:
         """
 
         # If partition keys aren't resolved yet, initiate empty dict
-        if not 'partition_key_dict' in self.download_partition:
+        if 'partition_key_dict' not in self.download_partition:
             self.download_partition['partition_key_dict'] = {}
 
         placeholders = self._get_placeholders(url_or_path)
@@ -508,24 +507,25 @@ class Ingester:
             else:
                 if placeholder.startswith('admin'):
                     partition_key = self._get_admin_partition_key(placeholder)
-                    # if placeholder == recipe['download_by'] + '_id':
-                    #     # Special case: `adminX_id`
-                    #     # (unlikely, unless coming from `openplaces`)
-                    #     partition_key = admin_id
+                #     if placeholder == recipe['download_by'] + '_id':
+                #         # Special case: `adminX_id`
+                #         # (unlikely, unless coming from `openplaces`)
+                #         partition_key = admin_id
+                # elif (
+                #     'partition' in self.recipe['download_by']
+                #     and placeholder == self.recipe['download_by']['partition']
+                # ):
+                #     partition_key = partition_id
                 else:
-                    if placeholder == self.recipe['download_by']['partition']:
-                        partition_key = partition_id
-                    else:
-                        raise NotImplementedError(
-                            'Custom placeholder have not yet been implemented for '
-                            'partitions:\n'
-                            f'Placeholder: `{placeholder}`, '
-                            f"`download_by`: `{recipe['download_by']}`"
-                        )
+                    raise NotImplementedError(
+                        'Custom placeholder has not yet been implemented:\n'
+                        f'Placeholder: `{placeholder}`, '
+                        f'`download_by`: `{self.recipe["download_by"]}`'
+                    )
 
-                self.download_partition['partition_key_dict'][
-                    placeholder
-                ] = partition_key
+                self.download_partition['partition_key_dict'][placeholder] = (
+                    partition_key
+                )
 
             url_or_path = url_or_path.replace(
                 '{' + placeholder + '}', str(partition_key)
@@ -555,7 +555,8 @@ class Ingester:
             source = self.recipe['dataset'].source
         else:
             raise ValueError(
-                'recipe needs an `entity` or `dataset` with a `source` for the download.'
+                'recipe needs an `entity` or `dataset` with a `source` for the '
+                'download.'
             )
 
         if source.download_url is not None:
@@ -580,13 +581,33 @@ class Ingester:
                     '`download_by` is not defined.'
                 )
             # Scrape website providing download URLs
-            with urllib.request.urlopen(source.download_url_source) as fp:
-                html = fp.read().decode("utf8")
+            req = urllib.request.Request(
+                source.download_url_source, headers={'User-Agent': 'Mozilla/5.0'}
+            )
+            with urllib.request.urlopen(req) as response:
+                html = response.read().decode('utf8')
 
             download_url_source_regex = self._resolve_placeholders(
                 source.download_url_source_regex
             )
-            download_url = re.compile(download_url_source_regex).findall(html)[0]
+            download_url_found = re.compile(download_url_source_regex).findall(html)
+
+            if not download_url_found:
+                raise ValueError(
+                    f'Could not extract {download_url_source_regex} from html:\n{html}'
+                )
+
+            download_url = download_url_found[0]
+
+            if download_url.startswith('/'):
+                from urllib.parse import urlparse
+
+                # Filepaths are relative: add URL structure from download_url_source
+                parsed = urlparse(source.download_url_source)
+                domain_url = f'{parsed.scheme}://{parsed.netloc}'
+
+                download_url = domain_url + download_url
+
         else:
             download_url = None
 
@@ -616,14 +637,19 @@ class Ingester:
             print('Uncompressed file name:', uncompressed_file_name)
 
         # Set external and heap directories
-        if 'entity' not in self.recipe:
+        if 'entity' not in self.recipe and 'dataset' not in self.recipe:
             raise NotImplementedError(
-                '_resolve_downloaded_and_data_paths only implemented for `entities`. '
-                'Requires an `entity` in the recipe.'
+                'Either an `entity` or a `dataset` must be defined in the recipe.'
             )
-        self.recipe_heap_dir = heap_dir(self.recipe['admin_id'], self.recipe['entity'])
+        self.recipe_heap_dir = heap_dir(
+            self.recipe.get('admin_id'),
+            self.recipe.get('entity'),
+            self.recipe.get('dataset'),
+        )
         self.recipe_external_dir = external_dir(
-            self.recipe['admin_id'], self.recipe['entity']
+            self.recipe.get('admin_id'),
+            self.recipe.get('entity'),
+            self.recipe.get('dataset'),
         )
 
         # Identify path of file to import (to see whether it's already saved)
@@ -647,7 +673,7 @@ class Ingester:
                 downloaded_path = self.recipe_external_dir / compressed_file_name
             elif uncompressed_file_name is not None:
                 downloaded_path = self.recipe_external_dir / uncompressed_file_name
-            elif download_url:
+            elif 'download_url' in self.download_partition:
                 # Try to extract filename from URL
                 re_match = re.search(
                     REGEX_FILENAME_IN_URL, self.download_partition['download_url']
@@ -709,6 +735,10 @@ class Ingester:
 
             if self.verbose:
                 print('Downloading...')
+
+            if self.recipe.get('dataset') and self.recipe['dataset'].is_raster:
+                raise NotImplementedError('Raster downloads are not yet implemented.')
+
             downloaded_path = download(
                 self.download_partition['download_url'], self.recipe_external_dir
             )
@@ -722,12 +752,12 @@ class Ingester:
                 ):
                     raise ValueError(
                         'Downloaded path from recipe does not match downloaded file\n'
-                        + f"Expected:\n{self.download_partition['downloaded_path']}\n"
-                        + f"Got:\n{downloaded_path}\n"
+                        + f'Expected:\n{self.download_partition["downloaded_path"]}\n'
+                        + f'Got:\n{downloaded_path}\n'
                     )
                 self.download_partition['downloaded_path'] = downloaded_path
         elif self.verbose:
-            print('Data found - skipping download.')
+            print('Downloaded data found. Skipping download.')
 
         if redownload or (
             self.download_partition['downloaded_path'] is not None
@@ -762,18 +792,20 @@ class Ingester:
                 self.recipe_heap_dir
             )
             if self.verbose:
-                print(f'Inferred file to read:\n{location}')
+                print(f'Inferred file to read: {location}')
 
         if (
             self.download_partition['data_path'] is not None
             and not self.download_partition['data_path'].exists()
         ):
             raise FileNotFoundError(
-                f'Did not succeed in downloading and unzipping:\n{data_path}'
+                'Did not succeed in downloading and unzipping:\n\n'
+                + str(self.download_partition['data_path'])
             )
 
     def _catch_missing_download_url_error(self):
-        source = self.recipe['entity'].source
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        source = entity_or_dataset.source
         if not source.download_url and not source.download_url_source:
             error_message = ''
             if self.download_partition['downloaded_path'] is not None:
@@ -786,9 +818,13 @@ class Ingester:
                 )
                 location = str(self.download_partition['downloaded_path'])
             else:
-                location = external_dir(self.recipe['admin_id'], self.recipe['entity'])
+                location = external_dir(
+                    self.recipe.get('admin_id'),
+                    self.recipe.get('entity'),
+                    self.recipe.get('dataset'),
+                )
             error_message += (
-                f'Recipe for `{self.recipe["entity"]}` has no download URL.\n\n'
+                f'Recipe for `{entity_or_dataset}` has no download URL.\n\n'
                 '1. Download the data manually here:\n\n'
                 + f'{source.portal_url}'
                 + '\n\n2. Save it in this location:\n\n'
@@ -866,8 +902,6 @@ class Ingester:
 
     def _prepare_admin_id_crosswalk(self, admin_id_to_process):
         """Get crosswalk from openplaces AdminIds to recipe AdminId"""
-        admin_level_to_process = self.recipe['process_by']['admin_level']
-
         # Attribute entities to administrative unit IDs
         if 'admin_id_crosswalk' in self.recipe['process_by']:
             # Use custom crosswalk
@@ -889,8 +923,6 @@ class Ingester:
         """Prepare the mapping of row IDs (FIDs) to admin_ids"""
         admin_level_to_process = self.recipe['process_by']['admin_level']
         admin_id_column_source = self.recipe['process_by']['admin_id_column']
-
-        layer = self.recipe['layer'] if 'layer' in self.recipe else None
 
         admin_id_filter = self._read_recipe_data(
             columns=[admin_id_column_source],
@@ -925,13 +957,10 @@ class Ingester:
         elif 'overlay_admin_ids' in self.recipe:
             admin_specs = self.recipe['overlay_admin_ids']
 
-        admin_recipe = (
-            admin_specs['admin_recipe'] if 'admin_recipe' in admin_specs else None
-        )
         admin_geometries = get_admin(
             self.download_partition['admin_id_to_download'],
             admin_specs['admin_level'],
-            recipe=admin_recipe,
+            recipe=admin_specs.get('admin_recipe_id'),
             geom=True,
         )['geometry']
         data_crs = get_crs(self.download_partition['data_path'])
@@ -971,21 +1000,25 @@ class Ingester:
         layer = self.recipe['layer'] if 'layer' in self.recipe else None
 
         data_path = self.download_partition['data_path']
-        if data_path.suffix in GEOPANDAS_EXTENSIONS:
-            if data_path.suffix == 'parquet':
-                if 'fids' in kwargs:
-                    raise ValueError(
-                        '`fid`-based selection might not work with `parquet`.'
-                    )
-                gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
-                self.timer.mark(
-                    'Read parquet file' + timer_message_suffix, path=data_path
-                )
-            else:
+        if data_path.suffix == '.parquet':
+            if 'fids' in kwargs:
+                raise ValueError('`fid`-based selection might not work with `parquet`.')
+            gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
+            self.timer.mark('Read parquet file' + timer_message_suffix, path=data_path)
+        elif data_path.suffix == '.gdb':
+            gdf = read_gdb_with_domains(
+                data_path, columns=columns, layer=layer, **kwargs
+            )
+        elif data_path.suffix in GEOPANDAS_EXTENSIONS:
+            try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-                self.timer.mark(
-                    'Read vector file' + timer_message_suffix, path=data_path
+            except DataSourceError:
+                raise OSError(
+                    f'Failed to read data file:\n\n{data_path}\n\n'
+                    'Possibly an incompletely unzipped file? '
+                    'If so, delete manually, and re-run unzipping.'
                 )
+            self.timer.mark('Read vector file' + timer_message_suffix, path=data_path)
         elif data_path.suffix in PANDAS_EXTENSIONS:
             gdf = pd.read_file(data_path, columns=columns)
             self.timer.mark('Read data table' + timer_message_suffix, path=data_path)
@@ -1033,17 +1066,17 @@ class Ingester:
             Dataframe with unprocessed data.
         """
 
+        # Rename columns
+        if 'columns' in self.recipe:
+            # Rename columns
+            df = df.rename(columns={v: k for k, v in self.recipe['columns'].items()})
+
         # Replace known NA value strings with `None`.
         if 'null_value_strings' in self.recipe:
             for col, na_value in product(df.columns, self.recipe['null_value_strings']):
                 i_has_na_value = df[col].eq(na_value)
                 if i_has_na_value.sum():
                     df.loc[i_has_na_value, col] = None
-
-        # Rename columns
-        if 'columns' in self.recipe:
-            # Rename columns
-            df = df.rename(columns={v: k for k, v in self.recipe['columns'].items()})
 
         # Filter rows
         if 'query' in self.recipe:
@@ -1066,10 +1099,79 @@ class Ingester:
                     values = df[column_to_cast]
                     categories = None
                     ordered = False
+
                 df[column_to_cast] = pd.Series(
                     pd.Categorical(values, categories, ordered),
                     index=values.index,
                 )
+
+        # Apply variable transformations
+        # (Before crosswalks, to permit extraction of parent admin IDs)
+        if 'transformations' in self.recipe:
+            df = apply_transformations(df, self.recipe)
+
+        # Attribute entities to administrative unit IDs
+        # (Before admin ID index creation, which needs parent Admin ID)
+        use_spatial_mask = (
+            'process_by' in self.recipe
+            and 'use_spatial_mask' in self.recipe['process_by']
+            and self.recipe['process_by']['use_spatial_mask']
+        )
+        if 'admin_id_crosswalk' in self.recipe:
+            admin_id_crosswalk_dict = self.recipe['admin_id_crosswalk']
+            admin_id_crosswalk_dict['admin_id'] = self.processing_chunk[
+                'admin_id_to_process'
+            ]
+            admin_id_crosswalk = get_crosswalk(admin_id_crosswalk_dict, flip=True)
+
+            missing_crosswalk_ids = set(df[admin_id_crosswalk.index.name]) - set(
+                admin_id_crosswalk.index
+            )
+            if missing_crosswalk_ids:
+                mask_unmatched = df[admin_id_crosswalk.index.name].isin(
+                    missing_crosswalk_ids
+                )
+                if self.verbose:
+                    warnings.warn(
+                        f'\n\nImperfect crosswalk: {mask_unmatched.sum():,d} '
+                        'admin IDs were not linked and will be dropped:\n\n'
+                        + str(df[mask_unmatched][[v for v in df if 'name' in v]])
+                        + '\n'
+                    )
+            df = df.join(
+                admin_id_crosswalk, on=admin_id_crosswalk.index.name, how='inner'
+            )
+
+        elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
+            if self.verbose:
+                print(
+                    'Overlaying polygons with administrative boundaries. '
+                    'This can take a while.'
+                )
+            if 'admin_geometries' not in self.download_partition:
+                self._load_admin_geometries()
+            if use_spatial_mask:
+                admin_specs = self.recipe['process_by']
+                # Spatial bounding box already applied. Intersect only
+                # with the administrative unit of interest.
+                admin_geometries = (
+                    self.download_partition['admin_geometries']
+                    .loc[[self.processing_chunk['admin_id_to_process']]]
+                    .copy()
+                )
+            elif 'overlay_admin_ids' in self.recipe:
+                admin_specs = self.recipe['overlay_admin_ids']
+                admin_geometries = self.download_partition['admin_geometries']
+
+            kwargs_overlay = {
+                k: v for k, v in admin_specs.items() if k != 'admin_recipe_id'
+            }
+            df = overlay_admin_ids(
+                df,
+                admin_geometries=admin_geometries,
+                timer=self.timer,
+                **kwargs_overlay,
+            )
 
         # Set index
         if str(self.recipe['entity'].entity_type) == 'parcel' and isinstance(
@@ -1089,7 +1191,7 @@ class Ingester:
             if df[self.recipe['set_index']].duplicated().any():
                 raise ValueError(
                     f"Duplicates found in '{self.recipe['set_index']}'. "
-                    "Choose other index.\n\n"
+                    'Choose other index.\n\n'
                     + str(
                         df[df[self.recipe['set_index']].duplicated(keep=False)][
                             self.recipe['set_index']
@@ -1101,7 +1203,7 @@ class Ingester:
             df = df.set_index(self.recipe['set_index'])
         elif 'create_index' in self.recipe:
             if 'function' in self.recipe['create_index']:
-                if not self.recipe['create_index']['function'].str.startswith(
+                if not self.recipe['create_index']['function'].startswith(
                     'openplaces.'
                 ):
                     raise ValueError(
@@ -1128,7 +1230,7 @@ class Ingester:
             # Create index with custom function
 
             with log_step('Generate indices', timer=self.timer):
-                if not self.recipe['index_function'].str.startswith('openplaces.'):
+                if not self.recipe['index_function'].startswith('openplaces.'):
                     raise ValueError(
                         'Function in `index_function` must start with `openplaces.`\n'
                         'Changing this would create a security risk (run any function).'
@@ -1146,24 +1248,19 @@ class Ingester:
             raise ValueError(
                 'Duplicated indices are not allowed in imported data.\n'
                 'Change `index_function`, `create_index` or `set_index` column:\n'
-                + str(
-                    df[df.index.duplicated(keep=False)].sort_index().head().iloc[:, :5]
-                )
+                + str(df[df.index.duplicated(keep=False)].sort_index().head())
             )
 
         # Reorder columns
         if 'columns' in self.recipe:
             # Start with named columns
-            cols_order = [c for c in self.recipe['columns'] if c in df]
+            cols_order = [c for c in list(self.recipe['columns']) if c in df] + [
+                c for c in df if c.startswith('admin') and c.endswith('_id_source')
+            ]
             # If requested, add any other non-geometry columns
-            if (
-                'keep_unnamed_columns' in self.recipe
-                and self.recipe['keep_unnamed_columns']
-            ):
+            if self.recipe.get('keep_unnamed_columns'):
                 cols_order += [
-                    c
-                    for c in df
-                    if c not in (list(self.recipe['columns']) + ['geo_id', 'geometry'])
+                    c for c in df if c not in cols_order + ['geo_id', 'geometry']
                 ]
             # Finish by adding geometry columns
             for geo_col in ['geo_id', 'geometry']:
@@ -1171,50 +1268,7 @@ class Ingester:
                     cols_order += [geo_col]
             df = df[cols_order]
 
-        if 'transformations' in self.recipe:
-            df = apply_transformations(df, self.recipe)
-
         self.timer.mark('Preprocessing')
-
-        use_spatial_mask = (
-            'process_by' in self.recipe
-            and 'use_spatial_mask' in self.recipe['process_by']
-            and self.recipe['process_by']['use_spatial_mask']
-        )
-
-        # Attribute entities to administrative unit IDs
-        if 'admin_id_crosswalk' in self.recipe:
-            admin_id_crosswalk_dict = self.recipe['admin_id_crosswalk']
-            admin_id_crosswalk_dict['admin_id'] = self.processing_chunk[
-                'admin_id_to_process'
-            ]
-            admin_id_crosswalk = get_crosswalk(admin_id_crosswalk_dict, flip=True)
-            df = df.join(admin_id_crosswalk, on=admin_id_crosswalk.index.name)
-        elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
-            if self.verbose:
-                print(
-                    'Overlaying polygons with administrative boundaries. '
-                    'This can take a while.'
-                )
-            if 'admin_geometries' not in self.download_partition:
-                self._load_admin_geometries()
-            if use_spatial_mask:
-                admin_specs = self.recipe['process_by']
-                # Spatial bounding box already applied. Intersect only
-                # with the administrative unit of interest.
-                admin_geometries = (
-                    self.download_partition['admin_geometries']
-                    .loc[[self.processing_chunk['admin_id_to_process']]]
-                    .copy()
-                )
-            elif 'overlay_admin_ids' in self.recipe:
-                admin_specs = self.recipe['overlay_admin_ids']
-                admin_geometries = self.download_partition['admin_geometries']
-            df = overlay_admin_ids(
-                df,
-                admin_geometries=admin_geometries,
-                timer=self.timer,
-            )
 
         return df
 
@@ -1259,7 +1313,7 @@ class Ingester:
         )
         if split_dataset_by_admin:
             admin_level = self.recipe['cache_by']['admin_level']
-            admin_id_col = f"admin{admin_level}_id"
+            admin_id_col = f'admin{admin_level}_id'
             if admin_id_col not in gdf:
                 raise ValueError(
                     f"'cache_by' > 'admin_level' is set, but column "
@@ -1301,7 +1355,7 @@ class Ingester:
                 print(admin_id_to_save, end=end)
             if split_dataset_by_admin:
                 redundant_admin_id_columns = [
-                    v for v in gdf if v.startswith(f"admin{admin_level}_id")
+                    v for v in gdf if v.startswith(f'admin{admin_level}_id')
                 ]
                 gdf_to_save = (
                     gdf[gdf[admin_id_col].eq(admin_id_to_save)]
@@ -1311,8 +1365,13 @@ class Ingester:
             else:
                 gdf_to_save = gdf.copy()
 
-            parquet_path = self._get_parquet_path(admin_id_to_save)
-            save_parquet(gdf_to_save, parquet_path)
+            output_path = self._get_output_path(admin_id_to_save)
+            if output_path.suffix == '.parquet':
+                save_parquet(gdf_to_save, output_path)
+            else:
+                raise NotImplementedError(
+                    f'Output file type not yet supported: {output_path.suffix}'
+                )
 
         if print_admin_id_progress:
             print('')

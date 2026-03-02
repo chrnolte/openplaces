@@ -41,31 +41,36 @@ columns:
   admin3_type: TYPE_2
   admin2_type: TYPE_1
   admin4_id_hasc: HASC_3
-  admin4_id_original: CC_3
+  admin4_id_admin1: CC_3
   admin4_id_gadm: GID_3
   admin3_id_gadm: GID_2
   admin2_id_gadm: GID_1
   admin1_id_a3: GID_0
 
-# Keep columns that aren't named in the above list
-keep_unnamed_columns: True
+# Values to be interpreted as empty (None)
+null_value_strings: ["NA"]
 
 # Filter query to select rows
-query: "type not in ('Water body', 'Waterbody', 'Water Body') and admin3_name != 'Water body'"
+query: "type not in ('Water body', 'Waterbody', 'Water Body') and admin3_name not in ('Water body', 'Lake Chiuta', 'Lake Chilwa', 'Lake Malawi', 'Lake Malombe', 'Songkhla Lake   ') or admin3_name.str.startswith('Songkhla Lake') or admin3_name.isnull()"
 
-# # Function that returns an indexed version of the input GeoDataFrame
-# # (usually a custom function designed for a specific indexing case)
-# create_index:
-#   function: "openplaces.io.admin.generate_admin_ids"
-#   args:
-#     new_admin_id_col: admin4_id
-#     parent_admin_col: admin3_id
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_gadm
+  admin_recipe_id: 'admin-gadm-4~1_admin3'
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
 
 # Sort by index?
-# sort_index: True
+sort_index: True
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.
 # Use if source file has multiple layers, or if `layer` has a value.
 cache_filename: 'admin4'
-

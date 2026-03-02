@@ -23,7 +23,7 @@ ENTITY_TYPES = [
     'transaction',
 ]
 
-TOP_LEVEL_THEMATIC_DOMAINS = [
+TOP_LEVEL_THEMES = [
     'climate',  # temperature, precipitation, change
     'land',  # topography, geology, soils
     'landcover',  # land cover (usually remotely sensed)
@@ -49,7 +49,7 @@ class AdminId:
             tuple_of_levels = ()
         elif len(levels) == 1 and STRING_SEPARATOR_WITHIN_IDS in levels[0]:
             tuple_of_levels = tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS))
-        elif isinstance(levels, (list, tuple, set)):
+        elif isinstance(levels, list | tuple | set):
             tuple_of_levels = tuple(levels)
         else:
             raise ValueError(f'`levels` is {type(levels)}. Cannot interpret:\n{levels}')
@@ -85,7 +85,7 @@ class AdminId:
 
         return Path(*parts)
 
-    def is_parent_of(self, admin_id: "AdminId") -> bool:
+    def is_parent_of(self, admin_id: 'AdminId') -> bool:
         """Check if this AdminId is a parent of another AdminId.
 
         A parent AdminId has fewer levels and matches all its levels
@@ -110,7 +110,7 @@ class AdminId:
 
         return admin_id.levels[: len(self.levels)] == self.levels
 
-    def is_parent_or_equal_of(self, admin_id: "AdminId") -> bool:
+    def is_parent_or_equal_of(self, admin_id: 'AdminId') -> bool:
         """Check if this AdminId is a parent or equal of another AdminId.
 
         A parent AdminId has fewer levels and matches all its levels
@@ -148,7 +148,7 @@ class EntityType:
         if entity_type not in ENTITY_TYPES:
             raise ValueError(
                 f"Entity not recognized: '{entity_type}'. "
-                'Rename or add to `openplaces.path.ENTITY_TYPES`.'
+                'Rename or add to `openplaces.core.schema.ENTITY_TYPES`.'
             )
 
         self.entity_type = entity_type
@@ -281,7 +281,7 @@ class Theme:
             raise ValueError('Empty themes are not allowed')
 
         # Accept passing of a sequence as first argument
-        if isinstance(levels[0], (list, tuple, set)):
+        if isinstance(levels[0], list | tuple | set):
             levels = list(levels[0])
 
         # Split text
@@ -292,14 +292,14 @@ class Theme:
         ):
             levels = levels[0].split(STRING_SEPARATOR_WITHIN_IDS)
 
-        if levels[0] not in TOP_LEVEL_THEMATIC_DOMAINS:
+        if levels[0] not in TOP_LEVEL_THEMES:
             raise ValueError(
-                f"'{levels[0]}' is not a registered top-level thematic domain.\n"
-                'Pick from openplaces.path.THEMATIC_DOMAINS or add to it:\n- '
-                + '\n- '.join(TOP_LEVEL_THEMATIC_DOMAINS)
+                f'"{levels[0]}" is not a registered top-level thematic domain.\n'
+                'Pick from openplaces.core.schema.TOP_LEVEL_THEMES or '
+                'add to it:\n- ' + '\n- '.join(TOP_LEVEL_THEMES)
             )
 
-        if isinstance(levels, (list, tuple, set)):
+        if isinstance(levels, list | tuple | set):
             self.levels = list(levels)
         else:
             raise ValueError(f'`levels` is {type(levels)}. Cannot interpret:\n{levels}')
@@ -330,12 +330,14 @@ class DataSet:
     theme: Theme
     source: Source
     version: str
+    is_raster: bool
 
     def __init__(
         self,
         theme: [str, Theme],
         source: [str, Source] = None,
         version: str = None,
+        is_raster: bool = False,
     ):
         """Initialize AdminId with administrative levels."""
 
@@ -372,7 +374,12 @@ class DataSet:
             # If no version is provided, default to YYYYMMDD timestamp
             from datetime import datetime
 
-            self.version = datetime.now().strftime("%Y%m%d")
+            self.version = datetime.now().strftime('%Y%m%d')
+
+        if isinstance(is_raster, bool | None):
+            self.is_raster = is_raster or False
+        else:
+            raise ValueError(f'Not interpreted: is_raster = {is_raster}')
 
     def __str__(self) -> str:
         return STRING_SEPARATOR_WITHIN_IDS.join(

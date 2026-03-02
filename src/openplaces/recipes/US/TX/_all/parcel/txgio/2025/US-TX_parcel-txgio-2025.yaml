@@ -54,7 +54,7 @@ columns:
   owner_address_street: MAIL_LINE1
   owner_address_street_2: MAIL_LINE2
   owner_city: MAIL_CITY
-  owner_admin3_id_admin2: MAIL_STAT
+  owner_admin2_id_admin1: MAIL_STAT
   owner_postal_code: MAIL_ZIP
   tax_year: TAX_YEAR
   land_value: LAND_VALUE

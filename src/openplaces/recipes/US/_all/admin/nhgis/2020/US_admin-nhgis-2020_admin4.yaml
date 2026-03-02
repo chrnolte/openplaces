@@ -27,7 +27,6 @@ columns:
   admin4_id_admin3: COUSUBFP
   admin4_id_ansi: COUSUBNS
   admin4_id_nhgis: GISJOIN
-  admin3_id_admin2: COUNTYFP
   admin2_id_admin1: STATEFP
   type_source: CLASSFP
   functional_status: FUNCSTAT
@@ -37,17 +36,30 @@ columns:
 # Keeps 50 states and DC (territories are in `admin1` according to ISO)
 query: "admin2_id_admin1 <= '56'"
 
-# Keep columns that aren't named in the above list
-# keep_unnamed_columns: True
+transformations:
+  # Get county FIPS: first 5 characters of county subdivision FIPS
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: admin4_id_admin1
+    args:
+      start: 0
+      end: 5
 
-# # Function that returns an indexed version of the input GeoDataFrame
-# # (usually a custom function designed for a specific indexing case)
-# # Function to give the GeoDataFrame an index
-# create_index:
-#   function: "openplaces.io.admin.generate_admin_ids"
-#   args:
-#     new_admin_id_col: admin4_id
-#     parent_admin_col: admin3_id
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-nhgis-2020_admin3"
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
 
 # Internal filename after import. This is only needed if the filename
 # cannot be derived from the reference (admin_id, entity, etc.) alone.

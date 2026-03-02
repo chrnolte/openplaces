@@ -5,13 +5,16 @@ Input/output utilities
 
 """
 
+import math
 import shutil
+import subprocess
+import sys
 import tempfile
 import warnings
-import zipfile_deflate64
 from pathlib import Path
 from urllib.parse import unquote, urlparse
-from zipfile import BadZipFile, ZipFile
+from xml.etree import ElementTree
+from zipfile import ZIP_BZIP2, ZIP_DEFLATED, ZIP_LZMA, ZIP_STORED, BadZipFile, ZipFile
 
 import geopandas as gpd
 import pandas as pd
@@ -133,8 +136,11 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
     return to_path
 
 
-def unzip(in_path, out_dir=None, members=None):
+def unzip(in_path, out_dir=None, members=None, verbose=True):
     """Extract files from a zip archive.
+
+    Supports standard ZIP (deflate) and Deflate64 ZIP files. Deflate64
+    extraction requires 7z to be installed (see dev.py ensure_7zip()).
 
     Parameters
     ----------
@@ -146,18 +152,14 @@ def unzip(in_path, out_dir=None, members=None):
         Example: 'data.zip' -> 'data/'
     members : list of str, optional
         Specific files to extract. If None, extracts all files.
+        Note: ignored when falling back to 7z.
+    verbose:
+        If True, might print warnings, e.g. when switching to 7z
 
     Returns
     -------
     Path
         Path to output directory
-
-    Raises
-    ------
-    BadZipFile
-        If the file is not a valid zip archive
-    FileNotFoundError
-        If input file doesn't exist
 
     Examples
     --------
@@ -167,75 +169,111 @@ def unzip(in_path, out_dir=None, members=None):
     """
     in_path = Path(in_path)
     if not in_path.exists():
-        raise FileNotFoundError(f"Zip file not found: {in_path}")
-
+        raise FileNotFoundError(f'Zip file not found: {in_path}')
     if out_dir is None:
         out_dir = in_path.parent / in_path.stem
     else:
         out_dir = Path(out_dir)
-
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        with ZipFile(in_path, 'r') as z:
-            all_members = z.namelist()
-            member_list = members or all_members
+    if _needs_7z(in_path):
+        return _unzip_with_7z(in_path, out_dir, verbose)
+    return _unzip_standard(in_path, out_dir, members)
 
-            # Determine if we should strip a common prefix
-            strip_prefix = None
 
-            # Get top-level items from member_list
-            # Items with '/' are directories, items without are files
-            top_level_items = set()
-            for m in member_list:
-                if not m:
+def _needs_7z(zip_path):
+    """Return True if any entry uses a compression type unsupported by zipfile."""
+    with ZipFile(zip_path, 'r') as z:
+        return any(
+            info.compress_type
+            not in {
+                ZIP_STORED,
+                ZIP_DEFLATED,
+                ZIP_BZIP2,
+                ZIP_LZMA,
+            }
+            for info in z.infolist()
+        )
+
+
+def _unzip_standard(in_path, out_dir, members):
+    """Extract using Python's zipfile (deflate and store)."""
+    with ZipFile(in_path, 'r') as z:
+        all_members = z.namelist()
+        member_list = members or all_members
+
+        strip_prefix = _get_strip_prefix(member_list)
+
+        total_size = sum(z.getinfo(m).file_size for m in member_list)
+        with tqdm(
+            total=total_size, unit='B', unit_scale=True, desc='Extracting'
+        ) as pbar:
+            for member in member_list:
+                if strip_prefix and member == strip_prefix.rstrip('/'):
                     continue
-                # Get first path component
-                first_component = m.split('/')[0]
-                top_level_items.add(first_component)
-
-            # If all members share a single top-level directory (not file)
-            # Check if there's more than just the top-level item itself
-            if len(top_level_items) == 1:
-                common_prefix = list(top_level_items)[0]
-                # Only strip if it's actually a directory (has nested content)
-                # and is not a geodatabase
-                has_nested = any('/' in m for m in member_list)
-                if has_nested and not common_prefix.endswith('.gdb'):
-                    strip_prefix = f"{common_prefix}/"
-
-            total_size = sum(z.getinfo(m).file_size for m in member_list)
-
-            with tqdm(
-                total=total_size, unit='B', unit_scale=True, desc='Extracting'
-            ) as pbar:
-                for member in member_list:
-                    # Skip the top-level folder itself if stripping
-                    if strip_prefix and member == strip_prefix.rstrip('/'):
+                if strip_prefix and member.startswith(strip_prefix):
+                    relative_path = member.removeprefix(strip_prefix)
+                    if not relative_path:
                         continue
-
-                    # Determine target path
-                    if strip_prefix and member.startswith(strip_prefix):
-                        relative_path = member.removeprefix(strip_prefix)
-                        if not relative_path:
-                            continue
-                        target = out_dir / relative_path
-                    else:
-                        target = out_dir / member
-
-                    if member.endswith('/'):
-                        target.mkdir(parents=True, exist_ok=True)
-                    else:
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        with z.open(member) as src, open(target, 'wb') as dst:
-                            while chunk := src.read(8192):
-                                dst.write(chunk)
-                                pbar.update(len(chunk))
-
-    except BadZipFile as e:
-        raise BadZipFile(f"Invalid zip file: {in_path}") from e
-
+                    target = out_dir / relative_path
+                else:
+                    target = out_dir / member
+                if member.endswith('/'):
+                    target.mkdir(parents=True, exist_ok=True)
+                else:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(member) as src, open(target, 'wb') as dst:
+                        while chunk := src.read(8192):
+                            dst.write(chunk)
+                            pbar.update(len(chunk))
     return out_dir
+
+
+def _find_7z():
+    """Return path to 7z executable, checking known install locations."""
+    path = shutil.which('7z')
+    if path:
+        return path
+    if sys.platform == 'win32':
+        default = r'C:\Program Files\7-Zip\7z.exe'
+        if Path(default).exists():
+            return default
+    return None
+
+
+def _unzip_with_7z(in_path, out_dir, verbose=True):
+    """Extract using 7z for compression types unsupported by zipfile."""
+    sz = _find_7z()
+    if not sz:
+        raise RuntimeError(
+            f'Archive {in_path.name} uses a compression type `zipfile` cannot deflate. '
+            'Install 7z: brew install sevenzip (macOS), '
+            'winget install 7zip.7zip (Windows), or sudo apt install 7zip (Linux).'
+        )
+    if verbose:
+        print('Extracting with 7z...')
+    result = subprocess.run(
+        [sz, 'x', str(in_path), f'-o{out_dir}', '-y'],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise BadZipFile(f'7z failed to extract {in_path.name}:\n{result.stderr}')
+    return out_dir
+
+
+def _get_strip_prefix(member_list):
+    """Return common top-level directory prefix to strip, or None."""
+    top_level_items = set()
+    for m in member_list:
+        if m:
+            top_level_items.add(m.split('/')[0])
+    if len(top_level_items) == 1:
+        common_prefix = next(iter(top_level_items))
+        has_nested = any('/' in m for m in member_list)
+        if has_nested and not common_prefix.endswith('.gdb'):
+            return f'{common_prefix}/'
+    return None
 
 
 def find_latest_file_or_gdb(
@@ -283,6 +321,8 @@ def find_latest_file_or_gdb(
 
 def _ensure_parent_dir(filepath: Path):
     """Ensure parent directory exists."""
+    if isinstance(filepath, str):
+        filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -306,6 +346,7 @@ def to_parquet(
     **kwargs
         Additional arguments passed to to_parquet()
     """
+
     _ensure_parent_dir(filepath)
 
     if isinstance(df, gpd.GeoDataFrame):
@@ -570,7 +611,16 @@ def delete_data(data_path, delete_empty_parent_dirs=True):
         )
 
     if data_path.suffix == '.gdb':
-        shutil.rmtree(data_path)
+        try:
+            shutil.rmtree(data_path)
+        except PermissionError:
+            warnings.warn(
+                '\n\nUnable to delete geodatabase directory due to permission error:'
+                + f'\n\n{data_path}\n\n'
+                'Is a file sync app running (e.g., Dropbox)? '
+                'If so, quit and retry, or remove the directory manually.\n\n'
+            )
+
     elif data_path.suffix == '.shp':
         for shapefile_extension in SHAPEFILE_EXTENSIONS:
             data_path.with_suffix(shapefile_extension).unlink(missing_ok=True)
@@ -592,8 +642,93 @@ def delete_data(data_path, delete_empty_parent_dirs=True):
                         '\n\nUnable to delete empty directory due to permission error:'
                         + f'\n\n{current_dir}\n\n'
                         'Is a file sync app running (e.g., Dropbox)? '
-                        'If so, quit and retry.\n\n'
+                        'If so, quit and retry, or remove the directory manually.\n\n'
                     )
                 current_dir = current_dir.parent
             else:
                 break
+
+
+def get_gdb_domains(gdb_path: str) -> dict[str, dict]:
+    """Extract coded value domains from a GDB's internal metadata table."""
+    domains = {}
+    try:
+        items = gpd.read_file(gdb_path, layer='GDB_Items', engine='pyogrio')
+    except Exception:
+        return domains
+
+    for _, row in items.iterrows():
+        definition = row.get('Definition')
+        if not definition or (isinstance(definition, float) and math.isnan(definition)):
+            continue
+        try:
+            root = ElementTree.fromstring(definition)
+        except ElementTree.ParseError:
+            continue
+
+        # Coded value domains have a <CodedValueDomain> or <GPCodedValueDomain2> element
+        for cv_domain in root.iter('CodedValue'):
+            domain_name = root.findtext('DomainName')
+            if not domain_name:
+                continue
+            if domain_name not in domains:
+                domains[domain_name] = {}
+            code = cv_domain.findtext('Code')
+            name = cv_domain.findtext('Name')
+            if code is not None and name is not None:
+                domains[domain_name][code] = name
+
+    return domains
+
+
+def get_gdb_field_domain_map(gdb_path: str, layer: str) -> dict[str, dict]:
+    """Map field names to their coded value domain for a given layer.
+
+    Parameters
+    ----------
+    gdb_path : str
+        Path to geodatabase
+    layer : str
+        Layer to read
+    """
+    field_domains = {}
+    try:
+        items = gpd.read_file(gdb_path, layer='GDB_Items', engine='pyogrio')
+    except Exception:
+        return field_domains
+
+    all_domains = get_gdb_domains(gdb_path)
+
+    for _, row in items.iterrows():
+        if row.get('Name') != layer:
+            continue
+        definition = row.get('Definition')
+        if not definition or (isinstance(definition, float) and math.isnan(definition)):
+            continue
+        try:
+            root = ElementTree.fromstring(definition)
+        except ElementTree.ParseError:
+            continue
+        for field in root.iter('GPFieldInfoEx'):
+            fname = field.findtext('Name')
+            dname = field.findtext('DomainName')
+            if fname and dname and dname in all_domains:
+                field_domains[fname] = all_domains[dname]
+
+    return field_domains
+
+
+def read_gdb_with_domains(
+    gdb_path: str, columns: list = None, layer: str = None, **kwargs
+) -> gpd.GeoDataFrame:
+    """Read a Geodatabase while resolving categorical label mappings"""
+    gdf = gpd.read_file(
+        gdb_path, columns=columns, layer=layer, engine='pyogrio', **kwargs
+    )
+    field_domains = get_gdb_field_domain_map(gdb_path, layer)
+
+    for col, mapping in field_domains.items():
+        if col in gdf.columns:
+            gdf[col] = gdf[col].astype(str).map(mapping).fillna(gdf[col])
+
+    return gdf

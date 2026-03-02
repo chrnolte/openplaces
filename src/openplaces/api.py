@@ -6,13 +6,13 @@ Public API for openplaces.
 
 import warnings
 
-import pandas as pd
 import geopandas as gpd
+import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.path import cache_path
-from openplaces.recipe import get_recipe, get_recipe_by_id
+from openplaces.recipe import get_recipe_by_id
 
 ADMIN_SOURCE_DEFAULT = 'admin-openplaces-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-gadm-4~1'
@@ -39,26 +39,9 @@ ADMIN_PRIMARY_COLUMNS = {
         'admin3_name',
         'admin2_name',
         'admin1_name',
+        'admin4_id_admin1',
     ],
 }
-
-# Deprecated - delete after transition
-ADMIN_SOURCE = 'admin-gadm-4~1'
-ADMIN1_PRIMARY_COLUMNS = ['name', 'admin1_id_a3', 'lat', 'long', 'ha']
-ADMIN2_PRIMARY_COLUMNS = [
-    'name',
-    'type',
-    'admin1_name',
-    'admin2_id_admin1',
-]
-ADMIN3_PRIMARY_COLUMNS = [
-    'name',
-    'name_long',
-    'type',
-    'admin2_name',
-    'admin1_name',
-    'admin3_id_admin1',
-]
 
 
 def get_admin(
@@ -68,6 +51,7 @@ def get_admin(
     geom=False,
     columns=None,
     all_columns=False,
+    silent=True,
 ):
     """Get admin units of any administrative level
 
@@ -95,27 +79,13 @@ def get_admin(
     if level is not None and level < 1:
         raise ValueError('The lowest level for admin units is 1. 0 is the planet.')
 
-    # Pick default recipe for geometry attributes if None is provided
-    if geom is True and recipe is None and level is not None:
-        recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
-
-    # Cast recipe to a dict if a str (id) is provided
-    if isinstance(recipe, str):
-        recipe = get_recipe_by_id(recipe)
-    if isinstance(recipe, dict) and admin_id is None:
-        admin_id = recipe['admin_id']
-
-    # Default to countries
-    if admin_id is None and level is None:
-        level = 1
-
     # Cast scalar `admin_id` to list
-    if isinstance(admin_id, (str, AdminId)):
+    if isinstance(admin_id, str | AdminId):
         admin_id = [admin_id]
     elif admin_id is not None and not isinstance(admin_id, list):
         raise ValueError(f'AdminID not recognized: {type(admin_id)} {admin_id}.')
 
-    # Cast all entries in the list to AdminId
+    # Cast all entries in the list to AdminId to get level for the recipe
     if admin_id is not None:
         admin_ids = []
         for _admin_id in admin_id:
@@ -132,11 +102,35 @@ def get_admin(
         admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
         if not isinstance(level, int):
             level = admin_id_level
+
+    # Pick default recipe for geometry attributes if None is provided
+    if geom is True and recipe is None:
+        if level is None:
+            # Default to countries
+            level = 1
+        recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
+
+    # Cast recipe to a dict if a str (id) is provided
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    if isinstance(recipe, dict) and admin_id is None:
+        admin_id = recipe['admin_id']
+        admin_ids = [admin_id]
+
+    if admin_id is None and level is None:
+        # Default to countries
+        level = 1
+
+    if admin_id is not None:
+        # Recompute level (as it could have been set by recipe admin ID
+        admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
+
         if level < admin_id_level:
             # Clip admin_ids to upper level (= load parent admin units)
             admin_ids = [AdminId(*_admin_id.levels[:level]) for _admin_id in admin_ids]
             admin_ids = list(dict.fromkeys(admin_ids))
-            print('Inferred Admin IDs: ' + admin_ids)
+            if not silent:
+                print('Inferred Admin IDs: ' + admin_ids)
 
     if isinstance(recipe, dict):
         # Set recipe_parquet_path: will be used twice
@@ -151,19 +145,24 @@ def get_admin(
         # `keep_default_na` is `True` to keep `NA` (Namibia)
         admin = get_recipe_by_id(
             f'{ADMIN_SOURCE_DEFAULT}_admin{level}', dtype=str, keep_default_na=False
-        ).set_index(f'admin{level}_id')
-    except IOError:
+        )
+        if f'admin{level}_id' not in admin:
+            raise ValueError(f"'admin{level}_id' does not exist:\n\n" + str(admin))
+
+        admin = admin.set_index(f'admin{level}_id')
+
+    except OSError:
         # Should only happen before the spine exists.
         warnings.warn(
-            f'Admin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}. '
-            'Falling back to `admin_recipe`.'
+            f'\n\nAdmin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.\n\n'
+            'Falling back to `admin_recipe`.\n'
         )
         if isinstance(recipe, dict):
             # Load spine from recipe
             admin = pd.read_parquet(recipe_parquet_path)[[]]
         else:
-            raise IOError(
-                f'Admin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.'
+            raise OSError(
+                f'\n\nAdmin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.\n'
             )
 
     if isinstance(recipe, dict):
@@ -178,22 +177,24 @@ def get_admin(
             set(admin_ids_from_recipe) - set(admin_ids_in_spine)
         )
         if admin_ids_to_add_to_spine:
-            txt_warnings = (
-                '\n\nAdmin IDs from recipe `'
-                + (
-                    f'{recipe["admin_id"]}_'
-                    if recipe["admin_id"].get_level() > 1
-                    else ''
+            if not silent:
+                txt_warnings = (
+                    f'\n\n{len(admin_ids_to_add_to_spine):,d} admin IDs from recipe `'
+                    + (
+                        f'{recipe["admin_id"]}_'
+                        if recipe['admin_id'].get_level() > 1
+                        else ''
+                    )
+                    + f'{recipe["entity"]}_admin{level}`'
+                    ' not found in reference Admin IDs:\n\n- '
+                    + '\n- '.join(admin_ids_to_add_to_spine[:5])
+                    + ('\n- ...' if len(admin_ids_to_add_to_spine) > 5 else '')
+                    + '\n\nOptions to silence this warning:\n'
+                    '- Add Admin IDs to reference list in '
+                    f'`{ADMIN_SOURCE_DEFAULT}_admin{level}.csv`\n'
+                    '- Call get_admin() with silent=True.\n'
                 )
-                + f'{recipe["entity"]}_admin{level}`'
-                ' not found in reference Admin IDs:\n\n'
-                + ', '.join(admin_ids_to_add_to_spine)
-                + '\n\nOptions to silence this warning:\n'
-                '- Add Admin IDs to reference list in '
-                f'`{ADMIN_SOURCE_DEFAULT}_admin{level}.csv`\n'
-                '- Call get_admin() with silent=True.\n'
-            )
-            warnings.warn(txt_warnings)
+                warnings.warn(txt_warnings)
 
             admin_to_add = pd.DataFrame(
                 index=pd.Index(admin_ids_to_add_to_spine, name=f'admin{level}_id'),
@@ -206,10 +207,14 @@ def get_admin(
         mask_select = pd.Series(False, index=admin.index)
         for _admin_id_to_get in admin_ids:
             mask_select |= admin.index.str.startswith(str(_admin_id_to_get))
+        if not mask_select.any():
+            warnings.warn(
+                'No admin IDs from reference spine selected. No filters applied.'
+            )
         admin = admin[mask_select].copy()
 
     if isinstance(recipe, dict):
-        if admin_id is None:
+        if admin_id is None or not mask_select.any():
             filters = None
         else:
             filters = [(f'admin{level}_id', 'in', sorted(set(admin.index)))]
@@ -219,10 +224,13 @@ def get_admin(
             recipe_parquet_path, geom=geom, filters=filters
         )
 
+        # Get column order (retain admin, add recipe)
+        column_order = list(dict.fromkeys(list(admin) + list(admin_from_recipe)))
+
         # Join recipe data to spine, overwriting columns from spine
         admin = admin.drop(columns=set(admin) & set(admin_from_recipe)).join(
             admin_from_recipe, how='outer'
-        )
+        )[column_order]
         # Cast to GeoDataFrame if geometries are included
         if isinstance(admin_from_recipe, gpd.GeoDataFrame):
             admin = gpd.GeoDataFrame(admin, crs=admin_from_recipe.crs)
@@ -233,13 +241,16 @@ def get_admin(
             if isinstance(columns, str):
                 columns = [columns]
             elif not isinstance(columns, list):
-                raise ValueError(f"`columns` must be a string or list: {columns}")
+                raise ValueError(f'`columns` must be a string or list: {columns}')
         columns_to_retain = columns if columns else ADMIN_PRIMARY_COLUMNS[level]
         admin = admin[
             [x for x in columns_to_retain + ['geometry'] if x in admin]
         ].copy()
 
-    return admin
+    # Return without empty columns
+    column_is_empty = admin.eq('').all() | admin.isnull().all()
+    non_empty_columns = list(column_is_empty[~column_is_empty].index)
+    return admin[non_empty_columns]
 
 
 def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):

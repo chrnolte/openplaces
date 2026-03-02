@@ -34,7 +34,7 @@ columns:
   admin2_id_gadm: GID_1 
   admin2_id_hasc: HASC_1 
   admin2_id_iso: ISO_1 
-  admin2_id_original: CC_1
+  admin2_id_admin1: CC_1
   admin1_id_a3: GID_0
 
 # Filter query to select rows
@@ -42,10 +42,6 @@ query: "type != 'Water body'"
 
 # Values to be interpreted as empty (None)
 null_value_strings: ["?"]
-
-# Keep columns that aren't named in the above list
-# (`True` to ensure that columns from `index_function` are kept)
-keep_unnamed_columns: True
 
 # Function that returns an indexed version of the input 1GeoDataFrame1
 # (usually a custom function designed for a specific case)

@@ -1,8 +1,7 @@
-Working on the BU cluster
-=========================
+Using Boston University's cluster
+=================================
 
-These are the instructions for student working on the ``openplaces`` project on Boston University's shared computing cluster (SCC).
-
+These instructions are for Boston University students using the ``openplaces`` project on Boston University's shared computing cluster (SCC).
 
 Connect
 ~~~~~~~
@@ -181,7 +180,7 @@ Set up your data folders
 
 Upon the first call of ``import openplaces``, a configuration script is launched.
 
-See :ref:`configuration` for the full explanation.
+See :ref:`configuring your installation<configure>` for the full explanation.
 
 On the cluster, you will have to pick this configuration:
 

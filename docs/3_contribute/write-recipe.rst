@@ -1,20 +1,28 @@
+
+.. _writing_recipes:
+
 Writing recipes
 ===============
 
 Recipes are the instructions that allow ``openplaces`` to ingest new data into its data structure.
 
-By sharing your recipe with the community, you permit others to reproduce your work.
+By :ref:`contributing <contribute>` recipes, you permit others to reproduce your work.
+
+Recipe can be found in :file:`src/openplaces/recipes`.
 
 
-Ingestion recipes
-~~~~~~~~~~~~~~~~~
+Data ingestion recipes
+~~~~~~~~~~~~~~~~~~~~~~
+
+Recipes that manage data ingestion: file handling, data formatting, and gentle preprocessing (no major edits to data).
+
 
 Dataset description and source
 ------------------------------
 
 .. attribute:: admin_id
 
-   Admin ID of the (top-level) administrative unit for which the dataset provides data.
+   Admin ID of the (top-level) :ref:`administrative unit <administrative_units>` for which the dataset provides data.
 
    :input:`NULL`
       global, e.g., the Global Administrative Database
@@ -33,7 +41,7 @@ Dataset description and source
 
 .. attribute:: entity
 
-   Entity of the dataset: the "thing" that every row of the dataset table refers to.
+   :ref:`Entity <entities>` of the dataset: the "thing" that every row of the dataset table refers to.
 
    .. attribute:: entity_type
 
@@ -87,11 +95,11 @@ File handling
 
 .. attribute:: compressed_file_name
 
-   Filename of the compressed file (usually in ``external`` folder, see :ref:`standard_directories`).
+   Filename of the compressed file (usually in ``external`` folder, see :ref:`directory_structure`).
 
    Providing this argument allows the skipping of downloads if file is found.
 
-   Can include placeholders (substituted by :attr:`download_by``).
+   Can include placeholders (substituted by :attr:`download_by`).
 
    Can include wildcards (will search for files matching pattern).
 
@@ -103,7 +111,7 @@ File handling
 
    If there is no :attr:`compressed_file_name`, the uncompressed file is assumed to be the original download, to be found in the :file:`external` folder.
 
-   Can include placeholders (substituted by :attr:`download_by``).
+   Can include placeholders (substituted by :attr:`download_by`).
 
    Can include wildcards (will search for files matching pattern).
 

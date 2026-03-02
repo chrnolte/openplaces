@@ -8,8 +8,8 @@ name: openplaces
 channels:
   - conda-forge
 dependencies:
-  # Python version (pinned to 3.12 to support `zipfile-deflate64`)
-  - python=3.12
+  # Python version
+  - python>=3.12
 
   # Core geospatial dependencies (better via conda due to C/C++ libs)
   # KEEP IN SYNC WITH pyproject.toml [project.dependencies]
@@ -23,7 +23,6 @@ dependencies:
   - pyarrow>=10.0.0
   - requests>=2.28.0
   - tqdm>=4.65.0
-  - zipfile-deflate64>=0.2.0
 
   # Optional: analysis
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.analysis]
@@ -45,6 +44,7 @@ dependencies:
   - rio-cogeo>=4.0.0
   - scikit-image>=0.21.0
   - numba>=0.58.0
+  - exactextract>=0.3.0
 
   # Optional: excel
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.excel]
@@ -54,13 +54,12 @@ dependencies:
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
   - jupyter>=1.0.0
   - jupyterlab>=4.0.0
-  - jupyterlab_code_formatter>=3.0.0
+  - jupyter-ruff>=0.2.0
   - jupyterlab_execute_time>=3.0.0
-  - isort>=5.12.0
-  - black>=23.0.0
   - ruff>=0.1.0
   - pytest>=7.4.0
   - pytest-cov>=4.1.0
+  - pre-commit>=3.5.0
   - nbstripout>=0.8.2
 
   # Docs
@@ -77,6 +76,7 @@ dependencies:
 
   - pip:
     - python-polylabel>=0.6
+    - openlocationcode>=1.0.1
     - altair>=5.0.0  # Not available in conda-forge main
     - -e .
 
