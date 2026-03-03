@@ -461,6 +461,49 @@ def add_geometry_derivatives(gdf, timer, **kwargs):
     return gdf
 
 
+def points_from_coords(
+    df: pd.DataFrame,
+    x: str = 'long',
+    y: str = 'lat',
+    crs='epsg:4326',
+    keep_columns: bool = False,
+) -> gpd.GeoDataFrame:
+    """Convert a DataFrame with coordinate columns to a GeoDataFrame of points.
+
+    Parameters
+    ----------
+    df:
+        DataFrame with x and y coordinate columns.
+    x:
+        Name of the x (longitude) column.
+    y:
+        Name of the y (latitude) column.
+    crs:
+        Coordinate reference system of the x/y coordinates.
+    keep_columns:
+        If False (default), drop the x and y columns after conversion.
+    """
+
+    # Try 'lon' if 'long' is asked for, but missing
+    if x == 'long' and 'long' not in df and 'lon' in df:
+        x = 'lon'
+
+    if isinstance(df, gpd.GeoDataFrame):
+        df = df.drop(columns='geometry')
+
+    if 'geometry' in df.columns:
+        raise ValueError("Column 'geometry' already exists in DataFrame.")
+
+    df = df.copy()
+
+    gdf = gpd.GeoDataFrame(
+        df.drop(columns=[x, y]) if not keep_columns else df,
+        geometry=gpd.points_from_xy(df[x], df[y], crs=crs),
+        crs=crs,
+    )
+    return gdf
+
+
 def get_simplified_geometries(gdf, tolerance):
     """Returns a GeoDataFrame with simplified polygon geometries
 
