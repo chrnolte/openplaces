@@ -29,11 +29,14 @@ from openplaces.core.constants import (
 )
 
 __all__ = [
+    'compress',
     'download',
     'read_parquet',
     'save',
     'save_parquet',
+    'share',
     'to_csv',
+    'to_drive',
     'to_parquet',
     'to_gpkg',
     'to_kmz',
@@ -296,7 +299,7 @@ def find_latest_file_or_gdb(
     """
     dir_path = Path(directory)
     if not dir_path.exists() or not dir_path.is_dir():
-        raise ValueError(f"Directory does not exist: {directory}")
+        raise ValueError(f'Directory does not exist: {directory}')
 
     # Normalize extensions to include leading dot
     normalized_exts = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
@@ -480,8 +483,7 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
         to_kmz(df, filepath)
     else:
         raise ValueError(
-            f"Unsupported file extension: {ext}. "
-            f"Supported: .parquet, .gpkg, .csv, .kmz"
+            f'Unsupported file extension: {ext}. Supported: .parquet, .gpkg, .csv, .kmz'
         )
 
 
@@ -596,6 +598,8 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
 
 def delete_data(data_path, delete_empty_parent_dirs=True):
     """Delete dataset from openplaces filesystem
+
+    Handles geodatabases and shapefiles with compantion files
 
     Parameters
     ----------
@@ -732,3 +736,121 @@ def read_gdb_with_domains(
             gdf[col] = gdf[col].astype(str).map(mapping).fillna(gdf[col])
 
     return gdf
+
+
+def compress(
+    filepaths: str | Path | list[str] | set[str],
+    zip_filepath: str | None = None,
+    delete_original: bool = False,
+) -> None:
+    """Compress one or more files.
+
+    Parameters
+    ----------
+    filepaths : str or list of str
+        Single filepath or list of filepaths
+    zip_filepath : str, optional
+        Output ZIP filepath. If None, derived from the first entry in filepaths.
+    delete_original : bool
+        If True, deletes the original file(s) after compression.
+    """
+    if isinstance(filepaths, str | Path):
+        filepaths = [filepaths]
+    elif not isinstance(filepaths, list | set):
+        raise ValueError(f'`filepaths` argument not understood: {filepaths}')
+
+    paths = [Path(fp) for fp in filepaths]
+
+    if zip_filepath is None:
+        zip_path = paths[0].parent / f'{paths[0].stem}_{paths[0].suffix[1:]}.zip'
+    else:
+        zip_path = Path(zip_filepath)
+        if zip_path.suffix != '.zip':
+            zip_path = zip_path.parent / f'{zip_path.stem.replace(".", "_")}.zip'
+
+    paths_to_compress: list[Path] = []
+    for path in paths:
+        if not path.exists():
+            print(f'Warning: file does not exist: {path}')
+            continue
+        if path.suffix == '.shp':
+            paths_to_compress.extend(
+                path.with_suffix(ext)
+                for ext in SHAPEFILE_EXTENSIONS
+                if path.with_suffix(ext).exists()
+            )
+        else:
+            paths_to_compress.append(path)
+
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    with ZipFile(zip_path, 'w', ZIP_DEFLATED) as z:
+        for p in paths_to_compress:
+            z.write(p, arcname=p.name)
+
+    if delete_original:
+        for p in paths_to_compress:
+            p.unlink()
+
+
+def to_drive(filepath, directory, remote='budrive', verbose=True):
+    """Copy file to Google Drive
+
+    Uses `rclone`. Remote 'drive' must exist: https://rclone.org/drive/
+
+    Parameters
+    ----------
+    filepath : str
+        Path of file to copy
+    directory : str
+        Drive folder to copy to
+    remote : str
+        Name of the `rclone` remote to copy to
+    verbose : bool
+        If True, print progress
+    """
+
+    cmd = ['rclone', 'copy', filepath, f'{remote}:{directory}']
+    if verbose:
+        cmd += ['--progress']
+    subprocess.run(cmd)
+
+
+def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
+    """Shortcut for saving, compressing, and uploading to Drive
+
+    File format is deduced from filepath extension.
+
+    Drive folder is deduced from filepath and assumed to be in the
+    `share` data directory (openplaces.config.cfg.share_dir)
+
+    Parameters
+    ----------
+    df : DataFrame or GeoDataFrame
+        Dataset to be saved
+    filepath : pathlib.Path
+        Filepath used for saving (and for the compressed ZIP file).
+    delete_original : bool
+        If True, deletes the unzipped file after compression
+    verbose : bool
+        If True, prints statements ('Saving', 'compressing', etc.)
+    """
+
+    if verbose:
+        print('Saving...', end='')
+    save(df, filepath)
+
+    if verbose:
+        print(' compressing...', end='')
+    zip_path = filepath.parent / f'{filepath.stem}_{filepath.suffix[1:]}.zip'
+    compress(filepath, zip_path, delete_original=delete_original)
+
+    if drive_dir is None:
+        drive_dir = filepath.parent.relative_to(cfg.share_dir)
+    if verbose:
+        print(f' uploading to: {drive_dir} ...', end='')
+    to_drive(zip_path, drive_dir, verbose=verbose)
+    if verbose:
+        print(' done!')
+
+    if delete_original:
+        zip_path.unlink()

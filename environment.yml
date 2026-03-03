@@ -46,9 +46,19 @@ dependencies:
   - numba>=0.58.0
   - exactextract>=0.3.0
 
+  # Docs
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.docs]
+  - sphinx>=7.0.0
+  - sphinx-rtd-theme>=1.3.0
+  - sphinx-copybutton>=0.5.0
+
   # Optional: excel
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.excel]
   - openpyxl>=3.1.0
+
+  # Optional: cloud
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.cloud]
+  - rclone>=1.73.1
 
   # Dev tools
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
@@ -62,16 +72,10 @@ dependencies:
   - pre-commit>=3.5.0
   - nbstripout>=0.8.2
 
-  # Docs
-  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.docs]
-  - sphinx>=7.0.0
-  - sphinx-rtd-theme>=1.3.0
-  - sphinx-copybutton>=0.5.0
-
   # Conda-specific packages that enhance development
   - ipython
 
-  # pip for installing your package
+  # pip for installing packages that are not on conda-forge
   - pip
 
   - pip:
