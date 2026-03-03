@@ -58,7 +58,7 @@ columns:
   owner_postal_code: MAIL_ZIP
   tax_year: TAX_YEAR
   land_value: LAND_VALUE
-  building_value: IMP_VALUE
+  improvement_value: IMP_VALUE
   market_value: MKT_VALUE
   source_date: DATE_ACQ
 

@@ -60,7 +60,7 @@ columns:
   has_multi_structure: multistruc
   value_type: parvaltype
   value: parval
-  building_value: improvval
+  improvement_value: improvval
   land_value: landval
   last_sale_date: saledate
   last_sale_date_2: saledatetx
