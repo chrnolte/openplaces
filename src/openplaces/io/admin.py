@@ -601,7 +601,6 @@ def find_admin_recipe_id(admin_id, admin_level):
     )
     recipe_paths_found = glob.glob(str(glob_recipe_path))
     if len(recipe_paths_found) == 0:
-        print('No local admin recipes found: {admin_id} {admin_level}')
         return None
     elif len(recipe_paths_found) == 1:
         recipe_id = recipe_paths_found[0].name
