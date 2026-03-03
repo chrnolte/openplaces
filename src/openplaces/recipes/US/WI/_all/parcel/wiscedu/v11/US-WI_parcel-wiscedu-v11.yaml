@@ -58,11 +58,11 @@ columns:
   zip_code: ZIPCODE
   school_district_name: SCHOOLDIST
   school_district_id: SCHOOLDISTNO
-  total_value_assessed: CNTASSDVALUE
-  land_value_assessed: LNDVALUE
-  building_value_assessed: IMPVALUE
+  value: CNTASSDVALUE
+  land_value: LNDVALUE
+  improvement_value: IMPVALUE
   current_use_value: MFLVALUE
-  total_value_market: ESTFMKVALUE
+  market_value: ESTFMKVALUE
   tax_value_net: NETPRPTA
   tax_value_gross: GRSPRPTA
   tax_year: TAXROLLYEAR

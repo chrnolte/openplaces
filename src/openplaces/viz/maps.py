@@ -403,8 +403,8 @@ def show_building(
                         + ('...' if len(_p_txt[var].title()) > 25 else '')
                         + '\n'
                     )
-            txt_p += f'Value (2025): ${int(_p_txt["value"]):,d}\n'
-            txt_p += f'Bldg value (2025): ${int(_p_txt["building_value"]):,d}\n'
+            txt_p += f'Value: ${int(_p_txt["value"]):,d}\n'
+            txt_p += f'Improv. value: ${int(_p_txt["improvement_value"]):,d}\n'
             txt_p += f'Owner: {_p_txt["owner_name"].title()[:25]}'
             txt_p_list += [txt_p]
         n_omitted = len(parcel) - N_MAX_PARCEL_TEXT
