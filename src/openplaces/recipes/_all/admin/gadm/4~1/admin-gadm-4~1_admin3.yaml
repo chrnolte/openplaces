@@ -40,6 +40,9 @@ columns:
   admin2_id_gadm: GID_1
   admin1_id_a3: GID_0
 
+# Values to be interpreted as empty (None)
+null_value_strings: ["NA"]
+
 # Filter query to select rows
 query: "type not in ('Water body', 'Waterbody', 'Water Body')"
 
