@@ -228,9 +228,14 @@ def get_admin(
         column_order = list(dict.fromkeys(list(admin) + list(admin_from_recipe)))
 
         # Join recipe data to spine, overwriting columns from spine
-        admin = admin.drop(columns=set(admin) & set(admin_from_recipe)).join(
-            admin_from_recipe, how='outer'
-        )[column_order]
+        shared_columns = list(set(admin) & set(admin_from_recipe))
+        # Fill empty recipe data with available data from spine
+        admin_from_recipe[shared_columns] = admin_from_recipe[shared_columns].fillna(
+            admin[shared_columns]
+        )
+        admin = admin.drop(columns=shared_columns).join(admin_from_recipe, how='outer')[
+            column_order
+        ]
         # Cast to GeoDataFrame if geometries are included
         if isinstance(admin_from_recipe, gpd.GeoDataFrame):
             admin = gpd.GeoDataFrame(admin, crs=admin_from_recipe.crs)
