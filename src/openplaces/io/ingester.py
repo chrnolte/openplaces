@@ -501,12 +501,12 @@ class Ingester:
         # Iterate through placeholders in passed path and resolve them
         for placeholder in placeholders:
             if placeholder in self.download_partition['partition_key_dict']:
-                partition_key = self.download_partition['partition_key_dict'][
+                _partition_key = self.download_partition['partition_key_dict'][
                     placeholder
                 ]
             else:
                 if placeholder.startswith('admin'):
-                    partition_key = self._get_admin_partition_key(placeholder)
+                    _partition_key = self._get_admin_partition_key(placeholder)
                 #     if placeholder == recipe['download_by'] + '_id':
                 #         # Special case: `adminX_id`
                 #         # (unlikely, unless coming from `openplaces`)
@@ -524,11 +524,11 @@ class Ingester:
                     )
 
                 self.download_partition['partition_key_dict'][placeholder] = (
-                    partition_key
+                    _partition_key
                 )
 
             url_or_path = url_or_path.replace(
-                '{' + placeholder + '}', str(partition_key)
+                '{' + placeholder + '}', str(_partition_key)
             )
 
         return url_or_path
