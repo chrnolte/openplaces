@@ -4,6 +4,7 @@ This module provides the main entry points for creating maps with sensible
 defaults and automatic performance optimization.
 """
 
+import textwrap
 import warnings
 
 import contextily as cx
@@ -238,7 +239,8 @@ def show_building(
     # ('and [x] more...' will be added if entities are ommitted)
     N_MAX_PARCEL_TEXT = 4
     N_MAX_BUILDINGS_NSI_TEXT = 4
-    N_MAX_BUILDINGS_FEMA_TEXT = 4
+    N_MAX_BUILDINGS_FEMA_TEXT = 3
+    N_MAX_BUILDINGS_LOCAL_TEXT = 3
 
     # Minimum size of overlap between parcels & FEMA (ignore slivers)
     MIN_SQFT_FEMA = 10 * 10.7639  # 10 m2 in sqft
@@ -339,6 +341,16 @@ def show_building(
         if len(buildings_fema) > 0:
             buildings_fema.boundary.plot(ax=ax, color='#00ffff', linewidth=1)
 
+    # Draw local footprints
+    if 'buildings_local' in geodatasets:
+        buildings_local = (
+            geodatasets['buildings_local']
+            .cx[long_min:long_max, lat_min:lat_max]
+            .to_crs('epsg:3857')
+        )
+        if len(buildings_local) > 0:
+            buildings_local.boundary.plot(ax=ax, color='#66ff66', linewidth=1)
+
     # Draw NSI footprints
     if 'buildings_nsi' in geodatasets:
         buildings_nsi = (
@@ -390,12 +402,12 @@ def show_building(
             alpha=0.5,
         )
 
-        txt_p_list = [f'geo_id {parcel.iloc[0]["geo_id"]}']
+        txt_p_list = [parcel.iloc[0]['geo_id']]
         for _gid, _p_txt in parcel.head(N_MAX_PARCEL_TEXT).iterrows():
             if verbose:
                 print(f'Parcel GID: {_gid}')
 
-            txt_p = f'Parcel ID {_p_txt["parcel_id_admin3"]}\n'
+            txt_p = f'Parcel ID: {_p_txt["parcel_id_admin3"]}\n'
             for var in ['address', 'purpose_group', 'purpose_subgroup']:
                 if _p_txt[var]:
                     txt_p += (
@@ -405,7 +417,16 @@ def show_building(
                     )
             txt_p += f'Value: ${int(_p_txt["value"]):,d}\n'
             txt_p += f'Improv. value: ${int(_p_txt["improvement_value"]):,d}\n'
-            txt_p += f'Owner: {_p_txt["owner_name"].title()[:25]}'
+            txt_p += f'Land value: ${int(_p_txt["land_value"]):,d}\n'
+            legal_desc = (
+                _p_txt['legal_description']
+                .title()[:50]
+                .replace('|', ' | ')
+                .replace('  ', ' ')
+            )
+            txt_p += 'Legal description:\n  ' + '\n  '.join(
+                textwrap.wrap(legal_desc, 25)
+            )
             txt_p_list += [txt_p]
         n_omitted = len(parcel) - N_MAX_PARCEL_TEXT
         if n_omitted > 0:
@@ -604,5 +625,104 @@ def show_building(
                         pad=0.5,
                     ),
                 )
+
+    if parcel_found and 'buildings_local' in geodatasets:
+        building_local_in_crosshair = geodatasets['buildings_local'].cx[
+            long_center, lat_center
+        ]
+
+        buildings_local_on_parcel = gpd.overlay(
+            parcel[['geometry']].iloc[[0]].reset_index(),
+            geodatasets['buildings_local']
+            .cx[long_min:long_max, lat_min:lat_max]
+            .reset_index(),
+        )
+        buildings_local_on_parcel['overlap_area_sqft'] = get_areas(
+            buildings_local_on_parcel, unit='sqft'
+        )
+        buildings_local_on_parcel = buildings_local_on_parcel[
+            buildings_local_on_parcel['overlap_area_sqft'].ge(MIN_SQFT_FEMA)
+        ].copy()
+        # buildings_local_on_parcel['frac_sqft'] = (
+        #     buildings_local_on_parcel['overlap_area_sqft']
+        #     / buildings_local_on_parcel['footprint_area_sqft']
+        # )
+        buildings_local_on_parcel = buildings_local_on_parcel.sort_values(
+            'overlap_area_sqft', ascending=False
+        )
+
+        if len(building_local_in_crosshair) == 0:
+            buildings_local_to_label = buildings_local_on_parcel
+        else:
+            not_in_crosshair = buildings_local_on_parcel[
+                building_local_in_crosshair.index.name
+            ].ne(building_local_in_crosshair.index[0])
+            buildings_local_to_label = pd.concat(
+                [
+                    building_local_in_crosshair.reset_index(),
+                    buildings_local_on_parcel[not_in_crosshair],
+                ]
+            )
+
+        if len(buildings_local_to_label) == 0:
+            print('No local polygons identified by location.')
+        else:
+            if verbose:
+                print(
+                    f'{len(buildings_local_to_label)} local footprints on parcel: '
+                    + ', '.join(
+                        buildings_local_to_label['local_id'].astype(int).astype(str)
+                    )
+                )
+
+            txt_local_list = []
+            city = None
+            for (
+                _,
+                building_local_to_label,
+            ) in buildings_local_to_label.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
+                _txt_local = ''
+                for column in [
+                    'occupancy_type',
+                    'construction_type',
+                    'year_built',
+                    'building_value',
+                    'purpose_group',
+                    'purpose_subgroup',
+                ]:
+                    if column in building_local_to_label:
+                        col_label = (
+                            (column[:12] + ('...' if len(column) > 12 else ''))
+                            .replace('_', ' ')
+                            .title()
+                        )
+
+                        col_value = building_local_to_label[column]
+                        if isinstance(col_value, float):
+                            col_value = f'{col_value:.3f}'
+                        col_value = str(col_value).title()
+                        if len(col_value) > 20:
+                            col_value = col_value[:20] + '...'
+                        _txt_local += f'{col_label}: {col_value}\n'
+                txt_local_list += [_txt_local[:-2]]  # cut off last \n
+            n_omitted = len(buildings_local_to_label) - N_MAX_BUILDINGS_LOCAL_TEXT
+            if n_omitted > 0:
+                txt_local_list += [f'... and {n_omitted} more']
+            txt_local = '\n\n'.join(txt_local_list)
+            ax.text(
+                xmax - radius / 25,
+                ymin + radius / 15,
+                txt_local,
+                va='bottom',
+                ha='right',
+                bbox=dict(
+                    facecolor='#ffffffdd',
+                    edgecolor='#66ff66',
+                    boxstyle='round',
+                    linewidth=1,
+                    pad=0.5,
+                ),
+            )
+
     if return_fig_ax:
         return fig, ax
