@@ -102,6 +102,9 @@ columns:
   in_coastal_zone: ISCOASTAL
   in_limwa_zone: ISLIMWA
 
+# Values to be interpreted as empty (None)
+null_value_strings: ["NA"]
+
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - occupancy_type
