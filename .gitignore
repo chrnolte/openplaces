@@ -9,16 +9,9 @@ __pycache__/
 
 # Virtual environments
 .venv/
-venv/
-env/
-ENV/
-.ipynb_venv/
-.pythonenv/
 
 # Environment / secrets
 *.env
-*.env.*
-.envrc
 .secrets/
 .token
 *.key
@@ -57,26 +50,9 @@ pip-wheel-metadata/
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Pyenv / Poetry / PDM
+# Pyenv
 .python-version
-# If using Poetry or PDM, typically commit lockfile; do not ignore by default
-# poetry.lock
-# pdm.lock
 
-# =========================================
-# Testing / QA
-# =========================================
-.pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-coverage.xml
-.hypothesis/
-.mypy_cache/
-.pytype/
-.ruff_cache/
-.tox/
-.nox/
 
 # =========================================
 # Jupyter & docs
@@ -86,6 +62,8 @@ coverage.xml
 docs/_build/
 # MkDocs
 site/
+# PDFs (e.g. technical documentations)
+*.pdf
 
 # =========================================
 # Logs / runtime
@@ -105,20 +83,12 @@ joblib/
 # see: https://drivendata.github.io/cookiecutter-data-science/
 # =========================================
 # Data (keep directories, not the large files)
-data/raw/**
-data/interim/**
-data/processed/**
-data/external/**
-
-# Keep placeholders so directories exist
-!data/raw/.gitkeep
-!data/interim/.gitkeep
-!data/processed/.gitkeep
-!data/external/.gitkeep
-
-# Models & results (often large/binary)
+data/**
 models/**
 results/**
+
+# Keep placeholders so directories exist
+!data/.gitkeep
 !models/.gitkeep
 !results/.gitkeep
 
@@ -131,24 +101,17 @@ reports/figures/**
 # =======================================================
 *.tif
 *.tiff
-*.jp2
 *.img
-*.vrt
 *.nc
 *.hdf
 *.h5
-*.las
-*.laz
-*.sid
 *.zip
 *.7z
 *.tar
 *.tar.gz
 *.parquet
-*.feather
 *.gpkg
 *.sqlite
-*.mbtiles
 
 # GDAL/OGR sidecars & overviews (regenerateable)
 *.aux.xml
@@ -164,7 +127,6 @@ reports/figures/**
 .cache/
 .ruff_cache/
 pytestdebug.log
-
 
 # Conda/Mamba environments
 *.conda
