@@ -6,6 +6,7 @@ General-purpose utility functions for formatting, display, and debugging.
 
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from dataclasses import asdict, is_dataclass
@@ -85,6 +86,29 @@ def pretty_print(
     return None
 
 
+def format_list(
+    items: list,
+    nmax: int = 7,
+    sep: str = ', ',
+):
+    """Format list to short string, making sure start and end are shown
+
+    [1, 2, 3, 4, 5, 6, 7] > '1, 2, 3, 4, 5, 6, 7'
+
+    [1, 2, 3, 4, 5, 6, 7, 8] > '1, 2, 3, ..., 6, 7, 8'
+
+    """
+    n = len(items)
+    if n <= nmax:
+        parts = [str(x) for x in items]
+    else:
+        npos = math.floor(nmax / 2)
+        parts = (
+            [str(x) for x in items[:npos]] + ['...'] + [str(x) for x in items[-npos:]]
+        )
+    return sep.join(parts)
+
+
 def _format_yaml_style(obj: Any, indent: int = 2, _level: int = 0) -> str:
     """
     Format object as YAML-style string (no quotes on keys, indentation-based).
@@ -95,7 +119,7 @@ def _format_yaml_style(obj: Any, indent: int = 2, _level: int = 0) -> str:
         return 'null'
     elif isinstance(obj, bool):
         return 'true' if obj else 'false'
-    elif isinstance(obj, (int, float)):
+    elif isinstance(obj, int | float):
         return str(obj)
     elif isinstance(obj, str):
         return obj
@@ -125,7 +149,7 @@ def _format_yaml_style(obj: Any, indent: int = 2, _level: int = 0) -> str:
             return '[]'
         lines = []
         for item in obj:
-            if isinstance(item, (dict, list)):
+            if isinstance(item, dict | list):
                 item_str = _format_yaml_style(item, indent, _level + 1)
                 # Add dash prefix to first line only
                 item_lines = item_str.split('\n')
@@ -157,7 +181,7 @@ def _to_serializable(obj: Any, max_depth: int = 10, current_depth: int = 0) -> A
         return repr(obj)
 
     # Handle None and primitives
-    if obj is None or isinstance(obj, (bool, int, float, str)):
+    if obj is None or isinstance(obj, bool | int | float | str):
         return obj
 
     # Handle Path objects
@@ -179,7 +203,7 @@ def _to_serializable(obj: Any, max_depth: int = 10, current_depth: int = 0) -> A
         }
 
     # Handle lists and tuples
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return [_to_serializable(item, max_depth, current_depth + 1) for item in obj]
 
     # Handle sets
