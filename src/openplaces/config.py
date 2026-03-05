@@ -169,7 +169,7 @@ class OpenPlacesConfig:
         print('=' * 70)
         print(f'\nUser: {self.username}')
         print('\nThis appears to be your first time using openplaces.')
-        print('Let\'s set up your data directories.\n\n')
+        print("Let's set up your data directories.\n\n")
         print('Root directory for data, models, and reports:')
         print('Change to separate code and data directories.')
         print(f'Default (code directory): {self.code_root}')
@@ -552,8 +552,7 @@ def reset_config():
         config_path.unlink()
         print('✓ Config file deleted')
         print(
-            '\nNext time you import openplaces, '
-            'you will be prompted to set up again.'
+            '\nNext time you import openplaces, you will be prompted to set up again.'
         )
     else:
         print(f'No user config file found at: {config_path}')

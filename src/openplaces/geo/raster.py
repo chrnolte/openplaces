@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import warnings
 from pathlib import Path
-from typing import Union
 
 import geopandas as gpd
 import numpy as np
@@ -60,7 +59,10 @@ def _clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     still_invalid = ~gdf.geometry.is_valid
     if still_invalid.any():
         from shapely.validation import make_valid
-        gdf.loc[still_invalid, "geometry"] = gdf.loc[still_invalid, "geometry"].apply(make_valid)
+
+        gdf.loc[still_invalid, 'geometry'] = gdf.loc[still_invalid, 'geometry'].apply(
+            make_valid
+        )
 
     # 5a. Drop anything still invalid after both repair attempts
     gdf = gdf[gdf.geometry.is_valid]
@@ -70,7 +72,7 @@ def _clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     gdf = gdf[~gdf.geometry.is_empty]
 
     # 5c. Keep only polygon types
-    gdf = gdf[gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
+    gdf = gdf[gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])]
 
     # 6. Cast problematic dtypes to string
     # exactextract only handles bool, int, float, and str field types.
@@ -88,9 +90,9 @@ def _clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     removed = original_len - len(gdf)
     if removed > 0:
         warnings.warn(
-            f"clean_geometry: removed {removed} of {original_len} features "
-            f"(null, empty, invalid, or non-polygon geometries). "
-            f"{len(gdf)} features remain.",
+            f'clean_geometry: removed {removed} of {original_len} features '
+            f'(null, empty, invalid, or non-polygon geometries). '
+            f'{len(gdf)} features remain.',
             stacklevel=3,
         )
 
@@ -98,17 +100,17 @@ def _clean_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def zonal_stats_with_exactextract(
-    vector: VectorInput,
-    raster: RasterInput,
+    vector,
+    raster,
     stats,
     *,
-    weights: RasterInput | None = None,
+    weights=None,
     include_cols: str | list[str] | None = None,
     col_prefix: str | None = None,
     nodata: float | None = None,
     reproject: bool = False,
     clean_geometry: bool = True,
-    strategy: str = "feature-sequential",
+    strategy: str = 'feature-sequential',
     progress: bool = False,
 ) -> gpd.GeoDataFrame:
     """
@@ -236,39 +238,43 @@ def zonal_stats_with_exactextract(
         result = zonal_stats("parcels.gpkg", "slope.tif", ["mean", p90])
     """
     # ── 1. Validate strategy ──────────────────────────────────────────────────
-    valid_strategies = {"feature-sequential", "raster-sequential"}
+    valid_strategies = {'feature-sequential', 'raster-sequential'}
     if strategy not in valid_strategies:
-        raise ValueError(f"'strategy' must be one of {valid_strategies}, got {strategy!r}.")
+        raise ValueError(
+            f"'strategy' must be one of {valid_strategies}, got {strategy!r}."
+        )
 
     # ── 2. Validate stats ─────────────────────────────────────────────────────
     if stats is None or (
-        hasattr(stats, "__len__") and not isinstance(stats, str) and len(stats) == 0
+        hasattr(stats, '__len__') and not isinstance(stats, str) and len(stats) == 0
     ):
         raise ValueError("'stats' must not be empty.")
 
     # ── 3. Normalise vector input ─────────────────────────────────────────────
-    if isinstance(vector, (str, Path)):
+    if isinstance(vector, str | Path):
         gdf = gpd.read_file(vector)
     elif isinstance(vector, gpd.GeoDataFrame):
         gdf = vector.copy()
     else:
         raise TypeError(
             f"'vector' must be a file path (str/Path) or GeoDataFrame, "
-            f"got {type(vector).__name__}."
+            f'got {type(vector).__name__}.'
         )
 
     if gdf.empty:
-        warnings.warn("Input vector has no features; returning empty GeoDataFrame.", stacklevel=2)
+        warnings.warn(
+            'Input vector has no features; returning empty GeoDataFrame.', stacklevel=2
+        )
         return gdf
 
     # ── 4. Geometry cleaning ──────────────────────────────────────────────────
     if clean_geometry:
         gdf = _clean_geometries(gdf)
         if gdf.empty:
-            raise ValueError("No valid polygon geometries remain after cleaning.")
+            raise ValueError('No valid polygon geometries remain after cleaning.')
 
     # ── 5. Normalise raster path ──────────────────────────────────────────────
-    if isinstance(raster, (str, Path)):
+    if isinstance(raster, str | Path):
         raster_path = str(raster)
         raster_arg = raster_path
     elif isinstance(raster, rasterio.DatasetReader):
@@ -277,12 +283,13 @@ def zonal_stats_with_exactextract(
     else:
         raise TypeError(
             f"'raster' must be a file path (str/Path) or open rasterio DatasetReader, "
-            f"got {type(raster).__name__}."
+            f'got {type(raster).__name__}.'
         )
 
     # ── 6. Nodata override ────────────────────────────────────────────────────
     if nodata is not None:
         from exactextract import RasterioRasterSource
+
         _src = rasterio.open(raster_path)
         raster_arg = RasterioRasterSource(_src, nodata=nodata)
 
@@ -297,12 +304,14 @@ def zonal_stats_with_exactextract(
     # exactextract throws an opaque IndexError if include_cols references
     # columns that don't exist — catch this early with a clear error.
     if include_cols is not None:
-        cols_requested = [include_cols] if isinstance(include_cols, str) else list(include_cols)
+        cols_requested = (
+            [include_cols] if isinstance(include_cols, str) else list(include_cols)
+        )
         missing = [c for c in cols_requested if c not in gdf.columns]
         if missing:
             raise ValueError(
-                f"include_cols references columns not found in vector: {missing}. "
-                f"Available columns: {list(gdf.columns)}"
+                f'include_cols references columns not found in vector: {missing}. '
+                f'Available columns: {list(gdf.columns)}'
             )
 
     # ── 9. Normalise weights ──────────────────────────────────────────────────
@@ -316,25 +325,25 @@ def zonal_stats_with_exactextract(
         weights=weights_arg,
         include_cols=include_cols,
         include_geom=True,
-        output="pandas",
+        output='pandas',
         strategy=strategy,
         progress=progress,
     )
 
     # ── 11. Optional column prefix ────────────────────────────────────────────
     if col_prefix:
-        passthrough = {"geometry"}
+        passthrough = {'geometry'}
         if include_cols:
-            passthrough |= set([include_cols] if isinstance(include_cols, str) else include_cols)
+            passthrough |= set(
+                [include_cols] if isinstance(include_cols, str) else include_cols
+            )
         result = result.rename(
             columns={
-                c: f"{col_prefix}{c}"
-                for c in result.columns
-                if c not in passthrough
+                c: f'{col_prefix}{c}' for c in result.columns if c not in passthrough
             }
         )
 
     # ── 12. Restore original index ────────────────────────────────────────────
     result.index = gdf.index
 
-    return gpd.GeoDataFrame(result, geometry="geometry", crs=gdf.crs)
+    return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf.crs)
