@@ -352,7 +352,8 @@ class Ingester:
         By convention, all partition IDs are strings.
         """
 
-        self.partition_ids_to_download = []
+        # Initialize default: list with no partition
+        self.partition_ids_to_download = [None]
 
         download_by = self.recipe.get('download_by')
         if not download_by:
