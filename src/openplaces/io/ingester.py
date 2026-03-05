@@ -54,6 +54,7 @@ from openplaces.path import (
 )
 from openplaces.recipe import get_recipe_by_id
 from openplaces.timing import Timer, get_timer, log_step
+from openplaces.utils import format_list
 
 
 class Ingester:
@@ -106,6 +107,18 @@ class Ingester:
                 f'Admin ID type not supported: {type(admin_ids)} ({admin_ids})'
             )
 
+        if partition_ids is None:
+            self.partition_ids = None
+        elif isinstance(partition_ids, str):
+            self.partition_ids = [partition_ids]
+        elif isinstance(partition_ids, list | set):
+            self.partition_ids = partition_ids
+        else:
+            raise ValueError(
+                'Partition ID type not supported: '
+                f'{type(partition_ids)} ({partition_ids})'
+            )
+
         if timer is None:
             timer = get_timer('Ingester', verbose=True)
         self.timer = timer
@@ -147,38 +160,50 @@ class Ingester:
         if redownload:
             reprocess = True
 
+        self._resolve_admin_ids(reprocess)
+
+        self._resolve_partition_ids(reprocess)
+
+        for admin_id_to_download, partition_id_to_download in product(
+            self.admin_ids_to_download, self.partition_ids_to_download
+        ):
+            if self.verbose:
+                print_txt = 'Ingesting data for '
+                if admin_id_to_download is not None:
+                    print_txt += f'geography: {admin_id_to_download}, '
+                if partition_id_to_download is not None:
+                    print_txt += f'partition: {partition_id_to_download}, '
+                print(print_txt[:-2] + '.')
+            self._ingest_download_partition(
+                admin_id_to_download=admin_id_to_download,
+                partition_id_to_download=partition_id_to_download,
+                redownload=redownload,
+                delete_unzipped=delete_unzipped,
+            )
+
+    def _resolve_admin_ids(self, reprocess):
+        """Resolve admin IDs to save, process, and download"""
+
         self._resolve_admin_ids_to_save(reprocess)
         if self.verbose:
             if not self.admin_ids_to_save:
                 print('All output files found. Processing skipped.\n')
                 return
             else:
-                print(
-                    'Admin IDs of output files: '
-                    + ', '.join([str(x) for x in self.admin_ids_to_save[:15]])
-                )
+                print('Admin IDs of output files:', format_list(self.admin_ids_to_save))
 
         self._resolve_admin_ids_to_process()
         if self.verbose:
             print(
-                'Admin IDs of processing chunks: '
-                + ', '.join([str(x) for x in self.admin_ids_to_process[:15]])
+                'Admin IDs of processing chunks:',
+                format_list(self.admin_ids_to_process),
             )
 
         self._resolve_admin_ids_to_download()
         if self.verbose:
             print(
-                'Admin IDs of download partitions: '
-                + ', '.join([str(x) for x in self.admin_ids_to_download[:15]])
-            )
-
-        for admin_id_to_download in self.admin_ids_to_download:
-            if self.verbose and admin_id_to_download is not None:
-                print(f'\nIngesting data for {admin_id_to_download}:')
-            self._ingest_download_partition(
-                admin_id_to_download=admin_id_to_download,
-                redownload=redownload,
-                delete_unzipped=delete_unzipped,
+                'Admin IDs of download partitions:',
+                format_list(self.admin_ids_to_download),
             )
 
     def _resolve_admin_ids_to_save(self, reprocess):
@@ -296,7 +321,7 @@ class Ingester:
         """
 
         download_by_admin_level = self.recipe['admin_id'].get_level()
-        if 'download_by' in self.recipe:
+        if 'download_by' in self.recipe and 'admin_level' in self.recipe['download_by']:
             download_by_admin_level = self.recipe['download_by']['admin_level']
 
         if download_by_admin_level == 0:
@@ -320,6 +345,54 @@ class Ingester:
             )
 
         self.admin_ids_to_download = admin_ids_to_download
+
+    def _resolve_partition_ids(self, reprocess):
+        """Resolve partition IDs to save, process, and download
+
+        By convention, all partition IDs are strings.
+        """
+
+        self.partition_ids_to_download = []
+
+        download_by = self.recipe.get('download_by')
+        if not download_by:
+            return
+
+        partition = download_by.get('partition')
+        if not partition:
+            return
+
+        # Generate pool of partition IDs
+        if partition == 'year':
+            first = download_by.get('first')
+            last = download_by.get('last')
+            if first is None or last is None:
+                raise ValueError(
+                    'If `download_by` has `partition: year`, define `first` and `last`.'
+                )
+            self.partition_ids_to_download = [
+                str(year) for year in list(range(first, last + 1))
+            ]
+        else:
+            raise NotImplementedError(
+                f'Partition not yet interpreted by openplaces.io.ingester: {partition}.'
+            )
+        if self.verbose:
+            print(
+                f'Partitioned by `{partition}`:',
+                format_list(self.partition_ids_to_download),
+            )
+
+        # Filter partition IDs to those requested
+        if isinstance(self.partition_ids, list | set):
+            self.partition_ids_to_download = [
+                x for x in self.partition_ids if x in self.partition_ids_to_download
+            ]
+            if self.verbose:
+                print(
+                    'Selected:',
+                    format_list(self.partition_ids_to_download),
+                )
 
     def _ingest_download_partition(
         self,
@@ -346,6 +419,11 @@ class Ingester:
             print('Data path:', self.download_partition['data_path'])
 
         self._download_and_unzip_recipe_data(redownload=redownload)
+
+        if self.recipe.get('dataset') and self.recipe['dataset'].is_raster:
+            if self.verbose:
+                print('Raster is in heap folder. No further processing.')
+            return
 
         admin_ids_to_process_in_partition = [
             admin_id
@@ -391,7 +469,7 @@ class Ingester:
             and self.download_partition['admin_id_to_download'] is None
         ):
             raise ValueError(
-                f'Download of {_type} from {source}` is by admin level `'
+                f'Download of `{_type}` from `{source}` is by admin level '
                 + str(download_by['admin_level'])
                 + '.\n\n'
                 'Use `admin_ids` argument to identify the admin unit'
@@ -402,9 +480,9 @@ class Ingester:
             and self.download_partition['partition_id_to_download'] is None
         ):
             raise ValueError(
-                f'Download of {_type} from {source} is by partition `'
+                f'Download of `{_type}` from `{source}` is by partition `'
                 + download_by['partition']
-                + '.\n\n'
+                + '`.\n\n'
                 'Use `partition_ids` argument to identify the '
                 'partition ID to download.'
             )
@@ -507,15 +585,11 @@ class Ingester:
             else:
                 if placeholder.startswith('admin'):
                     _partition_key = self._get_admin_partition_key(placeholder)
-                #     if placeholder == recipe['download_by'] + '_id':
-                #         # Special case: `adminX_id`
-                #         # (unlikely, unless coming from `openplaces`)
-                #         partition_key = admin_id
-                # elif (
-                #     'partition' in self.recipe['download_by']
-                #     and placeholder == self.recipe['download_by']['partition']
-                # ):
-                #     partition_key = partition_id
+                elif (
+                    self.recipe.get('download_by')
+                    and self.recipe['download_by'].get('partition') == placeholder
+                ):
+                    _partition_key = self.download_partition['partition_id_to_download']
                 else:
                     raise NotImplementedError(
                         'Custom placeholder has not yet been implemented:\n'
@@ -717,7 +791,7 @@ class Ingester:
             and not redownload
         ):
             if self.verbose:
-                print('Source file found. Download and unzipping skipped.')
+                print('Data file found. Download and unzipping skipped.')
             return
 
         # Download if neither downloaded file nor data file exist
@@ -735,9 +809,6 @@ class Ingester:
 
             if self.verbose:
                 print('Downloading...')
-
-            if self.recipe.get('dataset') and self.recipe['dataset'].is_raster:
-                raise NotImplementedError('Raster downloads are not yet implemented.')
 
             downloaded_path = download(
                 self.download_partition['download_url'], self.recipe_external_dir

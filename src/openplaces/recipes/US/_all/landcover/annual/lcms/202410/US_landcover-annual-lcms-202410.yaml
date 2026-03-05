@@ -1,0 +1,29 @@
+# Recipe to import counties for the United States (2024)
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Dataset: what is the theme, source, and version of the imported data
+dataset:
+  # What is its theme
+  theme: 'landcover-annual'
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: lcms
+    # Link to portal with metadata
+    portal_url: "https://data.fs.usda.gov/geodata/rastergateway/LCMS/index.php"
+    # Link to direct download
+    download_url: "https://data.fs.usda.gov/geodata/LCMS/LCMS_CONUS_v2024-10_Land_Cover_Annual_{year}.zip"
+  version: "202410"
+  is_raster: True
+
+download_by:
+  partition: year
+  first: 1986
+  last: 2024
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "LCMS_CONUS_v2024-10_Land_Cover_Annual_{year}.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "LCMS_CONUS_v2024-10_Land_Cover_{year}.tif"
