@@ -1180,7 +1180,11 @@ class Ingester:
         # Apply variable transformations
         # (Before crosswalks, to permit extraction of parent admin IDs)
         if 'transformations' in self.recipe:
+            cols_before = list(df)
             df = apply_transformations(df, self.recipe)
+            cols_added = [v for v in df if v not in cols_before]
+        else:
+            cols_added = []
 
         # Attribute entities to administrative unit IDs
         # (Before admin ID index creation, which needs parent Admin ID)
@@ -1326,9 +1330,11 @@ class Ingester:
         # Reorder columns
         if 'columns' in self.recipe:
             # Start with named columns
-            cols_order = [c for c in list(self.recipe['columns']) if c in df] + [
-                c for c in df if c.startswith('admin') and c.endswith('_id_source')
-            ]
+            cols_order = (
+                [c for c in list(self.recipe['columns']) if c in df]
+                + [c for c in df if c.startswith('admin') and c.endswith('_id_source')]
+                + cols_added
+            )
             # If requested, add any other non-geometry columns
             if self.recipe.get('keep_unnamed_columns'):
                 cols_order += [
