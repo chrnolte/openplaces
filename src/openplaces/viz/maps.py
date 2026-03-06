@@ -415,9 +415,12 @@ def show_building(
                         + ('...' if len(_p_txt[var].title()) > 25 else '')
                         + '\n'
                     )
+            if 'year_built' in _p_txt:
+                txt_p += f'Year built: {int(_p_txt["year_built"]):d}\n'
             txt_p += f'Value: ${int(_p_txt["value"]):,d}\n'
             txt_p += f'Improv. value: ${int(_p_txt["improvement_value"]):,d}\n'
-            txt_p += f'Land value: ${int(_p_txt["land_value"]):,d}\n'
+            if 'land_value' in _p_txt:
+                txt_p += f'Land value: ${int(_p_txt["land_value"]):,d}\n'
             legal_desc = (
                 _p_txt['legal_description']
                 .title()[:50]
