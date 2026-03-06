@@ -945,3 +945,32 @@ def get_crs(filepath):
         return None
 
     return geo_metadata['crs']
+
+
+def _clean_geometries(gdf):
+    """
+    Drop or repair geometries that would cause exactextract to fail.
+    """
+
+    original_len = len(gdf)
+    gdf = gdf.copy()
+
+    # 1. Remove null geometries and fix any invalid geometries
+    gdf = gdf[gdf.geometry.notna()]
+
+    if (~gdf.geometry.is_valid).any():
+        gdf = fix_geometries(gdf)
+
+    # Drop invalid geometries
+    gdf = gdf[gdf.geometry.is_valid]
+
+    removed = original_len - len(gdf)
+    if removed > 0:
+        warnings.warn(
+            f'clean_geometry: removed {removed} of {original_len} features '
+            f'(null, empty, invalid, or non-polygon geometries). '
+            f'{len(gdf)} features remain.',
+            stacklevel=3,
+        )
+
+    return gdf
