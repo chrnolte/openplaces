@@ -13,12 +13,19 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 from pyproj import Transformer
-from shapely.geometry import LineString, MultiLineString, MultiPolygon, Point, Polygon
+from shapely.geometry import (
+    LineString,
+    MultiLineString,
+    MultiPoint,
+    MultiPolygon,
+    Point,
+    Polygon,
+)
 
 from openplaces.geo.vector import get_areas
 
 
-def show_polygon_context(
+def show_geometry_context(
     gdf: gpd.GeoDataFrame,
     idx: int | str,
     buffer_factor: float = 3.0,
@@ -26,78 +33,108 @@ def show_polygon_context(
     figsize: tuple = (12, 8),
     max_attrs: int = 20,
     title: str = None,
+    min_buffer_m: float = 100.0,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
-    Plot a polygon in geographic context with its attributes.
+    Plot any geometry type (Point, LineString, Polygon, and their Multi-
+    variants) in geographic context with its attributes.
 
     Parameters
     ----------
     gdf : gpd.GeoDataFrame
-        Source geodataframe
+        Source geodataframe.
     idx : int or str
-        Integer position or index label of target polygon
+        Integer position or index label of the target feature.
     buffer_factor : float
-        Buffer size as multiple of polygon's max dimension
+        Buffer size as a multiple of the feature's maximum dimension.
+        For point geometries (zero extent) the buffer is derived from
+        ``min_buffer_m`` instead.
     basemap_source : str
-        Contextily basemap provider
+        Contextily basemap provider string.
     figsize : tuple
-        Figure size (width, height)
+        Figure size (width, height).
     max_attrs : int
-        Maximum attributes to display
+        Maximum number of attributes to display in the table.
     title : str
-        Set to overwrite the default title ('Polygon {idx}')
+        Overrides the default title ('Feature {idx}').
+    min_buffer_m : float
+        Minimum plot half-width in metres, applied when the feature's
+        projected extent is smaller than this value (most relevant for
+        point geometries).  Default is 1 000 m.
 
     Returns
     -------
-    fig : Figure
-    (ax_map, ax_table) : tuple of Axes
+    fig : matplotlib.figure.Figure
+    (ax_map, ax_table) : tuple of matplotlib.axes.Axes
     """
-    import contextily as ctx
-    import matplotlib.pyplot as plt
     from pyproj import CRS
 
     if not isinstance(gdf, gpd.GeoDataFrame):
         raise ValueError('`gdf` is not a gpd.GeoDataFrame.')
 
-    # Get target polygon (avoid copying entire gdf)
+    # ------------------------------------------------------------------
+    # Extract target row (avoid copying the entire GeoDataFrame)
+    # ------------------------------------------------------------------
     if isinstance(idx, int):
         target = gdf.iloc[[idx]].copy()
     else:
         target = gdf.loc[[idx]].copy()
 
-    if isinstance(target.geometry.iloc[0], Point):
-        raise ValueError('`plot_polygon_context` is not for point geometries.')
-    elif not isinstance(
-        target.geometry.iloc[0], Polygon | MultiPolygon | LineString | MultiLineString
-    ):
+    geom = target.geometry.iloc[0]
+
+    _SUPPORTED = (
+        Point,
+        MultiPoint,
+        LineString,
+        MultiLineString,
+        Polygon,
+        MultiPolygon,
+    )
+    if not isinstance(geom, _SUPPORTED):
         raise ValueError(
-            '`geometry type not recognized: ' + str(type(target.geometry.iloc[0]))
+            f'Geometry type not supported: {type(geom).__name__}. '
+            f'Expected one of: {", ".join(t.__name__ for t in _SUPPORTED)}.'
         )
 
-    # Compute buffer in original CRS for .cx query
-    # Use 1.5x generous buffer to account for projection distortion
-    bounds = target.total_bounds
+    is_line = isinstance(geom, LineString | MultiLineString)
+    is_poly = isinstance(geom, Polygon | MultiPolygon)
+
+    # ------------------------------------------------------------------
+    # Generous .cx bounding box in the original CRS for context query
+    # ------------------------------------------------------------------
+    bounds = target.total_bounds  # (minx, miny, maxx, maxy)
     width = bounds[2] - bounds[0]
     height = bounds[3] - bounds[1]
     max_dim_orig = max(width, height)
-    buffer_dist_cx = max_dim_orig * buffer_factor * 1.5 / 2
 
     warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
     centroid = target.geometry.centroid.iloc[0]
     warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
 
-    # Create generous bounding box for .cx in original CRS
+    # For zero-extent geometries use a small nominal value so the buffer
+    # arithmetic doesn't collapse to zero.
+    if max_dim_orig == 0:
+        # Point geometry: derive cx query radius from min_buffer_m converted
+        # to approximate degrees (1 deg ≈ 111 320 m), with the same 1.5x
+        # generous factor used for non-point geometries.
+        buffer_dist_cx = (min_buffer_m / 111_320) * buffer_factor * 1.5
+    else:
+        buffer_dist_cx = max_dim_orig * buffer_factor * 1.5 / 2
+
     cx_bounds = [
         centroid.x - buffer_dist_cx,
         centroid.y - buffer_dist_cx,
         centroid.x + buffer_dist_cx,
         centroid.y + buffer_dist_cx,
     ]
+    context = gdf.cx[
+        cx_bounds[0] : cx_bounds[2],
+        cx_bounds[1] : cx_bounds[3],
+    ].copy()
 
-    # Extract context polygons before reprojection
-    context = gdf.cx[cx_bounds[0] : cx_bounds[2], cx_bounds[1] : cx_bounds[3]].copy()
-
-    # Now reproject only the subset
+    # ------------------------------------------------------------------
+    # Reproject to a local orthographic CRS centred on the feature
+    # ------------------------------------------------------------------
     lon, lat = centroid.x, centroid.y
     ortho_crs = CRS.from_proj4(
         f'+proj=ortho +lat_0={lat} +lon_0={lon} +x_0=0 +y_0=0 +datum=WGS84 +units=m'
@@ -106,33 +143,73 @@ def show_polygon_context(
     target_ortho = target.to_crs(ortho_crs)
     context_ortho = context.to_crs(ortho_crs)
 
-    # Calculate max_dim in orthographic CRS
+    # Recalculate max_dim in the metric orthographic CRS
     bounds_ortho = target_ortho.total_bounds
     width_ortho = bounds_ortho[2] - bounds_ortho[0]
     height_ortho = bounds_ortho[3] - bounds_ortho[1]
     max_dim_ortho = max(width_ortho, height_ortho)
 
-    # Create figure with two panels
+    # Apply minimum buffer floor (important for point / tiny geometries)
+    buffer_dist_plot = max(max_dim_ortho * buffer_factor / 2, min_buffer_m)
+
+    # ------------------------------------------------------------------
+    # Build figure
+    # ------------------------------------------------------------------
     fig, (ax_map, ax_table) = plt.subplots(
-        1, 2, figsize=figsize, gridspec_kw={'width_ratios': [7, 3], 'wspace': 0}
+        1,
+        2,
+        figsize=figsize,
+        gridspec_kw={'width_ratios': [7, 3], 'wspace': 0},
     )
 
-    # Plot context polygons
-    context_ortho.plot(
-        ax=ax_map, facecolor='none', edgecolor='yellow', linewidth=1, alpha=0.6
-    )
+    if is_poly:
+        context_ortho.plot(
+            ax=ax_map,
+            facecolor='none',
+            edgecolor='yellow',
+            linewidth=1,
+            alpha=0.7,
+        )
+        # Fill with semi-transparent color + thick boundary
+        target_ortho.plot(
+            ax=ax_map,
+            facecolor='none',
+            edgecolor='yellow',
+            linewidth=2.5,
+            alpha=0.9,
+        )
+    elif is_line:
+        context_ortho.plot(
+            ax=ax_map,
+            color='yellow',
+            linewidth=1,
+            alpha=0.7,
+        )
+        target_ortho.plot(
+            ax=ax_map,
+            color='yellow',
+            linewidth=2.5,
+            alpha=0.9,
+        )
+    else:  # Point / MultiPoint
+        context_ortho.plot(
+            ax=ax_map,
+            facecolor='yellow',
+            edgecolor='red',
+            markersize=20,
+            linewidth=1,
+            alpha=0.9,
+        )
+        target_ortho.plot(
+            ax=ax_map,
+            facecolor='yellow',
+            edgecolor='red',
+            markersize=40,
+            linewidth=1.5,
+        )
 
-    # Plot target polygon
-    target_ortho.boundary.plot(ax=ax_map, edgecolor='yellow', linewidth=2)
-
-    # Add basemap
-    ctx.add_basemap(
-        ax_map, crs=ortho_crs.to_string(), source=basemap_source, attribution=False
-    )
-
-    # Set axis limits to desired buffer (tighter than .cx query)
+    # ---- Axis limits ---------------------------------------------------
     target_centroid_ortho = target_ortho.geometry.centroid.iloc[0]
-    buffer_dist_plot = max_dim_ortho * buffer_factor / 2
     ax_map.set_xlim(
         target_centroid_ortho.x - buffer_dist_plot,
         target_centroid_ortho.x + buffer_dist_plot,
@@ -142,27 +219,41 @@ def show_polygon_context(
         target_centroid_ortho.y + buffer_dist_plot,
     )
 
-    ax_map.set_axis_off()
-    ax_map.set_title(title if title else f'Polygon {idx}', fontsize=12, pad=10)
+    # ---- Basemap -------------------------------------------------------
+    cx.add_basemap(
+        ax_map,
+        crs=ortho_crs.to_string(),
+        source=basemap_source,
+        attribution=False,
+    )
 
-    # Prepare attribute table
+    ax_map.set_axis_off()
+
+    # Default title includes geometry type for clarity
+    geom_label = type(geom).__name__
+    ax_map.set_title(
+        title if title else f'{geom_label} {idx}',
+        fontsize=12,
+        pad=10,
+    )
+
+    # ------------------------------------------------------------------
+    # Attribute table (unchanged logic)
+    # ------------------------------------------------------------------
     attrs = target.iloc[0].drop('geometry')
 
-    # Select "interesting" columns: non-null, convert to string, take first N
-    interesting = []
-    for col, val in attrs.items():
-        if val is not None and val != '' and str(val).lower() != 'nan':
-            interesting.append((col, str(val)))
-
+    interesting = [
+        (col, str(val))
+        for col, val in attrs.items()
+        if val is not None and val != '' and str(val).lower() != 'nan'
+    ]
     interesting = interesting[:max_attrs]
 
-    # Display attribute table
     ax_table.axis('off')
 
     if interesting:
-        table_data = [[k, v] for k, v in interesting]
         table = ax_table.table(
-            cellText=table_data,
+            cellText=[[k, v] for k, v in interesting],
             colLabels=['Attribute', 'Value'],
             cellLoc='left',
             loc='upper left',
@@ -173,18 +264,21 @@ def show_polygon_context(
         table.set_fontsize(9)
         table.scale(1, 1.5)
 
-        # Enable text wrapping for all cells
         for key, cell in table.get_celld().items():
             cell.set_text_props(wrap=True)
             cell.PAD = 0.05
 
-        # Style header
         for i in range(2):
             table[(0, i)].set_facecolor('#E0E0E0')
             table[(0, i)].set_text_props(weight='bold')
     else:
         ax_table.text(
-            0.5, 0.5, 'No attributes to display', ha='center', va='center', fontsize=10
+            0.5,
+            0.5,
+            'No attributes to display',
+            ha='center',
+            va='center',
+            fontsize=10,
         )
 
     ax_table.set_title('Attributes', fontsize=12, pad=10)
@@ -466,9 +560,10 @@ def show_building(
             ).sort_values('area_sqft', ascending=False)
 
             if location_is_nsi:
-                not_in_crosshair = buildings_nsi_on_parcel[
-                    geodatasets['buildings_nsi'].index.name
-                ].ne(buildings_nsi_in_crosshair.index[0])
+                nsi_id_column = geodatasets['buildings_nsi'].index.name
+                not_in_crosshair = buildings_nsi_on_parcel[nsi_id_column].ne(
+                    buildings_nsi_in_crosshair[nsi_id_column].iloc[0]
+                )
                 buildings_nsi_to_label_list += [
                     buildings_nsi_on_parcel[not_in_crosshair]
                 ]
@@ -668,7 +763,7 @@ def show_building(
             )
 
         if len(buildings_local_to_label) == 0:
-            print('No local polygons identified by location.')
+            print('No local footprints found at location.')
         else:
             if verbose:
                 print(

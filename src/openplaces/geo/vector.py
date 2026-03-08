@@ -4,21 +4,17 @@
 vector.py
 
 Functions for processing vector data (GeoDataFrames, geometries)
-
 """
 
-import hashlib
 import warnings
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 import pyogrio
 import pyproj
-from openlocationcode import openlocationcode as olc
+import shapely
 from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
-from shapely.ops import transform
 
 from openplaces.api import get_admin
 from openplaces.core.constants import (
@@ -26,7 +22,6 @@ from openplaces.core.constants import (
     M2_TO_SQFT,
     STRING_SEPARATOR_BETWEEN_IDS,
 )
-from openplaces.io.transform import add_unique_suffix
 from openplaces.recipe import get_recipe
 from openplaces.timing import get_timer
 
@@ -39,8 +34,8 @@ PROJ4 = {
 }
 
 
-def fix_geometries(gdf):
-    """Fix the geometries of a GeoDataFrame by adding a zero buffer.
+def fix_polygons(gdf):
+    """Fix polygons of a GeoDataFrame by adding a zero buffer.
 
     This fixes most invalid geometry issues found in parcel data.
 
@@ -50,6 +45,60 @@ def fix_geometries(gdf):
         Geodataframe that is suspected to have invalid geometries
     """
     gdf['geometry'] = gdf['geometry'].buffer(0)
+    return gdf
+
+
+def has_geometry(gdf):
+    """Get boolean Series identifying entries with valid geometries
+
+    Returns True for entries with non-empty and non-null geometries.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame or GeoSeries
+        Input Geodataframe or Geoseries
+    """
+
+    # Silence the warnings about the behavior of .notna()
+    # filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
+
+    if isinstance(gdf, gpd.GeoDataFrame):
+        warnings.filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
+        return ~gdf['geometry'].is_empty & gdf['geometry'].notna()
+    elif isinstance(gdf, gpd.GeoSeries):
+        return ~gdf.is_empty & gdf.notna()
+    else:
+        raise ValueError('Not a Geodataframe or Geoseries: ' + str(gdf))
+
+
+def clean_polygons(gdf):
+    """Return GeoDataFrame with only clean and valid polygons
+
+    Attempts to fix (zero-buffer) invalid polygons and drops empty
+    polygons (and those with unfixable errors).
+    """
+
+    original_len = len(gdf)
+    gdf = gdf.copy()
+
+    # 1. Remove null geometries and fix any invalid geometries
+    gdf = gdf[has_geometry(gdf)]
+
+    if (~gdf.geometry.is_valid).any():
+        gdf = fix_polygons(gdf)
+
+    # Drop invalid geometries
+    gdf = gdf[~gdf.geometry.is_empty & gdf.geometry.is_valid]
+
+    removed = original_len - len(gdf)
+    if removed > 0:
+        warnings.warn(
+            f'clean_geometry: removed {removed} of {original_len} features '
+            f'(null, empty, invalid, or non-polygon geometries). '
+            f'{len(gdf)} features remain.',
+            stacklevel=3,
+        )
+
     return gdf
 
 
@@ -376,11 +425,13 @@ def get_poi_ortho(
     to_orig = pyproj.Transformer.from_crs(ortho, orig, always_xy=True).transform
 
     # Identify Point of Inaccessibility in orthogonal projection
-    x_ortho, y_ortho, r = get_poi(transform(to_ortho, poly), precision_ratio, prec_min)
+    x_ortho, y_ortho, r = get_poi(
+        shapely.ops.transform(to_ortho, poly), precision_ratio, prec_min
+    )
 
     # Create geometries and reproject them
     point_ortho = Point(x_ortho, y_ortho)
-    point_orig = transform(to_orig, point_ortho)
+    point_orig = shapely.ops.transform(to_orig, point_ortho)
 
     if geom is None:
         return pd.Series({'x_poi': point_orig.x, 'y_poi': point_orig.y, 'r_poi': r})
@@ -395,7 +446,7 @@ def get_poi_ortho(
         )
     elif geom == 'circle':
         circle_ortho = point_ortho.buffer(r)
-        circle_orig = transform(to_orig, circle_ortho)
+        circle_orig = shapely.ops.transform(to_orig, circle_ortho)
         return pd.Series(
             {
                 'x_poi': point_orig.x,
@@ -528,254 +579,102 @@ def get_simplified_geometries(gdf, tolerance):
     return gdf
 
 
-def get_geo_ids(
-    gdf,
-    grid_degrees=0.00003,  # ~3m at equator, ~2m at 45°N, ~1.5m at 60°N
-    hash_length=24,
-    handle_duplicates=True,
-    verbose=False,
-):
-    """Generate stable, unique parcel IDs from polygon geometry.
-
-    Uses fixed degree grid in EPSG:4326 for full Earth coverage.
+def get_proj4(proj, lat=0, lon=0, ellps='WGS84'):
+    """Get proj4 string for a projection from lat/long.
 
     Parameters
     ----------
-    gdf : GeoDataFrame
-        GeoDataFrame with parcel geometries
-    grid_degrees : float
-        Grid size in degrees (default 0.00003)
-    hash_length : int
-        Number of hex characters in output (default 18 = 72 bits)
-    handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
-    verbose: bool
-        If True, prints information on duplicates
-
-    Returns
-    -------
-    pd.Series
-        Series of geo_ids with same index as input GeoDataFrame
-
-    Notes
-    -----
-    Why degrees instead of projected CRS:
-    - No projection covers entire Earth without distortion/singularities
-    - Degree grid is globally consistent (same grid cell = same x/y)
-    - Simple, fast (no reprojection needed)
-    - Works everywhere including poles
-
-    Trade-off:
-    - Grid "size" in meters varies by latitude (larger at equator)
-    - But parcels at same location always use same grid
-    - This guarantees non-overlapping parcels get different IDs
+    proj: str
+        Projection type. Currently: 'ortho' or 'nsper'.
+    lat : numeric
+        Latitude
+    lon : numeric
+        Longitude
+    ellps : str
+        Ellipsoid
     """
-
-    # Ensure EPSG:4326
-    if gdf.crs != 'epsg:4326':
-        print('Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
-        gdf = gdf.to_crs('epsg:4326')
-
-    # Get bounds for each parcel
-    # (using fillna(0) to avoid checking for empty geometries)
-    bounds = gdf.bounds.fillna(0)
-
-    # Quantize bbox corners (consistent grid for all parcels)
-    minx_q = (bounds['minx'] / grid_degrees).round().astype(int)
-    miny_q = (bounds['miny'] / grid_degrees).round().astype(int)
-    maxx_q = (bounds['maxx'] / grid_degrees).round().astype(int)
-    maxy_q = (bounds['maxy'] / grid_degrees).round().astype(int)
-
-    # Area in square degrees (log scale)
-    # Note: Area in degrees² varies with latitude, but that's okay
-    # because we're comparing relative sizes at similar locations
-    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    area_deg2 = gdf.area.fillna(0)
-    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    area_q = (
-        (np.log10(area_deg2 * 1e10 + 1) * 100).round().fillna(0).astype(int)
-    )  # Scale up for precision
-
-    # Compactness: perimeter²/area (dimensionless, so units don't matter)
-    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    compactness = (gdf.length**2) / (area_deg2 + 1e-10)
-    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    compact_q = (compactness * 10).round().fillna(0).astype(int)
-
-    # Create hash inputs
-    hash_inputs = (
-        minx_q.astype(str)
-        + ','
-        + miny_q.astype(str)
-        + ','
-        + maxx_q.astype(str)
-        + ','
-        + maxy_q.astype(str)
-        + ','
-        + area_q.astype(str)
-        + ','
-        + compact_q.astype(str)
-    )
-
-    # Generate hash
-    geo_ids = hash_inputs.apply(
-        lambda s: hashlib.sha256(s.encode()).hexdigest()[:hash_length]
-    )
-
-    # Check for duplicates
-    duplicates = geo_ids.duplicated(keep=False)
-
-    geo_ids.loc[gdf['geometry'].is_empty] = 'no-geometry'
-
-    if duplicates.any():
-        n_dupl = duplicates.sum()
-        if verbose:
-            print(
-                f'Warning: {n_dupl} polygons with duplicate GIDs '
-                f'({n_dupl / len(geo_ids) * 100:.2g}%)'
-            )
-
-            # Show some examples
-            print('\nExample duplicates:')
-            dup_examples = (
-                geo_ids[duplicates].sort_values().head(min(10, duplicates.sum())).index
-            )
-            print(
-                pd.concat(
-                    [
-                        geo_ids[dup_examples].rename('geo_id'),
-                        hash_inputs[dup_examples].rename('hash_inputs'),
-                        gdf.loc[dup_examples],
-                    ],
-                    axis=1,
-                )
-            )
-
-        if handle_duplicates:
-            # Handle collisions with suffix
-            if verbose:
-                print('Adding suffixes...')
-
-            geo_ids.loc[duplicates] = add_unique_suffix(geo_ids[duplicates])
-
-    return geo_ids.rename('geo_id')
+    proj4 = PROJ4[proj].replace('{LAT}', str(lat)).replace('{LON}', str(lon))
+    if ellps != 'WGS84':
+        proj4.replace('WGS84', ellps)
+    return proj4
 
 
-def add_geo_id_index(
-    gdf,
-    name='geo_id',
-    handle_duplicates=True,
-    verbose=False,
+def get_intersection_over_union(
+    gdf_left,
+    gdf_right,
+    suffixes=('left', 'right'),
+    area_unit='m2',
+    how='intersection',
+    drop_geometries=True,
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Compute interaction over union of two GeoDataFrames"""
 
-    Parameters
-    ----------
-    gdf : GeoDataFrame
-        Polygon data
-    name : str
-        Name of index column
-    handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
-    verbose: bool
-        If True, prints information on duplicates
-    """
+    # Make sure area column exists in both GeoDataFrames
+    if area_unit not in gdf_left:
+        gdf_left = gdf_left.copy()
+        gdf_left[area_unit] = get_areas(gdf_left, area_unit)
+    if area_unit not in gdf_right:
+        gdf_right = gdf_right.copy()
+        gdf_right[area_unit] = get_areas(gdf_right, area_unit)
 
-    gdf = gdf.copy()
-    gdf.index = pd.Index(
-        get_geo_ids(gdf, handle_duplicates=handle_duplicates, verbose=verbose),
-        name=name,
+    left_area_col = f'{area_unit}_{suffixes[0]}'
+    right_area_col = f'{area_unit}_{suffixes[1]}'
+    intersection_area_col = f'{area_unit}_intersection'
+
+    # Overlay
+    _gdf_left = (
+        gdf_left[[area_unit, 'geometry']]
+        .rename(columns={area_unit: left_area_col})
+        .reset_index()
     )
-    if gdf.index.duplicated().any():
-        raise ValueError(
-            'Unhandled duplicates found in `geo_id` index. '
-            'Set `handle_duplicates=True` or pick a different indexing method.'
-        )
-    return gdf
-
-
-def get_openlocationcode(
-    gdf: gpd.GeoDataFrame,
-    name='openlocationcode',
-    codelength=11,
-    handle_duplicates=True,
-):
-    """Assign a footprint_id index based on Open Location Code of polygon centroids.
-
-    Parameters
-    ----------
-    gdf: GeoDataFrame
-        Vector data with polygon geometries in any CRS.
-    name : str
-        Name of index
-    codelength : int
-        `openlocationcode` code length
-    handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
-    """
-    centroids = gdf.copy()
-    if centroids.crs != 'epsg:4326':
-        centroids = centroids.to_crs('epsg:4326')
-    # Suppress warnings if centroids are in geographic CRS
-    warnings.filterwarnings('ignore', category=UserWarning)
-    centroids['geometry'] = centroids['geometry'].centroid
-    warnings.filterwarnings('default', category=UserWarning)
-
-    raw_ids = [
-        olc.encode(pt.y, pt.x, codeLength=codelength) for pt in centroids.geometry
-    ]
-    if not handle_duplicates:
-        return pd.Series(raw_ids, index=gdf.index, name=name)
-
-    counts: dict[str, int] = {}
-    for code in raw_ids:
-        counts[code] = counts.get(code, 0) + 1
-
-    seen: dict[str, int] = {}
-    footprint_ids = []
-    for code in raw_ids:
-        if counts[code] == 1:
-            footprint_ids.append(code)
-        else:
-            seen[code] = seen.get(code, 0) + 1
-            footprint_ids.append(f'{code}-{seen[code]}')
-
-    return pd.Series(footprint_ids, index=gdf.index, name=name)
-
-
-def add_openlocationcode_index(
-    gdf,
-    name='openlocationcode',
-    codelength=11,
-    handle_duplicates=True,
-):
-    """Return the GeoDataFrame using `geo_id` as the index
-
-    Parameters
-    ----------
-    gdf : GeoDataFrame
-        Polygon data
-    name : str
-        Name of index column
-    codelength : int
-        `openlocationcode` code length
-    handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
-    """
-
-    gdf = gdf.copy()
-    gdf.index = pd.Index(
-        get_openlocationcode(
-            gdf, name=name, codelength=codelength, handle_duplicates=handle_duplicates
-        ),
-        name=name,
+    _gdf_right = (
+        gdf_right[[area_unit, 'geometry']]
+        .rename(columns={area_unit: right_area_col})
+        .reset_index()
     )
-    if gdf.index.duplicated().any():
-        raise ValueError(
-            'Unhandled duplicates found in `openlocationcode` index. '
-            'Set `handle_duplicates=True` or pick a different indexing method.'
-        )
-    return gdf
+    left_index_name = gdf_left.index.name
+    right_index_name = gdf_right.index.name
+    if left_index_name == right_index_name:
+        left_index_name += '_' + suffixes[0]
+        right_index_name += '_' + suffixes[1]
+        _gdf_left = _gdf_left.rename(columns={gdf_left.index.name: left_index_name})
+        _gdf_right = _gdf_right.rename(columns={gdf_right.index.name: right_index_name})
+    gdf_overlay = gpd.overlay(
+        _gdf_left,
+        _gdf_right,
+        how=how,
+    )
+
+    gdf_overlay = gdf_overlay.set_index([left_index_name, right_index_name])
+
+    # Calculate area of overlap
+    gdf_overlay[intersection_area_col] = get_areas(gdf_overlay, area_unit)
+
+    # Calculate interaction over union
+    gdf_overlay['iou'] = gdf_overlay[intersection_area_col] / (
+        gdf_overlay[left_area_col]
+        + gdf_overlay[right_area_col]
+        - gdf_overlay[intersection_area_col]
+    )
+
+    if drop_geometries:
+        gdf_overlay = gdf_overlay.drop(columns=['geometry'])
+    else:
+        # Move 'geometry' to the end
+        gdf_overlay = gdf_overlay[
+            [x for x in gdf_overlay if x != 'geometry'] + ['geometry']
+        ]
+    return gdf_overlay
+
+
+def get_crs(filepath):
+    """Get the CRS from the metadata of a file using `pyogrio`"""
+    geo_metadata = pyogrio.read_info(filepath)
+    if 'crs' not in geo_metadata:
+        warnings.warn('No CRS found in input data.')
+        return None
+
+    return geo_metadata['crs']
 
 
 def overlay_admin_ids(
@@ -860,117 +759,5 @@ def overlay_admin_ids(
             gdf.loc[mask, admin.index.name] = gdf_overlay[admin.index.name]
             del gdf_overlay
             timer.mark('Admin overlay: spatial overlay')
-
-    return gdf
-
-
-def get_proj4(proj, lat=0, lon=0, ellps='WGS84'):
-    """Get proj4 string for a projection from lat/long.
-
-    Parameters
-    ----------
-    proj: str
-        Projection type. Currently: 'ortho' or 'nsper'.
-    lat : numeric
-        Latitude
-    lon : numeric
-        Longitude
-    ellps : str
-        Ellipsoid
-    """
-    proj4 = PROJ4[proj].replace('{LAT}', str(lat)).replace('{LON}', str(lon))
-    if ellps != 'WGS84':
-        proj4.replace('WGS84', ellps)
-    return proj4
-
-
-def get_intersection_over_union(
-    gdf_left,
-    gdf_right,
-    suffixes=('left', 'right'),
-    area_unit='m2',
-    how='intersection',
-    drop_geometries=True,
-):
-    """Compute interaction over union of two GeoDataFrames"""
-
-    # Make sure area column exists in both GeoDataFrames
-    if area_unit not in gdf_left:
-        gdf_left = gdf_left.copy()
-        gdf_left[area_unit] = get_areas(gdf_left, area_unit)
-    if area_unit not in gdf_right:
-        gdf_right = gdf_right.copy()
-        gdf_right[area_unit] = get_areas(gdf_right, area_unit)
-
-    left_area_col = f'{area_unit}_{suffixes[0]}'
-    right_area_col = f'{area_unit}_{suffixes[1]}'
-    intersection_area_col = f'{area_unit}_intersection'
-
-    # Overlay
-    gdf_overlay = gpd.overlay(
-        gdf_left[[area_unit, 'geometry']]
-        .rename(columns={area_unit: left_area_col})
-        .reset_index(),
-        gdf_right[[area_unit, 'geometry']]
-        .rename(columns={area_unit: f'm2_{suffixes[1]}'})
-        .reset_index(),
-        how=how,
-    ).set_index([gdf_left.index.name, gdf_right.index.name])
-
-    # Calculate area of overlap
-    gdf_overlay[intersection_area_col] = get_areas(gdf_overlay, area_unit)
-
-    # Calculate interaction over union
-    gdf_overlay['iou'] = gdf_overlay[intersection_area_col] / (
-        gdf_overlay[left_area_col]
-        + gdf_overlay[right_area_col]
-        - gdf_overlay[intersection_area_col]
-    )
-
-    if drop_geometries:
-        gdf_overlay = gdf_overlay.drop(columns=['geometry'])
-    else:
-        # Move 'geometry' to the end
-        gdf_overlay = gdf_overlay[
-            [x for x in gdf_overlay if x != 'geometry'] + ['geometry']
-        ]
-    return gdf_overlay
-
-
-def get_crs(filepath):
-    """Get the CRS from the metadata of a file using `pyogrio`"""
-    geo_metadata = pyogrio.read_info(filepath)
-    if 'crs' not in geo_metadata:
-        warnings.warn('No CRS found in input data.')
-        return None
-
-    return geo_metadata['crs']
-
-
-def _clean_geometries(gdf):
-    """
-    Drop or repair geometries that would cause exactextract to fail.
-    """
-
-    original_len = len(gdf)
-    gdf = gdf.copy()
-
-    # 1. Remove null geometries and fix any invalid geometries
-    gdf = gdf[gdf.geometry.notna()]
-
-    if (~gdf.geometry.is_valid).any():
-        gdf = fix_geometries(gdf)
-
-    # Drop invalid geometries
-    gdf = gdf[gdf.geometry.is_valid]
-
-    removed = original_len - len(gdf)
-    if removed > 0:
-        warnings.warn(
-            f'clean_geometry: removed {removed} of {original_len} features '
-            f'(null, empty, invalid, or non-polygon geometries). '
-            f'{len(gdf)} features remain.',
-            stacklevel=3,
-        )
 
     return gdf

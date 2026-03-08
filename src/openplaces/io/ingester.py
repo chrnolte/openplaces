@@ -25,9 +25,9 @@ from openplaces.core.constants import (
     ZIP_EXTENSIONS,
 )
 from openplaces.core.schema import AdminId
+from openplaces.geo.ids import get_geo_ids
 from openplaces.geo.vector import (
     get_crs,
-    get_geo_ids,
     overlay_admin_ids,
 )
 from openplaces.io import (
@@ -1145,7 +1145,13 @@ class Ingester:
 
         # Replace known NA value strings with `None`.
         if 'null_value_strings' in self.recipe:
-            for col, na_value in product(df.columns, self.recipe['null_value_strings']):
+            # Exclude country identifiers ("NA" is Namibia)
+            columns_to_convert = [
+                v for v in df.columns if not v.startswith('admin1_id')
+            ]
+            for col, na_value in product(
+                columns_to_convert, self.recipe['null_value_strings']
+            ):
                 i_has_na_value = df[col].eq(na_value)
                 if i_has_na_value.sum():
                     df.loc[i_has_na_value, col] = None
@@ -1216,6 +1222,11 @@ class Ingester:
                     )
             df = df.join(
                 admin_id_crosswalk, on=admin_id_crosswalk.index.name, how='inner'
+            )
+            cols_added += (
+                [admin_id_crosswalk.name]
+                if isinstance(admin_id_crosswalk, pd.Series)
+                else list(admin_id_crosswalk)
             )
 
         elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
@@ -1394,7 +1405,7 @@ class Ingester:
             admin_id_col = f'admin{admin_level}_id'
             if admin_id_col not in gdf:
                 raise ValueError(
-                    f"'cache_by' > 'admin_level' is set, but column "
+                    f"Recipe says 'cache_by: admin_level: {admin_level}', but column "
                     f"'{admin_id_col}' does not exist in DataFrame:\n\n"
                     + str(gdf.sample(1).T)
                 )
