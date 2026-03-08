@@ -1,12 +1,11 @@
-
 import warnings
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
 import rasterio
 from exactextract import exact_extract
-from openplaces.geo.vector import _clean_geometries
+
+from openplaces.geo.vector import clean_polygons
 
 
 def zonal_stats_with_exactextract(
@@ -71,7 +70,7 @@ def zonal_stats_with_exactextract(
         raise ValueError("'stats' must not be empty.")
 
     # Normalise vector input
-    if isinstance(vector, (str, Path)):
+    if isinstance(vector, str | Path):
         gdf = gpd.read_file(vector)
     elif isinstance(vector, gpd.GeoDataFrame):
         gdf = vector.copy()
@@ -88,12 +87,12 @@ def zonal_stats_with_exactextract(
         return gdf
 
     if clean_geometry:
-        gdf = _clean_geometries(gdf)
+        gdf = clean_polygons(gdf)
         if gdf.empty:
             raise ValueError('No valid polygon geometries remain after cleaning.')
 
     # Normalize raster input
-    if isinstance(raster, (str, Path)):
+    if isinstance(raster, str | Path):
         raster_path = str(raster)
         raster_arg = raster_path
     elif isinstance(raster, rasterio.DatasetReader):

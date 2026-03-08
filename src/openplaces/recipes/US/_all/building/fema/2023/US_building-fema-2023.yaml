@@ -63,7 +63,7 @@ columns:
 
 # Function to give the GeoDataFrame an index
 create_index:
-  function: "openplaces.geo.vector.add_openlocationcode_index"
+  function: "openplaces.geo.ids.add_openlocationcode_index"
   args:
     name: footprint_id
 

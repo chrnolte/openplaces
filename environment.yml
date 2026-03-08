@@ -72,6 +72,7 @@ dependencies:
   - pytest-cov>=4.1.0
   - pre-commit>=3.5.0
   - nbstripout>=0.8.2
+  - ipynbname>=2023.2.0.0
 
   # Conda-specific packages that enhance development
   - ipython
