@@ -13,6 +13,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.path import cache_path
 from openplaces.recipe import get_recipe_by_id
+from openplaces.utils import format_list
 
 ADMIN_SOURCE_DEFAULT = 'admin-openplaces-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-gadm-4~1'
@@ -208,8 +209,9 @@ def get_admin(
         for _admin_id_to_get in admin_ids:
             mask_select |= admin.index.str.startswith(str(_admin_id_to_get))
         if not mask_select.any():
-            warnings.warn(
-                'No admin IDs from reference spine selected. No filters applied.'
+            raise ValueError(
+                'No admin IDs from reference spine found. Perhaps they have not been '
+                f'defined at level {level} for `admin_id`: {format_list(admin_ids)}?'
             )
         admin = admin[mask_select].copy()
 
