@@ -51,7 +51,7 @@ columns:
 null_value_strings: ["NA"]
 
 # Filter query to select rows
-query: "type not in ('Water body', 'Waterbody', 'Water Body') and admin3_name not in ('Water body', 'Lake Chiuta', 'Lake Chilwa', 'Lake Malawi', 'Lake Malombe', 'Songkhla Lake   ') or admin3_name.str.startswith('Songkhla Lake') or admin3_name.isnull()"
+query: "type not in ('Water body', 'Waterbody', 'Water Body') and not (admin3_name in ('Water body', 'Lake Chiuta', 'Lake Chilwa', 'Lake Malawi', 'Lake Malombe', 'Songkhla Lake   ') or admin3_name.str.startswith('Songkhla Lake') or admin3_name.isnull())"
 
 # Translate `admin_id` information from source to `openplaces` admin_ids
 admin_id_crosswalk:

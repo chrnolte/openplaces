@@ -41,7 +41,7 @@ columns:
 query: "type != 'Water body'"
 
 # Values to be interpreted as empty (None)
-null_value_strings: ["?"]
+null_value_strings: ["?", "NA"]
 
 # Function that returns an indexed version of the input 1GeoDataFrame1
 # (usually a custom function designed for a specific case)
