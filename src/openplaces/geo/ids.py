@@ -455,6 +455,48 @@ def _olc_decode_11(codes: list[str]) -> tuple:
     return lat_lo, lat_lo + OLC_CELL_H, lng_lo, lng_lo + OLC_CELL_W
 
 
+def decode_openlocationcodes(
+    codes: list[str] | pd.Series,
+) -> gpd.GeoDataFrame:
+    """Decode level-11 Open Location Codes to a GeoDataFrame of points.
+
+    Returns the center of each OLC cell as a Point geometry.
+
+    Parameters
+    ----------
+    codes : list[str] or pd.Series
+        Sequence of OLC strings with codelength=11 (e.g. '85G8Q23G+CFM').
+        If a Series, its index is preserved in the output.
+    name : str
+        Name for the geometry column (default 'geometry').
+
+    Returns
+    -------
+    GeoDataFrame
+        Points at OLC cell centers, CRS EPSG:4326.
+    """
+    if isinstance(codes, pd.Series):
+        index = codes.index
+    elif isinstance(codes, pd.Index):
+        index = codes
+    elif isinstance(codes, list):
+        index = pd.Index(codes, name='openlocationcode')
+    code_list = list(codes)
+
+    lat_lo, lat_hi, lng_lo, lng_hi = _olc_decode_11(code_list)
+
+    lats = (lat_lo + lat_hi) / 2
+    lngs = (lng_lo + lng_hi) / 2
+
+    geometry = gpd.points_from_xy(lngs, lats)
+
+    return gpd.GeoDataFrame(
+        index=index,
+        geometry=geometry,
+        crs='epsg:4326',
+    )
+
+
 def decode_ubids(ubids: pd.Series, outer: bool = True) -> gpd.GeoDataFrame:
     """Decode a Series of UBIDs to a GeoDataFrame of bounding boxes.
 
