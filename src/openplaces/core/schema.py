@@ -17,9 +17,11 @@ from .constants import (
 ENTITY_TYPES = [
     'admin',
     'building',
+    'dwelling',
     'parcel',
     'person',
     'property',
+    'tile',
     'transaction',
 ]
 
