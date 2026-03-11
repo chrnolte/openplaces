@@ -17,7 +17,6 @@ from pathlib import Path
 from openplaces.config import cfg
 from openplaces.path import code_path
 
-CODE_FORMATTERS = ['ruff']
 # Constants for notebook-to-script conversions
 
 # Notebook to script: automatic text replacements
@@ -40,12 +39,17 @@ NOTEBOOK_REGEX_REPLACEMENTS = {
     r'pass  # continue': ('continue', None),
 }
 
-# # Markers used for automatic `for` loop indentation
-# END_LOOP_MARKER = r"raise Exception\('This is the end of a for loop.'\)" + '\n\n'
-# REGEX_FOR_LOOP = (
-#     r"\n *(([a-zA-Z0-9_]+) = .+?\n(?:.+\n)? *)"
-#     r"( *# for \2.*\n)([\s\S]*)" + END_LOOP_MARKER
-# )
+# Markers used for automatic `for` loop indentation
+END_LOOP_MARKER = (
+    r"assert False, 'This marks the end of a flattened `for` loop.'" + '\n\n'
+)
+REGEX_FOR_LOOP = (
+    r'\n *(for ([a-zA-Z0-9_]+) in .+?:\n)'
+    r'( *pass\r?\n)'
+    r'([\s\S]*)' + END_LOOP_MARKER
+)
+
+CODE_FORMATTERS = ['ruff']
 
 
 def get_caller_path():
@@ -58,21 +62,50 @@ def get_caller_path():
     try:
         from IPython import get_ipython
 
-        if get_ipython() is not None:
-            # A. Check for VS Code specific injection
-            if '__vsc_ipynb_file__' in globals():
-                return Path(globals()['__vsc_ipynb_file__']).resolve()
+        ipy = get_ipython()
+        if ipy is not None:
+            # A. VS Code injects the notebook path into the IPython user namespace
+            if '__vsc_ipynb_file__' in ipy.user_ns:
+                return Path(ipy.user_ns['__vsc_ipynb_file__']).resolve()
+            # B. Standard Jupyter / JupyterLab via server sessions API
+            try:
+                import re
 
-            # B. Attempt to use ipynbname for standard Jupyter/JupyterLab
+                import ipykernel
+                import requests
+                from jupyter_server import serverapp
+
+                kernel_id = re.search(
+                    r'kernel-(.*?)\.json', ipykernel.connect.get_connection_file()
+                ).group(1)
+
+                for server in serverapp.list_running_servers():
+                    try:
+                        response = requests.get(
+                            f'{server["url"]}api/sessions',
+                            headers={'Authorization': f'token {server["token"]}'},
+                            timeout=2,
+                        )
+                        if response.status_code != 200:
+                            continue
+                        for session in response.json():
+                            if session['kernel']['id'] == kernel_id:
+                                return (
+                                    Path(server['root_dir'])
+                                    / session['notebook']['path']
+                                ).resolve()
+                    except requests.exceptions.RequestException:
+                        continue
+            except Exception:
+                pass
+            # C. Fallback: ipynbname for JupyterHub / remote edge cases
             try:
                 import ipynbname
 
                 return ipynbname.path().resolve()
             except (ImportError, FileNotFoundError, Exception):
-                # If ipynbname isn't installed or server API is unreachable
                 pass
-
-            # C. Jupyter Fallback: CWD (usually the notebook's directory)
+            # D. Last resort: CWD is usually the notebook's directory
             return Path.cwd().resolve()
     except ImportError:
         pass
@@ -198,29 +231,24 @@ def convert_to_script(
         else:
             text = re.sub(re.compile(regex_from), regex_to, text)
 
-    # # Indent flattened `for` loops
-    # for_loop_found = re.search(REGEX_FOR_LOOP, text)
-
-    # i = 0
-    # while for_loop_found:
-    #     delete, _, revert, indent = for_loop_found.groups()
-    #     indented = re.sub(r"\n(?!\n)", '\\n    ', indent).rstrip() + '\n'
-    #     if indented[:1] != '\n':
-    #         indented = '    ' + indented
-    #     end_marker = (
-    #         END_LOOP_MARKER.replace(r"\(", r"(")
-    #         .replace(r"\)", r")")
-    #         .replace(r"\n", '\n')
-    #     )
-    #     text = (
-    #         text.replace(delete, '')
-    #         .replace(revert, revert.replace('# for ', 'for '))
-    #         .replace(indent + end_marker, indented)
-    #     )
-    #     i += 1
-    #     for_loop_found = re.search(REGEX_FOR_LOOP, text)
-    #     if i >= 5 and for_loop_found:
-    #         raise ValueError('More than five for loops?')
+    # Indent flattened `for` loops
+    for_loop_found = re.search(REGEX_FOR_LOOP, text)
+    i = 0
+    while for_loop_found:
+        _, _, delete, indent = for_loop_found.groups()
+        indented = re.sub(r'\n(?!\n)', '\\n    ', indent).rstrip() + '\n'
+        if indented[:1] != '\n':
+            indented = '    ' + indented
+        end_marker = (
+            END_LOOP_MARKER.replace(r'\(', r'(')
+            .replace(r'\)', r')')
+            .replace(r'\n', '\n')
+        )
+        text = text.replace(delete, '').replace(indent + end_marker, indented)
+        i += 1
+        for_loop_found = re.search(REGEX_FOR_LOOP, text)
+        if i >= 5 and for_loop_found:
+            raise ValueError('More than five for loops?')
 
     # Change header to comment string
     marker1, marker2 = r'utf-8\n\n#', r'\n\n# Configure'
@@ -263,16 +291,17 @@ def convert_to_script(
     with open(py_filepath, 'w') as file:
         file.write(text)
 
-    command = ['ruff', 'check', str(py_filepath)]
     if fix:
-        command += ['--fix']
+        command = ['ruff', 'format', str(py_filepath)]
+    else:
+        command = ['ruff', 'check', str(py_filepath)]
     sp = subprocess.run(command, capture_output=True)
 
     if sp.returncode == 0:
-        print('Code is compliant with code style (`ruff`).')
+        print('Code complies with code style.')
         error = False
     else:
-        print('Code is not compliant with code style (`ruff`).')
+        print('Code is not compliant with code style.')
         show = True
         error = True
 
@@ -280,12 +309,12 @@ def convert_to_script(
         if error and len(sp.stdout) > 0:
             print('\n---\n')
             for line in sp.stdout.decode('utf-8').split('\n'):
-                print(line.replace(py_filepath + ':', ''))
-        title = py_filepath.replace(code_path(''), '')
+                print(line.replace(str(py_filepath) + ':', ''))
+        title = str(py_filepath.relative_to(cfg.code_root))
         print('\n' + '-' * len(title) + '\n' + title + '\n' + '-' * len(title) + '\n')
         with open(py_filepath) as file:
             for i, line in enumerate(file.read().split('\n')):
-                print(((str(i + 1).rjust(3) + ' ') if error else '') + line)
+                print(((str(i + 1).rjust(3) + '  ') if error else '') + line)
 
     if sp.returncode != 0 and raise_error:
         raise ValueError(
@@ -296,20 +325,24 @@ def convert_to_script(
     os.remove(conv_filepath)
 
 
-def test_script(*args, committed=True):
+def test_script(*args, verbose=False, committed=True):
     """Run a test of a script
 
     Parameters
     ----------
-    script : str
-        Script identifier (e.g. '1_sample').
-        Has to be registered in /cfg/key/flow/scripts.csv.
     *args : tuple of strings
         Unnamed arguments will be passed as strings
+    verbose : bool
+        If True, will print outputs.
+        Will be set to True if '--verbose' is in `args`.
     committed : bool
         If True, will run the committed version of the script.
         If False, will run the test version.
     """
+
+    # Set verbose to True if argument is found in args
+    if not verbose and '--verbose' in args:
+        verbose = True
 
     caller_path = get_caller_path_in_code_directory()
     script_dirs = caller_path.parent.parts
@@ -321,5 +354,50 @@ def test_script(*args, committed=True):
         py_filepath = code_path('scripts', '_test', *script_dirs, script + '.py')
 
     command = ['python', str(py_filepath)] + list(args)
-    print(' '.join(command), end='\n\n')
-    subprocess.run(command)
+    run_subprocess(command, verbose=verbose)
+
+
+def run_subprocess(command, p={}, verbose=False, ignore_failures=False):
+    import subprocess
+
+    for key, value in p.items():
+        if isinstance(value, list):
+            value = ','.join([str(v) for v in value])
+        command += ['--' + key, str(value)]
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+    stdout_lines = []
+    stderr_lines = []
+
+    for line in process.stdout:
+        stdout_lines.append(line)
+        if verbose:
+            print(line, end='', flush=True)
+
+    for line in process.stderr:
+        stderr_lines.append(line)
+
+    process.wait()
+
+    if process.returncode == 0:
+        if verbose:
+            print('\x1b[32mSubprocess terminated successfully\x1b[0m')
+    else:
+        print(
+            '\x1b[31m-------------------------------\n'
+            'Error while running subprocess:\n'
+            '-------------------------------'
+        )
+        print('\n\x1b[34m' + ' '.join(command) + '\x1b[0m')
+        print('\x1b[31m')
+        for line in stderr_lines:
+            print(line, end='')
+        print('\x1b[0m')
+        if not ignore_failures:
+            raise Exception('Execution stopped, because subprocess failed.')
