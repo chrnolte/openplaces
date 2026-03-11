@@ -5,10 +5,12 @@ Input/output utilities
 
 """
 
+import bz2
 import math
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import warnings
 from pathlib import Path
@@ -42,6 +44,22 @@ __all__ = [
     'to_kmz',
     'unzip',
 ]
+
+_CONTENT_TYPE_EXT = {
+    'application/geo+json': '.geojson',
+    'application/json': '.geojson',  # ambiguous but common for GeoJSON APIs
+    'application/geopackage+sqlite3': '.gpkg',
+    'application/x-sqlite3': '.gpkg',
+    'application/zip': '.zip',
+    'application/x-zip-compressed': '.zip',
+    'application/vnd.apache.parquet': '.parquet',
+}
+
+
+def _content_type_to_ext(content_type: str) -> str | None:
+    """Return file extension for a Content-Type header value, or None."""
+    mime = content_type.split(';')[0].strip().lower()
+    return _CONTENT_TYPE_EXT.get(mime)
 
 
 def download(from_url, to_path, chunk_size=8192, timeout=None):
@@ -111,6 +129,20 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
             filename = Path(path).name
             to_path /= filename
 
+    # If extension is still unknown, sniff from Content-Type then first chunk
+    first_chunk = b''
+    content_iter = response.iter_content(chunk_size=chunk_size)
+
+    if to_path.suffix == '':
+        ext = _content_type_to_ext(response.headers.get('content-type', ''))
+
+        if ext is None:
+            first_chunk = next(content_iter, b'')
+            ext = _sniff_ext(first_chunk)
+
+        if ext is not None:
+            to_path = to_path.with_suffix(ext)
+
     # Download to temp location first, then move to final destination
     temp_path = Path(tempfile.gettempdir()) / f'{to_path.name}.part'
 
@@ -122,7 +154,10 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
                 unit_scale=True,
                 desc='\u2913 ' + to_path.name,
             ) as pbar:
-                for chunk in response.iter_content(chunk_size=chunk_size):
+                if first_chunk:
+                    f.write(first_chunk)
+                    pbar.update(len(first_chunk))
+                for chunk in content_iter:
                     if chunk:
                         f.write(chunk)
                         pbar.update(len(chunk))
@@ -137,6 +172,53 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
         raise
 
     return to_path
+
+
+def _sniff_ext(chunk: bytes) -> str | None:
+    """Detect file format from a leading byte chunk.
+
+    Checks (in order): GeoParquet, GeoPackage, Shapefile ZIP, GeoJSON.
+
+    Returns
+    -------
+    str | None
+        File extension including dot, or None if unrecognised.
+    """
+
+    # Parquet: magic bytes PAR1 at offset 0
+    if chunk[:4] == b'PAR1':
+        return '.parquet'
+
+    # GeoPackage / SQLite: magic string at offset 0
+    if chunk[:16] == b'SQLite format 3\x00':
+        return '.gpkg'
+
+    # Shapefile delivered as ZIP: PK magic bytes
+    if chunk[:2] == b'PK':
+        return '.zip'
+
+    # GeoJSON: no need for a balanced parse — just check the type field
+    text = chunk.decode('utf-8', errors='replace').strip()
+    if text.startswith('{'):
+        import re
+
+        match = re.search(r'"type"\s*:\s*"(\w+)"', text)
+        if match and match.group(1) in {
+            'FeatureCollection',
+            'Feature',
+            'Point',
+            'MultiPoint',
+            'LineString',
+            'MultiLineString',
+            'Polygon',
+            'MultiPolygon',
+            'GeometryCollection',
+        }:
+            return '.geojson'
+
+    print('openplaces.io._sniff_ext() failed to infer file type.')
+
+    return None
 
 
 def unzip(in_path, out_dir=None, members=None, verbose=True):
@@ -178,6 +260,21 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
     else:
         out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    if in_path.suffix in {'.bz2', '.tbz2'}:
+        # Handle .tar.bz2 / .tbz2
+        if in_path.stem.endswith('.tar') or in_path.suffix == '.tbz2':
+            with tarfile.open(in_path, 'r:bz2') as tar:
+                members_to_extract = (
+                    [tar.getmember(m) for m in members] if members else None
+                )
+                tar.extractall(out_dir, members=members_to_extract)
+        # Handle bare .bz2 (single compressed file)
+        else:
+            out_file = out_dir / in_path.stem
+            with bz2.open(in_path, 'rb') as src, out_file.open('wb') as dst:
+                shutil.copyfileobj(src, dst)
+        return out_dir
 
     if _needs_7z(in_path):
         return _unzip_with_7z(in_path, out_dir, verbose)
@@ -322,13 +419,6 @@ def find_latest_file_or_gdb(
     return max(all_matches, key=lambda f: f.stat().st_mtime)
 
 
-def _ensure_parent_dir(filepath: Path):
-    """Ensure parent directory exists."""
-    if isinstance(filepath, str):
-        filepath = Path(filepath)
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-
-
 def _remove_if_exists(filepath: Path) -> None:
     """Remove file if it exists (needed for some formats like gpkg)."""
     if filepath.exists():
@@ -349,8 +439,10 @@ def to_parquet(
     **kwargs
         Additional arguments passed to to_parquet()
     """
+    if isinstance(filepath, str):
+        filepath = Path(filepath)
 
-    _ensure_parent_dir(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
     if isinstance(df, gpd.GeoDataFrame):
         with warnings.catch_warnings():
@@ -381,7 +473,10 @@ def to_csv(
     **kwargs
         Additional arguments passed to df.to_csv()
     """
-    _ensure_parent_dir(filepath)
+    if isinstance(filepath, str):
+        filepath = Path(filepath)
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
 
     # Drop geometry if present
     if isinstance(df, gpd.GeoDataFrame):
@@ -408,7 +503,10 @@ def to_gpkg(
     **kwargs
         Additional arguments passed to to_file()
     """
-    _ensure_parent_dir(filepath)
+    if isinstance(filepath, str):
+        filepath = Path(filepath)
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
     _remove_if_exists(filepath)
 
     if not isinstance(gdf, gpd.GeoDataFrame):
@@ -429,7 +527,10 @@ def to_kmz(gdf: gpd.GeoDataFrame, filepath: str | Path) -> None:
     """
     import zipfile
 
-    _ensure_parent_dir(filepath)
+    if isinstance(filepath, str):
+        filepath = Path(filepath)
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
     _remove_if_exists(filepath)
 
     if not isinstance(gdf, gpd.GeoDataFrame):
