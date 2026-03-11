@@ -141,7 +141,7 @@ class Ingester:
                 'Read in bulk or write code to use `where=`, if faster.'
             )
 
-    def ingest(self, reprocess=False, redownload=False, delete_unzipped=True):
+    def ingest(self, reprocess=False, redownload=False, keep_unzipped=False):
         """Run the full data ingestion
 
         Parameters
@@ -152,8 +152,8 @@ class Ingester:
         redownload : bool
             If True, re-downloads the original data file even if it
             already exists. Also sets `reprocess` to `True`.
-        delete_unzipped : bool
-            If True, deletes any unzipped files (in 'heap' folder) once
+        keep_unzipped : bool
+            If True, keeps unzipped files in 'heap' folder after
             the download partition has been processed.
         """
 
@@ -173,12 +173,12 @@ class Ingester:
                     print_txt += f'geography: {admin_id_to_download}, '
                 if partition_id_to_download is not None:
                     print_txt += f'partition: {partition_id_to_download}, '
-                print(print_txt[:-2] + '.')
+                print(print_txt[:-2])
             self._ingest_download_partition(
                 admin_id_to_download=admin_id_to_download,
                 partition_id_to_download=partition_id_to_download,
                 redownload=redownload,
-                delete_unzipped=delete_unzipped,
+                keep_unzipped=keep_unzipped,
             )
 
     def _resolve_admin_ids(self, reprocess):
@@ -400,7 +400,7 @@ class Ingester:
         admin_id_to_download=None,
         partition_id_to_download=None,
         redownload=False,
-        delete_unzipped=True,
+        keep_unzipped=False,
     ):
         """Run data ingestion for a download partition of the data"""
 
@@ -446,7 +446,7 @@ class Ingester:
             )
 
         # Delete unzipped files in heap folder
-        if delete_unzipped and self.download_partition['data_path'].is_relative_to(
+        if not keep_unzipped and self.download_partition['data_path'].is_relative_to(
             self.recipe_heap_dir
         ):
             if self.verbose:
@@ -523,7 +523,7 @@ class Ingester:
         else:
             try:
                 # Find the key in an official admin dataset
-                if admin_recipe_id is None:
+                if admin_recipe_id is None and admin_level > 1:
                     admin_recipe_id = find_admin_recipe_id(
                         self.recipe['admin_id'], admin_level
                     )
@@ -1253,12 +1253,14 @@ class Ingester:
             kwargs_overlay = {
                 k: v for k, v in admin_specs.items() if k != 'admin_recipe_id'
             }
+            cols_before = set(df.columns)
             df = overlay_admin_ids(
                 df,
                 admin_geometries=admin_geometries,
                 timer=self.timer,
                 **kwargs_overlay,
             )
+            cols_added += [v for v in df.columns if v not in cols_before]
 
         # Set index
         if str(self.recipe['entity'].entity_type) == 'parcel' and isinstance(
