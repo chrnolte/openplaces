@@ -150,7 +150,9 @@ def show_geometry_context(
     max_dim_ortho = max(width_ortho, height_ortho)
 
     # Apply minimum buffer floor (important for point / tiny geometries)
-    buffer_dist_plot = max(max_dim_ortho * buffer_factor / 2, min_buffer_m)
+    buffer_dist_plot = max(
+        max_dim_ortho * buffer_factor / 2, min_buffer_m * buffer_factor
+    )
 
     # ------------------------------------------------------------------
     # Build figure
@@ -291,7 +293,7 @@ def show_geometry_context(
 def show_building(
     location,
     geodatasets,
-    radius=150,
+    radius=100,
     size=10,
     show_basemap=True,
     show_crosshair=True,
