@@ -167,7 +167,7 @@ class Ingester:
         for admin_id_to_download, partition_id_to_download in product(
             self.admin_ids_to_download, self.partition_ids_to_download
         ):
-            if self.verbose:
+            if self.verbose and (admin_id_to_download or partition_id_to_download):
                 print_txt = 'Ingesting data for '
                 if admin_id_to_download is not None:
                     print_txt += f'geography: {admin_id_to_download}, '
