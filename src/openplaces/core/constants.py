@@ -51,8 +51,8 @@ SHAPEFILE_EXTENSIONS = [
     '.sbx',
 ]
 
-# Extensions for compressed files (can be uncompressed with `zipfile`)
-ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz'}
+# Extensions for compressed files
+ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz', '.bz2', '.tbz2'}
 
 
 # STRING
