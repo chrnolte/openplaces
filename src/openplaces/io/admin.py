@@ -603,7 +603,7 @@ def find_admin_recipe_id(admin_id, admin_level):
     if len(recipe_paths_found) == 0:
         return None
     elif len(recipe_paths_found) == 1:
-        recipe_id = recipe_paths_found[0].name
+        recipe_id = Path(recipe_paths_found[0]).name
     else:
         recipe_paths_found = sorted(
             recipe_paths_found, key=lambda p: Path(p).parent.name
