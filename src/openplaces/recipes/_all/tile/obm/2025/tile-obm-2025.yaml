@@ -1,0 +1,33 @@
+# Recipe to import Microsoft building footprints for the United States
+
+# Administrative unit identifier of the geography that the data covers
+admin_id: NULL
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: tile
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: obm
+    # Link to portal with metadata
+    portal_url: "https://gee-community-catalog.org/projects/obm/"
+    # Link to direct download
+    download_url: "https://umap.openstreetmap.de/de/datalayer/81684/ac9788a9-c215-417d-a580-cb545acd78b9/"
+  version: 2025
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "ac9788a9-c215-417d-a580-cb545acd78b9.geojson"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  tile_id: quadkey
+  tile_id_2: id
+  url: URL
+  n_buildings: number_of_buildings
+
+# Keep columns not named in `columns`?
+keep_unnamed_columns: True
+
+# Name of column to use as an index
+set_index: tile_id
