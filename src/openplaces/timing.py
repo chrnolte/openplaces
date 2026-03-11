@@ -91,8 +91,6 @@ class Timer:
     def __post_init__(self):
         self._last_mark = self._created
         self._last_cpu_mark = self._cpu_created
-        if self.logger is None:
-            self.logger = logging.getLogger(f'openplaces.timing.{self.name}')
 
     def mark(self, label: str, **metadata) -> tuple[float, float]:
         """Record a milestone. Duration = time since last mark (or creation)."""
@@ -178,9 +176,9 @@ class Timer:
         """Convert non-JSON-serializable values."""
         if isinstance(value, Path):
             return str(value)
-        elif isinstance(value, dict):
+        if isinstance(value, dict):
             return {k: self._serialize_value(v) for k, v in value.items()}
-        elif isinstance(value, list):
+        if isinstance(value, list):
             return [self._serialize_value(v) for v in value]
         return value
 
@@ -247,7 +245,7 @@ class Timer:
             writer.writeheader()
             writer.writerows(self.records)
 
-    def summary(self) -> str:
+    def summary(self) -> None:
         """Human-readable summary."""
         if not self._finished:
             self.finish()
@@ -271,12 +269,24 @@ class Timer:
 
     @property
     def verbose(self) -> bool:
-        """Check if verbose logging is enabled."""
-        return self.logger is not None and self.logger.level <= logging.INFO
+        return self.logger is not None and bool(self.logger.handlers)
 
 
 # Global timer registry
 _timers: dict[str, Timer] = {}
+
+
+def _make_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(f'openplaces.timing.{name}')
+    logger.handlers.clear()
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        logging.Formatter('\033[30;48;2;245;245;255m%(message)s\033[0m')
+    )
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    return logger
 
 
 def get_timer(
@@ -287,21 +297,18 @@ def get_timer(
     overwrite: bool = False,
     **metadata,
 ) -> Timer:
-    """Get or create a named timer."""
     if name not in _timers or overwrite:
         if logger is None and verbose:
-            logger = logging.getLogger(f'openplaces.timing.{name}')
-            if not logger.handlers:
-                handler = logging.StreamHandler(sys.stdout)
-                handler.setFormatter(
-                    # logging.Formatter('\033[30;48;2;255;248;220m%(message)s\033[0m')
-                    logging.Formatter('\033[30;48;2;245;245;255m%(message)s\033[0m')
-                )
-                logger.addHandler(handler)
-                logger.setLevel(logging.INFO)
+            logger = _make_logger(name)
         timer = Timer(name=name, admin_id=admin_id, logger=logger)
         timer.metadata.update(metadata)
         _timers[name] = timer
+    else:
+        existing = _timers[name]
+        if verbose and not existing.verbose:
+            existing.logger = _make_logger(name)
+        elif not verbose and existing.verbose:
+            existing.logger = None
     return _timers[name]
 
 
