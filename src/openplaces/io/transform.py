@@ -92,6 +92,9 @@ STRING_OPS: dict[str, Callable] = {
     'concat': lambda cols, sep='': pd.Series(sep.join(c.astype(str) for c in cols)),
     'add_prefix': lambda x, prefix: prefix + x.astype(str),
     'add_suffix': lambda x, suffix: x.astype(str) + suffix,
+    'split_take': lambda x, sep, index=0: x.str.split(sep).str[index],
+    'extract_named': lambda x, pattern: x.str.extract(pattern),
+    'zfill': lambda x, width: x.str.zfill(width),
 }
 
 # Helper functions for aggregate operations
@@ -421,6 +424,24 @@ def _apply_string(
     elif operation == 'add_suffix':
         suffix = args['suffix']
         return STRING_OPS[operation](input_series, suffix)
+    elif operation == 'split_take':
+        sep = args['sep']
+        index = args.get('index', 0)
+        return STRING_OPS[operation](input_series, sep, index)
+    elif operation == 'zfill':
+        width = args['width']
+        return STRING_OPS[operation](input_series, width)
+    elif operation == 'extract_named':
+        pattern = args['pattern']
+        result = STRING_OPS[operation](input_series, pattern)
+        # Named groups become new columns; merge them into df is the caller's
+        # responsibility — but single-group patterns still return a Series.
+        if result.shape[1] == 1:
+            return result.iloc[:, 0]
+        raise NotImplementedError(
+            '`openplaces.io.transform.str.extract_named` returned multiple groups:\n\n'
+            + str(result)
+        )
     else:
         # Operations with no arguments (upper, lower, strip)
         return STRING_OPS[operation](input_series)
@@ -615,6 +636,27 @@ def get_crosswalk(crosswalk_dict, flip=False):
         )
 
     return crosswalk_series
+
+
+def remap(df, recipe_id):
+    """Remap values in dataframe column using recipe table
+
+    Parameters
+    ----------
+    df : DataFrame or GeoDataFrame
+        Data
+    recipe_id : str
+        ID of recipe table that contains the remapping
+    """
+    crosswalk = get_crosswalk({'recipe_id': recipe_id})
+    shared_columns = set([crosswalk.name]) & set(df)
+    if shared_columns:
+        print(
+            ('Column ' if len(shared_columns) == 1 else 'Columns ')
+            + ', '.join([f'`{c}`' for c in shared_columns])
+            + f' overwritten by `{recipe_id}`.',
+        )
+    return df.drop(columns=shared_columns).join(crosswalk, on=crosswalk.index.names)
 
 
 def add_unique_suffix(s):
