@@ -1,7 +1,7 @@
 # Recipe to import Microsoft building footprints for the United States
 
 # Administrative unit identifier of the geography that the data covers
-admin_id: US
+admin_id: NULL
 
 # Entity: what is the unit of analysis of the imported data?
 entity:
@@ -9,31 +9,38 @@ entity:
   entity_type: building
    # What is the source and URL of a dataset that identifies each unit?
   source:
-    source_id: microsoft
+    source_id: obm
     # Link to portal with metadata
-    portal_url: "https://github.com/microsoft/USBuildingFootprints"
+    portal_url: "https://gee-community-catalog.org/projects/obm/"
     # Link to direct download
-    download_url: "https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{admin2_name}.geojson.zip"
-  version: v2
+    download_url: "https://datapub.gfz.de/download/10.5880.GFZ.LKUT.2025.002-Caweb/2025-002_Oostwegel-et-al_data/building.{tile_id}.gpkg.bz2"
+  version: 2025
 
 # How is the download data partitioned?
 download_by:
-  admin_level: 2
-  # Transformations needed to obtain the data partition admin identifier
-  # used by the source URL (e.g., remove spaces)
-  admin_key_transform:
-    admin2_name: "remove_spaces"
+  partition: tile_id
+  tile_recipe_id: tile-obm-2025
 
 # Name of compressed file (set to skip re-downloading)
-compressed_file_name: "{admin2_name}.geojson.zip"
+compressed_file_name: "building.{tile_id}.gpkg.bz2"
 
 # Name of uncompressed file (set to skip re-extracting)
-uncompressed_file_name: "{admin2_name}.geojson"
+uncompressed_file_name: "building.{tile_id}.gpkg"
+
+# Layer that identifies third-level admin subdivisions (Level 2 in GADM)
+layer: building
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  building_id_obm: id
+  occupancy: occupancy
+  source_date: last_update
+  source_id: source_id
+  height: height
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
-  - release
-  - capture_dates_range
+  - occupancy
 
 # Function to give the GeoDataFrame an index
 create_index:
@@ -44,7 +51,7 @@ create_index:
 # Assign administrative IDs using spatial joins/overlays
 overlay_admin_ids:
   admin_level: 3
-  admin_recipe_id: 'US_admin-nhgis-2020_admin3'
+  admin_recipe_id: US_admin-census-2021_admin3
 
 save_to:
   data_dir: cache

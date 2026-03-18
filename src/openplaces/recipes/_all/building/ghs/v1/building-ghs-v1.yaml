@@ -1,7 +1,7 @@
 # Recipe to import Microsoft building footprints for the United States
 
 # Administrative unit identifier of the geography that the data covers
-admin_id: US
+admin_id: NULL
 
 # Entity: what is the unit of analysis of the imported data?
 entity:
@@ -9,31 +9,36 @@ entity:
   entity_type: building
    # What is the source and URL of a dataset that identifies each unit?
   source:
-    source_id: microsoft
+    source_id: ghs
     # Link to portal with metadata
-    portal_url: "https://github.com/microsoft/USBuildingFootprints"
+    portal_url: "https://publications.jrc.ec.europa.eu/repository/handle/JRC140737"
     # Link to direct download
-    download_url: "https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{admin2_name}.geojson.zip"
+    download_url: "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_OBAT_GLOBE_R2024A/GHS_OBAT_GPKG_GLOBE_R2024A/V1-0/GHS_OBAT_GPKG_{admin1_id_a3}_E2020_R2024A_V1_0.zip"
   version: v2
 
 # How is the download data partitioned?
 download_by:
-  admin_level: 2
-  # Transformations needed to obtain the data partition admin identifier
-  # used by the source URL (e.g., remove spaces)
-  admin_key_transform:
-    admin2_name: "remove_spaces"
+  admin_level: 1
 
 # Name of compressed file (set to skip re-downloading)
-compressed_file_name: "{admin2_name}.geojson.zip"
+compressed_file_name: "GHS_OBAT_GPKG_{admin1_id_a3}_E2020_R2024A_V1_0.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
-uncompressed_file_name: "{admin2_name}.geojson"
+uncompressed_file_name: "GHS_OBAT_GPKG_{admin1_id_a3}_E2020_R2024A_V1_0.gpkg"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  building_id_ghs: id
+  admin2_name: adm1
+  use: use
+  epoch: epoch
+  area: area
+  perimeter: perimeter
+  height: height
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
-  - release
-  - capture_dates_range
+  - admin2_name
 
 # Function to give the GeoDataFrame an index
 create_index:
@@ -43,12 +48,11 @@ create_index:
 
 # Assign administrative IDs using spatial joins/overlays
 overlay_admin_ids:
-  admin_level: 3
-  admin_recipe_id: 'US_admin-nhgis-2020_admin3'
+  admin_level: 2
 
 save_to:
   data_dir: cache
   # Split output into per-admin-unit files at this level
   # (1: state, 2: county, 3: town etc.)
   # Column adminX_id must exist in the pre-processed data.
-  admin_level: 3
+  admin_level: 2

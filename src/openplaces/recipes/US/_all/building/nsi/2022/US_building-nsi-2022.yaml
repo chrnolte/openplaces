@@ -81,10 +81,9 @@ admin_id_crosswalk:
   admin_id_column: admin3_id_admin1
   admin_recipe_id: "US_admin-nhgis-2020_admin3"
 
-# Administrative ID level at which data is saved
-# Set if you want to split the data into smaller chunks
-# (1: by state/department, 2: by county/municipality, 3: by town etc.)
-# The column ``adminX_id`` has to exist in the pre-processed data and
-# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI').
-cache_by:
+save_to:
+  data_dir: cache
+  # Split output into per-admin-unit files at this level
+  # (1: state, 2: county, 3: town etc.)
+  # Column adminX_id must exist in the pre-processed data.
   admin_level: 3

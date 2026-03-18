@@ -39,7 +39,6 @@ query: "admin2_id_admin1 <= '56'"
 # (usually a custom function designed for a specific indexing case)
 index_function: "openplaces.io.admin.admin3_id_index_from_admin3_US_nhgis"
 
-# Internal filename after import. This is only needed if the filename
-# cannot be derived from the reference (admin_id, entity, etc.) alone.
-# Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin3'
+save_to:
+  data_dir: cache
+  filename: admin3

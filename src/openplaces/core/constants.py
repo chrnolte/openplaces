@@ -7,6 +7,70 @@ from pyproj import CRS
 
 ESCAPE_DIR = '_all'
 
+# Standard data directories for openplaces projects.
+# Each entry maps a short name (used in config and recipes) to its metadata.
+# - default: path relative to data_root (or None for the root itself)
+# - description: human-readable label shown during interactive setup
+# - shared: if True, the directory is shared across users in multi-user mode
+
+STANDARD_DIRS = {
+    'data_root': {
+        'default': None,
+        'description': 'Root directory for data, models, reports. None = package root',
+        'shared': True,
+    },
+    'core': {
+        'default': 'data/core',
+        'description': 'Processed, standardized, analysis-ready data',
+        'shared': False,
+    },
+    'external': {
+        'default': 'data/external',
+        'description': 'Downloaded data from third party sources',
+        'shared': True,
+    },
+    'raw': {
+        'default': 'data/raw',
+        'description': 'Raw data from own data collection efforts',
+        'shared': True,
+    },
+    'cache': {
+        'default': 'data/cache',
+        'description': 'Interim data, can be safely deleted or regenerated',
+        'shared': False,
+    },
+    'heap': {
+        'default': 'data/cache/_heap',
+        'description': 'Freshly unzipped data, to be deleted after use',
+        'shared': False,
+    },
+    'logs': {
+        'default': 'data/cache/_logs',
+        'description': 'Logs from script runs for performance profiling',
+        'shared': False,
+    },
+    'out': {
+        'default': 'data/out',
+        'description': 'Output and results data',
+        'shared': False,
+    },
+    'share': {
+        'default': 'data/share',
+        'description': 'Shared data between users',
+        'shared': True,
+    },
+    'models': {
+        'default': 'models',
+        'description': 'Trained and serialized models',
+        'shared': False,
+    },
+    'reports': {
+        'default': 'reports',
+        'description': 'Reports, publications, figures',
+        'shared': False,
+    },
+}
+
 
 # FILE HANDLING
 

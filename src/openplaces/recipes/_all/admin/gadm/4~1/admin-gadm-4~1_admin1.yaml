@@ -35,7 +35,6 @@ index_function: "openplaces.io.admin.admin1_id_index_from_admin1_id_a3"
 # Sort by index?
 sort_index: True
 
-# Internal filename after import. This is only needed if the filename
-# cannot be derived from the reference (admin_id, entity, etc.) alone.
-# Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin1'
+save_to:
+  data_dir: cache
+  filename: admin1
