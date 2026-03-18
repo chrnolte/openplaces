@@ -311,19 +311,17 @@ Attribution to administrative units
 Saving
 ------
 
-.. attribute:: cache_by
-
-   Save data in cache in chunks.
-
-   Argument is not needed if processing already happens at that level (because :attr:`download_by` or :attr:`process_by` is set)
+.. attribute:: save_to
 
    .. attribute:: admin_level
       :no-index:
 
-      Admin level at which to save the data in cache.
+      Admin level at which to save the data.
 
-.. attribute:: cache_filename
+      Argument is not needed if processing already happens at that level (because :attr:`download_by` or :attr:`process_by` is set)
 
-   Name of filename to save in cache.
+   .. attribute:: filename
 
-   This is only needed if the filename cannot be derived from the reference (admin_id, entity, etc.) alone. Use if source file has multiple layers or if `layer` has a value.
+      Name of filename to save in cache.
+
+      This is only needed if the filename cannot be derived from the reference (admin_id, entity, etc.) alone. Use if source file has multiple layers or if `layer` has a value.

@@ -32,9 +32,11 @@ from openplaces.geo.vector import (
 )
 from openplaces.io import (
     delete_data,
+    delete_parquet,
     download,
     find_latest_file_or_gdb,
     read_gdb_with_domains,
+    read_parquet,
     save_parquet,
     unzip,
 )
@@ -46,13 +48,17 @@ from openplaces.io.transform import (
     get_crosswalk,
 )
 from openplaces.path import (
-    cache_path,
     external_dir,
     heap_dir,
     path_matches_pattern,
     recipe_path,
 )
-from openplaces.recipe import get_recipe_by_id
+from openplaces.recipe import (
+    get_output_path,
+    get_partition_ids,
+    get_recipe_by_id,
+    resolve_output_admin_ids,
+)
 from openplaces.timing import Timer, get_timer, log_step
 from openplaces.utils import format_list
 
@@ -94,6 +100,10 @@ class Ingester:
 
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)
+        if recipe is None:
+            raise ValueError(
+                '`recipe` must be a recipe dict or a valid recipe ID string.'
+            )
         self.recipe = recipe
 
         if isinstance(admin_ids, str) or admin_ids is None:
@@ -126,6 +136,10 @@ class Ingester:
         self.verbose = verbose
 
         self._early_warnings()
+
+    @property
+    def _is_tile_partition(self):
+        return (self.recipe.get('download_by') or {}).get('partition') == 'tile_id'
 
     def _early_warnings(self):
         """Warnings to throw if the initialization looks problematic"""
@@ -164,8 +178,11 @@ class Ingester:
 
         self._resolve_partition_ids(reprocess)
 
-        for admin_id_to_download, partition_id_to_download in product(
-            self.admin_ids_to_download, self.partition_ids_to_download
+        # Partition first so all admin units within the same partition are
+        # processed consecutively — this allows the downloaded file to be
+        # read once and cached (e.g. for tile-partitioned recipes).
+        for partition_id_to_download, admin_id_to_download in product(
+            self.partition_ids_to_download, self.admin_ids_to_download
         ):
             if self.verbose and (admin_id_to_download or partition_id_to_download):
                 print_txt = 'Ingesting data for '
@@ -181,19 +198,89 @@ class Ingester:
                 keep_unzipped=keep_unzipped,
             )
 
+        if self._is_tile_partition:
+            self._merge_tile_partials()
+
+    def _merge_tile_partials(self):
+        """Merge per-tile partial files into final per-admin-id output files.
+
+        For each admin_id in `admin_ids_to_save`, reads all tile partial
+        files written during the tile loop, concatenates them, writes the
+        merged result to the final output path, and deletes the partials.
+        Admin IDs whose data came from a single tile are handled by a simple
+        rename rather than a concat.
+        """
+        for admin_id in self.admin_ids_to_save:
+            final_path = get_output_path(self.recipe, admin_id)
+
+            # Tile IDs that were actually downloaded for this admin_id.
+            tile_ids = [
+                tile_id
+                for tile_id in self.partition_ids_to_download
+                if admin_id in self.tile_admin_link.xs(tile_id, level=0).index
+            ]
+            output_tile_paths = [
+                get_output_path(self.recipe, admin_id, tile_id) for tile_id in tile_ids
+            ]
+            existing_output_tile_paths = [
+                _path for _path in output_tile_paths if _path.exists()
+            ]
+
+            if not existing_output_tile_paths:
+                continue
+
+            try:
+                if len(existing_output_tile_paths) == 1:
+                    existing_output_tile_paths[0].replace(final_path)
+                    _geo_partial = existing_output_tile_paths[0].with_stem(
+                        existing_output_tile_paths[0].stem + '_geo'
+                    )
+                    if _geo_partial.exists():
+                        _geo_partial.replace(
+                            final_path.with_stem(final_path.stem + '_geo')
+                        )
+                else:
+                    _geo_path = existing_output_tile_paths[0].with_stem(
+                        existing_output_tile_paths[0].stem + '_geo'
+                    )
+                    gdf_tile_list = [
+                        read_parquet(_path, geom=_geo_path.exists())
+                        for _path in existing_output_tile_paths
+                    ]
+                    gdf_merged = gpd.GeoDataFrame(pd.concat(gdf_tile_list).sort_index())
+                    save_parquet(gdf_merged, final_path)
+                    for _path in existing_output_tile_paths:
+                        delete_parquet(_path)
+            except PermissionError as e:
+                raise PermissionError(
+                    f'Cannot write to {final_path.name}.\n\n'
+                    '\033[1m→ Close the file in QGIS / ArcGIS / Dropbox sync '
+                    'and re-run.\033[0m'
+                ) from e
+
+            if self.verbose and len(existing_output_tile_paths) > 1:
+                print(
+                    f'Merged {len(existing_output_tile_paths)} '
+                    f'tile partial(s) → {final_path.name}'
+                )
+
     def _resolve_admin_ids(self, reprocess):
         """Resolve admin IDs to save, process, and download"""
 
         self._resolve_admin_ids_to_save(reprocess)
-        if self.verbose:
-            if not self.admin_ids_to_save:
+
+        if not self.admin_ids_to_save:
+            if self.verbose:
                 print('All output files found. Processing skipped.\n')
-                return
-            else:
-                print('Admin IDs of output files:', format_list(self.admin_ids_to_save))
+            self.admin_ids_to_process = []
+            self.admin_ids_to_download = []
+            return
+
+        if self.verbose:
+            print('Admin IDs of output files:', format_list(self.admin_ids_to_save))
 
         self._resolve_admin_ids_to_process()
-        if self.verbose:
+        if self.verbose and self.admin_ids_to_process != self.admin_ids_to_save:
             print(
                 'Admin IDs of processing chunks:',
                 format_list(self.admin_ids_to_process),
@@ -218,58 +305,12 @@ class Ingester:
             (as a result, they won't be re-processed).
             If True, keep all admin_ids, as all will be re-processed.
         """
-        save_by_admin_level = self.recipe['admin_id'].get_level()
-        for by in ['download_by', 'process_by', 'cache_by']:
-            if by in self.recipe and 'admin_level' in self.recipe[by]:
-                save_by_admin_level = max(
-                    save_by_admin_level, self.recipe[by]['admin_level']
-                )
-
-        # Get all admin units at the level of where data will be saved
-        if save_by_admin_level == 0:
-            admin_ids_to_save = [None]
-
-        else:
-            admin_all = get_admin(self.recipe['admin_id'], save_by_admin_level)
-
-            # Pick Admin IDs from the level where data is to be saved
-            # that are related to the Admin IDs requested to be ingested
-            admin_ids_to_save = [
-                admin_id_str
-                for admin_id_requested in self.admin_ids
-                for admin_id_str in admin_all.index
-                if admin_id_requested.is_parent_or_equal_of(AdminId(admin_id_str))
-                or AdminId(admin_id_str).is_parent_of(admin_id_requested)
-            ]
-            # Retain only unique IDs
-            admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
-
-        if reprocess:
-            self.admin_ids_to_save = admin_ids_to_save
-        else:
-            # Keep only Admin IDs for which output files do not exist
-            admin_ids_to_save = [
-                admin_id
-                for admin_id in admin_ids_to_save
-                if not self._get_output_path(admin_id).exists()
-            ]
-            self.admin_ids_to_save = admin_ids_to_save
-
-    def _get_output_path(self, admin_id):
-        """Returns path of destination parquet file for admin unit
-
-        Parameters
-        ----------
-        admin_id : AdminId
-            Admin ID of file to save
-        """
-        output_path = cache_path(
-            admin_id,
-            self.recipe.get('entity'),
-            self.recipe.get('dataset'),
-            filename=self.recipe.get('cache_filename'),
+        self.admin_ids_to_save = resolve_output_admin_ids(
+            self.recipe,
+            self.admin_ids,
+            operation_keys=('download_by', 'process_by', 'save_to'),
+            reprocess=reprocess,
         )
-        return output_path
 
     def _resolve_admin_ids_to_process(self):
         """Create list of admin_ids to process
@@ -281,6 +322,12 @@ class Ingester:
         partitioned downloads or querying a large geodatabase by admin).
         """
 
+        # For tile partitions each admin unit is processed independently
+        # from whichever tile(s) cover it; admin_ids_to_process == admin_ids_to_save.
+        if self._is_tile_partition:
+            self.admin_ids_to_process = self.admin_ids_to_save
+            return
+
         process_by_admin_level = self.recipe['admin_id'].get_level()
         for by in ['download_by', 'process_by']:
             if by in self.recipe and 'admin_level' in self.recipe[by]:
@@ -289,10 +336,8 @@ class Ingester:
                 )
 
         if process_by_admin_level == 0:
-            if self.admin_ids_to_save == [None]:
-                admin_ids_to_process = [None]
-            elif self.admin_ids_to_save == []:
-                admin_ids_to_process = []
+            if self.admin_ids_to_save in ([None], []):
+                admin_ids_to_process = self.admin_ids_to_save
             else:
                 raise ValueError(
                     'Error not captured self.admin_ids_to_save ='
@@ -319,6 +364,11 @@ class Ingester:
 
         Used to check whether all files have been downloaded.
         """
+
+        # For tile partitions tiles are downloaded as a whole, not split by admin.
+        if self._is_tile_partition:
+            self.admin_ids_to_download = [None]
+            return
 
         download_by_admin_level = self.recipe['admin_id'].get_level()
         if 'download_by' in self.recipe and 'admin_level' in self.recipe['download_by']:
@@ -351,49 +401,75 @@ class Ingester:
 
         By convention, all partition IDs are strings.
         """
+        download_by = self.recipe.get('download_by') or {}
 
-        # Initialize default: list with no partition
-        self.partition_ids_to_download = [None]
-
-        download_by = self.recipe.get('download_by')
-        if not download_by:
+        if self._is_tile_partition:
+            self._resolve_tile_ids()
             return
 
-        partition = download_by.get('partition')
-        if not partition:
-            return
+        all_partition_ids = get_partition_ids(self.recipe)
 
-        # Generate pool of partition IDs
-        if partition == 'year':
-            first = download_by.get('first')
-            last = download_by.get('last')
-            if first is None or last is None:
-                raise ValueError(
-                    'If `download_by` has `partition: year`, define `first` and `last`.'
-                )
+        # Filter to requested subset if caller specified partition_ids
+        if isinstance(self.partition_ids, list | set):
             self.partition_ids_to_download = [
-                str(year) for year in list(range(first, last + 1))
+                x for x in self.partition_ids if x in all_partition_ids
             ]
         else:
-            raise NotImplementedError(
-                f'Partition not yet interpreted by openplaces.io.ingester: {partition}.'
-            )
-        if self.verbose:
+            self.partition_ids_to_download = all_partition_ids
+
+        if self.verbose and self.partition_ids_to_download != [None]:
+            partition = download_by.get('partition')
             print(
                 f'Partitioned by `{partition}`:',
                 format_list(self.partition_ids_to_download),
             )
+            if isinstance(self.partition_ids, list | set):
+                print('Selected:', format_list(self.partition_ids_to_download))
 
-        # Filter partition IDs to those requested
+    def _resolve_tile_ids(self):
+        """Resolve tile partition IDs filtered to admin_ids_to_save.
+
+        Loads the tile-admin link table produced by overlay_polygons() and
+        keeps only the tile IDs that intersect at least one admin ID in
+        self.admin_ids_to_save. The link table is stored on self for reuse
+        in _ingest_download_partition.
+        """
+        admin_overlay_specs = self.recipe['overlay_admin_ids']
+        admin_recipe_id = admin_overlay_specs.get(
+            'admin_recipe_id'
+        ) or find_admin_recipe_id(
+            self.recipe['admin_id'], admin_overlay_specs['admin_level']
+        )
+
+        tile_recipe_id = self.recipe['download_by']['tile_recipe_id']
+        tiles_path = get_output_path(get_recipe_by_id(tile_recipe_id))
+        tile_admin_link_path = tiles_path.with_name(
+            tiles_path.stem + f'_{admin_recipe_id}.parquet'
+        )
+        if not tile_admin_link_path.exists():
+            raise ValueError(
+                'File linking {tile_recipe_id} and {admin_recipe_id} not found:\n\n'
+                + str(tile_admin_link_path)
+                + '\n\nDid you process the overlay?'
+            )
+        self.tile_admin_link = pd.read_parquet(tile_admin_link_path)
+
+        # Level 0 = tile index, level 1 = admin index (overlay_polygons order)
+        admin_ids_set = set(self.admin_ids_to_save)
+        relevant = self.tile_admin_link.index.get_level_values(1).isin(admin_ids_set)
+        tile_ids = (
+            self.tile_admin_link[relevant].index.get_level_values(0).unique().tolist()
+        )
+
         if isinstance(self.partition_ids, list | set):
-            self.partition_ids_to_download = [
-                x for x in self.partition_ids if x in self.partition_ids_to_download
-            ]
-            if self.verbose:
-                print(
-                    'Selected:',
-                    format_list(self.partition_ids_to_download),
-                )
+            tile_ids = [t for t in tile_ids if t in set(self.partition_ids)]
+
+        self.partition_ids_to_download = tile_ids
+
+        if self.verbose:
+            print(
+                'Partitioned by `tile_id`:', format_list(self.partition_ids_to_download)
+            )
 
     def _ingest_download_partition(
         self,
@@ -426,24 +502,52 @@ class Ingester:
                 print('Raster is in heap folder. No further processing.')
             return
 
-        admin_ids_to_process_in_partition = [
-            admin_id
-            for admin_id in self.admin_ids_to_process
-            if AdminId(admin_id_to_download).is_parent_or_equal_of(AdminId(admin_id))
-        ]
-
-        for admin_id_to_process in admin_ids_to_process_in_partition:
-            if self.verbose and admin_id_to_process is not None:
-                print(f'Processing data for {admin_id_to_process}:')
-            self._process_recipe_data(admin_id_to_process)
-            self.timer.mark(
-                'Wrap up'
-                + (
-                    f': {admin_id_to_process}'
-                    if admin_id_to_process is not None
-                    else ''
-                )
+        if self._is_tile_partition:
+            admin_ids_in_tile_set = set(
+                self.tile_admin_link.xs(partition_id_to_download, level=0).index
             )
+            admin_ids_in_tile = [
+                aid for aid in self.admin_ids_to_save if aid in admin_ids_in_tile_set
+            ]
+            # Stored for use in _load_admin_geometries: restrict to admin
+            # units in this tile so the overlay only works with relevant bounds.
+            self.download_partition['admin_ids_in_tile'] = admin_ids_in_tile
+
+            # Read, reproject, and overlay once for all admin units in this tile.
+            self.processing_chunk = {'admin_id_to_process': None}
+            gdf = self._read_recipe_data()
+            if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
+                gdf = gdf.to_crs(cfg.crs)
+                self.timer.mark(f'Reproject to {cfg.crs}: {partition_id_to_download}')
+            gdf = self._preprocess_recipe_data(gdf)
+            self.timer.mark(f'Preprocess: {partition_id_to_download}')
+
+            # Save one file per admin unit.
+            for admin_id_to_process in admin_ids_in_tile:
+                self.processing_chunk = {'admin_id_to_process': admin_id_to_process}
+                self._save_recipe_data(gdf)
+                self.timer.mark(f'Save: {admin_id_to_process}')
+        else:
+            admin_ids_to_process_in_partition = [
+                admin_id
+                for admin_id in self.admin_ids_to_process
+                if AdminId(admin_id_to_download).is_parent_or_equal_of(
+                    AdminId(admin_id)
+                )
+            ]
+
+            for admin_id_to_process in admin_ids_to_process_in_partition:
+                if self.verbose and admin_id_to_process is not None:
+                    print(f'Processing data for {admin_id_to_process}:')
+                self._process_recipe_data(admin_id_to_process)
+                self.timer.mark(
+                    'Wrap up'
+                    + (
+                        f': {admin_id_to_process}'
+                        if admin_id_to_process is not None
+                        else ''
+                    )
+                )
 
         # Delete unzipped files in heap folder
         if not keep_unzipped and self.download_partition['data_path'].is_relative_to(
@@ -1029,13 +1133,29 @@ class Ingester:
         elif 'overlay_admin_ids' in self.recipe:
             admin_specs = self.recipe['overlay_admin_ids']
 
+        # For tile partitions admin_id_to_download is None; fall back to the
+        # recipe's own admin scope.
+        admin_id = self.download_partition['admin_id_to_download'] or self.recipe.get(
+            'admin_id'
+        )
         admin_geometries = get_admin(
-            self.download_partition['admin_id_to_download'],
+            admin_id,
             admin_specs['admin_level'],
             recipe=admin_specs.get('admin_recipe_id'),
             geom=True,
         )['geometry']
-        data_crs = get_crs(self.download_partition['data_path'])
+
+        # For tile partitions: restrict to the admin units in this tile so
+        # that overlay_admin_ids only works with the relevant boundaries.
+        if 'admin_ids_in_tile' in self.download_partition:
+            admin_ids_in_tile = self.download_partition['admin_ids_in_tile']
+            admin_geometries = admin_geometries.loc[
+                [aid for aid in admin_ids_in_tile if aid in admin_geometries.index]
+            ]
+
+        data_crs = get_crs(
+            self.download_partition['data_path'], layer=self.recipe.get('layer')
+        )
         if data_crs != admin_geometries.crs:
             admin_geometries = admin_geometries.to_crs(data_crs)
         self.download_partition['admin_geometries'] = admin_geometries
@@ -1090,7 +1210,10 @@ class Ingester:
                     'Possibly an incompletely unzipped file? '
                     'If so, delete manually, and re-run unzipping.'
                 )
-            self.timer.mark('Read vector file' + timer_message_suffix, path=data_path)
+            self.timer.mark(
+                f'Read vector file ({data_path.suffix})' + timer_message_suffix,
+                path=data_path,
+            )
         elif data_path.suffix in PANDAS_EXTENSIONS:
             gdf = pd.read_file(data_path, columns=columns)
             self.timer.mark('Read data table' + timer_message_suffix, path=data_path)
@@ -1399,28 +1522,30 @@ class Ingester:
             Data ready to be saved
         """
 
-        split_dataset_by_admin = (
-            'cache_by' in self.recipe and 'admin_level' in self.recipe['cache_by']
-        )
+        save_to = self.recipe.get('save_to') or {}
+        # backward compat: cache_by: admin_level
+        admin_level = save_to.get('admin_level') or (
+            self.recipe.get('cache_by') or {}
+        ).get('admin_level')
+        split_dataset_by_admin = admin_level is not None
         if split_dataset_by_admin:
-            admin_level = self.recipe['cache_by']['admin_level']
             admin_id_col = f'admin{admin_level}_id'
             if admin_id_col not in gdf:
                 raise ValueError(
-                    f"Recipe says 'cache_by: admin_level: {admin_level}', but column "
+                    f"Recipe says 'save_to: admin_level: {admin_level}', but column "
                     f"'{admin_id_col}' does not exist in DataFrame:\n\n"
                     + str(gdf.sample(1).T)
                 )
             admin_ids_in_data = sorted(set(gdf[admin_id_col].dropna()))
-            admin_ids_to_save_in_data = [
-                admin_id
-                for admin_id in self.admin_ids_to_save
-                if admin_id in admin_ids_in_data
-            ]
             admin_ids_to_save_expected = [
                 admin_id
                 for admin_id in self.admin_ids_to_save
                 if admin_id.startswith(self.processing_chunk['admin_id_to_process'])
+            ]
+            admin_ids_to_save_in_data = [
+                admin_id
+                for admin_id in admin_ids_to_save_expected
+                if admin_id in admin_ids_in_data
             ]
 
             missing_admin_ids = set(admin_ids_to_save_expected) - set(
@@ -1456,7 +1581,12 @@ class Ingester:
             else:
                 gdf_to_save = gdf.copy()
 
-            output_path = self._get_output_path(admin_id_to_save)
+            output_path = get_output_path(
+                self.recipe,
+                admin_id_to_save,
+                self.download_partition.get('partition_id_to_download'),
+            )
+
             if output_path.suffix == '.parquet':
                 save_parquet(gdf_to_save, output_path)
             else:

@@ -37,7 +37,6 @@ create_index:
 # Keeps 50 states and DC (territories are in `admin1` according to ISO)
 query: "admin2_id_admin1 <= '56'"
 
-# Internal filename after import. This is only needed if the filename
-# cannot be derived from the reference (admin_id, entity, etc.) alone.
-# Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin2'
+save_to:
+  data_dir: cache
+  filename: admin2

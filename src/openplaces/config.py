@@ -20,7 +20,7 @@ from typing import Any
 import yaml
 from platformdirs import user_config_dir
 
-from openplaces.core.constants import CRS_LAT_LONG, GEO_MIN_AREA_M2
+from openplaces.core.constants import CRS_LAT_LONG, GEO_MIN_AREA_M2, STANDARD_DIRS
 
 # Application name and author to locate user configuration files
 APPNAME = 'openplaces'
@@ -39,65 +39,6 @@ __all__ = [
 
 class OpenPlacesConfig:
     """Configuration manager with interactive first-use setup."""
-
-    STANDARD_DIRS = {
-        'data_root': {
-            'default': None,
-            'description': 'Root directory for data, models, reports. '
-            'None = package root',
-            'shared': True,
-        },
-        'core': {
-            'default': 'data/core',
-            'description': 'Processed, standardized, analysis-ready data',
-            'shared': False,
-        },
-        'external': {
-            'default': 'data/external',
-            'description': 'Downloaded data from third party sources',
-            'shared': True,
-        },
-        'raw': {
-            'default': 'data/raw',
-            'description': 'Raw data from own data collection efforts',
-            'shared': True,
-        },
-        'cache': {
-            'default': 'data/cache',
-            'description': 'Interim data, can be safely deleted or regenerated',
-            'shared': False,
-        },
-        'heap': {
-            'default': 'data/cache/_heap',
-            'description': 'Freshly unzipped data, to be deleted after use',
-            'shared': False,
-        },
-        'logs': {
-            'default': 'data/cache/_logs',
-            'description': 'Logs from script runs for performance profiling',
-            'shared': False,
-        },
-        'out': {
-            'default': 'data/out',
-            'description': 'Output and results data',
-            'shared': False,
-        },
-        'share': {
-            'default': 'data/share',
-            'description': 'Shared data between users',
-            'shared': True,
-        },
-        'models': {
-            'default': 'models',
-            'description': 'Trained and serialized models',
-            'shared': False,
-        },
-        'reports': {
-            'default': 'reports',
-            'description': 'Reports, publications, figures',
-            'shared': False,
-        },
-    }
 
     DEFAULTS = {
         'crs': CRS_LAT_LONG,
@@ -142,7 +83,7 @@ class OpenPlacesConfig:
 
         # Extract defaults from STANDARD_DIRS
         self.default_dirs = {
-            key: info['default'] for key, info in self.STANDARD_DIRS.items()
+            key: info['default'] for key, info in STANDARD_DIRS.items()
         }
 
     def _get_code_root(self) -> Path:
@@ -207,7 +148,7 @@ class OpenPlacesConfig:
 
             # Update directories with user subfolder
             user_subdir = f'{self.user_data_dir}'
-            for key, dir_info in self.STANDARD_DIRS.items():
+            for key, dir_info in STANDARD_DIRS.items():
                 if key == 'data_root':
                     continue  # Don't modify root
                 if dir_info['shared']:
@@ -252,7 +193,7 @@ class OpenPlacesConfig:
         print('-' * 70)
 
         for key, path in self.default_dirs.items():
-            info = self.STANDARD_DIRS[key]
+            info = STANDARD_DIRS[key]
             is_user_specific = not info['shared']
             marker = '👤' if is_user_specific else '🌍'
             print(f'  {marker} {key:8s}: {path}')
@@ -281,7 +222,7 @@ class OpenPlacesConfig:
         print('Press Enter to accept the default for each directory.\n')
 
         custom_dirs = {}
-        for key, info in self.STANDARD_DIRS.items():
+        for key, info in STANDARD_DIRS.items():
             default_path = self.default_dirs[key]
             desc = info['description']
 
@@ -432,7 +373,7 @@ class OpenPlacesConfig:
         self.config['directories'][name] = dir_path.resolve()
 
         if description:
-            self.STANDARD_DIRS[name] = {
+            STANDARD_DIRS[name] = {
                 'default': path,
                 'description': description,
                 'shared': False,  # Custom dirs default to user-specific

@@ -20,6 +20,7 @@ from zipfile import ZIP_BZIP2, ZIP_DEFLATED, ZIP_LZMA, ZIP_STORED, BadZipFile, Z
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow
 import requests
 from tqdm import tqdm
 
@@ -446,6 +447,7 @@ def to_parquet(
 
     if isinstance(df, gpd.GeoDataFrame):
         with warnings.catch_warnings():
+            kwargs.setdefault('write_covering_bbox', True)
             warnings.filterwarnings('ignore', '.*initial implementation of Parquet.*')
             df.to_parquet(filepath, **kwargs)
     else:
@@ -633,13 +635,40 @@ def save_parquet(gdf, parquet_path):
             parquet_path.with_stem(parquet_path.stem + '_geo'),
             index=False,
             schema_version='1.1.0',
+            write_covering_bbox=True,
         )
     else:
         to_parquet(gdf, parquet_path)
 
 
-def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kwargs):
-    """Read parquet file from filesystem (with optional geometries)
+def delete_parquet(parquet_path):
+    """Delete a parquet file and its geoparquet sidecar if it exists.
+
+    Mirrors the two-file structure written by `save_parquet`: an attribute
+    table at `parquet_path` and an optional geometry table at
+    `parquet_path.stem + '_geo' + parquet_path.suffix`.
+
+    Parameters
+    ----------
+    parquet_path : str or Path
+        Path to the attribute parquet file.
+    """
+    parquet_path = Path(parquet_path)
+    geo_path = parquet_path.with_stem(parquet_path.stem + '_geo')
+    for _path in (parquet_path, geo_path):
+        if _path.exists():
+            _path.unlink()
+
+
+def read_parquet(
+    parquet_path,
+    geom=False,
+    drop_join_id=True,
+    filters=None,
+    bbox: tuple[float, float, float, float] | None = None,
+    **kwargs,
+):
+    """Read parquet file from filesystem (with optional geometries).
 
     Parameters
     ----------
@@ -650,13 +679,16 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
         (`parquet_path` with '_geo' suffix)
     drop_join_id : bool
         Drop column '_join_id' if it exists.
-    filters : list of filters
-        Will be passed to pd.read_parquet
-    kwargs : dict
-        Keywords arguments will be passed on to pd.read_parquet()
-        (e.g. columns)
+    filters : list of filters, optional
+        Passed to pd.read_parquet for the attribute table. Also applied to
+        the geo file as a join-id filter when bbox is not provided.
+    bbox : tuple of (minx, miny, maxx, maxy), optional
+        Spatial bounding box filter in EPSG:4326. When provided and geom=True,
+        exploits covering bbox columns written by write_covering_bbox=True for
+        Parquet predicate pushdown on the geo file — bypasses the join-id filter.
+    **kwargs
+        Additional keyword arguments passed to pd.read_parquet() (e.g. columns).
     """
-
     parquet_path = Path(parquet_path)
 
     if not parquet_path.exists():
@@ -665,10 +697,11 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
         )
 
     df = pd.read_parquet(parquet_path, filters=filters, **kwargs)
+
     if 'geometry' in df:
         raise ValueError(
             "'geometry' column found in:\n\n"
-            + parquet_path
+            + str(parquet_path)
             + '\n\n`read_parquet` expects split attribute (parquet) + '
             'geometry (geoparquet) tables.'
         )
@@ -680,15 +713,30 @@ def read_parquet(parquet_path, geom=False, drop_join_id=True, filters=None, **kw
             join_id_column = 'geo_id'
         else:
             raise ValueError('Could not identify column to join GeoParquet.')
-        # Join polygons to table
-        if filters is not None:
+
+        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
+
+        if bbox is not None:
+            minx, miny, maxx, maxy = bbox
+            geoparquet_filters = (
+                (pyarrow.compute.field('bbox', 'xmin') <= maxx)
+                & (pyarrow.compute.field('bbox', 'ymin') <= maxy)
+                & (pyarrow.compute.field('bbox', 'xmax') >= minx)
+                & (pyarrow.compute.field('bbox', 'ymax') >= miny)
+            )
+        elif filters is not None:
             geoparquet_filters = [(join_id_column, 'in', df[join_id_column].tolist())]
         else:
             geoparquet_filters = None
-        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
+
         gdf = gpd.read_parquet(geoparquet_path, filters=geoparquet_filters)
         df = gpd.GeoDataFrame(
-            df.join(gdf.set_index(join_id_column), on=join_id_column), crs=gdf.crs
+            df.join(
+                gdf.set_index(join_id_column),
+                on=join_id_column,
+                how='inner' if bbox is not None else 'left',
+            ),
+            crs=gdf.crs,
         )
 
     if drop_join_id and '_join_id' in df:
@@ -911,7 +959,7 @@ def to_drive(filepath, directory, remote='budrive', verbose=True):
     """
 
     cmd = ['rclone', 'copy', filepath, f'{remote}:{directory}']
-    if verbose:
+    if verbose and sys.stdout.isatty():
         cmd += ['--progress']
     subprocess.run(cmd)
 

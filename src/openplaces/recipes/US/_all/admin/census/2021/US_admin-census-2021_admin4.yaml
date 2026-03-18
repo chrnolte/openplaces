@@ -62,7 +62,6 @@ create_index:
     new_admin_id_col: admin4_id
     parent_admin_id_col: admin3_id
 
-# Internal filename after import. This is only needed if the filename
-# cannot be derived from the reference (admin_id, entity, etc.) alone.
-# Use if source file has multiple layers, or if `layer` has a value.
-cache_filename: 'admin4'
+save_to:
+  data_dir: cache
+  filename: admin4

@@ -4,12 +4,15 @@
 
 import inspect
 from collections import Counter
+from pathlib import Path
 
 import pandas as pd
 import yaml
 
-from openplaces.core.schema import AdminId, DataSet, Entity, Source
-from openplaces.path import OpenPlacesReference, recipe_path
+from openplaces.config import cfg
+from openplaces.core.constants import STANDARD_DIRS, STRING_SEPARATOR_BETWEEN_IDS
+from openplaces.core.schema import AdminId, DataSet, Entity, Source, sanitize
+from openplaces.path import OpenPlacesReference, path, recipe_path
 
 
 def get_recipe(*args, **kwargs):
@@ -122,6 +125,17 @@ def get_recipe_dict(filepath, *args, **kwargs):
         if isinstance(recipe_dict['dataset'], dict):
             recipe_dict['dataset'] = DataSet(**recipe_dict['dataset'])
 
+    # Validate save_to (if present)
+    if 'save_to' in recipe_dict and isinstance(recipe_dict['save_to'], dict):
+        data_dir = recipe_dict['save_to'].get('data_dir')
+        if data_dir is not None:
+            if data_dir not in STANDARD_DIRS:
+                raise ValueError(
+                    f"Recipe 'save_to.data_dir' is '{data_dir}', which is not a "
+                    'known openplaces directory. Valid options:\n- '
+                    + '\n- '.join(sorted(STANDARD_DIRS))
+                )
+
     return recipe_dict
 
 
@@ -189,3 +203,223 @@ def get_recipe_by_id(recipe_id, **kwargs):
         filename=filename,
         **kwargs,
     )
+
+
+def _get_save_to(recipe):
+    """Return (data_dir, filename) from a recipe dict.
+
+    Falls back to the deprecated 'cache_filename' key so that recipes not
+    yet migrated to the 'save_to' block continue to work.
+    """
+    save_to = recipe.get('save_to') or {}
+    data_dir = save_to.get('data_dir', 'cache')
+    filename = save_to.get('filename') or recipe.get('cache_filename')
+    return data_dir, filename
+
+
+def get_output_path(recipe_id, admin_id=None, partition_id=None, geo=False):
+    """Return the path where recipe output is written.
+
+    Mirrors `Ingester._get_output_path` without instantiating an Ingester.
+    The output root is determined by 'save_to': 'data_dir' in the recipe
+    (default: 'cache'), which must name a directory registered in `STANDARD_DIRS`.
+
+    Parameters
+    ----------
+    recipe_id : str or dict
+        Recipe identifier (as accepted by `get_recipe_by_id`) or a
+        pre-loaded recipe dict.
+    admin_id : str or `AdminId`, optional
+        Administrative unit for which to resolve the output path.
+        Pass `None` for recipes not split by admin unit.
+    partition_id : str, optional
+        Partition value appended to the filename stem, e.g.
+        `US-NC-BS_building-obm-2025_032012.parquet` for a tile partition
+        with id `032012`.  Pass `None` (default) to obtain the final,
+        merged output path.
+    geo : bool, optional
+        If True, return the path to the companion ``_geo.parquet`` file
+        instead of the attribute parquet file.
+
+    Returns
+    -------
+    pathlib.Path
+        Resolved output path for the recipe data file.
+    """
+    recipe = get_recipe_by_id(recipe_id) if isinstance(recipe_id, str) else recipe_id
+
+    if admin_id is not None:
+        admin_id = AdminId(admin_id) if not isinstance(admin_id, AdminId) else admin_id
+        recipe_admin_id = recipe['admin_id']
+        if not recipe_admin_id.is_parent_or_equal_of(admin_id):
+            raise ValueError(
+                f'`admin_id` {admin_id} is not within the scope of '
+                f'recipe `admin_id` {recipe_admin_id}.'
+            )
+
+        save_level = get_save_admin_level(recipe)
+        if admin_id.get_level() != save_level:
+            raise ValueError(
+                f'`admin_id` {admin_id} is at level {admin_id.get_level()}, '
+                f'but the recipe saves data at admin level {save_level}.'
+            )
+
+    data_dir, filename = _get_save_to(recipe)
+
+    if partition_id is not None:
+        partition_id_save = sanitize(str(partition_id))
+        if filename:
+            fp = Path(filename)
+            filename = fp.with_stem(
+                fp.stem + STRING_SEPARATOR_BETWEEN_IDS + partition_id_save
+            ).name
+        else:
+            # path() will join this with the auto-generated prefix via the
+            # same separator, e.g. US-NC-BS_building-obm-2025_032012.parquet
+            filename = partition_id_save
+
+    p = path(
+        admin_id if admin_id else recipe.get('admin_id'),
+        recipe.get('entity'),
+        recipe.get('dataset'),
+        filename=filename,
+        root=cfg.get_dir(data_dir),
+    )
+    if geo:
+        p = p.with_stem(p.stem + '_geo')
+    return p
+
+
+def get_save_admin_level(
+    recipe, operation_keys=('download_by', 'process_by', 'save_to')
+):
+    """Return the admin level at which output files are split.
+
+    Takes the maximum 'admin_level' found across the given recipe sections,
+    falling back to the recipe's own admin ID depth if none is declared.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe dictionary.
+    operation_keys : tuple of str
+        Recipe section keys to inspect for 'admin_level'. 'save_to' is
+        included by default since save_to: admin_level controls output
+        granularity. Override when calling from other recipe runners.
+
+    Returns
+    -------
+    int
+        Admin level for output files (0 = no admin split).
+    """
+    level = recipe['admin_id'].get_level()
+    for key in operation_keys:
+        if key in recipe and 'admin_level' in recipe[key]:
+            level = max(level, recipe[key]['admin_level'])
+    # Deprecated / for backward compatibility: cache_by: admin_level
+    cache_by = recipe.get('cache_by') or {}
+    if 'admin_level' in cache_by:
+        level = max(level, cache_by['admin_level'])
+    return level
+
+
+def get_partition_ids(recipe):
+    """Return the list of valid partition ID strings for a recipe.
+
+    Returns `[None]` for recipes without a 'download_by': 'partition' key.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe dictionary.
+
+    Returns
+    -------
+    list of str or list of None
+
+    Raises
+    ------
+    ValueError
+        If 'download_by': 'partition' is 'year' but 'first'/'last' are not defined.
+    NotImplementedError
+        If 'download_by': 'partition' names an unrecognised partition type.
+    """
+    download_by = recipe.get('download_by') or {}
+    partition = download_by.get('partition')
+
+    if not partition:
+        return [None]
+
+    if partition == 'year':
+        first = download_by.get('first')
+        last = download_by.get('last')
+        if first is None or last is None:
+            raise ValueError(
+                "If 'download_by' has 'partition: year', define 'first' and 'last'."
+            )
+        return [str(year) for year in range(first, last + 1)]
+
+    raise NotImplementedError(
+        f'Partition not yet supported by openplaces.recipe.get_partition_ids: '
+        f"'{partition}'."
+    )
+
+
+def resolve_output_admin_ids(
+    recipe,
+    requested_admin_ids,
+    operation_keys=('download_by', 'process_by', 'save_to'),
+    reprocess=False,
+    partition_id=None,
+):
+    """Return admin IDs for which output files should be (re-)created.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe dictionary.
+    requested_admin_ids : list of AdminId
+        The admin IDs the caller wants to process.
+    operation_keys : tuple of str
+        Recipe sections to inspect for 'admin_level'. 'save_to' is
+        included by default; override when calling from other recipe runners.
+    reprocess : bool
+        If True, include admin IDs whose output files already exist.
+    partition_id : str, optional
+        Forwarded to `get_output_path` when checking file existence.
+
+    Returns
+    -------
+    list of str or list of None
+        Admin ID strings at the save level, or `[None]` if not admin-split.
+    """
+    # Deferred import: openplaces.api imports recipe at module level, so
+    # importing api here avoids a circular import at load time.
+    from openplaces.api import get_admin
+
+    save_level = get_save_admin_level(recipe, operation_keys)
+
+    if save_level == 0:
+        admin_ids_all = [None]
+    else:
+        admin_ids_all = list(
+            dict.fromkeys(get_admin(recipe['admin_id'], save_level).index)
+        )
+
+    admin_ids_to_save = [
+        admin_id_str
+        for admin_id_requested in requested_admin_ids
+        for admin_id_str in admin_ids_all
+        if admin_id_requested.is_parent_or_equal_of(AdminId(admin_id_str))
+        or AdminId(admin_id_str).is_parent_of(admin_id_requested)
+    ]
+    admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
+
+    if not reprocess:
+        admin_ids_to_save = [
+            admin_id
+            for admin_id in admin_ids_to_save
+            if not get_output_path(recipe, admin_id, partition_id).exists()
+        ]
+
+    return admin_ids_to_save

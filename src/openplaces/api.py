@@ -11,8 +11,7 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
-from openplaces.path import cache_path
-from openplaces.recipe import get_recipe_by_id
+from openplaces.recipe import get_output_path, get_recipe_by_id
 from openplaces.utils import format_list
 
 ADMIN_SOURCE_DEFAULT = 'admin-openplaces-2026'
@@ -135,11 +134,7 @@ def get_admin(
 
     if isinstance(recipe, dict):
         # Set recipe_parquet_path: will be used twice
-        recipe_parquet_path = cache_path(
-            recipe['admin_id'],
-            recipe['entity'],
-            filename=recipe['cache_filename'] if 'cache_filename' in recipe else None,
-        )
+        recipe_parquet_path = get_output_path(recipe, recipe['admin_id'])
 
     try:
         # Load admin spine from default source
@@ -295,10 +290,4 @@ def read_entities(recipe, admin_id=None, geom=False):
     if admin_id is None:
         admin_id = recipe['admin_id']
 
-    filename = recipe['cache_filename'] if 'cache_filename' in recipe else None
-    parquet_path = cache_path(
-        admin_id,
-        recipe['entity'],
-        filename=filename,
-    )
-    return read_parquet(parquet_path, geom=geom)
+    return read_parquet(get_output_path(recipe, admin_id), geom=geom)
