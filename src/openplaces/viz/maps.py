@@ -33,7 +33,7 @@ def show_geometry_context(
     figsize: tuple = (12, 8),
     max_attrs: int = 20,
     title: str = None,
-    min_buffer_m: float = 100.0,
+    min_buffer_m: float = 25.0,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Plot any geometry type (Point, LineString, Polygon, and their Multi-
@@ -48,7 +48,7 @@ def show_geometry_context(
     buffer_factor : float
         Buffer size as a multiple of the feature's maximum dimension.
         For point geometries (zero extent) the buffer is derived from
-        ``min_buffer_m`` instead.
+        `min_buffer_m` instead.
     basemap_source : str
         Contextily basemap provider string.
     figsize : tuple
@@ -113,13 +113,15 @@ def show_geometry_context(
 
     # For zero-extent geometries use a small nominal value so the buffer
     # arithmetic doesn't collapse to zero.
+    # Minimum cx radius matching the minimum plot half-width (min_buffer_m *
+    # buffer_factor metres), converted to approximate degrees, with the same
+    # 1.5x generous factor so context always covers the full plot extent.
+    _min_cx = min_buffer_m * buffer_factor * 1.5 / 111_320
+
     if max_dim_orig == 0:
-        # Point geometry: derive cx query radius from min_buffer_m converted
-        # to approximate degrees (1 deg ≈ 111 320 m), with the same 1.5x
-        # generous factor used for non-point geometries.
-        buffer_dist_cx = (min_buffer_m / 111_320) * buffer_factor * 1.5
+        buffer_dist_cx = _min_cx
     else:
-        buffer_dist_cx = max_dim_orig * buffer_factor * 1.5 / 2
+        buffer_dist_cx = max(max_dim_orig * buffer_factor * 1.5 / 2, _min_cx)
 
     cx_bounds = [
         centroid.x - buffer_dist_cx,
