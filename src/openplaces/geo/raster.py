@@ -34,7 +34,7 @@ def zonal_stats_with_exactextract(
     raster : str, Path, or rasterio.DatasetReader
         Raster to summarise
     stats : str, list, or Operation
-        Statistics to compute. Passed directly to ``exactextract.exact_extract``
+        Statistics to compute. Passed directly to `exactextract.exact_extract`
         Ex. mean, min, max, count, mahority, quantile, sum, weighted mean
     weights : str, Path, or rasterio.DatasetReader, optional
         A second raster used as pixel weights
