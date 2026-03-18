@@ -5,7 +5,7 @@ import geopandas as gpd
 import rasterio
 from exactextract import exact_extract
 
-from openplaces.geo.vector import clean_polygons
+from openplaces.geo.polygon import clean_polygons
 
 
 def zonal_stats_with_exactextract(

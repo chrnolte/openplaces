@@ -22,7 +22,7 @@ from shapely.geometry import (
     Polygon,
 )
 
-from openplaces.geo.vector import get_areas
+from openplaces.geo.polygon import get_areas
 
 
 def show_geometry_context(
