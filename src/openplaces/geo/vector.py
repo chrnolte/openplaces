@@ -671,9 +671,9 @@ def get_intersection_over_union(
     return gdf_overlay
 
 
-def get_crs(filepath):
+def get_crs(filepath, layer=None):
     """Get the CRS from the metadata of a file using `pyogrio`"""
-    geo_metadata = pyogrio.read_info(filepath)
+    geo_metadata = pyogrio.read_info(filepath, layer=layer)
     if 'crs' not in geo_metadata:
         warnings.warn('No CRS found in input data.')
         return None
