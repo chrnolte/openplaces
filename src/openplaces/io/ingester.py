@@ -25,11 +25,9 @@ from openplaces.core.constants import (
     ZIP_EXTENSIONS,
 )
 from openplaces.core.schema import AdminId
+from openplaces.geo import get_crs
 from openplaces.geo.ids import get_geo_ids
-from openplaces.geo.vector import (
-    get_crs,
-    overlay_admin_ids,
-)
+from openplaces.geo.overlay import overlay_admin_ids
 from openplaces.io import (
     delete_data,
     delete_parquet,
