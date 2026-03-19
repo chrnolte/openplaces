@@ -135,8 +135,7 @@ exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 openplaces = [
-    "config/*.toml",
-    "datasets/**/*.toml"
+    "qgis/*.py",
 ]
 
 [tool.ruff]

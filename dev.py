@@ -5,10 +5,12 @@ This script helps developers set up and manage their local development
 environment. End users installing via 'pip install openplaces' don't need this.
 """
 
+import importlib.resources
 import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 DEFAULT_ENV_NAME = 'openplaces'
 
@@ -133,6 +135,128 @@ def ensure_7zip():
     return False
 
 
+def install_qgis():
+    """Copy openplaces QGIS processing scripts to the user's QGIS profile."""
+
+    # Prefer the local source tree (works when running dev.py from the repo).
+    # Fall back to importlib.resources for installed-package scenarios.
+    local_qgis_dir = Path(__file__).parent / 'src' / 'openplaces' / 'qgis'
+
+    if local_qgis_dir.is_dir():
+        scripts = [
+            p
+            for p in local_qgis_dir.iterdir()
+            if p.name.endswith('.py') and not p.name.startswith('__')
+        ]
+        as_file = None  # plain Path objects, no context manager needed
+    else:
+        try:
+            qgis_pkg = importlib.resources.files('openplaces.qgis')
+        except ModuleNotFoundError:
+            print('✗ openplaces not found. Run from the repo root or install first.')
+            return False
+        scripts = [
+            p
+            for p in qgis_pkg.iterdir()
+            if p.name.endswith('.py') and not p.name.startswith('__')
+        ]
+        as_file = importlib.resources.as_file
+
+    if not scripts:
+        print('No QGIS scripts found in openplaces.qgis.')
+        return False
+
+    # Resolve QGIS processing scripts folder for each OS
+    system = sys.platform
+    if system == 'win32':
+        base = Path(os.environ.get('APPDATA', '~')).expanduser()
+    elif system == 'darwin':
+        base = Path('~/Library/Application Support').expanduser()
+    else:
+        base = Path('~/.local/share').expanduser()
+
+    scripts_dir = (
+        base / 'QGIS' / 'QGIS3' / 'profiles' / 'default' / 'processing' / 'scripts'
+    )
+
+    try:
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f'✗ Could not create QGIS scripts directory: {e}')
+        return False
+
+    for script in scripts:
+        dest = scripts_dir / script.name
+        try:
+            if as_file is None:
+                shutil.copy2(script, dest)
+            else:
+                with as_file(script) as src_path:
+                    shutil.copy2(src_path, dest)
+        except OSError as e:
+            print(f'  ✗ Could not copy {script.name}: {e}')
+            continue
+        print(f'  ✓ {script.name} → {dest}')
+
+    print(f'\n✓ QGIS scripts installed to {scripts_dir}')
+    print('  Restart QGIS and look for "openplaces" in the Processing Toolbox.')
+    return True
+
+
+def install_launcher(env_name):
+    """Install a launcher to start openplaces from the command line."""
+    notebooks_dir = Path(__file__).parent.resolve() / 'notebooks'
+    sentinel = f'# openplaces-launcher:{env_name}'
+
+    if sys.platform == 'win32':
+        bat_path = Path.home() / f'{env_name}.bat'
+        content = (
+            f'@echo off\n'
+            f'call conda activate {env_name}\n'
+            f'cd /d "{notebooks_dir}"\n'
+            f'jupyter notebook\n'
+        )
+        try:
+            bat_path.write_text(content)
+            print(f'✓ Launcher created: {bat_path}')
+            print(
+                '  Run it from an Anaconda Prompt or any shell with conda initialized.'
+            )
+        except OSError as e:
+            print(f'✗ Could not write launcher: {e}')
+
+    else:
+        rc_file = (
+            Path('~/.zshrc').expanduser()
+            if sys.platform == 'darwin'
+            else Path('~/.bashrc').expanduser()
+        )
+
+        # Check if launcher already installed for this env
+        if rc_file.exists() and sentinel in rc_file.read_text():
+            print(f'✓ Launcher already present in {rc_file} (sentinel found).')
+            return
+
+        func = (
+            f'\n{sentinel}\n'
+            f'{env_name}() {{\n'
+            f'  cd "{notebooks_dir}" || return\n'
+            f'  conda activate {env_name}\n'
+            f'  jupyter notebook\n'
+            f'}}\n'
+        )
+        try:
+            with rc_file.open('a') as f:
+                f.write(func)
+            print(f'✓ Shell function `{env_name}()` added to {rc_file}')
+            print(
+                f'  Run `source {rc_file}` or open a new terminal, then type '
+                f'`{env_name}`.'
+            )
+        except OSError as e:
+            print(f'✗ Could not write to {rc_file}: {e}')
+
+
 def setup():
     """Create conda environment and install package in editable mode."""
 
@@ -146,6 +270,22 @@ def setup():
         input(
             '\nEnsure `7z` is installed to unzip more ZIP formats?\n'
             '(needed for Windows `deflate64`, e.g. recipe `US-VA_parcel-vgin-2025`) '
+            '[Y/n] '
+        )
+        .strip()
+        .lower()
+    )
+    qgis_response = (
+        input(
+            '\nInstall `openplaces` data import tools for QGIS (Processing Toolbox)? '
+            '[y/N] '
+        )
+        .strip()
+        .lower()
+    )
+    launcher_response = (
+        input(
+            f'\nInstall `{env_name}` command to launch Jupyter from the terminal? '
             '[Y/n] '
         )
         .strip()
@@ -177,12 +317,26 @@ def setup():
     print('\nInstalling pre-commit hooks...')
     run(f'{PKG_MGR} run -n {env_name} pre-commit install')
 
+    if qgis_response == 'y':
+        install_qgis()
+
+    if launcher_response in ('', 'y'):
+        install_launcher(env_name)
+
     print('\n✓ Development environment ready!')
     print('\nNext steps:')
 
-    print(f'  1. {pkg_mgr} activate {env_name}')
-    print('  2. cd notebooks')
-    print('  3. jupyter notebook')
+    if launcher_response in ('', 'y'):
+        if sys.platform == 'win32':
+            print(
+                f'  1. Open an Anaconda Prompt and type `{env_name}` to launch Jupyter.'
+            )
+        else:
+            print(f'  1. Open a new terminal and type `{env_name}` to launch Jupyter.')
+    else:
+        print(f'  1. {pkg_mgr} activate {env_name}')
+        print('  2. cd notebooks')
+        print('  3. jupyter notebook')
     print('  4. Start coding!')
 
 
@@ -209,6 +363,10 @@ def update():
 
     print('\nEnsuring pre-commit hooks are installed...')
     run(f'{PKG_MGR} run -n {env_name} pre-commit install')
+
+    qgis_response = input('\nReinstall QGIS processing scripts? [y/N] ').strip().lower()
+    if qgis_response == 'y':
+        install_qgis()
 
     print('\n✓ Environment updated!')
 
@@ -319,6 +477,11 @@ def main():
         'lint': ('Check code with ruff', lint),
         'build': ('Build package for distribution', build),
         'list': ('List all conda/mamba environments', list_envs),
+        'qgis': ('Install QGIS processing scripts', install_qgis),
+        'launcher': (
+            'Install terminal launcher command',
+            lambda: install_launcher(get_env_name()),
+        ),
     }
 
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
