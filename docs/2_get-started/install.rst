@@ -57,7 +57,13 @@ Run the setup script:
 
    python dev.py setup
 
-The setup script will let you choose the name of your environment. It will also ask you whether you need ``7z`` (to unpack some Windows :file:`.zip` files).
+The setup script will let you choose the name of your environment.
+
+It will also ask you whether
+
+- you need ``7z`` (to unpack some Windows :file:`.zip` files).
+- you want the QGIS tool installed (in the Processing Toolbox) that helps you visualize split :file:`.parquet` files (attribute table + geoparquet geometries).
+- you want to install a shortcut that lets you type :input:`openplaces` into your terminal / Anaconda Prompt to run Jupyter notebooks in your environment.
 
 
 Configure the environment
