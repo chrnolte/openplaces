@@ -29,7 +29,7 @@ process_by:
   admin_level: 4
   admin_id_column: TOWN_ID
   admin_id_crosswalk:
-    recipe_id: "US-MA_parcel-massgis-2025_admin4-crosswalk"
+    recipe_id: "US-MA_admin-massgis-2025_admin4-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
