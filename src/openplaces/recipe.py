@@ -10,7 +10,11 @@ import pandas as pd
 import yaml
 
 from openplaces.config import cfg
-from openplaces.core.constants import STANDARD_DIRS, STRING_SEPARATOR_BETWEEN_IDS
+from openplaces.core.constants import (
+    RECIPE_PER_TABLE_KEYS,
+    STANDARD_DIRS,
+    STRING_SEPARATOR_BETWEEN_IDS,
+)
 from openplaces.core.schema import AdminId, DataSet, Entity, Source, sanitize
 from openplaces.path import OpenPlacesReference, path, recipe_path
 
@@ -62,6 +66,24 @@ def get_recipe(*args, **kwargs):
     return recipe_table
 
 
+def _cast_entity(entity):
+    """Cast a raw dict (or already-cast Entity) to an Entity object."""
+    if isinstance(entity, Entity):
+        return entity
+    if isinstance(entity.get('source'), dict):
+        entity['source'] = Source(**entity['source'])
+    return Entity(**entity)
+
+
+def _cast_dataset(dataset):
+    """Cast a raw dict (or already-cast DataSet) to a DataSet object."""
+    if isinstance(dataset, DataSet):
+        return dataset
+    if isinstance(dataset.get('source'), dict):
+        dataset['source'] = Source(**dataset['source'])
+    return DataSet(**dataset)
+
+
 def get_recipe_dict(filepath, *args, **kwargs):
     """Read a recipe `.yaml` file as a dictionary, cast it to schema
 
@@ -107,23 +129,16 @@ def get_recipe_dict(filepath, *args, **kwargs):
 
     # Cast Entity (if there is one)
     if 'entity' in recipe_dict:
-        if 'source' in recipe_dict['entity'] and isinstance(
-            recipe_dict['entity']['source'], dict
-        ):
-            recipe_dict['entity']['source'] = Source(**recipe_dict['entity']['source'])
-        if isinstance(recipe_dict['entity'], dict):
-            recipe_dict['entity'] = Entity(**recipe_dict['entity'])
+        recipe_dict['entity'] = _cast_entity(recipe_dict['entity'])
 
     # Cast DataSet (if there is one)
     if 'dataset' in recipe_dict:
-        if 'source' in recipe_dict['dataset'] and isinstance(
-            recipe_dict['dataset']['source'], dict
-        ):
-            recipe_dict['dataset']['source'] = Source(
-                **recipe_dict['dataset']['source']
-            )
-        if isinstance(recipe_dict['dataset'], dict):
-            recipe_dict['dataset'] = DataSet(**recipe_dict['dataset'])
+        recipe_dict['dataset'] = _cast_dataset(recipe_dict['dataset'])
+
+    # Cast additional_layers entities (if any)
+    for layer_spec in recipe_dict.get('additional_layers', []):
+        if 'entity' in layer_spec:
+            layer_spec['entity'] = _cast_entity(layer_spec['entity'])
 
     # Validate save_to (if present)
     if 'save_to' in recipe_dict and isinstance(recipe_dict['save_to'], dict):
@@ -205,6 +220,115 @@ def get_recipe_by_id(recipe_id, **kwargs):
     )
 
 
+def build_table_recipe(primary_recipe: dict, layer_spec: dict) -> dict:
+    """Merge a primary recipe with an additional_layers spec.
+
+    Per-table keys (entity, layer, columns, index config, etc.) are taken
+    from `layer_spec` when present, otherwise removed so that primary-only
+    values do not bleed into the secondary table.  `process_by` is inherited
+    from the primary unless `layer_spec` sets it explicitly (use
+    'process_by: null' in the YAML to disable chunking for a specific
+    additional table).
+
+    Parameters
+    ----------
+    primary_recipe : dict
+        Loaded primary recipe dictionary.
+    layer_spec : dict
+        One entry from the primary recipe's 'additional_layers' list.
+
+    Returns
+    -------
+    dict
+        Merged recipe dict for the layer.
+    """
+    table_recipe = dict(primary_recipe)
+
+    for key in RECIPE_PER_TABLE_KEYS:
+        if key in layer_spec:
+            table_recipe[key] = layer_spec[key]
+        else:
+            table_recipe.pop(key, None)
+
+    # entity is required in every additional_layers entry
+    table_recipe['entity'] = layer_spec['entity']
+
+    # process_by: inherit unless explicitly overridden (null disables it)
+    if 'process_by' in layer_spec:
+        if layer_spec['process_by'] is None:
+            table_recipe.pop('process_by', None)
+        else:
+            table_recipe['process_by'] = layer_spec['process_by']
+
+    # No nesting of additional_layers
+    table_recipe.pop('additional_layers', None)
+
+    return table_recipe
+
+
+def get_table_recipe(recipe: str | dict, layer: str) -> dict:
+    """Return the merged recipe for a secondary layer identified by entity.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Primary recipe (ID string or loaded dict).
+    layer : str
+        Entity type (e.g. 'property') or full entity string
+        (e.g. 'property-massgis-2025') of the additional layer.
+
+    Returns
+    -------
+    dict
+        Merged recipe dict for the requested layer.
+
+    Raises
+    ------
+    KeyError
+        If no `additional_layers` entry matching `layer` is found.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+
+    for layer_spec in recipe.get('additional_layers', []):
+        entity = layer_spec.get('entity')
+        if entity is not None and (
+            str(entity) == layer or str(entity.entity_type) == layer
+        ):
+            return build_table_recipe(recipe, layer_spec)
+
+    primary = recipe.get('entity') or recipe.get('dataset')
+    raise KeyError(
+        f"No additional_layers entry matching '{layer}' found in recipe for {primary}."
+    )
+
+
+def get_layers(recipe: str | dict) -> list[str]:
+    """Return the layer names available for a recipe's 'additional_layers'.
+
+    These are the values accepted by the `layer` argument of 'read_entities'
+    and 'get_output_path'.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe dict or recipe ID string.
+
+    Returns
+    -------
+    list of str
+        Entity type strings (e.g. 'property', 'transaction') for each entry
+        in 'additional_layers'.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    return [
+        str(layer_spec['entity'].entity_type)
+        for layer_spec in recipe.get('additional_layers', [])
+        if 'entity' in layer_spec
+    ]
+
+
 def _get_save_to(recipe):
     """Return (data_dir, filename) from a recipe dict.
 
@@ -217,7 +341,7 @@ def _get_save_to(recipe):
     return data_dir, filename
 
 
-def get_output_path(recipe_id, admin_id=None, partition_id=None, geo=False):
+def get_output_path(recipe, admin_id=None, partition_id=None, geo=False, layer=None):
     """Return the path where recipe output is written.
 
     Mirrors `Ingester._get_output_path` without instantiating an Ingester.
@@ -226,7 +350,7 @@ def get_output_path(recipe_id, admin_id=None, partition_id=None, geo=False):
 
     Parameters
     ----------
-    recipe_id : str or dict
+    recipe : str or dict
         Recipe identifier (as accepted by `get_recipe_by_id`) or a
         pre-loaded recipe dict.
     admin_id : str or `AdminId`, optional
@@ -234,19 +358,27 @@ def get_output_path(recipe_id, admin_id=None, partition_id=None, geo=False):
         Pass `None` for recipes not split by admin unit.
     partition_id : str, optional
         Partition value appended to the filename stem, e.g.
-        `US-NC-BS_building-obm-2025_032012.parquet` for a tile partition
-        with id `032012`.  Pass `None` (default) to obtain the final,
+        'US-NC-BS_building-obm-2025_032012.parquet' for a tile partition
+        with id '032012'.  Pass `None` (default) to obtain the final,
         merged output path.
     geo : bool, optional
-        If True, return the path to the companion ``_geo.parquet`` file
+        If True, return the path to the companion '_geo.parquet' file
         instead of the attribute parquet file.
+    layer : str, optional
+        Entity type (e.g. 'property') or full entity string
+        (e.g. 'property-massgis-2025') of a secondary layer defined in
+        `additional_layers`. If given, the path for that layer is returned
+        instead of the primary entity's path.
 
     Returns
     -------
     pathlib.Path
         Resolved output path for the recipe data file.
     """
-    recipe = get_recipe_by_id(recipe_id) if isinstance(recipe_id, str) else recipe_id
+    recipe = get_recipe_by_id(recipe) if isinstance(recipe, str) else recipe
+
+    if layer is not None:
+        recipe = get_table_recipe(recipe, layer)
 
     if admin_id is not None:
         admin_id = AdminId(admin_id) if not isinstance(admin_id, AdminId) else admin_id

@@ -17,12 +17,12 @@ entity:
     download_url: "https://nsi.sec.usace.army.mil/downloads/nsi_2022/nsi_2022_{admin2_id_admin1}.gpkg.zip"
   version: 2022
 
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "nsi_2022_{admin2_id_admin1}.gpkg.zip"
+
 # How is the download data partitioned?
 download_by:
   admin_level: 2
-
-# Name of compressed file (set to skip re-downloading)
-compressed_file_name: "nsi_2022_{admin2_id_admin1}.gpkg.zip"
 
 # Columns: `openplaces` variable name -> variable name in imported table
 columns:
@@ -53,8 +53,15 @@ columns:
   footprint_id: ftprntid
   footprint_source: ftprntsrc
 
-# Set the index from an existing column
-set_index: building_id_nsi
+transformations:
+  # Get county FIPS identifier: first 5 characters of census_block_id
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: census_block_id
+    args:
+      start: 0
+      end: 5
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
@@ -65,21 +72,14 @@ columns_to_categorical:
   - source
   - footprint_source
 
-transformations:
-  # Get county FIPS identifier: first 5 characters of census_block_id 
-  - output: admin3_id_admin1
-    type: string
-    operation: substring
-    input: census_block_id
-    args:
-      start: 0
-      end: 5
-
 # Translate `admin_id` information from source to `openplaces` admin_ids
 admin_id_crosswalk:
   admin_level: 3
   admin_id_column: admin3_id_admin1
   admin_recipe_id: "US_admin-nhgis-2020_admin3"
+
+# Set the index from an existing column
+set_index: building_id_nsi
 
 save_to:
   data_dir: cache

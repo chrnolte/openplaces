@@ -8,7 +8,7 @@ entity:
   # What is its type? (parcel, property, transaction, person, admin)
   entity_type: parcel
    # What is the source and URL of a dataset that identifies each unit?
-  source: 
+  source:
     source_id: floridagio
     portal_url: "https://geodata.floridagio.gov/datasets/efa909d6b1c841d298b0a649e7f71cf2_0/explore"
     # URL to download (takes a while: this is a 10.4G file)

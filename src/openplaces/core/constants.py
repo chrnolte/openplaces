@@ -199,6 +199,29 @@ RASTER_CONFIG = {
 RASTER_ZONAL_STATISTICS_RESOLUTION_M = 15
 
 
+# RECIPE
+
+# Keys in an ingestion recipe that are specific to a single table (layer).
+# Used by build_table_recipe() to determine which keys are taken
+# from an additional_layers entry and which are inherited from the primary.
+RECIPE_PER_TABLE_KEYS = (
+    'layer',
+    'columns',
+    'keep_unnamed_columns',
+    'set_index',
+    'create_index',
+    'index_function',
+    'drop',
+    'query',
+    'null_value_strings',
+    'transformations',
+    'columns_to_categorical',
+    'encoding',
+    'save_to',
+    'overlay_admin_ids',
+)
+
+
 # Vector processing
 
 # Minimum area of polygons to be imported into `openplaces`

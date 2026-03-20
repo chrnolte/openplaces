@@ -9,7 +9,7 @@ entity:
   # What is its type? (parcel, property, transaction, person, admin)
   entity_type: parcel
    # What is the source and URL of a dataset that identifies each unit?
-  source: 
+  source:
     source_id: txgio
     portal_url: "https://tnris.org/stratmap/land-parcels.html"
     # URL to download

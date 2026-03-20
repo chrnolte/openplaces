@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 polygon.py
 
@@ -591,6 +589,263 @@ def get_proj4(proj, lat=0, lon=0, ellps='WGS84'):
     if ellps != 'WGS84':
         proj4.replace('WGS84', ellps)
     return proj4
+
+
+def find_overlaps(
+    gdf: gpd.GeoDataFrame,
+    min_overlap_m2: float = 1.0,
+    area_crs: str = 'EPSG:6933',
+    iou: bool = False,
+) -> pd.DataFrame:
+    """Return pairs of row indices whose polygons overlap by more than a sliver.
+
+    Uses an STRtree spatial index for fast candidate detection, then computes
+    exact intersection areas with vectorised Shapely only for candidate pairs.
+
+    Slivers (shared edges, floating-point artefacts) are excluded via
+    ``min_overlap_m2``. Both overlapping and fully-contained pairs are detected
+    (i.e., the test is intersection area > threshold, not shapely 'overlaps').
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        Input GeoDataFrame with polygon geometries.
+    min_overlap_m2 : float
+        Minimum intersection area in m² to count as a real overlap.
+        Default 1 m² filters boundary slivers.
+    area_crs : str
+        Equal-area CRS for area computation. Default: EPSG:6933.
+    iou : bool
+        If True, also return ``area_left_m2``, ``area_right_m2``, and ``iou``
+        (intersection-over-union) columns.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per overlapping pair with columns
+        ``{index_name}_left``, ``{index_name}_right``, and ``overlap_m2``.
+        If ``iou=True``, also includes ``area_left_m2``, ``area_right_m2``,
+        and ``iou``.
+        Returns an empty DataFrame if no overlaps exceed the threshold.
+    """
+    idx_name = gdf.index.name or 'index'
+    left_col = f'{idx_name}_left'
+    right_col = f'{idx_name}_right'
+    base_cols = [left_col, right_col, 'overlap_m2']
+    empty = pd.DataFrame(
+        columns=base_cols + (['area_left_m2', 'area_right_m2', 'iou'] if iou else [])
+    )
+
+    geom = (
+        gdf.geometry
+        if gdf.crs and gdf.crs == pyproj.CRS(area_crs)
+        else gdf.geometry.to_crs(area_crs)
+    )
+    geom_arr = geom.to_numpy()
+
+    tree = shapely.STRtree(geom_arr)
+    left_pos, right_pos = tree.query(geom_arr, predicate='intersects')
+
+    # Upper triangle only: no self-matches, no duplicate pairs
+    mask = left_pos < right_pos
+    left_pos = left_pos[mask]
+    right_pos = right_pos[mask]
+
+    if len(left_pos) == 0:
+        return empty
+
+    areas = shapely.area(shapely.intersection(geom_arr[left_pos], geom_arr[right_pos]))
+    real = areas >= min_overlap_m2
+
+    if not real.any():
+        return empty
+
+    idx = gdf.index.to_numpy()
+    result = pd.DataFrame(
+        {
+            left_col: idx[left_pos[real]],
+            right_col: idx[right_pos[real]],
+            'overlap_m2': areas[real],
+        }
+    )
+
+    if iou:
+        area_left = shapely.area(geom_arr[left_pos[real]])
+        area_right = shapely.area(geom_arr[right_pos[real]])
+        result['area_left_m2'] = area_left
+        result['area_right_m2'] = area_right
+        result['iou'] = areas[real] / (area_left + area_right - areas[real])
+
+    return result.set_index([left_col, right_col])
+
+
+def resolve_overlapping_polygons(
+    df: gpd.GeoDataFrame,
+    keep=None,
+    iou_threshold: float = 0.5,
+    compare_cols: list | None = None,
+    snippet_cols: list | None = None,
+) -> gpd.GeoDataFrame:
+    """Resolve substantially overlapping polygon pairs in a GeoDataFrame.
+
+    For each overlapping pair, non-ID and non-geometry columns are compared:
+
+    - If identical: the second polygon is dropped (likely a data duplicate).
+    - If different: behaviour is controlled by `keep`:
+
+      - None (default): warn and keep both polygons.
+      - True: keep both polygons silently (suppresses warning).
+      - False: drop the smaller polygon of each pair.
+      - 'fewest_nulls': drop the polygon with more null values (None, NaN,
+        '') per pair; fall back to area if tied.
+      - {'prefer_higher': '<column>'}: drop the polygon with the lower value
+        in the named column per pair; fall back to area if tied. Works with
+        ordered categoricals, numerics, or any comparable type.
+
+    Parameters
+    ----------
+    df : GeoDataFrame
+        Input GeoDataFrame with polygon geometries.
+    keep : bool or str or dict
+        How to resolve overlapping pairs with differing attributes.
+        See above.
+    iou_threshold : float
+        Minimum IoU to treat two polygons as overlapping. Default 0.5.
+    compare_cols : list of str, optional
+        Columns used to detect identical vs differing pairs. If None,
+        all columns except geometry and columns containing '_id' are used.
+    snippet_cols : list of str, optional
+        Columns shown in the warning data snippet (first 5). If None,
+        the first 5 of `compare_cols` are used.
+
+    Returns
+    -------
+    GeoDataFrame
+        DataFrame with overlapping duplicates removed (when applicable).
+    """
+    overlaps = find_overlaps(df, iou=True).query('iou > @iou_threshold')
+    if overlaps.empty:
+        return df
+
+    if compare_cols is None:
+        # Exclude ID columns and geometry from comparison: we want to detect
+        # polygons that are spatial duplicates but differ in attribute content.
+        skip = {c for c in df.columns if '_id' in c} | {'geometry'}
+        compare_cols = [c for c in df.columns if c not in skip]
+
+    if snippet_cols is None:
+        snippet_cols = compare_cols[:5]
+
+    # Unpack dict form {'prefer_higher': col} into a flat keep=False + prefer_col.
+    prefer_col = None
+    if isinstance(keep, dict):
+        prefer_col = keep.get('prefer_higher')
+        keep = False
+
+    # First pass: classify each overlapping pair as an exact duplicate
+    # (identical non-ID attributes → safe to drop) or ambiguous (differing
+    # attributes → requires a decision).
+    dupes_to_drop = set()
+    ambiguous = []
+    for left_idx, right_idx in overlaps.index:
+        # Skip if one side was already resolved in a prior iteration.
+        if left_idx in dupes_to_drop or right_idx in dupes_to_drop:
+            continue
+        if compare_cols and df.loc[left_idx, compare_cols].equals(
+            df.loc[right_idx, compare_cols]
+        ):
+            dupes_to_drop.add(right_idx)
+        else:
+            ambiguous.append((left_idx, right_idx))
+
+    if dupes_to_drop:
+        df = df.drop(index=list(dupes_to_drop))
+
+    # Second pass: resolve ambiguous pairs according to `keep`.
+    # Note: an index can appear in both `ambiguous` and `dupes_to_drop` if it
+    # was the right side of a "differing" pair before being the right side of
+    # an "identical" pair. Guard against accessing a dropped index with the
+    # `dupes_to_drop` check below.
+    if ambiguous and keep not in (True, None):
+        to_drop = set()
+        for left_idx, right_idx in ambiguous:
+            if (
+                left_idx in to_drop
+                or right_idx in to_drop
+                or left_idx in dupes_to_drop
+                or right_idx in dupes_to_drop
+            ):
+                continue
+            if prefer_col is not None and prefer_col in df.columns:
+                # Keep the polygon with the higher value in prefer_col.
+                # Works with ordered categoricals, numerics, or any comparable
+                # type. Falls through to area tiebreak if values are equal or
+                # either is NA.
+                left_val = df.loc[left_idx, prefer_col]
+                right_val = df.loc[right_idx, prefer_col]
+                try:
+                    if (
+                        pd.notna(left_val)
+                        and pd.notna(right_val)
+                        and left_val != right_val
+                    ):
+                        to_drop.add(right_idx if left_val > right_val else left_idx)
+                        continue
+                except TypeError:
+                    pass
+            elif keep == 'fewest_nulls':
+                # Keep the polygon with fewer missing values (None, NaN, '').
+                # Falls through to area tiebreak if counts are equal.
+                def _null_count(idx):
+                    row = df.loc[idx, compare_cols]
+                    return row.isna().sum() + (row == '').sum()
+
+                nulls_left, nulls_right = _null_count(left_idx), _null_count(right_idx)
+                if nulls_left != nulls_right:
+                    to_drop.add(left_idx if nulls_left > nulls_right else right_idx)
+                    continue
+            # Fallback for keep=False, tied fewest_nulls, or tied prefer_higher:
+            # drop the smaller polygon.
+            row = overlaps.loc[(left_idx, right_idx)]
+            to_drop.add(
+                right_idx if row['area_left_m2'] >= row['area_right_m2'] else left_idx
+            )
+        df = df.drop(index=list(to_drop))
+
+    msg_parts = ['\n']
+    if dupes_to_drop:
+        msg_parts.append(
+            f'Dropped {len(dupes_to_drop)} polygon(s) with \033[1midentical\033[0m '
+            'non-ID, non-geometry attributes.'
+        )
+    if ambiguous and keep is None:
+        pair_str = '\n'.join(f'  {left} and {right}' for left, right in ambiguous[:5])
+        # Exclude any indices already dropped as exact duplicates to avoid
+        # a KeyError when building the snippet.
+        snippet_idx = [
+            idx for pair in ambiguous[:2] for idx in pair if idx not in dupes_to_drop
+        ]
+        snippet = (
+            '\n' + df.loc[snippet_idx, snippet_cols].to_string() if snippet_cols else ''
+        )
+        msg_parts.append(
+            f'Found {len(ambiguous)} polygon pair(s) with \033[1mdiffering\033[0m '
+            'non-ID, non-geometry attributes.\n'
+            'Set argument `keep` in resolve_overlapping_polygons:\n'
+            '- `True` keeps duplicates\n'
+            '- `False` drops the smaller polygon\n'
+            "- 'fewest_nulls' prefers the more complete attribute data\n"
+            "- {'prefer_higher': '<column>'} keeps top value in specific column.\n\n"
+            'In recipes, use the parameter `keep_overlapping_polygons: ...`.\n\n'
+            'Indices of overlaps (first 5):\n\n' + pair_str + '\n' + snippet
+        )
+    if len(msg_parts) > 1:
+        warnings.warn(
+            f'\n\nOverlapping polygons detected (IoU > {iou_threshold}):'
+            + '\n'.join(msg_parts)
+        )
+
+    return df
 
 
 def get_intersection_over_union(

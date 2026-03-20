@@ -16,16 +16,16 @@ entity:
     download_url: "https://datapub.gfz.de/download/10.5880.GFZ.LKUT.2025.002-Caweb/2025-002_Oostwegel-et-al_data/building.{tile_id}.gpkg.bz2"
   version: 2025
 
-# How is the download data partitioned?
-download_by:
-  partition: tile_id
-  tile_recipe_id: tile-obm-2025
-
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "building.{tile_id}.gpkg.bz2"
 
 # Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "building.{tile_id}.gpkg"
+
+# How is the download data partitioned?
+download_by:
+  partition: tile_id
+  tile_recipe_id: tile-obm-2025
 
 # Layer that identifies third-level admin subdivisions (Level 2 in GADM)
 layer: building
@@ -37,10 +37,33 @@ columns:
   source_date: last_update
   source_id: source_id
   height: height
+  floorspace: floorspace
+  quadkey: quadkey
+
+# Extract height source from height column (format: 'SOURCE:value', e.g. 'HHT:10.5')
+transformations:
+  - output: height_source
+    type: string
+    operation: split_take
+    input: height
+    args:
+      sep: ":"
+      index: 0
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - occupancy
+  - height_source: [H, HBET, HHT]  # ordered low to high
+
+# Which polygon to keep if two overlap substantially (IoU > 0.5)
+# prefer_higher: keep the one with the better height source (HHT > HBET > H)
+keep_overlapping_polygons:
+  prefer_higher: height_source
+
+# Assign administrative IDs using spatial joins/overlays
+overlay_admin_ids:
+  admin_level: 3
+  admin_recipe_id: US_admin-census-2021_admin3
 
 # Function to give the GeoDataFrame an index
 create_index:
@@ -48,14 +71,8 @@ create_index:
   args:
     name: footprint_id
 
-# Assign administrative IDs using spatial joins/overlays
-overlay_admin_ids:
-  admin_level: 3
-  admin_recipe_id: US_admin-census-2021_admin3
-
 save_to:
   data_dir: cache
   # Split output into per-admin-unit files at this level
   # (1: state, 2: county, 3: town etc.)
-  # Column adminX_id must exist in the pre-processed data.
   admin_level: 3

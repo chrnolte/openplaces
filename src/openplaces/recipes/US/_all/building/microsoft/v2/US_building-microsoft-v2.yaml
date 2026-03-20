@@ -16,6 +16,12 @@ entity:
     download_url: "https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{admin2_name}.geojson.zip"
   version: v2
 
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "{admin2_name}.geojson.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "{admin2_name}.geojson"
+
 # How is the download data partitioned?
 download_by:
   admin_level: 2
@@ -24,27 +30,21 @@ download_by:
   admin_key_transform:
     admin2_name: "remove_spaces"
 
-# Name of compressed file (set to skip re-downloading)
-compressed_file_name: "{admin2_name}.geojson.zip"
-
-# Name of uncompressed file (set to skip re-extracting)
-uncompressed_file_name: "{admin2_name}.geojson"
-
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - release
   - capture_dates_range
+
+# Assign administrative IDs using spatial joins/overlays
+overlay_admin_ids:
+  admin_level: 3
+  admin_recipe_id: 'US_admin-nhgis-2020_admin3'
 
 # Function to give the GeoDataFrame an index
 create_index:
   function: "openplaces.geo.ids.add_openlocationcode_index"
   args:
     name: footprint_id
-
-# Assign administrative IDs using spatial joins/overlays
-overlay_admin_ids:
-  admin_level: 3
-  admin_recipe_id: 'US_admin-nhgis-2020_admin3'
 
 save_to:
   data_dir: cache

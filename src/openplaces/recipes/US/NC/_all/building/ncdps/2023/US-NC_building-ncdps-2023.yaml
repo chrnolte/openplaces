@@ -17,8 +17,14 @@ entity:
     download_url_source: "https://sdd.nc.gov/downloads/public/BuildingFootprintsbyCounty/2020-2022/"
     # Regex to extract download URL from `download_url_source`
     # Data partition placeholders {...} will be replaced before use.
-    download_url_source_regex: 'HREF="(/downloads/public/BuildingFootprintsbyCounty/2020-2022/{admin3_name}_202._Buildings.zip)' 
+    download_url_source_regex: 'HREF="(/downloads/public/BuildingFootprintsbyCounty/2020-2022/{admin3_name}_202._Buildings.zip)'
   version: 2023
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "{admin3_name}_202?_Buildings.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "{admin3_name}_202?_Buildings.gdb"
 
 # How is the download data partitioned?
 download_by:
@@ -27,12 +33,6 @@ download_by:
   # used by the source URL (e.g., remove spaces)
   admin_key_transform:
     admin3_name: "remove_spaces"
-
-# Name of compressed file (set to skip re-downloading)
-compressed_file_name: "{admin3_name}_202?_Buildings.zip"
-
-# Name of uncompressed file (set to skip re-extracting)
-uncompressed_file_name: "{admin3_name}_202?_Buildings.gdb"
 
 # Layer to load
 layer: S_BUILDING_FP

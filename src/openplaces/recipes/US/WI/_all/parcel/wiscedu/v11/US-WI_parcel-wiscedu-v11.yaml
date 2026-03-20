@@ -8,7 +8,7 @@ entity:
   # What is its type? (parcel, property, transaction, person, admin)
   entity_type: parcel
    # What is the source and URL of a dataset that identifies each unit?
-  source: 
+  source:
     source_id: wiscedu
     # URL to download
     download_url: "https://web.s3.wisc.edu/parcels/v11_parcels/V11.0.0_Wisconsin_Parcels_2025_10.3_Uncompressed.zip"

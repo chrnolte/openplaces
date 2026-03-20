@@ -17,13 +17,13 @@ dataset:
   version: "202410"
   is_raster: True
 
-download_by:
-  partition: year
-  first: 1986
-  last: 2024
-
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "LCMS_CONUS_v2024-10_Change_Annual_{year}.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "LCMS_CONUS_v2024-10_Change_{year}.tif"
+
+download_by:
+  partition: year
+  first: 1986
+  last: 2024

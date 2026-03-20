@@ -1,7 +1,6 @@
 # Recipe to import the Global Administrative Database
 
 # Administrative unit identifier: where does this data come from?
-
 admin_id: US-MA
 
 # Entity: what is the unit of analysis of the imported data?
@@ -36,58 +35,61 @@ columns:
   parcel_id_admin2: LOC_ID
   parcel_id_admin4: MAP_PAR_ID
   source_date: LAST_EDIT
+  polygon_type: POLY_TYPE
 
-# Keep columns that aren't named in the above list
-keep_unnamed_columns: True
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - polygon_type
 
-# Crosswalk (CSV file) from local to `openplaces` admin unit identifiers
-# admin_id_crosswalk: US-MA_admin-massgis-2025-admin4_id_crosswalk
-
-# Additional layers to import, from the same dataset, but might be for
-# # a different entity (e.g., property table inside a parcel database)
-# additional_layers:
-#   - name: L3_ASSESS
-#     entity_type: property
-#     columns:
-#       property_id_assessor: PROP_ID
-#       property_id_admin2: MA_PROP_ID
-#       parcel_id_admin2: LOC_ID
-#       parcel_id_admin4: MAP_PAR_ID
-#       street: SITE_ADDR
-#       city: CITY
-#       zip: ZIP
-#       building_value: BLDG_VAL
-#       land_value: LAND_VAL
-#       other_value: OTHER_VAL
-#       total_value: TOTAL_VAL
-#       assessment_year: FY
-#       owner_name: OWNER1
-#       owner_street: OWN_ADDR
-#       owner_city: OWN_CITY
-#       owner_state: OWN_STATE
-#       owner_zip: OWN_ZIP
-#       lot_size: LOT_SIZE
-#       lot_size_units: LOT_UNITS
-#       building_area_m2: BLD_AREA
-#       residential_area_m2: RES_AREA
-#       building_style: STYLE
-#       building_n_units: UNITS
-#       building_n_rooms: NUM_ROOMS
-#       year_built: YEAR_BUILT
-#       usecode: USE_CODE
-#       zoning: ZONING
-#       last_sale_date: LS_DATE
-#       last_sale_price: LS_PRICE
-#       last_sale_book: LS_BOOK
-#       last_sale_page: LS_PAGE
-#       admin4_id_source: TOWN_ID
-#     keep_unnamed_columns: True
-#     admin_id_crosswalk: parcel-massgis-town-crosswalk
-
-# Administrative ID level at which data is saved
-# Set if you want to split the data into smaller chunks
-# (1: by state/department, 2: by county/municipality, 3: by town etc.)
-# The column ``adminX_id`` has to exist in the pre-processed data and
-# contain valid ``AdminId`` descriptors (e.g. 'US-MA-MI-SO').
-# save_to:
-#   admin_level: 3
+# Additional layers to import from the same dataset for a different entity
+# (e.g., property table inside a parcel database)
+additional_layers:
+  - layer: L3_ASSESS
+    entity:
+      entity_type: property
+      source:
+        source_id: massgis
+      version: 2025
+    columns:
+      property_id_assessor: PROP_ID
+      property_id_admin2: MA_PROP_ID
+      property_id_cama: CAMA_ID
+      parcel_id_admin2: LOC_ID
+      parcel_id_admin4: MAP_PAR_ID
+      street: SITE_ADDR
+      city: CITY
+      zip: ZIP
+      building_value: BLDG_VAL
+      land_value: LAND_VAL
+      other_value: OTHER_VAL
+      total_value: TOTAL_VAL
+      assessment_year: FY
+      owner_name: OWNER1
+      owner_street: OWN_ADDR
+      owner_city: OWN_CITY
+      owner_state: OWN_STATE
+      owner_zip: OWN_ZIP
+      lot_size: LOT_SIZE
+      lot_size_units: LOT_UNITS
+      building_area_m2: BLD_AREA
+      residential_area_m2: RES_AREA
+      building_style: STYLE
+      building_n_units: UNITS
+      building_n_rooms: NUM_ROOMS
+      building_n_stories: STORIES
+      year_built: YEAR_BUILT
+      usecode: USE_CODE
+      zoning: ZONING
+      last_sale_date: LS_DATE
+      last_sale_price: LS_PRICE
+      last_sale_book: LS_BOOK
+      last_sale_page: LS_PAGE
+      admin4_id_source: TOWN_ID
+    columns_to_categorical:
+      - city
+      - zip
+      - owner_city
+      - owner_zip
+      - assessment_year
+      - usecode
+      - zoning

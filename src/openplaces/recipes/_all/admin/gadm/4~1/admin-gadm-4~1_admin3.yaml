@@ -8,7 +8,7 @@ entity:
   # What is its type? (parcel, property, transaction, person, admin)
   entity_type: admin
    # What is the source and URL of a dataset that identifies each unit?
-  source: 
+  source:
     source_id: gadm
     download_url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
   version: 4.1
@@ -26,13 +26,13 @@ layer: ADM_2
 # Columns from `openplaces` dictionary -> columns in imported table
 columns:
   name: NAME_2
-  type: ENGTYPE_2 
+  type: ENGTYPE_2
   admin2_name: NAME_1
   admin1_name: COUNTRY
   name_original: NL_NAME_2
   name_alternatives: VARNAME_2
   type_original: TYPE_2
-  admin2_type: TYPE_1 
+  admin2_type: TYPE_1
   admin2_name_original: NL_NAME_1
   admin3_id_gadm: GID_2
   admin3_id_admin1: CC_2

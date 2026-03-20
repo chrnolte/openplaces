@@ -11,7 +11,11 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
-from openplaces.recipe import get_output_path, get_recipe_by_id
+from openplaces.recipe import (
+    get_output_path,
+    get_recipe_by_id,
+    get_table_recipe,
+)
 from openplaces.utils import format_list
 
 ADMIN_SOURCE_DEFAULT = 'admin-openplaces-2026'
@@ -266,7 +270,7 @@ def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
     return sorted(admin_ids)
 
 
-def read_entities(recipe, admin_id=None, geom=False):
+def read_entities(recipe, admin_id=None, geom=False, layer=None):
     """Generic function to load a processed Parquet table for entities
 
     Entities are administrative units (`admin`), parcels, buildings,
@@ -282,10 +286,18 @@ def read_entities(recipe, admin_id=None, geom=False):
         choose admin_id of recipe.
     geom : bool
         If True, include geometries and return a GeoDataFrame
+    layer : str, optional
+        Entity type (e.g. 'property') or full entity string
+        (e.g. 'property-massgis-2025') of a secondary layer defined in
+        `additional_layers`. If given, load that layer instead of the
+        primary entity.
     """
 
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
+
+    if layer is not None:
+        recipe = get_table_recipe(recipe, layer)
 
     if admin_id is None:
         admin_id = recipe['admin_id']

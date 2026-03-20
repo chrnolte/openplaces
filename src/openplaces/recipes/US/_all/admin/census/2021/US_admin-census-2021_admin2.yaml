@@ -26,16 +26,16 @@ columns:
   region_id: REGION
   division_id: DIVISION
 
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
+
 # Create index
 create_index:
   name: admin2_id
   method: prefix
   column: admin2_id_leaf
   prefix: US-
-
-# Filter query to select rows
-# Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56'"
 
 save_to:
   data_dir: cache
