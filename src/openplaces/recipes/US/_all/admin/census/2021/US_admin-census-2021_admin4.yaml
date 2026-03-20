@@ -14,13 +14,13 @@ entity:
     download_url: "https://www2.census.gov/geo/tiger/TIGER2021/COUSUB/tl_2021_{admin2_id_admin1}_cousub.zip"
   version: 2021
 
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "tl_2021_{admin2_id_admin1}_cousub.zip"
+
 # How is the download data partitioned?
 download_by:
   admin_level: 2
   admin_recipe_id: 'US_admin-census-2021_admin2'
-
-# Name of compressed file (set to skip re-downloading)
-compressed_file_name: "tl_2021_{admin2_id_admin1}_cousub.zip"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:

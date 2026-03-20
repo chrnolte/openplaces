@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 """
 src/openplaces/flow.py
 
@@ -359,11 +357,16 @@ def test_script(*args, verbose=False, committed=True):
 
 def run_subprocess(command, p={}, verbose=False, ignore_failures=False):
     import subprocess
+    import threading
 
     for key, value in p.items():
         if isinstance(value, list):
             value = ','.join([str(v) for v in value])
         command += ['--' + key, str(value)]
+
+    # Use -u (unbuffered) so subprocess print() output is not block-buffered.
+    if command and Path(command[0]).stem in ('python', 'python3'):
+        command.insert(1, '-u')
 
     process = subprocess.Popen(
         command,
@@ -375,14 +378,21 @@ def run_subprocess(command, p={}, verbose=False, ignore_failures=False):
     stdout_lines = []
     stderr_lines = []
 
+    # Read stdout and stderr concurrently to prevent pipe-buffer deadlocks.
+    # (Subprocess blocks if it fills a pipe whose read end is not being drained.)
+    def _read_stderr():
+        for line in process.stderr:
+            stderr_lines.append(line)
+
+    stderr_thread = threading.Thread(target=_read_stderr, daemon=True)
+    stderr_thread.start()
+
     for line in process.stdout:
         stdout_lines.append(line)
         if verbose:
             print(line, end='', flush=True)
 
-    for line in process.stderr:
-        stderr_lines.append(line)
-
+    stderr_thread.join()
     process.wait()
 
     if process.returncode == 0:

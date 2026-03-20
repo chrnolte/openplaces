@@ -8,7 +8,7 @@ entity:
   # What is its type? (parcel, property, transaction, person, admin)
   entity_type: parcel
    # What is the source and URL of a dataset that identifies each unit?
-  source: 
+  source:
     source_id: nconemap
     portal_url: "https://www.nconemap.gov/pages/parcels"
     # URL to download (takes a while: this is a 2.32G file)

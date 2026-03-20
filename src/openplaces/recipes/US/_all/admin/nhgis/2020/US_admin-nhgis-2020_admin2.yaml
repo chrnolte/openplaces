@@ -29,16 +29,16 @@ columns:
   region_id_nhgis: REGION
   division_id_nhgis: DIVISION
 
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56'"
+
 # Create index
 create_index:
   name: admin2_id
   method: prefix
   column: admin2_id_admin1_alpha
   prefix: US-
-
-# Filter query to select rows
-# Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56'"
 
 save_to:
   data_dir: cache

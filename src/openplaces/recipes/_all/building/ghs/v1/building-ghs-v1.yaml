@@ -16,15 +16,15 @@ entity:
     download_url: "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_OBAT_GLOBE_R2024A/GHS_OBAT_GPKG_GLOBE_R2024A/V1-0/GHS_OBAT_GPKG_{admin1_id_a3}_E2020_R2024A_V1_0.zip"
   version: v2
 
-# How is the download data partitioned?
-download_by:
-  admin_level: 1
-
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "GHS_OBAT_GPKG_{admin1_id_a3}_E2020_R2024A_V1_0.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "GHS_OBAT_GPKG_{admin1_id_a3}_E2020_R2024A_V1_0.gpkg"
+
+# How is the download data partitioned?
+download_by:
+  admin_level: 1
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
@@ -40,15 +40,15 @@ columns:
 columns_to_categorical:
   - admin2_name
 
+# Assign administrative IDs using spatial joins/overlays
+overlay_admin_ids:
+  admin_level: 2
+
 # Function to give the GeoDataFrame an index
 create_index:
   function: "openplaces.geo.ids.add_openlocationcode_index"
   args:
     name: footprint_id
-
-# Assign administrative IDs using spatial joins/overlays
-overlay_admin_ids:
-  admin_level: 2
 
 save_to:
   data_dir: cache

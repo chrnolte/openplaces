@@ -68,18 +68,17 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
             feedback.reportError(f'Attribute file not found: {attr_file}')
             return {}
 
-        # Load GEOMETRY layer first (but hidden - will be the join source)
         layer_name = attr_file.stem
-        geo_layer = QgsVectorLayer(str(geo_file), f'{layer_name}_geo', 'ogr')
+
+        # Load GEOMETRY layer as the base (has geometry, so it becomes a vector layer)
+        geo_layer = QgsVectorLayer(str(geo_file), layer_name, 'ogr')
 
         if not geo_layer.isValid():
             feedback.reportError(f'Failed to load geometry layer: {geo_file}')
             return {}
 
-        QgsProject.instance().addMapLayer(geo_layer, False)
-
-        # Load attribute layer as the main layer
-        attr_layer = QgsVectorLayer(str(attr_file), layer_name, 'ogr')
+        # Load attribute layer as the join source (hidden)
+        attr_layer = QgsVectorLayer(str(attr_file), f'{layer_name}_attr', 'ogr')
 
         if not attr_layer.isValid():
             feedback.reportError(f'Failed to load attribute layer: {attr_file}')
@@ -105,26 +104,29 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
             )
             return {}
 
-        # Configure join - attribute layer gets geometry from geo layer
+        # Add attribute layer to project hidden (needed for join to work)
+        QgsProject.instance().addMapLayer(attr_layer, False)
+
+        # Configure join: attr_layer attributes are joined onto geo_layer
         join_info = QgsVectorLayerJoinInfo()
         join_info.setJoinFieldName(join_field)
         join_info.setTargetFieldName(join_field)
-        join_info.setJoinLayerId(geo_layer.id())
-        join_info.setJoinLayer(geo_layer)
+        join_info.setJoinLayerId(attr_layer.id())
+        join_info.setJoinLayer(attr_layer)
         join_info.setUsingMemoryCache(True)
         join_info.setPrefix('')
 
-        attr_layer.addJoin(join_info)
+        geo_layer.addJoin(join_info)
 
-        # Keep geometry layer reference to prevent cleanup issues
-        attr_layer.setCustomProperty('joined_geo_layer_id', geo_layer.id())
+        # Keep attribute layer reference to prevent cleanup issues
+        geo_layer.setCustomProperty('joined_attr_layer_id', attr_layer.id())
 
         # Reorder fields: index first, join_field last
-        fields = attr_layer.fields()
+        fields = geo_layer.fields()
         field_names = [f.name() for f in fields]
 
-        # Get index field name (last field from original attribute layer)
-        index_field_name = attr_field_names[-1] if attr_field_names else None
+        # Index field: first field from attribute layer (was the DataFrame index)
+        index_field_name = attr_field_names[0] if attr_field_names else None
 
         # Find positions
         join_id_idx = next(
@@ -134,24 +136,21 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
             (i for i, name in enumerate(field_names) if name == index_field_name), None
         )
 
-        # Create new field order
+        # Create new field order: index first, all others, join_field last
         new_order = []
 
-        # Index first
         if index_idx is not None:
             new_order.append(index_idx)
 
-        # All other fields
         for i in range(len(field_names)):
             if i != index_idx and i != join_id_idx:
                 new_order.append(i)
 
-        # join_field last
         if join_id_idx is not None:
             new_order.append(join_id_idx)
 
         # Apply attribute table reordering
-        config = attr_layer.attributeTableConfig()
+        config = geo_layer.attributeTableConfig()
         config.update(fields)
         columns = config.columns()
         reordered_columns = [columns[i] for i in new_order]
@@ -164,19 +163,19 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
                     break
 
         config.setColumns(reordered_columns)
-        attr_layer.setAttributeTableConfig(config)
+        geo_layer.setAttributeTableConfig(config)
 
         # Hide join_field from Identify Results
         if join_id_idx is not None:
-            flags = attr_layer.fieldConfigurationFlags(join_id_idx)
+            flags = geo_layer.fieldConfigurationFlags(join_id_idx)
             flags |= Qgis.FieldConfigurationFlag.HideFromWms
-            attr_layer.setFieldConfigurationFlags(join_id_idx, flags)
+            geo_layer.setFieldConfigurationFlags(join_id_idx, flags)
 
-        # Add attribute layer to project
-        QgsProject.instance().addMapLayer(attr_layer)
+        # Add geometry layer (with joined attributes) to project
+        QgsProject.instance().addMapLayer(geo_layer)
 
         feedback.pushInfo(f'Loaded: {layer_name}')
-        feedback.pushInfo(f'  Features: {attr_layer.featureCount()}')
-        feedback.pushInfo(f'  Fields: {len(attr_layer.fields())}')
+        feedback.pushInfo(f'  Features: {geo_layer.featureCount()}')
+        feedback.pushInfo(f'  Fields: {len(geo_layer.fields())}')
 
-        return {'OUTPUT': attr_layer.id()}
+        return {'OUTPUT': geo_layer.id()}

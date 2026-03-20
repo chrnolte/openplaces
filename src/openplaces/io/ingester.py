@@ -3,7 +3,6 @@ src/openplaces/io/ingester.py
 """
 
 import glob
-import importlib
 import os
 import re
 import urllib
@@ -13,51 +12,39 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
-from pyogrio.errors import DataSourceError
 
 from openplaces.api import get_admin
 from openplaces.config import cfg
 from openplaces.core.constants import (
-    GEOPANDAS_EXTENSIONS,
-    PANDAS_EXTENSIONS,
     REGEX_FILENAME_IN_URL,
     REGEX_HAS_GLOB_WILDCARDS,
     ZIP_EXTENSIONS,
 )
 from openplaces.core.schema import AdminId
-from openplaces.geo import get_crs
-from openplaces.geo.ids import get_geo_ids
-from openplaces.geo.overlay import overlay_admin_ids
 from openplaces.io import (
     delete_data,
     delete_parquet,
     download,
     find_latest_file_or_gdb,
-    read_gdb_with_domains,
     read_parquet,
     save_parquet,
     unzip,
 )
 from openplaces.io.admin import find_admin_recipe_id
-from openplaces.io.transform import (
-    add_unique_suffix,
-    apply_transformation,
-    apply_transformations,
-    get_crosswalk,
-)
+from openplaces.io.table_ingester import TableIngester
 from openplaces.path import (
     external_dir,
     heap_dir,
     path_matches_pattern,
-    recipe_path,
 )
 from openplaces.recipe import (
+    build_table_recipe,
     get_output_path,
     get_partition_ids,
     get_recipe_by_id,
     resolve_output_admin_ids,
 )
-from openplaces.timing import Timer, get_timer, log_step
+from openplaces.timing import Timer, get_timer
 from openplaces.utils import format_list
 
 
@@ -513,17 +500,19 @@ class Ingester:
 
             # Read, reproject, and overlay once for all admin units in this tile.
             self.processing_chunk = {'admin_id_to_process': None}
-            gdf = self._read_recipe_data()
+            table_ingester = self._make_table_ingester(self.recipe)
+            gdf = table_ingester._read_recipe_data()
             if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
                 gdf = gdf.to_crs(cfg.crs)
                 self.timer.mark(f'Reproject to {cfg.crs}: {partition_id_to_download}')
-            gdf = self._preprocess_recipe_data(gdf)
+            gdf = table_ingester._preprocess_recipe_data(gdf)
             self.timer.mark(f'Preprocess: {partition_id_to_download}')
 
             # Save one file per admin unit.
+            # Mutate processing_chunk in place so table_ingester sees the updated value.
             for admin_id_to_process in admin_ids_in_tile:
-                self.processing_chunk = {'admin_id_to_process': admin_id_to_process}
-                self._save_recipe_data(gdf)
+                self.processing_chunk['admin_id_to_process'] = admin_id_to_process
+                table_ingester._save_recipe_data(gdf)
                 self.timer.mark(f'Save: {admin_id_to_process}')
         else:
             admin_ids_to_process_in_partition = [
@@ -536,7 +525,9 @@ class Ingester:
 
             for admin_id_to_process in admin_ids_to_process_in_partition:
                 if self.verbose and admin_id_to_process is not None:
-                    print(f'Processing data for {admin_id_to_process}:')
+                    print(
+                        f'Processing {self.recipe["entity"]} for {admin_id_to_process}:'
+                    )
                 self._process_recipe_data(admin_id_to_process)
                 self.timer.mark(
                     'Wrap up'
@@ -1010,587 +1001,66 @@ class Ingester:
     def _process_recipe_data(self, admin_id_to_process=None):
         """Process data from a downloaded (and unzipped) data file"""
 
-        # Initiate processing chunk
         self.processing_chunk = {'admin_id_to_process': admin_id_to_process}
 
         admin_id_to_download = self.download_partition['admin_id_to_download']
+        suffix = '' if admin_id_to_process is None else f': {admin_id_to_process}'
 
-        timer_text_suffix = (
-            '' if admin_id_to_process is None else f': {admin_id_to_process}'
-        )
-
-        # If the processing is partitioned by a data column in the
-        # data file, prepare the crosswalk.
-        process_data_in_chunks = (
+        process_in_chunks = (
             admin_id_to_download is not None
             and admin_id_to_process is not None
             and AdminId(admin_id_to_download).is_parent_of(AdminId(admin_id_to_process))
         )
 
-        read_data_kwargs = {}
-        if process_data_in_chunks:
-            if 'process_by' not in self.recipe:
-                raise ValueError(
-                    f'Admin ID to process ({admin_id_to_process}) is below '
-                    f'Admin ID to download ({admin_id_to_download}), '
-                    "but no 'process_by' argument found in `recipe`."
-                )
-
-            if 'use_spatial_mask' in self.recipe['process_by']:
-                # Reading part of geodatabase by passing polygon
-                if self.verbose:
-                    print('Reading with bounding box. This can be slow.')
-                if 'admin_geometries' not in self.download_partition:
-                    self._load_admin_geometries()
-                admin_bbox_bounds = (
-                    self.download_partition['admin_geometries']
-                    .loc[admin_id_to_process]
-                    .geometry.bounds
-                )
-                read_data_kwargs['bbox'] = admin_bbox_bounds
-            else:
-                # Reading part of geodatabase by passing feature IDs
-                if 'admin_id_fids' not in self.download_partition:
-                    self._prepare_admin_id_crosswalk(admin_id_to_process)
-                    self._prepare_admin_id_filter_column(admin_id_to_process)
-                _fids = self.download_partition['admin_id_fids']
-                read_data_kwargs['fids'] = list(
-                    _fids[_fids.eq(admin_id_to_process)].index
-                )
-
-        gdf = self._read_recipe_data(**read_data_kwargs)
-
-        # Reproject vector data to default CRS
-        if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
-            gdf = gdf.to_crs(cfg.crs)
-            self.timer.mark(f'Reproject to {cfg.crs}{timer_text_suffix}')
-
-        # Preprocess recipe data
-        # (column names, indices, remapping, NAs, categoricals)
-        gdf = self._preprocess_recipe_data(gdf)
-        self.timer.mark(f'Preprocess recipe data{timer_text_suffix}')
-
-        # Save recipe data
-        self._save_recipe_data(gdf)
-        self.timer.mark(f'Save recipe data{timer_text_suffix}')
-
-    def _prepare_admin_id_crosswalk(self, admin_id_to_process):
-        """Get crosswalk from openplaces AdminIds to recipe AdminId"""
-        # Attribute entities to administrative unit IDs
-        if 'admin_id_crosswalk' in self.recipe['process_by']:
-            # Use custom crosswalk
-            admin_id_crosswalk_dict = self.recipe['process_by']['admin_id_crosswalk']
-        else:
-            admin_id_crosswalk_dict = None
-
-        if admin_id_crosswalk_dict:
-            admin_id_crosswalk_dict['admin_id'] = self.download_partition[
-                'admin_id_to_download'
-            ]
-            self.download_partition['admin_id_crosswalk'] = get_crosswalk(
-                admin_id_crosswalk_dict, flip=True
-            )
-        else:
-            raise ValueError('No crosswalk recipe found')
-
-    def _prepare_admin_id_filter_column(self, admin_id_to_process):
-        """Prepare the mapping of row IDs (FIDs) to admin_ids"""
-        admin_level_to_process = self.recipe['process_by']['admin_level']
-        admin_id_column_source = self.recipe['process_by']['admin_id_column']
-
-        admin_id_filter = self._read_recipe_data(
-            columns=[admin_id_column_source],
-            read_geometry=False,
-            fid_as_index=True,
-        )
-
-        if 'admin_id_transformation' in self.recipe['process_by']:
-            transform_config = self.recipe['process_by']['admin_id_transformation']
-            transform_config['input'] = self.recipe['process_by']['admin_id_column']
-            admin_id_filter = apply_transformation(admin_id_filter, transform_config)
-            join_column = transform_config['output']
-        else:
-            join_column = admin_id_column_source
-
-        admin_id_filter = admin_id_filter.join(
-            self.download_partition['admin_id_crosswalk'],
-            on=join_column,
-        )
-
-        self.download_partition['admin_id_fids'] = admin_id_filter[
-            f'admin{admin_level_to_process}_id'
-        ]
-
-    def _load_admin_geometries(self):
-        if (
-            'process_by' in self.recipe
-            and 'use_spatial_index' in self.recipe['process_by']
-            and self.recipe['process_by']['use_spatial_index']
-        ):
-            admin_specs = self.recipe['process_by']
-        elif 'overlay_admin_ids' in self.recipe:
-            admin_specs = self.recipe['overlay_admin_ids']
-
-        # For tile partitions admin_id_to_download is None; fall back to the
-        # recipe's own admin scope.
-        admin_id = self.download_partition['admin_id_to_download'] or self.recipe.get(
-            'admin_id'
-        )
-        admin_geometries = get_admin(
-            admin_id,
-            admin_specs['admin_level'],
-            recipe=admin_specs.get('admin_recipe_id'),
-            geom=True,
-        )['geometry']
-
-        # For tile partitions: restrict to the admin units in this tile so
-        # that overlay_admin_ids only works with the relevant boundaries.
-        if 'admin_ids_in_tile' in self.download_partition:
-            admin_ids_in_tile = self.download_partition['admin_ids_in_tile']
-            admin_geometries = admin_geometries.loc[
-                [aid for aid in admin_ids_in_tile if aid in admin_geometries.index]
-            ]
-
-        data_crs = get_crs(
-            self.download_partition['data_path'], layer=self.recipe.get('layer')
-        )
-        if data_crs != admin_geometries.crs:
-            admin_geometries = admin_geometries.to_crs(data_crs)
-        self.download_partition['admin_geometries'] = admin_geometries
-
-    def _read_recipe_data(self, columns=None, **kwargs):
-        """Read a recipe dataset
-
-        Parameters
-        ----------
-        columns : list
-            List of selected column names to read. Enables the reading
-            of single columns, e.g. for partitioning datasets
-        kwargs : dict
-            Will be passed to reading function, e.g., gpd.read_file(),
-            gpd.read_parquet(), pd.read_parquet()
-            Can include: `read_geometry`, `fids_as_index`, `fids`
-        """
-        # Silence warnings from reading complex polygons
-        warnings.filterwarnings('ignore', 'received a polygon with more than 100 parts')
-
-        if 'encoding' in self.recipe:
-            kwargs['encoding'] = self.recipe['encoding']
-
-        if columns:
-            timer_message_suffix = (
-                ', '
-                + str(len(columns))
-                + ' column'
-                + ('(s)' if len(columns) > 1 else '')
-            )
-        else:
-            timer_message_suffix = ''
-
-        layer = self.recipe['layer'] if 'layer' in self.recipe else None
-
-        data_path = self.download_partition['data_path']
-        if data_path.suffix == '.parquet':
-            if 'fids' in kwargs:
-                raise ValueError('`fid`-based selection might not work with `parquet`.')
-            gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
-            self.timer.mark('Read parquet file' + timer_message_suffix, path=data_path)
-        elif data_path.suffix == '.gdb':
-            gdf = read_gdb_with_domains(
-                data_path, columns=columns, layer=layer, **kwargs
-            )
-        elif data_path.suffix in GEOPANDAS_EXTENSIONS:
-            try:
-                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-            except DataSourceError:
-                raise OSError(
-                    f'Failed to read data file:\n\n{data_path}\n\n'
-                    'Possibly an incompletely unzipped file? '
-                    'If so, delete manually, and re-run unzipping.'
-                )
-            self.timer.mark(
-                f'Read vector file ({data_path.suffix})' + timer_message_suffix,
-                path=data_path,
-            )
-        elif data_path.suffix in PANDAS_EXTENSIONS:
-            gdf = pd.read_file(data_path, columns=columns)
-            self.timer.mark('Read data table' + timer_message_suffix, path=data_path)
-        elif data_path.suffix in ZIP_EXTENSIONS:
-            try:
-                # Try to read compressed file with `geopandas`
-                # (hoping that it might be in a readable zipped format)
-                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-                self.timer.mark(
-                    'Read compressed file' + timer_message_suffix, path=data_path
-                )
-            except (RuntimeWarning, Exception):
-                unzip(data_path, self.recipe_heap_dir)
-
-                data_path = find_latest_file_or_gdb(self.recipe_heap_dir)
-                self.download_partition['data_path'] = data_path
-                if data_path is None:
-                    raise OSError(
-                        f'`geopandas` could not read compressed file:\n\n{data_path}.'
-                        '\n\n'
-                        f'Could not find a dataset after unzipping to:\n\n{heap_dir}'
-                    )
-
-                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-                self.timer.mark(
-                    'Read unzipped file' + timer_message_suffix, path=data_path
-                )
-        else:
-            raise ValueError(f'Filepath suffix not yet interpreted: {data_path.suffix}')
-
-        warnings.filterwarnings(
-            'default', 'received a polygon with more than 100 parts'
-        )
-
-        return gdf
-
-    def _preprocess_recipe_data(self, df):
-        """Preprocess imported dataset
-
-        Handles column renaming, indexing, querying, null value filling
-
-        Parameters
-        ----------
-        df : DataFrame or GeoDataFrame
-            Dataframe with unprocessed data.
-        """
-
-        # Rename columns
-        if 'columns' in self.recipe:
-            # Rename columns
-            df = df.rename(columns={v: k for k, v in self.recipe['columns'].items()})
-
-        # Replace known NA value strings with `None`.
-        if 'null_value_strings' in self.recipe:
-            # Exclude country identifiers ("NA" is Namibia)
-            columns_to_convert = [
-                v for v in df.columns if not v.startswith('admin1_id')
-            ]
-            for col, na_value in product(
-                columns_to_convert, self.recipe['null_value_strings']
-            ):
-                i_has_na_value = df[col].eq(na_value)
-                if i_has_na_value.sum():
-                    df.loc[i_has_na_value, col] = None
-
-        # Filter rows
-        if 'query' in self.recipe:
-            df = df.query(self.recipe['query'])
-
-        # Cast columns to categorical
-        if 'columns_to_categorical' in self.recipe:
-            columns_to_cast = [
-                v for v in self.recipe['columns_to_categorical'] if v in df
-            ]
-            for column_to_cast in columns_to_cast:
-                # If labels are provided, use labels as categories
-                # (more human-readable)
-                labels = self._get_labels(column_to_cast)
-                if labels is not None:
-                    values = df[column_to_cast].replace(labels)
-                    categories = labels.values()
-                    ordered = True
-                else:
-                    values = df[column_to_cast]
-                    categories = None
-                    ordered = False
-
-                df[column_to_cast] = pd.Series(
-                    pd.Categorical(values, categories, ordered),
-                    index=values.index,
-                )
-
-        # Apply variable transformations
-        # (Before crosswalks, to permit extraction of parent admin IDs)
-        if 'transformations' in self.recipe:
-            cols_before = list(df)
-            df = apply_transformations(df, self.recipe)
-            cols_added = [v for v in df if v not in cols_before]
-        else:
-            cols_added = []
-
-        # Attribute entities to administrative unit IDs
-        # (Before admin ID index creation, which needs parent Admin ID)
-        use_spatial_mask = (
-            'process_by' in self.recipe
-            and 'use_spatial_mask' in self.recipe['process_by']
-            and self.recipe['process_by']['use_spatial_mask']
-        )
-        if 'admin_id_crosswalk' in self.recipe:
-            admin_id_crosswalk_dict = self.recipe['admin_id_crosswalk']
-            admin_id_crosswalk_dict['admin_id'] = self.processing_chunk[
-                'admin_id_to_process'
-            ]
-            admin_id_crosswalk = get_crosswalk(admin_id_crosswalk_dict, flip=True)
-
-            missing_crosswalk_ids = set(df[admin_id_crosswalk.index.name]) - set(
-                admin_id_crosswalk.index
-            )
-            if missing_crosswalk_ids:
-                mask_unmatched = df[admin_id_crosswalk.index.name].isin(
-                    missing_crosswalk_ids
-                )
-                if self.verbose:
-                    warnings.warn(
-                        f'\n\nImperfect crosswalk: {mask_unmatched.sum():,d} '
-                        'admin IDs were not linked and will be dropped:\n\n'
-                        + str(df[mask_unmatched][[v for v in df if 'name' in v]])
-                        + '\n'
-                    )
-            df = df.join(
-                admin_id_crosswalk, on=admin_id_crosswalk.index.name, how='inner'
-            )
-            cols_added += (
-                [admin_id_crosswalk.name]
-                if isinstance(admin_id_crosswalk, pd.Series)
-                else list(admin_id_crosswalk)
-            )
-
-        elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
-            if self.verbose:
-                print(
-                    'Overlaying polygons with administrative boundaries. '
-                    'This can take a while.'
-                )
-            if 'admin_geometries' not in self.download_partition:
-                self._load_admin_geometries()
-            if use_spatial_mask:
-                admin_specs = self.recipe['process_by']
-                # Spatial bounding box already applied. Intersect only
-                # with the administrative unit of interest.
-                admin_geometries = (
-                    self.download_partition['admin_geometries']
-                    .loc[[self.processing_chunk['admin_id_to_process']]]
-                    .copy()
-                )
-            elif 'overlay_admin_ids' in self.recipe:
-                admin_specs = self.recipe['overlay_admin_ids']
-                admin_geometries = self.download_partition['admin_geometries']
-
-            kwargs_overlay = {
-                k: v for k, v in admin_specs.items() if k != 'admin_recipe_id'
-            }
-            cols_before = set(df.columns)
-            df = overlay_admin_ids(
-                df,
-                admin_geometries=admin_geometries,
-                timer=self.timer,
-                **kwargs_overlay,
-            )
-            cols_added += [v for v in df.columns if v not in cols_before]
-
-        # Set index
-        if str(self.recipe['entity'].entity_type) == 'parcel' and isinstance(
-            df, gpd.GeoDataFrame
-        ):
-            # Parcels get a standardized ID: 'geo_ids' without duplicates
-            # Column 'geo_id' (with possible duplicates) is also stored
-            # to link up geometries and parcels.
-            df['geo_id'] = get_geo_ids(df, handle_duplicates=False)
-            df.index = pd.Index(add_unique_suffix(df['geo_id']), name='parcel_id')
-        elif 'set_index' in self.recipe:
-            # Set column as index
-            if self.recipe['set_index'] not in df:
-                raise ValueError(
-                    'Column not found to use as index: ' + str(self.recipe['set_index'])
-                )
-            if df[self.recipe['set_index']].duplicated().any():
-                raise ValueError(
-                    f"Duplicates found in '{self.recipe['set_index']}'. "
-                    'Choose other index.\n\n'
-                    + str(
-                        df[df[self.recipe['set_index']].duplicated(keep=False)][
-                            self.recipe['set_index']
-                        ]
-                        .sort_values()
-                        .head(5)
-                    )
-                )
-            df = df.set_index(self.recipe['set_index'])
-        elif 'create_index' in self.recipe:
-            if 'function' in self.recipe['create_index']:
-                if not self.recipe['create_index']['function'].startswith(
-                    'openplaces.'
-                ):
-                    raise ValueError(
-                        'Function in `create_index` must start with `openplaces.`\n'
-                        'Changing this would create a security risk (run any function).'
-                    )
-                index_function = self._load_function(
-                    self.recipe['create_index']['function']
-                )
-                index_function_kwargs = (
-                    self.recipe['create_index']['args']
-                    if 'args' in self.recipe['create_index']
-                    else {}
-                )
-                df = index_function(df, **index_function_kwargs)
-            elif 'method' in self.recipe['create_index']:
-                if self.recipe['create_index']['method'] == 'prefix':
-                    df.index = pd.Index(
-                        self.recipe['create_index']['prefix']
-                        + df[self.recipe['create_index']['column']],
-                        name=self.recipe['create_index']['name'],
-                    )
-        elif 'index_function' in self.recipe:
-            # Create index with custom function
-
-            with log_step('Generate indices', timer=self.timer):
-                if not self.recipe['index_function'].startswith('openplaces.'):
-                    raise ValueError(
-                        'Function in `index_function` must start with `openplaces.`\n'
-                        'Changing this would create a security risk (run any function).'
-                    )
-                index_function = self._load_function(self.recipe['index_function'])
-
-                df = index_function(df)
-
-        # Drop observations by index
-        if 'drop' in self.recipe:
-            df = df.drop(self.recipe['drop'])
-
-        # Double-check that the index has no duplicates
-        if df.index.duplicated().any():
+        if process_in_chunks and 'process_by' not in self.recipe:
             raise ValueError(
-                'Duplicated indices are not allowed in imported data.\n'
-                'Change `index_function`, `create_index` or `set_index` column:\n'
-                + str(df[df.index.duplicated(keep=False)].sort_index().head())
+                f'Admin ID to process ({admin_id_to_process}) is below '
+                f'Admin ID to download ({admin_id_to_download}), '
+                "but no 'process_by' argument found in `recipe`."
             )
 
-        # Reorder columns
-        if 'columns' in self.recipe:
-            # Start with named columns
-            cols_order = (
-                [c for c in list(self.recipe['columns']) if c in df]
-                + [c for c in df if c.startswith('admin') and c.endswith('_id_source')]
-                + cols_added
+        # For spatial-mask chunking, load admin geometries once and derive
+        # the bounding box before creating any TableIngester.
+        bbox = None
+        if process_in_chunks and 'use_spatial_mask' in self.recipe.get(
+            'process_by', {}
+        ):
+            if self.verbose:
+                print('Reading with bounding box. This can be slow.')
+            if 'admin_geometries' not in self.download_partition:
+                self._make_table_ingester(self.recipe)._load_admin_geometries()
+            bbox = (
+                self.download_partition['admin_geometries']
+                .loc[admin_id_to_process]
+                .geometry.bounds
             )
-            # If requested, add any other non-geometry columns
-            if self.recipe.get('keep_unnamed_columns'):
-                cols_order += [
-                    c for c in df if c not in cols_order + ['geo_id', 'geometry']
-                ]
-            # Finish by adding geometry columns
-            for geo_col in ['geo_id', 'geometry']:
-                if geo_col in df:
-                    cols_order += [geo_col]
-            df = df[cols_order]
 
-        self.timer.mark('Preprocessing')
+        # Process primary table
+        primary_table_ingester = self._make_table_ingester(self.recipe)
+        primary_table_ingester.process(process_in_chunks=process_in_chunks, bbox=bbox)
+        self.timer.mark(f'Wrap up{suffix}')
 
-        return df
+        # Process additional tables from the same source file
+        for table_spec in self.recipe.get('additional_layers', []):
+            table_recipe = build_table_recipe(self.recipe, table_spec)
+            if self.verbose and admin_id_to_process is not None:
+                print(f'Processing {table_recipe["entity"]} for {admin_id_to_process}:')
+            table_in_chunks = process_in_chunks and 'process_by' in table_recipe
+            additional_table_ingester = self._make_table_ingester(table_recipe)
+            additional_table_ingester.process(
+                process_in_chunks=table_in_chunks,
+                bbox=bbox if table_in_chunks else None,
+            )
+            self.timer.mark(f'Wrap up {table_recipe["entity"]}{suffix}')
 
-    def _load_function(self, path):
-        module, name = path.rsplit('.', 1)
-        return getattr(importlib.import_module(module), name)
-
-    def _get_labels(self, column):
-        """Get dictionary of codes > labels for a column in a recipe
-
-        Parameters
-        ----------
-        column : str
-            Column for which to find a CSV file with labels near the recipe
-            Underscores will be converted to dashes.
-            Example: if the column is 'purpose_group', the label CSV is:
-            '<recipe_id>_purpose-group-labels.csv'
-        """
-        labels_recipe_path = recipe_path(
-            self.recipe['admin_id'],
-            self.recipe['entity'],
-            filename=column.replace('_', '-') + '-labels.csv',
+    def _make_table_ingester(self, table_recipe) -> TableIngester:
+        """Construct a TableIngester bound to the current partition state."""
+        return TableIngester(
+            table_recipe,
+            self.download_partition,
+            self.processing_chunk,
+            self.recipe_heap_dir,
+            self.timer,
+            self.verbose,
+            self.admin_ids_to_save,
         )
-        if labels_recipe_path.exists():
-            labels = pd.read_csv(labels_recipe_path)
-            labels = labels.set_index(labels.columns[0])[labels.columns[1]].to_dict()
-            return labels
-        else:
-            return None
-
-    def _save_recipe_data(self, gdf):
-        """Save data from an ingested recipe
-
-        Parameters
-        ----------
-        gdf : GeoDataFrame or DataFrame
-            Data ready to be saved
-        """
-
-        save_to = self.recipe.get('save_to') or {}
-        # backward compat: cache_by: admin_level
-        admin_level = save_to.get('admin_level') or (
-            self.recipe.get('cache_by') or {}
-        ).get('admin_level')
-        split_dataset_by_admin = admin_level is not None
-        if split_dataset_by_admin:
-            admin_id_col = f'admin{admin_level}_id'
-            if admin_id_col not in gdf:
-                raise ValueError(
-                    f"Recipe says 'save_to: admin_level: {admin_level}', but column "
-                    f"'{admin_id_col}' does not exist in DataFrame:\n\n"
-                    + str(gdf.sample(1).T)
-                )
-            admin_ids_in_data = sorted(set(gdf[admin_id_col].dropna()))
-            admin_ids_to_save_expected = [
-                admin_id
-                for admin_id in self.admin_ids_to_save
-                if admin_id.startswith(self.processing_chunk['admin_id_to_process'])
-            ]
-            admin_ids_to_save_in_data = [
-                admin_id
-                for admin_id in admin_ids_to_save_expected
-                if admin_id in admin_ids_in_data
-            ]
-
-            missing_admin_ids = set(admin_ids_to_save_expected) - set(
-                admin_ids_to_save_in_data
-            )
-            if missing_admin_ids:
-                txt_warnings = (
-                    f'\n\n{len(missing_admin_ids)} AdminIds to save not found in data:'
-                    '\n' + ', '.join(sorted(missing_admin_ids)[:15]) + '\n'
-                )
-                warnings.warn(txt_warnings)
-        else:
-            admin_ids_to_save_in_data = [self.processing_chunk['admin_id_to_process']]
-
-        print_admin_id_progress = (
-            self.verbose and not len(admin_ids_to_save_in_data) == 1
-        )
-        if print_admin_id_progress:
-            print('Saving ', end='')
-        for admin_id_to_save in admin_ids_to_save_in_data:
-            if print_admin_id_progress:
-                end = ', ' if admin_id_to_save != admin_ids_to_save_in_data[-1] else ''
-                print(admin_id_to_save, end=end)
-            if split_dataset_by_admin:
-                redundant_admin_id_columns = [
-                    v for v in gdf if v.startswith(f'admin{admin_level}_id')
-                ]
-                gdf_to_save = (
-                    gdf[gdf[admin_id_col].eq(admin_id_to_save)]
-                    .copy()
-                    .drop(columns=redundant_admin_id_columns)
-                )
-            else:
-                gdf_to_save = gdf.copy()
-
-            output_path = get_output_path(
-                self.recipe,
-                admin_id_to_save,
-                self.download_partition.get('partition_id_to_download'),
-            )
-
-            if output_path.suffix == '.parquet':
-                save_parquet(gdf_to_save, output_path)
-            else:
-                raise NotImplementedError(
-                    f'Output file type not yet supported: {output_path.suffix}'
-                )
-
-        if print_admin_id_progress:
-            print('')

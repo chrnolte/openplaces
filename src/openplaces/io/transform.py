@@ -660,7 +660,11 @@ def remap(df, recipe_id):
 
 
 def add_unique_suffix(s):
-    """Make string Series unique by appending unique integer suffices
+    """Make string Series unique by appending unique integer suffices.
+
+    All duplicate occurrences are suffixed (``-1``, ``-2``, …), including the
+    first one.  Use `make_index_unique` when operating on a DataFrame index and
+    the first (or largest) occurrence should keep the unsuffixed value.
 
     Parameters
     ----------
@@ -674,3 +678,92 @@ def add_unique_suffix(s):
     counts = s[duplicates].groupby(s[duplicates], sort=False).cumcount() + 1
     s.loc[duplicates] = s.loc[duplicates].astype(str) + '-' + counts.astype(str)
     return s
+
+
+def make_index_unique(
+    df: pd.DataFrame,
+    sort_by: str | None = None,
+    ascending: bool = False,
+    separator: str = '-',
+    *,
+    sort_duplicates_by_area: bool = False,
+    area_crs: str = 'EPSG:6933',
+) -> pd.DataFrame:
+    """Return a copy of a DataFrame / GeoDataFrame with a unique string index.
+
+    Duplicate index values are resolved so that the first occurrence keeps the
+    original index value and later duplicates receive suffixes ``-1``, ``-2``,
+    …  Sorting controls which occurrence counts as "first".
+
+    Unlike `add_unique_suffix`, which operates on a Series and suffixes every
+    duplicate (including the first), this function preserves the unsuffixed
+    value for the winning row.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or gpd.GeoDataFrame
+        Input frame whose index will be made unique.
+    sort_by : str, optional
+        Column to sort the entire frame by before resolving duplicates.
+    ascending : bool
+        Sort direction. Default ``False`` so larger values sort first.
+    separator : str
+        String inserted between the original index value and the counter.
+    sort_duplicates_by_area : bool
+        If True, and ``df`` is a GeoDataFrame, compute equal-area geometry
+        area for rows with duplicated index values and sort within each group
+        so the largest polygon keeps the unsuffixed index.
+    area_crs : str
+        Equal-area CRS used for area calculation. Default: ``EPSG:6933``.
+    """
+    out = df.copy()
+
+    if not all(isinstance(x, str) for x in out.index):
+        raise TypeError('All index values must be strings.')
+
+    if sort_by is not None:
+        if sort_by not in out.columns:
+            raise KeyError(f'Column not found: {sort_by!r}')
+        out = out.sort_values(sort_by, ascending=ascending, kind='stable')
+
+    elif sort_duplicates_by_area:
+        if not hasattr(out, 'geometry'):
+            raise TypeError(
+                'sort_duplicates_by_area=True requires a GeoDataFrame '
+                'with a geometry column.'
+            )
+        if getattr(out, 'crs', None) is None:
+            raise ValueError(
+                'GeoDataFrame must have a CRS to compute area '
+                'in an equal-area projection.'
+            )
+
+        tmp = out.reset_index(names='__orig_index__').copy()
+        tmp['__orig_order__'] = range(len(tmp))
+
+        dup_mask = tmp['__orig_index__'].duplicated(keep=False)
+        if dup_mask.any():
+            dup = tmp.loc[dup_mask].copy()
+            dup_gdf = dup.set_geometry(out.geometry.name, crs=out.crs)
+            dup['__sort_area__'] = dup_gdf.to_crs(area_crs).geometry.area.values
+            tmp['__sort_area__'] = pd.NA
+            tmp.loc[dup.index, '__sort_area__'] = dup['__sort_area__'].values
+            tmp = tmp.sort_values(
+                by=['__orig_index__', '__sort_area__', '__orig_order__'],
+                ascending=[True, ascending, True],
+                kind='stable',
+            )
+
+        tmp = tmp.set_index('__orig_index__')
+        tmp.index.name = out.index.name
+        out = tmp.drop(columns=['__orig_order__', '__sort_area__'], errors='ignore')
+
+    counts: dict[str, int] = {}
+    new_idx: list[str] = []
+    for s in out.index:
+        n = counts.get(s, 0)
+        new_idx.append(s if n == 0 else f'{s}{separator}{n}')
+        counts[s] = n + 1
+
+    out.index = pd.Index(new_idx, name=df.index.name)
+    return out

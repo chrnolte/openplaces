@@ -17,18 +17,18 @@ entity:
     download_url_source: "https://disasters.geoplatform.gov/USA_Structures/"
     # Regex to extract download URL from `download_url_source`
     # Data partition placeholders {...} will be replaced before use.
-    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)' 
+    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)'
   version: 2023
-
-# How is the download data partitioned?
-download_by:
-  admin_level: 2
 
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "Deliverable*{admin2_id_leaf}.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
 uncompressed_file_name: "{admin2_id_leaf}_Structures.gdb"
+
+# How is the download data partitioned?
+download_by:
+  admin_level: 2
 
 # Read and process data in chunks
 # (avoids reading very large geodatabases into memory)
@@ -61,12 +61,6 @@ columns:
   census_tract_id: CENSUSCODE
   admin3_id_admin1: FIPS
 
-# Function to give the GeoDataFrame an index
-create_index:
-  function: "openplaces.geo.ids.add_openlocationcode_index"
-  args:
-    name: footprint_id
-
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - purpose_group
@@ -74,3 +68,9 @@ columns_to_categorical:
   - image_date
   - validation_method
   - building_code
+
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
