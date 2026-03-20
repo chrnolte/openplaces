@@ -1,3 +1,5 @@
+# Instructions for Jupyter's code formatting with `ruff`
+
 [format]
 quote-style = "single"
 
