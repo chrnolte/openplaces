@@ -275,18 +275,18 @@ def setup():
         .strip()
         .lower()
     )
-    qgis_response = (
-        input(
-            '\nInstall `openplaces` data import tools for QGIS (Processing Toolbox)? '
-            '[y/N] '
-        )
-        .strip()
-        .lower()
-    )
     launcher_response = (
         input(
             f'\nInstall `{env_name}` command to launch Jupyter from the terminal? '
             '[Y/n] '
+        )
+        .strip()
+        .lower()
+    )
+    qgis_response = (
+        input(
+            '\nInstall `openplaces` data import tools for QGIS (Processing Toolbox)? '
+            '[y/N] '
         )
         .strip()
         .lower()
@@ -333,11 +333,12 @@ def setup():
             )
         else:
             print(f'  1. Open a new terminal and type `{env_name}` to launch Jupyter.')
+        print('  2. Start coding!')
     else:
         print(f'  1. {pkg_mgr} activate {env_name}')
         print('  2. cd notebooks')
         print('  3. jupyter notebook')
-    print('  4. Start coding!')
+        print('  4. Start coding!')
 
 
 def update():
