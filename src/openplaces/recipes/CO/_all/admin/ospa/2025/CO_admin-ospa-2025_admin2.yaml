@@ -1,0 +1,48 @@
+admin_id: CO
+entity:
+  entity_type: admin
+  source:
+    source_id: ospa
+  version: 2025
+# Point to your local Admin 2 zip/shapefile
+compressed_file_name: "departamento.zip"
+uncompressed_file_name: "departamento.shp"
+
+# Standardized column mappings
+columns:
+  name: NOM_DPTO
+  admin2_id_admin1: COD_DANE 
+  admin1_id_admin0: COLOMBIA
+
+
+transformations:
+  - output: admin1_id
+    input: admin1_id_admin0
+    type: string
+    operation: replace
+    args:
+      old: '57'
+      new: 'CO'
+  - output: type
+    type: expression
+    expression: "'Department'"
+  - output: type
+    type: expression
+    expression: "type.where(index != 'CO-BD', 'Capital District')"
+      
+# Keep columns that aren't named in the above list
+keep_unnamed_columns: False
+
+# # Function that returns an indexed version of the input GeoDataFrame
+# # (usually a custom function designed for a specific indexing case)
+create_index:
+  function: "openplaces.io.admin.check_spine_CO_admin2_id"
+
+
+# Sort by index?
+sort_index: True
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+#cache_filename: 'admin2'

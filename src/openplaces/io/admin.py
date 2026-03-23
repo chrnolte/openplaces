@@ -1359,3 +1359,261 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         filename=f'admin{level}' + ('_test' if test else '') + '.csv',
     )
     new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8-sig')
+
+import unicodedata
+def check_spine_CO_admin3_id(admin_local, level):
+    """Indexing function specific to CO admin3_ids.
+        Matches ospa admin layer municipalities to existing admin3_id in spine.
+        Genreates new ids for new municipalites not in spine. 
+    """
+    
+    def normalize(s, admin_level=2):
+        if admin_level == 2:
+            s = re.sub(r'\b(del Cauca|La)\b', '', s, flags=re.IGNORECASE).strip()
+        s = unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('utf-8').lower()
+        return s.strip()
+
+    def fix_typos(s):
+        return s.replace('MAGDANELA', 'MAGDALENA')
+    
+    def fix_name_variants(s, admin2_id=None):
+        admin2_specific = {
+            ('EL CARMEN', 'CO-CH'): 'El Carmen de Atrato',
+            ('EL CARMEN', 'CO-ST'): 'El Carmen de Chucurí',
+            ('LA UNIÓN', 'CO-AN'): 'La Unión',
+            ('LA UNIÓN', 'CO-NA'): 'La Unión',
+            ('LA UNIÓN', 'CO-VC'): 'La Unión',
+            ('SAN PEDRO', 'CO-SU'): 'San Pedro',
+            ('SAN PEDRO', 'CO-VC'): 'San Pedro',
+            ('SAN ANDRÉS', 'CO-SA'): 'San Andrés',
+            ('SAN ANDRES Y  PROVIDENCIA (Santa Isabel)', 'CO-SA'): 'Providencia',
+        }
+        key = (s.strip(), admin2_id)
+        if key in admin2_specific:
+            return admin2_specific[key]
+
+        mapping = {
+            'SANTANDER (Araracuara)':'Puerto Santander',
+            'CAROLINA': 'Carolina del Principe',
+            'SAN ANDRÉS': 'San Andrés de Cuerquia',
+            'SAN PEDRO': 'San Pedro de los Milagros',
+            'SAN ESTANISLAO': 'San Estanislao de Kostka',
+            'CIÉNEGA': 'Ciénaga',
+            'IZA': 'Izá',
+            'PISVA': 'Pisba',
+            'TÓPAGA': 'Topagá',
+            'LÓPEZ': 'López de Micay',
+            'MANAURE BALCÓN DEL CESAR': 'Manaure',
+            'RIO IRÓ (Santa Rita)': 'Río Iro',
+            'LORICA': 'Santa Cruz de Lorica',
+            'SAHAGÚN': 'San Bernardino de Sahagún',
+            'UBATÉ': 'Villa de San Diego de Ubaté',
+            'INÍRIDA': 'Puerto Inírida',
+            'MORICHAL (Morichal Nuevo)': 'Morichal Nuevo',
+            'CUBARRAL': 'San Luis de Cubarral',
+            'EL TABLÓN': 'El Tablón de Gomez',
+            'PASTO': 'San Juan de Pasto',
+            'CÚCUTA': 'San José de Cúcuta',
+            'LA PLAYA': 'La Playa de Belén',
+            'SALAZAR': 'Salazar de las Palmas',
+            'SILOS': 'Santo Domingo de Silos',
+            'MOCOA': 'San Miguel de Mocoa',
+            'PALMITO': 'San Antonio de Palmito',
+            'LA UNIÓN': 'La Unión de Sucre',
+            'MARIQUITA': 'San Sebastian de Mariquita',
+            'BUGA': 'Guadalajara de Buga',
+            'CALI': 'Santiago de Cali',
+            'BOGOTÁ D.C.': 'Bogotá D.C.',
+        }
+        return mapping.get(s.strip(), s)
+        
+    def remove_parenthetical(s):
+        return re.sub(r'\s*\(.*?\)', '', str(s)).strip()
+
+    # Assign admin2_name from crosswalk based on admin3_id_admin1 
+    crosswalk = pd.read_csv('/Users/alexanderweintraub/openplaces/src/openplaces/recipes/CO/_all/admin/ospa/2025/admin2_id_admin1_crosswalk.csv')
+    crosswalk['admin2_id_admin1'] = crosswalk['admin2_id_admin1'].astype(str).str.zfill(2)
+    admin_local['_admin2_key'] = admin_local['admin3_id_admin1'].astype(str).str.zfill(5).str[:2]
+    admin_local = admin_local.merge(
+        crosswalk[['admin2_id_admin1', 'admin2_name']],
+        left_on='_admin2_key', right_on='admin2_id_admin1',
+        how='left'
+    )
+    admin_local = admin_local.drop(columns=['_admin2_key', 'admin2_id_admin1'])
+
+    # Assign admin2_id from admin2 spine based on admin2_name  
+    admin2_spine = get_admin(level=2, all_columns=True)
+    admin2_spine_crop = admin2_spine[admin2_spine.index.str.startswith('CO')]
+    admin2_name_to_id = {
+        normalize(name, admin_level=2): idx
+        for idx, name in admin2_spine_crop['name'].items()
+    }
+    admin_local['admin2_id'] = admin_local['admin2_name'].apply(
+        lambda x: admin2_name_to_id.get(normalize(fix_typos(str(x)), admin_level=2), None)
+        if pd.notna(x) else None
+    )
+
+    unmatched_admin2 = admin_local[admin_local['admin2_id'].isna()]['admin2_name'].unique().tolist()
+
+    # Match admin3_id from spine
+    # Use fuzzing matching to get around misspelled names
+    from difflib import get_close_matches
+    
+    admin3_spine = get_admin(level=3, all_columns=True)
+    admin3_spine_crop = admin3_spine[admin3_spine.index.str.startswith('CO')]
+
+    admin3_name_to_id = {}
+    admin3_fuzzy_by_prefix = {}
+    for idx, name in admin3_spine_crop['name'].items():
+        prefix = idx[:5]
+        cleaned = clean_geographic_name(remove_parenthetical(name))
+        norm = normalize(cleaned[0], admin_level=3)
+        admin3_name_to_id[(norm, prefix)] = idx
+        if prefix not in admin3_fuzzy_by_prefix:
+            admin3_fuzzy_by_prefix[prefix] = {}
+        admin3_fuzzy_by_prefix[prefix][norm] = idx
+
+    already_matched_spine_ids = set()
+
+    def match_admin3(row):
+        if pd.isna(row['admin2_id']):
+            return None
+        prefix = row['admin2_id'][:5]
+        name_clean = remove_parenthetical(fix_typos(fix_name_variants(str(row['name']), admin2_id=row['admin2_id'])))
+        cleaned = clean_geographic_name(name_clean)
+        norm = normalize(cleaned[0], admin_level=3)
+        key = (norm, prefix)
+  
+        # Exact match first
+        if key in admin3_name_to_id:
+            result = admin3_name_to_id[key]
+            already_matched_spine_ids.add(result)
+            return result
+
+        # Fuzzy fallback within same admin2 prefix
+        candidates = admin3_fuzzy_by_prefix.get(prefix, {})
+        matches = get_close_matches(norm, candidates.keys(), n=1, cutoff=0.85)
+        if matches:
+            matched_id = candidates[matches[0]]
+            if matched_id not in already_matched_spine_ids:
+                print(f"  Fuzzy match: '{row['name']}' -> '{matches[0]}' ({matched_id})")
+                already_matched_spine_ids.add(matched_id)
+                return matched_id
+
+        return None
+
+    matched_ids = []
+    for _, row in admin_local.iterrows():
+        matched_ids.append(match_admin3(row))
+    admin_local['admin_id'] = matched_ids
+
+    matched = admin_local[admin_local['admin_id'].notna()]
+    dup_matched = matched[matched['admin_id'].duplicated(keep=False)]
+
+    n_matched = admin_local['admin_id'].notna().sum()
+    n_total = len(admin_local)
+    print(f"Spine matches: {n_matched}/{n_total}")
+
+    bogota_mask = (
+        admin_local['name'].str.upper().str.strip().str.contains('BOGOT', na=False)
+        & admin_local['admin_id'].isna()
+    )
+    admin_local.loc[bogota_mask, 'admin_id'] = 'CO-DC-BD'
+    admin_local.loc[bogota_mask, 'admin2_id'] = 'CO-DC'
+    if bogota_mask.any():
+        print(f"Hardcoded Bogotá D.C. -> CO-DC-DC")
+        
+
+    admin_local['matched_admin3_id'] = admin_local['admin_id']
+
+    # Generate new IDs for unmatched rows only,               
+    unmatched_mask = admin_local['matched_admin3_id'].isna()
+    unmatched_df = admin_local.loc[unmatched_mask, ['name', 'admin2_id']].copy()
+    unmatched_names = unmatched_df['name'].tolist()
+    unmatched_admin2_ids = unmatched_df['admin2_id'].tolist()
+    unmatched_orig_idx = unmatched_df.index.tolist()
+
+    # Build dummy rows for ALL existing CO spine IDs.
+    # Format last segment as spaced letters e.g. 'CO-AN-VD' -> 'V D'
+    # so clean_geographic_name returns two words ['V', 'D'] and
+    # strategy 3 (initials) fires first, reliably claiming 'CO-AN-VD'
+    # before any real name can. Space sorts before letters so dummies
+    # are processed before real names under the same parent.
+    all_spine_ids = admin3_spine_crop.index.tolist()
+    dummy_df = pd.DataFrame({
+        'name': [' '.join(list('-'.join(idx.split('-')[2:]))) for idx in all_spine_ids],
+        'admin2_id': ['-'.join(idx.split('-')[:2]) for idx in all_spine_ids],
+        '_orig_idx': range(-len(all_spine_ids), 0),
+    }, index=range(-len(all_spine_ids), 0))
+
+    unmatched_df = unmatched_df.copy()
+    unmatched_df['_orig_idx'] = unmatched_orig_idx
+    combined_df = pd.concat([dummy_df, unmatched_df])
+
+    # Generate new admin3_ids for the unmatched rows
+    generated = generate_admin_ids(
+        df=combined_df,
+        new_admin_id_col='admin3_id',
+        parent_admin_id_col='admin2_id',
+        name_col='name',
+        id_separator='-',
+        verbose=False,
+    ).reset_index(names='admin3_id')
+
+    # Map back using _orig_idx — immune to internal sort reordering
+    real_generated = generated[generated['_orig_idx'] >= 0][['_orig_idx', 'admin3_id']]
+    orig_idx_to_new_id = dict(zip(real_generated['_orig_idx'], real_generated['admin3_id']))
+
+    for orig_idx, new_id in orig_idx_to_new_id.items():
+        admin_local.at[orig_idx, 'admin_id'] = new_id
+
+    admin_local = admin_local.drop(columns=[
+        'matched_admin3_id',
+        'admin2_name',
+        'admin2_id',
+    ], errors='ignore')
+
+    admin_local = admin_local.set_index('admin_id')
+    admin_local.index.name = f'admin3_id'
+
+    return admin_local
+
+def check_spine_CO_admin2_id(admin_local):
+    """Indexing function specific to CO admin2_ids.
+        Matches ospa admin 2 layer municipalities to existing admin2_id in spine.
+        Genreates new ids for new municipalites not in spine. 
+    """
+    def normalize(s):
+        s = str(s).strip().upper()
+        # Hardcode Bogota
+        if 'CAPITAL DISTRICT' in s or 'DISTRITO CAPITAL' in s:
+            s = 'BOGOTA D.C.'
+            
+        # Standard cleaning for other departments
+        s = re.sub(r'\b(DEL CAUCA|LA)\b', '', s, flags=re.IGNORECASE).strip()
+        s = unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('utf-8').lower()
+        return s.strip()
+
+    def fix_typos(s):
+        # MAGDANELA typo
+        return str(s).replace('MAGDANELA', 'MAGDALENA')
+
+    admin2_spine = get_admin(level=2, all_columns=True)
+    admin2_spine_crop = admin2_spine[admin2_spine.index.str.startswith('CO')]
+
+    # Map normalized spine names to admin3_ids in spine
+    admin2_name_to_id = {
+        normalize(name): idx 
+        for idx, name in admin2_spine_crop['name'].items()
+    }
+
+    # Match the local names
+    admin_local['admin_id'] = admin_local['name'].apply(
+        lambda x: admin2_name_to_id.get(normalize(fix_typos(x)), None) 
+        if pd.notna(x) else None
+    )
+
+    admin_local = admin_local.set_index('admin_id')
+    admin_local.index.name = 'admin2_id'
+
+    return admin_local
