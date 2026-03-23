@@ -1,0 +1,44 @@
+admin_id: CO
+entity:
+  entity_type: admin
+  source:
+    source_id: ospa
+  version: 2025
+
+compressed_file_name: "Muni.zip"
+uncompressed_file_name: "Muni.shp"
+
+# Standardized column mappings
+columns:
+  name: MunNombre
+  admin3_id_admin1: MunCodigo
+
+
+transformations:
+  - output: admin3_id_admin2
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 2
+
+
+      
+# Keep columns that aren't named in the above list
+keep_unnamed_columns: True
+
+# # Function that returns an indexed version of the input GeoDataFrame
+create_index:
+  function: "openplaces.io.admin.check_spine_CO_admin3_id"
+  args:
+    level: 2
+
+    
+# Sort by index?
+sort_index: True
+
+# Internal filename after import. This is only needed if the filename
+# cannot be derived from the reference (admin_id, entity, etc.) alone.
+# Use if source file has multiple layers, or if `layer` has a value.
+#cache_filename: 'admin2'
