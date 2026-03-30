@@ -121,11 +121,59 @@ class Ingester:
 
         self.verbose = verbose
 
+        recipe_admin_id = recipe['admin_id']
+        invalid = [
+            aid
+            for aid in self.admin_ids
+            if aid.get_level() > 0 and not recipe_admin_id.is_parent_or_equal_of(aid)
+        ]
+        if invalid:
+            raise ValueError(
+                f'Admin IDs are not children of recipe admin_id '
+                f'({recipe_admin_id}): {[str(a) for a in invalid]}'
+            )
+
         self._early_warnings()
 
     @property
     def _is_tile_partition(self):
         return (self.recipe.get('download_by') or {}).get('partition') == 'tile_id'
+
+    @property
+    def _process_level(self):
+        """Max admin level across download_by and process_by."""
+        level = self.recipe['admin_id'].get_level()
+        for by in ('download_by', 'process_by'):
+            if by in self.recipe and 'admin_level' in self.recipe[by]:
+                level = max(level, self.recipe[by]['admin_level'])
+        return level
+
+    @staticmethod
+    def _make_temp_recipe(recipe):
+        """Strip save_to: admin_level so TableIngester saves one file per chunk.
+
+        In aggregate mode the primary loop writes one parquet file per
+        processing chunk.  Removing the explicit save_to.admin_level causes
+        get_output_path to resolve to the process-level path instead of the
+        (coarser) save-level path.
+        """
+        temp = dict(recipe)
+        if temp.get('save_to') and 'admin_level' in temp['save_to']:
+            temp['save_to'] = {
+                k: v for k, v in temp['save_to'].items() if k != 'admin_level'
+            }
+        return temp
+
+    @property
+    def _is_aggregate_mode(self):
+        """True when save_to.admin_level is coarser than the process level.
+
+        When process_by (or download_by) is at a finer granularity than
+        save_to, the ingester processes at that finer level and then
+        aggregates the intermediate files up to save_to.admin_level.
+        """
+        save_admin_level = (self.recipe.get('save_to') or {}).get('admin_level')
+        return save_admin_level is not None and save_admin_level < self._process_level
 
     def _early_warnings(self):
         """Warnings to throw if the initialization looks problematic"""
@@ -186,6 +234,8 @@ class Ingester:
 
         if self._is_tile_partition:
             self._merge_tile_partials()
+
+        self._aggregate_to()
 
     def _merge_tile_partials(self):
         """Merge per-tile partial files into final per-admin-id output files.
@@ -250,6 +300,24 @@ class Ingester:
                     f'tile partial(s) → {final_path.name}'
                 )
 
+    def _aggregate_to(self):
+        """Aggregate process-level intermediate files into save-level outputs.
+
+        Only runs in aggregate mode (save_to.admin_level coarser than
+        process_by.admin_level).  Delegates to aggregate_to_admin_level()
+        using the already-resolved admin_ids_to_save and admin_ids_to_process.
+        """
+        if not self._is_aggregate_mode or not self.admin_ids_to_save:
+            return
+        from openplaces.io.aggregate import aggregate_to_admin_level
+
+        aggregate_to_admin_level(
+            self.recipe,
+            admin_ids_to_save=self.admin_ids_to_save,
+            admin_ids_to_process=self.admin_ids_to_process,
+            verbose=self.verbose,
+        )
+
     def _resolve_admin_ids(self, reprocess):
         """Resolve admin IDs to save, process, and download"""
 
@@ -291,12 +359,57 @@ class Ingester:
             (as a result, they won't be re-processed).
             If True, keep all admin_ids, as all will be re-processed.
         """
-        self.admin_ids_to_save = resolve_output_admin_ids(
-            self.recipe,
-            self.admin_ids,
-            operation_keys=('download_by', 'process_by', 'save_to'),
-            reprocess=reprocess,
-        )
+        if not reprocess and self._is_aggregate_mode:
+            all_candidates = resolve_output_admin_ids(
+                self.recipe,
+                self.admin_ids,
+                operation_keys=('download_by', 'process_by', 'save_to'),
+                reprocess=True,
+            )
+            self.admin_ids_to_save = [
+                sid
+                for sid in all_candidates
+                if not get_output_path(self.recipe, sid).exists()
+                or self._output_is_incomplete(sid)
+            ]
+        else:
+            self.admin_ids_to_save = resolve_output_admin_ids(
+                self.recipe,
+                self.admin_ids,
+                operation_keys=('download_by', 'process_by', 'save_to'),
+                reprocess=reprocess,
+            )
+
+    def _output_is_incomplete(self, admin_id_to_save):
+        """Is the existing output file missing any requested process-level chunks?"""
+        process_level = self._process_level
+        process_col = f'admin{process_level}_id'
+
+        all_process_ids = [
+            str(pid)
+            for pid in get_admin(AdminId(admin_id_to_save), process_level).index
+        ]
+        expected = {
+            pid
+            for pid in all_process_ids
+            if any(
+                req.is_parent_or_equal_of(AdminId(pid))
+                or AdminId(pid).is_parent_or_equal_of(req)
+                for req in self.admin_ids
+            )
+        }
+        if not expected:
+            return False
+
+        save_path = get_output_path(self.recipe, admin_id_to_save)
+        try:
+            present = set(
+                pd.read_parquet(save_path, columns=[process_col])[process_col].unique()
+            )
+        except Exception:
+            return False  # Column absent (pre-stamp file): leave as-is
+
+        return not expected.issubset(present)
 
     def _resolve_admin_ids_to_process(self):
         """Create list of admin_ids to process
@@ -329,6 +442,39 @@ class Ingester:
                     'Error not captured self.admin_ids_to_save ='
                     + self.admin_ids_to_save
                 )
+        elif self._is_aggregate_mode:
+            # save_to is coarser than process_by: expand save-level IDs
+            # to process-level via get_admin (cannot truncate upward).
+            all_process_admin_ids = list(
+                dict.fromkeys(
+                    str(admin_id)
+                    for admin_id_to_save in self.admin_ids_to_save
+                    for admin_id in get_admin(
+                        AdminId(admin_id_to_save), process_by_admin_level
+                    ).index
+                )
+            )
+            # If the caller specified a sub-county filter, keep only the
+            # process-level IDs that overlap with the requested admin_ids.
+            if any(
+                requested_admin_id.get_level() > 0
+                for requested_admin_id in self.admin_ids
+            ):
+                admin_ids_to_process = [
+                    process_admin_id
+                    for process_admin_id in all_process_admin_ids
+                    if any(
+                        requested_admin_id.is_parent_or_equal_of(
+                            AdminId(process_admin_id)
+                        )
+                        or AdminId(process_admin_id).is_parent_or_equal_of(
+                            requested_admin_id
+                        )
+                        for requested_admin_id in self.admin_ids
+                    )
+                ]
+            else:
+                admin_ids_to_process = all_process_admin_ids
         else:
             # List of unique admin_ids, preserving order
             admin_ids_to_process = list(
@@ -372,11 +518,14 @@ class Ingester:
                 )
 
         else:
-            # List of unique admin_ids, preserving order
+            # List of unique admin_ids, preserving order.
+            # Use admin_ids_to_process (not admin_ids_to_save) as the source so
+            # that aggregate-mode recipes (save_to.admin_level coarser than
+            # download_by.admin_level) correctly expand to the download level.
             admin_ids_to_download = list(
                 dict.fromkeys(
                     str(AdminId(*AdminId(admin_id).levels[:download_by_admin_level]))
-                    for admin_id in self.admin_ids_to_save
+                    for admin_id in self.admin_ids_to_process
                 )
             )
 
@@ -530,14 +679,6 @@ class Ingester:
                         f'Processing {self.recipe["entity"]} for {admin_id_to_process}:'
                     )
                 self._process_recipe_data(admin_id_to_process)
-                self.timer.mark(
-                    'Wrap up'
-                    + (
-                        f': {admin_id_to_process}'
-                        if admin_id_to_process is not None
-                        else ''
-                    )
-                )
 
         # Delete unzipped files in heap folder
         if not keep_unzipped and self.download_partition['data_path'].is_relative_to(
@@ -1045,8 +1186,14 @@ class Ingester:
                 .geometry.bounds
             )
 
-        # Process primary table
-        primary_table_ingester = self._make_table_ingester(self.recipe)
+        # Process primary table.  In aggregate mode use a temp recipe (no
+        # save_to.admin_level) so each chunk is written to its own file.
+        primary_recipe = (
+            self._make_temp_recipe(self.recipe)
+            if self._is_aggregate_mode
+            else self.recipe
+        )
+        primary_table_ingester = self._make_table_ingester(primary_recipe)
         primary_table_ingester.process(process_in_chunks=process_in_chunks, bbox=bbox)
         self.timer.mark(f'Wrap up{suffix}')
 
@@ -1056,7 +1203,12 @@ class Ingester:
             if self.verbose and admin_id_to_process is not None:
                 print(f'Processing {table_recipe["entity"]} for {admin_id_to_process}:')
             table_in_chunks = process_in_chunks and 'process_by' in table_recipe
-            additional_table_ingester = self._make_table_ingester(table_recipe)
+            temp_table_recipe = (
+                self._make_temp_recipe(table_recipe)
+                if self._is_aggregate_mode
+                else table_recipe
+            )
+            additional_table_ingester = self._make_table_ingester(temp_table_recipe)
             additional_table_ingester.process(
                 process_in_chunks=table_in_chunks,
                 bbox=bbox if table_in_chunks else None,

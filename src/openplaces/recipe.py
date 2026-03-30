@@ -464,8 +464,11 @@ def get_save_admin_level(
 ):
     """Return the admin level at which output files are split.
 
-    Takes the maximum 'admin_level' found across the given recipe sections,
-    falling back to the recipe's own admin ID depth if none is declared.
+    When `save_to: admin_level` is explicitly set it defines the output
+    granularity directly — `process_by` or `download_by` may be finer
+    (aggregation) or coarser than this level. When `save_to: admin_level`
+    is absent the level is the maximum found across the given operation keys,
+    falling back to the recipe's own admin ID depth.
 
     Parameters
     ----------
@@ -481,8 +484,15 @@ def get_save_admin_level(
     int
         Admin level for output files (0 = no admin split).
     """
+    # Explicit save_to: admin_level takes priority.
+    save_to = recipe.get('save_to') or {}
+    if 'admin_level' in save_to and 'save_to' in operation_keys:
+        return save_to['admin_level']
+
     level = recipe['admin_id'].get_level()
     for key in operation_keys:
+        if key == 'save_to':
+            continue  # already handled above
         if key in recipe and 'admin_level' in recipe[key]:
             level = max(level, recipe[key]['admin_level'])
     # Deprecated / for backward compatibility: cache_by: admin_level

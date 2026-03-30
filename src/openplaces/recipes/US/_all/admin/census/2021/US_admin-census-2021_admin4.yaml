@@ -65,3 +65,4 @@ create_index:
 save_to:
   data_dir: cache
   filename: admin4
+  admin_level: 1
