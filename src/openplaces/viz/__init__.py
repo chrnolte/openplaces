@@ -3,7 +3,12 @@
 import urllib
 
 from openplaces.viz.colors import CATEGORY_COLORS, match_palette
-from openplaces.viz.maps import show_building, show_geometry_context
+from openplaces.viz.maps import (
+    show_building,
+    show_geometry_context,
+    show_ingested_geometries,
+    show_random_entity,
+)
 from openplaces.viz.tabulation import plot_tabulation, tabulate
 
 __all__ = [
@@ -13,6 +18,8 @@ __all__ = [
     'plot_tabulation',
     'show_building',
     'show_geometry_context',
+    'show_ingested_geometries',
+    'show_random_entity',
     'tabulate',
 ]
 
