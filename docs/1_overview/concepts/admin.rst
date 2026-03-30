@@ -25,29 +25,26 @@ Four levels of administrative units are currently supported:
    * - 0
      - Earth
      - 
-     - ``None``
+     - :input:`None`
    * - 1
      - Countries & territories
      - ``admin1``
-     - ``US`` United States
-
-       ``CO`` Colombia
+     - | :input:`US` United States
+       | :input:`CO` Colombia
    * - 2
      - States, departments, etc.
      - ``admin2``
-     - ``US-MA`` state of Massachusetts
-
-       ``CO-AN`` department of Antioquia
+     - | :input:`US-MA` state of Massachusetts
+       | :input:`CO-AN` department of Antioquia
    * - 3
      - Counties, municipalities, etc.
      - ``admin3``
-     - ``US-MA-MI`` Middlesex county, Massachusetts, U.S.
-
-       ``CO-AN-ME`` municipality of Medellín, Colombia
+     - | :input:`US-MA-MI` Middlesex county, Massachusetts, U.S.
+       | :input:`CO-AN-ME` municipality of Medellín, Colombia
    * - 4
      - Cities, towns, subdivisions, etc.
      - ``admin4``
-     - ``US-MA-MI-SO`` city of Somerville
+     - | :input:`US-MA-MI-SO` city of Somerville
 
        *Not all countries have level-4 IDs in the default recipe*
 
@@ -77,18 +74,16 @@ Official boundaries
 
 To import official in-country geometries (e.g., as a reference for your geoprocessing), run this notebook with a country recipe:
 
-   :file:`notebooks/02_ingest/admin/ingest_admin.ipynb` `see on Github <https://github.com/chrnolte/openplaces/blob/main/notebooks/02_ingest/admin/ingest_admin.ipynb>`_
+   :gh-file:`notebooks/02_ingest/admin/ingest_admin.ipynb`
 
 Global boundaries
 -----------------
 
 To import global geometries (GADM, >2 GB), run this notebook:
 
-   :file:`notebooks/01_setup/03_ingest_global_administrative_units.ipynb`
+   :gh-file:`notebooks/01_setup/03_ingest_global_administrative_units.ipynb`
 
-   `See notebook on Github <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/03_ingest_global_administrative_units.ipynb>`_
-
-After that, you can make precise global maps (though these will be slow to generate: >10 seconds).
+After that, you can make precise global maps.
 
 .. code-block:: python
 
@@ -100,5 +95,4 @@ After that, you can make precise global maps (though these will be slow to gener
   :width: 350
   :alt: Administrative units
 
-
-
+Note that these are large geometry files and will take a while to render (~10 seconds).

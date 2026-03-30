@@ -5,11 +5,11 @@
 Datasets
 ========
 
-Datasets are what we name any data sets that is not organized as a dataset of :ref:`entities`, but contains data that we might want to attribute to entities.
+:ref:`entities` are the rows in a table. Datasets provide the columns: attributes linked to each entity.
 
-For instance, a user might have a **dataset** of elevation and flood risk and might want to attribute it to **buildings**, an :ref:`entity <entities>`.
+Datasets can come in many formats: tables, vectors, rasters, XML. What distinguishes them from :ref:`entities <entities>` is that datasets are *not yet* organized by entity: the rows don't refer to the entity yet (and therefore require some linkage algorithm).
 
-Like :ref:`administrative_units` and entities, datasets have an identifier that determines where in the filesystem their recipes and data can be found.
+For instance, a user might have a dataset of elevation, flood risk, or hurricane wind fields and wants to link it to buildings, a type of :ref:`entity <entities>`.
 
 
 Themes

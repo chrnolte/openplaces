@@ -3,53 +3,97 @@ Contributor workflow
 
 ``openplaces`` is a `public repository on Github <https://github.com/chrnolte/openplaces>`_.
 
-Understanding the contribution workflow helps you make clean and well-tested contributions to the ``main`` branch with `git <https://git-scm.com/install/windows>`_.
+Understanding the contributor workflow helps you make clean and well-tested contributions.
 
-We'll assume you already :ref:`installed  <install>` ``openplaces``, so you have a local clone of the repository and a functioning ``conda`` environment. Otherwise, :ref:`do that first <install>`.
+We assume you have :ref:`installed  <install>` ``openplaces``: you have a local clone of the repository and a ``conda`` environment on your machine. Otherwise, :ref:`do that first <install>`.
+
+We also assume prior knowledge of `git <https://git-scm.com/install/windows>`_.
+
+Best practices
+~~~~~~~~~~~~~~
+
+We adopt the `Git version control best practices <https://about.gitlab.com/topics/version-control/version-control-best-practices/>`_ from Gitlab:
+
+* `Make incremental, small changes <https://about.gitlab.com/topics/version-control/version-control-best-practices/#make-incremental-small-changes>`_
+* `Keep commits atomic <https://about.gitlab.com/topics/version-control/version-control-best-practices/#keep-commits-atomic>`_
+* `Develop using branches <https://about.gitlab.com/topics/version-control/version-control-best-practices/#develop-using-branches>`_
+* `Write descriptive commit messages <https://about.gitlab.com/topics/version-control/version-control-best-practices/#write-descriptive-commit-messages>`_
 
 
-Develop on your own branch
-~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you want to make contributions to the ``openplaces`` source code:
+Develop using branches
+~~~~~~~~~~~~~~~~~~~~~~
 
-1. Create your own branch for development purposes.
+We use the `feature branching <https://about.gitlab.com/topics/version-control/version-control-best-practices/>`_ strategy: one branch per feature.
 
-   As the name for your new branch, pick a shorthand that identifies you to collaborators and that you are okay with sharing with the world, e.g., your Github username or the left side of your professional email address.
+If you wish to make a contribution to ``openplaces``, follow these steps:
 
-2. Edit your code to create your contribution.
+1. Create your own branch:
+
+   .. code-block:: bash
+
+      git pull origin main
+      git switch -c create-new-feature  # pick a name
+
+   Pick a short name that identifies the feature to collaborators.
+
+2. Edit your code.
 
 3. Test your code.
 
-4. Format your code (see below).
+4. :ref:`Format your code <format_your_code>`.
 
-5. Commit your code to your branch.
+5. Commit your changes to your branch:
 
-   ``git commit`` will trigger final code style checks.
+   .. code-block:: bash
 
-6. Submit a pull request to have your edits reviewed.
+      git add <filename>
+      git commit -m "Create new feature"
 
-   Once your contributions pass review, they become part of the ``main`` branch, and your Github badge will appear on the public list of collaborators.
+   This will trigger :ref:`automatic code style checks <pre_commit_hooks>`.
+
+6. Push your changes to create a pull request.
+
+   Before you push, pull recent changes to the repository. This ensures your commits reflect the most recent version of the repository.
+
+   .. code-block::
+
+      git pull --rebase origin main
+
+   The first time you push, you have to register the branch upstream:
+
+   .. code-block::
+
+      git push -u origin create-new-feature
+
+   The next time you push, the branch is already registered:
+
+   .. code-block::
+
+      git push
+
+7. If your contributions pass review, they become part of the ``main`` branch. Your Github badge will appear on the public list of collaborators.
 
 
 Activate your environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Make sure your ``openplaces`` environment (see :ref:`install`) is active (``conda activate openplaces``) before using ``git``.
+Make sure your ``openplaces`` environment is active before using ``git``:
 
-Commands that need ``nbstripout`` to strip notebook outputs (see below):
+.. code-block::
 
-- ``git status``
-- ``git add``
-- ``git diff``
+   conda activate openplaces
 
-Commands that need ``pre-commit`` and ``ruff`` for code style checks and fixes:
+This is important because ``git`` needs:
 
-- ``git commit``
+- ``nbstripout`` to :ref:`strip notebook outputs <nbstripout>` 
+- ``pre-commit`` and ``ruff`` for enforcing :ref:`code style checks <pre_commit_hooks>`.
 
 
-Format code in scripts and notebooks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _format_your_code:
+
+Format your code
+~~~~~~~~~~~~~~~~
 
 Clean code makes contributions more readable and interpretable.
 
@@ -57,18 +101,19 @@ Clean code makes contributions more readable and interpretable.
 
 We adopt ``ruff``'s default specifications and add two more:
 
-1. We use single quotes for strings (``'hello'``, not ``"hello"``).
+1. Use single quotes for strings (``'hello'``, not ``"hello"``).
    
    It looks cleaner and is faster to type on many keyboards.
 
-2. we identify ``openplaces`` as a "known first party" in the sorting of ``import`` statements.
+2. Identify ``openplaces`` as a "known first party" to ``isort``.
 
-   Imports from the repository appear in the last (third) section, after standard libraries and external packages. This adds clarity to the import sections.
+   This ensures that imports from ``openplaces`` appear in a separate (third) section after standard Python libraries (1st) and external packages (2nd).
 
 To edit these and other settings, find and edit these two files:
 
-- :file:`notebooks/ruff.toml` to format Jupyter notebook cells with ``jupyter-ruff``, see next section.
-- :file:`pyproject.toml` for command-line ``ruff`` and ``pre-commit`` hooks.
+- :gh-file:`notebooks/ruff.toml` to format Jupyter notebook cells with ``jupyter-ruff``, see next section.
+- :gh-file:`pyproject.toml` for command-line ``ruff`` and ``pre-commit`` hooks.
+
 
 Jupyter notebooks
 -----------------
@@ -93,35 +138,39 @@ You can choose to automatically format notebooks when saving:
 Python scripts
 --------------
 
-Before you ``git add`` any changes to Python scripts and Jupyter notebooks, make sure your code is compliant with the style format by running ``ruff check`` or ``ruff format`` in your :gui:`Terminal` or :gui:`Anaconda Prompt`.
+Before you ``git add`` any changes to Python scripts and Jupyter notebooks, make sure your code is compliant with the style format.
+
+Do do so, run ``ruff check`` or ``ruff format`` in your :gui:`Terminal`:
 
 .. code-block:: bash
 
    # Check a file
-   ruff check yourfolder/yourfilnename.ext
+   ruff check yourfolder/yourfilename.ext
 
    # Check a folder
    ruff check yourfolder
 
    # Format a file (fixes many issues)
-   ruff format yourfolder/yourfilnename.ext
+   ruff format yourfolder/yourfilename.ext
 
-This avoids
+Once the code passes these checks, it will also pass the :ref:`pre-commit hooks <pre_commit_hooks>`.
 
+
+.. _nbstripout:
 
 Strip outputs from notebooks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``openplaces`` uses ``nbstripout`` to remove outputs from Jupyter notebooks (e.g., figures, printed text, warnings, errors, timestamps) before adding them to the repository.
+``openplaces`` uses ``nbstripout`` to remove outputs from Jupyter notebooks (e.g., figures, prints, warnings, errors) before adding them to the repository.
 
-This should occur automatically when using ``git status``, ``git diff``, or ``git add`` on notebooks. It is configured in ``.gitattributes`` in the repository root.
-
-You just need to make sure your ``openplaces`` environment is active.
+This will occur automatically: it is set in ``.gitattributes`` in the repository root. You just need to make sure your ``openplaces`` environment is active.
 
 .. note::
 
-   User switching between machines or operating systems can lose their connection to ``nbstripout``. If you encounter ``nbstripout``-related errors in spite of your ``openplaces`` environment being active, re-running ``nbstripout --install`` frequently resolves the issue.
+   User switching between machines or operating systems can lose their connection to ``nbstripout``. If you encounter errors related to ``nbstripout`` while your ``openplaces`` environment is active, re-running ``nbstripout --install`` frequently resolves the issue.
 
+
+.. _pre_commit_hooks:
 
 Pass the pre-commit hooks
 ~~~~~~~~~~~~~~~~~~~~~~~~~
