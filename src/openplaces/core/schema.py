@@ -174,6 +174,8 @@ class Source:
     # Option 2: Regular expression (string pattern) to extract URL
     download_url_source_regex: str | None = None
     doi: str | None = None
+    # Set to False for sources with SSL certificates not trusted by Python
+    verify_ssl: bool = True
 
     def __init__(
         self,
@@ -183,6 +185,7 @@ class Source:
         download_url_source: str = None,
         download_url_source_regex: str = None,
         doi: str = None,
+        verify_ssl: bool = True,
     ):
         """Initialize AdminId with administrative levels."""
 
@@ -204,6 +207,7 @@ class Source:
         self.download_url_source = download_url_source
         self.download_url_source_regex = download_url_source_regex
         self.doi = doi
+        self.verify_ssl = verify_ssl
 
     def __str__(self) -> str:
         return self.source_id if self.source_id is not None else ''
