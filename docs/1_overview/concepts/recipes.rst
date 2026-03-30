@@ -48,11 +48,11 @@ Examples:
 Location
 ~~~~~~~~
 
-Recipes live in :file:`src/openplaces/recipes/`.
+Recipes live in :gh-file:`src/openplaces/recipes`.
 
-They are grouped by :ref:`administrative_units`, followed by :ref:`entities` or :ref:`datasets`.
+They use the same directory structure as internal data directories: grouped by :ref:`administrative units <administrative_units>`, followed by :ref:`entities <entities>` or :ref:`datasets <datasets>`.
 
 Understanding recipes
 ~~~~~~~~~~~~~~~~~~~~~
 
-See instructions on :ref:`writing_recipes` in the section for contributors.
+For an in-depth treatment of recipe arguments and functionality, see instructions on :ref:`writing recipes <writing_recipes>` in the section for contributors.

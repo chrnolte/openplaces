@@ -6,21 +6,21 @@ Configure
 First-time setup
 ~~~~~~~~~~~~~~~~
 
-Upon you first ``import openplaces``, you will be asked to configure your installation.
+Upon you first ``import`` from ``openplaces``, you will be asked to configure your installation.
 
-This is a required step. It's about where your data is stored and who will work with it.
+The first step is to define where your data will be stored, as well as who can read and edit it.
 
-We have prepared a notebook that walks you through the configuration and showcases functions for updating and removing it:
+This notebook walks you through the configuration step and showcases functions for updating and removing it:
 
-   :file:`notebooks/01_setup/01_first_steps.ipynb` `see on Github <https://github.com/chrnolte/openplaces/blob/main/notebooks/01_setup/01_first_steps.ipynb>`_
+:gh-file:`notebooks/01_setup/01_first_steps.ipynb`
 
-Open and run this notebook after :ref:`installing<install>` and activating your environment:
+Open and run it after :ref:`installing<install>` and activating your environment:
 
-   .. code-block:: bash
+.. code-block:: bash
 
-      conda activate openplaces
-      cd notebooks
-      jupyter notebook
+   conda activate openplaces
+   cd notebooks
+   jupyter notebook
 
 .. _directory_structure:
 
@@ -170,22 +170,33 @@ Configuration files are used in priority order: **user > project > defaults**.
 
 1. **User configuration** (highest priority)
    
-   * A user configuration file is created interactively upon the first time a new user runs ``import openplaces``.
+   *  A user configuration file is created interactively upon the first time a new user runs ``import openplaces``.
      
-     Its location depends on your operating system:
+      Its location depends on your operating system:
 
-     * Windows: ``%APPDATA%\openplaces\config.yaml``
-     * macOS: ``~/Library/Application Support/openplaces/config.yaml``
-     * Linux: ``~/.config/openplaces/config.yaml``
-   * It contains user-specific overrides to the project configuration and is not committed to version control (``git``).
+      .. tab-set::
+
+         .. tab-item:: Windows
+
+            ``%APPDATA%\openplaces\config.yaml``
+
+         .. tab-item:: macOS
+
+            ``~/Library/Application Support/openplaces/config.yaml``
+
+         .. tab-item:: Linux
+
+            ``~/.config/openplaces/config.yaml``
+
+   *  It contains user-specific overrides to the project configuration and is not committed to version control (``git``).
 
 2. **Project configuration** (default values)
    
-   * Location: ``/openplaces.yaml`` (root directory of repository).
-   * Project-wide defaults committed to version control.
-   * Shared by all users of an installation.
+   *  Location: ``openplaces.yaml`` (in root directory of repository).
+   *  Project-wide defaults committed to version control.
+   *  Shared by all users of an installation.
 
 3. **Built-in defaults** (fallback)
    
-   * Hardcoded in ``config.py``.
+   *  Hardcoded in ``config.py``.
 

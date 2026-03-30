@@ -8,7 +8,7 @@ Recipes are the instructions that allow ``openplaces`` to ingest new data into i
 
 By :ref:`contributing <contribute>` recipes, you permit others to reproduce your work.
 
-Recipe can be found in :file:`src/openplaces/recipes`.
+Recipes can be found in :gh-file:`src/openplaces/recipes`.
 
 
 Data ingestion recipes
@@ -25,35 +25,39 @@ Dataset description and source
    Admin ID of the (top-level) :ref:`administrative unit <administrative_units>` for which the dataset provides data.
 
    :input:`NULL`
-      global, e.g., the Global Administrative Database
+      Global
 
    :input:`US`
-      United States, e.g., US Microsoft Building Footprints
+      United States
 
    :input:`US-MA`
-      Massachusetts, U.S., e.g., MassGIS tax parcels
+      Massachusetts, U.S.
 
    :input:`US-MA-MI`
-      Middlesex county, Massachusetts, United States
-   
+      Middlesex county, Massachusetts, United States.
+
    :input:`US-MA-MI-SO`
-      City of Somerville, Massachusetts, United States
+      City of Somerville, Middlesex county, Massachusetts, United States.
 
 .. attribute:: entity
 
    :ref:`Entity <entities>` of the dataset: the "thing" that every row of the dataset table refers to.
 
+   Use :attr:`entity` when each row in the data is a fundamental building block of ``openplaces`` — a parcel, building, admin unit, etc.
+
+   Use :attr:`dataset` instead when the data is not itself an entity type (see :attr:`dataset` below).
+
    .. attribute:: entity_type
 
-      Type of entity, e.g. :ref:`admin <administrative_units>` unit, :ref:`property <properties>`, :ref:`parcel <parcels>`, :ref:`building <buildings>`, :ref:`transaction <transactions>`.
+      Type of entity, e.g. :ref:`admin <administrative_units>`, :ref:`parcel <parcels>`, :ref:`property <properties>`, :ref:`building <buildings>`, :ref:`transaction <transactions>`, :ref:`tile <tiles>`.
 
    .. attribute:: source
 
-      Source of the data
+      Source of the data.
 
       .. attribute:: portal_url
 
-         URL of the landing page of the portal that offers and explains the data
+         URL of the landing page of the portal that offers and explains the data.
 
       .. attribute:: download_url
 
@@ -69,11 +73,37 @@ Dataset description and source
 
       .. attribute:: download_url_source_regex
 
-         String pattern (regular expression) that permits the extraction of the download URL from the HTML content of :attr:`download_url_source`
+         String pattern (regular expression) that extracts the download URL from the HTML content of :attr:`download_url_source`.
+
+         Placeholders in the pattern (e.g. ``{admin3_name}``) are substituted with the current partition value before matching.
 
    .. attribute:: version
 
-      Version of the dataset (year or version number)
+      Version of the dataset (year, date, or version number).
+
+.. attribute:: dataset
+
+   :ref:`datasets` provide attributes that will be linked to :ref:`entities <entities>`.
+
+   Datasets can come in many formats: tables, vectors, rasters, XML. What distinguishes them from :ref:`entities <entities>` is that datasets are *not yet* organized by entity: the rows don't refer to the entity yet (and therefore require some linkage algorithm).
+
+   .. attribute:: theme
+
+      Short descriptor of the data theme, e.g. :input:`landcover-annual`.
+
+   .. attribute:: source
+      :no-index:
+
+      Same sub-attributes as the :attr:`source` of entities.
+
+   .. attribute:: version
+      :no-index:
+
+      Version of the dataset (year, date, or version number).
+
+   .. attribute:: is_raster
+
+      Set to :input:`True` for raster datasets, so the file is not treated as a table or vector layer (default).
 
 
 File handling
@@ -81,54 +111,94 @@ File handling
 
 .. attribute:: download_by
 
-   Instructions to download data that is provided in smaller download partition, commonly by administrative subdivision (state, county, etc.).
+   Instructions for downloading data that is provided in partitioned chunks (by administrative subdivision, tile, or year). Not needed if the data is provided as a single file.
 
    .. attribute:: admin_level
 
-      Level of the administrative breakdown for download partitions
+      Level of the administrative breakdown for download partitions:
+
+      | :input:`2` for state-level files
+      | :input:`3` for county-level files
 
    .. attribute:: admin_key_transform
-    
-      Rules to transform keys before substituting into download URL.
 
-      *In development: only one transformation is currently supported (remove_spaces)*
+      Rules to transform admin key values before substituting them into the download URL (e.g. remove spaces from county names).
+
+      Example (NC building recipe, which uses the county name in the URL):
+
+      .. code-block:: yaml
+
+         admin_key_transform:
+           admin3_name: remove_spaces
+
+   .. attribute:: partition
+
+      Type of non-admin partition. Supported values:
+
+      :input:`year`
+         Download one file per year. Requires :attr:`first` and :attr:`last`.
+
+      :input:`tile_id`
+         Download one file per tile. Requires :attr:`tile_recipe_id`.
+
+   .. attribute:: first
+
+      First year to download when :attr:`partition` is :input:`year`.
+
+   .. attribute:: last
+
+      Last year to download when :attr:`partition` is :input:`year`.
+
+   .. attribute:: tile_recipe_id
+
+      Recipe ID for the tile index when :attr:`partition` is :input:`tile_id`.
+
+      Example: :input:`tile-obm-2025`.
+
+   Example (raster dataset partitioned by year):
+
+   .. code-block:: yaml
+
+      download_by:
+        partition: year
+        first: 1986
+        last: 2024
+
+   Example (building footprints partitioned by tile):
+
+   .. code-block:: yaml
+
+      download_by:
+        partition: tile_id
+        tile_recipe_id: tile-obm-2025
 
 .. attribute:: compressed_file_name
 
-   Filename of the compressed file (usually in ``external`` folder, see :ref:`directory_structure`).
+   Filename of the compressed file (usually in the :file:`external` folder; see :ref:`directory_structure`).
 
-   Providing this argument allows the skipping of downloads if file is found.
+   Providing this skips re-downloading when the file is already present.
 
-   Can include placeholders (substituted by :attr:`download_by`).
-
-   Can include wildcards (will search for files matching pattern).
+   Can include placeholders substituted by :attr:`download_by` (e.g. ``{admin2_id_leaf}``) and wildcards (the ingester will search for a matching file).
 
 .. attribute:: uncompressed_file_name
 
-   Filename of uncompressed file, ready to be read.
+   Filename of the uncompressed file, ready to be read.
 
-   If :attr:`compressed_file_name` is set, the uncompressed file will be in the :file:`heap` folder
+   If :attr:`compressed_file_name` is set, the uncompressed file is expected in the :file:`heap` folder after extraction.
 
-   If there is no :attr:`compressed_file_name`, the uncompressed file is assumed to be the original download, to be found in the :file:`external` folder.
+   If there is no :attr:`compressed_file_name`, the uncompressed file is treated as the original download in the :file:`external` folder.
 
-   Can include placeholders (substituted by :attr:`download_by`).
+   Can include placeholders and wildcards.
 
-   Can include wildcards (will search for files matching pattern).
+.. attribute:: encoding
 
+   Character encoding of the source file, passed directly to the underlying reader (e.g. :input:`latin-1`).
 
-Reading
--------
-
-.. attribute:: layer
-
-   Layer to be read from the file.
-
-   Geodatabases (:file:`.gdb`) and geopackages (:file:`.gpkg`) can have multiple layers.
-
+   Only needed when the file is not UTF-8.
 
 .. attribute:: process_by
 
-   Instructions to process the data file in smaller processing chunks, commonly by administrative subdivision (reading a state geodatabase by county).
+   Instructions to process a large data file in smaller chunks, typically by administrative subdivision (e.g. reading a state-wide geodatabase county by county to avoid loading it entirely into memory).
 
    .. attribute:: admin_level
       :no-index:
@@ -137,11 +207,89 @@ Reading
 
    .. attribute:: admin_id_column
 
-      Original name of the column in the input data table that contains the information needed to split the dataset into processing chunks (commonly an administrative identifier, but can be a census block).
+      Name of the column in the input data that identifies the processing chunk (commonly a county FIPS code or similar admin identifier).
+
+   .. attribute:: admin_id_transformation
+
+      Optional transformation to apply to the values in :attr:`admin_id_column` before building the crosswalk.
+
+      Useful when the source column contains a partial identifier that needs to be modified to match ``openplaces`` Admin IDs (e.g. prefixing a 3-digit county code with a state FIPS code to produce a 5-digit FIPS).
+
+      Uses the same transformation dict format as :attr:`transformations`.
+
+      Example (Wisconsin parcels, which stores a 3-digit county code that needs a ``55`` prefix):
+
+      .. code-block:: yaml
+
+         admin_id_transformation:
+           output: admin3_id_admin1
+           type: string
+           operation: add_prefix
+           args:
+             prefix: "55"
 
    .. attribute:: admin_id_crosswalk
 
-      Instructions to crosswalk Admin IDs from the input dataset to ``openplaces`` Admin IDs (e.g. :input:`'US-MA-MI'`).
+      Instructions to map values from the source admin column (after any :attr:`admin_id_transformation`) to ``openplaces`` Admin IDs, so that rows can be filtered by admin chunk.
+
+      Two forms are supported:
+
+      **Recipe shorthand** — points to a prebuilt crosswalk table:
+
+      .. code-block:: yaml
+
+         admin_id_crosswalk:
+           recipe_id: "US-MA_parcel-massgis-2025_admin4-crosswalk"
+
+      **Dynamic crosswalk** — built at runtime from an admin recipe:
+
+      .. code-block:: yaml
+
+         admin_id_crosswalk:
+           admin_level: 3
+           admin_id_column: admin3_id_admin1
+           admin_recipe_id: "US_admin-nhgis-2020_admin3"
+
+      In the dynamic form:
+
+      .. attribute:: admin_level
+         :no-index:
+
+         Administrative level of the crosswalk target, e.g. :input:`3` for counties.
+
+      .. attribute:: admin_id_column
+         :no-index:
+
+         Column name in the input data (or produced by :attr:`admin_id_transformation`) to match against the crosswalk.
+
+      .. attribute:: admin_recipe_id
+         :no-index:
+
+         Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-nhgis-2020_admin3"`.
+
+   .. attribute:: use_spatial_index
+
+      Set to :input:`True` to use a spatial index on admin geometries to determine which rows fall within the current processing chunk, instead of using a crosswalk column.
+
+      Requires admin geometries to be loaded (admin level and recipe are read from this same ``process_by`` block).
+
+   .. attribute:: use_spatial_mask
+
+      Set to :input:`True` to clip the data to the geometry of the current admin chunk instead of just filtering rows by a crosswalk column.
+
+      Useful when source data does not have a reliable admin ID column and rows must be assigned by spatial containment.
+
+
+Reading
+-------
+
+.. attribute:: layer
+
+   Layer to read from the file.
+
+   Geodatabases (:file:`.gdb`) and GeoPackages (:file:`.gpkg`) can contain multiple layers. Use this to identify which one to read.
+
+   Also used as a cache key when :attr:`additional_layers` references the same source file.
 
 
 Columns
@@ -149,26 +297,46 @@ Columns
 
 .. attribute:: columns
 
-   Dictionary of columns in the original dataset to keep and (optionally) rename.
+   Dictionary of columns to keep from the source data, with optional renaming.
 
-   Provided as ``key: value`` pairs:
+   Provided as ``openplaces_column_name: original_column_name`` pairs.
 
-   ``openplaces_column_name``: ``original_column_name``
+   Only the listed columns are retained (plus any columns generated by index creation or admin attribution); use :attr:`keep_unnamed_columns` to retain additional columns.
 
-   Example (from Global Administrative Database):
+   Example (from the Global Administrative Database):
 
    .. code-block:: yaml
 
       columns:
         name: NAME_1
-        type: ENGTYPE_1 
+        type: ENGTYPE_1
         admin1_name: COUNTRY
 
 .. attribute:: keep_unnamed_columns
 
-   Set to :input:`True` to keep columns not named in :attr:`columns`.
+   Set to :input:`True` to retain all columns not listed in :attr:`columns`.
 
-   Includes columns that were generated during index creation (e.g. :attr:`create_index`).
+   Also retains columns generated during index creation (e.g. by :attr:`create_index`).
+
+
+Data cleaning
+-------------
+
+.. attribute:: null_value_strings
+
+   List of strings in the source data that should be interpreted as missing values (``None``).
+
+   Applied to all non-ID columns before any other preprocessing.
+
+   Example: :input:`["NA", "NOT APPLICABLE", "NOT PROVIDED"]`
+
+.. attribute:: query
+
+   Pandas query string to filter rows.
+
+   Passed to ``pd.DataFrame.query()``. Use to remove unwanted geometries before further processing.
+
+   Example: :input:`"type != 'Water body'"` (used in GADM to drop ocean polygons).
 
 
 Space saving
@@ -176,83 +344,55 @@ Space saving
 
 .. attribute:: columns_to_categorical
 
-   Columns to be cast to categorical (saving space in memory and on disk).
+   Columns to cast to the ``pandas`` ``Categorical`` dtype, reducing memory and on-disk size.
 
-
-Filters
--------
-
-.. attribute:: query
-
-   Query to filter the dataframe. 
-
-   Will be passed to pd.DataFrame.query.
-
-   Use to remove unwanted geometries
-
-   Example: :input:`"type != 'Water body'"` in GADM.
-
-
-Indexing
---------
-
-.. attribute:: set_index
-
-   Name of column to be used as the index.
-
-.. attribute:: create_index
-
-   Function to give the GeoDataFrame an index
-
-   Example:
+   Each entry is either a plain column name (unordered categorical) or a single-key dict with an explicit category list (ordered categorical, from lowest to highest):
 
    .. code-block:: yaml
 
-      create_index:
-        function: "openplaces.geo.vector.add_geo_id_index"
-        args:
-          name: footprint_id
+      columns_to_categorical:
+        - city                           # unordered
+        - zip                            # unordered
+        - height_source: [H, HBET, HHT]  # ordered: H < HBET < HHT
 
-   .. attribute:: function
+   Ordered categoricals enable ``prefer_higher`` in :attr:`keep_overlapping_polygons`.
 
-      ``openplaces`` function to use for creating the index.
 
-      Example:
-         :input:`"openplaces.geo.vector.add_geo_id_index"`
+Overlap handling
+----------------
 
-   .. attribute:: args
+.. attribute:: keep_overlapping_polygons
 
-      Arguments passed to :attr:`function` (e.g., the name of the index)
+   Policy for resolving pairs of polygons that overlap substantially (intersection-over-union > 0.5).
 
-   .. attribute:: method
+   If omitted, overlapping polygons are reported as a warning but both are kept.
 
-      Apply function identified via string.
+   .. attribute:: prefer_higher
 
-      *Deprecated: move to* :attr:`function`
+      Name of an (ordered) categorical column. When two polygons overlap, the one with the higher category value is kept. Useful for preferring footprints derived from better data sources.
 
-.. attribute:: index_function
+      Example (OBM buildings, preferring height sources that are more reliable):
 
-   Like :attr:`create_index` but without arguments.
+      .. code-block:: yaml
 
-   *Deprecated: move to* :attr:`create_index.function`
-
-.. attribute:: sort_index
-
-   Set to :input:`True` to sort the dataset by its index (after index creation).
+         keep_overlapping_polygons:
+           prefer_higher: height_source
 
 
 Data transformations
 --------------------
 
 .. attribute:: transformations
-   
-   Operations to perform on data to create new derivative columns
 
-   Can use any ``openplaces`` transformations (see ``openplaces.io.transform``).
+   List of operations to derive new columns from existing ones.
 
-   Example: extracting the first five digits from the US census block ID to get county FIPS code.
+   Each transformation is a dict with ``output``, ``type``, ``operation``, ``input``, and optionally ``args``.
 
-   .. code-block::
+   Refer to ``openplaces.io.transform`` for available operations.
+
+   Example (extract the first five characters of a census block ID to get the county FIPS code):
+
+   .. code-block:: yaml
 
       transformations:
         - output: admin3_id_admin1
@@ -264,46 +404,95 @@ Data transformations
             end: 5
 
 
-Attribution to administrative units
------------------------------------
+Indexing
+--------
 
+.. attribute:: set_index
+
+   Name of an existing column to use as the index.
+
+   Raises an error if the column contains duplicates.
+
+.. attribute:: create_index
+
+   Define an index using a function and optional arguments.
+
+   .. attribute:: function
+
+      Dotted path to an ``openplaces`` function that adds an index to the GeoDataFrame.
+
+      Must start with ``openplaces.`` (enforced to prevent arbitrary code execution).
+
+      Example:
+
+      .. code-block:: yaml
+
+         create_index:
+           function: "openplaces.geo.ids.add_openlocationcode_index"
+           args:
+             name: footprint_id
+
+   .. attribute:: args
+
+      Keyword arguments passed to :attr:`function`.
+
+.. attribute:: sort_index
+
+   Set to :input:`True` to sort the dataset by its index after creation.
+
+.. attribute:: drop
+
+   List of index values to drop after the index has been created.
+
+   Use to remove known bad rows that cannot be excluded by a :attr:`query` filter.
+
+
+Attribution to administrative units
+------------------------------------
+
+Two mechanisms assign ``openplaces`` Admin IDs to rows.
+
+Use :attr:`admin_id_crosswalk` when the source data already contains an admin identifier column, and :attr:`overlay_admin_ids` when Admin IDs must be derived from spatial geometry.
 
 .. attribute:: admin_id_crosswalk
    :noindex:
 
-   Add ``openplaces`` Admin ID column using a crosswalk from input Admin IDs to ``openplaces`` Admin IDs.
+   Add an ``openplaces`` Admin ID column by joining from a crosswalk between source admin identifiers and ``openplaces`` Admin IDs.
+
+   Distinct from :attr:`process_by.admin_id_crosswalk`: that crosswalk is used to *split* the data during reading; this one *attributes* rows to admin units in the output.
 
    .. attribute:: admin_level
       :noindex:
 
-      Administrative level of crosswalk, e.g. :input:`3`.
+      Administrative level of the target Admin IDs, e.g. :input:`3`.
 
    .. attribute:: admin_id_column
       :noindex:
 
-      Input data column to crosswalk, e.g. :input:`admin3_id_admin1`.
+      Column in the input data to join on, e.g. :input:`admin3_id_admin1`.
 
    .. attribute:: admin_recipe_id
       :noindex:
 
-      Recipe to derive the crosswalk, e.g. :input:`"US_admin-nhgis-2020_admin3"`.
-
+      Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-nhgis-2020_admin3"`.
 
 .. attribute:: overlay_admin_ids
 
-   Assign administrative IDs to rows using spatial overlays.
+   Assign Admin IDs to rows by spatial overlay — intersecting geometries with admin unit boundaries.
+
+   Use when the source data has no reliable admin ID column and spatial containment must be used instead.
 
    .. attribute:: admin_level
       :no-index:
 
-      Level of administrative units to assign to geometries
+      Level of administrative units to assign to geometries.
 
    .. attribute:: admin_recipe_id
       :no-index:
 
-      Recipe from which to obtain geometries for administrative units
-      (commonly an in-country recipe, as it needs to be sufficiently
-      precise to allocate, e.g., building footprints correctly.)
+      Recipe that provides the admin unit geometries.
+
+      Should use a high-resolution in-country boundary dataset for accurate allocation (e.g. building footprints require county-level precision).
 
       Example: :input:`'US_admin-nhgis-2020_admin3'` for US counties.
 
@@ -313,15 +502,93 @@ Saving
 
 .. attribute:: save_to
 
+   Controls where and how output is written.
+
+   .. attribute:: data_dir
+
+      Name of the ``openplaces`` data directory in which to save output.
+
+      Must be one of the registered directory names (e.g. :input:`cache`, :input:`core`, :input:`out`).
+
+      Defaults to :input:`cache` if omitted.
+
    .. attribute:: admin_level
       :no-index:
 
-      Admin level at which to save the data.
+      Admin level at which to split output into separate files.
 
-      Argument is not needed if processing already happens at that level (because :attr:`download_by` or :attr:`process_by` is set)
+      Not needed if splitting is already determined by :attr:`download_by` or :attr:`process_by`.
+
+      Example: set to :input:`3` to write one parquet file per county.
+
+      .. note::
+
+         When this level is **coarser** than :attr:`download_by: admin_level` or attr:`process_by: admin_level` (e.g. save at county=3 while processing by town=4), the ingester automatically aggregates the intermediate files to the coarser level and deletes the intermediates, including any empty directories that remain.
 
    .. attribute:: filename
 
-      Name of filename to save in cache.
+      Override the auto-generated output filename stem.
 
-      This is only needed if the filename cannot be derived from the reference (admin_id, entity, etc.) alone. Use if source file has multiple layers or if `layer` has a value.
+      The auto-generated name is derived from the reference (admin ID, entity, source, version).
+      Use this when the default is ambiguous — for example, a recipe that produces
+      multiple files for different admin levels, or a dataset that needs a fixed conventional name.
+
+      Example: :input:`admin2` (used in admin recipes to produce :file:`admin-gadm-4~1_admin2.parquet`).
+
+
+Additional layers
+-----------------
+
+.. attribute:: additional_layers
+
+   List of additional tables to ingest from the same source file, each producing a separate output for a different entity type.
+
+   For example, a Massachusetts parcel geodatabase contains both a parcel polygon layer and a property attribute table; ``additional_layers`` ingests both in a single recipe.
+
+   Each entry in the list is a layer spec dict. The full recipe for each layer is built by merging the primary recipe with the layer spec:
+
+   - **Per-table keys** are taken from the layer spec when present; otherwise they are removed from the merged recipe. These include:
+
+     ``entity``, ``layer``, ``columns``, ``keep_unnamed_columns``, ``set_index``, ``create_index``, ``index_function``, ``drop``, ``query``, ``null_value_strings``, ``transformations``, ``columns_to_categorical``, ``encoding``, ``save_to``, ``overlay_admin_ids``
+   - **Shared keys** are always inherited from the primary recipe. These include:
+
+     ``admin_id``, ``download_by``, ``compressed_file_name``, ``uncompressed_file_name``
+
+   - **``process_by``** is inherited from the primary recipe unless the layer spec sets it explicitly. Use ``process_by: null`` in the layer spec to disable chunking for that table.
+   - ``additional_layers`` cannot be nested.
+
+   ``entity`` is required in every layer spec.
+
+   Example: Massachusetts parcels. Primary layer is parcel polygons; additional layer is the property attribute table.
+
+   .. code-block:: yaml
+
+      layer: L3_TAXPAR_POLY
+      process_by:
+        admin_level: 4
+        admin_id_column: TOWN_ID
+        admin_id_crosswalk:
+          recipe_id: "US-MA_parcel-massgis-2025_admin4-crosswalk"
+      columns:
+        parcel_id_admin2: LOC_ID
+        polygon_type: POLY_TYPE
+
+      additional_layers:
+        - layer: L3_ASSESS
+          entity:
+            entity_type: property
+            source:
+              source_id: massgis
+            version: 2025
+          columns:
+            property_id_assessor: PROP_ID
+            parcel_id_admin2: LOC_ID
+            total_value: TOTAL_VAL
+          columns_to_categorical:
+            - city
+            - zip
+   
+   For the full recipe, see:
+
+   :gh-file:`src/openplaces/recipes/US/MA/_all/parcel/massgis/2025/US-MA_parcel-massgis-2025.yaml`
+

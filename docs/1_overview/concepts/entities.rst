@@ -5,19 +5,50 @@
 Entities
 ========
 
-Entities are the fundamental building blocks of property information.
+Entities are the units of analysis in ``openplaces``.
 
-Most data we process in ``openplaces`` is ultimately attributed to one of these entities.
+They refer to the fundamental building blocks of property information: parcels, buildings, transactions, etc.
 
+In a table or dataframe, entities are represented by **rows** (each row being an instance of an entity, e.g., a building).
+
+Most data processed in ``openplaces`` is ultimately attributed to an entity.
+
+Datasets organized by entities are covered in this section. For datasets that are not organized by entity (e.g. an image, a text, a non-entity table), see :ref:`datasets <datasets>`.
+
+
+Building blocks
+~~~~~~~~~~~~~~~
 
 .. _parcels:
 
 Parcels
-~~~~~~~
+-------
 
-Parcels refer to geo-referenced parcel boundaries that describe a spatial unit of property: a lot of land, a piece of Earth.
+Parcels are geo-referenced boundaries that describe a spatial unit of property: a lot of land, a piece of Earth.
 
-Parcel data is most often created by local land surveyors and tax assessors, usually with the goal to cover all taxable property within a given administrative unit / jurisdiction.
+Parcel data is most often created by local land surveyors and tax assessors, typically with the goal of covering all taxable property within a given administrative unit.
+
+
+.. _buildings:
+
+Buildings
+---------
+
+Buildings are human-built structures with roofs.
+
+They are most often identified by their **footprint** as observed in high-resolution satellite or aerial imagery.
+Some detailed tax assessor datasets also collect building information separately from property information (e.g. in the case of condominiums or multi-unit structures).
+
+
+.. _dwellings:
+
+Dwellings
+---------
+
+Dwellings are individual residential units within a building or parcel. Examples: a single apartment in a multi-family building; a condominium (many dwelling in one building); a single-family home (1 dwelling = 1 building).
+
+Dwellings sit below the parcel and property level: a single parcel may contain one building that contains many dwellings.
+They are relevant when data sources distinguish individual housing units (e.g. from assessor CAMA records or building permit data).
 
 
 .. _properties:
@@ -25,11 +56,11 @@ Parcel data is most often created by local land surveyors and tax assessors, usu
 Properties
 ~~~~~~~~~~
 
-Unit at which property is assigned (and taxed).
+Unit at which property is assigned and taxed.
 
-For single-unit parcels (e.g. single-family homes) and vacant lots, the property *is* the parcel and everything on it.
+This is the unit by which tax assessors organize information: the taxable property.
 
-For multi-unit parcels (e.g. an apartment complex), parcels and properties are not identical and need to be treated separately.
+In practice, properties can refer to any collection of subsets of the above: a property can be only about parcels (and not include the manufactured home on it), only about dwellings (a condominium), about both (a multi-apartment complex), or be about a different type of right (e.g., right of way).
 
 
 .. _transactions:
@@ -37,20 +68,30 @@ For multi-unit parcels (e.g. an apartment complex), parcels and properties are n
 Transactions
 ~~~~~~~~~~~~
 
-Transactions are events in which one or more :ref:`properties` change full or partial ownership, often in the form of a sale or easement. They are recorded in deeds or similar property documents. They identify the seller, buyer, the property, and the date.
+Transactions are events in which one or more :ref:`properties` change full or partial ownership, typically in the form of a sale or easement.
+
+They are recorded in deeds or similar property documents and identify the seller, buyer, the property, and the date.
 
 
-.. _buildings:
+Spatial reference and partitioning
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Buildings
-~~~~~~~~~
+There are two types of entity — :ref:`administrative units <administrative_units>` and :ref:`tiles <tiles>` — that serve as spatial partitions for ingesting data about the other entities.
 
-Buildings refer to any human-built structures with roofs.
 
-Buildings are often identified by their building **footprint**, as observed in high-resolution satellite data. Some detailed tax assessor datasets also collect building information separately from property information (e.g. in the case of multi-unit houses, condominiums, etc.).
-
+.. _entity_administrative_units:
 
 Administrative units
-~~~~~~~~~~~~~~~~~~~~
+--------------------
 
 :ref:`Administrative units <administrative_units>` are a special type of entity. For more, see the :ref:`section on administrative units <administrative_units>`.
+
+
+.. _tiles:
+
+Tiles
+-----
+
+Tiles are fixed spatial grid cells that cover a geographic area.
+They are used to partition global or large-area datasets into manageable download and processing chunks.
+

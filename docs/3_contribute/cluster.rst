@@ -1,5 +1,5 @@
-Using Boston University's cluster
-=================================
+Using the Boston University cluster
+===================================
 
 These instructions are for Boston University students using the ``openplaces`` project on Boston University's shared computing cluster (SCC).
 
@@ -120,7 +120,7 @@ Using the Terminal
       module load miniconda
       conda activate openplaces
 
--  Go to the :file:`notebooks` folder:
+-  Go to the :gh-file:`notebooks` folder:
 
    .. code-block:: bash
 
@@ -172,6 +172,7 @@ You can edit :file:`~/.bashrc` and give this series of commands an alias:
    }
 
 This way, after logging onto the cluster, you just type ``openplaces`` and get an active Jupyter session.
+
 
 .. _cluster_data_folders:
 

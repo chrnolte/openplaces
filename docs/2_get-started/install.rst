@@ -40,18 +40,18 @@ Get the repository
 Install the environment
 -----------------------
 
-You need to have a version of the Anaconda package manager installed.
+You need to have a version of the `Anaconda package manager <https://www.anaconda.com/docs/getting-started/main>`_ installed.
 
-``conda`` or ``mamba`` needs to be executable from:
+Either ``conda`` or ``mamba`` need to be executable from:
 
 - :gui:`Terminal` (OSx, Linux)
 - :gui:`Anaconda Prompt` (Windows).
 
-.. note::
+If you don't have ``conda`` installed yet, we recommend installing `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/main>`_, a free, miniature installation of Anaconda.
 
-   ``mamba`` is a fast solver for ``conda`` and will likely speed up your installation. If you don't have it installed, run ``conda install mamba -y`` before running the setup script.
+`mamba <https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html>`_ is a fast environment solver for ``conda``. It will speed up your installation considerably. If you don't have it installed, run ``conda install mamba -y`` before running the setup script.
 
-Run the setup script:
+Once you have Anaconda, run the setup script:
 
 .. code-block:: bash
 
@@ -59,11 +59,11 @@ Run the setup script:
 
 The setup script will let you choose the name of your environment.
 
-It will also ask you whether
+It will also ask you whether:
 
-- you need ``7z`` (to unpack some Windows :file:`.zip` files).
-- you want the QGIS tool installed (in the Processing Toolbox) that helps you visualize split :file:`.parquet` files (attribute table + geoparquet geometries).
-- you want to install a shortcut that lets you type :input:`openplaces` into your terminal / Anaconda Prompt to run Jupyter notebooks in your environment.
+- you want to install ``7z``. It allows you to unpack :file:`.zip` files formatted with Windows formats (e.g., Virginia's parcel database).
+- you want the :gui:`QGIS` tool installed in the :gui:`Processing Toolbox`. The tool allows you to import openplaces' :file:`.parquet` tables with associated geometry parquet files as one joined vector layer.
+- you want to install a shortcut in your user folder. This lets you type :input:`openplaces` into your :gui:`Terminal` / :gui:`Anaconda Prompt` to activate your environment and run Jupyter in your notebooks folder.
 
 
 Configure the environment

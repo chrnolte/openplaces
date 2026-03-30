@@ -3,6 +3,12 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import sys
+from pathlib import Path
+
+# Recognize Python scripts in '_ext' (e.g. formatting for Github links)
+sys.path.insert(0, str(Path('_ext').resolve()))
+
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -14,7 +20,7 @@ release = '0.1.0'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx_copybutton']
+extensions = ['sphinx_copybutton', 'sphinx_design', 'gh_file']
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
@@ -25,10 +31,16 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
 
 html_title = 'openplaces'
 html_logo = 'images/openplaces_icon_transparent_130.png'
-html_theme = 'sphinx_rtd_theme'
+html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
 html_theme_options = {
-    'navigation_depth': 5,
+    'navigation_depth': 4,
+    'show_nav_level': 2,
+    'navbar_align': 'left',
+    'secondary_sidebar_items': ['page-toc'],
+    'logo': {
+        'text': 'openplaces',
+    },
 }
 html_static_path = ['_static']
 html_css_files = ['custom.css']
@@ -42,6 +54,6 @@ rst_prolog = """
 .. role:: file
    :class: file
 
-.. role:: input
+.. role:: input(code)
    :class: input
 """
