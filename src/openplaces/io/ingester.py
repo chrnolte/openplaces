@@ -14,7 +14,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from openplaces.api import get_admin
+from openplaces.api import get_admin, read_entities
 from openplaces.config import cfg
 from openplaces.core.constants import (
     REGEX_FILENAME_IN_URL,
@@ -31,6 +31,7 @@ from openplaces.io import (
     save_parquet,
     unzip,
 )
+from openplaces.io.aggregate import aggregate_to_admin_level
 from openplaces.io.table_ingester import TableIngester
 from openplaces.path import (
     external_dir,
@@ -40,9 +41,12 @@ from openplaces.path import (
 from openplaces.recipe import (
     build_table_recipe,
     find_admin_recipe_id,
+    get_layers,
     get_output_path,
     get_partition_ids,
     get_recipe_by_id,
+    get_save_admin_level,
+    get_table_recipe,
     resolve_output_admin_ids,
 )
 from openplaces.timing import Timer, get_timer
@@ -237,6 +241,55 @@ class Ingester:
 
         self._aggregate_to()
 
+    def show_ingested_geometries(self, **kwargs):
+        """Plot the last ingested layer for visual inspection.
+
+        Delegates to :func:`openplaces.viz.maps.show_ingested_geometries`.
+        See that function for the full list of keyword arguments.
+        """
+        from openplaces.viz.maps import show_ingested_geometries
+
+        return show_ingested_geometries(self, **kwargs)
+
+    def show_random_entity(self):
+        """Plot a random entity from the last ingested admin unit with its attributes.
+
+        Delegates to :func:`openplaces.viz.maps.show_random_entity`.
+        """
+        from openplaces.viz.maps import show_random_entity
+
+        return show_random_entity(self)
+
+    def sample_layer(self, n=5):
+        """Return a transposed sample of the first additional layer.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to sample.
+
+        Returns
+        -------
+        pd.DataFrame
+            Transposed sample of the additional layer table.
+        """
+        layers = get_layers(self.recipe)
+        if not layers:
+            return None
+
+        admin_id_by_level = {
+            AdminId(aid).get_level(): aid
+            for aid in (self.admin_ids_to_save or [])
+            + (self.admin_ids_to_process or [])
+            if aid is not None
+        }
+
+        layer = layers[0]
+        print(layer)
+        layer_level = get_save_admin_level(get_table_recipe(self.recipe, layer))
+        data = read_entities(self.recipe, admin_id_by_level[layer_level], layer=layer)
+        return data.sample(n).T
+
     def _merge_tile_partials(self):
         """Merge per-tile partial files into final per-admin-id output files.
 
@@ -309,7 +362,6 @@ class Ingester:
         """
         if not self._is_aggregate_mode or not self.admin_ids_to_save:
             return
-        from openplaces.io.aggregate import aggregate_to_admin_level
 
         aggregate_to_admin_level(
             self.recipe,
@@ -317,6 +369,17 @@ class Ingester:
             admin_ids_to_process=self.admin_ids_to_process,
             verbose=self.verbose,
         )
+
+        for layer_spec in self.recipe.get('additional_layers', []):
+            table_recipe = build_table_recipe(self.recipe, layer_spec)
+            if not (table_recipe.get('save_to') or {}).get('admin_level'):
+                continue
+            aggregate_to_admin_level(
+                table_recipe,
+                admin_ids_to_save=self.admin_ids_to_save,
+                admin_ids_to_process=self.admin_ids_to_process,
+                verbose=self.verbose,
+            )
 
     def _resolve_admin_ids(self, reprocess):
         """Resolve admin IDs to save, process, and download"""

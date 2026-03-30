@@ -22,7 +22,10 @@ from shapely.geometry import (
     Polygon,
 )
 
+from openplaces.api import get_admin, read_entities
+from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import get_areas
+from openplaces.recipe import find_admin_recipe_id
 
 
 def show_geometry_context(
@@ -828,3 +831,143 @@ def show_building(
 
     if return_fig_ax:
         return fig, ax
+
+
+def show_ingested_geometries(
+    ingester,
+    admin_recipe_id: str | None = None,
+    fill: bool = True,
+    color: str = 'skyblue',
+    edgecolor: str = 'blue',
+    point_markersize: float = 2,
+    max_plot: int = 250_000,
+    basemap_source: str = 'Esri.WorldImagery',
+    figsize: tuple = (10, 10),
+) -> tuple[plt.Figure, plt.Axes] | None:
+    """Plot the last ingested layer for visual inspection.
+
+    Reads entities and admin boundary from the ingester, applies a sample cap
+    for large datasets, and renders a basemap.
+
+    Parameters
+    ----------
+    ingester : openplaces.io.ingester.Ingester
+        Completed ingester whose last saved admin unit is shown.
+    admin_recipe_id : str, optional
+        Recipe ID for the admin boundary dataset. Auto-detected from the
+        recipe's admin_id when omitted.
+    fill : bool
+        If True (default), fill polygon geometries. If False, draw boundary only.
+    color : str
+        Fill color for polygons or face color for points.
+    edgecolor : str
+        Edge/boundary color for polygons.
+    point_markersize : float
+        Marker size when entities are points.
+    max_plot : int
+        Maximum number of polygon features to render; a random sample is taken
+        when exceeded.
+    basemap_source : str
+        Contextily basemap provider string (e.g. 'Esri.WorldImagery').
+    figsize : tuple
+        Figure size (width, height) in inches.
+
+    Returns
+    -------
+    fig, ax : matplotlib Figure and Axes, or None if nothing to plot.
+    """
+    if not ingester.admin_ids_to_save:
+        return None
+
+    admin_id = ingester.admin_ids_to_save[-1]
+    print(admin_id)
+
+    admin = None
+    if admin_id is not None:
+        level = AdminId(admin_id).get_level()
+        if admin_recipe_id is None and level > 1:
+            admin_recipe_id = find_admin_recipe_id(ingester.recipe['admin_id'], level)
+        if admin_recipe_id:
+            admin = get_admin(admin_id, level=level, recipe=admin_recipe_id, geom=True)
+
+    entities = read_entities(ingester.recipe, admin_id, geom=True)
+
+    entity_label = str(ingester.recipe['entity'].entity_type) + 's'
+    if admin is not None:
+        title = (
+            f'{len(entities):,d} {entity_label} in '
+            + admin.loc[admin_id, 'name']
+            + f' ({admin_id})'
+        )
+    else:
+        title = f'{len(entities):,d} {entity_label}'
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    geom0 = entities.geometry.iloc[0]
+
+    if isinstance(geom0, Point | MultiPoint):
+        entities.plot(
+            ax=ax,
+            facecolor=color,
+            markersize=point_markersize,
+            linewidth=0,
+            alpha=0.7,
+        )
+    elif isinstance(geom0, Polygon | MultiPolygon):
+        to_plot = entities
+        if len(entities) > max_plot:
+            print(f'>{max_plot:,d} polygon features to plot. Taking sample.')
+            to_plot = entities.sample(max_plot)
+        if fill:
+            to_plot.plot(
+                ax=ax,
+                color=color,
+                edgecolor=edgecolor,
+                linewidth=0.5,
+                alpha=0.5,
+            )
+        else:
+            to_plot.boundary.plot(
+                ax=ax,
+                color=edgecolor,
+                linewidth=0.3,
+                alpha=0.5,
+            )
+
+    if admin is not None:
+        admin.boundary.plot(ax=ax, color='black', linewidth=0.25)
+
+    ax.set_title(title)
+    ax.axis('off')
+
+    basemap_provider = basemap_source.split('.')
+    source = cx.providers
+    for part in basemap_provider:
+        source = source[part]
+    cx.add_basemap(ax, crs=entities.crs, source=source, alpha=0.5)
+
+    return fig, ax
+
+
+def show_random_entity(
+    ingester,
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
+    """Plot a random entity from the last ingested admin unit with its attributes.
+
+    Delegates to :func:`show_geometry_context`.
+
+    Parameters
+    ----------
+    ingester : openplaces.io.ingester.Ingester
+        Completed ingester whose last saved admin unit is sampled.
+
+    Returns
+    -------
+    fig, (ax_map, ax_table) : matplotlib Figure and Axes pair.
+    """
+    admin_id = ingester.admin_ids_to_save[-1] if ingester.admin_ids_to_save else None
+    entities = read_entities(ingester.recipe, admin_id, geom=True)
+    idx = entities.sample().index[0]
+    print(idx)
+    return show_geometry_context(entities, idx)
