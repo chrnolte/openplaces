@@ -413,11 +413,18 @@ class TableIngester:
                     continue
 
                 if inline_categories is not None:
-                    values, categories, ordered = (
-                        df[column_to_cast],
-                        inline_categories,
-                        True,
-                    )
+                    labels = self._get_labels(column_to_cast)
+                    if labels is not None and all(
+                        c in labels for c in inline_categories
+                    ):
+                        # inline_categories are raw codes → remap and preserve order
+                        values = df[column_to_cast].replace(labels)
+                        categories = [labels[c] for c in inline_categories]
+                    else:
+                        # inline_categories are already the final label strings
+                        values = df[column_to_cast]
+                        categories = inline_categories
+                    ordered = True
                 else:
                     labels = self._get_labels(column_to_cast)
                     if labels is not None:
@@ -437,18 +444,21 @@ class TableIngester:
         # Runs after transformations and categorical casting so that
         # 'prefer_higher' can reference a transformed or categorical column.
         if isinstance(df, gpd.GeoDataFrame):
-            df = clean_polygons(df)
-            keep = self.recipe.get('keep_overlapping_polygons', None)
-            recipe_col_names = list(self.recipe.get('columns', {}) or {})
-            skip = {c for c in df.columns if '_id' in c} | {'geometry'}
-            compare_cols = [c for c in df.columns if c not in skip]
-            snippet_cols = (
-                [c for c in recipe_col_names if c in compare_cols]
-                + [c for c in compare_cols if c not in set(recipe_col_names)]
-            )[:5]
-            df = resolve_overlapping_polygons(
-                df, keep=keep, compare_cols=compare_cols, snippet_cols=snippet_cols
-            )
+            _admin = self.processing_chunk.get('admin_id_to_process')
+            _suffix = f': {_admin}' if _admin else ''
+            with log_step(f'Resolve overlaps{_suffix}', timer=self.timer):
+                df = clean_polygons(df)
+                keep = self.recipe.get('keep_overlapping_polygons', None)
+                recipe_col_names = list(self.recipe.get('columns', {}) or {})
+                skip = {c for c in df.columns if '_id' in c} | {'geometry'}
+                compare_cols = [c for c in df.columns if c not in skip]
+                snippet_cols = (
+                    [c for c in recipe_col_names if c in compare_cols]
+                    + [c for c in compare_cols if c not in set(recipe_col_names)]
+                )[:5]
+                df = resolve_overlapping_polygons(
+                    df, keep=keep, compare_cols=compare_cols, snippet_cols=snippet_cols
+                )
 
         # Attribute entities to administrative unit IDs via crosswalk
         # (Before admin ID index creation, which needs parent Admin ID)
@@ -660,17 +670,10 @@ class TableIngester:
         else:
             admin_ids_to_save_in_data = [self.processing_chunk['admin_id_to_process']]
 
-        print_admin_id_progress = (
-            self.verbose and not len(admin_ids_to_save_in_data) == 1
-        )
-        if print_admin_id_progress:
-            print('Saving ', end='')
+        if split_dataset_by_admin and admin_ids_to_save_in_data:
+            print('Saving ' + ', '.join(admin_ids_to_save_in_data))
 
         for admin_id_to_save in admin_ids_to_save_in_data:
-            if print_admin_id_progress:
-                end = ', ' if admin_id_to_save != admin_ids_to_save_in_data[-1] else ''
-                print(admin_id_to_save, end=end)
-
             if split_dataset_by_admin:
                 redundant_admin_id_columns = [
                     v for v in gdf if v.startswith(f'admin{admin_level}_id')
@@ -695,9 +698,6 @@ class TableIngester:
                 raise NotImplementedError(
                     f'Output file type not yet supported: {output_path.suffix}'
                 )
-
-        if print_admin_id_progress:
-            print('')
 
     # ------------------------------------------------------------------
     # Utilities
