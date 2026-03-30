@@ -34,12 +34,17 @@ process_by:
 columns:
   parcel_id_admin2: LOC_ID
   parcel_id_admin4: MAP_PAR_ID
+  admin4_id_source: TOWN_ID
   source_date: LAST_EDIT
   polygon_type: POLY_TYPE
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - polygon_type
+
+# Save one file per county (aggregated from town-level processing chunks)
+save_to:
+  admin_level: 3
 
 # Additional layers to import from the same dataset for a different entity
 # (e.g., property table inside a parcel database)
@@ -93,3 +98,5 @@ additional_layers:
       - assessment_year
       - usecode
       - zoning
+    save_to:
+      admin_level: 3
