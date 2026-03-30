@@ -2,9 +2,19 @@
 
 import urllib
 
+from openplaces.viz.colors import CATEGORY_COLORS, match_palette
 from openplaces.viz.maps import show_building, show_geometry_context
+from openplaces.viz.tabulation import plot_tabulation, tabulate
 
-__all__ = ['create_street_view_link', 'show_building', 'show_geometry_context']
+__all__ = [
+    'CATEGORY_COLORS',
+    'create_street_view_link',
+    'match_palette',
+    'plot_tabulation',
+    'show_building',
+    'show_geometry_context',
+    'tabulate',
+]
 
 
 def create_street_view_link(address):
