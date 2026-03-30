@@ -137,3 +137,9 @@ pytestdebug.log
 
 # Python wheels in development
 *.whl
+
+# Sandbox notebook
+notebooks/sandbox.ipynb
+
+# Instructions for AI assistant
+.claude
