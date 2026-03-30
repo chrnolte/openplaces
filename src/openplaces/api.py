@@ -12,6 +12,7 @@ import pandas as pd
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.recipe import (
+    find_admin_recipe_id,
     get_output_path,
     get_recipe_by_id,
     get_table_recipe,
@@ -112,7 +113,18 @@ def get_admin(
         if level is None:
             # Default to countries
             level = 1
-        recipe = f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
+        # Prefer an in-country recipe when all requested admin IDs share the
+        # same country; fall back to the global GADM default otherwise.
+        in_country_recipe_id = None
+        if admin_id is not None:
+            country_ids = list(
+                dict.fromkeys(str(AdminId(_aid.levels[0])) for _aid in admin_ids)
+            )
+            if len(country_ids) == 1:
+                in_country_recipe_id = find_admin_recipe_id(
+                    country_ids[0], level, silent=True
+                )
+        recipe = in_country_recipe_id or f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
 
     # Cast recipe to a dict if a str (id) is provided
     if isinstance(recipe, str):

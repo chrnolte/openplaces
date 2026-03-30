@@ -31,7 +31,6 @@ from openplaces.io import (
     save_parquet,
     unzip,
 )
-from openplaces.io.admin import find_admin_recipe_id
 from openplaces.io.table_ingester import TableIngester
 from openplaces.path import (
     external_dir,
@@ -40,6 +39,7 @@ from openplaces.path import (
 )
 from openplaces.recipe import (
     build_table_recipe,
+    find_admin_recipe_id,
     get_output_path,
     get_partition_ids,
     get_recipe_by_id,

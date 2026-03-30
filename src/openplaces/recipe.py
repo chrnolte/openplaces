@@ -2,6 +2,7 @@
 
 # Functions to read data ingestion recipes
 
+import glob
 import inspect
 from collections import Counter
 from pathlib import Path
@@ -301,6 +302,42 @@ def get_table_recipe(recipe: str | dict, layer: str) -> dict:
     raise KeyError(
         f"No additional_layers entry matching '{layer}' found in recipe for {primary}."
     )
+
+
+def find_admin_recipe_id(admin_id, admin_level, silent=False):
+    """Find the ID of an administrative data ingestion recipe
+
+    Parameters
+    ----------
+    admin_id : str
+        Administrative unit identifier
+    admin_level : int
+        Administrative level for which a recipe is sought.
+    silent : bool
+        If True, suppress the message printed when multiple recipes are found.
+    """
+    glob_recipe_path = recipe_path(
+        admin_id, 'admin-*-*', filename=f'admin{admin_level}'
+    )
+    recipe_paths_found = glob.glob(str(glob_recipe_path))
+    if len(recipe_paths_found) == 0:
+        return None
+    elif len(recipe_paths_found) == 1:
+        recipe_id = Path(recipe_paths_found[0]).name
+    else:
+        recipe_paths_found = sorted(
+            recipe_paths_found, key=lambda p: Path(p).parent.name
+        )
+        if not silent:
+            print(
+                f'Multiple admin recipes found for {admin_id} at level {admin_level}:\n'
+                + '\n'.join([Path(fp).name for fp in recipe_paths_found])
+            )
+        recipe_id = Path(recipe_paths_found[-1]).name
+        if not silent:
+            print(f'Picked last, sorted by version: {recipe_id}')
+
+    return recipe_id
 
 
 def get_layers(recipe: str | dict) -> list[str]:
