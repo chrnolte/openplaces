@@ -55,10 +55,8 @@ columns_to_categorical:
   - occupancy
   - height_source: [H, HBET, HHT]  # ordered low to high
 
-# Which polygon to keep if two overlap substantially (IoU > 0.5)
-# prefer_higher: keep the one with the better height source (HHT > HBET > H)
-keep_overlapping_polygons:
-  prefer_higher: height_source
+# If two polygons overlap substantially, keep the larger one
+keep_overlapping_polygons: false
 
 # Assign administrative IDs using spatial joins/overlays
 overlay_admin_ids:
