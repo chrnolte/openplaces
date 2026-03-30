@@ -35,7 +35,7 @@ columns:
 
 # Filter query to select rows
 # Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56'"
+query: "admin2_id_admin1 <= '56' and name != 'County subdivisions not defined'"
 
 transformations:
   # Get county FIPS: first 5 characters of county subdivision FIPS
