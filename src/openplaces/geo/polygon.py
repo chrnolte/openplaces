@@ -8,6 +8,7 @@ No recipe, admin, or heavy I/O dependencies.
 import warnings
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 import pyproj
 import shapely
@@ -616,8 +617,9 @@ def find_overlaps(
     area_crs : str
         Equal-area CRS for area computation. Default: EPSG:6933.
     iou : bool
-        If True, also return ``area_left_m2``, ``area_right_m2``, and ``iou``
-        (intersection-over-union) columns.
+        If True, also return ``area_left_m2``, ``area_right_m2``, ``iou``
+        (intersection-over-union), and ``overlap_ratio``
+        (overlap as a fraction of the smaller polygon's area) columns.
 
     Returns
     -------
@@ -625,7 +627,7 @@ def find_overlaps(
         One row per overlapping pair with columns
         ``{index_name}_left``, ``{index_name}_right``, and ``overlap_m2``.
         If ``iou=True``, also includes ``area_left_m2``, ``area_right_m2``,
-        and ``iou``.
+        ``iou``, and ``overlap_ratio``.
         Returns an empty DataFrame if no overlaps exceed the threshold.
     """
     idx_name = gdf.index.name or 'index'
@@ -633,7 +635,8 @@ def find_overlaps(
     right_col = f'{idx_name}_right'
     base_cols = [left_col, right_col, 'overlap_m2']
     empty = pd.DataFrame(
-        columns=base_cols + (['area_left_m2', 'area_right_m2', 'iou'] if iou else [])
+        columns=base_cols
+        + (['area_left_m2', 'area_right_m2', 'iou', 'overlap_ratio'] if iou else [])
     )
 
     geom = (
@@ -675,6 +678,7 @@ def find_overlaps(
         result['area_left_m2'] = area_left
         result['area_right_m2'] = area_right
         result['iou'] = areas[real] / (area_left + area_right - areas[real])
+        result['overlap_ratio'] = areas[real] / np.minimum(area_left, area_right)
 
     return result.set_index([left_col, right_col])
 
@@ -682,7 +686,8 @@ def find_overlaps(
 def resolve_overlapping_polygons(
     df: gpd.GeoDataFrame,
     keep=None,
-    iou_threshold: float = 0.5,
+    overlap_ratio_threshold: float = 0.5,
+    iou_threshold: float | None = None,
     compare_cols: list | None = None,
     snippet_cols: list | None = None,
 ) -> gpd.GeoDataFrame:
@@ -709,8 +714,19 @@ def resolve_overlapping_polygons(
     keep : bool or str or dict
         How to resolve overlapping pairs with differing attributes.
         See above.
-    iou_threshold : float
-        Minimum IoU to treat two polygons as overlapping. Default 0.5.
+    overlap_ratio_threshold : float or None
+        A pair counts as a substantial overlap when the intersection area
+        is at least this fraction of *either* polygon's area
+        (i.e. ``overlap / min(area_left, area_right) >= threshold``).
+        This ensures that a small polygon largely covered by a larger one
+        is flagged as an overlap problem. Default 0.5.
+        Set to None to disable.
+    iou_threshold : float or None
+        Minimum intersection-over-union to treat two polygons as overlapping
+        (i.e. ``overlap / (area_left + area_right - overlap) >= threshold``).
+        IoU is symmetric and size-agnostic, making it well suited for
+        establishing identity between two polygon datasets (e.g. matching
+        a predicted footprint to a reference). Not applied by default (None).
     compare_cols : list of str, optional
         Columns used to detect identical vs differing pairs. If None,
         all columns except geometry and columns containing '_id' are used.
@@ -723,7 +739,18 @@ def resolve_overlapping_polygons(
     GeoDataFrame
         DataFrame with overlapping duplicates removed (when applicable).
     """
-    overlaps = find_overlaps(df, iou=True).query('iou > @iou_threshold')
+    conditions = []
+    if overlap_ratio_threshold is not None:
+        conditions.append('overlap_ratio >= @overlap_ratio_threshold')
+    if iou_threshold is not None:
+        conditions.append('iou > @iou_threshold')
+    if not conditions:
+        raise ValueError(
+            'At least one of overlap_ratio_threshold or iou_threshold must be set.'
+        )
+    overlaps = find_overlaps(df, iou=True).query(
+        ' | '.join(f'({c})' for c in conditions)
+    )
     if overlaps.empty:
         return df
 
@@ -806,16 +833,15 @@ def resolve_overlapping_polygons(
                     continue
             # Fallback for keep=False, tied fewest_nulls, or tied prefer_higher:
             # drop the smaller polygon.
-            row = overlaps.loc[(left_idx, right_idx)]
-            to_drop.add(
-                right_idx if row['area_left_m2'] >= row['area_right_m2'] else left_idx
-            )
+            area_left = overlaps.at[(left_idx, right_idx), 'area_left_m2']
+            area_right = overlaps.at[(left_idx, right_idx), 'area_right_m2']
+            to_drop.add(right_idx if area_left >= area_right else left_idx)
         df = df.drop(index=list(to_drop))
 
     msg_parts = ['\n']
     if dupes_to_drop:
         msg_parts.append(
-            f'Dropped {len(dupes_to_drop)} polygon(s) with \033[1midentical\033[0m '
+            f'Dropped {len(dupes_to_drop)} polygon(s) with identical '
             'non-ID, non-geometry attributes.'
         )
     if ambiguous and keep is None:
@@ -840,8 +866,19 @@ def resolve_overlapping_polygons(
             'Indices of overlaps (first 5):\n\n' + pair_str + '\n' + snippet
         )
     if len(msg_parts) > 1:
+        threshold_desc = ' | '.join(
+            filter(
+                None,
+                [
+                    f'overlap_ratio >= {overlap_ratio_threshold}'
+                    if overlap_ratio_threshold is not None
+                    else None,
+                    f'IoU > {iou_threshold}' if iou_threshold is not None else None,
+                ],
+            )
+        )
         warnings.warn(
-            f'\n\nOverlapping polygons detected (IoU > {iou_threshold}):'
+            f'\n\nOverlapping polygons detected ({threshold_desc}):'
             + '\n'.join(msg_parts)
         )
 
