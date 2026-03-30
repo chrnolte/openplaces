@@ -63,7 +63,7 @@ def _content_type_to_ext(content_type: str) -> str | None:
     return _CONTENT_TYPE_EXT.get(mime)
 
 
-def download(from_url, to_path, chunk_size=8192, timeout=None):
+def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
     """Download file from URL with progress bar.
 
     Parameters
@@ -102,14 +102,14 @@ def download(from_url, to_path, chunk_size=8192, timeout=None):
 
     # Get file size for progress bar
     try:
-        response = requests.head(from_url, timeout=timeout)
+        response = requests.head(from_url, timeout=timeout, verify=verify_ssl)
         response.raise_for_status()
         total_size = int(response.headers.get('content-length', 0))
     except Exception:
         total_size = 0
 
     # Download with progress bar
-    response = requests.get(from_url, stream=True, timeout=timeout)
+    response = requests.get(from_url, stream=True, timeout=timeout, verify=verify_ssl)
     response.raise_for_status()
 
     if to_path.suffix == '':

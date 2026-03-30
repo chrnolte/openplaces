@@ -5,6 +5,7 @@ src/openplaces/io/ingester.py
 import glob
 import os
 import re
+import ssl
 import urllib
 import warnings
 from itertools import product
@@ -752,7 +753,10 @@ class Ingester:
             req = urllib.request.Request(
                 source.download_url_source, headers={'User-Agent': 'Mozilla/5.0'}
             )
-            with urllib.request.urlopen(req) as response:
+            ssl_context = (
+                None if source.verify_ssl else ssl._create_unverified_context()
+            )
+            with urllib.request.urlopen(req, context=ssl_context) as response:
                 html = response.read().decode('utf8')
 
             download_url_source_regex = self._resolve_placeholders(
@@ -904,8 +908,14 @@ class Ingester:
             if self.verbose:
                 print('Downloading...')
 
+            entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+            verify_ssl = (
+                entity_or_dataset.source.verify_ssl if entity_or_dataset else True
+            )
             downloaded_path = download(
-                self.download_partition['download_url'], self.recipe_external_dir
+                self.download_partition['download_url'],
+                self.recipe_external_dir,
+                verify_ssl=verify_ssl,
             )
             self.timer.mark('Download')
 

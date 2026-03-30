@@ -18,6 +18,7 @@ entity:
     # Regex to extract download URL from `download_url_source`
     # Data partition placeholders {...} will be replaced before use.
     download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)'
+    verify_ssl: false
   version: 2023
 
 # Name of compressed file (set to skip re-downloading)
