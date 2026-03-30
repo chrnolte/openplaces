@@ -10,6 +10,11 @@
     margin-left: 50px;
 }
 
+/* On-page TOC: match normal text size */
+.toctree-wrapper li[class^="toctree-l"] > a {
+    font-size: 1rem;
+}
+
 /* Custom text highlights for GUI text, files, inputs, and URLs */
 
 .gui {

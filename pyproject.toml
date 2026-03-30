@@ -86,7 +86,8 @@ raster = [
 # Documentation
 docs = [
     "sphinx>=7.0.0",
-    "sphinx-rtd-theme>=1.3.0",
+    "pydata-sphinx-theme>=0.16.1",
+    "sphinx-design>=0.7.0",
     "sphinx-copybutton>=0.5.0"
 ]
 
