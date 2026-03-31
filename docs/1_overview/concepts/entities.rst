@@ -54,7 +54,7 @@ They are relevant when data sources distinguish individual housing units (e.g. f
 .. _properties:
 
 Properties
-~~~~~~~~~~
+----------
 
 Unit at which property is assigned and taxed.
 
@@ -66,7 +66,7 @@ In practice, properties can refer to any collection of subsets of the above: a p
 .. _transactions:
 
 Transactions
-~~~~~~~~~~~~
+------------
 
 Transactions are events in which one or more :ref:`properties` change full or partial ownership, typically in the form of a sale or easement.
 
@@ -76,16 +76,16 @@ They are recorded in deeds or similar property documents and identify the seller
 Spatial reference and partitioning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-There are two types of entity — :ref:`administrative units <administrative_units>` and :ref:`tiles <tiles>` — that serve as spatial partitions for ingesting data about the other entities.
-
+Two types of entities — :ref:`administrative units <administrative_units>` and :ref:`tiles <tiles>` — serve as spatial partitions for data storage and ingestion of other entities.
 
 .. _entity_administrative_units:
 
 Administrative units
 --------------------
 
-:ref:`Administrative units <administrative_units>` are a special type of entity. For more, see the :ref:`section on administrative units <administrative_units>`.
+:ref:`Administrative units <administrative_units>` are a special type of entity. See the :ref:`section on administrative units <administrative_units>` to learn how they are defined and referred to.
 
+All :ref:`recipes <recipes>` belong to an administrative unit (global, country, state, county or similar). Many external dataset downloads are partitioned by administrative units (e.g., US building footprints by state). Most datasets in ``openplaces`` are organized by administrative unit.
 
 .. _tiles:
 
@@ -95,3 +95,4 @@ Tiles
 Tiles are fixed spatial grid cells that cover a geographic area.
 They are used to partition global or large-area datasets into manageable download and processing chunks.
 
+For instance, `OpenBuildingMap <https://gee-community-catalog.org/projects/obm/>`_ serves global building footprints by tile. `Global Forest Change <https://storage.googleapis.com/earthenginepartners-hansen/GFC-2024-v1.12/download.html>`_ serves global raster data by tile.
