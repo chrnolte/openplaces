@@ -13,7 +13,6 @@ from itertools import combinations
 import numpy as np
 import pandas as pd
 
-from openplaces.api import get_admin
 from openplaces.core.constants import (
     ADMIN1_IDS_USING_HASC1_FOR_ADMIN2,
     REGEX_ADMIN2_IDS_AA_AA,
@@ -22,6 +21,7 @@ from openplaces.core.constants import (
     REGEX_ADMIN3_IDS_HASC,
     STRING_SEPARATOR_WITHIN_IDS,
 )
+from openplaces.io.readers import get_admin
 from openplaces.path import recipe_path
 from openplaces.recipe import find_admin_recipe_id, get_recipe  # noqa: F401
 from openplaces.utils import create_comparable_name_link, standardize_names

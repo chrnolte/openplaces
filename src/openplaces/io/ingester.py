@@ -14,7 +14,6 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from openplaces.api import get_admin, read_entities
 from openplaces.config import cfg
 from openplaces.core.constants import (
     REGEX_FILENAME_IN_URL,
@@ -32,6 +31,7 @@ from openplaces.io import (
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
+from openplaces.io.readers import get_admin, get_entities
 from openplaces.io.table_ingester import TableIngester
 from openplaces.path import (
     external_dir,
@@ -47,7 +47,6 @@ from openplaces.recipe import (
     get_recipe_by_id,
     get_save_admin_level,
     get_table_recipe,
-    resolve_output_admin_ids,
 )
 from openplaces.timing import Timer, get_timer
 from openplaces.utils import format_list
@@ -287,7 +286,7 @@ class Ingester:
         layer = layers[0]
         print(layer)
         layer_level = get_save_admin_level(get_table_recipe(self.recipe, layer))
-        data = read_entities(self.recipe, admin_id_by_level[layer_level], layer=layer)
+        data = get_entities(self.recipe, admin_id_by_level[layer_level], layer=layer)
         return data.sample(n).T
 
     def _merge_tile_partials(self):
@@ -410,6 +409,56 @@ class Ingester:
                 format_list(self.admin_ids_to_download),
             )
 
+    def _resolve_output_admin_ids(
+        self,
+        operation_keys=('download_by', 'process_by', 'save_to'),
+        reprocess=False,
+        partition_id=None,
+    ):
+        """Return admin IDs for which output files should be (re-)created.
+
+        Parameters
+        ----------
+        operation_keys : tuple of str
+            Recipe sections to inspect for 'admin_level'. 'save_to' is
+            included by default; override when calling from other recipe runners.
+        reprocess : bool
+            If True, include admin IDs whose output files already exist.
+        partition_id : str, optional
+            Forwarded to `get_output_path` when checking file existence.
+
+        Returns
+        -------
+        list of str or list of None
+            Admin ID strings at the save level, or `[None]` if not admin-split.
+        """
+        save_level = get_save_admin_level(self.recipe, operation_keys)
+
+        if save_level == 0:
+            admin_ids_all = [None]
+        else:
+            admin_ids_all = list(
+                dict.fromkeys(get_admin(self.recipe['admin_id'], save_level).index)
+            )
+
+        admin_ids_to_save = [
+            admin_id_str
+            for admin_id_requested in self.admin_ids
+            for admin_id_str in admin_ids_all
+            if admin_id_requested.is_parent_or_equal_of(AdminId(admin_id_str))
+            or AdminId(admin_id_str).is_parent_of(admin_id_requested)
+        ]
+        admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
+
+        if not reprocess:
+            admin_ids_to_save = [
+                admin_id
+                for admin_id in admin_ids_to_save
+                if not get_output_path(self.recipe, admin_id, partition_id).exists()
+            ]
+
+        return admin_ids_to_save
+
     def _resolve_admin_ids_to_save(self, reprocess):
         """Create list of admin_ids for which to create output files
 
@@ -423,9 +472,7 @@ class Ingester:
             If True, keep all admin_ids, as all will be re-processed.
         """
         if not reprocess and self._is_aggregate_mode:
-            all_candidates = resolve_output_admin_ids(
-                self.recipe,
-                self.admin_ids,
+            all_candidates = self._resolve_output_admin_ids(
                 operation_keys=('download_by', 'process_by', 'save_to'),
                 reprocess=True,
             )
@@ -436,9 +483,7 @@ class Ingester:
                 or self._output_is_incomplete(sid)
             ]
         else:
-            self.admin_ids_to_save = resolve_output_admin_ids(
-                self.recipe,
-                self.admin_ids,
+            self.admin_ids_to_save = self._resolve_output_admin_ids(
                 operation_keys=('download_by', 'process_by', 'save_to'),
                 reprocess=reprocess,
             )

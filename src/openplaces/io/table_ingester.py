@@ -15,7 +15,6 @@ import geopandas as gpd
 import pandas as pd
 from pyogrio.errors import DataSourceError
 
-from openplaces.api import get_admin
 from openplaces.config import cfg
 from openplaces.core.constants import (
     GEOPANDAS_EXTENSIONS,
@@ -32,6 +31,7 @@ from openplaces.io import (
     save_parquet,
     unzip,
 )
+from openplaces.io.readers import get_admin
 from openplaces.io.transform import (
     add_unique_suffix,
     apply_transformation,
