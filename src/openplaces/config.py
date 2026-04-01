@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 from platformdirs import user_config_dir
 
-from openplaces.core.constants import CRS_LAT_LONG, GEO_MIN_AREA_M2, STANDARD_DIRS
+from openplaces.core.constants import CRS, GEO_MIN_AREA_M2, STANDARD_DIRS
 
 # Application name and author to locate user configuration files
 APPNAME = 'openplaces'
@@ -40,7 +40,7 @@ class OpenPlacesConfig:
     """Configuration manager with interactive first-use setup."""
 
     DEFAULTS = {
-        'crs': CRS_LAT_LONG,
+        'crs': CRS,
         'geo_min_area_m2': GEO_MIN_AREA_M2,
     }
 
