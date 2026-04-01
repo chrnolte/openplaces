@@ -112,26 +112,29 @@ def match_palette(values, col_name=None, weights=None, threshold=0.5):
     dict or None
         Matching ``{label: color}`` palette, or ``None`` if no good match.
     """
-    # 1. Exact column name match
-    if col_name in CATEGORY_COLORS:
-        return CATEGORY_COLORS[col_name]
-    # 2. Any palette key is a substring of the column name
-    if col_name:
-        for key, palette in CATEGORY_COLORS.items():
-            if key in col_name:
-                return palette
-    # 3. Frequency-weighted (or unweighted) value coverage
     str_values = [str(v) for v in values]
-    best, best_score = None, 0.0
-    for palette in CATEGORY_COLORS.values():
+
+    def _coverage(palette):
         palette_keys = set(palette)
         if weights is not None:
             total = sum(weights)
-            score = (
+            return (
                 sum(w for v, w in zip(str_values, weights) if v in palette_keys) / total
             )
-        else:
-            score = sum(1 for v in str_values if v in palette_keys) / len(str_values)
+        return sum(1 for v in str_values if v in palette_keys) / len(str_values)
+
+    # 1. Exact column name match
+    if col_name in CATEGORY_COLORS:
+        return CATEGORY_COLORS[col_name]
+    # 2. Any palette key is a substring of the column name — only if values match
+    if col_name:
+        for key, palette in CATEGORY_COLORS.items():
+            if key in col_name and _coverage(palette) >= threshold:
+                return palette
+    # 3. Frequency-weighted (or unweighted) value coverage
+    best, best_score = None, 0.0
+    for palette in CATEGORY_COLORS.values():
+        score = _coverage(palette)
         if score > best_score:
             best_score, best = score, palette
     if best_score >= threshold:
