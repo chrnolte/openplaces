@@ -343,7 +343,7 @@ def find_admin_recipe_id(admin_id, admin_level, silent=False):
 def get_layers(recipe: str | dict) -> list[str]:
     """Return the layer names available for a recipe's 'additional_layers'.
 
-    These are the values accepted by the `layer` argument of 'read_entities'
+    These are the values accepted by the `layer` argument of 'get_entities'
     and 'get_output_path'.
 
     Parameters
@@ -542,63 +542,3 @@ def get_partition_ids(recipe):
         f'Partition not yet supported by openplaces.recipe.get_partition_ids: '
         f"'{partition}'."
     )
-
-
-def resolve_output_admin_ids(
-    recipe,
-    requested_admin_ids,
-    operation_keys=('download_by', 'process_by', 'save_to'),
-    reprocess=False,
-    partition_id=None,
-):
-    """Return admin IDs for which output files should be (re-)created.
-
-    Parameters
-    ----------
-    recipe : dict
-        Loaded recipe dictionary.
-    requested_admin_ids : list of AdminId
-        The admin IDs the caller wants to process.
-    operation_keys : tuple of str
-        Recipe sections to inspect for 'admin_level'. 'save_to' is
-        included by default; override when calling from other recipe runners.
-    reprocess : bool
-        If True, include admin IDs whose output files already exist.
-    partition_id : str, optional
-        Forwarded to `get_output_path` when checking file existence.
-
-    Returns
-    -------
-    list of str or list of None
-        Admin ID strings at the save level, or `[None]` if not admin-split.
-    """
-    # Deferred import: openplaces.api imports recipe at module level, so
-    # importing api here avoids a circular import at load time.
-    from openplaces.api import get_admin
-
-    save_level = get_save_admin_level(recipe, operation_keys)
-
-    if save_level == 0:
-        admin_ids_all = [None]
-    else:
-        admin_ids_all = list(
-            dict.fromkeys(get_admin(recipe['admin_id'], save_level).index)
-        )
-
-    admin_ids_to_save = [
-        admin_id_str
-        for admin_id_requested in requested_admin_ids
-        for admin_id_str in admin_ids_all
-        if admin_id_requested.is_parent_or_equal_of(AdminId(admin_id_str))
-        or AdminId(admin_id_str).is_parent_of(admin_id_requested)
-    ]
-    admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
-
-    if not reprocess:
-        admin_ids_to_save = [
-            admin_id
-            for admin_id in admin_ids_to_save
-            if not get_output_path(recipe, admin_id, partition_id).exists()
-        ]
-
-    return admin_ids_to_save

@@ -21,7 +21,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from openplaces.api import get_admin
+from openplaces.io.readers import get_admin
 from openplaces.recipe import get_recipe_by_id
 
 # Operations

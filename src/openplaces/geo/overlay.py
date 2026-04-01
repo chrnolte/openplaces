@@ -14,9 +14,9 @@ import pandas as pd
 import pyarrow.parquet as pq
 import shapely
 
-from openplaces.api import get_admin
 from openplaces.core.constants import STRING_SEPARATOR_BETWEEN_IDS
 from openplaces.geo.polygon import get_lat_long_centroids
+from openplaces.io.readers import get_admin
 from openplaces.recipe import get_recipe
 from openplaces.timing import get_timer
 

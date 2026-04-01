@@ -22,9 +22,9 @@ from shapely.geometry import (
     Polygon,
 )
 
-from openplaces.api import get_admin, read_entities
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import get_areas
+from openplaces.io.readers import get_admin, get_entities
 from openplaces.recipe import find_admin_recipe_id
 
 
@@ -890,7 +890,7 @@ def show_ingested_geometries(
         if admin_recipe_id:
             admin = get_admin(admin_id, level=level, recipe=admin_recipe_id, geom=True)
 
-    entities = read_entities(ingester.recipe, admin_id, geom=True)
+    entities = get_entities(ingester.recipe, admin_id, geom=True)
 
     entity_label = str(ingester.recipe['entity'].entity_type) + 's'
     if admin is not None:
@@ -967,7 +967,7 @@ def show_random_entity(
     fig, (ax_map, ax_table) : matplotlib Figure and Axes pair.
     """
     admin_id = ingester.admin_ids_to_save[-1] if ingester.admin_ids_to_save else None
-    entities = read_entities(ingester.recipe, admin_id, geom=True)
+    entities = get_entities(ingester.recipe, admin_id, geom=True)
     idx = entities.sample().index[0]
     print(idx)
     return show_geometry_context(entities, idx)

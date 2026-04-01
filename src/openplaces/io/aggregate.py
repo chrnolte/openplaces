@@ -7,9 +7,9 @@ into final save-level output files.
 import geopandas as gpd
 import pandas as pd
 
-from openplaces.api import get_admin
 from openplaces.core.schema import AdminId
 from openplaces.io import delete_data, read_parquet, save_parquet
+from openplaces.io.readers import get_admin
 from openplaces.recipe import get_output_path, get_save_admin_level
 
 
