@@ -68,3 +68,13 @@ columns:
   source_date: transfdate
   source_deed: sourceref
   source_map: mapref
+
+columns_to_categorical:
+  - purpose_group
+  - purpose_group_code
+  - purpose_subgroup
+  - purpose_subgroup_code
+  - owner_city
+  - value_type
+  - source
+  - source_date
