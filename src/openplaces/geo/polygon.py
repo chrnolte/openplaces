@@ -885,69 +885,368 @@ def resolve_overlapping_polygons(
     return df
 
 
-def get_intersection_over_union(
-    gdf_left,
-    gdf_right,
-    suffixes=('left', 'right'),
-    area_unit='m2',
-    how='intersection',
-    drop_geometries=True,
+def _coverage_fractions(piece_intersection, index_name, gdf):
+    """Return fraction of each polygon in gdf covered by piece_intersection."""
+    frag_area = shapely.area(piece_intersection.geometry.values)
+    covered = (
+        pd.Series(frag_area, name='_fa')
+        .groupby(piece_intersection[index_name].values)
+        .sum()
+    )
+    native = pd.Series(
+        shapely.area(gdf.geometry.values),
+        index=gdf[index_name].values,
+        name='_na',
+    )
+    native.index.name = index_name
+    return covered / native
+
+
+def _leftover_fragments(
+    gdf_self, self_idx, gdf_other, other_idx, partial_ids, piece_intersection
 ):
-    """Compute interaction over union of two GeoDataFrames"""
-
-    # Make sure area column exists in both GeoDataFrames
-    if area_unit not in gdf_left:
-        gdf_left = gdf_left.copy()
-        gdf_left[area_unit] = get_areas(gdf_left, area_unit)
-    if area_unit not in gdf_right:
-        gdf_right = gdf_right.copy()
-        gdf_right[area_unit] = get_areas(gdf_right, area_unit)
-
-    left_area_col = f'{area_unit}_{suffixes[0]}'
-    right_area_col = f'{area_unit}_{suffixes[1]}'
-    intersection_area_col = f'{area_unit}_intersection'
-
-    # Overlay
-    _gdf_left = (
-        gdf_left[[area_unit, 'geometry']]
-        .rename(columns={area_unit: left_area_col})
-        .reset_index()
-    )
-    _gdf_right = (
-        gdf_right[[area_unit, 'geometry']]
-        .rename(columns={area_unit: right_area_col})
-        .reset_index()
-    )
-    left_index_name = gdf_left.index.name
-    right_index_name = gdf_right.index.name
-    if left_index_name == right_index_name:
-        left_index_name += '_' + suffixes[0]
-        right_index_name += '_' + suffixes[1]
-        _gdf_left = _gdf_left.rename(columns={gdf_left.index.name: left_index_name})
-        _gdf_right = _gdf_right.rename(columns={gdf_right.index.name: right_index_name})
-    gdf_overlay = gpd.overlay(
-        _gdf_left,
-        _gdf_right,
-        how=how,
-    )
-
-    gdf_overlay = gdf_overlay.set_index([left_index_name, right_index_name])
-
-    # Calculate area of overlap
-    gdf_overlay[intersection_area_col] = get_areas(gdf_overlay, area_unit)
-
-    # Calculate interaction over union
-    gdf_overlay['iou'] = gdf_overlay[intersection_area_col] / (
-        gdf_overlay[left_area_col]
-        + gdf_overlay[right_area_col]
-        - gdf_overlay[intersection_area_col]
-    )
-
-    if drop_geometries:
-        gdf_overlay = gdf_overlay.drop(columns=['geometry'])
-    else:
-        # Move 'geometry' to the end
-        gdf_overlay = gdf_overlay[
-            [x for x in gdf_overlay if x != 'geometry'] + ['geometry']
+    """ST_Difference of partially-covered self polygons minus union of
+    matching other geometries."""
+    partial_self = gdf_self[gdf_self[self_idx].isin(partial_ids)].set_index(self_idx)
+    other_geom = gdf_other.set_index(other_idx)[['geometry']]
+    pairs = (
+        piece_intersection[piece_intersection[self_idx].isin(partial_ids)][
+            [self_idx, other_idx]
         ]
-    return gdf_overlay
+        .copy()
+        .join(other_geom.rename(columns={'geometry': '_og'}), on=other_idx)
+    )
+    other_union = pairs.groupby(self_idx)['_og'].agg(shapely.union_all)
+    leftover = shapely.difference(
+        partial_self.geometry.reindex(other_union.index).values,
+        other_union.values,
+    )
+    keep = ~shapely.is_empty(leftover)
+    return other_union.index[keep], leftover[keep]
+
+
+def _unmatched_piece(gdf_self, self_idx, other_idx, other_data_cols, ids):
+    """Rows from gdf_self for ids, with other-side columns filled as NA/NaN."""
+    mask = gdf_self[self_idx].isin(ids)
+    piece = gdf_self[mask].copy()
+    piece[other_idx] = pd.array([pd.NA] * mask.sum(), dtype=object)
+    for col in other_data_cols:
+        piece[col] = float('nan')
+    return piece
+
+
+def _identity_overlay(gdf_left, gdf_right, left_index_name, right_index_name):
+    """Fast identity overlay: intersection, unmatched left, leftover left fragments."""
+    piece_intersection = gpd.overlay(
+        gdf_left, gdf_right, how='intersection', keep_geom_type=False
+    )
+    piece_intersection = piece_intersection[
+        piece_intersection.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
+    ]
+
+    frac = _coverage_fractions(piece_intersection, left_index_name, gdf_left)
+    matched_ids = set(piece_intersection[left_index_name].unique())
+    fully_unmatched_ids = set(gdf_left[left_index_name].values) - matched_ids
+    _TOL = 1e-6
+    partial_ids = set(frac.index[frac < 1 - _TOL])
+
+    right_data_cols = [
+        c for c in gdf_right.columns if c not in ('geometry', right_index_name)
+    ]
+
+    pieces = [piece_intersection]
+
+    if fully_unmatched_ids:
+        pieces.append(
+            _unmatched_piece(
+                gdf_left,
+                left_index_name,
+                right_index_name,
+                right_data_cols,
+                fully_unmatched_ids,
+            )
+        )
+
+    if partial_ids:
+        leftover_index, leftover_geoms = _leftover_fragments(
+            gdf_left,
+            left_index_name,
+            gdf_right,
+            right_index_name,
+            partial_ids,
+            piece_intersection,
+        )
+        left_data_cols = [
+            c for c in gdf_left.columns if c not in ('geometry', left_index_name)
+        ]
+        partial_left = gdf_left[gdf_left[left_index_name].isin(partial_ids)].set_index(
+            left_index_name
+        )
+        pieces.append(
+            gpd.GeoDataFrame(
+                {
+                    left_index_name: leftover_index,
+                    **{
+                        col: partial_left[col].reindex(leftover_index).values
+                        for col in left_data_cols
+                    },
+                    right_index_name: pd.array(
+                        [pd.NA] * len(leftover_index), dtype=object
+                    ),
+                    **{col: float('nan') for col in right_data_cols},
+                    'geometry': leftover_geoms,
+                },
+                geometry='geometry',
+                crs=gdf_left.crs,
+            )
+        )
+
+    result = pd.concat(pieces, ignore_index=True)
+    return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf_left.crs)
+
+
+def _union_overlay(gdf_left, gdf_right, left_index_name, right_index_name):
+    """Fast union overlay: intersection + unmatched both sides + leftover both sides."""
+    piece_intersection = gpd.overlay(
+        gdf_left, gdf_right, how='intersection', keep_geom_type=False
+    )
+    piece_intersection = piece_intersection[
+        piece_intersection.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
+    ]
+
+    _TOL = 1e-6
+
+    frac_left = _coverage_fractions(piece_intersection, left_index_name, gdf_left)
+    matched_left = set(piece_intersection[left_index_name].unique())
+    unmatched_left_ids = set(gdf_left[left_index_name].values) - matched_left
+    partial_left_ids = set(frac_left.index[frac_left < 1 - _TOL])
+
+    frac_right = _coverage_fractions(piece_intersection, right_index_name, gdf_right)
+    matched_right = set(piece_intersection[right_index_name].unique())
+    unmatched_right_ids = set(gdf_right[right_index_name].values) - matched_right
+    partial_right_ids = set(frac_right.index[frac_right < 1 - _TOL])
+
+    left_data_cols = [
+        c for c in gdf_left.columns if c not in ('geometry', left_index_name)
+    ]
+    right_data_cols = [
+        c for c in gdf_right.columns if c not in ('geometry', right_index_name)
+    ]
+
+    pieces = [piece_intersection]
+
+    if unmatched_left_ids:
+        pieces.append(
+            _unmatched_piece(
+                gdf_left,
+                left_index_name,
+                right_index_name,
+                right_data_cols,
+                unmatched_left_ids,
+            )
+        )
+    if partial_left_ids:
+        leftover_index, leftover_geoms = _leftover_fragments(
+            gdf_left,
+            left_index_name,
+            gdf_right,
+            right_index_name,
+            partial_left_ids,
+            piece_intersection,
+        )
+        partial_left = gdf_left[
+            gdf_left[left_index_name].isin(partial_left_ids)
+        ].set_index(left_index_name)
+        pieces.append(
+            gpd.GeoDataFrame(
+                {
+                    left_index_name: leftover_index,
+                    **{
+                        col: partial_left[col].reindex(leftover_index).values
+                        for col in left_data_cols
+                    },
+                    right_index_name: pd.array(
+                        [pd.NA] * len(leftover_index), dtype=object
+                    ),
+                    **{col: float('nan') for col in right_data_cols},
+                    'geometry': leftover_geoms,
+                },
+                geometry='geometry',
+                crs=gdf_left.crs,
+            )
+        )
+
+    if unmatched_right_ids:
+        pieces.append(
+            _unmatched_piece(
+                gdf_right,
+                right_index_name,
+                left_index_name,
+                left_data_cols,
+                unmatched_right_ids,
+            )
+        )
+    if partial_right_ids:
+        leftover_index, leftover_geoms = _leftover_fragments(
+            gdf_right,
+            right_index_name,
+            gdf_left,
+            left_index_name,
+            partial_right_ids,
+            piece_intersection,
+        )
+        partial_right = gdf_right[
+            gdf_right[right_index_name].isin(partial_right_ids)
+        ].set_index(right_index_name)
+        pieces.append(
+            gpd.GeoDataFrame(
+                {
+                    right_index_name: leftover_index,
+                    **{
+                        col: partial_right[col].reindex(leftover_index).values
+                        for col in right_data_cols
+                    },
+                    left_index_name: pd.array(
+                        [pd.NA] * len(leftover_index), dtype=object
+                    ),
+                    **{col: float('nan') for col in left_data_cols},
+                    'geometry': leftover_geoms,
+                },
+                geometry='geometry',
+                crs=gdf_right.crs,
+            )
+        )
+
+    result = pd.concat(pieces, ignore_index=True)
+    return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf_left.crs)
+
+
+def overlay_polygons(
+    layer1,
+    layer2,
+    columns: list[str] | None = None,
+    geom: bool = False,
+    iou: bool = False,
+    suffixes: tuple[str, str] | None = None,
+    how: str = 'intersection',
+) -> 'pd.DataFrame | gpd.GeoDataFrame':
+    """Intersect two polygon datasets in memory using geopandas.
+
+    Parameters
+    ----------
+    layer1, layer2 :
+        GeoDataFrame or path to an attribute parquet file (read with
+        ``openplaces.io.read_parquet``).
+    columns :
+        Extra columns to carry from the attribute tables into the result.
+    geom :
+        If True, return intersection geometry.
+    iou :
+        If True, compute intersection-over-union. Areas are in m²
+        (EPSG:6933). Unmatched/leftover rows get NaN.
+    suffixes :
+        Required when both tables share the same index name, or when a
+        requested column exists in both tables.
+    how : {'intersection', 'union', 'identity'}
+        Overlay type.
+    """
+    from pathlib import Path
+
+    from openplaces.io import read_parquet
+
+    _SUPPORTED_HOW = {'intersection', 'union', 'identity'}
+    if how not in _SUPPORTED_HOW:
+        raise ValueError(
+            f'how={how!r} not supported. Choose from {sorted(_SUPPORTED_HOW)}.'
+        )
+
+    if isinstance(layer1, Path):
+        layer1 = read_parquet(layer1, geom=True)
+    if isinstance(layer2, Path):
+        layer2 = read_parquet(layer2, geom=True)
+
+    # Resolve index aliases
+    idx1 = layer1.index.name or 'index_0'
+    idx2 = layer2.index.name or 'index_1'
+    if idx1 == idx2:
+        if suffixes is None:
+            raise ValueError(f'Both tables share index name {idx1!r}. Pass suffixes.')
+        alias1 = f'{idx1}{suffixes[0]}'
+        alias2 = f'{idx2}{suffixes[1]}'
+    else:
+        alias1, alias2 = idx1, idx2
+
+    data1 = set(layer1.columns) - {'geometry'}
+    data2 = set(layer2.columns) - {'geometry'}
+
+    if columns is not None:
+        ambiguous = [c for c in columns if c in data1 and c in data2]
+        if ambiguous and suffixes is None:
+            raise ValueError(
+                f'Columns {ambiguous} exist in both tables. Pass suffixes.'
+            )
+        missing = [c for c in columns if c not in data1 and c not in data2]
+        if missing:
+            raise ValueError(f'Columns {missing} not found in either table.')
+        if ambiguous:
+            layer1 = layer1.rename(columns={c: f'{c}{suffixes[0]}' for c in ambiguous})
+            layer2 = layer2.rename(columns={c: f'{c}{suffixes[1]}' for c in ambiguous})
+        left_keep = [
+            f'{c}{suffixes[0]}' if c in ambiguous else c for c in columns if c in data1
+        ]
+        right_keep = [
+            f'{c}{suffixes[1]}' if c in ambiguous else c for c in columns if c in data2
+        ]
+    else:
+        left_keep, right_keep = [], []
+
+    # Internal area column names (prefixed to avoid user column conflicts)
+    _A1, _A2 = '_area1', '_area2'
+
+    def _slim(gdf, alias, orig_idx, area_col, extra):
+        """Select columns, optionally add area, reset index."""
+        keep = extra + ['geometry']
+        if iou:
+            if area_col not in gdf.columns:
+                gdf = gdf.copy()
+                gdf[area_col] = get_areas(gdf, 'm2')
+            keep = extra + [area_col, 'geometry']
+        out = gdf[keep].reset_index()
+        if orig_idx != alias:
+            out = out.rename(columns={orig_idx: alias})
+        return out
+
+    _gdf1 = _slim(layer1, alias1, idx1, _A1, left_keep)
+    _gdf2 = _slim(layer2, alias2, idx2, _A2, right_keep)
+
+    if how == 'intersection':
+        result = gpd.overlay(_gdf1, _gdf2, how='intersection', keep_geom_type=False)
+        result = result[result.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])]
+    elif how == 'identity':
+        result = _identity_overlay(_gdf1, _gdf2, alias1, alias2)
+    else:
+        result = _union_overlay(_gdf1, _gdf2, alias1, alias2)
+
+    result = result.set_index([alias1, alias2])
+
+    if iou:
+        _sfx1 = suffixes[0] if suffixes is not None else '_left'
+        _sfx2 = suffixes[1] if suffixes is not None else '_right'
+        aint = get_areas(result, 'm2')
+        has_both = result[_A1].notna() & result[_A2].notna()
+        aint_matched = aint.where(has_both)  # NaN for unmatched/leftover rows
+        denom = result[_A1] + result[_A2] - aint_matched
+        result = result.rename(
+            columns={
+                _A1: f'area{_sfx1}_m2',
+                _A2: f'area{_sfx2}_m2',
+            }
+        )
+        result['area_intersection_m2'] = aint_matched
+        result['iou'] = aint_matched / denom.replace(0, float('nan'))
+
+    if not geom:
+        return result.drop(columns=['geometry'])
+
+    cols = [c for c in result if c != 'geometry'] + ['geometry']
+    return gpd.GeoDataFrame(result[cols], geometry='geometry', crs=layer1.crs)
