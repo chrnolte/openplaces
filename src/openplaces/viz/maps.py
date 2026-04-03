@@ -295,9 +295,56 @@ def show_geometry_context(
     return fig, (ax_map, ax_table)
 
 
+_DEFAULT_COLORS = ['#00ffff', '#ff66ff', '#66ff66', '#ffaa00', '#ff6666', '#aaaaff']
+# (ha, va) positions for per-dataset text boxes; cycles if > 3 non-parcel datasets
+_LABEL_POSITIONS = [
+    ('right', 'top'),
+    ('left', 'bottom'),
+    ('right', 'bottom'),
+]
+
+
+def _is_polygon(gdf):
+    return gdf.geometry.dropna().iloc[0].geom_type in ('Polygon', 'MultiPolygon')
+
+
+def _default_label_columns(gdf):
+    return [
+        c
+        for c in gdf.columns
+        if c != 'geometry'
+        and not c.startswith(('geo_', 'source_'))
+        and not c.endswith(('_wkt',))
+    ][:12]
+
+
+def _make_label_text(rows, columns):
+    texts = []
+    for _, row in rows.iterrows():
+        lines = []
+        for col in columns:
+            if col not in row:
+                continue
+            val = row[col]
+            if pd.isna(val) or val == '':
+                continue
+            label = col.replace('_', ' ').title()[:16]
+            if isinstance(val, float):
+                value = f'{val:,.2f}'
+            else:
+                value = str(val)
+            if len(value) > 24:
+                value = value[:24] + '...'
+            lines.append(f'{label}: {value}')
+        if lines:
+            texts.append('\n'.join(lines))
+    return '\n\n'.join(texts)
+
+
 def show_building(
     location,
     geodatasets,
+    styles=None,
     radius=100,
     size=10,
     show_basemap=True,
@@ -308,18 +355,22 @@ def show_building(
 ):
     """Show building in its context with basemap
 
-    Current version is for US building inventories
-
     Parameters
     ----------
     location : tuple or gpd.GeoDataFrame
         A single-row GeoDataFrame
-    geodatasets: dict of lists of GeoDataFrames
+    geodatasets : dict of GeoDataFrames
         Loaded geodatasets to be plotted alongside location.
-        'parcels': parcel GeoDataFrame
-        'buildings_nsi': building GeoDataFrame (USACE: NSI)
-        'buildings_fema': building GeoDataFrame (FEMA: USA Structures)
-        'buildings_microsoft': building GeoDataFrame (Microsoft)
+        'parcels': parcel GeoDataFrame (special: drawn with inner border and
+            attribute text box at top-left).
+        Any other key: building footprint or point GeoDataFrame. Polygon
+            geometries are drawn as boundaries; point geometries as markers.
+            Label text is generated from available columns.
+    styles : dict of dict, optional
+        Per-dataset style overrides, keyed by geodatasets keys. Supported
+        sub-keys: 'color' (str), 'n_max' (int, default 4),
+        'columns' (list[str]), 'marker' (str, default 'o'),
+        'markersize' (int, default 10).
     radius : float
         Radius of plot in EPSG:3857 "meters" (~1.3m in NY)
     size : float
@@ -333,18 +384,10 @@ def show_building(
     return_fig_ax : bool
         If True, return the plot's Figure and Axes objects
     verbose : bool
-        If True, prints IDs of parcels and FEMA polygons.
+        If True, prints counts of matched entities per dataset.
     """
 
-    # Maximum number of entities for which text info is shown
-    # ('and [x] more...' will be added if entities are ommitted)
-    N_MAX_PARCEL_TEXT = 4
-    N_MAX_BUILDINGS_NSI_TEXT = 4
-    N_MAX_BUILDINGS_FEMA_TEXT = 3
-    N_MAX_BUILDINGS_LOCAL_TEXT = 3
-
-    # Minimum size of overlap between parcels & FEMA (ignore slivers)
-    MIN_SQFT_FEMA = 10 * 10.7639  # 10 m2 in sqft
+    MIN_OVERLAP_M2 = 10
 
     to_3857 = Transformer.from_crs('EPSG:4326', 'EPSG:3857').transform
     to_4326 = Transformer.from_crs('EPSG:3857', 'EPSG:4326').transform
@@ -413,6 +456,20 @@ def show_building(
 
     color_parcel = 'yellow' if show_basemap else 'gold'
 
+    # Resolve per-dataset styles
+    styles = styles or {}
+    non_parcel_keys = [k for k in geodatasets if k != 'parcels']
+    resolved = {}
+    for i, key in enumerate(non_parcel_keys):
+        s = styles.get(key, {})
+        resolved[key] = {
+            'color': s.get('color', _DEFAULT_COLORS[i % len(_DEFAULT_COLORS)]),
+            'n_max': s.get('n_max', 4),
+            'columns': s.get('columns', _default_label_columns(geodatasets[key])),
+            'marker': s.get('marker', 'o'),
+            'markersize': s.get('markersize', 10),
+        }
+
     # Draw property boundaries for all properties
     if 'parcels' in geodatasets:
         parcels = (
@@ -422,50 +479,22 @@ def show_building(
         )
         parcels.boundary.plot(ax=ax, linewidth=0.5, color=color_parcel)
 
-    # Draw Microsoft footprints
-    if 'buildings_microsoft' in geodatasets:
-        buildings_microsoft = (
-            geodatasets['buildings_microsoft']
-            .cx[long_min:long_max, lat_min:lat_max]
-            .to_crs('epsg:3857')
-        )
-        if len(buildings_microsoft) > 0:
-            buildings_microsoft.boundary.plot(ax=ax, color='magenta', linewidth=1)
-
-    # Draw FEMA footprints
-    if 'buildings_fema' in geodatasets:
-        buildings_fema = (
-            geodatasets['buildings_fema']
-            .cx[long_min:long_max, lat_min:lat_max]
-            .to_crs('epsg:3857')
-        )
-        if len(buildings_fema) > 0:
-            buildings_fema.boundary.plot(ax=ax, color='#00ffff', linewidth=1)
-
-    # Draw local footprints
-    if 'buildings_local' in geodatasets:
-        buildings_local = (
-            geodatasets['buildings_local']
-            .cx[long_min:long_max, lat_min:lat_max]
-            .to_crs('epsg:3857')
-        )
-        if len(buildings_local) > 0:
-            buildings_local.boundary.plot(ax=ax, color='#66ff66', linewidth=1)
-
-    # Draw NSI footprints
-    if 'buildings_nsi' in geodatasets:
-        buildings_nsi = (
-            geodatasets['buildings_nsi']
-            .cx[long_min:long_max, lat_min:lat_max]
-            .to_crs('epsg:3857')
-        )
-        if len(buildings_nsi) > 0:
-            buildings_nsi.plot(
+    # Drawing pass: all non-parcel datasets
+    for key in non_parcel_keys:
+        gdf = geodatasets[key]
+        s = resolved[key]
+        local = gdf.cx[long_min:long_max, lat_min:lat_max].to_crs('epsg:3857')
+        if local.empty:
+            continue
+        if _is_polygon(local):
+            local.boundary.plot(ax=ax, color=s['color'], linewidth=1)
+        else:
+            local.plot(
                 ax=ax,
                 color='white',
-                marker='D',
-                edgecolor='#00ff00',
-                markersize=15,
+                marker=s['marker'],
+                edgecolor=s['color'],
+                markersize=s['markersize'],
             )
 
     # Add parcel info
@@ -503,6 +532,7 @@ def show_building(
             alpha=0.5,
         )
 
+        N_MAX_PARCEL_TEXT = 4
         txt_p_list = [parcel.iloc[0]['geo_id']]
         for _gid, _p_txt in parcel.head(N_MAX_PARCEL_TEXT).iterrows():
             if verbose:
@@ -550,284 +580,88 @@ def show_building(
             ),
         )
 
-    location_is_nsi = (
-        isinstance(location, gpd.GeoSeries) and location.index.name == 'building_id_nsi'
-    )
-    if 'buildings_nsi' in geodatasets and (parcel_found or location_is_nsi):
-        buildings_nsi_to_label_list = []
-        if location_is_nsi:
-            buildings_nsi_in_crosshair = (
-                geodatasets['buildings_nsi'].loc[[location.index[0]]].reset_index()
-            )
-            buildings_nsi_to_label_list = [buildings_nsi_in_crosshair]
+    # Labeling pass: all non-parcel datasets
+    label_pos_idx = 0
+    for key in non_parcel_keys:
+        gdf = geodatasets[key]
+        s = resolved[key]
+        color = s['color']
+        n_max = s['n_max']
+        columns = s['columns']
+
+        location_in_dataset = (
+            isinstance(location, gpd.GeoSeries)
+            and location.index.name == gdf.index.name
+            and location.index[0] in gdf.index
+        )
+
+        if not parcel_found and not location_in_dataset:
+            continue
+
+        candidates_list = []
+
+        if location_in_dataset:
+            crosshair_row = gdf.loc[[location.index[0]]].reset_index()
+            candidates_list.append(crosshair_row)
+
         if parcel_found:
-            buildings_nsi_on_parcel = gpd.sjoin(
-                parcel[['geometry']].iloc[[0]],
-                geodatasets['buildings_nsi'].cx[long_min:long_max, lat_min:lat_max],
-            ).sort_values('area_sqft', ascending=False)
-
-            if location_is_nsi:
-                nsi_id_column = geodatasets['buildings_nsi'].index.name
-                not_in_crosshair = buildings_nsi_on_parcel[nsi_id_column].ne(
-                    buildings_nsi_in_crosshair[nsi_id_column].iloc[0]
-                )
-                buildings_nsi_to_label_list += [
-                    buildings_nsi_on_parcel[not_in_crosshair]
-                ]
-            else:
-                buildings_nsi_to_label_list += [buildings_nsi_on_parcel]
-        buildings_nsi_to_label = pd.concat(buildings_nsi_to_label_list)
-
-        if len(buildings_nsi_to_label) == 0:
-            print('No NSI points found on parcel in plot frame.')
-        else:
-            if verbose:
-                print(
-                    f'{len(buildings_nsi_to_label)} NSI points on parcel: '
-                    + ', '.join(
-                        buildings_nsi_to_label['nsi_id'].astype(int).astype(str)
+            bbox_gdf = gdf.cx[long_min:long_max, lat_min:lat_max]
+            if not bbox_gdf.empty:
+                if _is_polygon(gdf):
+                    on_parcel = gpd.overlay(
+                        parcel[['geometry']].iloc[[0]].reset_index(),
+                        bbox_gdf.reset_index(),
                     )
-                )
-            txt_nsi_list = []
-            for _, _building_nsi in buildings_nsi_to_label.head(
-                N_MAX_BUILDINGS_NSI_TEXT
-            ).iterrows():
-                txt_nsi_list += [
-                    f'NSI ID {_building_nsi["building_id_nsi"]}\n'
-                    + f'{_building_nsi["purpose_subgroup"]}\n'
-                    + f'Construction: {_building_nsi["construction_type"]}\n'
-                    + f'Foundation: {_building_nsi["foundation_type"]}\n'
-                    + 'Bldg value (2021): '
-                    + f'${int(_building_nsi["structure_value"]):,d}\n'
-                    + f'Source: {_building_nsi["source"]}'
-                ]
-
-            n_omitted = len(buildings_nsi_to_label) - N_MAX_BUILDINGS_NSI_TEXT
-            if n_omitted > 0:
-                txt_nsi_list += [f'... and {n_omitted} more']
-            txt_nsi = '\n\n'.join(txt_nsi_list)
-            ax.text(
-                xmin + radius / 25,
-                ymin + radius / 15,
-                txt_nsi,
-                va='bottom',
-                bbox=dict(
-                    facecolor='#ffffffdd',
-                    edgecolor='#00ff00',
-                    linewidth=1,
-                    boxstyle='round',
-                    pad=0.5,
-                ),
-            )
-
-    if parcel_found and 'buildings_fema' in geodatasets:
-        building_fema_in_crosshair = geodatasets['buildings_fema'].cx[
-            long_center, lat_center
-        ]
-
-        buildings_fema_on_parcel = gpd.overlay(
-            parcel[['geometry']].iloc[[0]].reset_index(),
-            geodatasets['buildings_fema']
-            .cx[long_min:long_max, lat_min:lat_max]
-            .reset_index(),
-        )
-        buildings_fema_on_parcel['overlap_area_sqft'] = get_areas(
-            buildings_fema_on_parcel, unit='sqft'
-        )
-        buildings_fema_on_parcel = buildings_fema_on_parcel[
-            buildings_fema_on_parcel['overlap_area_sqft'].ge(MIN_SQFT_FEMA)
-        ].copy()
-        buildings_fema_on_parcel['frac_sqft'] = (
-            buildings_fema_on_parcel['overlap_area_sqft']
-            / buildings_fema_on_parcel['footprint_area_sqft']
-        )
-        buildings_fema_on_parcel = buildings_fema_on_parcel.sort_values(
-            'overlap_area_sqft', ascending=False
-        )
-
-        if len(building_fema_in_crosshair) == 0:
-            buildings_fema_to_label = buildings_fema_on_parcel
-        else:
-            not_in_crosshair = buildings_fema_on_parcel[
-                building_fema_in_crosshair.index.name
-            ].ne(building_fema_in_crosshair.index[0])
-            buildings_fema_to_label = pd.concat(
-                [
-                    building_fema_in_crosshair.reset_index(),
-                    buildings_fema_on_parcel[not_in_crosshair],
-                ]
-            )
-
-        if len(buildings_fema_to_label) == 0:
-            print('No FEMA polygons identified by location.')
-        else:
-            if verbose:
-                print(
-                    f'{len(buildings_fema_to_label)} FEMA footprints on parcel: '
-                    + ', '.join(
-                        buildings_fema_to_label['fema_id'].astype(int).astype(str)
+                    on_parcel['_overlap_m2'] = get_areas(on_parcel, 'm2')
+                    on_parcel = on_parcel[
+                        on_parcel['_overlap_m2'].ge(MIN_OVERLAP_M2)
+                    ].sort_values('_overlap_m2', ascending=False)
+                else:
+                    on_parcel = gpd.sjoin(
+                        parcel[['geometry']].iloc[[0]],
+                        bbox_gdf.reset_index(),
                     )
-                )
 
-            txt_fema_list = []
-            city = None
-            for (
-                _,
-                building_fema_to_label,
-            ) in buildings_fema_to_label.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
-                txt_use = building_fema_to_label['purpose_subgroup'] or 'No primary use'
-                address = (
-                    building_fema_to_label['address']
-                    if isinstance(building_fema_to_label['address'], str)
-                    else 'No address'
-                )
-                txt_fema_list += [
-                    f'FEMA ID {int(building_fema_to_label["building_id_fema"])}\n'
-                    + f'{address.title()}\n'
-                    + f'{txt_use.title()}\n'
-                    + (
-                        f'{building_fema_to_label["frac_sqft"]:,.0%} of '
-                        if building_fema_to_label['frac_sqft'] < 0.99
-                        else ''
-                    )
-                    + f'{building_fema_to_label["footprint_area_sqft"]:,.0f} sqft\n'
-                    + 'Validation:'
-                    f' {building_fema_to_label["validation_method"].title()}'
-                ]
-                city = building_fema_to_label['city'] or city
-            n_omitted = len(buildings_fema_to_label) - N_MAX_BUILDINGS_FEMA_TEXT
-            if n_omitted > 0:
-                txt_fema_list += [f'... and {n_omitted} more']
-            txt_fema = '\n\n'.join(txt_fema_list)
-            ax.text(
-                xmax - radius / 25,
-                ymax - radius / 25,
-                txt_fema,
-                va='top',
-                ha='right',
-                bbox=dict(
-                    facecolor='#ffffffdd',
-                    edgecolor='#00ffff',
-                    boxstyle='round',
-                    linewidth=1,
-                    pad=0.5,
-                ),
-            )
+                if not on_parcel.empty:
+                    if location_in_dataset:
+                        idx_col = gdf.index.name
+                        not_crosshair = on_parcel[idx_col].ne(location.index[0])
+                        candidates_list.append(on_parcel[not_crosshair])
+                    else:
+                        candidates_list.append(on_parcel)
 
-            if isinstance(city, str):
-                ax.text(
-                    x,
-                    ymax - radius / 25,
-                    'City: ' + city.title(),
-                    backgroundcolor='#ffffffcc',
-                    va='top',
-                    ha='center',
-                    bbox=dict(
-                        facecolor='#ffffffdd',
-                        edgecolor='#00ffff',
-                        boxstyle='round',
-                        linewidth=1,
-                        pad=0.5,
-                    ),
-                )
+        if not candidates_list:
+            continue
+        to_label = pd.concat(candidates_list).head(n_max)
+        if to_label.empty:
+            print(f'No {key} entities found at location.')
+            continue
 
-    if parcel_found and 'buildings_local' in geodatasets:
-        building_local_in_crosshair = geodatasets['buildings_local'].cx[
-            long_center, lat_center
-        ]
+        if verbose:
+            print(f'{len(to_label)} {key} entities at location')
 
-        buildings_local_on_parcel = gpd.overlay(
-            parcel[['geometry']].iloc[[0]].reset_index(),
-            geodatasets['buildings_local']
-            .cx[long_min:long_max, lat_min:lat_max]
-            .reset_index(),
+        label_text = _make_label_text(to_label, columns)
+        if not label_text:
+            continue
+
+        ha, va = _LABEL_POSITIONS[label_pos_idx % len(_LABEL_POSITIONS)]
+        label_pos_idx += 1
+        x_text = xmax - radius / 25 if ha == 'right' else xmin + radius / 25
+        y_text = ymax - radius / 25 if va == 'top' else ymin + radius / 15
+        ax.text(
+            x_text,
+            y_text,
+            label_text,
+            va=va,
+            ha=ha,
+            bbox=dict(
+                facecolor='#ffffffdd',
+                edgecolor=color,
+                boxstyle='round',
+                linewidth=1,
+                pad=0.5,
+            ),
         )
-        buildings_local_on_parcel['overlap_area_sqft'] = get_areas(
-            buildings_local_on_parcel, unit='sqft'
-        )
-        buildings_local_on_parcel = buildings_local_on_parcel[
-            buildings_local_on_parcel['overlap_area_sqft'].ge(MIN_SQFT_FEMA)
-        ].copy()
-        # buildings_local_on_parcel['frac_sqft'] = (
-        #     buildings_local_on_parcel['overlap_area_sqft']
-        #     / buildings_local_on_parcel['footprint_area_sqft']
-        # )
-        buildings_local_on_parcel = buildings_local_on_parcel.sort_values(
-            'overlap_area_sqft', ascending=False
-        )
-
-        if len(building_local_in_crosshair) == 0:
-            buildings_local_to_label = buildings_local_on_parcel
-        else:
-            not_in_crosshair = buildings_local_on_parcel[
-                building_local_in_crosshair.index.name
-            ].ne(building_local_in_crosshair.index[0])
-            buildings_local_to_label = pd.concat(
-                [
-                    building_local_in_crosshair.reset_index(),
-                    buildings_local_on_parcel[not_in_crosshair],
-                ]
-            )
-
-        if len(buildings_local_to_label) == 0:
-            print('No local footprints found at location.')
-        else:
-            if verbose:
-                print(
-                    f'{len(buildings_local_to_label)} local footprints on parcel: '
-                    + ', '.join(
-                        buildings_local_to_label['local_id'].astype(int).astype(str)
-                    )
-                )
-
-            txt_local_list = []
-            city = None
-            for (
-                _,
-                building_local_to_label,
-            ) in buildings_local_to_label.head(N_MAX_BUILDINGS_FEMA_TEXT).iterrows():
-                _txt_local = ''
-                for column in [
-                    'occupancy_type',
-                    'construction_type',
-                    'year_built',
-                    'building_value',
-                    'purpose_group',
-                    'purpose_subgroup',
-                ]:
-                    if column in building_local_to_label:
-                        col_label = (
-                            (column[:12] + ('...' if len(column) > 12 else ''))
-                            .replace('_', ' ')
-                            .title()
-                        )
-
-                        col_value = building_local_to_label[column]
-                        if isinstance(col_value, float):
-                            col_value = f'{col_value:.3f}'
-                        col_value = str(col_value).title()
-                        if len(col_value) > 20:
-                            col_value = col_value[:20] + '...'
-                        _txt_local += f'{col_label}: {col_value}\n'
-                txt_local_list += [_txt_local[:-2]]  # cut off last \n
-            n_omitted = len(buildings_local_to_label) - N_MAX_BUILDINGS_LOCAL_TEXT
-            if n_omitted > 0:
-                txt_local_list += [f'... and {n_omitted} more']
-            txt_local = '\n\n'.join(txt_local_list)
-            ax.text(
-                xmax - radius / 25,
-                ymin + radius / 15,
-                txt_local,
-                va='bottom',
-                ha='right',
-                bbox=dict(
-                    facecolor='#ffffffdd',
-                    edgecolor='#66ff66',
-                    boxstyle='round',
-                    linewidth=1,
-                    pad=0.5,
-                ),
-            )
 
     if return_fig_ax:
         return fig, ax
