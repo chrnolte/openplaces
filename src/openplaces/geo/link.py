@@ -4,7 +4,8 @@ link.py
 Entity linking: create ID linkages between two spatial entity datasets.
 """
 
-from openplaces.geo.overlay import overlay_polygons
+from openplaces.geo.overlay import overlay_polygons_with_duckdb
+from openplaces.geo.polygon import overlay_polygons
 from openplaces.io import save_parquet
 from openplaces.recipe import get_output_path
 
@@ -22,7 +23,11 @@ def create_entity_link(entity1_recipe_id, entity2_recipe_id, save=True, **kwargs
         If True, save output as a file, in the folder of `entity1`:
         {entity1_recipe_id}_{entity2_recipe_id}.parquet
     kwargs : dict
-        Are passed to `openplaces.geo.overlay.overlay_polygons`
+        Are passed to `overlay_polygons` or `overlay_polygons_with_duckdb`.
+        When ``how='intersection'`` (default), ``iou=False`` (default), and
+        ``geom=False`` (default), the DuckDB implementation is used because it
+        is faster for Path inputs in that configuration; otherwise geopandas is
+        used.
     """
 
     entity1_path = get_output_path(entity1_recipe_id)
@@ -36,7 +41,14 @@ def create_entity_link(entity1_recipe_id, entity2_recipe_id, save=True, **kwargs
         print(f'Link creation aborted. Data not found: {entity2_path}')
         return
 
-    entity1_entity2_link = overlay_polygons(entity1_path, entity2_path, **kwargs)
+    _use_duckdb = (
+        kwargs.get('how', 'intersection') == 'intersection'
+        and not kwargs.get('iou', False)
+        and not kwargs.get('geom', False)
+    )
+    _fn = overlay_polygons_with_duckdb if _use_duckdb else overlay_polygons
+
+    entity1_entity2_link = _fn(entity1_path, entity2_path, **kwargs)
 
     if save:
         entity1_entity2_link_path = entity1_path.with_name(
