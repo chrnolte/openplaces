@@ -43,7 +43,7 @@ END_LOOP_MARKER = (
 )
 REGEX_FOR_LOOP = (
     r'\n *(for ([a-zA-Z0-9_]+) in .+?:\n)'
-    r'( *pass\r?\n)'
+    r'( *(?:pass|break)\r?\n)'
     r'([\s\S]*)' + END_LOOP_MARKER
 )
 
