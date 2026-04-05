@@ -68,7 +68,7 @@ def show_geometry_context(
     Returns
     -------
     fig : matplotlib.figure.Figure
-    (ax_map, ax_table) : tuple of matplotlib.axes.Axes
+    ax_map, ax_table : matplotlib.axes.Axes
     """
     from pyproj import CRS
 
@@ -361,11 +361,10 @@ def show_building(
         A single-row GeoDataFrame
     geodatasets : dict of GeoDataFrames
         Loaded geodatasets to be plotted alongside location.
-        'parcels': parcel GeoDataFrame (special: drawn with inner border and
-            attribute text box at top-left).
-        Any other key: building footprint or point GeoDataFrame. Polygon
-            geometries are drawn as boundaries; point geometries as markers.
-            Label text is generated from available columns.
+        The ``'parcels'`` key is special: drawn with inner border and
+        attribute text box at top-left. Any other key is treated as a
+        building footprint or point GeoDataFrame — polygons are drawn as
+        boundaries, points as markers, labels from available columns.
     styles : dict of dict, optional
         Per-dataset style overrides, keyed by geodatasets keys. Supported
         sub-keys: 'color' (str), 'n_max' (int, default 4),

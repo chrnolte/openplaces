@@ -86,12 +86,14 @@ def drop_problematic_parcels(
     parcels (e.g. roads, lakes) that don't offer valuable attribute data
 
     First, the algorithm identifies parcels that might be unwanted:
+
     - Parcels with IDs that point to gap fillers, roads, water
       (detection derived from Wisconsin)
     - Parcels with a large number of vertices (water features, fill-ins)
     - Parcels with a high perimeter^2-to-area ratio (slivers)
 
     Then, the algorithm drops parcels that meet at least 2/3 criteria:
+
     - Parcels whose ID seems questionable
       (empty, blacklisted, text-only duplicates)
     - Their attributes are mostly empty
