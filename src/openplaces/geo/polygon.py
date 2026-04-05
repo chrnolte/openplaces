@@ -769,6 +769,11 @@ def resolve_overlapping_polygons(
         prefer_col = keep.get('prefer_higher')
         keep = False
 
+    # Sort so that MultiIndex .loc lookups in the loop below don't trigger
+    # PerformanceWarning about indexing past lexsort depth.
+    if isinstance(df.index, pd.MultiIndex) and not df.index.is_monotonic_increasing:
+        df = df.sort_index()
+
     # First pass: classify each overlapping pair as an exact duplicate
     # (identical non-ID attributes → safe to drop) or ambiguous (differing
     # attributes → requires a decision).
