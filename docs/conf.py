@@ -20,7 +20,22 @@ release = '0.1.0'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx_copybutton', 'sphinx_design', 'gh_file']
+extensions = [
+    'sphinx_copybutton',
+    'sphinx_design',
+    'gh_file',
+    'autoapi.extension',
+    'sphinx.ext.napoleon',
+]
+
+autoapi_dirs = ['../src']
+autoapi_type = 'python'
+autoapi_options = [
+    'members',
+    'show-inheritance',
+    'show-module-summary',
+]
+autoapi_keep_files = True
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']

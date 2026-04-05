@@ -198,7 +198,7 @@ class OpenPlacesReference:
 
 
 def path(*args, **kwargs):
-    """Shortcut for: OpenPlacesReference(*args, **kwargs).to_path()"""
+    """Shortcut for ``OpenPlacesReference(*args, **kwargs).to_path()``."""
     return OpenPlacesReference(*args, **kwargs).to_path()
 
 

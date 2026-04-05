@@ -87,6 +87,7 @@ def match_palette(values, col_name=None, weights=None, threshold=0.5):
     """Return the best-matching color palette for a set of category values.
 
     Tries matches in order:
+
     1. Exact column-name key lookup.
     2. Any palette key is a substring of the column name.
     3. Frequency-weighted coverage: fraction of total weight (row count)

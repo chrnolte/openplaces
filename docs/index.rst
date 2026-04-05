@@ -13,6 +13,7 @@ The purpose of ``openplaces`` is to make data-intensive, property-level research
    1_overview
    2_get-started
    3_contribute
+   autoapi/index
 
 Github: https://github.com/chrnolte/openplaces
 
