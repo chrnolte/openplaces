@@ -41,9 +41,11 @@ from openplaces.path import (
 from openplaces.recipe import (
     build_table_recipe,
     find_admin_recipe_id,
+    get_download_admin_level,
     get_layers,
     get_output_path,
     get_partition_ids,
+    get_process_admin_level,
     get_recipe_by_id,
     get_save_admin_level,
     get_table_recipe,
@@ -535,12 +537,7 @@ class Ingester:
             self.admin_ids_to_process = self.admin_ids_to_save
             return
 
-        process_by_admin_level = self.recipe['admin_id'].get_level()
-        for by in ['download_by', 'process_by']:
-            if by in self.recipe and 'admin_level' in self.recipe[by]:
-                process_by_admin_level = max(
-                    process_by_admin_level, self.recipe[by]['admin_level']
-                )
+        process_by_admin_level = get_process_admin_level(self.recipe)
 
         if process_by_admin_level == 0:
             if self.admin_ids_to_save in ([None], []):
@@ -610,9 +607,7 @@ class Ingester:
             self.admin_ids_to_download = [None]
             return
 
-        download_by_admin_level = self.recipe['admin_id'].get_level()
-        if 'download_by' in self.recipe and 'admin_level' in self.recipe['download_by']:
-            download_by_admin_level = self.recipe['download_by']['admin_level']
+        download_by_admin_level = get_download_admin_level(self.recipe)
 
         if download_by_admin_level == 0:
             if self.admin_ids_to_process == [None]:

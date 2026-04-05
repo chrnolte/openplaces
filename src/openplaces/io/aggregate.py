@@ -10,16 +10,11 @@ import pandas as pd
 from openplaces.core.schema import AdminId
 from openplaces.io import delete_data, read_parquet, save_parquet
 from openplaces.io.readers import get_admin
-from openplaces.recipe import get_output_path, get_save_admin_level
-
-
-def _get_process_admin_level(recipe):
-    """Return the max admin level across download_by and process_by."""
-    level = recipe['admin_id'].get_level()
-    for by in ('download_by', 'process_by'):
-        if by in recipe and 'admin_level' in recipe[by]:
-            level = max(level, recipe[by]['admin_level'])
-    return level
+from openplaces.recipe import (
+    get_output_path,
+    get_process_admin_level,
+    get_save_admin_level,
+)
 
 
 def _strip_save_admin_level(recipe):
@@ -67,7 +62,7 @@ def aggregate_to_admin_level(
         If True, print a summary line for each aggregated file.
     """
     save_admin_level = get_save_admin_level(recipe)
-    process_admin_level = _get_process_admin_level(recipe)
+    process_admin_level = get_process_admin_level(recipe)
     temp_recipe = _strip_save_admin_level(recipe)
 
     if admin_ids_to_save is None:

@@ -502,6 +502,16 @@ def get_save_admin_level(
     return level
 
 
+def get_process_admin_level(recipe):
+    """Return the admin level at which data is chunked for processing."""
+    return get_save_admin_level(recipe, operation_keys=('download_by', 'process_by'))
+
+
+def get_download_admin_level(recipe):
+    """Return the admin level at which downloads are partitioned."""
+    return get_save_admin_level(recipe, operation_keys=('download_by',))
+
+
 def get_partition_ids(recipe):
     """Return the list of valid partition ID strings for a recipe.
 
