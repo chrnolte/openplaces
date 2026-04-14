@@ -8,13 +8,13 @@ entity:
     # The {table} placeholder is dynamically replaced by values in 'download_by'
     download_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-{table}.dat"
   version: 2024
-  
+
+uncompressed_file_name: "acsdt5y2024-{table}.dat"
 
 # Configuration for iterating through multiple files
 download_by:
   # Defines the placeholder name used in 'download_url' and 'save_to'
   partition: table
-  format: raw
   # List of ACS Table IDs to download.
   # Note: Requires a small patch to openplaces/recipe.py to support 'values'
   values:
