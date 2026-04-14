@@ -99,6 +99,7 @@ PANDAS_EXTENSIONS = {
     '.csv',
     '.xlsx',
     '.xls',
+    '.dat',
 }
 
 # Extensions of companion files for shapefiles
