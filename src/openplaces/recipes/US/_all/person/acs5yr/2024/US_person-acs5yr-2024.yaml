@@ -1,0 +1,41 @@
+admin_id: US
+
+entity:
+  entity_type: person
+  source:
+    source_id: census_acs
+    portal_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/"
+    # The {table} placeholder is dynamically replaced by values in 'download_by'
+    download_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-{table}.dat"
+  version: 2024
+  
+
+# Configuration for iterating through multiple files
+download_by:
+  # Defines the placeholder name used in 'download_url' and 'save_to'
+  partition: table
+  format: raw
+  # List of ACS Table IDs to download.
+  # Note: Requires a small patch to openplaces/recipe.py to support 'values'
+  values:
+    - b01001   # Sex by Age
+    - b19013   # Median Household Income
+    - b02001   # Race
+    - b25077   # Median Value (Dollars)
+    - b17001   # Poverty Status in the Past 12 Months
+
+# Column mapping: 'target_name: source_name'
+columns:
+  # Map the census 'GEO_ID' column (e.g. 1500000US010010201001) to our standard 'geo_id'
+  census_geo_id: GEO_ID
+
+# CRITICAL: This allows all the table-specific columns (B01001_001E, etc.)
+# to be imported without being explicitly listed in the 'columns' section above.
+keep_unnamed_columns: true
+
+save_to:
+  # Where to store the processed .parquet files
+  data_dir: cache
+  # Including {table} in the filename prevents the different metrics
+  # from overwriting each other (e.g. acs5yr-b01001.parquet)
+  filename: "acs5yr-{table}"
