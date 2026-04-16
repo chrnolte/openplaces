@@ -112,6 +112,10 @@ def get_recipe_dict(filepath, *args, **kwargs):
     if not isinstance(admin_id_arg, AdminId):
         admin_id_arg = AdminId(admin_id_arg)
 
+    # Default stage to 'ingest' for recipes that pre-date the stage field
+    if 'stage' not in recipe_dict:
+        recipe_dict['stage'] = 'ingest'
+
     # Ensure that 'admin_id' exists in recipe
     if 'admin_id' not in recipe_dict:
         recipe_dict['admin_id'] = admin_id_arg
