@@ -1,6 +1,4 @@
 """
-overlay.py
-
 Spatial overlay operations on polygon datasets.
 Depends on recipes, admin lookups, and DuckDB for fast parquet-based overlays.
 """
@@ -300,7 +298,7 @@ def _overlay_polygons_paths(
     con.execute('SET enable_progress_bar = false;')
 
     if how == 'identity':
-        # --- identity fast path: single CTE query, spatial join runs once ---
+        # identity fast path: single CTE query, spatial join runs once
         intersection_expr = (
             'ST_Intersection(g1.geometry::GEOMETRY, g2.geometry::GEOMETRY)'
         )

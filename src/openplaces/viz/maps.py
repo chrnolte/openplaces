@@ -75,9 +75,7 @@ def show_geometry_context(
     if not isinstance(gdf, gpd.GeoDataFrame):
         raise ValueError('`gdf` is not a gpd.GeoDataFrame.')
 
-    # ------------------------------------------------------------------
     # Extract target row (avoid copying the entire GeoDataFrame)
-    # ------------------------------------------------------------------
     if isinstance(idx, int):
         target = gdf.iloc[[idx]].copy()
     else:
@@ -102,9 +100,7 @@ def show_geometry_context(
     is_line = isinstance(geom, LineString | MultiLineString)
     is_poly = isinstance(geom, Polygon | MultiPolygon)
 
-    # ------------------------------------------------------------------
     # Generous .cx bounding box in the original CRS for context query
-    # ------------------------------------------------------------------
     bounds = target.total_bounds  # (minx, miny, maxx, maxy)
     width = bounds[2] - bounds[0]
     height = bounds[3] - bounds[1]
@@ -137,9 +133,7 @@ def show_geometry_context(
         cx_bounds[1] : cx_bounds[3],
     ].copy()
 
-    # ------------------------------------------------------------------
     # Reproject to a local orthographic CRS centred on the feature
-    # ------------------------------------------------------------------
     lon, lat = centroid.x, centroid.y
     ortho_crs = CRS.from_proj4(
         f'+proj=ortho +lat_0={lat} +lon_0={lon} +x_0=0 +y_0=0 +datum=WGS84 +units=m'
@@ -159,9 +153,7 @@ def show_geometry_context(
         max_dim_ortho * buffer_factor / 2, min_buffer_m * buffer_factor
     )
 
-    # ------------------------------------------------------------------
     # Build figure
-    # ------------------------------------------------------------------
     fig, (ax_map, ax_table) = plt.subplots(
         1,
         2,
@@ -215,7 +207,7 @@ def show_geometry_context(
             linewidth=1.5,
         )
 
-    # ---- Axis limits ---------------------------------------------------
+    # Axis limits
     target_centroid_ortho = target_ortho.geometry.centroid.iloc[0]
     ax_map.set_xlim(
         target_centroid_ortho.x - buffer_dist_plot,
@@ -226,7 +218,7 @@ def show_geometry_context(
         target_centroid_ortho.y + buffer_dist_plot,
     )
 
-    # ---- Basemap -------------------------------------------------------
+    # Basemap
     cx.add_basemap(
         ax_map,
         crs=ortho_crs.to_string(),
@@ -244,9 +236,7 @@ def show_geometry_context(
         pad=10,
     )
 
-    # ------------------------------------------------------------------
     # Attribute table (unchanged logic)
-    # ------------------------------------------------------------------
     attrs = target.iloc[0].drop('geometry')
 
     interesting = [
