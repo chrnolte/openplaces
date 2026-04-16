@@ -1,7 +1,3 @@
-"""
-src/openplaces/io/ingester.py
-"""
-
 import glob
 import os
 import re
@@ -15,6 +11,7 @@ import geopandas as gpd
 import pandas as pd
 
 from openplaces.config import cfg
+from openplaces.core.attribute_registry import load_registry as _load_attr_registry
 from openplaces.core.constants import (
     REGEX_FILENAME_IN_URL,
     REGEX_HAS_GLOB_WILDCARDS,
@@ -52,6 +49,26 @@ from openplaces.recipe import (
 )
 from openplaces.timing import Timer, get_timer
 from openplaces.utils import format_list
+
+
+def _warn_registry_type_mismatches(gdf) -> None:
+    """Warn when a column's dtype disagrees with the attribute registry."""
+    reg = _load_attr_registry()
+    for col in gdf.columns:
+        if col not in reg.index:
+            continue
+        expected = reg.at[col, 'data_type']
+        actual = gdf[col].dtype
+        if expected == 'categorical' and str(actual) not in ('category', 'object'):
+            warnings.warn(
+                f"Column '{col}' expected dtype categorical but got {actual}.",
+                stacklevel=2,
+            )
+        elif expected in ('float', 'int') and not pd.api.types.is_numeric_dtype(actual):
+            warnings.warn(
+                f"Column '{col}' expected numeric dtype but got {actual}.",
+                stacklevel=2,
+            )
 
 
 class Ingester:
@@ -338,6 +355,7 @@ class Ingester:
                         for _path in existing_output_tile_paths
                     ]
                     gdf_merged = gpd.GeoDataFrame(pd.concat(gdf_tile_list).sort_index())
+                    _warn_registry_type_mismatches(gdf_merged)
                     save_parquet(gdf_merged, final_path)
                     for _path in existing_output_tile_paths:
                         delete_parquet(_path)
@@ -1329,3 +1347,46 @@ class Ingester:
             self.verbose,
             self.admin_ids_to_save,
         )
+
+
+def ingest(
+    recipe: str | dict,
+    admin_ids: str | list | None = None,
+    partition_ids: str | list | None = None,
+    reprocess: bool = False,
+    redownload: bool = False,
+    keep_unzipped: bool = False,
+    verbose: bool = False,
+) -> None:
+    """Instantiate and run ingestion for *recipe*.
+
+    Convenience wrapper around ``Ingester(recipe, ...).ingest()``.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID string or loaded recipe dict.
+    admin_ids : str, list, or None
+        Admin IDs to process (passed to the Ingester constructor).
+    partition_ids : str, list, or None
+        Partition IDs to process (passed to the Ingester constructor).
+    reprocess : bool
+        If True, re-run even if output already exists.
+    redownload : bool
+        If True, re-download even if source file already exists.
+        Also sets ``reprocess`` to ``True``.
+    keep_unzipped : bool
+        If True, keep unzipped files in the heap folder after processing.
+    verbose : bool
+        Print progress messages.
+    """
+    Ingester(
+        recipe,
+        admin_ids=admin_ids,
+        partition_ids=partition_ids,
+        verbose=verbose,
+    ).ingest(
+        reprocess=reprocess,
+        redownload=redownload,
+        keep_unzipped=keep_unzipped,
+    )
