@@ -4,12 +4,10 @@ Keys are label strings as stored in parquet files after ingestion
 (i.e. post-labels-CSV remapping, not raw source codes).
 """
 
-# ---------------------------------------------------------------------------
 # building.openplaces_group
 # Standardized building use groups, as defined in the purpose-subgroup-remap
 # CSV. Covers NSI HAZUS occupancy classes; additional categories from other
 # datasets (FEMA, OBM, etc.) may be added with consistent color shading.
-# ---------------------------------------------------------------------------
 _OPENPLACES_GROUP = {
     # Residential — single family
     'Single Family': '#E07850',
@@ -49,9 +47,7 @@ _OPENPLACES_GROUP = {
     'Church': '#F680CB',
 }
 
-# ---------------------------------------------------------------------------
 # building.purpose_group  (NSI: RES / COM / IND / PUB, post-label remapping)
-# ---------------------------------------------------------------------------
 _PURPOSE_GROUP = {
     'Residential': '#EF643F',
     'Commercial': '#C55A11',
@@ -59,11 +55,9 @@ _PURPOSE_GROUP = {
     'Public': '#7B9FD4',
 }
 
-# ---------------------------------------------------------------------------
 # building.source  (NSI, post-label remapping from source-labels CSV)
 # Green for highest-quality (Parcel), grading to grey for legacy/fallback,
 # matching the ordered categorical priority set in the source-labels CSV.
-# ---------------------------------------------------------------------------
 _SOURCE = {
     'Parcel': '#5a9e6f',
     'National Center for Education Statistics': '#7a9ec8',
@@ -73,9 +67,7 @@ _SOURCE = {
     'HAZUS/NSI-2015': '#b0b0b0',
 }
 
-# ---------------------------------------------------------------------------
 # Public registry  {column_name: {label: color}}
-# ---------------------------------------------------------------------------
 CATEGORY_COLORS = {
     'openplaces_group': _OPENPLACES_GROUP,
     'purpose_group': _PURPOSE_GROUP,

@@ -143,9 +143,7 @@ def _get_input_value(df, input_ref):
         return input_ref
 
 
-# ============================================================================
 # Main transformation engine
-# ============================================================================
 
 
 def apply_transformations(

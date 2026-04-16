@@ -1,6 +1,4 @@
 """
-src/openplaces/io/table_ingester.py
-
 Processes a single table (layer) from an already-resolved source file
 into an openplaces entity output file.
 """
@@ -100,9 +98,7 @@ class TableIngester:
         """Stable key for this table in per-table caches (e.g. table_fids)."""
         return self.recipe.get('layer') or str(self.recipe['entity'])
 
-    # ------------------------------------------------------------------
     # Public entry point
-    # ------------------------------------------------------------------
 
     def process(self, process_in_chunks: bool = False, bbox=None):
         """Read, preprocess, and save data for this table.
@@ -142,9 +138,7 @@ class TableIngester:
         self._save_recipe_data(gdf)
         self.timer.mark(f'Save{suffix}')
 
-    # ------------------------------------------------------------------
     # FID filter helpers (per-table, cached in download_partition)
-    # ------------------------------------------------------------------
 
     def _ensure_table_fid_filter(self):
         """Build FID filter for this table if not already cached."""
@@ -206,9 +200,7 @@ class TableIngester:
             f'admin{admin_level_to_process}_id'
         ]
 
-    # ------------------------------------------------------------------
     # Admin geometry loading (cached in download_partition)
-    # ------------------------------------------------------------------
 
     def _load_admin_geometries(self):
         """Load admin geometries for spatial overlay or spatial mask.
@@ -253,9 +245,7 @@ class TableIngester:
             admin_geometries = admin_geometries.to_crs(data_crs)
         self.download_partition['admin_geometries'] = admin_geometries
 
-    # ------------------------------------------------------------------
     # Read
-    # ------------------------------------------------------------------
 
     def _read_recipe_data(self, columns=None, **kwargs):
         """Read data from the resolved data path for this table's layer.
@@ -357,9 +347,7 @@ class TableIngester:
         )
         return gdf
 
-    # ------------------------------------------------------------------
     # Preprocess
-    # ------------------------------------------------------------------
 
     def _preprocess_recipe_data(self, df):
         """Rename columns, filter rows, apply transformations, set index.
@@ -621,9 +609,7 @@ class TableIngester:
         self.timer.mark('Preprocessing')
         return df
 
-    # ------------------------------------------------------------------
     # Save
-    # ------------------------------------------------------------------
 
     def _save_recipe_data(self, gdf):
         """Save processed data to the entity's output path.
@@ -699,9 +685,7 @@ class TableIngester:
                     f'Output file type not yet supported: {output_path.suffix}'
                 )
 
-    # ------------------------------------------------------------------
     # Utilities
-    # ------------------------------------------------------------------
 
     def _get_labels(self, column):
         """Get code → label dict for a categorical column.
