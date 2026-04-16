@@ -27,19 +27,18 @@ extensions = [
     'autoapi.extension',
     'sphinx.ext.napoleon',
 ]
+templates_path = ['_templates']
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
 
-autoapi_dirs = ['../src']
+# -- AutoAPI configuration ---------------------------------------------------
+autoapi_dirs = ['../src/openplaces']
 autoapi_type = 'python'
 autoapi_options = [
     'members',
     'show-inheritance',
     'show-module-summary',
 ]
-autoapi_keep_files = True
-
-templates_path = ['_templates']
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
-
+autoapi_root = '4_api'
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
