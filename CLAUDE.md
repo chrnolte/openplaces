@@ -3,7 +3,7 @@
 - Use the `|` union syntax for `isinstance` checks, never a tuple:
   `isinstance(x, Foo | Bar)` ✓
   `isinstance(x, (Foo, Bar))` ✗
-- Do not use sequences of `─` in comments
+- Do not use sequences of lines (`─`, `-`, `=`) in comments
 
 # Docstrings
 - Use NumPy-style docstrings.
