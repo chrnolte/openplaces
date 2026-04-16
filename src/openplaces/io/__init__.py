@@ -1,8 +1,5 @@
 """
-src/openplaces/io.py
-
 Input/output utilities
-
 """
 
 import bz2
@@ -590,7 +587,7 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
         )
 
 
-def save_parquet(gdf, parquet_path):
+def save_parquet(gdf, parquet_path, simplified_geometry=None):
     """Save parquet file (with geometries in joinable geoparquet file)
 
     Parameters
@@ -599,6 +596,11 @@ def save_parquet(gdf, parquet_path):
         Data to save
     parquet_path : str
         Filepath of Parquet file
+    simplified_geometry : GeoSeries or None
+        When provided, a companion ``_geo_simplified.parquet`` sidecar is
+        written alongside the standard ``_geo.parquet``, containing only the
+        join-id column and the simplified geometries.  Intended for
+        visualization use; readable via ``read_parquet(path, geom='simplified')``.
     """
     if isinstance(parquet_path, str):
         parquet_path = Path(parquet_path)
@@ -637,6 +639,18 @@ def save_parquet(gdf, parquet_path):
             schema_version='1.1.0',
             write_covering_bbox=True,
         )
+
+        if simplified_geometry is not None:
+            gdf_geo_simp = gdf_geo[[join_id_column]].copy()
+            gdf_geo_simp['geometry'] = simplified_geometry.values
+            gdf_geo_simp = gpd.GeoDataFrame(gdf_geo_simp, crs=gdf.crs)
+            to_parquet(
+                gdf_geo_simp[mask_unique_join_id][[join_id_column, 'geometry']],
+                parquet_path.with_stem(parquet_path.stem + '_geo_simplified'),
+                index=False,
+                schema_version='1.1.0',
+                write_covering_bbox=True,
+            )
     else:
         to_parquet(gdf, parquet_path)
 
@@ -674,9 +688,10 @@ def read_parquet(
     ----------
     parquet_path : str
         Filepath of Parquet file
-    geom : bool
-        If True, join geometries from Geoparquet file
-        (`parquet_path` with '_geo' suffix)
+    geom : bool or 'simplified'
+        If True, join full geometries from the ``_geo`` sidecar.
+        If ``'simplified'``, join simplified geometries from the
+        ``_geo_simplified`` sidecar written by ``save_parquet``.
     drop_join_id : bool
         Drop column '_join_id' if it exists.
     filters : list of filters, optional
@@ -714,7 +729,8 @@ def read_parquet(
         else:
             raise ValueError('Could not identify column to join GeoParquet.')
 
-        geoparquet_path = parquet_path.with_stem(parquet_path.stem + '_geo')
+        geo_suffix = '_geo_simplified' if geom == 'simplified' else '_geo'
+        geoparquet_path = parquet_path.with_stem(parquet_path.stem + geo_suffix)
 
         if bbox is not None:
             minx, miny, maxx, maxy = bbox
