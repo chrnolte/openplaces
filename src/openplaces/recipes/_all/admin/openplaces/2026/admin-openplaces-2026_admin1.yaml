@@ -1,0 +1,27 @@
+# Recipe: Harmonized admin level-1 geometries (countries)
+#
+# Discovers all stage='ingest' admin recipes at level 1, assigns each
+# country to the most specific/newest source, merges into a single global
+# GeoDataFrame, and optionally simplifies geometry for visualization.
+
+stage: harmonize
+admin_id: NULL
+
+entity:
+  entity_type: admin
+  source:
+    source_id: openplaces
+  version: 2026
+
+admin_level: 1
+
+save_to:
+  data_dir: core
+  filename: admin1
+
+pipeline:
+  - step: discover_sources
+  - step: merge_global
+  - step: simplify_geometries
+    thresholds:
+      tolerance: 0.01

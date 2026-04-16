@@ -1,6 +1,4 @@
 """
-src/openplaces/io/readers.py
-
 Low-level data-access functions for admin units and entities.
 Imported by internal modules (io/*, geo/*). Also re-exported from api.py.
 """
@@ -20,7 +18,7 @@ from openplaces.recipe import (
 )
 from openplaces.utils import format_list
 
-ADMIN_SOURCE_DEFAULT = 'admin-openplaces-2026'
+ADMIN_SOURCE_DEFAULT = 'admin-spine-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-gadm-4~1'
 ADMIN_PRIMARY_COLUMNS = {
     1: ['name', 'admin1_id_a3'],
@@ -80,6 +78,12 @@ def get_admin(
         If True, returns not only the most important columns
     silent : True
         Silence warnings
+    geom : bool or 'simplified'
+        If False, return a DataFrame without geometries.
+        If True, return a GeoDataFrame with full geometries.
+        If ``'simplified'``, return a GeoDataFrame with simplified geometries
+        from the ``_geo_simplified`` companion file written by
+        ``AdminHarmonizer``.
     """
 
     if level is not None and level < 1:
@@ -110,7 +114,7 @@ def get_admin(
             level = admin_id_level
 
     # Pick default recipe for geometry attributes if None is provided
-    if geom is True and recipe is None:
+    if geom and recipe is None:
         if level is None:
             # Default to countries
             level = 1
