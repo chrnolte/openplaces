@@ -117,6 +117,36 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
         join_info.setPrefix('')
 
         geo_layer.addJoin(join_info)
+        geo_layer.updateFields()
+
+        # Propagate field presentation metadata from joined attribute layer
+        # so categorical values can be rendered using their configured labels
+        # (e.g. Value Map / Value Relation widgets).
+        for attr_idx, attr_field in enumerate(attr_layer.fields()):
+            attr_name = attr_field.name()
+
+            # Skip the join key itself
+            if attr_name == join_field:
+                continue
+
+            geo_idx = geo_layer.fields().indexOf(attr_name)
+            if geo_idx < 0:
+                continue
+
+            # Copy alias, if any
+            alias = attr_layer.attributeAlias(attr_idx)
+            if alias:
+                geo_layer.setFieldAlias(geo_idx, alias)
+
+            # Copy editor widget setup (Value Map / Value Relation / etc.)
+            setup = attr_layer.editorWidgetSetup(attr_idx)
+            if setup and setup.type():
+                geo_layer.setEditorWidgetSetup(geo_idx, setup)
+
+            # Copy default visibility from the joined attribute layer
+            flags = attr_layer.fieldConfigurationFlags(attr_idx)
+            if flags != geo_layer.fieldConfigurationFlags(geo_idx):
+                geo_layer.setFieldConfigurationFlags(geo_idx, flags)
 
         # Keep attribute layer reference to prevent cleanup issues
         geo_layer.setCustomProperty('joined_attr_layer_id', attr_layer.id())
