@@ -1,0 +1,12 @@
+name,description,unit,data_type,aggregation
+purpose_group,OpenPlaces purpose group,,categorical,join_nonnull
+purpose_subgroup,OpenPlaces purpose subgroup,,categorical,join_nonnull
+purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull
+openplaces_group,OpenPlaces top-level group,,categorical,first
+improvement_value,Assessed improvement value,USD,float,sum
+land_value,Assessed land value,USD,float,sum
+structure_value,NSI structure replacement value,USD,float,sum
+year_built,Year building was built,,float,mean
+address,Street address,,string,join_nonnull
+area_sqft,Floor area,sqft,float,mean
+n_stories,Number of stories,,float,mean
