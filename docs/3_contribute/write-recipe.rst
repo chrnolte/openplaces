@@ -248,7 +248,7 @@ File handling
          admin_id_crosswalk:
            admin_level: 3
            admin_id_column: admin3_id_admin1
-           admin_recipe_id: "US_admin-nhgis-2020_admin3"
+           admin_recipe_id: "US_admin-census-2021_admin3"
 
       In the dynamic form:
 
@@ -474,7 +474,7 @@ Use :attr:`admin_id_crosswalk` when the source data already contains an admin id
    .. attribute:: admin_recipe_id
       :noindex:
 
-      Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-nhgis-2020_admin3"`.
+      Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-census-2021_admin3"`.
 
 .. attribute:: overlay_admin_ids
 
@@ -494,7 +494,7 @@ Use :attr:`admin_id_crosswalk` when the source data already contains an admin id
 
       Should use a high-resolution in-country boundary dataset for accurate allocation (e.g. building footprints require county-level precision).
 
-      Example: :input:`'US_admin-nhgis-2020_admin3'` for US counties.
+      Example: :input:`'US_admin-census-2021_admin3'` for US counties.
 
 
 Saving
