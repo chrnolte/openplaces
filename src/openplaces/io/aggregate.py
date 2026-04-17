@@ -48,6 +48,7 @@ def aggregate(
     admin_ids_to_save=None,
     admin_ids_to_aggregate=None,
     keep_original=False,
+    combined=False,
     verbose=False,
 ):
     """Aggregate per-process-unit intermediate files into save-level files.
@@ -81,6 +82,11 @@ def aggregate(
         all process-level children of each *admin_ids_to_save* entry.
     keep_original : bool
         If True, do not delete the intermediate files after aggregation.
+    combined : bool
+        If True, write the aggregated output as a single geoparquet file
+        (attributes and geometry together) rather than the default split
+        layout of an attribute table plus a ``_geo`` sidecar.  Passed
+        through to :func:`save_parquet`.
     verbose : bool
         If True, print a summary line for each aggregated file.
     """
@@ -197,7 +203,7 @@ def aggregate(
                     merged[col] = pd.Categorical(
                         merged[col], categories=cats, ordered=ordered
                     )
-            save_parquet(merged, final_path)
+            save_parquet(merged, final_path, combined=combined)
         except PermissionError as e:
             raise PermissionError(
                 f'Cannot write to {final_path.name}.\n\n'
@@ -230,6 +236,7 @@ def aggregate_to_admin_level(
     recipe,
     admin_ids_to_process=None,
     keep_intermediates=False,
+    combined=False,
     verbose=False,
 ):
     """Aggregate per-process-unit intermediate files into save-level files.
@@ -249,6 +256,9 @@ def aggregate_to_admin_level(
         save-level admin IDs.
     keep_intermediates : bool
         If True, do not delete the intermediate files after aggregation.
+    combined : bool
+        If True, write the aggregated output as a single geoparquet file.
+        Passed through to :func:`aggregate`.
     verbose : bool
         If True, print a summary line for each aggregated file.
     """
@@ -257,5 +267,6 @@ def aggregate_to_admin_level(
         admin_level=get_save_admin_level(recipe),
         admin_ids_to_aggregate=admin_ids_to_process,
         keep_original=keep_intermediates,
+        combined=combined,
         verbose=verbose,
     )

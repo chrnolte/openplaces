@@ -587,7 +587,7 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
         )
 
 
-def save_parquet(gdf, parquet_path, simplified_geometry=None):
+def save_parquet(gdf, parquet_path, simplified_geometry=None, combined=False):
     """Save parquet file (with geometries in joinable geoparquet file)
 
     Parameters
@@ -601,12 +601,23 @@ def save_parquet(gdf, parquet_path, simplified_geometry=None):
         written alongside the standard ``_geo.parquet``, containing only the
         join-id column and the simplified geometries.  Intended for
         visualization use; readable via ``read_parquet(path, geom='simplified')``.
+        Ignored when *combined* is True.
+    combined : bool
+        If True and *gdf* is a GeoDataFrame, write a single geoparquet file
+        that includes all attribute columns and the geometry column together,
+        with no ``_geo`` sidecar and no ``_join_id``.  Use this when
+        downstream consumers expect a standard geoparquet rather than the
+        split two-file layout.
     """
     if isinstance(parquet_path, str):
         parquet_path = Path(parquet_path)
 
     # Break link to avoid warnings of setting on slice
     gdf = gdf.copy()
+
+    if combined and isinstance(gdf, gpd.GeoDataFrame):
+        to_parquet(gdf, parquet_path, schema_version='1.1.0')
+        return
 
     if isinstance(gdf, gpd.GeoDataFrame) and (
         'geo_id' in gdf or gdf.index.name == 'geo_id'
