@@ -28,6 +28,7 @@ from openplaces.io import (
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
+from openplaces.io.raster_ingester import fetch_rasters_by_admin
 from openplaces.io.readers import get_admin, get_entities
 from openplaces.io.table_ingester import TableIngester
 from openplaces.path import (
@@ -773,12 +774,11 @@ class Ingester:
             print('Downloaded path:', self.download_partition['downloaded_path'])
             print('Data path:', self.download_partition['data_path'])
 
-        self._download_and_unzip_recipe_data(redownload=redownload)
-
         if self.recipe.get('dataset') and self.recipe['dataset'].is_raster:
-            if self.verbose:
-                print('Raster is in heap folder. No further processing.')
+            fetch_rasters_by_admin(self)
             return
+
+        self._download_and_unzip_recipe_data(redownload=redownload)
 
         if self._is_tile_partition:
             admin_ids_in_tile_set = set(

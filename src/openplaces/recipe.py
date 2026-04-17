@@ -451,12 +451,14 @@ def get_output_path(recipe, admin_id=None, partition_id=None, geo=False, layer=N
             # same separator, e.g. US-NC-BS_building-obm-2025_032012.parquet
             filename = partition_id_save
 
+    is_raster = bool(recipe.get('dataset') and recipe['dataset'].is_raster)
     p = path(
         admin_id if admin_id else recipe.get('admin_id'),
         recipe.get('entity'),
         recipe.get('dataset'),
         filename=filename,
         root=cfg.get_dir(data_dir),
+        default_extension='tif' if is_raster else 'parquet',
     )
     if geo:
         p = p.with_stem(p.stem + '_geo')
