@@ -715,6 +715,10 @@ def show_ingested_geometries(
 
     entities = get_entities(ingester.recipe, admin_id, geom=True)
 
+    if entities.empty:
+        print(f'No entities found for {admin_id}.')
+        return None
+
     entity_label = str(ingester.recipe['entity'].entity_type) + 's'
     if admin is not None:
         title = (
