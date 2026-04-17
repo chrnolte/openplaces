@@ -279,6 +279,30 @@ class Ingester:
         return show_random_entity(self)
 
     def sample_layer(self, n=5):
+        """Return a transposed sample of the principal entity DataFrame.
+
+        Parameters
+        ----------
+        n : int
+            Number of rows to sample.
+
+        Returns
+        -------
+        pd.DataFrame
+            Transposed sample of the principal entity table.
+        """
+        admin_id_by_level = {
+            AdminId(aid).get_level(): aid
+            for aid in (self.admin_ids_to_save or [])
+            + (self.admin_ids_to_process or [])
+            if aid is not None
+        }
+
+        layer_level = get_save_admin_level(self.recipe)
+        data = get_entities(self.recipe, admin_id_by_level[layer_level])
+        return data.sample(n).T
+
+    def sample_additional_layer(self, n=5):
         """Return a transposed sample of the first additional layer.
 
         Parameters
@@ -384,7 +408,6 @@ class Ingester:
 
         aggregate_to_admin_level(
             self.recipe,
-            admin_ids_to_save=self.admin_ids_to_save,
             admin_ids_to_process=self.admin_ids_to_process,
             verbose=self.verbose,
         )
@@ -395,7 +418,6 @@ class Ingester:
                 continue
             aggregate_to_admin_level(
                 table_recipe,
-                admin_ids_to_save=self.admin_ids_to_save,
                 admin_ids_to_process=self.admin_ids_to_process,
                 verbose=self.verbose,
             )
