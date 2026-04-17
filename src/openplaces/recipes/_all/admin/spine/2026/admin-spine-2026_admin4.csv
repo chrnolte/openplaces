@@ -163460,7 +163460,7 @@ US-VT-AD-RI,Ripton,,,,,5000159650,,first2
 US-VT-AD-SA,Salisbury,,,,,5000162575,,first2
 US-VT-AD-SH,Shoreham,,,,,5000165050,,first2
 US-VT-AD-ST,Starksboro,,,,,5000170075,,first2
-US-VT-AD-VE,Vergennes city,City,,,,5000174650,,first2
+US-VT-AD-VE,Vergennes,City,,,,5000174650,,first2
 US-VT-AD-WA,Waltham,,,,,5000176075,,first2
 US-VT-AD-WE,Weybridge,,,,,5000183275,,first2
 US-VT-AD-WH,Whiting,,,,,5000183800,,first2
@@ -163492,31 +163492,32 @@ US-VT-CA-NE,Newark,,,,,5000547725,,first2
 US-VT-CA-PE,Peacham,,,,,5000554400,,first2
 US-VT-CA-RY,Ryegate,,,,,5000561525,,first2
 US-VT-CA-SH,Sheffield,,,,,5000564075,,first2
-US-VT-CA-SJ,St. Johnsbury,,,,,5000562200,,initials
+US-VT-CA-SJ,Saint Johnsbury,,,,,5000562200,,initials
 US-VT-CA-ST,Stannard,,,,,5000569925,,first2
 US-VT-CA-SU,Sutton,,,,,5000571575,,first2
 US-VT-CA-WA,Walden,,,,,5000575700,,any2
 US-VT-CA-WH,Wheelock,,,,,5000583500,,first2
 US-VT-CA-WT,Waterford,,,,,5000577125,,any2
 US-VT-CH-BO,Bolton,,,,,5000706550,,first2
-US-VT-CH-BR,Burlington city,City,,,,5000710675,,any2
-US-VT-CH-BU,Buels,,,,,5000710300,,any2
+US-VT-CH-BR,Burlington,City,,,,5000710675,,any2
+US-VT-CH-BU,Buels Gore,,,,,5000710300,,any2
 US-VT-CH-CH,Charlotte,,,,,5000713300,,first2
 US-VT-CH-CO,Colchester,,,,,5000714875,,first2
+US-VT-CH-EJ,Essex Junction,,,,,5000724400,,first2
 US-VT-CH-ES,Essex,,,,,5000724175,,first2
 US-VT-CH-HI,Hinesburg,,,,,5000733475,,first2
 US-VT-CH-HU,Huntington,,,,,5000734600,,first2
 US-VT-CH-JE,Jericho,,,,,5000736700,,first2
 US-VT-CH-MI,Milton,,,,,5000745250,,first2
 US-VT-CH-RI,Richmond,,,,,5000759275,,first2
-US-VT-CH-SB,South Burlington city,City,,,,5000766175,,initials
-US-VT-CH-SG,St. George,,,,,5000762050,,initials
+US-VT-CH-SB,South Burlington,City,,,,5000766175,,initials
+US-VT-CH-SG,Saint George,,,,,5000762050,,initials
 US-VT-CH-SH,Shelburne,,,,,5000764300,,first2
 US-VT-CH-UN,Underhill,,,,,5000773975,,first2
 US-VT-CH-WE,Westford,,,,,5000780350,,first2
 US-VT-CH-WI,Williston,,,,,5000784475,,any2
-US-VT-CH-WN,Winooski city,City,,,,5000785150,,any2
-US-VT-ES-AE,Avery's,,,,,5000902162,,any2
+US-VT-CH-WN,Winooski,City,,,,5000785150,,any2
+US-VT-ES-AE,Averys Gore,,,,,5000902162,,any2
 US-VT-ES-AV,Averill,,,,,5000902125,,any2
 US-VT-ES-BL,Bloomfield,,,,,5000906325,,first2
 US-VT-ES-BR,Brighton,,,,,5000908725,,any2
@@ -163533,8 +163534,8 @@ US-VT-ES-LW,Lewis,,,,,5000939775,,any2
 US-VT-ES-MA,Maidstone,,,,,5000942475,,first2
 US-VT-ES-NO,Norton,,,,,5000952750,,first2
 US-VT-ES-VI,Victory,,,,,5000975175,,first2
-US-VT-ES-WA,Warner's,,,,,5000976337,,any2
-US-VT-ES-WR,Warren's,,,,,5000976562,,any2
+US-VT-ES-WA,Warners Grant,,,,,5000976337,,any2
+US-VT-ES-WR,Warren Gore,,,,,5000976562,,any2
 US-VT-FR-BA,Bakersfield,,,,,5001102500,,first2
 US-VT-FR-BE,Berkshire,,,,,5001105425,,first2
 US-VT-FR-EN,Enosburgh,,,,,5001124050,,first2
@@ -163546,9 +163547,9 @@ US-VT-FR-GE,Georgia,,,,,5001127700,,first2
 US-VT-FR-HI,Highgate,,,,,5001133025,,first2
 US-VT-FR-MO,Montgomery,,,,,5001145850,,first2
 US-VT-FR-RI,Richford,,,,,5001159125,,first2
-US-VT-FR-SA,St. Albans city,City,,,,5001161675,,initials
+US-VT-FR-SA,Saint Albans City,City,,,,5001161675,,initials
 US-VT-FR-SH,Sheldon,,,,,5001164600,,first2
-US-VT-FR-ST,St. Albans,,,,,5001161750,,first2
+US-VT-FR-ST,Saint Albans Town,Town,,,,5001161750,,first2
 US-VT-FR-SW,Swanton,,,,,5001171725,,first2
 US-VT-GR-AL,Alburgh,,,,,5001300860,,first2
 US-VT-GR-GI,Grand Isle,,,,,5001329275,,initials
@@ -163596,8 +163597,8 @@ US-VT-OL-IR,Irasburg,,,,,5001935575,,first2
 US-VT-OL-JA,Jay,,,,,5001936325,,first2
 US-VT-OL-LO,Lowell,,,,,5001940525,,first2
 US-VT-OL-MO,Morgan,,,,,5001946450,,first2
-US-VT-OL-NE,Newport city,City,,,,5001948850,,any2
-US-VT-OL-NW,Newport,,,,,5001948925,,any2
+US-VT-OL-NE,Newport City,City,,,,5001948850,,any2
+US-VT-OL-NW,Newport Town,,,,,5001948925,,any2
 US-VT-OL-TR,Troy,,,,,5001973525,,first2
 US-VT-OL-WE,Westfield,,,,,5001980200,,any2
 US-VT-OL-WS,Westmore,,,,,5001981700,,any2
@@ -163620,8 +163621,8 @@ US-VT-RU-PI,Pittsfield,,,,,5002155450,,any2
 US-VT-RU-PO,Poultney,,,,,5002156875,,first2
 US-VT-RU-PR,Proctor,,,,,5002157250,,first2
 US-VT-RU-PT,Pittsford,,,,,5002155600,,any2
-US-VT-RU-RT,Rutland,,,,,5002161300,,any2
-US-VT-RU-RU,Rutland city,City,,,,5002161225,,any2
+US-VT-RU-RT,Rutland Town,,,,,5002161300,,any2
+US-VT-RU-RU,Rutland City,City,,,,5002161225,,any2
 US-VT-RU-SH,Shrewsbury,,,,,5002165275,,first2
 US-VT-RU-SU,Sudbury,,,,,5002171050,,first2
 US-VT-RU-TI,Tinmouth,,,,,5002172925,,first2
@@ -163629,9 +163630,9 @@ US-VT-RU-WA,Wallingford,,,,,5002175925,,first2
 US-VT-RU-WE,Wells,,,,,5002177950,,first2
 US-VT-RU-WH,West Haven,,,,,5002180875,,initials
 US-VT-RU-WR,West Rutland,,,,,5002182300,,initials
-US-VT-WA-BA,Barre,,,,,5002303250,,any2
+US-VT-WA-BA,Barre Town,,,,,5002303250,,any2
 US-VT-WA-BE,Berlin,,,,,5002305650,,first2
-US-VT-WA-BR,Barre city,City,,,,5002303175,,any2
+US-VT-WA-BR,Barre City,City,,,,5002303175,,any2
 US-VT-WA-CA,Cabot,,,,,5002311125,,any2
 US-VT-WA-CL,Calais,,,,,5002311350,,any2
 US-VT-WA-DU,Duxbury,,,,,5002318550,,first2
@@ -163639,7 +163640,7 @@ US-VT-WA-EM,East Montpelier,,,,,5002321925,,initials
 US-VT-WA-FA,Fayston,,,,,5002325825,,first2
 US-VT-WA-MA,Marshfield,,,,,5002343600,,first2
 US-VT-WA-MI,Middlesex,,,,,5002344500,,first2
-US-VT-WA-MO,Montpelier city,City,,,,5002346000,,any2
+US-VT-WA-MO,Montpelier,City,,,,5002346000,,any2
 US-VT-WA-MR,Moretown,,,,,5002346225,,any2
 US-VT-WA-NO,Northfield,,,,,5002350275,,first2
 US-VT-WA-PL,Plainfield,,,,,5002355825,,first2
