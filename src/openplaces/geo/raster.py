@@ -2,11 +2,15 @@ import warnings
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import rasterio
+from rasterio.features import geometry_mask
+from rasterio.mask import mask
+from shapely.geometry import box
+
 from exactextract import exact_extract
 
 from openplaces.geo.polygon import clean_polygons
-
 
 def zonal_stats_with_exactextract(
     vector,
@@ -16,7 +20,6 @@ def zonal_stats_with_exactextract(
     weights=None,
     include_cols=None,
     col_prefix=None,
-    nodata=None,
     reproject=True,
     clean_geometry=True,
     strategy='raster-sequential',
@@ -34,8 +37,8 @@ def zonal_stats_with_exactextract(
     raster : str, Path, or rasterio.DatasetReader
         Raster to summarise
     stats : str, list, or Operation
-        Statistics to compute. Passed directly to `exactextract.exact_extract`
-        Ex. mean, min, max, count, mahority, quantile, sum, weighted mean
+        Statistics to compute. Passed directly to ``exactextract.exact_extract``
+        Ex. mean, min, max, count, majority, quantile, sum, weighted mean
     weights : str, Path, or rasterio.DatasetReader, optional
         A second raster used as pixel weights
         when computing a population-weighted mean temperature.
@@ -44,8 +47,6 @@ def zonal_stats_with_exactextract(
         alongside the computed stats
     col_prefix : str, optional
         Prefix prepended to every stat column name
-    nodata : float, optional
-        Override the nodata value stored in the raster file
     reproject : bool, default False
         If True and the vector CRS differs from the raster CRS, reproject
         the vector before computing stats.
@@ -104,14 +105,6 @@ def zonal_stats_with_exactextract(
             f'got {type(raster).__name__}.'
         )
 
-    # Nodata override
-    if nodata is not None:
-        from exactextract import RasterioRasterSource
-
-        _src = rasterio.open(raster_path)
-        raster_arg = RasterioRasterSource(_src, nodata=nodata)
-        print('Nodata overide occured')
-
     with rasterio.open(raster_path) as src:
         raster_crs = src.crs
 
@@ -160,3 +153,105 @@ def zonal_stats_with_exactextract(
     # Drop geometry from result, join all original gdf columns back
     result = result.drop(columns=['geometry']).join(gdf)
     return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf.crs)
+
+
+def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
+         buffer=None, snap=True, crs=None, dtype=None, nodata=None):
+    """
+    Clip raster to vector extent using rasterio.
+
+    """
+
+    # process vector clipping geometry
+    if isinstance(clip_filepath, gpd.GeoDataFrame):
+        clip_shp = clip_filepath.copy()
+    else:
+        clip_shp = gpd.read_file(clip_filepath)
+
+    with rasterio.open(from_filepath) as src:
+        src_crs = src.crs if crs is None else crs
+        transform = src.transform
+        src_nodata = src.nodata
+        src_dtype = src.dtypes[0]
+
+        # ensure CRS match
+        if clip_shp.crs != src_crs:
+            clip_shp = clip_shp.to_crs(src_crs)
+
+        # apply buffer
+        if buffer is not None:
+            clip_shp['geometry'] = clip_shp.buffer(buffer)
+
+        # calculate bounds and snapping
+        xmin, ymin, xmax, ymax = clip_shp.total_bounds
+        if snap:
+            res_x = res if res else abs(transform[0])
+            res_y = res if res else abs(transform[4])
+            xmin = np.floor((xmin - transform[2]) / res_x) * res_x + transform[2]
+            ymin = np.floor((ymin - transform[5]) / res_y) * res_y + transform[5]
+            xmax = np.ceil((xmax - transform[2]) / res_x) * res_x + transform[2]
+            ymax = np.ceil((ymax - transform[5]) / res_y) * res_y + transform[5]
+            snapped_geometry = [box(xmin, ymin, xmax, ymax)]
+        else:
+            snapped_geometry = clip_shp.geometry.values
+
+        out_image, out_transform = mask(
+            src,
+            snapped_geometry,
+            crop=True,
+            all_touched=True,
+            filled=False
+        )
+
+        out_meta = src.meta.copy()
+
+    # mask pixels not inside or touching the actual clip geometry
+    poly_mask = geometry_mask(
+        clip_shp.geometry,
+        transform=out_transform,
+        invert=False,
+        out_shape=(out_image.shape[1], out_image.shape[2]),
+        all_touched=True,
+    )
+    out_image = np.ma.masked_where(poly_mask[np.newaxis, :, :], out_image)
+
+    # determine output dtype
+    out_dtype = dtype if dtype is not None else src_dtype
+
+    # determine nodata value
+    if nodata is not None:
+        nodata_val = nodata
+    elif src_nodata is not None:
+        nodata_val = src_nodata
+    else:
+        np_dtype = np.dtype(out_dtype)
+        if np.issubdtype(np_dtype, np.unsignedinteger):
+            nodata_val = int(np.iinfo(np_dtype).max)
+        elif np.issubdtype(np_dtype, np.signedinteger):
+            nodata_val = int(np.iinfo(np_dtype).min)
+        else:
+            nodata_val = float('nan')
+
+    # convert to output dtype and fill masked pixels with nodata sentinel
+    out_image_filled = out_image.astype(out_dtype).filled(nodata_val)
+
+    # update metadata — use deflate compression to limit output size
+    out_meta.update({
+        "driver": "GTiff",
+        "height": out_image_filled.shape[1],
+        "width": out_image_filled.shape[2],
+        "transform": out_transform,
+        "nodata": nodata_val,
+        "dtype": out_dtype,
+        "compress": "deflate",
+        "zlevel": 6,
+        "tiled": True,
+        "blockxsize": 256,
+        "blockysize": 256,
+    })
+
+    # save to disk
+    with rasterio.open(to_filepath, "w", **out_meta) as dest:
+        dest.write(out_image_filled)
+
+    return True
