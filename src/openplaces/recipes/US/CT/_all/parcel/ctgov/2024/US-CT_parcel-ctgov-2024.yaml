@@ -1,0 +1,50 @@
+# Recipe to import Connecticut's parcel data
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US-CT
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: parcel
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: ctgov
+    portal_url: "https://data.ct.gov/Local-Government/2024-Connecticut-Parcel-and-CAMA-Data/pqrn-qghw/about_data"
+    # URL to download
+    download_url: "https://data.ct.gov/api/views/pqrn-qghw/files/04df94a2-ab74-4ca2-9ac0-5ac0938439a6?download=true&filename=2024%20Parcel%20Layer.gdb.zip"
+  version: 2024
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "2024_Parcel_Layer.gdb.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "2024 Basic Parcel Layer.gdb"
+
+# Layer that identifies parcels
+layer: Basic_Parcels_2024
+
+# Read and process data in chunks
+# (avoids reading very large geodatabases into memory)
+process_by:
+  # Administrative level at which processing is chunked
+  admin_level: 4
+  # Column in original data used to identify the administrative level
+  admin_id_column: Town_Name
+  # Crosswalk from administrative identifiers in the original data
+  # (e.g. county FIPS) to `openplaces` AdminIDs.
+  admin_id_crosswalk:
+    recipe_id: "US-CT_parcel-ctgov-2024_admin4-crosswalk"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  address: Location
+  parcel_id_admin2: CAMA_Link
+  parcel_id_admin4: Parcel_ID
+  parcel_id_admin4_2: Link
+  parcel_type: Parcel_Typ
+  unit_type: Unit_Type
+  source_date: Edit_Date
+
+save_to:
+  admin_level: 3

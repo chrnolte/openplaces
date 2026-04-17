@@ -1,0 +1,170 @@
+admin4_id,name
+US-CT-FA-BE,Bethel
+US-CT-FA-BO,Brookfield
+US-CT-FA-BR,Bridgeport
+US-CT-FA-DA,Danbury
+US-CT-FA-DR,Darien
+US-CT-FA-EA,Easton
+US-CT-FA-FA,Fairfield
+US-CT-FA-GR,Greenwich
+US-CT-FA-MO,Monroe
+US-CT-FA-NC,New canaan
+US-CT-FA-NE,Newtown
+US-CT-FA-NF,New fairfield
+US-CT-FA-NO,Norwalk
+US-CT-FA-RE,Redding
+US-CT-FA-RI,Ridgefield
+US-CT-FA-SE,Sherman
+US-CT-FA-SH,Shelton
+US-CT-FA-SR,Stratford
+US-CT-FA-ST,Stamford
+US-CT-FA-TR,Trumbull
+US-CT-FA-WE,Weston
+US-CT-FA-WI,Wilton
+US-CT-FA-WS,Westport
+US-CT-HA-AV,Avon
+US-CT-HA-BE,Berlin
+US-CT-HA-BL,Bloomfield
+US-CT-HA-BR,Bristol
+US-CT-HA-BU,Burlington
+US-CT-HA-CA,Canton
+US-CT-HA-EG,East granby
+US-CT-HA-EH,East hartford
+US-CT-HA-EN,Enfield
+US-CT-HA-EW,East windsor
+US-CT-HA-FA,Farmington
+US-CT-HA-GL,Glastonbury
+US-CT-HA-GR,Granby
+US-CT-HA-HA,Hartford
+US-CT-HA-HR,Hartland
+US-CT-HA-MA,Manchester
+US-CT-HA-MR,Marlborough
+US-CT-HA-NB,New britain
+US-CT-HA-NE,Newington
+US-CT-HA-PL,Plainville
+US-CT-HA-RH,Rocky hill
+US-CT-HA-SI,Simsbury
+US-CT-HA-SO,Southington
+US-CT-HA-SU,Suffield
+US-CT-HA-SW,South windsor
+US-CT-HA-WE,Wethersfield
+US-CT-HA-WH,West hartford
+US-CT-HA-WI,Windsor
+US-CT-HA-WL,Windsor locks
+US-CT-LI-BA,Barkhamsted
+US-CT-LI-BE,Bethlehem
+US-CT-LI-BR,Bridgewater
+US-CT-LI-CA,Canaan
+US-CT-LI-CO,Colebrook
+US-CT-LI-CR,Cornwall
+US-CT-LI-GO,Goshen
+US-CT-LI-HA,Harwinton
+US-CT-LI-KE,Kent
+US-CT-LI-LI,Litchfield
+US-CT-LI-MO,Morris
+US-CT-LI-NC,North canaan
+US-CT-LI-NH,New hartford
+US-CT-LI-NM,New milford
+US-CT-LI-NO,Norfolk
+US-CT-LI-PL,Plymouth
+US-CT-LI-RO,Roxbury
+US-CT-LI-SA,Salisbury
+US-CT-LI-SH,Sharon
+US-CT-LI-TH,Thomaston
+US-CT-LI-TO,Torrington
+US-CT-LI-WA,Warren
+US-CT-LI-WI,Winchester
+US-CT-LI-WO,Woodbury
+US-CT-LI-WS,Washington
+US-CT-LI-WT,Watertown
+US-CT-MI-CH,Chester
+US-CT-MI-CL,Clinton
+US-CT-MI-CR,Cromwell
+US-CT-MI-DR,Deep river
+US-CT-MI-DU,Durham
+US-CT-MI-EA,East hampton
+US-CT-MI-EH,East haddam
+US-CT-MI-ES,Essex
+US-CT-MI-HA,Haddam
+US-CT-MI-KI,Killingworth
+US-CT-MI-MD,Middletown
+US-CT-MI-MI,Middlefield
+US-CT-MI-OS,Old saybrook
+US-CT-MI-PO,Portland
+US-CT-MI-WE,Westbrook
+US-CT-NH-AN,Ansonia
+US-CT-NH-BE,Bethany
+US-CT-NH-BF,Beacon falls
+US-CT-NH-BR,Branford
+US-CT-NH-CH,Cheshire
+US-CT-NH-DE,Derby
+US-CT-NH-EH,East haven
+US-CT-NH-GU,Guilford
+US-CT-NH-HA,Hamden
+US-CT-NH-MA,Madison
+US-CT-NH-ME,Meriden
+US-CT-NH-MI,Middlebury
+US-CT-NH-ML,Milford
+US-CT-NH-NA,Naugatuck
+US-CT-NH-NB,North branford
+US-CT-NH-NH,New haven
+US-CT-NH-NO,North haven
+US-CT-NH-OR,Orange
+US-CT-NH-OX,Oxford
+US-CT-NH-PR,Prospect
+US-CT-NH-SE,Seymour
+US-CT-NH-SO,Southbury
+US-CT-NH-WA,Wallingford
+US-CT-NH-WD,Woodbridge
+US-CT-NH-WH,West haven
+US-CT-NH-WO,Wolcott
+US-CT-NH-WT,Waterbury
+US-CT-NL-BO,Bozrah
+US-CT-NL-CO,Colchester
+US-CT-NL-EL,East lyme
+US-CT-NL-FR,Franklin
+US-CT-NL-GO,Groton
+US-CT-NL-GR,Griswold
+US-CT-NL-LD,Ledyard
+US-CT-NL-LE,Lebanon
+US-CT-NL-LI,Lisbon
+US-CT-NL-LY,Lyme
+US-CT-NL-MO,Montville
+US-CT-NL-NL,New london
+US-CT-NL-NO,Norwich
+US-CT-NL-NS,North stonington
+US-CT-NL-OL,Old lyme
+US-CT-NL-PR,Preston
+US-CT-NL-SA,Salem
+US-CT-NL-SP,Sprague
+US-CT-NL-ST,Stonington
+US-CT-NL-VO,Voluntown
+US-CT-NL-WA,Waterford
+US-CT-TO-AN,Andover
+US-CT-TO-BO,Bolton
+US-CT-TO-CO,Columbia
+US-CT-TO-CV,Coventry
+US-CT-TO-EL,Ellington
+US-CT-TO-HE,Hebron
+US-CT-TO-MA,Mansfield
+US-CT-TO-SO,Somers
+US-CT-TO-ST,Stafford
+US-CT-TO-TO,Tolland
+US-CT-TO-UN,Union
+US-CT-TO-VE,Vernon
+US-CT-TO-WI,Willington
+US-CT-WI-AS,Ashford
+US-CT-WI-BR,Brooklyn
+US-CT-WI-CA,Canterbury
+US-CT-WI-CH,Chaplin
+US-CT-WI-EA,Eastford
+US-CT-WI-HA,Hampton
+US-CT-WI-KI,Killingly
+US-CT-WI-PL,Plainfield
+US-CT-WI-PO,Pomfret
+US-CT-WI-PU,Putnam
+US-CT-WI-SC,Scotland
+US-CT-WI-ST,Sterling
+US-CT-WI-TH,Thompson
+US-CT-WI-WI,Windham
+US-CT-WI-WO,Woodstock
