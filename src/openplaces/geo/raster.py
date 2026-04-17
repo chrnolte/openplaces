@@ -2,14 +2,15 @@ import warnings
 from pathlib import Path
 
 import geopandas as gpd
-import rasterio
-from rasterio.mask import mask
 import numpy as np
+import rasterio
+from rasterio.features import geometry_mask
+from rasterio.mask import mask
 from shapely.geometry import box
 
 from exactextract import exact_extract
 
-from openplaces.geo.polygon import remove_invalid_geometries
+from openplaces.geo.polygon import clean_polygons
 
 def zonal_stats_with_exactextract(
     vector,
@@ -87,7 +88,7 @@ def zonal_stats_with_exactextract(
         return gdf
 
     if clean_geometry:
-        gdf = remove_invalid_geometries(gdf)
+        gdf = clean_polygons(gdf)
         if gdf.empty:
             raise ValueError('No valid polygon geometries remain after cleaning.')
 
@@ -155,18 +156,13 @@ def zonal_stats_with_exactextract(
 
 
 def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
-           buffer=None, snap=True, crs=None):
+         buffer=None, snap=True, crs=None, dtype=None, nodata=None):
     """
-    Clip raster to vector extent using Rasterio.
+    Clip raster to vector extent using rasterio.
 
-    Outputs int8 with deflate compression to keep file sizes small.
-    Nodata: uses the source raster's nodata value if set; otherwise -128
-    (the minimum int8 sentinel).
-
-    Returns True on success.
     """
 
-    # Process Vector Clipping Geometry
+    # process vector clipping geometry
     if isinstance(clip_filepath, gpd.GeoDataFrame):
         clip_shp = clip_filepath.copy()
     else:
@@ -175,17 +171,18 @@ def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
     with rasterio.open(from_filepath) as src:
         src_crs = src.crs if crs is None else crs
         transform = src.transform
-        src_nodata = src.nodata  # preserve source nodata if defined
+        src_nodata = src.nodata
+        src_dtype = src.dtypes[0]
 
-        # Ensure CRS match
+        # ensure CRS match
         if clip_shp.crs != src_crs:
             clip_shp = clip_shp.to_crs(src_crs)
 
-        # Apply Buffer
+        # apply buffer
         if buffer is not None:
             clip_shp['geometry'] = clip_shp.buffer(buffer)
 
-        # Calculate Bounds and Snapping
+        # calculate bounds and snapping
         xmin, ymin, xmax, ymax = clip_shp.total_bounds
         if snap:
             res_x = res if res else abs(transform[0])
@@ -208,24 +205,44 @@ def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
 
         out_meta = src.meta.copy()
 
-    # Determine nodata value: use source nodata if available, else -128 (min int8)
-    if src_nodata is not None:
-        nodata_val = int(src_nodata)
+    # mask pixels not inside or touching the actual clip geometry
+    poly_mask = geometry_mask(
+        clip_shp.geometry,
+        transform=out_transform,
+        invert=False,
+        out_shape=(out_image.shape[1], out_image.shape[2]),
+        all_touched=True,
+    )
+    out_image = np.ma.masked_where(poly_mask[np.newaxis, :, :], out_image)
+
+    # determine output dtype
+    out_dtype = dtype if dtype is not None else src_dtype
+
+    # determine nodata value
+    if nodata is not None:
+        nodata_val = nodata
+    elif src_nodata is not None:
+        nodata_val = src_nodata
     else:
-        nodata_val = -128
+        np_dtype = np.dtype(out_dtype)
+        if np.issubdtype(np_dtype, np.unsignedinteger):
+            nodata_val = int(np.iinfo(np_dtype).max)
+        elif np.issubdtype(np_dtype, np.signedinteger):
+            nodata_val = int(np.iinfo(np_dtype).min)
+        else:
+            nodata_val = float('nan')
 
-    # Convert to int8 and fill masked pixels with nodata sentinel
-    out_image_int8 = out_image.astype('int8')
-    out_image_filled = out_image_int8.filled(nodata_val)
+    # convert to output dtype and fill masked pixels with nodata sentinel
+    out_image_filled = out_image.astype(out_dtype).filled(nodata_val)
 
-    # Update metadata — use deflate compression to limit output size
+    # update metadata — use deflate compression to limit output size
     out_meta.update({
         "driver": "GTiff",
         "height": out_image_filled.shape[1],
         "width": out_image_filled.shape[2],
         "transform": out_transform,
         "nodata": nodata_val,
-        "dtype": "int8",
+        "dtype": out_dtype,
         "compress": "deflate",
         "zlevel": 6,
         "tiled": True,
@@ -233,7 +250,7 @@ def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
         "blockysize": 256,
     })
 
-    # Save to disk
+    # save to disk
     with rasterio.open(to_filepath, "w", **out_meta) as dest:
         dest.write(out_image_filled)
 
