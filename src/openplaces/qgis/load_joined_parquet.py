@@ -10,6 +10,7 @@ from pathlib import Path
 from qgis.core import (
     Qgis,
     QgsProcessingAlgorithm,
+    QgsProcessingParameterBoolean,
     QgsProcessingParameterFile,
     QgsProject,
     QgsVectorLayer,
@@ -19,6 +20,7 @@ from qgis.core import (
 
 class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
     INPUT = 'INPUT'
+    USE_SIMPLIFIED = 'USE_SIMPLIFIED'
 
     def createInstance(self):
         return LoadJoinedParquetAlgorithm()
@@ -37,7 +39,10 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
 
     def shortHelpString(self):
         return (
-            'Load attribute and geometry parquet files with automatic join on _join_id'
+            'Load attribute and geometry parquet files and join both. '
+            'When "Use simplified geometries" is checked, the algorithm prefers a '
+            '*_geo_simplified.parquet file for faster rendering if one exists '
+            'alongside the standard *_geo.parquet file.'
         )
 
     def initAlgorithm(self, config=None):
@@ -46,35 +51,61 @@ class LoadJoinedParquetAlgorithm(QgsProcessingAlgorithm):
                 self.INPUT, 'Attribute or Geometry Parquet File', extension='parquet'
             )
         )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                self.USE_SIMPLIFIED,
+                'Use simplified geometries (*_geo_simplified.parquet) if available',
+                defaultValue=True,
+            )
+        )
 
     def processAlgorithm(self, parameters, context, feedback):
         input_file = Path(self.parameterAsFile(parameters, self.INPUT, context))
+        use_simplified = self.parameterAsBoolean(
+            parameters, self.USE_SIMPLIFIED, context
+        )
 
-        # Determine which file was dropped
-        if input_file.stem.endswith('_geo'):
-            geo_file = input_file
-            attr_file = input_file.parent / input_file.name.replace(
-                '_geo.parquet', '.parquet'
+        # Derive the base stem (strip _geo_simplified or _geo suffix if present)
+        if input_file.stem.endswith('_geo_simplified'):
+            base_stem = input_file.stem[: -len('_geo_simplified')]
+        elif input_file.stem.endswith('_geo'):
+            base_stem = input_file.stem[: -len('_geo')]
+        else:
+            base_stem = input_file.stem
+
+        attr_file = input_file.parent / f'{base_stem}.parquet'
+        geo_file = input_file.parent / f'{base_stem}_geo.parquet'
+        geo_simplified_file = input_file.parent / f'{base_stem}_geo_simplified.parquet'
+
+        # Choose geometry file: prefer simplified when requested and available
+        if use_simplified and geo_simplified_file.exists():
+            chosen_geo_file = geo_simplified_file
+            feedback.pushInfo(
+                f'Using simplified geometries: {geo_simplified_file.name}'
             )
         else:
-            attr_file = input_file
-            geo_file = input_file.parent / f'{input_file.stem}_geo.parquet'
+            chosen_geo_file = geo_file
+            if use_simplified:
+                feedback.pushInfo(
+                    f'Simplified geometry file not found ({geo_simplified_file.name}), '
+                    f'falling back to {geo_file.name}'
+                )
 
-        if not geo_file.exists():
-            feedback.reportError(f'Geometry file not found: {geo_file}')
+        if not chosen_geo_file.exists():
+            feedback.reportError(f'Geometry file not found: {chosen_geo_file}')
             return {}
 
         if not attr_file.exists():
             feedback.reportError(f'Attribute file not found: {attr_file}')
             return {}
 
-        layer_name = attr_file.stem
+        layer_name = base_stem
 
         # Load GEOMETRY layer as the base (has geometry, so it becomes a vector layer)
-        geo_layer = QgsVectorLayer(str(geo_file), layer_name, 'ogr')
+        geo_layer = QgsVectorLayer(str(chosen_geo_file), layer_name, 'ogr')
 
         if not geo_layer.isValid():
-            feedback.reportError(f'Failed to load geometry layer: {geo_file}')
+            feedback.reportError(f'Failed to load geometry layer: {chosen_geo_file}')
             return {}
 
         # Load attribute layer as the join source (hidden)
