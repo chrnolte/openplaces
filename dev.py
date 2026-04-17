@@ -351,6 +351,8 @@ def update():
     print('\nUpdating conda environment...')
     run(f'{PKG_MGR} env update -f environment.yml -n {env_name} --prune')
 
+    qgis_response = input('\nReinstall QGIS processing scripts? [y/N] ').strip().lower()
+
     if not shutil.which('7z'):
         print(
             '7z not found. Deflate64 ZIP extraction unavailable. Run setup to install.'
@@ -365,7 +367,6 @@ def update():
     print('\nEnsuring pre-commit hooks are installed...')
     run(f'{PKG_MGR} run -n {env_name} pre-commit install')
 
-    qgis_response = input('\nReinstall QGIS processing scripts? [y/N] ').strip().lower()
     if qgis_response == 'y':
         install_qgis()
 
