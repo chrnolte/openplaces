@@ -197,9 +197,11 @@ class OpenPlacesReference:
         return str(self.to_path())
 
 
-def path(*args, **kwargs):
+def path(*args, default_extension='parquet', **kwargs):
     """Shortcut for ``OpenPlacesReference(*args, **kwargs).to_path()``."""
-    return OpenPlacesReference(*args, **kwargs).to_path()
+    return OpenPlacesReference(*args, **kwargs).to_path(
+        default_extension=default_extension
+    )
 
 
 def external_path(*args, root=cfg.external_dir, use_prefix=False, **kwargs):

@@ -1,0 +1,18 @@
+admin_id: US
+
+dataset:
+  theme: 'land-elevation'
+  source:
+    source_id: usgs
+    portal_url: "https://www.usgs.gov/3d-elevation-program"
+    download_url: "s3://prd-tnm/StagedProducts/Elevation/13/TIFF/USGS_Seamless_DEM_13.vrt"
+  version: 3dep
+  is_raster: True
+
+resolution: 10
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: cache
