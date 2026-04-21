@@ -331,8 +331,8 @@ class TableIngester:
             )
         elif data_path.suffix in PANDAS_EXTENSIONS:
             read_kwargs = {}
-            if data_path.suffix == '.dat':
-                read_kwargs['sep'] = '|'
+            if 'delimiter' in self.recipe:
+                read_kwargs['delimiter'] = self.recipe['delimiter']
 
             gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
             self.timer.mark(
