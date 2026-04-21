@@ -3,7 +3,7 @@
 admin_id: US
 
 entity:
-  entity_type: admin
+  entity_type: tile
   source:
     source_id: census
     portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
@@ -14,8 +14,8 @@ entity:
 compressed_file_name: "tl_2025_{admin2_id_admin1}_bg.zip"
 
 download_by:
-  admin_level: 2
-  admin_recipe_id: "US_admin-census-2021_admin2"
+  admin_level: 3
+  admin_recipe_id: "US_admin-nhgis-2020_admin3"
 
 # Column mapping from TIGER BG shapefiles
 columns:
@@ -23,30 +23,14 @@ columns:
 
 transformations:
 
-  - output: admin3_id
+  - output: admin4_id_admin1
     type: string
     operation: substring
     input: census_geo_id
     args:
       start: 0
-      end: 5
-
-  - output: admin4_id
-    type: string
-    operation: substring
-    input: census_geo_id
-    args:
-      start: 0
-      end: 11
-
-# Generate hierarchical OpenPlaces IDs
-create_index:
-  function: "openplaces.io.admin.generate_admin_ids"
-  args:
-    new_admin_id_col: admin5_id
-    parent_admin_id_col: admin4_id
-    name_col: admin4_id
-
+      end: 10
+      
 save_to:
   data_dir: cache
-  filename: admin5
+  filename: tile
