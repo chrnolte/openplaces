@@ -28,8 +28,8 @@ transformations:
     operation: substring
     input: census_geo_id
     args:
-      start: 0
-      end: 10
+      start: 11
+      end: 21
       
 save_to:
   data_dir: cache
