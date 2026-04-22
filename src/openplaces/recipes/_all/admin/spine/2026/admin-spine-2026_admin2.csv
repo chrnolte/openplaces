@@ -589,39 +589,38 @@ CN-XU,Xinjiang Uygur,Autonomous Region,新疆維吾爾自治區|新疆维吾尔�
 CN-XZ,Xizang,Autonomous Region,西藏自治區|西藏自治区,Tibet|Xīzàng,CHN.29_1,,iso
 CN-YN,Yunnan,Province,雲南|云南,Yúnnán,CHN.30_1,,iso
 CN-ZJ,Zhejiang,Province,浙江,Zhèjiāng,CHN.31_1,,iso
-CO-AM,Amazonas,Commissiary,,,COL.1_2,,hasc
-CO-AN,Antioquia,Department,,,COL.2_2,,hasc
-CO-AR,Arauca,Intendancy,,,COL.3_2,,hasc
-CO-AT,Atlántico,Department,,,COL.4_2,,hasc
-CO-BL,Bolívar,Department,,,COL.6_2,,hasc
-CO-BY,Boyacá,Department,,,COL.7_2,,hasc
-CO-CA,Cauca,Department,,,COL.11_2,,hasc
-CO-CE,Cesar,Department,,El Cesar,COL.12_2,,hasc
-CO-CH,Chocó,Department,,,COL.13_2,,hasc
-CO-CL,Caldas,Department,,,COL.8_2,,hasc
-CO-CO,Córdoba,Department,,,COL.14_2,,hasc
-CO-CQ,Caquetá,Intendancy,,,COL.9_2,,hasc
-CO-CS,Casanare,Intendancy,,,COL.10_2,,hasc
-CO-CU,Cundinamarca,Department,,,COL.15_2,,hasc
-CO-DC,Bogotá D.C.,Capital District,,Distrito Capital de Bogotá,COL.5_2,,hasc
-CO-GN,Guainía,Commissiary,,Guania,COL.16_2,,hasc
-CO-GV,Guaviare,Commissiary,,,COL.17_2,,hasc
-CO-HU,Huila,Department,,,COL.18_2,,hasc
-CO-LG,La Guajira,Department,,Guajira|Goagira|La Goajira,COL.19_2,,hasc
-CO-MA,Magdalena,Department,,La Magdalena,COL.20_2,,hasc
-CO-ME,Meta,Department,,,COL.21_2,,hasc
-CO-NA,Nariño,Department,,,COL.22_2,,hasc
-CO-NS,Norte de Santander,Department,,Santander del Norte,COL.23_2,,hasc
-CO-PU,Putumayo,Intendancy,,,COL.24_2,,hasc
-CO-QD,Quindío,Department,,,COL.25_2,,hasc
-CO-RI,Risaralda,Department,,,COL.26_2,,hasc
-CO-SA,San Andrés y Providencia,Department,,Saint Andrew and Providence,COL.27_1,,hasc
-CO-ST,Santander,Department,,,COL.28_2,,hasc
-CO-SU,Sucre,Department,,,COL.29_2,,hasc
-CO-TO,Tolima,Department,,,COL.30_2,,hasc
-CO-VC,Valle del Cauca,Department,,Valle,COL.31_2,,hasc
-CO-VD,Vichada,Commissiary,,,COL.33_2,,hasc
-CO-VP,Vaupés,Commissiary,,,COL.32_2,,hasc
+CO-AM,Amazonas,Commissiary,,,COL.1_2,91.0,hasc
+CO-AN,Antioquia,Department,,,COL.2_2,5.0,hasc
+CO-AR,Arauca,Intendancy,,,COL.3_2,81.0,hasc
+CO-AT,Atlántico,Department,,,COL.4_2,8.0,hasc
+CO-AY,SAN ANDRES Y PROVIDENCIA,Department,,,,88.0,initials
+CO-BO,BOLIVAR,Department,,,,13.0,any2
+CO-BY,Boyacá,Department,,,COL.7_2,15.0,hasc
+CO-CA,Cauca,Department,,,COL.11_2,17.0,hasc
+CO-CC,CAUCA,Department,,,,19.0,any2
+CO-CE,Cesar,Department,,El Cesar,COL.12_2,20.0,hasc
+CO-CH,Chocó,Department,,,COL.13_2,27.0,hasc
+CO-CO,Córdoba,Department,,,COL.14_2,23.0,hasc
+CO-CQ,Caquetá,Intendancy,,,COL.9_2,18.0,hasc
+CO-CS,Casanare,Intendancy,,,COL.10_2,85.0,hasc
+CO-CU,Cundinamarca,Department,,,COL.15_2,25.0,hasc
+CO-GA,GUAJIRA,Department,,,,44.0,any2
+CO-GU,GUAINIA,Department,,,,94.0,any2
+CO-GV,Guaviare,Commissiary,,,COL.17_2,95.0,hasc
+CO-HU,Huila,Department,,,COL.18_2,41.0,hasc
+CO-MA,Magdalena,Department,,La Magdalena,COL.20_2,47.0,hasc
+CO-ME,Meta,Department,,,COL.21_2,50.0,hasc
+CO-NA,Nariño,Department,,,COL.22_2,52.0,hasc
+CO-ND,NORTE DE SANTANDER,Department,,,,54.0,initials
+CO-PU,Putumayo,Intendancy,,,COL.24_2,86.0,hasc
+CO-QU,QUINDIO,Department,,,,63.0,first2
+CO-RI,Risaralda,Department,,,COL.26_2,66.0,hasc
+CO-SA,San Andrés y Providencia,Department,,Saint Andrew and Providence,COL.27_1,68.0,hasc
+CO-SU,Sucre,Department,,,COL.29_2,70.0,hasc
+CO-TO,Tolima,Department,,,COL.30_2,73.0,hasc
+CO-VA,VALLE,Department,,,,76.0,any2
+CO-VI,VICHADA,Department,,,,99.0,first2
+CO-VU,VAUPES,Department,,,,97.0,any2
 CR-AL,Alajuela,Province,,,CRI.1_1,2,hasc
 CR-CA,Cartago,Province,,,CRI.2_1,3,hasc
 CR-GU,Guanacaste,Province,,,CRI.3_1,5,hasc

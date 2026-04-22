@@ -1,0 +1,41 @@
+admin_id: CO
+entity:
+  entity_type: admin
+  source:
+    source_id: ospa
+  version: 2025
+
+compressed_file_name: "departamento.zip"
+uncompressed_file_name: "departamento.shp"
+
+# standardized column mappings
+columns:
+  name: NOM_DPTO
+  admin2_id_admin1: COD_DANE
+  admin1_id_admin0: COLOMBIA
+
+transformations:
+  - output: admin1_id
+    input: admin1_id_admin0
+    type: string
+    operation: replace
+    args:
+      old: '57'
+      new: 'CO'
+  - output: type
+    type: expression
+    expression: "'Department'"
+
+# keep columns that aren't named in the above list
+keep_unnamed_columns: False
+
+# generate admin2_id from department name within parent admin1 (CO)
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+# sort by index
+sort_index: True

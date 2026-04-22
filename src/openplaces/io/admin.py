@@ -671,8 +671,8 @@ def clean_geographic_name(name):
         'X': '10',
         'I': '1',
     }
-    for roman, digit in sorted(roman_map.items(), key=lambda x: -len(x[0])):
-        text = re.sub(rf'\b{roman}\b', digit, text, flags=re.I)
+    #for roman, digit in sorted(roman_map.items(), key=lambda x: -len(x[0])):
+        #text = re.sub(rf'\b{roman}\b', digit, text, flags=re.I)
 
     # 10. Remove ordinal suffixes
     text = re.sub(r'(\d+)(st|nd|rd|th)\b', r'\1', text, flags=re.I)
@@ -738,6 +738,8 @@ def clean_geographic_name(name):
 
     return clean_text, extracted_num, letter_suffix, detected_generic
 
+from openplaces.config import cfg
+from openplaces.io.transform import get_crosswalk
 
 def generate_admin_ids(
     df,
@@ -746,6 +748,8 @@ def generate_admin_ids(
     name_col='name',
     id_separator='-',
     verbose=False,
+    crosswalk_file=None,
+    crosswalk_input_col=None,
 ):
     """
     Generate unique two-letter admin unit codes within parent units.
@@ -822,6 +826,14 @@ def generate_admin_ids(
         Separator to use in IDs (default '_')
     verbose : bool
         If True, prints statistics and other outputs
+    crosswalk_file : str, optional
+        Path to a CSV crosswalk file that maps values in ``crosswalk_input_col``
+        to ``parent_admin_id_col``. May be an absolute path or a path relative
+        to the recipes root (``src/openplaces/recipes/``). The first column of
+        the CSV is used as the lookup key and the second as the value.
+    crosswalk_input_col : str, optional
+        Column in ``df`` whose values are looked up in ``crosswalk_file`` to
+        produce ``parent_admin_id_col``. Required when ``crosswalk_file`` is set.
 
     Returns
     -------
@@ -835,6 +847,14 @@ def generate_admin_ids(
     """
 
     admin = df.copy()
+
+    if crosswalk_file is not None:
+        if crosswalk_input_col is None:
+            raise ValueError('crosswalk_input_col is required when crosswalk_file is set.')
+        cw = get_crosswalk({'recipe_id': crosswalk_file, 'dtype': str})
+        admin[parent_admin_id_col] = admin[crosswalk_input_col].map(cw)
+        admin[parent_admin_id_col] = admin[parent_admin_id_col].fillna('UNKNOWN')
+
     id_source_col = new_admin_id_col + '_source'
     admin[new_admin_id_col] = None
     admin[id_source_col] = None

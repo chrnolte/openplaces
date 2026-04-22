@@ -1,0 +1,41 @@
+admin_id: CO
+entity:
+  entity_type: admin
+  source:
+    source_id: ospa
+  version: 2025
+
+compressed_file_name: "Muni.zip"
+uncompressed_file_name: "Muni.shp"
+
+# standardized column mappings
+columns:
+  name: MunNombre
+  admin3_id_admin1: MunCodigo
+
+transformations:
+  # extract 2-digit department code from 5-digit municipal DANE code
+  - output: admin2_id_admin1
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 2
+
+# keep columns that aren't named in the above list
+keep_unnamed_columns: True
+
+# generate admin3_id from name within each admin2 parent;
+# crosswalk maps the 2-digit DANE department code to admin2_id
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: 'admin3_id'
+    parent_admin_id_col: 'admin2_id'
+    crosswalk_file: 'CO_admin-ospa-2025_admin2-crosswalk'
+    crosswalk_input_col: 'admin2_id_admin1'
+    name_col: 'name'
+
+# sort by index
+sort_index: True
