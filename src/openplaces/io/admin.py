@@ -511,8 +511,18 @@ def admin3_id_index_from_admin3_gadm(admin3):
 
 
 def admin3_id_index_from_admin3_US_nhgis(admin3_local):
+    return admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-nhgis-2020')
+
+
+def admin3_id_index_from_admin3_US_census(admin3_local):
+    return admin3_id_index_from_admin3_US(
+        admin3_local, admin_entity='admin-census-2021'
+    )
+
+
+def admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-census-2021'):
     # Join states
-    admin2_recipe = get_recipe('US', 'admin-nhgis-2020', filename='admin2')
+    admin2_recipe = get_recipe('US', admin_entity, filename='admin2')
     admin2_crosswalk = (
         get_admin(level=2, recipe=admin2_recipe, columns=['admin2_id_admin1'])
         .reset_index()
@@ -536,7 +546,7 @@ def admin3_id_index_from_admin3_US_nhgis(admin3_local):
 
     # Correct (replace) names from global reference layer to official
     admin3_name_crosswalk = get_recipe(
-        'US', 'admin-nhgis-2020', filename='admin3-names-from-gadm'
+        'US', admin_entity, filename='admin3-names-from-gadm'
     )
     for _, row in admin3_name_crosswalk.iterrows():
         admin3.loc[
@@ -556,7 +566,7 @@ def admin3_id_index_from_admin3_US_nhgis(admin3_local):
     # Set new admin3_ids for units that don't exist in the global layer
     new_admin3_ids = get_recipe(
         'US',
-        'admin-nhgis-2020',
+        admin_entity,
         filename='admin3-ids',
         dtype={'admin3_id_admin1': str},
     ).set_index('admin3_id_admin1')
@@ -1321,7 +1331,7 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
     # Write
     admin_recipe_path = recipe_path(
         None,
-        'admin-openplaces-2026',
+        'admin-spine-2026',
         filename=f'admin{level}' + ('_test' if test else '') + '.csv',
     )
     new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8-sig')
