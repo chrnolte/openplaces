@@ -1,0 +1,50 @@
+admin_id: US
+
+entity:
+  entity_type: people
+  source:
+    source_id: acs
+    portal_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/"
+    # The {table} placeholder is dynamically replaced by values in 'download_by'
+    download_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-{table}.dat"
+  version: 2024
+
+uncompressed_file_name: "acsdt5y2024-{table}.dat"
+
+# Configuration for iterating through multiple files
+download_by:
+  partition: table
+  table_names:
+      - b01001   # Sex by Age
+      - b19013   # Median Household Income
+      - b02001   # Race
+      - b25077   # Median Property Value (Dollars)
+      - b17001   # Poverty Status in the Past 12 Months
+      - b15003   # Educational attainment for over 25yo
+      - b23025   # Employment status (Labor force, unemployment) 
+      - b08303   # Travel time to work
+      - b25002   # Occupancy Status 
+      - b25064   # Median Gross Rent
+      - b25003   # Tenure (Owner vs Renter)
+      - b25091   # Mortgage Status by Selected Monthly Owner Costs
+      - b25070   # Gross Rent as % of Household Income (Rent Burden)
+      - b03002   # Hispanic or Latino Origin by Race
+      - c16002   # Household Language by English Proficiency
+      - b11004   # Family Type by Presence of Own Children
+      - b01003   # Total Population
+      - b22010   # Receipt of Food Stamps/SNAP
+
+columns:
+  census_geo_id: GEO_ID
+  set_index: census_geo_id
+
+keep_unnamed_columns: true
+
+delimiter: "|"
+
+save_to:
+  # Where to store the processed .parquet files
+  data_dir: cache
+  # Including {table} in the filename prevents the different metrics
+  # from overwriting each other (e.g. acs-b01001.parquet)
+  filename: "acs-{table}"
