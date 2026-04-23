@@ -35,8 +35,77 @@ download_by:
       - b22010   # Receipt of Food Stamps/SNAP
 
 columns:
-  census_geo_id: GEO_ID
-  set_index: census_geo_id
+    census_geo_id: GEO_ID
+    B01001_E001: total_population
+    B01001_E002: male_population
+    B01001_E026: female_population
+    B01001_E001: total_population
+
+    B01001_E002: male_population
+    B01001_E026: female_population
+    
+    # Under 18 (male)
+    B01001_E003: male_under_5
+    B01001_E004: male_5_to_9
+    B01001_E005: male_10_to_14
+    B01001_E006: male_15_to_17
+    
+    # Under 18 (female)
+    B01001_E027: female_under_5
+    B01001_E028: female_5_to_9
+    B01001_E029: female_10_to_14
+    B01001_E030: female_15_to_17
+    
+    # 18–64 (male)
+    B01001_E007: male_18_19
+    B01001_E008: male_20
+    B01001_E009: male_21
+    B01001_E010: male_22_to_24
+    B01001_E011: male_25_to_29
+    B01001_E012: male_30_to_34
+    B01001_E013: male_35_to_39
+    B01001_E014: male_40_to_44
+    B01001_E015: male_45_to_49
+    B01001_E016: male_50_to_54
+    B01001_E017: male_55_to_59
+    B01001_E018: male_60_61
+    B01001_E019: male_62_to_64
+    
+    # 18–64 (female)
+    B01001_E031: female_18_19
+    B01001_E032: female_20
+    B01001_E033: female_21
+    B01001_E034: female_22_to_24
+    B01001_E035: female_25_to_29
+    B01001_E036: female_30_to_34
+    B01001_E037: female_35_to_39
+    B01001_E038: female_40_to_44
+    B01001_E039: female_45_to_49
+    B01001_E040: female_50_to_54
+    B01001_E041: female_55_to_59
+    B01001_E042: female_60_61
+    B01001_E043: female_62_to_64
+    
+    # 65+ (male)
+    B01001_E020: male_65_66
+    B01001_E021: male_67_to_69
+    B01001_E022: male_70_to_74
+    B01001_E023: male_75_to_79
+    B01001_E024: male_80_to_84
+    B01001_E025: male_85_plus
+    
+    # 65+ (female)
+    B01001_E044: female_65_66
+    B01001_E045: female_67_to_69
+    B01001_E046: female_70_to_74
+    B01001_E047: female_75_to_79
+    B01001_E048: female_80_to_84
+    B01001_E049: female_85_plus
+
+    B19013_E001: med_household_inc
+    
+    
+    set_index: census_geo_id
 
 keep_unnamed_columns: true
 
