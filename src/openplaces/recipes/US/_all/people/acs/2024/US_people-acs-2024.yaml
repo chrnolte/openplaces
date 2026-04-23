@@ -39,10 +39,6 @@ columns:
     B01001_E001: total_population
     B01001_E002: male_population
     B01001_E026: female_population
-    B01001_E001: total_population
-
-    B01001_E002: male_population
-    B01001_E026: female_population
     
     # Under 18 (male)
     B01001_E003: male_under_5
