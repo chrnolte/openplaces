@@ -46,5 +46,5 @@ save_to:
   # Where to store the processed .parquet files
   data_dir: cache
   # Including {table} in the filename prevents the different metrics
-  # from overwriting each other (e.g. acs5yr-b01001.parquet)
-  filename: "acs5yr-{table}"
+  # from overwriting each other (e.g. acs-b01001.parquet)
+  filename: "acs-{table}"
