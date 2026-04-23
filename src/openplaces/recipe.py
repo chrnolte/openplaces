@@ -554,6 +554,15 @@ def get_partition_ids(recipe):
             )
         return [str(year) for year in range(first, last + 1)]
 
+    elif partition == 'table':
+        table_names = download_by.get('table_names')
+        if not table_names:
+            raise ValueError(
+                "If 'download_by' has 'partition: table', "
+                "define 'table_names' (list of table names)."
+            )
+        return [str(tn) for tn in table_names]
+
     raise NotImplementedError(
         f'Partition not yet supported by openplaces.recipe.get_partition_ids: '
         f"'{partition}'."
