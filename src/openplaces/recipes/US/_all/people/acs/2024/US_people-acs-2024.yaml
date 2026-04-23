@@ -1,7 +1,7 @@
 admin_id: US
 
-entity:
-  entity_type: people
+dataset:
+  theme: people
   source:
     source_id: acs
     portal_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/"
