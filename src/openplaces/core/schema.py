@@ -23,6 +23,7 @@ ENTITY_TYPES = [
     'property',
     'tile',
     'transaction',
+    'people',
 ]
 
 TOP_LEVEL_THEMES = [
