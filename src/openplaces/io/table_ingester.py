@@ -320,8 +320,15 @@ class TableIngester:
                 path=data_path,
             )
         elif data_path.suffix in PANDAS_EXTENSIONS:
-            gdf = pd.read_csv(data_path, usecols=columns, **kwargs)
-            self.timer.mark('Read data table' + timer_suffix, path=data_path)
+            read_kwargs = {}
+            if 'delimiter' in self.recipe:
+                read_kwargs['delimiter'] = self.recipe['delimiter']
+
+            gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
+            self.timer.mark(
+                'Read data table' + timer_suffix,
+                path=data_path,
+            )
         elif data_path.suffix in ZIP_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
