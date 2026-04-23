@@ -606,7 +606,6 @@ class TableIngester:
                     cols_order += [geo_col]
             df = df[cols_order]
 
-        self.timer.mark('Preprocessing')
         return df
 
     # Save
