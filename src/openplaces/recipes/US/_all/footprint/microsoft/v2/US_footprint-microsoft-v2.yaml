@@ -6,7 +6,7 @@ admin_id: US
 # Entity: what is the unit of analysis of the imported data?
 entity:
   # What is its type? (parcel, property, transaction, person, admin)
-  entity_type: building
+  entity_type: footprint
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: microsoft
@@ -38,7 +38,7 @@ columns_to_categorical:
 # Assign administrative IDs using spatial joins/overlays
 overlay_admin_ids:
   admin_level: 3
-  admin_recipe_id: 'US_admin-nhgis-2020_admin3'
+  admin_recipe_id: 'US_admin-census-2021_admin3'
 
 # Function to give the GeoDataFrame an index
 create_index:

@@ -7,7 +7,7 @@ admin_id: US
 # Entity: what is the unit of analysis of the imported data?
 entity:
   # What is its type? (parcel, property, transaction, person, admin)
-  entity_type: building
+  entity_type: footprint
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: fema
