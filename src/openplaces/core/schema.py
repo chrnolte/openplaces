@@ -34,7 +34,7 @@ TOP_LEVEL_THEMES = [
     'water',  # rivers, lakes, coasts
     'bio',  # vegetation, species, land cover
     'built',  # buildings, infrastructure, roads & accessibility
-    'people',  # demographic data (aggregate)
+    'population',  # demographic data (aggregate)
     'persons',  # data of persons, e.g. property owners (sensitive)
     'risk',  # floods, storms, wildfires
     'rules',  # zoning, conservation
