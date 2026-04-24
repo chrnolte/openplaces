@@ -79,7 +79,7 @@ additional_layers:
       building_area_m2: BLD_AREA
       residential_area_m2: RES_AREA
       building_style: STYLE
-      building_n_units: UNITS
+      n_dwelling_units: UNITS
       building_n_rooms: NUM_ROOMS
       building_n_stories: STORIES
       year_built: YEAR_BUILT
