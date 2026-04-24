@@ -96,7 +96,9 @@ class TableIngester:
     @property
     def table_name(self) -> str:
         """Stable key for this table in per-table caches (e.g. table_fids)."""
-        return self.recipe.get('layer') or str(self.recipe['entity'])
+        return self.recipe.get('layer') or str(
+            self.recipe.get('entity') or self.recipe.get('dataset')
+        )
 
     # Public entry point
 
@@ -523,8 +525,11 @@ class TableIngester:
             cols_added += [v for v in df.columns if v not in cols_before]
 
         # Set index
-        if str(self.recipe['entity'].entity_type) == 'parcel' and isinstance(
-            df, gpd.GeoDataFrame
+        _entity = self.recipe.get('entity')
+        if (
+            _entity is not None
+            and str(_entity.entity_type) == 'parcel'
+            and isinstance(df, gpd.GeoDataFrame)
         ):
             df['geo_id'] = get_geo_ids(df, handle_duplicates=False)
             df.index = pd.Index(add_unique_suffix(df['geo_id']), name='parcel_id')
@@ -700,7 +705,7 @@ class TableIngester:
         """
         labels_recipe_path = recipe_path(
             self.recipe['admin_id'],
-            self.recipe['entity'],
+            self.recipe.get('entity') or self.recipe.get('dataset'),
             filename=column.replace('_', '-') + '-labels.csv',
         )
         if labels_recipe_path.exists():

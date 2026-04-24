@@ -202,7 +202,7 @@ def get_admin(
                         if recipe['admin_id'].get_level() > 1
                         else ''
                     )
-                    + f'{recipe["entity"]}_admin{level}`'
+                    + f'{recipe.get("entity") or recipe.get("dataset")}_admin{level}`'
                     ' not found in reference Admin IDs:\n\n- '
                     + '\n- '.join(admin_ids_to_add_to_spine[:5])
                     + ('\n- ...' if len(admin_ids_to_add_to_spine) > 5 else '')

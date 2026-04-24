@@ -874,9 +874,10 @@ class Ingester:
 
             for admin_id_to_process in admin_ids_to_process_in_partition:
                 if self.verbose and admin_id_to_process is not None:
-                    print(
-                        f'Processing {self.recipe["entity"]} for {admin_id_to_process}:'
+                    _entity_or_dataset = self.recipe.get('entity') or self.recipe.get(
+                        'dataset'
                     )
+                    print(f'Processing {_entity_or_dataset} for {admin_id_to_process}:')
                 self._process_recipe_data(admin_id_to_process)
 
         # Delete unzipped files in heap folder
@@ -1129,14 +1130,22 @@ class Ingester:
         """Get the paths for the data ingestion files of a recipe"""
 
         if (self.recipe.get('download_by') or {}).get('partition') == 'latlon_tile':
-            entity = self.recipe['entity']
-            source_id = entity.source.source_id
-            version = str(entity.version or 'latest')
-            entity_type = str(entity.entity_type)
-            recipe_prefix = f'{entity_type}-{source_id}-{version}'
+            entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+            source_id = entity_or_dataset.source.source_id
+            version = str(entity_or_dataset.version or 'latest')
+            type_str = str(
+                entity_or_dataset.entity_type
+                if hasattr(entity_or_dataset, 'entity_type')
+                else entity_or_dataset.theme
+            )
+            recipe_prefix = f'{type_str}-{source_id}-{version}'
             tile_id = self.download_partition.get('partition_id_to_download')
-            self.recipe_heap_dir = heap_dir(self.recipe.get('admin_id'), entity)
-            self.recipe_external_dir = external_dir(self.recipe.get('admin_id'), entity)
+            self.recipe_heap_dir = heap_dir(
+                self.recipe.get('admin_id'), entity_or_dataset
+            )
+            self.recipe_external_dir = external_dir(
+                self.recipe.get('admin_id'), entity_or_dataset
+            )
             cache_path = self.recipe_external_dir / f'{recipe_prefix}_{tile_id}.parquet'
             self.download_partition['downloaded_path'] = None
             self.download_partition['data_path'] = cache_path
