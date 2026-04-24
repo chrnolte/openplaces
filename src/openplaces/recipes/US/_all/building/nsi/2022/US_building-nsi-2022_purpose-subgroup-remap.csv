@@ -1,4 +1,4 @@
-﻿purpose_subgroup,openplaces_group,n_units,has_basement
+purpose_subgroup,openplaces_group,n_dwelling_units,has_basement
 "Single Family, 1 story, no basement",Single Family,,FALSE
 "Single Family, 1 story, with basement",Single Family,,TRUE
 "Single Family, 2 story, no basement",Single Family,,FALSE
