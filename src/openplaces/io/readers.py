@@ -287,11 +287,11 @@ def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
     return sorted(admin_ids)
 
 
-def get_entities(recipe, admin_id=None, geom=False, layer=None):
+def get_entities(recipe, admin_id=None, geom=False, layer=None, partition_id=None):
     """Generic function to load a processed Parquet table for entities
 
     Entities are administrative units (`admin`), parcels, buildings,
-    transactions, etc., as defined by the `recipe`, and carry
+    transactions, etc., as defined by the `recipe`.
 
     Parameters
     ----------
@@ -302,12 +302,16 @@ def get_entities(recipe, admin_id=None, geom=False, layer=None):
         Administrative unit for which to load the data. If None,
         choose admin_id of recipe.
     geom : bool
-        If True, include geometries and return a GeoDataFrame
+        If True, include geometries and return a GeoDataFrame.
     layer : str, optional
         Entity type (e.g. 'property') or full entity string
         (e.g. 'property-massgis-2025') of a secondary layer defined in
         `additional_layers`. If given, load that layer instead of the
         primary entity.
+    partition_id : str, optional
+        Partition value to read a specific per-partition file, e.g. '032012'
+        for a tile-partitioned recipe. Pass None (default) to read the
+        final merged output.
     """
 
     if isinstance(recipe, str):
@@ -319,4 +323,65 @@ def get_entities(recipe, admin_id=None, geom=False, layer=None):
     if admin_id is None:
         admin_id = recipe['admin_id']
 
-    return read_parquet(get_output_path(recipe, admin_id), geom=geom)
+    return read_parquet(
+        get_output_path(recipe, admin_id, partition_id=partition_id), geom=geom
+    )
+
+
+def get_dataset(recipe, admin_id=None, partition_id=None, geom=False):
+    """Load a processed dataset by recipe.
+
+    Handles both raster and tabular dataset recipes. For raster datasets
+    (Cloud Optimized GeoTIFFs written by `fetch_rasters_by_admin`), returns
+    the path to the .tif file so the caller controls resource management
+    (e.g. with rasterio or xarray). For tabular datasets, returns a
+    DataFrame or GeoDataFrame exactly as `get_entities` does.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe that defines the dataset. Can be a loaded recipe (dict) or
+        a string recipe ID.
+    admin_id : str or AdminId, optional
+        Administrative unit for which to load the data. If None, uses
+        the admin_id from the recipe.
+    partition_id : str, optional
+        Partition value to locate a specific partition file, e.g. '2020'
+        for a year-partitioned recipe. Pass None (default) for recipes
+        without partitioning.
+    geom : bool
+        If True, include geometries and return a GeoDataFrame.
+        Ignored for raster datasets.
+
+    Returns
+    -------
+    Path
+        Path to the .tif file, for raster datasets.
+    pandas.DataFrame or geopandas.GeoDataFrame
+        Loaded tabular data, for non-raster datasets.
+
+    Raises
+    ------
+    ValueError
+        If the recipe does not have a 'dataset' key. Use `get_entities`
+        for entity recipes.
+    """
+
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+
+    if 'dataset' not in recipe:
+        raise ValueError(
+            "Recipe does not have a 'dataset' key. "
+            'Use `get_entities` for entity recipes.'
+        )
+
+    if admin_id is None:
+        admin_id = recipe['admin_id']
+
+    output_path = get_output_path(recipe, admin_id, partition_id=partition_id)
+
+    if recipe['dataset'].is_raster:
+        return output_path
+
+    return read_parquet(output_path, geom=geom)
