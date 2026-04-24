@@ -40,7 +40,7 @@ Examples:
        *This recipe contains instructions on how to access the data*
    * - ``US_admin-census-2021_admin3``
      - United States: official county (``admin3``) boundaries from the US census
-   * - ``US_building-microsoft-v2``
+   * - ``US_footprint-microsoft-v2``
      - US building footprints provided by Microsoft
    * - ``US-NC_parcel-nconemap-2023``
      - Parcel boundary data for North Carolina, United States, provided by NCOneMap
