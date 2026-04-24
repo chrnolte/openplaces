@@ -1,7 +1,7 @@
 # Recipe to import block groups for the United States (2025)
-
 admin_id: US
 
+# Entity: tiles from the 2025 US census
 entity:
   entity_type: tile
   source:
@@ -10,19 +10,20 @@ entity:
     download_url: "https://www2.census.gov/geo/tiger/TIGER2025/BG/tl_2025_{admin2_id_admin1}_bg.zip"
   version: 2025
 
-# Each file is state-specific
-compressed_file_name: "tl_2025_{admin2_id_admin1}_bg.zip"
-
+# Download is partitioned by state
 download_by:
   admin_level: 2
-  admin_recipe_id: "US_admin-nhgis-2020_admin2"
+  admin_recipe_id: "US_admin-census-2021_admin2"
+
+# Compressed file name to read
+compressed_file_name: "tl_2025_{admin2_id_admin1}_bg.zip"
 
 # Column mapping from TIGER BG shapefiles
 columns:
   census_geo_id: GEOIDFQ
 
+# Extract county FIPS code (5-digit admin3_id used by country)
 transformations:
-
   - output: admin3_id_admin1
     type: string
     operation: substring
@@ -30,7 +31,18 @@ transformations:
     args:
       start: 9
       end: 14 
-      
+
+# Translate FIPS code to `admin3_id`
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-census-2021_admin3"
+
+# Use census GEOID as index
+set_index: census_geo_id
+
+# Save to blockgroup file and aggregate to country
 save_to:
   data_dir: cache
-  filename: tile
+  filename: blockgroup
+  admin_level: 1
