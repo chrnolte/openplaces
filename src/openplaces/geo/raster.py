@@ -4,13 +4,13 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import rasterio
+from exactextract import exact_extract
 from rasterio.features import geometry_mask
 from rasterio.mask import mask
 from shapely.geometry import box
 
-from exactextract import exact_extract
-
 from openplaces.geo.polygon import clean_polygons
+
 
 def zonal_stats_with_exactextract(
     vector,
@@ -155,8 +155,17 @@ def zonal_stats_with_exactextract(
     return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf.crs)
 
 
-def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
-         buffer=None, snap=True, crs=None, dtype=None, nodata=None):
+def clip(
+    from_filepath,
+    to_filepath,
+    clip_filepath=None,
+    res=None,
+    buffer=None,
+    snap=True,
+    crs=None,
+    dtype=None,
+    nodata=None,
+):
     """
     Clip raster to vector extent using rasterio.
 
@@ -196,11 +205,7 @@ def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
             snapped_geometry = clip_shp.geometry.values
 
         out_image, out_transform = mask(
-            src,
-            snapped_geometry,
-            crop=True,
-            all_touched=True,
-            filled=False
+            src, snapped_geometry, crop=True, all_touched=True, filled=False
         )
 
         out_meta = src.meta.copy()
@@ -236,22 +241,24 @@ def clip(from_filepath, to_filepath, clip_filepath=None, res=None,
     out_image_filled = out_image.astype(out_dtype).filled(nodata_val)
 
     # update metadata — use deflate compression to limit output size
-    out_meta.update({
-        "driver": "GTiff",
-        "height": out_image_filled.shape[1],
-        "width": out_image_filled.shape[2],
-        "transform": out_transform,
-        "nodata": nodata_val,
-        "dtype": out_dtype,
-        "compress": "deflate",
-        "zlevel": 6,
-        "tiled": True,
-        "blockxsize": 256,
-        "blockysize": 256,
-    })
+    out_meta.update(
+        {
+            'driver': 'GTiff',
+            'height': out_image_filled.shape[1],
+            'width': out_image_filled.shape[2],
+            'transform': out_transform,
+            'nodata': nodata_val,
+            'dtype': out_dtype,
+            'compress': 'deflate',
+            'zlevel': 6,
+            'tiled': True,
+            'blockxsize': 256,
+            'blockysize': 256,
+        }
+    )
 
     # save to disk
-    with rasterio.open(to_filepath, "w", **out_meta) as dest:
+    with rasterio.open(to_filepath, 'w', **out_meta) as dest:
         dest.write(out_image_filled)
 
     return True

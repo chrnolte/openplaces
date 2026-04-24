@@ -148,14 +148,14 @@ def _format_yaml_style(obj: Any, indent: int = 2, _level: int = 0) -> str:
         if not obj:
             return '[]'
         lines = []
+        min_indent = spaces + ' ' * indent
         for item in obj:
             if isinstance(item, dict | list):
                 item_str = _format_yaml_style(item, indent, _level + 1)
-                # Add dash prefix to first line only
                 item_lines = item_str.split('\n')
-                lines.append(f'{spaces}- {item_lines[0].lstrip()}')
+                lines.append(f'{spaces}- {item_lines[0][len(min_indent) :]}')
                 for line in item_lines[1:]:
-                    lines.append(f'{spaces}  {line.lstrip()}')
+                    lines.append(f'{spaces}  {line[len(min_indent) :]}')
             else:
                 formatted_item = _format_yaml_style(item, indent, _level + 1)
                 lines.append(f'{spaces}- {formatted_item}')
