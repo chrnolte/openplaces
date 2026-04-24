@@ -14,7 +14,7 @@ import pandas as pd
 from shapely.strtree import STRtree
 
 from openplaces.diagnostics import find_recipes
-from openplaces.geo.polygon import overlay_polygons
+from openplaces.geo.polygon import get_areas, overlay_polygons
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_entities
 
@@ -194,6 +194,8 @@ def resolve_spine(
     thresholds : dict, optional
         ``overlap_iou_max`` (float, default 0.02) — maximum IoU to treat two
         footprints as overlapping duplicates.
+        ``min_area_m2`` (float, default 0.0) — drop footprints smaller than this
+        area (in m²) before IoU deduplication.  0.0 disables the filter.
         ``elongated_aspect_min`` (float) — when set, enables the elongated-duplicate
         filter via :func:`drop_elongated_duplicates`.  Also accepts
         ``elongated_angle_tol``, ``elongated_long_overlap_min``,
@@ -231,6 +233,19 @@ def resolve_spine(
     if state.timer:
         state.timer.mark('Load')
 
+    min_area_m2: float = thresholds.get('min_area_m2', 0.0)
+    if min_area_m2 > 0:
+        for label in list(source_gdfs):
+            areas = get_areas(source_gdfs[label], unit='m2')
+            before = len(source_gdfs[label])
+            source_gdfs[label] = source_gdfs[label][areas >= min_area_m2].copy()
+            dropped = before - len(source_gdfs[label])
+            if dropped and state.verbose:
+                print(
+                    f'  Filter {label}: dropped {dropped:,d} footprints < '
+                    f'{min_area_m2} m²'
+                )
+
     # Build spine starting from the first source
     first_label = resolved[0].get('label', resolved[0]['recipe_id'])
     spine: gpd.GeoDataFrame = source_gdfs[first_label][['geometry']].copy()
@@ -251,7 +266,7 @@ def resolve_spine(
 
         overlap_ids = overlap[
             overlap['iou'].gt(overlap_iou_max)
-        ].index.get_level_values(f'{spine.index.name}_{label}')
+        ].index.get_level_values(1)
 
         to_add = candidate[~candidate.index.isin(overlap_ids)][['geometry']].copy()
 
@@ -272,6 +287,13 @@ def resolve_spine(
             n_elong_dropped = 0
 
         to_add['source'] = label
+        if candidate.index.name != spine.index.name:
+            warnings.warn(
+                f'resolve_spine: index name mismatch — spine has '
+                f'{spine.index.name!r} but {label!r} has {candidate.index.name!r}. '
+                f'Data may need to be re-ingested.'
+            )
+            to_add.index.name = spine.index.name
         spine = pd.concat([spine, to_add]).sort_index()
 
         if state.verbose:
@@ -304,7 +326,12 @@ def _expand_auto_discover(
     recipe_admin_str = str(recipe['admin_id'])
     admin_str = str(state.admin_id) if state.admin_id is not None else ''
     entity_obj = recipe.get('entity')
-    entity_type = str(entity_obj.entity_type) if entity_obj is not None else ''
+
+    sentinel = next((s for s in sources if s.get('auto_discover')), {})
+    sentinel_entity_type = sentinel.get('entity_type')
+    entity_type = sentinel_entity_type or (
+        str(entity_obj.entity_type) if entity_obj is not None else ''
+    )
 
     df = find_recipes(entity_type, stage='ingest')
     discovered: list[dict] = []
@@ -333,7 +360,7 @@ def split_by_reference(
 ) -> HarmonizeState:
     """Split spine geometries at reference polygon boundaries [stub].
 
-    Splits contiguous spine geometries (e.g., large building envelopes that
+    Splits contiguous spine geometries (e.g., large building footprints that
     span multiple parcels) at reference polygon boundaries to reflect
     differences in age, ownership, or use across the merged footprint.
 
