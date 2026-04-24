@@ -1,4 +1,4 @@
-# Recipe to import FEMA's USA Structures (2023)
+# Recipe to import NC DPS building footprints (2023)
 
 # Administrative unit identifier of the highest administrative geography
 # that the dataset covers (single files can cover a lower admin level)
@@ -7,7 +7,7 @@ admin_id: US-NC
 # Entity: what is the unit of analysis of the imported data?
 entity:
   # What is its type? (parcel, property, transaction, person, admin)
-  entity_type: building
+  entity_type: footprint
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: ncdps
@@ -89,7 +89,7 @@ columns:
   garage_door: GARAGEDOOR
   masonry_reinforcing: MAS_REINFR
   joist_spacing: JOIST_SPAC
-  num_units: NUM_UNITS
+  n_dwelling_units: NUM_UNITS
   wind_debris_type: WINDDEBRIS
   defensible_space: DEFN_SPACE
   hazardous_fuels_reduction: HZFUELREDC
@@ -143,7 +143,7 @@ columns_to_categorical:
   - garage_door
   - masonry_reinforcing
   - joist_spacing
-  - num_units
+  - n_dwelling_units
   - wind_debris_type
   - defensible_space
   - hazardous_fuels_reduction
