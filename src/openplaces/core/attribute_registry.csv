@@ -10,3 +10,4 @@ year_built,Year building was built,,float,mean
 address,Street address,,string,join_nonnull
 area_sqft,Floor area,sqft,float,mean
 n_stories,Number of stories,,float,mean
+n_dwelling_units,Number of dwelling units in the building,,float,sum

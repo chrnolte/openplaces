@@ -6,4 +6,6 @@ __email__ = 'chrnolte@bu.edu'
 
 # Make `openplaces.cfg` available.
 # Also ensures that configuration setup is triggered upon first import
+from openplaces.api import *  # noqa: F401, F403
+
 from .config import cfg as cfg
