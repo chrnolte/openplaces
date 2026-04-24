@@ -61,7 +61,7 @@ def aggregate(
     Parameters
     ----------
     recipe : str or dict
-        Recipe ID string (e.g. ``'US_building-cheer-2026'``) or a
+        Recipe ID string (e.g. ``'US_footprint-cheer-2026'``) or a
         pre-loaded recipe dict.
     admin_level : int
         Target admin level for output files (e.g. ``2`` for state-level).
