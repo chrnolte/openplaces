@@ -6,6 +6,7 @@ Defines AdminId, Entity, EntityType, Dataset, Source, Theme etc.
 
 import re
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 
 from .constants import (
@@ -16,8 +17,9 @@ from .constants import (
 
 ENTITY_TYPES = [
     'admin',
-    'building',
+    'building',  # physical structure; one record per structure (e.g., NSI)
     'dwelling',
+    'footprint',  # 2-D ground-extent polygon; may cover one or several structures
     'parcel',
     'person',
     'property',
@@ -158,6 +160,25 @@ class EntityType:
     def __str__(self) -> str:
         """Return string representation (e.g., 'property')"""
         return self.entity_type
+
+
+class SourceGeometryType(StrEnum):
+    """Source geometry classification (Lochhead et al. 2026, §2.3).
+
+    A *footprint* is the 2-D ground-extent polygon of one or more structures.
+    A *building* point represents a single insurable structure (e.g., NSI).
+    A *dwelling* point represents a single unit within a larger structure.
+    """
+
+    single_building_footprint = 'single_building_footprint'
+    single_building_point = 'single_building_point'
+    multiple_building_footprint = 'multiple_building_footprint'
+    multiple_building_point = 'multiple_building_point'
+    single_dwelling_footprint = 'single_dwelling_footprint'
+    single_dwelling_point = 'single_dwelling_point'
+    mixed_type_footprint = 'mixed_type_footprint'
+    mixed_type_point = 'mixed_type_point'
+    non_spatial = 'non_spatial'
 
 
 @dataclass
