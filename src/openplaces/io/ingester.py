@@ -160,7 +160,8 @@ class Ingester:
 
     @property
     def _is_tile_partition(self):
-        return (self.recipe.get('download_by') or {}).get('partition') == 'tile_id'
+        partition = (self.recipe.get('download_by') or {}).get('partition')
+        return partition in ('tile_id', 'latlon_tile')
 
     @property
     def _process_level(self):
@@ -681,9 +682,14 @@ class Ingester:
         By convention, all partition IDs are strings.
         """
         download_by = self.recipe.get('download_by') or {}
+        partition = download_by.get('partition')
 
-        if self._is_tile_partition:
+        if partition == 'tile_id':
             self._resolve_tile_ids()
+            return
+
+        if partition == 'latlon_tile':
+            self._resolve_latlon_tile_ids()
             return
 
         all_partition_ids = get_partition_ids(self.recipe)
@@ -697,7 +703,6 @@ class Ingester:
             self.partition_ids_to_download = all_partition_ids
 
         if self.verbose and self.partition_ids_to_download != [None]:
-            partition = download_by.get('partition')
             print(
                 f'Partitioned by `{partition}`:',
                 format_list(self.partition_ids_to_download),
@@ -750,6 +755,51 @@ class Ingester:
                 'Partitioned by `tile_id`:', format_list(self.partition_ids_to_download)
             )
 
+    def _resolve_latlon_tile_ids(self):
+        """Resolve 1°×1° lat/lon tile IDs from admin polygon bounds.
+
+        Unlike :meth:`_resolve_tile_ids`, no pre-ingested tile dataset is needed.
+        The ``tile_admin_link`` MultiIndex DataFrame is computed in memory.
+        """
+        from openplaces.io.cloud_geoparquet_ingester import tile_ids_for_admin
+
+        download_by = self.recipe.get('download_by') or {}
+        tile_size_deg = float(download_by.get('tile_size_deg', 1.0))
+
+        rows = []
+        for admin_id in self.admin_ids_to_save:
+            for tile_id in tile_ids_for_admin(admin_id, tile_size_deg):
+                rows.append((tile_id, admin_id))
+
+        if not rows:
+            self.tile_admin_link = pd.DataFrame(
+                index=pd.MultiIndex.from_tuples([], names=[None, None])
+            )
+            self.partition_ids_to_download = []
+            return
+
+        idx = pd.MultiIndex.from_tuples(rows)
+        self.tile_admin_link = pd.DataFrame(index=idx)
+
+        admin_ids_set = set(self.admin_ids_to_save)
+        relevant = self.tile_admin_link.index.get_level_values(1).isin(admin_ids_set)
+        self.partition_ids_to_download = (
+            self.tile_admin_link[relevant].index.get_level_values(0).unique().tolist()
+        )
+
+        if isinstance(self.partition_ids, list | set):
+            self.partition_ids_to_download = [
+                t
+                for t in self.partition_ids_to_download
+                if t in set(self.partition_ids)
+            ]
+
+        if self.verbose:
+            print(
+                'Partitioned by `latlon_tile`:',
+                format_list(self.partition_ids_to_download),
+            )
+
     def _ingest_download_partition(
         self,
         admin_id_to_download=None,
@@ -779,6 +829,12 @@ class Ingester:
             return
 
         self._download_and_unzip_recipe_data(redownload=redownload)
+
+        if self._is_tile_partition and (
+            self.download_partition['data_path'] is None
+            or not self.download_partition['data_path'].exists()
+        ):
+            return
 
         if self._is_tile_partition:
             admin_ids_in_tile_set = set(
@@ -1072,6 +1128,20 @@ class Ingester:
     def _resolve_downloaded_and_data_paths(self):
         """Get the paths for the data ingestion files of a recipe"""
 
+        if (self.recipe.get('download_by') or {}).get('partition') == 'latlon_tile':
+            entity = self.recipe['entity']
+            source_id = entity.source.source_id
+            version = str(entity.version or 'latest')
+            entity_type = str(entity.entity_type)
+            recipe_prefix = f'{entity_type}-{source_id}-{version}'
+            tile_id = self.download_partition.get('partition_id_to_download')
+            self.recipe_heap_dir = heap_dir(self.recipe.get('admin_id'), entity)
+            self.recipe_external_dir = external_dir(self.recipe.get('admin_id'), entity)
+            cache_path = self.recipe_external_dir / f'{recipe_prefix}_{tile_id}.parquet'
+            self.download_partition['downloaded_path'] = None
+            self.download_partition['data_path'] = cache_path
+            return
+
         # Set compressed file name, if given
         compressed_file_name = None
         if 'compressed_file_name' in self.recipe:
@@ -1136,7 +1206,8 @@ class Ingester:
                 )
                 if re_match:
                     filename = re_match.group(1)
-                    print(f'Name of downloaded file inferred from URL: {filename}')
+                    if self.verbose:
+                        print(f'Name of downloaded file inferred from URL: {filename}')
                     downloaded_path = self.recipe_external_dir / filename
 
             # If the downloaded path contains wildcards, search for it
@@ -1165,6 +1236,25 @@ class Ingester:
         redownload : bool
             Set to True to skip checking for existing files (overwrite)
         """
+
+        if (self.recipe.get('download_by') or {}).get('partition') == 'latlon_tile':
+            from openplaces.io.cloud_geoparquet_ingester import (
+                fetch_latlon_tile_to_cache,
+            )
+
+            download_by = self.recipe.get('download_by') or {}
+            fetch_latlon_tile_to_cache(
+                download_url=self.download_partition['download_url'],
+                tile_id=self.download_partition['partition_id_to_download'],
+                tile_size_deg=float(download_by.get('tile_size_deg', 1.0)),
+                bbox_column=download_by.get('bbox_column', 'bbox'),
+                cache_path=self.download_partition['data_path'],
+                s3_anonymous=download_by.get('s3_anonymous', False),
+                s3_region=download_by.get('s3_region'),
+                redownload=redownload,
+                verbose=self.verbose,
+            )
+            return
 
         # Skip if the data path exists and no redownload is requested
         if (
