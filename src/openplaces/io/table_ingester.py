@@ -100,6 +100,11 @@ class TableIngester:
             self.recipe.get('entity') or self.recipe.get('dataset')
         )
 
+    @staticmethod
+    def _mark_suffix(*parts):
+        present = [str(p) for p in parts if p is not None]
+        return (': ' + ' | '.join(present)) if present else ''
+
     # Public entry point
 
     def process(self, process_in_chunks: bool = False, bbox=None):
@@ -115,7 +120,8 @@ class TableIngester:
             FID-based filtering when process_in_chunks is True.
         """
         admin_id_to_process = self.processing_chunk['admin_id_to_process']
-        suffix = f': {admin_id_to_process}' if admin_id_to_process else ''
+        partition_id = self.download_partition.get('partition_id_to_download')
+        suffix = self._mark_suffix(admin_id_to_process, partition_id)
 
         read_kwargs = {}
         if process_in_chunks:

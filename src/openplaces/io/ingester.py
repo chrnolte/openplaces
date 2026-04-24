@@ -188,6 +188,20 @@ class Ingester:
             }
         return temp
 
+    @staticmethod
+    def _mark_suffix(*parts):
+        present = [str(p) for p in parts if p is not None]
+        return (': ' + ' | '.join(present)) if present else ''
+
+    @property
+    def _first_partition_id(self):
+        if self.partition_ids:
+            return self.partition_ids[0]
+        try:
+            return get_partition_ids(self.recipe)[0]
+        except NotImplementedError:
+            return None
+
     @property
     def _is_aggregate_mode(self):
         """True when save_to.admin_level is coarser than the process level.
@@ -293,15 +307,18 @@ class Ingester:
         pd.DataFrame
             Transposed sample of the principal entity table.
         """
-        admin_id_by_level = {
-            AdminId(aid).get_level(): aid
-            for aid in (self.admin_ids_to_save or [])
-            + (self.admin_ids_to_process or [])
-            if aid is not None
-        }
-
         layer_level = get_save_admin_level(self.recipe)
-        data = get_entities(self.recipe, admin_id_by_level[layer_level])
+        admin_id = next(
+            (
+                aid
+                for aid in (self.admin_ids_to_save or [])
+                + (self.admin_ids_to_process or [])
+                if aid is not None and AdminId(aid).get_level() == layer_level
+            ),
+            None,
+        )
+        partition_id = self._first_partition_id
+        data = get_entities(self.recipe, admin_id, partition_id=partition_id)
         return data.sample(n).T
 
     def sample_additional_layer(self, n=5):
@@ -321,17 +338,23 @@ class Ingester:
         if not layers:
             return None
 
-        admin_id_by_level = {
-            AdminId(aid).get_level(): aid
-            for aid in (self.admin_ids_to_save or [])
-            + (self.admin_ids_to_process or [])
-            if aid is not None
-        }
-
         layer = layers[0]
         print(layer)
-        layer_level = get_save_admin_level(get_table_recipe(self.recipe, layer))
-        data = get_entities(self.recipe, admin_id_by_level[layer_level], layer=layer)
+        table_recipe = get_table_recipe(self.recipe, layer)
+        layer_level = get_save_admin_level(table_recipe)
+        admin_id = next(
+            (
+                aid
+                for aid in (self.admin_ids_to_save or [])
+                + (self.admin_ids_to_process or [])
+                if aid is not None and AdminId(aid).get_level() == layer_level
+            ),
+            None,
+        )
+        partition_id = self._first_partition_id
+        data = get_entities(
+            self.recipe, admin_id, layer=layer, partition_id=partition_id
+        )
         return data.sample(n).T
 
     def _merge_tile_partials(self):
@@ -862,7 +885,10 @@ class Ingester:
             for admin_id_to_process in admin_ids_in_tile:
                 self.processing_chunk['admin_id_to_process'] = admin_id_to_process
                 table_ingester._save_recipe_data(gdf)
-                self.timer.mark(f'Save: {admin_id_to_process}')
+                suffix = self._mark_suffix(
+                    admin_id_to_process, partition_id_to_download
+                )
+                self.timer.mark(f'Save{suffix}')
         else:
             admin_ids_to_process_in_partition = [
                 admin_id
@@ -1275,6 +1301,11 @@ class Ingester:
                 print('Data file found. Download and unzipping skipped.')
             return
 
+        _dl_suffix = self._mark_suffix(
+            self.download_partition.get('admin_id_to_download'),
+            self.download_partition.get('partition_id_to_download'),
+        )
+
         # Download if neither downloaded file nor data file exist
         if redownload or (
             (
@@ -1300,7 +1331,7 @@ class Ingester:
                 self.recipe_external_dir,
                 verify_ssl=verify_ssl,
             )
-            self.timer.mark('Download')
+            self.timer.mark(f'Download{_dl_suffix}')
 
             if self.download_partition['downloaded_path'] is None:
                 self.download_partition['downloaded_path'] = downloaded_path
@@ -1328,7 +1359,7 @@ class Ingester:
                 print('Unzipping...')
 
             unzip(self.download_partition['downloaded_path'], self.recipe_heap_dir)
-            self.timer.mark('Unzip')
+            self.timer.mark(f'Unzip{_dl_suffix}')
 
         # Identify last extracted file if the data path is unknown
         # or contains wildcards
@@ -1397,7 +1428,8 @@ class Ingester:
         self.processing_chunk = {'admin_id_to_process': admin_id_to_process}
 
         admin_id_to_download = self.download_partition['admin_id_to_download']
-        suffix = '' if admin_id_to_process is None else f': {admin_id_to_process}'
+        partition_id = self.download_partition.get('partition_id_to_download')
+        suffix = self._mark_suffix(admin_id_to_process, partition_id)
 
         process_in_chunks = (
             admin_id_to_download is not None

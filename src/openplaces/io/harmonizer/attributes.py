@@ -418,7 +418,10 @@ def _attribute_polygon_reference(
                 spine.index
             )
         if 'land_value' in footprint_ref_attrs.columns:
-            is_principal = spine[f'overlap_fraction{suffix}'] == 1.0
+            if 'footprint_role' in spine.columns:
+                is_principal = spine['footprint_role'].eq('primary')
+            else:
+                is_principal = spine[n_other_col].eq(0)
             spine[f'land_value{suffix}'] = (
                 footprint_primary_row['land_value']
                 .reindex(spine.index)

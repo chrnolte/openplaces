@@ -702,7 +702,7 @@ def show_ingested_geometries(
     if not ingester.admin_ids_to_save:
         return None
 
-    admin_id = ingester.admin_ids_to_save[-1]
+    admin_id = ingester.admin_ids_to_save[0]
     print(admin_id)
 
     admin = None
@@ -713,7 +713,10 @@ def show_ingested_geometries(
         if admin_recipe_id:
             admin = get_admin(admin_id, level=level, recipe=admin_recipe_id, geom=True)
 
-    entities = get_entities(ingester.recipe, admin_id, geom=True)
+    partition_id = ingester._first_partition_id
+    entities = get_entities(
+        ingester.recipe, admin_id, geom=True, partition_id=partition_id
+    )
 
     if entities.empty:
         print(f'No entities found for {admin_id}.')
@@ -793,8 +796,11 @@ def show_random_entity(
     -------
     fig, (ax_map, ax_table) : matplotlib Figure and Axes pair.
     """
-    admin_id = ingester.admin_ids_to_save[-1] if ingester.admin_ids_to_save else None
-    entities = get_entities(ingester.recipe, admin_id, geom=True)
+    admin_id = ingester.admin_ids_to_save[0] if ingester.admin_ids_to_save else None
+    partition_id = ingester._first_partition_id
+    entities = get_entities(
+        ingester.recipe, admin_id, geom=True, partition_id=partition_id
+    )
     idx = entities.sample().index[0]
     print(idx)
     return show_geometry_context(entities, idx)
