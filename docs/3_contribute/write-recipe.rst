@@ -265,7 +265,7 @@ File handling
       .. attribute:: admin_recipe_id
          :no-index:
 
-         Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-nhgis-2020_admin3"`.
+         Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-census-2021_admin3"`.
 
    .. attribute:: use_spatial_index
 
