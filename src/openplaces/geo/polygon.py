@@ -1171,8 +1171,8 @@ def overlay_polygons(
         layer2 = read_parquet(layer2, geom=True)
 
     # Resolve index aliases
-    idx1 = layer1.index.name or 'index_0'
-    idx2 = layer2.index.name or 'index_1'
+    idx1 = layer1.index.name or 'index'
+    idx2 = layer2.index.name or 'index'
     if idx1 == idx2:
         if suffixes is None:
             raise ValueError(f'Both tables share index name {idx1!r}. Pass suffixes.')

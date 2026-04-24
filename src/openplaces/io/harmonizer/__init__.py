@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 import geopandas as gpd
 
-from openplaces.core.schema import AdminId
+from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.io import save_parquet
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import get_output_path, get_recipe_by_id
@@ -51,6 +51,11 @@ class HarmonizeState:
         Maps resolved recipe_id → entity_type (e.g.
         ``{'US-MA_parcel-mapc-2024': 'parcel'}``).  Lets steps look up all
         crosswalks of a given entity type without knowing the exact recipe_id.
+    source_geometry_types : dict[str, SourceGeometryType]
+        Maps resolved recipe_id → :class:`~openplaces.core.schema.SourceGeometryType`.
+        Populated by ``link_to_reference`` when ``source_geometry_type`` is declared
+        in the recipe step.  Used by ``classify_footprint_role`` to identify which
+        linked datasets are evidence of primary buildings.
     simplified_geometry : GeoSeries or None
         Set by ``simplify_geometries``; written as a sidecar by the save step.
     metadata : dict
@@ -67,6 +72,7 @@ class HarmonizeState:
     crosswalks: dict[str, gpd.GeoDataFrame] = field(default_factory=dict)
     overlays: dict[str, gpd.GeoDataFrame] = field(default_factory=dict)
     reference_types: dict[str, str] = field(default_factory=dict)
+    source_geometry_types: dict[str, SourceGeometryType] = field(default_factory=dict)
     simplified_geometry: gpd.GeoSeries | None = None
     metadata: dict = field(default_factory=dict)
 
@@ -326,6 +332,7 @@ import openplaces.io.harmonizer.spine  # noqa: F401, E402
 __all__ = [
     'Harmonizer',
     'HarmonizeState',
+    'SourceGeometryType',
     'harmonize',
     '_STEP_REGISTRY',
     '_register',
