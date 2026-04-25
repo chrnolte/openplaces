@@ -1,0 +1,114 @@
+admin_id: US
+
+dataset:
+  theme: population
+  source:
+    source_id: acs
+    portal_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/"
+    # The {table} placeholder is dynamically replaced by values in 'download_by'
+    download_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-{table}.dat"
+  version: 2024
+
+# Configuration for iterating through multiple files
+download_by:
+  partition: table
+  table_names:
+      - b01001   # Sex by Age
+      - b19013   # Median Household Income
+      - b02001   # Race
+      - b25077   # Median Property Value (Dollars)
+      - b17001   # Poverty Status in the Past 12 Months
+      - b15003   # Educational attainment for over 25yo
+      - b23025   # Employment status (Labor force, unemployment) 
+      - b08303   # Travel time to work
+      - b25002   # Occupancy Status 
+      - b25064   # Median Gross Rent
+      - b25003   # Tenure (Owner vs Renter)
+      - b25091   # Mortgage Status by Selected Monthly Owner Costs
+      - b25070   # Gross Rent as % of Household Income (Rent Burden)
+      - b03002   # Hispanic or Latino Origin by Race
+      - c16002   # Household Language by English Proficiency
+      - b11004   # Family Type by Presence of Own Children
+      - b01003   # Total Population
+      - b22010   # Receipt of Food Stamps/SNAP
+
+# Uncompressed file name (raw download)
+uncompressed_file_name: "acsdt5y2024-{table}.dat"
+
+# Delimiter for ACS .dat text files
+delimiter: "|"
+
+# Columns to rename
+columns:
+    census_geo_id: GEO_ID
+    total_population: B01001_E001
+    male_population: B01001_E002
+    female_population: B01001_E026
+
+    # Under 18 (male)
+    male_under_5: B01001_E003
+    male_5_to_9: B01001_E004
+    male_10_to_14: B01001_E005
+    male_15_to_17: B01001_E006
+
+    # Under 18 (female)
+    female_under_5: B01001_E027
+    female_5_to_9: B01001_E028
+    female_10_to_14: B01001_E029
+    female_15_to_17: B01001_E030
+
+    # 18–64 (male)
+    male_18_19: B01001_E007
+    male_20: B01001_E008
+    male_21: B01001_E009
+    male_22_to_24: B01001_E010
+    male_25_to_29: B01001_E011
+    male_30_to_34: B01001_E012
+    male_35_to_39: B01001_E013
+    male_40_to_44: B01001_E014
+    male_45_to_49: B01001_E015
+    male_50_to_54: B01001_E016
+    male_55_to_59: B01001_E017
+    male_60_61: B01001_E018
+    male_62_to_64: B01001_E019
+
+    # 18–64 (female)
+    female_18_19: B01001_E031
+    female_20: B01001_E032
+    female_21: B01001_E033
+    female_22_to_24: B01001_E034
+    female_25_to_29: B01001_E035
+    female_30_to_34: B01001_E036
+    female_35_to_39: B01001_E037
+    female_40_to_44: B01001_E038
+    female_45_to_49: B01001_E039
+    female_50_to_54: B01001_E040
+    female_55_to_59: B01001_E041
+    female_60_61: B01001_E042
+    female_62_to_64: B01001_E043
+
+    # 65+ (male)
+    male_65_66: B01001_E020
+    male_67_to_69: B01001_E021
+    male_70_to_74: B01001_E022
+    male_75_to_79: B01001_E023
+    male_80_to_84: B01001_E024
+    male_85_plus: B01001_E025
+
+    # 65+ (female)
+    female_65_66: B01001_E044
+    female_67_to_69: B01001_E045
+    female_70_to_74: B01001_E046
+    female_75_to_79: B01001_E047
+    female_80_to_84: B01001_E048
+    female_85_plus: B01001_E049
+
+    med_household_inc: B19013_E001
+    
+keep_unnamed_columns: true
+
+# Use census GEOID as index
+set_index: census_geo_id
+
+save_to:
+  data_dir: cache
