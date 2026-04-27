@@ -28,16 +28,19 @@ PROJ4 = {
 
 
 def fix_polygons(gdf):
-    """Fix polygons of a GeoDataFrame by adding a zero buffer.
-
-    This fixes most invalid geometry issues found in parcel data.
+    """Fix invalid geometries in a GeoDataFrame using make_valid.
 
     Parameters
     ----------
     gdf : GeoDataFrame
-        Geodataframe that is suspected to have invalid geometries
+        GeoDataFrame that may have invalid geometries.
     """
-    gdf['geometry'] = gdf['geometry'].buffer(0)
+    gdf = gdf.copy()
+    invalid = ~gdf.geometry.is_valid
+    if invalid.any():
+        gdf.loc[invalid, 'geometry'] = shapely.make_valid(
+            gdf.loc[invalid, 'geometry'].values
+        )
     return gdf
 
 

@@ -22,7 +22,11 @@ from openplaces.core.constants import (
 from openplaces.geo import get_crs
 from openplaces.geo.ids import get_geo_ids
 from openplaces.geo.overlay import overlay_admin_ids
-from openplaces.geo.polygon import clean_polygons, resolve_overlapping_polygons
+from openplaces.geo.polygon import (
+    clean_polygons,
+    fix_polygons,
+    resolve_overlapping_polygons,
+)
 from openplaces.io import (
     find_latest_file_or_gdb,
     read_gdb_with_domains,
@@ -448,19 +452,25 @@ class TableIngester:
         if isinstance(df, gpd.GeoDataFrame):
             _admin = self.processing_chunk.get('admin_id_to_process')
             _suffix = f': {_admin}' if _admin else ''
-            with log_step(f'Resolve overlaps{_suffix}', timer=self.timer):
-                df = clean_polygons(df)
-                keep = self.recipe.get('keep_overlapping_polygons', None)
-                recipe_col_names = list(self.recipe.get('columns', {}) or {})
-                skip = {c for c in df.columns if '_id' in c} | {'geometry'}
-                compare_cols = [c for c in df.columns if c not in skip]
-                snippet_cols = (
-                    [c for c in recipe_col_names if c in compare_cols]
-                    + [c for c in compare_cols if c not in set(recipe_col_names)]
-                )[:5]
-                df = resolve_overlapping_polygons(
-                    df, keep=keep, compare_cols=compare_cols, snippet_cols=snippet_cols
-                )
+            if (~df.geometry.is_valid).any():
+                df = fix_polygons(df)
+            if self.recipe.get('resolve_overlaps', False):
+                with log_step(f'Resolve overlaps{_suffix}', timer=self.timer):
+                    df = clean_polygons(df)
+                    keep = self.recipe.get('keep_overlapping_polygons', None)
+                    recipe_col_names = list(self.recipe.get('columns', {}) or {})
+                    skip = {c for c in df.columns if '_id' in c} | {'geometry'}
+                    compare_cols = [c for c in df.columns if c not in skip]
+                    snippet_cols = (
+                        [c for c in recipe_col_names if c in compare_cols]
+                        + [c for c in compare_cols if c not in set(recipe_col_names)]
+                    )[:5]
+                    df = resolve_overlapping_polygons(
+                        df,
+                        keep=keep,
+                        compare_cols=compare_cols,
+                        snippet_cols=snippet_cols,
+                    )
 
         # Attribute entities to administrative unit IDs via crosswalk
         # (Before admin ID index creation, which needs parent Admin ID)
