@@ -4,6 +4,7 @@ Input/output utilities
 
 import bz2
 import math
+import re
 import shutil
 import subprocess
 import sys
@@ -198,8 +199,6 @@ def _sniff_ext(chunk: bytes) -> str | None:
     # GeoJSON: no need for a balanced parse — just check the type field
     text = chunk.decode('utf-8', errors='replace').strip()
     if text.startswith('{'):
-        import re
-
         match = re.search(r'"type"\s*:\s*"(\w+)"', text)
         if match and match.group(1) in {
             'FeatureCollection',
@@ -524,8 +523,6 @@ def to_kmz(gdf: gpd.GeoDataFrame, filepath: str | Path) -> None:
     filepath : str or Path
         Output KMZ path
     """
-    import zipfile
-
     if isinstance(filepath, str):
         filepath = Path(filepath)
 
@@ -540,7 +537,7 @@ def to_kmz(gdf: gpd.GeoDataFrame, filepath: str | Path) -> None:
     gdf.to_file(kml_path, driver='KML')
 
     # Convert to KMZ (zipped KML)
-    with zipfile.ZipFile(filepath, 'w', zipfile.ZIP_DEFLATED) as kmz:
+    with ZipFile(filepath, 'w', ZIP_DEFLATED) as kmz:
         kmz.write(kml_path, kml_path.name)
 
     # Clean up temporary KML

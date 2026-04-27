@@ -10,6 +10,7 @@ import inspect
 import os
 import re
 import subprocess
+import threading
 from pathlib import Path
 
 from openplaces.config import cfg
@@ -357,9 +358,6 @@ def test_script(*args, verbose=False, committed=True):
 
 
 def run_subprocess(command, p={}, verbose=False, ignore_failures=False):
-    import subprocess
-    import threading
-
     for key, value in p.items():
         if isinstance(value, list):
             value = ','.join([str(v) for v in value])

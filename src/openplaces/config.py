@@ -11,7 +11,11 @@ Priority (highest to lowest):
 On first use, users are prompted to customize directory paths or accept defaults.
 """
 
+import argparse
 import getpass
+import os
+import platform
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -518,8 +522,6 @@ def show_config():
 
 def edit_config():
     """Open user config file in default editor."""
-    import os
-
     config_path = Path(user_config_dir(APPNAME, APPAUTHOR)) / 'config.yaml'
 
     if not config_path.exists():
@@ -538,9 +540,6 @@ def edit_config():
             return
 
     # Try to open with default editor
-    import platform
-    import subprocess
-
     system = platform.system()
     try:
         if system == 'Windows':
@@ -582,8 +581,6 @@ def reload_config(interactive: bool = False) -> OpenPlacesConfig:
 
 def main():
     """Command-line interface for config management."""
-    import argparse
-
     parser = argparse.ArgumentParser(
         description='Manage openplaces configuration',
         epilog='Run without arguments to show current configuration.',

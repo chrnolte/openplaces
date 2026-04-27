@@ -2,6 +2,7 @@
 System diagnostics: recipe availability, geographic coverage, etc.
 """
 
+import time
 import warnings
 from pathlib import Path
 
@@ -113,7 +114,6 @@ def map_recipe_coverage(
     -------
     (fig, ax) : tuple[plt.Figure, plt.Axes]
     """
-    import time
 
     from openplaces.io.readers import get_admin
 

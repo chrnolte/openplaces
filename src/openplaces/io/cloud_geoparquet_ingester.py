@@ -3,8 +3,15 @@ Helper functions for the `latlon_tile` partition mode in `Ingester`.
 """
 
 import math
+import xml.etree.ElementTree as ET
 
 import geopandas as gpd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
+import pyarrow.fs as pafs
+import pyarrow.parquet as pq
+import requests
 
 from openplaces.io.readers import get_admin
 
@@ -139,8 +146,6 @@ def fetch_latlon_tile_to_cache(
     minx, miny, maxx, maxy = tile_bounds(tile_id, tile_size_deg)
     col = bbox_column
 
-    import pyarrow.compute as pc
-
     bbox_filter = (
         (pc.field(col, 'xmin') <= maxx)
         & (pc.field(col, 'ymin') <= maxy)
@@ -154,9 +159,6 @@ def fetch_latlon_tile_to_cache(
     if download_url.startswith('s3://'):
         table = _read_s3_parquet(download_url, bbox_filter, s3_region, verbose)
     else:
-        import pyarrow.dataset as ds
-        import pyarrow.fs as pafs
-
         filesystem, path = pafs.FileSystem.from_uri(download_url.rstrip('/'))
         infos = filesystem.get_file_info(pafs.FileSelector(path, recursive=True))
         paths = [
@@ -189,12 +191,7 @@ def fetch_latlon_tile_to_cache(
 
 def _read_s3_parquet(url, bbox_filter, region, verbose):
     """Read S3 parquet files via HTTPS range requests with row-group filtering."""
-    import xml.etree.ElementTree as ET
     from urllib.parse import quote, urlparse
-
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-    import requests
 
     parsed = urlparse(url)
     bucket = parsed.netloc

@@ -6,6 +6,7 @@ Track execution time across script milestones and export as structured data.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import sys
@@ -230,7 +231,6 @@ class Timer:
         """Save timing data to CSV (one row per step). Auto-finishes if needed."""
         if not self._finished:
             self.finish()
-        import csv
 
         if path is None:
             path = self._get_default_log_path('csv')

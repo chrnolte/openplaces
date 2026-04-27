@@ -1,18 +1,16 @@
 # src/openplaces/geo/__init__.py
 
+import json
 import warnings
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import pyogrio
 
 
 def get_crs(filepath, layer=None):
     """Get the CRS from the metadata of a file."""
     if Path(filepath).suffix == '.parquet':
-        import json
-
-        import pyarrow.parquet as pq
-
         meta = pq.read_schema(filepath).metadata or {}
         geo = meta.get(b'geo')
         if geo is None:
