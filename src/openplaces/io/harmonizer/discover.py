@@ -71,14 +71,26 @@ def discover_sources(state: HarmonizeState) -> HarmonizeState:
     return state
 
 
-def _scan_admin_ingest_recipes(admin_level: int) -> list[dict]:
-    """Return ingest admin recipes at *admin_level*, priority-sorted.
+def _scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dict]:
+    """Scan recipe tree for ingest recipes of entity_type, priority-sorted.
 
-    Priority: most-specific admin_id first (country > global),
-    then newest version within the same specificity tier.
+    Searches ``{recipes_root}/**/{entity_type}/*/*/{filename_glob}.yaml``
+    (recursive), reads each YAML to verify ``stage == 'ingest'``, and returns
+    a list sorted by (specificity, version) descending — most-specific
+    admin_id and newest version first.
+
+    Parameters
+    ----------
+    entity_type : str
+        Entity type directory name (e.g. 'admin', 'parcel', 'footprint').
+    filename_glob : str, optional
+        Glob pattern matched against the recipe filename stem. Defaults to
+        '*' (all files). A .yaml extension is appended automatically.
     """
     recipes_root = Path(__file__).parent.parent.parent / 'recipes'
-    pattern = str(recipes_root / '**' / f'*_admin{admin_level}.yaml')
+    pattern = str(
+        recipes_root / '**' / entity_type / '*' / '*' / f'{filename_glob}.yaml'
+    )
     found = sorted(glob.glob(pattern, recursive=True))
 
     sources: list[dict] = []
@@ -110,6 +122,14 @@ def _scan_admin_ingest_recipes(admin_level: int) -> list[dict]:
 
     sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
     return sources
+
+
+def _scan_admin_ingest_recipes(admin_level: int) -> list[dict]:
+    return _scan_ingest_recipes('admin', filename_glob=f'*_admin{admin_level}')
+
+
+def _scan_entity_ingest_recipes(entity_type: str) -> list[dict]:
+    return _scan_ingest_recipes(entity_type)
 
 
 def _best_recipe_for(admin_id_str: str, sources: list[dict]) -> str | None:
