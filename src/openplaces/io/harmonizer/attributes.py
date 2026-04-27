@@ -41,16 +41,29 @@ def _resolve_suffix(
     return f'_{entity_type}' if entity_type else default
 
 
-def _point_suffix(crosswalk_key: str, entity_type: str | None = None) -> str:
+def _point_suffix(
+    crosswalk_key: str,
+    entity_type: str | None = None,
+    col: str | None = None,
+) -> str:
     """Compose suffix ``_{entity_type}_{source_id}`` for point references.
 
+    When *col* is supplied and *entity_type* already appears in the column
+    name (e.g. ``'dwelling'`` in ``'n_dwelling_units'``), the entity_type
+    part is dropped to avoid redundancy (``'_overture'`` instead of
+    ``'_dwelling_overture'``).
+
     Examples: ``US_building-nsi-2022``, ``building`` -> ``_building_nsi``;
-    ``dwelling-overture-2025``, ``dwelling`` -> ``_dwelling_overture``.
+    ``dwelling-overture-2025``, ``dwelling`` -> ``_dwelling_overture``;
+    ``dwelling-overture-2025``, ``dwelling``, col=``n_dwelling_units``
+    -> ``_overture``.
     """
     base = crosswalk_key.rsplit('_', 1)[-1]
     parts = base.split('-', 2)
     source_id = parts[1] if len(parts) > 1 else base
     if entity_type:
+        if col and entity_type in col:
+            return f'_{source_id}'
         return f'_{entity_type}_{source_id}'
     return f'_{source_id}'
 
@@ -113,6 +126,10 @@ _POINT_REF_COLS = [
     'area_sqft',
     'n_stories',
     'n_dwelling_units',
+    'address_street',
+    'address_number',
+    'postal_code',
+    'city',
 ]
 
 
@@ -538,7 +555,9 @@ def _attribute_point_reference(
 
     avail_cols = columns or [c for c in _POINT_REF_COLS if c in crosswalk.columns]
     renamed: dict[str, str] = {
-        c: f'{c}{suffix}' for c in avail_cols if c in crosswalk.columns
+        c: f'{c}{_point_suffix(crosswalk_key, entity_type, col=c)}'
+        for c in avail_cols
+        if c in crosswalk.columns
     }
 
     spine_id_col = state.spine.index.name
@@ -549,9 +568,9 @@ def _attribute_point_reference(
         )
         return state
 
-    spine[f'n_point{suffix}'] = (
-        crosswalk.groupby(spine_id_col).size().reindex(spine.index, fill_value=0)
-    )
+    group_sizes = crosswalk.groupby(spine_id_col).size()
+    if group_sizes.max() > 1:
+        spine[f'n_point{suffix}'] = group_sizes.reindex(spine.index, fill_value=0)
 
     purpose_group_col = next(
         (c for c in avail_cols if 'purpose_subgroup' in c and c in crosswalk.columns),
@@ -616,6 +635,28 @@ def _attribute_point_reference(
     if numeric_agg:
         spine = spine.join(
             crosswalk.groupby(spine_id_col).agg(numeric_agg).rename(columns=renamed)
+        )
+
+    handled = set(numeric_agg) | {'purpose_subgroup', 'openplaces_group'}
+    str_cols = [
+        c
+        for c in avail_cols
+        if c in crosswalk.columns
+        and c not in handled
+        and not pd.api.types.is_numeric_dtype(crosswalk[c])
+        and not pd.api.types.is_bool_dtype(crosswalk[c])
+        and not pd.api.types.is_datetime64_any_dtype(crosswalk[c])
+    ]
+    if str_cols:
+
+        def _join_unique(s: pd.Series) -> str | None:
+            seen = dict.fromkeys(str(v) for v in s if pd.notna(v))
+            return '; '.join(seen) if seen else None
+
+        spine = spine.join(
+            crosswalk.groupby(spine_id_col)[str_cols]
+            .agg(_join_unique)
+            .rename(columns={c: renamed[c] for c in str_cols if c in renamed})
         )
 
     if openplaces_group_col:
@@ -841,8 +882,6 @@ def infer_attributes(
 
         When *derived* is ``None`` or empty, all of the above are attempted.
     """
-    import warnings as _w
-
     if state.spine is None:
         return state
 
@@ -855,8 +894,8 @@ def infer_attributes(
         return any(d in (name, name.split('_')[0]) for d in (derived or []))
 
     if _want('area') or _want('m2'):
-        with _w.catch_warnings():
-            _w.simplefilter('ignore')
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
             spine['m2'] = get_areas(spine, unit='m2')
 
     if _want('value_per_sqft') or _want('value_per_area'):

@@ -72,6 +72,7 @@ pipeline:
     thresholds:
       min_fraction_of_largest: 0.1667
       area_intersection_m2_min: 10
+    sort_by: area_intersection_m2
 
   - step: infer_spine_additions
     entity_type: parcel
@@ -107,6 +108,7 @@ pipeline:
       proximity_m: 10          # inner proximity fallback (Table 3, Step 5)
       far_proximity_m: 50      # parcel-constrained outer pass (Table 3, Step 6)
       aggregate_multipoint: true   # count dwelling points → n_dwelling_units
+      dedup_addresses: true    # drop building-level no-unit record when unit siblings exist
 
   - step: classify_footprint_role
     entity_type: parcel
@@ -116,10 +118,11 @@ pipeline:
     priority:
       # Suffixes reflect _point_suffix (entity_type + source_id) for point
       # references and _resolve_suffix (entity_type) for polygon references:
-      #   NSI building → _building_nsi, dwelling/Overture → _dwelling_overture,
+      #   NSI building → _building_nsi, dwelling/Overture → _dwelling_overture
+      #   (or _overture when entity_type appears in the column name),
       #   parcel → _parcel
       purpose_subgroup: [building_nsi, parcel]
-      n_dwelling_units: [dwelling_overture, parcel]
+      n_dwelling_units: [overture, parcel]
       year_built: [parcel, building_nsi]
       improvement_value: [parcel]
     sources:
@@ -139,6 +142,10 @@ pipeline:
       - recipe_id: dwelling-overture-2025
         columns:
           - n_dwelling_units
+          - address_street
+          - address_number
+          - postal_code
+          - city
       - recipe_id: US_building-nsi-2022
         columns:
           - purpose_subgroup

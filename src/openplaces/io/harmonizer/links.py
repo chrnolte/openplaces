@@ -14,7 +14,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from openplaces.core.attribute_registry import get_agg_func, load_registry
+from openplaces.core.attribute_registry import load_registry
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import add_openlocationcode_index
@@ -24,6 +24,7 @@ from openplaces.geo.polygon import (
     overlay_polygons,
     resolve_overlapping_polygons,
 )
+from openplaces.io.aggregate import aggregate_rows
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
@@ -46,6 +47,9 @@ def link_to_reference(
     thresholds: dict | None = None,
     remap_id: str | None = None,
     source_geometry_type: str | None = None,
+    aggregation_function=None,
+    sort_by: str | None = None,
+    list_columns: list[str] | None = None,
 ) -> HarmonizeState:
     """Load a reference dataset and build a spine ↔ reference crosswalk.
 
@@ -93,6 +97,21 @@ def link_to_reference(
         what this source represents spatially (e.g. ``'single_building_point'``).
         Stored in ``state.source_geometry_types`` for use by downstream steps
         such as ``classify_footprint_role``.
+    aggregation_function : None, callable, or dict, optional
+        Controls how duplicate ``geo_id`` rows in the reference are reduced to
+        one row before joining.  ``None`` (default) applies the aggregation
+        function from the attribute registry.  A dict maps column names to
+        callables; columns absent from the dict fall back to the registry
+        default.  Only used for ``spatial_overlay`` joins.
+    sort_by : str, optional
+        Column to sort reference rows by descending before aggregation.
+        Falls back to geometry area when the column is absent and the
+        reference is a GeoDataFrame.  Only used for ``spatial_overlay`` joins.
+    list_columns : list of str, optional
+        Column names for which an extra ``{col}_list`` column is added to the
+        aggregated reference, collecting all values per ``geo_id`` into a list.
+        Normal scalar aggregation for each column still applies alongside.
+        Only used for ``spatial_overlay`` joins.
     """
     if state.spine is None:
         warnings.warn('link_to_reference: spine is None; skipping.')
@@ -121,6 +140,9 @@ def link_to_reference(
             resolved_recipe_id,
             resolved_entity_type,
             thresholds or {},
+            aggregation_function,
+            sort_by,
+            list_columns,
         )
     elif join == 'spatial_point':
         return _link_spatial_point(
@@ -189,6 +211,9 @@ def _link_spatial_overlay(
     recipe_id: str,
     entity_type: str | None,
     thresholds: dict,
+    aggregation_function=None,
+    sort_by: str | None = None,
+    list_columns: list[str] | None = None,
 ) -> HarmonizeState:
     """Polygon-on-polygon identity overlay; builds spine-reference crosswalk."""
     min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
@@ -231,18 +256,14 @@ def _link_spatial_overlay(
     if 'geo_id' in ref_polys.columns:
         ref_polys.index = ref_polys['geo_id'].rename('parcel_id')
 
-    def _join_nonnull(x):
-        parts = [v for v in x if v is not None and pd.notna(v)]
-        return ' + '.join(parts) if parts else None
-
-    agg_aliases = {'join_nonnull': _join_nonnull}
-    agg_cols: dict = {}
-    for col in ref.columns:
-        fname = get_agg_func(col)
-        if fname:
-            agg_cols[col] = agg_aliases.get(fname, fname)
-    if agg_cols and 'geo_id' in ref.columns:
-        ref_agg = ref.groupby('geo_id').agg(agg_cols)
+    ref_agg = aggregate_rows(
+        ref,
+        by='geo_id',
+        aggregation_function=aggregation_function,
+        sort_by=sort_by,
+        list_columns=list_columns,
+    )
+    if ref_agg is not None:
         ref_agg['n_parcels'] = ref.groupby('geo_id').size()
         ref_polys = ref_polys.join(ref_agg)
     if 'improvement_value' in ref_polys.columns and 'ha' in ref_polys.columns:
@@ -414,14 +435,10 @@ def _dedup_address_points(
     mask_drop = ~has_unit & ref['_group_has_unit']
     ref = ref[~mask_drop]
 
-    has_unit_remaining = ref['_has_unit']
     if 'n_dwelling_units' not in ref.columns:
-        ref['n_dwelling_units'] = has_unit_remaining.where(has_unit_remaining).astype(
-            float
-        )
+        ref['n_dwelling_units'] = 1.0
     else:
-        null_mask = ref['n_dwelling_units'].isna()
-        ref.loc[null_mask & has_unit_remaining, 'n_dwelling_units'] = 1.0
+        ref.loc[ref['n_dwelling_units'].isna(), 'n_dwelling_units'] = 1.0
 
     return ref.drop(columns=['_has_unit', '_group_has_unit'])
 
@@ -554,6 +571,17 @@ def _aggregate_multipoint(
                     total = float(len(group))
                 if total > 0:
                     rep['n_dwelling_units'] = float(total)
+                for _col in group.columns:
+                    if (
+                        not pd.api.types.is_numeric_dtype(group[_col])
+                        and not pd.api.types.is_bool_dtype(group[_col])
+                        and not pd.api.types.is_datetime64_any_dtype(group[_col])
+                    ):
+                        _seen = dict.fromkeys(
+                            str(v) for v in group[_col] if pd.notna(v)
+                        )
+                        if _seen:
+                            rep[_col] = '; '.join(_seen)
 
         agg_idx.append(group.index[0])
         agg_rows.append(rep)
@@ -782,8 +810,16 @@ def _link_spatial_point(
             index=linked.index,
             dtype=bool,
         )
+        _is_cross_parcel = pd.Series(
+            [
+                (pd.notna(pt) and isinstance(fps, set) and pt not in fps)
+                for pt, fps in zip(_pt_parcel, _fp_parcel_set)
+            ],
+            index=linked.index,
+            dtype=bool,
+        )
         _fp_has_same = _is_same_parcel.groupby(linked[spine_id_col]).transform('any')
-        _mask_drop = _fp_has_same & ~_is_same_parcel
+        _mask_drop = _fp_has_same & _is_cross_parcel
         if _mask_drop.any():
             n_cross = int(_mask_drop.sum())
             linked = linked[~_mask_drop].copy()
