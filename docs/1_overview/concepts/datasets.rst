@@ -35,7 +35,7 @@ Datasets are grouped into themes. The top-level themes are pre-defined, so the d
      - Vegetation, species, land cover
    * - ``built``
      - Buildings, infrastructure, roads & accessibility
-   * - ``people``
+   * - ``population``
      - Demographic data (aggregate)
    * - ``persons``
      - Data of persons, e.g. property owners (sensitive)
