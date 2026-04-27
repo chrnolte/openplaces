@@ -5,6 +5,7 @@ Depends on recipes, admin lookups, and DuckDB for fast parquet-based overlays.
 
 import contextlib
 import json
+import statistics
 import tempfile
 import time
 from pathlib import Path
@@ -623,8 +624,6 @@ def benchmark_overlay(
     n :
         Number of repetitions per cell; median is reported.
     """
-    import statistics
-    import tempfile
     from pathlib import Path as _Path
 
     with (

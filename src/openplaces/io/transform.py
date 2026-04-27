@@ -13,6 +13,7 @@ YAML recipe specifications. It supports:
 - Pattern-based transformations
 """
 
+import os
 import warnings
 from collections.abc import Callable
 from typing import Any
@@ -547,8 +548,6 @@ def _apply_remap_file(
     series: pd.Series, crosswalk_file: str, key_col: int = 0, value_col: int = 1
 ) -> pd.Series:
     """Load and apply external crosswalk file."""
-    import os
-
     if not os.path.exists(crosswalk_file):
         raise FileNotFoundError(f'Crosswalk file not found: {crosswalk_file}')
 
