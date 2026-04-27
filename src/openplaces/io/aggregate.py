@@ -3,9 +3,12 @@ Functions to aggregate per-process-unit intermediate files
 into final save-level output files.
 """
 
+import warnings
+
 import geopandas as gpd
 import pandas as pd
 
+from openplaces.core.attribute_registry import get_agg_func
 from openplaces.core.schema import AdminId
 from openplaces.io import delete_data, read_parquet, save_parquet
 from openplaces.io.readers import get_admin
@@ -15,6 +18,108 @@ from openplaces.recipe import (
     get_recipe_by_id,
     get_save_admin_level,
 )
+
+
+def join_nonnull_strings(x):
+    """Join non-null values of *x* as strings with ' + '; None when all null."""
+    parts = [str(v) for v in x if v is not None and pd.notna(v)]
+    return ' + '.join(parts) if parts else None
+
+
+_AGG_ALIASES = {'join_nonnull': join_nonnull_strings}
+
+
+def aggregate_rows(
+    df: pd.DataFrame,
+    by: str | list[str],
+    aggregation_function=None,
+    sort_by: str | None = None,
+    list_columns: list[str] | None = None,
+) -> pd.DataFrame | None:
+    """Aggregate rows of *df* using per-column functions from the attribute registry.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.  Columns that appear in the attribute registry with a
+        non-null aggregation function are included in the result.
+    by : str or list of str
+        Column(s) to group by.
+    aggregation_function : None, callable, or dict, optional
+        Controls which aggregation function is applied to each column.
+
+        ``None``
+            Use the function recorded in the attribute registry for each column.
+        callable
+            Apply this single function to all aggregatable columns.
+        dict
+            Map column names to callables; columns absent from the dict fall
+            back to the registry default.
+    sort_by : str, optional
+        Column to sort *df* by descending before grouping.  When the column is
+        absent or omitted and *df* is a GeoDataFrame, rows are sorted by
+        geometry area descending.
+    list_columns : list of str, optional
+        Column names for which an additional ``{col}_list`` column is added to
+        the output, collecting all values per group into a Python list.  The
+        normal scalar aggregation for each column is still applied; these are
+        extra columns alongside the registry-aggregated ones.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Aggregated DataFrame with *by* as the index, or ``None`` when no
+        aggregatable columns are found in *df*.
+
+    Raises
+    ------
+    ValueError
+        When *aggregation_function* is not ``None``, a callable, or a dict.
+    """
+    if not (
+        aggregation_function is None
+        or callable(aggregation_function)
+        or isinstance(aggregation_function, dict)
+    ):
+        raise ValueError(
+            'aggregation_function must be None, a callable, or a dict; '
+            f'got {type(aggregation_function)}'
+        )
+
+    if sort_by is not None and sort_by in df.columns:
+        df = df.sort_values(sort_by, ascending=False)
+    elif isinstance(df, gpd.GeoDataFrame):
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
+            df = df.loc[df.geometry.area.sort_values(ascending=False).index]
+
+    agg_cols: dict = {}
+    for col in df.columns:
+        fname = get_agg_func(col)
+        if fname is None:
+            continue
+        if callable(aggregation_function):
+            agg_cols[col] = aggregation_function
+        elif isinstance(aggregation_function, dict):
+            agg_cols[col] = aggregation_function.get(
+                col, _AGG_ALIASES.get(fname, fname)
+            )
+        else:
+            agg_cols[col] = _AGG_ALIASES.get(fname, fname)
+
+    for col in list_columns or []:
+        if col not in df.columns:
+            continue
+        # Categorical dtype cannot hold list values; cast to object first.
+        if isinstance(df[col].dtype, pd.CategoricalDtype):
+            df = df.copy()
+            df[col] = df[col].astype(object)
+        agg_cols[f'{col}_list'] = pd.NamedAgg(column=col, aggfunc=list)
+
+    if not agg_cols:
+        return None
+
+    return df.groupby(by).agg(agg_cols)
 
 
 def _strip_save_admin_level(recipe):
@@ -41,7 +146,7 @@ def _to_id_list(ids):
     return [str(a) for a in ids]
 
 
-def aggregate(
+def aggregate_files(
     recipe,
     admin_level,
     output_dir=None,
@@ -262,7 +367,7 @@ def aggregate_to_admin_level(
     verbose : bool
         If True, print a summary line for each aggregated file.
     """
-    aggregate(
+    aggregate_files(
         recipe,
         admin_level=get_save_admin_level(recipe),
         admin_ids_to_aggregate=admin_ids_to_process,
