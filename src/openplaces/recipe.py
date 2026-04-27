@@ -308,6 +308,41 @@ def get_table_recipe(recipe: str | dict, layer: str) -> dict:
     )
 
 
+def find_recipe_id(admin_id, entity_or_dataset, filename=None, silent=False):
+    """Find a recipe ID by admin_id and entity/dataset identifier.
+
+    Parameters
+    ----------
+    admin_id : str
+        Administrative unit identifier.
+    entity_or_dataset : str
+        Entity or dataset identifier string, may contain glob wildcards
+        (e.g. 'parcel-*-*', 'admin-census-2021').
+    filename : str, optional
+        Filename stem to match within the recipe directory. When None
+        (default), matches any .yaml file in the entity directory. A .yaml
+        extension is appended automatically if absent.
+    silent : bool
+        If True, suppress the message printed when multiple recipes are found.
+    """
+    glob_recipe_path = recipe_path(admin_id, entity_or_dataset, filename=filename)
+    recipe_paths_found = glob.glob(str(glob_recipe_path))
+    if len(recipe_paths_found) == 0:
+        return None
+    elif len(recipe_paths_found) == 1:
+        return Path(recipe_paths_found[0]).name
+    recipe_paths_found = sorted(recipe_paths_found, key=lambda p: Path(p).parent.name)
+    if not silent:
+        print(
+            f'Multiple recipes found for {admin_id} ({entity_or_dataset}):\n'
+            + '\n'.join([Path(fp).name for fp in recipe_paths_found])
+        )
+    recipe_id = Path(recipe_paths_found[-1]).name
+    if not silent:
+        print(f'Picked last, sorted by version: {recipe_id}')
+    return recipe_id
+
+
 def find_admin_recipe_id(admin_id, admin_level, silent=False):
     """Find the ID of an administrative data ingestion recipe
 
@@ -320,28 +355,24 @@ def find_admin_recipe_id(admin_id, admin_level, silent=False):
     silent : bool
         If True, suppress the message printed when multiple recipes are found.
     """
-    glob_recipe_path = recipe_path(
-        admin_id, 'admin-*-*', filename=f'admin{admin_level}'
+    return find_recipe_id(
+        admin_id, 'admin-*-*', filename=f'admin{admin_level}', silent=silent
     )
-    recipe_paths_found = glob.glob(str(glob_recipe_path))
-    if len(recipe_paths_found) == 0:
-        return None
-    elif len(recipe_paths_found) == 1:
-        recipe_id = Path(recipe_paths_found[0]).name
-    else:
-        recipe_paths_found = sorted(
-            recipe_paths_found, key=lambda p: Path(p).parent.name
-        )
-        if not silent:
-            print(
-                f'Multiple admin recipes found for {admin_id} at level {admin_level}:\n'
-                + '\n'.join([Path(fp).name for fp in recipe_paths_found])
-            )
-        recipe_id = Path(recipe_paths_found[-1]).name
-        if not silent:
-            print(f'Picked last, sorted by version: {recipe_id}')
 
-    return recipe_id
+
+def find_entity_recipe_id(admin_id, entity_type, **kwargs):
+    """Find the ID of an entity data ingestion recipe.
+
+    Parameters
+    ----------
+    admin_id : str
+        Administrative unit identifier.
+    entity_type : str
+        Entity type (e.g. 'parcel', 'building', 'footprint').
+    **kwargs
+        Passed to :func:`find_recipe_id` (``filename``, ``silent``).
+    """
+    return find_recipe_id(admin_id, f'{entity_type}-*-*', **kwargs)
 
 
 def get_layers(recipe: str | dict) -> list[str]:
