@@ -280,7 +280,7 @@ def recipe_path(
     if isinstance(filename, str) and '.' not in filename:
         filename += '.yaml'
 
-    return path(*args, filename=filename, root=root, **kwargs)
+    return path(*args, filename=filename, root=root, default_extension='yaml', **kwargs)
 
 
 def path_matches_pattern(path: str, pattern: str) -> bool:
