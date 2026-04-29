@@ -10,10 +10,7 @@ Its principal purpose is to support reproducible research for conservation, land
 
 **openplaces** is maintained by researchers at Boston University and released under the **Apache-2.0** license.
 
-*Jan 15, 2026: The repository is under active development. It will be populated with code from sister projects throughout 2026.*
-
-
-## Features (goals)
+## Planned features
 
 - Standardized property data ingestion and harmonization (parcels, buildings, transactions).
 - Connectors to rich environmental and socio-economic datasets (terrain, land cover, hydrology, demographics, ...).
@@ -30,7 +27,7 @@ Its principal purpose is to support reproducible research for conservation, land
 
 - Getting started: https://openplaces.readthedocs.io/en/latest/getting-started.html
 
-## Governance & Sustainability
+## Governance
 
 `openplaces` is developed by an informal network of academic collaborators.
 
@@ -39,7 +36,7 @@ Contact **contact@openplaces.io** if you would like to get involved.
 ## License
 
 Released under the **Apache License 2.0**. See [LICENSE.md](LICENSE.md) for details.  
-© 2025 Christoph Nolte
+© 2026 Christoph Nolte and the openplaces contributors
 
 ## Citation
 
@@ -47,9 +44,9 @@ If you use **openplaces** in academic work, please cite:
 
 ```bibtex
 @misc{openplaces2025,
-  author       = {Christoph Nolte},
+  author       = {Christoph Nolte et al.},
   title        = {openplaces: A Python package for place-based geospatial analysis},
-  year         = {2025},
+  year         = {2026},
   howpublished = {\url{https://github.com/chrnolte/openplaces}}
 }
 ```
