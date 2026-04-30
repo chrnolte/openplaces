@@ -41,7 +41,7 @@ delimiter: "|"
 # Columns to rename
 columns:
     census_geo_id: GEO_ID
-    total_population: B01001_E001
+    total_pop: B01003_E001
     male_population: B01001_E002
     female_population: B01001_E026
 
@@ -103,9 +103,49 @@ columns:
     female_80_to_84: B01001_E048
     female_85_plus: B01001_E049
 
+    # Property and Rent Values
     med_household_inc: B19013_E001
+    med_prop_val: B25077_E001
+    med_gross_rent: B25064_E001
+
+    #Race
+    r_total: B02001_E001
+    r_white: B02001_E002
+    r_black_afr_am: B02001_E003
+    r_native: B02001_E004
+    r_asian: B02001_E005
+    r_hawaiian_other_pac_isl: B02001_E006
+    r_other_race: B02001_E007
+    r_two_more_race_incl_other_race: B02001_E008
+    r_two_race_excl_other_race_three_race: B02001_E009
+
+    #Poverty Status
+    inc_below_poverty: B17001_E002
+    inc_above_poverty: B17001_E031
+
+    #Educational Attainment -- ask nolte how can i make this one cumulative, also travel time
     
-keep_unnamed_columns: true
+    #Employment Status
+    labor_force: B23025_E002
+    employed: B23025_E004
+    unemployed: B23025_E005
+    armed_forces: B23025_E006
+    not_in_labor_force: B23025_E007
+
+    #Occupancy Status
+    total_units: B25002_E001
+    occupied_units: B25002_E002
+    vacant_units: B25002_E003
+
+    renter_occupied: B25003_E001
+    owner_occupied: B25003_E002
+
+    #SNAP/Food Stamps
+    total_households: B22010_E001
+    household_recieves_SNAP: B22010_E002
+    
+    
+keep_unnamed_columns: false
 
 # Use census GEOID as index
 set_index: census_geo_id
