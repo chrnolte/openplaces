@@ -1,0 +1,48 @@
+# Recipe to import tracts for the United States (2025)
+admin_id: US
+
+# Entity: tiles from the 2025 US census
+entity:
+  entity_type: tile
+  source:
+    source_id: census
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/TRACT/tl_2025_{admin2_id_admin1}_tract.zip"
+  version: 2025
+
+# Download is partitioned by state
+download_by:
+  admin_level: 2
+  admin_recipe_id: "US_admin-census-2021_admin2"
+
+# Compressed file name to read
+compressed_file_name: "tl_2025_{admin2_id_admin1}_tract.zip"
+
+# Column mapping from TIGER tract shapefiles
+columns:
+  census_geo_id: GEOIDFQ
+
+# Extract county FIPS code (5-digit admin3_id used by country)
+transformations:
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: census_geo_id
+    args:
+      start: 9
+      end: 14 
+
+# Translate FIPS code to `admin3_id`
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-census-2021_admin3"
+
+# Use census GEOID as index
+set_index: census_geo_id
+
+# Save to tract file and aggregate to country
+save_to:
+  data_dir: cache
+  filename: tract
+  admin_level: 1
