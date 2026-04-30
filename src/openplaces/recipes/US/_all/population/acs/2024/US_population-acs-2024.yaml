@@ -32,7 +32,6 @@ download_by:
       - b01003   # Total Population
       - b22010   # Receipt of Food Stamps/SNAP
 
-
 # Uncompressed file name (raw download)
 uncompressed_file_name: "acsdt5y2024-{table}.dat"
 
