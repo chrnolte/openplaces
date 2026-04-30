@@ -188,8 +188,8 @@ columns:
     rent_burden_ge_50: B25070_E010
 
     #Rent and home values
-    median_gross_rent: B25064_E001
-    median_home_val: B25077_E001
+    med_gross_rent: B25064_E001
+    med_home_val: B25077_E001
 
     #Mortgage Burden
     mortgage_units: B25091_E002
