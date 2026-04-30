@@ -189,7 +189,7 @@ columns:
 
     #Rent and home values
     med_gross_rent: B25064_E001
-    med_home_val: B25077_E001
+    med_prop_val: B25077_E001
 
     #Mortgage Burden
     mortgage_units: B25091_E002
