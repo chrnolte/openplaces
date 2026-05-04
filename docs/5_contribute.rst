@@ -14,6 +14,6 @@ If you are interested in building shared functionality or writing new recipes, t
 .. toctree::
    :maxdepth: 2
 
-   3_contribute/write-recipe
-   3_contribute/git
-   3_contribute/cluster
+   5_contribute/write-recipe
+   5_contribute/git
+   5_contribute/cluster
