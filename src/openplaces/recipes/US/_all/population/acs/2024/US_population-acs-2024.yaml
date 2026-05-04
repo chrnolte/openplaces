@@ -41,71 +41,174 @@ delimiter: "|"
 # Columns to rename
 columns:
     census_geo_id: GEO_ID
-    total_population: B01001_E001
-    male_population: B01001_E002
-    female_population: B01001_E026
 
-    # Under 18 (male)
-    male_under_5: B01001_E003
-    male_5_to_9: B01001_E004
-    male_10_to_14: B01001_E005
-    male_15_to_17: B01001_E006
-
-    # Under 18 (female)
-    female_under_5: B01001_E027
-    female_5_to_9: B01001_E028
-    female_10_to_14: B01001_E029
-    female_15_to_17: B01001_E030
-
-    # 18–64 (male)
-    male_18_19: B01001_E007
-    male_20: B01001_E008
-    male_21: B01001_E009
-    male_22_to_24: B01001_E010
-    male_25_to_29: B01001_E011
-    male_30_to_34: B01001_E012
-    male_35_to_39: B01001_E013
-    male_40_to_44: B01001_E014
-    male_45_to_49: B01001_E015
-    male_50_to_54: B01001_E016
-    male_55_to_59: B01001_E017
-    male_60_61: B01001_E018
-    male_62_to_64: B01001_E019
-
-    # 18–64 (female)
-    female_18_19: B01001_E031
-    female_20: B01001_E032
-    female_21: B01001_E033
-    female_22_to_24: B01001_E034
-    female_25_to_29: B01001_E035
-    female_30_to_34: B01001_E036
-    female_35_to_39: B01001_E037
-    female_40_to_44: B01001_E038
-    female_45_to_49: B01001_E039
-    female_50_to_54: B01001_E040
-    female_55_to_59: B01001_E041
-    female_60_61: B01001_E042
-    female_62_to_64: B01001_E043
-
-    # 65+ (male)
-    male_65_66: B01001_E020
-    male_67_to_69: B01001_E021
-    male_70_to_74: B01001_E022
-    male_75_to_79: B01001_E023
-    male_80_to_84: B01001_E024
-    male_85_plus: B01001_E025
-
-    # 65+ (female)
-    female_65_66: B01001_E044
-    female_67_to_69: B01001_E045
-    female_70_to_74: B01001_E046
-    female_75_to_79: B01001_E047
-    female_80_to_84: B01001_E048
-    female_85_plus: B01001_E049
-
-    med_household_inc: B19013_E001
+    #Population sex by age
+    total_pop: B01003_E001
+    male_pop: B01001_E002
     
-keep_unnamed_columns: true
+    male_lt_5_yrs: B01001_E003
+    male_5_to_9_yrs: B01001_E004
+    male_10_to_14_yrs: B01001_E005
+    male_15_to_17_yrs: B01001_E006
+    male_18_and_19_yrs: B01001_E007
+    male_20_yrs: B01001_E008
+    male_21_yrs: B01001_E009
+    male_22_to_24_yrs: B01001_E010
+    male_25_to_29_yrs: B01001_E011
+    male_30_to_34_yrs: B01001_E012
+    male_35_to_39_yrs: B01001_E013
+    male_40_to_44_yrs: B01001_E014
+    male_45_to_49_yrs: B01001_E015
+    male_50_to_54_yrs: B01001_E016
+    male_55_to_59_yrs: B01001_E017
+    male_60_and_61_yrs: B01001_E018
+    male_62_to_64_yrs: B01001_E019
+    male_65_and_66_yrs: B01001_E020
+    male_67_to_69_yrs: B01001_E021
+    male_70_to_74_yrs: B01001_E022
+    male_75_to_79_yrs: B01001_E023
+    male_80_to_84_yrs: B01001_E024
+    male_ge_85_yrs: B01001_E025
+    
+    female_pop: B01001_E026
+    female_lt_5_yrs: B01001_E027
+    female_5_to_9_yrs: B01001_E028
+    female_10_to_14_yrs: B01001_E029
+    female_15_to_17_yrs: B01001_E030
+    female_18_and_19_yrs: B01001_E031
+    female_20_yrs: B01001_E032
+    female_21_yrs: B01001_E033
+    female_22_to_24_yrs: B01001_E034
+    female_25_to_29_yrs: B01001_E035
+    female_30_to_34_yrs: B01001_E036
+    female_35_to_39_yrs: B01001_E037
+    female_40_to_44_yrs: B01001_E038
+    female_45_to_49_yrs: B01001_E039
+    female_50_to_54_yrs: B01001_E040
+    female_55_to_59_yrs: B01001_E041
+    female_60_and_61_yrs: B01001_E042
+    female_62_to_64_yrs: B01001_E043
+    female_65_and_66_yrs: B01001_E044
+    female_67_to_69_yrs: B01001_E045
+    female_70_to_74_yrs: B01001_E046
+    female_75_to_79_yrs: B01001_E047
+    female_80_to_84_yrs: B01001_E048
+    female_ge_85_yrs: B01001_E049
+
+    #Race
+    race_white: B02001_E002
+    race_black: B02001_E003
+    race_native: B02001_E004
+    race_asian: B02001_E005
+    race_pacific_islander: B02001_E006
+
+    #Ethnicity
+    eth_hispanic_or_latino: B03002_E012
+
+    #Commute Time
+    commute_lt_5_min: B08303_E002
+    commute_5_to_9_min: B08303_E003
+    commute_10_to_14_min: B08303_E004
+    commute_15_to_19_min: B08303_E005
+    commute_20_to_24_min: B08303_E006
+    commute_25_to_29_min: B08303_E007
+    commute_30_to_34_min: B08303_E008
+    commute_35_to_39_min: B08303_E009
+    commute_40_to_44_min: B08303_E010
+    commute_45_to_59_min: B08303_E011
+    commute_60_to_89_min: B08303_E012
+    commute_90_or_more_min: B08303_E013
+
+    #Families with children
+    num_families: B11004_E001
+    num_families_child_lt_18: B11004_E003
+    num_families_child_lt_6: B11004_E004
+    num_families_single_father_child_lt_18: B11004_E010
+    num_families_single_mother_child_lt_18: B11004_E016
+
+    #Education
+    pop_age_25_plus: B15003_E001
+    ed_no_schooling: B15003_E002
+    ed_nursery: B15003_E003
+    ed_kindergarten: B15003_E004
+    ed_1st_grade: B15003_E005
+    ed_2nd_grade: B15003_E006
+    ed_3rd_grade: B15003_E007
+    ed_4th_grade: B15003_E008
+    ed_5th_grade: B15003_E009
+    ed_6th_grade: B15003_E010
+    ed_7th_grade: B15003_E011
+    ed_8th_grade: B15003_E012
+    ed_9th_grade: B15003_E013
+    ed_10th_grade: B15003_E014
+    ed_11th_grade: B15003_E015
+    ed_12th_grade_no_diploma: B15003_E016
+    ed_hs_diploma: B15003_E017
+    ed_ged_alt_hs_diploma: B15003_E018
+    ed_some_college_lt_1_year: B15003_E019
+    ed_some_college_1_or_more_yrs_no_degree: B15003_E020
+    ed_associate_degree: B15003_E021
+    ed_bachelor_degree: B15003_E022
+    ed_master_degree: B15003_E023
+    ed_professional_school_degree: B15003_E024
+    ed_doctorate_degree: B15003_E025
+
+    #Income levels and welfare
+    inc_below_pov_level: B17001_E002  
+    med_household_inc: B19013_E001
+    num_household: B22010_E001
+    snap_household: B22010_E002
+
+    #Labor force and unemploymanet
+    pop_age_16_plus: B23025_E001
+    labor_force: B23025_E002
+    civilian_labor_force: B23025_E003
+    civilian_labor_force_employed: B23025_E004
+    civilian_labor_force_unemployed: B23025_E005
+    armed_forces: B23025_E006
+    not_in_labor_force: B23025_E007
+
+    #Units by occupancy
+    total_housing_units: B25002_E001
+    occupied_units: B25002_E002
+    vacant_units: B25002_E003
+    owner_occupied_units: B25003_E002
+    renter_occupied_units: B25003_E003
+    
+    #Rent Burden
+    renter_households: B25070_E001
+    rent_burden_lt_10: B25070_E002
+    rent_burden_10_to_14: B25070_E003
+    rent_burden_15_to_19: B25070_E004
+    rent_burden_20_to_24: B25070_E005
+    rent_burden_25_to_29: B25070_E006
+    rent_burden_30_to_34: B25070_E007
+    rent_burden_35_to_39: B25070_E008
+    rent_burden_40_to_49: B25070_E009
+    rent_burden_ge_50: B25070_E010
+
+    #Rent and home values
+    med_gross_rent: B25064_E001
+    med_prop_val: B25077_E001
+
+    #Mortgage Burden
+    mortgage_units: B25091_E002
+    mortgage_burden_lt_10: B25091_E003
+    mortgage_burden_10_14: B25091_E004
+    mortgage_burden_15_19: B25091_E005
+    mortgage_burden_20_24: B25091_E006
+    mortgage_burden_25_29: B25091_E007
+    mortgage_burden_30_34: B25091_E008
+    mortgage_burden_35_39: B25091_E009
+    mortgage_burden_40_49: B25091_E010
+    mortgage_burden_ge_50: B25091_E011
+    
+    #Language 
+    english_only_household: C16002_E002
+    spanish_household: C16002_E003
+    spanish_limited_english_household: C16002_E004
+    
+keep_unnamed_columns: false
 
 # Use census GEOID as index
 set_index: census_geo_id
