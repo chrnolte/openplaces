@@ -14,6 +14,10 @@ columns:
   admin3_id_admin1: MunCodigo
 
 transformations:
+  - output: name
+    input: name
+    type: string
+    operation: title_smart
   # extract 2-digit department code from 5-digit municipal DANE code
   - output: admin2_id_admin1
     input: admin3_id_admin1
@@ -22,6 +26,9 @@ transformations:
     args:
       start: 0
       end: 2
+  - output: type
+    type: expression                                                                                                                          
+    expression: "'Municipality'"   
 
 # keep columns that aren't named in the above list
 keep_unnamed_columns: True

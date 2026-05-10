@@ -15,6 +15,10 @@ columns:
   admin1_id_admin0: COLOMBIA
 
 transformations:
+  - output: name
+    input: name
+    type: string
+    operation: title_smart
   - output: admin1_id
     input: admin1_id_admin0
     type: string
