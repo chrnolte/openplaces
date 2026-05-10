@@ -21,7 +21,9 @@ from openplaces.core.constants import (
     REGEX_ADMIN3_IDS_HASC,
     STRING_SEPARATOR_WITHIN_IDS,
 )
+from openplaces.config import cfg
 from openplaces.io.readers import get_admin
+from openplaces.io.transform import get_crosswalk
 from openplaces.path import recipe_path
 from openplaces.recipe import find_admin_recipe_id, get_recipe  # noqa: F401
 from openplaces.utils import create_comparable_name_link, standardize_names
@@ -658,22 +660,6 @@ def clean_geographic_name(name):
         extracted_num = div_pattern.group(1)
         text = re.sub(r'Division\s+No\.?\s+\d+', '', text, flags=re.I).strip()
 
-    # 9. Convert Roman numerals to Arabic
-    roman_map = {
-        'VIII': '8',
-        'VII': '7',
-        'VI': '6',
-        'V': '5',
-        'IV': '4',
-        'III': '3',
-        'II': '2',
-        'IX': '9',
-        'X': '10',
-        'I': '1',
-    }
-    #for roman, digit in sorted(roman_map.items(), key=lambda x: -len(x[0])):
-        #text = re.sub(rf'\b{roman}\b', digit, text, flags=re.I)
-
     # 10. Remove ordinal suffixes
     text = re.sub(r'(\d+)(st|nd|rd|th)\b', r'\1', text, flags=re.I)
 
@@ -737,9 +723,6 @@ def clean_geographic_name(name):
     letter_suffix = re.sub(r'[()]', '', letter_suffix)
 
     return clean_text, extracted_num, letter_suffix, detected_generic
-
-from openplaces.config import cfg
-from openplaces.io.transform import get_crosswalk
 
 def generate_admin_ids(
     df,
@@ -1325,10 +1308,9 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
                 .str.title()
                 .str.extract(REGEX_ADMIN_TYPE_EXTRACT)
             )
-
-        # US-specific: add 'city' suffix to names of cities that have
-        # duplicate names with counties
-        new_admin_entries.loc[new_admin_entries['type'].eq('City'), 'name'] += ' city'
+            # US-specific: add 'city' suffix to names of cities that have
+            # duplicate names with counties
+            new_admin_entries.loc[new_admin_entries['type'].eq('City'), 'name'] += ' city'
 
         # Align columns
         new_admin_entries = new_admin_entries[
