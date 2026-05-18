@@ -1,0 +1,42 @@
+admin_id: CO
+
+entity:
+  entity_type: admin
+  source:
+    source_id: dane
+  version: 2025
+
+compressed_file_name: "MGN2025_MPIO_GRAFICO.zip"
+uncompressed_file_name: "MGN_ADM_MPIO_GRAFICO.shp"
+
+columns:
+  name: mpio_cnmbr
+  admin3_id_admin1: mpio_cdpmp
+  admin2_id_admin1: dpto_ccdgo
+  type: mpio_tipo
+
+transformations:
+  - output: name
+    input: name
+    type: string
+    operation: title_smart
+  - output: type
+    input: type
+    type: string
+    operation: title_smart
+
+keep_unnamed_columns: False
+
+
+admin_id_crosswalk:
+  recipe_id: 'CO_admin-dane-2025_admin3-crosswalk'
+  dtype: str
+
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True
