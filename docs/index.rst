@@ -19,3 +19,17 @@ The purpose of ``openplaces`` is to make data-intensive, property-level research
 Github: https://github.com/chrnolte/openplaces
 
 Developed at the `PLACES lab <https://placeslab.org>`_.
+
+References
+----------
+
+Cetiner B, McKenna F, Zsarnóczay Á, Elhaddad W, Gavrilovic S, Wang C,
+Arduino P (2024) BRAILS++: Building Recognition using AI at Large-Scale.
+Natural Hazards Engineering Research Infrastructure (NHERI) SimCenter,
+University of California Berkeley.
+`<https://github.com/NHERI-SimCenter/BRAILS>`_
+
+Lochhead M, Zsarnóczay Á, Deierlein G (2026) Exposure matters: a synthesis
+framework for high-resolution building inventory development.
+*International Journal of Disaster Risk Reduction* 139: 106148.
+`<https://doi.org/10.1016/j.ijdrr.2026.106148>`_
