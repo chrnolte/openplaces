@@ -227,7 +227,13 @@ class Ingester:
                 'Read in bulk or write code to use `where=`, if faster.'
             )
 
-    def ingest(self, reprocess=False, redownload=False, keep_unzipped=False):
+    def ingest(
+        self,
+        reprocess=False,
+        redownload=False,
+        keep_unzipped=False,
+        target_recipe_id: str | None = None,
+    ):
         """Run the full data ingestion
 
         Parameters
@@ -241,10 +247,25 @@ class Ingester:
         keep_unzipped : bool
             If True, keeps unzipped files in 'heap' folder after
             the download partition has been processed.
+        target_recipe_id : str, optional
+            For image recipes only: recipe ID of the harmonized entity to
+            photograph (e.g. ``'US_building-nsi-2022'``).  Overrides
+            ``entity_recipe`` in the image recipe YAML.
         """
 
         if redownload:
             reprocess = True
+
+        if self.recipe.get('image_scraper'):
+            from .image_ingester import fetch_images_by_admin
+
+            self.admin_ids_to_process = [str(a) for a in (self.admin_ids or [])]
+            fetch_images_by_admin(
+                self,
+                n_sample=self.recipe.get('n_sample'),
+                target_recipe_id=target_recipe_id or self.recipe.get('entity_recipe'),
+            )
+            return
 
         self._resolve_admin_ids(reprocess)
 
