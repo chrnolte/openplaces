@@ -33,6 +33,7 @@ __all__ = [
     'cfg',
     'get_config',
     'show_config',
+    'show_credentials',
     'reset_config',
     'edit_config',
     'reload_config',
@@ -445,6 +446,46 @@ class OpenPlacesConfig:
             return self.config[name]
         raise AttributeError(f"No configuration attribute '{name}'")
 
+    @property
+    def credentials_path(self) -> Path:
+        """Path to the credentials file."""
+        return Path(user_config_dir(APPNAME, APPAUTHOR)) / 'credentials.yaml'
+
+    def get_credentials(self, service_id: str) -> dict:
+        """Return credential dict for *service_id* from credentials.yaml.
+
+        Parameters
+        ----------
+        service_id
+            Key used in credentials.yaml (e.g. ``'google_streetview'``).
+
+        Returns
+        -------
+        dict
+            Credential fields for the service (e.g. ``{'api_key': '...'}``)
+
+        Raises
+        ------
+        ValueError
+            If *service_id* is absent from the credentials file, with a
+            ready-to-paste YAML snippet showing what to add.
+        """
+        if not hasattr(self, '_credentials_cache'):
+            if self.credentials_path.exists():
+                with open(self.credentials_path, encoding='utf-8') as f:
+                    self._credentials_cache = yaml.safe_load(f) or {}
+            else:
+                self._credentials_cache = {}
+        creds = self._credentials_cache
+        if service_id not in creds:
+            raise ValueError(
+                f"No credentials found for '{service_id}'.\n"
+                f'Add an entry to {self.credentials_path}:\n\n'
+                f'  {service_id}:\n'
+                f'    api_key: YOUR_KEY_HERE\n'
+            )
+        return creds[service_id]
+
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value with optional default."""
         return self.config.get(key, default)
@@ -518,6 +559,17 @@ def show_config():
         print('-' * 70)
     else:
         print('\nNo user config file exists (using project defaults).')
+
+
+def show_credentials():
+    """Show credentials file path and registered services (no secrets printed)."""
+    path = Path(user_config_dir(APPNAME, APPAUTHOR)) / 'credentials.yaml'
+    print(f'Credentials file: {path}')
+    print(f'Exists: {path.exists()}')
+    if path.exists():
+        with open(path, encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        print(f'Services: {", ".join(data.keys()) or "(none)"}')
 
 
 def edit_config():
