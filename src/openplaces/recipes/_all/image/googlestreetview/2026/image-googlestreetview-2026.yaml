@@ -1,0 +1,29 @@
+entity:
+  entity_type: image
+  source:
+    source_id: googlestreetview
+  version: "2026"
+stage: ingest
+
+# BRAILS++ Google Street View scraper (Cetiner, BRAILS++, 2024).
+# Downloads per-building street-level imagery and depth maps.
+# Requires a Google API key with Street View Static API enabled.
+# Note: '2026' is the recipe-creation year; imagery is always current.
+image_scraper: google_streetview
+
+# Recipe ID of the harmonized entity spine to use as input.
+entity_recipe: US_footprint-cheer-2026
+
+# Upward camera tilt in degrees (0 = horizontal, positive = looking up).
+# Increase for tall urban buildings where floor counting requires upward view.
+# street_pitch: 15
+
+source:
+  url: https://maps.googleapis.com/maps/api/streetview/
+
+process_by:
+  admin_level: 4
+
+save_to:
+  data_dir: external
+  admin_level: 4

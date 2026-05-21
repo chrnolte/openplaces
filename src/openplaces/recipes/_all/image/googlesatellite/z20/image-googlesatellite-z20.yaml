@@ -1,0 +1,24 @@
+entity:
+  entity_type: image
+  source:
+    source_id: googlesatellite
+  version: "z20"
+stage: ingest
+
+# BRAILS++ Google Satellite scraper (Cetiner, BRAILS++, 2024).
+# Downloads per-building satellite imagery at zoom level 20 (no API key needed).
+image_scraper: google_satellite
+zoom_level: 20
+
+# Recipe ID of the harmonized entity spine to use as input.
+entity_recipe: US_footprint-cheer-2026
+
+source:
+  url: https://mt1.google.com/vt/lyrs=s
+
+process_by:
+  admin_level: 4
+
+save_to:
+  data_dir: external
+  admin_level: 4

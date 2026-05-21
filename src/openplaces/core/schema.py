@@ -20,6 +20,7 @@ ENTITY_TYPES = [
     'building',  # physical structure; one record per structure (e.g., NSI)
     'dwelling',
     'footprint',  # 2-D ground-extent polygon; may cover one or several structures
+    'image',  # per-entity imagery (satellite, street view), keyed by entity ID
     'parcel',
     'person',
     'property',
