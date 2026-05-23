@@ -2,8 +2,8 @@
 
 .. _administrative_units:
 
-Administrative units
-====================
+Administrative units: geography
+===============================
 
 Administrative units are the geographic regions at which property data is organized. They mostly refer to countries and in-country subdivisions.
 

@@ -1,13 +1,16 @@
 .. openplaces
 
-CHEER Footprint Harmonization
-==============================
+.. _cheer_footprints:
+
+CHEER building footprints
+=========================
 
 This page walks through the CHEER footprint harmonization pipeline
-end to end, explaining what each step does and why. The recipe driving this
-pipeline is ``US_footprint-cheer-2026.yaml``; it produces a county-level
-GeoParquet file of building footprints enriched with parcel attributes, NSI
-occupancy data, and Overture address points.
+end to end, explaining what each step does and why.
+
+The recipe driving this pipeline is ``US_footprint-cheer-2026.yaml``.
+
+It produces a county-level GeoParquet file of building footprints enriched with parcel attributes, NSI occupancy data, and Overture address points.
 
 
 What this produces
@@ -16,7 +19,7 @@ What this produces
 For each county in the CHEER study area (initially coastal North Carolina and
 Texas), the pipeline produces one parquet file containing:
 
-- Every building footprint geometry from the best available source(s).
+- Every building :ref:`footprint <footprints>`: geometry from the best available source(s).
 - A ``footprint_role`` label (primary / secondary / unknown) that identifies
   the main structure on each parcel.
 - Parcel-sourced attributes: assessed improvement value, land value, address,

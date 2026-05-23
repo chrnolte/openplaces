@@ -1,35 +1,165 @@
-.. openplaces
+.. openplaces documentation start page
+
+
+.. grid:: 1 1 2 2
+   :class-container: op-hero
+   :gutter: 4
+
+   .. grid-item::
+      :columns: 12 12 6 6
+      :class: op-hero-text
+
+      .. raw:: html
+
+         <p class="op-hero-eyebrow">Scientifically reproducible land data infrastructure</p>
+         <h2 class="op-hero-title">openplaces</h2>
+         <p class="op-hero-tagline">An open-source processing engine for land, building, and
+         property analytics. Synthesize and analyze parcel-level data for millions of places
+         around the world.</p>
+
+      .. grid:: 2 2 2 2
+         :gutter: 2
+         :class-container: op-hero-btns
+
+         .. grid-item::
+
+            .. button-ref:: 1_overview/why-openplaces
+               :color: secondary
+               :shadow:
+               :outline:
+
+               Why?
+
+         .. grid-item::
+
+            .. button-ref:: 2_get-started/index
+               :color: primary
+               :shadow:
+
+               Get started
+
+         .. grid-item::
+
+            .. button-ref:: 3_examples/index
+               :color: secondary
+               :shadow:
+               :outline:
+
+               Examples
+
+
+   .. grid-item::
+      :columns: 12 12 6 6
+      :class: op-hero-image
+
+      .. image:: _static/images/openplaces_overview.png
+         :alt: openplaces overview
+
 
 openplaces
 ==========
 
-``openplaces`` is a Python package for place-based geospatial analysis.
+.. grid:: 1 2 3 5
+   :gutter: 3
 
-The purpose of ``openplaces`` is to make data-intensive, property-level research more replicable and comparable, globally.
+   .. grid-item-card::
+      :link: 1_overview/index
+      :link-type: doc
+
+      ❓ Overview
+      ^^^^^^^^^^^
+      Motivation, design goals, and how openplaces fits into the land data
+      ecosystem.
+
+      +++
+
+      .. button-ref:: 1_overview/why-openplaces
+         :color: primary
+         :outline:
+         :expand:
+
+         Why openplaces?
+
+   .. grid-item-card::
+      :link: 2_get-started/index
+      :link-type: doc
+
+      🚀 Get started
+      ^^^^^^^^^^^^^^
+      Install your environment, load data, and run analytics in minutes.
+
+      +++
+
+      .. button-ref:: 2_get-started/index
+         :color: primary
+         :outline:
+         :expand:
+
+         Get started
+
+   .. grid-item-card::
+      :link: 3_examples/index
+      :link-type: doc
+
+      🗺️ Examples
+      ^^^^^^^^^^^^
+      Annotated notebooks of common workflows (e.g. building inventory).
+
+      +++
+
+      .. button-ref:: 3_examples/index
+         :color: primary
+         :outline:
+         :expand:
+
+         Browse examples
+
+   .. grid-item-card::
+      :link: 4_api/index
+      :link-type: doc
+
+      📖 Reference
+      ^^^^^^^^^^^^^^
+      Auto-generated API docs for all modules, classes, and functions.
+
+      +++
+
+      .. button-ref:: 4_api/index
+         :color: primary
+         :outline:
+         :expand:
+
+         API reference
+
+   .. grid-item-card::
+      :link: 5_contribute/index
+      :link-type: doc
+
+      🤝 Contribute
+      ^^^^^^^^^^^^^^
+      Contributing guidelines, dev setup, and how to submit a pull
+      request.
+
+      +++
+
+      .. button-ref:: 5_contribute/index
+         :color: primary
+         :outline:
+         :expand:
+
+         Contributing guide
+
+
+
+
+
 
 .. toctree::
+   :hidden:
    :maxdepth: 2
 
-   1_overview
-   2_get-started
-   3_examples
+   1_overview/index
+   2_get-started/index
+   3_examples/index
    4_api/index
-   5_contribute
-
-Github: https://github.com/chrnolte/openplaces
-
-Developed at the `PLACES lab <https://placeslab.org>`_.
-
-References
-----------
-
-Cetiner B, McKenna F, Zsarnóczay Á, Elhaddad W, Gavrilovic S, Wang C,
-Arduino P (2024) BRAILS++: Building Recognition using AI at Large-Scale.
-Natural Hazards Engineering Research Infrastructure (NHERI) SimCenter,
-University of California Berkeley.
-`<https://github.com/NHERI-SimCenter/BRAILS>`_
-
-Lochhead M, Zsarnóczay Á, Deierlein G (2026) Exposure matters: a synthesis
-framework for high-resolution building inventory development.
-*International Journal of Disaster Risk Reduction* 139: 106148.
-`<https://doi.org/10.1016/j.ijdrr.2026.106148>`_
+   5_contribute/index

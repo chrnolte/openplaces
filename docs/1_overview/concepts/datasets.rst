@@ -2,8 +2,8 @@
 
 .. _datasets:
 
-Datasets
-========
+Datasets: attributes
+====================
 
 :ref:`entities` are the rows in a table. Datasets provide the columns: attributes linked to each entity.
 
