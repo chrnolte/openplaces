@@ -13,9 +13,7 @@
 
          <p class="op-hero-eyebrow">Scientifically reproducible land data infrastructure</p>
          <h2 class="op-hero-title">openplaces</h2>
-         <p class="op-hero-tagline">An open-source processing engine for land, building, and
-         property analytics. Synthesize and analyze parcel-level data for millions of places
-         around the world.</p>
+         <p class="op-hero-tagline">An open-source processing engine for land, building, and property analytics. Synthesize and analyze parcel-level data for millions of places around the world.</p>
 
       .. grid:: 2 2 2 2
          :gutter: 2
@@ -68,8 +66,7 @@ openplaces
 
       ❓ Overview
       ^^^^^^^^^^^
-      Motivation, design goals, and how openplaces fits into the land data
-      ecosystem.
+      Motivation, design goals, and key concepts
 
       +++
 
@@ -86,7 +83,7 @@ openplaces
 
       🚀 Get started
       ^^^^^^^^^^^^^^
-      Install your environment, load data, and run analytics in minutes.
+      Install your environment, load data, and fit models in minutes.
 
       +++
 
@@ -103,7 +100,7 @@ openplaces
 
       🗺️ Examples
       ^^^^^^^^^^^^
-      Annotated notebooks of common workflows (e.g. building inventory).
+      Notebooks for common workflows, e.g., building inventories.
 
       +++
 
@@ -137,8 +134,7 @@ openplaces
 
       🤝 Contribute
       ^^^^^^^^^^^^^^
-      Contributing guidelines, dev setup, and how to submit a pull
-      request.
+      Contributing guidelines, developer setup, and guidance for adding recipes.
 
       +++
 

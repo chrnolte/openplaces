@@ -173,6 +173,7 @@ a.reference.external code.file span {
     width: 100%;
     height: auto;
     border-radius: 8px;
+    padding-top: 15pt;
 }
 
 .op-hero-text {
@@ -203,6 +204,9 @@ a.reference.external code.file span {
         width: 100%;
         margin: 0 auto;
         display: block;
+    }
+    .op-hero-btns .sd-row {
+        justify-content: center;
     }
 }
 
