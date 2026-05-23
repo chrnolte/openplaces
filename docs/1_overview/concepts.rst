@@ -13,3 +13,4 @@ An overview of key concepts of the ``openplaces`` data structure.
    concepts/entities
    concepts/datasets
    concepts/recipes
+   concepts/pipeline

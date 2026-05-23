@@ -2,16 +2,12 @@
 
 .. _pipeline:
 
-Pipeline
-========
+Pipeline stages
+===============
 
-``openplaces`` orchestrates data processing jobs across single machines or high-performance computing clusters.
+``openplaces`` can process data on your machine or orchestrate processing across large computing clusters.
 
-
-Stages
-------
-
-Data processing and analysis scripts are broken down into nine steps:
+Data processing and analysis scripts are grouped by the type of task they solve:
 
 .. list-table::
    :header-rows: 1

@@ -2,8 +2,8 @@
 
 .. _recipes:
 
-Recipes
-=======
+Recipes: instructions
+=====================
 
 Recipes are instructions for ingesting and transforming data.
 

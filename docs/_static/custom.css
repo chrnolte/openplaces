@@ -84,3 +84,186 @@ a.reference.external code.file span {
     font-size:95%;
     border-color: #2a7ae2;
 }
+
+/* ── Start page hero ───────────────────────────────────────────────────── */
+
+.op-hero {
+    /*background: linear-gradient(160deg, #fdf8ec 0%, #fef3d0 55%, #fdefc0 100%);*/
+    /*text-align: center;*/
+    padding-top: 3.5rem;
+    padding-bottom: 0;
+    margin-top: -1.5rem;
+    margin-bottom: 2rem;
+}
+
+.op-hero::after {
+    content: '';
+    display: block;
+    width: 40%;
+    margin: 2rem auto 0;
+    border-bottom: 1px solid #e8ddb0;
+}
+
+.op-hero-eyebrow {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #8a7340;
+    margin-bottom: 0.75rem;
+}
+
+.op-hero-title {
+    font-size: 2.6rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--pst-color-text-base);
+    margin-top: 0.25rem;
+    margin-bottom: 0.6rem;
+    border: none;
+    border-bottom: none;
+}
+
+.op-hero-tagline {
+    font-size: 1.05rem;
+    color: var(--pst-color-text-muted);
+    max-width: 520px;
+    margin: 0 0 1.5rem;
+    line-height: 1.65;
+}
+
+.op-hero-btns {
+    margin-bottom: 2rem;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.op-hero-btns .sd-row {
+    justify-content: flex-start;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.op-hero-btns .sd-col {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: none;
+    padding: 0;
+}
+
+.sd-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Hide the RST title on the start page — hero renders it instead */
+#openplaces > h1,
+#openplaces > h2 {
+    display: none;
+}
+/* ── Hero two-column layout ─────────────────────────────────────────────── */
+
+.op-hero-image {
+    padding-left: 1.5rem;
+    padding-right: 4rem;
+}
+
+.op-hero-image img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+.op-hero-text {
+    text-align: left;
+}
+
+/* On wide screens: reverse row so image is visually LEFT, text RIGHT */
+@media (min-width: 768px) {
+    .op-hero > .sd-row {
+        flex-direction: row-reverse;
+    }
+}
+
+/* On narrow screens: normal source order (text top, image below), center text */
+@media (max-width: 767px) {
+    .op-hero-image {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+    .op-hero-text {
+        text-align: center;
+    }
+    .op-hero-tagline {
+        margin: 0 auto 1.5rem;
+        max-width: 480px;
+    }
+    .op-hero-image img {
+        width: 100%;
+        margin: 0 auto;
+        display: block;
+    }
+}
+
+/* ── Examples gallery ──────────────────────────────────────────────────────── */
+
+.op-example-gallery .sd-card-img-top {
+    height: 180px;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 0;
+}
+
+.op-example-gallery .sd-card-body {
+    padding: 0.7rem 0.9rem 0.8rem;
+}
+
+.op-example-gallery .sd-card-title {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.35rem;
+    line-height: 1.35;
+}
+
+.op-example-gallery .sd-card-text {
+    font-size: 0.8rem;
+    color: var(--pst-color-text-muted);
+    line-height: 1.5;
+}
+
+/* ── PyData footer ─────────────────────────────────────────────────────────── */
+
+.bd-footer p,
+.bd-footer a {
+    font-size: 0.8rem;
+    color: #999;
+}
+
+.bd-footer a:hover {
+    color: var(--pst-color-primary);
+}
+
+/* Three equal columns: copyright | sphinx version | pydata theme */
+.bd-footer .bd-footer__inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.5rem 1rem;
+    align-items: center;
+}
+
+.bd-footer .footer-items__start,
+.bd-footer .footer-items__end {
+    display: contents;
+}
+
+.bd-footer .footer-item {
+    text-align: center;
+}
+
+/* Stack on mobile */
+@media (max-width: 767px) {
+    .bd-footer .bd-footer__inner {
+        grid-template-columns: 1fr;
+    }
+}

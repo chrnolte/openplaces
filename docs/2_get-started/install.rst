@@ -5,12 +5,20 @@
 Install
 =======
 
+.. _as_an_application:
+
 As an application
 ~~~~~~~~~~~~~~~~~
 
 You can install ``openplaces`` as a standalone application with its own virtual environment.
 
-This is the recommended setup for users who want to use the most recent functionality or plan to :ref:`contribute <contribute>` code (recipes, functions, fixes).
+This is the recommended setup while the package is in development.
+
+- It allows you to use the most recent functionality 
+- It allows you to make :ref:`code contributions <contribute>`.
+
+
+.. _get_the_repository:
 
 Get the repository
 ------------------
@@ -81,25 +89,3 @@ To remove your environment, use:
 
    python dev.py clean
 
-
-As a PyPi package
-~~~~~~~~~~~~~~~~~
-
-``openplaces`` is being developed to function as a Python package.
-
-.. note::
-
-   During the development stage, the version on PyPi will lag behind the Github repository.
-
-You can 
-
-.. code-block:: bash
-
-   pip install openplaces
-
-Install sub-components of ``openplaces``:
-
-.. code-block:: bash
-
-   # Example extras; adjust to your setup
-   pip install "openplaces[dev,docs]"

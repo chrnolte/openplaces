@@ -1,7 +1,7 @@
 Contributor workflow
 ====================
 
-``openplaces`` is a `public repository on Github <https://github.com/chrnolte/openplaces>`_.
+``openplaces`` is `public on Github <https://github.com/chrnolte/openplaces>`_.
 
 Understanding the contributor workflow helps you make clean and well-tested contributions.
 
