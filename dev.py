@@ -14,6 +14,35 @@ from pathlib import Path
 
 DEFAULT_ENV_NAME = 'openplaces'
 
+_SITECUSTOMIZE = """\
+import ctypes
+import os
+import sys
+
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
+
+if sys.platform == 'win32':
+    # Pre-load key torch DLLs from torch/lib before any other package loads
+    # the older conda-forge copies from Library/bin (installed by libtorch).
+    # Specifically:
+    #   libiomp5md.dll  Library/bin has a ~150 KB stub (proxy to libomp);
+    #                   torch_cpu.dll was compiled against the real 1.5 MB
+    #                   runtime — loading the stub first causes WinError 127.
+    #   c10.dll         Library/bin has an older build; torchvision/_C.pyd
+    #                   needs the one from torch/lib or its entry points are
+    #                   missing.
+    # Once a DLL is in the process by base name, subsequent name-based loads
+    # reuse it rather than searching again.
+    _th_lib = os.path.join(sys.prefix, 'Lib', 'site-packages', 'torch', 'lib')
+    for _dll in ('libiomp5md.dll', 'c10.dll'):
+        _path = os.path.join(_th_lib, _dll)
+        if os.path.exists(_path):
+            try:
+                ctypes.CDLL(_path)
+            except OSError:
+                pass
+"""
+
 
 def get_package_manager():
     """Detect if mamba is available, otherwise use conda."""
@@ -210,8 +239,12 @@ def install_launcher(env_name):
 
     if sys.platform == 'win32':
         bat_path = Path.home() / f'{env_name}.bat'
+        if bat_path.exists() and sentinel in bat_path.read_text():
+            print(f'✓ Launcher already installed: {bat_path}')
+            return
         content = (
             f'@echo off\n'
+            f'REM {sentinel}\n'
             f'call conda activate {env_name}\n'
             f'cd /d "{notebooks_dir}"\n'
             f'jupyter notebook\n'
@@ -226,17 +259,6 @@ def install_launcher(env_name):
             print(f'✗ Could not write launcher: {e}')
 
     else:
-        rc_file = (
-            Path('~/.zshrc').expanduser()
-            if sys.platform == 'darwin'
-            else Path('~/.bashrc').expanduser()
-        )
-
-        # Check if launcher already installed for this env
-        if rc_file.exists() and sentinel in rc_file.read_text():
-            print(f'✓ Launcher already present in {rc_file} (sentinel found).')
-            return
-
         func = (
             f'\n{sentinel}\n'
             f'{env_name}() {{\n'
@@ -245,6 +267,29 @@ def install_launcher(env_name):
             f'  jupyter notebook\n'
             f'}}\n'
         )
+
+        if sys.platform == 'darwin':
+            rc_file = Path('~/.zshrc').expanduser()
+        else:
+            shell = os.path.basename(os.environ.get('SHELL', 'bash'))
+            if shell == 'zsh':
+                rc_file = Path('~/.zshrc').expanduser()
+            elif shell == 'bash':
+                rc_file = Path('~/.bashrc').expanduser()
+            else:
+                print(
+                    f'✗ Shell {shell!r} is not supported for automatic launcher '
+                    f'setup.\n'
+                    f'  Add this function to your shell rc file manually:\n'
+                    f'{func}'
+                )
+                return
+
+        # Check if launcher already installed for this env
+        if rc_file.exists() and sentinel in rc_file.read_text():
+            print(f'✓ Launcher already installed in {rc_file}')
+            return
+
         try:
             with rc_file.open('a') as f:
                 f.write(func)
@@ -255,6 +300,34 @@ def install_launcher(env_name):
             )
         except OSError as e:
             print(f'✗ Could not write to {rc_file}: {e}')
+
+
+def install_win_dll_hook(env_name):
+    """Write sitecustomize.py into the env so conda's Library\\bin is on the DLL path.
+
+    On Windows, conda-forge packages (e.g. pytorch) bundle their VC++ runtime
+    DLLs in Library\\bin. Without this hook, packages imported before torch
+    (e.g. numpy in Jupyter) may load a competing runtime version, causing
+    WinError 127 when torch's shm.dll loads. sitecustomize.py runs before any
+    user import, ensuring all packages in the env share the same DLLs.
+    """
+    if sys.platform != 'win32':
+        return
+
+    try:
+        site_pkgs = subprocess.check_output(
+            f'{PKG_MGR} run -n {env_name} python -c '
+            '"import site; print(site.getsitepackages()[0])"',
+            shell=True,
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        print('✗ Could not determine site-packages path — skipping sitecustomize.py')
+        return
+
+    dest = Path(site_pkgs) / 'sitecustomize.py'
+    dest.write_text(_SITECUSTOMIZE)
+    print(f'✓ sitecustomize.py → {dest}')
 
 
 def setup():
@@ -300,6 +373,9 @@ def setup():
     if not run(f'{PKG_MGR} env create -f environment.yml -n {env_name} -y'):
         print('✗ Failed to create environment')
         return
+
+    print('\nConfiguring DLL search path for Windows (sitecustomize.py)...')
+    install_win_dll_hook(env_name)
 
     if zip_response in ('', 'y'):
         ensure_7zip()
@@ -357,6 +433,9 @@ def update():
         print(
             '7z not found. Deflate64 ZIP extraction unavailable. Run setup to install.'
         )
+
+    print('\nConfiguring DLL search path for Windows (sitecustomize.py)...')
+    install_win_dll_hook(env_name)
 
     print('\nReinstalling openplaces...')
     run(f'{PKG_MGR} run -n {env_name} pip install -e . --no-deps')
