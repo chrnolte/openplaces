@@ -3,30 +3,41 @@
 Why openplaces?
 ===============
 
-``openplaces`` is an open-source processing engine for land, building, and property analytics.
+``openplaces`` offers open-source processing for land, building, and property studies.
 
-It is designed to generate research-grade property data for:
+It is designed to synthesize and analyze property data for scientific research, such as:
 
-- assessment of natural hazard risks, such as hurricanes
-- valuation of environmental amenities, risks, and shocks
-- property taxation problems, such as land vs. structure valuation
-- estimating effects of conservation investments on land cover outcomes
+- Estimating `effects of conservation interventions <https://placeslab.org/research/#effectiveness>`_,
+- Valuing `environmental amenities and risks <https://placeslab.org/research/#valuation>`_,
+- Valuing land values for `conservation planning <https://placeslab.org/research/#cost>`_ and property taxation,
+- Estimation of economic damage from natural hazards, e.g. from `hurricanes <https://www.drc.udel.edu/cheer/>`_.
 
 
 Open source
 ~~~~~~~~~~~
 
-``openplaces`` is open source `on Github <https://github.com/chrnolte/openplaces>`_ (Apache 2.0 license).
+.. image:: images/open_source.png
+  :width: 58
+  :alt: Open source logo
+  :align: right
+  :class: padded-image
 
-Humanity benefits when data and methods behind scientific insights are shareable and replicable. That's why the top research funders, such as the US National Science Foundation, embrace `open science principles <https://www.nsf.gov/public-access>`_.
 
-But property data has long been an outlier. It is sensitive, identifiable, and often subject to privacy restrictions. Public records data is fragmented across thousands of local government systems. Researchers running large-scale studies require licenses from commercial data aggregators, which restrict data sharing.
+``openplaces`` is open source.
 
-As a result, property data is rarely published alongside scientific articles. Datasets that took analysts months or years to prepare become unavailable after use. Data processing pipelines become valuable assets but are often tightly guarded to stay competitive for research funding.
+It is `published on Github <https://github.com/chrnolte/openplaces>`_ under a Apache 2.0 license.
 
-This worsens the credibility problem of the empirical social sciences, where data quality and methods are known to affect results, but publication bias favors overreporting of statistical significance, e.g. in `environmental <https://www.journals.uchicago.edu/doi/10.1093/reep/reaa011>`_ and `agricultural economics <https://onlinelibrary.wiley.com/doi/full/10.1002/aepp.13323>`_.
+Science benefits when data and methods behind insights are shareable, reproducible, and equitably accessible. Leading public funders, such as the `US National Science Foundation <https://www.nsf.gov/public-access>`_, the `European Research Council <https://erc.europa.eu/manage-your-project/open-science>`_, `Japan’s Science and Technology Agency <https://www.jst.go.jp/EN/about/strategy.html>`_, and Brazil's `FAPESP <https://www.fapesp.br/openscience/en>`_, increasingly require open-access publication, data management plans, and public sharing of research data and supporting materials to improve transparency and reproducibility.
 
-Publishing full analytical workflows in an open framework allows others to revisit, interrogate, and improve prior findings: a precondition for truly "standing on the shoulders of giants".
+Global frameworks like the `UNESCO Recommendation on Open Science <https://www.unesco.org/en/open-science/about>`_ and multilateral initiatives like `cOAlition S <https://www.coalition-s.org/>`_ actively drive policy reform that treat code and datasets as essential public infrastructure.
+
+But property data is an outlier. It is sensitive, identifiable, and often subject to privacy restrictions. Public records are fragmented: created by thousands of agencies using thousands of systems. Researchers running large-scale analyses have to buy licenses from commercial data aggregators, who discourage data sharing.
+
+As a result, property data is rarely published alongside scientific insights. Many data sets that take analysts months or years to prepare become unavailable after use. Data processing pipelines are treated as property value and rarely shared, sometimes because such pipelines can reveal information about the input data.
+
+This worsens the credibility problem of the empirical social sciences, e.g. in `environmental <https://www.journals.uchicago.edu/doi/10.1093/reep/reaa011>`_ and `agricultural economics <https://onlinelibrary.wiley.com/doi/full/10.1002/aepp.13323>`_, where `data quality and methods affect results <https://le.uwpress.org/content/100/1/200>`_, but professional incentives pull researchers towards overreporting of statistical significance, and re-analyses are rare.
+
+Publishing full analytical workflows in an open framework allows others to revisit, interrogate, and improve prior findings - a precondition for truly "standing" on the shoulders of giants.
 
 
 Globally compatible
@@ -46,18 +57,14 @@ A globally usable open-source framework allows analysts to build on each other's
 - :input:`US-MA-MI-CA` -> Cambridge, a city in Middlesex county, Massachusetts, United States
 
 
-Extensible
-~~~~~~~~~~
-
-``openplaces`` makes it easy to integrate new datasets (tables, vectors, rasters) into parcel-level analyses.
-
-New users :ref:`write recipes<writing_recipes>` to ingest new data and to harmonize datasets.
-
-They can :ref:`contribute <contribute>` recipes to the public repository, receive credit, and allow others to build on their work.
-
-
 Cross-platform
 ~~~~~~~~~~~~~~
+
+.. image:: images/cross_platform.png
+  :width: 150
+  :alt: Open source logo
+  :align: right
+  :class: padded-image
 
 ``openplaces`` is designed to run on anyone's operating system:
 
@@ -65,7 +72,7 @@ Cross-platform
 - a student's Macbook (OSx)
 - a university research cluster (Linux)
 
-It is written mostly in Python. It uses open-source packages for geospatial processing (GDAL, geopandas) and machine learning.
+It is built in ``python`` and takes advantages of its fantastic geospatial ecosystem (GDAL, geopandas, etc.).
 
 
 Scalable
@@ -76,3 +83,13 @@ Scalable
 You can run a city-wide analysis on your laptop - or deploy it on a research cluster to process satellite data for millions of locations.
 
 In the US, we have attributed satellite-based data to 133 million parcels and used it for `land valuation <https://placeslab.org/research/#cost>`_ and `hedonic valuation <https://placeslab.org/research/#valuation>`_, producing tens of terabytes of trained models.
+
+
+Extensible
+~~~~~~~~~~
+
+``openplaces`` makes it easy to integrate new datasets (tables, vectors, rasters) into parcel-level analyses.
+
+New users :ref:`write recipes<writing_recipes>` to ingest new data and to harmonize datasets.
+
+They can :ref:`contribute <contribute>` recipes to the public repository, receive credit, and allow others to build on their work.

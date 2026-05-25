@@ -10,9 +10,9 @@ Install
 As an application
 ~~~~~~~~~~~~~~~~~
 
-You can install ``openplaces`` as a standalone application with its own virtual environment.
+Install ``openplaces`` as an application with its own environment.
 
-This is the recommended setup while the package is in development.
+This is the recommended setup for developers and collaborators.
 
 - It allows you to use the most recent functionality 
 - It allows you to make :ref:`code contributions <contribute>`.
@@ -23,7 +23,21 @@ This is the recommended setup while the package is in development.
 Get the repository
 ------------------
 
-1. Open :gui:`Terminal` / :gui:`Anaconda Prompt`.
+1. Open your :gui:`Terminal`. 
+
+   .. tab-set::
+
+      .. tab-item:: Windows
+
+         Open :gui:`Command Prompt` or :gui:`Anaconda Prompt`
+
+      .. tab-item:: macOS
+
+         Open :gui:`Terminal`
+
+      .. tab-item:: Linux
+
+         Open :gui:`Terminal`
 
 2. Change to the directory where you want to keep the ``openplaces`` codebase:
 
@@ -50,10 +64,21 @@ Install the environment
 
 You need to have a version of the `Anaconda package manager <https://www.anaconda.com/docs/getting-started/main>`_ installed.
 
-Either ``conda`` or ``mamba`` need to be executable from:
+Either ``conda`` or ``mamba`` need to be executable from your :gui:`Terminal`:
 
-- :gui:`Terminal` (OSx, Linux)
-- :gui:`Anaconda Prompt` (Windows).
+.. tab-set::
+
+   .. tab-item:: Windows
+
+      Use :gui:`Anaconda Prompt`
+
+   .. tab-item:: macOS
+
+      Open :gui:`Terminal`
+
+   .. tab-item:: Linux
+
+      Open :gui:`Terminal`
 
 If you don't have ``conda`` installed yet, we recommend installing `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/main>`_, a free, miniature installation of Anaconda.
 
@@ -69,9 +94,9 @@ The setup script will let you choose the name of your environment.
 
 It will also ask you whether:
 
-- you want to install ``7z``. It allows you to unpack :file:`.zip` files formatted with Windows formats (e.g., Virginia's parcel database).
+- you want to install ``7z``. It allows you to unpack :file:`.zip` files formatted with Windows formats (e.g., the parcel recipe for Virginia's parcels).
 - you want the :gui:`QGIS` tool installed in the :gui:`Processing Toolbox`. The tool allows you to import openplaces' :file:`.parquet` tables with associated geometry parquet files as one joined vector layer.
-- you want to install a shortcut in your user folder. This lets you type :input:`openplaces` into your :gui:`Terminal` / :gui:`Anaconda Prompt` to activate your environment and run Jupyter in your notebooks folder.
+- you want to install a shortcut in your user folder. This lets you type :input:`openplaces` into your :gui:`Terminal` to activate your environment and run Jupyter in your notebooks folder.
 
 
 Configure the environment

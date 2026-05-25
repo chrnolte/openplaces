@@ -1,6 +1,8 @@
 Using the Boston University cluster
 ===================================
 
+.. _bu_cluster:
+
 These instructions are for Boston University students using the ``openplaces`` project on Boston University's shared computing cluster (SCC).
 
 Connect

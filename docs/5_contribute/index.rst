@@ -10,21 +10,19 @@ Contribute
   :alt: Contribution visual
   :align: right
 
-A single person can't build a large property dataset.
+A single person can't build a large property dataset. But many can.
 
-But many can.
+Perhaps you find a parcel dataset for your town and :ref:`write your own data ingestion recipe <writing_recipes>`?
 
-For instance, if you find a new parcel dataset, you can write your own data ingestion :ref:`recipe <recipes>`.
+You could be the first to run our data pipeline and inferential models on top of your data.
 
-You'll be the first to run our data pipeline and inferential models on top of your data.
+You can submit recipes and code to the public `Github repository <https://github.com/chrnolte/openplaces>`_.
 
-Then, you can submit your recipe or code contribution to the `Github repository <https://github.com/chrnolte/openplaces>`_.
-
-If it passes review, you become a visible contributor, make your research replicable, and help others understand another part of the planet a little better.
+If your pull request passes review, you'll be shown as a contributor and make it easy for others to replicate your research.
 
 .. toctree::
    :maxdepth: 2
 
-   write-recipe
-   git
-   cluster
+   writing-recipes
+   contributor-workflow
+   bu-cluster
