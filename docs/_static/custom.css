@@ -271,3 +271,9 @@ a.reference.external code.file span {
         grid-template-columns: 1fr;
     }
 }
+
+img.padded-image {
+    margin-left: 20px;
+    margin-right: 20px;
+    margin-bottom: 10px;
+}
