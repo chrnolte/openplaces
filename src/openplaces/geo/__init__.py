@@ -1,4 +1,13 @@
-# src/openplaces/geo/__init__.py
+"""
+Geoprocessing functionality of openplaces.
+
+Most functionality is in the submodules:
+- src/openplaces/geo/ids.py        parcel_id, UBID, openlocationcode
+- src/openplaces/geo/link.py       entity linking
+- src/openplaces/geo/overlay.py    spatial overlay and admin-ID joins
+- src/openplaces/geo/polygon.py    core geometry operations
+- src/openplaces/geo/raster.py     zonal statistics (exact_extract)
+"""
 
 import json
 import warnings
@@ -29,11 +38,3 @@ def get_crs(filepath, layer=None):
         warnings.warn('No CRS found in input data.')
         return None
     return geo_metadata['crs']
-
-
-# Submodules:
-# - src/openplaces/geo/raster.py
-# - src/openplaces/geo/polygon.py   — core geometry operations
-# - src/openplaces/geo/overlay.py   — spatial overlay and admin-ID joins
-# - src/openplaces/geo/link.py      — entity linking
-# - src/openplaces/geo/vector.py    — backwards-compatible re-exports

@@ -70,7 +70,7 @@ Either ``conda`` or ``mamba`` need to be executable from your :gui:`Terminal`:
 
    .. tab-item:: Windows
 
-      Use :gui:`Anaconda Prompt`
+      Open :gui:`Anaconda Prompt`
 
    .. tab-item:: macOS
 
@@ -80,11 +80,13 @@ Either ``conda`` or ``mamba`` need to be executable from your :gui:`Terminal`:
 
       Open :gui:`Terminal`
 
-If you don't have ``conda`` installed yet, we recommend installing `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/main>`_, a free, miniature installation of Anaconda.
+If you don't have ``conda`` yet, we recommend installing `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/main>`_, a free, miniature installation of Anaconda.
 
-`mamba <https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html>`_ is a fast environment solver for ``conda``. It will speed up your installation considerably. If you don't have it installed, run ``conda install mamba -y`` before running the setup script.
+`mamba <https://mamba.readthedocs.io/en/latest/installation/mamba-installation.html>`_ is a fast environment solver for ``conda``. It will speed up your installation considerably.
 
-Once you have Anaconda, run the setup script:
+If you don't have it installed, run ``conda install mamba -y`` before running the setup script.
+
+When you have ``mamba`` ready, run the setup script:
 
 .. code-block:: bash
 
@@ -94,9 +96,19 @@ The setup script will let you choose the name of your environment.
 
 It will also ask you whether:
 
-- you want to install ``7z``. It allows you to unpack :file:`.zip` files formatted with Windows formats (e.g., the parcel recipe for Virginia's parcels).
-- you want the :gui:`QGIS` tool installed in the :gui:`Processing Toolbox`. The tool allows you to import openplaces' :file:`.parquet` tables with associated geometry parquet files as one joined vector layer.
-- you want to install a shortcut in your user folder. This lets you type :input:`openplaces` into your :gui:`Terminal` to activate your environment and run Jupyter in your notebooks folder.
+1. You want to install ``7z``.
+
+   The ``7z`` utility allows you to unpack uncommon formats of compressed :file:`.zip` files, such as Windows formats used to access public parcels in the state of Virginia, US (:input:`US-VA`).
+2. You want the :gui:`QGIS` tool installed in the :gui:`Processing Toolbox`.
+
+   This tool allows you to import openplaces' :file:`.parquet` tables with associated geometry parquet files as a single, joined vector layer.
+3. You want to install a shortcut in your user folder.
+
+   This lets you type :input:`openplaces` into your :gui:`Terminal` to:
+ 
+   - activate your environment
+   - start Jupyter in your :gh-file:`notebooks` folder
+   - and open a browser so you can start coding
 
 
 Configure the environment

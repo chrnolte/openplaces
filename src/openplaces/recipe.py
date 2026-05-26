@@ -1,6 +1,9 @@
-# recipe.py
+"""
+Functions to handle recipes for data ingestion and harmonization
 
-# Functions to read data ingestion recipes
+Read and validate recipes, find recipes, build derivatives,
+get output paths etc.
+"""
 
 import glob
 import inspect

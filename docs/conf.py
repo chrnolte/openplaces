@@ -3,6 +3,7 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -31,10 +32,38 @@ templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
 
 # -- AutoAPI configuration ---------------------------------------------------
+
+# Exclude untracked files/dirs so autoapi only documents committed code.
+# On ReadTheDocs (clean checkout) this returns nothing, so autoapi_ignore stays [].
+_repo_root = Path(__file__).parent.parent
+try:
+    _git = subprocess.run(
+        [
+            'git',
+            'ls-files',
+            '--others',
+            '--exclude-standard',
+            '--directory',
+            '--',
+            'src/openplaces/',
+        ],
+        capture_output=True,
+        text=True,
+        cwd=_repo_root,
+    )
+    autoapi_ignore = [
+        str((_repo_root / _entry.rstrip('/')).resolve())
+        for _entry in _git.stdout.splitlines()
+    ]
+except Exception:
+    autoapi_ignore = []
+
 autoapi_dirs = ['../src/openplaces']
+autoapi_template_dir = '_templates/autoapi'
 autoapi_type = 'python'
 autoapi_options = [
     'members',
+    'imported-members',
     'show-inheritance',
     'show-module-summary',
 ]

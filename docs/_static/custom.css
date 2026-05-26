@@ -157,6 +157,13 @@ a.reference.external code.file span {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* sd-stretched-link::after sits at z-index 1 and covers the whole card;
+   footer buttons must sit above it so their href takes effect on click. */
+.sd-card-footer .sd-btn {
+    position: relative;
+    z-index: 2;
+}
+
 /* Hide the RST title on the start page — hero renders it instead */
 #openplaces > h1,
 #openplaces > h2 {
@@ -276,6 +283,12 @@ html[data-theme="dark"] .bd-content .op-hero-image img {
     .bd-footer .bd-footer__inner {
         grid-template-columns: 1fr;
     }
+}
+
+/* autoapi index page credit line — matches footer copyright colour */
+.op-autoapi-credit {
+    font-size: 0.8rem;
+    color: #999;
 }
 
 img.padded-image {
