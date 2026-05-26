@@ -5,7 +5,7 @@
 Examples
 ========
 
-Annotated end-to-end workflows for common ``openplaces`` research problems.
+Annotated end-to-end workflows for common research problems.
 
 .. toctree::
    :hidden:
@@ -13,8 +13,8 @@ Annotated end-to-end workflows for common ``openplaces`` research problems.
    harmonize/US_footprint-cheer-2026.rst
 
 
-Building inventory
-------------------
+Buildings
+---------
 
 .. grid:: 1 2 3 3
    :gutter: 3
@@ -26,7 +26,6 @@ Building inventory
       :link-type: doc
       :class-card: op-example-card
 
-      CHEER footprint harmonization
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-      Multi-source building footprints enriched with parcel, NSI, and
-      Overture attributes for hurricane risk modeling.
+      U.S. footprint harmonization
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      Multi-source building footprints enriched with tax parcels, National Structure Inventory attributes, and Overture addresses for hurricane risk modeling.

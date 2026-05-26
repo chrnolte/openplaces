@@ -176,6 +176,12 @@ a.reference.external code.file span {
     padding-top: 15pt;
 }
 
+/* PyData theme sets background-color: #fff on .bd-content img in dark mode,
+   which shows through the PNG's transparent pixels — override it. */
+html[data-theme="dark"] .bd-content .op-hero-image img {
+    background-color: transparent;
+}
+
 .op-hero-text {
     text-align: left;
 }
