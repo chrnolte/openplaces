@@ -126,7 +126,7 @@ openplaces
          :outline:
          :expand:
 
-         API reference
+         Reference
 
    .. grid-item-card::
       :link: 5_contribute/index
@@ -157,5 +157,5 @@ openplaces
    1_overview/index
    2_get-started/index
    3_examples/index
-   4_api/index
+   Reference <4_api/index>
    5_contribute/index
