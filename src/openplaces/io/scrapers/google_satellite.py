@@ -85,12 +85,6 @@ class GoogleSatellite:
     Provides functionality to obtain satellite images for assets defined in an
     AssetInventory. Images are retrieved based on the coordinates of the assets
     and saved to a specified directory.
-
-    Methods
-    -------
-    get_images(inventory, save_directory)
-        Retrieves satellite images for the assets in the given inventory
-        and saves them to the specified save_directory.
     """
 
     def get_images(
