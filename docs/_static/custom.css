@@ -285,12 +285,6 @@ html[data-theme="dark"] .bd-content .op-hero-image img {
     }
 }
 
-/* autoapi index page credit line — matches footer copyright colour */
-.op-autoapi-credit {
-    font-size: 0.8rem;
-    color: #999;
-}
-
 img.padded-image {
     margin-left: 20px;
     margin-right: 20px;
