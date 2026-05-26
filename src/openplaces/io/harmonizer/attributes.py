@@ -15,6 +15,13 @@ from openplaces.core.attribute_registry import get_categorical_attrs
 from openplaces.geo.polygon import get_areas
 from openplaces.io.harmonizer import HarmonizeState, _register
 
+__all__ = [
+    'classify_footprint_role',
+    'infer_attributes',
+    'reconcile_attributes',
+    'reverse_occ_units',
+]
+
 
 def _resolve_suffix(
     crosswalk_key: str,

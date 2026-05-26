@@ -107,13 +107,6 @@ class GoogleStreetview:
     ----------
     api_key
         API key for authenticating requests to the Google Street View API.
-
-    Methods
-    -------
-    get_images(inventory, save_directory)
-        Retrieves street-level imagery, depthmap, building location and camera
-        parameters for the assets in the given inventory and saves them to the
-        specified save_directory.
     """
 
     def __init__(self, input_data: dict[str, Any]):

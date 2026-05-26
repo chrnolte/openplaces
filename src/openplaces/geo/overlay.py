@@ -1,6 +1,8 @@
 """
 Spatial overlay operations on polygon datasets.
-Depends on recipes, admin lookups, and DuckDB for fast parquet-based overlays.
+
+Depends on recipes, admin lookups, and DuckDB for fast parquet-based
+overlays.
 """
 
 import contextlib
@@ -175,6 +177,7 @@ def overlay_polygons_with_duckdb(
         analogous to gpd.sjoin suffixes.
     how : {'intersection', 'union', 'identity'}
         Type of overlay operation:
+
         - 'intersection': only overlapping pairs (inner join)
         - 'union': all polygons from both sides; unmatched rows retain
           original geometry and get NaN for the missing index level
@@ -381,7 +384,8 @@ def _overlay_polygons_paths(
         )
         _TOL = 1e-6
 
-        overlaps = con.execute(f"""
+        overlaps = con.execute(
+            f"""
             WITH
             inner_rows AS MATERIALIZED (
                 SELECT
@@ -430,7 +434,8 @@ def _overlay_polygons_paths(
                 SELECT {alias1} FROM coverage WHERE _frac < {1 - _TOL}
             )
             GROUP BY {group_by_sql}
-        """).df()
+        """
+        ).df()
 
     else:
         # intersection / union single-query path
