@@ -2,22 +2,33 @@
 
 .. _cheer_footprints:
 
-CHEER building footprints
-=========================
+U.S. footprint harmonization
+============================
 
-This page walks through the CHEER footprint harmonization pipeline
-end to end, explaining what each step does and why.
+.. image:: ../../1_overview/concepts/images/footprint_building_dwelling_urban.png
+  :width: 400
+  :alt: Illustration of footprints, buildings, and dwellings
+  :align: right
 
-The recipe driving this pipeline is ``US_footprint-cheer-2026.yaml``.
+This example builds a footprint-level building inventory for hurricane damage modeling in the United States.
 
-It produces a county-level GeoParquet file of building footprints enriched with parcel attributes, NSI occupancy data, and Overture address points.
+It is supported by NSF's Coastal Hazards, Economic Prosperity & Resilience hub (`CHEER <https://www.drc.udel.edu/cheer/>`_) and being tested for use in Florida, Massachusetts, North Carolina, and Texas.
+
+The pipeline produces a county-level dataset of resolved building footprints, enriched with parcel attributes, NSI occupancy data, and Overture address points.
+
+Run this notebook to replicate the data ingestion and harmonization:
+
+:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`
+
+The :ref:`recipe <recipes>` (configuration) driving the harmonization is ``US_footprint-cheer-2026``:
+
+:gh-file:`src/openplaces/recipes/US/_all/footprint/cheer/2026/US_footprint-cheer-2026.yaml`
 
 
 What this produces
 ------------------
 
-For each county in the CHEER study area (initially coastal North Carolina and
-Texas), the pipeline produces one parquet file containing:
+For each county in supported states, the pipeline produces a GeoParquet file containing:
 
 - Every building :ref:`footprint <footprints>`: geometry from the best available source(s).
 - A ``footprint_role`` label (primary / secondary / unknown) that identifies
@@ -30,16 +41,26 @@ Texas), the pipeline produces one parquet file containing:
 - Derived columns: footprint area in m², value per m², and a reconciled
   occupancy group.
 
-The pipeline runs at county level (admin level 3) and saves output to the
-``core`` data directory.
+The pipeline runs at the county level (:ref:`admin <administrative_units>` level 3) and saves output to the ``core`` data directory (harmonized data) in the GeoParquet file format.
+
+
+Running the pipeline
+--------------------
+
+After :ref:`installing <install>` and activating the ``openplaces`` environment, run this notebook to reproduce the dataset creation:
+
+:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`
+
+The pipeline covers both data ingestion and harmonization.
+
+The notebook also exports a standalone Python script that can be run on a
+cluster, so you can process hundreds of counties at once.
 
 
 Precursor datasets
 ------------------
 
-Before harmonization, the following datasets must be ingested. The
-harmonization notebook (see `Running the pipeline`_ below) handles this
-automatically:
+Before harmonization, the following datasets are ingested:
 
 .. list-table::
    :header-rows: 1
@@ -53,41 +74,21 @@ automatically:
      - Global footprints from OpenBuildingsMap (OBM)
    * - ``US_footprint-microsoft-v2``
      - US footprints from Microsoft's ML building detection model
-   * - ``{state}_footprint-{source}-{version}``
+   * - ``US-{state}_footprint-{source}-{version}``
      - State-specific footprint dataset, auto-discovered per state
    * - ``US_footprint-fema-2023``
      - US footprints from FEMA USA Structures
-   * - ``{state}_parcel-{source}-{version}``
+   * - ``US-{state}_parcel-{source}-{version}``
      - State parcel data, auto-discovered per state
    * - ``US_building-nsi-2022``
-     - FEMA National Structure Inventory (NSI) building points
+     - US Army Corps of Engineers - National Structure Inventory (NSI) building points
    * - ``dwelling-overture-2025``
      - Overture Maps dwelling address points
 
 Each ``ingest()`` call downloads and caches the data for the requested county
-IDs; subsequent runs skip already-cached files unless ``reprocess=True``.
+IDs.
 
-
-Running the pipeline
---------------------
-
-The harmonization notebook is at
-``notebooks/03_harmonize/footprints/harmonize_footprints.ipynb``.
-For a single county (Brunswick, NC):
-
-.. code-block:: python
-
-   from openplaces.io.harmonizer import harmonize
-
-   harmonize(
-       'US_footprint-cheer-2026',
-       admin_ids=['US-NC-BS'],
-       reprocess=True,
-       verbose=True,
-   )
-
-The notebook also exports a standalone Python script that can be run on a
-cluster with multiple counties in parallel.
+Subsequent runs skip already-cached files unless ``reprocess=True``.
 
 
 Pipeline walkthrough
@@ -104,7 +105,8 @@ tables), ``crosswalks`` (spine ↔ reference join tables), and ``overlays``
 A. Build the footprint spine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Step 1 — Merge footprints from multiple sources**
+Step 1 — Merge footprints from multiple sources
+-----------------------------------------------
 
 ``resolve_spine``
 
@@ -145,7 +147,8 @@ and ``source`` (the label of the source dataset, e.g. ``'obm'``,
 B. Attribute sources to the spine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Step 2 — Link footprints to parcel records**
+Step 2 — Link footprints to parcel records
+------------------------------------------
 
 ``link_to_reference`` (parcel, spatial_overlay)
 
