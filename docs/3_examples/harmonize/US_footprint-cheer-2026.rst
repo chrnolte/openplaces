@@ -10,463 +10,298 @@ U.S. footprint harmonization
   :alt: Illustration of footprints, buildings, and dwellings
   :align: right
 
-This example builds a footprint-level building inventory for hurricane damage modeling in the United States.
+This recipe creates a footprint-level building inventory for U.S. hurricane damage and exposure modeling.
 
-It is supported by NSF's Coastal Hazards, Economic Prosperity & Resilience hub (`CHEER <https://www.drc.udel.edu/cheer/>`_) and being tested for use in Florida, Massachusetts, North Carolina, and Texas.
+It resolves building :ref:`footprints <footprints>` from multiple geometry sources (OpenBuildingsMap, Microsoft, local sources, FEMA), then enriches each footprint with data from linked parcels, the National Structure Inventory (NSI), and Overture :ref:`dwellings <dwellings>` (addresses).
 
-The pipeline produces a county-level dataset of resolved building footprints, enriched with parcel attributes, NSI occupancy data, and Overture address points.
+This work is supported by NSF's Coastal Hazards, Economic Prosperity & Resilience hub (`CHEER <https://www.drc.udel.edu/cheer/>`_). It is currently tested for use in Florida, Massachusetts, North Carolina, and Texas.
 
-Run this notebook to replicate the data ingestion and harmonization:
+The companion notebook is:
 
-:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`
+:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`.
 
-The :ref:`recipe <recipes>` (configuration) driving the harmonization is ``US_footprint-cheer-2026``:
+The :ref:`recipe <recipes>` with instructions & thresholds is at:
 
 :gh-file:`src/openplaces/recipes/US/_all/footprint/cheer/2026/US_footprint-cheer-2026.yaml`
 
 
-What this produces
-------------------
+What this recipe produces
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For each county in supported states, the pipeline produces a GeoParquet file containing:
+Running this recipe for a U.S. region will produce a building inventory at the footprint level for each county (level 3 in the :ref:`administrative hierarchy <administrative_units>`) as a :file:`.parquet` file.
 
-- Every building :ref:`footprint <footprints>`: geometry from the best available source(s).
-- A ``footprint_role`` label (primary / secondary / unknown) that identifies
-  the main structure on each parcel.
-- Parcel-sourced attributes: assessed improvement value, land value, address,
-  use class (``purpose_group`` / ``purpose_subgroup``), and year built.
-- NSI attributes: occupancy type, structure value, number of stories, and a
-  block-median year-built estimate.
-- Overture address attributes: street address, unit count, and postal code.
-- Derived columns: footprint area in m², value per m², and a reconciled
-  occupancy group.
+Each row is a footprint, deduplicated across sources. If parcel information points towards the presence of another structure missing in any footprint dataset, the "footprint" geometry is the parcel boundary.
 
-The pipeline runs at the county level (:ref:`admin <administrative_units>` level 3) and saves output to the ``core`` data directory (harmonized data) in the GeoParquet file format.
+The table includes:
 
-
-Running the pipeline
---------------------
-
-After :ref:`installing <install>` and activating the ``openplaces`` environment, run this notebook to reproduce the dataset creation:
-
-:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`
-
-The pipeline covers both data ingestion and harmonization.
-
-The notebook also exports a standalone Python script that can be run on a
-cluster, so you can process hundreds of counties at once.
+- ``footprint_id``, the unique ID of the footprint: its 11-digit `openlocationcode <https://github.com/google/open-location-code>`_).
+- ``geometry``: the footprint polygon, or a parcel polygon for inferred fallback records.
+- ``source``: the geometry source used for the row: ``obm`` for OpenBuildingMap, ``microsoft``, ``fema``, ``nconemap``. ``parcel`` flags parcel boundaries with unlocated buildings.
+- ``footprint_role``: ``primary`` for the primary footprint on a parcel, ``secondary`` for others, ``unknown`` if no parcel data was available.
+- Parcel-derived attributes, including land value, improvement value, address, land-use or purpose classes, year built, and sometimes dwelling units.
+- NSI-derived attributes, including structure or occupancy class, structure value, number of stories, and block-median year built.
+- Overture-derived dwelling and address attributes, especially dwelling-unit point evidence and address components.
+- Reconciled final columns selected from competing source-specific columns.
 
 
-Precursor datasets
-------------------
-
-Before harmonization, the following datasets are ingested:
+Source datasets
+~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 35 65
+   :widths: 25 35 40
 
-   * - Recipe ID
-     - Description
-   * - ``US_admin-census-2021_admin3``
-     - US county boundaries (used to allocate Microsoft footprints)
-   * - ``footprint-obm-2025``
-     - Global footprints from OpenBuildingsMap (OBM)
-   * - ``US_footprint-microsoft-v2``
-     - US footprints from Microsoft's ML building detection model
-   * - ``US-{state}_footprint-{source}-{version}``
-     - State-specific footprint dataset, auto-discovered per state
-   * - ``US_footprint-fema-2023``
-     - US footprints from FEMA USA Structures
-   * - ``US-{state}_parcel-{source}-{version}``
-     - State parcel data, auto-discovered per state
-   * - ``US_building-nsi-2022``
-     - US Army Corps of Engineers - National Structure Inventory (NSI) building points
-   * - ``dwelling-overture-2025``
-     - Overture Maps dwelling address points
-
-Each ``ingest()`` call downloads and caches the data for the requested county
-IDs.
-
-Subsequent runs skip already-cached files unless ``reprocess=True``.
+   * - Source family
+     - Main contribution
+     - Common analytical use
+   * - Footprints (detected)
+     - Building footprint geometries with associated data
+     - Exposure locations, structure area, hazard overlay, spatial joins
+   * - Parcels (land ownership)
+     - Assessor values, land-use classes, addresses, year built, parcel context
+     - Valuation, land-use analysis, property-level aggregation
+   * - National Structure Inventory (buildings)
+     - Structure-level point records with occupancy class, structure value, stories, and block-median year built
+     - Building-type classification, exposure modeling, crosswalks from parcel classes to structure classes
+   * - Overture address points (dwellings)
+     - Residential unit and address point evidence
+     - Dwelling-unit estimation and primary-structure identification
 
 
-Pipeline walkthrough
---------------------
+Footprints
+~~~~~~~~~~
 
-The recipe's ``pipeline:`` list declares nine steps, grouped into four phases.
-Each step is a registered function that receives the shared ``HarmonizeState``
-object, modifies it, and returns it. The state carries a ``spine``
-(the output GeoDataFrame being built up), ``references`` (loaded source
-tables), ``crosswalks`` (spine ↔ reference join tables), and ``overlays``
-(geometry-bearing overlay results).
+No single national dataset provides complete, high-quality building footprint coverage for the United States. Open datasets differ in geographic focus, detection method, and vintage: OBM has global scope but variable density; Microsoft's ML-detected footprints give broad domestic coverage but are noisier in rural areas; state-specific sources often have the highest local accuracy but exist only for certain jurisdictions; FEMA USA Structures fills remaining gaps. The recipe therefore merges these sources rather than choosing one.
+
+The spine is built by merging sources in priority order — OBM first, then Microsoft, then any state-specific footprint recipe found via ``auto_discover: true`` (for example, ``US-NC_footprint-nconemap-2024`` in North Carolina), and finally FEMA as a fallback. Footprints smaller than 10 m² are dropped before merging.
+
+Each source after the first is compared against the existing spine. A candidate footprint is added only if its *intersection-over-union* (IoU) with every current spine footprint is below 0.02. IoU is the ratio of intersection area to union area; a value above 0.02 means the two footprints share more than 2 % of their combined area and are treated as the same building.
+
+Because IoU can miss displaced thin-rectangle footprints, the recipe also applies an *elongated-footprint duplicate filter*. Two footprints are treated as duplicates when they are both elongated (aspect ratio ≥ 2.5), their long axes are aligned within 15°, their long-axis projections overlap by at least 50 %, and their lateral separation is less than twice their average width. This catches parallel shifted representations of mobile homes and trailers that appear across two sources without enough polygon overlap to trigger the IoU threshold.
+
+After merging, each spine row carries a ``geometry`` and a ``source`` column indicating which dataset contributed the footprint (e.g. ``'obm'``, ``'microsoft'``, ``'nconemap'``, or ``'fema'``).
 
 
-A. Build the footprint spine
+Parcels
+~~~~~~~
+
+Parcel datasets contribute assessed value, land-use classification, address, and year-built information. Depending on the jurisdiction this can include land value, improvement value, mailing address, land-use or property-purpose classes, year built, and dwelling-unit estimates. Coverage, field completeness, valuation conventions, and land-use code definitions are not uniform across counties or states.
+
+Join method
+-----------
+
+Parcels are polygons, so they are joined to footprints with a *polygon identity overlay*: each footprint is intersected with all parcels it touches, producing one row for every (footprint, parcel) pair. The crosswalk is a MultiIndex DataFrame indexed by ``(footprint_id, parcel_id)`` with columns ``area_intersection_m2``, ``iou``, and ``fraction_of_largest`` (this intersection's area as a fraction of the largest intersection for the same footprint).
+
+Two thresholds keep the crosswalk clean: links whose ``fraction_of_largest`` is below 1/6 are dropped (a footprint's corner clipping a distant parcel should not be attributed), and intersections smaller than 10 m² are removed. After filtering, a footprint links to one parcel (``'unique parcel'``), multiple parcels (``'multi-parcel footprint'``), or none (``'no parcel'``).
+
+Some parcels with buildings on them have no footprint in any source — new structures and buildings under trees are common examples. The recipe adds a synthetic footprint for each such parcel that is likely to contain a structure, using two criteria that must both be met: the parcel's ``purpose_group`` has a mean footprint count per parcel across the county of at least 0.2, and the parcel's ``improvement_value_per_ha`` exceeds the 5th percentile of matched parcels in the same purpose group. Parcels that pass both tests receive a synthetic footprint whose geometry is the parcel polygon, tagged ``source = 'parcel.{source_id}'``. After these inferred footprints are added, ``resolve_overlaps`` trims any geometry overlaps they introduce against existing OBM or Microsoft footprints.
+
+Derived attributes
+------------------
+
+All parcel columns are written with the suffix ``_parcel``:
+
+- ``purpose_group_parcel``, ``purpose_subgroup_parcel`` — direct from assessor land-use codes.
+- ``openplaces_group_parcel`` — derived via a county-wide majority-vote lookup: for every footprint that has both a parcel link and an NSI link, the pair *(purpose_group, openplaces_group_nsi)* is recorded; the most common NSI group for each parcel purpose group is then applied to all footprints in the county via their ``purpose_group_parcel`` value. This propagates NSI's structure-level occupancy vocabulary to parcels with no direct NSI match.
+- ``improvement_value_parcel`` — split proportionally to intersection area. When any footprint on the parcel has dwelling-point evidence, area fractions for footprints *without* dwelling evidence are zeroed before the split, so improvement value accrues only to dwelling-linked footprints (Lochhead et al. 2026, Table 4).
+- ``land_value_parcel`` — assigned from the largest-intersection parcel only; further restricted to ``primary`` footprints to avoid assigning parcel land value to accessory structures.
+- ``year_built_parcel`` — direct from assessor records.
+- ``address_parcel`` — from the largest-intersection parcel.
+- ``n_dwelling_units_parcel`` — area-weighted from the assessor unit count.
+- ``overlap_fraction_parcel``, ``n_other_footprints_parcel`` — diagnostic columns recording the footprint's share of parcel area and the number of co-located footprints on the same parcel.
+
+
+National Structure Inventory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The National Structure Inventory contributes structure-level point records with occupancy class, structure replacement value, number of stories, and block-median year built. Unlike parcel records, NSI classifies individual structures rather than land-use parcels, making it a useful crosscheck on jurisdiction-specific assessor codes and a source of structure-type information for multi-structure parcels.
+
+Join method
+-----------
+
+NSI records are points; footprints are polygons. The four-pass proximity method (Lochhead et al. 2026, Table 3) handles imprecise geocoding:
+
+1. **Containment** — ``sjoin(predicate='within')``. Points inside a footprint are matched directly.
+2. **Inner proximity (10 m)** — unmatched points within 10 m of a footprint edge (typical GPS error) are matched to the nearest footprint.
+3. **Outer proximity (100 m), same-parcel constraint** — unmatched points within 100 m are matched to the nearest footprint *on the same parcel*. The parcel constraint prevents linking a point to a footprint across the street.
+4. **Unbounded fallback** — disabled in this recipe.
+
+When multiple passes produce candidate matches for the same point, the highest-quality match is retained.
+
+Derived attributes
+------------------
+
+All NSI columns are written with the suffix ``_building_nsi``:
+
+- ``purpose_subgroup_building_nsi`` — NSI occupancy class (e.g. ``'Single Family'``, ``'Multi-Family (2 units)'``).
+- ``openplaces_group_building_nsi`` — mapped from occupancy class to the openplaces group vocabulary.
+- ``structure_value_building_nsi`` — structure replacement value in USD.
+- ``year_built_block_median_building_nsi`` — median year built for the census block, used as a fallback when parcel year built is absent.
+- ``n_stories_building_nsi`` — number of stories.
+
+
+Overture dwelling/address points
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Overture contributes geocoded residential unit and address evidence. Unlike NSI, which records one entry per structure, Overture records one point per residential unit: a ten-unit apartment building may have ten Overture points while NSI has one. Those points are used to count dwelling units and to help distinguish primary structures from accessory structures on multi-footprint parcels.
+
+Join method
+-----------
+
+The same three proximity passes as NSI are used (containment, inner 10 m, outer 50 m same-parcel). Two additional options are enabled for this join:
+
+- ``dedup_addresses: true`` — when a base address (street + house number) has both a building-level record and unit-specific records (e.g. ``Apt 1``, ``Apt 2``), the building-level record is dropped and each unit record is tagged ``n_dwelling_units = 1`` for downstream summation. This prevents double-counting units.
+- ``aggregate_multipoint: true`` — multiple dwelling points matched to the same footprint are collapsed into one row with ``n_dwelling_units`` summed, giving the total residential unit count for that footprint.
+
+Derived attributes
+------------------
+
+All Overture columns are written with the suffix ``_dwelling_overture``:
+
+- ``n_dwelling_units_overture`` — total attributed dwelling points (after deduplication and aggregation).
+- ``address_street_dwelling_overture``, ``address_number_dwelling_overture``, ``postal_code_dwelling_overture``, ``city_dwelling_overture`` — address components from the matched dwelling record.
+
+
+Footprint role classification
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Step 1 — Merge footprints from multiple sources
------------------------------------------------
+On parcels with more than one footprint (house, garage, shed, etc.), only the primary structure should receive the full parcel land value and, when dwelling evidence is absent for some footprints, the full improvement value. Each footprint is assigned one of three roles:
 
-``resolve_spine``
+- ``primary`` — the main structure on the parcel.
+- ``secondary`` — an accessory structure.
+- ``unknown`` — footprint not linked to any parcel.
 
-The spine is the primary GeoDataFrame that all later steps extend. It starts
-empty and is filled by merging footprints from four sources in order of
-descending priority:
+The classification follows Lochhead et al. (2026, Table 4). Point evidence resolves ambiguity on multi-footprint parcels in this order:
 
-1. **OBM** (OpenBuildingsMap) — a global open dataset.
-2. **Microsoft** — US-wide ML-detected footprints.
-3. **State-specific** — any state-scoped footprint ingest recipe found via
-   ``auto_discover: true``. For example, a county in North Carolina will
-   automatically pick up ``US-NC_footprint-nconemap-2024`` if that recipe
-   exists.
-4. **FEMA** — USA Structures, used as a last-resort fallback.
+1. If any footprint on the parcel has a linked *Overture dwelling point*, those footprints are ``primary``; the rest are ``secondary``.
+2. Otherwise, if any footprint has a linked *NSI building point*, those are ``primary``; the rest are ``secondary``.
+3. If no footprint on the parcel has any point evidence, all are ``secondary`` — the recipe cannot determine which is the main structure.
+4. A footprint that is the *sole* footprint on its parcel is always ``primary``, regardless of point evidence.
+5. Footprints not linked to any parcel are ``unknown``, except those with dwelling-point evidence, which are promoted to ``primary``.
 
-Each source after the first is compared against what is already in the spine.
-A candidate footprint is added only if its *intersection-over-union* (IoU)
-with every existing spine footprint is below ``overlap_iou_max = 0.02``. IoU
-is the ratio of the intersection area to the union area of two polygons; a
-value above 0.02 means the two footprints share more than 2 % of their
-combined area and are treated as the same building. Footprints below
-``min_area_m2 = 10`` m² are dropped before merging.
+Dwelling evidence is evaluated before building evidence because Overture explicitly locates an occupied residential unit, whereas an NSI record may represent an accessory structure such as a detached garage.
 
-Because IoU-based deduplication can miss displaced thin-rectangle footprints
-(mobile homes or trailers that appear in two sources as parallel rectangles
-shifted sideways rather than overlapping), the *elongated-duplicate filter*
-checks pairs of elongated footprints separately. Two footprints are considered
-duplicates when they are both elongated (aspect ratio ≥ 2.5), their long axes
-are aligned within 15°, their long-axis projections overlap by at least 50 %,
-and their lateral separation is less than twice their average width. Candidates
-that fail this test are dropped even though their IoU is below the threshold.
-
-After this step, ``state.spine`` is a GeoDataFrame with columns ``geometry``
-and ``source`` (the label of the source dataset, e.g. ``'obm'``,
-``'microsoft'``, ``'nconemap'``, or ``'fema'``).
+``footprint_role`` is stored as a ``pd.Categorical`` column on the spine.
 
 
-B. Attribute sources to the spine
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Attribute reconciliation and design rationale
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Step 2 — Link footprints to parcel records
-------------------------------------------
-
-``link_to_reference`` (parcel, spatial_overlay)
-
-Parcels carry assessed value, land use class, address, and year-built
-information that is not present in any footprint source. This step builds a
-crosswalk between footprints and parcels by running a *polygon identity
-overlay*: each footprint is intersected with all parcels it touches, producing
-a row for every (footprint, parcel) pair.
-
-The crosswalk is a MultiIndex DataFrame indexed by ``(footprint_id,
-parcel_id)`` with columns:
-
-- ``area_intersection_m2`` — area of the footprint-parcel intersection.
-- ``iou`` — intersection-over-union of the two polygons.
-- ``fraction_of_largest`` — this intersection's area as a fraction of the
-  largest intersection for the same footprint.
-
-Two thresholds keep the crosswalk clean: secondary parcel links whose
-``fraction_of_largest`` is below 1/6 are dropped (a footprint's corner
-clipping a distant parcel should not be attributed), and intersections smaller
-than 10 m² are removed. After filtering, a footprint may link to:
-
-- **One parcel** (most common) — ``link = 'unique parcel'``.
-- **Multiple parcels** — ``link = 'multi-parcel footprint'`` (e.g., a large
-  commercial building spanning a property boundary).
-- **No parcel** — ``link = 'no parcel'`` (footprint lies outside mapped parcel
-  coverage).
-
-The parcel dataset is also aggregated by ``geo_id`` to collapse stacked
-duplicate records (some assessor files include multiple rows per parcel for
-different tax classes), and an ``improvement_value_per_ha`` column is
-computed for use in the next step.
-
-**Step 3 — Add synthetic footprints for unmatched parcels**
-
-``infer_spine_additions``
-
-Some parcels with buildings on them have no footprint in any source — rural
-structures, manufactured housing, and buildings in areas with poor satellite
-coverage are common examples. This step adds a synthetic footprint for each
-such parcel that is likely to have a structure.
-
-Two criteria must both be met:
-
-1. The parcel's ``purpose_group`` has a mean footprint count per parcel
-   (across the county) of at least ``n_per_group_min = 0.2`` — groups where
-   only 1 in 5 parcels typically has a footprint are not expected to have
-   missing footprints.
-2. The parcel's ``improvement_value_per_ha`` exceeds the 5th percentile of
-   matched parcels in the same purpose group — parcels with negligible
-   improvement value are unlikely to contain a building.
-
-Parcels that pass both tests receive a synthetic footprint whose geometry is
-the parcel polygon itself. The footprint is assigned
-``source = 'parcel.{source_id}'`` and is appended to ``state.spine``.
-A reference to the inferred footprints is also stored in
-``state.metadata['inferred_from_{recipe_id}']`` so that the attribute step
-can handle them correctly (no area-weighting is needed because each inferred
-footprint occupies exactly one parcel).
-
-**Step 4 — Clean overlapping footprint geometries**
-
-``resolve_overlaps``
-
-Adding inferred parcel-shaped footprints can introduce geometry overlaps
-where the parcel polygon extends over an existing footprint from OBM or
-Microsoft. This step calls ``clean_polygons()`` to remove self-intersections
-and degenerate geometry, then ``resolve_overlapping_polygons()`` to trim any
-remaining pairwise overlaps, keeping ``state.spine`` topologically clean.
-
-**Step 5 — Link footprints to NSI building points**
-
-``link_to_reference`` (NSI, spatial_point)
-
-The National Structure Inventory (NSI) is a FEMA dataset of building points
-with occupancy class (``purpose_subgroup``), structure replacement value, year
-built, and number of stories. Unlike parcel records, NSI classifies structures
-individually rather than by land-use zoning, making it a valuable crosscheck
-on parcel-derived use classes.
-
-NSI records are points; footprints are polygons. The four-pass proximity
-method (Lochhead et al. 2026, Table 3) handles imprecise geocoding:
-
-1. **Pass 1 — containment**: ``sjoin(predicate='within')``. Points inside a
-   footprint are matched directly.
-2. **Pass 2 — inner proximity (10 m)**: unmatched points within 10 m of a
-   footprint edge (typical GPS error) are matched to the nearest footprint.
-3. **Pass 3 — outer proximity (100 m), same-parcel constraint**: unmatched
-   points within 100 m are matched to the nearest footprint *on the same
-   parcel*. The parcel constraint prevents linking a point to a footprint
-   across the street.
-4. **Pass 4 — unbounded fallback**: disabled in this recipe
-   (``unbounded_proximity_m`` defaults to 0).
-
-After linking, each point appears at most once in the crosswalk (the
-highest-quality match is kept when passes produce duplicates). The result is
-stored as a flat DataFrame in ``state.crosswalks['US_building-nsi-2022']``.
-
-**Step 6 — Link footprints to Overture address points**
-
-``link_to_reference`` (Overture dwelling, spatial_point)
-
-Overture Maps dwelling points are address-geocoded locations of individual
-housing units. Unlike NSI (which represents one structure per record),
-a multi-unit building may have several Overture points — one per unit.
-
-Two additional options are enabled for this join:
-
-- ``dedup_addresses: true`` — when a base address (street + house number)
-  has both a building-level record and unit-specific records (e.g., ``Apt 1``,
-  ``Apt 2``), the building-level record is dropped. Each unit record is tagged
-  ``n_dwelling_units = 1`` for downstream summation.
-- ``aggregate_multipoint: true`` — after linking, multiple dwelling points
-  matched to the same footprint are collapsed into one row. Their
-  ``n_dwelling_units`` values are summed, giving the total residential unit
-  count for that footprint.
-
-The same three proximity passes as for NSI are used (inner 10 m, outer 50 m
-same-parcel). The resulting crosswalk has one row per footprint that has at
-least one attributed dwelling point.
-
-**Step 7 — Classify each footprint as primary or secondary**
-
-``classify_footprint_role``
-
-On parcels with more than one footprint (house, garage, shed, etc.), only the
-primary structure should receive the parcel's full land value and assessed
-improvement value. This step assigns each footprint one of three roles:
-
-- **primary** — the main structure on the parcel.
-- **secondary** — an accessory structure (garage, outbuilding, etc.).
-- **unknown** — footprint not linked to any parcel.
-
-The classification follows Lochhead et al. (2026, Table 4), using point
-evidence to resolve ambiguity on multi-footprint parcels:
-
-1. If any footprint on the parcel has a *dwelling point* (Overture) linked to
-   it, those footprints are ``primary``; the others are ``secondary``.
-2. Otherwise, if any footprint has an *NSI building point* linked to it, those
-   are ``primary``; the others are ``secondary``.
-3. If no footprint on the parcel has any point evidence, all are
-   ``secondary`` (the pipeline cannot determine which is the main structure).
-4. A footprint that is the *sole* footprint on its parcel is always
-   ``primary`` regardless of point evidence.
-5. Footprints not linked to any parcel are ``unknown``, except those with
-   dwelling-point evidence, which are promoted to ``primary``.
-
-The result is stored as a Categorical column ``spine['footprint_role']``.
-
-
-C. Select values for features with disagreement
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Step 8 — Aggregate and reconcile attributes from all sources**
-
-``reconcile_attributes``
-
-Multiple sources provide overlapping information. This step aggregates all
-reference attributes onto the spine and resolves conflicts.
-
-*Parcel attributes (polygon reference)*
-
-Parcel values are distributed across footprints proportionally to intersection
-area. For a footprint that overlaps two parcels, ``improvement_value`` and
-``n_dwelling_units`` are each split by ``area_fraction`` (the footprint's
-share of the total intersection area for each parcel). ``land_value`` and
-``address`` are assigned from the largest-intersection parcel only, and
-``land_value`` is further restricted to ``primary`` footprints — accessory
-structures do not receive a share of the land value.
-
-When a parcel has multiple footprints and at least one has dwelling-point
-evidence, the area fractions for footprints *without* dwelling evidence are
-zeroed out before the split. This means only dwelling-linked footprints
-receive ``improvement_value`` and ``n_dwelling_units`` from the parcel, even
-if the non-dwelling-linked footprints are geometrically larger (Lochhead et
-al. 2026, Table 4).
-
-Columns written with suffix ``_parcel``:
-``purpose_group_parcel``, ``purpose_subgroup_parcel``,
-``openplaces_group_parcel``, ``improvement_value_parcel``,
-``land_value_parcel``, ``year_built_parcel``, ``address_parcel``,
-``n_dwelling_units_parcel``, ``overlap_fraction_parcel``,
-``n_other_footprints_parcel``.
-
-*Parcel purpose group → openplaces group mapping*
-
-Parcel assessors use locally-defined land-use codes in ``purpose_group`` that
-vary by state and county and do not map directly to NSI occupancy classes. To
-bridge this gap, the step derives ``openplaces_group_parcel`` for every
-footprint by building a county-wide majority-vote lookup from the
-co-occurrence of parcel ``purpose_group`` and NSI ``openplaces_group`` labels
-on matched footprints:
-
-1. For every footprint that has both a parcel link and an NSI link, the pair
-   *(purpose_group, openplaces_group)* is recorded.
-2. Across all such pairs in the county, the most common NSI group for each
-   parcel purpose group is selected as the representative label.
-3. This lookup is applied back to every footprint via its
-   ``purpose_group_parcel`` value — including footprints that have no NSI
-   match of their own.
-
-The effect is that NSI's structure-level occupancy knowledge propagates
-indirectly to parcels that NSI does not cover, using county-level
-co-occurrence to normalize heterogeneous assessor codes into a shared
-vocabulary.
-
-*Overture dwelling attributes (point reference)*
-
-``n_dwelling_units_overture`` — the count of attributed dwelling points
-(from ``aggregate_multipoint``). Address columns written with suffix
-``_dwelling_overture``: ``address_street_dwelling_overture``,
-``address_number_dwelling_overture``, ``postal_code_dwelling_overture``,
-``city_dwelling_overture``.
-
-*NSI attributes (point reference)*
-
-Columns written with suffix ``_building_nsi``:
-``purpose_subgroup_building_nsi``, ``openplaces_group_building_nsi``,
-``structure_value_building_nsi``, ``year_built_block_median_building_nsi``,
-``n_stories_building_nsi``.
-
-*Priority selection*
-
-After all sources are aggregated, a priority rule selects the final value for
-features where sources disagree, using ``.bfill(axis=1)`` across suffixed
-columns in order:
+Multiple sources provide overlapping information for the same footprint. After all source-suffixed columns are assembled, the recipe selects final values by filling from left to right across the suffixed columns in priority order:
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 40 30
+   :widths: 22 30 48
 
    * - Final column
      - Priority order
      - Rationale
    * - ``purpose_subgroup``
-     - NSI → parcel
-     - NSI classifies structures individually; parcel class is land-use zoning
+     - NSI before parcel
+     - NSI classifies individual structures; parcel codes describe land-use zoning and do not distinguish a house from its garage.
    * - ``n_dwelling_units``
-     - Overture → parcel
-     - Overture provides explicit unit counts; parcel is an estimate
+     - Overture before parcel; occupancy fallback for remaining nulls
+     - Overture provides explicit counted units; parcel is an estimate. Remaining nulls are filled by a lookup table mapping NSI occupancy classes to expected unit counts (e.g. ``'Single Family' → 1``, ``'Multi-Family (50+ units)' → 51``).
    * - ``year_built``
-     - parcel → NSI
-     - Tax-record year built is preferred; NSI has only block-median fallback
+     - Parcel before NSI
+     - Tax-record year built is structure-specific; NSI provides only a block-median estimate.
    * - ``improvement_value``
-     - parcel only
-     - No competing source
+     - Parcel only
+     - No competing source provides an independent improvement value.
+   * - ``land_value``
+     - Parcel only, restricted to primary footprints
+     - Assigning parcel land value to accessory structures inflates their apparent value; primary-only restriction avoids this.
 
-The final columns ``purpose_subgroup``, ``n_dwelling_units``, ``year_built``,
-and ``improvement_value`` each contain the first non-null value across their
-source-suffixed counterparts.
+Source-suffixed columns (e.g. ``year_built_parcel``, ``year_built_block_median_building_nsi``) are retained in the output so users can inspect the evidence behind any final value and audit disagreements.
 
+Several design choices underpin reliable reconciliation:
 
-D. Fill gaps
-~~~~~~~~~~~~~
-
-**Step 9 — Derive additional columns and fill remaining gaps**
-
-``infer_attributes``
-
-The last step derives additional columns from the data assembled so far:
-
-- ``m2`` — footprint area in square metres, computed from the polygon
-  geometry.
-- ``improvement_value_parcel_per_area`` / ``structure_value_building_nsi_per_area``
-  — value per m², computed as the value column divided by ``m2``. Useful for
-  detecting data-entry errors and for cross-county comparisons.
-- ``openplaces_group_combined`` — reconciles ``openplaces_group_parcel``
-  (derived from the majority-vote lookup in step 8) with
-  ``openplaces_group_building_nsi``. When both are present and agree, a single
-  label is used; when they differ, the combined label is
-  ``'{parcel_group} | {nsi_group}'`` for transparency.
-- ``n_dwelling_units`` — fills remaining nulls using a lookup table
-  (``_OCC_UNITS``) that maps NSI occupancy classes to expected unit counts,
-  e.g. ``'Single Family' → 1``, ``'Multi-Family (2 units)' → 2``,
-  ``'Multi-Family (50+ units)' → 51``. This provides a fallback unit count
-  for footprints that have a ``purpose_subgroup`` but no direct count from
-  Overture or parcel data.
-
-After this step, string columns whose names match entries in the attribute
-registry are cast to ``pd.Categorical`` dtype to reduce memory usage.
+- **IoU deduplication rather than nearest-neighbor merging** ensures that geometrically distinct nearby buildings — such as two row houses sharing a wall — are each retained as separate records rather than collapsed.
+- **Elongated-footprint duplicate filtering** catches displaced thin-rectangle footprints (mobile homes, trailers) that appear as parallel shifted rectangles across sources without enough polygon overlap to trigger the IoU threshold.
+- **Area-weighted value distribution** makes multi-parcel overlaps explicit and reproducible. When a single footprint spans two parcels, improvement value is distributed proportionally to intersection area, so allocations sum back to the full parcel total.
+- **Dwelling evidence over building evidence** when classifying primary structures prevents a detached garage (which may carry its own NSI record) from being misclassified as the main structure on a multi-footprint parcel.
+- **Inferred parcel-shaped footprints** preserve exposure and valuation evidence for structures absent from all footprint datasets, rather than silently dropping those parcels from the inventory.
 
 
-Key design decisions
----------------------
+Implementation walkthrough
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**IoU deduplication vs. nearest-neighbor merge**
+The recipe's ``pipeline:`` list declares nine steps organized into four phases. Each step is a registered function that receives the shared ``HarmonizeState`` (carrying ``spine``, ``references``, ``crosswalks``, and ``overlays``), modifies it, and returns it.
 
-Merging footprints from several sources naively by nearest footprint would
-combine physically distinct buildings (e.g., two row houses) when a closer
-match from a different source is on the other side of a wall. IoU
-deduplication avoids this: a candidate footprint is kept if and only if it
-does not substantially overlap an existing one, so geometrically distinct
-buildings are always added regardless of how close they are.
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-**Area-weighted value distribution**
+   * - Step
+     - Role in the recipe
+   * - ``resolve_spine``
+     - Builds the footprint spine from OBM, Microsoft, state-specific footprints, and FEMA, with IoU and elongated-footprint deduplication.
+   * - ``link_to_reference``
 
-When a single footprint spans two parcels (e.g., a commercial building on a
-split lot), the parcel's improvement value cannot be assigned to just one.
-Distributing proportionally to intersection area produces a consistent and
-auditable allocation that sums back to the full parcel total.
+       Parcels
+     - Creates footprint-parcel overlay crosswalk and parcel-derived reference evidence.
+   * - ``infer_spine_additions``
+     - Adds inferred parcel-shaped footprint rows for likely missing structures.
+   * - ``resolve_overlaps``
+     - Trims overlaps introduced by inferred footprints.
+   * - ``link_to_reference``
 
-**Dwelling > building evidence hierarchy**
+       NSI
+     - Links NSI building points to footprints by four-pass proximity.
+   * - ``link_to_reference``
 
-NSI records one entry per structure; Overture records one point per
-*residential unit*. When both sources are present for a multi-footprint
-parcel, dwelling-point evidence is considered stronger because it explicitly
-locates an occupied housing unit. This prevents a garage (which may have its
-own NSI record as an accessory structure) from being classified as primary.
+       Overture
+     - Links dwelling/address points, deduplicates address evidence, and aggregates multiple dwelling points per footprint.
+   * - ``classify_footprint_role``
+     - Derives ``primary``, ``secondary``, and ``unknown`` roles.
+   * - ``reconcile_attributes``
+     - Aggregates suffixed source columns and selects final values by source priority.
+   * - ``infer_attributes``
+     - Computes ``m2``, value-per-area columns, ``openplaces_group_combined``, and occupancy-based dwelling-unit fallbacks.
 
-**Inferred footprints as a fallback**
 
-Rather than dropping parcels with no footprint source coverage, the pipeline
-creates a synthetic entry using the parcel polygon. This ensures that high-
-value structures that are absent from all footprint datasets still appear in
-the output with their parcel attributes, even if the geometry is less precise.
+
+Running the recipe
+~~~~~~~~~~~~~~~~~~
+
+Activate the project environment before running development or data commands:
+
+.. code-block:: bash
+
+   conda activate openplaces
+
+The recommended entry point is the example notebook:
+
+:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`
+
+The equivalent script is available for batch or cluster execution:
+
+:gh-file:`scripts/examples/US_harmonize_footprints.py`
+
+The notebook and script cover ingestion of precursor datasets and the ``US_footprint-cheer-2026`` harmonization recipe. Cached inputs and outputs are reused on subsequent runs unless reprocessing is requested.
+
+
+Using the output
+~~~~~~~~~~~~~~~~
+
+Use ``geometry`` as the footprint polygon for spatial analysis, hazard overlay, and area calculations. For rows whose ``source`` indicates an inferred parcel source, the geometry is a parcel-shaped fallback and should not be interpreted as a precise building outline. Such rows are useful for exposure completeness but should be treated carefully in analyses that require roof shape, building dimensions, or parcel-independent geometry.
+
+For most analyses, prefer final reconciled columns such as ``purpose_subgroup``, ``n_dwelling_units``, ``year_built``, ``improvement_value``, ``land_value``, and derived area or value-per-area fields. These columns apply the recipe's source-priority rules.
+
+Parcel-derived columns reflect assessor data. Field completeness, valuation conventions, land-use code definitions, and year-built interpretation vary by jurisdiction and are not uniform across counties or states. Inspect source-suffixed columns when uncertainty matters: compare ``year_built_parcel`` against ``year_built_block_median_building_nsi``, or ``purpose_subgroup_parcel`` against ``purpose_subgroup_building_nsi``, to audit where sources agree or diverge. This is especially useful when analyzing valuation outliers, conflicting occupancy labels, or unexpectedly high dwelling-unit counts.
+
+NSI and Overture are point-based sources. Their locations can be affected by geocoding imprecision, address ambiguity, or source coverage gaps. A missing NSI or Overture link for a footprint does not necessarily mean the structure has no occupants — it may reflect coverage or geocoding limitations rather than an absence of buildings or residents.
+
+Interpret ``footprint_role`` as a derived analytical label:
+
+- ``primary`` means the footprint is treated as the main structure on its parcel, often supported by dwelling or building-point evidence.
+- ``secondary`` means the footprint is treated as an accessory or non-primary structure on a parcel with another primary candidate.
+- ``unknown`` means the recipe does not have enough parcel or point evidence to assign a primary/secondary role.
+
+Final classes and values are harmonized estimates derived from multiple sources. They are not authoritative labels and should be validated before use in high-stakes parcel, valuation, or damage assessments.
 
 
 Key reference
---------------
+~~~~~~~~~~~~~
 
-Lochhead M, Zsarnóczay Á, Deierlein G (2026) Exposure matters: a synthesis framework for high-resolution building inventory development. International Journal of Disaster Risk reduction 139 (2026): 106148 `<https://doi.org/10.1016/j.ijdrr.2026.106148>`_
+Lochhead M, Zsarnoczay A, Deierlein G (2026) Exposure matters: a synthesis framework for high-resolution building inventory development. International Journal of Disaster Risk Reduction 139 (2026): 106148. `doi:10.1016/j.ijdrr.2026.106148 <https://doi.org/10.1016/j.ijdrr.2026.106148>`_
