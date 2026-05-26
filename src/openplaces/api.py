@@ -1,7 +1,7 @@
 """
-Public API for openplaces. Re-exports data-access primitives from
-io/readers and will grow to include higher-level query, enrichment,
-and analysis functions.
+Public API for openplaces.
+
+Re-exports data access, ingest, harmonize, and aggregation functions.
 """
 
 from openplaces.io.aggregate import aggregate_files  # noqa: F401
@@ -13,3 +13,13 @@ from openplaces.io.readers import (  # noqa: F401
     get_dataset,
     get_entities,
 )
+
+__all__ = [
+    'get_admin',
+    'get_admin_ids',
+    'get_entities',
+    'ingest',
+    'harmonize',
+    'get_dataset',
+    'aggregate_files',
+]

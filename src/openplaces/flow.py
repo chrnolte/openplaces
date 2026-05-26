@@ -1,6 +1,4 @@
 """
-src/openplaces/flow.py
-
 Functions to manage the flow of scripts from prototyping to computing.
 
 Includes conversion of notebooks to scripts.

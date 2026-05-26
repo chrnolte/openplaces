@@ -1,6 +1,4 @@
 """
-src/openplaces/path.py
-
 Standardized path generation for `openplaces` data files.
 """
 

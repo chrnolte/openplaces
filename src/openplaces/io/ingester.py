@@ -1,3 +1,7 @@
+"""
+Orchestrates download, unzip, and processing of a recipe into output parquet files.
+"""
+
 import glob
 import os
 import re
