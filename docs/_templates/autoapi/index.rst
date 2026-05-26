@@ -1,11 +1,9 @@
 Reference
 =========
 
-Documentation of the ``openplaces`` source code.
+This is the documentation of the ``openplaces`` API and source code.
 
-On overview of modules, classes, and functions.
-
-Based on inline documentation in :gh-file:`src/openplaces`.
+This page is `auto-generated <https://github.com/readthedocs/sphinx-autoapi>`_ from the source code: :gh-file:`src/openplaces`
 
 .. toctree::
    :titlesonly:
@@ -14,6 +12,3 @@ Based on inline documentation in :gh-file:`src/openplaces`.
    {{ page.include_path }}
    {% endfor %}
 
-.. rst-class:: op-autoapi-credit
-
-   Created with `autoapi <https://github.com/readthedocs/sphinx-autoapi>`_.
