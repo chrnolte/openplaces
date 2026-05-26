@@ -18,6 +18,7 @@ from openplaces.io.harmonizer import HarmonizeState, _register
 __all__ = [
     'classify_footprint_role',
     'infer_attributes',
+    'infer_occupancy_type',
     'reconcile_attributes',
     'reverse_occ_units',
 ]
@@ -90,11 +91,11 @@ _OCC_UNITS: dict[str, float] = {
 
 
 def reverse_occ_units(total_units: float) -> str:
-    """Re-classify a summed unit count to the nearest *purpose_subgroup* label.
+    """Re-classify a summed unit count to the nearest *occupancy_type* label.
 
     Mirrors the ``map_to_units`` logic from Lochhead et al. (2026).  Used when
-    multiple point sources (e.g. NSI) link to the same footprint and their unit
-    counts must be aggregated and re-classified.
+    multiple NSI points link to the same footprint and their unit counts must be
+    aggregated and re-classified.
     """
     n = round(float(total_units))
     if n <= 1:
@@ -125,7 +126,7 @@ _POLYGON_REF_COLS = [
 
 # Columns carried from a point reference (e.g. NSI buildings) to the spine.
 _POINT_REF_COLS = [
-    'purpose_subgroup',
+    'occupancy_type',
     'openplaces_group',
     'structure_value',
     'year_built_block_median',
@@ -251,6 +252,7 @@ def reconcile_attributes(
                     ref_entity_type,
                     crosswalk,
                     columns,
+                    collect_ids=src_cfg.get('collect_ids', False),
                 )
 
     if priority:
@@ -555,6 +557,7 @@ def _attribute_point_reference(
     entity_type: str | None,
     crosswalk: pd.DataFrame,
     columns: list[str] | None,
+    collect_ids: bool = False,
 ) -> HarmonizeState:
     """Attribute a point reference (e.g. NSI) to the spine."""
     spine = state.spine
@@ -580,7 +583,12 @@ def _attribute_point_reference(
         spine[f'n_point{suffix}'] = group_sizes.reindex(spine.index, fill_value=0)
 
     purpose_group_col = next(
-        (c for c in avail_cols if 'purpose_subgroup' in c and c in crosswalk.columns),
+        (
+            c
+            for c in avail_cols
+            if ('purpose_subgroup' in c or 'occupancy_type' in c)
+            and c in crosswalk.columns
+        ),
         None,
     )
     structure_value_col = next(
@@ -644,7 +652,11 @@ def _attribute_point_reference(
             crosswalk.groupby(spine_id_col).agg(numeric_agg).rename(columns=renamed)
         )
 
-    handled = set(numeric_agg) | {'purpose_subgroup', 'openplaces_group'}
+    handled = set(numeric_agg) | {
+        'purpose_subgroup',
+        'occupancy_type',
+        'openplaces_group',
+    }
     str_cols = [
         c
         for c in avail_cols
@@ -730,6 +742,15 @@ def _attribute_point_reference(
                         inferred_groups[openplaces_group_col].rename(inferred_col),
                         on=purpose_group_spine_col,
                     )
+
+    if collect_ids and crosswalk.index.name:
+        index_name = crosswalk.index.name
+        grouped_ids = (
+            crosswalk.reset_index()
+            .groupby(spine_id_col)[index_name]
+            .agg(lambda s: '|'.join(s.dropna().astype(str).unique()))
+        )
+        spine[index_name] = grouped_ids.where(grouped_ids != '').reindex(spine.index)
 
     state.spine = spine
     return state
@@ -957,7 +978,13 @@ def infer_attributes(
         null_mask = spine['n_dwelling_units'].isna()
         if null_mask.any():
             subgroup_col = next(
-                (c for c in spine.columns if c.startswith('purpose_subgroup')), None
+                (
+                    c
+                    for c in spine.columns
+                    if c.startswith('purpose_subgroup')
+                    or c.startswith('occupancy_type')
+                ),
+                None,
             )
             if subgroup_col is not None:
                 inferred = spine.loc[null_mask, subgroup_col].map(_OCC_UNITS)
@@ -975,4 +1002,328 @@ def infer_attributes(
         print(f'  Save: {len(spine):,d} spine entries for {state.admin_id}')
     if state.timer:
         state.timer.mark('Save')
+    return state
+
+
+# NSI occupancy_type label → coarse occupancy category.
+# Labels are the human-readable strings produced by the occupancy-type-labels
+# CSV applied during NSI ingest (e.g. "Single Family, 1 story, no basement").
+_NSI_OCC_TYPE_MAP: dict[str, str] = {
+    # manufactured / mobile home
+    'Manufactured Home': 'Mobile Home',
+}
+_NSI_OCC_PREFIX_MAP: dict[str, str] = {
+    'Single Family': 'Single-Family',
+    'Multi-Family': 'Multi-Family',
+}
+
+# purpose_subgroup values (parcel-sourced) → coarse occupancy category.
+# Parcel subgroups can carry OpenPlaces group labels ('Single Family',
+# 'Manufactured') when state recipes remap local codes to the standard taxonomy.
+_PARCEL_OCC_MAP: dict[str, str] = {
+    'Single Family': 'Single-Family',
+    'Manufactured': 'Mobile Home',
+}
+_PARCEL_OCC_PREFIX_MAP: dict[str, str] = {
+    'Multi-Family': 'Multi-Family',
+}
+
+
+def _coerce_occ_type(val: str | None) -> str | None:
+    """Map a single occupancy label (NSI or parcel) to the coarse category."""
+    if pd.isna(val) or not isinstance(val, str):
+        return None
+    exact = _NSI_OCC_TYPE_MAP.get(val) or _PARCEL_OCC_MAP.get(val)
+    if exact:
+        return exact
+    for prefix, coarse in _NSI_OCC_PREFIX_MAP.items():
+        if val.startswith(prefix):
+            return coarse
+    for prefix, coarse in _PARCEL_OCC_PREFIX_MAP.items():
+        if val.startswith(prefix):
+            return coarse
+    return None
+
+
+@_register('infer_occupancy_type')
+def infer_occupancy_type(
+    state: HarmonizeState,
+    thresholds: dict | None = None,
+    **_params,
+) -> HarmonizeState:
+    """Infer a coarse occupancy category from NSI, parcel, and footprint geometry.
+
+    Populates ``occupancy_type`` (categorical) on the spine using a three-step
+    cascade:
+
+    1. ``occupancy_type_building_nsi`` — NSI occupancy label mapped to coarse
+       class (Single-Family, Multi-Family, Mobile Home).
+    2. Footprint geometry — elongated small footprints flagged as Mobile Home
+       when NSI and parcel evidence are absent.
+    3. ``n_dwelling_units`` — fills remaining residential gaps
+       (n==1 → Single-Family, n≥2 → Multi-Family).
+
+    Parameters
+    ----------
+    thresholds : dict, optional
+        ``mobile_home_aspect_min`` (float, default 2.5) — minimum
+        oriented-bounding-box aspect ratio (length/width) to consider a
+        footprint elongated.
+        ``mobile_home_area_max_m2`` (float, default 185) — maximum footprint
+        area (m²) for the mobile-home geometry signal (~2 000 sqft).
+    """
+    from openplaces.io.harmonizer.spine import get_oriented_dims
+
+    if state.spine is None:
+        return state
+
+    thresholds = thresholds or {}
+    aspect_min: float = float(thresholds.get('mobile_home_aspect_min', 2.5))
+    area_max: float = float(thresholds.get('mobile_home_area_max_m2', 185.0))
+
+    spine = state.spine
+    _cats = ['Single-Family', 'Multi-Family', 'Mobile Home']
+    result = pd.Series(pd.NA, index=spine.index, dtype=object)
+
+    # 1. NSI occupancy_type (most reliable)
+    nsi_col = next((c for c in spine.columns if c.startswith('occupancy_type_')), None)
+    if nsi_col is not None:
+        result = spine[nsi_col].map(_coerce_occ_type)
+
+    # 2. Parcel purpose_subgroup fallback
+    parcel_col = next(
+        (c for c in spine.columns if c.startswith('purpose_subgroup')), None
+    )
+    if parcel_col is not None:
+        null_mask = result.isna()
+        if null_mask.any():
+            from_parcel = spine.loc[null_mask, parcel_col].map(_coerce_occ_type)
+            result.loc[null_mask] = from_parcel
+
+    # 3. Footprint geometry signal for mobile homes
+    null_mask = result.isna()
+    if null_mask.any() and 'm2' in spine.columns:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            dims = spine.loc[null_mask, 'geometry'].map(get_oriented_dims)
+        length = dims.map(lambda x: x[1])
+        width = dims.map(lambda x: x[2]).clip(lower=1e-6)
+        aspect = length / width
+        area_m2 = spine.loc[null_mask, 'm2']
+        mobile_mask = (aspect >= aspect_min) & (area_m2 <= area_max)
+        result.loc[mobile_mask[mobile_mask].index] = 'Mobile Home'
+
+    # 4. n_dwelling_units fallback (residential only)
+    null_mask = result.isna()
+    if null_mask.any() and 'n_dwelling_units' in spine.columns:
+        purpose_group_col = next(
+            (c for c in spine.columns if c == 'purpose_group'), None
+        )
+        if purpose_group_col is not None:
+            res_mask = (
+                spine.loc[null_mask, purpose_group_col]
+                .str.startswith('Residential')
+                .fillna(False)
+            )
+        else:
+            res_mask = pd.Series(True, index=spine.index[null_mask])
+        eligible_ids = res_mask[res_mask].index
+        if len(eligible_ids):
+            units = spine.loc[eligible_ids, 'n_dwelling_units']
+            result.loc[eligible_ids[units == 1.0]] = 'Single-Family'
+            result.loc[eligible_ids[units >= 2.0]] = 'Multi-Family'
+
+    spine['occupancy_type'] = pd.Categorical(result, categories=_cats)
+    state.spine = spine
+
+    if state.verbose:
+        counts = spine['occupancy_type'].value_counts(dropna=False)
+        print(
+            '  infer_occupancy_type: '
+            + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
+        )
+    return state
+
+
+@_register('detect_nfloors')
+def detect_nfloors(state: HarmonizeState, **kwargs) -> HarmonizeState:
+    """Predict number of floors per building from street-view imagery.
+
+    Reads the image metadata parquet written by the ``google_streetview``
+    ingest recipe, builds an ImageSet, and runs the BRAILS++ NFloorDetector.
+    Predictions are joined onto ``state.spine`` as the column ``n_stories``.
+
+    Requires the full BRAILS++ package (``pip install brails``).  The model
+    weights are downloaded from Zenodo on first use.
+
+    Parameters
+    ----------
+    state
+        Current harmonize state.  ``state.recipe`` must contain
+        ``image_recipe`` pointing to the streetview ingest recipe ID.
+    **kwargs
+        Forwarded from the harmonizer dispatch; unused.
+
+    Returns
+    -------
+    HarmonizeState
+        Updated state with ``n_stories`` column added to ``state.spine``.
+    """
+    from pathlib import Path
+
+    from openplaces.io.detectors.nfloor_detector import NFloorDetector
+    from openplaces.io.readers import get_entities
+    from openplaces.io.scrapers.types import Image, ImageSet
+    from openplaces.recipe import get_recipe_by_id
+
+    image_recipe_id = state.recipe.get('image_recipe')
+    if not image_recipe_id:
+        raise ValueError("detect_nfloors requires 'image_recipe' in recipe.")
+    image_recipe = get_recipe_by_id(image_recipe_id)
+    meta_df = get_entities(image_recipe, state.admin_id)
+    if meta_df is None or 'image_path' not in meta_df.columns:
+        return state
+
+    image_set = ImageSet()
+    image_set.dir_path = ''
+    for idx, row in meta_df.iterrows():
+        p = Path(row['image_path'])
+        if p.exists():
+            image_set.dir_path = str(p.parent)
+            image_set.add_image(idx, Image(p.name))
+
+    if not image_set.images:
+        return state
+
+    predictions = NFloorDetector().predict(image_set)
+    pred_series = pd.Series(predictions, name='n_stories')
+    pred_series.index.name = state.spine.index.name
+    state.spine = state.spine.join(pred_series, how='left')
+    return state
+
+
+@_register('classify_occupancy')
+def classify_occupancy(state: HarmonizeState, **kwargs) -> HarmonizeState:
+    """Predict building occupancy type from street-view imagery.
+
+    Reads the image metadata parquet written by the ``google_streetview``
+    ingest recipe, builds an ImageSet, and runs the BRAILS++ OccupancyClassifier.
+    Predictions (``'Residential'`` or ``'Other'``) are joined onto
+    ``state.spine`` as the column ``purpose_group``.
+
+    Requires the full BRAILS++ package (``pip install brails``).  The model
+    weights are downloaded from Zenodo on first use.
+
+    Parameters
+    ----------
+    state
+        Current harmonize state.  ``state.recipe`` must contain
+        ``image_recipe`` pointing to the streetview ingest recipe ID.
+    **kwargs
+        Forwarded from the harmonizer dispatch; unused.
+
+    Returns
+    -------
+    HarmonizeState
+        Updated state with ``purpose_group`` column added to ``state.spine``.
+    """
+    from pathlib import Path
+
+    from openplaces.io.detectors.occupancy_classifier import OccupancyClassifier
+    from openplaces.io.readers import get_entities
+    from openplaces.io.scrapers.types import Image, ImageSet
+    from openplaces.recipe import get_recipe_by_id
+
+    image_recipe_id = state.recipe.get('image_recipe')
+    if not image_recipe_id:
+        raise ValueError("classify_occupancy requires 'image_recipe' in recipe.")
+    image_recipe = get_recipe_by_id(image_recipe_id)
+    meta_df = get_entities(image_recipe, state.admin_id)
+    if meta_df is None or 'image_path' not in meta_df.columns:
+        return state
+
+    image_set = ImageSet()
+    image_set.dir_path = ''
+    for idx, row in meta_df.iterrows():
+        p = Path(row['image_path'])
+        if p.exists():
+            image_set.dir_path = str(p.parent)
+            image_set.add_image(idx, Image(p.name))
+
+    if not image_set.images:
+        return state
+
+    predictions = OccupancyClassifier().predict(image_set)
+    pred_series = pd.Series(predictions, name='purpose_group')
+    pred_series.index.name = state.spine.index.name
+    state.spine = state.spine.join(pred_series, how='left')
+    return state
+
+
+@_register('classify_roof_shape')
+def classify_roof_shape(state: HarmonizeState, **kwargs) -> HarmonizeState:
+    """Predict roof shape per building from satellite imagery.
+
+    Reads the image metadata parquet written by the ``google_satellite``
+    ingest recipe, builds an ImageSet, and runs the BRAILS++ RoofShapeClassifier.
+    Predictions (``'Flat'``, ``'Gable'``, ``'Hip'``, ``'Mansard'``, ``'Shed'``)
+    are joined onto ``state.spine`` as the column ``roof_shape``.
+
+    Requires the full BRAILS++ package (``pip install brails``).  The model
+    weights are downloaded from Zenodo on first use.
+
+    Parameters
+    ----------
+    state
+        Current harmonize state.  ``state.recipe`` must contain
+        ``image_recipe`` pointing to the satellite ingest recipe ID.
+    **kwargs
+        Forwarded from the harmonizer dispatch; unused.
+
+    Returns
+    -------
+    HarmonizeState
+        Updated state with ``roof_shape`` column added to ``state.spine``.
+    """
+    try:
+        from openplaces.io.detectors.roof_shape_classifier import RoofShapeClassifier
+    except ImportError:
+        if kwargs.get('verbose'):
+            import warnings
+
+            warnings.warn(
+                'classify_roof_shape skipped: brails package not installed.',
+                stacklevel=2,
+            )
+        return state
+
+    from pathlib import Path
+
+    from openplaces.io.readers import get_entities
+    from openplaces.io.scrapers.types import Image, ImageSet
+    from openplaces.recipe import get_recipe_by_id
+
+    image_recipe_id = state.recipe.get('image_recipe')
+    if not image_recipe_id:
+        raise ValueError("classify_roof_shape requires 'image_recipe' in recipe.")
+    image_recipe = get_recipe_by_id(image_recipe_id)
+    meta_df = get_entities(image_recipe, state.admin_id)
+    if meta_df is None or 'image_path' not in meta_df.columns:
+        return state
+
+    image_set = ImageSet()
+    image_set.dir_path = ''
+    for idx, row in meta_df.iterrows():
+        p = Path(row['image_path'])
+        if p.exists():
+            image_set.dir_path = str(p.parent)
+            image_set.add_image(idx, Image(p.name))
+
+    if not image_set.images:
+        return state
+
+    predictions = RoofShapeClassifier().predict(image_set)
+    pred_series = pd.Series(predictions, name='roof_shape')
+    pred_series.index.name = state.spine.index.name
+    state.spine = state.spine.join(pred_series, how='left')
     return state

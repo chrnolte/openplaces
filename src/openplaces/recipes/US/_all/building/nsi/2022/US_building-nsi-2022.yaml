@@ -28,7 +28,7 @@ download_by:
 columns:
   building_id_nsi: fd_id
   purpose_group: st_damcat
-  purpose_subgroup: occtype
+  occupancy_type: occtype
   n_stories: num_story
   area_sqft: sqft
   construction_type: bldgtype
@@ -66,7 +66,7 @@ transformations:
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - purpose_group
-  - purpose_subgroup
+  - occupancy_type
   - construction_type
   - foundation_type
   - source

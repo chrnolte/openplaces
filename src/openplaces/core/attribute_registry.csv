@@ -11,3 +11,4 @@ address,Street address,,string,join_nonnull
 area_sqft,Floor area,sqft,float,mean
 n_stories,Number of stories,,float,mean
 n_dwelling_units,Number of dwelling units in the building,,float,sum
+occupancy_type,Inferred occupancy category (Single-Family / Multi-Family / Mobile Home),,categorical,first
