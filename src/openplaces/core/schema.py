@@ -359,6 +359,7 @@ class DataSet:
     source: Source
     version: str
     is_raster: bool
+    nodata: int | float | None
 
     def __init__(
         self,
@@ -366,6 +367,7 @@ class DataSet:
         source: [str, Source] = None,
         version: str = None,
         is_raster: bool = False,
+        nodata: int | float | None = None,
     ):
         """Initialize AdminId with administrative levels."""
 
@@ -408,6 +410,8 @@ class DataSet:
             self.is_raster = is_raster or False
         else:
             raise ValueError(f'Not interpreted: is_raster = {is_raster}')
+
+        self.nodata = nodata
 
     def __str__(self) -> str:
         return STRING_SEPARATOR_WITHIN_IDS.join(
