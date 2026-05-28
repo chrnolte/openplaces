@@ -114,7 +114,16 @@ SHAPEFILE_EXTENSIONS = [
 ]
 
 # Extensions for compressed files
-ZIP_EXTENSIONS = {'.zip', '.jar', '.kmz', '.bz2', '.tbz2'}
+ZIP_EXTENSIONS = {
+    '.zip',
+    '.jar',
+    '.kmz',
+    '.bz2',
+    '.tbz2',
+    '.tgz',
+    '.tar.gz',
+    '.tar.bz2',
+}
 
 
 # STRING
