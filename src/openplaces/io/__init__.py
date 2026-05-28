@@ -258,14 +258,20 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
         out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    suffixes = [s.lower() for s in in_path.suffixes]
+    _is_tar_gz = in_path.suffix.lower() == '.tgz' or (
+        len(suffixes) >= 2 and suffixes[-2] == '.tar' and suffixes[-1] == '.gz'
+    )
+    if _is_tar_gz:
+        with tarfile.open(in_path, 'r:gz') as tar:
+            tar.extractall(out_dir)
+        return out_dir
+
     if in_path.suffix in {'.bz2', '.tbz2'}:
         # Handle .tar.bz2 / .tbz2
         if in_path.stem.endswith('.tar') or in_path.suffix == '.tbz2':
             with tarfile.open(in_path, 'r:bz2') as tar:
-                members_to_extract = (
-                    [tar.getmember(m) for m in members] if members else None
-                )
-                tar.extractall(out_dir, members=members_to_extract)
+                tar.extractall(out_dir)
         # Handle bare .bz2 (single compressed file)
         else:
             out_file = out_dir / in_path.stem
