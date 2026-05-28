@@ -1351,9 +1351,14 @@ class Ingester:
             verify_ssl = (
                 entity_or_dataset.source.verify_ssl if entity_or_dataset else True
             )
+            _download_target = (
+                self.download_partition['downloaded_path']
+                if self.download_partition['downloaded_path'] is not None
+                else self.recipe_external_dir
+            )
             downloaded_path = download(
                 self.download_partition['download_url'],
-                self.recipe_external_dir,
+                _download_target,
                 verify_ssl=verify_ssl,
             )
             self.timer.mark(f'Download{_dl_suffix}')
@@ -1373,18 +1378,43 @@ class Ingester:
         elif self.verbose:
             print('Downloaded data found. Skipping download.')
 
-        if redownload or (
-            self.download_partition['downloaded_path'] is not None
-            and self.download_partition['downloaded_path']
-            != self.download_partition['data_path']
-            and Path(self.download_partition['downloaded_path']).suffix.lower()
-            in ZIP_EXTENSIONS
-        ):
+        # Unzip if the downloaded file is a container that wraps the actual
+        # data file (downloaded_path != data_path and extension is an archive
+        # format). When downloaded_path IS data_path the source is a flat file
+        # (e.g. a GeoTIFF or GeoParquet) fetched directly, so no extraction
+        # is needed. Joining the last two suffixes handles both single-extension
+        # (.zip, .tgz) and compound-extension (.tar.gz, .tar.bz2) formats.
+        _dl_path = self.download_partition['downloaded_path']
+        _is_archive = (
+            _dl_path is not None
+            and _dl_path != self.download_partition['data_path']
+            and ''.join(Path(_dl_path).suffixes[-2:]).lower() in ZIP_EXTENSIONS
+        )
+        if redownload or _is_archive:
             if self.verbose:
                 print('Unzipping...')
 
             unzip(self.download_partition['downloaded_path'], self.recipe_heap_dir)
             self.timer.mark(f'Unzip{_dl_suffix}')
+
+        # If the expected flat path wasn't created by extraction, search
+        # recursively (tar archives often add nested subdirectories).
+        if (
+            self.download_partition['data_path'] is not None
+            and not re.search(
+                REGEX_HAS_GLOB_WILDCARDS,
+                str(self.download_partition['data_path']),
+            )
+            and not self.download_partition['data_path'].exists()
+            and self.recipe_heap_dir.exists()
+        ):
+            _target_name = self.download_partition['data_path'].name
+            _found = next(self.recipe_heap_dir.rglob(_target_name), None)
+            if _found is not None:
+                self.download_partition['data_path'] = _found
+                if self.verbose:
+                    _rel = _found.relative_to(self.recipe_heap_dir)
+                    print(f'Extracted file found at: {_rel}')
 
         # Identify last extracted file if the data path is unknown
         # or contains wildcards
