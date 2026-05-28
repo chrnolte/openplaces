@@ -451,14 +451,14 @@ def _build_size_limit_dict(
 ) -> dict[str, tuple[float, float]]:
     """Build per-occupancy-class footprint area bounds from Pass 1 (within) matches.
 
-    Computes mean ± 2σ of footprint area (m²) for each ``purpose_subgroup``
+    Computes mean ± 2σ of footprint area (m²) for each ``occupancy_type``
     class in *within*.  Classes with fewer than *min_samples* observations are
     excluded (no size constraint for those classes).
 
     Parameters
     ----------
     within : DataFrame
-        Pass 1 crosswalk (point index, spine_id_col column, purpose_subgroup column).
+        Pass 1 crosswalk (point index, spine_id_col column, occupancy_type column).
     spine : GeoDataFrame
         Spine GeoDataFrame (used to look up footprint areas).
     spine_id_col : str
@@ -466,14 +466,14 @@ def _build_size_limit_dict(
     min_samples : int
         Minimum observations required to compute bounds for a class.
     """
-    if 'purpose_subgroup' not in within.columns or spine_id_col not in within.columns:
+    if 'occupancy_type' not in within.columns or spine_id_col not in within.columns:
         return {}
 
     areas_m2 = get_areas(spine, unit='m2')
     fp_area = within[spine_id_col].map(areas_m2)
 
     limits: dict[str, tuple[float, float]] = {}
-    for occ, grp_areas in fp_area.groupby(within['purpose_subgroup']):
+    for occ, grp_areas in fp_area.groupby(within['occupancy_type']):
         vals = grp_areas.dropna()
         if len(vals) < min_samples:
             continue
@@ -489,15 +489,15 @@ def _filter_by_size_limit(
     spine_id_col: str,
 ) -> pd.DataFrame:
     """Drop proximity-matched pairs whose footprint area falls outside class bounds."""
-    if not size_limit_dict or 'purpose_subgroup' not in near.columns:
+    if not size_limit_dict or 'occupancy_type' not in near.columns:
         return near
     if spine_id_col not in near.columns:
         return near
 
     areas_m2 = get_areas(spine, unit='m2')
     fp_area = near[spine_id_col].map(areas_m2)
-    lo = near['purpose_subgroup'].map({k: v[0] for k, v in size_limit_dict.items()})
-    hi = near['purpose_subgroup'].map({k: v[1] for k, v in size_limit_dict.items()})
+    lo = near['occupancy_type'].map({k: v[0] for k, v in size_limit_dict.items()})
+    hi = near['occupancy_type'].map({k: v[1] for k, v in size_limit_dict.items()})
     no_limit = lo.isna()
     in_range = (fp_area >= lo) & (fp_area <= hi)
     return near[no_limit | in_range]
@@ -554,10 +554,10 @@ def _aggregate_multipoint(
 
         if len(group) > 1:
             n_aggregated += 1
-            if _is_nsi and 'purpose_subgroup' in group.columns:
-                total = group['purpose_subgroup'].map(_OCC_UNITS).fillna(0.0).sum()
+            if _is_nsi and 'occupancy_type' in group.columns:
+                total = group['occupancy_type'].map(_OCC_UNITS).fillna(0.0).sum()
                 if total > 0:
-                    rep['purpose_subgroup'] = reverse_occ_units(total)
+                    rep['occupancy_type'] = reverse_occ_units(total)
                     rep['n_dwelling_units'] = float(round(total))
             elif _is_addr:
                 if 'n_dwelling_units' in group.columns:

@@ -22,6 +22,9 @@
 #
 #   D. FILL GAPS
 #   9  infer_attributes -- compute area, value-per-area, n_dwelling_units fallback
+#
+#   E. SYNTHESIZE OCCUPANCY CATEGORY
+#   10 infer_occupancy_type -- coarse occupancy type from NSI, parcel, geometry
 
 stage: harmonize
 admin_id: US
@@ -88,7 +91,7 @@ pipeline:
     recipe_id: US_building-nsi-2022
     source_geometry_type: single_building_point
     join: spatial_point
-    remap_id: US_building-nsi-2022_purpose-subgroup-remap
+    remap_id: US_building-nsi-2022_occupancy-type-remap
     thresholds:
       # Three-pass proximity linking (Lochhead et al. 2026, Table 3)
       proximity_m: 10       # inner proximity fallback (Step 5)
@@ -121,7 +124,6 @@ pipeline:
       #   NSI building → _building_nsi, dwelling/Overture → _dwelling_overture
       #   (or _overture when entity_type appears in the column name),
       #   parcel → _parcel
-      purpose_subgroup: [building_nsi, parcel]
       n_dwelling_units: [overture, parcel]
       year_built: [parcel, building_nsi]
       improvement_value: [parcel]
@@ -147,8 +149,9 @@ pipeline:
           - postal_code
           - city
       - recipe_id: US_building-nsi-2022
+        collect_ids: true
         columns:
-          - purpose_subgroup
+          - occupancy_type
           - openplaces_group
           - structure_value
           - year_built_block_median
@@ -163,3 +166,9 @@ pipeline:
       - value_per_sqft
       - openplaces_group_combined
       - n_dwelling_units
+
+  # E. SYNTHESIZE OCCUPANCY CATEGORY
+  - step: infer_occupancy_type
+    thresholds:
+      mobile_home_aspect_min: 2.5
+      mobile_home_area_max_m2: 185
