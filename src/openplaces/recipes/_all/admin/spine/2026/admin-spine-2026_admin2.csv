@@ -589,38 +589,39 @@ CN-XU,Xinjiang Uygur,Autonomous Region,新疆維吾爾自治區|新疆维吾尔�
 CN-XZ,Xizang,Autonomous Region,西藏自治區|西藏自治区,Tibet|Xīzàng,CHN.29_1,,iso
 CN-YN,Yunnan,Province,雲南|云南,Yúnnán,CHN.30_1,,iso
 CN-ZJ,Zhejiang,Province,浙江,Zhèjiāng,CHN.31_1,,iso
+CO-AD,"Archipiélago de San Andrés, Providencia y Santa Catalina",Department,,,,88,initials
 CO-AM,Amazonas,Department,,,,91,first2
-CO-AN,Antioquia,Department,,,,5,first2
+CO-AN,Antioquia,Department,,,,05,first2
 CO-AR,Arauca,Department,,,,81,first2
-CO-AT,Atlantico,Department,,,,8,first2
-CO-AY,San Andres y Providencia,Department,,,,88,initials
-CO-BO,Bolivar,Department,,,,13,any2
-CO-BY,Boyaca,Department,,,,15,any2
+CO-AT,Atlántico,Department,,,,08,first2
+CO-BD,"Bogotá, D.C.",Department,,,,11,initials
+CO-BO,Bolívar,Department,,,,13,any2
+CO-BY,Boyacá,Department,,,,15,any2
 CO-CA,Caldas,Department,,,,17,any2
 CO-CC,Cauca,Department,,,,19,any2
 CO-CE,Cesar,Department,,,,20,first2
-CO-CH,Choco,Department,,,,27,first2
-CO-CO,Cordoba,Department,,,,23,first2
-CO-CQ,Caqueta,Department,,,,18,any2
+CO-CH,Chocó,Department,,,,27,first2
+CO-CQ,Caquetá,Department,,,,18,any2
+CO-CR,Córdoba,Department,,,,23,first2
 CO-CS,Casanare,Department,,,,85,any2
 CO-CU,Cundinamarca,Department,,,,25,first2
-CO-GA,Guajira,Department,,,,44,any2
-CO-GU,Guainia,Department,,,,94,any2
-CO-GV,Guaviare,Department,,,,95,any2
+CO-GA,Guaviare,Department,,,,95,any2
+CO-GJ,La Guajira,Department,,,,44,any2
+CO-GU,Guainía,Department,,,,94,any2
 CO-HU,Huila,Department,,,,41,first2
-CO-MA,Magdanela,Department,,,,47,first2
+CO-MA,Magdalena,Department,,,,47,first2
 CO-ME,Meta,Department,,,,50,first2
 CO-NA,Nariño,Department,,,,52,first2
 CO-ND,Norte de Santander,Department,,,,54,initials
 CO-PU,Putumayo,Department,,,,86,first2
-CO-QU,Quindio,Department,,,,63,first2
+CO-QU,Quindío,Department,,,,63,first2
 CO-RI,Risaralda,Department,,,,66,first2
 CO-SA,Santander,Department,,,,68,first2
 CO-SU,Sucre,Department,,,,70,first2
 CO-TO,Tolima,Department,,,,73,first2
-CO-VA,Valle,Department,,,,76,any2
+CO-VA,Vaupés,Department,,,,97,first2
+CO-VD,Valle del Cauca,Department,,,,76,initials
 CO-VI,Vichada,Department,,,,99,first2
-CO-VU,Vaupes,Department,,,,97,any2
 CR-AL,Alajuela,Province,,,CRI.1_1,2,hasc
 CR-CA,Cartago,Province,,,CRI.2_1,3,hasc
 CR-GU,Guanacaste,Province,,,CRI.3_1,5,hasc
