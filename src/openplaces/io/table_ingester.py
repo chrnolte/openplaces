@@ -332,8 +332,20 @@ class TableIngester:
                 path=data_path,
             )
         elif data_path.suffix in PANDAS_EXTENSIONS:
-            read_kwargs = {}
-            read_kwargs['delimiter'] = self.recipe.get('delimiter', ',')
+            # low_memory=False avoids per-chunk dtype inference (the source of
+            # mixed-type object columns that then fail Parquet serialization).
+            read_kwargs = {
+                'delimiter': self.recipe.get('delimiter', ','),
+                'low_memory': False,
+            }
+            # `csv_dtype: str` reads every column as text — the robust choice
+            # for messy flat dumps where a column mixes ints and strings.
+            # A dict maps specific columns to dtypes.
+            csv_dtype = self.recipe.get('csv_dtype')
+            if csv_dtype == 'str':
+                read_kwargs['dtype'] = str
+            elif isinstance(csv_dtype, dict):
+                read_kwargs['dtype'] = csv_dtype
 
             gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
             self.timer.mark(
