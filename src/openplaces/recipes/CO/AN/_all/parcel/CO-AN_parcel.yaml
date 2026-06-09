@@ -69,12 +69,6 @@ transformations:
     args:
       prefix: "05"
 
-# Translate `admin_id` information from source to `openplaces` admin_ids
-admin_id_crosswalk:
-  admin_level: 3
-  admin_id_column: admin3_id_admin1
-  admin_recipe_id: "admin-spine-2026_admin3"
-
 save_to:
   data_dir: cache
   admin_level: 3
