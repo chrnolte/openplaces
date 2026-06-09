@@ -85,6 +85,7 @@ def find_recipes(
 
 def map_recipe_coverage(
     entity_type: str,
+    stage: str | None = None,
     figsize: tuple = (14, 7),
     ax: plt.Axes | None = None,
     verbose: bool = False,
@@ -103,6 +104,9 @@ def map_recipe_coverage(
     ----------
     entity_type : str
         Entity type to map (e.g. ``'building'``).
+    stage : str or None
+        If given, only map recipes whose ``stage`` field matches
+        (e.g. ``'ingest'``, ``'harmonize'``).
     figsize : tuple
         Figure size (width, height) in inches.  Ignored when *ax* is given.
     ax : matplotlib.axes.Axes or None
@@ -126,6 +130,7 @@ def map_recipe_coverage(
     # Single base hue (steel blue) blended with white at level-dependent weights.
     # weight=0 → white (pastel); weight=1 → full base colour.
     _BASE = (0.13, 0.47, 0.71, 1.0)  # tab10 blue
+    _UNCOVERED = (0.91, 0.91, 0.91, 1.0)
     _LEVEL_WEIGHTS = {0: 0.22, 1: 0.48, 2: 0.72, 3: 0.92}
     # Edge grays: lighter for coarser levels, darker for finer
     _LEVEL_EDGECOLORS = {0: '#d8d8d8', 1: '#c0c0c0', 2: '#888888', 3: '#505050'}
@@ -138,7 +143,7 @@ def map_recipe_coverage(
     def _level_edgecolor(level: int) -> str:
         return _LEVEL_EDGECOLORS.get(level, '#303030')
 
-    df = find_recipes(entity_type)
+    df = find_recipes(entity_type, stage=stage)
     if df.empty:
         raise ValueError(f"No recipes found for entity_type='{entity_type}'.")
 
@@ -177,7 +182,7 @@ def map_recipe_coverage(
         #   - paint global (level 0) coverage first (pastel)
         #   - then override with country-level (level 1) coverage (darker)
         # Result: world.plot() is called exactly once.
-        color_map = {idx: '#e8e8e8' for idx in world.index}
+        color_map = {idx: _UNCOVERED for idx in world.index}
 
         if not df[df['_level'] == 0].empty:
             for idx in color_map:
