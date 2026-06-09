@@ -1,0 +1,44 @@
+admin_id: CO
+
+entity:
+  entity_type: admin
+  source:
+    source_id: dane
+  version: 2025
+
+compressed_file_name: "MGN2025_DPTO_POLITICO.zip"
+uncompressed_file_name: "MGN_ADM_DPTO_POLITICO.shp"
+
+columns:
+  name: dpto_cnmbr
+  admin2_id_admin1: dpto_ccdgo
+
+transformations:
+  - output: name
+    input: name
+    type: string
+    operation: title_smart
+  - output: name
+    input: name
+    type: string
+    operation: replace
+    args:
+      old: ", D.c."
+      new: ", D.C."
+  - output: admin1_id
+    type: expression
+    expression: "'CO'"
+  - output: type
+    type: expression
+    expression: "'Department'"
+
+keep_unnamed_columns: False
+
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+    name_col: name
+
+sort_index: True

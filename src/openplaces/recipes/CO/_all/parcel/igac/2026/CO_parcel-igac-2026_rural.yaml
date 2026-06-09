@@ -1,0 +1,38 @@
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: igac
+    portal_url: "https://www.igac.gov.co/es/contenido/catastro-publico"
+  version: "2026"
+
+# Rural land parcels (R_TERRENO) from the IGAC public cadastre
+compressed_file_name: "CatastroPubliconMarzo2026.zip"
+uncompressed_file_name: "R_TERRENO.shp"
+
+# Process file in chunks by municipality (admin3) —
+# admin2 partitioning is not possible since CODIGO_DEP is null in source;
+# the 5-digit codigo_mun encodes both department and municipality
+process_by:
+  admin_level: 3
+  admin_id_column: codigo_mun
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+# Columns: openplaces name -> source column name
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANT
+  admin3_id_admin1: codigo_mun
+  vereda_code: VEREDA_COD
+  area_sqm: SHAPE_Area
+
+keep_unnamed_columns: False
+
+save_to:
+  data_dir: cache
+  filename: rural
+  admin_level: 3
