@@ -1,0 +1,80 @@
+# Recipe to import CO-AN property data
+
+# Administrative unit identifier: where does this data come from?
+admin_id: CO-AN
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: parcel
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id:
+    # Link to portal with metadata
+    portal_url:
+    # Link to direct download
+    download_url:
+  version: "2018"
+
+# Filename of compressed file
+compressed_file_name: "11.12.18.FullMap.zip"
+
+process_by:
+  admin_level: 3
+  admin_id_column: MUNICIPIO
+  admin_id_transformation:
+    - output: admin3_id_admin1_short
+      type: string
+      operation: zfill
+      args:
+        width: 3
+    - input: admin3_id_admin1_short
+      output: admin3_id_admin1
+      type: string
+      operation: add_prefix
+      args:
+        prefix: "05"
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  object_id: OBJECTID_1
+  property_id: PK_PREDIOS
+  purpose_group: TIPO
+  admin2_id_admin1: MUNICIPIO
+  sector_admin3_id_admin2: SECTOR
+  district_admin4_id_admin3: CORREGIMIE
+  neighborhood_admin5_id_admin4: BARRIO
+  block_id_admin6_id_admin5: MANZANA_VE
+  total_units: TOTAL_UNID
+  street_number: NUMERORADI
+  total_buildings: TOTAL_EDIF
+
+keep_unnamed_columns: True
+
+# Derive admin3_id_admin1
+transformations:
+  - input: admin2_id_admin1
+    output: admin3_id_admin1_short
+    type: string
+    operation: zfill
+    args:
+      width: 3
+  - input: admin3_id_admin1_short
+    output: admin3_id_admin1
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "05"
+
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "admin-spine-2026_admin3"
+
+save_to:
+  data_dir: cache
+  admin_level: 3
