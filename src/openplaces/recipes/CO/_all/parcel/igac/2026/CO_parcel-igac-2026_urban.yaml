@@ -1,0 +1,44 @@
+
+# Administrative unit identifier: where does this data come from?
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: igac
+    portal_url: "https://www.igac.gov.co/es/contenido/catastro-publico"
+  version: "2026"
+
+# Urban land parcels (U_TERRENO) from the IGAC public cadastre
+compressed_file_name: "CatastroPubliconMarzo2026.zip"
+uncompressed_file_name: "U_TERRENO.shp"
+
+# Process file in chunks by municipality (admin3)
+process_by:
+  admin_level: 3
+  admin_id_column: codigo_mun
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-spine-2026_admin3"
+
+# Columns: openplaces name -> source column name
+columns:
+  parcel_id_admin3: CODIGO
+  parcel_id_admin3_2: CODIGO_ANT
+  admin3_id_admin1: codigo_mun
+  manzana_code: MANZANA_CO
+  area_sqm: SHAPE_Area
+
+keep_unnamed_columns: False
+
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "admin-spine-2026_admin3"
+
+save_to:
+  data_dir: cache
+  filename: urban
+  admin_level: 3
