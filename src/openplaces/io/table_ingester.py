@@ -196,10 +196,16 @@ class TableIngester:
         )
 
         if 'admin_id_transformation' in self.recipe['process_by']:
-            transform_config = self.recipe['process_by']['admin_id_transformation']
-            transform_config['input'] = self.recipe['process_by']['admin_id_column']
-            admin_id_filter = apply_transformation(admin_id_filter, transform_config)
-            join_column = transform_config['output']
+            transforms = self.recipe['process_by']['admin_id_transformation']
+            if isinstance(transforms, list):
+                transforms[0].setdefault('input', admin_id_column_source)
+                for t in transforms:
+                    admin_id_filter = apply_transformation(admin_id_filter, t)
+                join_column = transforms[-1]['output']
+            else:
+                transforms['input'] = admin_id_column_source
+                admin_id_filter = apply_transformation(admin_id_filter, transforms)
+                join_column = transforms['output']
         else:
             join_column = admin_id_column_source
 

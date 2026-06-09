@@ -83,11 +83,36 @@ DATETIME_OPS: dict[str, Callable] = {
     ),
     'year_continuous': lambda x: x.dt.year + x.dt.dayofyear.div(365),
 }
-
+TITLE_LOWERCASE = {
+    'de',
+    'del',
+    'la',
+    'el',
+    'los',
+    'las',
+    'y',
+    'e',
+    'o',
+    'al',
+    'en',
+    'a',
+}
 STRING_OPS: dict[str, Callable] = {
     'substring': lambda x, start, end=None: x.str[start:end],
     'upper': lambda x: x.str.upper(),
     'lower': lambda x: x.str.lower(),
+    'title_smart': lambda x: x.apply(
+        lambda s: (
+            ' '.join(
+                w.capitalize()
+                if i == 0 or w.lower() not in TITLE_LOWERCASE
+                else w.lower()
+                for i, w in enumerate(str(s).split())
+            )
+            if pd.notna(s)
+            else s
+        )
+    ),
     'strip': lambda x: x.str.strip(),
     'replace': lambda x, old, new: x.str.replace(old, new, regex=False),
     'concat': lambda cols, sep='': pd.Series(sep.join(c.astype(str) for c in cols)),
