@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 
 DEFAULT_ENV_NAME = 'openplaces'
+GPU_ENV_NAME = 'openplaces-amd'
+GPU_MIN_DRIVER = '26.2.2'  # Adrenalin release required by the AMD GPU wheels
 
 _SITECUSTOMIZE = """\
 import ctypes
@@ -317,7 +319,8 @@ def install_win_dll_hook(env_name):
     try:
         site_pkgs = subprocess.check_output(
             f'{PKG_MGR} run -n {env_name} python -c '
-            '"import site; print(site.getsitepackages()[0])"',
+            '"import site; print(next(p for p in site.getsitepackages() '
+            "if p.endswith('site-packages')))\"",
             shell=True,
             text=True,
         ).strip()
@@ -415,6 +418,143 @@ def setup():
         print('  2. cd notebooks')
         print('  3. jupyter notebook')
         print('  4. Start coding!')
+
+
+def _detect_windows_amd_gpu():
+    """Return (name, driver_date) of the first AMD Radeon GPU, or None."""
+    command = (
+        'powershell -NoProfile -Command "'
+        'Get-CimInstance Win32_VideoController | '
+        'Where-Object Name -match Radeon | '
+        "ForEach-Object { $_.Name + '|' + $_.DriverDate.ToString('yyyy-MM-dd') }"
+        '"'
+    )
+    try:
+        output = subprocess.check_output(command, shell=True, text=True).strip()
+    except subprocess.CalledProcessError:
+        return None
+    if not output:
+        return None
+    name, _, driver_date = output.splitlines()[0].partition('|')
+    return name, driver_date
+
+
+def _add_kernel_env_vars(env_name):
+    """Write conda env variables into the registered kernelspec.
+
+    Jupyter launches kernels via the env's python.exe without conda
+    activation, so GDAL/PROJ data paths and the OpenMP workaround must be
+    set in kernel.json explicitly.
+    """
+    import json
+
+    try:
+        prefix = subprocess.check_output(
+            f'{PKG_MGR} run -n {env_name} python -c "import sys; print(sys.prefix)"',
+            shell=True,
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        print('✗ Could not determine env prefix — skipping kernel env vars')
+        return
+
+    spec_path = (
+        Path(os.environ.get('APPDATA', '~')).expanduser()
+        / 'jupyter'
+        / 'kernels'
+        / env_name
+        / 'kernel.json'
+    )
+    if not spec_path.exists():
+        print(f'✗ Kernelspec not found at {spec_path} — skipping kernel env vars')
+        return
+
+    spec = json.loads(spec_path.read_text(encoding='utf-8'))
+    spec['env'] = {
+        'GDAL_DATA': str(Path(prefix) / 'Library' / 'share' / 'gdal'),
+        'PROJ_LIB': str(Path(prefix) / 'Library' / 'share' / 'proj'),
+        'PYTHONUTF8': '1',
+        'KMP_DUPLICATE_LIB_OK': 'TRUE',
+    }
+    spec_path.write_text(json.dumps(spec, indent=1), encoding='utf-8')
+    print(f'✓ Kernel env vars (GDAL_DATA, PROJ_LIB, ...) → {spec_path}')
+
+
+def setup_gpu():
+    """Create a GPU-enabled environment for ML enrichment detectors."""
+    if sys.platform.startswith('linux'):
+        print('On Linux, the standard environment receives the CUDA torch')
+        print('build automatically when an NVIDIA driver is visible at env')
+        print('creation time (conda-forge __cuda virtual package). Verify:')
+        print(
+            f'  {PKG_MGR} run -n {DEFAULT_ENV_NAME} python -c '
+            '"import torch; print(torch.cuda.is_available())"'
+        )
+        print('If it prints False on a GPU node, re-create the environment')
+        print("on that node or pin 'pytorch=*=cuda*' in environment.yml.")
+        return
+    if sys.platform != 'win32':
+        print('✗ GPU environment setup is automated for Windows and Linux only.')
+        return
+
+    gpu = _detect_windows_amd_gpu()
+    if gpu is None:
+        print('✗ No AMD Radeon GPU detected.')
+        print('  (NVIDIA GPUs on Windows: install the CUDA torch build instead.)')
+        return
+    name, driver_date = gpu
+    print(f'Found GPU: {name} (driver date {driver_date})')
+    print(f'The AMD GPU wheels require AMD Adrenalin >= {GPU_MIN_DRIVER};')
+    print('if verification fails below, update the driver via AMD Software.\n')
+
+    env_name = (
+        input(f'Environment name (press Enter for "{GPU_ENV_NAME}"): ').strip()
+        or GPU_ENV_NAME
+    )
+
+    print('\nCreating GPU environment from environment-amd.yml')
+    print('(downloads several GB of AMD GPU wheels; this takes a while) ...')
+    created = run(
+        f'{PKG_MGR} env create -f environment-amd.yml -n {env_name} -y',
+        check=False,
+    )
+    if not created:
+        print('✗ Environment creation failed. If it already exists, update it:')
+        print(f'  {PKG_MGR} env update -f environment-amd.yml -n {env_name} --prune')
+        return
+
+    print('\nConfiguring DLL search path for Windows (sitecustomize.py)...')
+    install_win_dll_hook(env_name)
+
+    print('\nInstalling openplaces in editable mode...')
+    run(f'{PKG_MGR} run -n {env_name} pip install -e . --no-deps')
+
+    print('\nRegistering Jupyter kernel...')
+    run(
+        f'{PKG_MGR} run -n {env_name} python -m ipykernel install --user '
+        f'--name {env_name} --display-name "Python ({env_name}, GPU)"'
+    )
+    _add_kernel_env_vars(env_name)
+
+    print('\nVerifying GPU availability...')
+    verified = run(
+        f'{PKG_MGR} run -n {env_name} python -c '
+        '"import torch; '
+        "assert torch.cuda.is_available(), 'torch.cuda unavailable'; "
+        'print(torch.__version__, torch.cuda.get_device_name(0))"',
+        check=False,
+    )
+    if verified:
+        print('\n✓ GPU environment ready!')
+        print('\nNext steps:')
+        print(f'  1. In Jupyter, select the kernel "Python ({env_name}, GPU)"')
+        print('     to run enrichment notebooks on the GPU.')
+        print(f'  2. Or run scripts with: conda run -n {env_name} python <script>')
+    else:
+        print('\n✗ torch does not see the GPU.')
+        print(f'  Check that the AMD Adrenalin driver is >= {GPU_MIN_DRIVER}')
+        print('  (AMD Software → System), update it, reboot, then re-run:')
+        print('  python dev.py gpu')
 
 
 def update():
@@ -551,6 +691,7 @@ def main():
     """Main entry point."""
     commands = {
         'setup': ('Create development environment', setup),
+        'gpu': ('Create GPU (AMD/CUDA) environment for ML enrichment', setup_gpu),
         'update': ('Update development environment', update),
         'clean': ('Remove development environment', clean),
         'test': ('Run tests', test),
