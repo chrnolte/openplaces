@@ -1,6 +1,9 @@
 # Recipe to import CO-AN property data
 
 # Administrative unit identifier: where does this data come from?
+description: >-
+  Cadastral parcels for Antioquia, Colombia, from the departmental catastro (2018).
+
 admin_id: CO-AN
 
 # Entity: what is the unit of analysis of the imported data?
@@ -9,7 +12,7 @@ entity:
   entity_type: parcel
   # What is the source and URL of a dataset that identifies each unit?
   source:
-    source_id:
+    source_id: catastro
     # Link to portal with metadata
     portal_url:
     # Link to direct download
