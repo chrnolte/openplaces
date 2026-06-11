@@ -8,6 +8,7 @@ Worldwide administrative referencing and mapping
 """
 
 import re
+import unicodedata
 from itertools import combinations
 
 import numpy as np
@@ -21,9 +22,7 @@ from openplaces.core.constants import (
     REGEX_ADMIN3_IDS_HASC,
     STRING_SEPARATOR_WITHIN_IDS,
 )
-from openplaces.config import cfg
 from openplaces.io.readers import get_admin
-from openplaces.io.transform import get_crosswalk
 from openplaces.path import recipe_path
 from openplaces.recipe import find_admin_recipe_id, get_recipe  # noqa: F401
 from openplaces.utils import create_comparable_name_link, standardize_names
@@ -40,7 +39,12 @@ def get_admin1_iso():
     }
 
     admin1_iso = (
-        get_recipe(None, 'admin-iso', filename='admin1-alpha-2', keep_default_na=False)
+        get_recipe(
+            None,
+            'admin-iso-20210319',
+            filename='admin1-alpha-2',
+            keep_default_na=False,
+        )
         .rename(columns=ADMIN1_ISO_RENAME_COLUMNS)
         .query('admin1_id != ""')
         .set_index('admin1_id')
@@ -48,7 +52,7 @@ def get_admin1_iso():
     )
 
     admin1_iso_additions = get_recipe(
-        None, 'admin-iso', filename='admin1-additions'
+        None, 'admin-openplaces-2026', filename='admin1-additions'
     ).set_index('admin1_id')
     admin1_iso = pd.concat(
         [
@@ -65,7 +69,7 @@ def get_admin1_iso():
     admin1_iso_regions = (
         get_recipe(
             None,
-            'admin-iso',
+            'admin-iso-20240619',
             filename='admin1-regions-iso3166',
             keep_default_na=False,
         )
@@ -596,6 +600,57 @@ def admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-census-2021
     return admin3_local.set_index('admin3_id')
 
 
+# Letters without a Unicode decomposition: NFKD alone cannot fold these to ASCII
+_ASCII_FOLD_MAP = str.maketrans(
+    {
+        'Đ': 'D',
+        'đ': 'd',
+        'Ð': 'D',
+        'ð': 'd',
+        'Ø': 'O',
+        'ø': 'o',
+        'Ł': 'L',
+        'ł': 'l',
+        'Æ': 'AE',
+        'æ': 'ae',
+        'Œ': 'OE',
+        'œ': 'oe',
+        'ß': 'ss',
+        'Þ': 'TH',
+        'þ': 'th',
+    }
+)
+
+
+def fold_to_ascii(text):
+    """Transliterate text to its closest ASCII representation.
+
+    Strips diacritics via NFKD normalization, maps non-decomposing letters
+    (e.g. Đ, Ø, ß) to ASCII equivalents, converts non-ASCII decimal digits
+    (e.g. Arabic-Indic) to ASCII digits, and drops anything else non-ASCII.
+
+    Parameters
+    ----------
+    text : str
+        Input text.
+
+    Returns
+    -------
+    str
+        ASCII-only version of the input.
+    """
+    decomposed = unicodedata.normalize('NFKD', str(text).translate(_ASCII_FOLD_MAP))
+    chars = []
+    for c in decomposed:
+        if c.isascii():
+            chars.append(c)
+        elif unicodedata.combining(c):
+            continue
+        elif c.isdigit():
+            chars.append(str(unicodedata.digit(c)))
+    return ''.join(chars)
+
+
 def clean_geographic_name(name):
     """
     Comprehensive cleaning for admin4 geographic names.
@@ -724,6 +779,7 @@ def clean_geographic_name(name):
 
     return clean_text, extracted_num, letter_suffix, detected_generic
 
+
 def generate_admin_ids(
     df,
     new_admin_id_col='admin4_id',
@@ -820,7 +876,6 @@ def generate_admin_ids(
     """
 
     admin = df.copy()
-
 
     id_source_col = new_admin_id_col + '_source'
     admin[new_admin_id_col] = None
@@ -1025,6 +1080,7 @@ def generate_admin_ids(
         names_upper = (
             unassigned[name_col]
             .fillna('')
+            .map(fold_to_ascii)
             .str.upper()
             .str.replace(r'[()]', '', regex=True)
             .tolist()
@@ -1214,6 +1270,18 @@ def generate_admin_ids(
         ]
         raise ValueError(f'Found {n_dupes} duplicate IDs:\n{dupes}')
 
+    # Verify charset: AdminId only accepts uppercase ASCII letters and digits
+    is_invalid = ~admin[new_admin_id_col].str.match(
+        rf'^[A-Z0-9{re.escape(id_separator)}]+$'
+    )
+    if is_invalid.any():
+        offenders = admin.loc[
+            is_invalid, [new_admin_id_col, name_col, parent_admin_id_col]
+        ]
+        raise ValueError(
+            f'Generated {is_invalid.sum()} IDs with invalid characters:\n{offenders}'
+        )
+
     if verbose:
         print('\n✓ All IDs assigned and verified unique!')
         print('\nID Generation Summary:')
@@ -1294,7 +1362,9 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
             )
             # US-specific: add 'city' suffix to names of cities that have
             # duplicate names with counties
-            new_admin_entries.loc[new_admin_entries['type'].eq('City'), 'name'] += ' city'
+            new_admin_entries.loc[new_admin_entries['type'].eq('City'), 'name'] += (
+                ' city'
+            )
 
         # Align columns
         new_admin_entries = new_admin_entries[
