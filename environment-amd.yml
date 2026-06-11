@@ -1,0 +1,95 @@
+# environment-amd.yml
+# GPU runtime for ML enrichment on Windows machines with AMD Radeon GPUs
+# (e.g. RX 7900 XTX), using AMD's official PyTorch-on-Windows wheels.
+# Create via `python dev.py gpu` (recommended) or
+# `conda env create -f environment-amd.yml`.
+#
+# Notes:
+# - Python is pinned to 3.12 because AMD ships cp312 wheels only.
+# - torch/torchvision come from repo.radeon.com via pip (NOT conda, NOT
+#   PyPI). This is the one sanctioned exception to the conda-only-torch
+#   rule, isolated in this dedicated env; never install pip torch into the
+#   main `openplaces` env.
+# - Requires AMD Adrenalin driver >= 26.2.2 (for the 7.2.1 GPU wheels).
+# - The AMD GPU SDK wheels are multi-GB; creation takes a while.
+# - Keep the conda dependency list in sync with environment.yml.
+
+name: openplaces-amd
+channels:
+  - conda-forge
+dependencies:
+  # AMD cp312 wheels require exactly Python 3.12
+  - python=3.12
+
+  # Core geospatial dependencies (better via conda due to C/C++ libs)
+  - geopandas>=1.0.0
+  - duckdb>=1.5.0
+  - rasterio>=1.3.0
+  - pyproj>=3.5.0
+  - shapely>=2.0.0
+  - pyogrio>=0.7.0
+
+  # Core non-spatial dependencies
+  - numpy>=1.24.0
+  - pandas>=2.0.0
+  - pyarrow>=10.0.0
+  - requests>=2.28.0
+  - tqdm>=4.65.0
+  - pyyaml>=6.0.3
+  - platformdirs>=4.9.2
+
+  # Analysis
+  - statsmodels>=0.14.0
+  - scikit-learn>=1.3.0
+  - rasterstats>=0.19.0
+
+  # Viz
+  - matplotlib>=3.7.0
+  - plotly>=5.15.0
+  - folium>=0.15.0
+  - seaborn>=0.12.0
+  - contextily>=1.6.2
+  - altair>=5.0.0
+
+  # Raster
+  - rioxarray>=0.15.0
+  - rio-cogeo>=4.0.0
+  - scikit-image>=0.21.0
+  - numba>=0.58.0
+  - exactextract>=0.3.0
+
+  # Excel
+  - openpyxl>=3.1.0
+
+  # Scrape (browser-driven scrapers)
+  - playwright>=1.40.0
+
+  # Notebook kernel + dev tools
+  - jupyter>=1.0.0
+  - ipykernel
+  - ruff>=0.1.0
+  - pytest>=7.4.0
+  - ipython
+
+  # pip for the AMD GPU wheels and local package install
+  - pip
+
+  - pip:
+    - python-polylabel>=0.6
+    - openlocationcode>=1.0.1
+    # AMD GPU SDK (from repo.radeon.com; multi-GB)
+    - https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_core-7.2.1-py3-none-win_amd64.whl
+    - https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl
+    - https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl
+    - https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/rocm-7.2.1.tar.gz
+    # PyTorch with AMD GPU backend (surfaces as torch.cuda; torchaudio not
+    # needed by openplaces)
+    - https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torch-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl
+    - https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/torchvision-0.24.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl
+    - -e .
+
+variables:
+  PYTHONUTF8: "1"
+  # Same OpenMP duplicate-runtime workaround as the main env; the pip torch
+  # wheels bundle their own OpenMP that can collide with MKL/numpy's.
+  KMP_DUPLICATE_LIB_OK: "TRUE"

@@ -68,6 +68,24 @@ dependencies:
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.cloud]
   - rclone>=1.73.1
 
+  # Optional: ml (required for floor/roof/occupancy ML detectors)
+  # GPU notes (detectors auto-select via io/enricher/detectors/device.py):
+  # - NVIDIA (e.g. Linux cluster): conda-forge picks the CUDA build
+  #   automatically when the driver is visible at solve time (__cuda
+  #   virtual package). Solve on a GPU node, or pin `pytorch=*=cuda*`
+  #   in a cluster env file. Verify with:
+  #   python -c "import torch; print(torch.cuda.is_available())"
+  # - AMD Radeon on Windows: use the dedicated GPU env built from
+  #   environment-rocm.yml (`python dev.py gpu`) with AMD's official
+  #   PyTorch-on-Windows ROCm wheels. Never install pip torch into THIS
+  #   env (ABI clash with conda packages).
+  - pytorch>=2.10.0
+
+  # Optional: scrape (browser-driven scrapers, e.g. wi_retr)
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.scrape]
+  # After install, fetch the browser: `playwright install chromium`
+  - playwright>=1.40.0
+
   # Optional: dev tools
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
   - jupyter>=1.0.0
@@ -94,3 +112,8 @@ dependencies:
 
 variables:
   PYTHONUTF8: "1"
+  # conda-forge pytorch (even the cpu_mkl build) links some extensions against
+  # LLVM libomp.dll, which conflicts with Intel libiomp5md.dll loaded by MKL/numpy.
+  # This variable suppresses the fatal error; the two runtimes coexist safely for
+  # sequential inference workloads where no mixed-OMP parallelism occurs.
+  KMP_DUPLICATE_LIB_OK: "TRUE"

@@ -98,6 +98,15 @@ excel = ["openpyxl>=3.1.0"]
 # Cloud storage
 cloud = ["rclone>=1.73.1"]
 
+# Browser-driven scrapers (e.g. wi_retr for Wisconsin RETR transactions).
+# After install, fetch the browser binary: `playwright install chromium`
+scrape = ["playwright>=1.40.0"]
+
+# ML detectors (floor count, occupancy, roof shape).
+# torch is intentionally NOT a pip dependency: it must be installed via conda
+# (see environment.yml `pytorch`). Keep this empty.
+ml = []
+
 # Development and testing tools
 dev = [
     "jupyter>=1.0.0",
@@ -114,7 +123,7 @@ dev = [
 
 # All optional dependencies
 all = [
-    "openplaces[analysis,viz,raster,docs,excel,cloud,dev]"
+    "openplaces[analysis,viz,raster,docs,excel,cloud,scrape,ml,dev]"
 ]
 
 # For academic/research workflows
