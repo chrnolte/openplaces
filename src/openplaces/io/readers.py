@@ -4,6 +4,7 @@ Imported by internal modules (io/*, geo/*). Also re-exported from api.py.
 """
 
 import warnings
+from collections.abc import Sequence
 
 import geopandas as gpd
 import pandas as pd
@@ -14,6 +15,7 @@ from openplaces.recipe import (
     find_admin_recipe_id,
     get_output_path,
     get_recipe_by_id,
+    get_save_admin_level,
     get_table_recipe,
 )
 from openplaces.utils import format_list
@@ -287,45 +289,138 @@ def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
     return sorted(admin_ids)
 
 
-def get_entities(recipe, admin_id=None, geom=False, layer=None, partition_id=None):
-    """Generic function to load a processed Parquet table for entities
+def _as_admin_id(value):
+    return value if isinstance(value, AdminId) else AdminId(value)
 
-    Entities are administrative units (`admin`), parcels, buildings,
-    transactions, etc., as defined by the `recipe`.
+
+def _get_output_admin_ids(recipe, admin_id):
+    """Resolve requested admin IDs to the recipe's output granularity."""
+    save_level = get_save_admin_level(recipe)
+    if save_level == 0:
+        return [None]
+
+    recipe_admin_id = _as_admin_id(recipe['admin_id'])
+    requested = recipe_admin_id if admin_id is None else admin_id
+    if isinstance(requested, str | AdminId):
+        requested = [requested]
+
+    output_admin_ids = []
+    for value in requested:
+        requested_admin_id = _as_admin_id(value)
+        if requested_admin_id.is_parent_or_equal_of(recipe_admin_id):
+            requested_admin_id = recipe_admin_id
+        elif not recipe_admin_id.is_parent_or_equal_of(requested_admin_id):
+            raise ValueError(
+                f'{requested_admin_id} is outside recipe scope {recipe_admin_id}'
+            )
+
+        if requested_admin_id.get_level() >= save_level:
+            output_admin_ids.append(AdminId(*requested_admin_id.levels[:save_level]))
+            continue
+
+        child_admin_ids = get_admin(
+            requested_admin_id,
+            save_level,
+            columns=[],
+        ).index
+        output_admin_ids.extend(
+            _as_admin_id(child_admin_id)
+            for child_admin_id in child_admin_ids
+            if recipe_admin_id.is_parent_or_equal_of(_as_admin_id(child_admin_id))
+        )
+
+    return list(dict.fromkeys(output_admin_ids))
+
+
+def get_entities(
+    recipe,
+    admin_id=None,
+    geom=False,
+    layer=None,
+    partition_id=None,
+    columns: Sequence[str] | None = None,
+    missing='raise',
+):
+    """Load and combine processed Parquet tables for entities.
+
+    Parent administrative IDs are expanded to the recipe's save level.
+    Recipes aggregated to a single file read their ``_all`` output by
+    default.
 
     Parameters
     ----------
     recipe : str or dict
-        Recipe that defines the entity. Can be a loaded recipe (dict) or
-        a string of the `recipe_id` (which includes admin_id)
-    admin_id : str or AdminId
-        Administrative unit for which to load the data. If None,
-        choose admin_id of recipe.
+        Recipe that defines the entity.
+    admin_id : str, AdminId, or sequence
+        Administrative unit(s) to load. Defaults to the recipe admin ID.
     geom : bool
         If True, include geometries and return a GeoDataFrame.
     layer : str, optional
-        Entity type (e.g. 'property') or full entity string
-        (e.g. 'property-massgis-2025') of a secondary layer defined in
-        `additional_layers`. If given, load that layer instead of the
-        primary entity.
+        Secondary layer defined in ``additional_layers``.
     partition_id : str, optional
-        Partition value to read a specific per-partition file, e.g. '032012'
-        for a tile-partitioned recipe. Pass None (default) to read the
-        final merged output.
+        Explicit partition value to read.
+    columns : sequence of str, optional
+        Columns to read.
+    missing : {'raise', 'warn', 'ignore'}
+        How to handle missing output files.
     """
-
+    if missing not in {'raise', 'warn', 'ignore'}:
+        raise ValueError("missing must be 'raise', 'warn', or 'ignore'")
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
 
     if layer is not None:
         recipe = get_table_recipe(recipe, layer)
 
-    if admin_id is None:
-        admin_id = recipe['admin_id']
+    if partition_id is None and (recipe.get('aggregate_by') or {}).get('single_file'):
+        partition_id = 'all'
 
-    return read_parquet(
-        get_output_path(recipe, admin_id, partition_id=partition_id), geom=geom
-    )
+    frames = []
+    output_paths = []
+    missing_paths = []
+    for output_admin_id in _get_output_admin_ids(recipe, admin_id):
+        path = get_output_path(
+            recipe,
+            output_admin_id,
+            partition_id=partition_id,
+        )
+        if not path.exists():
+            missing_paths.append(path)
+            continue
+        frames.append(read_parquet(path, geom=geom, columns=columns))
+        output_paths.append(path)
+
+    if missing_paths:
+        message = (
+            f'{len(missing_paths)} recipe output file(s) do not exist; '
+            f'first missing path: {missing_paths[0]}'
+        )
+        if missing == 'raise':
+            raise FileNotFoundError(message)
+        if missing == 'warn':
+            warnings.warn(message, stacklevel=2)
+
+    if not frames:
+        data = gpd.GeoDataFrame() if geom else pd.DataFrame()
+    elif len(frames) == 1:
+        data = frames[0]
+    else:
+        ignore_index = all(isinstance(frame.index, pd.RangeIndex) for frame in frames)
+        data = pd.concat(frames, ignore_index=ignore_index)
+        if geom:
+            data = gpd.GeoDataFrame(data, crs=frames[0].crs)
+
+    partition_ids = set()
+    if partition_id == 'all':
+        from openplaces.io.aggregate import read_partition_coverage
+
+        for path in output_paths:
+            partition_ids.update(read_partition_coverage(path))
+
+    data.attrs['openplaces_output_paths'] = [str(path) for path in output_paths]
+    data.attrs['openplaces_missing_paths'] = [str(path) for path in missing_paths]
+    data.attrs['openplaces_partition_ids'] = sorted(partition_ids)
+    return data
 
 
 def get_dataset(recipe, admin_id=None, partition_id=None, geom=False):
