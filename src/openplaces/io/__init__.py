@@ -429,7 +429,11 @@ def _remove_if_exists(filepath: Path) -> None:
 
 
 def to_parquet(
-    df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    filepath: str | Path,
+    *,
+    file_metadata: dict[str, str] | None = None,
+    **kwargs,
 ) -> None:
     """Save dataframe to Parquet format.
 
@@ -439,6 +443,11 @@ def to_parquet(
         Data to save
     filepath : str or Path
         Output parquet path (should end in .parquet)
+    file_metadata : dict of str to str, optional
+        Key-value pairs written into the Parquet footer (file-level) metadata,
+        merged with the metadata pandas/pyarrow already attaches. Read back via
+        pyarrow.parquet.read_metadata() without scanning rows. Only supported
+        for plain (non-geo) DataFrames; ignored for GeoDataFrames.
     **kwargs
         Additional arguments passed to to_parquet()
     """
@@ -452,6 +461,20 @@ def to_parquet(
             kwargs.setdefault('write_covering_bbox', True)
             warnings.filterwarnings('ignore', '.*initial implementation of Parquet.*')
             df.to_parquet(filepath, **kwargs)
+    elif file_metadata:
+        import pyarrow.parquet as pq
+
+        table = pyarrow.Table.from_pandas(df)
+        merged = dict(table.schema.metadata or {})
+        merged.update(
+            {
+                (k.encode() if isinstance(k, str) else k): (
+                    v.encode() if isinstance(v, str) else v
+                )
+                for k, v in file_metadata.items()
+            }
+        )
+        pq.write_table(table.replace_schema_metadata(merged), filepath)
     else:
         df.to_parquet(filepath, **kwargs)
 
@@ -590,7 +613,9 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
         )
 
 
-def save_parquet(gdf, parquet_path, simplified_geometry=None, combined=False):
+def save_parquet(
+    gdf, parquet_path, simplified_geometry=None, combined=False, file_metadata=None
+):
     """Save parquet file (with geometries in joinable geoparquet file)
 
     Parameters
@@ -611,6 +636,9 @@ def save_parquet(gdf, parquet_path, simplified_geometry=None, combined=False):
         with no ``_geo`` sidecar and no ``_join_id``.  Use this when
         downstream consumers expect a standard geoparquet rather than the
         split two-file layout.
+    file_metadata : dict of str to str, optional
+        Key-value pairs written into the attribute parquet's footer (file-level)
+        metadata. Only applied to plain (non-geo) frames; see `to_parquet`.
     """
     if isinstance(parquet_path, str):
         parquet_path = Path(parquet_path)
@@ -666,7 +694,7 @@ def save_parquet(gdf, parquet_path, simplified_geometry=None, combined=False):
                 write_covering_bbox=True,
             )
     else:
-        to_parquet(gdf, parquet_path)
+        to_parquet(gdf, parquet_path, file_metadata=file_metadata)
 
 
 def delete_parquet(parquet_path):

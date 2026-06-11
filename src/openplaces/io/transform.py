@@ -27,6 +27,15 @@ from openplaces.recipe import get_recipe_by_id
 
 # Operations
 
+
+def _parse_currency(x: pd.Series) -> pd.Series:
+    """Parse currency-formatted strings while preserving invalid values as NA."""
+    values = x.astype('string').str.strip()
+    values = values.str.replace(r'[$,]', '', regex=True)
+    values = values.str.replace(r'^\((.*)\)$', r'-\1', regex=True)
+    return pd.to_numeric(values, errors='coerce')
+
+
 UNARY_OPS: dict[str, Callable] = {
     'log': np.log,
     'arcsinh': np.arcsinh,
@@ -35,6 +44,7 @@ UNARY_OPS: dict[str, Callable] = {
     'exp': np.exp,
     'abs': np.abs,
     'power': lambda x, exponent: x**exponent,
+    'parse_currency': _parse_currency,
 }
 
 BINARY_OPS: dict[str, Callable] = {
@@ -216,6 +226,27 @@ def apply_transformations(
         for pattern_config in recipe['transformation_patterns']:
             df = apply_transformation_pattern(df, pattern_config, silent)
 
+    return df
+
+
+def apply_legacy_columns(
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    recipe: dict[str, Any],
+) -> pd.DataFrame | gpd.GeoDataFrame:
+    """Rename legacy columns declared by a recipe, merging when both exist."""
+    renames = recipe.get('legacy_columns') or {}
+    if not renames:
+        return df
+
+    df = df.copy()
+    for old, new in renames.items():
+        if old not in df.columns:
+            continue
+        if new in df.columns:
+            df[new] = df[new].where(df[new].notna(), df[old])
+            df = df.drop(columns=old)
+        else:
+            df = df.rename(columns={old: new})
     return df
 
 

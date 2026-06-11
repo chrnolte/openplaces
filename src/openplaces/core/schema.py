@@ -195,6 +195,11 @@ class Source:
     download_url_source: str | None = None
     # Option 2: Regular expression (string pattern) to extract URL
     download_url_source_regex: str | None = None
+    # Option 3: name of a browser-driven scraper that produces the download
+    # file for each partition (the dynamic-portal analog of download_url_source,
+    # for sites needing JS / a terms gate / on-the-fly URLs). Dispatched by the
+    # Ingester download step (e.g. 'wi_retr').
+    download_url_scraper: str | None = None
     doi: str | None = None
     # Set to False for sources with SSL certificates not trusted by Python
     verify_ssl: bool = True
@@ -206,15 +211,19 @@ class Source:
         download_url: str = None,
         download_url_source: str = None,
         download_url_source_regex: str = None,
+        download_url_scraper: str = None,
         doi: str = None,
         verify_ssl: bool = True,
     ):
         """Initialize AdminId with administrative levels."""
 
-        if download_url and download_url_source:
+        n_download_modes = sum(
+            bool(x) for x in (download_url, download_url_source, download_url_scraper)
+        )
+        if n_download_modes > 1:
             raise ValueError(
-                'An entity can have a `download_url` or a `download_url_source`, '
-                'not both.'
+                'A source can use only one download mode: `download_url`, '
+                '`download_url_source`, or `download_url_scraper`.'
             )
 
         if download_url_source and not download_url_source_regex:
@@ -228,6 +237,7 @@ class Source:
         self.download_url = download_url
         self.download_url_source = download_url_source
         self.download_url_source_regex = download_url_source_regex
+        self.download_url_scraper = download_url_scraper
         self.doi = doi
         self.verify_ssl = verify_ssl
 
@@ -293,8 +303,11 @@ class Entity:
         """Return path directory structure for entity."""
 
         parts = [self.entity_type, self.source, self.version]
+        path_parts = [str(part) for part in parts if part is not None]
+        if self.source is None or self.version is None:
+            path_parts.append(ESCAPE_DIR)
 
-        return Path(*[str(part) for part in parts if part is not None])
+        return Path(*path_parts)
 
 
 @dataclass

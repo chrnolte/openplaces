@@ -53,7 +53,7 @@ from openplaces.recipe import (
     get_table_recipe,
 )
 from openplaces.timing import Timer, get_timer
-from openplaces.utils import format_list
+from openplaces.utils import format_list, inspect_table
 
 
 def _warn_registry_type_mismatches(gdf) -> None:
@@ -116,6 +116,12 @@ class Ingester:
         if recipe is None:
             raise ValueError(
                 '`recipe` must be a recipe dict or a valid recipe ID string.'
+            )
+        stage = recipe.get('stage', 'ingest')
+        if stage != 'ingest':
+            raise ValueError(
+                f"Recipe stage is '{stage}', expected 'ingest'. "
+                'Pass an ingestion recipe.'
             )
         self.recipe = recipe
 
@@ -197,6 +203,30 @@ class Ingester:
         present = [str(p) for p in parts if p is not None]
         return (': ' + ' | '.join(present)) if present else ''
 
+    def _recipe_id(self):
+        """Human-readable recipe id, e.g. 'US-WI_transaction-widor-2026'."""
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        return self.recipe['admin_id'].to_prefix() + str(entity_or_dataset)
+
+    def _chunk_label(self, admin_id, n_admins):
+        """Identifier(s) distinguishing the current chunk, for log headers.
+
+        Shows admin_id when several admins are processed, partition_id when
+        several partitions are, both when both vary, else the single relevant
+        one. Lets a one-admin / many-partition run read 'for <partition_id>'.
+        """
+        partition_id = self.download_partition.get('partition_id_to_download')
+        parts = getattr(self, 'partition_ids_to_download', None) or []
+        n_parts = len([p for p in parts if p is not None])
+        bits = []
+        if n_admins > 1 and admin_id is not None:
+            bits.append(str(admin_id))
+        if n_parts > 1 and partition_id is not None:
+            bits.append(str(partition_id))
+        if not bits:
+            bits = [str(x) for x in (admin_id, partition_id) if x is not None][:1]
+        return ' | '.join(bits) or '(all)'
+
     @property
     def _first_partition_id(self):
         if self.partition_ids:
@@ -263,7 +293,30 @@ class Ingester:
         if self.recipe.get('image_scraper'):
             from .image_ingester import fetch_images_by_admin
 
-            self.admin_ids_to_process = [str(a) for a in (self.admin_ids or [])]
+            # Expand requested admin IDs to the recipe's save level and skip
+            # admin units whose metadata parquet already exists (unless
+            # reprocess), mirroring `_resolve_admin_ids`.
+            save_level = get_save_admin_level(self.recipe)
+            admin_ids_at_save_level = list(
+                dict.fromkeys(
+                    str(save_admin_id)
+                    for requested in self.admin_ids
+                    for save_admin_id in (
+                        [AdminId(*requested.levels[:save_level])]
+                        if requested.get_level() >= save_level
+                        else get_admin(requested, save_level).index
+                    )
+                )
+            )
+            self.admin_ids_to_process = [
+                admin_id
+                for admin_id in admin_ids_at_save_level
+                if reprocess or not get_output_path(self.recipe, admin_id).exists()
+            ]
+            if not self.admin_ids_to_process:
+                if self.verbose:
+                    print('All output files found. Processing skipped.\n')
+                return
             fetch_images_by_admin(
                 self,
                 n_sample=self.recipe.get('n_sample'),
@@ -299,6 +352,8 @@ class Ingester:
             self._merge_tile_partials()
 
         self._aggregate_to()
+
+        self._aggregate_partitions()
 
     def show_ingested_geometries(self, **kwargs):
         """Plot the last ingested layer for visual inspection.
@@ -344,7 +399,7 @@ class Ingester:
         )
         partition_id = self._first_partition_id
         data = get_entities(self.recipe, admin_id, partition_id=partition_id)
-        return data.sample(n).T
+        return inspect_table(data, n=n)
 
     def sample_additional_layer(self, n=5):
         """Return a transposed sample of the first additional layer.
@@ -380,7 +435,7 @@ class Ingester:
         data = get_entities(
             self.recipe, admin_id, layer=layer, partition_id=partition_id
         )
-        return data.sample(n).T
+        return inspect_table(data, n=n)
 
     def _merge_tile_partials(self):
         """Merge per-tile partial files into final per-admin-id output files.
@@ -471,6 +526,30 @@ class Ingester:
                 admin_ids_to_process=self.admin_ids_to_process,
                 verbose=self.verbose,
             )
+
+    def _aggregate_partitions(self):
+        """Roll up partition outputs per the recipe's `aggregate_by` block.
+
+        For partitioned recipes that declare `aggregate_by`, concatenate the
+        per-partition output files into one combined ``..._all.parquet`` (with
+        ``single_file: true``) or into per-group files (e.g. the 12 months of
+        each year into one per-year file, with ``partition: year``). Delegates
+        to `aggregate_partitions`.
+        """
+        agg = self.recipe.get('aggregate_by')
+        if not agg or not (agg.get('single_file') or 'partition' in agg):
+            return
+
+        from openplaces.io.aggregate import aggregate_partitions
+
+        aggregate_partitions(
+            self.recipe,
+            by=agg.get('partition', 'year'),
+            single_file=agg.get('single_file', False),
+            how=agg.get('how', 'union'),
+            keep_original=agg.get('keep_partitions', False),
+            verbose=self.verbose,
+        )
 
     def _resolve_admin_ids(self, reprocess):
         """Resolve admin IDs to save, process, and download"""
@@ -750,6 +829,22 @@ class Ingester:
         else:
             self.partition_ids_to_download = all_partition_ids
 
+        # When not reprocessing, drop partitions already ingested for every
+        # admin unit to be saved. A partition is ingested if its per-partition
+        # file is on disk or it is recorded in an aggregated file's footer
+        # coverage (so the skip survives deletion of the per-partition files).
+        if not reprocess and partition:
+            save_admin_ids = self.admin_ids_to_save or [None]
+            ingested = {
+                admin_id: self.get_ingested_partition_ids(admin_id)
+                for admin_id in save_admin_ids
+            }
+            self.partition_ids_to_download = [
+                pid
+                for pid in self.partition_ids_to_download
+                if not all(pid in ingested[admin_id] for admin_id in save_admin_ids)
+            ]
+
         if self.verbose and self.partition_ids_to_download != [None]:
             print(
                 f'Partitioned by `{partition}`:',
@@ -757,6 +852,29 @@ class Ingester:
             )
             if isinstance(self.partition_ids, list | set):
                 print('Selected:', format_list(self.partition_ids_to_download))
+
+    def get_ingested_partition_ids(self, admin_id) -> set[str]:
+        """Return partition ids already ingested for *admin_id*.
+
+        Combines two signals so skipping works whether or not the per-partition
+        files are kept: partition ids whose per-partition output file is on
+        disk, plus those recorded in the aggregated file's footer coverage
+        (`openplaces:partitions`, written by `aggregate_partitions`).
+        """
+        from openplaces.io.aggregate import read_partition_coverage
+
+        ingested = {
+            str(pid)
+            for pid in get_partition_ids(self.recipe)
+            if pid is not None
+            and get_output_path(self.recipe, admin_id, partition_id=pid).exists()
+        }
+        agg = self.recipe.get('aggregate_by') or {}
+        if agg.get('single_file'):
+            ingested |= read_partition_coverage(
+                get_output_path(self.recipe, admin_id, partition_id='all')
+            )
+        return ingested
 
     def _resolve_tile_ids(self):
         """Resolve tile partition IDs filtered to admin_ids_to_save.
@@ -878,6 +996,11 @@ class Ingester:
 
         self._download_and_unzip_recipe_data(redownload=redownload)
 
+        # A download scraper may report this partition has no published file
+        # (e.g. a not-yet-generated month); skip processing and move on.
+        if self.download_partition.get('unavailable'):
+            return
+
         if self._is_tile_partition and (
             self.download_partition['data_path'] is None
             or not self.download_partition['data_path'].exists()
@@ -925,10 +1048,10 @@ class Ingester:
 
             for admin_id_to_process in admin_ids_to_process_in_partition:
                 if self.verbose and admin_id_to_process is not None:
-                    _entity_or_dataset = self.recipe.get('entity') or self.recipe.get(
-                        'dataset'
+                    target = self._chunk_label(
+                        admin_id_to_process, len(self.admin_ids_to_process or [])
                     )
-                    print(f'Processing {_entity_or_dataset} for {admin_id_to_process}:')
+                    print(f'Processing {self._recipe_id()} for {target}:')
                 self._process_recipe_data(admin_id_to_process)
 
         # Delete unzipped files in heap folder
@@ -1326,6 +1449,17 @@ class Ingester:
                 print('Data file found. Download and unzipping skipped.')
             return
 
+        # Browser-driven acquisition: when the source names a download scraper,
+        # drive a real browser to produce the per-partition file. This is the
+        # dynamic-portal analog of download_url_source (which extracts a link
+        # from static HTML); the scraper writes the final file directly, so no
+        # HTTP download or unzip step follows.
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        source = entity_or_dataset.source if entity_or_dataset else None
+        if source is not None and getattr(source, 'download_url_scraper', None):
+            self._run_download_scraper(source.download_url_scraper)
+            return
+
         _dl_suffix = self._mark_suffix(
             self.download_partition.get('admin_id_to_download'),
             self.download_partition.get('partition_id_to_download'),
@@ -1382,13 +1516,21 @@ class Ingester:
         # data file (downloaded_path != data_path and extension is an archive
         # format). When downloaded_path IS data_path the source is a flat file
         # (e.g. a GeoTIFF or GeoParquet) fetched directly, so no extraction
-        # is needed. Joining the last two suffixes handles both single-extension
-        # (.zip, .tgz) and compound-extension (.tar.gz, .tar.bz2) formats.
+        # is needed. Check both the final suffix and recognized compound
+        # suffixes so names such as data.gpkg.bz2 and data.shp.zip work.
         _dl_path = self.download_partition['downloaded_path']
+        _dl_suffixes = (
+            [suffix.lower() for suffix in Path(_dl_path).suffixes]
+            if _dl_path is not None
+            else []
+        )
+        _archive_suffixes = set(_dl_suffixes)
+        if len(_dl_suffixes) >= 2:
+            _archive_suffixes.add(''.join(_dl_suffixes[-2:]))
         _is_archive = (
             _dl_path is not None
             and _dl_path != self.download_partition['data_path']
-            and ''.join(Path(_dl_path).suffixes[-2:]).lower() in ZIP_EXTENSIONS
+            and bool(_archive_suffixes & ZIP_EXTENSIONS)
         )
         if redownload or _is_archive:
             if self.verbose:
@@ -1447,10 +1589,135 @@ class Ingester:
                 + str(self.download_partition['data_path'])
             )
 
+    def _run_download_scraper(self, scraper_name):
+        """Produce a partition's source file via a browser-driven scraper.
+
+        Invoked from `_download_and_unzip_recipe_data` when the source defines
+        ``download_url_scraper``.  For data reachable only through an
+        interactive web portal (a JavaScript app behind a terms-of-use gate,
+        with download URLs generated on the fly), the named scraper drives a
+        browser to obtain the file for the current partition and writes it to
+        the partition's ``downloaded_path`` (== ``data_path`` for a flat file
+        such as a CSV).  Processing then continues through the normal
+        `TableIngester` path.
+
+        Parameters
+        ----------
+        scraper_name : str
+            Value of ``source.download_url_scraper``. Names a module file in
+            ``openplaces/io/scrapers/`` (stem only, e.g.
+            ``'US-WI_transaction-widor-2026_scraper'``). The module is loaded by
+            path — geography-specific scrapers are named like their recipe ID
+            and so contain hyphens that a normal import cannot handle — and must
+            expose a ``fetch(partition_id, target_path, portal_url, **options)``
+            entrypoint.
+        """
+        data_path = self.download_partition['data_path']
+        target_path = self.download_partition['downloaded_path'] or data_path
+        if target_path is None:
+            raise ValueError(
+                'A `download_url_scraper` source must define a resolvable target '
+                'filename (e.g. via `uncompressed_file_name`) so the scraper '
+                'knows where to save the downloaded file.'
+            )
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        partition_id = self.download_partition.get('partition_id_to_download')
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        source = entity_or_dataset.source if entity_or_dataset else None
+        options = dict(self.recipe.get('scraper_options') or {})
+
+        if self.verbose:
+            target = self._chunk_label(
+                self.download_partition.get('admin_id_to_download'),
+                len(self.admin_ids_to_download or []),
+            )
+            print(f'Scrape download {self._recipe_id()} for {target}')
+
+        fetch = self._load_scraper_fetch(scraper_name)
+        result = fetch(
+            partition_id=partition_id,
+            target_path=target_path,
+            portal_url=options.pop('portal_url', None)
+            or (source.portal_url if source else None),
+            label=options.pop('label', None) or scraper_name.removesuffix('_scraper'),
+            verbose=self.verbose,
+            **options,
+        )
+
+        _dl_suffix = self._mark_suffix(
+            self.download_partition.get('admin_id_to_download'), partition_id
+        )
+        self.timer.mark(f'Downloaded{_dl_suffix}')
+
+        # A scraper returns None when this partition has no published file yet
+        # (e.g. a not-yet-generated month). Mark it so the partition is skipped
+        # without aborting a multi-partition run.
+        if result is None:
+            if self.verbose:
+                print(f'No source file available; skipping partition: {partition_id}')
+            self.download_partition['unavailable'] = True
+            return
+
+        if not target_path.exists():
+            raise FileNotFoundError(
+                f"Scraper '{scraper_name}' did not produce the expected file:\n\n"
+                f'{target_path}\n\n'
+                'The portal layout may have changed; check scraper selectors.'
+            )
+
+        self.download_partition['downloaded_path'] = target_path
+        if data_path is None:
+            self.download_partition['data_path'] = target_path
+
+    @staticmethod
+    def _load_scraper_fetch(scraper_name):
+        """Load a download scraper module by file path and return its ``fetch``.
+
+        Scraper modules live in ``openplaces/io/scrapers/``. Geography-specific
+        scrapers are named like their recipe ID (e.g.
+        ``US-WI_transaction-widor-2026_scraper``) and contain hyphens, so they
+        are loaded by file path rather than imported by dotted name.
+
+        Parameters
+        ----------
+        scraper_name : str
+            Module file stem (without ``.py``).
+
+        Returns
+        -------
+        callable
+            The module's ``fetch`` entrypoint.
+        """
+        import importlib.util
+        from pathlib import Path as _Path
+
+        scrapers_dir = _Path(__file__).parent / 'scrapers'
+        module_path = scrapers_dir / f'{scraper_name}.py'
+        if not module_path.exists():
+            raise ValueError(
+                f"Unknown download_url_scraper '{scraper_name}': no module at "
+                f'{module_path}.'
+            )
+        spec = importlib.util.spec_from_file_location(
+            f'_op_scraper_{scraper_name}', module_path
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if not hasattr(module, 'fetch'):
+            raise AttributeError(
+                f"Scraper module '{scraper_name}' has no 'fetch' entrypoint."
+            )
+        return module.fetch
+
     def _catch_missing_download_url_error(self):
         entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
         source = entity_or_dataset.source
-        if not source.download_url and not source.download_url_source:
+        if (
+            not source.download_url
+            and not source.download_url_source
+            and not getattr(source, 'download_url_scraper', None)
+        ):
             error_message = ''
             if self.download_partition['downloaded_path'] is not None:
                 filename = self.download_partition['downloaded_path'].relative_to(
@@ -1565,6 +1832,7 @@ def ingest(
     redownload: bool = False,
     keep_unzipped: bool = False,
     verbose: bool = False,
+    years: int | list[int] | None = None,
 ) -> None:
     """Instantiate and run ingestion for *recipe*.
 
@@ -1587,7 +1855,75 @@ def ingest(
         If True, keep unzipped files in the heap folder after processing.
     verbose : bool
         Print progress messages.
+    years : int, list of int, or None
+        Four-digit calendar years to process. Registry recipes receive this
+        filter directly. For standard recipes partitioned by year or
+        year-month, it is converted to ``partition_ids``.
     """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    if years and partition_ids:
+        raise ValueError('Pass either partition_ids or years, not both.')
+
+    # A `scraper` block names a dedicated ingester orchestrator (the scraper
+    # crawls records directly rather than producing a downloadable file, so it
+    # cannot use the standard download->TableIngester flow). The value of
+    # `scraper.ingester` (or a bare `scraper` scalar) selects which one. This
+    # is distinct from `source.download_url_scraper`, which is a file-producing
+    # browser scraper handled inside the standard Ingester.
+    scraper = recipe.get('scraper')
+    if scraper is not None:
+        ingester_name = (
+            scraper.get('ingester') if isinstance(scraper, dict) else scraper
+        )
+        if ingester_name == 'registry':
+            from openplaces.io.registry_ingester import RegistryIngester
+
+            RegistryIngester(
+                recipe,
+                admin_ids=admin_ids,
+                partition_ids=partition_ids,
+                years=years,
+                reprocess=reprocess,
+                verbose=verbose,
+            ).ingest()
+            return
+        raise ValueError(
+            f"Unknown scraper ingester '{ingester_name}'. Supported: 'registry'."
+        )
+
+    if years:
+        partition = (recipe.get('download_by') or {}).get('partition')
+        if partition not in ('year', 'year_month'):
+            raise ValueError(
+                'The years filter requires a recipe partitioned by year or '
+                f"year_month, not '{partition}'."
+            )
+
+        available = get_partition_ids(recipe)
+        selected = []
+        year_values = [years] if isinstance(years, int) else years
+        for value in dict.fromkeys(str(year) for year in year_values):
+            if len(value) != 4 or not value.isdigit():
+                raise ValueError(
+                    f"Invalid year '{value}'. Use four-digit YYYY values; "
+                    'use partition_ids for specific YYYYMM months.'
+                )
+            matches = [
+                partition_id
+                for partition_id in available
+                if partition_id == value
+                or (partition == 'year_month' and partition_id.startswith(value))
+            ]
+            if not matches:
+                raise ValueError(
+                    f"No partitions matching '{value}' are available in this recipe."
+                )
+            selected.extend(
+                partition_id for partition_id in matches if partition_id not in selected
+            )
+        partition_ids = selected
+
     Ingester(
         recipe,
         admin_ids=admin_ids,

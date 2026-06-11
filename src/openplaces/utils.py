@@ -13,6 +13,8 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 
 def pretty_print(
     obj: Any,
@@ -107,6 +109,41 @@ def format_list(
             [str(x) for x in items[:npos]] + ['...'] + [str(x) for x in items[-npos:]]
         )
     return sep.join(parts)
+
+
+def inspect_table(
+    data: pd.DataFrame,
+    n: int = 5,
+    columns: list[str] | None = None,
+    random_state: int | None = None,
+) -> pd.DataFrame:
+    """Print an output summary and return a transposed row sample."""
+    if columns is None:
+        columns = [column for column in data.columns if column != 'geometry']
+    else:
+        columns = [column for column in columns if column in data.columns]
+
+    details = []
+    output_paths = data.attrs.get('openplaces_output_paths', [])
+    partition_ids = data.attrs.get('openplaces_partition_ids', [])
+    if output_paths:
+        details.append(f'{len(output_paths)} file(s)')
+    if partition_ids:
+        details.append(f'{len(partition_ids)} partition(s)')
+
+    summary = f'{len(data):,} rows x {len(data.columns):,} columns'
+    if details:
+        summary += f' from {", ".join(details)}'
+    print(summary)
+
+    if data.empty:
+        return data.loc[:, columns].T
+    return (
+        data.loc[:, columns]
+        .sample(min(n, len(data)), random_state=random_state)
+        .sort_index()
+        .T
+    )
 
 
 def _format_yaml_style(obj: Any, indent: int = 2, _level: int = 0) -> str:
@@ -224,7 +261,44 @@ def _to_serializable(obj: Any, max_depth: int = 10, current_depth: int = 0) -> A
     return str(obj)
 
 
-__all__ = ['pretty_print']
+__all__ = [
+    'format_list',
+    'inspect_table',
+    'pretty_print',
+    'short_number',
+]
+
+
+def short_number(x, round_to=0, suffix='', sep=' ', base=1000):
+    """Convert a large number to a short string for display.
+
+    Examples: 14124521 -> '14 M', or '14.1 M' with round_to=1.
+
+    Parameters
+    ----------
+    x : numeric
+        Number to format.
+    round_to : int
+        Number of decimal digits to display.
+    suffix : str
+        Suffix appended after the unit (e.g. a base unit such as 'B'
+        for bytes).
+    sep : str
+        Separator between number and unit.
+    base : int
+        Scaling factor between units; use 1024 for computer storage.
+    """
+    units = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y']
+    for unit in units:
+        if abs(x) < base or unit == units[-1]:
+            break
+        x /= base
+    x = round(x, round_to)
+    if x == int(x):
+        x = int(x)
+    if unit or suffix:
+        return f'{x}{sep}{unit}{suffix}'
+    return str(x)
 
 
 def remove_accents(x):
