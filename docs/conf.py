@@ -25,6 +25,7 @@ extensions = [
     'sphinx_copybutton',
     'sphinx_design',
     'gh_file',
+    'recipe_catalog',
     'autoapi.extension',
     'sphinx.ext.napoleon',
 ]

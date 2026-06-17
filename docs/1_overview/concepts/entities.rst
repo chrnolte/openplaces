@@ -2,8 +2,8 @@
 
 .. _entities:
 
-Entities: parcels, buildings, etc.
-==================================
+Entities: the units of analysis
+===============================
 
 Entities are the units of analysis in ``openplaces``.
 

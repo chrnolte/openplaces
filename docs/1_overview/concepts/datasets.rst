@@ -2,10 +2,10 @@
 
 .. _datasets:
 
-Datasets: attributes
-====================
+Datasets: the attributes
+========================
 
-:ref:`entities` are the rows in a table. Datasets provide the columns: attributes linked to each entity.
+:ref:`Entities <entities>` are the rows in a table. Datasets provide the columns: attributes linked to each entity.
 
 Datasets can come in many formats: tables, vectors, rasters, XML. What distinguishes them from :ref:`entities <entities>` is that datasets are *not yet* organized by entity: the rows don't refer to the entity yet (and therefore require some linkage algorithm).
 

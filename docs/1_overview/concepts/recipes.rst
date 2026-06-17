@@ -2,8 +2,8 @@
 
 .. _recipes:
 
-Recipes: instructions
-=====================
+Recipes: the processing instructions
+====================================
 
 Recipes are instructions for ingesting and transforming data.
 
@@ -11,7 +11,7 @@ They describe where the input data comes from and how it needs to be processed a
 
 Recipes are what makes ``openplaces`` scalable: the package provides an abstraction logic, and the recipes translate external data to that logic.
 
-And each new recipe expands the analytical capacities of all other users.
+:ref:`Contributed recipes <contribute>` expand the analytical capacities of all other users.
 
 Identifiers
 ~~~~~~~~~~~
@@ -54,5 +54,7 @@ They use the same directory structure as internal data directories: grouped by :
 
 Understanding recipes
 ~~~~~~~~~~~~~~~~~~~~~
+
+For a browsable list of the available recipes and what each dataset contains, see the :ref:`recipe catalog <recipe_catalog>` (generated from the recipes' ``description`` fields).
 
 For an in-depth treatment of recipe arguments and functionality, see instructions on :ref:`writing recipes <writing_recipes>` in the section for contributors.

@@ -13,7 +13,7 @@
 
          <p class="op-hero-eyebrow">Scientifically reproducible land data infrastructure</p>
          <h2 class="op-hero-title">openplaces</h2>
-         <p class="op-hero-tagline">An open-source processing engine for land, building, and property analytics. Synthesize and analyze parcel-level data for millions of places around the world.</p>
+         <p class="op-hero-tagline">An open-source processing engine for land, building, and property data. Synthesize and analyze parcel-level data for millions of places around the world.</p>
 
       .. grid:: 2 2 2 2
          :gutter: 2
@@ -117,7 +117,7 @@ openplaces
 
       📖 Reference
       ^^^^^^^^^^^^^^
-      Auto-generated API docs for all modules, classes, and functions.
+      Auto-generated API docs for all modules, plus the catalog of data recipes.
 
       +++
 
