@@ -1,3 +1,7 @@
+description: >-
+  Rural land parcels (R_TERRENO) from Colombia's IGAC public cadastre, processed per
+  municipality.
+
 admin_id: CO
 
 entity:

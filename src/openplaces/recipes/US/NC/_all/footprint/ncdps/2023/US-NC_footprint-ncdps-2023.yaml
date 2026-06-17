@@ -1,5 +1,8 @@
 # Recipe to import NC DPS building footprints (2023)
 
+description: >-
+  North Carolina building footprints from the NC Department of Public Safety (2023).
+
 # Administrative unit identifier of the highest administrative geography
 # that the dataset covers (single files can cover a lower admin level)
 admin_id: US-NC

@@ -1,4 +1,8 @@
-# Recipe to import Microsoft building footprints for the United States
+# Recipe to import the OpenBuildingMap (OBM) tile grid
+
+description: >-
+  OpenBuildingMap (OBM) tile grid, used to resolve download partitions for OBM
+  footprints.
 
 # Administrative unit identifier of the geography that the data covers
 admin_id: NULL

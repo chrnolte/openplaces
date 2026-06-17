@@ -1,5 +1,8 @@
 # Recipe to import Connecticut's parcel data
 
+description: >-
+  Connecticut statewide parcel data from the state open data portal (2024).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US-CT
 

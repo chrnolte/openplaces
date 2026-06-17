@@ -1,5 +1,8 @@
 # Recipe to import counties for the United States (2021)
 
+description: >-
+  U.S. county boundaries from Census TIGER/Line 2021 (admin level 3).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US
 

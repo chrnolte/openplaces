@@ -1,5 +1,8 @@
 # Recipe to import the parcel database of the state of North Carolina, US
 
+description: >-
+  North Carolina statewide parcel database from NC OneMap (2025).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US-NC
 

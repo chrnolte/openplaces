@@ -1,5 +1,8 @@
 # Recipe to import the Global Administrative Database
 
+description: >-
+  GADM level-2 county and district boundaries, ingested as openplaces admin level 3.
+
 # Administrative unit identifier: where does this data come from?
 admin_id: NULL
 

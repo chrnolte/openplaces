@@ -1,7 +1,9 @@
 # Recipe to import the parcel database of the state of Texas, US
 
-# Administrative unit identifier: where does this data come from?
+description: >-
+  Texas statewide parcel database from the Texas Geographic Information Office (2025).
 
+# Administrative unit identifier: where does this data come from?
 admin_id: US-TX
 
 # Entity: what is the unit of analysis of the imported data?

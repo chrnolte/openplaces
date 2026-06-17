@@ -1,5 +1,8 @@
 # Recipe to import the Global Administrative Database, Level 1 (openplaces level: 2)
 
+description: >-
+  GADM level-1 state and region boundaries, ingested as openplaces admin level 2.
+
 # Administrative unit identifier: where does this data come from?
 admin_id: NULL
 

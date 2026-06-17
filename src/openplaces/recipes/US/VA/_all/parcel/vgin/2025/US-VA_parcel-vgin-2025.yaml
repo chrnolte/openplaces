@@ -1,5 +1,9 @@
 # Recipe to import the parcel database of the state of Virginia, US
 
+description: >-
+  Virginia statewide parcel database from the Virginia Geographic Information Network
+  (2025).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US-VA
 

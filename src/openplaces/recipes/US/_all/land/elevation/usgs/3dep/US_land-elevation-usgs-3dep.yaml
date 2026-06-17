@@ -1,3 +1,6 @@
+description: >-
+  USGS 3DEP digital elevation model rasters for the United States.
+
 admin_id: US
 
 dataset:

@@ -1,4 +1,7 @@
-# Recipe to import Microsoft building footprints for the United States
+# Recipe to import Global Human Settlement Layer building footprints
+
+description: >-
+  Global Human Settlement Layer (GHS) building footprints.
 
 # Administrative unit identifier of the geography that the data covers
 admin_id: NULL

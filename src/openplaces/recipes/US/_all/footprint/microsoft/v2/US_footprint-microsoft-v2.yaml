@@ -1,5 +1,8 @@
 # Recipe to import Microsoft building footprints for the United States
 
+description: >-
+  Microsoft building footprints for the United States (v2).
+
 # Administrative unit identifier of the geography that the data covers
 admin_id: US
 

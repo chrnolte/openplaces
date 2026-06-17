@@ -1,5 +1,9 @@
 # Recipe to import USACE's National Structure Inventory (2022)
 
+description: >-
+  USACE National Structure Inventory (NSI) 2022 building points with occupancy and value
+  attributes.
+
 # Administrative unit identifier of the highest administrative geography
 # that the dataset covers (single files can cover a lower admin level)
 admin_id: US

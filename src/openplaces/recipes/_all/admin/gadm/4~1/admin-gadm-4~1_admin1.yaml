@@ -1,5 +1,9 @@
 # Recipe to import the Global Administrative Database, Level 0 (openplaces level: 1)
 
+description: >-
+  GADM (Global Administrative Areas) country boundaries, ingested as openplaces admin
+  level 1.
+
 # Administrative unit identifier: where does this data come from?
 admin_id: NULL
 
@@ -10,6 +14,7 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: gadm
+    portal_url: "https://gadm.org/"
     download_url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
   version: 4.1
 

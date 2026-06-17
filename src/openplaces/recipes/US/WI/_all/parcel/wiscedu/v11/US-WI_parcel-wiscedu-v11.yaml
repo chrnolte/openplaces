@@ -1,5 +1,9 @@
 # Recipe to import the parcel database of the state of Wisconsin, US
 
+description: >-
+  Wisconsin statewide parcel database (V11) from UW-Madison's Statewide Parcel Map
+  Initiative.
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US-WI
 

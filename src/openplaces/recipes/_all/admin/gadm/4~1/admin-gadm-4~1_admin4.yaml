@@ -2,6 +2,10 @@
 
 # (unfinished, as GADM only covers a fraction of the world at Level 3)
 
+description: >-
+  GADM level-3 municipality boundaries, ingested as openplaces admin level 4 (partial
+  global coverage).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: NULL
 
