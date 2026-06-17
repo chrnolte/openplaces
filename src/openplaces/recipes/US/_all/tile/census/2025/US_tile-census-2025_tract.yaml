@@ -1,4 +1,7 @@
 # Recipe to import tracts for the United States (2025)
+description: >-
+  U.S. census tract boundaries (2025), ingested as tiles.
+
 admin_id: US
 
 # Entity: tiles from the 2025 US census

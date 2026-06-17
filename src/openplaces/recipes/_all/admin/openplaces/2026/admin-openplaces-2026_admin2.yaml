@@ -2,6 +2,9 @@
 #
 # See admin-openplaces-2026_admin1.yaml for harmonization strategy.
 
+description: >-
+  Harmonized global state and region geometries (admin level 2).
+
 stage: harmonize
 admin_id: NULL
 

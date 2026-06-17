@@ -1,3 +1,6 @@
+description: >-
+  Colombian department boundaries from DANE (admin level 2).
+
 admin_id: CO
 
 entity:

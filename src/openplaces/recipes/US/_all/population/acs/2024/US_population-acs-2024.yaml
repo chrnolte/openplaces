@@ -1,3 +1,6 @@
+description: >-
+  American Community Survey (ACS) demographic estimates for U.S. census geographies.
+
 admin_id: US
 
 dataset:

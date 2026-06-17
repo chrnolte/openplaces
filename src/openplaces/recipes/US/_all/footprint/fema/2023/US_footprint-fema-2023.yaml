@@ -1,5 +1,8 @@
 # Recipe to import FEMA's USA Structures (2023)
 
+description: >-
+  FEMA USA Structures building footprints for the United States.
+
 # Administrative unit identifier of the highest administrative geography
 # that the dataset covers (single files can cover a lower admin level)
 admin_id: US

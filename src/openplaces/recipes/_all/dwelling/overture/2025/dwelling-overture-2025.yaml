@@ -1,3 +1,6 @@
+description: >-
+  Overture Maps address points, ingested as dwelling points with street addresses.
+
 admin_id: NULL
 
 entity:

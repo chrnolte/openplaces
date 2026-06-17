@@ -4,6 +4,10 @@
 # country to the most specific/newest source, merges into a single global
 # GeoDataFrame, and optionally simplifies geometry for visualization.
 
+description: >-
+  Harmonized global country geometries (admin level 1), merging the most specific
+  ingested source per country.
+
 stage: harmonize
 admin_id: NULL
 

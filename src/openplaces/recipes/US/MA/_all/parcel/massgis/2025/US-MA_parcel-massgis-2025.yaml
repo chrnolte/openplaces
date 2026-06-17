@@ -1,4 +1,8 @@
-# Recipe to import the Global Administrative Database
+# Recipe to import MassGIS standardized parcels and assessments
+
+description: >-
+  MassGIS standardized parcels for Massachusetts with linked property assessment records
+  (2025).
 
 # Administrative unit identifier: where does this data come from?
 admin_id: US-MA

@@ -1,4 +1,8 @@
 
+description: >-
+  Urban land parcels (U_TERRENO) from Colombia's IGAC public cadastre, processed per
+  municipality.
+
 # Administrative unit identifier: where does this data come from?
 admin_id: CO
 

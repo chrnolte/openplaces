@@ -1,4 +1,7 @@
-# Recipe to import counties for the United States (2024)
+# Recipe to import LCMS land cover change for the United States
+
+description: >-
+  USDA LCMS land cover change rasters for the United States.
 
 # Administrative unit identifier: where does this data come from?
 admin_id: US

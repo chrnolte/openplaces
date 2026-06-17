@@ -1,5 +1,8 @@
 # Recipe to import Vermont's oficial parcel data
 
+description: >-
+  Vermont official statewide parcel data (2025).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US-VT
 

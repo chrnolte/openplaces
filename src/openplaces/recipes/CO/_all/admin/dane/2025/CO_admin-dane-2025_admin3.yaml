@@ -1,3 +1,6 @@
+description: >-
+  Colombian municipality boundaries from DANE (admin level 3).
+
 admin_id: CO
 
 entity:

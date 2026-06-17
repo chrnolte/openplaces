@@ -1,4 +1,7 @@
 # Recipe to import block groups for the United States (2025)
+description: >-
+  U.S. census block group boundaries (2025), ingested as tiles.
+
 admin_id: US
 
 # Entity: tiles from the 2025 US census

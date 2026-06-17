@@ -1,4 +1,7 @@
-# Recipe to import counties for the United States (2024)
+# Recipe to import states for the United States (NHGIS 2020)
+
+description: >-
+  U.S. state boundaries from NHGIS 2020 census geographies (admin level 2).
 
 # Administrative unit identifier: where does this data come from?
 admin_id: US

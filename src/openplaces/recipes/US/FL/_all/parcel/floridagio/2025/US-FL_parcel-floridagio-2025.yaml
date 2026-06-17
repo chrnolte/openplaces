@@ -1,5 +1,9 @@
 # Recipe to import the parcel database of the state of Florida, US
 
+description: >-
+  Florida statewide parcel database from the Florida Geographic Information Office
+  (2025).
+
 # Administrative unit identifier: where does this data come from?
 admin_id: US-FL
 
