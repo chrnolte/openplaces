@@ -2,6 +2,7 @@
 
 import urllib
 
+from openplaces.viz.axes import add_log_ticks
 from openplaces.viz.colors import CATEGORY_COLORS, match_palette
 from openplaces.viz.maps import (
     show_building,
@@ -13,6 +14,7 @@ from openplaces.viz.tabulation import plot_tabulation, tabulate
 
 __all__ = [
     'CATEGORY_COLORS',
+    'add_log_ticks',
     'create_street_view_link',
     'match_palette',
     'plot_tabulation',
