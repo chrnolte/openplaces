@@ -428,6 +428,28 @@ def _remove_if_exists(filepath: Path) -> None:
         filepath.unlink()
 
 
+def _categoricals_to_string(
+    df: pd.DataFrame | gpd.GeoDataFrame,
+) -> pd.DataFrame | gpd.GeoDataFrame:
+    """Cast categorical columns to a string (object) dtype for writing.
+
+    Pandas categoricals serialize to Arrow ``dictionary<string,int>``, which
+    GDAL/QGIS expose as integer codes plus a per-file code->label domain whose
+    mapping shifts whenever the category set changes. Writing them as a plain
+    string logical type avoids that: GDAL/QGIS read stable string values, and
+    Parquet still dictionary-encodes the column physically (RLE_DICTIONARY), so
+    the file stays just as compact. ``astype(object)`` (not ``astype(str)``)
+    preserves missing values as nulls rather than the literal string ``'nan'``.
+    """
+    cat_cols = [c for c in df.columns if isinstance(df[c].dtype, pd.CategoricalDtype)]
+    if not cat_cols:
+        return df
+    df = df.copy()
+    for col in cat_cols:
+        df[col] = df[col].astype(object)
+    return df
+
+
 def to_parquet(
     df: pd.DataFrame | gpd.GeoDataFrame,
     filepath: str | Path,
@@ -436,6 +458,10 @@ def to_parquet(
     **kwargs,
 ) -> None:
     """Save dataframe to Parquet format.
+
+    Categorical columns are written as a string logical type (Parquet still
+    dictionary-encodes them physically, so files stay compact) so GDAL/QGIS read
+    stable string values rather than a per-file integer code->label mapping.
 
     Parameters
     ----------
@@ -455,6 +481,8 @@ def to_parquet(
         filepath = Path(filepath)
 
     filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    df = _categoricals_to_string(df)
 
     if isinstance(df, gpd.GeoDataFrame):
         with warnings.catch_warnings():

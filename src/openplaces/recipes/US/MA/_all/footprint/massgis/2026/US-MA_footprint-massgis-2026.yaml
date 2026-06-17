@@ -1,0 +1,64 @@
+# Recipe to import MassGIS building footprints (2026)
+
+# Administrative unit identifier of the highest administrative geography
+# that the dataset covers (single files can cover a lower admin level)
+description: >-
+  MassGIS building footprints for Massachusetts (2026).
+
+admin_id: US-MA
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: footprint
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: massgis
+    # Link to portal with metadata
+    portal_url: "https://www.mass.gov/info-details/massgis-data-building-structures-2-d#downloads"
+    # Link to download
+    download_url: "https://s3.us-east-1.amazonaws.com/download.massgis.digital.mass.gov/gdbs/structures_gdb.zip"
+  version: 2026
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "structures_gdb.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "structures.gdb"
+
+# Column that splits the data into chunks for processing
+# (avoids reading very large geodatabase into memory)
+process_by:
+  admin_level: 4
+  admin_id_column: TOWN_ID
+  admin_id_crosswalk:
+    recipe_id: "US-MA_parcel-massgis-2025_admin4-crosswalk"
+
+# Layer to load
+layer: STRUCTURES_POLY
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+    footprint_id_source: STRUCT_ID
+    source: SOURCE
+    source_type: SOURCETYPE
+    source_data: SOURCEDATA
+    moved: MOVED
+
+# Values to be interpreted as empty (None)
+# null_value_strings: ["NA", "NOT APPLICABLE", "NOT PROVIDED"]
+
+# # Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - source
+  - source_type
+  - source_data
+
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
+
+save_to:
+  admin_level: 3

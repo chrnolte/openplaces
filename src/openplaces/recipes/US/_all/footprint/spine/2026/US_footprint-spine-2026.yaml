@@ -1,0 +1,130 @@
+# Recipe: footprint spine harmonization
+#
+# Merges footprints from multiple sources into a single spine using a
+# priority-based IoU identity test: a footprint from a lower-priority source
+# is added only if it does not overlap (IoU < overlap_iou_max) with any
+# footprint already in the spine.
+
+description: >-
+  Harmonized U.S. footprint spine merging OBM, Microsoft, state, and FEMA footprints
+  with parcel, NSI, and dwelling attributes.
+
+stage: harmonize
+admin_id: US
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: spine
+  version: 2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+
+  - step: resolve_spine
+    sources:
+      - recipe_id: footprint-obm-2025
+        label: obm
+      - recipe_id: US_footprint-microsoft-v2
+        label: microsoft
+      - auto_discover: true
+        entity_type: footprint
+      - recipe_id: US_footprint-fema-2023
+        label: fema
+    thresholds:
+      min_area_m2: 10.0
+      overlap_iou_max: 0.02
+      elongated_aspect_min: 2.5
+      elongated_angle_tol: 15.0
+      elongated_long_overlap_min: 0.5
+      elongated_lateral_sep_ratio: 2.0
+
+  - step: link_to_reference
+    entity_type: parcel
+    source_geometry_type: mixed_type_footprint
+    join: spatial_overlay
+    thresholds:
+      min_fraction_of_largest: 0.1667
+      area_intersection_m2_min: 10
+    sort_by: area_intersection_m2
+
+  - step: infer_spine_additions
+    entity_type: parcel
+    thresholds:
+      n_per_group_min: 0.2
+      value_per_ha_quantile: 0.05
+
+  - step: resolve_overlaps
+
+  - step: link_to_reference
+    recipe_id: US_building-nsi-2022
+    source_geometry_type: single_building_point
+    join: spatial_point
+    remap_id: US_building-nsi-2022_occupancy-type-remap
+    thresholds:
+      proximity_m: 10
+      far_proximity_m: 100
+
+  - step: link_to_reference
+    recipe_id: dwelling-overture-2025
+    source_geometry_type: single_dwelling_point
+    join: spatial_point
+    thresholds:
+      proximity_m: 10
+      far_proximity_m: 50
+      aggregate_multipoint: true
+      dedup_addresses: true
+
+  - step: classify_footprint_role
+    entity_type: parcel
+
+  - step: reconcile_attributes
+    priority:
+      n_dwelling_units: [overture, parcel]
+      year_built: [parcel, building_nsi]
+      improvement_value: [parcel]
+    sources:
+      - entity_type: parcel
+        columns:
+          - purpose_group
+          - purpose_subgroup
+          - purpose_group_combined
+          - improvement_value
+          - land_value
+          - year_built
+          - address
+          - n_dwelling_units
+      - recipe_id: dwelling-overture-2025
+        columns:
+          - n_dwelling_units
+          - address_street
+          - address_number
+          - postal_code
+          - city
+      - recipe_id: US_building-nsi-2022
+        collect_ids: true
+        columns:
+          - occupancy_type
+          - openplaces_group
+          - structure_value
+          - year_built_block_median
+          - source
+          - area_sqft
+          - n_stories
+
+  - step: infer_attributes
+    derived:
+      - area
+      - value_per_sqft
+      - openplaces_group_combined
+      - n_dwelling_units
+
+  - step: infer_occupancy_type
+    thresholds:
+      mobile_home_aspect_min: 2.5
+      mobile_home_area_max_m2: 185
