@@ -1,0 +1,24 @@
+description: >-
+  HISDAC-US historical settlement rasters of building construction year.
+
+admin_id: US
+
+dataset:
+  theme: 'built-year'
+  source:
+    source_id: hisdac
+    doi: "10.7910/DVN/PKJ90M"
+    portal_url: "https://doi.org/10.7910/DVN/PKJ90M"
+    download_url: "https://dataverse.harvard.edu/api/access/datafile/3141229"
+  version: v1
+  is_raster: True
+  nodata: 0
+
+compressed_file_name: "FBUY.tar.gz"
+uncompressed_file_name: "FBUY.tif"
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: cache

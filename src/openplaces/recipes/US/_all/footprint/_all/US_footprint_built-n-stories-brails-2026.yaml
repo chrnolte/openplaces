@@ -1,0 +1,24 @@
+description: >-
+  Story-count evidence for U.S. footprints, detected from street-level imagery with
+  BRAILS++.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: footprint
+
+dataset:
+  theme: built-n-stories
+  source:
+    source_id: brails
+  version: 2026
+
+image_recipe: image-googlestreetview-2026
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: detect_n_stories
+    column: n_stories_brails

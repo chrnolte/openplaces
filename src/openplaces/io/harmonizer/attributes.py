@@ -1005,44 +1005,35 @@ def infer_attributes(
     return state
 
 
-# NSI occupancy_type label → coarse occupancy category.
-# Labels are the human-readable strings produced by the occupancy-type-labels
-# CSV applied during NSI ingest (e.g. "Single Family, 1 story, no basement").
-_NSI_OCC_TYPE_MAP: dict[str, str] = {
-    # manufactured / mobile home
-    'Manufactured Home': 'Mobile Home',
-}
-_NSI_OCC_PREFIX_MAP: dict[str, str] = {
-    'Single Family': 'Single-Family',
-    'Multi-Family': 'Multi-Family',
-}
-
-# purpose_subgroup values (parcel-sourced) → coarse occupancy category.
-# Parcel subgroups can carry OpenPlaces group labels ('Single Family',
-# 'Manufactured') when state recipes remap local codes to the standard taxonomy.
-_PARCEL_OCC_MAP: dict[str, str] = {
-    'Single Family': 'Single-Family',
-    'Manufactured': 'Mobile Home',
-}
-_PARCEL_OCC_PREFIX_MAP: dict[str, str] = {
-    'Multi-Family': 'Multi-Family',
-}
+# Coarse residential dwelling classes. These are the only classes the
+# Secondary override (non-primary footprints) applies to; non-residential
+# occupancy categories are kept verbatim.
+_RESIDENTIAL_CLASSES = ('Single-Family', 'Multi-Family', 'Mobile Home')
 
 
 def _coerce_occ_type(val: str | None) -> str | None:
-    """Map a single occupancy label (NSI or parcel) to the coarse category."""
+    """Map an occupancy label (NSI or parcel) to an occupancy_type value.
+
+    Residential dwelling labels collapse to a coarse class
+    (Single-Family / Multi-Family / Mobile Home). Non-residential labels
+    (e.g. Retail, Hotel, Church) are returned verbatim as their own category.
+    Handles both the NSI occupancy vocabulary (e.g. "Single Family, 1 story,
+    no basement", "Multi-Family, 2 units", "Manufactured Home") and the
+    openplaces group vocabulary (e.g. "Single Family", "Multi Family",
+    "Manufactured"). Returns None for missing labels.
+    """
     if pd.isna(val) or not isinstance(val, str):
         return None
-    exact = _NSI_OCC_TYPE_MAP.get(val) or _PARCEL_OCC_MAP.get(val)
-    if exact:
-        return exact
-    for prefix, coarse in _NSI_OCC_PREFIX_MAP.items():
-        if val.startswith(prefix):
-            return coarse
-    for prefix, coarse in _PARCEL_OCC_PREFIX_MAP.items():
-        if val.startswith(prefix):
-            return coarse
-    return None
+    label = val.strip()
+    if not label:
+        return None
+    if label.startswith(('Single Family', 'Single-Family')):
+        return 'Single-Family'
+    if label.startswith(('Multi Family', 'Multi-Family')):
+        return 'Multi-Family'
+    if label.startswith('Manufactured'):
+        return 'Mobile Home'
+    return label
 
 
 @_register('infer_occupancy_type')
@@ -1051,17 +1042,26 @@ def infer_occupancy_type(
     thresholds: dict | None = None,
     **_params,
 ) -> HarmonizeState:
-    """Infer a coarse occupancy category from NSI, parcel, and footprint geometry.
+    """Infer occupancy from NSI, parcel, and footprint geometry.
 
-    Populates ``occupancy_type`` (categorical) on the spine using a three-step
-    cascade:
+    Populates ``occupancy_type`` (categorical) on the spine using a cascade.
+    Residential footprints collapse to a coarse dwelling class (Single-Family,
+    Multi-Family, Mobile Home); non-residential footprints keep their source
+    occupancy category (e.g. Retail, Hotel, Church) from NSI or parcel data.
 
-    1. ``occupancy_type_building_nsi`` — NSI occupancy label mapped to coarse
-       class (Single-Family, Multi-Family, Mobile Home).
-    2. Footprint geometry — elongated small footprints flagged as Mobile Home
+    1. ``occupancy_type_building_nsi`` — NSI occupancy label.
+    2. ``openplaces_group_parcel`` — parcel occupancy group, filling NSI gaps.
+    3. Footprint geometry — elongated small footprints flagged as Mobile Home
        when NSI and parcel evidence are absent.
-    3. ``n_dwelling_units`` — fills remaining residential gaps
+    4. ``n_dwelling_units`` — fills remaining residential gaps
        (n==1 → Single-Family, n≥2 → Multi-Family).
+    5. ``footprint_role`` — non-primary *residential* footprints are overridden
+       to Secondary, since accessory dwellings are not standalone homes.
+       Non-residential footprints keep their category regardless of role.
+
+    Multi-Family is later refined into HAZUS height bands (Low/Mid/High-Rise)
+    in curation as ``occupancy_type_cheer``, where merged ``n_stories`` evidence
+    is available.
 
     Parameters
     ----------
@@ -1082,17 +1082,27 @@ def infer_occupancy_type(
     area_max: float = float(thresholds.get('mobile_home_area_max_m2', 185.0))
 
     spine = state.spine
-    _cats = ['Single-Family', 'Multi-Family', 'Mobile Home']
     result = pd.Series(pd.NA, index=spine.index, dtype=object)
 
-    # 1. NSI occupancy_type (most reliable)
-    nsi_col = next((c for c in spine.columns if c.startswith('occupancy_type_')), None)
+    # 1. NSI occupancy_type (most reliable). Prefer the single reconciled
+    # value over the multi-link `_all` column.
+    nsi_col = next(
+        (
+            c
+            for c in spine.columns
+            if c.startswith('occupancy_type_') and not c.endswith('_all')
+        ),
+        None,
+    )
     if nsi_col is not None:
         result = spine[nsi_col].map(_coerce_occ_type)
 
-    # 2. Parcel purpose_subgroup fallback
-    parcel_col = next(
-        (c for c in spine.columns if c.startswith('purpose_subgroup')), None
+    # 2. Parcel occupancy group fallback (residential class or non-residential
+    # category), filling rows with no NSI occupancy.
+    parcel_col = (
+        'openplaces_group_parcel'
+        if 'openplaces_group_parcel' in spine.columns
+        else next((c for c in spine.columns if c.startswith('purpose_subgroup')), None)
     )
     if parcel_col is not None:
         null_mask = result.isna()
@@ -1133,7 +1143,19 @@ def infer_occupancy_type(
             result.loc[eligible_ids[units == 1.0]] = 'Single-Family'
             result.loc[eligible_ids[units >= 2.0]] = 'Multi-Family'
 
-    spine['occupancy_type'] = pd.Categorical(result, categories=_cats)
+    # 5. Non-primary *residential* footprints are accessory dwellings, not
+    # standalone homes; override them to 'Secondary'. Non-residential
+    # footprints keep their occupancy category regardless of role.
+    if 'footprint_role' in spine.columns:
+        residential = result.isin(_RESIDENTIAL_CLASSES)
+        non_primary = ~spine['footprint_role'].eq('primary')
+        result.loc[residential & non_primary] = 'Secondary'
+
+    # Emit as a categorical with inferred categories. Categories are inferred
+    # (not fixed) because occupancy now includes open-ended non-residential
+    # labels. The Arrow dictionary is 1-indexed at save time for QGIS. Parcel
+    # land-use resolution and the HAZUS height split happen during curation.
+    spine['occupancy_type'] = pd.Categorical(result)
     state.spine = spine
 
     if state.verbose:
@@ -1145,74 +1167,16 @@ def infer_occupancy_type(
     return state
 
 
-@_register('detect_nfloors')
-def detect_nfloors(state: HarmonizeState, **kwargs) -> HarmonizeState:
-    """Predict number of floors per building from street-view imagery.
-
-    Reads the image metadata parquet written by the ``google_streetview``
-    ingest recipe, builds an ImageSet, and runs the BRAILS++ NFloorDetector.
-    Predictions are joined onto ``state.spine`` as the column ``n_stories``.
-
-    Requires the full BRAILS++ package (``pip install brails``).  The model
-    weights are downloaded from Zenodo on first use.
-
-    Parameters
-    ----------
-    state
-        Current harmonize state.  ``state.recipe`` must contain
-        ``image_recipe`` pointing to the streetview ingest recipe ID.
-    **kwargs
-        Forwarded from the harmonizer dispatch; unused.
-
-    Returns
-    -------
-    HarmonizeState
-        Updated state with ``n_stories`` column added to ``state.spine``.
-    """
-    from pathlib import Path
-
-    from openplaces.io.detectors.nfloor_detector import NFloorDetector
-    from openplaces.io.readers import get_entities
-    from openplaces.io.scrapers.types import Image, ImageSet
-    from openplaces.recipe import get_recipe_by_id
-
-    image_recipe_id = state.recipe.get('image_recipe')
-    if not image_recipe_id:
-        raise ValueError("detect_nfloors requires 'image_recipe' in recipe.")
-    image_recipe = get_recipe_by_id(image_recipe_id)
-    meta_df = get_entities(image_recipe, state.admin_id)
-    if meta_df is None or 'image_path' not in meta_df.columns:
-        return state
-
-    image_set = ImageSet()
-    image_set.dir_path = ''
-    for idx, row in meta_df.iterrows():
-        p = Path(row['image_path'])
-        if p.exists():
-            image_set.dir_path = str(p.parent)
-            image_set.add_image(idx, Image(p.name))
-
-    if not image_set.images:
-        return state
-
-    predictions = NFloorDetector().predict(image_set)
-    pred_series = pd.Series(predictions, name='n_stories')
-    pred_series.index.name = state.spine.index.name
-    state.spine = state.spine.join(pred_series, how='left')
-    return state
-
-
 @_register('classify_occupancy')
 def classify_occupancy(state: HarmonizeState, **kwargs) -> HarmonizeState:
     """Predict building occupancy type from street-view imagery.
 
     Reads the image metadata parquet written by the ``google_streetview``
-    ingest recipe, builds an ImageSet, and runs the BRAILS++ OccupancyClassifier.
+    ingest recipe, builds an ImageSet, and runs the local OccupancyClassifier.
     Predictions (``'Residential'`` or ``'Other'``) are joined onto
     ``state.spine`` as the column ``purpose_group``.
 
-    Requires the full BRAILS++ package (``pip install brails``).  The model
-    weights are downloaded from Zenodo on first use.
+    Model weights are downloaded from Zenodo on first use.
 
     Parameters
     ----------
@@ -1229,7 +1193,7 @@ def classify_occupancy(state: HarmonizeState, **kwargs) -> HarmonizeState:
     """
     from pathlib import Path
 
-    from openplaces.io.detectors.occupancy_classifier import OccupancyClassifier
+    from openplaces.io.enricher.detectors.occupancy import OccupancyClassifier
     from openplaces.io.readers import get_entities
     from openplaces.io.scrapers.types import Image, ImageSet
     from openplaces.recipe import get_recipe_by_id
@@ -1265,12 +1229,11 @@ def classify_roof_shape(state: HarmonizeState, **kwargs) -> HarmonizeState:
     """Predict roof shape per building from satellite imagery.
 
     Reads the image metadata parquet written by the ``google_satellite``
-    ingest recipe, builds an ImageSet, and runs the BRAILS++ RoofShapeClassifier.
-    Predictions (``'Flat'``, ``'Gable'``, ``'Hip'``, ``'Mansard'``, ``'Shed'``)
-    are joined onto ``state.spine`` as the column ``roof_shape``.
+    ingest recipe, builds an ImageSet, and runs the local RoofShapeClassifier.
+    Predictions (``'Flat'``, ``'Gable'``, or ``'Hip'``) are joined onto
+    ``state.spine`` as the column ``roof_shape``.
 
-    Requires the full BRAILS++ package (``pip install brails``).  The model
-    weights are downloaded from Zenodo on first use.
+    Model weights are downloaded from Zenodo on first use.
 
     Parameters
     ----------
@@ -1285,20 +1248,9 @@ def classify_roof_shape(state: HarmonizeState, **kwargs) -> HarmonizeState:
     HarmonizeState
         Updated state with ``roof_shape`` column added to ``state.spine``.
     """
-    try:
-        from openplaces.io.detectors.roof_shape_classifier import RoofShapeClassifier
-    except ImportError:
-        if kwargs.get('verbose'):
-            import warnings
-
-            warnings.warn(
-                'classify_roof_shape skipped: brails package not installed.',
-                stacklevel=2,
-            )
-        return state
-
     from pathlib import Path
 
+    from openplaces.io.enricher.detectors.roof_shape import RoofShapeClassifier
     from openplaces.io.readers import get_entities
     from openplaces.io.scrapers.types import Image, ImageSet
     from openplaces.recipe import get_recipe_by_id

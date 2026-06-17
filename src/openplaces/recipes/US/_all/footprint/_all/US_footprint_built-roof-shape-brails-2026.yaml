@@ -1,0 +1,24 @@
+description: >-
+  Roof-shape evidence for U.S. footprints, classified from satellite imagery with
+  BRAILS++.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: footprint
+
+dataset:
+  theme: built-roof-shape
+  source:
+    source_id: brails
+  version: 2026
+
+image_recipe: image-googlesatellite-z20
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: classify_roof_shape
+    column: roof_shape_brails

@@ -1,32 +1,15 @@
-# Recipe: CHEER footprint harmonization
+# Recipe: canonical CHEER footprint dataset
 #
-# Merges footprints from multiple sources into a single spine using a
-# priority-based IoU identity test: a footprint from a lower-priority source
-# is added only if it does not overlap (IoU < overlap_iou_max) with any
-# footprint already in the spine.
-#
-# Pipeline steps:
-#   A. PREPROCESS
-#   1  resolve_spine   -- OBM -> Microsoft -> state-specific -> FEMA (IoU dedup)
-#
-#   B. ATTRIBUTE SOURCES TO BASELINE GEOMETRY
-#   2  link_to_reference (parcel, spatial_overlay) -- footprint-parcel crosswalk
-#   3  infer_spine_additions -- add footprints for parcel-only coverage
-#   4  resolve_overlaps
-#   5  link_to_reference (NSI, spatial_point) -- three-pass proximity linking
-#   6  link_to_reference (dwelling, spatial_point) -- dwelling-point evidence (street addresses)
-#   7  classify_footprint_role -- primary vs. accessory per parcel
-#
-#   C. SELECT VALUES FOR FEATURES WITH DISAGREEMENT
-#   8  reconcile_attributes -- aggregate parcel + NSI attributes to spine
-#
-#   D. FILL GAPS
-#   9  infer_attributes -- compute area, value-per-area, n_dwelling_units fallback
-#
-#   E. SYNTHESIZE OCCUPANCY CATEGORY
-#   10 infer_occupancy_type -- coarse occupancy type from NSI, parcel, geometry
+# Pipeline order:
+#   1. Harmonize source entities into US_footprint-spine-2026.
+#   2. Enrich the spine with image-derived evidence.
+#   3. Curate the evidence into canonical footprint attributes.
 
-stage: harmonize
+description: >-
+  Canonical CHEER footprint inventory: harmonized U.S. footprint spine curated with
+  image-derived evidence for hurricane modeling.
+
+stage: curate
 admin_id: US
 
 entity:
@@ -35,7 +18,8 @@ entity:
     source_id: cheer
   version: 2026
 
-# Admin level at which harmonization is run and output is saved.
+entity_recipe: US_footprint-spine-2026
+
 process_by:
   admin_level: 3
 
@@ -43,132 +27,17 @@ save_to:
   data_dir: core
 
 pipeline:
-
-  # A. PREPROCESS
-  - step: resolve_spine
-    sources:
-      - recipe_id: footprint-obm-2025
-        label: obm
-      - recipe_id: US_footprint-microsoft-v2
-        label: microsoft
-      - auto_discover: true
-        entity_type: footprint
-      - recipe_id: US_footprint-fema-2023
-        label: fema
-    thresholds:
-      # Drop footprints < ~108 sq ft (test threshold; Lochhead et al. use 42 m²)
-      min_area_m2: 10.0
-      # Maximum IoU for two footprints to be considered distinct buildings.
-      overlap_iou_max: 0.02
-      # Elongated-duplicate filter: catches mobile homes / trailers displaced
-      # sideways rather than overlapping (low IoU despite being the same unit).
-      elongated_aspect_min: 2.5
-      elongated_angle_tol: 15.0
-      elongated_long_overlap_min: 0.5
-      elongated_lateral_sep_ratio: 2.0
-
-  # B. ATTRIBUTE SOURCES TO BASELINE GEOMETRY
-  - step: link_to_reference
-    entity_type: parcel
-    source_geometry_type: mixed_type_footprint
-    join: spatial_overlay
-    thresholds:
-      min_fraction_of_largest: 0.1667
-      area_intersection_m2_min: 10
-    sort_by: area_intersection_m2
-
-  - step: infer_spine_additions
-    entity_type: parcel
-    thresholds:
-      # Minimum mean footprint count per purpose_group for inference.
-      n_per_group_min: 0.2
-      # Quantile of improvement_value_per_ha used as the lower bound.
-      value_per_ha_quantile: 0.05
-
-  - step: resolve_overlaps
-
-  - step: link_to_reference
-    recipe_id: US_building-nsi-2022
-    source_geometry_type: single_building_point
-    join: spatial_point
-    remap_id: US_building-nsi-2022_occupancy-type-remap
-    thresholds:
-      # Three-pass proximity linking (Lochhead et al. 2026, Table 3)
-      proximity_m: 10       # inner proximity fallback (Step 5)
-      far_proximity_m: 100  # outer proximity, parcel-constrained (Step 6)
-
-  # Dwelling-point attribution: each Overture dwelling point carries the street
-  # address of one housing unit (single_dwelling_point geometry type).
-  # Attributed to footprints via the same three-pass proximity method as NSI
-  # (Lochhead et al. 2026, Table 3).  n_dwelling_units per footprint equals the
-  # count of attributed dwelling points.
-  # Gracefully skipped when no dwelling ingest recipe is available.
-  - step: link_to_reference
-    recipe_id: dwelling-overture-2025
-    source_geometry_type: single_dwelling_point
-    join: spatial_point
-    thresholds:
-      proximity_m: 10          # inner proximity fallback (Table 3, Step 5)
-      far_proximity_m: 50      # parcel-constrained outer pass (Table 3, Step 6)
-      aggregate_multipoint: true   # count dwelling points → n_dwelling_units
-      dedup_addresses: true    # drop building-level no-unit record when unit siblings exist
-
-  - step: classify_footprint_role
-    entity_type: parcel
-
-  # C. SELECT VALUES FOR FEATURES WITH DISAGREEMENT
-  - step: reconcile_attributes
-    priority:
-      # Suffixes reflect _point_suffix (entity_type + source_id) for point
-      # references and _resolve_suffix (entity_type) for polygon references:
-      #   NSI building → _building_nsi, dwelling/Overture → _dwelling_overture
-      #   (or _overture when entity_type appears in the column name),
-      #   parcel → _parcel
-      n_dwelling_units: [overture, parcel]
-      year_built: [parcel, building_nsi]
-      improvement_value: [parcel]
-    sources:
-      - entity_type: parcel
+  - step: merge_enrichments
+    recipes:
+      - recipe_id: US_footprint_built-roof-shape-brails-2026
         columns:
-          - purpose_group
-          - purpose_subgroup
-          - purpose_group_combined
-          - improvement_value
-          - land_value
-          - year_built
-          - address
-          - n_dwelling_units
-      # Dwelling source: n_dwelling_units populated by aggregate_multipoint
-      # (count of attributed dwelling points per footprint) even though the raw
-      # dwelling-overture data does not carry that column.
-      - recipe_id: dwelling-overture-2025
+          roof_shape_brails: roof_shape
+      - recipe_id: US_footprint_built-n-stories-brails-2026
         columns:
-          - n_dwelling_units
-          - address_street
-          - address_number
-          - postal_code
-          - city
-      - recipe_id: US_building-nsi-2022
-        collect_ids: true
-        columns:
-          - occupancy_type
-          - openplaces_group
-          - structure_value
-          - year_built_block_median
-          - source
-          - area_sqft
-          - n_stories
-
-  # D. FILL GAPS
-  - step: infer_attributes
-    derived:
-      - area
-      - value_per_sqft
-      - openplaces_group_combined
-      - n_dwelling_units
-
-  # E. SYNTHESIZE OCCUPANCY CATEGORY
-  - step: infer_occupancy_type
+          n_stories_brails: n_stories
+  - step: resolve_occupancy
+    ruleset: parcel-occupancy-keywords.csv
+  - step: refine_occupancy_height
     thresholds:
-      mobile_home_aspect_min: 2.5
-      mobile_home_area_max_m2: 185
+      low_max_stories: 3
+      mid_max_stories: 7
