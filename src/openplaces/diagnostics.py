@@ -1,7 +1,9 @@
 """
-System diagnostics: recipe availability, geographic coverage, etc.
+System diagnostics: recipe availability, geographic coverage, disk usage, etc.
 """
 
+import os
+import shutil
 import time
 import warnings
 from pathlib import Path
@@ -10,6 +12,9 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
+
+from openplaces.core.constants import ESCAPE_DIR, STRING_SEPARATOR_WITHIN_IDS
+from openplaces.core.schema import AdminId
 
 
 def find_recipes(
@@ -248,3 +253,206 @@ def map_recipe_coverage(
     ax.set_axis_off()
 
     return fig, ax
+
+
+def profile_disk_usage(
+    roots: dict[str, Path | str] | None = None,
+    min_size_mb: float = 1.0,
+) -> pd.DataFrame:
+    """Profile disk usage of the openplaces data directories.
+
+    Walks each root directory once and aggregates file sizes by admin unit
+    and dataset, using the on-disk layout
+    {root}/{admin levels...}/_all/{entity or dataset path...}/{files}.
+
+    Parameters
+    ----------
+    roots : dict or None
+        Mapping of label to directory to scan. Defaults to the configured
+        core, external, heap, cache, and out directories that exist.
+    min_size_mb : float
+        Drop groups smaller than this size.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns: root, admin_id, dataset, n_files, size_mb.
+        Sorted by size, descending. Files that do not follow the standard
+        layout are aggregated with the path relative to the root as dataset.
+    """
+    from openplaces.config import cfg
+
+    if roots is None:
+        candidates = {
+            'core': cfg.core_dir,
+            'external': cfg.external_dir,
+            'heap': cfg.heap_dir,
+            'cache': cfg.cache_dir,
+            'out': cfg.out_dir,
+        }
+        roots = {label: Path(d) for label, d in candidates.items() if Path(d).is_dir()}
+
+    resolved_roots = {Path(d).resolve() for d in roots.values()}
+    groups: dict[tuple[str, str, str], list[float]] = {}
+    for label, root in roots.items():
+        root = Path(root)
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Avoid double counting roots nested in other roots (e.g. heap
+            # inside cache).
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if (Path(dirpath) / d).resolve() not in resolved_roots
+                or (Path(dirpath) / d).resolve() == root.resolve()
+            ]
+            if not filenames:
+                continue
+            parts = Path(dirpath).relative_to(root).parts
+            if ESCAPE_DIR in parts:
+                cut = parts.index(ESCAPE_DIR)
+                admin_id = STRING_SEPARATOR_WITHIN_IDS.join(parts[:cut])
+                dataset = '/'.join(parts[cut + 1 :])
+            else:
+                admin_id = ''
+                dataset = '/'.join(parts)
+            size = 0
+            n_files = 0
+            for filename in filenames:
+                try:
+                    size += os.stat(os.path.join(dirpath, filename)).st_size
+                    n_files += 1
+                except OSError:
+                    continue
+            stats = groups.setdefault((label, admin_id, dataset), [0, 0])
+            stats[0] += n_files
+            stats[1] += size
+
+    df = pd.DataFrame(
+        [
+            {
+                'root': label,
+                'admin_id': admin_id,
+                'dataset': dataset,
+                'n_files': stats[0],
+                'size_mb': stats[1] / 2**20,
+            }
+            for (label, admin_id, dataset), stats in groups.items()
+        ]
+    )
+    if df.empty:
+        return df
+    df = df[df['size_mb'] >= min_size_mb]
+    df['size_mb'] = df['size_mb'].round(1)
+    return df.sort_values('size_mb', ascending=False, ignore_index=True)
+
+
+def list_image_caches() -> pd.DataFrame:
+    """List downloaded image caches in the external data directory.
+
+    Image caches are directories of the form
+    {external}/{admin path}/_all/image/{source}/{version}, written by the
+    image ingestion recipes (e.g. image-googlesatellite-z20).
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per cache: admin_id, source, version, n_files, size_mb,
+        path. Sorted by size, descending.
+    """
+    from openplaces.config import cfg
+
+    df = profile_disk_usage({'external': cfg.external_dir}, min_size_mb=0.0)
+    if df.empty:
+        return df
+    parts = df['dataset'].str.split('/')
+    df = df[(parts.str[0] == 'image') & (parts.str.len() >= 3)].copy()
+    if df.empty:
+        return df
+
+    parts = df['dataset'].str.split('/')
+    df['source'] = parts.str[1]
+    df['version'] = parts.str[2]
+    caches = (
+        df.groupby(['admin_id', 'source', 'version'], as_index=False)
+        .agg(n_files=('n_files', 'sum'), size_mb=('size_mb', 'sum'))
+        .sort_values('size_mb', ascending=False, ignore_index=True)
+    )
+    caches['path'] = [
+        str(
+            cfg.external_dir.joinpath(
+                *AdminId(row.admin_id).to_path().parts,
+                'image',
+                row.source,
+                row.version,
+            )
+        )
+        for row in caches.itertuples()
+    ]
+    return caches
+
+
+def delete_image_caches(
+    admin_ids: str | list | None = None,
+    source: str | None = None,
+    version: str | None = None,
+    dry_run: bool = True,
+) -> pd.DataFrame:
+    """Delete location-specific image caches from the external directory.
+
+    Parameters
+    ----------
+    admin_ids : str, AdminId, list, or None
+        Admin units whose caches to delete; a coarser unit (e.g. a county)
+        matches all caches of its children. None matches all locations.
+    source : str or None
+        Restrict to one image source (e.g. 'googlesatellite').
+    version : str or None
+        Restrict to one recipe version (e.g. 'z20').
+    dry_run : bool
+        If True (default), only report what would be deleted. If False,
+        remove each matched cache directory, including images and the
+        image metadata parquet.
+
+    Returns
+    -------
+    pd.DataFrame
+        The matched caches: admin_id, source, version, n_files, size_mb,
+        path.
+    """
+    caches = list_image_caches()
+    if caches.empty:
+        print('No image caches found.')
+        return caches
+
+    if admin_ids is not None:
+        if isinstance(admin_ids, str | AdminId):
+            admin_ids = [admin_ids]
+        selectors = [AdminId(str(a)) for a in admin_ids]
+        caches = caches[
+            [
+                any(
+                    str(sel) == str(aid) or sel.is_parent_of(aid)
+                    for sel in selectors
+                    for aid in [AdminId(cache_admin_id)]
+                )
+                for cache_admin_id in caches['admin_id']
+            ]
+        ]
+    if source is not None:
+        caches = caches[caches['source'] == source]
+    if version is not None:
+        caches = caches[caches['version'] == str(version)]
+    caches = caches.reset_index(drop=True)
+
+    total_mb = caches['size_mb'].sum()
+    if dry_run:
+        print(
+            f'Dry run: would delete {len(caches)} image cache(s), '
+            f'{total_mb:,.1f} MB total. Pass dry_run=False to delete.'
+        )
+        return caches
+
+    for cache_path in caches['path']:
+        shutil.rmtree(cache_path, ignore_errors=True)
+    print(f'Deleted {len(caches)} image cache(s), {total_mb:,.1f} MB total.')
+    return caches
