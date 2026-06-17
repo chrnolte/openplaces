@@ -46,9 +46,12 @@ This module defines GoogleStreetview class downloading Google street imagery.
 """
 
 import base64
+import hashlib
+import hmac
 import json
 import math
 import struct
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
@@ -64,7 +67,7 @@ from shapely.geometry import Polygon
 from tqdm import tqdm
 
 from .types import AssetInventory, ImageSet
-from .types import Image as BrailsImage
+from .types import Image as ScrapedImage
 
 # Constants:
 BASE_API_URL = 'https://maps.googleapis.com/maps/api/streetview/metadata'
@@ -91,8 +94,30 @@ REQUESTS_RETRY_STRATEGY = Retry(
     backoff_factor=0.1,
     status_forcelist=[500, 502, 503, 504],
 )
+DEFAULT_MAX_WORKERS = 8
+DEFAULT_BATCH_SIZE = 32
+API_REQUEST_MAX_ATTEMPTS = 5
+API_RETRY_BACKOFF_SECONDS = 0.5
+RETRYABLE_API_STATUSES = {'UNKNOWN_ERROR', 'OVER_QUERY_LIMIT'}
+RETRYABLE_HTTP_STATUSES = {403, 429, 500, 502, 503, 504}
 
 FILE_SUBDIRECTORIES = {'images': 'images'}
+
+
+class GoogleStreetViewAPIError(RuntimeError):
+    """Google rejected a Street View request for a non-coverage reason."""
+
+
+class GoogleStreetViewPanoramaMetadataError(RuntimeError):
+    """Google panorama metadata was unavailable or malformed."""
+
+
+class GoogleStreetViewDownloadError(RuntimeError):
+    """A Street View image could not be downloaded or decoded."""
+
+
+class GoogleStreetViewImageUnavailable(RuntimeError):
+    """Street View metadata exists, but no retrievable image is available."""
 
 
 class GoogleStreetview:
@@ -134,10 +159,18 @@ class GoogleStreetview:
             raise ValueError(
                 'Please provide a Google API key to run theGoogleStreetview module'
             ) from exception
-        self._validate_api_key(api_key)
         self.api_key = api_key
+        self.url_signing_secret = input_data.get('urlSigningSecret')
         self.pitch: float = float(input_data.get('pitch', 0))
         self.verbose: bool = bool(input_data.get('verbose', False))
+        self.max_workers = int(input_data.get('max_workers', DEFAULT_MAX_WORKERS))
+        self.batch_size = int(input_data.get('batch_size', DEFAULT_BATCH_SIZE))
+        if self.max_workers < 1:
+            raise ValueError('max_workers must be at least 1.')
+        if self.batch_size < self.max_workers:
+            raise ValueError('batch_size must be at least max_workers.')
+        self._validate_api_key(api_key)
+        self._validate_static_api()
 
     @staticmethod
     def _validate_api_key(api_key: str):
@@ -174,6 +207,39 @@ class GoogleStreetview:
             raise ConnectionError(
                 f'Failed to validate API key: {exception}'
             ) from exception
+
+    def _validate_static_api(self) -> None:
+        """Verify that the Static API accepts the configured credentials."""
+        response = self._request_static_image(
+            {
+                'size': '64x64',
+                'location': '37.8725187407,-122.2596028649',
+                'source': 'outdoor',
+                'key': self.api_key,
+                'return_error_code': 'true',
+            },
+            max_attempts=1,
+        )
+        if response.status_code == 200:
+            return
+
+        if self.url_signing_secret:
+            secret_hint = (
+                'Google rejected the signature. Ensure url_signing_secret is '
+                'the Current secret from the Secret Generator card in the '
+                'same Google Cloud project as api_key.'
+            )
+        else:
+            secret_hint = (
+                'Add the Google Maps URL signing secret to credentials.yaml:\n\n'
+                '  google_streetview:\n'
+                '    api_key: YOUR_KEY_HERE\n'
+                '    url_signing_secret: YOUR_URL_SIGNING_SECRET\n'
+            )
+        raise ValueError(
+            f'Street View Static API credential validation failed '
+            f'(HTTP {response.status_code}). {secret_hint}'
+        )
 
     def get_images(
         self,
@@ -212,7 +278,6 @@ class GoogleStreetview:
 
         base_dir_path = Path(save_directory)
         base_dir_path.mkdir(parents=True, exist_ok=True)
-        print(f'\nImages will be saved to: {base_dir_path.resolve()}\n')
 
         image_set = ImageSet()
         image_set.dir_path = str(base_dir_path)
@@ -240,7 +305,7 @@ class GoogleStreetview:
 
         for index, image_path in enumerate(street_images):
             if image_path.exists():
-                img = BrailsImage(image_path.name, metadata[image_path])
+                img = ScrapedImage(image_path.name, metadata[image_path])
                 image_set.add_image(asset_keys[index], img)
 
         return image_set
@@ -306,37 +371,64 @@ class GoogleStreetview:
                 )
             )
 
-        pbar = tqdm(total=len(footprints), desc='Obtaining street-level imagery')
         results = {}
-        with ThreadPoolExecutor() as executor:
-            futures = {
-                executor.submit(
-                    self._download_streetlev_image,
-                    footprint,
-                    footprint_cent,
-                    image_path,
-                    save_intermediate_imagery=save_interim_images,
-                    save_all_cam_meta=save_all_cam_metadata,
-                    n_stories=n_stories,
-                ): image_path
-                for (
-                    footprint,
-                    footprint_cent,
-                    image_path,
-                    n_stories,
-                ) in inps
-            }
-            for future in as_completed(futures):
-                image_path = futures[future]
-                pbar.update(n=1)
-                try:
-                    results[image_path] = future.result()
-                except (KeyError, ConnectionError, PIL.UnidentifiedImageError) as exc:
-                    results[image_path] = None
-                    print(
-                        f'Error downloading image for building: '
-                        f'{image_path.stem} — {exc}'
+        counts = {'found': 0, 'missing': 0, 'cached': 0}
+        with (
+            tqdm(
+                total=len(footprints),
+                desc='Obtaining street-level imagery',
+                unit='building',
+            ) as pbar,
+            ThreadPoolExecutor(max_workers=self.max_workers) as executor,
+        ):
+            for batch_start in range(0, len(inps), self.batch_size):
+                batch = inps[batch_start : batch_start + self.batch_size]
+                futures = {}
+                for footprint, footprint_cent, image_path, n_stories in batch:
+                    if image_path.exists():
+                        results[image_path] = None
+                        counts['cached'] += 1
+                        pbar.update()
+                        continue
+                    future = executor.submit(
+                        self._download_streetlev_image,
+                        footprint,
+                        footprint_cent,
+                        image_path,
+                        save_intermediate_imagery=save_interim_images,
+                        save_all_cam_meta=save_all_cam_metadata,
+                        n_stories=n_stories,
                     )
+                    futures[future] = image_path
+
+                for future in as_completed(futures):
+                    image_path = futures[future]
+                    try:
+                        result = future.result()
+                    except GoogleStreetViewAPIError:
+                        for pending in futures:
+                            pending.cancel()
+                        raise
+                    except (
+                        KeyError,
+                        ConnectionError,
+                        PIL.UnidentifiedImageError,
+                        requests.RequestException,
+                        ValueError,
+                    ) as exc:
+                        for pending in futures:
+                            pending.cancel()
+                        raise GoogleStreetViewDownloadError(
+                            f'Failed to download Street View image for '
+                            f'{image_path.stem}: {exc}'
+                        ) from exc
+                    else:
+                        results[image_path] = result
+                        counts['missing' if result is None else 'found'] += 1
+                    finally:
+                        pbar.update()
+
+                pbar.set_postfix(counts, refresh=True)
 
         metadata = self._process_meta_for_images(
             street_image_paths, bldg_centroids, results, save_all_cam_metadata
@@ -389,26 +481,28 @@ class GoogleStreetview:
 
         pano = {
             'queryLatLon': fpcent,
-            'camLatLon': (),
+            'camLatLon': fpcent,
             'id': '',
             'panoSize': (),
             'camHeading': 0,
+            'camElev': None,
+            'panoTilt': None,
+            'panoRoll': None,
             'depthMap': 0,
             'depthMapString': '',
             'panoImFile': pano_name,
             'compositeImFile': comp_im_name,
         }
 
-        try:
-            pano['id'] = self._get_pano_id(fpcent, self.api_key)
-        except KeyError:
-            print(
-                'No street-level imagery found for the building located at'
-                f' {fpcent[0]:.4f}, {fpcent[1]:.4f}'
-            )
+        pano_metadata = self._get_pano_metadata(fpcent, self.api_key)
+        if pano_metadata is None:
             return None
-
-        pano = self._get_pano_meta(pano, dmap_outname='')
+        pano['id'] = pano_metadata['pano_id']
+        location = pano_metadata.get('location') or {}
+        pano['camLatLon'] = (
+            location.get('lat', fpcent[0]),
+            location.get('lng', fpcent[1]),
+        )
 
         face = self._find_near_face(pano, footprint)
         face_mid = face[0] if face is not None else fpcent
@@ -419,17 +513,12 @@ class GoogleStreetview:
             else self.pitch
         )
 
-        if self.verbose:
-            label = (
-                f'n_stories={n_stories:.0f}'
-                if n_stories is not None
-                else 'n_stories=None'
+        try:
+            pano = self._download_bldg_image(
+                pano, footprint, im_name, self.api_key, pitch=pitch
             )
-            print(f'  {im_path.stem}: pitch={pitch:.1f}° ({label})')
-
-        pano = self._download_bldg_image(
-            pano, footprint, im_name, self.api_key, pitch=pitch
-        )
+        except GoogleStreetViewImageUnavailable:
+            return None
 
         if save_all_cam_meta:
             return (
@@ -477,25 +566,24 @@ class GoogleStreetview:
             Dictionary mapping each image path to a metadata dict.
         """
         metadata = {}
-        properties = {
-            'bdlgLatLon': (),
-            'camElev': None,
-            'camLatLon': None,
-            'panoBndAngles': None,
-            'camPitch': None,
-        }
-
-        if save_all_cam_metadata:
-            additional_keys = [
-                'panoSize',
-                'camHeading',
-                'panoTilt',
-                'panoFOV',
-                'panoRoll',
-            ]
-            properties.update({key: [] for key in additional_keys})
+        additional_keys = [
+            'panoSize',
+            'camHeading',
+            'panoTilt',
+            'panoFOV',
+            'panoRoll',
+        ]
 
         for image_ind, image_path in enumerate(street_image_paths):
+            properties = {
+                'bdlgLatLon': (),
+                'camElev': None,
+                'camLatLon': None,
+                'panoBndAngles': None,
+                'camPitch': None,
+            }
+            if save_all_cam_metadata:
+                properties.update({key: None for key in additional_keys})
             properties['bdlgLatLon'] = bldg_centroids[image_ind]
             if results[image_path] is not None:
                 properties['camElev'] = results[image_path][0]
@@ -511,15 +599,66 @@ class GoogleStreetview:
                     properties['camPitch'] = results[image_path][8]
                 else:
                     properties['camPitch'] = results[image_path][3]
-            elif save_all_cam_metadata:
-                for key in additional_keys:
-                    properties[key] = None
 
             metadata[image_path] = dict(properties)
         return metadata
 
     @staticmethod
-    def _get_pano_id(latlon: tuple[float, float], api_key: str) -> str:
+    def _get_pano_metadata(
+        latlon: tuple[float, float], api_key: str
+    ) -> dict[str, Any] | None:
+        """Return official Street View metadata, or None when coverage is absent."""
+        params = {
+            'location': f'{latlon[0]}, {latlon[1]}',
+            'key': api_key,
+            'source': 'outdoor',
+        }
+        for attempt in range(1, API_REQUEST_MAX_ATTEMPTS + 1):
+            try:
+                response = requests.get(
+                    BASE_API_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
+                )
+                response.raise_for_status()
+                data = response.json()
+            except requests.RequestException:
+                if attempt == API_REQUEST_MAX_ATTEMPTS:
+                    raise
+                GoogleStreetview._sleep_before_retry(attempt)
+                continue
+
+            status = data.get('status')
+            if status == 'ZERO_RESULTS':
+                return None
+            if status == 'OK':
+                if not data.get('pano_id'):
+                    raise GoogleStreetViewAPIError(
+                        'Google Street View returned OK without a pano_id.'
+                    )
+                return data
+            if status in RETRYABLE_API_STATUSES:
+                if attempt < API_REQUEST_MAX_ATTEMPTS:
+                    GoogleStreetview._sleep_before_retry(attempt)
+                    continue
+                message = data.get('error_message', status)
+                raise GoogleStreetViewAPIError(
+                    f'Google Street View metadata request failed after '
+                    f'{attempt} attempts: {message}'
+                )
+
+            message = data.get('error_message', status or 'unknown response')
+            raise GoogleStreetViewAPIError(
+                f'Google Street View metadata request failed: {message}'
+            )
+
+        raise AssertionError('Street View metadata retry loop exited unexpectedly.')
+
+    @staticmethod
+    def _sleep_before_retry(attempt: int) -> None:
+        """Sleep with exponential backoff after a failed API attempt."""
+        time.sleep(API_RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+
+    @classmethod
+    def _get_pano_id(cls, latlon: tuple[float, float], api_key: str) -> str | None:
         """
         Obtain the pano ID for the given latitude and longitude.
 
@@ -532,18 +671,11 @@ class GoogleStreetview:
 
         Returns
         -------
-        str
-            Pano ID.
+        str or None
+            Pano ID, or None when Google reports no outdoor imagery.
         """
-        params = {
-            'location': f'{latlon[0]}, {latlon[1]}',
-            'key': api_key,
-            'source': 'outdoor',
-        }
-        response = requests.get(
-            BASE_API_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
-        )
-        return response.json()['pano_id']
+        metadata = cls._get_pano_metadata(latlon, api_key)
+        return metadata['pano_id'] if metadata is not None else None
 
     @staticmethod
     def _get_pano_meta(pano: dict[str, Any], dmap_outname: str = '') -> dict[str, Any]:
@@ -576,29 +708,52 @@ class GoogleStreetview:
             ),
         }
 
-        response = requests.get(
-            PANORAMA_METADATA_URL,
-            params=params,
-            proxies=None,
-            timeout=REQUESTS_TIMEOUT_VAL,
-        )
+        try:
+            response = requests.get(
+                PANORAMA_METADATA_URL,
+                params=params,
+                proxies=None,
+                timeout=REQUESTS_TIMEOUT_VAL,
+            )
+            response.raise_for_status()
 
-        response_content = response.content
-        response_json = json.loads(response_content[4:])
-        pano['panoZoom'] = 3
-        pano['panoFOV'] = ZOOM2FOV_MAPPER[pano['panoZoom']]
-        pano['depthMapString'] = response_json[1][0][5][0][5][1][2]
-        pano['camLatLon'] = (
-            response_json[1][0][5][0][1][0][2],
-            response_json[1][0][5][0][1][0][3],
+            response_json = json.loads(response.content[4:])
+            pano_zoom = 3
+            depth_map_string = response_json[1][0][5][0][5][1][2]
+            cam_latlon = (
+                response_json[1][0][5][0][1][0][2],
+                response_json[1][0][5][0][1][0][3],
+            )
+            pano_size = tuple(response_json[1][0][2][3][0][pano_zoom][0])[::-1]
+            cam_heading = response_json[1][0][5][0][1][2][0]
+            pano_tilt = response_json[1][0][5][0][1][2][1]
+            pano_roll = response_json[1][0][5][0][1][2][2]
+            cam_elev = response_json[1][0][5][0][1][1][0]
+        except (
+            IndexError,
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+            requests.RequestException,
+        ) as exc:
+            raise GoogleStreetViewPanoramaMetadataError(
+                f'invalid photometa response for pano {pano["id"]}'
+            ) from exc
+
+        pano.update(
+            {
+                'panoZoom': pano_zoom,
+                'panoFOV': ZOOM2FOV_MAPPER[pano_zoom],
+                'depthMapString': depth_map_string,
+                'camLatLon': cam_latlon,
+                'panoSize': pano_size,
+                'camHeading': cam_heading,
+                'panoTilt': pano_tilt,
+                'panoRoll': pano_roll,
+                'camElev': cam_elev,
+            }
         )
-        pano['panoSize'] = tuple(response_json[1][0][2][3][0][pano['panoZoom']][0])[
-            ::-1
-        ]
-        pano['camHeading'] = response_json[1][0][5][0][1][2][0]
-        pano['panoTilt'] = response_json[1][0][5][0][1][2][1]
-        pano['panoRoll'] = response_json[1][0][5][0][1][2][2]
-        pano['camElev'] = response_json[1][0][5][0][1][1][0]
 
         if dmap_outname:
             with open(dmap_outname, 'w', encoding='utf-8') as dmapfile:
@@ -767,22 +922,40 @@ class GoogleStreetview:
         )
         fov = min(max(2 * half_fov, 10), 120)
 
-        params = {
+        view_params = {
             'size': STATIC_IMAGE_SIZE,
-            'pano': pano['id'],
             'heading': heading,
             'fov': fov,
             'pitch': pitch,
             'key': api_key,
+            'return_error_code': 'true',
         }
-        response = requests.get(
-            STATIC_IMAGE_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
-        )
+        response = self._request_static_image({**view_params, 'pano': pano['id']})
+        if response.status_code in {403, 404}:
+            # Panorama IDs can become inaccessible even when a fresh metadata
+            # lookup returns them. Refresh the image by camera location before
+            # deciding whether this is a true miss or an API-level failure.
+            cam_lat, cam_lon = pano['camLatLon']
+            response = self._request_static_image(
+                {
+                    **view_params,
+                    'location': f'{cam_lat},{cam_lon}',
+                    'source': 'outdoor',
+                    'radius': 50,
+                }
+            )
+
+        if response.status_code == 404:
+            raise GoogleStreetViewImageUnavailable(
+                f'No retrievable Street View image for pano {pano["id"]}.'
+            )
         if response.status_code != 200:
+            content_type = response.headers.get('content-type', 'unknown')
             raise ConnectionError(
                 f'Street View Static API failed '
-                f'(HTTP {response.status_code}): {response.text[:200]}'
+                f'(HTTP {response.status_code}, content-type={content_type}).'
             )
+
         img = PIL.Image.open(BytesIO(response.content))
         if im_name:
             img.save(im_name)
@@ -792,6 +965,71 @@ class GoogleStreetview:
         pano['panoSize'] = (width, height)
         pano['panoBndAngles'] = np.array([0, width])
         return pano
+
+    def _request_static_image(
+        self,
+        params: dict[str, Any],
+        max_attempts: int = API_REQUEST_MAX_ATTEMPTS,
+    ) -> requests.Response:
+        """Request a Static API image, retrying transient delivery failures."""
+        prepared = requests.Request('GET', STATIC_IMAGE_URL, params=params).prepare()
+        request_url = prepared.url
+        if request_url is None:
+            raise ValueError('Could not prepare Street View Static API URL.')
+        if self.url_signing_secret:
+            request_url = self._sign_url(request_url, self.url_signing_secret)
+
+        response = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = requests.get(request_url, timeout=REQUESTS_TIMEOUT_VAL)
+            except requests.RequestException:
+                if attempt == max_attempts:
+                    raise
+                self._sleep_before_retry(attempt)
+                continue
+
+            if response.status_code == 200:
+                return response
+            if response.status_code == 404:
+                return response
+            if (
+                response.status_code in RETRYABLE_HTTP_STATUSES
+                and attempt < max_attempts
+            ):
+                self._sleep_before_retry(attempt)
+                continue
+            return response
+
+        if response is None:
+            raise AssertionError(
+                'Street View Static API retry loop exited unexpectedly.'
+            )
+        return response
+
+    @staticmethod
+    def _sign_url(url: str, signing_secret: str) -> str:
+        """Add a Google Maps digital signature to a request URL."""
+        prepared = requests.PreparedRequest()
+        prepared.prepare_url(url, None)
+        if prepared.path_url is None or prepared.url is None:
+            raise ValueError('Could not prepare URL for signing.')
+
+        padded_secret = signing_secret + '=' * (-len(signing_secret) % 4)
+        try:
+            decoded_secret = base64.urlsafe_b64decode(padded_secret)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                'google_streetview.url_signing_secret is not valid URL-safe base64.'
+            ) from exc
+        signature = hmac.new(
+            decoded_secret,
+            prepared.path_url.encode('utf-8'),
+            hashlib.sha1,
+        )
+        encoded_signature = base64.urlsafe_b64encode(signature.digest()).decode('ascii')
+        separator = '&' if '?' in prepared.url else '?'
+        return f'{prepared.url}{separator}signature={encoded_signature}'
 
     @staticmethod
     def _get_composite_pano(

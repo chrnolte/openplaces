@@ -55,7 +55,7 @@ def fetch_images_by_admin(
     target_recipe_id
         Recipe ID of the harmonized entity to photograph (e.g.
         ``'US_building-nsi-2022'`` for NSI point buildings,
-        ``'US_footprint-cheer-2026'`` for polygon footprints).  When
+        ``'US_footprint-spine-2026'`` for polygon footprints).  When
         ``None``, falls back to ``recipe['entity_recipe']``.
     """
     recipe = ingester.recipe
@@ -111,12 +111,13 @@ def fetch_images_by_admin(
             if ingester.verbose:
                 print(f'  Sampling {n_sample} of {n_total:,} footprints.')
 
-        if ingester.verbose:
-            if 'n_stories' in footprints.columns:
-                n_with = footprints['n_stories'].notna().sum()
-                print(f'  n_stories: {n_with:,d} of {len(footprints):,d} buildings')
-            else:
-                print('  n_stories: not in data (pitch will use recipe default)')
+        if (
+            ingester.verbose
+            and scraper_name == 'google_streetview'
+            and 'n_stories' in footprints.columns
+        ):
+            n_with = footprints['n_stories'].notna().sum()
+            print(f'  n_stories: {n_with:,d} of {len(footprints):,d} buildings')
 
         inventory = _gdf_to_asset_inventory(footprints)
 
@@ -140,6 +141,12 @@ def fetch_images_by_admin(
         meta_df.to_parquet(output_path)
 
         if ingester.verbose:
+            n_missing = int(meta_df['image_path'].isna().sum())
+            if n_missing:
+                print(
+                    f'  No imagery found for {n_missing:,d} of '
+                    f'{len(meta_df):,d} buildings.'
+                )
             print(f'  Saved metadata → {output_path}')
 
 
@@ -172,12 +179,15 @@ def _build_scraper(scraper_name: str, recipe: dict, verbose: bool = False):
     if scraper_name == 'google_streetview':
         from openplaces.io.scrapers.google_streetview import GoogleStreetview
 
-        api_key = _load_api_key(scraper_name)
+        credentials = _load_credentials(scraper_name)
         return GoogleStreetview(
             {
-                'apiKey': api_key,
+                'apiKey': credentials['api_key'],
+                'urlSigningSecret': credentials.get('url_signing_secret'),
                 'pitch': recipe.get('street_pitch', 0),
                 'verbose': verbose,
+                'max_workers': recipe.get('max_workers', 8),
+                'batch_size': recipe.get('batch_size', 32),
             }
         )
 
@@ -206,17 +216,22 @@ def _load_api_key(scraper_name: str) -> str:
     ValueError
         If the service or ``api_key`` field is absent from credentials.yaml.
     """
+    return _load_credentials(scraper_name)['api_key']
+
+
+def _load_credentials(scraper_name: str) -> dict:
+    """Return and validate the credential mapping for an image scraper."""
     from openplaces.config import cfg
 
-    try:
-        return cfg.get_credentials(scraper_name)['api_key']
-    except KeyError:
+    credentials = cfg.get_credentials(scraper_name)
+    if 'api_key' not in credentials:
         raise ValueError(
             f"Credentials for '{scraper_name}' found but missing 'api_key'.\n"
             f'Edit {cfg.credentials_path} and ensure the entry contains:\n\n'
             f'  {scraper_name}:\n'
             f'    api_key: YOUR_KEY_HERE\n'
         )
+    return credentials
 
 
 _POINT_PROXY_DEG = 0.0001
@@ -300,10 +315,12 @@ def _image_set_to_df(
     Returns
     -------
     DataFrame
-        Index matches the entity IDs.  Columns include ``image_path``,
-        ``download_date``, optionally ``zoom_level``, and for street view,
-        camera metadata (``cam_lat``, ``cam_lon``, ``cam_elev``,
-        ``cam_heading``, ``pano_tilt``, ``pano_fov``, ``pano_roll``).
+        One row per queried entity (index matches the entity IDs).  Columns
+        include ``image_path`` (null where no imagery was found),
+        ``image_found``, ``download_date``, optionally ``zoom_level``, and
+        for street view, camera metadata (``cam_lat``, ``cam_lon``,
+        ``cam_elev``, ``cam_heading``, ``pano_tilt``, ``pano_fov``,
+        ``pano_roll``).
     """
     rows = {}
     image_dir = Path(image_set.dir_path)
@@ -330,6 +347,11 @@ def _image_set_to_df(
 
         rows[key] = row
 
-    df = pd.DataFrame.from_dict(rows, orient='index')
+    # Keep a row for every queried entity so misses are tracked in the
+    # metadata parquet (null image_path); the enricher skips those rows.
+    df = pd.DataFrame.from_dict(rows, orient='index').reindex(footprints.index)
+    if 'image_path' not in df.columns:
+        df['image_path'] = None
+    df['image_found'] = df['image_path'].notna()
     df.index.name = footprints.index.name
     return df
