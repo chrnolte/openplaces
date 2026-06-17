@@ -59,7 +59,7 @@ from requests.adapters import HTTPAdapter, Retry
 from tqdm import tqdm
 
 from .types import AssetInventory, ImageSet
-from .types import Image as BrailsImage
+from .types import Image as ScrapedImage
 
 # Constants:
 GOOGLE_TILE_URL = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
@@ -124,7 +124,6 @@ class GoogleSatellite:
 
         dir_path = Path(save_directory)
         dir_path.mkdir(parents=True, exist_ok=True)
-        print(f'Images will be saved to: {dir_path.resolve()}')
 
         image_set = ImageSet()
         image_set.dir_path = str(dir_path)
@@ -145,10 +144,9 @@ class GoogleSatellite:
 
         for index, image_path in enumerate(satellite_images):
             if image_path.exists():
-                img = BrailsImage(image_path.name)
+                img = ScrapedImage(image_path.name)
                 image_set.add_image(asset_keys[index], img)
-            else:
-                print(f'Image for asset {asset_keys[index]} could not bedownloaded.')
+            # Missing images are recorded in the image metadata by the caller.
 
         return image_set
 
