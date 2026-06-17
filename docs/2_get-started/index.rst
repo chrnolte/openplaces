@@ -3,11 +3,11 @@
 Get started
 ===========
 
-Ready to build and analyze your own datasets?
+Ready to build and analyze your own land or building data?
 
-Read this quickstart guide to install ``openplaces`` on your machine.
+Read this user guide to install ``openplaces`` on your machine.
 
-You'll download the code base, create a computing environment, and configure where your data will live.
+You'll clone the repository, set up a dedicated environment, and determine where your data will live.
 
 .. toctree::
    :maxdepth: 2

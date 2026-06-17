@@ -2,8 +2,8 @@
 
 .. _pipeline:
 
-Pipeline stages
-===============
+Pipeline: from setup to publication
+===================================
 
 Notebooks for data processing and analysis (:gh-file:`notebooks`) are grouped into task types:
 
@@ -13,16 +13,18 @@ Notebooks for data processing and analysis (:gh-file:`notebooks`) are grouped in
 
    * - Stage
      - Description
-   * - ``01_configure``
+   * - ``01_setup``
      - Define folder structure, set preferences, lock administrative referencing
    * - ``02_ingest``
      - Download, unzip, and stage data in cache
    * - ``03_harmonize``
      - Align entity datasets from multiple sources, create spine of entities
    * - ``04_enrich``
-     - Derive attributes for entities using geoprocessing and record linkage.
+     - Produce entity-keyed evidence from imagery, models, geoprocessing, or
+       record linkage without selecting canonical values.
    * - ``05_curate``
-     - Create analysis-ready dataset (select, aggregate, snapshot).
+     - Create canonical datasets by reconciling evidence, imputing and
+       inferring attributes, and filtering records.
    * - ``06_model``
      - Fit models, cross-validate, derive standard errors, optimize.
    * - ``07_infer``

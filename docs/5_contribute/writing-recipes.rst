@@ -20,6 +20,33 @@ Recipes that manage data ingestion: file handling, data formatting, and gentle p
 Dataset description and source
 ------------------------------
 
+.. attribute:: description
+
+   One-sentence summary of the dataset: what it is, what it covers, and
+   where it comes from. Keep it to 25 words or less.
+
+   The :ref:`recipe catalog <recipe_catalog>` is generated from this field
+   (parsed as reStructuredText) at every documentation build, so every
+   recipe should have one. Put longer commentary in :attr:`notes`, and keep
+   ``#`` comments for short, key-specific implementation notes.
+
+   Example:
+
+   .. code-block:: yaml
+
+      description: >-
+        Massachusetts registry of deeds transactions, crawled from
+        masslandrecords.com.
+
+.. attribute:: notes
+
+   Long-form prose about how the recipe obtains the data: what the source
+   publishes, access quirks (portals, scrapers, formats), and any
+   conventions the recipe follows.
+
+   Written as a YAML block scalar (``notes: |``). Optional, and not shown
+   in the recipe catalog.
+
 .. attribute:: admin_id
 
    Admin ID of the (top-level) :ref:`administrative unit <administrative_units>` for which the dataset provides data.
@@ -138,16 +165,22 @@ File handling
       :input:`year`
          Download one file per year. Requires :attr:`first` and :attr:`last`.
 
+      :input:`year_month`
+         Download one file per calendar month. Requires :attr:`first` and
+         :attr:`last` as ``YYYYMM`` values.
+
       :input:`tile_id`
          Download one file per tile. Requires :attr:`tile_recipe_id`.
 
    .. attribute:: first
 
-      First year to download when :attr:`partition` is :input:`year`.
+      First year (or ``YYYYMM`` month) to download when :attr:`partition` is
+      :input:`year` or :input:`year_month`.
 
    .. attribute:: last
 
-      Last year to download when :attr:`partition` is :input:`year`.
+      Last year (or ``YYYYMM`` month) to download when :attr:`partition` is
+      :input:`year` or :input:`year_month`.
 
    .. attribute:: tile_recipe_id
 
@@ -534,6 +567,84 @@ Saving
       multiple files for different admin levels, or a dataset that needs a fixed conventional name.
 
       Example: :input:`admin2` (used in admin recipes to produce :file:`admin-gadm-4~1_admin2.parquet`).
+
+.. _aggregate_by:
+
+Aggregating partitions
+----------------------
+
+.. attribute:: aggregate_by
+
+   Roll per-partition output files (e.g. one parquet per month) up into fewer,
+   non-redundant files after ingestion.
+
+   The aggregated file's parquet footer records the partition IDs it contains
+   under the key ``openplaces:partitions``. With ``reprocess=False``, the
+   ingester reads this footer to skip partitions that are already integrated —
+   the per-partition files do not need to be kept for re-runs to be
+   incremental.
+
+   .. attribute:: single_file
+
+      If :input:`true`, combine every partition into one dataset-wide
+      :file:`..._all.parquet` per saved admin unit, and produce no per-group
+      files.
+
+   .. attribute:: partition
+      :no-index:
+
+      Roll-up granularity when :attr:`single_file` is not set, e.g.
+      :input:`year` to combine the twelve months of each year into one
+      per-year file.
+
+   .. attribute:: how
+
+      Merge policy when the aggregated file already exists (named after the
+      ``how`` argument of ``geopandas.overlay``):
+
+      :input:`union` (default)
+         Integrate the new partitions into the existing file, de-duplicating
+         by full row. Re-adding an unchanged partition is a no-op, and rows
+         that are only present in the existing file are never deleted — safe
+         when partition files may be missing or out of sync.
+
+      :input:`replace`
+         Overwrite the file with only the partitions of the current run. Use
+         together with a full-range reprocess, or the file narrows to those
+         partitions.
+
+      Both policies first verify that the new batch contains no internal
+      duplicate rows (which indicate a source or processing bug) and raise an
+      error if it does. Row identity includes the index whenever a frame
+      carries a meaningful one (anything other than a default integer range
+      index), so rows with equal values but distinct keys are not duplicates.
+
+      One ``union`` caveat: if the source retroactively edits a field of an
+      already-integrated record, both row versions remain in the aggregated
+      file until a full reprocess with :input:`replace`.
+
+   .. attribute:: keep_partitions
+
+      If :input:`true`, retain the per-partition files after aggregation
+      (default is to delete them). Used, for example, to keep raw monthly
+      scrape files in the downloads directory as the source of truth.
+
+   Example (Wisconsin transactions: months are intermediate, one combined
+   output):
+
+   .. code-block:: yaml
+
+      aggregate_by:
+        single_file: true
+
+   Example (Massachusetts registry scrape: monthly files are retained, new
+   rows are integrated):
+
+   .. code-block:: yaml
+
+      aggregate_by:
+        single_file: true
+        keep_partitions: true
 
 
 Additional layers

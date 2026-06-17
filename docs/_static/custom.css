@@ -85,6 +85,11 @@ a.reference.external code.file span {
     border-color: #2a7ae2;
 }
 
+/* Hide the "Section Navigation" header in the left sidebar */
+.bd-links__title {
+    display: none;
+}
+
 /* ── Start page hero ───────────────────────────────────────────────────── */
 
 .op-hero {

@@ -18,7 +18,7 @@ This work is supported by NSF's Coastal Hazards, Economic Prosperity & Resilienc
 
 The companion notebook is:
 
-:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`.
+:gh-file:`notebooks/examples/US_curate_footprints.ipynb`.
 
 The :ref:`recipe <recipes>` with instructions & thresholds is at:
 
@@ -42,6 +42,12 @@ The table includes:
 - NSI-derived attributes, including structure or occupancy class, structure value, number of stories, and block-median year built.
 - Overture-derived dwelling and address attributes, especially dwelling-unit point evidence and address components.
 - Reconciled final columns selected from competing source-specific columns.
+- ``occupancy_type``: inferred occupancy. Residential footprints collapse to ``Single-Family``, ``Multi-Family``, or ``Mobile Home``; non-residential footprints keep their NSI or parcel category (e.g. ``Retail``, ``Hotel``, ``Church``). Non-primary *residential* footprints are relabeled ``Secondary`` (non-residential footprints keep their category regardless of role). During curation, an NSI-independent parcel keyword ruleset (matched on ``purpose_group_combined_parcel``) takes priority over NSI: reviewed rules (e.g. ``MANUFACTURED`` / ``SINGLE WIDE`` → Mobile Home) override the NSI value, while unreviewed disagreements are flagged in ``occupancy_type_conflict`` for inspection rather than applied.
+- ``occupancy_type_parcel``: the occupancy proposed by the parcel keyword ruleset (retained so conflicts with NSI can be reviewed).
+- ``occupancy_type_conflict``: ``True`` where the parcel proposal disagrees with the NSI-derived ``occupancy_type`` and the matching rule is not yet reviewed.
+- ``occupancy_type_cheer``: produced during curation. A copy of the resolved ``occupancy_type`` in which ``Multi-Family`` is split into HAZUS height bands (``Low-Rise``, ``Mid-Rise``, ``High-Rise Multi-Family``) wherever a merged ``n_stories`` value is available; all other classes are carried over unchanged.
+
+Ready-made QGIS categorized styles for ``occupancy_type`` and ``occupancy_type_cheer`` ship in ``src/openplaces/qgis/styles/``; apply one via Layer Properties → Symbology → Load Style after loading the layer.
 
 
 Source datasets
@@ -272,13 +278,15 @@ Activate the project environment before running development or data commands:
 
 The recommended entry point is the example notebook:
 
-:gh-file:`notebooks/examples/US_harmonize_footprints.ipynb`
+:gh-file:`notebooks/examples/US_curate_footprints.ipynb`
 
 The equivalent script is available for batch or cluster execution:
 
-:gh-file:`scripts/examples/US_harmonize_footprints.py`
+:gh-file:`scripts/examples/US_curate_footprints.py`
 
-The notebook and script cover ingestion of precursor datasets and the ``US_footprint-cheer-2026`` harmonization recipe. Cached inputs and outputs are reused on subsequent runs unless reprocessing is requested.
+The notebook and script cover ingestion, harmonization, enrichment, and the
+``US_footprint-cheer-2026`` curation recipe. Cached inputs and outputs are
+reused on subsequent runs unless reprocessing is requested.
 
 
 Using the output
