@@ -1,0 +1,70 @@
+description: >-
+  Massachusetts registry of deeds transactions, crawled from
+  masslandrecords.com.
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: masslandrecords
+    portal_url: "https://www.masslandrecords.com"
+  version: v1
+
+scraper:
+  # Names the dedicated ingester orchestrator (crawls records directly rather
+  # than producing a downloadable file). Dispatched in ingester.ingest().
+  ingester: registry
+  platform: avenu_webforms
+  driver: playwright
+  crosswalk: town_to_registry
+  date_partition: month
+  # Earliest year to crawl when no explicit years are passed (the largest
+  # available range runs from here through the current year). The registries
+  # hold records going back much further; extend as project needs require.
+  first_year: 2020
+  rate_limit_seconds: [2, 5]
+  session_refresh_pages: 100
+  adaptive_split_threshold: 500
+  fetch_details: true
+  retry:
+    max_attempts: 3
+    backoff_seconds: [2, 10]
+
+process_by:
+  admin_level: 4
+
+columns:
+  recorded_date: recorded_date
+  doc_type: doc_type
+  instrument_number: instrument_number
+  book: book
+  page: page
+  grantor: grantor
+  grantee: grantee
+  price_raw: consideration
+  rec_time: rec_time
+  n_pages: n_pages
+  doc_status: doc_status
+  street_number: street_number
+  street_name: street_name
+  description: description
+  linked_docs: linked_docs
+
+transformations:
+  - type: unary
+    operation: parse_currency
+    input: price_raw
+    output: price
+
+legacy_columns:
+  consideration_raw: price_raw
+
+save_to:
+  data_dir: external
+  admin_level: 4
+
+# Integrate each town's retained monthly scrape files into one non-redundant
+# {town}_..._all.parquet. See the aggregate_by section in the "Writing
+# recipes" documentation for the full semantics.
+aggregate_by:
+  single_file: true       # how defaults to 'union' (never deletes rows)
+  keep_partitions: true   # monthly scrapes stay in the downloads dir

@@ -11,4 +11,17 @@ address,Street address,,string,join_nonnull
 area_sqft,Floor area,sqft,float,mean
 n_stories,Number of stories,,float,mean
 n_dwelling_units,Number of dwelling units in the building,,float,sum
-occupancy_type,Inferred occupancy category (Single-Family / Multi-Family / Mobile Home),,categorical,first
+roof_shape,Roof shape classification,,categorical,first
+occupancy_type,Inferred occupancy: residential class (Single-Family / Multi-Family / Mobile Home / Secondary) or NSI/parcel non-residential category,,categorical,first
+occupancy_type_parcel,Occupancy proposed from parcel land-use keywords (NSI-independent); reconciled into occupancy_type,,categorical,first
+occupancy_type_cheer,CHEER occupancy: occupancy_type with Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories,,categorical,first
+year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first
+recorded_date,Date the deed was recorded at the registry,,datetime,first
+doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first
+instrument_number,Registry instrument number,,string,first
+book,Registry book number,,string,first
+page,Registry page number,,string,first
+grantor,Grantor (seller) name as recorded,,string,first
+grantee,Grantee (buyer) name as recorded,,string,first
+price,Transaction price,USD,float,first
+price_raw,Transaction price as provided by the source,,string,first

@@ -1,0 +1,102 @@
+description: >-
+  Wisconsin Real Estate Transfer Return (RETR) transactions from the
+  Department of Revenue.
+
+# Administrative unit: the whole state of Wisconsin.
+admin_id: US-WI
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: widor
+    # Human-facing landing/info page for the RETR program.
+    portal_url: "https://www.revenue.wi.gov/Pages/RETr/Home.aspx"
+    # Browser-driven download mechanism (peer of download_url_source, but for a
+    # JS portal behind a terms gate with on-the-fly URLs). Names a module in
+    # openplaces/io/scrapers/ (loaded by path; exposes fetch()). The Ingester's
+    # download step drives this scraper to produce each partition's file.
+    download_url_scraper: US-WI_transaction-widor-2026_scraper
+  version: "2026"
+
+# One download partition per calendar month. `first`/`last` are YYYYMM.
+# The portal's earliest published month appears to be 2021-01; `last` should
+# track the most recent published month.
+download_by:
+  partition: year_month
+  first: 202101
+  last: 202601
+
+# The portal serves each month as RETRHistoricalReport{YYYYMM}.csv. Declaring
+# the name lets the Ingester skip the (slow) browser download when the CSV is
+# already on disk. The {year_month} placeholder is filled from the partition.
+uncompressed_file_name: "RETRHistoricalReport{year_month}.csv"
+
+# Options forwarded to fetch_retr_csv(). All have sensible defaults; override
+# here if the portal layout differs from what the scraper assumes.
+scraper_options:
+  # Direct URL of the public RETR historical-data tool (no login required).
+  # Lands straight on the year/month download interface.
+  portal_url: "https://tap.revenue.wi.gov/RETRHistoric"
+  headless: false        # TAP bot detection rejects headless; runs headed but
+                         # off-screen (no visible window). Set true to attempt
+                         # true headless (may be blocked by bot detection).
+  accept_terms: true     # click the terms-of-use button if the gate appears
+  timeout_s: 120
+  month_style: name      # months labelled by full name ('January'); use
+                         # 'abbr' ('Jan') or 'number' ('01') if needed
+  # csv_report_text: "CSV Report"
+  # entry_link_text: "Download Historical RETR Data"  # only if starting from
+  #                                                   # the TAP home page
+  # browser_channel: chrome   # use an installed Chrome/Edge instead of bundled
+
+# Mapping: openplaces attribute name -> RETR CSV column header (verified
+# against a real RETRHistoricalReport202601.csv). See description above.
+columns:
+  instrument_number: "Document Number"
+  admin3_name: "County"
+  city: "Municipality"
+  recorded_date: "Recorded Date"
+  conveyance_date: "Conveyance Date"
+  doc_type: "Document Type"
+  conveyance_type: "Conveyance Type"
+  property_type: "Property Type"
+  property_use_type: "Property Use Type"
+  parcel_id_tax: "Parcel Number"
+  n_units: "Number of Units"
+  address: "Physical Address"
+  area_ac: "Acres"
+  grantor: "Grantor Name"
+  grantor_address: "Grantor Address"
+  grantee: "Grantee Name"
+  grantee_address: "Grantee Address"
+  estimated_value: "Estimated Value"
+  price_raw: "Sale Price"
+  transfer_fee: "Transfer Fee Due"
+  legal_description: "Legal Description"
+
+transformations:
+  - type: unary
+    operation: parse_currency
+    input: price_raw
+    output: price
+
+legacy_columns:
+  consideration_raw: price_raw
+
+# Keep original (unmapped) columns so the full 78-column record is retained.
+keep_unnamed_columns: true
+
+# Read every column as text: the RETR dump mixes ints and strings within some
+# columns (e.g. Document Number), which otherwise fails Parquet serialization.
+csv_dtype: str
+
+# Output: one parquet per month under the default (cache) data directory,
+# e.g. US-WI_transaction-widor-2026_202601.parquet.
+save_to:
+  data_dir: cache
+
+# Integrate the per-month files into one dataset-wide _all.parquet and delete
+# them; the file's footer records the ingested months so re-runs skip them.
+# See the aggregate_by section in the "Writing recipes" documentation.
+aggregate_by:
+  single_file: true
