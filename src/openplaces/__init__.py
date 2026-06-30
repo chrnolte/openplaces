@@ -1,11 +1,24 @@
 """A Python package for place-based geospatial analysis"""
 
+import openplaces.api as _api
+
+# Make `openplaces.cfg` available and trigger configuration setup on first
+# import. Public API names (get_entities, curate, ...) resolve lazily via
+# __getattr__ below so importing openplaces does not pull the whole pipeline.
+from .config import cfg as cfg
+
 __version__ = '0.1.0'
 __author__ = 'Christoph Nolte'
 __email__ = 'chrnolte@bu.edu'
 
-# Make `openplaces.cfg` available.
-# Also ensures that configuration setup is triggered upon first import
-from openplaces.api import *  # noqa: F401, F403
+__all__ = ['cfg', *_api.__all__]
 
-from .config import cfg as cfg
+
+def __getattr__(name: str):
+    if name in _api.__all__:
+        return getattr(_api, name)
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+
+def __dir__():
+    return [*globals(), *_api.__all__]

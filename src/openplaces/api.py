@@ -1,35 +1,41 @@
 """
 Public API for openplaces.
 
-Re-exports data access and recipe-driven pipeline functions.
+Re-exports data access and recipe-driven pipeline functions. Each name resolves
+lazily on first access (PEP 562), so importing this module pulls nothing heavy
+and, e.g., accessing ``curate`` imports only the curator stage.
 """
 
-from openplaces.io.aggregate import (  # noqa: F401
-    aggregate_files,
-    aggregate_partitions,
-)
-from openplaces.io.curator import curate  # noqa: F401
-from openplaces.io.enricher import enrich  # noqa: F401
-from openplaces.io.harmonizer import harmonize  # noqa: F401
-from openplaces.io.ingester import ingest  # noqa: F401
-from openplaces.io.readers import (  # noqa: F401
-    get_admin,
-    get_admin_ids,
-    get_dataset,
-    get_entities,
-)
-from openplaces.utils import inspect_table  # noqa: F401
+from importlib import import_module
 
-__all__ = [
-    'get_admin',
-    'get_admin_ids',
-    'get_entities',
-    'ingest',
-    'inspect_table',
-    'harmonize',
-    'enrich',
-    'curate',
-    'get_dataset',
-    'aggregate_files',
-    'aggregate_partitions',
-]
+# Maps each public name to the 'module:attribute' that implements it. Resolved
+# on first access by __getattr__ so the stages load only when actually used.
+_SOURCES = {
+    'get_admin': 'openplaces.io.readers:get_admin',
+    'get_admin_ids': 'openplaces.io.readers:get_admin_ids',
+    'get_entities': 'openplaces.io.readers:get_entities',
+    'get_dataset': 'openplaces.io.readers:get_dataset',
+    'ingest': 'openplaces.io.ingester:ingest',
+    'harmonize': 'openplaces.io.harmonizer:harmonize',
+    'enrich': 'openplaces.io.enricher:enrich',
+    'curate': 'openplaces.io.curator:curate',
+    'aggregate_files': 'openplaces.io.aggregate:aggregate_files',
+    'aggregate_partitions': 'openplaces.io.aggregate:aggregate_partitions',
+    'inspect_table': 'openplaces.utils:inspect_table',
+}
+
+__all__ = list(_SOURCES)
+
+
+def __getattr__(name: str):
+    source = _SOURCES.get(name)
+    if source is None:
+        raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+    module_path, attr = source.split(':')
+    value = getattr(import_module(module_path), attr)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return __all__
