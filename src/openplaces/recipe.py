@@ -8,6 +8,7 @@ get output paths etc.
 import glob
 import inspect
 from collections import Counter
+from functools import cache
 from pathlib import Path
 
 import pandas as pd
@@ -344,6 +345,35 @@ def find_recipe_id(admin_id, entity_or_dataset, filename=None, silent=False):
     if not silent:
         print(f'Picked last, sorted by version: {recipe_id}')
     return recipe_id
+
+
+@cache
+def iter_entity_sources() -> frozenset:
+    """Return the ``(entity_type, source_id)`` pairs across all entity recipes.
+
+    Scans the bundled recipes directory once (cached) and parses each recipe
+    filename for its entity token. Dataset/theme recipes and files whose entity
+    token does not parse are skipped. Used to auto-generate the provenance suffix
+    vocabulary so adding a new source needs no hardcoded list edits.
+    """
+    root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
+    pairs: set[tuple[str, str | None]] = set()
+    for filepath in root.rglob('*.yaml'):
+        parts = filepath.stem.split('_')
+        try:
+            AdminId(parts[0])
+            parts = parts[1:]
+        except ValueError:
+            pass
+        if not parts:
+            continue
+        try:
+            entity = Entity(parts[0])
+        except (ValueError, IndexError):
+            continue
+        source_id = getattr(entity.source, 'source_id', None) if entity.source else None
+        pairs.add((str(entity.entity_type), source_id))
+    return frozenset(pairs)
 
 
 def find_admin_recipe_id(admin_id, admin_level, silent=False):

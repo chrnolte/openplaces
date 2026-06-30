@@ -1,27 +1,100 @@
-name,description,unit,data_type,aggregation
-purpose_group,OpenPlaces purpose group,,categorical,join_nonnull
-purpose_subgroup,OpenPlaces purpose subgroup,,categorical,join_nonnull
-purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull
-openplaces_group,OpenPlaces top-level group,,categorical,first
-improvement_value,Assessed improvement value,USD,float,sum
-land_value,Assessed land value,USD,float,sum
-structure_value,NSI structure replacement value,USD,float,sum
-year_built,Year building was built,,float,mean
-address,Street address,,string,join_nonnull
-area_sqft,Floor area,sqft,float,mean
-n_stories,Number of stories,,float,mean
-n_dwelling_units,Number of dwelling units in the building,,float,sum
-roof_shape,Roof shape classification,,categorical,first
-occupancy_type,Inferred occupancy: residential class (Single-Family / Multi-Family / Mobile Home / Secondary) or NSI/parcel non-residential category,,categorical,first
-occupancy_type_parcel,Occupancy proposed from parcel land-use keywords (NSI-independent); reconciled into occupancy_type,,categorical,first
-occupancy_type_cheer,CHEER occupancy: occupancy_type with Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories,,categorical,first
-year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first
-recorded_date,Date the deed was recorded at the registry,,datetime,first
-doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first
-instrument_number,Registry instrument number,,string,first
-book,Registry book number,,string,first
-page,Registry page number,,string,first
-grantor,Grantor (seller) name as recorded,,string,first
-grantee,Grantee (buyer) name as recorded,,string,first
-price,Transaction price,USD,float,first
-price_raw,Transaction price as provided by the source,,string,first
+name,description,unit,data_type,aggregation,sort,entity_type,stage
+use_group,What the parcel or building is used for: current occupancy or taxation grouping (land and buildings),,categorical,join_nonnull,10,,
+use_subgroup,OpenPlaces use subgroup,,categorical,join_nonnull,11,,
+use_group_combined,Combined use group and subgroup label,,categorical,join_nonnull,12,,curate
+purpose_group,What the building was built (made) for; not applicable to unimproved land,,categorical,join_nonnull,10,building,
+purpose_subgroup,Building construction-purpose subgroup,,categorical,join_nonnull,11,building,
+purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull,12,footprint,curate
+occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category",,categorical,first,13,,curate
+group,OpenPlaces top-level group,,categorical,first,14,,
+land_value,Assessed land value,USD,float,sum,20,,
+improvement_value,Assessed improvement value,USD,float,sum,21,,
+structure_value,NSI structure replacement value,USD,float,sum,22,building,
+year_built,Year building was built,,float,mean,30,,
+address,Street address,,string,join_nonnull,40,,
+area_sqft,Floor area,sqft,float,mean,50,,
+n_stories,Number of stories,,float,mean,51,,
+n_dwellings,Number of dwelling units in the building,,float,sum,52,,
+roof_shape,Roof shape classification,,categorical,first,60,,enrich
+occupancy_type_parcel,"Occupancy proposed from parcel land-use keywords (NSI-independent); reconciled into occupancy_type",,categorical,first,70,,curate
+occupancy_type_footprint_fema,"Dominant FEMA USA Structures building occupancy on the footprint's parcel (by overlap area); evidence for occupancy inference",,categorical,first,,footprint,curate
+occupancy_type_base,"Occupancy class before Multi-Family is split into height bands (pre-refinement occupancy_type)",,categorical,first,14,,curate
+occupancy_type_conflict,"Occupancy evidence disagreement summary across all sources (e.g. 'nsi: X | fema: Y | parcel: Z'); null when the evidences agree",,categorical,first,71,,curate
+occupancy_type_review,Flag where improvement value is a small nonzero share of total value (possible manufactured home for review),,bool,first,71,footprint,curate
+p_manufactured_home,Probability of manufactured home classification,,float,mean,73,footprint,curate
+manufactured_home_community,Flag where the footprint sits on a parcel with more than the threshold count of manufactured-home footprints (a manufactured-home community),,bool,first,82,footprint,curate
+n_manufactured_homes_per_parcel,Number of manufactured-home footprints on the footprint's parcel,,float,first,,footprint,curate
+land_use_class,"Parcel land-use class inferred from assessor codes, linked-NSI group, and footprint morphology (e.g. Manufactured Home Park, RV Park)",,categorical,first,15,parcel,curate
+manufactured_home_park,Flag where the parcel is classified as a manufactured-home community/park,,bool,first,83,parcel,curate
+n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
+n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
+max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
+year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
+recorded_date,Date the deed was recorded at the registry,,datetime,first,,transaction,
+doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first,,transaction,
+instrument_number,Registry instrument number,,string,first,,transaction,
+book,Registry book number,,string,first,,transaction,
+page,Registry page number,,string,first,,transaction,
+grantor,Grantor (seller) name as recorded,,string,first,,transaction,
+grantee,Grantee (buyer) name as recorded,,string,first,,transaction,
+price,Transaction price,USD,float,first,,transaction,
+price_raw,Transaction price as provided by the source,,string,first,,transaction,
+parcel_id,Parcel identifier,,string,first,,parcel,
+parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,
+parcel_id_admin3,Parcel identifier unique within its admin-3 unit,,string,first,,parcel,
+parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,,parcel,
+parcel_id_tax,Tax-roll parcel identifier (assessor PIN),,string,first,,parcel,
+parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first,,,
+parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,
+n_transactions,Number of recorded transactions on the parcel,,float,sum,,parcel,harmonize
+is_transacted,Whether the parcel has any recorded transaction,,bool,first,,parcel,harmonize
+type,Record or unit type or class,,categorical,first,,
+address_number,Street address number,,string,first,,,
+address_street_name,Street name,,string,first,,,
+address_street_type,Street type (St Ave Rd etc.),,string,first,,,
+address_street_directional,Street directional prefix or suffix (N S E W),,string,first,,,
+address_street,Street name with type and directional,,string,first,,,
+address_unit_type,Address unit type (Apt Suite Unit etc.),,string,first,,,
+address_unit,Address unit or suite,,string,first,,,
+city,City or place name,,string,first,,,
+postal_code,Postal (ZIP) code,,string,first,,,
+legal_description,Legal description of the property,,string,first,,,
+subdivision,Subdivision name,,string,first,,parcel,
+subdivision_code,Subdivision code,,string,first,,parcel,
+owner_name,Owner name as recorded,,string,first,,parcel,
+owner_name_2,Second owner name as recorded,,string,first,,parcel,
+owner_address,Owner mailing street address,,string,first,,parcel,
+owner_address_2,Owner mailing street address continuation line,,string,first,,parcel,
+owner_city,Owner mailing city,,string,first,,parcel,
+owner_state,Owner mailing state or region (raw; use owner_admin2_id_admin1 when resolvable),,string,first,,parcel,
+owner_admin2_id_admin1,Owner mailing state/region as the level-2 admin id coded within admin1 (in-country),,string,first,,parcel,
+owner_postal_code,Owner mailing postal (ZIP) code,,string,first,,parcel,
+zoning_code,Zoning classification code,,categorical,first,,parcel,
+tax_district,Tax district code,,categorical,first,,parcel,
+tax_year,Assessment or tax year,,float,first,,parcel,
+tax_neighborhood_code,Assessor neighborhood or market-area code,,categorical,first,,parcel,
+use_group_code,Source land-use code paired with use_group,,categorical,first,,,
+use_subgroup_code,Source land-use code paired with use_subgroup,,categorical,first,,,
+land_use_group,Source land-use group classification,,categorical,first,,parcel,
+value,Total assessed value,USD,float,sum,23,parcel,
+market_value,Market (just) value,USD,float,sum,,parcel,
+special_feature_value,Assessed value of special features,USD,float,sum,,parcel,
+current_use_value,Current-use (present-use) assessed value,USD,float,sum,,parcel,
+personal_property_value,Assessed value of taxable personal property,USD,float,sum,,parcel,
+classified_market_value,Classified (present-use) market value,USD,float,sum,,parcel,
+last_sale_price,Price of the most recent recorded sale,USD,float,first,,parcel,
+last_sale_year,Year of the most recent recorded sale,,float,first,,parcel,
+last_sale_month,Month of the most recent recorded sale,,float,first,,parcel,
+last_sale_date,Date of the most recent recorded sale,,datetime,first,,parcel,
+last_sale_qualification_code,Qualification code of the most recent recorded sale,,categorical,first,,parcel,
+last_sale_vacant,Vacant or improved indicator at the most recent sale,,categorical,first,,parcel,
+last_sale_doc_type,Deed or instrument type of the most recent sale,,categorical,first,,parcel,
+last_sale_book_page,Registry book and page of the most recent sale,,string,first,,parcel,
+n_sales,Number of recorded sales,,float,sum,,parcel,
+n_buildings,Number of buildings on the parcel,,float,sum,,parcel,
+n_land_units,Number of land units,,float,sum,,parcel,
+has_structure,Whether the parcel has a structure,,bool,first,,parcel,
+geometry_source,Dataset the footprint geometry came from,,categorical,first,,footprint,
+source_date,Source last-update date,,datetime,first,,,
+priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
+m2,Footprint area,m2,float,sum,,,curate
