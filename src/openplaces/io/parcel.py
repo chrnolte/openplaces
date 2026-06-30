@@ -54,7 +54,7 @@ EMPTY_ATTRIBUTES_FRACTION_MAX = 0.8
 # and therefore don't add much value to an attribute table.
 EMPTY_ATTRIBUTES_IGNORE_COLUMNS = [
     'city',
-    'zip_code',
+    'postal_code',
     'school_district_id',
     'school_district_name',
     'source_date',
