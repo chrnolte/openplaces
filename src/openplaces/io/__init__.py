@@ -98,16 +98,24 @@ def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
 
     timeout = timeout or cfg.download_timeout
 
+    # Some servers reject the default python-requests User-Agent (404/403);
+    # present a browser UA, as the page-scraping path already does.
+    headers = {'User-Agent': 'Mozilla/5.0'}
+
     # Get file size for progress bar
     try:
-        response = requests.head(from_url, timeout=timeout, verify=verify_ssl)
+        response = requests.head(
+            from_url, timeout=timeout, verify=verify_ssl, headers=headers
+        )
         response.raise_for_status()
         total_size = int(response.headers.get('content-length', 0))
     except Exception:
         total_size = 0
 
     # Download with progress bar
-    response = requests.get(from_url, stream=True, timeout=timeout, verify=verify_ssl)
+    response = requests.get(
+        from_url, stream=True, timeout=timeout, verify=verify_ssl, headers=headers
+    )
     response.raise_for_status()
 
     if to_path.suffix == '':
@@ -641,6 +649,31 @@ def save(df: pd.DataFrame | gpd.GeoDataFrame, filepath: str | Path, **kwargs) ->
         )
 
 
+def coerce_mixed_object_columns(df):
+    """Cast mixed-type object columns to a clean nullable string dtype.
+
+    Flat-file sources and partition rollups can yield an object column that
+    mixes Python str and numeric values — e.g. a mostly-text ``grantor`` column
+    with a stray numeric cell, or a ``book`` column stored as int in one
+    partition file and str in another. pyarrow cannot serialize such a column to
+    Parquet. Only the genuinely mixed columns are cast to pandas ``'string'``
+    (null-preserving); columns already typed as numeric, datetime, categorical,
+    or geometry are left untouched. Used both at ingest save and at partition
+    aggregation so either write path is robust to dtype heterogeneity.
+
+    Parameters
+    ----------
+    df : DataFrame or GeoDataFrame
+        Table about to be written to Parquet. Mutated in place and returned.
+    """
+    for col in df.columns:
+        if col == 'geometry' or df[col].dtype != object:
+            continue
+        if pd.api.types.infer_dtype(df[col], skipna=True) in ('mixed', 'mixed-integer'):
+            df[col] = df[col].astype('string')
+    return df
+
+
 def save_parquet(
     gdf, parquet_path, simplified_geometry=None, combined=False, file_metadata=None
 ):
@@ -831,6 +864,43 @@ def read_parquet(
     return df
 
 
+class DataDeletionError(OSError):
+    """Raised when an unzipped dataset could not be fully deleted.
+
+    A partial deletion, typically caused by a file sync app (e.g. Dropbox)
+    locking files mid-removal, leaves a corrupt copy on disk that a later
+    ingest would silently reuse. Deletion failures therefore interrupt the run
+    rather than warn.
+    """
+
+
+def _deletion_interrupted_error(path: Path, *, is_dir: bool) -> DataDeletionError:
+    """Build a DataDeletionError naming *path* with a clickable file link.
+
+    The ``file://`` URI is rendered as a clickable link by most terminals and
+    Jupyter, opening the location in the OS file browser (e.g. Explorer) so the
+    leftover, partially deleted dataset can be removed by hand.
+
+    Parameters
+    ----------
+    path : Path
+        Path whose deletion was interrupted.
+    is_dir : bool
+        Whether the path is a directory (e.g. a geodatabase) or a single file.
+    """
+    resolved = Path(path).resolve()
+    target = 'directory' if is_dir else 'file'
+    return DataDeletionError(
+        f'\n\nInterrupted while deleting an unzipped {target}.\n\n'
+        'A file sync app (e.g., Dropbox) is most likely locking files here,\n'
+        'leaving a partially deleted, corrupt copy that the next ingest would '
+        'silently reuse.\n\n'
+        f'  {resolved}\n'
+        f'  {resolved.as_uri()}\n\n'
+        'Pause or quit the sync app, delete the path above, then re-run.\n\n'
+    )
+
+
 def delete_data(data_path, delete_empty_parent_dirs=True):
     """Delete dataset from openplaces filesystem
 
@@ -852,19 +922,21 @@ def delete_data(data_path, delete_empty_parent_dirs=True):
     if data_path.suffix == '.gdb':
         try:
             shutil.rmtree(data_path)
-        except PermissionError:
-            warnings.warn(
-                '\n\nUnable to delete geodatabase directory due to permission error:'
-                + f'\n\n{data_path}\n\n'
-                'Is a file sync app running (e.g., Dropbox)? '
-                'If so, quit and retry, or remove the directory manually.\n\n'
-            )
+        except OSError as error:
+            raise _deletion_interrupted_error(data_path, is_dir=True) from error
+        # rmtree can stop partway when a lock is released mid-walk; confirm the
+        # directory is actually gone so a partial geodatabase is never reused.
+        if data_path.exists():
+            raise _deletion_interrupted_error(data_path, is_dir=True)
 
     elif data_path.suffix == '.shp':
         for shapefile_extension in SHAPEFILE_EXTENSIONS:
             data_path.with_suffix(shapefile_extension).unlink(missing_ok=True)
     else:
-        data_path.unlink()
+        try:
+            data_path.unlink()
+        except OSError as error:
+            raise _deletion_interrupted_error(data_path, is_dir=False) from error
 
     if delete_empty_parent_dirs:
         current_dir = data_path.parent
