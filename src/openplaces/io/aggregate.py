@@ -12,7 +12,12 @@ import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
 from openplaces.core.schema import AdminId
-from openplaces.io import delete_data, read_parquet, save_parquet
+from openplaces.io import (
+    coerce_mixed_object_columns,
+    delete_data,
+    read_parquet,
+    save_parquet,
+)
 from openplaces.io.readers import get_admin
 from openplaces.recipe import (
     get_output_path,
@@ -327,6 +332,7 @@ def _aggregate_to_file(
                 merged[col] = pd.Categorical(
                     merged[col], categories=cats, ordered=ordered
                 )
+        merged = coerce_mixed_object_columns(merged)
         save_parquet(merged, final_path, combined=combined, file_metadata=file_metadata)
     except PermissionError as e:
         raise PermissionError(
