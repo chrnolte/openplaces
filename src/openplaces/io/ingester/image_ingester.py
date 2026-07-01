@@ -18,15 +18,54 @@ import pandas as pd
 from shapely.geometry import MultiPolygon, Point, Polygon
 
 from openplaces.core.schema import AdminId
-from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.scrapers.types import AssetInventory, ImageSet
 from openplaces.recipe import get_output_path, get_recipe_by_id, get_save_admin_level
+
+# Substrings marking a credential field as secret; such fields are never printed.
+_SECRET_MARKERS = ('key', 'secret', 'token', 'password', 'signing')
+
+
+class ImageScraperError(RuntimeError):
+    """An image scraper could not be initialized (e.g. credentials/billing).
+
+    Raised by `_build_scraper` so batch callers can skip a single image recipe
+    (e.g. Street View when its Google Cloud project lacks billing) and continue
+    with the rest of the run, rather than aborting.
+    """
+
+
+def _safe_credential_summary(credentials: dict) -> str:
+    """Return identifying credential fields safe to display, secrets redacted.
+
+    Shows non-secret fields (e.g. a ``project`` or ``account`` entry the user
+    adds to credentials.yaml) so a failure can name the offending project or
+    account without ever printing the api key or signing secret.
+
+    Parameters
+    ----------
+    credentials
+        The credential mapping for one service from credentials.yaml.
+
+    Returns
+    -------
+    str
+        Comma-separated ``field=value`` pairs, or '' when nothing is safe to
+        show.
+    """
+    shown = {
+        key: value
+        for key, value in credentials.items()
+        if not any(marker in key.lower() for marker in _SECRET_MARKERS)
+    }
+    return ', '.join(f'{key}={value}' for key, value in shown.items())
 
 
 def fetch_images_by_admin(
     ingester,
     n_sample: int | None = None,
     target_recipe_id: str | None = None,
+    redownload: bool = False,
 ) -> None:
     """Fetch Google images per building and write metadata parquets per admin unit.
 
@@ -57,6 +96,10 @@ def fetch_images_by_admin(
         ``'US_building-nsi-2022'`` for NSI point buildings,
         ``'US_footprint-spine-2026'`` for polygon footprints).  When
         ``None``, falls back to ``recipe['entity_recipe']``.
+    redownload
+        Missing images are always fetched (first ingest downloads imagery).
+        When ``True``, images that already exist on disk are re-downloaded
+        and overwritten rather than reused.
     """
     recipe = ingester.recipe
     scraper_name = recipe['image_scraper']
@@ -131,6 +174,7 @@ def fetch_images_by_admin(
             str(image_dir),
             entity_type=entity_type,
             download_year=today.year,
+            redownload=redownload,
         )
 
         zoom_level = recipe.get('zoom_level')
@@ -148,6 +192,51 @@ def fetch_images_by_admin(
                     f'{len(meta_df):,d} buildings.'
                 )
             print(f'  Saved metadata → {output_path}')
+
+
+def load_image_metadata(image_recipe_id: str, admin_id) -> pd.DataFrame | None:
+    """Load persisted image metadata for an admin unit, indexed by entity id.
+
+    Reads the metadata parquet(s) written by `fetch_images_by_admin` for the
+    image recipe `image_recipe_id`. When the image recipe saves at a finer admin
+    level than `admin_id` (e.g. images saved per town but `admin_id` is a
+    county), the per-child frames are concatenated. Tolerant of missing files:
+    children without imagery are skipped and ``None`` is returned when no
+    metadata exists at all (e.g. a scraper whose ingest was skipped).
+
+    Parameters
+    ----------
+    image_recipe_id : str
+        Recipe ID of the image entity (e.g. ``'image-googlesatellite-z20'``).
+    admin_id : str or AdminId
+        Admin unit to load metadata for.
+
+    Returns
+    -------
+    pandas.DataFrame or None
+        Metadata indexed by entity (footprint) id with an ``image_path`` column
+        (plus ``image_found`` and camera fields), or ``None`` if no metadata
+        files are found.
+    """
+    admin_id = AdminId(admin_id) if isinstance(admin_id, str) else admin_id
+    image_recipe = get_recipe_by_id(image_recipe_id)
+    save_level = get_save_admin_level(image_recipe)
+
+    if save_level > admin_id.get_level():
+        child_admin_ids = get_admin_ids(save_level, admin_id)
+    else:
+        child_admin_ids = [admin_id]
+
+    frames = []
+    for child_admin_id in child_admin_ids:
+        try:
+            frames.append(get_entities(image_recipe, child_admin_id))
+        except FileNotFoundError:
+            continue
+
+    if not frames:
+        return None
+    return pd.concat(frames)
 
 
 def _build_scraper(scraper_name: str, recipe: dict, verbose: bool = False):
@@ -177,19 +266,33 @@ def _build_scraper(scraper_name: str, recipe: dict, verbose: bool = False):
         return GoogleSatellite()
 
     if scraper_name == 'google_streetview':
+        from openplaces.config import cfg
         from openplaces.io.scrapers.google_streetview import GoogleStreetview
 
         credentials = _load_credentials(scraper_name)
-        return GoogleStreetview(
-            {
-                'apiKey': credentials['api_key'],
-                'urlSigningSecret': credentials.get('url_signing_secret'),
-                'pitch': recipe.get('street_pitch', 0),
-                'verbose': verbose,
-                'max_workers': recipe.get('max_workers', 8),
-                'batch_size': recipe.get('batch_size', 32),
-            }
-        )
+        try:
+            return GoogleStreetview(
+                {
+                    'apiKey': credentials['api_key'],
+                    'urlSigningSecret': credentials.get('url_signing_secret'),
+                    'pitch': recipe.get('street_pitch', 0),
+                    'verbose': verbose,
+                    'max_workers': recipe.get('max_workers', 8),
+                    'batch_size': recipe.get('batch_size', 32),
+                }
+            )
+        except (ValueError, ConnectionError) as exception:
+            summary = _safe_credential_summary(credentials)
+            using = f'\nUsing credentials: {summary}' if summary else ''
+            raise ImageScraperError(
+                f"Could not initialize the '{scraper_name}' image scraper from "
+                f'{cfg.credentials_path}.{using}\n'
+                f'Google reported: {exception}\n'
+                'If this is a billing error, enable billing on the Google Cloud '
+                'project that owns this key and confirm the Street View Static '
+                'API is enabled. Add a non-secret `project:` or `account:` field '
+                "to this service's credentials entry to name it here."
+            ) from exception
 
     raise ValueError(
         f"Unknown image_scraper '{scraper_name}'. "

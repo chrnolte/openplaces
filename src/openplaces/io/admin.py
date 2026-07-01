@@ -16,10 +16,14 @@ import pandas as pd
 
 from openplaces.core.constants import (
     ADMIN1_IDS_USING_HASC1_FOR_ADMIN2,
+    ADMIN_GENERIC_WORDS,
+    ADMIN_NA_TOKENS,
+    ADMIN_NAME_PREFIXES,
     REGEX_ADMIN2_IDS_AA_AA,
     REGEX_ADMIN2_IDS_AA_AA_EXTRACT,
     REGEX_ADMIN2_IDS_HASC,
     REGEX_ADMIN3_IDS_HASC,
+    REGEX_ADMIN_TYPE_EXTRACT,
     STRING_SEPARATOR_WITHIN_IDS,
 )
 from openplaces.io.readers import get_admin
@@ -516,19 +520,30 @@ def admin3_id_index_from_admin3_gadm(admin3):
     return admin3.set_index('admin3_id').drop(columns='_name')
 
 
-def admin3_id_index_from_admin3_US_nhgis(admin3_local):
-    return admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-nhgis-2020')
+def admin3_id_index_from_local(admin3_local, country_id, admin_entity):
+    """Index a country's local admin-3 source against the global spine.
 
+    Joins the local admin-3 units to the global (GADM-derived) admin-3 layer by
+    parent admin-2 and cleaned name, applies the country's name corrections and
+    explicit ID overrides (CSV assets stored beside its admin recipe), and
+    returns the frame indexed by ``admin3_id``.
 
-def admin3_id_index_from_admin3_US_census(admin3_local):
-    return admin3_id_index_from_admin3_US(
-        admin3_local, admin_entity='admin-census-2021'
-    )
+    Wired from a recipe via ``create_index.function`` with
+    ``args: {country_id, admin_entity}`` (``index_function:`` cannot pass args).
 
-
-def admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-census-2021'):
-    # Join states
-    admin2_recipe = get_recipe('US', admin_entity, filename='admin2')
+    Parameters
+    ----------
+    admin3_local : GeoDataFrame
+        Local admin-3 source with at least ``name`` and ``admin2_id_admin1``
+        (and usually ``name_long`` and ``admin3_id_admin1``).
+    country_id : str
+        Admin-1 country ID whose recipe assets are read (e.g. ``'US'``).
+    admin_entity : str
+        Admin recipe entity holding the crosswalk assets
+        (e.g. ``'admin-census-2021'``).
+    """
+    # Join states (admin-2)
+    admin2_recipe = get_recipe(country_id, admin_entity, filename='admin2')
     admin2_crosswalk = (
         get_admin(level=2, recipe=admin2_recipe, columns=['admin2_id_admin1'])
         .reset_index()
@@ -539,20 +554,23 @@ def admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-census-2021
     # Create name-based identifier
     admin3_local['name_link'] = admin3_local['name'].apply(create_comparable_name_link)
 
-    # Add ' city' to the name_link for duplicate name + state
-    # (e.g. Baltimore county vs. city)
-    i_city_duplicates = admin3_local[['admin2_id', 'name']].duplicated(
-        keep=False
-    ) & admin3_local['name_long'].eq(admin3_local['name'] + ' city')
-    admin3_local.loc[i_city_duplicates, 'name_link'] += ' city'
+    # Disambiguate duplicate names within a parent using the long name's type
+    # suffix (e.g. Baltimore county vs. Baltimore city in the US). Only fires
+    # where a ``name_long`` of "<name> city" is present, so it is a no-op for
+    # countries without that convention.
+    if 'name_long' in admin3_local:
+        i_city_duplicates = admin3_local[['admin2_id', 'name']].duplicated(
+            keep=False
+        ) & admin3_local['name_long'].eq(admin3_local['name'] + ' city')
+        admin3_local.loc[i_city_duplicates, 'name_link'] += ' city'
 
     # Load global reference layer (GADM)
-    admin3 = get_admin('US', level=3)
+    admin3 = get_admin(country_id, level=3)
     admin3['admin2_id'] = admin3.index.str.slice(0, 5)
 
     # Correct (replace) names from global reference layer to official
     admin3_name_crosswalk = get_recipe(
-        'US', admin_entity, filename='admin3-names-from-gadm'
+        country_id, admin_entity, filename='admin3-names-from-gadm'
     )
     for _, row in admin3_name_crosswalk.iterrows():
         admin3.loc[
@@ -571,7 +589,7 @@ def admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-census-2021
 
     # Set new admin3_ids for units that don't exist in the global layer
     new_admin3_ids = get_recipe(
-        'US',
+        country_id,
         admin_entity,
         filename='admin3-ids',
         dtype={'admin3_id_admin1': str},
@@ -588,13 +606,13 @@ def admin3_id_index_from_admin3_US(admin3_local, admin_entity='admin-census-2021
 
     i_dupl = admin3_local['admin3_id'].duplicated(keep=False)
     if i_dupl.any():
+        report_cols = [
+            c
+            for c in ['admin3_id_admin1', 'name', 'name_long', 'admin3_id']
+            if c in admin3_local
+        ]
         raise ValueError(
-            'Duplicate `admin3_id`:\n'
-            + str(
-                admin3_local[i_dupl][
-                    ['admin3_id_admin1', 'name', 'name_long', 'admin3_id']
-                ]
-            )
+            'Duplicate `admin3_id`:\n' + str(admin3_local[i_dupl][report_cols])
         )
 
     return admin3_local.set_index('admin3_id')
@@ -651,20 +669,37 @@ def fold_to_ascii(text):
     return ''.join(chars)
 
 
-def clean_geographic_name(name):
-    """
-    Comprehensive cleaning for admin4 geographic names.
-    Returns: (clean_text, digits, letter_suffix, generic_word)
+def clean_geographic_name(
+    name,
+    *,
+    na_tokens=ADMIN_NA_TOKENS,
+    prefixes=ADMIN_NAME_PREFIXES,
+    generic_words=ADMIN_GENERIC_WORDS,
+):
+    """Clean an administrative-unit name into structured components.
+
+    Language-agnostic: the vocabulary lists default to the broadened
+    English/Spanish sets in `openplaces.core.constants` but can be overridden
+    (e.g. per recipe) to support other languages without editing this function.
+
+    Parameters
+    ----------
+    name : str
+        Raw administrative-unit name.
+    na_tokens : Iterable[str], optional
+        Lower-cased tokens treated as "no name".
+    prefixes : Iterable[str], optional
+        Leading articles/honorifics stripped from the name.
+    generic_words : Iterable[str], optional
+        Generic administrative words detected alongside a number.
+
+    Returns
+    -------
+    tuple
+        ``(clean_text, digits, letter_suffix, generic_word)``.
     """
     # Handle None/NA/null cases
-    if pd.isna(name) or str(name).strip().lower() in [
-        'none',
-        'nan',
-        'null',
-        '',
-        'n.a.',
-        'n/a',
-    ]:
+    if pd.isna(name) or str(name).strip().lower() in set(na_tokens):
         return '', '', '', ''
 
     text = str(name).strip()
@@ -705,9 +740,9 @@ def clean_geographic_name(name):
     # 6. Remove "No." prefix
     text = re.sub(r'\bNo\.?\s+', '', text, flags=re.I).strip()
 
-    # 7. Remove prefixes (Al, San, El, La, The)
-    prefixes = r'\b(Al|San|El|La|The)\b'
-    text = re.sub(prefixes, '', text, flags=re.I).strip()
+    # 7. Remove leading articles/honorifics (e.g. The, San, El, La)
+    prefix_re = r'\b(' + '|'.join(re.escape(p) for p in prefixes) + r')\b'
+    text = re.sub(prefix_re, '', text, flags=re.I).strip()
 
     # 8. Handle "Division No. X" pattern
     div_pattern = re.search(r'Division\s+No\.?\s+(\d+)', text, re.I)
@@ -727,17 +762,6 @@ def clean_geographic_name(name):
         text = re.sub(r'\d+\s*[a-z]+$', '', text, flags=re.I).strip()
 
     # 12. DETECT generic words
-    generic_words = [
-        'ward',
-        'zone',
-        'mariposa',
-        'barangay',
-        'bgy',
-        'district',
-        'division',
-        'subd',
-        'subdivision',
-    ]
     for word in generic_words:
         if re.search(rf'\b{word}\b', text, re.I):
             match = re.search(rf'\b({word})\b', text, re.I)
@@ -785,7 +809,8 @@ def generate_admin_ids(
     new_admin_id_col='admin4_id',
     parent_admin_id_col='admin3_id',
     name_col='name',
-    id_separator='-',
+    id_separator=STRING_SEPARATOR_WITHIN_IDS,
+    name_cleaning=None,
     verbose=False,
 ):
     """
@@ -854,13 +879,12 @@ def generate_admin_ids(
         Column name containing parent admin ID (e.g., 'admin3_id')
     name_col : str
         Column name containing subdivision name
-    name_long_col : str, optional
-        Column name containing long-form name.
-        Example: in the US, this might include 'city' and 'township'
-        suffixes that resolve ambiguities between entity names
-        If None or column doesn't exist, city/township detection is skipped
     id_separator : str
-        Separator to use in IDs (default '_')
+        Separator to use in IDs (default ``STRING_SEPARATOR_WITHIN_IDS``)
+    name_cleaning : dict, optional
+        Overrides forwarded to :func:`clean_geographic_name` (e.g.
+        ``{'prefixes': [...], 'generic_words': [...]}``) to support a specific
+        language. Defaults to the broadened English/Spanish vocabulary.
     verbose : bool
         If True, prints statistics and other outputs
 
@@ -882,7 +906,9 @@ def generate_admin_ids(
     admin[id_source_col] = None
 
     # Apply cleaning logic
-    cleaned_data = admin[name_col].apply(clean_geographic_name)
+    cleaned_data = admin[name_col].apply(
+        lambda n: clean_geographic_name(n, **(name_cleaning or {}))
+    )
     admin['_name_clean'] = cleaned_data.apply(lambda x: x[0].replace(' ', ''))
     admin['_name_words'] = cleaned_data.apply(lambda x: x[0].split())
     admin['_digits'] = cleaned_data.apply(lambda x: x[1])
@@ -1325,8 +1351,6 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         If True, silences printouts when new admin IDs are added.
     """
 
-    REGEX_ADMIN_TYPE_EXTRACT = '(Census Area|Borough|City|Municipality|Municipio)$'
-
     # Load admin spine
     admin_spine = get_admin(level=level, all_columns=True)
     # Load admin recipe (silently: don't trigger warning from additions)
@@ -1354,16 +1378,43 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         new_admin_entries = admin_local.loc[new_admin_ids].copy()
 
         if 'name_long' in new_admin_entries:
-            # US-specific: extract 'Census Area', 'Borough', 'City', 'Municipality'
+            # Extract the trailing admin-type word from the long name (e.g.
+            # 'Census Area', 'Borough', 'City', 'Municipio'). Language-agnostic:
+            # the term list lives in `REGEX_ADMIN_TYPE_EXTRACT`.
             new_admin_entries['type'] = (
                 new_admin_entries['name_long']
                 .str.title()
                 .str.extract(REGEX_ADMIN_TYPE_EXTRACT)
             )
-            # US-specific: add 'city' suffix to names of cities that have
-            # duplicate names with counties
-            new_admin_entries.loc[new_admin_entries['type'].eq('City'), 'name'] += (
-                ' city'
+            # Disambiguate units that share a name with another unit under the
+            # same parent (e.g. an independent city vs. its county) by appending
+            # the lowercased type word to the name. Generic: fires only on a
+            # genuine name collision, so it is a no-op where names are unique.
+            sep = STRING_SEPARATOR_WITHIN_IDS
+
+            def _parents(index):
+                return index.to_series().str.rsplit(sep, n=1).str[0].to_numpy()
+
+            spine_parents = _parents(admin_spine.index)
+            new_parents = _parents(new_admin_entries.index)
+            spine_names = admin_spine['name'].to_numpy()
+            new_names = new_admin_entries['name'].to_numpy()
+            combined = pd.DataFrame(
+                {
+                    'parent': np.concatenate([spine_parents, new_parents]),
+                    'name': np.concatenate([spine_names, new_names]),
+                }
+            )
+            dup = combined.duplicated(['parent', 'name'], keep=False)
+            dup_pairs = set(map(tuple, combined[dup][['parent', 'name']].to_numpy()))
+            i_collision = (
+                np.array([(p, n) in dup_pairs for p, n in zip(new_parents, new_names)])
+                & new_admin_entries['type'].notna().to_numpy()
+            )
+            new_admin_entries.loc[i_collision, 'name'] = (
+                new_admin_entries.loc[i_collision, 'name']
+                + ' '
+                + new_admin_entries.loc[i_collision, 'type'].str.lower()
             )
 
         # Align columns

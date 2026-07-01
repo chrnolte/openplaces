@@ -1,0 +1,65 @@
+# Recipe: canonical openplaces parcel dataset.
+#
+# Curates the harmonized parcel spine into canonical parcel attributes. Its main
+# job for the footprint lane is land-use classification: deriving the parcel's
+# occupancy group from linked NSI (the modal-NSI inference moved here from the
+# footprint recipe) and classifying manufactured-home parks vs RV parks from the
+# same evidence mix. The footprint curation (US_footprint-cheer-2026) consumes
+# this output, so parcels are curated first.
+
+description: >-
+  Canonical openplaces parcels: land-use classification (incl. manufactured-home
+  park vs RV park) from assessor codes, linked-NSI group, and footprint morphology.
+
+stage: curate
+admin_id: US
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: openplaces
+  version: 2026
+
+entity_recipe: US_parcel-spine-2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+  # Infer the parcel occupancy group from the most common NSI building group per
+  # assessor use code (the linked-data inference moved here from the footprint
+  # recipe; it is parcel-level work).
+  - step: infer_from_group_statistic
+    group_column: use_group_combined
+    value_column: group_building_nsi
+    statistic: mode
+    output: group_parcel
+
+  # Classify parcel land use by weighted indicator voting. Manufactured-home park
+  # and RV park share a footprint signature (many small structures on one parcel),
+  # so they are separated by the assessor use string, the linked-NSI group, and
+  # footprint morphology. Vocabulary lives here; the step holds no class names.
+  - step: classify_parcel_land_use
+    output: land_use_class
+    flag_column: manufactured_home_park
+    flag_class: Manufactured Home Park
+    rules:
+      - class: Manufactured Home Park
+        min_score: 2
+        indicators:
+          - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED|MH PARK'}
+          - {type: in_set, column: group_parcel, values: [Manufactured Home]}
+          - {type: count_at_least, column: n_small_elongated_footprints_per_parcel, min: 4}
+      - class: RV Park
+        min_score: 2
+        indicators:
+          - {type: keyword, column: use_group_combined, pattern: 'RV|CAMPGROUND|RECREATION|MOTORHOME'}
+          - {type: in_set, column: group_parcel, values: [Recreation, Commercial]}
+          - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
+
+  - step: cast_categoricals
+
+  - step: order_columns

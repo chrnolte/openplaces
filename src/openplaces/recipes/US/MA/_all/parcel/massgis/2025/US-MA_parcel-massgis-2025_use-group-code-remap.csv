@@ -1,0 +1,90 @@
+use_group_code,use_group,use_subgroup
+101,residential,single family
+102,residential,condominium
+103,residential,mobile home
+104,residential,two family
+105,residential,three family
+106,residential,accessory land with improvement
+109,residential,multiple houses on one parcel
+111,residential,apartments 4-8 units
+112,residential,apartments over 8 units
+113,residential,apartments over 8 units
+114,residential,apartments over 8 units
+115,residential,apartments over 8 units
+117,residential,apartments
+118,residential,apartments
+121,residential,rooming or boarding house
+125,residential,other residential
+130,residential,developable residential land
+131,residential,potentially developable residential land
+132,residential,undevelopable residential land
+140,residential,child care facility
+013,mixed,mixed residential commercial
+031,mixed,mixed residential commercial
+0130,mixed,mixed residential commercial
+300,commercial,hotel motel
+301,commercial,hotel
+302,commercial,motel
+303,commercial,inn resort
+304,commercial,nursing home
+305,commercial,hospital
+310,commercial,storage warehouse
+316,commercial,warehouse
+322,commercial,shopping center retail
+323,commercial,retail outlet
+324,commercial,supermarket
+325,commercial,retail store
+326,commercial,retail condominium
+330,commercial,office building
+332,commercial,office building
+334,commercial,bank office condominium
+340,commercial,general office
+341,commercial,bank
+353,commercial,restaurant
+362,commercial,parking garage
+375,commercial,golf course
+380,commercial,manufactured housing community
+390,commercial,vacant commercial land
+400,industrial,manufacturing
+401,industrial,warehouse industrial
+404,industrial,research industrial park
+413,industrial,industrial condominium
+440,industrial,vacant industrial land
+500,exempt,personal property
+600,open_space,chapter 61 forest land
+601,open_space,chapter 61 forest land
+612,open_space,chapter 61a agricultural land
+613,open_space,chapter 61a horticultural land
+617,open_space,chapter 61b recreational land
+670,open_space,chapter 61b recreational land
+710,open_space,conservation land
+900,exempt,exempt vacant land
+901,exempt,exempt residential
+903,exempt,united states government
+905,exempt,municipal
+907,exempt,charitable
+908,exempt,religious
+920,exempt,exempt
+930,exempt,vacant exempt
+931,exempt,exempt
+932,exempt,improved exempt
+933,exempt,exempt
+934,exempt,exempt
+935,exempt,exempt
+936,exempt,exempt
+937,exempt,exempt
+938,exempt,exempt
+939,exempt,exempt
+940,exempt,exempt
+941,exempt,exempt
+942,exempt,exempt
+950,exempt,exempt
+960,exempt,exempt
+970,exempt,exempt
+980,exempt,exempt
+990,exempt,exempt
+995,exempt,exempt
+199,residential,other residential
+337,commercial,commercial
+338,commercial,commercial
+339,commercial,commercial

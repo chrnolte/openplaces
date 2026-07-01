@@ -47,8 +47,8 @@ columns:
   city: SITUS_CITY
   legal_area: LEGAL_AREA
   legal_area_unit: LGL_AREA_UNIT
-  land_use_group_admin2: STAT_LAND_USE
-  land_use_group_admin3: LOC_LAND_USE
+  use_group_admin2: STAT_LAND_USE
+  use_group_admin3: LOC_LAND_USE
   year_built: YEAR_BUILT
   owner_name: OWNER_NAME
   owner_name_co: NAME_CARE

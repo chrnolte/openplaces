@@ -32,9 +32,9 @@ from openplaces.io import (
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
-from openplaces.io.raster_ingester import fetch_rasters_by_admin
+from openplaces.io.ingester.raster_ingester import fetch_rasters_by_admin
+from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.io.readers import get_admin, get_entities
-from openplaces.io.table_ingester import TableIngester
 from openplaces.path import (
     external_dir,
     heap_dir,
@@ -54,6 +54,37 @@ from openplaces.recipe import (
 )
 from openplaces.timing import Timer, get_timer
 from openplaces.utils import format_list, inspect_table
+
+
+def _match_extracted_file(heap_dir: Path, expected_path: Path) -> Path | None:
+    """Locate an unzipped file when its inner name varies slightly from expected.
+
+    Some archives ship an inner filename that differs from the declared
+    ``uncompressed_file_name`` by a minor variation (e.g. a doubled extension
+    ``sales_2019_YTD.xlsx.xlsx``). This searches *heap_dir* recursively for the
+    exact expected name first, then, failing that, for files sharing the expected
+    stem; the stem fallback resolves only when it is unambiguous (exactly one
+    match), so genuine multi-file archives are left strict.
+
+    Parameters
+    ----------
+    heap_dir : Path
+        Directory the archive was extracted into.
+    expected_path : Path
+        The declared (concrete, non-wildcard) path whose name was not found.
+
+    Returns
+    -------
+    Path or None
+        The resolved file, or ``None`` if no unambiguous match exists.
+    """
+    exact = next(heap_dir.rglob(expected_path.name), None)
+    if exact is not None:
+        return exact
+    candidates = sorted(
+        p for p in heap_dir.rglob(expected_path.stem + '*') if p.is_file()
+    )
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _warn_registry_type_mismatches(gdf) -> None:
@@ -277,7 +308,10 @@ class Ingester:
             even if the output data already exists.
         redownload : bool
             If True, re-downloads the original data file even if it
-            already exists. Also sets `reprocess` to `True`.
+            already exists. Also sets `reprocess` to `True`. For image
+            recipes, missing imagery is always fetched on first ingest;
+            `redownload` only re-fetches images that already exist on disk
+            (otherwise cached images are reused).
         keep_unzipped : bool
             If True, keeps unzipped files in 'heap' folder after
             the download partition has been processed.
@@ -321,6 +355,7 @@ class Ingester:
                 self,
                 n_sample=self.recipe.get('n_sample'),
                 target_recipe_id=target_recipe_id or self.recipe.get('entity_recipe'),
+                redownload=redownload,
             )
             return
 
@@ -927,7 +962,7 @@ class Ingester:
         Unlike :meth:`_resolve_tile_ids`, no pre-ingested tile dataset is needed.
         The ``tile_admin_link`` MultiIndex DataFrame is computed in memory.
         """
-        from openplaces.io.cloud_geoparquet_ingester import tile_ids_for_admin
+        from openplaces.io.ingester.cloud_geoparquet_ingester import tile_ids_for_admin
 
         download_by = self.recipe.get('download_by') or {}
         tile_size_deg = float(download_by.get('tile_size_deg', 1.0))
@@ -1421,7 +1456,7 @@ class Ingester:
         """
 
         if (self.recipe.get('download_by') or {}).get('partition') == 'latlon_tile':
-            from openplaces.io.cloud_geoparquet_ingester import (
+            from openplaces.io.ingester.cloud_geoparquet_ingester import (
                 fetch_latlon_tile_to_cache,
             )
 
@@ -1550,8 +1585,9 @@ class Ingester:
             and not self.download_partition['data_path'].exists()
             and self.recipe_heap_dir.exists()
         ):
-            _target_name = self.download_partition['data_path'].name
-            _found = next(self.recipe_heap_dir.rglob(_target_name), None)
+            _found = _match_extracted_file(
+                self.recipe_heap_dir, self.download_partition['data_path']
+            )
             if _found is not None:
                 self.download_partition['data_path'] = _found
                 if self.verbose:
@@ -1877,7 +1913,7 @@ def ingest(
             scraper.get('ingester') if isinstance(scraper, dict) else scraper
         )
         if ingester_name == 'registry':
-            from openplaces.io.registry_ingester import RegistryIngester
+            from openplaces.io.ingester.registry_ingester import RegistryIngester
 
             RegistryIngester(
                 recipe,

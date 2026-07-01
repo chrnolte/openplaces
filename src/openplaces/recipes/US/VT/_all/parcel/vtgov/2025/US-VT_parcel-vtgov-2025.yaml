@@ -50,14 +50,14 @@ columns:
   location: LOCAPROP
   owner_name: OWNER1
   owner_name_2: OWNER2
-  owner_street: ADDRGL1
-  owner_street_2: ADDRGL2
+  owner_address: ADDRGL1
+  owner_address_2: ADDRGL2
   owner_city: CITYGL
-  owner_state: STGL
-  owner_zip: ZIPGL
+  owner_admin2_id_admin1: STGL
+  owner_postal_code: ZIPGL
   description: DESCPROP
-  purpose_group: CAT
-  property_type: PROPTYPE
+  use_group: CAT
+  use_subgroup: PROPTYPE
   resident_type: RESCODE
   value: REAL_FLV
   land_value: LAND_LV

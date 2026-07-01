@@ -46,6 +46,21 @@ columns:
 columns_to_categorical:
   - polygon_type
 
+# Expose the raw assessor parcel id (a copy of the admin-4-level MassGIS
+# map-parcel id) under the canonical name parcel_id_assessor, so it is the raw
+# key parcel_id_local derives from (consistent across parcel recipes).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin4]
+    output: parcel_id_assessor
+
+# Standardized matching key from the MassGIS map-parcel id. Processed per town
+# (admin4), so each chunk resolves its town-specific conversion automatically.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
 # Save one file per county (aggregated from town-level processing chunks)
 save_to:
   admin_level: 3
@@ -59,35 +74,40 @@ additional_layers:
       source:
         source_id: massgis
       version: 2025
+    # Within-source join key: both this layer and the primary parcel entity
+    # map LOC_ID to parcel_id_admin2, so a harmonizer that links this layer
+    # to the spine should join on that column rather than parcel_id_local
+    # (reserved for matching against a genuinely different source).
+    layer_key: parcel_id_admin2
     columns:
       property_id_assessor: PROP_ID
       property_id_admin2: MA_PROP_ID
       property_id_cama: CAMA_ID
       parcel_id_admin2: LOC_ID
       parcel_id_admin4: MAP_PAR_ID
-      street: SITE_ADDR
+      address: SITE_ADDR
       city: CITY
       zip: ZIP
-      building_value: BLDG_VAL
+      improvement_value: BLDG_VAL
       land_value: LAND_VAL
       other_value: OTHER_VAL
-      total_value: TOTAL_VAL
+      value: TOTAL_VAL
       assessment_year: FY
       owner_name: OWNER1
-      owner_street: OWN_ADDR
+      owner_address: OWN_ADDR
       owner_city: OWN_CITY
-      owner_state: OWN_STATE
-      owner_zip: OWN_ZIP
+      owner_admin2_id_admin1: OWN_STATE
+      owner_postal_code: OWN_ZIP
       lot_size: LOT_SIZE
       lot_size_units: LOT_UNITS
       building_area_m2: BLD_AREA
       residential_area_m2: RES_AREA
       building_style: STYLE
-      n_dwelling_units: UNITS
+      n_dwellings: UNITS
       building_n_rooms: NUM_ROOMS
       building_n_stories: STORIES
       year_built: YEAR_BUILT
-      usecode: USE_CODE
+      use_group_code: USE_CODE
       zoning: ZONING
       last_sale_date: LS_DATE
       last_sale_price: LS_PRICE
@@ -98,9 +118,9 @@ additional_layers:
       - city
       - zip
       - owner_city
-      - owner_zip
+      - owner_postal_code
       - assessment_year
-      - usecode
+      - use_group_code
       - zoning
     save_to:
       admin_level: 3

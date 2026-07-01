@@ -32,7 +32,7 @@ columns:
   parcel_id_admin3_2: CODIGO_ANT
   admin3_id_admin1: codigo_mun
   manzana_code: MANZANA_CO
-  area_sqm: SHAPE_Area
+  m2: SHAPE_Area
 
 keep_unnamed_columns: False
 

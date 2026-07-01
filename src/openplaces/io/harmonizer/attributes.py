@@ -1,7 +1,10 @@
 """
-Pipeline steps that attach attributes from reference datasets to the spine:
-  - reconcile_attributes: aggregate columns from established crosswalks
-  - infer_attributes: compute derived columns (area, value ratios, etc.)
+Pipeline steps that attach reference-dataset evidence to the spine:
+  - reconcile_attributes: aggregate source columns from established crosswalks
+  - classify_footprint_priority: assign each footprint's priority on its parcel
+
+Value selection, gap-filling, and occupancy inference run in the curation stage
+(see ``openplaces.io.curator``), not here.
 """
 
 from __future__ import annotations
@@ -11,14 +14,10 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from openplaces.core.attribute_registry import get_categorical_attrs
-from openplaces.geo.polygon import get_areas
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 __all__ = [
-    'classify_footprint_role',
-    'infer_attributes',
-    'infer_occupancy_type',
+    'classify_footprint_priority',
     'reconcile_attributes',
     'reverse_occ_units',
 ]
@@ -32,21 +31,30 @@ def _resolve_suffix(
 ) -> str:
     """Return the column suffix for reference attributes.
 
-    When the reference entity type matches the spine entity type (e.g.,
-    both are ``'building'``), the suffix is derived from the source_id in
-    the recipe_id (e.g., ``'_nsi'``).  Otherwise the entity type is used
-    (e.g., ``'_parcel'``).
+    Follows the naming convention (see the attribute-registry notes):
+
+    - Same entity type as the spine (e.g. both ``'building'``): the source
+      disambiguates, so the suffix is the source id (e.g. ``'_nsi'``).
+    - A cross-entity ``parcel`` reference: parcels are interchangeable, so the
+      suffix is the entity type only (``'_parcel'``).
+    - Any other cross-entity reference: the source is not interchangeable, so the
+      suffix carries entity type and source (e.g. ``'_footprint_fema'`` for FEMA
+      footprints attributed to a parcel spine).
     """
     spine_entity = state.recipe.get('entity')
     spine_entity_type = (
         str(spine_entity.entity_type) if spine_entity is not None else None
     )
+    base = crosswalk_key.rsplit('_', 1)[-1]
+    parts = base.split('-', 2)
+    source_id = parts[1] if len(parts) > 1 else base
     if entity_type and spine_entity_type and entity_type == spine_entity_type:
-        base = crosswalk_key.rsplit('_', 1)[-1]
-        parts = base.split('-', 2)
-        source_id = parts[1] if len(parts) > 1 else base
         return f'_{source_id}'
-    return f'_{entity_type}' if entity_type else default
+    if not entity_type:
+        return default
+    if entity_type == 'parcel':
+        return f'_{entity_type}'
+    return f'_{entity_type}_{source_id}'
 
 
 def _point_suffix(
@@ -57,13 +65,13 @@ def _point_suffix(
     """Compose suffix ``_{entity_type}_{source_id}`` for point references.
 
     When *col* is supplied and *entity_type* already appears in the column
-    name (e.g. ``'dwelling'`` in ``'n_dwelling_units'``), the entity_type
+    name (e.g. ``'dwelling'`` in ``'n_dwellings'``), the entity_type
     part is dropped to avoid redundancy (``'_overture'`` instead of
     ``'_dwelling_overture'``).
 
     Examples: ``US_building-nsi-2022``, ``building`` -> ``_building_nsi``;
     ``dwelling-overture-2025``, ``dwelling`` -> ``_dwelling_overture``;
-    ``dwelling-overture-2025``, ``dwelling``, col=``n_dwelling_units``
+    ``dwelling-overture-2025``, ``dwelling``, col=``n_dwellings``
     -> ``_overture``.
     """
     base = crosswalk_key.rsplit('_', 1)[-1]
@@ -77,16 +85,32 @@ def _point_suffix(
 
 
 # Occupancy-class → expected dwelling-unit count (Lochhead et al. 2026, Table 3).
-# Used as a fallback when n_dwelling_units is missing from parcel data.
+# Used as a fallback when n_dwellings is missing from parcel data.
 _OCC_UNITS: dict[str, float] = {
     'Single Family': 1.0,
-    'Manufactured': 1.0,
+    'Single Family, 1 story, no basement': 1.0,
+    'Single Family, 1 story, with basement': 1.0,
+    'Single Family, 2 story, no basement': 1.0,
+    'Single Family, 2 story, with basement': 1.0,
+    'Single Family, 3 story, no basement': 1.0,
+    'Single Family, 3 story, with basement': 1.0,
+    'Single Family, split-level, no basement': 1.0,
+    'Single Family, split-level, with basement': 1.0,
+    'Manufactured Home': 1.0,
+    'Multi-Family, 2 units': 2.0,
+    'Multi-Family, 3-4 units': 3.5,
+    'Multi-Family, 5-10 units': 7.0,
+    'Multi-Family, 10-19 units': 14.5,
+    'Multi-Family, 20-50 units': 35.0,
+    'Multi-Family, 50 plus units': 51.0,
     'Multi-Family (2 units)': 2.0,
     'Multi-Family (3-4 units)': 3.5,
     'Multi-Family (5-9 units)': 7.0,
+    'Multi-Family (5-10 units)': 7.0,
     'Multi-Family (10-19 units)': 14.5,
     'Multi-Family (20-50 units)': 35.0,
     'Multi-Family (50+ units)': 51.0,
+    'Multi-Family (50 plus units)': 51.0,
 }
 
 
@@ -113,8 +137,14 @@ def reverse_occ_units(total_units: float) -> str:
     return 'Multi-Family (50+ units)'
 
 
-# Columns carried from a polygon reference (e.g. parcel) to the spine.
+# Columns carried from a polygon reference (e.g. parcel) to the spine. Parcels
+# carry the use_* vocabulary ("what it is used for"); the purpose_* entries keep
+# a building/footprint polygon reference working. Only columns present on the
+# reference are carried (see the `if c in ref.columns` filters at the call sites).
 _POLYGON_REF_COLS = [
+    'use_group',
+    'use_subgroup',
+    'use_group_combined',
     'purpose_group',
     'purpose_subgroup',
     'purpose_group_combined',
@@ -127,13 +157,13 @@ _POLYGON_REF_COLS = [
 # Columns carried from a point reference (e.g. NSI buildings) to the spine.
 _POINT_REF_COLS = [
     'occupancy_type',
-    'openplaces_group',
+    'group',
     'structure_value',
     'year_built_block_median',
     'source',
     'area_sqft',
     'n_stories',
-    'n_dwelling_units',
+    'n_dwellings',
     'address_street',
     'address_number',
     'postal_code',
@@ -168,13 +198,17 @@ def _collect_dwelling_linked(state: HarmonizeState) -> set:
 def reconcile_attributes(
     state: HarmonizeState,
     sources: list[dict] | None = None,
-    priority: dict[str, list[str]] | None = None,
 ) -> HarmonizeState:
     """Aggregate reference attributes to the spine via established crosswalks.
 
     For each source in *sources*, looks up the crosswalk in
     ``state.crosswalks`` (resolved via ``recipe_id`` or ``entity_type``) and
-    aggregates the requested columns to the spine.
+    aggregates the requested columns to the spine as source-suffixed evidence
+    columns (e.g. ``improvement_value_parcel``, ``occupancy_type_building_nsi``).
+
+    This step only attributes evidence; between-source value selection,
+    gap-filling, and occupancy inference now run in the curation stage
+    (see ``openplaces.io.curator``).
 
     Parameters
     ----------
@@ -189,17 +223,10 @@ def reconcile_attributes(
         ``columns`` (list of str, optional)
             Columns to aggregate.  Defaults to all available columns from
             the corresponding default column list.
-    priority : dict of {feature: [source_suffix, ...]}, optional
-        Between-source priority for specific features (Lochhead et al. 2026,
-        Step C).  Each key is a bare feature name (e.g. ``'year_built'``);
-        the value is an ordered list of source suffixes (without leading ``_``)
-        to try in order.  The first non-null suffixed column wins.
-
-        Example::
-
-            priority:
-              purpose_subgroup: [nsi, parcel]
-              year_built: [parcel, nsi]
+        ``remap_id`` (str, optional)
+            Recipe id of a two-column value crosswalk (raw -> canonical) applied
+            in place to the matching reference column before aggregation (e.g.
+            canonicalizing FEMA ``occupancy_type`` via its occupancy-type-remap).
     """
     if state.spine is None or not sources:
         return state
@@ -223,6 +250,7 @@ def reconcile_attributes(
             continue
 
         src_thresholds: dict = src_cfg.get('thresholds') or {}
+        remap_id: str | None = src_cfg.get('remap_id')
 
         for crosswalk_key in crosswalk_keys:
             ref_entity_type = state.reference_types.get(crosswalk_key, entity_type)
@@ -244,6 +272,7 @@ def reconcile_attributes(
                     columns,
                     thresholds=src_thresholds,
                     dwelling_linked_ids=dwelling_linked_ids,
+                    remap_id=remap_id,
                 )
             else:
                 state = _attribute_point_reference(
@@ -255,19 +284,27 @@ def reconcile_attributes(
                     collect_ids=src_cfg.get('collect_ids', False),
                 )
 
-    if priority:
-        for feature, source_order in priority.items():
-            cols = [
-                f'{feature}_{s}'
-                for s in source_order
-                if f'{feature}_{s}' in state.spine.columns
-            ]
-            if cols:
-                state.spine[feature] = state.spine[cols].bfill(axis=1).iloc[:, 0]
-
     if state.timer:
         state.timer.mark('Attribute')
     return state
+
+
+def _dominant_by_area(attrs, spine_id_col: str, col: str, area_col: str):
+    """Dominant categorical value per spine entity, weighted by overlap area.
+
+    Returns ``(dominant, joined)``: *dominant* is the value with the largest total
+    *area_col* within each spine entity; *joined* lists every value for that entity
+    ordered by descending area, joined with ``' + '``. Both are indexed by spine id.
+    """
+    areas = (
+        attrs.groupby([spine_id_col, col])[area_col]
+        .sum()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    dominant = areas.drop_duplicates(spine_id_col).set_index(spine_id_col)[col]
+    joined = areas.groupby(spine_id_col)[col].apply(' + '.join)
+    return dominant, joined
 
 
 def _attribute_polygon_reference(
@@ -278,29 +315,50 @@ def _attribute_polygon_reference(
     columns: list[str] | None,
     thresholds: dict | None = None,
     dwelling_linked_ids: set | None = None,
+    remap_id: str | None = None,
 ) -> HarmonizeState:
     """Attribute a polygon reference (e.g. parcels) to the spine.
+
+    Works in either direction: parcels attributed to a footprint spine, or
+    footprint polygons attributed to a parcel spine (the FEMA-occupancy case).
+    Categorical columns are attributed as the dominant value by overlap area; the
+    numeric value-distribution blocks are column-guarded, so they simply do not
+    run when the requested columns do not include them.
 
     Parameters
     ----------
     thresholds : dict, optional
         ``use_volume_weight`` (bool, default False) — weight ``improvement_value``
-        and ``n_dwelling_units`` distribution by ``area × n_stories`` instead of
+        and ``n_dwellings`` distribution by ``area × n_stories`` instead of
         area alone (Lochhead et al. 2026).  Requires a ``n_stories*`` column in
         the spine (populated by a prior NSI ``link_to_reference`` step).
     dwelling_linked_ids : set, optional
         Spine IDs linked to a dwelling point
         (:class:`~openplaces.core.schema.SourceGeometryType.single_dwelling_point`
         source).  When provided, parcel values (``improvement_value``,
-        ``land_value``, ``n_dwelling_units``) are distributed only to
+        ``land_value``, ``n_dwellings``) are distributed only to
         dwelling-linked footprints within parcels that have dwelling evidence
         (Lochhead et al. 2026, Table 4, Cases 1–2 vs. Case 3).
+    remap_id : str, optional
+        Recipe id of a two-column value crosswalk (raw -> canonical). Applied in
+        place to the matching reference column (the one named like the crosswalk
+        key) before aggregation, e.g. canonicalizing FEMA ``occupancy_type``.
     """
     spine = state.spine
     spine_id_col = spine.index.name
     overlay = state.overlays.get(crosswalk_key)
     if overlay is None or ref_polys is None:
         return state
+
+    if remap_id:
+        from openplaces.io.transform import get_crosswalk
+
+        crosswalk = get_crosswalk({'recipe_id': remap_id})
+        remap_col = crosswalk.index.name
+        if remap_col in ref_polys.columns:
+            ref_polys = ref_polys.copy()
+            mapped = ref_polys[remap_col].map(crosswalk)
+            ref_polys[remap_col] = mapped.where(mapped.notna(), ref_polys[remap_col])
 
     thresholds = thresholds or {}
     use_volume_weight: bool = bool(thresholds.get('use_volume_weight', False))
@@ -310,7 +368,11 @@ def _attribute_polygon_reference(
     spine_entity_type = (
         str(spine_entity.entity_type) if spine_entity is not None else 'entity'
     )
-    n_other_col = f'n_other_{spine_entity_type}s{suffix}'
+    # Relational counts read as n_{counted}s_per_{grouping}. Both are totals
+    # (include the footprint/parcel itself), so the two directions are symmetric.
+    ref_label = suffix.lstrip('_')
+    n_ref_per_spine_col = f'n_{ref_label}s_per_{spine_entity_type}'
+    n_spine_per_ref_col = f'n_{spine_entity_type}s_per_{ref_label}'
     avail_cols = [c for c in (columns or _POLYGON_REF_COLS) if c in ref_polys.columns]
 
     overlay = overlay.copy()
@@ -339,7 +401,7 @@ def _attribute_polygon_reference(
     # multiple footprints on the same parcel (Lochhead et al. 2026, Table 4).
     # For parcels where ≥1 footprint has dwelling evidence, zero out
     # area_fraction for footprints WITHOUT evidence so they receive no parcel
-    # value (improvement_value, n_dwelling_units). Suppressed IDs are tracked
+    # value (improvement_value, n_dwellings). Suppressed IDs are tracked
     # to apply the same rule to land_value below.
     suppressed_ids: set = set()
     if dwelling_linked_ids:
@@ -368,31 +430,46 @@ def _attribute_polygon_reference(
         .set_index(spine_id_col)
     )
 
-    spine['n_footprint_parcel'] = (
+    spine[n_ref_per_spine_col] = (
         footprint_ref_attrs.groupby(spine_id_col)
         .size()
         .reindex(spine.index, fill_value=0)
     )
 
-    if 'purpose_group_combined' in footprint_ref_attrs.columns:
-        footprint_purpose_group_areas = (
-            footprint_ref_attrs.groupby([spine_id_col, 'purpose_group_combined'])[
-                'area_intersection_m2'
-            ]
-            .sum()
-            .sort_values(ascending=False)
-            .reset_index()
+    # Attribute categorical columns as the dominant value (and an `_all` summary)
+    # by overlap area. The combined land-use label is attributed this way; so is
+    # any other categorical column the recipe requests (e.g. FEMA occupancy_type
+    # on a parcel spine). The raw use_*/purpose_* components are folded into the
+    # combined label, and address/value columns are handled separately below, so
+    # those are skipped here.
+    _skip_generic = {
+        'use_group',
+        'use_subgroup',
+        'purpose_group',
+        'purpose_subgroup',
+        'address',
+    }
+    combined_col = next(
+        (
+            c
+            for c in ('use_group_combined', 'purpose_group_combined')
+            if c in footprint_ref_attrs.columns
+        ),
+        None,
+    )
+    categorical_cols = [
+        c
+        for c in (combined_col, *[c for c in (columns or []) if c not in _skip_generic])
+        if c is not None
+        and c in footprint_ref_attrs.columns
+        and not pd.api.types.is_numeric_dtype(footprint_ref_attrs[c])
+    ]
+    for col in dict.fromkeys(categorical_cols):
+        dominant, joined = _dominant_by_area(
+            footprint_ref_attrs, spine_id_col, col, 'area_intersection_m2'
         )
-        spine[f'purpose_group_combined{suffix}'] = (
-            footprint_purpose_group_areas.drop_duplicates(spine_id_col).set_index(
-                spine_id_col
-            )['purpose_group_combined']
-        )
-        spine[f'purpose_group_combined{suffix}_all'] = (
-            footprint_purpose_group_areas.groupby(spine_id_col)[
-                'purpose_group_combined'
-            ].apply(' + '.join)
-        )
+        spine[f'{col}{suffix}'] = dominant
+        spine[f'{col}{suffix}_all'] = joined
 
     footprint_parcel_areas = footprint_ref_attrs.reset_index()[
         [spine_id_col, 'parcel_id', 'area_intersection_m2']
@@ -403,13 +480,13 @@ def _attribute_polygon_reference(
     footprint_parcel_areas = footprint_parcel_areas.join(
         parcel_area_stats, on='parcel_id'
     )
-    footprint_parcel_areas['_n_col'] = footprint_parcel_areas['n_fp'] - 1
+    footprint_parcel_areas['_n_col'] = footprint_parcel_areas['n_fp']
     primary_footprints = (
         footprint_parcel_areas.sort_values('area_intersection_m2', ascending=False)
         .drop_duplicates(spine_id_col)
         .set_index(spine_id_col)
     )
-    spine[n_other_col] = primary_footprints['_n_col'].reindex(spine.index)
+    spine[n_spine_per_ref_col] = primary_footprints['_n_col'].reindex(spine.index)
 
     if 'area_spine_m2' in overlay.columns:
         identified_area = (
@@ -423,8 +500,8 @@ def _attribute_polygon_reference(
             .first()
             .replace(0, float('nan'))
         )
-        spine[f'overlap_fraction{suffix}'] = (identified_area / spine_area).reindex(
-            spine.index, fill_value=0.0
+        spine[f'overlap_fraction{suffix}'] = (
+            (identified_area / spine_area).round(4).reindex(spine.index, fill_value=0.0)
         )
     else:
         spine[f'overlap_fraction{suffix}'] = np.nan
@@ -444,10 +521,10 @@ def _attribute_polygon_reference(
                 spine.index
             )
         if 'land_value' in footprint_ref_attrs.columns:
-            if 'footprint_role' in spine.columns:
-                is_principal = spine['footprint_role'].eq('primary')
+            if 'priority_on_parcel' in spine.columns:
+                is_principal = spine['priority_on_parcel'].eq('primary')
             else:
-                is_principal = spine[n_other_col].eq(0)
+                is_principal = spine[n_spine_per_ref_col].eq(1)
             spine[f'land_value{suffix}'] = (
                 footprint_primary_row['land_value']
                 .reindex(spine.index)
@@ -461,17 +538,16 @@ def _attribute_polygon_reference(
 
     footprint_ref_attrs = footprint_ref_attrs.copy()
 
-    # Zero out improvement_value and n_dwelling_units for secondary footprints so
-    # that financial value is only allocated to primary structures on the parcel.
-    _value_cols = [
-        c
-        for c in ('improvement_value', 'n_dwelling_units')
-        if c in footprint_ref_attrs.columns
-    ]
-    if _value_cols and 'footprint_role' in spine.columns:
-        secondary_ids = spine.index[spine['footprint_role'].eq('secondary')]
+    # Zero n_dwellings for secondary footprints: accessory structures contain no
+    # dwellings. improvement_value is left missing after aggregation instead, to
+    # match land_value (see below).
+    if (
+        'n_dwellings' in footprint_ref_attrs.columns
+        and 'priority_on_parcel' in spine.columns
+    ):
+        secondary_ids = spine.index[spine['priority_on_parcel'].eq('secondary')]
         footprint_ref_attrs.loc[
-            footprint_ref_attrs.index.isin(secondary_ids), _value_cols
+            footprint_ref_attrs.index.isin(secondary_ids), 'n_dwellings'
         ] = 0.0
 
     if 'improvement_value' in footprint_ref_attrs.columns:
@@ -486,9 +562,9 @@ def _attribute_polygon_reference(
             0, np.nan
         )
 
-    if 'n_dwelling_units' in footprint_ref_attrs.columns:
-        footprint_ref_attrs['n_dwelling_units'] = (
-            footprint_ref_attrs['n_dwelling_units']
+    if 'n_dwellings' in footprint_ref_attrs.columns:
+        footprint_ref_attrs['n_dwellings'] = (
+            footprint_ref_attrs['n_dwellings']
             .mul(footprint_ref_attrs['area_fraction'])
             .round(2)
         )
@@ -496,14 +572,14 @@ def _attribute_polygon_reference(
     numeric_agg: dict[str, str] = {}
     if 'improvement_value' in footprint_ref_attrs.columns:
         numeric_agg['improvement_value'] = 'sum'
-    if 'n_dwelling_units' in footprint_ref_attrs.columns:
-        numeric_agg['n_dwelling_units'] = 'sum'
+    if 'n_dwellings' in footprint_ref_attrs.columns:
+        numeric_agg['n_dwellings'] = 'sum'
     if 'year_built' in footprint_ref_attrs.columns:
         numeric_agg['year_built'] = 'mean'
     if numeric_agg:
         rename_map = {
             'improvement_value': f'improvement_value{suffix}',
-            'n_dwelling_units': f'n_dwelling_units{suffix}',
+            'n_dwellings': f'n_dwellings{suffix}',
             'year_built': f'year_built{suffix}',
         }
         spine = spine.join(
@@ -512,8 +588,15 @@ def _attribute_polygon_reference(
             .rename(columns={k: v for k, v in rename_map.items() if k in numeric_agg})
         )
 
+    # Secondary footprints carry no parcel improvement value, mirroring land_value
+    # (which is restricted to primary footprints). Set to NaN rather than 0 so the
+    # absence is explicit (Lochhead et al. 2026, Table 4).
+    imp_col = f'improvement_value{suffix}'
+    if imp_col in spine.columns and 'priority_on_parcel' in spine.columns:
+        spine.loc[spine['priority_on_parcel'].eq('secondary'), imp_col] = np.nan
+
     footprints_from_ref = state.metadata.get(f'inferred_from_{crosswalk_key}')
-    mask_ref_src = spine['source'].str.contains(r'\.', regex=True, na=False)
+    mask_ref_src = spine['geometry_source'].str.contains(r'\.', regex=True, na=False)
     if (
         mask_ref_src.any()
         and footprints_from_ref is not None
@@ -527,9 +610,10 @@ def _attribute_polygon_reference(
             .join(ref_polys[ref_attr_cols], on='parcel_id')
             .rename(
                 columns={
+                    'use_group_combined': f'use_group_combined{suffix}',
                     'purpose_group_combined': f'purpose_group_combined{suffix}',
                     'improvement_value': f'improvement_value{suffix}',
-                    'n_dwelling_units': f'n_dwelling_units{suffix}',
+                    'n_dwellings': f'n_dwellings{suffix}',
                     'land_value': f'land_value{suffix}',
                     'year_built': f'year_built{suffix}',
                     'address': f'address{suffix}',
@@ -541,8 +625,8 @@ def _attribute_polygon_reference(
             inferred_ref_attrs[year_built_col] = inferred_ref_attrs[
                 year_built_col
             ].replace(0, np.nan)
-        inferred_ref_attrs['n_footprint_parcel'] = 1
-        inferred_ref_attrs[n_other_col] = 0
+        inferred_ref_attrs[n_ref_per_spine_col] = 1
+        inferred_ref_attrs[n_spine_per_ref_col] = 1
         inferred_ref_attrs[f'overlap_fraction{suffix}'] = 1.0
         overlap_cols = [c for c in spine.columns if c in inferred_ref_attrs.columns]
         spine.loc[mask_ref_src, overlap_cols] = inferred_ref_attrs[overlap_cols]
@@ -562,6 +646,8 @@ def _attribute_point_reference(
     """Attribute a point reference (e.g. NSI) to the spine."""
     spine = state.spine
     suffix = _point_suffix(crosswalk_key, entity_type)
+    base = crosswalk_key.rsplit('_', 1)[-1]
+    source_id = base.split('-', 2)[1] if '-' in base else base
 
     avail_cols = columns or [c for c in _POINT_REF_COLS if c in crosswalk.columns]
     renamed: dict[str, str] = {
@@ -569,6 +655,10 @@ def _attribute_point_reference(
         for c in avail_cols
         if c in crosswalk.columns
     }
+    # Read naturally as n_<plural-entity>_<source> (e.g. n_dwellings_overture)
+    # rather than carrying the verbose source attribute name.
+    if 'n_dwellings' in renamed:
+        renamed['n_dwellings'] = f'n_dwellings_{source_id}'
 
     spine_id_col = state.spine.index.name
     if spine_id_col not in crosswalk.columns:
@@ -578,9 +668,10 @@ def _attribute_point_reference(
         )
         return state
 
+    count_col = f'n_{entity_type}s_{source_id}' if entity_type else f'n_point{suffix}'
     group_sizes = crosswalk.groupby(spine_id_col).size()
     if group_sizes.max() > 1:
-        spine[f'n_point{suffix}'] = group_sizes.reindex(spine.index, fill_value=0)
+        spine[count_col] = group_sizes.reindex(spine.index, fill_value=0)
 
     purpose_group_col = next(
         (
@@ -606,35 +697,37 @@ def _attribute_point_reference(
                 .sort_values(ascending=False)
                 .reset_index()
             )
-            spine[f'{purpose_group_out}_all'] = footprint_purpose_group_areas.groupby(
-                spine_id_col
-            )[purpose_group_col].apply(' + '.join)
         else:
             footprint_purpose_group_areas = (
                 crosswalk.groupby(spine_id_col)[purpose_group_col].first().reset_index()
             )
+        # Emit the single reconciled value before the multi-link `_all` summary.
         spine[purpose_group_out] = footprint_purpose_group_areas.drop_duplicates(
             spine_id_col
         ).set_index(spine_id_col)[purpose_group_col]
+        if structure_value_col:
+            spine[f'{purpose_group_out}_all'] = footprint_purpose_group_areas.groupby(
+                spine_id_col
+            )[purpose_group_col].apply(' + '.join)
 
-    openplaces_group_col = next(
-        (c for c in avail_cols if 'openplaces_group' in c and c in crosswalk.columns),
+    group_col = next(
+        (c for c in avail_cols if c == 'group' and c in crosswalk.columns),
         None,
     )
-    if openplaces_group_col and structure_value_col:
-        openplaces_group_out = renamed.get(openplaces_group_col, openplaces_group_col)
-        footprint_openplaces_group_areas = (
-            crosswalk.groupby([spine_id_col, openplaces_group_col])[structure_value_col]
+    if group_col and structure_value_col:
+        group_out = renamed.get(group_col, group_col)
+        footprint_group_areas = (
+            crosswalk.groupby([spine_id_col, group_col])[structure_value_col]
             .sum()
             .sort_values(ascending=False)
             .reset_index()
         )
-        spine[openplaces_group_out] = footprint_openplaces_group_areas.drop_duplicates(
+        spine[group_out] = footprint_group_areas.drop_duplicates(
             spine_id_col
-        ).set_index(spine_id_col)[openplaces_group_col]
-        spine[f'{openplaces_group_out}_all'] = footprint_openplaces_group_areas.groupby(
-            spine_id_col
-        )[openplaces_group_col].apply(' + '.join)
+        ).set_index(spine_id_col)[group_col]
+        spine[f'{group_out}_all'] = footprint_group_areas.groupby(spine_id_col)[
+            group_col
+        ].apply(' + '.join)
 
     numeric_agg: dict[str, str] = {}
     if structure_value_col:
@@ -645,8 +738,8 @@ def _attribute_point_reference(
     )
     if year_built_col:
         numeric_agg[year_built_col] = 'mean'
-    if 'n_dwelling_units' in avail_cols and 'n_dwelling_units' in crosswalk.columns:
-        numeric_agg['n_dwelling_units'] = 'sum'
+    if 'n_dwellings' in avail_cols and 'n_dwellings' in crosswalk.columns:
+        numeric_agg['n_dwellings'] = 'sum'
     if numeric_agg:
         spine = spine.join(
             crosswalk.groupby(spine_id_col).agg(numeric_agg).rename(columns=renamed)
@@ -655,7 +748,7 @@ def _attribute_point_reference(
     handled = set(numeric_agg) | {
         'purpose_subgroup',
         'occupancy_type',
-        'openplaces_group',
+        'group',
     }
     str_cols = [
         c
@@ -678,71 +771,6 @@ def _attribute_point_reference(
             .rename(columns={c: renamed[c] for c in str_cols if c in renamed})
         )
 
-    if openplaces_group_col:
-        poly_overlay_keys = list(state.overlays.keys())
-        poly_refs = {
-            rid: state.references[rid]
-            for rid in poly_overlay_keys
-            if rid in state.references
-        }
-        if poly_refs:
-            poly_recipe_id = next(iter(poly_refs))
-            poly_ref = poly_refs[poly_recipe_id]
-            poly_suffix = _resolve_suffix(
-                poly_recipe_id,
-                state.reference_types.get(poly_recipe_id),
-                state,
-            )
-            purpose_group_spine_col = next(
-                (c for c in spine.columns if c.startswith('purpose_group_combined')),
-                None,
-            )
-            openplaces_group_out = renamed.get(
-                openplaces_group_col, openplaces_group_col
-            )
-            poly_attr_cols = [c for c in _POLYGON_REF_COLS if c in poly_ref.columns]
-            poly_ref_id_col = poly_ref.index.name
-            if (
-                purpose_group_spine_col
-                and openplaces_group_col in crosswalk.columns
-                and poly_attr_cols
-            ):
-                points_with_poly_ref = crosswalk.join(
-                    poly_ref[poly_attr_cols].rename(
-                        columns={c: f'{c}{poly_suffix}' for c in poly_attr_cols}
-                    ),
-                    on=poly_ref_id_col,
-                    lsuffix='_point',
-                )
-                purpose_group_join_col = f'purpose_group_combined{poly_suffix}'
-                if (
-                    purpose_group_join_col in points_with_poly_ref.columns
-                    and openplaces_group_col in points_with_poly_ref.columns
-                ):
-                    counts = points_with_poly_ref[
-                        [purpose_group_join_col, openplaces_group_col]
-                    ].value_counts()
-                    fractions = (
-                        counts.div(counts.groupby(purpose_group_join_col).sum())
-                        .rename('fraction')
-                        .round(3)
-                    )
-                    inferred_groups = (
-                        pd.concat([counts, fractions], axis=1)
-                        .reset_index()
-                        .sort_values(
-                            [purpose_group_join_col, 'count'],
-                            ascending=[True, False],
-                        )
-                        .drop_duplicates(purpose_group_join_col)
-                        .set_index(purpose_group_join_col)
-                    )
-                    inferred_col = f'openplaces_group{poly_suffix}'
-                    spine = spine.join(
-                        inferred_groups[openplaces_group_col].rename(inferred_col),
-                        on=purpose_group_spine_col,
-                    )
-
     if collect_ids and crosswalk.index.name:
         index_name = crosswalk.index.name
         grouped_ids = (
@@ -756,14 +784,17 @@ def _attribute_point_reference(
     return state
 
 
-@_register('classify_footprint_role')
-def classify_footprint_role(
+@_register('classify_footprint_priority')
+def classify_footprint_priority(
     state: HarmonizeState,
     entity_type: str | None = None,
     thresholds: dict | None = None,
     **_params,
 ) -> HarmonizeState:
-    """Classify spine footprints as ``'primary'``, ``'secondary'``, or ``'unknown'``.
+    """Classify each footprint's priority on its parcel.
+
+    Assigns ``priority_on_parcel`` as ``'primary'``, ``'secondary'``, or
+    ``'unknown'``.
 
     Uses dwelling-point and building-point evidence to assign roles within each
     parcel (Lochhead et al. 2026, Table 4):
@@ -800,7 +831,9 @@ def classify_footprint_role(
     parcel_crosswalks = state.get_crosswalks_by_type(parcel_type)
     if not parcel_crosswalks:
         if state.verbose:
-            print(f'  classify_footprint_role: no {parcel_type} crosswalk; skipping.')
+            print(
+                f'  classify_footprint_priority: no {parcel_type} crosswalk; skipping.'
+            )
         return state
 
     parcel_recipe_id = next(iter(parcel_crosswalks))
@@ -820,7 +853,7 @@ def classify_footprint_role(
     role.loc[role.index.isin(set(fp_parcel[spine_id_col]))] = 'primary'
 
     if multi_fp.empty:
-        state.spine['footprint_role'] = pd.Categorical(
+        state.spine['priority_on_parcel'] = pd.Categorical(
             role, categories=['primary', 'secondary', 'unknown']
         )
         return state
@@ -869,13 +902,13 @@ def classify_footprint_role(
         if fp_id in state.spine.index and role[fp_id] == 'unknown':
             role[fp_id] = 'primary'
 
-    state.spine['footprint_role'] = pd.Categorical(
+    state.spine['priority_on_parcel'] = pd.Categorical(
         role, categories=['primary', 'secondary', 'unknown']
     )
     if state.verbose:
-        counts = state.spine['footprint_role'].value_counts()
+        counts = state.spine['priority_on_parcel'].value_counts()
         print(
-            '  classify_footprint_role: '
+            '  classify_footprint_priority: '
             + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
         )
     if state.timer:
@@ -883,287 +916,152 @@ def classify_footprint_role(
     return state
 
 
-@_register('infer_attributes')
-def infer_attributes(
+@_register('derive_use_classes')
+def derive_use_classes(
     state: HarmonizeState,
-    derived: list[str] | None = None,
-    **_params,
+    combined_column: str = 'use_group_combined',
 ) -> HarmonizeState:
-    """Compute derived columns on the spine.
+    """Build the combined use_group_combined label from use_group / use_subgroup.
+
+    Source-specific raw use codes are mapped to the openplaces use_group and
+    use_subgroup vocabulary upstream, via a ``*-remap.csv`` crosswalk that
+    ``link_by_id``'s auto-discovery applies automatically when joining a
+    source that ships one (see
+    :func:`~openplaces.io.harmonizer.links._apply_remap_csvs`); this step only
+    combines the two into the label the parcel land-use classifier groups and
+    votes on, so it holds no code vocabulary of its own.
+
+    No-op when the spine lacks ``use_group`` or ``use_subgroup`` (e.g. an
+    admin whose source never produced a use code, or had none to crosswalk),
+    so it is safe to leave in a shared pipeline.
 
     Parameters
     ----------
-    derived : list of str, optional
-        Names of derived columns to compute.  Supported values:
-
-        ``'area'`` / ``'m2'``
-            Footprint area in square metres (stored as ``'m2'``).
-        ``'value_per_sqft'`` / ``'value_per_area'``
-            ``improvement_value{suffix} / m2`` and
-            ``structure_value{suffix} / m2``.
-        ``'openplaces_group_combined'``
-            Combined group label reconciling polygon and point reference
-            sources.
-        ``'n_dwelling_units'``
-            Fill null ``n_dwelling_units`` values from occupancy-class mapping
-            when a ``purpose_subgroup`` column is present on the spine.
-
-        When *derived* is ``None`` or empty, all of the above are attempted.
+    combined_column : str, optional
+        Output combined-label column (default ``use_group_combined``).
     """
-    if state.spine is None:
+    if (
+        state.spine is None
+        or 'use_group' not in state.spine.columns
+        or 'use_subgroup' not in state.spine.columns
+    ):
+        if state.verbose:
+            print('  derive_use_classes: no use_group/use_subgroup on spine; skipping.')
         return state
 
     spine = state.spine
-    compute_all = not derived
-
-    def _want(name: str) -> bool:
-        if compute_all:
-            return True
-        return any(d in (name, name.split('_')[0]) for d in (derived or []))
-
-    if _want('area') or _want('m2'):
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            spine['m2'] = get_areas(spine, unit='m2')
-
-    if _want('value_per_sqft') or _want('value_per_area'):
-        if 'm2' in spine.columns:
-            for col in list(spine.columns):
-                if col.endswith('_per_area'):
-                    continue
-                if col.startswith('improvement_value') or col.startswith(
-                    'structure_value'
-                ):
-                    spine[f'{col}_per_area'] = spine[col] / spine['m2']
-
-    if _want('openplaces_group_combined') or _want('openplaces_group'):
-        poly_suffix = next(
-            (
-                _resolve_suffix(rid, state.reference_types.get(rid), state)
-                for rid in state.overlays
-            ),
-            None,
-        )
-        point_suffix = next(
-            (
-                _point_suffix(rid, state.reference_types.get(rid))
-                for rid in state.crosswalks
-                if rid not in state.overlays
-            ),
-            None,
-        )
-        if poly_suffix and point_suffix:
-            out_col = f'openplaces_group{poly_suffix}{point_suffix}'
-            a = spine.get(out_col) or spine.get(f'openplaces_group{poly_suffix}')
-            b = spine.get(f'openplaces_group{point_suffix}')
-            poly_label = poly_suffix.lstrip('_')
-            point_label = point_suffix.lstrip('_')
-            if a is not None and b is not None:
-                both = a.notna() & b.notna()
-                same = both & (a == b)
-                spine[out_col] = np.select(
-                    [same, both, a.notna(), b.notna()],
-                    [
-                        a,
-                        f'{poly_label}: ' + a + f' | {point_label}: ' + b,
-                        a,
-                        b,
-                    ],
-                    default='',
-                )
-
-    if _want('n_dwelling_units'):
-        if 'n_dwelling_units' not in spine.columns:
-            spine['n_dwelling_units'] = np.nan
-        null_mask = spine['n_dwelling_units'].isna()
-        if null_mask.any():
-            subgroup_col = next(
-                (
-                    c
-                    for c in spine.columns
-                    if c.startswith('purpose_subgroup')
-                    or c.startswith('occupancy_type')
-                ),
-                None,
-            )
-            if subgroup_col is not None:
-                inferred = spine.loc[null_mask, subgroup_col].map(_OCC_UNITS)
-                spine.loc[null_mask, 'n_dwelling_units'] = inferred
-
-    cat_attrs = get_categorical_attrs()
-    cat_sorted = sorted(cat_attrs, key=len, reverse=True)
-    for col in spine.columns:
-        base = next((a for a in cat_sorted if col.startswith(a)), None)
-        if base is not None and spine[col].dtype != 'category':
-            spine[col] = pd.Categorical(spine[col])
+    label = (
+        spine['use_group'].astype(str).fillna('n/a')
+        + ' | '
+        + spine['use_subgroup'].astype(str).fillna('n/a')
+    )
+    spine[combined_column] = pd.Categorical(label)
 
     state.spine = spine
     if state.verbose:
-        print(f'  Save: {len(spine):,d} spine entries for {state.admin_id}')
-    if state.timer:
-        state.timer.mark('Save')
+        mapped = int(spine['use_group'].notna().sum())
+        print(f'  derive_use_classes: combined {mapped:,d}/{len(spine):,d} parcels')
     return state
 
 
-# Coarse residential dwelling classes. These are the only classes the
-# Secondary override (non-primary footprints) applies to; non-residential
-# occupancy categories are kept verbatim.
-_RESIDENTIAL_CLASSES = ('Single-Family', 'Multi-Family', 'Mobile Home')
-
-
-def _coerce_occ_type(val: str | None) -> str | None:
-    """Map an occupancy label (NSI or parcel) to an occupancy_type value.
-
-    Residential dwelling labels collapse to a coarse class
-    (Single-Family / Multi-Family / Mobile Home). Non-residential labels
-    (e.g. Retail, Hotel, Church) are returned verbatim as their own category.
-    Handles both the NSI occupancy vocabulary (e.g. "Single Family, 1 story,
-    no basement", "Multi-Family, 2 units", "Manufactured Home") and the
-    openplaces group vocabulary (e.g. "Single Family", "Multi Family",
-    "Manufactured"). Returns None for missing labels.
-    """
-    if pd.isna(val) or not isinstance(val, str):
-        return None
-    label = val.strip()
-    if not label:
-        return None
-    if label.startswith(('Single Family', 'Single-Family')):
-        return 'Single-Family'
-    if label.startswith(('Multi Family', 'Multi-Family')):
-        return 'Multi-Family'
-    if label.startswith('Manufactured'):
-        return 'Mobile Home'
-    return label
-
-
-@_register('infer_occupancy_type')
-def infer_occupancy_type(
+@_register('summarize_footprint_morphology')
+def summarize_footprint_morphology(
     state: HarmonizeState,
-    thresholds: dict | None = None,
-    **_params,
+    footprint_recipe_id: str,
+    small_area_max_m2: float = 185.0,
+    elongated_aspect_min: float = 2.0,
+    on: str | None = 'parcel_id_local',
 ) -> HarmonizeState:
-    """Infer occupancy from NSI, parcel, and footprint geometry.
+    """Attach per-parcel footprint morphology aggregates to the parcel spine.
 
-    Populates ``occupancy_type`` (categorical) on the spine using a cascade.
-    Residential footprints collapse to a coarse dwelling class (Single-Family,
-    Multi-Family, Mobile Home); non-residential footprints keep their source
-    occupancy category (e.g. Retail, Hotel, Church) from NSI or parcel data.
-
-    1. ``occupancy_type_building_nsi`` — NSI occupancy label.
-    2. ``openplaces_group_parcel`` — parcel occupancy group, filling NSI gaps.
-    3. Footprint geometry — elongated small footprints flagged as Mobile Home
-       when NSI and parcel evidence are absent.
-    4. ``n_dwelling_units`` — fills remaining residential gaps
-       (n==1 → Single-Family, n≥2 → Multi-Family).
-    5. ``footprint_role`` — non-primary *residential* footprints are overridden
-       to Secondary, since accessory dwellings are not standalone homes.
-       Non-residential footprints keep their category regardless of role.
-
-    Multi-Family is later refined into HAZUS height bands (Low/Mid/High-Rise)
-    in curation as ``occupancy_type_cheer``, where merged ``n_stories`` evidence
-    is available.
+    Footprint-to-parcel linkage is the harmonizer's job; this reads the footprint
+    entity, assigns each footprint to a parcel (by a shared id column when *on* is
+    present on both sides, else by spatial containment of the footprint's
+    representative point), and writes the per-parcel counts the parcel land-use
+    classifier consumes downstream: ``n_footprints_per_parcel``,
+    ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped), and
+    ``max_footprint_area_m2``. The classification itself is parcel-curate work.
 
     Parameters
     ----------
-    thresholds : dict, optional
-        ``mobile_home_aspect_min`` (float, default 2.5) — minimum
-        oriented-bounding-box aspect ratio (length/width) to consider a
-        footprint elongated.
-        ``mobile_home_area_max_m2`` (float, default 185) — maximum footprint
-        area (m²) for the mobile-home geometry signal (~2 000 sqft).
+    footprint_recipe_id : str
+        Footprint entity recipe to read (geometry required).
+    small_area_max_m2, elongated_aspect_min : float, optional
+        A footprint counts as small-and-elongated (manufactured-home morphology)
+        when its area is at most *small_area_max_m2* and its oriented aspect ratio
+        is at least *elongated_aspect_min*.
+    on : str, optional
+        Shared id column for an id-based assignment (default ``parcel_id_local``);
+        when absent on either side, a spatial within-join is used instead.
     """
+    import geopandas as gpd
+
+    from openplaces.geo.polygon import local_metric_crs
     from openplaces.io.harmonizer.spine import get_oriented_dims
+    from openplaces.io.readers import get_entities
 
     if state.spine is None:
         return state
-
-    thresholds = thresholds or {}
-    aspect_min: float = float(thresholds.get('mobile_home_aspect_min', 2.5))
-    area_max: float = float(thresholds.get('mobile_home_area_max_m2', 185.0))
-
     spine = state.spine
-    result = pd.Series(pd.NA, index=spine.index, dtype=object)
 
-    # 1. NSI occupancy_type (most reliable). Prefer the single reconciled
-    # value over the multi-link `_all` column.
-    nsi_col = next(
-        (
-            c
-            for c in spine.columns
-            if c.startswith('occupancy_type_') and not c.endswith('_all')
-        ),
-        None,
-    )
-    if nsi_col is not None:
-        result = spine[nsi_col].map(_coerce_occ_type)
+    footprints = get_entities(footprint_recipe_id, state.admin_id, geom=True)
+    if footprints is None or len(footprints) == 0:
+        if state.verbose:
+            print('  summarize_footprint_morphology: no footprints; skipping.')
+        return state
 
-    # 2. Parcel occupancy group fallback (residential class or non-residential
-    # category), filling rows with no NSI occupancy.
-    parcel_col = (
-        'openplaces_group_parcel'
-        if 'openplaces_group_parcel' in spine.columns
-        else next((c for c in spine.columns if c.startswith('purpose_subgroup')), None)
-    )
-    if parcel_col is not None:
-        null_mask = result.isna()
-        if null_mask.any():
-            from_parcel = spine.loc[null_mask, parcel_col].map(_coerce_occ_type)
-            result.loc[null_mask] = from_parcel
+    geom_m = footprints.geometry.to_crs(local_metric_crs(footprints))
+    area = geom_m.area.to_numpy()
+    dims = geom_m.map(get_oriented_dims)
+    length = np.array([d[1] for d in dims])
+    width = np.clip(np.array([d[2] for d in dims]), 1e-6, None)
+    aspect = length / width
+    small_elong = (area <= small_area_max_m2) & (aspect >= elongated_aspect_min)
 
-    # 3. Footprint geometry signal for mobile homes
-    null_mask = result.isna()
-    if null_mask.any() and 'm2' in spine.columns:
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            dims = spine.loc[null_mask, 'geometry'].map(get_oriented_dims)
-        length = dims.map(lambda x: x[1])
-        width = dims.map(lambda x: x[2]).clip(lower=1e-6)
-        aspect = length / width
-        area_m2 = spine.loc[null_mask, 'm2']
-        mobile_mask = (aspect >= aspect_min) & (area_m2 <= area_max)
-        result.loc[mobile_mask[mobile_mask].index] = 'Mobile Home'
-
-    # 4. n_dwelling_units fallback (residential only)
-    null_mask = result.isna()
-    if null_mask.any() and 'n_dwelling_units' in spine.columns:
-        purpose_group_col = next(
-            (c for c in spine.columns if c == 'purpose_group'), None
+    if on and on in footprints.columns and on in spine.columns:
+        per_fp = pd.DataFrame(
+            {
+                '_pid': footprints[on].astype('string').to_numpy(),
+                '_a': area,
+                '_se': small_elong,
+            }
+        ).dropna(subset=['_pid'])
+        grp = per_fp.groupby('_pid')
+        key = spine[on].astype('string')
+        n_fp = key.map(grp.size())
+        n_se = key.map(grp['_se'].sum())
+        max_a = key.map(grp['_a'].max())
+    else:
+        reps = gpd.GeoDataFrame(
+            {'_a': area, '_se': small_elong},
+            geometry=footprints.geometry.representative_point(),
+            crs=footprints.crs,
+        ).to_crs(spine.crs)
+        # Carry the spine id as an explicit column so the join does not depend on
+        # the sjoin right-index column name (which varies with the index name).
+        spine_geom = spine[[spine.geometry.name]].copy()
+        spine_geom['_spine_id'] = spine.index
+        joined = gpd.sjoin(reps, spine_geom, predicate='within', how='left').dropna(
+            subset=['_spine_id']
         )
-        if purpose_group_col is not None:
-            res_mask = (
-                spine.loc[null_mask, purpose_group_col]
-                .str.startswith('Residential')
-                .fillna(False)
-            )
-        else:
-            res_mask = pd.Series(True, index=spine.index[null_mask])
-        eligible_ids = res_mask[res_mask].index
-        if len(eligible_ids):
-            units = spine.loc[eligible_ids, 'n_dwelling_units']
-            result.loc[eligible_ids[units == 1.0]] = 'Single-Family'
-            result.loc[eligible_ids[units >= 2.0]] = 'Multi-Family'
+        grp = joined.groupby('_spine_id')
+        n_fp = grp.size().reindex(spine.index)
+        n_se = grp['_se'].sum().reindex(spine.index)
+        max_a = grp['_a'].max().reindex(spine.index)
 
-    # 5. Non-primary *residential* footprints are accessory dwellings, not
-    # standalone homes; override them to 'Secondary'. Non-residential
-    # footprints keep their occupancy category regardless of role.
-    if 'footprint_role' in spine.columns:
-        residential = result.isin(_RESIDENTIAL_CLASSES)
-        non_primary = ~spine['footprint_role'].eq('primary')
-        result.loc[residential & non_primary] = 'Secondary'
-
-    # Emit as a categorical with inferred categories. Categories are inferred
-    # (not fixed) because occupancy now includes open-ended non-residential
-    # labels. The Arrow dictionary is 1-indexed at save time for QGIS. Parcel
-    # land-use resolution and the HAZUS height split happen during curation.
-    spine['occupancy_type'] = pd.Categorical(result)
+    spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
+    spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
+    spine['max_footprint_area_m2'] = max_a
     state.spine = spine
 
     if state.verbose:
-        counts = spine['occupancy_type'].value_counts(dropna=False)
         print(
-            '  infer_occupancy_type: '
-            + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
+            '  summarize_footprint_morphology: '
+            f'{int((spine["n_small_elongated_footprints_per_parcel"] > 0).sum()):,} '
+            f'parcels with manufactured-home-shaped footprints.'
         )
+    if state.timer:
+        state.timer.mark('Summarize')
     return state
 
 

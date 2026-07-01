@@ -92,7 +92,7 @@ columns:
   garage_door: GARAGEDOOR
   masonry_reinforcing: MAS_REINFR
   joist_spacing: JOIST_SPAC
-  n_dwelling_units: NUM_UNITS
+  n_dwellings: NUM_UNITS
   wind_debris_type: WINDDEBRIS
   defensible_space: DEFN_SPACE
   hazardous_fuels_reduction: HZFUELREDC
@@ -146,7 +146,7 @@ columns_to_categorical:
   - garage_door
   - masonry_reinforcing
   - joist_spacing
-  - n_dwelling_units
+  - n_dwellings
   - wind_debris_type
   - defensible_space
   - hazardous_fuels_reduction

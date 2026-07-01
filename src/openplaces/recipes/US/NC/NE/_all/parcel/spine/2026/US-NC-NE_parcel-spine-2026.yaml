@@ -1,0 +1,58 @@
+# Recipe: harmonized New Hanover County, NC parcel spine.
+#
+# Builds the canonical parcel entity from the NC OneMap GIS geometry, links the
+# nhcgov assessment roll by the standardized `parcel_id_local` matching key
+# (computed at ingest), and flags which parcels have recorded sales
+# transactions. Linking is by parcel identifier (non-spatial), the harmonizer's
+# role for parcel-to-parcel relationships.
+
+description: >-
+  Harmonized New Hanover County, NC parcels: NC OneMap geometry linked to the
+  nhcgov assessment roll and flagged for recorded transactions.
+
+stage: harmonize
+admin_id: US-NC-NE
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: spine
+  version: 2026
+
+# Keep geometry available to downstream steps and the output sidecar.
+spine_geom: true
+
+save_to:
+  data_dir: core
+
+pipeline:
+  # Spine = NC OneMap parcel geometry; carry the matching key and raw assessor
+  # id onto the spine for id-based linking below.
+  - step: resolve_spine
+    sources:
+      - recipe_id: US-NC_parcel-nconemap-2025
+        label: nconemap
+    keep_columns:
+      - parcel_id_local
+      - parcel_id_assessor
+
+  # Attach the assessment roll by the shared parcel_id_local key.
+  - step: link_by_id
+    recipe_id: US-NC-NE_parcel-nhcgov-2026
+    mode: attributes
+    columns:
+      - land_value
+      - improvement_value
+      - value
+      - special_feature_value
+      - year_built
+      - use_subgroup
+      - owner_name
+      - address
+      - last_sale_price
+      - last_sale_year
+
+  # Track which parcels have been transacted (count + boolean flag).
+  - step: link_by_id
+    recipe_id: US-NC-NE_transaction-nhcgov-2026
+    mode: count

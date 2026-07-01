@@ -45,8 +45,8 @@ columns:
   parcel_id_admin2: CAMA_Link
   parcel_id_admin4: Parcel_ID
   parcel_id_admin4_2: Link
-  parcel_type: Parcel_Typ
-  unit_type: Unit_Type
+  type: Parcel_Typ
+  address_unit_type: Unit_Type
   source_date: Edit_Date
 
 save_to:

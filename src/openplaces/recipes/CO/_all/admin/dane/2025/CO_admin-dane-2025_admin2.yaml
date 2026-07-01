@@ -7,6 +7,8 @@ entity:
   entity_type: admin
   source:
     source_id: dane
+    portal_url: "https://experience.arcgis.com/experience/5416979d97fc44ca9830954856784b35/"
+    download_url: "https://geoportal.dane.gov.co/descargas/mgn_2025/MGN2025_DPTO_POLITICO.zip"
   version: 2025
 
 compressed_file_name: "MGN2025_DPTO_POLITICO.zip"

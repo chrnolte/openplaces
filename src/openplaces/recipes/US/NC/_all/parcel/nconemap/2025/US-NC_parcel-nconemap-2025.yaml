@@ -41,16 +41,16 @@ process_by:
 columns:
   parcel_id_admin2: nparno
   parcel_id_admin3: parno
-  parcel_id_admin3_2: altparno
+  parcel_id_assessor: altparno
   address: siteadd
   address_unit: sunit
   city: scity
   subdivision: subdivisio
   legal_description: legdecfull
-  purpose_group: parusedesc
-  purpose_group_code: parusecode
-  purpose_subgroup: parusedsc2
-  purpose_subgroup_code: parusecd2
+  use_group: parusedesc
+  use_group_code: parusecode
+  use_subgroup: parusedsc2
+  use_subgroup_code: parusecd2
   owner_name: ownname
   owner_name_2: ownname2
   owner_address: mailadd
@@ -73,11 +73,18 @@ columns:
   source_map: mapref
 
 columns_to_categorical:
-  - purpose_group
-  - purpose_group_code
-  - purpose_subgroup
-  - purpose_subgroup_code
+  - use_group
+  - use_group_code
+  - use_subgroup
+  - use_subgroup_code
   - owner_city
   - value_type
   - source
   - source_date
+
+# Standardized matching key from the assessor parcel number (altparno), per
+# county (auto conversion; processed per admin3). Connects these GIS parcels to
+# the assessment roll and the sales transactions.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
