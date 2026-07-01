@@ -8,9 +8,11 @@ writes entity-keyed evidence tables beside the selected spine output.
 from __future__ import annotations
 
 import json
+import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib import import_module as _import_module
 
 import pandas as pd
 
@@ -80,6 +82,24 @@ def _register(*names: str):
         return fn
 
     return decorator
+
+
+_steps_loaded = False
+
+
+def _load_steps() -> None:
+    """Import this stage's step submodules so their @_register runs.
+
+    Deferred until a step is first dispatched; the ``ispkg`` skip keeps the
+    heavy ``detectors`` subpackage out of the import.
+    """
+    global _steps_loaded
+    if _steps_loaded:
+        return
+    for _m in _pkgutil.iter_modules(__path__):
+        if not _m.ispkg:
+            _import_module(f'{__name__}.{_m.name}')
+    _steps_loaded = True
 
 
 def _recipe_entity_type(recipe: dict) -> str:
@@ -295,6 +315,9 @@ class Enricher:
                 )
             fn = _STEP_REGISTRY.get(step_name)
             if fn is None:
+                _load_steps()
+                fn = _STEP_REGISTRY.get(step_name)
+            if fn is None:
                 raise ValueError(
                     f"Unknown enrich step: '{step_name}'. "
                     f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
@@ -373,8 +396,6 @@ def enrich(
         verbose=verbose,
     ).enrich(reprocess=reprocess)
 
-
-import openplaces.io.enricher.attributes  # noqa: F401, E402
 
 __all__ = [
     'EnrichState',
