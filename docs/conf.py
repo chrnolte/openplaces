@@ -64,7 +64,6 @@ autoapi_template_dir = '_templates/autoapi'
 autoapi_type = 'python'
 autoapi_options = [
     'members',
-    'imported-members',
     'show-inheritance',
     'show-module-summary',
 ]
