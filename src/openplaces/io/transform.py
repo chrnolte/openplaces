@@ -45,6 +45,8 @@ UNARY_OPS: dict[str, Callable] = {
     'abs': np.abs,
     'power': lambda x, exponent: x**exponent,
     'parse_currency': _parse_currency,
+    'to_numeric': lambda x: pd.to_numeric(x, errors='coerce'),
+    'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
 }
 
 BINARY_OPS: dict[str, Callable] = {
@@ -124,8 +126,11 @@ STRING_OPS: dict[str, Callable] = {
         )
     ),
     'strip': lambda x: x.str.strip(),
+    'lstrip': lambda x, chars=None: x.str.lstrip(chars),
     'replace': lambda x, old, new: x.str.replace(old, new, regex=False),
-    'concat': lambda cols, sep='': pd.Series(sep.join(c.astype(str) for c in cols)),
+    'concat': lambda cols, sep='': pd.concat(
+        [c.fillna('').astype(str) for c in cols], axis=1
+    ).agg(sep.join, axis=1),
     'add_prefix': lambda x, prefix: prefix + x.astype(str),
     'add_suffix': lambda x, suffix: x.astype(str) + suffix,
     'split_take': lambda x, sep, index=0: x.str.split(sep).str[index],
@@ -262,6 +267,22 @@ def apply_transformation(
     # Check if output column already exists
     if output_col in df.columns and not silent:
         warnings.warn(f"Column '{output_col}' already exists and will be overwritten")
+
+    # A recipe is written for the full source schema; a particular file (or a
+    # focused test frame) may legitimately lack some of those columns. Skip a
+    # transformation whose declared input column(s) are entirely absent rather
+    # than failing the whole run — mirroring apply_legacy_columns and the
+    # aggregate handler, which already tolerate missing inputs.
+    input_cols = config.get('inputs')
+    if input_cols is None and 'input' in config:
+        input_cols = [config['input']]
+    if input_cols and all(col not in df.columns for col in input_cols):
+        if not silent:
+            warnings.warn(
+                f"Skipping transformation to '{output_col}': none of its input "
+                f'columns {list(input_cols)} are present.'
+            )
+        return df
 
     try:
         if transform_type == 'unary':
@@ -486,6 +507,8 @@ def _apply_string(
     elif operation == 'zfill':
         width = args['width']
         return STRING_OPS[operation](input_series, width)
+    elif operation == 'lstrip':
+        return STRING_OPS[operation](input_series, args.get('chars'))
     elif operation == 'extract_named':
         pattern = args['pattern']
         result = STRING_OPS[operation](input_series, pattern)

@@ -79,6 +79,13 @@ transformations:
     operation: parse_currency
     input: price_raw
     output: price
+  # Expose the raw parcel number under the canonical name parcel_id_assessor
+  # (a copy of parcel_id_tax) so both sides of the parcel-transaction join
+  # derive parcel_id_local from parcel_id_assessor.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_tax]
+    output: parcel_id_assessor
 
 legacy_columns:
   consideration_raw: price_raw
@@ -89,6 +96,12 @@ keep_unnamed_columns: true
 # Read every column as text: the RETR dump mixes ints and strings within some
 # columns (e.g. Document Number), which otherwise fails Parquet serialization.
 csv_dtype: str
+
+# Standardized matching key (kind: tax) linking each sale to its parcel; lets us
+# track which parcels have been transacted.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: tax
 
 # Output: one parquet per month under the default (cache) data directory,
 # e.g. US-WI_transaction-widor-2026_202601.parquet.
