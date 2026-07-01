@@ -7,9 +7,11 @@ parameters, making the process composable and entity-type-agnostic.
 
 from __future__ import annotations
 
+import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib import import_module as _import_module
 
 import geopandas as gpd
 
@@ -54,7 +56,7 @@ class HarmonizeState:
     source_geometry_types : dict[str, SourceGeometryType]
         Maps resolved recipe_id → :class:`~openplaces.core.schema.SourceGeometryType`.
         Populated by ``link_to_reference`` when ``source_geometry_type`` is declared
-        in the recipe step.  Used by ``classify_footprint_role`` to identify which
+        in the recipe step.  Used by ``classify_footprint_priority`` to identify which
         linked datasets are evidence of primary buildings.
     simplified_geometry : GeoSeries or None
         Set by ``simplify_geometries``; written as a sidecar by the save step.
@@ -75,6 +77,7 @@ class HarmonizeState:
     source_geometry_types: dict[str, SourceGeometryType] = field(default_factory=dict)
     simplified_geometry: gpd.GeoSeries | None = None
     metadata: dict = field(default_factory=dict)
+    save_statistics: bool = False
 
     def get_crosswalks_by_type(self, entity_type: str) -> dict[str, gpd.GeoDataFrame]:
         """Return all crosswalks whose reference matches ``entity_type``."""
@@ -109,6 +112,24 @@ def _register(*names: str):
     return decorator
 
 
+_steps_loaded = False
+
+
+def _load_steps() -> None:
+    """Import this stage's step submodules so their @_register runs.
+
+    Deferred until a step is first dispatched so that merely importing the
+    harmonizer package does not pull every step module.
+    """
+    global _steps_loaded
+    if _steps_loaded:
+        return
+    for _m in _pkgutil.iter_modules(__path__):
+        if not _m.ispkg:
+            _import_module(f'{__name__}.{_m.name}')
+    _steps_loaded = True
+
+
 class Harmonizer:
     """Recipe-driven harmonization via a composable step pipeline.
 
@@ -138,6 +159,7 @@ class Harmonizer:
         recipe: str | dict,
         admin_ids: str | list | None = None,
         verbose: bool = False,
+        save_statistics: bool = False,
     ):
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)
@@ -153,6 +175,9 @@ class Harmonizer:
             )
         self.recipe = recipe
         self.verbose = verbose
+        self.save_statistics = save_statistics or bool(
+            recipe.get('save_statistics', False)
+        )
         self._timer = None
 
         process_level = self._process_level
@@ -266,6 +291,7 @@ class Harmonizer:
             admin_id=admin_id,
             verbose=self.verbose,
             timer=self._timer,
+            save_statistics=self.save_statistics,
         )
 
         for step_cfg in pipeline:
@@ -275,6 +301,9 @@ class Harmonizer:
                     f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
                 )
             fn = _STEP_REGISTRY.get(step_name)
+            if fn is None:
+                _load_steps()
+                fn = _STEP_REGISTRY.get(step_name)
             if fn is None:
                 raise ValueError(
                     f"Unknown pipeline step: '{step_name}'. "
@@ -286,6 +315,12 @@ class Harmonizer:
         if state.spine is None:
             warnings.warn(f'Pipeline for {admin_id} produced no spine; nothing saved.')
             return
+
+        # Restore the spine's original index name if resolve_spine renamed it to
+        # avoid the spatial-overlay 'parcel_id' reference-level clash.
+        restore_name = state.metadata.get('spine_index_name')
+        if restore_name is not None and state.spine.index.name != restore_name:
+            state.spine.index = state.spine.index.rename(restore_name)
 
         out_path = get_output_path(self.recipe, admin_id)
         save_parquet(
@@ -300,6 +335,7 @@ def harmonize(
     admin_ids: str | list | None = None,
     reprocess: bool = False,
     verbose: bool = False,
+    save_statistics: bool = False,
 ) -> None:
     """Instantiate and run harmonization for *recipe*.
 
@@ -315,19 +351,18 @@ def harmonize(
         If True, re-run even if output already exists.
     verbose : bool
         Print progress messages.
+    save_statistics : bool
+        If True (or the recipe sets ``save_statistics: true``), write diagnostic
+        tables (e.g. the parcel-NSI occupancy linkage) to the cache without
+        changing the harmonized output.
     """
-    Harmonizer(recipe, admin_ids=admin_ids, verbose=verbose).harmonize(
-        reprocess=reprocess
-    )
+    Harmonizer(
+        recipe,
+        admin_ids=admin_ids,
+        verbose=verbose,
+        save_statistics=save_statistics,
+    ).harmonize(reprocess=reprocess)
 
-
-# Import each step module for the side-effect of calling @_register decorators.
-
-import openplaces.io.harmonizer.attributes  # noqa: F401, E402
-import openplaces.io.harmonizer.discover  # noqa: F401, E402
-import openplaces.io.harmonizer.filter  # noqa: F401, E402
-import openplaces.io.harmonizer.links  # noqa: F401, E402
-import openplaces.io.harmonizer.spine  # noqa: F401, E402
 
 __all__ = [
     'Harmonizer',

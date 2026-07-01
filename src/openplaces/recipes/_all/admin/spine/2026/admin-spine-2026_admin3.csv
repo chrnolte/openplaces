@@ -10054,6 +10054,7 @@ CO-AN-AR,Abriaquí,Municipio,,,,05004,any2
 CO-AN-AS,San Carlos,Municipio,,,,05649,any2
 CO-AN-AZ,Anzá,Municipio,,,,05044,any2
 CO-AN-BA,Barbosa,Municipio,,,,05079,any2
+CO-AN-BB,Santa Bárbara,Municipio,,,,05679,any2
 CO-AN-BE,Bello,Municipio,,,,05088,any2
 CO-AN-BG,El Bagre,Municipio,,,,05250,any2
 CO-AN-BI,Betulia,Municipio,,,,05093,any2
@@ -10077,12 +10078,14 @@ CO-AN-CR,Caracolí,Municipio,,,,05142,any2
 CO-AN-CS,Cañasgordas,Municipio,,,,05138,any2
 CO-AN-CU,Caucasia,Municipio,,,,05154,any2
 CO-AN-DA,Dabeiba,Municipio,,,,05234,first2
+CO-AN-DM,Santo Domingo,Municipio,,,,05690,any2
 CO-AN-DO,Donmatías,Municipio,,,,05237,first2
 CO-AN-EB,Ebéjico,Municipio,,,,05240,first2
 CO-AN-EN,Entrerríos,Municipio,,,,05264,any2
 CO-AN-ES,La Estrella,Municipio,,,,05380,first2
 CO-AN-EV,Envigado,Municipio,,,,05266,any2
 CO-AN-FA,San Francisco,Municipio,,,,05652,any2
+CO-AN-FD,Santa Fé de Antioquia,Municipio,,,,05042,initials
 CO-AN-FO,Frontino,Municipio,,,,05284,any2
 CO-AN-FR,Fredonia,Municipio,,,,05282,any2
 CO-AN-GA,Girardota,Municipio,,,,05308,any2
@@ -10128,22 +10131,23 @@ CO-AN-PR,San Pedro de los Milagros,Municipio,,,,05664,any2
 CO-AN-PT,Puerto Triunfo,Municipio,,,,05591,initials
 CO-AN-PU,Pueblorrico,Municipio,,,,05576,first2
 CO-AN-RA,San Rafael,Municipio,,,,05667,first2
+CO-AN-RD,Santa Rosa de Osos,Municipio,,,,05686,initials
 CO-AN-RE,Remedios,Municipio,,,,05604,any2
 CO-AN-RI,Rionegro,Municipio,,,,05615,first2
 CO-AN-RM,Armenia,Municipio,,,,05059,any2
 CO-AN-RO,San Roque,Municipio,,,,05670,first2
 CO-AN-RT,Retiro,Municipio,,,,05607,any2
 CO-AN-SA,El Santuario,Municipio,,,,05697,any2
-CO-AN-SB,Santa Bárbara,Municipio,,,,05679,initials
-CO-AN-SD,Santo Domingo,Municipio,,,,05690,initials
+CO-AN-SB,Santa Bárbara,Municipio,,,,05628,initials
+CO-AN-SD,Santo Domingo,Municipio,,,,,initials
 CO-AN-SE,Segovia,Municipio,,,,05736,first2
-CO-AN-SF,Santa Fé de Antioquia,Municipio,,,,05042,initials
+CO-AN-SF,Santa Fé de Antioquia,Municipio,,,,,initials
 CO-AN-SL,Salgar,Municipio,,,,05642,any2
-CO-AN-SN,Sabanalarga,Municipio,,,,05628,any2
+CO-AN-SN,Sabanalarga,Municipio,,,,05631,any2
 CO-AN-SO,Sonsón,Municipio,,,,05756,any2
 CO-AN-SP,Sopetrán,Municipio,,,,05761,any2
-CO-AN-SR,Santa Rosa de Osos,Municipio,,,,05686,initials
-CO-AN-ST,Sabaneta,Municipio,,,,05631,any2
+CO-AN-SR,Santa Rosa de Osos,Municipio,,,,,initials
+CO-AN-ST,Sabaneta,Municipio,,,,,any2
 CO-AN-TA,Tarazá,Municipio,,,,05790,any2
 CO-AN-TI,Titiribí,Municipio,,,,05809,first2
 CO-AN-TM,Támesis,Municipio,,,,05789,first2
@@ -10177,6 +10181,7 @@ CO-AT-CA,Candelaria,Municipio,,,,08141,first2
 CO-AT-CD,Campo de la Cruz,Municipio,,,,08137,initials
 CO-AT-GA,Galapa,Municipio,,,,08296,first2
 CO-AT-JD,Juan de Acosta,Municipio,,,,08372,initials
+CO-AT-LC,Santa Lucía,Municipio,,,,08675,any2
 CO-AT-LU,Luruaco,Municipio,,,,08421,first2
 CO-AT-MA,Malambo,Municipio,,,,08433,any2
 CO-AT-MN,Manatí,Municipio,,,,08436,any2
@@ -10188,10 +10193,11 @@ CO-AT-PO,Polonuevo,Municipio,,,,08558,any2
 CO-AT-RE,Repelón,Municipio,,,,08606,first2
 CO-AT-SA,Sabanagrande,Municipio,,,,08634,any2
 CO-AT-SB,Sabanalarga,Municipio,,,,08638,any2
-CO-AT-SL,Santa Lucía,Municipio,,,,08675,initials
+CO-AT-SL,Santa Lucía,Municipio,,,,,initials
 CO-AT-SO,Soledad,Municipio,,,,08758,first2
-CO-AT-ST,Santo Tomás,Municipio,,,,08685,initials
+CO-AT-ST,Santo Tomás,Municipio,,,,,initials
 CO-AT-SU,Suan,Municipio,,,,08770,first2
+CO-AT-TO,Santo Tomás,Municipio,,,,08685,first2
 CO-AT-TU,Tubará,Municipio,,,,08832,first2
 CO-AT-US,Usiacurí,Municipio,,,,08849,first2
 CO-BD-BD,"Bogotá, D.c.",Municipio,,,,11001,initials
@@ -10209,6 +10215,8 @@ CO-BO-CM,El Carmen de Bolívar,Municipio,,,,13244,any2
 CO-BO-CN,Cantagallo,Municipio,,,,13160,any2
 CO-BO-CR,Córdoba,Municipio,,,,13212,any2
 CO-BO-CS,San Cristóbal,Municipio,,,,13620,any2
+CO-BO-CT,Santa Catalina,Municipio,,,,13673,any2
+CO-BO-CU,Santa Cruz de Mompox,Municipio,,,,13468,any2
 CO-BO-ES,San Estanislao,Municipio,,,,13647,first2
 CO-BO-FE,San Fernando,Municipio,,,,13650,first2
 CO-BO-GU,El Guamo,Municipio,,,,13248,first2
@@ -10227,22 +10235,25 @@ CO-BO-NO,Norosí,Municipio,,,,13490,first2
 CO-BO-PA,San Pablo,Municipio,,,,13670,first2
 CO-BO-PE,El Peñón,Municipio,,,,13268,first2
 CO-BO-PI,Pinillos,Municipio,,,,13549,first2
+CO-BO-RD,Santa Rosa del Sur,Municipio,,,,13688,initials
 CO-BO-RE,Regidor,Municipio,,,,13580,first2
+CO-BO-RO,Santa Rosa,Municipio,,,,13683,first2
 CO-BO-RV,Río Viejo,Municipio,,,,13600,initials
-CO-BO-SA,Santa Cruz de Mompox,Municipio,,,,13468,any2
-CO-BO-SC,Santa Catalina,Municipio,,,,13673,initials
+CO-BO-SA,Santa Cruz de Mompox,Municipio,,,,,any2
+CO-BO-SC,Santa Catalina,Municipio,,,,,initials
 CO-BO-SI,Simití,Municipio,,,,13744,first2
-CO-BO-SN,Santa Rosa del Sur,Municipio,,,,13688,any2
+CO-BO-SN,Santa Rosa del Sur,Municipio,,,,,any2
 CO-BO-SO,Soplaviento,Municipio,,,,13760,first2
-CO-BO-SR,Santa Rosa,Municipio,,,,13683,initials
+CO-BO-SR,Santa Rosa,Municipio,,,,,initials
 CO-BO-TI,Tiquisio,Municipio,,,,13810,first2
 CO-BO-TN,Talaigua Nuevo,Municipio,,,,13780,initials
 CO-BO-TR,Turbana,Municipio,,,,13838,any2
 CO-BO-TU,Turbaco,Municipio,,,,13836,any2
 CO-BO-VI,Villanueva,Municipio,,,,13873,first2
 CO-BO-ZA,Zambrano,Municipio,,,,13894,first2
+CO-BY-AA,Santa María,Municipio,,,,15690,any2
 CO-BY-AL,Almeida,Municipio,,,,15022,first2
-CO-BY-AM,Samacá,Municipio,,,,15646,any2
+CO-BY-AM,Samacá,Municipio,,,,,any2
 CO-BY-AP,La Capilla,Municipio,,,,15380,any2
 CO-BY-AQ,Aquitania,Municipio,,,,15047,first2
 CO-BY-AR,Arcabuco,Municipio,,,,15051,first2
@@ -10302,11 +10313,11 @@ CO-BY-MT,Motavita,Municipio,,,,15476,any2
 CO-BY-MU,Muzo,Municipio,,,,15480,first2
 CO-BY-NC,Nuevo Colón,Municipio,,,,15494,initials
 CO-BY-NO,Nobsa,Municipio,,,,15491,first2
-CO-BY-OA,Soracá,Municipio,,,,15764,any2
+CO-BY-OA,Soracá,Municipio,,,,15753,any2
 CO-BY-OC,Socotá,Municipio,,,,15755,any2
 CO-BY-OI,Oicatá,Municipio,,,,15500,first2
 CO-BY-OP,Coper,Municipio,,,,15212,any2
-CO-BY-OR,Sora,Municipio,,,,15762,any2
+CO-BY-OR,Sora,Municipio,,,,15764,any2
 CO-BY-OT,Otanche,Municipio,,,,15507,first2
 CO-BY-PA,Pachavita,Municipio,,,,15511,any2
 CO-BY-PB,Puerto Boyacá,Municipio,,,,15572,initials
@@ -10322,6 +10333,7 @@ CO-BY-PY,Paya,Municipio,,,,15533,any2
 CO-BY-PZ,Páez,Municipio,,,,15514,any2
 CO-BY-QU,Quípama,Municipio,,,,15580,first2
 CO-BY-RA,Ramiriquí,Municipio,,,,15599,first2
+CO-BY-RD,Santa Rosa de Viterbo,Municipio,,,,15693,initials
 CO-BY-RO,Rondón,Municipio,,,,15621,first2
 CO-BY-RQ,Ráquira,Municipio,,,,15600,first2
 CO-BY-SA,Saboyá,Municipio,,,,15632,any2
@@ -10331,12 +10343,12 @@ CO-BY-SE,Sutatenza,Municipio,,,,15778,any2
 CO-BY-SG,Sogamoso,Municipio,,,,15759,any2
 CO-BY-SH,Socha,Municipio,,,,15757,any2
 CO-BY-SI,Siachoque,Municipio,,,,15740,first2
-CO-BY-SM,Santa María,Municipio,,,,15690,initials
+CO-BY-SM,Santa María,Municipio,,,,15646,initials
 CO-BY-SN,Santana,Municipio,,,,15686,any2
-CO-BY-SO,Soatá,Municipio,,,,15753,any2
+CO-BY-SO,Soatá,Municipio,,,,15696,any2
 CO-BY-SQ,Sotaquirá,Municipio,,,,15763,any2
-CO-BY-SR,Santa Rosa de Viterbo,Municipio,,,,15693,initials
-CO-BY-SS,Santa Sofía,Municipio,,,,15696,initials
+CO-BY-SR,Santa Rosa de Viterbo,Municipio,,,,15762,initials
+CO-BY-SS,Santa Sofía,Municipio,,,,,initials
 CO-BY-ST,Sativanorte,Municipio,,,,15720,any2
 CO-BY-SU,Susacón,Municipio,,,,15774,any2
 CO-BY-SV,Sativasur,Municipio,,,,15723,any2
@@ -10418,14 +10430,15 @@ CO-CC-PR,Puracé,Municipio,,,,19585,any2
 CO-CC-PT,Piendamó - Tunía,Municipio,,,,19548,initials
 CO-CC-PU,Puerto Tejada,Municipio,,,,19573,any2
 CO-CC-RO,Rosas,Municipio,,,,19622,first2
+CO-CC-RS,Santa Rosa,Municipio,,,,19701,any2
 CO-CC-SD,Santander de Quilichao,Municipio,,,,19698,initials
 CO-CC-SE,San Sebastián,Municipio,,,,19693,first2
 CO-CC-SI,La Sierra,Municipio,,,,19392,any2
 CO-CC-SL,Silvia,Municipio,,,,19743,any2
 CO-CC-SP,Sotará Paispamba,Municipio,,,,19760,initials
-CO-CC-SR,Santa Rosa,Municipio,,,,19701,initials
+CO-CC-SR,Santa Rosa,Municipio,,,,19780,initials
 CO-CC-SU,Sucre,Municipio,,,,19785,any2
-CO-CC-SZ,Suárez,Municipio,,,,19780,any2
+CO-CC-SZ,Suárez,Municipio,,,,,any2
 CO-CC-TA,El Tambo,Municipio,,,,19256,first2
 CO-CC-TI,Timbiquí,Municipio,,,,19809,any2
 CO-CC-TM,Timbío,Municipio,,,,19807,any2
@@ -10516,10 +10529,11 @@ CO-CR-CD,Ciénaga de Oro,Municipio,,,,23189,initials
 CO-CR-CE,Cereté,Municipio,,,,23162,first2
 CO-CR-CH,Chimá,Municipio,,,,23168,any2
 CO-CR-CI,Chinú,Municipio,,,,23182,any2
+CO-CR-CL,San Carlos,Municipio,,,,23678,any2
 CO-CR-CO,Cotorra,Municipio,,,,23300,first2
-CO-CR-CR,San Carlos,Municipio,,,,23678,any2
+CO-CR-CR,San Carlos,Municipio,,,,23419,any2
 CO-CR-JD,San José de Uré,Municipio,,,,23682,initials
-CO-CR-LC,Los Córdobas,Municipio,,,,23419,initials
+CO-CR-LC,Los Córdobas,Municipio,,,,,initials
 CO-CR-LO,Lorica,Municipio,,,,23417,first2
 CO-CR-MI,Moñitos,Municipio,,,,23500,any2
 CO-CR-MN,Montelíbano,Municipio,,,,23466,any2
@@ -10713,6 +10727,7 @@ CO-HU-GI,Gigante,Municipio,,,,41306,first2
 CO-HU-GU,Guadalupe,Municipio,,,,41319,first2
 CO-HU-HO,Hobo,Municipio,,,,41349,first2
 CO-HU-IS,Isnos,Municipio,,,,41359,first2
+CO-HU-MA,Santa María,Municipio,,,,41676,first2
 CO-HU-NE,Neiva,Municipio,,,,41001,first2
 CO-HU-NT,Nátaga,Municipio,,,,41483,first2
 CO-HU-OP,Oporapa,Municipio,,,,41503,first2
@@ -10725,7 +10740,7 @@ CO-HU-PT,Pitalito,Municipio,,,,41551,any2
 CO-HU-QU,Íquira,Municipio,,,,41357,first2
 CO-HU-RI,Rivera,Municipio,,,,41615,first2
 CO-HU-SA,Saladoblanco,Municipio,,,,41660,first2
-CO-HU-SM,Santa María,Municipio,,,,41676,initials
+CO-HU-SM,Santa María,Municipio,,,,,initials
 CO-HU-SU,Suaza,Municipio,,,,41770,first2
 CO-HU-TA,Tarqui,Municipio,,,,41791,first2
 CO-HU-TE,Tello,Municipio,,,,41799,any2
@@ -10736,14 +10751,17 @@ CO-HU-VI,Villavieja,Municipio,,,,41872,first2
 CO-HU-YA,Yaguará,Municipio,,,,41885,first2
 CO-MA-AI,Ariguaní,Municipio,,,,47058,any2
 CO-MA-AL,Algarrobo,Municipio,,,,47030,first2
+CO-MA-AN,Santa Ana,Municipio,,,,47707,first2
 CO-MA-AR,Aracataca,Municipio,,,,47053,any2
 CO-MA-BA,El Banco,Municipio,,,,47245,first2
+CO-MA-BD,Santa Bárbara de Pinto,Municipio,,,,47720,initials
 CO-MA-CD,Cerro de San Antonio,Municipio,,,,47161,initials
 CO-MA-CH,Chivolo,Municipio,,,,47170,first2
 CO-MA-CI,Ciénaga,Municipio,,,,47189,first2
 CO-MA-CO,Concordia,Municipio,,,,47205,first2
 CO-MA-FU,Fundación,Municipio,,,,47288,first2
 CO-MA-GU,Guamal,Municipio,,,,47318,first2
+CO-MA-MA,Santa Marta,Municipio,,,,47001,first2
 CO-MA-NG,Nueva Granada,Municipio,,,,47460,initials
 CO-MA-PD,Pijiño del Carmen,Municipio,,,,47545,initials
 CO-MA-PE,Pedraza,Municipio,,,,47541,first2
@@ -10753,13 +10771,13 @@ CO-MA-PU,Puebloviejo,Municipio,,,,47570,first2
 CO-MA-PV,Pivijay,Municipio,,,,47551,any2
 CO-MA-RE,El Retén,Municipio,,,,47268,any2
 CO-MA-RM,Remolino,Municipio,,,,47605,any2
-CO-MA-SA,Santa Ana,Municipio,,,,47707,initials
-CO-MA-SB,Santa Bárbara de Pinto,Municipio,,,,47720,initials
+CO-MA-SA,Santa Ana,Municipio,,,,47675,initials
+CO-MA-SB,Santa Bárbara de Pinto,Municipio,,,,,initials
 CO-MA-SD,Sabanas de San Ángel,Municipio,,,,47660,initials
 CO-MA-SE,San Sebastián de Buenavista,Municipio,,,,47692,first2
 CO-MA-SI,Sitionuevo,Municipio,,,,47745,first2
-CO-MA-SL,Salamina,Municipio,,,,47675,any2
-CO-MA-SM,Santa Marta,Municipio,,,,47001,initials
+CO-MA-SL,Salamina,Municipio,,,,,any2
+CO-MA-SM,Santa Marta,Municipio,,,,,initials
 CO-MA-TE,Tenerife,Municipio,,,,47798,first2
 CO-MA-ZA,Zapayán,Municipio,,,,47960,first2
 CO-MA-ZB,Zona Bananera,Municipio,,,,47980,initials
@@ -10795,12 +10813,14 @@ CO-ME-VI,Villavicencio,Municipio,,,,50001,any2
 CO-ME-VS,Vistahermosa,Municipio,,,,50711,any2
 CO-NA-AA,Aldana,Municipio,,,,52022,any2
 CO-NA-AD,San Andrés de Tumaco,Municipio,,,,52835,initials
+CO-NA-AE,Los Andes,Municipio,,,,52418,any2
 CO-NA-AL,Albán,Municipio,,,,52019,any2
 CO-NA-AN,Ancuya,Municipio,,,,52036,first2
 CO-NA-AR,Arboleda,Municipio,,,,52051,first2
 CO-NA-BA,Barbacoas,Municipio,,,,52079,first2
 CO-NA-BE,Belén,Municipio,,,,52083,any2
-CO-NA-BR,San Bernardo,Municipio,,,,52685,any2
+CO-NA-BN,San Bernardo,Municipio,,,,52685,any2
+CO-NA-BR,San Bernardo,Municipio,,,,52696,any2
 CO-NA-BU,Buesaco,Municipio,,,,52110,first2
 CO-NA-CA,El Charco,Municipio,,,,52250,any2
 CO-NA-CC,Cuaspud Carlosama,Municipio,,,,52224,initials
@@ -10821,7 +10841,7 @@ CO-NA-GU,Guachucal,Municipio,,,,52317,any2
 CO-NA-IL,Iles,Municipio,,,,52352,first2
 CO-NA-IM,Imués,Municipio,,,,52354,first2
 CO-NA-IP,Ipiales,Municipio,,,,52356,first2
-CO-NA-LA,Los Andes,Municipio,,,,52418,initials
+CO-NA-LA,Los Andes,Municipio,,,,,initials
 CO-NA-LE,Leiva,Municipio,,,,52405,first2
 CO-NA-LI,Linares,Municipio,,,,52411,first2
 CO-NA-LL,La Llanada,Municipio,,,,52385,first2
@@ -10845,7 +10865,7 @@ CO-NA-RI,Ricaurte,Municipio,,,,52612,first2
 CO-NA-RO,El Rosario,Municipio,,,,52256,first2
 CO-NA-RP,Roberto Payán,Municipio,,,,52621,initials
 CO-NA-SA,Samaniego,Municipio,,,,52678,any2
-CO-NA-SB,Santa Bárbara,Municipio,,,,52696,initials
+CO-NA-SB,Santa Bárbara,Municipio,,,,,initials
 CO-NA-SN,Sandoná,Municipio,,,,52683,any2
 CO-NA-SP,Sapuyes,Municipio,,,,52720,any2
 CO-NA-ST,Santacruz,Municipio,,,,52699,any2
@@ -10878,12 +10898,13 @@ CO-ND-HE,Herrán,Municipio,,,,54347,first2
 CO-ND-JD,San José de Cúcuta,Municipio,,,,54001,initials
 CO-ND-LA,Labateca,Municipio,,,,54377,first2
 CO-ND-LO,Lourdes,Municipio,,,,54418,first2
-CO-ND-LP,Los Patios,Municipio,,,,54405,initials
+CO-ND-LP,Los Patios,Municipio,,,,,initials
 CO-ND-MU,Mutiscua,Municipio,,,,54480,first2
 CO-ND-OC,Ocaña,Municipio,,,,54498,first2
-CO-ND-PA,Pamplona,Municipio,,,,54518,any2
+CO-ND-PA,Pamplona,Municipio,,,,54405,any2
 CO-ND-PL,La Playa,Municipio,,,,54398,first2
-CO-ND-PM,Pamplonita,Municipio,,,,54520,any2
+CO-ND-PM,Pamplonita,Municipio,,,,54518,any2
+CO-ND-PP,Pamplonita,Municipio,,,,54520,any2
 CO-ND-PS,Puerto Santander,Municipio,,,,54553,initials
 CO-ND-RA,Ragonvalia,Municipio,,,,54599,first2
 CO-ND-SA,Salazar,Municipio,,,,54660,any2
@@ -10933,8 +10954,9 @@ CO-RI-MI,Mistrató,Municipio,,,,66456,first2
 CO-RI-PE,Pereira,Municipio,,,,66001,first2
 CO-RI-PR,Pueblo Rico,Municipio,,,,66572,initials
 CO-RI-QU,Quinchía,Municipio,,,,66594,first2
+CO-RI-RD,Santa Rosa de Cabal,Municipio,,,,66682,initials
 CO-RI-SA,Santuario,Municipio,,,,66687,first2
-CO-RI-SR,Santa Rosa de Cabal,Municipio,,,,66682,initials
+CO-RI-SR,Santa Rosa de Cabal,Municipio,,,,,initials
 CO-RI-VI,La Virginia,Municipio,,,,66400,first2
 CO-SA-AG,Aguada,Municipio,,,,68013,first2
 CO-SA-AL,Albania,Municipio,,,,68020,first2
@@ -10942,11 +10964,12 @@ CO-SA-AN,San Andrés,Municipio,,,,68669,first2
 CO-SA-AR,Aratoca,Municipio,,,,68051,first2
 CO-SA-BA,Barbosa,Municipio,,,,68077,any2
 CO-SA-BE,Betulia,Municipio,,,,68092,any2
-CO-SA-BI,San Benito,Municipio,,,,68673,any2
+CO-SA-BI,San Benito,Municipio,,,,68079,any2
 CO-SA-BL,La Belleza,Municipio,,,,68377,any2
 CO-SA-BN,Barrancabermeja,Municipio,,,,68081,any2
 CO-SA-BO,Bolívar,Municipio,,,,68101,first2
-CO-SA-BR,Barichara,Municipio,,,,68079,any2
+CO-SA-BR,Barichara,Municipio,,,,68705,any2
+CO-SA-BT,San Benito,Municipio,,,,68673,any2
 CO-SA-BU,Bucaramanga,Municipio,,,,68001,first2
 CO-SA-CA,Cabrera,Municipio,,,,68121,any2
 CO-SA-CC,Contratación,Municipio,,,,68211,any2
@@ -10977,6 +11000,7 @@ CO-SA-GP,Guapotá,Municipio,,,,68322,any2
 CO-SA-GU,El Guacamayo,Municipio,,,,68245,any2
 CO-SA-GV,Guavatá,Municipio,,,,68324,any2
 CO-SA-HA,Hato,Municipio,,,,68344,first2
+CO-SA-HD,Santa Helena del Opón,Municipio,,,,68720,initials
 CO-SA-HI,Chipatá,Municipio,,,,68179,any2
 CO-SA-HR,Charta,Municipio,,,,68169,any2
 CO-SA-JA,San Joaquín,Municipio,,,,68682,any2
@@ -10985,7 +11009,7 @@ CO-SA-JM,Jesús María,Municipio,,,,68368,initials
 CO-SA-JO,Jordán,Municipio,,,,68370,any2
 CO-SA-LA,Landázuri,Municipio,,,,68385,first2
 CO-SA-LE,Lebrija,Municipio,,,,68406,first2
-CO-SA-LS,Los Santos,Municipio,,,,68418,initials
+CO-SA-LS,Los Santos,Municipio,,,,,initials
 CO-SA-MA,Macaravita,Municipio,,,,68425,any2
 CO-SA-MG,Molagavita,Municipio,,,,68468,any2
 CO-SA-MI,San Miguel,Municipio,,,,68686,first2
@@ -11008,10 +11032,11 @@ CO-SA-PP,Puerto Parra,Municipio,,,,68573,initials
 CO-SA-PR,Páramo,Municipio,,,,68533,first2
 CO-SA-PW,Puerto Wilches,Municipio,,,,68575,initials
 CO-SA-RI,Rionegro,Municipio,,,,68615,first2
-CO-SA-SB,Santa Bárbara,Municipio,,,,68705,initials
+CO-SA-SA,Los Santos,Municipio,,,,68418,first2
+CO-SA-SB,Santa Bárbara,Municipio,,,,,initials
 CO-SA-SC,Sucre,Municipio,,,,68773,any2
 CO-SA-SD,Sabana de Torres,Municipio,,,,68655,initials
-CO-SA-SH,Santa Helena del Opón,Municipio,,,,68720,initials
+CO-SA-SH,Santa Helena del Opón,Municipio,,,,,initials
 CO-SA-SI,Simacota,Municipio,,,,68745,first2
 CO-SA-SO,Socorro,Municipio,,,,68755,first2
 CO-SA-SR,Suratá,Municipio,,,,68780,any2
@@ -11035,14 +11060,15 @@ CO-SU-GU,Guaranda,Municipio,,,,70265,first2
 CO-SU-JD,San José de Toluviejo,Municipio,,,,70823,initials
 CO-SU-JU,San Juan de Betulia,Municipio,,,,70702,first2
 CO-SU-LD,San Luis de Sincé,Municipio,,,,70742,initials
-CO-SU-LP,Los Palmitos,Municipio,,,,70418,initials
+CO-SU-LP,Los Palmitos,Municipio,,,,,initials
 CO-SU-MA,Majagual,Municipio,,,,70429,any2
 CO-SU-MO,Morroa,Municipio,,,,70473,first2
 CO-SU-MR,San Marcos,Municipio,,,,70708,any2
 CO-SU-ON,San Onofre,Municipio,,,,70713,first2
 CO-SU-OV,Ovejas,Municipio,,,,70508,first2
-CO-SU-PA,Palmito,Municipio,,,,70523,first2
+CO-SU-PA,Palmito,Municipio,,,,70418,first2
 CO-SU-PE,San Pedro,Municipio,,,,70717,first2
+CO-SU-PL,Palmito,Municipio,,,,70523,any2
 CO-SU-RO,El Roble,Municipio,,,,70233,first2
 CO-SU-SA,Sampués,Municipio,,,,70670,first2
 CO-SU-SD,Santiago de Tolú,Municipio,,,,70820,initials
@@ -11073,6 +11099,7 @@ CO-TO-HE,Herveo,Municipio,,,,73347,first2
 CO-TO-HO,Honda,Municipio,,,,73349,first2
 CO-TO-IB,Ibagué,Municipio,,,,73001,first2
 CO-TO-IC,Icononzo,Municipio,,,,73352,first2
+CO-TO-IS,Santa Isabel,Municipio,,,,73686,first2
 CO-TO-LB,Líbano,Municipio,,,,73411,first2
 CO-TO-LR,Lérida,Municipio,,,,73408,first2
 CO-TO-LU,San Luis,Municipio,,,,73678,first2
@@ -11090,7 +11117,7 @@ CO-TO-RO,Roncesvalles,Municipio,,,,73622,any2
 CO-TO-RV,Rovira,Municipio,,,,73624,any2
 CO-TO-SA,Saldaña,Municipio,,,,73671,first2
 CO-TO-SD,San Sebastián de Mariquita,Municipio,,,,73443,initials
-CO-TO-SI,Santa Isabel,Municipio,,,,73686,initials
+CO-TO-SI,Santa Isabel,Municipio,,,,,initials
 CO-TO-SU,Suárez,Municipio,,,,73770,first2
 CO-TO-VD,Valle de San Juan,Municipio,,,,73854,initials
 CO-TO-VE,Venadillo,Municipio,,,,73861,first2
@@ -11147,7 +11174,8 @@ CO-VD-ZA,Zarzal,Municipio,,,,76895,first2
 CO-VI-CU,Cumaribo,Municipio,,,,99773,first2
 CO-VI-PC,Puerto Carreño,Municipio,,,,99001,initials
 CO-VI-PR,La Primavera,Municipio,,,,99524,first2
-CO-VI-SR,Santa Rosalía,Municipio,,,,99624,initials
+CO-VI-RO,Santa Rosalía,Municipio,,,,99624,first2
+CO-VI-SR,Santa Rosalía,Municipio,,,,,initials
 CR-AL-AL,Alajuela,Canton,,,CRI.1.1_1,1,hasc
 CR-AL-AR,Zarcero,Canton,,,CRI.1.16_1,11,hasc
 CR-AL-AT,Atenas,Canton,,,CRI.1.3_1,5,hasc

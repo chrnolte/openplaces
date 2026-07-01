@@ -55,9 +55,9 @@ columns:
   effective_year_built: EFF_YR_BLT
   year_built: ACT_YR_BLT
   living_area_sqft: TOT_LVG_AR
-  n_dwelling_units: NO_RES_UNT
-  land_use_group: DOR_UC
-  land_use_group_admin3: PA_UC
+  n_dwellings: NO_RES_UNT
+  use_group: DOR_UC
+  use_group_admin3: PA_UC
   land_unit_code: LND_UNTS_C
   n_land_units: NO_LND_UNT
   last_inspection_date: DT_LAST_IN
@@ -67,12 +67,12 @@ columns:
   owner_address: OWN_ADDR1
   owner_address2: OWN_ADDR2
   owner_city: OWN_CITY
-  owner_admin3_id: OWN_STATE
+  owner_admin2_id_admin1: OWN_STATE
   owner_postal_code: OWN_ZIPCD
-  owner_admin3_id_domicile: OWN_STATE_
+  owner_admin2_id_admin1_domicile: OWN_STATE_
   owner_public_code: PUBLIC_LND
-  tax_purpose_group: BAS_STRT
-  tax_purpose_subgroup: ATV_STRT
+  tax_use_group: BAS_STRT
+  tax_use_subgroup: ATV_STRT
   tax_market_area: MKT_AR
   tax_neighborhood_code: NBRHD_CD
   tax_special_assessment: SPASS_CD

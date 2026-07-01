@@ -132432,13 +132432,15 @@ US-CA-LK-LL,Lower Lake,,,,,0603391775,,initials
 US-CA-LK-MI,Middletown,,,,,0603391975,,first2
 US-CA-LK-UL,Upper Lake-Nice,,,,,0603393505,,initials
 US-CA-LO-AH,Agoura Hills-Malibu,,,,,0603790015,,initials
+US-CA-LO-AN,Los Angeles,,,,,0603791750,,first2
 US-CA-LO-CO,Compton,,,,,0603790560,,first2
 US-CA-LO-DN,Downey-Norwalk,,,,,0603790730,,initials
 US-CA-LO-EG,East San Gabriel Valley,,,,,0603790810,,initials
 US-CA-LO-FV,San Fernando Valley,,,,,0603792785,,initials
 US-CA-LO-IN,Inglewood,,,,,0603791400,,first2
-US-CA-LO-LA,Los Angeles,,,,,0603791750,,initials
+US-CA-LO-LA,Los Angeles,,,,,,,initials
 US-CA-LO-LB,Long Beach-Lakewood,,,,,0603791730,,initials
+US-CA-LO-MO,Santa Monica,,,,,0603792920,,first2
 US-CA-LO-NA,North Antelope Valley,,,,,0603792140,,initials
 US-CA-LO-NE,Newhall,,,,,0603792110,,first2
 US-CA-LO-PA,Pasadena,,,,,0603792400,,first2
@@ -132446,7 +132448,7 @@ US-CA-LO-PV,Palos Verdes,,,,,0603792360,,initials
 US-CA-LO-SA,South Antelope Valley,,,,,0603793090,,initials
 US-CA-LO-SB,South Bay Cities,,,,,0603793100,,initials
 US-CA-LO-SG,South Gate-East Los Angeles,,,,,0603793155,,initials
-US-CA-LO-SM,Santa Monica,,,,,0603792920,,initials
+US-CA-LO-SM,Santa Monica,,,,,,,initials
 US-CA-LO-SO,Southwest San Gabriel Valley,,,,,0603793200,,first2
 US-CA-LO-TO,Torrance,,,,,0603793380,,first2
 US-CA-LO-UG,Upper San Gabriel Valley,,,,,0603793510,,initials
@@ -132461,10 +132463,11 @@ US-CA-MC-AT,Alturas,,,,,0604990040,,any2
 US-CA-MC-NE,Newell,,,,,0604992105,,first2
 US-CA-MC-SV,Surprise Valley,,,,,0604993270,,initials
 US-CA-MD-AT,Atwater,,,,,0604790150,,first2
+US-CA-MD-BA,Los Banos,,,,,0604791760,,first2
 US-CA-MD-DP,Dos Palos,,,,,0604790720,,initials
 US-CA-MD-GU,Gustine,,,,,0604791210,,first2
 US-CA-MD-HI,Hilmar-Irwin,,,,,0604791290,,initials
-US-CA-MD-LB,Los Banos,,,,,0604791760,,initials
+US-CA-MD-LB,Los Banos,,,,,,,initials
 US-CA-MD-LD,Livingston-Delhi,,,,,0604791670,,initials
 US-CA-MD-ME,Merced,,,,,0604791960,,first2
 US-CA-MD-PL,Planada-Le Grand,,,,,0604792500,,initials
@@ -132516,7 +132519,8 @@ US-CA-NA-SH,St. Helena,,,,,0605592710,,initials
 US-CA-NE-DO,Donner,,,,,0605790710,,first2
 US-CA-NE-GV,Grass Valley,,,,,0605791140,,initials
 US-CA-NE-NC,Nevada City,,,,,0605792090,,initials
-US-CA-OR-AS,Anaheim-Santa Ana-Garden Grove,,,,,0605990050,,initials
+US-CA-OR-AA,Anaheim-Santa Ana-Garden Grove,,,,,0605990050,,initials
+US-CA-OR-AS,Anaheim-Santa Ana-Garden Grove,,,,,,,initials
 US-CA-OR-CC,Central Coast,,,,,0605990420,,initials
 US-CA-OR-IL,Irvine-Lake Forest,,,,,0605991413,,initials
 US-CA-OR-MV,Mission Viejo,,,,,0605991977,,initials
@@ -132565,13 +132569,16 @@ US-CA-SA-SV,Searles Valley,,,,,0607192955,,initials
 US-CA-SA-TP,Twentynine Palms-Yucca Valley,,,,,0607193482,,initials
 US-CA-SA-VH,Victorville-Hesperia,,,,,0607193555,,initials
 US-CA-SA-YU,Yucaipa,,,,,0607193850,,first2
+US-CA-SB-BA,Santa Barbara,,,,,0608392890,,first2
 US-CA-SB-CA,Carpinteria,,,,,0608390378,,first2
 US-CA-SB-CU,Cuyama,,,,,0608390630,,first2
 US-CA-SB-GU,Guadalupe,,,,,0608391200,,first2
 US-CA-SB-LO,Lompoc,,,,,0608391708,,first2
-US-CA-SB-SB,Santa Barbara,,,,,0608392890,,initials
-US-CA-SB-SM,Santa Maria,,,,,0608392908,,initials
-US-CA-SB-SS,Solvang-Santa Ynez,,,,,0608393065,,initials
+US-CA-SB-MA,Santa Maria,,,,,0608392908,,first2
+US-CA-SB-SB,Santa Barbara,,,,,,,initials
+US-CA-SB-SM,Santa Maria,,,,,,,initials
+US-CA-SB-SS,Solvang-Santa Ynez,,,,,,,initials
+US-CA-SB-SY,Solvang-Santa Ynez,,,,,0608393065,,initials
 US-CA-SC-EG,Elk Grove,,,,,0606790870,,initials
 US-CA-SC-FO,Folsom,,,,,0606791010,,first2
 US-CA-SC-GA,Galt,,,,,0606791090,,first2
@@ -132635,8 +132642,10 @@ US-CA-SL-DR,Diablo Range,,,,,0608590680,,initials
 US-CA-SL-JO,San Jose,,,,,0608592830,,first2
 US-CA-SL-LH,Lexington Hills,,,,,0608591602,,initials
 US-CA-SL-LU,Llagas-Uvas,,,,,0608591680,,initials
-US-CA-SL-SS,South Santa Clara Valley,,,,,0608593175,,initials
-US-CA-SL-WS,West Santa Clara,,,,,0608593660,,initials
+US-CA-SL-SC,South Santa Clara Valley,,,,,0608593175,,initials
+US-CA-SL-SS,South Santa Clara Valley,,,,,,,initials
+US-CA-SL-WC,West Santa Clara,,,,,0608593660,,initials
+US-CA-SL-WS,West Santa Clara,,,,,,,initials
 US-CA-SM-HM,Half Moon Bay,,,,,0608191215,,initials
 US-CA-SM-MA,San Mateo,,,,,0608192870,,first2
 US-CA-SM-SF,South San Francisco,,,,,0608193170,,initials
@@ -132648,10 +132657,11 @@ US-CA-SN-VL,Vallejo,,,,,0609593530,,any2
 US-CA-SO-CG,Cloverdale-Geyserville,,,,,0609790510,,initials
 US-CA-SO-HE,Healdsburg,,,,,0609791270,,first2
 US-CA-SO-PE,Petaluma,,,,,0609792460,,first2
+US-CA-SO-RO,Santa Rosa,,,,,0609792940,,first2
 US-CA-SO-RR,Russian River-Sonoma Coast,,,,,0609792682,,initials
 US-CA-SO-SE,Sebastopol,,,,,0609792980,,first2
 US-CA-SO-SO,Sonoma,,,,,0609793070,,first2
-US-CA-SO-SR,Santa Rosa,,,,,0609792940,,initials
+US-CA-SO-SR,Santa Rosa,,,,,,,initials
 US-CA-SS-AG,Arroyo Grande,,,,,0607990120,,initials
 US-CA-SS-AT,Atascadero,,,,,0607990140,,first2
 US-CA-SS-LO,San Luis Obispo,,,,,0607992860,,initials
@@ -132672,11 +132682,13 @@ US-CA-SU-SS,South Sutter,,,,,0610193180,,initials
 US-CA-SU-SU,Sutter,,,,,0610193290,,first2
 US-CA-SU-YC,Yuba City,,,,,0610193820,,initials
 US-CA-SU-YU,Yuba City Southwest,,,,,0610193825,,first2
+US-CA-SZ-CR,Santa Cruz,,,,,0608792900,,first2
 US-CA-SZ-LV,San Lorenzo Valley,,,,,0608792850,,initials
-US-CA-SZ-SC,Santa Cruz,,,,,0608792900,,initials
+US-CA-SZ-SC,Santa Cruz,,,,,,,initials
 US-CA-SZ-SR,Summit Road,,,,,0608793265,,initials
 US-CA-SZ-WA,Watsonville,,,,,0608793590,,first2
-US-CA-SZ-WS,West Santa Cruz,,,,,0608793665,,initials
+US-CA-SZ-WC,West Santa Cruz,,,,,0608793665,,initials
+US-CA-SZ-WS,West Santa Cruz,,,,,,,initials
 US-CA-TE-CO,Corning,,,,,0610390580,,first2
 US-CA-TE-ET,East Tehama,,,,,0610390840,,initials
 US-CA-TE-RB,Red Bluff,,,,,0610392560,,initials
@@ -132706,12 +132718,15 @@ US-CA-TR-NT,Northwest Trinity,,,,,0610592202,,initials
 US-CA-TR-WE,Weaverville,,,,,0610593595,,first2
 US-CA-VE-CA,Camarillo,,,,,0611190350,,first2
 US-CA-VE-FI,Fillmore,,,,,0611190988,,first2
-US-CA-VE-LO,Los Padres,,,,,0611191770,,first2
-US-CA-VE-LP,Las Posas,,,,,0611191560,,initials
+US-CA-VE-LO,Los Padres,,,,,,,first2
+US-CA-VE-LP,Las Posas,,,,,,,initials
 US-CA-VE-MO,Moorpark,,,,,0611192020,,first2
 US-CA-VE-OM,Ojai-Mira Monte,,,,,0611192245,,initials
 US-CA-VE-OX,Oxnard,,,,,0611192310,,first2
-US-CA-VE-SP,Santa Paula,,,,,0611192930,,initials
+US-CA-VE-PA,Los Padres,,,,,0611191770,,any2
+US-CA-VE-PO,Las Posas,,,,,0611191560,,first2
+US-CA-VE-PU,Santa Paula,,,,,0611192930,,any2
+US-CA-VE-SP,Santa Paula,,,,,,,initials
 US-CA-VE-SV,Simi Valley,,,,,0611193020,,initials
 US-CA-VE-TO,Thousand Oaks,,,,,0611193350,,initials
 US-CA-VE-TP,Triunfo Pass-Point Mugu,,,,,0611193422,,initials
@@ -132746,7 +132761,8 @@ US-CO-BA-CA,Campo,,,,,0800990475,,first2
 US-CO-BA-PR,Pritchett,,,,,0800992964,,first2
 US-CO-BA-SP,Springfield,,,,,0800993477,,first2
 US-CO-BA-WA,Walsh,,,,,0800993762,,first2
-US-CO-BE-LA,Las Animas,,,,,0801192185,,initials
+US-CO-BE-AN,Las Animas,,,,,0801192185,,first2
+US-CO-BE-LA,Las Animas,,,,,,,initials
 US-CO-BE-MC,McClave,,,,,0801192356,,first2
 US-CO-BE-SB,South Bent,,,,,0801193388,,initials
 US-CO-BO-BM,Bald Mountain,,,,,0801390228,,initials
@@ -136095,13 +136111,14 @@ US-IL-CN-BR,Breese,,,,,1702707926,,any2
 US-IL-CN-CA,Carlyle,,,,,1702711241,,first2
 US-IL-CN-CL,Clement,,,,,1702714884,,first2
 US-IL-CN-EF,East Fork,,,,,1702721748,,initials
+US-IL-CN-FE,Santa Fe,,,,,1702767652,,first2
 US-IL-CN-GE,Germantown,,,,,1702729054,,first2
 US-IL-CN-IR,Irishtown,,,,,1702737673,,first2
 US-IL-CN-LA,Lake,,,,,1702740871,,first2
 US-IL-CN-LG,Looking Glass,,,,,1702744667,,initials
 US-IL-CN-ME,Meridian,,,,,1702748476,,first2
 US-IL-CN-SC,Sugar Creek,,,,,1702773365,,initials
-US-IL-CN-SF,Santa Fe,,,,,1702767652,,initials
+US-IL-CN-SF,Santa Fe,,,,,,,initials
 US-IL-CN-SR,St. Rose,,,,,1702767171,,initials
 US-IL-CN-WA,Wade,,,,,1702778344,,first2
 US-IL-CN-WH,Wheatfield,,,,,1702780996,,first2
@@ -136215,6 +136232,7 @@ US-IL-DU-NA,Naperville,,,,,1704351635,,first2
 US-IL-DU-WA,Wayne,,,,,1704379410,,first2
 US-IL-DU-WI,Winfield,,,,,1704382413,,first2
 US-IL-DU-YO,York,,,,,1704383947,,first2
+US-IL-DW-AN,Santa Anna,,,,,1703967639,,first2
 US-IL-DW-BA,Barnett,,,,,1703903714,,first2
 US-IL-DW-CL,Clintonia,,,,,1703915014,,first2
 US-IL-DW-CR,Creek,,,,,1703917302,,first2
@@ -136222,7 +136240,7 @@ US-IL-DW-DW,De Witt,,,,,1703919785,,initials
 US-IL-DW-HA,Harp,,,,,1703933058,,first2
 US-IL-DW-NI,Nixon,,,,,1703953117,,first2
 US-IL-DW-RU,Rutledge,,,,,1703966469,,first2
-US-IL-DW-SA,Santa Anna,,,,,1703967639,,initials
+US-IL-DW-SA,Santa Anna,,,,,,,initials
 US-IL-DW-TE,Texas,,,,,1703974769,,first2
 US-IL-DW-TU,Tunbridge,,,,,1703976342,,first2
 US-IL-DW-WA,Wapella,,,,,1703978786,,any2
@@ -139690,6 +139708,7 @@ US-KS-PL-WA,Walnut,,,,,2014775075,,first2
 US-KS-PN-AV,Ash Valley,,,,,2014502825,,initials
 US-KS-PN-BG,Browns Grove,,,,,2014508750,,initials
 US-KS-PN-CO,Conkling,,,,,2014515225,,first2
+US-KS-PN-FE,Santa Fe,,,,,2014563025,,first2
 US-KS-PN-GA,Garfield,,,,,2014525775,,first2
 US-KS-PN-GR,Grant,,,,,2014527925,,first2
 US-KS-PN-KE,Keysville,,,,,2014536625,,first2
@@ -139705,7 +139724,7 @@ US-KS-PN-PR,Pleasant Ridge,,,,,2014556475,,initials
 US-KS-PN-PV,Pleasant Valley,,,,,2014556600,,initials
 US-KS-PN-RI,River,,,,,2014560050,,first2
 US-KS-PN-SA,Sawmill,,,,,2014563250,,first2
-US-KS-PN-SF,Santa Fe,,,,,2014563025,,initials
+US-KS-PN-SF,Santa Fe,,,,,,,initials
 US-KS-PN-SH,Shiley,,,,,2014565275,,first2
 US-KS-PN-VC,Valley Center,,,,,2014573225,,initials
 US-KS-PN-WA,Walnut,,,,,2014575050,,first2
@@ -141023,7 +141042,8 @@ US-LA-RA-X05,E,,,,,2207995803,,sequential
 US-LA-RA-X06,F,,,,,2207995818,,sequential
 US-LA-RA-X07,G,,,,,2207995830,,sequential
 US-LA-RA-X08,H,,,,,2207995839,,sequential
-US-LA-RA-X1,I,,,,,2207995848,,numeric_only
+US-LA-RA-X09,I,,,,,2207995848,,sequential
+US-LA-RA-X1,I,,,,,,,numeric_only
 US-LA-RE-X1,1,,,,,2208194099,,numeric_only
 US-LA-RE-X2,2,,,,,2208194303,,numeric_only
 US-LA-RE-X3,3,,,,,2208194486,,numeric_only
@@ -147642,10 +147662,12 @@ US-MO-OS-JA,Jackson,,,,,2915135972,,first2
 US-MO-OS-JE,Jefferson,,,,,2915136926,,first2
 US-MO-OS-LI,Linn,,,,,2915143256,,first2
 US-MO-OS-WA,Washington,,,,,2915177632,,first2
-US-MO-OZ-B1,Bayou I,,,,,2915303647,,name_num_duplicate
-US-MO-OZ-B2,Bayou II,,,,,2915303648,,name_num_duplicate
+US-MO-OZ-B1,Bayou I,,,,,,,name_num_duplicate
+US-MO-OZ-B2,Bayou II,,,,,,,name_num_duplicate
+US-MO-OZ-BA,Bayou II,,,,,2915303648,,first2
 US-MO-OZ-BC,Big Creek,,,,,2915305428,,initials
 US-MO-OZ-BF,Barren Fork,,,,,2915303412,,initials
+US-MO-OZ-BI,Bayou I,,,,,2915303647,,initials
 US-MO-OZ-BR,Bridges,,,,,2915308380,,first2
 US-MO-OZ-DA,Dawt,,,,,2915318568,,first2
 US-MO-OZ-JA,Jackson,,,,,2915335990,,any2
@@ -149035,8 +149057,10 @@ US-NC-FO-BR,Broadbay,,,,,3706790376,,first2
 US-NC-FO-CL,Clemmonsville,,,,,3706790684,,first2
 US-NC-FO-KE,Kernersville,,,,,3706791696,,first2
 US-NC-FO-LE,Lewisville,,,,,3706791792,,first2
-US-NC-FO-M1,Middle Fork I,,,,,3706792061,,name_num_duplicate
-US-NC-FO-M2,Middle Fork II,,,,,3706792062,,name_num_duplicate
+US-NC-FO-M1,Middle Fork I,,,,,,,name_num_duplicate
+US-NC-FO-M2,Middle Fork II,,,,,,,name_num_duplicate
+US-NC-FO-MF,Middle Fork I,,,,,3706792061,,initials
+US-NC-FO-MI,Middle Fork II,,,,,3706792062,,first2
 US-NC-FO-OR,Old Richmond,,,,,3706792388,,initials
 US-NC-FO-OT,Old Town,,,,,3706792396,,initials
 US-NC-FO-SC,Salem Chapel,,,,,3706792808,,initials
@@ -152485,14 +152509,15 @@ US-NE-SA-X05,E,,,,,3115992642,,sequential
 US-NE-SA-X06,F,,,,,3115992644,,sequential
 US-NE-SA-X07,G,,,,,3115992646,,sequential
 US-NE-SA-X08,H,,,,,3115992648,,sequential
-US-NE-SA-X09,J,,,,,3115992655,,sequential
-US-NE-SA-X1,I,,,,,3115992650,,numeric_only
-US-NE-SA-X10,K,,,,,3115992660,,sequential
-US-NE-SA-X11,L,,,,,3115992661,,sequential
-US-NE-SA-X12,M,,,,,3115992664,,sequential
-US-NE-SA-X13,N,,,,,3115992672,,sequential
-US-NE-SA-X14,O,,,,,3115992675,,sequential
-US-NE-SA-X15,P,,,,,3115992680,,sequential
+US-NE-SA-X09,J,,,,,3115992650,,sequential
+US-NE-SA-X1,I,,,,,,,numeric_only
+US-NE-SA-X10,K,,,,,3115992655,,sequential
+US-NE-SA-X11,L,,,,,3115992660,,sequential
+US-NE-SA-X12,M,,,,,3115992661,,sequential
+US-NE-SA-X13,N,,,,,3115992664,,sequential
+US-NE-SA-X14,O,,,,,3115992672,,sequential
+US-NE-SA-X15,P,,,,,3115992675,,sequential
+US-NE-SA-X16,P,,,,,3115992680,,sequential
 US-NE-SC-CR,Castle Rock,,,,,3115790460,,initials
 US-NE-SC-DT,Dewey Tabor,,,,,3115790703,,initials
 US-NE-SC-EW,East Winters Creek,,,,,3115790830,,initials
@@ -152585,33 +152610,53 @@ US-NE-SU-ST,Stocking,,,,,3115547255,,first2
 US-NE-SU-UN,Union,,,,,3115549810,,first2
 US-NE-SU-WA,Wahoo,,,,,3115551000,,any2
 US-NE-SU-WH,Wahoo city,City,,,,3115550965,,any2
-US-NE-SY-B1,Bellevue Second I,,,,,3115390197,,name_num_duplicate
-US-NE-SY-B2,Bellevue Second II,,,,,3115390198,,name_num_duplicate
-US-NE-SY-B3,Bellevue Second III,,,,,3115390199,,name_num_duplicate
-US-NE-SY-B4,Bellevue Second IV,,,,,3115390200,,name_num_duplicate
+US-NE-SY-B1,Bellevue Second I,,,,,,,name_num_duplicate
+US-NE-SY-B2,Bellevue Second II,,,,,,,name_num_duplicate
+US-NE-SY-B3,Bellevue Second III,,,,,,,name_num_duplicate
+US-NE-SY-B4,Bellevue Second IV,,,,,,,name_num_duplicate
 US-NE-SY-BE,Bellevue,,,,,3115390190,,first2
+US-NE-SY-BL,Bellevue Second II,,,,,3115390198,,any2
+US-NE-SY-BS,Bellevue Second I,,,,,3115390197,,initials
+US-NE-SY-BU,Bellevue Second IV,,,,,3115390200,,any2
+US-NE-SY-BV,Bellevue Second III,,,,,3115390199,,any2
 US-NE-SY-F1,Forest City No. 1,,,,,3115391010,,name_num_duplicate
 US-NE-SY-F2,Forest City No. 2,,,,,3115391012,,name_num_duplicate
 US-NE-SY-FA,Fairview,,,,,3115390970,,first2
 US-NE-SY-GI,Gilmore II,,,,,3115391145,,first2
-US-NE-SY-H1,Highland I,,,,,3115391431,,name_num_duplicate
-US-NE-SY-H2,Highland II,,,,,3115391433,,name_num_duplicate
-US-NE-SY-L1,LaPlatte I,,,,,3115391681,,name_num_duplicate
-US-NE-SY-L2,LaPlatte II,,,,,3115391682,,name_num_duplicate
+US-NE-SY-H1,Highland I,,,,,,,name_num_duplicate
+US-NE-SY-H2,Highland II,,,,,,,name_num_duplicate
+US-NE-SY-HG,Highland II,,,,,3115391433,,any2
+US-NE-SY-HI,Highland I,,,,,3115391431,,initials
+US-NE-SY-L1,LaPlatte I,,,,,,,name_num_duplicate
+US-NE-SY-L2,LaPlatte II,,,,,,,name_num_duplicate
+US-NE-SY-LA,LaPlatte II,,,,,3115391682,,first2
+US-NE-SY-LI,LaPlatte I,,,,,3115391681,,initials
 US-NE-SY-MF,Melia-Forest City,,,,,3115391950,,initials
-US-NE-SY-P1,Papillion Second I,,,,,3115392313,,name_num_duplicate
-US-NE-SY-P2,Papillion Second II,,,,,3115392314,,name_num_duplicate
+US-NE-SY-P1,Papillion Second I,,,,,,,name_num_duplicate
+US-NE-SY-P2,Papillion Second II,,,,,,,name_num_duplicate
 US-NE-SY-PA,Papillion,,,,,3115392310,,first2
-US-NE-SY-PL1,Platford-Springfield I,,,,,3115392381,,name_num_duplicate
-US-NE-SY-PL2,Platford-Springfield II,,,,,3115392382,,name_num_duplicate
-US-NE-SY-R1,Richland I,,,,,3115392732,,name_num_duplicate
-US-NE-SY-R2,Richland II,,,,,3115392733,,name_num_duplicate
-US-NE-SY-R3,Richland III,,,,,3115392734,,name_num_duplicate
-US-NE-SY-R4,Richland IV,,,,,3115392735,,name_num_duplicate
-US-NE-SY-R5,Richland V,,,,,3115392736,,name_num_duplicate
-US-NE-SY-R6,Richland VI,,,,,3115392737,,name_num_duplicate
-US-NE-SY-R7,Richland VII,,,,,3115392738,,name_num_duplicate
-US-NE-SY-R8,Richland VIII,,,,,3115392739,,name_num_duplicate
+US-NE-SY-PL,Platford-Springfield I,,,,,3115392381,,any2
+US-NE-SY-PL1,Platford-Springfield I,,,,,,,name_num_duplicate
+US-NE-SY-PL2,Platford-Springfield II,,,,,,,name_num_duplicate
+US-NE-SY-PP,Papillion Second II,,,,,3115392314,,any2
+US-NE-SY-PS,Papillion Second I,,,,,3115392313,,initials
+US-NE-SY-PT,Platford-Springfield II,,,,,3115392382,,any2
+US-NE-SY-R1,Richland I,,,,,,,name_num_duplicate
+US-NE-SY-R2,Richland II,,,,,,,name_num_duplicate
+US-NE-SY-R3,Richland III,,,,,,,name_num_duplicate
+US-NE-SY-R4,Richland IV,,,,,,,name_num_duplicate
+US-NE-SY-R5,Richland V,,,,,,,name_num_duplicate
+US-NE-SY-R6,Richland VI,,,,,,,name_num_duplicate
+US-NE-SY-R7,Richland VII,,,,,,,name_num_duplicate
+US-NE-SY-R8,Richland VIII,,,,,,,name_num_duplicate
+US-NE-SY-RA,Richland VI,,,,,3115392737,,any2
+US-NE-SY-RC,Richland II,,,,,3115392733,,any2
+US-NE-SY-RD,Richland VIII,,,,,3115392739,,any2
+US-NE-SY-RH,Richland III,,,,,3115392734,,any2
+US-NE-SY-RI,Richland I,,,,,3115392732,,initials
+US-NE-SY-RL,Richland IV,,,,,3115392735,,any2
+US-NE-SY-RN,Richland VII,,,,,3115392738,,any2
+US-NE-SY-RV,Richland V,,,,,3115392736,,initials
 US-NE-SY-SP,Springfield,,,,,3115393065,,first2
 US-NE-SY-VI,La Vista,,,,,3115391685,,first2
 US-NE-TA-AL,Alexandria,,,,,3116990018,,first2
@@ -153542,25 +153587,29 @@ US-NM-CU-ME,Melrose,,,,,3500992010,,first2
 US-NM-DE-ED,East De Baca,,,,,3501191110,,initials
 US-NM-DE-WD,West De Baca,,,,,3501193750,,initials
 US-NM-DO-AN,Anthony,,,,,3501390090,,first2
+US-NM-DO-CR,Las Cruces,,,,,3501391740,,first2
 US-NM-DO-DA,Doña Ana-Hill,,,,,3501391050,,initials
 US-NM-DO-FA,Fairacres,,,,,3501391260,,first2
 US-NM-DO-HA,Hatch,,,,,3501391440,,first2
-US-NM-DO-LC,Las Cruces,,,,,3501391740,,initials
+US-NM-DO-LC,Las Cruces,,,,,,,initials
 US-NM-DO-SD,South Doña Ana,,,,,3501393060,,initials
 US-NM-DO-WS,White Sands,,,,,3501393840,,initials
 US-NM-ED-AR,Artesia,,,,,3501590150,,first2
 US-NM-ED-CA,Carlsbad,,,,,3501590480,,first2
 US-NM-ED-LH,Loco Hills,,,,,3501591800,,initials
 US-NM-ED-LO,Loving,,,,,3501591920,,first2
-US-NM-GR-BS,Bayard-Santa Rita,,,,,3501790210,,initials
+US-NM-GR-BR,Bayard-Santa Rita,,,,,3501790210,,initials
+US-NM-GR-BS,Bayard-Santa Rita,,,,,,,initials
+US-NM-GR-CL,Santa Clara,,,,,3501792782,,first2
 US-NM-GR-HU,Hurley,,,,,3501791560,,first2
 US-NM-GR-MI,Mimbres,,,,,3501792070,,first2
 US-NM-GR-PA,Pinos Altos,,,,,3501792400,,initials
-US-NM-GR-SC,Santa Clara,,,,,3501792782,,initials
-US-NM-GR-SI,Silver City,,,,,3501793000,,first2
+US-NM-GR-SC,Santa Clara,,,,,3501793000,,initials
+US-NM-GR-SI,Silver City,,,,,,,first2
 US-NM-GR-TY,Tyrone,,,,,3501793600,,first2
 US-NM-GU-DI,Dilia,,,,,3501990990,,first2
-US-NM-GU-SR,Santa Rosa,,,,,3501992910,,initials
+US-NM-GU-RO,Santa Rosa,,,,,3501992910,,first2
+US-NM-GU-SR,Santa Rosa,,,,,,,initials
 US-NM-GU-VA,Vaughn,,,,,3501993660,,first2
 US-NM-HA-NH,North Harding,,,,,3502192220,,initials
 US-NM-HA-SH,South Harding,,,,,3502193150,,initials
@@ -153576,7 +153625,8 @@ US-NM-LI-CO,Corona,,,,,3502790780,,first2
 US-NM-LI-CR,Carrizozo,,,,,3502790510,,any2
 US-NM-LI-HO,Hondo,,,,,3502791500,,first2
 US-NM-LI-RU,Ruidoso,,,,,3502792700,,first2
-US-NM-LO-LA,Los Alamos,,,,,3502891860,,initials
+US-NM-LO-AL,Los Alamos,,,,,3502891860,,first2
+US-NM-LO-LA,Los Alamos,,,,,,,initials
 US-NM-LO-WR,White Rock,,,,,3502893810,,initials
 US-NM-LU-DN,Deming North,,,,,3502990900,,initials
 US-NM-LU-DS,Deming South,,,,,3502990930,,initials
@@ -153597,11 +153647,12 @@ US-NM-QU-LN,Logan-Nara Visa,,,,,3503791830,,initials
 US-NM-QU-TU,Tucumcari,,,,,3503793540,,first2
 US-NM-RI-CH,Chimayo,,,,,3503990570,,first2
 US-NM-RI-CO,Coyote,,,,,3503990810,,first2
+US-NM-RI-CP,Santa Clara Pueblo,,,,,3503992790,,initials
 US-NM-RI-DI,Dixon,,,,,3503991020,,first2
 US-NM-RI-JA,Jicarilla Apache,,,,,3503991682,,initials
 US-NM-RI-OO,Ohkay Owingeh,,,,,3503992295,,initials
 US-NM-RI-RC,Rio Chama,,,,,3503992610,,initials
-US-NM-RI-SC,Santa Clara Pueblo,,,,,3503992790,,initials
+US-NM-RI-SC,Santa Clara Pueblo,,,,,,,initials
 US-NM-RI-SR,South Rio Arriba,,,,,3503993210,,initials
 US-NM-RI-TA,Tierra Amarilla,,,,,3503993390,,initials
 US-NM-RI-VA,Vallecitos,,,,,3503993630,,first2
@@ -153610,9 +153661,10 @@ US-NM-RO-DO,Dora,,,,,3504191080,,first2
 US-NM-RO-EL,Elida,,,,,3504191140,,first2
 US-NM-RO-PO,Portales,,,,,3504192430,,first2
 US-NM-SD-CU,Cuba,,,,,3504390870,,first2
+US-NM-SD-DF,Santo Domingo-San Felipe,,,,,3504392944,,initials
 US-NM-SD-JZ,Jemez-Zia,,,,,3504391654,,initials
 US-NM-SD-RR,Rio Rancho,,,,,3504392655,,initials
-US-NM-SD-SD,Santo Domingo-San Felipe,,,,,3504392944,,initials
+US-NM-SD-SD,Santo Domingo-San Felipe,,,,,,,initials
 US-NM-SI-TO,Truth or Consequences East,,,,,3505193480,,initials
 US-NM-SI-TR,Truth or Consequences West,,,,,3505193510,,first2
 US-NM-SJ-AZ,Aztec,,,,,3504590180,,first2
@@ -153623,16 +153675,20 @@ US-NM-SJ-NB,Nenahnezad-Burnham,,,,,3504592180,,initials
 US-NM-SJ-NH,Napi Headquarters,,,,,3504592150,,initials
 US-NM-SJ-SS,Shiprock-Sanostee,,,,,3504592970,,initials
 US-NM-SM-CD,Conchas Dam,,,,,3504790750,,initials
-US-NM-SM-LV,Las Vegas,,,,,3504791770,,initials
+US-NM-SM-LV,Las Vegas,,,,,,,initials
 US-NM-SM-PE,Pecos,,,,,3504792310,,first2
 US-NM-SM-TR,Trementina,,,,,3504793420,,first2
+US-NM-SM-VE,Las Vegas,,,,,3504791770,,first2
 US-NM-SM-VI,Villanueva,,,,,3504793690,,first2
 US-NM-SO-CL,Claunch,,,,,3505390630,,first2
 US-NM-SO-MA,Magdalena,,,,,3505391980,,first2
 US-NM-SO-SO,Socorro,,,,,3505393040,,first2
-US-NM-ST-SA,Santa Fe North,,,,,3504992850,,any2
-US-NM-ST-SF,Santa Fe,,,,,3504992820,,initials
-US-NM-ST-SN,Santa Fe South,,,,,3504992880,,any2
+US-NM-ST-FE,Santa Fe,,,,,3504992820,,first2
+US-NM-ST-FN,Santa Fe North,,,,,3504992850,,initials
+US-NM-ST-FS,Santa Fe South,,,,,3504992880,,initials
+US-NM-ST-SA,Santa Fe North,,,,,,,any2
+US-NM-ST-SF,Santa Fe,,,,,,,initials
+US-NM-ST-SN,Santa Fe South,,,,,,,any2
 US-NM-TA-AH,Arroyo Hondo,,,,,3505590120,,initials
 US-NM-TA-PE,Peñasco,,,,,3505592340,,first2
 US-NM-TA-PI,Picuris,,,,,3505592370,,first2
@@ -153645,13 +153701,15 @@ US-NM-TO-ME,Mountainair-Encino,,,,,3505792135,,initials
 US-NM-UN-CN,Clayton North,,,,,3505990660,,initials
 US-NM-UN-CS,Clayton South,,,,,3505990690,,initials
 US-NM-VA-BE,Belen,,,,,3506190240,,first2
-US-NM-VA-LL,Los Lunas,,,,,3506191890,,initials
+US-NM-VA-LL,Los Lunas,,,,,,,initials
+US-NM-VA-LU,Los Lunas,,,,,3506191890,,first2
 US-NV-CA-CC,Carson City,,,,,3251094140,,initials
 US-NV-CH-CS,Carson Sink,,,,,3200194154,,initials
 US-NV-CH-DV,Dixie Valley,,,,,3200194238,,initials
 US-NV-CH-FA,Fallon,,,,,3200194308,,first2
 US-NV-CL-CL,Clark,,,,,3200394182,,first2
-US-NV-CL-LV,Las Vegas,,,,,3200394504,,initials
+US-NV-CL-LV,Las Vegas,,,,,,,initials
+US-NV-CL-VE,Las Vegas,,,,,3200394504,,first2
 US-NV-DO-GJ,Genoa-Jacks Valley,,,,,3200594378,,initials
 US-NV-DO-GM,Gardnerville-Minden,,,,,3200594364,,initials
 US-NV-DO-PN,Pine Nut,,,,,3200594658,,initials
@@ -154050,6 +154108,7 @@ US-NY-FR-BO,Bombay,,,,,3603307278,,first2
 US-NY-FR-BR,Brandon,,,,,3603307839,,any2
 US-NY-FR-BU,Burke,,,,,3603311165,,first2
 US-NY-FR-CH,Chateaugay,,,,,3603313992,,first2
+US-NY-FR-CL,Santa Clara town,Town,,,,3603365178,,first2
 US-NY-FR-CO,Constable,,,,,3603317871,,first2
 US-NY-FR-DI,Dickinson,,,,,3603320610,,first2
 US-NY-FR-DU,Duane,,,,,3603320973,,first2
@@ -154058,7 +154117,7 @@ US-NY-FR-FR,Franklin,,,,,3603327243,,first2
 US-NY-FR-HA,Harrietstown,,,,,3603332314,,first2
 US-NY-FR-MA,Malone,,,,,3603344721,,first2
 US-NY-FR-MO,Moira,,,,,3603347933,,first2
-US-NY-FR-SC,Santa Clara,,,,,3603365178,,initials
+US-NY-FR-SC,Santa Clara,,,,,,,initials
 US-NY-FR-SR,St. Regis Mohawk,,,,,3603364727,,initials
 US-NY-FR-TL,Tupper Lake,,,,,3603375676,,initials
 US-NY-FR-WA,Waverly,,,,,3603378795,,first2
@@ -160435,7 +160494,8 @@ US-SD-HY-VA,Valley,,,,,4606966180,,first2
 US-SD-HY-WH,William Hamilton,,,,,4606971740,,initials
 US-SD-JA-BE,Belvidere,,,,,4607104620,,first2
 US-SD-JA-CO,Cottonwood,,,,,4607114220,,first2
-US-SD-JA-GR,Grandview II,,,,,4607125520,,first2
+US-SD-JA-GI,Grandview II,,,,,4607125520,,initials
+US-SD-JA-GR,Grandview II,,,,,,,first2
 US-SD-JA-IN,Interior,,,,,4607131660,,any2
 US-SD-JA-IT,Interior,,,,,4607131620,,any2
 US-SD-JA-JE,Jewett,,,,,4607132780,,first2
@@ -162041,8 +162101,9 @@ US-TX-BZ-SB,South Brazos,,,,,4804193635,,initials
 US-TX-BZ-WB,West Brazos,,,,,4804194150,,initials
 US-TX-CA-BR,Brownsville,,,,,4806190480,,first2
 US-TX-CA-EC,East Cameron,,,,,4806191115,,initials
+US-TX-CA-FL,Los Fresnos-Laureles,,,,,4806192295,,initials
 US-TX-CA-HB,Harlingen-San Benito,,,,,4806191720,,initials
-US-TX-CA-LF,Los Fresnos-Laureles,,,,,4806192295,,initials
+US-TX-CA-LF,Los Fresnos-Laureles,,,,,,,initials
 US-TX-CA-RH,Rio Hondo,,,,,4806193245,,initials
 US-TX-CB-CR,Crosbyton,,,,,4810790905,,first2
 US-TX-CB-LO,Lorenzo,,,,,4810792290,,first2
@@ -162081,9 +162142,10 @@ US-TX-CL-GA,Gatesville,,,,,4809991480,,first2
 US-TX-CL-OG,Oglesby,,,,,4809992885,,first2
 US-TX-CL-PL,Purmela-Levita,,,,,4809993157,,initials
 US-TX-CL-TU,Turnersville,,,,,4809993965,,first2
+US-TX-CM-AN,Santa Anna,,,,,4808393450,,first2
 US-TX-CM-CO,Coleman,,,,,4808390780,,first2
 US-TX-CM-NO,Novice,,,,,4808392865,,first2
-US-TX-CM-SA,Santa Anna,,,,,4808393450,,initials
+US-TX-CM-SA,Santa Anna,,,,,,,initials
 US-TX-CM-TA,Talpa,,,,,4808393830,,first2
 US-TX-CN-PA,Panhandle,,,,,4806592965,,first2
 US-TX-CN-WD,White Deer-Groom,,,,,4806594195,,initials
@@ -162654,7 +162716,8 @@ US-TX-SP-SO,Sinton-Odem,,,,,4840993580,,initials
 US-TX-SP-TA,Taft,,,,,4840993815,,first2
 US-TX-SR-GR,La Grulla,,,,,4842792090,,first2
 US-TX-SR-RG,Rio Grande City,,,,,4842793239,,initials
-US-TX-SR-RL,Roma-Los Saenz,,,,,4842793315,,initials
+US-TX-SR-RL,Roma-Los Saenz,,,,,,,initials
+US-TX-SR-RS,Roma-Los Saenz,,,,,4842793315,,initials
 US-TX-SS-RS,Richland Springs,,,,,4841193231,,initials
 US-TX-SS-SA,San Saba,,,,,4841193439,,first2
 US-TX-ST-SO,Sonora,,,,,4843593615,,first2
@@ -163503,7 +163566,7 @@ US-VT-CH-BR,Burlington,City,,,,5000710675,,any2
 US-VT-CH-BU,Buels Gore,,,,,5000710300,,any2
 US-VT-CH-CH,Charlotte,,,,,5000713300,,first2
 US-VT-CH-CO,Colchester,,,,,5000714875,,first2
-US-VT-CH-EJ,Essex Junction,,,,,5000724400,,first2
+US-VT-CH-EJ,Essex Junction,,,,,,,first2
 US-VT-CH-ES,Essex,,,,,5000724175,,first2
 US-VT-CH-HI,Hinesburg,,,,,5000733475,,first2
 US-VT-CH-HU,Huntington,,,,,5000734600,,first2
@@ -165979,9 +166042,12 @@ US-WV-MO-MA,Magnolia,,,,,5405992064,,first2
 US-WV-MO-ST,Stafford,,,,,5405993012,,first2
 US-WV-MO-TH,Tug Hardee,,,,,5405993162,,initials
 US-WV-MO-WI,Williamson,,,,,5405993696,,first2
-US-WV-MR-X1,I,,,,,5405590900,,numeric_only
-US-WV-MR-X2,II,,,,,5405590912,,numeric_only
-US-WV-MR-X3,III,,,,,5405590924,,numeric_only
+US-WV-MR-II,II,,,,,5405590912,,any2
+US-WV-MR-III,III,,,,,5405590924,,first3
+US-WV-MR-X01,I,,,,,5405590900,,sequential
+US-WV-MR-X1,I,,,,,,,numeric_only
+US-WV-MR-X2,II,,,,,,,numeric_only
+US-WV-MR-X3,III,,,,,,,numeric_only
 US-WV-NI-BE,Beaver,,,,,5406790132,,first2
 US-WV-NI-GR,Grant,,,,,5406791344,,first2
 US-WV-NI-HA,Hamilton,,,,,5406791500,,first2
@@ -166027,9 +166093,12 @@ US-WV-RN-MI,Mingo,,,,,5408392220,,first2
 US-WV-RN-NI,New Interest,,,,,5408392292,,initials
 US-WV-RN-RC,Roaring Creek,,,,,5408392640,,initials
 US-WV-RN-VB,Valley Bend,,,,,5408393420,,initials
-US-WV-RO-X1,I,,,,,5408790906,,numeric_only
-US-WV-RO-X2,II,,,,,5408790918,,numeric_only
-US-WV-RO-X3,III,,,,,5408790930,,numeric_only
+US-WV-RO-II,II,,,,,5408790918,,any2
+US-WV-RO-III,III,,,,,5408790930,,first3
+US-WV-RO-X01,I,,,,,5408790906,,sequential
+US-WV-RO-X1,I,,,,,,,numeric_only
+US-WV-RO-X2,II,,,,,,,numeric_only
+US-WV-RO-X3,III,,,,,,,numeric_only
 US-WV-SU-BR,Bluestone River,,,,,5408990216,,initials
 US-WV-SU-GR,Greenbrier River,,,,,5408991440,,initials
 US-WV-SU-NR,New River,,,,,5408992316,,initials
@@ -168451,6 +168520,7 @@ VN-DN-TB-BH,Bàu Hàm,Ward,,Bau Ham,Xã,,VNM.17.9.3_1,initials
 VN-DN-TB-BM,Bình Minh,Ward,,Binh Minh,Xã,,VNM.17.9.4_1,initials
 VN-DN-TB-BS,Bắc Sơn,Ward,,Bac Son,Xã,,VNM.17.9.2_1,initials
 VN-DN-TB-CG,Cây Gáo,Ward,,Cay Gao,Xã,,VNM.17.9.5_1,initials
+VN-DN-TB-D6,Đồi 61,Ward,,Doi 61,Xã,,VNM.17.9.6_1,letter_num
 VN-DN-TB-GI,Giang Điền,Ward,,Giang Dien,Xã,,VNM.17.9.8_1,initials
 VN-DN-TB-HN,Hố Nai 3,Ward,,Ho Nai 3,Xã,,VNM.17.9.9_1,initials
 VN-DN-TB-HT,Hưng Thịnh,Ward,,Hung Thinh,Xã,,VNM.17.9.10_1,initials
@@ -168462,7 +168532,6 @@ VN-DN-TB-TB,Thanh Bình,Ward,,Thanh Binh,Xã,,VNM.17.9.15_1,initials
 VN-DN-TB-TH,Trung Hoà,Ward,,Trung Hoa,Xã,,VNM.17.9.17_1,initials
 VN-DN-TB-TR,Trảng Bom,Townlet,,Trang Bom,Thị trấn,,VNM.17.9.16_1,first2
 VN-DN-TB-TY,Tây Hoà,Ward,,Tay Hoa,Xã,,VNM.17.9.14_1,first2
-VN-DN-TB-D6,Đồi 61,Ward,,Doi 61,Xã,,VNM.17.9.6_1,letter_num
 VN-DN-TP-DL,Dak Lua,Ward,,Dak Lua,Xã,,VNM.17.7.1_1,initials
 VN-DN-TP-NC,Nam Cát Tiên,Ward,,Nam Cat Tien,Xã,,VNM.17.7.2_1,initials
 VN-DN-TP-NT,Núi Tượng,Ward,,Nui Tuong,Xã,,VNM.17.7.3_1,initials

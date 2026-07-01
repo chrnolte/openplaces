@@ -50,16 +50,16 @@ columns:
   parcel_id_admin3: PARCELID
   parcel_id_tax: TAXPARCELID
   owner_name: OWNERNME1
-  owner2_name: OWNERNME2
+  owner_name_2: OWNERNME2
   owner_address: PSTLADRESS
   address: SITEADRESS
   address_number: ADDNUM
   address_street_name: STREETNAME
   address_street_type: STREETTYPE
-  unit_type: UNITTYPE
-  unit_id: UNITID
+  address_unit_type: UNITTYPE
+  address_unit: UNITID
   city: PLACENAME
-  zip_code: ZIPCODE
+  postal_code: ZIPCODE
   school_district_name: SCHOOLDIST
   school_district_id: SCHOOLDISTNO
   value: CNTASSDVALUE
@@ -73,7 +73,7 @@ columns:
   area_assessed_ac: ASSDACRES
   area_deed_ac: DEEDACRES
   admin3_name: CONAME
-  property_type: PROPCLASS
+  use_group: PROPCLASS
   source_date: LOADDATE
 
 # Columns to be cast to categorical (saves space)
@@ -81,3 +81,18 @@ columns_to_categorical:
   - city
   - school_district_name
   - admin3_name
+
+# Expose the raw tax/assessor parcel id under the canonical name
+# parcel_id_assessor (a copy of parcel_id_tax), so it is the raw key
+# parcel_id_local derives from (consistent across parcel recipes).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_tax]
+    output: parcel_id_assessor
+
+# Standardized matching key from the tax parcel number, per county (auto
+# conversion; processed per admin3). Connects to WI RETR sales transactions.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel

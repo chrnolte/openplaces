@@ -1,0 +1,120 @@
+# Recipe: harmonized U.S. parcel spine.
+#
+# Generalizes US-NC-NE_parcel-spine-2026 to a discoverable, multi-source parcel
+# spine. Local tax / assessor rolls (county assessment records) are merged onto
+# the statewide parcel geometry automatically: the link_by_id step below
+# auto-discovers every ingest recipe (and bundled `additional_layers` entity,
+# e.g. a `property` roll) whose admin scope covers the unit being processed, and
+# joins each one onto the spine — no per-state/county recipe id is listed here.
+# Adding a new source's roll requires no change to this file: a standalone roll
+# recipe (e.g. a county assessment export) joins by the standardized
+# parcel_id_local key automatically; a roll bundled as an `additional_layers`
+# entry of a statewide GIS recipe (e.g. MassGIS's `property` table) instead
+# declares its own within-source `layer_key` (e.g. `parcel_id_admin2`) on that
+# additional_layers entry, since parcel_id_local is reserved for joining
+# genuinely different sources together. A `*-remap.csv` crosswalk dropped next
+# to any discovered source (e.g. a raw use-code crosswalk) is picked up and
+# applied automatically too.
+#
+# It also attaches the evidence the parcel-curation lane (US_parcel-openplaces-2026)
+# needs: the linked-NSI building group (group_building_nsi) and per-parcel
+# footprint morphology counts (n_small_elongated_footprints_per_parcel, etc.).
+
+description: >-
+  Harmonized U.S. parcel spine: statewide parcel geometry linked to local tax rolls,
+  the NSI building group, and per-parcel footprint morphology.
+
+stage: harmonize
+admin_id: US
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: spine
+  version: 2026
+
+# Keep geometry for the footprint-morphology spatial assignment and the sidecar.
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+  # Spine = discovered statewide/local parcel geometry (carries parcel_id_local
+  # and a coarse assessor use code). Carry the matching keys for id-based linking.
+  - step: resolve_spine
+    sources:
+      - auto_discover: true
+        entity_type: parcel
+    keep_columns:
+      - parcel_id_local
+      - parcel_id_assessor
+      - parcel_id_admin2
+      - use_group
+      - use_subgroup
+
+  # Per-source assessor merge, auto-discovered (see header comment): joins
+  # every admin-covering parcel roll onto the spine by its resolved key,
+  # always aggregating (correct for both 1:1 and 1:many rolls, e.g. MassGIS
+  # L3_ASSESS condominium records stacked on one parcel polygon), with columns
+  # drawn from the attribute registry's canonical parcel/property attributes
+  # (land_value, improvement_value, n_dwellings, year_built, use_group_code, ...).
+  # Also applies any `*-remap.csv` crosswalk found beside a discovered source.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: parcel
+
+  # Build the combined use_group_combined label from whatever use_group /
+  # use_subgroup the link step above attached (via an auto-discovered
+  # crosswalk); no-ops when neither reached the spine.
+  - step: derive_use_classes
+
+  # Attach the modal NSI building group per parcel (group_building_nsi), the
+  # linked-data signal the parcel land-use classifier votes on.
+  - step: link_to_reference
+    recipe_id: US_building-nsi-2022
+    source_geometry_type: single_building_point
+    join: spatial_point
+    remap_id: US_building-nsi-2022_occupancy-type-remap
+    thresholds:
+      proximity_m: 10
+      far_proximity_m: 100
+
+  - step: reconcile_attributes
+    sources:
+      - recipe_id: US_building-nsi-2022
+        # structure_value is required: reconcile picks each parcel's dominant NSI
+        # group by summed structure value, so group_building_nsi needs both.
+        columns:
+          - group
+          - structure_value
+
+  # Attach FEMA building occupancy by overlay: FEMA footprints are no longer a
+  # footprint-spine geometry source (they caused IoU-merge errors), but their
+  # occupancy is valuable. Link FEMA footprints to parcels (the footprint<->parcel
+  # overlay, reversed) and take each parcel's dominant FEMA occupancy by overlap
+  # area as occupancy_type_footprint_fema. The remap canonicalizes raw PRIM_OCC
+  # values (e.g. 'Multi - Family Dwelling') before downstream class coercion.
+  - step: link_to_reference
+    recipe_id: US_footprint-fema-2023
+    source_geometry_type: mixed_type_footprint
+    join: spatial_overlay
+    thresholds:
+      area_intersection_m2_min: 10
+
+  - step: reconcile_attributes
+    sources:
+      - recipe_id: US_footprint-fema-2023
+        remap_id: US_footprint-fema-2023_occupancy-type-remap
+        columns:
+          - occupancy_type
+
+  # Attach per-parcel footprint morphology (counts of small elongated /
+  # manufactured-home-shaped footprints) for the land-use classifier.
+  - step: summarize_footprint_morphology
+    footprint_recipe_id: US_footprint-spine-2026
+    small_area_max_m2: 185
+    elongated_aspect_min: 2.0

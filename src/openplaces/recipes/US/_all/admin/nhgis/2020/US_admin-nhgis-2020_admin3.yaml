@@ -39,8 +39,12 @@ columns:
 query: "admin2_id_admin1 <= '56'"
 
 # Function that returns an indexed version of the input GeoDataFrame
-# (usually a custom function designed for a specific indexing case)
-index_function: "openplaces.io.admin.admin3_id_index_from_admin3_US_nhgis"
+# (reconciles local admin-3 units against the global GADM spine)
+create_index:
+  function: "openplaces.io.admin.admin3_id_index_from_local"
+  args:
+    country_id: US
+    admin_entity: admin-nhgis-2020
 
 save_to:
   data_dir: cache

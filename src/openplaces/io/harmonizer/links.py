@@ -14,10 +14,14 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from openplaces.core.attribute_registry import load_registry
+from openplaces.core.attribute_registry import (
+    get_agg_func,
+    get_attributes,
+    load_registry,
+)
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.diagnostics import find_recipes
-from openplaces.geo.ids import add_openlocationcode_index
+from openplaces.geo.ids import add_openlocationcode_index, get_geo_ids
 from openplaces.geo.polygon import (
     clean_polygons,
     get_areas,
@@ -96,7 +100,7 @@ def link_to_reference(
         :class:`~openplaces.core.schema.SourceGeometryType` value describing
         what this source represents spatially (e.g. ``'single_building_point'``).
         Stored in ``state.source_geometry_types`` for use by downstream steps
-        such as ``classify_footprint_role``.
+        such as ``classify_footprint_priority``.
     aggregation_function : None, callable, or dict, optional
         Controls how duplicate ``geo_id`` rows in the reference are reduced to
         one row before joining.  ``None`` (default) applies the aggregation
@@ -228,21 +232,28 @@ def _link_spatial_overlay(
 
     ref = ref_raw.copy()
 
+    # geo_id is generated at ingest only for parcels; footprint/building
+    # references (e.g. FEMA) arrive without it, so derive the same stable
+    # geometry-hash id here to dedup identical geometries below.
+    if 'geo_id' not in ref.columns:
+        ref['geo_id'] = get_geo_ids(ref, handle_duplicates=False)
+
     registry = load_registry()
     numeric_attrs = set(registry.index[registry['data_type'].isin(['float', 'int'])])
     for numeric_col in numeric_attrs:
         if numeric_col in ref.columns:
             ref[numeric_col] = pd.to_numeric(ref[numeric_col], errors='coerce')
 
-    ref['purpose_group_combined'] = (
-        pd.Categorical(
-            ref['purpose_group'].astype(str).fillna('n/a')
-            + ' | '
-            + ref['purpose_subgroup'].astype(str).fillna('n/a')
-        )
-        if 'purpose_group' in ref.columns
-        else None
-    )
+    # Build the combined group label for whichever land-use vocabulary the
+    # reference carries: parcels use use_group ("what it is used for"),
+    # buildings/footprints use purpose_group ("what it was built for").
+    for _base in ('use_group', 'purpose_group'):
+        if _base in ref.columns:
+            _sub = _base.replace('_group', '_subgroup')
+            _label = ref[_base].astype(str).fillna('n/a')
+            if _sub in ref.columns:
+                _label = _label + ' | ' + ref[_sub].astype(str).fillna('n/a')
+            ref[f'{_base}_combined'] = pd.Categorical(_label)
     ref['has_duplicate_geometry'] = ref['geo_id'].duplicated(keep=False)
     ref['ha'] = get_areas(ref, 'ha')
 
@@ -412,7 +423,7 @@ def _dedup_address_points(
     *  When a group contains **unit-specific** records (e.g. "Apt 1", "Apt 2")
        **and** a no-unit record for the same base address, the no-unit record is
        dropped as a redundant aggregate.  Each unit-specific record is kept and
-       tagged ``n_dwelling_units = 1``; downstream :func:`_aggregate_multipoint`
+       tagged ``n_dwellings = 1``; downstream :func:`_aggregate_multipoint`
        then sums these into the total per footprint.
     *  When a group contains **only** a no-unit record (single address, no
        unit breakdown), it is kept unchanged.
@@ -435,10 +446,10 @@ def _dedup_address_points(
     mask_drop = ~has_unit & ref['_group_has_unit']
     ref = ref[~mask_drop]
 
-    if 'n_dwelling_units' not in ref.columns:
-        ref['n_dwelling_units'] = 1.0
+    if 'n_dwellings' not in ref.columns:
+        ref['n_dwellings'] = 1.0
     else:
-        ref.loc[ref['n_dwelling_units'].isna(), 'n_dwelling_units'] = 1.0
+        ref.loc[ref['n_dwellings'].isna(), 'n_dwellings'] = 1.0
 
     return ref.drop(columns=['_has_unit', '_group_has_unit'])
 
@@ -518,10 +529,10 @@ def _aggregate_multipoint(
     the matched occupancy classes via ``_OCC_UNITS`` and re-classifies the
     total using :func:`~openplaces.io.harmonizer.attributes.reverse_occ_units`.
     For ``single_dwelling_point`` sources (address points): sums
-    ``n_dwelling_units`` across all matched points per footprint.
+    ``n_dwellings`` across all matched points per footprint.
 
     The highest-quality representative row (by existing sort order) is kept as
-    the output row; its ``purpose_subgroup`` and ``n_dwelling_units`` are
+    the output row; its ``purpose_subgroup`` and ``n_dwellings`` are
     updated in-place.
     """
     from openplaces.core.schema import SourceGeometryType as _SGT
@@ -558,11 +569,11 @@ def _aggregate_multipoint(
                 total = group['occupancy_type'].map(_OCC_UNITS).fillna(0.0).sum()
                 if total > 0:
                     rep['occupancy_type'] = reverse_occ_units(total)
-                    rep['n_dwelling_units'] = float(round(total))
+                    rep['n_dwellings'] = float(round(total))
             elif _is_addr:
-                if 'n_dwelling_units' in group.columns:
+                if 'n_dwellings' in group.columns:
                     total = (
-                        pd.to_numeric(group['n_dwelling_units'], errors='coerce')
+                        pd.to_numeric(group['n_dwellings'], errors='coerce')
                         .fillna(1.0)
                         .sum()
                     )
@@ -570,7 +581,7 @@ def _aggregate_multipoint(
                     # each single_dwelling_point represents one unit
                     total = float(len(group))
                 if total > 0:
-                    rep['n_dwelling_units'] = float(total)
+                    rep['n_dwellings'] = float(total)
                 for _col in group.columns:
                     if (
                         not pd.api.types.is_numeric_dtype(group[_col])
@@ -615,13 +626,19 @@ def _link_spatial_point(
     4. ``sjoin_nearest`` up to *unbounded_proximity_m* (default 0 = disabled)
        — nearest-footprint fallback with no parcel constraint (Step 7).
 
+    Parcel-derived footprints (``geometry_source`` starting with ``'parcel'``, the
+    parcel-shaped fallbacks added by :func:`infer_spine_additions`) participate in
+    Pass 1 only: they acquire points by strict containment and are excluded from
+    the proximity passes, since a parcel-shaped polygon is not a real building
+    outline and must not grab nearby points.
+
     Optional pre-processing and post-processing steps controlled via
     *thresholds*:
 
     ``dedup_addresses`` (bool)
         Run :func:`_dedup_address_points` before spatial linking.  Groups by
         base address (street + housenumber), keeps the unit-less record as the
-        spatial representative, and counts unit siblings as ``n_dwelling_units``.
+        spatial representative, and counts unit siblings as ``n_dwellings``.
         Column name overrides: ``dedup_unit_number_col`` (default ``'unit_number'``),
         ``dedup_address_street_col`` (default ``'address_street'``),
         ``dedup_address_number_col`` (default ``'address_number'``).
@@ -676,6 +693,22 @@ def _link_spatial_point(
     attributed_idx: set = set(within.index)
     n_pass1 = len(attributed_idx)
 
+    # Parcel-derived footprints (geometry_source like 'parcel.<source>', set by
+    # infer_spine_additions) are parcel-shaped fallbacks, not true building
+    # outlines, so they link points by strict containment only (Pass 1). Exclude
+    # them from the proximity passes below so a parcel-shaped polygon never grabs
+    # a nearby point — the only valid criterion for them is 'within'.
+    if 'geometry_source' in state.spine.columns:
+        parcel_derived = (
+            state.spine['geometry_source']
+            .astype('string')
+            .str.startswith('parcel')
+            .fillna(False)
+        )
+        proximity_spine = state.spine.loc[~parcel_derived, ['geometry']]
+    else:
+        proximity_spine = state.spine[['geometry']]
+
     # Build per-class size limits from Pass 1 for use in Passes 2–3
     size_limit_dict: dict[str, tuple[float, float]] = {}
     if use_size_limit:
@@ -685,7 +718,7 @@ def _link_spatial_point(
     if proximity_m > 0:
         unlinked = ref[~ref.index.isin(attributed_idx)]
         if not unlinked.empty:
-            spine_proj = state.spine[['geometry']].to_crs(_EA_CRS)
+            spine_proj = proximity_spine.to_crs(_EA_CRS)
             unlinked_proj = unlinked.to_crs(_EA_CRS)
             near = gpd.sjoin_nearest(
                 unlinked_proj,
@@ -725,7 +758,7 @@ def _link_spatial_point(
                 .rename('_fp_parcel')
             )
 
-            spine_proj = state.spine[['geometry']].to_crs(_EA_CRS)
+            spine_proj = proximity_spine.to_crs(_EA_CRS)
             unlinked_proj = unlinked.to_crs(_EA_CRS)
             far = gpd.sjoin_nearest(
                 unlinked_proj,
@@ -753,7 +786,7 @@ def _link_spatial_point(
     if unbounded_m > 0:
         unlinked = ref[~ref.index.isin(attributed_idx)]
         if not unlinked.empty:
-            spine_proj_p4 = state.spine[['geometry']].to_crs(_EA_CRS)
+            spine_proj_p4 = proximity_spine.to_crs(_EA_CRS)
             unlinked_proj_p4 = unlinked.to_crs(_EA_CRS)
             far2 = gpd.sjoin_nearest(
                 unlinked_proj_p4,
@@ -891,6 +924,283 @@ def _link_spatial_point(
     return state
 
 
+def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> list[str]:
+    """Ingest recipes of *entity_type* whose admin scope covers ``state.admin_id``.
+
+    One recipe id per (admin_id, source_id), keeping the newest version when
+    several exist for the same source (mirrors the specificity/version
+    precedence ``find_entity_recipe_id`` uses, ``recipe.py:444-463``).
+    """
+    if state.admin_id is None:
+        return []
+    best: dict[tuple[str, str], tuple[str, str]] = {}
+    for _, row in find_recipes(entity_type, stage='ingest').iterrows():
+        admin_id_str = row['admin_id']
+        if not admin_id_str or not AdminId(admin_id_str).is_parent_or_equal_of(
+            state.admin_id
+        ):
+            continue
+        key = (admin_id_str, row['source_id'])
+        recipe_id = f'{admin_id_str}_{entity_type}-{row["source_id"]}-{row["version"]}'
+        if key not in best or row['version'] > best[key][0]:
+            best[key] = (row['version'], recipe_id)
+    return [recipe_id for _version, recipe_id in best.values()]
+
+
+def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict]:
+    """Find ingest sources covering ``state.admin_id`` and how to join each.
+
+    A standalone roll (the candidate's own primary entity) joins on the
+    standardized cross-source key ``parcel_id_local``. A bundled
+    ``additional_layers`` entry joins on its declared ``layer_key`` if
+    present (a same-source key shared with its primary entity, e.g.
+    MassGIS's ``parcel_id_admin2``), else also falls back to
+    ``parcel_id_local``.
+    """
+    from openplaces.recipe import get_recipe_by_id
+
+    matches = []
+    for recipe_id in _find_admin_scoped_recipe_ids(state, entity_type):
+        recipe = get_recipe_by_id(recipe_id)
+        matches.append(
+            {'recipe_id': recipe_id, 'layer': None, 'key': 'parcel_id_local'}
+        )
+        for layer_spec in recipe.get('additional_layers') or []:
+            if 'entity' not in layer_spec:
+                continue
+            matches.append(
+                {
+                    'recipe_id': recipe_id,
+                    'layer': str(layer_spec['entity'].entity_type),
+                    'key': layer_spec.get('layer_key', 'parcel_id_local'),
+                }
+            )
+    return matches
+
+
+def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
+    """Auto-apply any ``{recipe_id}_*-remap.csv`` crosswalk found beside *recipe_id*.
+
+    Each match's filename (the part between ``{recipe_id}_`` and
+    ``-remap.csv``, dashes replaced by underscores) names the spine column it
+    remaps; applied only when that column is present. Output columns are
+    whichever non-key columns the crosswalk's own header defines (e.g.
+    ``use_group``/``use_subgroup`` for a use-code crosswalk). The crosswalk's
+    own key length determines how much to truncate codes before lookup
+    (handles e.g. 3- vs 4-digit codes sharing one 3-digit crosswalk).
+    """
+    if state.spine is None:
+        return state
+    from openplaces.path import recipe_path
+    from openplaces.recipe import get_recipe_by_id
+
+    recipe = get_recipe_by_id(recipe_id)
+    recipe_dir = recipe_path(recipe['admin_id'], recipe['entity'], as_dir=True)
+    if not recipe_dir.exists():
+        return state
+
+    spine = state.spine
+    prefix = f'{recipe_id}_'
+    for csv_path in sorted(recipe_dir.glob(f'{prefix}*-remap.csv')):
+        stem = csv_path.stem
+        if not stem.endswith('-remap'):
+            continue
+        column = stem[len(prefix) : -len('-remap')].replace('-', '_')
+        if column not in spine.columns:
+            continue
+        table = pd.read_csv(csv_path, dtype=str)
+        key_col = table.columns[0]
+        table = table.drop_duplicates(subset=[key_col]).set_index(key_col)
+        key_lengths = table.index.to_series().astype(str).str.len()
+        key_length = int(key_lengths.mode().iat[0])
+        codes = spine[column].astype('string').str.slice(0, key_length)
+        for target in table.columns:
+            spine[target] = codes.map(table[target])
+        if state.verbose:
+            matched = codes.isin(table.index).sum()
+            print(
+                f'  link_by_id: applied {csv_path.name} '
+                f'({matched:,d}/{len(spine):,d} {column!r} matched)'
+            )
+
+    state.spine = spine
+    return state
+
+
+@_register('link_by_id')
+def link_by_id(
+    state: HarmonizeState,
+    recipe_id: str | None = None,
+    auto_discover: bool = False,
+    entity_type: str = 'parcel',
+    mode: str = 'attributes',
+    spine_key: str = 'parcel_id_local',
+    ref_key: str = 'parcel_id_local',
+    columns: list[str] | None = None,
+    suffix: str | None = None,
+    count_as: str = 'n_transactions',
+    flag_as: str = 'is_transacted',
+    layer: str | None = None,
+) -> HarmonizeState:
+    """Link a reference entity to the spine by a precomputed id key (non-spatial).
+
+    Joins on the standardized matching key (``parcel_id_local``) that data
+    ingestion already computed on both sides, so no re-conversion happens here.
+
+    Parameters
+    ----------
+    recipe_id : str, optional
+        Reference entity recipe (e.g. an assessment roll or a transaction
+        table). Required unless *auto_discover* is set.
+    auto_discover : bool
+        When set, ignore *recipe_id* and instead discover every ingest
+        recipe of *entity_type* (plus any bundled ``additional_layers``)
+        whose admin scope covers the admin unit being processed
+        (:func:`_discover_link_sources`), and recurse into this function once
+        per match. Each match always joins via ``mode='aggregate'`` (a
+        correct generalization of ``'attributes'`` for 1:1 data too) on its
+        resolved key (``parcel_id_local`` for a standalone roll; a layer's
+        own ``layer_key`` for a bundled ``additional_layers`` entry), with
+        *columns* defaulting to the attribute registry's canonical columns
+        for that entity type (:func:`~openplaces.core.attribute_registry.
+        get_attributes`) — pass an explicit *columns* to override this
+        default for every discovered match. Any ``*-remap.csv`` crosswalk
+        found beside a matched source is applied automatically (see
+        :func:`_apply_remap_csvs`).
+    entity_type : str
+        Entity type to discover when *auto_discover* is set (default
+        ``'parcel'``).
+    mode : {'attributes', 'count', 'aggregate'}
+        ``'attributes'`` joins *columns* from the reference onto the spine
+        (1:1 on the key, keeping the first reference row per key). ``'count'``
+        aggregates a 1:many reference into a per-spine count (*count_as*) and a
+        boolean presence flag (*flag_as*) — used to track which parcels have
+        been transacted. ``'aggregate'`` reduces a 1:many reference onto the
+        spine by grouping on the key and applying each column's attribute-
+        registry aggregation (e.g. sum land_value/n_dwellings, max year_built),
+        falling back to the first non-null value for columns without a registry
+        rule; it also emits a per-key record count. Use it when several
+        reference rows share one spine key, such as MassGIS L3_ASSESS condominium
+        records stacked on one parcel polygon.
+    spine_key, ref_key : str
+        Key columns on the spine and reference (default ``parcel_id_local``).
+    columns : list of str, optional
+        Reference columns to attach in ``'attributes'`` mode.
+    suffix : str, optional
+        Suffix appended to attached column names (``'attributes'`` mode).
+    count_as, flag_as : str
+        Output column names in ``'count'`` mode.
+    layer : str, optional
+        Secondary layer (entity type or full entity string) of an
+        ``additional_layers`` entity to load from *recipe_id*, e.g. the
+        ``property`` assessor table bundled inside a MassGIS parcel recipe.
+    """
+    if auto_discover:
+        for match in _discover_link_sources(state, entity_type):
+            match_columns = columns or list(
+                get_attributes(match['layer'] or entity_type).index
+            )
+            state = link_by_id(
+                state,
+                recipe_id=match['recipe_id'],
+                mode='aggregate',
+                spine_key=match['key'],
+                ref_key=match['key'],
+                columns=match_columns,
+                layer=match['layer'],
+            )
+            state = _apply_remap_csvs(state, match['recipe_id'])
+        return state
+
+    if recipe_id is None:
+        warnings.warn('link_by_id: no recipe_id and auto_discover is False; skipping.')
+        return state
+
+    if state.spine is None:
+        warnings.warn('link_by_id: spine is None; skipping.')
+        return state
+    if spine_key not in state.spine.columns:
+        warnings.warn(
+            f'link_by_id: spine has no {spine_key!r}; skipping {recipe_id}. '
+            'Was the spine source ingested with a parcel_id_local directive '
+            'and resolve_spine keep_columns?'
+        )
+        return state
+
+    try:
+        ref = get_entities(recipe_id, state.admin_id, layer=layer)
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        # The reference is not available for this admin (e.g. a source-specific
+        # roll listed in a shared pipeline that does not apply here, including
+        # one scoped to a different state) or has not been ingested; skip.
+        if state.verbose:
+            print(f'  link_by_id: no {recipe_id} for {state.admin_id}; skipping.')
+        return state
+    if ref is None or ref_key not in ref.columns:
+        warnings.warn(
+            f'link_by_id: reference {recipe_id} has no {ref_key!r}; skipping.'
+        )
+        return state
+
+    spine = state.spine
+    skey = spine[spine_key].astype('string')
+    rkey = ref[ref_key].astype('string')
+
+    if mode == 'attributes':
+        cols = [c for c in (columns or []) if c in ref.columns]
+        ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
+        ref_unique.index = ref_unique[ref_key].astype('string')
+        for col in cols:
+            name = f'{col}{suffix}' if suffix else col
+            spine[name] = skey.map(ref_unique[col])
+        if state.verbose:
+            matched = skey.isin(set(rkey.dropna())).sum()
+            print(
+                f'  Link by id (attributes): {matched:,d}/{len(spine):,d} spine '
+                f'rows matched {recipe_id} ({len(cols)} columns)'
+            )
+    elif mode == 'count':
+        counts = rkey.dropna().value_counts()
+        spine[count_as] = skey.map(counts).fillna(0).astype('int64')
+        spine[flag_as] = spine[count_as] > 0
+        if state.verbose:
+            print(
+                f'  Link by id (count): {int(spine[flag_as].sum()):,d}/'
+                f'{len(spine):,d} spine rows linked to {recipe_id} '
+                f'({count_as}, {flag_as})'
+            )
+    elif mode == 'aggregate':
+        cols = [c for c in (columns or []) if c in ref.columns and c != ref_key]
+        ref_valid = ref.dropna(subset=[ref_key]).copy()
+        ref_valid[ref_key] = ref_valid[ref_key].astype('string')
+        grouped = ref_valid.groupby(ref_key, sort=False)
+
+        # Registry-driven reduction (sum values/dwellings, mean year, etc.);
+        # columns without a usable registry rule fall back to the first value.
+        reducible = {'sum', 'mean', 'max', 'min', 'first', 'last', 'median'}
+        for col in cols:
+            fname = get_agg_func(col)
+            func = fname if fname in reducible else 'first'
+            name = f'{col}{suffix}' if suffix else col
+            spine[name] = skey.map(grouped[col].agg(func))
+        count_col = count_as if count_as != 'n_transactions' else 'n_records_per_key'
+        spine[count_col] = skey.map(grouped.size()).fillna(0).astype('int64')
+        if state.verbose:
+            matched = skey.isin(set(rkey.dropna())).sum()
+            print(
+                f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
+                f'rows matched {recipe_id} ({len(cols)} columns, {count_col})'
+            )
+    else:
+        raise ValueError(
+            f'link_by_id: unknown mode {mode!r}; expected '
+            "'attributes', 'count', or 'aggregate'."
+        )
+
+    state.spine = spine
+    return state
+
+
 @_register('infer_spine_additions')
 def infer_spine_additions(
     state: HarmonizeState,
@@ -959,10 +1269,17 @@ def infer_spine_additions(
             )
         return state
 
+    # Parcels carry the use_* land-use vocabulary; fall back to purpose_* for a
+    # building/footprint reference.
+    group_col = next(
+        (c for c in ('use_group', 'purpose_group') if c in ref_polys.columns),
+        'use_group',
+    )
+
     ref_stat_cols = [
         c
         for c in [
-            'purpose_group',
+            group_col,
             'improvement_value_per_ha',
             'has_duplicate_geometry',
         ]
@@ -983,24 +1300,24 @@ def infer_spine_additions(
     n_footprints_per_group = (
         (
             (
-                footprint_ref_data['purpose_group'].value_counts()
-                / ref_polys['purpose_group'].value_counts()
+                footprint_ref_data[group_col].value_counts()
+                / ref_polys[group_col].value_counts()
             )
             .fillna(0)
             .rename('n_footprints_mean')
         )
-        if 'purpose_group' in footprint_ref_data.columns
+        if group_col in footprint_ref_data.columns
         else pd.Series(dtype=float)
     )
 
     imp_val_q_col = f'improvement_value_per_ha_q{q}'
     has_imp = 'improvement_value_per_ha' in footprint_ref_data.columns
-    if has_imp and 'purpose_group' in footprint_ref_data.columns:
+    if has_imp and group_col in footprint_ref_data.columns:
         imp_val_q_by_group = (
             footprint_ref_data.sample(frac=1)
             .reset_index()
             .drop_duplicates('parcel_id', keep=False)
-            .groupby('purpose_group')['improvement_value_per_ha']
+            .groupby(group_col)['improvement_value_per_ha']
             .quantile((q, 0.5))
             .unstack()
             .rename(
@@ -1019,7 +1336,7 @@ def infer_spine_additions(
     candidate_cols = [
         c
         for c in [
-            'purpose_group',
+            group_col,
             'improvement_value',
             'improvement_value_per_ha',
             'has_duplicate_geometry',
@@ -1030,9 +1347,9 @@ def infer_spine_additions(
     ref_candidates = ref_polys[mask_without_footprint][candidate_cols].copy()
 
     if imp_val_q_by_group is not None:
-        ref_candidates = ref_candidates.join(imp_val_q_by_group, on='purpose_group')
+        ref_candidates = ref_candidates.join(imp_val_q_by_group, on=group_col)
     if not n_footprints_per_group.empty:
-        ref_candidates = ref_candidates.join(n_footprints_per_group, on='purpose_group')
+        ref_candidates = ref_candidates.join(n_footprints_per_group, on=group_col)
 
     imp_val_floor = 0.0
     if has_imp:
@@ -1069,10 +1386,10 @@ def infer_spine_additions(
     _parts = _base.split('-', 2)
     _source_id = _parts[1] if len(_parts) > 1 else _base
     _et = entity_type or (_parts[0] if _parts else 'reference')
-    footprints_from_ref['source'] = f'{_et}.{_source_id}'
+    footprints_from_ref['geometry_source'] = f'{_et}.{_source_id}'
 
     state.spine = pd.concat(
-        [state.spine, footprints_from_ref[['geometry', 'source']]]
+        [state.spine, footprints_from_ref[['geometry', 'geometry_source']]]
     ).sort_index()
 
     if state.spine.index.duplicated().any():

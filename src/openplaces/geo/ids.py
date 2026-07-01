@@ -10,7 +10,10 @@ Functions for computing geographic identifiers.
 """
 
 import hashlib
+import re
 import warnings
+from functools import cache
+from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
@@ -536,3 +539,300 @@ def decode_ubids(ubids: pd.Series, outer: bool = True) -> gpd.GeoDataFrame:
         index=ubids.index,
         crs='EPSG:4326',
     )
+
+
+# Parcel identifier standardization
+#
+# Convert a raw source parcel id (`parcel_id_assessor`) into a standardized,
+# locally cross-comparable matching key (`parcel_id_local`) so parcel, tax, and
+# transaction datasets in the same locality join without re-deriving ids.
+# Ported from the places APN-matching methodology; only the conversion
+# operations that appear in the auto-selected best solutions are implemented.
+# The per-admin-unit conversion table (`parcel_id_links.csv`) and the pattern
+# library (`parcel_id_patterns.csv`) live beside this module.
+
+_PARCEL_ID_DIR = Path(__file__).parent
+
+
+@cache
+def _parcel_id_patterns() -> pd.DataFrame:
+    """Active parcel-id extraction patterns (regex), indexed by pattern name."""
+    patterns = pd.read_csv(_PARCEL_ID_DIR / 'parcel_id_patterns.csv')
+    return patterns[patterns['active'] == 1].set_index('pattern')
+
+
+@cache
+def _parcel_id_links() -> pd.DataFrame:
+    """Default per-admin-unit conversions (parcel + tax kinds), by admin_id."""
+    return pd.read_csv(_PARCEL_ID_DIR / 'parcel_id_links.csv', dtype=str).set_index(
+        'admin_id'
+    )
+
+
+def _pattern_regex(pattern) -> str:
+    """Resolve a pattern name (or raw regex) to an extraction regex."""
+    if pattern is None or (isinstance(pattern, float) and pd.isna(pattern)):
+        return r'^(.*)$'
+    patterns = _parcel_id_patterns()
+    if pattern in patterns.index:
+        return patterns.at[pattern, 'regex']
+    if pattern in ('Unrecognized', 'Useless', 'Ignored'):
+        return r'^(.*)$'
+    if pattern == 'Empty':
+        return r'^()$'
+    if isinstance(pattern, str) and pattern.startswith('^') and pattern.endswith('$'):
+        return pattern
+    return r'^(.*)$'
+
+
+def _conv_dict(conv_code: str) -> dict[str, str]:
+    """Parse a conversion code ('op: value & op: value') into an ordered dict."""
+    if not isinstance(conv_code, str) or not conv_code.strip():
+        return {}
+    out: dict[str, str] = {}
+    for part in conv_code.split(' & '):
+        if ': ' in part:
+            key, value = part.split(': ', 1)
+            out[key.strip()] = value.strip()
+        elif part.strip():
+            out[part.strip()] = ''
+    return out
+
+
+def _split_groups(cols: pd.DataFrame, spec: str) -> pd.DataFrame:
+    """Split selected capture-group columns in place (by char or position)."""
+    for split in spec.split(' '):
+        col, splitchar = split.split('|')
+        if col not in cols.columns:
+            continue
+        ic = cols.columns.get_loc(col)
+        if re.fullmatch(r'-?\d+', splitchar):
+            pos = int(splitchar)
+            left = cols[col].str.slice(0, pos).rename(0)
+            right = cols[col].str.slice(pos).rename(1)
+            piece = pd.concat([left, right], axis=1)
+        else:
+            piece = cols[col].str.split(splitchar, n=1, expand=True)
+        piece = piece.fillna('')
+        if len(piece.columns) == 1:
+            piece[1] = ''
+        piece = piece.rename(columns={i: f'{col}_{i}' for i in (0, 1)})
+        cols = cols.join(piece)
+        cols = cols[
+            list(cols.columns[:ic])
+            + [f'{col}_0', f'{col}_1']
+            + list(cols.columns[ic + 1 : -2])
+        ]
+    return cols
+
+
+def _switch_groups(cols: pd.DataFrame, spec: str) -> pd.DataFrame:
+    """Switch the positions of pairs of capture-group columns."""
+    for sw in spec.split(' '):
+        col1, col2 = sw.split('|')
+        if {col1, col2} <= set(cols.columns):
+            order = list(cols.columns)
+            i1, i2 = order.index(col1), order.index(col2)
+            order[i1], order[i2] = order[i2], order[i1]
+            cols = cols[order]
+    return cols
+
+
+def _merge_after(cols: pd.DataFrame, spec: str) -> pd.DataFrame:
+    """Concatenate each named column with its right neighbour (no separator)."""
+    for col in spec.split(' '):
+        if col in cols.columns:
+            ic = cols.columns.get_loc(col)
+            if ic + 1 < len(cols.columns):
+                neighbour = cols.columns[ic + 1]
+                cols[col] = cols[col] + cols[neighbour]
+                cols = cols.drop(columns=neighbour)
+    return cols
+
+
+def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'):
+    """Standardize raw parcel ids into a matching key via a conversion code.
+
+    Implements only the operations seen in the auto-selected best solutions:
+    ``simple`` (keep alphanumerics), ``no_conv``, ``string_lengths``,
+    ``split_groups``, ``drop_cols``, ``keep_length``, ``fill_zeros``,
+    ``switch``, ``merge_after``, ``max_length``, ``join_char``, ``skip_empty``.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Raw parcel identifiers (``parcel_id_assessor``).
+    pattern : str, optional
+        Pattern name (in ``parcel_id_patterns.csv``) or a raw ``^...$`` regex
+        with capture groups. Ignored when ``string_lengths`` is in the code.
+    conv_code : str
+        Conversion code, e.g. ``'string_lengths: 2 2 3 & skip_empty: 1'`` or
+        the bare ``'simple'`` / ``'no_conv'``.
+
+    Returns
+    -------
+    pd.Series
+        Standardized matching key (``parcel_id_local``); NA where extraction
+        failed or the result is empty.
+    """
+    s = series.astype('string').str.strip().str.upper()
+    if conv_code == 'simple':
+        out = s.str.replace(r'[^0-9A-Z]', '', regex=True)
+        return out.where(out.ne(''), pd.NA)
+
+    p = _conv_dict(conv_code)
+    if 'no_conv' in p:
+        return s.where(s.ne(''), pd.NA)
+
+    if 'string_lengths' in p:
+        regex = ''.join(
+            '([0-9A-Z ]' + (('{' + x + '}') if x not in ('+', '*', '?') else x) + ')'
+            for x in p['string_lengths'].split(' ')
+        )
+    else:
+        regex = _pattern_regex(pattern)
+
+    cols = s.str.extract(regex, expand=True)
+    i_null = cols.isnull().sum(axis=1).eq(len(cols.columns))
+    cols.columns = [str(c) for c in cols.columns]
+
+    if 'split_groups' in p:
+        cols = _split_groups(cols, p['split_groups'])
+    if 'drop_cols' in p:
+        cols = cols.drop(
+            columns=[c for c in p['drop_cols'].split(' ') if c in cols.columns]
+        )
+
+    keep = set(p['keep_length'].split(' ')) if 'keep_length' in p else set()
+    strip_cols = [c for c in cols.columns if c not in keep]
+    if strip_cols:
+        cols[strip_cols] = cols[strip_cols].apply(
+            lambda x: x.str.lstrip(' ').str.lstrip('0')
+        )
+
+    if 'fill_zeros' in p:
+        fz = [c for c in p['fill_zeros'].split(' ') if c in cols.columns]
+        if fz:
+            cols[fz] = cols[fz].replace('', '0').fillna('0')
+    if 'switch' in p:
+        cols = _switch_groups(cols, p['switch'])
+
+    cols = cols.fillna('')
+
+    if 'merge_after' in p:
+        cols = _merge_after(cols, p['merge_after'])
+    if 'max_length' in p:
+        for maxl in p['max_length'].split(' '):
+            col, length = maxl.split('|')[0], int(maxl.split('|')[1])
+            if col in cols.columns:
+                cols[col] = cols[col].str.slice(0, length)
+
+    join_char = p.get('join_char', '|')
+    skip_empty = 'skip_empty' in p
+
+    def _join(row):
+        values = [v for v in row if v != ''] if skip_empty else list(row)
+        return join_char.join(values)
+
+    out = cols.apply(_join, axis=1).astype('string')
+    out[i_null.to_numpy() | out.eq('')] = pd.NA
+    return out
+
+
+def dominant_parcel_id_pattern(series: pd.Series, min_match_ratio: float = 0.5) -> str:
+    """Return the dominant extraction pattern of raw parcel ids.
+
+    Offline helper used to (re)generate the per-admin-unit conversion table;
+    not used on the ingest path. Picks the active pattern with the highest
+    match ratio, breaking ties by lower complexity.
+    """
+    s = series.astype('string').str.strip().str.upper()
+    s = s[s.notnull() & s.ne('')]
+    if len(s) == 0:
+        return 'Empty'
+    patterns = _parcel_id_patterns()
+    best_pattern, best_ratio, best_complexity = None, 0.0, 10**9
+    for name, row in patterns.iterrows():
+        ratio = s.str.match(row['regex']).mean()
+        if ratio > best_ratio or (
+            ratio == best_ratio and ratio > 0 and row['complexity'] < best_complexity
+        ):
+            best_pattern, best_ratio, best_complexity = name, ratio, row['complexity']
+    if best_ratio > min_match_ratio:
+        return best_pattern
+    if s.str.len().ge(3).mean() > 0.5 and s.duplicated(False).mean() < 0.75:
+        return 'Unrecognized'
+    return 'Useless'
+
+
+def _adds_duplicates(raw: pd.Series, candidate: pd.Series, tolerance: float) -> bool:
+    """True if *candidate* collapses distinct raw ids beyond *tolerance*.
+
+    Compares duplicate counts over rows where both are non-null; the converted
+    key must not introduce duplicates over those already present in the raw
+    ``parcel_id_assessor`` input.
+    """
+    mask = raw.notna() & candidate.notna()
+    n = int(mask.sum())
+    if n == 0:
+        return False
+    extra = int(candidate[mask].duplicated().sum() - raw[mask].duplicated().sum())
+    return extra > tolerance * n
+
+
+def _resolve_instruction(admin_unit_id, instruction, kind):
+    """Resolve (pattern, conv_code) for an admin unit and source kind.
+
+    Order: explicit recipe ``instruction`` for the most-specific admin id, then
+    the bundled default table, then ``(None, 'simple')``.
+    """
+    if instruction:
+        aid = str(admin_unit_id) if admin_unit_id is not None else None
+        while aid:
+            if aid in instruction:
+                entry = instruction[aid]
+                return entry.get('pattern'), entry.get('conv', 'simple')
+            aid = aid.rsplit('-', 1)[0] if '-' in aid else None
+    links = _parcel_id_links()
+    aid = str(admin_unit_id) if admin_unit_id is not None else None
+    while aid:
+        if aid in links.index:
+            row = links.loc[aid]
+            return row.get(f'pattern_{kind}'), row.get(f'conv_{kind}') or 'simple'
+        aid = aid.rsplit('-', 1)[0] if '-' in aid else None
+    return None, 'simple'
+
+
+def compute_parcel_id_local(
+    series: pd.Series,
+    admin_unit_id=None,
+    instruction: dict | None = None,
+    kind: str = 'parcel',
+    tolerance: float = 0.005,
+) -> pd.Series:
+    """Compute the standardized ``parcel_id_local`` key for a parcel id column.
+
+    Resolves the admin-unit-specific conversion (recipe ``instruction`` then the
+    bundled default table, by source ``kind`` ``'parcel'`` or ``'tax'``), and
+    applies a hardened duplicate guard: if the conversion would collapse
+    distinct ``parcel_id_assessor`` values beyond *tolerance*, it falls back to
+    ``simple`` and then to the raw (uppercased, alphanumeric) id, never adding
+    new duplicates over the source.
+    """
+    raw = series.astype('string').str.strip().str.upper()
+    pattern, conv_code = _resolve_instruction(admin_unit_id, instruction, kind)
+
+    candidate = convert_parcel_id(raw, pattern, conv_code)
+    if not _adds_duplicates(raw, candidate, tolerance):
+        return candidate
+
+    warnings.warn(
+        f'parcel_id_local conversion for admin {admin_unit_id} (kind={kind}, '
+        f'conv={conv_code!r}) added duplicates; falling back to simple.',
+        stacklevel=2,
+    )
+    candidate = convert_parcel_id(raw, None, 'simple')
+    if not _adds_duplicates(raw, candidate, tolerance):
+        return candidate
+
+    return raw.where(raw.ne(''), pd.NA)

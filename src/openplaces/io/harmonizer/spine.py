@@ -57,7 +57,7 @@ def drop_elongated_duplicates(
 ) -> gpd.GeoDataFrame:
     """Remove from *to_add* candidates that are elongated duplicates of *spine*.
 
-    Catches displaced thin-rectangle buildings (mobile homes, trailers) that
+    Catches displaced thin-rectangle buildings (manufactured homes, trailers) that
     escape IoU-based deduplication because the positional offset is perpendicular
     to the long axis rather than along it.  The two footprints do **not** need to
     overlap — a close lateral neighbour with a matching long axis is enough.
@@ -175,6 +175,7 @@ def resolve_spine(
     state: HarmonizeState,
     sources: list[dict] | None = None,
     thresholds: dict | None = None,
+    keep_columns: list[str] | None = None,
 ) -> HarmonizeState:
     """Build the primary entity spine from multiple prioritized sources.
 
@@ -246,10 +247,19 @@ def resolve_spine(
                     f'{min_area_m2} m²'
                 )
 
-    # Build spine starting from the first source
+    # Build spine starting from the first source. ``keep_columns`` carries
+    # source attributes (e.g. parcel_id_local) onto the spine for non-footprint
+    # entities; absent columns are ignored.
+    keep_columns = keep_columns or []
+
+    def _spine_cols(gdf):
+        return ['geometry'] + [c for c in keep_columns if c in gdf.columns]
+
     first_label = resolved[0].get('label', resolved[0]['recipe_id'])
-    spine: gpd.GeoDataFrame = source_gdfs[first_label][['geometry']].copy()
-    spine['source'] = first_label
+    spine: gpd.GeoDataFrame = source_gdfs[first_label][
+        _spine_cols(source_gdfs[first_label])
+    ].copy()
+    spine['geometry_source'] = first_label
 
     for src in resolved[1:]:
         label = src.get('label', src['recipe_id'])
@@ -268,7 +278,9 @@ def resolve_spine(
             overlap['iou'].gt(overlap_iou_max)
         ].index.get_level_values(1)
 
-        to_add = candidate[~candidate.index.isin(overlap_ids)][['geometry']].copy()
+        to_add = candidate[~candidate.index.isin(overlap_ids)][
+            _spine_cols(candidate)
+        ].copy()
 
         if thresholds.get('elongated_aspect_min'):
             n_before = len(to_add)
@@ -286,7 +298,7 @@ def resolve_spine(
         else:
             n_elong_dropped = 0
 
-        to_add['source'] = label
+        to_add['geometry_source'] = label
         if candidate.index.name != spine.index.name:
             warnings.warn(
                 f'resolve_spine: index name mismatch — spine has '
@@ -308,6 +320,16 @@ def resolve_spine(
         state.timer.mark('Merge')
 
     state.spine = spine
+
+    # Spatial-overlay links name the reference-id index level 'parcel_id'. When
+    # the spine is itself a parcel entity its index is also 'parcel_id', so the
+    # two collide in the overlay MultiIndex (and every consumer that groups by
+    # the reference level). Give the spine a distinct working index name for the
+    # rest of the pipeline; the harmonizer's save step restores the original.
+    if state.spine.index.name == 'parcel_id':
+        state.metadata['spine_index_name'] = state.spine.index.name
+        state.spine.index = state.spine.index.rename('spine_id')
+
     return state
 
 

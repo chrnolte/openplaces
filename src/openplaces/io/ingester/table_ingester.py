@@ -19,6 +19,7 @@ from openplaces.core.constants import (
     PANDAS_EXTENSIONS,
     ZIP_EXTENSIONS,
 )
+from openplaces.core.schema import AdminId
 from openplaces.geo import get_crs
 from openplaces.geo.ids import get_geo_ids
 from openplaces.geo.overlay import overlay_admin_ids
@@ -28,6 +29,7 @@ from openplaces.geo.polygon import (
     resolve_overlapping_polygons,
 )
 from openplaces.io import (
+    coerce_mixed_object_columns,
     find_latest_file_or_gdb,
     read_gdb_with_domains,
     save_parquet,
@@ -41,7 +43,7 @@ from openplaces.io.transform import (
     get_crosswalk,
 )
 from openplaces.path import recipe_path
-from openplaces.recipe import get_output_path
+from openplaces.recipe import get_output_path, get_recipe
 from openplaces.timing import log_step
 
 
@@ -338,22 +340,38 @@ class TableIngester:
                 path=data_path,
             )
         elif data_path.suffix in PANDAS_EXTENSIONS:
-            # low_memory=False avoids per-chunk dtype inference (the source of
-            # mixed-type object columns that then fail Parquet serialization).
-            read_kwargs = {
-                'delimiter': self.recipe.get('delimiter', ','),
-                'low_memory': False,
-            }
             # `csv_dtype: str` reads every column as text — the robust choice
             # for messy flat dumps where a column mixes ints and strings.
             # A dict maps specific columns to dtypes.
             csv_dtype = self.recipe.get('csv_dtype')
             if csv_dtype == 'str':
-                read_kwargs['dtype'] = str
+                dtype = str
             elif isinstance(csv_dtype, dict):
-                read_kwargs['dtype'] = csv_dtype
+                dtype = csv_dtype
+            else:
+                dtype = None
 
-            gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
+            if self.recipe.get('fixed_width'):
+                gdf = self._read_fixed_width(data_path, dtype)
+            elif data_path.suffix in {'.xlsx', '.xls'}:
+                header = self.recipe.get('header', 'infer')
+                gdf = pd.read_excel(
+                    data_path,
+                    sheet_name=self.recipe.get('sheet_name', 0),
+                    header=None if header in (None, 'none') else header,
+                    names=self.recipe.get('names'),
+                    dtype=dtype,
+                )
+            else:
+                # low_memory=False avoids per-chunk dtype inference (the source
+                # of mixed-type object columns that then fail Parquet writes).
+                read_kwargs = {
+                    'delimiter': self.recipe.get('delimiter', ','),
+                    'low_memory': False,
+                }
+                if dtype is not None:
+                    read_kwargs['dtype'] = dtype
+                gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
             self.timer.mark(
                 'Read data table' + timer_suffix,
                 path=data_path,
@@ -382,6 +400,35 @@ class TableIngester:
             'default', 'received a polygon with more than 100 parts'
         )
         return gdf
+
+    def _read_fixed_width(self, data_path, dtype):
+        """Read a fixed-width flat file using the recipe's ``fixed_width`` layout.
+
+        ``fixed_width`` is an ordered list of ``[field_name, width]`` covering the
+        whole record. Fields named ``filler`` are padding and are dropped after
+        reading. Field values are stripped of their fixed-width padding.
+
+        Parameters
+        ----------
+        data_path : Path
+            Path to the flat file.
+        dtype : type, dict, or None
+            Passed to :func:`pandas.read_fwf` (defaults to ``str`` so zero-padded
+            identifiers keep their leading zeros).
+        """
+        spec = self.recipe['fixed_width']
+        names, widths = [], []
+        for i, field in enumerate(spec):
+            name, width = field[0], int(field[1])
+            names.append(f'filler_{i}' if name == 'filler' else name)
+            widths.append(width)
+
+        df = pd.read_fwf(data_path, widths=widths, names=names, dtype=dtype or str)
+        df = df.drop(columns=[c for c in df.columns if c.startswith('filler_')])
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = df[col].str.strip()
+        return df
 
     # Preprocess
 
@@ -412,6 +459,12 @@ class TableIngester:
         # Filter rows
         if 'query' in self.recipe:
             df = df.query(self.recipe['query'])
+
+        # Drop duplicate rows (some source dumps repeat exact rows). `true`
+        # drops full-row duplicates; a list of column names dedupes on a subset.
+        if self.recipe.get('drop_duplicates'):
+            subset = self.recipe['drop_duplicates']
+            df = df.drop_duplicates(subset=None if subset is True else subset)
 
         # Apply variable transformations
         # (Before categorical casting and crosswalks, so that derived columns
@@ -651,6 +704,118 @@ class TableIngester:
                     cols_order += [geo_col]
             df = df[cols_order]
 
+        # Standardized cross-comparable parcel matching key (after reorder so it
+        # is always retained).
+        df = self._add_parcel_id_local(df)
+
+        return df
+
+    def _load_parcel_id_overrides(self, kind: str) -> dict | None:
+        """Load the recipe-tree id-conversion override table, if present.
+
+        Returns an ``{admin_id: {pattern, conv}}`` dict in the shape
+        :func:`~openplaces.geo.ids.compute_parcel_id_local`'s ``instruction``
+        parameter expects, built from rows of
+        ``{country}_{entity_type}_id-overrides.csv``
+        (``recipes/{country}/_all/{entity_type}/_all/``) matching *kind* and
+        this recipe's ``source_id`` (a blank ``source_id`` row matches any
+        source at that ``admin_id``; an exact-source row at the same
+        ``admin_id`` takes precedence). Admin-hierarchy walking from a
+        specific admin id to a broader one is handled by
+        :func:`~openplaces.geo.ids._resolve_instruction`, which already
+        knows how to fall back within an ``instruction`` dict — this only
+        builds the dict. Returns ``None`` when no override table exists for
+        this recipe's country/entity_type (the common case today).
+        """
+        entity = self.recipe.get('entity')
+        admin_id = self.recipe.get('admin_id')
+        if entity is None or not admin_id or not admin_id.levels:
+            return None
+        country = AdminId(admin_id.levels[0])
+        try:
+            table = get_recipe(
+                country,
+                str(entity.entity_type),
+                filename='id-overrides',
+                dtype=str,
+                keep_default_na=False,
+            )
+        except OSError:
+            return None
+
+        table = table[table['kind'] == kind]
+        source_id = str(entity.source) if entity.source else ''
+        overrides: dict[str, dict] = {}
+        for _, row in table[table['source_id'] == ''].iterrows():
+            if row['admin_id']:
+                overrides[row['admin_id']] = {
+                    'pattern': row['pattern'],
+                    'conv': row['conv'],
+                }
+        for _, row in table[table['source_id'] == source_id].iterrows():
+            if row['admin_id']:
+                overrides[row['admin_id']] = {
+                    'pattern': row['pattern'],
+                    'conv': row['conv'],
+                }
+        return overrides or None
+
+    def _add_parcel_id_local(self, df):
+        """Add `parcel_id_local` from `parcel_id_assessor` per the recipe directive.
+
+        Recipe directive::
+
+            parcel_id_local:
+              source: parcel_id_assessor   # raw column to standardize
+              kind: parcel                 # parcel | tax (selects default conv)
+              admin_id_column: admin4_id   # optional: per-row admin unit (MA towns)
+              instruction: {<admin_id>: {pattern: ..., conv: ...}}   # optional override
+
+        The conversion is admin-unit-specific: a recipe-inline `instruction`
+        wins, then the recipe-tree override table
+        (:meth:`_load_parcel_id_overrides`), then the bundled default table
+        (see :func:`openplaces.geo.ids.compute_parcel_id_local`), and is
+        hardened so it never adds duplicates beyond those already in
+        `parcel_id_assessor`.
+        """
+        spec = self.recipe.get('parcel_id_local')
+        if not spec:
+            return df
+        from openplaces.geo.ids import compute_parcel_id_local
+
+        source = spec.get('source', 'parcel_id_assessor')
+        if source not in df.columns:
+            warnings.warn(
+                f"parcel_id_local: source column '{source}' not found; skipping.",
+                stacklevel=2,
+            )
+            return df
+        kind = spec.get('kind', 'parcel')
+        instruction = {
+            **(self._load_parcel_id_overrides(kind) or {}),
+            **(spec.get('instruction') or {}),
+        } or None
+        admin_col = spec.get('admin_id_column')
+
+        if admin_col and admin_col in df.columns:
+            # Per-row admin-unit-specific conversion (e.g. Massachusetts towns).
+            result = pd.Series(pd.NA, index=df.index, dtype='string')
+            for admin_id, group in df.groupby(admin_col):
+                result.loc[group.index] = compute_parcel_id_local(
+                    group[source],
+                    admin_unit_id=admin_id,
+                    instruction=instruction,
+                    kind=kind,
+                )
+            df['parcel_id_local'] = result
+        else:
+            admin_id = self.processing_chunk.get('admin_id_to_process')
+            df['parcel_id_local'] = compute_parcel_id_local(
+                df[source],
+                admin_unit_id=admin_id,
+                instruction=instruction,
+                kind=kind,
+            )
         return df
 
     # Save
@@ -663,6 +828,8 @@ class TableIngester:
         gdf : DataFrame or GeoDataFrame
             Preprocessed data ready to be saved.
         """
+        gdf = coerce_mixed_object_columns(gdf)
+
         save_to = self.recipe.get('save_to') or {}
         admin_level = save_to.get('admin_level') or (
             self.recipe.get('cache_by') or {}

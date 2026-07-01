@@ -6,7 +6,7 @@
 # footprint already in the spine.
 
 description: >-
-  Harmonized U.S. footprint spine merging OBM, Microsoft, state, and FEMA footprints
+  Harmonized U.S. footprint spine merging OBM, Microsoft, and state footprints
   with parcel, NSI, and dwelling attributes.
 
 stage: harmonize
@@ -34,8 +34,6 @@ pipeline:
         label: microsoft
       - auto_discover: true
         entity_type: footprint
-      - recipe_id: US_footprint-fema-2023
-        label: fema
     thresholds:
       min_area_m2: 10.0
       overlap_iou_max: 0.02
@@ -80,28 +78,30 @@ pipeline:
       aggregate_multipoint: true
       dedup_addresses: true
 
-  - step: classify_footprint_role
+  - step: classify_footprint_priority
     entity_type: parcel
 
+  # Attribution only: aggregate source columns into suffixed evidence columns.
+  # Value selection, gap-filling, and occupancy inference run in curation
+  # (US_footprint-cheer-2026).
   - step: reconcile_attributes
-    priority:
-      n_dwelling_units: [overture, parcel]
-      year_built: [parcel, building_nsi]
-      improvement_value: [parcel]
     sources:
       - entity_type: parcel
         columns:
-          - purpose_group
-          - purpose_subgroup
-          - purpose_group_combined
+          # The dominant parcel's matching key, so the curate stage can join the
+          # curated parcel lane (link_curated_parcels) back onto each footprint.
+          - parcel_id_local
+          - use_group
+          - use_subgroup
+          - use_group_combined
           - improvement_value
           - land_value
           - year_built
           - address
-          - n_dwelling_units
+          - n_dwellings
       - recipe_id: dwelling-overture-2025
         columns:
-          - n_dwelling_units
+          - n_dwellings
           - address_street
           - address_number
           - postal_code
@@ -110,21 +110,10 @@ pipeline:
         collect_ids: true
         columns:
           - occupancy_type
-          - openplaces_group
+          - group
           - structure_value
           - year_built_block_median
           - source
           - area_sqft
           - n_stories
-
-  - step: infer_attributes
-    derived:
-      - area
-      - value_per_sqft
-      - openplaces_group_combined
-      - n_dwelling_units
-
-  - step: infer_occupancy_type
-    thresholds:
-      mobile_home_aspect_min: 2.5
-      mobile_home_area_max_m2: 185
+          - n_dwellings

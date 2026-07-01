@@ -97,6 +97,7 @@ PANDAS_EXTENSIONS = {
     '.xlsx',
     '.xls',
     '.dat',
+    '.txt',
 }
 
 # Extensions of companion files for shapefiles
@@ -151,6 +152,59 @@ REGEX_HAS_GLOB_WILDCARDS = r'[*?\[\]]'
 ADMIN1_IDS_USING_HASC1_FOR_ADMIN2 = ['AZ', 'BE', 'FR', 'GB', 'GN', 'IT', 'LV']
 
 
+# Vocabulary for cleaning administrative-unit names before generating admin IDs.
+# These are language-extensible: add a language's terms here (or override per
+# recipe) rather than editing `openplaces.io.admin.clean_geographic_name`.
+
+# Tokens that mean "no name" (case-insensitive, after stripping).
+ADMIN_NA_TOKENS = frozenset({'', 'none', 'nan', 'null', 'na', 'n.a.', 'n/a'})
+
+# Leading articles/honorifics stripped from a name so initials come from the
+# distinctive word (e.g. "San Jose" -> "Jose", "El Paso" -> "Paso").
+# English + Spanish + Arabic. Order does not matter (joined into a regex).
+ADMIN_NAME_PREFIXES = [
+    'The',  # English
+    'Al',  # Arabic
+    'San',
+    'Santa',
+    'Santo',  # Spanish honorifics
+    'El',
+    'La',
+    'Los',
+    'Las',  # Spanish articles
+]
+
+# Generic administrative words detected (with an accompanying number) so the
+# number is prefixed with the word's initial(s) instead of the place name
+# (e.g. "Ward 3" -> "W3", "Comuna 5" -> "C5"). English/Filipino + Spanish.
+ADMIN_GENERIC_WORDS = [
+    'ward',
+    'zone',
+    'barangay',
+    'bgy',
+    'district',
+    'division',
+    'subd',
+    'subdivision',  # English / Filipino
+    'municipio',
+    'comuna',
+    'corregimiento',
+    'vereda',
+    'barrio',
+    'localidad',
+    'departamento',
+    'provincia',  # Spanish
+]
+
+# Trailing administrative-type words extracted from a unit's long name into a
+# `type` column (and used to disambiguate duplicate names within a parent).
+# English (US Census) + Spanish.
+REGEX_ADMIN_TYPE_EXTRACT = (
+    '(Census Area|Borough|Parish|City|Town|Village|County|Municipality|'
+    'Municipio|Comuna|Corregimiento|Department|Departamento|Province|Provincia)$'
+)
+
+
 # Essential unit conversions
 
 # Acres to square feet
@@ -174,6 +228,7 @@ CRS = 'epsg:4326'  # WGS84 Geographic
 # from an additional_layers entry and which are inherited from the primary.
 RECIPE_PER_TABLE_KEYS = (
     'layer',
+    'layer_key',
     'columns',
     'keep_unnamed_columns',
     'set_index',

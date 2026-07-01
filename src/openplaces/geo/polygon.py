@@ -21,10 +21,40 @@ from openplaces.core.constants import AC_TO_HA, M2_TO_SQFT
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
     '+ellps=WGS84 +units=m +no_defs',
+    'aeqd': '+proj=aeqd +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
+    '+datum=WGS84 +units=m +no_defs',
     'moon': '+proj=nsper +h=384400000 +lon_0={LON} +lat_0={LAT} +ellps=WGS84',
     'landsat': '+proj=nsper +h=705000 +lon_0={LON} +lat_0={LAT} +ellps=WGS84',
     'eck': '+proj=eck4 +ellps=WGS84',
 }
+
+
+def local_metric_crs(gdf):
+    """Return a metre-based CRS centered on *gdf*, valid anywhere on Earth.
+
+    Builds an Azimuthal Equidistant projection centered on the data's bounding-box
+    center, so metre distances are accurate for a local (admin-unit scale) extent
+    regardless of hemisphere, UTM zone, or the antimeridian. Use this for
+    distance-based operations (nearest-neighbor, ``dwithin`` queries, DBSCAN eps)
+    on data that may be stored in a geographic CRS.
+
+    Prefer this over ``GeoDataFrame.estimate_utm_crs()`` when robustness to
+    equator/zone boundaries matters; AEQD is recentered per dataset so those are
+    not special cases. For area (not distance) use an equal-area CRS via
+    ``get_areas`` instead.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame or GeoSeries
+        Geometries to find a local projection for. Reprojected to EPSG:4326 to
+        read longitude/latitude bounds; the input is not modified.
+    """
+    geographic = gdf.geometry if isinstance(gdf, gpd.GeoDataFrame) else gdf
+    if geographic.crs is not None and geographic.crs.to_epsg() != 4326:
+        geographic = geographic.to_crs(4326)
+    minx, miny, maxx, maxy = geographic.total_bounds
+    lon, lat = (minx + maxx) / 2, (miny + maxy) / 2
+    return pyproj.CRS.from_proj4(PROJ4['aeqd'].format(LAT=lat, LON=lon))
 
 
 def fix_polygons(gdf):

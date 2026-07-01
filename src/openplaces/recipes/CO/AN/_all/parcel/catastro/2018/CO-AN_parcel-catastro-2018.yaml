@@ -45,15 +45,15 @@ process_by:
 columns:
   object_id: OBJECTID_1
   property_id: PK_PREDIOS
-  purpose_group: TIPO
+  use_group: TIPO
   admin2_id_admin1: MUNICIPIO
-  sector_admin3_id_admin2: SECTOR
-  district_admin4_id_admin3: CORREGIMIE
-  neighborhood_admin5_id_admin4: BARRIO
-  block_id_admin6_id_admin5: MANZANA_VE
-  total_units: TOTAL_UNID
+  admin3_id_admin2: SECTOR
+  admin4_id_admin3: CORREGIMIE
+  admin5_id_admin4: BARRIO
+  admin6_id_admin5: MANZANA_VE
+  n_dwellings: TOTAL_UNID
   street_number: NUMERORADI
-  total_buildings: TOTAL_EDIF
+  n_buildings: TOTAL_EDIF
 
 keep_unnamed_columns: True
 
