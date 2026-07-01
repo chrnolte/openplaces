@@ -345,11 +345,69 @@ Columns
         type: ENGTYPE_1
         admin1_name: COUNTRY
 
+   The left-hand names should follow the openplaces canonical attribute naming
+   convention:
+
+   - **snake_case**, with role prefixes such as ``owner_``, ``tax_``,
+     ``last_sale_``, ``source_``; ``{qualifier}_value`` for monetary fields;
+     ``_code`` twins for coded categoricals; ``m2`` for square metres.
+   - **Do not prefix a column with the dataset's own entity type, except for
+     identifiers.** In a ``parcel`` dataset, ``parcel_id`` / ``parcel_id_admin1``
+     (identifiers) are fine, but the parcel's own type is ``type`` (not
+     ``parcel_type``) and its map number is ``mapnumber`` (not
+     ``parcel_mapnumber``). Prefixes naming a *different* entity (e.g.
+     ``owner_name``) are fine.
+   - **Do not abbreviate words** — ``value`` not ``val``, ``subdivision`` not
+     ``subd``, ``market`` not ``mkt``, ``number`` not ``no``.
+   - **``n_``** is the prefix for counts (``n_dwellings``, ``n_sales``).
+
+   The authoritative, entity-scoped list of canonical
+   names lives in ``src/openplaces/core/attribute_registry.csv`` and is queryable
+   in code via ``openplaces.core.attribute_registry.get_attributes(entity_type=...)``.
+   It spans every entity type and pipeline stage (a blank ``entity_type`` means
+   the name is shared). Reuse an existing canonical name wherever one fits; add a
+   new registry row when introducing a genuinely new attribute.
+
+   For positional or headerless sources, name columns only **once**: assign the
+   canonical names directly in the positional spec (``fixed_width:`` field names,
+   or ``names:`` together with ``header: none``) and omit ``columns:`` entirely.
+   The ``columns:`` block only renames and reorders an already-read table, so it is
+   redundant when the positional spec already carries the final names. Keep a
+   source-style working name only for a field that feeds a ``transformations:``
+   step rather than becoming an output column directly.
+
 .. attribute:: keep_unnamed_columns
 
    Set to :input:`True` to retain all columns not listed in :attr:`columns`.
 
    Also retains columns generated during index creation (e.g. by :attr:`create_index`).
+
+.. attribute:: parcel_id_local
+
+   Compute a standardized, locally cross-comparable parcel matching key at
+   ingest, so parcel, tax, and transaction datasets in the same locality can be
+   linked without re-deriving ids. ``parcel_id_assessor`` is the raw source id;
+   ``parcel_id_local`` is the standardized key derived from it.
+
+   .. code-block:: yaml
+
+      parcel_id_local:
+        source: parcel_id_assessor   # raw column to standardize
+        kind: parcel                 # parcel | tax (selects the default conversion)
+        admin_id_column: admin4_id   # optional: per-row admin unit (e.g. MA towns)
+        instruction:                 # optional source-supplied override
+          "US-NC-NE": {pattern: ..., conv: ...}
+
+   The conversion is admin-unit-specific: a recipe ``instruction`` if given,
+   else the bundled default table (``geo/parcel_id_links.csv``, keyed by
+   ``admin_id`` with separate ``parcel`` and ``tax`` conversions), else
+   ``simple`` (uppercase, keep alphanumerics). The engine
+   (:func:`openplaces.geo.ids.compute_parcel_id_local`) is hardened so the
+   conversion never adds duplicates over those already in
+   ``parcel_id_assessor`` — it falls back to ``simple`` then the raw id. The
+   harmonizer ``link_by_id`` step then joins datasets on ``parcel_id_local``
+   (attaching attributes, or counting transactions per parcel). The methodology
+   is adapted from the ZTRAX/parcel APN-matching workflow.
 
 
 Data cleaning

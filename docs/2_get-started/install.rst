@@ -23,21 +23,17 @@ This is the recommended setup for developers and collaborators.
 Get the repository
 ------------------
 
-1. Open your :gui:`Terminal`. 
+-  Open a Terminal window:
 
    .. tab-set::
 
       .. tab-item:: Windows
 
-         Open :gui:`Command Prompt` or :gui:`Anaconda Prompt`
+         Open :gui:`Command Prompt` or :gui:`Anaconda Prompt`.
 
-      .. tab-item:: macOS
+      .. tab-item:: macOS or Linux
 
-         Open :gui:`Terminal`
-
-      .. tab-item:: Linux
-
-         Open :gui:`Terminal`
+         Open :gui:`Terminal`.
 
 2. Change to the directory where you want to keep the ``openplaces`` codebase:
 
