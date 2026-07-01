@@ -48,7 +48,7 @@ Layer 2  recipe
 Layer 3  io/__init__
 Layer 4  io/readers
 Layer 5  geo/*
-Layer 6  io/ingester, io/table_ingester, io/aggregate, io/admin, io/transform
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/aggregate, io/admin, io/transform
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -105,7 +105,7 @@ Key recipe functions (`recipe.py`):
 
 ### Data pipeline: ingest → harmonize → enrich → curate
 
-**Stage 1 — Ingest** (`io/ingester.py`, `io/table_ingester.py`):
+**Stage 1 - Ingest** (`io/ingester/`, `io/ingester/table_ingester.py`):
 
 `Ingester` orchestrates download, unzip, and processing of one recipe:
 1. Resolves admin IDs to save/process/download (three potentially different levels)
@@ -131,11 +131,11 @@ of the sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`)
 - `links.py` — join to reference datasets spatially or via crosswalks
   (`link_to_reference`)
-- `attributes.py` — align, reconcile, and derive source attributes
-  (`reconcile_attributes`, `classify_footprint_role`, `infer_attributes`,
-  `infer_occupancy_type`, ...). Note: value selection and gap-filling currently
-  run here, at harmonize time (see `US_footprint-spine-2026`); migrating them
-  into curation steps is planned but not done.
+- `attributes.py` — attribute source columns to the spine as suffixed evidence
+  columns (`reconcile_attributes`) and assign each footprint's parcel priority
+  (`classify_footprint_priority`). Value selection, gap-filling, and occupancy
+  inference now run in the curation stage, not here; the harmonized spine
+  (`US_footprint-spine-2026`) is an evidence-only table.
 - `filter.py` — subset rows (`filter_entities`)
 - `discover.py` — discover available data sources for an admin unit
 
@@ -157,7 +157,9 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
 - `attributes.py` — registered evidence-producing steps (`classify_roof_shape`,
   `classify_occupancy`, `detect_n_stories`); image-based steps build their
   input from the metadata of the recipe's `image_recipe` (per-building imagery
-  ingested at admin level 4; admin units without imagery are skipped)
+  ingested at admin level 4; admin units without imagery are skipped). Missing
+  imagery is fetched automatically on first ingest; `redownload` only re-fetches
+  images that already exist on disk (cached images are otherwise reused).
 - `detectors/` — attribute-specific detectors and shared inference runtimes
   (EfficientDet/EfficientNet ports; torch is conda-only)
 - `models.py` — pretrained-model download and cache handling
@@ -171,26 +173,30 @@ Public entrypoint: `enrich(recipe, admin_ids, entity_recipe_id, reprocess, verbo
 **Stage 4 — Curate** (`io/curator/`):
 
 `Curator` creates the canonical entity dataset. It starts from a harmonized
-entity, incorporates enrichment evidence, and is intended to apply explicit
-recipe steps that select values, fill gaps, infer canonical attributes, and
-remove records.
+(evidence-only) entity, incorporates enrichment evidence, and applies explicit
+recipe steps that select values, fill gaps, infer canonical attributes, format
+the output, and remove records. Each step is a registered function operating on
+a shared `CurateState` (canonical GeoDataFrame in `state.curated`).
 
-Current state: only `merge_enrichments` (in `evidence.py`) is implemented —
-it joins enrichment evidence columns onto the harmonized entity. The other
-concern modules are placeholders with no registered steps yet:
+Steps are organized by the nature of the transformation:
 
-- `evidence.py` — merge and reconcile enrichment evidence (`merge_enrichments`)
-- `imputers.py` — (stub) fill missing canonical values
-- `inferers.py` — (stub) derive canonical values from available evidence
+- `evidence.py` — incorporate enrichment evidence (`merge_enrichments`)
+- `reconcilers.py` — resolve conflicts between competing source columns
+  (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI)
+- `imputers.py` — fill missing canonical values (`impute_n_dwellings`)
+- `inferers.py` — derive new canonical features (`derive_metrics`,
+  `infer_from_group_statistic`, `infer_occupancy_type`, `refine_occupancy_height`)
+- `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
+  `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical
   dataset
 
-Until those exist, value selection (`reconcile_attributes`), gap-filling
-(`infer_attributes`), and occupancy inference (`infer_occupancy_type`) run in
-the harmonize stage. These concern-based modules mirror the processor
-categories used by related inventory systems, while remaining native to the
-openplaces recipe and state architecture. Curation outputs are full entity
-recipes, not sidecar evidence tables.
+These concern-based modules mirror the processor categories used by related
+inventory systems, while remaining native to the openplaces recipe and state
+architecture. Value selection, gap-filling, and occupancy inference were
+migrated here from the harmonize stage; the harmonized spine
+(`US_footprint-spine-2026`) is now an evidence-only table. Curation outputs are
+full entity recipes, not sidecar evidence tables.
 
 Public entrypoint: `curate(recipe, admin_ids, reprocess, verbose)`.
 
@@ -229,9 +235,19 @@ files, respectively.
 
 ### Attribute registry (`core/attribute_registry.csv`, `core/attribute_registry.py`)
 
-Maps well-known column names to their expected data type, units, and default aggregation
-function. Used by the harmonizer and ingester to validate dtypes and drive groupby
-aggregations without hardcoded column lists. Loaded once and cached via `@cache`.
+Maps well-known column names to their expected data type, units, default aggregation
+function, and a `sort` rank. Used by the harmonizer and ingester to validate dtypes and
+drive groupby aggregations without hardcoded column lists, and by the curate
+`order_columns` step to order output columns deterministically. Loaded once and cached
+via `@cache`.
+
+**Column naming convention.** Evidence columns carry a provenance suffix with exactly
+the disambiguating components: point/building-level refs use entity-level + source
+(`_building_nsi`, `_dwelling_overture`, because footprint/building/dwelling are easily
+conflated); parcel refs use entity-level only (`_parcel`, since parcel layers are
+interchangeable). Relational counts use `n_{counted}s_per_{grouping}`
+(`n_parcels_per_footprint`). Final output order is computed from the suffix + registry
+`sort` rank, so no explicit per-recipe column list is needed.
 
 ### Configuration (`config.py`)
 
