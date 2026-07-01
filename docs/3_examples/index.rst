@@ -26,6 +26,6 @@ Buildings
       :link-type: doc
       :class-card: op-example-card
 
-      U.S. footprint harmonization
-      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      U.S. footprints (CHEER)
+      ^^^^^^^^^^^^^^^^^^^^^^^
       Multi-source building footprints enriched with tax parcels, National Structure Inventory attributes, and Overture addresses for hurricane risk modeling.

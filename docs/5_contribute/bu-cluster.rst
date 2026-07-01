@@ -10,7 +10,17 @@ Connect
 
 -  You need to be at Boston University or use the `BU VPN <https://www.bu.edu/tech/services/cccs/remote/vpn/use/>`_.
 
--  Open :gui:`Terminal`.
+-  Open a Terminal window:
+
+   .. tab-set::
+
+      .. tab-item:: Windows
+
+         Open :gui:`Command Prompt` or :gui:`Anaconda Prompt`.
+
+      .. tab-item:: macOS or Linux
+
+         Open :gui:`Terminal`.
 
 -  Log onto BU's cluster via the ``geo`` server (Earth & Environment):
 
