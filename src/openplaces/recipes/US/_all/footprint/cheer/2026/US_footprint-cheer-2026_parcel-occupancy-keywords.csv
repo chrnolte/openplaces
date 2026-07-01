@@ -1,12 +1,12 @@
 pattern,match_type,occupancy_type,reviewed
-MANUFACTURED,contains,Mobile Home,true
-SINGLE WIDE,contains,Mobile Home,true
-DOUBLE WIDE,contains,Mobile Home,true
-MOBILE HOME,contains,Mobile Home,true
+MANUFACTURED,contains,Manufactured Home,true
+SINGLE WIDE,contains,Manufactured Home,true
+DOUBLE WIDE,contains,Manufactured Home,true
+MOBILE HOME,contains,Manufactured Home,true
 TOWNHOME|TOWNHOUSE|DUPLEX|TRIPLEX|QUADPLEX|APARTMENT|CONDO|MULTI,regex,Multi-Family,true
 SINGLE FAMILY,contains,Single-Family,true
 SFR,contains,Single-Family,true
-\bMH\b,regex,Mobile Home,false
+\bMH\b,regex,Manufactured Home,false
 MODULAR,contains,Single-Family,false
 COMMERCIAL,contains,Commercial,false
 RETAIL,contains,Retail,false

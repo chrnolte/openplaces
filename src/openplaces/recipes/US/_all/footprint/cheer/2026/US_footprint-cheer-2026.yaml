@@ -1,9 +1,11 @@
 # Recipe: canonical CHEER footprint dataset
 #
 # Pipeline order:
-#   1. Harmonize source entities into US_footprint-spine-2026.
+#   1. Harmonize source entities into the evidence-only US_footprint-spine-2026.
 #   2. Enrich the spine with image-derived evidence.
-#   3. Curate the evidence into canonical footprint attributes.
+#   3. Curate the evidence into canonical footprint attributes (below):
+#      select values, derive metrics, infer groups/occupancy, merge enrichment
+#      evidence, resolve occupancy against parcels, refine height, and format.
 
 description: >-
   Canonical CHEER footprint inventory: harmonized U.S. footprint spine curated with
@@ -26,7 +28,77 @@ process_by:
 save_to:
   data_dir: core
 
+# Occupancy classification config: all geography-specific terminology, evidence
+# columns, and thresholds live here so the curator steps stay vocabulary-neutral.
+occupancy:
+  class_map: occupancy-class-map.csv          # recipe-relative; pattern,match_type,occupancy_type
+  residential_classes: [Single-Family, Multi-Family, Manufactured Home]
+  secondary_class: Secondary
+  evidence:                                  # priority order: first present sets the base class
+    - {column: occupancy_type_building_nsi, label: nsi}   # ordering = NSI-first
+    - {column: occupancy_type_footprint_fema, label: fema}  # FEMA building occupancy (parcel-aggregated); provisional rank, see occupancy-evidence-comparison report
+    - {column: group_parcel, label: parcel}              # label used in the conflict summary
+  columns:                                   # generic attribute -> this recipe's column
+    improvement_value: improvement_value_parcel
+    land_value: land_value_parcel
+    n_dwellings: n_dwellings
+  rules:                                     # each rule names its output class
+    manufactured_home_geometry: {aspect_min: 2.5, area_max_m2: 185, class: Manufactured Home}
+    manufactured_home_value: {zero_classifies: true, review_max_ratio: 0.025, class: Manufactured Home}
+    multi_family_dwellings: {min_dwellings: 2, class: Multi-Family}
+    single_family_dwellings: {max_dwellings: 1, class: Single-Family}
+  # Park-aware Secondary: on a manufactured_home_park parcel (set by the parcel
+  # curation lane, joined in by link_curated_parcels), a footprint at least
+  # `habitable_fraction` of the average manufactured-home area counts as a home,
+  # not an accessory structure. mobile_home_avg_m2 is the fallback average when
+  # too few homes are classified to estimate it from the data.
+  habitable_fraction: 0.5
+  habitable_floor_m2: 25
+  mobile_home_avg_m2: 90
+
 pipeline:
+  # Link the curated parcel lane FIRST, by parcel_id_local. The harmonized
+  # footprint spine is evidence-only for parcels and (because parcels are curated
+  # from the same admin run, after the footprint spine) its raw parcel value
+  # columns are empty, so the curated parcel supersedes them here: the
+  # property-merged assessor values, the refined use_group_combined, the modal-NSI
+  # occupancy group, the FEMA building occupancy, and the manufactured_home_park
+  # flag. These feed the reconciliation, occupancy inference, and vote below.
+  - step: link_curated_parcels
+    recipe_id: US_parcel-openplaces-2026
+    columns:
+      improvement_value: improvement_value_parcel
+      land_value: land_value_parcel
+      year_built: year_built_parcel
+      use_group_combined: use_group_combined_parcel
+      group_parcel: group_parcel
+      manufactured_home_park: manufactured_home_park
+      occupancy_type_footprint_fema: occupancy_type_footprint_fema
+
+  # Reconcile: pick the canonical value from competing source columns.
+  - step: reconcile_values
+    priority:
+      n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
+      year_built: [year_built_parcel, year_built_block_median_building_nsi]
+      value: [improvement_value_parcel, structure_value_building_nsi]
+
+  # Infer: derive new features from the reconciled evidence.
+  - step: derive_metrics
+
+  # Impute: fill any dwelling-unit gaps left after reconciliation.
+  - step: impute_n_dwellings
+
+  # Occupancy base class from the ordered evidence (NSI-first), then geometry and
+  # single-family dwelling fallbacks. Config is in the `occupancy` block above.
+  - step: infer_occupancy_type
+
+  # Corrections: reviewed parcel keyword override of the base class, plus the
+  # value-share review flag and the NSI-vs-parcel conflict summary. Value- and
+  # dwelling-based class assignment now happens in resolve_by_vote below.
+  - step: resolve_occupancy
+    ruleset: parcel-occupancy-keywords.csv
+
+  # Evidence: merge image-derived enrichment columns (canonical values win).
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
@@ -35,9 +107,82 @@ pipeline:
       - recipe_id: US_footprint_built-n-stories-brails-2026
         columns:
           n_stories_brails: n_stories
-  - step: resolve_occupancy
+
+  # Evidence: estimate manufactured-home probability from assessor labels,
+  # footprint morphology, and imagery. Emits the single p_manufactured_home
+  # column for the vote below; does not assign occupancy_type itself
+  # (update_occupancy: false). Heavy compute is gated to small residential
+  # candidates; to turn it off entirely set `enabled: false` here or pass
+  # skip_steps=['classify_mobile_homes'] to curate.
+  - step: classify_mobile_homes
     ruleset: parcel-occupancy-keywords.csv
+    update_occupancy: false
+
+  # Reconcile occupancy by weighted vote: low structure value, a parcel
+  # mobile-home keyword, and an NSI-mobile use group each vote Manufactured Home,
+  # so two of three outvote the single n_dwellings>=2 Multi-Family vote. A genuine
+  # multi-unit parcel with no mobile evidence still resolves to Multi-Family.
+  - step: resolve_by_vote
+    target: occupancy_type
+    decisions:
+        # `source` is the concise reason recorded in occupancy_type_source for
+        # rows this decision wins, replacing the dropped classifier-metadata
+        # columns with one categorical label.
+      - class: Manufactured Home
+        source: mobile_home
+        min_score: 2
+        indicators:
+          - type: value_share_below
+            value: improvement_value_parcel
+            total: [improvement_value_parcel, land_value_parcel]
+            max_ratio: 0.025
+            include_zero: true
+          - type: keyword
+            column: use_group_combined_parcel
+            pattern: MOBILE|MANUFACTURED|SINGLE WIDE|DOUBLE WIDE
+            regex: true
+          - type: equals
+            column: group_parcel
+            value: Manufactured Home
+          # Footprint-morphology probability from classify_mobile_homes. Catches
+          # manufactured-home parks whose parcel land-use is a local code the
+          # keyword list does not know (e.g. "WVC"): low value + this shape vote
+          # reach min_score 2 and outweigh the n_dwellings Multi-Family vote.
+          - type: numeric_at_least
+            column: p_manufactured_home
+            min: 0.5
+      - class: Multi-Family
+        source: dwellings
+        min_score: 1
+        indicators:
+          - type: numeric_at_least
+            column: n_dwellings
+            min: 2
+
+  # Refine: split Multi-Family into height bands by story count. Writes the
+  # canonical occupancy_type in place and keeps the pre-refinement class in
+  # occupancy_type_base (both share occupancy_type_source).
   - step: refine_occupancy_height
-    thresholds:
-      low_max_stories: 3
-      mid_max_stories: 7
+    # Bands count floors of living area; open ground floors (e.g. first-floor
+    # stilts/pilotis, common in coastal flood zones) are not counted.
+    multi_family_class: Multi-Family
+    bands:
+      - {max_stories: 3, class: Low-Rise Multi-Family}
+      - {max_stories: 7, class: Mid-Rise Multi-Family}
+      - {class: High-Rise Multi-Family}
+
+  # Correction sidecar: recompute the manufactured-home-community flag from the
+  # FINAL footprint occupancy (richer than the pre-occupancy parcel pass). A
+  # future second parcel pass can fold this back into the parcel dataset.
+  - step: flag_manufactured_home_communities
+    min_homes: 3
+
+  # Format: dtypes, then deterministic column order (rule-based, from the
+  # naming convention + attribute-registry `sort`; no explicit list needed).
+  - step: cast_categoricals
+
+  # group_parcel is a transient input to occupancy inference; its information is
+  # carried by occupancy_type_parcel, so drop it from the canonical output.
+  - step: order_columns
+    drop:
+      - group_parcel

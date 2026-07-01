@@ -53,8 +53,8 @@ columns:
   building_id_fema: BUILD_ID
   address: PROP_ADDR
   city: PROP_CITY
-  purpose_group: OCC_CLS
-  purpose_subgroup: PRIM_OCC
+  occupancy_class: OCC_CLS
+  occupancy_type: PRIM_OCC
   height: HEIGHT
   construction_code: B_CODE
   footprint_area_m2: SQMETERS
@@ -67,8 +67,8 @@ columns:
 
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
-  - purpose_group
-  - purpose_subgroup
+  - occupancy_class
+  - occupancy_type
   - image_date
   - validation_method
   - building_code
