@@ -247,6 +247,7 @@ class GoogleStreetview:
         save_directory: str,
         entity_type: str = 'entity',
         download_year: int | None = None,
+        redownload: bool = False,
     ) -> ImageSet:
         """
         Get street-level images of buildings from footprints in AssetInventory.
@@ -262,6 +263,10 @@ class GoogleStreetview:
             Used as a filename prefix.
         download_year
             Year the images are fetched; appended as a filename suffix.
+        redownload
+            Missing images are always fetched. When True, buildings whose
+            image already exists on disk are re-fetched (overwritten) rather
+            than reused.
 
         Returns
         -------
@@ -299,6 +304,7 @@ class GoogleStreetview:
             entity_type=entity_type,
             download_year=download_year,
             n_stories_list=asset_n_stories,
+            redownload=redownload,
         )
 
         image_set.dir_path = str(base_dir_path / FILE_SUBDIRECTORIES['images'])
@@ -320,6 +326,7 @@ class GoogleStreetview:
         entity_type: str = 'entity',
         download_year: int | None = None,
         n_stories_list: list[float | None] | None = None,
+        redownload: bool = False,
     ) -> tuple[list[Path], dict[str, list[Any]]]:
         """
         Download street-level imagery and depthmap for building footprints.
@@ -340,6 +347,9 @@ class GoogleStreetview:
             Entity type prefix for filenames (e.g. 'footprint').
         download_year
             Year suffix for filenames.
+        redownload
+            Missing images are always fetched. When True, buildings whose
+            image already exists on disk are re-fetched rather than reused.
 
         Returns
         -------
@@ -385,7 +395,8 @@ class GoogleStreetview:
                 batch = inps[batch_start : batch_start + self.batch_size]
                 futures = {}
                 for footprint, footprint_cent, image_path, n_stories in batch:
-                    if image_path.exists():
+                    if image_path.exists() and not redownload:
+                        # Reuse the cached image; redownload would re-fetch it.
                         results[image_path] = None
                         counts['cached'] += 1
                         pbar.update()

@@ -93,6 +93,7 @@ class GoogleSatellite:
         save_directory: str,
         entity_type: str = 'entity',
         download_year: int | None = None,
+        redownload: bool = False,
     ) -> ImageSet:
         """
         Get satellite images of buildings given footprints in AssetInventory.
@@ -108,6 +109,10 @@ class GoogleSatellite:
             Used as a filename prefix.
         download_year
             Year the images are fetched; appended as a filename suffix.
+        redownload
+            Missing images are always downloaded. When True, images that
+            already exist on disk are re-downloaded (overwritten) rather than
+            reused.
 
         Returns
         -------
@@ -140,6 +145,7 @@ class GoogleSatellite:
             dir_path,
             entity_type=entity_type,
             download_year=download_year,
+            redownload=redownload,
         )
 
         for index, image_path in enumerate(satellite_images):
@@ -157,6 +163,7 @@ class GoogleSatellite:
         save_dir: Path,
         entity_type: str = 'entity',
         download_year: int | None = None,
+        redownload: bool = False,
     ) -> list[Path]:
         """
         Download satellite images for a list of footprints.
@@ -193,7 +200,7 @@ class GoogleSatellite:
             with ThreadPoolExecutor() as executor:
                 futures = {
                     executor.submit(
-                        self._download_satellite_image, footprint, path
+                        self._download_satellite_image, footprint, path, redownload
                     ): footprint
                     for footprint, path in inps
                 }
@@ -211,7 +218,10 @@ class GoogleSatellite:
         return satellite_image_paths
 
     def _download_satellite_image(
-        self, footprint: list[tuple[float, float]], impath: Path
+        self,
+        footprint: list[tuple[float, float]],
+        impath: Path,
+        redownload: bool = False,
     ):
         """
         Download and process the satellite image for a single footprint.
@@ -222,8 +232,12 @@ class GoogleSatellite:
             Asset footprint coordinates.
         impath
             Path to save the processed image.
+        redownload
+            Missing images are always fetched. When True, an image that
+            already exists on disk is re-fetched and overwritten instead of
+            being reused.
         """
-        if impath.exists():
+        if impath.exists() and not redownload:
             return
 
         bbox_buffered = self._buffer_footprint(footprint)
