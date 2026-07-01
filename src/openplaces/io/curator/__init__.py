@@ -8,9 +8,11 @@ steps before saving a canonical entity dataset.
 
 from __future__ import annotations
 
+import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib import import_module as _import_module
 
 import pandas as pd
 
@@ -36,6 +38,7 @@ class CurateState:
     timer: object | None
     curated: pd.DataFrame
     metadata: dict = field(default_factory=dict)
+    save_statistics: bool = False
 
 
 _STEP_REGISTRY: dict[str, Callable] = {}
@@ -52,6 +55,25 @@ def _register(*names: str):
     return decorator
 
 
+_steps_loaded = False
+
+
+def _load_steps() -> None:
+    """Import this stage's step submodules so their @_register runs.
+
+    Imports are deferred until a step is first dispatched so that merely
+    importing the curator package (e.g. to use CurateState in a test) does not
+    pull every step module.
+    """
+    global _steps_loaded
+    if _steps_loaded:
+        return
+    for _m in _pkgutil.iter_modules(__path__):
+        if not _m.ispkg:
+            _import_module(f'{__name__}.{_m.name}')
+    _steps_loaded = True
+
+
 class Curator:
     """Create a canonical entity dataset from harmonized and enriched inputs."""
 
@@ -60,6 +82,8 @@ class Curator:
         recipe: str | dict,
         admin_ids: str | list | None = None,
         verbose: bool = False,
+        save_statistics: bool = False,
+        skip_steps: str | list | set | None = None,
     ):
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)
@@ -84,6 +108,15 @@ class Curator:
                 "Curate recipe 'entity_recipe' must reference a harmonization recipe."
             )
         self.verbose = verbose
+        self.save_statistics = save_statistics or bool(
+            recipe.get('save_statistics', False)
+        )
+        if skip_steps is None:
+            self.skip_steps: set[str] = set()
+        elif isinstance(skip_steps, str):
+            self.skip_steps = {skip_steps}
+        else:
+            self.skip_steps = set(skip_steps)
         self._timer = None
         self.admin_ids = self._resolve_admin_ids(admin_ids)
 
@@ -167,6 +200,7 @@ class Curator:
             verbose=self.verbose,
             timer=self._timer,
             curated=curated,
+            save_statistics=self.save_statistics,
         )
 
         for step_cfg in pipeline:
@@ -175,13 +209,27 @@ class Curator:
                 raise ValueError(
                     f"Pipeline entry is missing the 'step' key: {step_cfg!r}"
                 )
+            # Skip when disabled in the recipe (`enabled: false`) or named at the
+            # call site (`skip_steps=[...]`). `enabled` is a control key, never a
+            # step argument.
+            if step_cfg.get('enabled', True) is False or step_name in self.skip_steps:
+                if self.verbose:
+                    print(f'  [skip] {step_name}')
+                continue
             fn = _STEP_REGISTRY.get(step_name)
+            if fn is None:
+                _load_steps()
+                fn = _STEP_REGISTRY.get(step_name)
             if fn is None:
                 raise ValueError(
                     f"Unknown curate step: '{step_name}'. "
                     f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
                 )
-            params = {key: value for key, value in step_cfg.items() if key != 'step'}
+            params = {
+                key: value
+                for key, value in step_cfg.items()
+                if key not in ('step', 'enabled')
+            }
             state = fn(state, **params)
 
         save_parquet(state.curated, get_output_path(self.recipe, admin_id))
@@ -192,19 +240,28 @@ def curate(
     admin_ids: str | list | None = None,
     reprocess: bool = False,
     verbose: bool = False,
+    save_statistics: bool = False,
+    skip_steps: str | list | set | None = None,
 ) -> None:
-    """Instantiate and run curation for *recipe*."""
+    """Instantiate and run curation for *recipe*.
+
+    When ``save_statistics`` is True (or the recipe sets ``save_statistics:
+    true``), curation steps write diagnostic tables to the cache (e.g.
+    geometry-indicator quantiles and use-group separability) without changing
+    the curated output.
+
+    Pass ``skip_steps`` (a step name or a collection of names) to skip
+    computation-intensive pipeline steps for this run without editing the recipe;
+    a recipe step may also be disabled persistently with ``enabled: false``.
+    """
     Curator(
         recipe,
         admin_ids=admin_ids,
         verbose=verbose,
+        save_statistics=save_statistics,
+        skip_steps=skip_steps,
     ).curate(reprocess=reprocess)
 
-
-import openplaces.io.curator.evidence  # noqa: E402, F401
-import openplaces.io.curator.filters  # noqa: E402, F401
-import openplaces.io.curator.imputers  # noqa: E402, F401
-import openplaces.io.curator.inferers  # noqa: E402, F401
 
 __all__ = [
     'CurateState',
