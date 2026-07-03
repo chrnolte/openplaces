@@ -102,6 +102,43 @@ class _HTTPRangeFile:
         return self._size
 
 
+def _resolve_s3_latest_release(url: str, region: str | None = None) -> str:
+    """Replace a literal 'release/latest/' path segment with the newest
+    dated release folder actually present in the bucket.
+
+    Buckets such as Overture's rotate out old dated releases, so a release
+    date pinned in a recipe eventually points at deleted data.
+    """
+    if '/release/latest/' not in url:
+        return url
+
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    bucket = parsed.netloc
+    prefix = parsed.path.lstrip('/').split('release/latest/')[0] + 'release/'
+    region = region or 'us-east-1'
+    base = f'https://{bucket}.s3.{region}.amazonaws.com'
+
+    resp = requests.get(f'{base}/?list-type=2&prefix={prefix}&delimiter=/')
+    resp.raise_for_status()
+    _ns = {'s3': 'http://s3.amazonaws.com/doc/2006-03-01/'}
+    root = ET.fromstring(resp.content)
+    releases = [
+        cp.find('s3:Prefix', _ns).text.rstrip('/').rsplit('/', 1)[-1]
+        for cp in root.findall('s3:CommonPrefixes', _ns)
+    ]
+    if not releases:
+        raise ValueError(f'No releases found under s3://{bucket}/{prefix}')
+
+    def _release_key(name: str) -> tuple[str, int]:
+        date_part, _, version_part = name.partition('.')
+        return (date_part, int(version_part or 0))
+
+    latest = max(releases, key=_release_key)
+    return url.replace('/release/latest/', f'/release/{latest}/')
+
+
 def fetch_latlon_tile_to_cache(
     download_url: str,
     tile_id: str,
@@ -142,6 +179,9 @@ def fetch_latlon_tile_to_cache(
     cache_path = Path(cache_path)
     if cache_path.exists() and not redownload:
         return
+
+    if download_url.startswith('s3://'):
+        download_url = _resolve_s3_latest_release(download_url, s3_region)
 
     minx, miny, maxx, maxy = tile_bounds(tile_id, tile_size_deg)
     col = bbox_column
