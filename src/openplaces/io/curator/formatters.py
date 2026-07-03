@@ -33,6 +33,33 @@ def cast_categoricals(state: CurateState) -> CurateState:
     return state
 
 
+@_register('cast_integers')
+def cast_integers(state: CurateState, columns: list[str]) -> CurateState:
+    """Cast numeric columns to a nullable integer dtype.
+
+    Unlike ``fill_missing_numeric``, this does not fill missing values with a
+    placeholder — a row with no evidence stays missing (``pd.NA``), not a
+    misleading 0 (e.g. year 0). Values are rounded before casting, since a
+    reconciled column can legitimately be non-integer (e.g. a fallback median
+    across several buildings) even though the canonical attribute is a whole
+    number.
+
+    Parameters
+    ----------
+    columns : list of str
+        Numeric columns to cast to pandas' nullable ``Int64``. Missing
+        columns are skipped.
+    """
+    curated = state.curated
+    for col in columns:
+        if col in curated.columns:
+            curated[col] = (
+                pd.to_numeric(curated[col], errors='coerce').round().astype('Int64')
+            )
+    state.curated = curated
+    return state
+
+
 @cache
 def _provenance_suffixes() -> tuple[tuple[str, str], ...]:
     """Provenance suffix -> source key, auto-generated from existing recipes.
@@ -153,11 +180,7 @@ def _sort_key(col: str, original_index: int) -> tuple:
     Every ``{base}_source`` sidecar is grouped into one provenance band that
     sorts after all canonical columns (block 0) and before the source-variable
     block (block 1), ordered among themselves by their base column's rank.
-    ``geometry_source`` is the exception: it sorts to the very end, next to
-    ``geometry``.
     """
-    if col == 'geometry_source':
-        return (9.0, (9, 0, 0, 0, 0), original_index)
     if col.endswith(SOURCE_SUFFIX):
         # Band 0.5 groups every sidecar between canonical (0) and source (1),
         # ordered among themselves by their base column's rank.
@@ -180,9 +203,9 @@ def order_columns(
     ordered by their base column's rank; (1) source variables inherited from
     other entities (relational counts first, then the suffixed evidence); (2)
     flag and visualization-only columns (``occupancy_type_conflict``/``_review``,
-    ``*_per_area``). ``geometry`` is kept last, preceded by ``geometry_source``.
-    Computed from each column's name and the registry, so the recipe needs no
-    explicit column list.
+    ``*_per_area``). ``geometry`` is always kept last. Computed from each
+    column's name and the registry, so the recipe needs no explicit column
+    list.
 
     Parameters
     ----------

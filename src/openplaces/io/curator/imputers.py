@@ -3,8 +3,46 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
+
+
+@_register('fill_missing_numeric')
+def fill_missing_numeric(
+    state: CurateState,
+    columns: list[str],
+    fill_value: float = 0,
+    dtype: str = 'int64',
+) -> CurateState:
+    """Fill missing values in numeric columns, then cast to *dtype*.
+
+    For an evidence-derived column where a missing value carries different
+    meaning than a confirmed value of *fill_value* (e.g. "no Overture address
+    point matched this footprint at all" vs. "an Overture point matched and
+    reported 0 dwellings"), place this step after anything that should see
+    the true missing value (a priority reconciliation, a vote) — from that
+    point on it only reshapes the column for output.
+
+    Parameters
+    ----------
+    columns : list of str
+        Columns to fill and cast. Missing columns are skipped.
+    fill_value : float, optional
+        Value used to fill missing entries (default 0).
+    dtype : str, optional
+        Target dtype after filling (default ``'int64'``).
+    """
+    curated = state.curated
+    for col in columns:
+        if col in curated.columns:
+            curated[col] = (
+                pd.to_numeric(curated[col], errors='coerce')
+                .fillna(fill_value)
+                .astype(dtype)
+            )
+    state.curated = curated
+    return state
 
 
 @_register('impute_n_dwellings')
