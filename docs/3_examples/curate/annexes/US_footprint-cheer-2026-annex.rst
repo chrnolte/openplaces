@@ -91,7 +91,7 @@ Step 7: Dwelling Unit Imputation (``impute_n_dwellings``)
 * **Purpose**: Imputes residential unit counts when no matched source evidence exists.
 * **How it translates in practice**:
   
-  For residential footprints that still lack a dwelling count after reconciliation, the step estimates ``n_dwellings`` based on the footprint's area (``m2``) and inferred occupancy class (e.g., dividing total area by average unit size).
+  For residential footprints that still lack a dwelling count after reconciliation, the step estimates ``n_dwellings`` using the occupancy-to-units lookup mapping defined in Lochhead et al. (2026, Table 3) (for instance, mapping a Single-Family or Manufactured Home footprint to 1.0 unit).
 
 
 Step 8: Occupancy Base Class Inference (``infer_occupancy_type``)
@@ -107,7 +107,7 @@ Step 8: Occupancy Base Class Inference (``infer_occupancy_type``)
   3. Assessor land-use group (``group_parcel``)
   4. Implied Overture occupancy (``occupancy_type_dwelling_overture``)
 
-  The first available value sets the baseline class. If a footprint is located on a manufactured home park parcel, it is kept as ``Manufactured Home`` rather than being classified as ``Secondary`` (accessory), provided it meets size thresholds (at least 50% of the average manufactured home size or $\ge 25\text{ m}^2$).
+  The first available value sets the baseline class. If a footprint is located on a manufactured home park parcel, it is kept as ``Manufactured Home`` rather than being classified as ``Secondary`` (accessory), provided it meets size thresholds (at least 50% of the average manufactured home size or $\ge 25\text{ m}^2$, whichever is greater).
 
 
 Step 9: Key-based Occupancy Correction (``resolve_occupancy``)
@@ -125,7 +125,7 @@ Step 10: Image-derived Evidence Integration (``merge_enrichments``)
 * **Purpose**: Joins visual building attributes predicted by deep learning models.
 * **How it translates in practice**:
   
-  Merges image classifier outputs (e.g., BRAILS models trained on satellite or Street View imagery) into the footprint spine. This updates the ``roof_shape_brails`` and ``n_stories_brails`` columns.
+  Merges image classifier outputs (e.g., BRAILS models trained on satellite or Street View imagery) into the footprint spine. This fills missing values in the canonical ``roof_shape`` and ``n_stories`` columns.
 
 
 Step 11: Manufactured Home Classification (``classify_manufactured_homes``)
@@ -147,7 +147,7 @@ Step 12: Occupancy Resolution Vote (``resolve_by_vote``)
   
   * **Manufactured Home Vote** (requires a minimum score of 2):
     
-    * $+1$ if the assessor value-to-land ratio is low ($\le 2.5\%$).
+    * $+1$ if the assessor improvement value share of total parcel value is low ($\le 2.5\%$).
     * $+1$ if the assessor use group description matches mobile home keywords.
     * $+1$ if the parcel-level classification is ``Manufactured Home``.
     * $+1$ if the footprint's morphological probability ``p_manufactured_home`` is $\ge 0.5$.
@@ -192,13 +192,22 @@ Step 15: Categorical Casting (``cast_categoricals``)
 * **Purpose**: Converts string columns to pandas Categorical types.
 * **How it translates in practice**:
   
-  Standardizes column data types and casts textual label columns (such as final occupancy classes and sources) to Categorical types to optimize storage footprint and query performance.
+  Standardizes column data types and casts textual label columns (such as final occupancy classes and sources) to Categorical types to optimize storage footprint and query performance. While the data types are cast to categorical within pandas, they are written to disk as logical string type columns in the Parquet file to ensure compatibility with GIS tools like GDAL/QGIS.
 
 
-Step 16: Column Ordering and Cleanup (``order_columns``)
+Step 16: Integer Casting (``cast_integers``)
+--------------------------------------------
+
+* **Purpose**: Rounds and casts year of construction to a nullable integer dtype.
+* **How it translates in practice**:
+  
+  Rounds the reconciled ``year_built`` column (which may contain non-integer values from census-block fallbacks) and casts it to pandas' nullable ``Int64`` format. This ensures it displays as a whole year (e.g., 1964 instead of 1964.0) while keeping missing values as null rather than forcing them to a dummy 0.
+
+
+Step 17: Column Ordering and Cleanup (``order_columns``)
 --------------------------------------------------------
 
 * **Purpose**: Cleans up the schema and enforces a standard column order.
 * **How it translates in practice**:
   
-  Drops transient helper columns that were only needed during the curation pipeline (including ``group_parcel``, ``occupancy_type_dwelling_overture``, and its source sidecar), leaving a clean, documented canonical schema.
+  Drops transient helper columns that were only needed during the curation pipeline (including ``group_parcel``, ``occupancy_type_dwelling_overture``, its source sidecar, ``value_per_area``, ``occupancy_type_base``, ``p_manufactured_home``, and ``manufactured_home_park``), leaving a clean, documented canonical schema.
