@@ -212,9 +212,14 @@ def get_openlocationcodes(
     """
     geom_arr = gdf.geometry.values
     if gdf.crs and gdf.crs.to_epsg() != 4326:
+        # interleaved=False: pyproj's Transformer.transform(xx, yy) takes x/y as
+        # separate arguments, matching this calling convention -- the default
+        # interleaved=True instead passes one combined (N, 2) array, which
+        # Transformer.transform doesn't accept.
         geom_arr = shapely.transform(
             geom_arr,
             pyproj.Transformer.from_crs(gdf.crs, 'epsg:4326', always_xy=True).transform,
+            interleaved=False,
         )
 
     cents = shapely.centroid(geom_arr)

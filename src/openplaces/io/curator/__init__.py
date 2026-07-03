@@ -232,7 +232,10 @@ class Curator:
             }
             state = fn(state, **params)
 
-        save_parquet(state.curated, get_output_path(self.recipe, admin_id))
+        combined = bool((self.recipe.get('save_to') or {}).get('combined', False))
+        save_parquet(
+            state.curated, get_output_path(self.recipe, admin_id), combined=combined
+        )
 
 
 def curate(

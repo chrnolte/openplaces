@@ -795,6 +795,10 @@ def read_parquet(
         If True, join full geometries from the ``_geo`` sidecar.
         If ``'simplified'``, join simplified geometries from the
         ``_geo_simplified`` sidecar written by ``save_parquet``.
+        For a combined file (written with ``save_parquet(..., combined=True)``
+        — geometry already merged in, no sidecar), *geom* only controls
+        whether the (always-present) ``geometry`` column is kept or dropped;
+        ``'simplified'`` is not supported, since no simplified sidecar exists.
     drop_join_id : bool
         Drop column '_join_id' if it exists.
     filters : list of filters, optional
@@ -813,6 +817,40 @@ def read_parquet(
         raise FileNotFoundError(
             'Could not read file from `openplaces` filesystem:\n' + str(parquet_path)
         )
+
+    import pyarrow.parquet as pq
+
+    # A combined file (save_parquet(..., combined=True)) has geometry baked
+    # into the same file as the attributes -- no `_geo` sidecar, no join-id
+    # column. Detected via a cheap schema-only peek, before deciding whether
+    # to read through pandas or geopandas.
+    if 'geometry' in pq.ParquetFile(parquet_path).schema_arrow.names:
+        if geom == 'simplified':
+            raise ValueError(
+                f'{parquet_path} is a combined geoparquet file (geometry merged '
+                "into the attribute table, no `_geo` sidecar); a 'simplified' "
+                'geometry sidecar was never written for it.'
+            )
+        columns = kwargs.pop('columns', None)
+        if geom and columns is not None and 'geometry' not in columns:
+            columns = [*columns, 'geometry']
+        read_filters = filters
+        if bbox is not None:
+            minx, miny, maxx, maxy = bbox
+            read_filters = (
+                (pyarrow.compute.field('bbox', 'xmin') <= maxx)
+                & (pyarrow.compute.field('bbox', 'ymin') <= maxy)
+                & (pyarrow.compute.field('bbox', 'xmax') >= minx)
+                & (pyarrow.compute.field('bbox', 'ymax') >= miny)
+            )
+        df = gpd.read_parquet(
+            parquet_path, filters=read_filters, columns=columns, **kwargs
+        )
+        if not geom:
+            df = pd.DataFrame(df.drop(columns='geometry'))
+        if drop_join_id and '_join_id' in df:
+            df = df.drop(columns='_join_id')
+        return df
 
     df = pd.read_parquet(parquet_path, filters=filters, **kwargs)
 
