@@ -41,6 +41,16 @@ pipeline:
       elongated_angle_tol: 15.0
       elongated_long_overlap_min: 0.5
       elongated_lateral_sep_ratio: 2.0
+      # IoU alone is insensitive to size mismatch: a small lower-priority
+      # candidate (e.g. a US-NC_footprint-ncdps sliver) clipping the edge of a
+      # large already-accepted building can have a tiny IoU and still get
+      # added, producing spurious duplicates next to large/likely-multi-unit
+      # buildings. Give footprints at least buffer_min_area_m2 a size-scaled
+      # keep-out zone instead. Starting values -- retune against an affected
+      # admin (e.g. US-NC) once real duplicates are visible.
+      buffer_min_area_m2: 250.0
+      buffer_base_m: 2.0
+      buffer_area_scale: 0.5
 
   - step: link_to_reference
     entity_type: parcel
@@ -88,8 +98,11 @@ pipeline:
     sources:
       - entity_type: parcel
         columns:
-          # The dominant parcel's matching key, so the curate stage can join the
-          # curated parcel lane (link_curated_parcels) back onto each footprint.
+          # parcel_id (the dominant parcel's globally-unique key, used by the
+          # curate stage's link_curated_entity) is attributed automatically by
+          # the harmonizer, not requested here. parcel_id_local is kept only
+          # for cross-referencing the assessment roll / sales transactions,
+          # not as a join key (see summarize_footprint_morphology for why).
           - parcel_id_local
           - use_group
           - use_subgroup

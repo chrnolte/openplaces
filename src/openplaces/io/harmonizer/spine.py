@@ -170,6 +170,41 @@ def drop_elongated_duplicates(
     return to_add
 
 
+def _buffer_reject_ids(
+    spine: gpd.GeoDataFrame,
+    candidate: gpd.GeoDataFrame,
+    min_area_m2: float,
+    base_m: float,
+    area_scale: float,
+) -> pd.Index:
+    """Candidate ids that fall within a size-scaled keep-out zone of *spine*.
+
+    Only spine footprints at least *min_area_m2* get a zone at all (also the
+    main performance lever: it excludes the majority of ordinary footprints
+    from ever being buffered). Reprojects once to an equal-area metric CRS for
+    correct distance math, uses a coarse (few-vertex) buffer polygon — plenty
+    accurate for a keep-out test — and a cheap ``intersects`` spatial join
+    rather than exact-overlap/IoU computation.
+    """
+    if spine.empty or candidate.empty:
+        return candidate.index[:0]
+
+    spine_areas_m2 = get_areas(spine, unit='m2')
+    protect = spine_areas_m2 >= min_area_m2
+    if not protect.any():
+        return candidate.index[:0]
+
+    protected = spine.loc[protect, ['geometry']].to_crs('epsg:6933')
+    buffer_m = base_m + area_scale * np.sqrt(spine_areas_m2.loc[protect].to_numpy())
+    zones = gpd.GeoDataFrame(
+        geometry=protected.geometry.buffer(buffer_m, resolution=2),
+        crs='epsg:6933',
+    )
+    cand_m = candidate[['geometry']].to_crs('epsg:6933')
+    near = gpd.sjoin(cand_m, zones, predicate='intersects', how='inner')
+    return pd.Index(near.index.unique())
+
+
 @_register('resolve_spine')
 def resolve_spine(
     state: HarmonizeState,
@@ -201,6 +236,18 @@ def resolve_spine(
         filter via :func:`drop_elongated_duplicates`.  Also accepts
         ``elongated_angle_tol``, ``elongated_long_overlap_min``,
         ``elongated_lateral_sep_ratio``.
+        ``buffer_base_m`` / ``buffer_area_scale`` (float, default 0.0 — off) — a
+        second, independent rejection alongside the IoU test: a lower-priority
+        candidate is also dropped if it falls within
+        ``buffer_base_m + buffer_area_scale * sqrt(area_m2)`` of an
+        already-accepted spine footprint (its own area), so a large building
+        gets a bigger keep-out zone than a small one and IoU's insensitivity to
+        size mismatch (a sliver clipping a huge building can have a tiny IoU)
+        no longer lets duplicates through.  ``buffer_min_area_m2`` (float,
+        default 0.0) restricts which spine footprints get a keep-out zone at
+        all — set it to the rough size of an ordinary house to protect only
+        large/likely-multi-unit buildings (also the main performance lever,
+        since it excludes most footprints from ever being buffered).
     """
     if not sources:
         warnings.warn(f'resolve_spine: no sources configured for {state.admin_id}.')
@@ -208,6 +255,10 @@ def resolve_spine(
 
     thresholds = thresholds or {}
     overlap_iou_max: float = thresholds.get('overlap_iou_max', 0.02)
+    buffer_min_area_m2: float = thresholds.get('buffer_min_area_m2', 0.0)
+    buffer_base_m: float = thresholds.get('buffer_base_m', 0.0)
+    buffer_area_scale: float = thresholds.get('buffer_area_scale', 0.0)
+    apply_buffer = buffer_base_m > 0 or buffer_area_scale > 0
 
     resolved = _expand_auto_discover(sources, state)
     if not resolved:
@@ -278,9 +329,16 @@ def resolve_spine(
             overlap['iou'].gt(overlap_iou_max)
         ].index.get_level_values(1)
 
-        to_add = candidate[~candidate.index.isin(overlap_ids)][
-            _spine_cols(candidate)
-        ].copy()
+        if apply_buffer:
+            near_ids = _buffer_reject_ids(
+                spine, candidate, buffer_min_area_m2, buffer_base_m, buffer_area_scale
+            )
+        else:
+            near_ids = candidate.index[:0]
+
+        to_add = candidate[
+            ~candidate.index.isin(overlap_ids) & ~candidate.index.isin(near_ids)
+        ][_spine_cols(candidate)].copy()
 
         if thresholds.get('elongated_aspect_min'):
             n_before = len(to_add)
@@ -312,12 +370,24 @@ def resolve_spine(
             msg = (
                 f'  Merge {label}: +{len(to_add):,d} ({len(overlap_ids):,d} overlapping'
             )
+            if apply_buffer:
+                msg += f', {len(near_ids):,d} near-buffer'
             if n_elong_dropped:
                 msg += f', {n_elong_dropped:,d} elongated duplicates'
             print(msg + ')')
 
     if state.timer:
         state.timer.mark('Merge')
+
+    # Record which ingest recipes already contributed geometry, and which
+    # columns came straight from each one's own row (keep_columns), so a
+    # later `link_by_id(auto_discover=True)` can avoid re-deriving those
+    # same columns by re-joining a source onto itself via its (non-unique)
+    # local join key -- see that function's auto_discover branch for why.
+    # Other columns (e.g. improvement_value) that keep_columns did not carry
+    # still need that join, self-join or not.
+    state.metadata['spine_source_recipe_ids'] = {s['recipe_id'] for s in resolved}
+    state.metadata['spine_keep_columns'] = set(keep_columns)
 
     state.spine = spine
 

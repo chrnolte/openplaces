@@ -668,6 +668,19 @@ def _link_spatial_point(
     if state.verbose:
         print(f'  Load: {len(ref):,d} {entity_type or "point"} ({recipe_id})')
 
+    # Location key for detecting two points at (near-)identical coordinates
+    # (e.g. an ESRI-sourced point duplicating a Parcel-sourced one at the same
+    # address) regardless of which linking pass matches each one. Computed here,
+    # before geometry is dropped by Pass 1's sjoin below, as a plain non-geometry
+    # column so it rides through every pass the same way `source` does.
+    # codelength=11 gives a ~2.5-3 m snapping cell (avoids float/rounding
+    # false-negatives); handle_duplicates=False keeps colocated points' codes
+    # equal (the whole point of using this as a grouping key).
+    from openplaces.geo.ids import get_openlocationcodes
+
+    ref = ref.copy()
+    ref['_olc'] = get_openlocationcodes(ref, codelength=11, handle_duplicates=False)
+
     # Address deduplication: keep building-level representative, count unit siblings
     if dedup_addresses:
         n_before = len(ref)
@@ -903,6 +916,21 @@ def _link_spatial_point(
             )
             linked = linked[~mask_to_drop]
 
+    # Flag ESRI points that share a location with a differently-sourced point
+    # (e.g. a home-office duplicate of a Parcel-sourced record at the same
+    # address) -- broader and more targeted than the entity-membership drop
+    # above: it fires purely on coordinates, regardless of whether the two
+    # points happen to link to the same footprint/parcel, and regardless of
+    # what the other source is (not just 'Parcel'). Consumers that sum/count
+    # NSI evidence into an upward Single->Multi-Family correction (e.g.
+    # n_dwellings in _attribute_point_reference) should exclude flagged rows;
+    # other uses of `linked` are unaffected -- rows are flagged, not dropped.
+    if 'source' in linked.columns and '_olc' in linked.columns:
+        colocated_sources = linked.groupby('_olc')['source'].transform('nunique') > 1
+        linked['exclude_from_upward_correction'] = colocated_sources & linked[
+            'source'
+        ].eq('ESRI')
+
     if state.verbose:
         n_linked = (
             linked[spine_id_col].notna().sum()
@@ -930,6 +958,10 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     One recipe id per (admin_id, source_id), keeping the newest version when
     several exist for the same source (mirrors the specificity/version
     precedence ``find_entity_recipe_id`` uses, ``recipe.py:444-463``).
+
+    Returned oldest-version-first: :func:`link_by_id`'s auto-discover mode
+    joins sources in this order, so the most recent source's attributes are
+    the ones applied last (see its column-priority rule).
     """
     if state.admin_id is None:
         return []
@@ -944,7 +976,9 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
         recipe_id = f'{admin_id_str}_{entity_type}-{row["source_id"]}-{row["version"]}'
         if key not in best or row['version'] > best[key][0]:
             best[key] = (row['version'], recipe_id)
-    return [recipe_id for _version, recipe_id in best.values()]
+    return [
+        recipe_id for _version, recipe_id in sorted(best.values(), key=lambda vr: vr[0])
+    ]
 
 
 def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict]:
@@ -956,6 +990,13 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     present (a same-source key shared with its primary entity, e.g.
     MassGIS's ``parcel_id_admin2``), else also falls back to
     ``parcel_id_local``.
+
+    Ordered oldest-version-first (see :func:`_find_admin_scoped_recipe_ids`):
+    :func:`link_by_id` joins matches in this order and, for any column
+    covered by more than one match, prefers whichever source is applied last
+    (i.e. most recent) as long as it covers a majority of parcels — so
+    recency, not admin specificity, decides which source's attributes win by
+    default.
     """
     from openplaces.recipe import get_recipe_by_id
 
@@ -1027,6 +1068,52 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
     return state
 
 
+def _write_prioritized(
+    spine: gpd.GeoDataFrame,
+    name: str,
+    new_vals: pd.Series,
+    majority_coverage: float = 0.5,
+) -> None:
+    """Write *new_vals* into ``spine[name]``, applying the recency/coverage rule.
+
+    A column already on the spine came from an earlier (older, per
+    :func:`_find_admin_scoped_recipe_ids`'s ordering) source. *new_vals* only
+    overwrites it outright when *new_vals* itself covers at least
+    *majority_coverage* of the spine; otherwise it only fills the existing
+    column's gaps, so a sparse newer source can't blank out a more complete
+    older one.
+    """
+    if name not in spine.columns:
+        spine[name] = new_vals
+        return
+    coverage = new_vals.notna().mean() if len(new_vals) else 0.0
+    if coverage >= majority_coverage:
+        spine[name] = new_vals.combine_first(spine[name])
+    else:
+        spine[name] = spine[name].combine_first(new_vals)
+
+
+def _warn_if_duplicate_key(key_series: pd.Series, key_name: str, context: str) -> None:
+    """Warn when *key_series* has duplicate values.
+
+    openplaces indices (e.g. ``parcel_id``, a geo_id) are unique by design.
+    Joining on a column that isn't -- ``parcel_id_local`` is the common case --
+    is fine as long as it's *known* to be a many-to-one key (and, for
+    'aggregate'/'count' modes, is actually aggregated); this makes that
+    non-uniqueness visible instead of a silent assumption.
+    """
+    valid = key_series.dropna()
+    dup_mask = valid.duplicated(keep=False)
+    n_dup_rows = int(dup_mask.sum())
+    if n_dup_rows:
+        n_dup_values = int(valid[dup_mask].nunique())
+        warnings.warn(
+            f'link_by_id ({context}): {key_name!r} is not unique -- '
+            f'{n_dup_rows:,d} rows share a value with at least one other row, '
+            f'across {n_dup_values:,d} duplicated values.'
+        )
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -1047,6 +1134,15 @@ def link_by_id(
     Joins on the standardized matching key (``parcel_id_local``) that data
     ingestion already computed on both sides, so no re-conversion happens here.
 
+    Column priority (``'attributes'`` and ``'aggregate'`` modes): when a
+    column is already on the spine (from an earlier call, e.g. an earlier
+    *auto_discover* match), the new source only overwrites it outright if the
+    new source covers a majority of spine rows for that column; otherwise it
+    only fills the existing column's gaps (see :func:`_write_prioritized`).
+    Combined with *auto_discover*'s oldest-to-newest join order, this makes
+    the most recent source the default winner for each column, without
+    letting a sparse recent source blank out a more complete older one.
+
     Parameters
     ----------
     recipe_id : str, optional
@@ -1066,7 +1162,11 @@ def link_by_id(
         get_attributes`) — pass an explicit *columns* to override this
         default for every discovered match. Any ``*-remap.csv`` crosswalk
         found beside a matched source is applied automatically (see
-        :func:`_apply_remap_csvs`).
+        :func:`_apply_remap_csvs`). A standalone match that is also one of
+        the spine's own geometry sources has its ``resolve_spine``
+        ``keep_columns`` dropped from the join (already correct on the
+        spine; re-deriving them via a non-unique local key would pool
+        values across every row sharing it).
     entity_type : str
         Entity type to discover when *auto_discover* is set (default
         ``'parcel'``).
@@ -1084,6 +1184,10 @@ def link_by_id(
         records stacked on one parcel polygon.
     spine_key, ref_key : str
         Key columns on the spine and reference (default ``parcel_id_local``).
+        Unlike an entity's own index (unique by design), this key is not
+        guaranteed unique; see :func:`_warn_if_duplicate_key`, which warns
+        when either side turns out to have duplicates, so that risk is
+        visible rather than silently assumed away.
     columns : list of str, optional
         Reference columns to attach in ``'attributes'`` mode.
     suffix : str, optional
@@ -1096,10 +1200,27 @@ def link_by_id(
         ``property`` assessor table bundled inside a MassGIS parcel recipe.
     """
     if auto_discover:
+        # A standalone roll that is also one of the spine's own geometry
+        # sources (state.metadata['spine_source_recipe_ids'], set by
+        # resolve_spine) would otherwise re-derive its keep_columns
+        # attributes (e.g. use_group/use_subgroup) by aggregating across
+        # every spine row sharing its join key -- overwriting an
+        # already-correct per-geometry value with one pooled from unrelated
+        # rows. Those columns are already on the spine directly from the
+        # same source's own row, so drop them from this match; every other
+        # attribute (improvement_value, ...) still needs the join.
+        spine_source_ids = state.metadata.get('spine_source_recipe_ids', set())
+        spine_keep_columns = state.metadata.get('spine_keep_columns', set())
         for match in _discover_link_sources(state, entity_type):
             match_columns = columns or list(
                 get_attributes(match['layer'] or entity_type).index
             )
+            if match['layer'] is None and match['recipe_id'] in spine_source_ids:
+                match_columns = [
+                    c for c in match_columns if c not in spine_keep_columns
+                ]
+                if not match_columns:
+                    continue
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
@@ -1145,14 +1266,19 @@ def link_by_id(
     spine = state.spine
     skey = spine[spine_key].astype('string')
     rkey = ref[ref_key].astype('string')
+    _warn_if_duplicate_key(skey, spine_key, 'spine key')
 
     if mode == 'attributes':
         cols = [c for c in (columns or []) if c in ref.columns]
+        # 'attributes' keeps one arbitrary row per key (no aggregation, unlike
+        # 'aggregate'/'count') -- a duplicate ref_key here is silently resolved
+        # by drop_duplicates below, so flag it before that happens.
+        _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
         ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
         ref_unique.index = ref_unique[ref_key].astype('string')
         for col in cols:
             name = f'{col}{suffix}' if suffix else col
-            spine[name] = skey.map(ref_unique[col])
+            _write_prioritized(spine, name, skey.map(ref_unique[col]))
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
@@ -1182,7 +1308,7 @@ def link_by_id(
             fname = get_agg_func(col)
             func = fname if fname in reducible else 'first'
             name = f'{col}{suffix}' if suffix else col
-            spine[name] = skey.map(grouped[col].agg(func))
+            _write_prioritized(spine, name, skey.map(grouped[col].agg(func)))
         count_col = count_as if count_as != 'n_transactions' else 'n_records_per_key'
         spine[count_col] = skey.map(grouped.size()).fillna(0).astype('int64')
         if state.verbose:

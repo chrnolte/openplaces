@@ -29,6 +29,7 @@ land_use_class,"Parcel land-use class inferred from assessor codes, linked-NSI g
 manufactured_home_park,Flag where the parcel is classified as a manufactured-home community/park,,bool,first,83,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
+n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
 recorded_date,Date the deed was recorded at the registry,,datetime,first,,transaction,
