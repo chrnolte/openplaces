@@ -14,62 +14,76 @@ def _field(obj, name):
     return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
 
 
-@_register('link_curated_parcels')
-def link_curated_parcels(
+@_register('link_curated_entity')
+def link_curated_entity(
     state: CurateState,
     recipe_id: str,
     columns: dict,
-    on: str = 'parcel_id_local',
+    entity_key: str = 'parcel_id',
+    ref_key: str = 'parcel_id',
 ) -> CurateState:
-    """Join curated parcel attributes onto footprints by a shared parcel id.
+    """Join another curated entity's attributes onto the current one by a shared id.
 
-    Reads the output of a curated parcel recipe and maps each named column onto
-    the footprints (1:many parcel -> footprints) on the *on* key. This is how the
-    footprint lane consumes the parcel curation lane's land-use decisions
-    (e.g. the refined ``use_group_combined`` and the ``manufactured_home_park``
-    flag), so the parcel-level classification is finalized before footprint
-    occupancy is inferred. Existing footprint columns are overwritten — the
-    curated parcel value supersedes the raw harmonized one.
+    Reads the output of a curate-stage recipe and maps each named column onto
+    the current entity (1:many ref -> entity) on the id key. This is how, e.g.,
+    the footprint lane consumes the parcel curation lane's land-use decisions
+    (the refined ``use_group_combined`` and the ``manufactured_home_park``
+    flag), so the referenced entity's classification is finalized before the
+    current one's is inferred. Existing columns are overwritten — the
+    referenced curated value supersedes the raw harmonized one.
 
     Parameters
     ----------
     recipe_id : str
-        A stage ``curate`` parcel recipe whose output supplies the attributes.
+        A stage ``curate`` recipe whose output supplies the attributes.
     columns : dict
-        Mapping of ``{parcel_column: footprint_column}``. The footprint column is
-        the name written onto ``state.curated`` (suffix it with ``_parcel`` where
-        it mirrors a harmonized parcel evidence column).
-    on : str, optional
-        Shared id key on both sides (default ``parcel_id_local``).
+        Mapping of ``{ref_column: entity_column}``. The entity column is the
+        name written onto ``state.curated`` (suffix it to mirror a harmonized
+        evidence column, e.g. ``_parcel``).
+    entity_key : str, optional
+        Id column on the current entity (default ``parcel_id``). Unlike other
+        cross-attributed columns, an id column keeps its bare name rather than
+        the usual ``_parcel``-style suffix (see ``_attributed_name`` in the
+        harmonizer) — the entity's own ``parcel_id`` already names the
+        referenced row, so a suffix would be redundant. This is the
+        referenced entity's globally-unique ``parcel_id`` (geo_id), not
+        ``parcel_id_local``: the latter is only locally cross-comparable and
+        can collide within a single admin unit, which would silently
+        misattribute the joined columns to an unrelated parcel.
+    ref_key : str, optional
+        Id column on the referenced entity's own curated output (default
+        ``parcel_id`` — that entity's own key, not a cross-attributed one).
     """
-    parcel_recipe = get_recipe_by_id(recipe_id)
-    if parcel_recipe.get('stage') != 'curate':
-        raise ValueError(f"Parcel recipe '{recipe_id}' must have stage 'curate'.")
+    ref_recipe = get_recipe_by_id(recipe_id)
+    if ref_recipe.get('stage') != 'curate':
+        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
 
     curated = state.curated
-    if on not in curated.columns:
+    if entity_key not in curated.columns:
         if state.verbose:
-            print(f"  link_curated_parcels: footprints have no '{on}'; skipping.")
+            print(f"  link_curated_entity: entity has no '{entity_key}'; skipping.")
         return state
 
-    parcels = read_parquet(get_output_path(parcel_recipe, state.admin_id))
-    if on not in parcels.columns:
-        raise ValueError(f"Curated parcels '{recipe_id}' have no '{on}' column.")
+    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
+    if ref_key not in ref.columns and ref.index.name == ref_key:
+        ref = ref.reset_index()
+    if ref_key not in ref.columns:
+        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
 
-    lookup = parcels.dropna(subset=[on]).drop_duplicates(on)
-    lookup.index = lookup[on].astype('string')
-    key = curated[on].astype('string')
-    for parcel_col, fp_col in columns.items():
-        if parcel_col not in lookup.columns:
+    lookup = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key)
+    lookup.index = lookup[ref_key].astype('string')
+    key = curated[entity_key].astype('string')
+    for ref_col, entity_col in columns.items():
+        if ref_col not in lookup.columns:
             raise ValueError(
-                f"Column '{parcel_col}' missing from curated parcels '{recipe_id}'."
+                f"Column '{ref_col}' missing from curated reference '{recipe_id}'."
             )
-        curated[fp_col] = key.map(lookup[parcel_col])
+        curated[entity_col] = key.map(lookup[ref_col])
 
     if state.verbose:
         matched = int(key.isin(set(lookup.index)).sum())
         print(
-            f'  link_curated_parcels: {matched:,}/{len(curated):,} footprints '
+            f'  link_curated_entity: {matched:,}/{len(curated):,} rows '
             f'matched {recipe_id} ({len(columns)} columns).'
         )
     state.curated = curated
