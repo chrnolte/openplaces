@@ -8,7 +8,7 @@ entity:
   source:
     source_id: overture
     portal_url: "https://overturemaps.org"
-    download_url: "s3://overturemaps-us-west-2/release/2026-04-15.0/theme=addresses/type=address/"
+    download_url: "s3://overturemaps-us-west-2/release/latest/theme=addresses/type=address/"
   version: 2025
 
 download_by:
