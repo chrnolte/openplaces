@@ -2,8 +2,8 @@
 
 .. _cheer_footprints_annex:
 
-Technical Annex: CHEER Footprint Curation Recipe
-================================================
+Technical annex: CHEER footprints
+=================================
 
 This annex provides a step-by-step description of the data curation recipe implemented in :gh-file:`src/openplaces/recipes/US/_all/footprint/cheer/2026/US_footprint-cheer-2026.yaml`. It details how each processing step behaves and how it translates in practice to produce the canonical CHEER footprint inventory.
 
