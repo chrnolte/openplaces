@@ -6,6 +6,7 @@ from openplaces.viz.axes import add_log_ticks
 from openplaces.viz.colors import CATEGORY_COLORS, match_palette
 from openplaces.viz.maps import (
     show_building,
+    show_building_imagery,
     show_geometry_context,
     show_ingested_geometries,
     show_random_entity,
@@ -19,6 +20,7 @@ __all__ = [
     'match_palette',
     'plot_tabulation',
     'show_building',
+    'show_building_imagery',
     'show_geometry_context',
     'show_ingested_geometries',
     'show_random_entity',
