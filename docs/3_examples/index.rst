@@ -10,7 +10,9 @@ Annotated end-to-end workflows for common research problems.
 .. toctree::
    :hidden:
 
-   harmonize/US_footprint-cheer-2026.rst
+   curate/US_footprint-cheer-2026.rst
+   curate/US_footprint-cheer-2026-annex.rst
+
 
 
 Buildings
@@ -22,7 +24,7 @@ Buildings
 
    .. grid-item-card::
       :img-top: ../1_overview/concepts/images/footprint_building_dwelling_urban.png
-      :link: harmonize/US_footprint-cheer-2026
+      :link: curate/US_footprint-cheer-2026
       :link-type: doc
       :class-card: op-example-card
 
