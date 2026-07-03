@@ -1444,6 +1444,18 @@ class Ingester:
                             'Others:\n\n'
                             + '\n'.join([x for x in filepaths if x != downloaded_path])
                         )
+                elif 'download_url' in self.download_partition:
+                    # No existing file matches the wildcard pattern (nothing
+                    # downloaded yet). Save under the concrete filename from
+                    # the resolved download URL instead of the literal
+                    # wildcard name, which some filesystems (e.g. NTFS)
+                    # reject as invalid.
+                    re_match = re.search(
+                        REGEX_FILENAME_IN_URL,
+                        self.download_partition['download_url'],
+                    )
+                    if re_match:
+                        downloaded_path = self.recipe_external_dir / re_match.group(1)
 
         self.download_partition['downloaded_path'] = downloaded_path
         self.download_partition['data_path'] = data_path
