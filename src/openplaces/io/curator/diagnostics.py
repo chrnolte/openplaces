@@ -342,6 +342,7 @@ _EVIDENCE_SOURCES = {
     'nsi': 'occupancy_type_building_nsi',
     'fema': 'occupancy_type_footprint_fema',
     'parcel': 'group_parcel',
+    'overture': 'occupancy_type_dwelling_overture',
 }
 
 
