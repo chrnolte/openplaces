@@ -2,8 +2,8 @@
 
 .. _pipeline:
 
-Pipeline: from setup to publication
-===================================
+Pipeline: the processing steps
+==============================
 
 Notebooks for data processing and analysis (:gh-file:`notebooks`) are grouped into task types:
 

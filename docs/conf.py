@@ -28,6 +28,7 @@ extensions = [
     'recipe_catalog',
     'autoapi.extension',
     'sphinx.ext.napoleon',
+    'sphinxcontrib.mermaid',
 ]
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', '_drafts']
@@ -94,7 +95,7 @@ rst_prolog = """
 .. role:: gui
    :class: gui
 
-.. role:: file
+.. role:: file(code)
    :class: file
 
 .. role:: input(code)
