@@ -102,7 +102,7 @@ pipeline:
   # Cheap, single-source implied class from the (now vacant-corrected) Overture
   # count alone, at the same >=2-dwellings threshold as
   # occupancy.rules.multi_family_dwellings above. Feeds occupancy.evidence
-  # above: a last-resort fallback in infer_occupancy_type, and a
+  # above: a last-resort fallback in impute_occupancy_type, and a
   # conflict-summary participant in resolve_occupancy — never an override of
   # real nsi/fema/parcel evidence.
   - step: resolve_by_vote
@@ -139,9 +139,9 @@ pipeline:
   # Impute: fill any dwelling-unit gaps left after reconciliation.
   - step: impute_n_dwellings
 
-  # Occupancy base class from the ordered evidence (NSI-first), then geometry and
+  # Occupancy base class imputation from the ordered evidence (NSI-first), then geometry and
   # single-family dwelling fallbacks. Config is in the `occupancy` block above.
-  - step: infer_occupancy_type
+  - step: impute_occupancy_type
 
   # Corrections: reviewed parcel keyword override of the base class, plus the
   # value-share review flag and the NSI-vs-parcel conflict summary. Value- and
@@ -177,7 +177,7 @@ pipeline:
   # (unlike the weighted indicators below, no combination of the others can
   # substitute for it): a footprint under 20m2 cannot become Manufactured Home
   # here, however strongly the other evidence favors it — it keeps whatever
-  # infer_occupancy_type/resolve_occupancy already gave it (Secondary for a
+  # impute_occupancy_type/resolve_occupancy already gave it (Secondary for a
   # non-primary accessory structure).
   - step: resolve_by_vote
     target: occupancy_type
@@ -258,7 +258,7 @@ pipeline:
   # once that's fixed. occupancy_type_base, p_manufactured_home, and
   # manufactured_home_park are transient inputs consumed by earlier steps
   # (refine_occupancy_height, the manufactured-home vote, and
-  # infer_occupancy_type respectively) and carry no information beyond what's
+  # impute_occupancy_type respectively) and carry no information beyond what's
   # already in occupancy_type/occupancy_type_source.
   - step: order_columns
     drop:

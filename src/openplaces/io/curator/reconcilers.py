@@ -116,7 +116,7 @@ def resolve_occupancy(
 ) -> CurateState:
     """Apply parcel-side corrections over the base occupancy and flag conflicts.
 
-    The base ``occupancy_type`` (from ``infer_occupancy_type``) follows the
+    The base ``occupancy_type`` (from ``impute_occupancy_type``) follows the
     recipe's evidence priority. This step applies the high-confidence reviewed
     keyword override, records the parcel-proposed class, sets a review flag, and
     summarizes evidence disagreements. All thresholds, columns, and class labels

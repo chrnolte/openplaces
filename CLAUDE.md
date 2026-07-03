@@ -183,9 +183,10 @@ Steps are organized by the nature of the transformation:
 - `evidence.py` — incorporate enrichment evidence (`merge_enrichments`)
 - `reconcilers.py` — resolve conflicts between competing source columns
   (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI)
-- `imputers.py` — fill missing canonical values (`impute_n_dwellings`)
+- `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
+  `impute_from_group_statistic`, `impute_occupancy_type`)
 - `inferers.py` — derive new canonical features (`derive_metrics`,
-  `infer_from_group_statistic`, `infer_occupancy_type`, `refine_occupancy_height`)
+  `refine_occupancy_height`)
 - `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical

@@ -94,8 +94,8 @@ Step 7: Dwelling Unit Imputation (``impute_n_dwellings``)
   For residential footprints that still lack a dwelling count after reconciliation, the step estimates ``n_dwellings`` using the occupancy-to-units lookup mapping defined in Lochhead et al. (2026, Table 3) (for instance, mapping a Single-Family or Manufactured Home footprint to 1.0 unit).
 
 
-Step 8: Occupancy Base Class Inference (``infer_occupancy_type``)
------------------------------------------------------------------
+Step 8: Occupancy Base Class Imputation (``impute_occupancy_type``)
+-------------------------------------------------------------------
 
 * **Purpose**: Establishes a baseline occupancy class by selecting the first present value from a prioritized list of evidence columns.
 * **How it translates in practice**:

@@ -33,10 +33,10 @@ save_to:
   data_dir: core
 
 pipeline:
-  # Infer the parcel occupancy group from the most common NSI building group per
-  # assessor use code (the linked-data inference moved here from the footprint
+  # Impute the parcel occupancy group from the most common NSI building group per
+  # assessor use code (the linked-data imputation moved here from the footprint
   # recipe; it is parcel-level work).
-  - step: infer_from_group_statistic
+  - step: impute_from_group_statistic
     group_column: use_group_combined
     value_column: group_building_nsi
     statistic: mode
