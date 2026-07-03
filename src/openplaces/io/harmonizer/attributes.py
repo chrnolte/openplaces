@@ -9,6 +9,7 @@ Value selection, gap-filling, and occupancy inference run in the curation stage
 
 from __future__ import annotations
 
+import re
 import warnings
 
 import numpy as np
@@ -289,12 +290,47 @@ def reconcile_attributes(
     return state
 
 
+def _join_distinct(areas: pd.DataFrame, spine_id_col: str, col: str) -> pd.Series:
+    """Join every distinct *col* value per spine entity with ``' + '``.
+
+    Left missing for a spine entity whose group has only one distinct value —
+    joining it with itself would just repeat the single reconciled value
+    already stored separately, adding no information.
+    """
+    grouped = areas.groupby(spine_id_col)[col]
+    joined = grouped.apply(' + '.join)
+    return joined.where(grouped.nunique() > 1)
+
+
+_ID_COLUMN = re.compile(r'.+_id(_.+)?$')
+
+
+def _attributed_name(col: str, suffix: str, reserved_cols: set[str]) -> str:
+    """Output column name for a cross-attributed *col* from a reference entity.
+
+    Unlike other columns, an id column (``{entity}_id*``, e.g. ``parcel_id``)
+    does not carry the ``_{source}``/``_{entity}_{source}`` provenance suffix
+    other attributed columns get: it already names the row it identifies, so
+    the suffix would be redundant. Falls back to the suffixed name when the
+    bare id would collide with a column the spine already had natively,
+    before this crosswalk started attributing anything (e.g. a locally-scoped
+    id column kept by ``resolve_spine``'s ``keep_columns``) — *reserved_cols*
+    should be a snapshot taken once at the top of the calling function, not
+    the live, growing column set, so this stays consistent across every call
+    within one crosswalk attribution.
+    """
+    if _ID_COLUMN.match(col) and col not in reserved_cols:
+        return col
+    return f'{col}{suffix}'
+
+
 def _dominant_by_area(attrs, spine_id_col: str, col: str, area_col: str):
     """Dominant categorical value per spine entity, weighted by overlap area.
 
     Returns ``(dominant, joined)``: *dominant* is the value with the largest total
     *area_col* within each spine entity; *joined* lists every value for that entity
-    ordered by descending area, joined with ``' + '``. Both are indexed by spine id.
+    ordered by descending area, joined with ``' + '`` — missing where there is only
+    one distinct value (see :func:`_join_distinct`). Both are indexed by spine id.
     """
     areas = (
         attrs.groupby([spine_id_col, col])[area_col]
@@ -303,7 +339,7 @@ def _dominant_by_area(attrs, spine_id_col: str, col: str, area_col: str):
         .reset_index()
     )
     dominant = areas.drop_duplicates(spine_id_col).set_index(spine_id_col)[col]
-    joined = areas.groupby(spine_id_col)[col].apply(' + '.join)
+    joined = _join_distinct(areas, spine_id_col, col)
     return dominant, joined
 
 
@@ -349,6 +385,16 @@ def _attribute_polygon_reference(
     overlay = state.overlays.get(crosswalk_key)
     if overlay is None or ref_polys is None:
         return state
+    # Snapshot the spine's own columns before this crosswalk attributes
+    # anything, so every id-column naming decision in this call (including the
+    # later synthetic-fallback block) treats the spine's pre-existing native
+    # columns — not columns this same call already wrote — as the collision
+    # to guard against. Also reserve the spine's own restored index name
+    # (e.g. a parcel spine's 'parcel_id', renamed to a working name during
+    # processing — see resolve_spine): that name isn't in spine.columns yet,
+    # but a same-named bare id column would collide with it once the
+    # harmonizer's save step restores the index.
+    reserved_cols = set(spine.columns) | {state.metadata.get('spine_index_name')}
 
     if remap_id:
         from openplaces.io.transform import get_crosswalk
@@ -436,6 +482,51 @@ def _attribute_polygon_reference(
         .reindex(spine.index, fill_value=0)
     )
 
+    footprint_parcel_areas = footprint_ref_attrs.reset_index()[
+        [spine_id_col, 'parcel_id', 'area_intersection_m2']
+    ]
+    parcel_area_stats = footprint_parcel_areas.groupby('parcel_id')[
+        'area_intersection_m2'
+    ].agg(max_area='max', n_fp='count')
+    footprint_parcel_areas = footprint_parcel_areas.join(
+        parcel_area_stats, on='parcel_id'
+    )
+    footprint_parcel_areas['_n_col'] = footprint_parcel_areas['n_fp']
+    primary_footprints = (
+        footprint_parcel_areas.sort_values('area_intersection_m2', ascending=False)
+        .drop_duplicates(spine_id_col)
+        .set_index(spine_id_col)
+    )
+    spine[n_spine_per_ref_col] = (
+        primary_footprints['_n_col'].reindex(spine.index).fillna(0).astype('int64')
+    )
+
+    # The dominant parcel's own globally-unique id (the overlay's true join
+    # key), so the curate stage can join the curated parcel lane back onto
+    # each footprint (link_curated_entity — see its entity_key/ref_key docs
+    # for why the globally-unique id, not a locally-scoped one). Only
+    # meaningful for a parcel reference: the overlay's reference-side index
+    # is always internally named 'parcel_id' regardless of the actual
+    # reference entity_type (e.g. the reverse FEMA-footprint-onto-parcel-spine
+    # crosswalk), so writing it unconditionally here would attribute a
+    # *footprint's* id under the name 'parcel_id' -- colliding with a parcel
+    # spine's own 'parcel_id' index in that reverse case.
+    # Written before the categorical-column loop below so parcel_id sorts
+    # ahead of its locally-scoped counterparts in the curated output
+    # (order_columns falls back to creation order when registry sort ranks
+    # tie, which they do for these bare id columns).
+    if entity_type == 'parcel':
+        spine[_attributed_name('parcel_id', suffix, reserved_cols)] = (
+            primary_footprints['parcel_id'].reindex(spine.index)
+        )
+        # The dominant link's own raw overlap area, so a later step
+        # (summarize_footprint_morphology) can apply a minimum-overlap floor
+        # without redoing the spatial overlay -- the number is already sitting
+        # in primary_footprints from the sort above.
+        spine[f'area_intersection_m2{suffix}'] = primary_footprints[
+            'area_intersection_m2'
+        ].reindex(spine.index)
+
     # Attribute categorical columns as the dominant value (and an `_all` summary)
     # by overlap area. The combined land-use label is attributed this way; so is
     # any other categorical column the recipe requests (e.g. FEMA occupancy_type
@@ -468,25 +559,9 @@ def _attribute_polygon_reference(
         dominant, joined = _dominant_by_area(
             footprint_ref_attrs, spine_id_col, col, 'area_intersection_m2'
         )
-        spine[f'{col}{suffix}'] = dominant
-        spine[f'{col}{suffix}_all'] = joined
-
-    footprint_parcel_areas = footprint_ref_attrs.reset_index()[
-        [spine_id_col, 'parcel_id', 'area_intersection_m2']
-    ]
-    parcel_area_stats = footprint_parcel_areas.groupby('parcel_id')[
-        'area_intersection_m2'
-    ].agg(max_area='max', n_fp='count')
-    footprint_parcel_areas = footprint_parcel_areas.join(
-        parcel_area_stats, on='parcel_id'
-    )
-    footprint_parcel_areas['_n_col'] = footprint_parcel_areas['n_fp']
-    primary_footprints = (
-        footprint_parcel_areas.sort_values('area_intersection_m2', ascending=False)
-        .drop_duplicates(spine_id_col)
-        .set_index(spine_id_col)
-    )
-    spine[n_spine_per_ref_col] = primary_footprints['_n_col'].reindex(spine.index)
+        out_col = _attributed_name(col, suffix, reserved_cols)
+        spine[out_col] = dominant
+        spine[f'{out_col}_all'] = joined
 
     if 'area_spine_m2' in overlay.columns:
         identified_area = (
@@ -605,11 +680,28 @@ def _attribute_polygon_reference(
         ref_attr_cols = [
             c for c in (columns or _POLYGON_REF_COLS) if c in ref_polys.columns
         ]
+        # As above, the bare/generic 'parcel_id' here is only meaningful when
+        # the reference truly is a parcel; the reverse (non-parcel) direction
+        # never produces a synthetic-fallback row anyway (a parcel spine has
+        # no parcel-boundary fallback of its own), but stay consistent.
+        id_assignment = (
+            {
+                _attributed_name('parcel_id', suffix, reserved_cols): (
+                    footprints_from_ref['parcel_id']
+                )
+            }
+            if entity_type == 'parcel'
+            else {}
+        )
         inferred_ref_attrs = (
             footprints_from_ref[['parcel_id']]
             .join(ref_polys[ref_attr_cols], on='parcel_id')
+            .assign(**id_assignment)
             .rename(
                 columns={
+                    'parcel_id_local': _attributed_name(
+                        'parcel_id_local', suffix, reserved_cols
+                    ),
                     'use_group_combined': f'use_group_combined{suffix}',
                     'purpose_group_combined': f'purpose_group_combined{suffix}',
                     'improvement_value': f'improvement_value{suffix}',
@@ -706,9 +798,9 @@ def _attribute_point_reference(
             spine_id_col
         ).set_index(spine_id_col)[purpose_group_col]
         if structure_value_col:
-            spine[f'{purpose_group_out}_all'] = footprint_purpose_group_areas.groupby(
-                spine_id_col
-            )[purpose_group_col].apply(' + '.join)
+            spine[f'{purpose_group_out}_all'] = _join_distinct(
+                footprint_purpose_group_areas, spine_id_col, purpose_group_col
+            )
 
     group_col = next(
         (c for c in avail_cols if c == 'group' and c in crosswalk.columns),
@@ -725,9 +817,9 @@ def _attribute_point_reference(
         spine[group_out] = footprint_group_areas.drop_duplicates(
             spine_id_col
         ).set_index(spine_id_col)[group_col]
-        spine[f'{group_out}_all'] = footprint_group_areas.groupby(spine_id_col)[
-            group_col
-        ].apply(' + '.join)
+        spine[f'{group_out}_all'] = _join_distinct(
+            footprint_group_areas, spine_id_col, group_col
+        )
 
     numeric_agg: dict[str, str] = {}
     if structure_value_col:
@@ -738,11 +830,25 @@ def _attribute_point_reference(
     )
     if year_built_col:
         numeric_agg[year_built_col] = 'mean'
-    if 'n_dwellings' in avail_cols and 'n_dwellings' in crosswalk.columns:
-        numeric_agg['n_dwellings'] = 'sum'
     if numeric_agg:
         spine = spine.join(
             crosswalk.groupby(spine_id_col).agg(numeric_agg).rename(columns=renamed)
+        )
+
+    # n_dwellings is summed separately (not folded into numeric_agg above) so a
+    # point flagged `exclude_from_upward_correction` -- an ESRI record
+    # duplicating another source at the same location, e.g. a home-office
+    # artifact -- can be excluded from just this sum, without affecting
+    # structure_value/year_built, which aren't upward-correction pathways.
+    if 'n_dwellings' in avail_cols and 'n_dwellings' in crosswalk.columns:
+        dwelling_rows = crosswalk
+        if 'exclude_from_upward_correction' in crosswalk.columns:
+            dwelling_rows = crosswalk[
+                ~crosswalk['exclude_from_upward_correction'].fillna(False)
+            ]
+        n_dwellings_sum = dwelling_rows.groupby(spine_id_col)['n_dwellings'].sum()
+        spine = spine.join(
+            n_dwellings_sum.rename(renamed.get('n_dwellings', 'n_dwellings'))
         )
 
     handled = set(numeric_agg) | {
@@ -970,7 +1076,10 @@ def summarize_footprint_morphology(
     footprint_recipe_id: str,
     small_area_max_m2: float = 185.0,
     elongated_aspect_min: float = 2.0,
-    on: str | None = 'parcel_id_local',
+    on: str | None = 'parcel_id',
+    min_overlap_m2: float = 10.0,
+    overlap_column: str = 'area_intersection_m2_parcel',
+    priority_column: str = 'priority_on_parcel',
 ) -> HarmonizeState:
     """Attach per-parcel footprint morphology aggregates to the parcel spine.
 
@@ -979,8 +1088,29 @@ def summarize_footprint_morphology(
     present on both sides, else by spatial containment of the footprint's
     representative point), and writes the per-parcel counts the parcel land-use
     classifier consumes downstream: ``n_footprints_per_parcel``,
-    ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped), and
-    ``max_footprint_area_m2``. The classification itself is parcel-curate work.
+    ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
+    ``max_footprint_area_m2``, and ``n_primary_footprints_per_parcel``. The
+    classification itself is parcel-curate work.
+
+    ``on`` defaults to the globally-unique ``parcel_id`` rather than
+    ``parcel_id_local``: the latter is only locally cross-comparable and can
+    collide across genuinely distinct parcels within one admin unit (e.g. every
+    unit of a condo complex sharing one assessor PIN), which would silently
+    merge their footprint counts together.
+
+    ``n_footprints_per_parcel`` counts every footprint row that clears
+    *min_overlap_m2* (its overlap with this parcel, via *overlap_column*, when
+    present), including a parcel-derived synthetic fallback geometry
+    (``geometry_source`` containing ``.``, set by :func:`infer_spine_additions`)
+    regardless of overlap size when that is the parcel's only footprint — a
+    fallback's geometry is the parcel boundary, so its "overlap" is trivially the
+    whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``
+    and ``max_footprint_area_m2`` additionally exclude synthetic rows entirely: a
+    fallback's area/aspect ratio are not meaningful size/shape evidence.
+    ``n_primary_footprints_per_parcel`` additionally excludes footprints whose
+    *priority_column* value (when present) is ``'secondary'`` — a real, but
+    accessory, structure (garage, shed) that clears the overlap floor but isn't a
+    distinct home; synthetic fallback rows still count here too.
 
     Parameters
     ----------
@@ -991,8 +1121,29 @@ def summarize_footprint_morphology(
         when its area is at most *small_area_max_m2* and its oriented aspect ratio
         is at least *elongated_aspect_min*.
     on : str, optional
-        Shared id column for an id-based assignment (default ``parcel_id_local``);
-        when absent on either side, a spatial within-join is used instead.
+        Shared id for an id-based assignment (default ``parcel_id``): a footprint
+        entity column matched against either a same-named spine column or (for a
+        parcel spine, whose own true id lives on the index during this step --
+        see ``resolve_spine``) the spine's index. When absent on either side, a
+        spatial within-join is used instead (which has no overlap-area or
+        priority data to apply *min_overlap_m2*/*priority_column* with, so every
+        contained footprint counts toward all four outputs).
+    min_overlap_m2 : float, optional
+        Minimum overlap (m²) with this parcel, from *overlap_column*, for a
+        non-synthetic footprint to count toward any of the four outputs (default
+        10, matching this codebase's ``area_intersection_m2_min`` convention).
+        Excludes a sliver footprint whose only detected parcel candidate happens
+        to be this one.
+    overlap_column : str, optional
+        Footprint-entity column holding each footprint's overlap area (m²) with
+        its dominant parcel (default ``area_intersection_m2_parcel``, written by
+        :func:`_attribute_polygon_reference`). Ignored (no floor applied) if
+        absent from the footprint entity.
+    priority_column : str, optional
+        Footprint-entity column holding each footprint's structural role on its
+        parcel (default ``priority_on_parcel``, written by
+        :func:`classify_footprint_priority`). Ignored (no exclusion applied) if
+        absent from the footprint entity.
     """
     import geopandas as gpd
 
@@ -1018,22 +1169,91 @@ def summarize_footprint_morphology(
     aspect = length / width
     small_elong = (area <= small_area_max_m2) & (aspect >= elongated_aspect_min)
 
-    if on and on in footprints.columns and on in spine.columns:
+    # Parcel-derived synthetic fallback geometries (geometry_source containing
+    # '.', set by infer_spine_additions) are the parcel boundary, not a building
+    # outline, so their area/aspect are excluded from the size/shape aggregates
+    # (max_footprint_area_m2, n_small_elongated_footprints_per_parcel). They
+    # still count toward n_footprints_per_parcel below: that count exists
+    # because independent value evidence already implied a building is there.
+    if 'geometry_source' in footprints.columns:
+        is_synthetic = (
+            footprints['geometry_source']
+            .astype('string')
+            .str.contains(r'\.', regex=True, na=False)
+            .to_numpy()
+        )
+    else:
+        is_synthetic = np.zeros(len(footprints), dtype=bool)
+    real_area = np.where(is_synthetic, np.nan, area)
+    real_small_elong = small_elong & ~is_synthetic
+
+    # A non-synthetic footprint must clear the overlap floor to count toward any
+    # output (a sliver footprint whose only detected parcel candidate is this one
+    # is not real evidence of a structure on it); synthetic fallback rows bypass
+    # this, same reasoning as real_area/real_small_elong above. Missing
+    # overlap_column (e.g. a not-yet-regenerated footprint entity) disables the
+    # floor entirely, matching the function's prior behavior.
+    if overlap_column in footprints.columns:
+        overlap = pd.to_numeric(footprints[overlap_column], errors='coerce').to_numpy()
+        meets_floor = is_synthetic | (overlap >= min_overlap_m2)
+    else:
+        meets_floor = np.ones(len(footprints), dtype=bool)
+
+    # A footprint marked 'secondary' (an accessory structure, per
+    # classify_footprint_priority's dwelling/NSI-point evidence) clears the floor
+    # but isn't a distinct home; excluded only from the stricter
+    # n_primary_footprints_per_parcel below. Synthetic rows bypass this too.
+    if priority_column in footprints.columns:
+        not_secondary = (
+            is_synthetic
+            | (footprints[priority_column].astype('string') != 'secondary').to_numpy()
+        )
+    else:
+        not_secondary = np.ones(len(footprints), dtype=bool)
+    is_primary_candidate = meets_floor & not_secondary
+
+    # A parcel spine's own true id (parcel_id) lives on the index during this
+    # step under a renamed, working index name (e.g. 'spine_id') --
+    # resolve_spine records the *original* name in
+    # state.metadata['spine_index_name'] and only restores it at save time --
+    # so 'on' may match a plain column, the spine's current index name, or
+    # that recorded original name, not just a column.
+    on_in_spine = on and (
+        on in spine.columns
+        or on == spine.index.name
+        or on == state.metadata.get('spine_index_name')
+    )
+    if on and on in footprints.columns and on_in_spine:
         per_fp = pd.DataFrame(
             {
                 '_pid': footprints[on].astype('string').to_numpy(),
-                '_a': area,
-                '_se': small_elong,
+                '_a': real_area,
+                '_se': real_small_elong,
+                '_meets_floor': meets_floor,
+                '_primary': is_primary_candidate,
             }
         ).dropna(subset=['_pid'])
-        grp = per_fp.groupby('_pid')
-        key = spine[on].astype('string')
+        key = (
+            spine[on].astype('string')
+            if on in spine.columns
+            else spine.index.to_series().astype('string')
+        )
+
+        grp = per_fp[per_fp['_meets_floor']].groupby('_pid')
         n_fp = key.map(grp.size())
         n_se = key.map(grp['_se'].sum())
         max_a = key.map(grp['_a'].max())
+
+        grp_primary = per_fp[per_fp['_primary']].groupby('_pid')
+        n_primary = key.map(grp_primary.size())
     else:
         reps = gpd.GeoDataFrame(
-            {'_a': area, '_se': small_elong},
+            {
+                '_a': real_area,
+                '_se': real_small_elong,
+                '_meets_floor': meets_floor,
+                '_primary': is_primary_candidate,
+            },
             geometry=footprints.geometry.representative_point(),
             crs=footprints.crs,
         ).to_crs(spine.crs)
@@ -1044,14 +1264,19 @@ def summarize_footprint_morphology(
         joined = gpd.sjoin(reps, spine_geom, predicate='within', how='left').dropna(
             subset=['_spine_id']
         )
-        grp = joined.groupby('_spine_id')
+
+        grp = joined[joined['_meets_floor']].groupby('_spine_id')
         n_fp = grp.size().reindex(spine.index)
         n_se = grp['_se'].sum().reindex(spine.index)
         max_a = grp['_a'].max().reindex(spine.index)
 
+        grp_primary = joined[joined['_primary']].groupby('_spine_id')
+        n_primary = grp_primary.size().reindex(spine.index)
+
     spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
     spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
+    spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
     state.spine = spine
 
     if state.verbose:
