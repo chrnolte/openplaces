@@ -47,7 +47,7 @@ fixed_width:
   - [situs_city_code, 3]
   - [filler, 8]
   - [address_number, 6]
-  - [use_subgroup, 4]
+  - [use_subgroup_code, 4]
   - [filler, 2]
   - [exemption_code, 1]
   - [value, 8]
