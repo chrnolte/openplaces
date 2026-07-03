@@ -60,6 +60,54 @@ def reconcile_values(
     return state
 
 
+@_register('suppress_where')
+def suppress_where(
+    state: CurateState,
+    column: str,
+    condition_column: str,
+    condition_value: object = True,
+) -> CurateState:
+    """Null *column* wherever *condition_column* equals *condition_value*.
+
+    A generic evidence-validity gate: some upstream determination (e.g. a
+    land-use classification) can invalidate an otherwise-present value
+    without itself being a competing source to reconcile against. Distinct
+    from ``reconcile_values`` (picks among several present sources) and
+    imputation (fills a *missing* value) — this only removes a value that
+    should not have been trusted in the first place.
+
+    Parameters
+    ----------
+    column : str
+        Column to null out.
+    condition_column : str
+        Column whose value triggers the suppression.
+    condition_value : optional
+        Value that triggers suppression (default ``True``, for a boolean
+        flag column).
+    """
+    import numpy as np
+
+    curated = state.curated
+    if column not in curated.columns or condition_column not in curated.columns:
+        return state
+
+    condition = (curated[condition_column].astype(object) == condition_value).fillna(
+        False
+    )
+    mask = condition & curated[column].notna()
+    if mask.any():
+        curated.loc[mask, column] = np.nan
+    state.curated = curated
+
+    if state.verbose:
+        print(
+            f'  suppress_where: {int(mask.sum()):,} {column!r} value(s) suppressed '
+            f'where {condition_column!r} == {condition_value!r}.'
+        )
+    return state
+
+
 @_register('resolve_occupancy')
 def resolve_occupancy(
     state: CurateState,
@@ -259,71 +307,6 @@ def resolve_occupancy(
     return state
 
 
-def _evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
-    """Return a boolean Series marking rows that satisfy one voting indicator.
-
-    Indicators reference columns by name; any referenced column that is absent
-    yields an all-False result, so the indicator simply contributes no votes.
-
-    Supported ``type`` values:
-    - ``value_share_below``: ``value / sum(total) < max_ratio``. With
-      ``include_zero`` true, a zero ``value`` also matches (covers a zero total).
-    - ``keyword``: case-insensitive ``str.contains(pattern)`` on ``column``
-      (set ``regex: true`` for a regular expression).
-    - ``equals``: ``column`` equals ``value``.
-    - ``numeric_at_least``: ``column >= min``.
-    """
-    false = pd.Series(False, index=curated.index)
-    kind = indicator['type']
-
-    if kind == 'value_share_below':
-        value_col = indicator['value']
-        total_cols = indicator['total']
-        if value_col not in curated.columns or any(
-            c not in curated.columns for c in total_cols
-        ):
-            return false
-        value = pd.to_numeric(curated[value_col], errors='coerce')
-        total = sum(pd.to_numeric(curated[c], errors='coerce') for c in total_cols)
-        max_ratio = float(indicator['max_ratio'])
-        ratio = value.where(total > 0) / total.where(total > 0)
-        matched = (ratio < max_ratio).fillna(False)
-        if indicator.get('include_zero'):
-            matched = matched | (value == 0).fillna(False)
-        return matched
-
-    if kind == 'keyword':
-        col = indicator['column']
-        if col not in curated.columns:
-            return false
-        return (
-            curated[col]
-            .astype(object)
-            .str.contains(
-                indicator['pattern'],
-                case=False,
-                na=False,
-                regex=bool(indicator.get('regex', False)),
-            )
-        )
-
-    if kind == 'equals':
-        col = indicator['column']
-        if col not in curated.columns:
-            return false
-        return (curated[col].astype(object) == indicator['value']).fillna(False)
-
-    if kind == 'numeric_at_least':
-        col = indicator['column']
-        if col not in curated.columns:
-            return false
-        return (
-            pd.to_numeric(curated[col], errors='coerce') >= float(indicator['min'])
-        ).fillna(False)
-
-    raise ValueError(f'Unknown voting indicator type: {kind!r}.')
-
-
 @_register('resolve_by_vote')
 def resolve_by_vote(
     state: CurateState,
@@ -348,21 +331,33 @@ def resolve_by_vote(
     Parameters
     ----------
     target : str
-        Categorical column to override (e.g. ``occupancy_type``).
+        Categorical column to override (e.g. ``occupancy_type``). Created as
+        an all-missing column first when not already present, so this step can
+        also populate a brand-new derived classification, not just correct an
+        existing one.
     decisions : list of dict
         Ordered candidate classes. Each is
-        ``{class, min_score, indicators, source}``, where ``indicators`` is a
-        list of indicator specs (see ``_evaluate_indicator``); ``min_score``
-        defaults to 1 and each indicator's ``weight`` defaults to 1. The optional
+        ``{class, min_score, indicators, require, source}``, where
+        ``indicators`` is a list of indicator specs (see
+        :func:`~openplaces.io.curator.indicators.evaluate_indicator`);
+        ``min_score`` defaults to 1 and each indicator's ``weight`` defaults to
+        1. ``require`` is an optional list of indicator specs (same vocabulary)
+        that must *all* hold, on top of reaching ``min_score`` — a hard
+        precondition rather than one more weighted vote, for evidence that
+        should veto a decision outright regardless of how strongly the other
+        indicators favor it (e.g. a minimum footprint size). The optional
         ``source`` is the provenance token recorded in ``{target}_source`` for
-        rows this decision wins (default ``'vote'``), so the single reason column
-        distinguishes one decision's outcome from another.
+        rows this decision wins (default ``'vote'``), so the single reason
+        column distinguishes one decision's outcome from another.
     """
+    from openplaces.io.curator.indicators import evaluate_indicator
     from openplaces.io.curator.provenance import record_source
 
     curated = state.curated
-    if target not in curated.columns or not decisions:
+    if not decisions:
         return state
+    if target not in curated.columns:
+        curated[target] = pd.Series(pd.NA, index=curated.index, dtype=object)
 
     base = curated[target].astype(object).copy()
     winner = pd.Series(pd.NA, index=curated.index, dtype=object)
@@ -372,9 +367,11 @@ def resolve_by_vote(
         score = pd.Series(0.0, index=curated.index)
         for indicator in decision.get('indicators', []):
             weight = float(indicator.get('weight', 1.0))
-            matched = _evaluate_indicator(curated, indicator).astype(float)
+            matched = evaluate_indicator(curated, indicator).astype(float)
             score = score + matched * weight
         eligible = score >= float(decision.get('min_score', 1))
+        for req in decision.get('require', []):
+            eligible = eligible & evaluate_indicator(curated, req)
         # Strict > keeps the earlier decision on ties (recipe order).
         take = eligible & (score > best_score)
         winner.loc[take] = decision['class']
