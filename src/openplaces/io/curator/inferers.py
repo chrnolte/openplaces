@@ -62,87 +62,6 @@ def derive_metrics(state: CurateState) -> CurateState:
     return state
 
 
-_GROUP_STATISTICS = {
-    'mode': lambda s: s.mode().iloc[0] if not s.mode().empty else pd.NA,
-    'mean': 'mean',
-    'median': 'median',
-    'min': 'min',
-    'max': 'max',
-}
-
-
-@_register('infer_from_group_statistic')
-def infer_from_group_statistic(
-    state: CurateState,
-    group_column: str,
-    value_column: str,
-    output: str,
-    statistic: str = 'mode',
-    overrides: str | None = None,
-) -> CurateState:
-    """Infer each row's output from a grouped statistic of another column.
-
-    For every row, *output* is set to a statistic of *value_column* computed
-    across all rows sharing the same *group_column* value (its cohort). The
-    default *statistic* is the mode (most common value), which learns a
-    group -> value mapping by majority vote; mean, median, min, and max are also
-    supported for numeric columns.
-
-    An optional *overrides* crosswalk corrects known-bad group mappings: a
-    two-column lookup (group value -> corrected output) loaded by recipe id.
-    Corrections win; the grouped statistic fills the rest.
-
-    Generic over any pair of columns: holds no references to specific entities
-    or sources, so it can be reused for any cross-linked categorical columns.
-
-    Parameters
-    ----------
-    group_column : str
-        Column whose value defines each row's cohort.
-    value_column : str
-        Column the statistic is computed over within each cohort.
-    output : str
-        Name of the column to write.
-    statistic : str, optional
-        Cohort statistic: mode (default), mean, median, min, or max.
-    overrides : str, optional
-        Recipe id of a two-column correction crosswalk
-        (group value -> corrected output). Corrections take precedence over the
-        computed statistic.
-    """
-    curated = state.curated
-    if group_column not in curated or value_column not in curated:
-        return state
-
-    func = _GROUP_STATISTICS.get(statistic)
-    if func is None:
-        raise ValueError(
-            f'Unknown statistic {statistic!r}; expected one of '
-            f'{", ".join(_GROUP_STATISTICS)}.'
-        )
-
-    paired = curated[[group_column, value_column]].dropna()
-    base = paired.groupby(group_column, observed=True)[value_column].agg(func)
-    mapped = curated[group_column].map(base)
-
-    if overrides:
-        from openplaces.io.transform import get_crosswalk
-
-        corrections = get_crosswalk({'recipe_id': overrides})
-        mapped = curated[group_column].map(corrections).combine_first(mapped)
-
-    curated[output] = mapped
-    state.curated = curated
-
-    if state.verbose:
-        n = int(mapped.notna().sum())
-        print(
-            f'  infer_from_group_statistic: {output} set for {n:,} rows '
-            f'(statistic={statistic}).'
-        )
-    return state
-
-
 @_register('score_relative_to_group')
 def score_relative_to_group(
     state: CurateState,
@@ -313,9 +232,9 @@ def classify_parcel_land_use(
     return state
 
 
-@_register('infer_occupancy_type')
-def infer_occupancy_type(state: CurateState) -> CurateState:
-    """Infer ``occupancy_type`` from ordered evidence, then geometry and dwellings.
+@_register('impute_occupancy_type')
+def impute_occupancy_type(state: CurateState) -> CurateState:
+    """Impute ``occupancy_type`` from ordered evidence, then geometry and dwellings.
 
     Vocabulary, evidence columns, and thresholds all come from the recipe
     ``occupancy`` config block; this step holds no source- or class-specific
@@ -456,7 +375,7 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
     if state.verbose:
         counts = curated['occupancy_type'].value_counts(dropna=False)
         print(
-            '  infer_occupancy_type: '
+            '  impute_occupancy_type: '
             + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
         )
     return state
