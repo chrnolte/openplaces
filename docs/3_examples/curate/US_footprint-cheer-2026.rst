@@ -67,9 +67,9 @@ Parcel-derived evidence (assessor)
 ----------------------------------
 Attributes inherited from the primary parcel linked to the footprint.
 
-``parcel_id`` (bare — no ``_parcel`` suffix, unlike the other attributes below)
-    Globally-unique id of the primary linked parcel, used to join the curated parcel lane back onto each footprint (``link_curated_entity``).
-``parcel_id_local`` / ``parcel_id_local_all`` (bare)
+``parcel_id``
+    Globally-unique id of the primary linked parcel, used to join parcels back onto footprints.
+``parcel_id_local`` / ``parcel_id_local_all``
     Locally cross-comparable assessor ID of the primary linked parcel, and combined IDs of all intersected parcels (populated only if more than one distinct ID exists). Not unique across admin units, so it is not used as a join key.
 ``use_group_combined_parcel`` / ``use_group_combined_parcel_all``
     Primary and combined land-use description strings (populated only if more than one distinct use exists).
@@ -204,6 +204,14 @@ Stage 4: curate
 8. **Height-band splits**: Splits Multi-Family classes into HAZUS height bands (Low-Rise: 1-3, Mid-Rise: 4-7, High-Rise: 8+) based on ``n_stories``.
 9. **Diagnostics & formatting**: Computes final diagnostic columns (e.g. value-per-area), flags occupancy conflicts, casts categoricals, and orders output columns.
 
+Technical annex
+~~~~~~~~~~~~~~~
+
+.. toctree::
+
+   annexes/US_footprint-cheer-2026-annex.rst
+
+
 Key references
 ~~~~~~~~~~~~~~
 
@@ -214,3 +222,5 @@ Lochhead M, Zsarnoczay A, Deierlein G (2026) Exposure matters: a synthesis frame
 .. _Cetiner et al. 2025:
 
 Cetiner, B., McKenna, F., Yi, S.-. ri ., Wang, B., & Manousakis, I. V. (2025). BRAILS++ (v4.2.0). Zenodo. `doi:10.5281/zenodo.17797364 <https://doi.org/10.5281/zenodo.17797364>`_
+
+

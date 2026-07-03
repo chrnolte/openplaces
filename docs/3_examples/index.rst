@@ -11,9 +11,6 @@ Annotated end-to-end workflows for common research problems.
    :hidden:
 
    curate/US_footprint-cheer-2026.rst
-   curate/US_footprint-cheer-2026-annex.rst
-
-
 
 Buildings
 ---------
