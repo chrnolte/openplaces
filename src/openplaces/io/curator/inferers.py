@@ -12,10 +12,11 @@ from openplaces.io.curator import CurateState, _register
 def _habitable_threshold(curated, result, mh_label, config) -> float:
     """Minimum footprint area (m2) for a park home to count as habitable.
 
-    Realizes "average mobile-home footage x habitable_fraction": the average is
-    taken over the footprints already classed as *mh_label* (falling back to the
-    config ``mobile_home_avg_m2`` when too few samples), and the result is floored
-    at ``habitable_floor_m2`` so a degenerate average cannot drop it to zero.
+    Realizes "average manufactured-home footage x habitable_fraction": the
+    average is taken over the footprints already classed as *mh_label*
+    (falling back to the config ``manufactured_home_avg_m2`` when too few
+    samples), and the result is floored at ``habitable_floor_m2`` so a
+    degenerate average cannot drop it to zero.
     """
     fraction = float(config.get('habitable_fraction', 0.5))
     floor = float(config.get('habitable_floor_m2', 25.0))
@@ -25,7 +26,7 @@ def _habitable_threshold(curated, result, mh_label, config) -> float:
     avg = (
         float(areas.mean())
         if len(areas) >= 3
-        else float(config.get('mobile_home_avg_m2', 90.0))
+        else float(config.get('manufactured_home_avg_m2', 90.0))
     )
     return max(floor, fraction * avg)
 
@@ -34,9 +35,10 @@ def _habitable_threshold(curated, result, mh_label, config) -> float:
 def derive_metrics(state: CurateState) -> CurateState:
     """Compute footprint area and per-area value ratios.
 
-    Adds ``m2`` (footprint area in square metres) and, for every
-    ``improvement_value*`` / ``structure_value*`` column, a matching
-    ``{column}_per_area`` ratio (value per square metre).
+    Adds ``m2`` (footprint area in square metres) and, for the canonical
+    ``value`` column plus every ``improvement_value*`` / ``structure_value*``
+    evidence column, a matching ``{column}_per_area`` ratio (value per square
+    metre).
     """
     from openplaces.geo.polygon import get_areas
 
@@ -49,7 +51,11 @@ def derive_metrics(state: CurateState) -> CurateState:
     for col in list(curated.columns):
         if col.endswith('_per_area'):
             continue
-        if col.startswith('improvement_value') or col.startswith('structure_value'):
+        if (
+            col == 'value'
+            or col.startswith('improvement_value')
+            or col.startswith('structure_value')
+        ):
             curated[f'{col}_per_area'] = curated[col] / curated['m2']
 
     state.curated = curated
@@ -137,39 +143,82 @@ def infer_from_group_statistic(
     return state
 
 
-def _parcel_indicator(curated, indicator) -> pd.Series:
-    """Boolean Series marking parcels that satisfy one land-use indicator.
+@_register('score_relative_to_group')
+def score_relative_to_group(
+    state: CurateState,
+    group_column: str,
+    value_column: str,
+    output: str,
+    transform: str | None = 'log1p',
+    statistic: str = 'zscore',
+) -> CurateState:
+    """Score each row's value against the distribution of its group cohort.
 
-    Supported ``type`` values (all reference an existing ``column``; an absent
-    column contributes no votes):
-    - ``keyword``: case-insensitive ``str.contains(pattern)`` (``regex`` default
-      true) on the assessor use string.
-    - ``in_set``: ``column`` value is in ``values`` (e.g. NSI groups).
-    - ``count_at_least``: ``column >= min`` (e.g. a per-parcel morphology count).
+    For every row, scores *value_column* (optionally transformed first)
+    against the distribution of that same column within its *group_column*
+    cohort. With ``statistic='zscore'`` (default), the score is
+    ``(value - cohort_mean) / cohort_std`` (population std, ``ddof=0``); a
+    cohort with zero variance (or a single member) scores every member
+    missing rather than dividing by zero. With ``statistic='percentile'``,
+    the score is the value's rank within its cohort, in ``[0, 1]``. Rows
+    with a missing *value_column* score missing, propagating rather than
+    being silently zeroed — a downstream step (e.g. a voting indicator)
+    decides how to treat "no measurement" evidence.
+
+    Generic over any pair of columns: holds no reference to specific
+    entities or sources, so it is reusable for any "how anomalous is this
+    value relative to its peers" signal — e.g. comparing a footprint's size,
+    or a structure's value per area, against a local cohort.
+
+    Parameters
+    ----------
+    group_column : str
+        Column whose value defines each row's cohort.
+    value_column : str
+        Column to score within each cohort.
+    output : str
+        Name of the column to write.
+    transform : {'log1p', None}, optional
+        Applied to *value_column* before scoring (default ``'log1p'``, useful
+        for right-skewed measures like area; pass ``None`` to score the raw
+        value).
+    statistic : {'zscore', 'percentile'}, optional
+        Scoring method (default ``'zscore'``).
     """
-    false = pd.Series(False, index=curated.index)
-    col = indicator.get('column')
-    kind = indicator['type']
-    if col is None or col not in curated.columns:
-        return false
-    if kind == 'keyword':
-        return (
-            curated[col]
-            .astype(object)
-            .str.contains(
-                indicator['pattern'],
-                case=False,
-                na=False,
-                regex=bool(indicator.get('regex', True)),
-            )
+    import numpy as np
+
+    curated = state.curated
+    if group_column not in curated or value_column not in curated:
+        return state
+
+    value = pd.to_numeric(curated[value_column], errors='coerce')
+    if transform == 'log1p':
+        value = np.log1p(value)
+    elif transform is not None:
+        raise ValueError(f"Unknown transform {transform!r}; expected 'log1p' or None.")
+
+    grouped = value.groupby(curated[group_column], observed=True)
+    if statistic == 'zscore':
+        mean = grouped.transform('mean')
+        std = grouped.transform('std', ddof=0).replace(0, np.nan)
+        score = (value - mean) / std
+    elif statistic == 'percentile':
+        score = grouped.rank(pct=True)
+    else:
+        raise ValueError(
+            f"Unknown statistic {statistic!r}; expected 'zscore' or 'percentile'."
         )
-    if kind == 'in_set':
-        return curated[col].astype(object).isin(set(indicator['values'])).fillna(False)
-    if kind == 'count_at_least':
-        return (
-            pd.to_numeric(curated[col], errors='coerce') >= float(indicator['min'])
-        ).fillna(False)
-    raise ValueError(f'Unknown parcel land-use indicator type: {kind!r}.')
+
+    curated[output] = score
+    state.curated = curated
+
+    if state.verbose:
+        n = int(score.notna().sum())
+        print(
+            f'  score_relative_to_group: {output} set for {n:,} rows '
+            f'(statistic={statistic}).'
+        )
+    return state
 
 
 @_register('classify_parcel_land_use')
@@ -179,6 +228,9 @@ def classify_parcel_land_use(
     output: str = 'land_use_class',
     flag_column: str | None = None,
     flag_class: str | None = None,
+    score_columns: dict[str, str] | None = None,
+    review_column: str | None = None,
+    review_margin: float = 1.0,
 ) -> CurateState:
     """Classify each parcel's land-use class by weighted indicator voting.
 
@@ -193,7 +245,8 @@ def classify_parcel_land_use(
     ----------
     rules : list of dict
         Ordered candidate classes, each ``{class, min_score, indicators, weight}``;
-        ``indicators`` is a list of specs (see ``_parcel_indicator``). For each
+        ``indicators`` is a list of specs (see
+        :func:`~openplaces.io.curator.indicators.evaluate_indicator`). For each
         parcel a rule's score sums its matched indicator weights; among the rules
         reaching ``min_score`` (default 1) the highest score wins, ties broken by
         order. Parcels matching no rule are left null.
@@ -202,29 +255,61 @@ def classify_parcel_land_use(
     flag_column, flag_class : str, optional
         When both are given, write a boolean ``flag_column`` set where ``output``
         equals ``flag_class`` (e.g. ``manufactured_home_park``).
+    score_columns : dict of {class: column}, optional
+        For named classes, also write that rule's raw weighted score — not
+        gated by its own ``min_score`` — to the given column. This is an
+        ordered/graded signal (e.g. a vacancy likelihood) usable by later
+        steps even for parcels where that class did not win the vote.
+    review_column : str, optional
+        Boolean column flagging parcels where the winning class's score beat
+        the runner-up's (among rules that individually reached their own
+        ``min_score``) by less than *review_margin* — the "unresolved"
+        confusion cases worth a second look (e.g. Manufactured Home Park vs.
+        RV Park scoring close or tied). Left unset (``None``) by default.
+    review_margin : float, optional
+        Score margin below which ``review_column`` is set (default 1.0).
     """
+    from openplaces.io.curator.indicators import evaluate_indicator
+
     curated = state.curated
     winner = pd.Series(pd.NA, index=curated.index, dtype=object)
     best_score = pd.Series(-1.0, index=curated.index)
+    second_score = pd.Series(-1.0, index=curated.index)
     for rule in rules:
         score = pd.Series(0.0, index=curated.index)
         for indicator in rule.get('indicators', []):
             weight = float(indicator.get('weight', 1.0))
-            score = score + _parcel_indicator(curated, indicator).astype(float) * weight
+            score = (
+                score + evaluate_indicator(curated, indicator).astype(float) * weight
+            )
+        if score_columns and rule['class'] in score_columns:
+            curated[score_columns[rule['class']]] = score
         eligible = score >= float(rule.get('min_score', 1))
         take = eligible & (score > best_score)
+        # The rule this decision displaces becomes the new runner-up.
+        second_score.loc[take] = best_score.loc[take]
+        # An eligible rule that doesn't win outright may still beat the
+        # current runner-up.
+        runner_up = eligible & ~take & (score > second_score)
+        second_score.loc[runner_up] = score.loc[runner_up]
         winner.loc[take] = rule['class']
         best_score.loc[take] = score.loc[take]
 
     curated[output] = pd.Categorical(winner)
     if flag_column and flag_class is not None:
         curated[flag_column] = winner.eq(flag_class).fillna(False).to_numpy()
+    if review_column:
+        margin = best_score - second_score
+        curated[review_column] = (winner.notna() & (margin < review_margin)).to_numpy()
     state.curated = curated
 
     if state.verbose:
         counts = winner.value_counts(dropna=False)
         summary = ', '.join(f'{k}={v:,d}' for k, v in counts.items()) or 'none'
-        print(f'  classify_parcel_land_use: {output} -> {summary}')
+        extra = ''
+        if review_column:
+            extra = f', {int(curated[review_column].sum()):,} flagged for review'
+        print(f'  classify_parcel_land_use: {output} -> {summary}{extra}')
     return state
 
 
@@ -326,7 +411,7 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
     #    dwellings (Manufactured Home), not accessory structures; only sub-threshold
     #    footprints there (sheds) stay secondary. The park flag is set by the parcel
     #    curation lane (classify_parcel_land_use) and joined in by
-    #    link_curated_parcels; absent it, behaviour is unchanged.
+    #    link_curated_entity; absent it, behaviour is unchanged.
     residential = list(config.get('residential_classes', []))
     secondary = config.get('secondary_class')
     mh_label = rule_cfg.get('manufactured_home_geometry', {}).get('class')
@@ -481,14 +566,17 @@ def flag_manufactured_home_communities(
     from openplaces.io.curator.occupancy import get_occupancy_config
 
     curated = state.curated
+    # Prefer the globally-unique parcel_id over locally-scoped fallbacks (see
+    # link_curated_entity for why); grouping by a non-unique key would
+    # silently pool unrelated parcels' counts together.
     parcel_col = next(
         (
             c
             for c in (
+                'parcel_id',
                 'parcel_id_local',
                 'parcel_id_tax',
                 'parcel_id_assessor',
-                'parcel_id',
             )
             if c in curated.columns
         ),
@@ -518,7 +606,7 @@ def flag_manufactured_home_communities(
     return state
 
 
-def _score_mobile_home_candidates(
+def _score_manufactured_home_candidates(
     work,
     assessor_labels,
     *,
@@ -576,12 +664,20 @@ def _score_mobile_home_candidates(
         lambda g: len(g.exterior.coords) - 1 if hasattr(g, 'exterior') else 0
     ).values
 
+    # Prefer the globally-unique parcel_id over locally-scoped fallbacks, same
+    # rationale as flag_manufactured_home_communities above. An explicit
+    # preference tuple, not work.columns iteration order, so this doesn't
+    # depend on incidental column placement.
     parcel_col = next(
         (
             c
-            for c in work.columns
-            if c
-            in ('parcel_id_local', 'parcel_id_tax', 'parcel_id_assessor', 'parcel_id')
+            for c in (
+                'parcel_id',
+                'parcel_id_local',
+                'parcel_id_tax',
+                'parcel_id_assessor',
+            )
+            if c in work.columns
         ),
         None,
     )
@@ -786,8 +882,8 @@ def _score_mobile_home_candidates(
     }
 
 
-@_register('classify_mobile_homes')
-def classify_mobile_homes(
+@_register('classify_manufactured_homes')
+def classify_manufactured_homes(
     state: CurateState,
     ruleset: str | None = None,
     model_type: str = 'calibrated_logistic',
@@ -912,7 +1008,7 @@ def classify_mobile_homes(
 
     if state.verbose:
         print(
-            f'  classify_mobile_homes: {int(candidate.sum()):,} candidates of '
+            f'  classify_manufactured_homes: {int(candidate.sum()):,} candidates of '
             f'{len(curated):,} structures (small={int(is_small.sum()):,}, '
             f'not-nonresidential={int(not_nonresidential.sum()):,}, '
             f'assessor-labeled={int(has_label.sum()):,}); model_type={model_type}'
@@ -923,7 +1019,7 @@ def classify_mobile_homes(
     p_mfg_out = pd.Series(0.0, index=curated.index)
 
     if candidate.any():
-        scored = _score_mobile_home_candidates(
+        scored = _score_manufactured_home_candidates(
             curated.loc[candidate],
             assessor_labels.loc[candidate],
             mh_label=mh_label,
@@ -966,8 +1062,8 @@ def classify_mobile_homes(
         mfg_cnt = int((p_mfg_out >= 0.5).sum())
         sf_cnt = int((p_sf_out >= 0.5).sum())
         print(
-            f'  classify_mobile_homes: classified {mfg_cnt:,} manufactured homes '
-            f'and {sf_cnt:,} single family homes.'
+            f'  classify_manufactured_homes: classified {mfg_cnt:,} manufactured '
+            f'homes and {sf_cnt:,} single family homes.'
         )
 
     return state
