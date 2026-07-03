@@ -63,7 +63,7 @@ Peer-reviewed journals in land, environmental, or housing economics therefore ra
 
 This worsens the credibility problem of the empirical social sciences, e.g. in `environmental <https://www.journals.uchicago.edu/doi/10.1093/reep/reaa011>`_ and `agricultural economics <https://onlinelibrary.wiley.com/doi/full/10.1002/aepp.13323>`_. When `data quality and methods affect results <https://le.uwpress.org/content/100/1/200>`_, publication bias favors novelty and statistical significance, and re-analyses are rare, professional competition can incentivize questionable research practices.
 
-Access to open and replicable methods can counter this trend. Publishing the codebase of entire research workflows allows others to revisit results, interrogate findings, share bug reports, and contribute improved methods.
+Access to open and replicable methods can counter this trend. Publishing the codebase of entire research workflows allows others to revisit results, interrogate findings, fix bugs, and contribute better methods.
 
 
 Scalable

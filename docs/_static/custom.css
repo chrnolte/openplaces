@@ -28,7 +28,7 @@
 
 code.file {
     color: #aa4100;
-    background-color: white;
+    /*background-color: white;*/
     border: 1px solid #dee2e6;
     padding: 0px 6px;
     border-radius: 5px;
@@ -42,7 +42,7 @@ code.file .pre {
 code.input {
     font-family: monospace;
     color: firebrick;
-    background-color: white;
+    /*background-color: white;*/
     border: 1px solid #dee2e6;
     padding: 0px 6px;
     border-radius: 5px;
@@ -53,13 +53,12 @@ code.input {
 /* Format ``inline code`` */
 code.docutils.literal.notranslate:not(.input):not(.file) {
     padding: 5px 6px 3px;
-    background-color: #f7f7f7;
     border-radius: 5px;
 }
 code.docutils.literal.notranslate:not(.input):not(.file) .pre {
-    color:#4F459D;
     font-size: 100%;
 }
+
 
 /* Format code blocks */
 div[class^="highlight"] {
