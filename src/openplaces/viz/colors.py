@@ -4,15 +4,15 @@ Keys are label strings as stored in parquet files after ingestion
 (i.e. post-labels-CSV remapping, not raw source codes).
 """
 
-# building.openplaces_group
+# building.group
 # Standardized building use groups, as defined in the purpose-subgroup-remap
 # CSV. Covers NSI HAZUS occupancy classes; additional categories from other
 # datasets (FEMA, OBM, etc.) may be added with consistent color shading.
-_OPENPLACES_GROUP = {
+_GROUP = {
     # Residential — single family
     'Single Family': '#E07850',
     # Residential — other
-    'Manufactured': '#D4A830',
+    'Manufactured Home': '#D4A830',
     'Multi Family': '#9070C8',
     'Hotel': '#E8D09A',
     'Institutional Dormitory': '#E8C880',
@@ -68,10 +68,15 @@ _SOURCE = {
 }
 
 # Public registry  {column_name: {label: color}}
+# 'use_group'/'purpose_group' precede 'group' so the substring match in
+# match_palette prefers the occupancy palette for use_group*/purpose_group*
+# columns. use_group (parcel "what it is used for") shares the occupancy palette;
+# match_palette falls back when its land-use labels do not match.
 CATEGORY_COLORS = {
-    'openplaces_group': _OPENPLACES_GROUP,
+    'use_group': _PURPOSE_GROUP,
     'purpose_group': _PURPOSE_GROUP,
-    'source': _SOURCE,
+    'group': _GROUP,
+    'geometry_source': _SOURCE,
 }
 
 

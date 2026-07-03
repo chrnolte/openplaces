@@ -6,12 +6,14 @@ defaults and automatic performance optimization.
 
 import textwrap
 import warnings
+from pathlib import Path
 
 import contextily as cx
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
 import requests
+from PIL import Image
 from pyproj import Transformer
 from shapely.geometry import (
     LineString,
@@ -24,8 +26,9 @@ from shapely.geometry import (
 
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import get_areas
+from openplaces.io.ingester.image_ingester import load_image_metadata
 from openplaces.io.readers import get_admin, get_entities
-from openplaces.recipe import find_admin_recipe_id
+from openplaces.recipe import find_admin_recipe_id, get_output_path
 
 
 def show_geometry_context(
@@ -341,6 +344,7 @@ def show_building(
     show_crosshair=True,
     show_location=True,
     return_fig_ax=False,
+    ax=None,
     verbose=False,
 ):
     """Show building in its context with basemap
@@ -372,6 +376,10 @@ def show_building(
         Display latitude/longitude of location
     return_fig_ax : bool
         If True, return the plot's Figure and Axes objects
+    ax : matplotlib.axes.Axes, optional
+        Axis to draw into. If None, a new figure and axis are created. When
+        provided, the building is drawn into this axis (and its parent figure),
+        which lets callers compose the context map alongside other panels.
     verbose : bool
         If True, prints counts of matched entities per dataset.
     """
@@ -404,7 +412,10 @@ def show_building(
     lat_min, long_min = to_4326(xmin, ymin)
     lat_max, long_max = to_4326(xmax, ymax)
 
-    fig, ax = plt.subplots(figsize=(size, size))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(size, size))
+    else:
+        fig = ax.get_figure()
     ax.set_xlim(xmin, xmax)  # Needs to happen before adding a basemap
     ax.set_ylim(ymin, ymax)
 
@@ -528,7 +539,7 @@ def show_building(
                 print(f'Parcel GID: {_gid}')
 
             txt_p = f'Parcel ID: {_p_txt["parcel_id_admin3"]}\n'
-            for var in ['address', 'purpose_group', 'purpose_subgroup']:
+            for var in ['address', 'use_group', 'use_subgroup']:
                 if _p_txt[var]:
                     txt_p += (
                         f'{_p_txt[var].title()[:25]}'
@@ -656,6 +667,128 @@ def show_building(
         return fig, ax
 
 
+def _show_building_image(ax, image_path, label):
+    """Render one downloaded image into `ax`, or a placeholder if unavailable.
+
+    Reads the image with PIL (handles both the GeoTIFF satellite tiles and the
+    JPEG street-view frames). On a missing path or a path that is not a file on
+    disk, a centered "not available" placeholder is drawn instead.
+    """
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    if not image_path or pd.isna(image_path) or not Path(image_path).is_file():
+        ax.text(
+            0.5,
+            0.5,
+            f'{label}\n(not available)',
+            ha='center',
+            va='center',
+            transform=ax.transAxes,
+            color='#888888',
+        )
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#cccccc')
+        return
+
+    with Image.open(image_path) as image_file:
+        ax.imshow(image_file.convert('RGB'))
+    ax.set_title(label)
+
+
+def show_building_imagery(
+    location,
+    geodatasets,
+    image_recipes,
+    admin_id,
+    styles=None,
+    radius=100,
+    size=6,
+    return_fig_axes=False,
+    verbose=False,
+    **show_building_kwargs,
+):
+    """Show a building's context map alongside its downloaded imagery.
+
+    A diagnostics variant of :func:`show_building`: the first panel draws the
+    building in context (delegating to `show_building`), and one panel per image
+    recipe displays the downloaded image for that building (e.g. Google
+    Satellite and Street View), or a placeholder when no image was downloaded.
+
+    Parameters
+    ----------
+    location : gpd.GeoDataFrame
+        Single-row GeoDataFrame for the building. Its index label is used to
+        look up the building's images in each image recipe's metadata.
+    geodatasets : dict of GeoDataFrames
+        Reference datasets for the context panel, passed to `show_building`.
+    image_recipes : dict
+        Mapping of panel label to image recipe ID, e.g.
+        ``{'Google Satellite': 'image-googlesatellite-z20',
+        'Street View': 'image-googlestreetview-2026'}``.
+    admin_id : str or AdminId
+        Admin unit whose image metadata is loaded.
+    styles : dict of dict, optional
+        Per-dataset style overrides forwarded to `show_building`.
+    radius : float
+        Radius of the context panel in EPSG:3857 "meters".
+    size : float
+        Height of the figure in inches (each panel is roughly square).
+    return_fig_axes : bool
+        If True, return the figure and the array of axes.
+    verbose : bool
+        If True, prints counts of matched entities in the context panel.
+    **show_building_kwargs
+        Additional keyword arguments forwarded to `show_building`.
+
+    Returns
+    -------
+    tuple, optional
+        ``(fig, axes)`` when ``return_fig_axes`` is True.
+    """
+    entity_id = location.index[0]
+
+    n_panels = 1 + len(image_recipes)
+    fig, axes = plt.subplots(1, n_panels, figsize=(size * n_panels, size))
+    axes = list(axes) if n_panels > 1 else [axes]
+
+    show_building(
+        location,
+        geodatasets,
+        styles=styles,
+        radius=radius,
+        ax=axes[0],
+        verbose=verbose,
+        **show_building_kwargs,
+    )
+
+    for ax, (label, image_recipe_id) in zip(axes[1:], image_recipes.items()):
+        meta_df = load_image_metadata(image_recipe_id, admin_id)
+        if meta_df is None or entity_id not in meta_df.index:
+            image_path = None
+        else:
+            image_path = meta_df.loc[entity_id, 'image_path']
+            if isinstance(image_path, pd.Series):
+                # Defensive: duplicate index across concatenated child frames.
+                image_path = (
+                    image_path.dropna().iloc[0] if image_path.notna().any() else None
+                )
+        _show_building_image(ax, image_path, label)
+
+    if return_fig_axes:
+        return fig, axes
+
+
+def _has_geometry_output(recipe, admin_id, partition_id) -> bool:
+    """True if the recipe's output for this admin/partition has a `_geo` sidecar.
+
+    Attribute-only recipes (e.g. tax rolls with no geometry) write no sidecar,
+    so geometry-based inspection helpers should skip them rather than fail.
+    """
+    geo_path = get_output_path(recipe, admin_id, partition_id=partition_id, geo=True)
+    return geo_path.exists()
+
+
 def show_ingested_geometries(
     ingester,
     admin_recipe_id: str | None = None,
@@ -714,6 +847,16 @@ def show_ingested_geometries(
             admin = get_admin(admin_id, level=level, recipe=admin_recipe_id, geom=True)
 
     partition_id = ingester._first_partition_id
+
+    if not _has_geometry_output(ingester.recipe, admin_id, partition_id):
+        entity_label = str(ingester.recipe['entity'].entity_type)
+        print(
+            f'No geometry data for this {entity_label} recipe (no _geo sidecar); '
+            'nothing to plot. This is a tabular/property-level dataset — '
+            'inspect it with ingester.sample_layer().'
+        )
+        return None
+
     entities = get_entities(
         ingester.recipe, admin_id, geom=True, partition_id=partition_id
     )
@@ -782,7 +925,7 @@ def show_ingested_geometries(
 
 def show_random_entity(
     ingester,
-) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] | None:
     """Plot a random entity from the last ingested admin unit with its attributes.
 
     Delegates to :func:`show_geometry_context`.
@@ -798,6 +941,16 @@ def show_random_entity(
     """
     admin_id = ingester.admin_ids_to_save[0] if ingester.admin_ids_to_save else None
     partition_id = ingester._first_partition_id
+
+    if not _has_geometry_output(ingester.recipe, admin_id, partition_id):
+        entity_label = str(ingester.recipe['entity'].entity_type)
+        print(
+            f'No geometry data for this {entity_label} recipe (no _geo sidecar); '
+            'nothing to plot. This is a tabular/property-level dataset — '
+            'inspect it with ingester.sample_layer().'
+        )
+        return None
+
     entities = get_entities(
         ingester.recipe, admin_id, geom=True, partition_id=partition_id
     )
