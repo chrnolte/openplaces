@@ -19,6 +19,7 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     yields an all-False result, so the indicator simply contributes no votes.
 
     Supported ``type`` values:
+
     - ``value_share_below``: ``value / sum(total) < max_ratio``. With
       ``include_zero`` true, a zero ``value`` also matches (covers a zero total).
     - ``keyword``: case-insensitive ``str.contains(pattern)`` on ``column``
