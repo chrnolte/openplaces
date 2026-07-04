@@ -28,6 +28,8 @@ Parcels are geo-referenced boundaries that describe a spatial unit of property: 
 
 Parcel data is most often created by local land surveyors and tax assessors, typically with the goal of covering all taxable property within a given administrative unit.
 
+Each parcel is indexed by a geometry-derived :ref:`parcel_id (geo_id) <parcel_id>`, a stable fingerprint that identifies the same lot across data versions and sources.
+
 
 .. _buildings:
 
@@ -43,7 +45,7 @@ Buildings are human-built structures with a roof.
 
 Buildings often constitute the largest share of a parcel's value.
 
-Some buildings are separable from parcels, e.g., a mobile home.
+Some buildings are separable from parcels, e.g., a manufactured home.
 
 Hazard risk models often require:
 
@@ -102,7 +104,7 @@ In practice, properties can be any collections of entities. A property can be:
 - a building (a multi-family unit)
 - a dwelling (a condominium)
 - both (a multi-apartment complex)
-- or an entire different type of right (e.g., right of way).
+- or an entirely different type of asset (e.g., right of way).
 
 
 .. _transactions:
