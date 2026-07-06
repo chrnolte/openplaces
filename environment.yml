@@ -81,7 +81,7 @@ dependencies:
   #   PyTorch-on-Windows ROCm wheels. Never install pip torch into THIS
   #   env (ABI clash with conda packages).
   - pytorch>=2.10.0
-  - torchvision
+  - torchvision>=0.25.0
 
   # Optional: scrape (browser-driven scrapers, e.g. wi_retr)
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.scrape]
