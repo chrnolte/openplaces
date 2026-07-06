@@ -104,8 +104,9 @@ cloud = ["rclone>=1.73.1"]
 scrape = ["playwright>=1.40.0"]
 
 # ML detectors (floor count, occupancy, roof shape).
-# torch is intentionally NOT a pip dependency: it must be installed via conda
-# (see environment.yml `pytorch`). Keep this empty.
+# torch/torchvision are intentionally NOT pip dependencies: they must be
+# installed via conda (see environment.yml `pytorch`/`torchvision`). Keep
+# this empty.
 ml = []
 
 # Development and testing tools
