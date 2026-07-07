@@ -17,6 +17,7 @@ import geopandas as gpd
 
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.io import save_parquet
+from openplaces.io.cleanup import discard_receipt, receipt_justifies_skip
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import get_output_path, get_recipe_by_id
 from openplaces.timing import get_timer
@@ -247,10 +248,14 @@ class Harmonizer:
             for admin_id_str in self.admin_ids:
                 admin_id = AdminId(admin_id_str)
                 out_path = get_output_path(self.recipe, admin_id)
-                if not reprocess and out_path.exists():
+                if not reprocess and (
+                    out_path.exists() or receipt_justifies_skip(self.recipe, admin_id)
+                ):
                     if self.verbose:
                         print(f'[skip] {admin_id}: output exists.')
                     continue
+                if reprocess:
+                    discard_receipt(out_path)
                 if self.verbose:
                     print(f'[harmonize] {admin_id}')
                 self._timer = get_timer(
@@ -267,10 +272,14 @@ class Harmonizer:
         admin_level = self.recipe.get('admin_level', '')
         label = f'admin{admin_level}' if admin_level else 'global'
         out_path = get_output_path(self.recipe, admin_id=None)
-        if not reprocess and out_path.exists():
+        if not reprocess and (
+            out_path.exists() or receipt_justifies_skip(self.recipe, None)
+        ):
             if self.verbose:
                 print(f'[skip] {label}: output exists.')
             return
+        if reprocess:
+            discard_receipt(out_path)
         if self.verbose:
             print(f'[harmonize] {label}')
         self._timer = get_timer(
