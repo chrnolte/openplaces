@@ -24,10 +24,10 @@
 #   python -m openplaces.flow.submit --config recipe=... admin_ids=...
 
 import csv
-import re
 from pathlib import Path
 
 from openplaces.flow import RecipeDAG
+from openplaces.flow.dag import rule_name
 
 TARGET = config.get('recipe', 'US_footprint-cheer-2026')
 ADMIN_IDS = config.get('admin_ids', [])
@@ -58,11 +58,6 @@ def mem_mb(stage, admin_id):
     return MEM_LOOKUP.get((stage, admin_id), MEM_LOOKUP.get((stage, None), 8000))
 
 
-def _rule_name(node):
-    raw = f'{node.stage}_{node.recipe_id}_{node.admin_id or "global"}'
-    return re.sub(r'[^0-9a-zA-Z_]', '_', raw)
-
-
 rule all:
     input:
         [str(p) for p in dag.target_paths()]
@@ -84,7 +79,7 @@ for node in dag.nodes():
 
     rule:
         name:
-            _rule_name(node)
+            rule_name(node)
         input:
             _inputs
         output:
