@@ -81,7 +81,7 @@ def test_ingester_honors_receipt(data_root, monkeypatch):
 def test_ingester_ignores_receipt_when_disabled(data_root, monkeypatch):
     ingester = _ingester(monkeypatch)
     _valid_nsi_receipt()
-    retention = {'cleanup': {'receipt_skip': False}, 'recipes': {}}
+    retention = {'cleanup': {'honor_receipts': False}, 'recipes': {}}
     monkeypatch.setitem(cfg.config, 'retention', retention)
     assert ingester._resolve_output_admin_ids(reprocess=False) == [COUNTY]
 

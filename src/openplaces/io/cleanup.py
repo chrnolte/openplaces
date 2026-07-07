@@ -258,8 +258,8 @@ def _path_conceptually_exists(path: Path) -> bool:
 def receipt_justifies_skip(recipe, admin_id, orchestrated=None) -> bool:
     """True when a tombstone receipt justifies skipping regeneration.
 
-    Requires (design section 4.3): receipt-based skipping enabled in the
-    config; not running under an orchestrator; a readable receipt; every
+    Requires (design section 4.3): retention.cleanup.honor_receipts
+    enabled; not running under an orchestrator; a readable receipt; every
     recorded consumer output conceptually exists (physically, or via its
     own receipt); and the consumer set recomputed from the current recipe
     tree contains no consumer absent from the receipt (a recipe added
@@ -269,7 +269,7 @@ def receipt_justifies_skip(recipe, admin_id, orchestrated=None) -> bool:
         orchestrated = is_orchestrated()
     if orchestrated:
         return False
-    if not _cleanup_config().get('receipt_skip', True):
+    if not _cleanup_config().get('honor_receipts', True):
         return False
     if isinstance(recipe, str):
         try:

@@ -183,7 +183,7 @@ def test_receipt_skip_disabled_by_config(data_root, monkeypatch):
     _write_parquet(fp_path)
     _write_parquet(pc_path)
     cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE, PARCEL_SPINE]))
-    retention = {'cleanup': {'receipt_skip': False}, 'recipes': {}}
+    retention = {'cleanup': {'honor_receipts': False}, 'recipes': {}}
     monkeypatch.setitem(cfg.config, 'retention', retention)
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
 
