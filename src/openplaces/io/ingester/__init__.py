@@ -32,6 +32,7 @@ from openplaces.io import (
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
+from openplaces.io.cleanup import discard_receipt, receipt_justifies_skip
 from openplaces.io.ingester.raster_ingester import fetch_rasters_by_admin
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.io.readers import get_admin, get_entities
@@ -657,10 +658,18 @@ class Ingester:
         admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
 
         if not reprocess:
+            # Skip if the output exists, or a tombstone receipt records its
+            # deliberate deletion with all consumers intact (section 4.3 of
+            # the lifecycle design; gated by retention.cleanup.receipt_skip
+            # and voided under an orchestrator)
             admin_ids_to_save = [
                 admin_id
                 for admin_id in admin_ids_to_save
                 if not get_output_path(self.recipe, admin_id, partition_id).exists()
+                and not (
+                    partition_id is None
+                    and receipt_justifies_skip(self.recipe, admin_id)
+                )
             ]
 
         return admin_ids_to_save
@@ -693,6 +702,10 @@ class Ingester:
                 operation_keys=('download_by', 'process_by', 'save_to'),
                 reprocess=reprocess,
             )
+            if reprocess:
+                # A deliberate re-run supersedes any tombstone receipt
+                for admin_id in self.admin_ids_to_save:
+                    discard_receipt(get_output_path(self.recipe, admin_id))
 
     def _output_is_incomplete(self, admin_id_to_save):
         """Is the existing output file missing any requested process-level chunks?"""
