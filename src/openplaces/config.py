@@ -70,7 +70,7 @@ class OpenPlacesConfig:
         'retention': {
             'cleanup': {
                 'enabled': True,
-                'receipt_skip': True,
+                'honor_receipts': True,
                 'include_images': False,
                 'exclude_patterns': [],
             },

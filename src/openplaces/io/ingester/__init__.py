@@ -660,7 +660,7 @@ class Ingester:
         if not reprocess:
             # Skip if the output exists, or a tombstone receipt records its
             # deliberate deletion with all consumers intact (section 4.3 of
-            # the lifecycle design; gated by retention.cleanup.receipt_skip
+            # the lifecycle design; gated by retention.cleanup.honor_receipts
             # and voided under an orchestrator)
             admin_ids_to_save = [
                 admin_id
