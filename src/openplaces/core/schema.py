@@ -28,6 +28,19 @@ ENTITY_TYPES = [
     'transaction',
 ]
 
+# Coarse-to-fine ordering of entity types for canonical entity-link paths:
+# a link between two entities is stored beside the finer (later-in-order)
+# entity's output. Entity types not listed here fall back to lexicographic
+# recipe-ID ordering.
+ENTITY_LINK_ORDER = (
+    'admin',
+    'tile',
+    'parcel',
+    'footprint',
+    'building',
+    'dwelling',
+)
+
 TOP_LEVEL_THEMES = [
     'climate',  # temperature, precipitation, change
     'land',  # topography, geology, soils

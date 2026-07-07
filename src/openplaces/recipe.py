@@ -17,6 +17,7 @@ import yaml
 from openplaces.config import cfg
 from openplaces.core.constants import (
     RECIPE_PER_TABLE_KEYS,
+    RETENTION_CLASSES,
     STANDARD_DIRS,
     STRING_SEPARATOR_BETWEEN_IDS,
 )
@@ -104,6 +105,10 @@ def get_recipe_dict(filepath, *args, **kwargs):
     with open(filepath, encoding='utf-8') as f:
         recipe_dict = yaml.safe_load(f)
 
+    # Record the canonical recipe ID (the file stem), so a loaded recipe can
+    # be traced back to its ID even when it carries a filename suffix
+    recipe_dict['recipe_id'] = Path(filepath).stem
+
     # Get `admin_id` from arguments
     if len(args) > 0:
         admin_id_arg = args[0]
@@ -159,6 +164,13 @@ def get_recipe_dict(filepath, *args, **kwargs):
                     'known openplaces directory. Valid options:\n- '
                     + '\n- '.join(sorted(STANDARD_DIRS))
                 )
+        retention = recipe_dict['save_to'].get('retention')
+        if retention is not None and retention not in RETENTION_CLASSES:
+            raise ValueError(
+                f"Recipe 'save_to.retention' is '{retention}', which is not a "
+                'known retention class. Valid options:\n- '
+                + '\n- '.join(RETENTION_CLASSES)
+            )
 
     return recipe_dict
 
@@ -226,6 +238,58 @@ def get_recipe_by_id(recipe_id, **kwargs):
         dataset,
         filename=filename,
         **kwargs,
+    )
+
+
+def get_recipe_id(recipe: str | dict) -> str:
+    """Return the canonical recipe ID of a loaded recipe.
+
+    The ID is the recipe file's stem, recorded by get_recipe_dict at load
+    time. For recipe dicts constructed without a file (e.g. in tests), the
+    ID is rebuilt from admin_id and entity/dataset; filename suffixes cannot
+    be recovered in that case.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID string (returned unchanged, minus a .yaml extension) or a
+        loaded recipe dictionary.
+    """
+    if isinstance(recipe, str):
+        return recipe.removesuffix('.yaml')
+    if 'recipe_id' in recipe:
+        return str(recipe['recipe_id']).removesuffix('.yaml')
+    parts = []
+    admin_id = recipe.get('admin_id')
+    if admin_id is not None and len(str(admin_id)) > 0:
+        parts.append(str(admin_id))
+    entity_or_dataset = recipe.get('entity') or recipe.get('dataset')
+    if entity_or_dataset is None:
+        raise ValueError('Recipe has neither an entity nor a dataset.')
+    parts.append(str(entity_or_dataset))
+    return STRING_SEPARATOR_BETWEEN_IDS.join(parts)
+
+
+def get_recipe_retention(recipe: str | dict) -> str:
+    """Resolve the retention class of a recipe's output.
+
+    Combines the output bucket's default (STANDARD_DIRS), configuration
+    overrides, and the recipe's own save_to.retention via
+    :meth:`~openplaces.config.OpenPlacesConfig.retention_for`.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    data_dir, _ = _get_save_to(recipe)
+    save_to = recipe.get('save_to') or {}
+    return cfg.retention_for(
+        data_dir,
+        recipe_id=get_recipe_id(recipe),
+        recipe_retention=save_to.get('retention'),
     )
 
 
