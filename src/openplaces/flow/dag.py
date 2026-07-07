@@ -10,12 +10,15 @@ without it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import pandas as pd
+
 from openplaces.core.schema import AdminId
 from openplaces.geo.link import get_entity_link_path
-from openplaces.io.cleanup import _walk_dag
+from openplaces.io.cleanup import _relative_posix, _walk_dag
 from openplaces.recipe import (
     get_output_path,
     get_recipe_by_id,
@@ -26,6 +29,14 @@ from openplaces.recipe import (
 
 STAGES = ('ingest', 'harmonize', 'enrich', 'curate')
 
+# Node fill colors per stage in to_mermaid() (pastel, dark text)
+_STAGE_COLORS = {
+    'ingest': '#cfe2f3',
+    'harmonize': '#d9ead3',
+    'enrich': '#fff2cc',
+    'curate': '#f4cccc',
+}
+
 
 @dataclass(frozen=True)
 class StageNode:
@@ -34,6 +45,12 @@ class StageNode:
     stage: str
     recipe_id: str
     admin_id: str | None
+
+
+def rule_name(node: StageNode) -> str:
+    """Snakemake rule name of one job (used by the Snakefile and --forcerun)."""
+    raw = f'{node.stage}_{node.recipe_id}_{node.admin_id or "global"}'
+    return re.sub(r'[^0-9a-zA-Z_]', '_', raw)
 
 
 class RecipeDAG:
@@ -84,6 +101,17 @@ class RecipeDAG:
                 # admin; _node_admins re-expands them to their save level
                 _add(node_id, node_recipe, target_admin)
 
+        # Node-level edges (upstream -> consumer), for plan() and to_mermaid()
+        self._edges: list[tuple[tuple, tuple]] = []
+        edge_seen: set[tuple] = set()
+        for node in self._nodes:
+            consumer_key = (node.recipe_id, node.admin_id)
+            for upstream_key in self._upstream_keys(node, seen):
+                edge = (upstream_key, consumer_key)
+                if edge not in edge_seen:
+                    edge_seen.add(edge)
+                    self._edges.append(edge)
+
     def _recipe(self, recipe_id: str) -> dict:
         if recipe_id not in self._recipes:
             self._recipes[recipe_id] = get_recipe_by_id(recipe_id)
@@ -129,6 +157,33 @@ class RecipeDAG:
                 'its jobs are omitted from the DAG.'
             )
             return []
+
+    def _upstream_keys(self, node: StageNode, node_keys: set[tuple]):
+        """Yield (recipe_id, admin_str) keys of a node's in-DAG upstreams."""
+        node_admin = AdminId(node.admin_id) if node.admin_id else None
+        try:
+            edges = get_recipe_dependencies(
+                self._recipe(node.recipe_id), admin_id=node_admin
+            )
+        except Exception:
+            return
+        seen: set[str] = set()
+        for edge in edges:
+            upstream_id = edge.upstream_recipe_id
+            if not upstream_id or upstream_id in seen:
+                continue
+            seen.add(upstream_id)
+            try:
+                upstream_admins = self._node_admins(upstream_id, node_admin)
+            except Exception:
+                continue
+            for upstream_admin in upstream_admins:
+                key = (
+                    upstream_id,
+                    str(upstream_admin) if upstream_admin is not None else None,
+                )
+                if key in node_keys:
+                    yield key
 
     def nodes(self) -> list[StageNode]:
         """Every job in the DAG (target included), deduplicated."""
@@ -203,3 +258,140 @@ class RecipeDAG:
             self.output_path('curate', self.target_recipe_id, admin_id)
             for admin_id in self.admin_ids
         ]
+
+    def plan(self) -> pd.DataFrame:
+        """Preview which jobs would run and why (library-side, stat-only).
+
+        The fast overview for interactive review; the authoritative
+        scheduling decision is Snakemake's dry run. Reasons, in priority
+        order: 'output missing', 'inputs newer than output' (mirrors the
+        mtime rerun trigger), 'upstream scheduled (...)' (propagated along
+        the DAG edges), or '' for an up-to-date job. One stat per file, no
+        data reads.
+
+        Returns
+        -------
+        pd.DataFrame
+            One row per job: stage, recipe_id, admin_id, output, exists,
+            size_mb, will_run, reason.
+        """
+        rows: dict[tuple, dict] = {}
+        for node in self._nodes:
+            key = (node.recipe_id, node.admin_id)
+            try:
+                out_path = self.output_path(node.stage, node.recipe_id, node.admin_id)
+            except Exception:
+                out_path = None
+            exists = out_path is not None and out_path.exists()
+            size_mb = (
+                round(out_path.stat().st_size / 2**20, 1)
+                if exists and out_path.is_file()
+                else None
+            )
+            will_run, reason = False, ''
+            if not exists:
+                will_run, reason = True, 'output missing'
+            else:
+                out_mtime = out_path.stat().st_mtime
+                try:
+                    inputs = self.input_paths(node.stage, node.recipe_id, node.admin_id)
+                except Exception:
+                    inputs = []
+                if any(p.exists() and p.stat().st_mtime > out_mtime for p in inputs):
+                    will_run, reason = True, 'inputs newer than output'
+            rows[key] = {
+                'stage': node.stage,
+                'recipe_id': node.recipe_id,
+                'admin_id': node.admin_id,
+                'output': _relative_posix(out_path) if out_path else None,
+                'exists': exists,
+                'size_mb': size_mb,
+                'will_run': will_run,
+                'reason': reason,
+            }
+
+        # Propagate scheduling downstream: a job re-runs when any of its
+        # upstream jobs will run (fixpoint over the edge list)
+        changed = True
+        while changed:
+            changed = False
+            for upstream_key, consumer_key in self._edges:
+                upstream, consumer = rows.get(upstream_key), rows.get(consumer_key)
+                if upstream is None or consumer is None:
+                    continue
+                if upstream['will_run'] and not consumer['will_run']:
+                    consumer['will_run'] = True
+                    consumer['reason'] = f'upstream scheduled ({upstream_key[0]})'
+                    changed = True
+
+        stage_rank = {stage: rank for rank, stage in enumerate(STAGES)}
+        report = pd.DataFrame(list(rows.values()))
+        report['_rank'] = report['stage'].map(stage_rank)
+        return (
+            report.sort_values(['_rank', 'recipe_id', 'admin_id'])
+            .drop(columns='_rank')
+            .reset_index(drop=True)
+        )
+
+    def to_mermaid(self, collapse_admin: bool | None = None) -> str:
+        """Mermaid flowchart source of the job DAG, styled by stage.
+
+        Render with `IPython.display.Markdown` in a mermaid-capable
+        frontend (VS Code notebooks), or paste into mermaid.live.
+
+        Parameters
+        ----------
+        collapse_admin : bool, optional
+            Collapse per-admin jobs into one node per recipe (labeled with
+            the admin-unit count). None (default) auto-collapses when the
+            full graph exceeds 30 nodes.
+        """
+        if collapse_admin is None:
+            collapse_admin = len(self._nodes) > 30
+
+        def _group(key: tuple) -> tuple:
+            return (key[0], None) if collapse_admin else key
+
+        groups: dict[tuple, dict] = {}
+        for node in self._nodes:
+            info = groups.setdefault(
+                _group((node.recipe_id, node.admin_id)),
+                {'stage': node.stage, 'admins': set()},
+            )
+            if node.admin_id:
+                info['admins'].add(node.admin_id)
+
+        ids: dict[tuple, str] = {}
+        used: set[str] = set()
+        for group in groups:
+            raw = f'{group[0]}_{group[1] or "all"}'
+            gid = re.sub(r'[^0-9a-zA-Z_]', '_', raw)
+            while gid in used:
+                gid += '_'
+            used.add(gid)
+            ids[group] = gid
+
+        lines = ['flowchart LR']
+        for group, info in groups.items():
+            label = group[0]
+            if not collapse_admin and group[1]:
+                label += f'<br/>{group[1]}'
+            elif collapse_admin and len(info['admins']) > 1:
+                label += f'<br/>({len(info["admins"])} admin units)'
+            lines.append(f'    {ids[group]}["{label}"]')
+
+        edge_seen: set[tuple] = set()
+        for upstream_key, consumer_key in self._edges:
+            pair = (ids[_group(upstream_key)], ids[_group(consumer_key)])
+            if pair[0] != pair[1] and pair not in edge_seen:
+                edge_seen.add(pair)
+                lines.append(f'    {pair[0]} --> {pair[1]}')
+
+        for stage, color in _STAGE_COLORS.items():
+            members = [
+                ids[group] for group, info in groups.items() if info['stage'] == stage
+            ]
+            if members:
+                lines.append(f'    classDef {stage} fill:{color},stroke:#333;')
+                lines.append(f'    class {",".join(members)} {stage};')
+        return '\n'.join(lines)
