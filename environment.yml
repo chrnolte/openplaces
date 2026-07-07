@@ -88,6 +88,13 @@ dependencies:
   # After install, fetch the browser: `playwright install chromium`
   - playwright>=1.40.0
 
+  # Optional: workflow orchestration (workflow/Snakefile + flow/submit.py)
+  # Conda-only, like torch: not listed in pyproject.toml. The library
+  # itself (flow/dag.py, flow/run_stage.py) never imports snakemake.
+  # Pin exact versions after the first solve on the SCC.
+  - snakemake-minimal>=8
+  - snakemake-executor-plugin-cluster-generic
+
   # Optional: dev tools
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
   - jupyter>=1.0.0

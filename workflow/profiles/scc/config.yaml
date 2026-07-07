@@ -1,0 +1,32 @@
+# Snakemake profile for the BU Shared Computing Cluster (SGE/qsub).
+#
+# Usage (from the repo root, after `module load miniconda` and
+# `conda activate openplaces` on a login node):
+#   python -m openplaces.flow.submit --config recipe=... admin_ids=...
+# (the submit wrapper enforces a dry-run inspection gate first)
+#
+# Notes:
+# - latency-wait absorbs shared-filesystem visibility lag; critical
+#   before Snakemake declares an output missing.
+# - rerun-triggers mtime: recipe-YAML edits must not cascade re-runs.
+# - Compute nodes may lack internet on some queues: run download-heavy
+#   ingest rules in the submitting session (login/transfer node) by
+#   passing them to --local-cores/localrules, or pin them to
+#   internet-enabled resources.
+# - GPU enrich rules: add `-l gpus=1 -l gpu_c=6.0` via a rule-specific
+#   resources entry once the BRAILS detectors run on the cluster.
+
+executor: cluster-generic
+cluster-generic-submit-cmd: >-
+  qsub -terse -P cheer
+  -l h_rt={resources.runtime}:00
+  -l mem_per_core={resources.mem_mb}M
+  -pe omp {threads}
+  -o data/cache/_logs/sge/ -j y
+cluster-generic-status-cmd: workflow/profiles/scc/qstat_status.sh
+jobs: 200
+latency-wait: 90
+retries: 1
+rerun-triggers: mtime
+software-deployment-method: conda
+printshellcmds: true
