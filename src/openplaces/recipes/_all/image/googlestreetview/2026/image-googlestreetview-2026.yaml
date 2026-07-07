@@ -34,3 +34,6 @@ process_by:
 save_to:
   data_dir: external
   admin_level: 4
+  # Reclaimable after all enrich recipes referencing this image_recipe have
+  # full-coverage evidence. NOTE: re-fetching is a billed Google API call.
+  retention: until_consumed
