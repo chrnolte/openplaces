@@ -544,6 +544,12 @@ def _partition_group_key(partition_id: str, by: str) -> str:
     )
 
 
+# Footer-coverage sentinel: the file covers all admin units / partitions.
+# Written by the enricher's coverage tracking and honored by lifecycle
+# completeness checks.
+COVERAGE_ALL = '__all__'
+
+
 def read_partition_coverage(path) -> set[str]:
     """Return the partition ids recorded in an aggregated parquet's footer.
 
