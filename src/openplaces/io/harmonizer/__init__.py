@@ -17,7 +17,11 @@ import geopandas as gpd
 
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.io import save_parquet
-from openplaces.io.cleanup import discard_receipt, receipt_justifies_skip
+from openplaces.io.cleanup import (
+    cleanup_consumed_inputs,
+    discard_receipt,
+    receipt_justifies_skip,
+)
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import get_output_path, get_recipe_by_id
 from openplaces.timing import get_timer
@@ -233,7 +237,7 @@ class Harmonizer:
             return 0
         return admin_id.get_level()
 
-    def harmonize(self, reprocess: bool = False) -> None:
+    def harmonize(self, reprocess: bool = False, cleanup: str | None = None) -> None:
         """Run harmonization for all configured admin IDs.
 
         Parameters
@@ -241,7 +245,14 @@ class Harmonizer:
         reprocess : bool
             If ``False`` (default), skip admin IDs whose output file already
             exists.
+        cleanup : str, optional
+            ``'consumed'`` deletes this recipe's direct inputs after each
+            admin unit finishes, iff every consumer in the recipe tree is
+            complete (see
+            :func:`~openplaces.io.cleanup.cleanup_consumed_inputs`).
         """
+        if cleanup not in (None, 'consumed'):
+            raise ValueError(f"Unknown cleanup mode: {cleanup!r} (use 'consumed').")
         if self._process_level == 0:
             self._run_global(reprocess=reprocess)
         else:
@@ -266,6 +277,8 @@ class Harmonizer:
                 )
                 self._harmonize_one(admin_id, reprocess=reprocess)
                 self._timer.finish()
+                if cleanup == 'consumed':
+                    cleanup_consumed_inputs(self.recipe, admin_id, verbose=self.verbose)
 
     def _run_global(self, reprocess: bool = False) -> None:
         """Run a single global harmonization (process_level == 0)."""
@@ -351,6 +364,7 @@ def harmonize(
     reprocess: bool = False,
     verbose: bool = False,
     save_statistics: bool = False,
+    cleanup: str | None = None,
 ) -> None:
     """Instantiate and run harmonization for *recipe*.
 
@@ -370,13 +384,16 @@ def harmonize(
         If True (or the recipe sets ``save_statistics: true``), write diagnostic
         tables (e.g. the parcel-NSI occupancy linkage) to the cache without
         changing the harmonized output.
+    cleanup : str, optional
+        ``'consumed'`` deletes this recipe's direct inputs after each admin
+        unit finishes, iff every consumer in the recipe tree is complete.
     """
     Harmonizer(
         recipe,
         admin_ids=admin_ids,
         verbose=verbose,
         save_statistics=save_statistics,
-    ).harmonize(reprocess=reprocess)
+    ).harmonize(reprocess=reprocess, cleanup=cleanup)
 
 
 __all__ = [
