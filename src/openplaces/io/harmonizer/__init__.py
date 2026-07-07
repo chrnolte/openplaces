@@ -63,6 +63,10 @@ class HarmonizeState:
     metadata : dict
         Arbitrary step-specific intermediate data (e.g. discovered admin
         sources, parcel-inferred footprint DataFrames).
+    reprocess : bool
+        True when the run was invoked with ``reprocess=True``; steps with
+        persisted artifacts (e.g. ``link_to_reference`` with
+        ``save_link``) must ignore and rewrite them.
     """
 
     recipe: dict
@@ -78,6 +82,7 @@ class HarmonizeState:
     simplified_geometry: gpd.GeoSeries | None = None
     metadata: dict = field(default_factory=dict)
     save_statistics: bool = False
+    reprocess: bool = False
 
     def get_crosswalks_by_type(self, entity_type: str) -> dict[str, gpd.GeoDataFrame]:
         """Return all crosswalks whose reference matches ``entity_type``."""
@@ -254,7 +259,7 @@ class Harmonizer:
                     verbose=self.verbose,
                     overwrite=True,
                 )
-                self._harmonize_one(admin_id)
+                self._harmonize_one(admin_id, reprocess=reprocess)
                 self._timer.finish()
 
     def _run_global(self, reprocess: bool = False) -> None:
@@ -274,10 +279,10 @@ class Harmonizer:
             verbose=self.verbose,
             overwrite=True,
         )
-        self._harmonize_one(None)
+        self._harmonize_one(None, reprocess=reprocess)
         self._timer.finish()
 
-    def _harmonize_one(self, admin_id: AdminId | None) -> None:
+    def _harmonize_one(self, admin_id: AdminId | None, reprocess: bool = False) -> None:
         """Build a :class:`HarmonizeState` and execute the recipe pipeline."""
         pipeline = self.recipe.get('pipeline')
         if not pipeline:
@@ -292,6 +297,7 @@ class Harmonizer:
             verbose=self.verbose,
             timer=self._timer,
             save_statistics=self.save_statistics,
+            reprocess=reprocess,
         )
 
         for step_cfg in pipeline:
