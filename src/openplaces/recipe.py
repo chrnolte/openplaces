@@ -7,9 +7,11 @@ get output paths etc.
 
 import glob
 import inspect
+import re
 from collections import Counter
 from functools import cache
 from pathlib import Path
+from typing import NamedTuple
 
 import pandas as pd
 import yaml
@@ -528,6 +530,231 @@ def find_entity_recipe_id(
     if len(candidates) > 1 and not silent:
         print(f'Picked {recipe_id} for {admin_id} ({entity_type}).')
     return recipe_id
+
+
+class DepEdge(NamedTuple):
+    """One dependency edge: a recipe consuming another recipe's output.
+
+    Attributes
+    ----------
+    recipe_id : str
+        ID of the consuming recipe the edge was extracted from.
+    upstream_recipe_id : str or None
+        ID of the consumed recipe; None when auto-discovery could not
+        resolve a concrete recipe (see `resolved`).
+    kind : str
+        Reference style: the recipe key the edge came from ('entity_recipe',
+        'image_recipe', 'recipe_id', 'admin_recipe_id', 'tile_recipe_id',
+        'footprint_recipe_id', ...) or 'auto_discover'.
+    step : str or None
+        Pipeline step name (or top-level recipe section) where the
+        reference was found.
+    resolved : bool
+        False when an auto-discovered reference could not be resolved to a
+        concrete recipe. Consumers of the dependency graph must treat
+        unresolved edges as "may consume anything" (fail safe).
+    """
+
+    recipe_id: str
+    upstream_recipe_id: str | None
+    kind: str
+    step: str | None = None
+    resolved: bool = True
+
+
+# Recipe keys referencing another recipe's output, e.g. 'recipe_id',
+# 'admin_recipe_id', 'tile_recipe_id', 'footprint_recipe_id'. Keys like
+# 'remap_id' do not match: value crosswalks are not data dependencies.
+_RECIPE_ID_KEY_REGEX = re.compile(r'(^|_)recipe_id$')
+
+# Pipeline steps whose auto-discovery expands to ALL applicable ingest
+# recipes (mirroring the harmonizer's _expand_auto_discover), rather than
+# the single best match.
+_MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id')
+
+
+@cache
+def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
+    """List ingest recipes of an entity type, most specific and newest first.
+
+    Mirrors the harmonizer's auto-discovery scan
+    (io/harmonizer/discover.py) with recipe-layer machinery so dependency
+    extraction resolves auto_discover references the same way the pipeline
+    does at run time.
+    """
+    root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
+    sources = []
+    for filepath in sorted(root.glob(f'**/{entity_type}/*/*/*.yaml')):
+        try:
+            with open(filepath, encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            continue
+        if (data.get('stage') or 'ingest') != 'ingest':
+            continue
+        raw_admin_id = data.get('admin_id')
+        admin_id_str = (
+            str(raw_admin_id)
+            if raw_admin_id is not None and str(raw_admin_id) != 'None'
+            else ''
+        )
+        entity = data.get('entity') or {}
+        sources.append(
+            {
+                'recipe_id': filepath.stem,
+                'admin_id': admin_id_str,
+                'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
+                'version': str(entity.get('version') or ''),
+            }
+        )
+    sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
+    return tuple(sources)
+
+
+def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
+    """Extract upstream recipe references from a recipe.
+
+    Edge sources (all present in committed recipes today):
+
+    - top-level 'entity_recipe' (curate/enrich -> harmonized spine) and
+      'image_recipe' (enrich -> image ingest); enrich recipes without an
+      explicit 'entity_recipe' resolve their spine dynamically, mirroring
+      the enricher
+    - any key matching the suffix 'recipe_id' anywhere in the recipe
+      ('recipe_id' in pipeline sources and steps, 'admin_recipe_id',
+      'download_by.tile_recipe_id', 'footprint_recipe_id',
+      merge_enrichments 'recipes' entries, ...); keys under a
+      '*crosswalk' block and 'remap_id' are excluded (value crosswalks,
+      not data dependencies)
+    - pipeline steps or source entries with 'auto_discover' or a bare
+      'entity_type', resolved per admin unit the same way the pipeline
+      resolves them at run time
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    admin_id : str or AdminId, optional
+        Admin unit to resolve auto-discovered references for. When None,
+        auto-discovered references are returned as unresolved edges.
+
+    Returns
+    -------
+    list of DepEdge
+        Unresolved auto-discovery is returned as an edge with
+        upstream_recipe_id=None and resolved=False (fail safe: the caller
+        must assume such a recipe may consume anything it protects).
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    self_id = get_recipe_id(recipe)
+    if admin_id is not None and not isinstance(admin_id, AdminId):
+        admin_id = AdminId(admin_id)
+    admin_str = str(admin_id) if admin_id is not None else None
+
+    edges: list[DepEdge] = []
+    seen: set[tuple] = set()
+
+    def _add(upstream, kind, step=None, resolved=True):
+        key = (upstream, kind, step, resolved)
+        if key not in seen:
+            seen.add(key)
+            edges.append(DepEdge(self_id, upstream, kind, step, resolved))
+
+    # Top-level literal references
+    for key in ('entity_recipe', 'image_recipe'):
+        if recipe.get(key):
+            _add(str(recipe[key]), key)
+
+    # Enrich recipes without an explicit entity_recipe resolve their spine
+    # dynamically; mirror io/enricher's _resolve_entity_recipe
+    if recipe.get('stage') == 'enrich' and not recipe.get('entity_recipe'):
+        entity = recipe.get('entity')
+        entity_type = str(entity.entity_type) if entity is not None else None
+        found = (
+            find_entity_recipe_id(
+                recipe.get('admin_id'),
+                entity_type,
+                stage='harmonize',
+                source_id='spine',
+                silent=True,
+            )
+            if entity_type
+            else None
+        )
+        _add(found, 'entity_recipe', resolved=found is not None)
+
+    # Generic *recipe_id keys anywhere in the recipe (pipeline steps and
+    # sources, download_by/process_by blocks, merge_enrichments entries)
+    def _walk(node, context):
+        if isinstance(node, dict):
+            step_name = node.get('step')
+            if isinstance(step_name, str):
+                context = step_name
+            for key, value in node.items():
+                if isinstance(key, str) and key.endswith('crosswalk'):
+                    continue
+                if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
+                    _add(value, key, step=context)
+                else:
+                    _walk(value, context)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item, context)
+
+    for key, value in recipe.items():
+        if key in ('recipe_id', 'entity_recipe', 'image_recipe'):
+            continue
+        _walk(value, context=key)
+
+    # Auto-discovered references in pipeline steps and their sources
+    def _default_entity_type():
+        entity = recipe.get('entity')
+        return str(entity.entity_type) if entity is not None else None
+
+    def _add_discovered(entity_type, step_name, multi):
+        entity_type = entity_type or _default_entity_type()
+        if entity_type is None or admin_id is None:
+            _add(None, 'auto_discover', step=step_name, resolved=False)
+            return
+        if multi:
+            # All strictly-more-specific ingest recipes covering the admin
+            # unit (the harmonizer's _expand_auto_discover semantics); an
+            # empty result means the step legitimately has no source here
+            recipe_admin_str = str(recipe.get('admin_id') or '')
+            for src in _scan_ingest_recipe_ids(entity_type):
+                rid = src['admin_id']
+                if rid and rid != recipe_admin_str and admin_str.startswith(rid):
+                    _add(src['recipe_id'], 'auto_discover', step=step_name)
+        else:
+            found = find_entity_recipe_id(
+                admin_id, entity_type, stage='ingest', silent=True
+            )
+            _add(
+                found,
+                'auto_discover',
+                step=step_name,
+                resolved=found is not None,
+            )
+
+    for step_spec in recipe.get('pipeline') or []:
+        if not isinstance(step_spec, dict):
+            continue
+        step_name = step_spec.get('step')
+        multi = step_name in _MULTI_DISCOVER_STEPS
+        sources = step_spec.get('sources')
+        if isinstance(sources, list):
+            for source in sources:
+                if not isinstance(source, dict) or source.get('recipe_id'):
+                    continue
+                if source.get('auto_discover') or source.get('entity_type'):
+                    _add_discovered(source.get('entity_type'), step_name, multi)
+        elif not step_spec.get('recipe_id') and (
+            step_spec.get('auto_discover') or step_spec.get('entity_type')
+        ):
+            _add_discovered(step_spec.get('entity_type'), step_name, multi)
+
+    return edges
 
 
 def get_layers(recipe: str | dict) -> list[str]:

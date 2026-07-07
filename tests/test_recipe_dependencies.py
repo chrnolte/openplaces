@@ -1,0 +1,73 @@
+"""Tests for get_recipe_dependencies against the committed recipe tree."""
+
+from openplaces.recipe import get_recipe_dependencies
+
+
+def _upstream_ids(edges):
+    return {e.upstream_recipe_id for e in edges if e.upstream_recipe_id}
+
+
+def test_curate_recipe_edges():
+    edges = get_recipe_dependencies('US_footprint-cheer-2026')
+    upstream = _upstream_ids(edges)
+    assert 'US_footprint-spine-2026' in upstream
+    assert 'US_parcel-openplaces-2026' in upstream
+    assert 'US_footprint_built-roof-shape-brails-2026' in upstream
+    assert 'US_footprint_built-n-stories-brails-2026' in upstream
+    kinds = {e.kind for e in edges}
+    assert 'entity_recipe' in kinds
+
+
+def test_footprint_spine_literal_edges():
+    edges = get_recipe_dependencies('US_footprint-spine-2026')
+    upstream = _upstream_ids(edges)
+    assert 'footprint-obm-2025' in upstream
+    assert 'US_footprint-microsoft-v2' in upstream
+    assert 'US_building-nsi-2022' in upstream
+    assert 'dwelling-overture-2025' in upstream
+    # Value crosswalks are not data dependencies
+    assert 'US_building-nsi-2022_occupancy-type-remap' not in upstream
+
+
+def test_footprint_spine_auto_discover_unresolved_without_admin():
+    edges = get_recipe_dependencies('US_footprint-spine-2026')
+    unresolved = [e for e in edges if not e.resolved]
+    assert unresolved, 'auto_discover without admin_id must yield unresolved edges'
+    assert all(e.upstream_recipe_id is None for e in unresolved)
+
+
+def test_footprint_spine_auto_discover_resolves_for_admin():
+    edges = get_recipe_dependencies('US_footprint-spine-2026', admin_id='US-MA-MI')
+    upstream = _upstream_ids(edges)
+    # State footprint source discovered by the resolve_spine sentinel
+    assert 'US-MA_footprint-massgis-2026' in upstream
+    # Parcel reference discovered by link_to_reference (entity_type: parcel)
+    assert 'US-MA_parcel-massgis-2025' in upstream
+
+
+def test_enrich_recipe_edges():
+    edges = get_recipe_dependencies('US_footprint_built-n-stories-brails-2026')
+    by_kind = {e.kind: e for e in edges}
+    assert by_kind['image_recipe'].upstream_recipe_id == ('image-googlestreetview-2026')
+    # Dynamic spine resolution mirrors the enricher
+    assert by_kind['entity_recipe'].upstream_recipe_id == 'US_footprint-spine-2026'
+
+
+def test_ingest_recipe_admin_and_tile_edges():
+    edges = get_recipe_dependencies('footprint-obm-2025')
+    by_kind = {}
+    for e in edges:
+        by_kind.setdefault(e.kind, set()).add(e.upstream_recipe_id)
+    assert 'tile-obm-2025' in by_kind.get('tile_recipe_id', set())
+    assert 'US_admin-census-2021_admin3' in by_kind.get('admin_recipe_id', set())
+
+
+def test_admin_id_crosswalk_is_not_an_edge():
+    edges = get_recipe_dependencies('US-CT_parcel-ctgov-2024')
+    upstream = _upstream_ids(edges)
+    assert 'US-CT_parcel-ctgov-2024_admin4-crosswalk' not in upstream
+
+
+def test_edges_carry_consumer_id():
+    edges = get_recipe_dependencies('US_footprint-cheer-2026')
+    assert all(e.recipe_id == 'US_footprint-cheer-2026' for e in edges)
