@@ -8,6 +8,7 @@ reference datasets:
 
 from __future__ import annotations
 
+import json
 import warnings
 
 import geopandas as gpd
@@ -22,16 +23,26 @@ from openplaces.core.attribute_registry import (
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import add_openlocationcode_index, get_geo_ids
+from openplaces.geo.link import get_entity_link_path
 from openplaces.geo.polygon import (
     clean_polygons,
     get_areas,
     overlay_polygons,
     resolve_overlapping_polygons,
 )
-from openplaces.io.aggregate import aggregate_rows
+from openplaces.io import to_parquet
+from openplaces.io.aggregate import aggregate_rows, read_file_metadata
+from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
+from openplaces.recipe import (
+    get_output_path,
+    get_recipe_by_id,
+    get_recipe_dependencies,
+    get_recipe_id,
+    get_save_admin_level,
+)
 
 # Columns carried in spine-reference crosswalk tables (index levels excluded).
 _CROSSWALK_COLS = [
@@ -40,6 +51,9 @@ _CROSSWALK_COLS = [
     'area_intersection_m2_inner',
     'fraction_of_largest',
 ]
+
+# Parquet footer key holding a link sidecar's validity fingerprint.
+_LINK_METADATA_KEY = 'openplaces:link'
 
 
 @_register('link_to_reference')
@@ -54,6 +68,7 @@ def link_to_reference(
     aggregation_function=None,
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
+    save_link: bool = False,
 ) -> HarmonizeState:
     """Load a reference dataset and build a spine ↔ reference crosswalk.
 
@@ -116,6 +131,18 @@ def link_to_reference(
         aggregated reference, collecting all values per ``geo_id`` into a list.
         Normal scalar aggregation for each column still applies alongside.
         Only used for ``spatial_overlay`` joins.
+    save_link : bool, optional
+        Persist the full many-to-many identity overlay (geometry-free,
+        every spine-reference pair including sub-threshold slivers, with
+        the crosswalk's link label joined on) as a sidecar parquet at the
+        canonical entity-link path. On later runs the sidecar is reloaded
+        instead of recomputing the overlay — the single most expensive
+        harmonize step — iff its footer fingerprint (step config plus
+        size/mtime of the ingest inputs) still matches; a deleted input
+        with a tombstone receipt stays verifiable. After a reload,
+        ``state.overlays[recipe_id]`` carries no geometry column (only the
+        area/IoU columns are consumed downstream). Only used for
+        ``spatial_overlay`` joins.
     """
     if state.spine is None:
         warnings.warn('link_to_reference: spine is None; skipping.')
@@ -147,6 +174,7 @@ def link_to_reference(
             aggregation_function,
             sort_by,
             list_columns,
+            save_link,
         )
     elif join == 'spatial_point':
         return _link_spatial_point(
@@ -218,6 +246,7 @@ def _link_spatial_overlay(
     aggregation_function=None,
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
+    save_link: bool = False,
 ) -> HarmonizeState:
     """Polygon-on-polygon identity overlay; builds spine-reference crosswalk."""
     min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
@@ -282,14 +311,41 @@ def _link_spatial_overlay(
             ref_polys['improvement_value'] / ref_polys['ha']
         )
 
-    footprints_on_ref = overlay_polygons(
-        state.spine,
-        ref_polys,
-        suffixes=('_spine', '_ref'),
-        how='identity',
-        iou=True,
-        geom=True,
-    )
+    sidecar_path = None
+    fingerprint = None
+    footprints_on_ref = None
+    if save_link:
+        sidecar_path = get_entity_link_path(
+            get_recipe_id(state.recipe), recipe_id, state.admin_id
+        )
+        fingerprint = _link_fingerprint(
+            state,
+            recipe_id,
+            {
+                'min_fraction_of_largest': min_fraction,
+                'area_intersection_m2_min': area_min_m2,
+                'sort_by': sort_by,
+                'list_columns': list_columns,
+                'aggregation_function': (
+                    None if aggregation_function is None else str(aggregation_function)
+                ),
+            },
+        )
+        if not state.reprocess:
+            footprints_on_ref = _load_link_sidecar(
+                sidecar_path, fingerprint, spine_id_col, verbose=state.verbose
+            )
+    computed_fresh = footprints_on_ref is None
+
+    if computed_fresh:
+        footprints_on_ref = overlay_polygons(
+            state.spine,
+            ref_polys,
+            suffixes=('_spine', '_ref'),
+            how='identity',
+            iou=True,
+            geom=True,
+        )
     if state.verbose:
         print(
             f'  Link (overlay): {len(footprints_on_ref):,d} '
@@ -298,6 +354,39 @@ def _link_spatial_overlay(
     if state.timer:
         state.timer.mark('Link')
 
+    crosswalk = _build_crosswalk(
+        footprints_on_ref, spine_id_col, min_fraction, area_min_m2
+    )
+
+    if save_link and computed_fresh:
+        _write_link_sidecar(
+            sidecar_path,
+            footprints_on_ref,
+            crosswalk,
+            fingerprint,
+            verbose=state.verbose,
+        )
+
+    state.references[recipe_id] = ref_polys
+    state.crosswalks[recipe_id] = crosswalk
+    state.overlays[recipe_id] = footprints_on_ref
+    if entity_type:
+        state.reference_types[recipe_id] = entity_type
+    return state
+
+
+def _build_crosswalk(
+    footprints_on_ref,
+    spine_id_col: str,
+    min_fraction: float,
+    area_min_m2: float,
+) -> pd.DataFrame:
+    """Build the trimmed spine-reference crosswalk from the identity overlay.
+
+    Pure function shared by the fresh-overlay and sidecar-reload paths, so
+    the sliver trimming and link labeling can never diverge between them.
+    Tolerates a geometry-free overlay (the reloaded sidecar).
+    """
     crosswalk_cols = [v for v in _CROSSWALK_COLS if v in footprints_on_ref.columns]
     mask_multi = footprints_on_ref.index.get_level_values(spine_id_col).duplicated(
         keep=False
@@ -368,23 +457,139 @@ def _link_spatial_overlay(
 
     split_cols = [v for v in _CROSSWALK_COLS if v in footprints_multi_trimmed.columns]
     footprints_to_split = footprints_multi_trimmed[mask_still_multi][
-        split_cols + ['geometry']
+        split_cols + (['geometry'] if 'geometry' in footprints_multi_trimmed else [])
     ].copy()
     footprints_to_split.insert(0, 'link', 'multi-parcel footprint')
 
-    crosswalk = pd.concat(
+    return pd.concat(
         [
             footprints_single.reset_index().set_index([spine_id_col, 'parcel_id']),
-            footprints_to_split.drop(columns='geometry'),
+            footprints_to_split.drop(columns='geometry', errors='ignore'),
         ]
     ).sort_index()
 
-    state.references[recipe_id] = ref_polys
-    state.crosswalks[recipe_id] = crosswalk
-    state.overlays[recipe_id] = footprints_on_ref
-    if entity_type:
-        state.reference_types[recipe_id] = entity_type
-    return state
+
+def _truncate_admin_to_level(admin_id, level: int):
+    """Truncate an AdminId to a save level (None at level 0)."""
+    if admin_id is None or level <= 0:
+        return None
+    if not isinstance(admin_id, AdminId):
+        admin_id = AdminId(admin_id)
+    return AdminId(*admin_id.levels[:level])
+
+
+def _link_fingerprint(
+    state: HarmonizeState, ref_recipe_id: str, step_config: dict
+) -> dict:
+    """Validity fingerprint stored in (and checked against) a link sidecar.
+
+    Records the step configuration and the size/mtime of every resolvable
+    ingest-stage input of the harmonize recipe for this admin unit (the
+    reference parquet among them). The mid-pipeline spine itself is
+    deliberately not fingerprinted. A source that was deliberately deleted
+    stays verifiable through its tombstone receipt's recorded size/mtime;
+    a missing source with no receipt yields nulls, which no longer match
+    once the file reappears (fail safe: recompute).
+    """
+    from openplaces.io.cleanup import _relative_posix
+
+    upstream_ids = {ref_recipe_id}
+    try:
+        edges = get_recipe_dependencies(state.recipe, admin_id=state.admin_id)
+        upstream_ids |= {e.upstream_recipe_id for e in edges if e.upstream_recipe_id}
+    except Exception:
+        pass
+
+    sources = []
+    for upstream_id in sorted(upstream_ids):
+        try:
+            upstream = get_recipe_by_id(upstream_id)
+            if upstream.get('stage', 'ingest') != 'ingest':
+                continue
+            source_admin = _truncate_admin_to_level(
+                state.admin_id, get_save_admin_level(upstream)
+            )
+            path = get_output_path(upstream, admin_id=source_admin)
+        except Exception:
+            continue
+        entry = {'path': _relative_posix(path), 'size': None, 'mtime': None}
+        if path.exists():
+            stat = path.stat()
+            entry['size'] = stat.st_size
+            entry['mtime'] = round(stat.st_mtime, 3)
+        else:
+            receipt = read_receipt(path)
+            if receipt is not None:
+                entry['size'] = receipt.get('source_size_bytes')
+                mtime = receipt.get('source_mtime')
+                entry['mtime'] = round(mtime, 3) if mtime is not None else None
+        sources.append(entry)
+
+    return {
+        'format': 1,
+        'spine_recipe_id': get_recipe_id(state.recipe),
+        'ref_recipe_id': ref_recipe_id,
+        'admin_id': str(state.admin_id) if state.admin_id is not None else None,
+        'step_config': step_config,
+        'sources': sources,
+    }
+
+
+def _load_link_sidecar(
+    sidecar_path, fingerprint: dict, spine_id_col: str, verbose: bool = False
+):
+    """Reload the persisted identity overlay iff its fingerprint matches.
+
+    Returns the geometry-free overlay (MultiIndex [spine_id, parcel_id])
+    or None when the sidecar is absent or invalid (recompute, fail safe).
+    Only the footer is read for the validity check.
+    """
+    if sidecar_path is None or not sidecar_path.exists():
+        return None
+    stored_raw = read_file_metadata(sidecar_path).get(_LINK_METADATA_KEY)
+    if stored_raw is None:
+        return None
+    try:
+        stored = json.loads(stored_raw)
+    except json.JSONDecodeError:
+        return None
+    if stored != fingerprint:
+        if verbose:
+            print(
+                '  Link (overlay): sidecar fingerprint mismatch; recomputing overlay.'
+            )
+        return None
+    overlay = pd.read_parquet(sidecar_path)
+    overlay = overlay.set_index([spine_id_col, 'parcel_id'])
+    overlay = overlay.drop(columns='link', errors='ignore')
+    if verbose:
+        print(f'  Link (overlay): reloaded link sidecar {sidecar_path.name}')
+    return overlay
+
+
+def _write_link_sidecar(
+    sidecar_path,
+    footprints_on_ref,
+    crosswalk: pd.DataFrame,
+    fingerprint: dict,
+    verbose: bool = False,
+) -> None:
+    """Persist the geometry-free full identity overlay with link labels.
+
+    The sidecar is a superset of the trimmed crosswalk: every raw overlay
+    pair (including sub-threshold slivers and unmatched spine rows) with
+    the crosswalk's link label left-joined on (null = trimmed-out pair).
+    """
+    flat = pd.DataFrame(footprints_on_ref.drop(columns='geometry', errors='ignore'))
+    if 'link' in crosswalk.columns:
+        flat = flat.join(crosswalk['link'])
+    to_parquet(
+        flat.reset_index(),
+        sidecar_path,
+        file_metadata={_LINK_METADATA_KEY: json.dumps(fingerprint)},
+    )
+    if verbose:
+        print(f'  Link (overlay): wrote link sidecar {sidecar_path.name}')
 
 
 def _rename_right_index(

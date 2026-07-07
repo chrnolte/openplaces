@@ -60,6 +60,10 @@ pipeline:
       min_fraction_of_largest: 0.1667
       area_intersection_m2_min: 10
     sort_by: area_intersection_m2
+    # Persist the full n:m footprint-parcel overlay as a link sidecar
+    # beside the spine; reloaded instead of recomputed on later runs and
+    # consumed by the curate stage's collect_link_ids (parcel_id_all).
+    save_link: true
 
   - step: infer_spine_additions
     entity_type: parcel
