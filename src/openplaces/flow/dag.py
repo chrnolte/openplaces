@@ -63,15 +63,16 @@ class RecipeDAG:
         self._nodes: list[StageNode] = []
         seen: set[tuple[str, str | None]] = set()
 
-        def _add(recipe_id, recipe, node_admin):
-            admin_str = str(node_admin) if node_admin is not None else None
-            key = (recipe_id, admin_str)
-            if key in seen:
-                return
-            seen.add(key)
-            self._nodes.append(
-                StageNode(recipe.get('stage', 'ingest'), recipe_id, admin_str)
-            )
+        def _add(recipe_id, recipe, walk_admin):
+            for node_admin in self._node_admins(recipe_id, walk_admin):
+                admin_str = str(node_admin) if node_admin is not None else None
+                key = (recipe_id, admin_str)
+                if key in seen:
+                    continue
+                seen.add(key)
+                self._nodes.append(
+                    StageNode(recipe.get('stage', 'ingest'), recipe_id, admin_str)
+                )
 
         for admin_id in self.admin_ids:
             target_admin = AdminId(admin_id) if admin_id else None
@@ -79,7 +80,9 @@ class RecipeDAG:
             for node_id, node_recipe, node_admin in _walk_dag(
                 target, target_admin, index=None
             ):
-                _add(node_id, node_recipe, node_admin)
+                # _walk_dag truncates finer-saving recipes to the walk
+                # admin; _node_admins re-expands them to their save level
+                _add(node_id, node_recipe, target_admin)
 
     def _recipe(self, recipe_id: str) -> dict:
         if recipe_id not in self._recipes:
@@ -95,6 +98,37 @@ class RecipeDAG:
         if level <= 0:
             return None
         return AdminId(*admin_id.levels[:level])
+
+    def _node_admins(self, recipe_id: str, admin_id) -> list[AdminId | None]:
+        """Admin units of a recipe's jobs within one walk admin unit.
+
+        Coarser-saving recipes truncate the walk admin; finer-saving ones
+        (e.g. per-town image caches under a county walk) expand into the
+        child units at the recipe's save level. Expansion needs the admin
+        boundaries on disk; when they are not ingested yet, the recipe's
+        jobs are omitted with a warning (ingest admin data first).
+        """
+        if admin_id is None:
+            return [None]
+        admin_id = AdminId(str(admin_id))
+        save_level = get_save_admin_level(self._recipe(recipe_id))
+        if save_level <= admin_id.get_level():
+            return [self._node_admin(recipe_id, admin_id)]
+        try:
+            from openplaces.io.readers import get_admin_ids
+
+            return [
+                AdminId(child) for child in get_admin_ids(save_level, admin_id=admin_id)
+            ]
+        except Exception:
+            import warnings
+
+            warnings.warn(
+                f'Cannot expand {recipe_id} to admin level {save_level} '
+                f'under {admin_id} (admin boundaries not ingested yet); '
+                'its jobs are omitted from the DAG.'
+            )
+            return []
 
     def nodes(self) -> list[StageNode]:
         """Every job in the DAG (target included), deduplicated."""
@@ -144,12 +178,8 @@ class RecipeDAG:
             seen.add(upstream_id)
             try:
                 upstream = self._recipe(upstream_id)
-                paths.append(
-                    get_output_path(
-                        upstream,
-                        admin_id=self._node_admin(upstream_id, node_admin),
-                    )
-                )
+                for upstream_admin in self._node_admins(upstream_id, node_admin):
+                    paths.append(get_output_path(upstream, admin_id=upstream_admin))
                 if upstream.get('stage') == 'harmonize':
                     paths.extend(
                         self.extra_outputs('harmonize', upstream_id, node_admin)
