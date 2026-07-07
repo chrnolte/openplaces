@@ -51,7 +51,7 @@ Layer 2  recipe
 Layer 3  io/__init__
 Layer 4  io/readers
 Layer 5  geo/*
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/aggregate, io/admin, io/transform
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/aggregate, io/admin, io/transform, io/cleanup
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator

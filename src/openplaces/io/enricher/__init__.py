@@ -18,7 +18,7 @@ import pandas as pd
 
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, save_parquet
-from openplaces.io.aggregate import read_partition_coverage
+from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import (
     find_entity_recipe_id,
@@ -70,7 +70,8 @@ class EnrichState:
 _STEP_REGISTRY: dict[str, Callable] = {}
 
 # Footer-coverage sentinel: the evidence file covers all admin units.
-_COVERAGE_ALL = '__all__'
+# Defined in io.aggregate so lower-layer lifecycle checks share it.
+_COVERAGE_ALL = COVERAGE_ALL
 
 
 def _register(*names: str):
