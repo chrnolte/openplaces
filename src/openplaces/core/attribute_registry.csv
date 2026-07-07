@@ -42,6 +42,7 @@ grantee,Grantee (buyer) name as recorded,,string,first,,transaction,
 price,Transaction price,USD,float,first,,transaction,
 price_raw,Transaction price as provided by the source,,string,first,,transaction,
 parcel_id,Parcel identifier,,string,first,,parcel,
+parcel_id_all,All overlapping parcel identifiers (pipe-joined; dominant parcel first by descending intersection area),,string,first,,parcel,curate
 parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,
 parcel_id_admin3,Parcel identifier unique within its admin-3 unit,,string,first,,parcel,
 parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,,parcel,

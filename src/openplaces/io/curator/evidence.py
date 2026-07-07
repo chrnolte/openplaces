@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import pandas as pd
 
+from openplaces.geo.link import get_entity_link_path
 from openplaces.io import read_parquet
 from openplaces.io.curator import CurateState, _register
-from openplaces.recipe import get_output_path, get_recipe_by_id
+from openplaces.recipe import get_output_path, get_recipe_by_id, get_recipe_id
 
 
 def _field(obj, name):
@@ -85,6 +86,98 @@ def link_curated_entity(
         print(
             f'  link_curated_entity: {matched:,}/{len(curated):,} rows '
             f'matched {recipe_id} ({len(columns)} columns).'
+        )
+    state.curated = curated
+    return state
+
+
+@_register('collect_link_ids')
+def collect_link_ids(
+    state: CurateState,
+    entity_type: str | None = None,
+    link_recipe_id: str | None = None,
+    column: str = 'parcel_id_all',
+    include_below_threshold: bool = False,
+) -> CurateState:
+    """Materialize all linked reference ids per entity from a link sidecar.
+
+    Reads the n:m link sidecar persisted by the harmonize overlay
+    (``link_to_reference`` with ``save_link: true``) and writes a
+    pipe-joined id column onto the curated entity, ordered by descending
+    intersection area — the dominant reference (e.g. the entity's
+    ``parcel_id``) comes first. Harmonized spines stay link-only; this is
+    where multi-reference membership becomes a canonical column.
+
+    Parameters
+    ----------
+    entity_type : str, optional
+        Auto-discover the reference recipe of this entity type for the
+        current admin unit, the same way the harmonize overlay resolved
+        it (so the sidecar filename matches per state/county). Ignored
+        when ``link_recipe_id`` is given.
+    link_recipe_id : str, optional
+        Explicit reference recipe ID of the link's other side.
+    column : str, optional
+        Output column written onto the curated entity (default
+        ``parcel_id_all``).
+    include_below_threshold : bool, optional
+        When False (default), only link-labeled pairs (those kept by the
+        harmonize crosswalk's sliver thresholds) are collected. When
+        True, every raw overlap in the sidecar counts.
+
+    Raises
+    ------
+    FileNotFoundError
+        When the sidecar is missing: curation cannot recompute the
+        overlay, so re-run harmonize with ``save_link: true`` first.
+    """
+    from openplaces.io.harmonizer.links import _resolve_reference_recipe
+
+    resolved_id, _ = _resolve_reference_recipe(
+        link_recipe_id, entity_type, state.admin_id
+    )
+    if resolved_id is None:
+        if state.verbose:
+            print(
+                f'  collect_link_ids: no reference recipe for '
+                f'entity_type={entity_type!r} and {state.admin_id}; skipping.'
+            )
+        return state
+
+    entity_recipe_id = get_recipe_id(state.entity_recipe)
+    sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
+    if not sidecar_path.exists():
+        raise FileNotFoundError(
+            f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
+            f'{entity_recipe_id} with save_link: true on the overlay step '
+            'so curation can collect the n:m link ids.'
+        )
+
+    links = pd.read_parquet(sidecar_path)
+    curated = state.curated
+    id_col = curated.index.name
+    if id_col not in links.columns:
+        # The sidecar records the harmonizer's working spine id column;
+        # fall back to the first (index) column
+        id_col = links.columns[0]
+
+    links = links.dropna(subset=['parcel_id'])
+    if not include_below_threshold and 'link' in links.columns:
+        links = links[links['link'].notna()]
+    if 'area_intersection_m2' in links.columns:
+        links = links.sort_values('area_intersection_m2', ascending=False)
+
+    collected = links.groupby(id_col)['parcel_id'].agg(
+        lambda s: '|'.join(s.dropna().astype(str).unique())
+    )
+    curated[column] = collected.where(collected != '').reindex(curated.index)
+
+    if state.verbose:
+        n_multi = int(curated[column].str.contains(r'\|', na=False).sum())
+        print(
+            f'  collect_link_ids: {column} set for '
+            f'{int(curated[column].notna().sum()):,}/{len(curated):,} rows '
+            f'({n_multi:,} multi-reference).'
         )
     state.curated = curated
     return state

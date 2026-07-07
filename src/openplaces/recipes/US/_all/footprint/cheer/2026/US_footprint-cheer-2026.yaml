@@ -87,6 +87,16 @@ pipeline:
       occupancy_type_footprint_fema: occupancy_type_footprint_fema
       land_use_class: land_use_class_parcel
 
+  # Retain the full n:m footprint-parcel membership as a canonical column:
+  # all overlapping parcels per footprint (pipe-joined, dominant first —
+  # parcel_id is always the first element), collected from the link sidecar
+  # persisted by the harmonize overlay (save_link: true). Sliver overlaps
+  # below the overlay thresholds stay out (include_below_threshold: false);
+  # they remain queryable in the sidecar itself.
+  - step: collect_link_ids
+    entity_type: parcel
+    column: parcel_id_all
+
   # An Overture address point does not prove a dwelling physically exists (it
   # can be platted/assessed before, or without, construction). The parcel
   # land-use vote already weighs footprint presence, improvement value, and
