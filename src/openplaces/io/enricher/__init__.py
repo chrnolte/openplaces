@@ -233,8 +233,30 @@ class Enricher:
 
         return expanded
 
-    def enrich(self, reprocess: bool = False) -> None:
-        """Run enrichment for all configured admin IDs."""
+    def enrich(
+        self,
+        reprocess: bool = False,
+        cleanup: str | None = None,
+        include_images: bool = False,
+    ) -> None:
+        """Run enrichment for all configured admin IDs.
+
+        Parameters
+        ----------
+        reprocess : bool
+            If True, re-run even when existing evidence covers the request.
+        cleanup : str, optional
+            ``'consumed'`` reclaims this recipe's direct inputs after each
+            admin unit finishes. The image cache is deleted only when
+            *include_images* opts in AND every enrich recipe sharing the
+            ``image_recipe`` has complete evidence for the unit (standard
+            consumer refcounting — a partial coverage footer blocks it).
+        include_images : bool
+            Opt-in for image-cache deletion (paid re-fetch); falls back to
+            retention.cleanup.include_images.
+        """
+        if cleanup not in (None, 'consumed'):
+            raise ValueError(f"Unknown cleanup mode: {cleanup!r} (use 'consumed').")
         for admin_id_str in self.admin_ids:
             admin_id = AdminId(admin_id_str)
             sub_admin_ids = self.sub_admin_ids.get(admin_id_str)
@@ -259,6 +281,15 @@ class Enricher:
             )
             self._enrich_one(admin_id, sub_admin_ids)
             self._timer.finish()
+            if cleanup == 'consumed':
+                from openplaces.io.cleanup import cleanup_consumed_inputs
+
+                cleanup_consumed_inputs(
+                    self.recipe,
+                    admin_id,
+                    include_images=include_images,
+                    verbose=self.verbose,
+                )
 
     @staticmethod
     def _read_coverage(out_path) -> set[str] | None:
@@ -388,14 +419,22 @@ def enrich(
     entity_recipe_id: str | dict | None = None,
     reprocess: bool = False,
     verbose: bool = False,
+    cleanup: str | None = None,
+    include_images: bool = False,
 ) -> None:
-    """Instantiate and run enrichment for *recipe*."""
+    """Instantiate and run enrichment for *recipe*.
+
+    ``cleanup='consumed'`` reclaims direct inputs after each admin unit;
+    image caches additionally require ``include_images`` (or the
+    retention.cleanup.include_images config) and complete evidence from
+    every enrich recipe sharing the ``image_recipe``.
+    """
     Enricher(
         recipe,
         admin_ids=admin_ids,
         entity_recipe_id=entity_recipe_id,
         verbose=verbose,
-    ).enrich(reprocess=reprocess)
+    ).enrich(reprocess=reprocess, cleanup=cleanup, include_images=include_images)
 
 
 __all__ = [

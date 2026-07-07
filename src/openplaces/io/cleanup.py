@@ -910,6 +910,83 @@ def _cleanup_image_node(
     return rows
 
 
+def cleanup_consumed_inputs(
+    recipe,
+    admin_id,
+    include_images=False,
+    verbose=False,
+) -> pd.DataFrame:
+    """Reclaim the consumed direct inputs of one recipe for one admin unit.
+
+    Backs the stage entrypoints' cleanup='consumed' hook: after a stage
+    finishes an admin unit, each of its direct inputs is deleted iff every
+    consumer in the recipe tree is complete. Safe when called early —
+    consumers with no output yet block deletion (e.g. the NSI parquet
+    survives the footprint-spine hook until the parcel spine also exists).
+    No-op when retention.cleanup.enabled is false.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        The stage recipe whose inputs to consider.
+    admin_id : str or AdminId
+        The admin unit just finished.
+    include_images : bool
+        Opt-in for image-cache deletion (or
+        retention.cleanup.include_images in the config).
+    verbose : bool
+        Print a one-line summary when something was reclaimed.
+    """
+    if not _cleanup_config().get('enabled', True):
+        return pd.DataFrame(columns=_REPORT_COLUMNS)
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    include_images = include_images or _cleanup_config().get('include_images', False)
+    index = _dependency_index()
+    admin_level = AdminId(str(admin_id)).get_level() if admin_id else 0
+
+    rows: list[dict] = []
+    with DataLock(admin_id):
+        try:
+            edges = get_recipe_dependencies(recipe, admin_id=admin_id)
+        except Exception:
+            edges = []
+        seen: set[str] = set()
+        for edge in edges:
+            upstream_id = edge.upstream_recipe_id
+            if not upstream_id or upstream_id in seen:
+                continue
+            seen.add(upstream_id)
+            try:
+                upstream = get_recipe_by_id(upstream_id)
+                save_level = get_save_admin_level(upstream)
+            except Exception:
+                continue
+            node_admin = (
+                _truncate_admin(admin_id, min(save_level, admin_level))
+                if admin_id
+                else None
+            )
+            rows.extend(
+                _cleanup_node(
+                    upstream_id,
+                    upstream,
+                    node_admin,
+                    index,
+                    include_images=include_images,
+                    aggressive=False,
+                    dry_run=False,
+                )
+            )
+
+    report = pd.DataFrame(rows, columns=_REPORT_COLUMNS)
+    if verbose and not report.empty:
+        reclaimed = report.loc[report['action'] == 'deleted', 'size_mb'].sum()
+        if reclaimed:
+            print(f'  cleanup: reclaimed {reclaimed:,.1f} MB of consumed inputs.')
+    return report
+
+
 # COMPACT (BUCKET GARBAGE COLLECTOR)
 
 
