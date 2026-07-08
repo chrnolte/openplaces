@@ -28,6 +28,12 @@ uncompressed_file_name: "CADASTRAL_DOR.gdb"
 # Layer that identifies parcels (10M parcels)
 layer: CADASTRAL_DOR
 
+# Standardized, locally cross-comparable parcel matching key parcel_id_local
+# derives from (consistent across parcel recipes).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
@@ -42,6 +48,7 @@ columns:
   parcel_id_admin2_2: MP_ID
   parcel_id_admin3: PARCEL_ID
   parcel_id_admin3_2: ALT_KEY
+  parcel_id_assessor: PARCEL_ID
   address: PHY_ADDR1
   address2: PHY_ADDR2
   city: PHY_CITY
