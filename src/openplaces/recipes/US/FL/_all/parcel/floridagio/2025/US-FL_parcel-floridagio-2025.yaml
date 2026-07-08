@@ -56,7 +56,7 @@ columns:
   year_built: ACT_YR_BLT
   living_area_sqft: TOT_LVG_AR
   n_dwellings: NO_RES_UNT
-  use_group: DOR_UC
+  use_group_code: DOR_UC
   use_group_admin3: PA_UC
   land_unit_code: LND_UNTS_C
   n_land_units: NO_LND_UNT
