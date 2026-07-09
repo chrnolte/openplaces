@@ -2,212 +2,285 @@
 
 .. _cheer_footprints_annex:
 
-Technical annex: CHEER footprints
+Technical Annex: CHEER footprints
 =================================
 
-This annex provides a step-by-step description of the data curation recipe implemented in :gh-file:`src/openplaces/recipes/US/_all/footprint/cheer/2026/US_footprint-cheer-2026.yaml`. It details how each processing step behaves and how it translates in practice to produce the canonical CHEER footprint inventory.
+This data pipeline produces the canonical CHEER footprint inventory, spanning from raw data ingestion to the final curation stage.
 
-.. contents:: Table of Contents
+.. contents:: Table of contents
    :local:
-   :depth: 2
+   :depth: 3
 
 
-Step 1: Curated Parcel Linking (``link_curated_entity``)
---------------------------------------------------------
+Stage 1: Ingestion
+------------------
 
-* **Purpose**: Integrates clean assessor data from the parcel curation lane.
-* **How it translates in practice**:
-  
-  The step matches each footprint in the spine to its corresponding parcel in the curated parcel lane (``US_parcel-openplaces-2026``) using the globally-unique ``parcel_id``. This joins critical attributes including:
-  
-  * ``improvement_value_parcel`` and ``land_value_parcel``
-  * ``year_built_parcel``
-  * ``use_group_combined_parcel``
-  * ``group_parcel``
-  * ``manufactured_home_park`` status
-  * ``occupancy_type_footprint_fema``
-  * ``land_use_class_parcel`` (11-class classification)
+This stage downloads and extracts raw footprint, parcel, and reference point datasets:
 
-  Joining these curated parcel attributes first ensures downstream curation steps work with cleaned and harmonized parcel data rather than raw, noisy assessor records.
+* **Footprints**: Downloads raw building geometries from OpenBuildingsMap (OBM) 2025 (``footprint-obm-2025``), Microsoft v2 (``US_footprint-microsoft-v2``), and auto-discovered state/local GIS footprint layers.
+* **Parcels**: Gathers assessor geometry and property tax rolls from state/local GIS agencies.
+* **Secondary datasets**: Downloads the National Structure Inventory (NSI) 2022 point database (``US_building-nsi-2022``) and Overture 2025 dwelling address points (``dwelling-overture-2025``).
 
 
-Step 2: Address Evidence Correction (``suppress_where``)
---------------------------------------------------------
+Stage 2: Harmonization
+----------------------
 
-* **Purpose**: Suppresses Overture dwelling unit counts on vacant parcels.
-* **How it translates in practice**:
-  
-  Overture geocoded address points can sometimes be placed on platted but unbuilt or vacant lots. This step sets ``n_dwellings_overture`` to null (suppressed) for any footprints intersecting parcels classified as ``Vacant`` by the land-use classification. This prevents pre-construction or empty parcel address points from being counted as physical dwellings.
+This stage merges geometries and links datasets to build the core entities.
 
+Footprint spine harmonization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Step 3: Implied Overture Occupancy Class (``resolve_by_vote``)
---------------------------------------------------------------
+1. Merge source footprints
 
-* **Purpose**: Assigns a temporary occupancy class based on Overture address counts.
-* **How it translates in practice**:
-  
-  Determines a transient occupancy class (``occupancy_type_dwelling_overture``) based on the corrected Overture count:
-  
-  * If the footprint has 2 or more Overture address points, the implied class is ``Multi-Family``.
-  * If the footprint has 1 or fewer Overture address points, the implied class is ``Single-Family``.
+   * **Explanation**: Combines raw footprint geometries from OBM, Microsoft, and local layers. It filters out shapes below the :input:`min_area_m2` threshold (10.0 m²), resolves duplicates using the :input:`overlap_iou_max` threshold (0.02), and filters parallel-shifted shapes using aspect ratio and angle tolerances via :input:`elongated_aspect_min` (2.5), :input:`elongated_angle_tol` (15.0), and :input:`elongated_long_overlap_min` (0.5) with lateral separation ratio :input:`elongated_lateral_sep_ratio` (2.0). To protect larger structures, it enforces keep-out buffers for features exceeding :input:`buffer_min_area_m2` (250.0 m²) with a baseline width of :input:`buffer_base_m` (2.0 m) scaled by :input:`buffer_area_scale` (0.5).
+   * **Function**: :func:`openplaces.io.harmonizer.spine.resolve_spine`
 
-  This is a transient variable that serves as a lowest-priority fallback and is subsequently dropped from the final schema.
+2. Intersect footprints with parcels
 
+   * **Explanation**: Performs a spatial identity overlay between footprints and parcels based on the :input:`join` method (``spatial_overlay``) and :input:`source_geometry_type` (``mixed_type_footprint``) for the :input:`entity_type` ``parcel``. It filters out minor intersections under :input:`area_intersection_m2_min` (10 m²) or slivers less than :input:`min_fraction_of_largest` (0.1667) of the largest parcel intersection, sorting by :input:`sort_by` (``area_intersection_m2``).
+   * **Function**: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
-Step 4: Attribute Reconciliation (``reconcile_values``)
--------------------------------------------------------
+3. Infer synthetic fallback footprints
 
-* **Purpose**: Selects the canonical value from competing source attributes based on a strict order of preference.
-* **How it translates in practice**:
-  
-  For fields where multiple data sources provide values, the recipe resolves conflicts using the following priority orders:
-  
-  * **Dwelling counts (``n_dwellings``)**: Prioritizes Overture geocoded address counts over NSI structure unit counts (``[n_dwellings_overture, n_dwellings_nsi]``).
-  * **Construction year (``year_built``)**: Prioritizes the assessor parcel record over the NSI census-block median fallback (``[year_built_parcel, year_built_block_median_building_nsi]``).
-  * **Financial valuation (``value``)**: Prioritizes the assessor improvement value (which is distributed among parcel footprints) over the NSI structure replacement value (``[improvement_value_parcel, structure_value_building_nsi]``).
+   * **Explanation**: Generates synthetic footprint geometries for the :input:`entity_type` ``parcel`` using parcel boundaries where tax assessor records indicate a structure exists but no footprint is detected by spatial sources. It uses the thresholds :input:`n_per_group_min` (0.2) and :input:`value_per_ha_quantile` (0.05).
+   * **Function**: :func:`openplaces.io.harmonizer.links.infer_spine_additions`
 
+4. Trim overlapping boundaries
 
-Step 5: Address Count Zero-Filling (``fill_missing_numeric``)
--------------------------------------------------------------
+   * **Explanation**: Adjusts and trims geometry boundaries to resolve spatial conflicts between synthetic parcel fallbacks and actual detected footprint polygons.
+   * **Function**: :func:`openplaces.io.harmonizer.links.resolve_overlaps`
 
-* **Purpose**: Fills missing Overture dwelling unit counts.
-* **How it translates in practice**:
-  
-  Replaces any missing or suppressed values in ``n_dwellings_overture`` with ``0`` and casts the column to standard integer format. This is intentionally executed after the reconciliation step so that the absence of evidence isn't treated as a confirmed "0 dwellings" count during the voting and priority picks.
+5. Link building structure points
 
+   * **Explanation**: Connects structure-level point evidence from the NSI database using a tiered containment, :input:`proximity_m` (10 m) inner proximity, or :input:`far_proximity_m` (100 m) outer proximity join. The join is configured as :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_building_point``) using the :input:`recipe_id` (``US_building-nsi-2022``) with a remapping crosswalk specified by :input:`remap_id` (``US_building-nsi-2022_occupancy-type-remap``).
+   * **Function**: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
-Step 6: Metric Derivation (``derive_metrics``)
-----------------------------------------------
+6. Link dwelling address points
 
-* **Purpose**: Computes geometry-based variables and footprint value metrics.
-* **How it translates in practice**:
-  
-  Calculates structural indicators such as footprint area in square meters (``m2``) from geometry and computes the structural improvement value per unit area (USD/m²). This enables automated checks of value-to-area consistency.
+   * **Explanation**: Integrates Overture geocoded residential address points from the :input:`recipe_id` (``dwelling-overture-2025``) using a tiered proximity join configured via :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_dwelling_point``). It uses a proximity range from :input:`proximity_m` (10 m) to :input:`far_proximity_m` (50 m), with :input:`aggregate_multipoint` (``true``) and address deduplication enabled via :input:`dedup_addresses` (``true``).
+   * **Function**: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
+7. Classify structural role
 
-Step 7: Dwelling Unit Imputation (``impute_n_dwellings``)
----------------------------------------------------------
+   * **Explanation**: Determines whether a footprint represents a primary or secondary structure on multi-building parcels based on NSI and Overture matches, using the :input:`entity_type` ``parcel``.
+   * **Function**: :func:`openplaces.io.harmonizer.attributes.classify_footprint_priority`
 
-* **Purpose**: Imputes residential unit counts when no matched source evidence exists.
-* **How it translates in practice**:
-  
-  For residential footprints that still lack a dwelling count after reconciliation, the step estimates ``n_dwellings`` using the occupancy-to-units lookup mapping defined in Lochhead et al. (2026, Table 3) (for instance, mapping a Single-Family or Manufactured Home footprint to 1.0 unit).
+8. Package raw variables
 
+   * **Explanation**: Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`.
+   * **Function**: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
-Step 8: Occupancy Base Class Imputation (``impute_occupancy_type``)
--------------------------------------------------------------------
+Parcel spine harmonization
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-* **Purpose**: Establishes a baseline occupancy class by selecting the first present value from a prioritized list of evidence columns.
-* **How it translates in practice**:
-  
-  Scans through the available sources in order:
-  
-  1. NSI building class (``occupancy_type_building_nsi``)
-  2. FEMA parcel occupancy (``occupancy_type_footprint_fema``)
-  3. Assessor land-use group (``group_parcel``)
-  4. Implied Overture occupancy (``occupancy_type_dwelling_overture``)
+1. Establish parcel boundary baseline
 
-  The first available value sets the baseline class. If a footprint is located on a manufactured home park parcel, it is kept as ``Manufactured Home`` rather than being classified as ``Secondary`` (accessory), provided it meets size thresholds (at least 50% of the average manufactured home size or $\ge 25\text{ m}^2$, whichever is greater).
+   * **Explanation**: Merges discovered statewide and local parcel geometry layers into a unified spatial spine, automatically discovering sources with the :input:`auto_discover` (``true``) flag for the :input:`entity_type` ``parcel`` and keeping the configured list of :input:`keep_columns`.
+   * **Function**: :func:`openplaces.io.harmonizer.spine.resolve_spine`
 
+2. Merge assessor tax records
 
-Step 9: Key-based Occupancy Correction (``resolve_occupancy``)
---------------------------------------------------------------
+   * **Explanation**: Discovers and joins county/local assessment tables by matching local ID keys, applying custom attribute remapping crosswalks. It automatically discovers and links tables for the :input:`entity_type` ``parcel`` using :input:`auto_discover` (``true``).
+   * **Function**: :func:`openplaces.io.harmonizer.links.link_by_id`
 
-* **Purpose**: Refines the baseline occupancy class using property-use keywords.
-* **How it translates in practice**:
-  
-  Applies rules from ``parcel-occupancy-keywords.csv`` to correct the base occupancy class. For example, if a footprint is classified as residential but the assessor property description contains keywords indicating commercial use (e.g., "RETAIL" or "OFFICE"), the classification is updated to match.
+3. Standardize property use codes
 
+   * **Explanation**: Constructs a combined property use description and maps it to normalized use classifications.
+   * **Function**: :func:`openplaces.io.harmonizer.attributes.derive_use_classes`
 
-Step 10: Image-derived Evidence Integration (``merge_enrichments``)
--------------------------------------------------------------------
+4. Associate building points to parcels
 
-* **Purpose**: Joins visual building attributes predicted by deep learning models.
-* **How it translates in practice**:
-  
-  Merges image classifier outputs (e.g., BRAILS models trained on satellite or Street View imagery) into the footprint spine. This fills missing values in the canonical ``roof_shape`` and ``n_stories`` columns.
+   * **Explanation**: Joins NSI point data from the :input:`recipe_id` (``US_building-nsi-2022``) using a spatial overlay and proximity boundaries configured via :input:`join` (``spatial_point``), :input:`source_geometry_type` (``single_building_point``), :input:`proximity_m` (10 m), and :input:`far_proximity_m` (100 m).
+   * **Function**: :func:`openplaces.io.harmonizer.links.link_to_reference`
+
+5. Identify dominant building group
+
+   * **Explanation**: Resolves and summarizes NSI building attributes to find the modal building group per parcel using the specified :input:`sources`.
+   * **Function**: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
+
+6. Integrate FEMA footprint occupancy
+
+   * **Explanation**: Links FEMA footprints to parcels via spatial overlay from the :input:`recipe_id` (``US_footprint-fema-2023``) using the :input:`join` (``spatial_overlay``) method for the :input:`source_geometry_type` (``mixed_type_footprint``) and filters out minor intersections under :input:`area_intersection_m2_min` (10 m²).
+   * **Function**: :func:`openplaces.io.harmonizer.links.link_to_reference`
+
+7. Extract dominant FEMA occupancy
+
+   * **Explanation**: Reconciles FEMA occupancy types from the :input:`sources` using the remapping crosswalk specified by :input:`remap_id` (``US_footprint-fema-2023_occupancy-type-remap``).
+   * **Function**: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
+
+8. Summarize footprint morphology
+
+   * **Explanation**: Counts total, primary, and small elongated footprint features on each parcel to feed downstream land-use classification. It links footprints from :input:`footprint_recipe_id` (``US_footprint-spine-2026``) matching on :input:`on` (``parcel_id``), filtering by :input:`small_area_max_m2` (185 m²), :input:`elongated_aspect_min` (2.0), and :input:`min_overlap_m2` (10 m²).
+   * **Function**: :func:`openplaces.io.harmonizer.attributes.summarize_footprint_morphology`
 
 
-Step 11: Manufactured Home Classification (``classify_manufactured_homes``)
----------------------------------------------------------------------------
+Stage 3: Image ingestion
+------------------------
 
-* **Purpose**: Computes a probability score for manufactured home classification.
-* **How it translates in practice**:
-  
-  Evaluates each small residential footprint using geometry and visual models to compute ``p_manufactured_home`` (the probability of being a mobile/manufactured home). The geometric rule looks for narrow, elongated rectangles (aspect ratio $\ge 2.5$ and footprint area $\le 185\text{ m}^2$). This step only outputs the probability score and does not assign the occupancy class directly.
+This stage fetches imagery required for deep-learning visual classification:
 
-
-Step 12: Occupancy Resolution Vote (``resolve_by_vote``)
---------------------------------------------------------
-
-* **Purpose**: Resolves final occupancy class (specifically Manufactured Home vs. Multi-Family conflicts) via weighted voting.
-* **How it translates in practice**:
-  
-  A weighted voting system resolves conflicting evidence:
-  
-  * **Manufactured Home Vote** (requires a minimum score of 2):
-    
-    * $+1$ if the assessor improvement value share of total parcel value is low ($\le 2.5\%$).
-    * $+1$ if the assessor use group description matches mobile home keywords.
-    * $+1$ if the parcel-level classification is ``Manufactured Home``.
-    * $+1$ if the footprint's morphological probability ``p_manufactured_home`` is $\ge 0.5$.
-    
-    *Constraint*: To prevent tiny sheds or accessory structures from being misclassified, the footprint must be at least $20\text{ m}^2$ to become a Manufactured Home.
-    
-  * **Multi-Family Vote** (requires a minimum score of 1):
-    
-    * $+1$ if the reconciled unit count is 2 or more (``n_dwellings >= 2``).
-
-  This step ensures that manufactured home community parcels (which often list high dwelling counts) are not misclassified as standard multi-family structures.
+* **Satellite imagery** (``image-googlesatellite-z20.yaml``): Scrapes zoom-level 20 Google Satellite tiles using footprint geometries via BRAILS++.
+* **Street View imagery** (``image-googlestreetview-2026.yaml``): Downloads street-level Google Street View photos and depth maps.
 
 
-Step 13: Height-band Split (``refine_occupancy_height``)
---------------------------------------------------------
+Stage 4: Enrichment
+-------------------
 
-* **Purpose**: Splits Multi-Family classes into standard HAZUS height sub-classes.
-* **How it translates in practice**:
-  
-  Refines the final ``occupancy_type`` by splitting Multi-Family structures into height bands based on the reconciled ``n_stories``:
-  
-  * **Low-Rise Multi-Family**: 1 to 3 stories
-  * **Mid-Rise Multi-Family**: 4 to 7 stories
-  * **High-Rise Multi-Family**: 8 or more stories
+This stage runs deep learning models (BRAILS++) to predict visual building attributes.
 
-  The pre-split class is preserved in the ``occupancy_type_base`` column.
+1. Infer roof shape
 
+   * **Explanation**: Runs BRAILS++ deep learning classifiers on satellite imagery to predict roof shape, using visual models on the footprint spine.
+   * **Function**: :func:`openplaces.io.enricher.attributes.classify_roof_shape`
 
-Step 14: Manufactured Home Community Flagging (``flag_manufactured_home_communities``)
------------------------------------------------------------------------------------------
+2. Detect story counts
 
+   * **Explanation**: Uses computer vision detectors on street-level photos to estimate floors of living area, predicting story height.
+   * **Function**: :func:`openplaces.io.enricher.attributes.detect_n_stories`
 
-* **Purpose**: Re-evaluates mobile home park boundaries using final footprint classifications.
-* **How it translates in practice**:
-  
-  Identifies and flags parcels containing 3 or more final ``Manufactured Home`` footprints. This identifies manufactured home communities that may have been missed during the initial parcel-level classification pass.
+3. Predict visual occupancy class
+
+   * **Explanation**: Estimates building usage using BRAILS++ model classifiers on Street View imagery.
+   * **Function**: :func:`openplaces.io.enricher.attributes.classify_occupancy`
 
 
-Step 15: Categorical Casting (``cast_categoricals``)
-----------------------------------------------------
+Stage 5: Curation
+-----------------
 
-* **Purpose**: Converts string columns to pandas Categorical types.
-* **How it translates in practice**:
-  
-  Standardizes column data types and casts textual label columns (such as final occupancy classes and sources) to Categorical types to optimize storage footprint and query performance. While the data types are cast to categorical within pandas, they are written to disk as logical string type columns in the Parquet file to ensure compatibility with GIS tools like GDAL/QGIS.
+This stage curates the spines into clean, canonical datasets.
+
+Parcel curation
+~~~~~~~~~~~~~~~
+
+This stage curates the parcel spine to produce clean assessor attributes:
+
+1. Impute parcel occupancy group
+
+   * **Explanation**: Assigns groups based on NSI modal counts per use code using :input:`group_column` (``use_group_combined``), :input:`value_column` (``group_building_nsi``), the Mode statistic via :input:`statistic` (``mode``), and saving to :input:`output` (``group_parcel``).
+   * **Function**: :func:`openplaces.io.curator.imputers.impute_from_group_statistic`
+
+2. Score relative footprint area
+
+   * **Explanation**: Calculates log-space z-scores to assist Vacant and Townhome rule classification by measuring how anomalously small the largest footprint is relative to other parcels sharing the same assessor use code. It uses :input:`group_column` (``use_group_combined``), :input:`value_column` (``max_footprint_area_m2``), :input:`output` (``footprint_area_log_zscore``), :input:`transform` (``log1p``), and :input:`statistic` (``zscore``).
+   * **Function**: :func:`openplaces.io.curator.inferers.score_relative_to_group`
+
+3. Classify parcel land use
+
+   * **Explanation**: Assigns parcel land-use classes via weighted voting. It runs multi-indicator voting rules to identify Manufactured Home Park, RV Park, Standalone Manufactured Home, Townhome, Vacant, etc., saving to :input:`output` (``land_use_class``) with flags mapped to :input:`flag_column` (``manufactured_home_park``) and :input:`flag_class` (``Manufactured Home Park``), scoring columns via :input:`score_columns` (Vacant: ``land_use_vacancy_score``), review tracking on :input:`review_column` (``land_use_review``) with a margin of :input:`review_margin` (1.0) and the configured :input:`rules`.
+   * **Function**: :func:`openplaces.io.curator.inferers.classify_parcel_land_use`
+
+4. Standardize data categories
+
+   * **Explanation**: Casts string columns to pandas Categorical types to optimize storage footprint and query performance.
+   * **Function**: :func:`openplaces.io.curator.formatters.cast_categoricals`
+
+5. Format curated parcel schema
+
+   * **Explanation**: Enforces a standard column order on the final curated parcel schema.
+   * **Function**: :func:`openplaces.io.curator.formatters.order_columns`
 
 
-Step 16: Integer Casting (``cast_integers``)
---------------------------------------------
+Footprint curation
+~~~~~~~~~~~~~~~~~~
 
-* **Purpose**: Rounds and casts year of construction to a nullable integer dtype.
-* **How it translates in practice**:
-  
-  Rounds the reconciled ``year_built`` column (which may contain non-integer values from census-block fallbacks) and casts it to pandas' nullable ``Int64`` format. This ensures it displays as a whole year (e.g., 1964 instead of 1964.0) while keeping missing values as null rather than forcing them to a dummy 0.
+This stage curates the footprint spine, integrating parcel, imagery, and point evidence into the final exposure dataset. The curation recipe executes the following steps chronologically, grouped by functional objective:
 
+Initial evidence assembly
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Step 17: Column Ordering and Cleanup (``order_columns``)
---------------------------------------------------------
+1. Integrate clean assessor data
 
-* **Purpose**: Cleans up the schema and enforces a standard column order.
-* **How it translates in practice**:
-  
-  Drops transient helper columns that were only needed during the curation pipeline (including ``group_parcel``, ``occupancy_type_dwelling_overture``, its source sidecar, ``value_per_area``, ``occupancy_type_base``, ``p_manufactured_home``, and ``manufactured_home_park``), leaving a clean, documented canonical schema.
+   * **Explanation**: Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (improvement_value, land_value, year_built, use_group_combined, group_parcel, manufactured_home_park, occupancy_type_footprint_fema, and land_use_class).
+   * **Function**: :func:`openplaces.io.curator.evidence.link_curated_entity`
+
+2. Correct address evidence
+
+   * **Explanation**: Suppresses Overture dwelling unit counts on vacant parcels. It sets :input:`column` (``n_dwellings_overture``) to null if the :input:`condition_column` (``land_use_class_parcel``) matches the value :input:`condition_value` (``Vacant``).
+   * **Function**: :func:`openplaces.io.curator.reconcilers.suppress_where`
+
+3. Determine implied Overture occupancy
+
+   * **Explanation**: Assigns a temporary occupancy class to :input:`target` (``occupancy_type_dwelling_overture``) based on the corrected Overture count using the configured :input:`decisions` rules.
+   * **Function**: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
+
+Value reconciliation and metrics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+4. Select canonical values
+
+   * **Explanation**: Resolves conflicts between competing source attributes by selecting the canonical value from the prioritized lists in the :input:`priority` mapping (e.g. for dwelling counts, year built, and financial valuation).
+   * **Function**: :func:`openplaces.io.curator.reconcilers.reconcile_values`
+
+5. Zero-fill address counts
+
+   * **Explanation**: Fills missing or suppressed Overture dwelling unit counts listed in :input:`columns` (``[n_dwellings_overture]``) with ``0`` and casts the column to integer.
+   * **Function**: :func:`openplaces.io.curator.imputers.fill_missing_numeric`
+
+6. Compute footprint metrics
+
+   * **Explanation**: Calculates structural indicators such as footprint area in square meters from geometry and computes the structural improvement value per unit area.
+   * **Function**: :func:`openplaces.io.curator.inferers.derive_metrics`
+
+Baseline attribute imputation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+7. Impute missing residential units
+
+   * **Explanation**: Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
+   * **Function**: :func:`openplaces.io.curator.imputers.impute_n_dwellings`
+
+8. Establish baseline occupancy class
+
+   * **Explanation**: Establishes a baseline occupancy class by selecting the first present value from a prioritized list of evidence columns.
+   * **Function**: :func:`openplaces.io.curator.inferers.impute_occupancy_type`
+
+9. Apply property-use keyword corrections
+
+   * **Explanation**: Refines the baseline occupancy class by correcting classes using property-use keywords from the configured csv file in :input:`ruleset` (``parcel-occupancy-keywords.csv``).
+   * **Function**: :func:`openplaces.io.curator.reconcilers.resolve_occupancy`
+
+10. Merge visual model predictions
+
+    * **Explanation**: Merges predicted building attributes from the configured :input:`recipes` (e.g. ``US_footprint_built-roof-shape-brails-2026`` and ``US_footprint_built-n-stories-brails-2026``) and their respective columns.
+    * **Function**: :func:`openplaces.io.curator.evidence.merge_enrichments`
+
+Occupancy voting and refinement
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+11. Score manufactured home probability
+
+    * **Explanation**: Computes a probability score for manufactured home classification based on the :input:`ruleset` (``parcel-occupancy-keywords.csv``) while setting the :input:`update_occupancy` parameter to ``false``.
+    * **Function**: :func:`openplaces.io.curator.inferers.classify_manufactured_homes`
+
+12. Resolve occupancy by weighted vote
+
+    * **Explanation**: Resolves final occupancy class (specifically Manufactured Home vs. Multi-Family conflicts) to the :input:`target` column (``occupancy_type``) using the configured :input:`decisions` rules.
+    * **Function**: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
+
+13. Split height bands
+
+    * **Explanation**: Splits the standard :input:`multi_family_class` (``Multi-Family``) into HAZUS height bands based on the reconciled number of stories using the configured :input:`bands`.
+    * **Function**: :func:`openplaces.io.curator.inferers.refine_occupancy_height`
+
+14. Flag manufactured home communities
+
+    * **Explanation**: Re-evaluates mobile home park boundaries and flags parcels containing at least :input:`min_homes` (3) final Manufactured Home footprints.
+    * **Function**: :func:`openplaces.io.curator.inferers.flag_manufactured_home_communities`
+
+Schema standardization and formatting
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+15. Standardize data categories
+
+    * **Explanation**: Converts string columns to pandas Categorical types.
+    * **Function**: :func:`openplaces.io.curator.formatters.cast_categoricals`
+
+16. Cast year built to integer
+
+    * **Explanation**: Rounds and casts the year of construction columns listed in :input:`columns` (``[year_built]``) to nullable integer data types.
+    * **Function**: :func:`openplaces.io.curator.formatters.cast_integers`
+
+17. Clean up and order columns
+
+    * **Explanation**: Enforces standard column order and drops the transient helper columns specified in the :input:`drop` list.
+    * **Function**: :func:`openplaces.io.curator.formatters.order_columns`
