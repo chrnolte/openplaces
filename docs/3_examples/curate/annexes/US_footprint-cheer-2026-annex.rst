@@ -17,7 +17,7 @@ Stage 1: Ingestion
 
 This stage downloads and extracts raw footprint, parcel, and reference point datasets:
 
-* **Footprints**: Downloads raw building geometries from OpenBuildingsMap (OBM) 2025 (``footprint-obm-2025``), Microsoft v2 (``US_footprint-microsoft-v2``), and auto-discovered state/local GIS footprint layers.
+* **Footprints**: Downloads raw building geometries from OpenBuildingMap (OBM) 2025 (``footprint-obm-2025``), Microsoft v2 (``US_footprint-microsoft-v2``), and auto-discovered state/local GIS footprint layers.
 * **Parcels**: Gathers assessor geometry and property tax rolls from state/local GIS agencies.
 * **Secondary datasets**: Downloads the National Structure Inventory (NSI) 2022 point database (``US_building-nsi-2022``) and Overture 2025 dwelling address points (``dwelling-overture-2025``).
 
@@ -138,10 +138,8 @@ This stage runs deep learning models (BRAILS++) to predict visual building attri
    * **Explanation**: Uses computer vision detectors on street-level photos to estimate floors of living area, predicting story height.
    * **Function**: :func:`openplaces.io.enricher.attributes.detect_n_stories`
 
-3. Predict visual occupancy class
-
-   * **Explanation**: Estimates building usage using BRAILS++ model classifiers on Street View imagery.
-   * **Function**: :func:`openplaces.io.enricher.attributes.classify_occupancy`
+.. note::
+   Visual occupancy prediction (``US_footprint_built-occupancy-brails-2026`` via :func:`openplaces.io.enricher.attributes.classify_occupancy`) is run during enrichment but is not consumed at the final curation stage.
 
 
 Stage 5: Curation

@@ -12,7 +12,7 @@ U.S. footprint inventory (CHEER)
 
 This recipe creates a footprint-level building inventory for U.S. hurricane damage and exposure modeling. 
 
-It resolves building :ref:`footprints <footprints>` from multiple geometry sources (OpenBuildingsMap, Microsoft, and local datasets), then enriches each footprint with data from linked parcels, the National Structure Inventory (NSI), and Overture :ref:`dwellings <dwellings>` (addresses). 
+It resolves building :ref:`footprints <footprints>` from multiple geometry sources (OpenBuildingMap, Microsoft, and local datasets), then enriches each footprint with data from linked parcels, the National Structure Inventory (NSI), Overture :ref:`dwellings <dwellings>` (addresses), and deep-learning visual classifiers (BRAILS++). 
 
 This work is supported by NSF's Coastal Hazards, Economic Prosperity & Resilience hub (`CHEER <https://www.drc.udel.edu/cheer/>`_). It is currently tested for Florida, Massachusetts, North Carolina, and Texas.
 
@@ -33,9 +33,9 @@ Canonical attributes
 ``geometry``
     The spatial polygon outlining the footprint, or the parcel polygon for fallback records.
 ``geometry_source``
-    Source of the geometry: ``obm`` (OpenBuildingsMap), ``microsoft``, local state sources (e.g. ``nconemap``), or ``parcel.<source>`` for parcel-shaped fallbacks representing unlocated structures.
+    Source of the geometry: ``obm`` (OpenBuildingMap), ``microsoft``, local state sources (e.g. ``nconemap``), or ``parcel.<source>`` for parcel-shaped fallbacks representing unlocated structures.
 ``occupancy_type``
-    Canonical occupancy class. Multi-Family structures are split into HAZUS height bands (Low-Rise: 1–3 stories, Mid-Rise: 4–7 stories, High-Rise: 8+ stories) using ``n_stories`` (stilts/open ground floors excluded).
+    Canonical occupancy class. Multi-Family structures are split into HAZUS height bands (Low-Rise: 1-3 stories, Mid-Rise: 4-7 stories, High-Rise: 8+ stories) using ``n_stories`` (stilts/open ground floors excluded).
 ``value``
     Reconciled structure value in USD. Prioritizes the parcel's improvement value (split across parcel footprints) over the NSI structure replacement value.
 ``year_built``
@@ -160,7 +160,7 @@ Stage 1: ingest
 
 This stage downloads and extracts raw geometry and reference point datasets:
 
-1. **Footprint datasets**: Downloads and unzips raw footprints from OpenBuildingsMap (OBM), Microsoft, and state/local layers.
+1. **Footprint datasets**: Downloads and unzips raw footprints from OpenBuildingMap (OBM), Microsoft, and state/local layers.
 2. **Assessor parcels**: Gathers property tax assessor geometry and tax rolls from local/state agencies.
 3. **Reference layers**: Downloads structure point databases (National Structure Inventory; NSI) and geocoded residential address points (Overture).
 
@@ -201,7 +201,6 @@ This stage runs deep learning models (BRAILS++) on the ingested imagery to predi
 
 1. **Roof shape prediction**: Runs neural network classifiers on the scraped satellite imagery to predict ``roof_shape``.
 2. **Story count detection**: Runs detectors on the Street View photos to infer ``n_stories``.
-3. **Visual occupancy prediction**: Estimates building usage using BRAILS++ model classifiers on Street View (``US_footprint_built-occupancy-brails-2026``).
 
 Stage 5: curate
 ---------------
