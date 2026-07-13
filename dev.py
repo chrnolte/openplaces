@@ -701,7 +701,7 @@ def main():
         'list': ('List all conda/mamba environments', list_envs),
         'qgis': ('Install QGIS processing scripts', install_qgis),
         'launcher': (
-            'Install terminal launcher command',
+            'Install command to launch openplaces from the terminal',
             lambda: install_launcher(get_env_name()),
         ),
     }
