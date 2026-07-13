@@ -138,10 +138,6 @@ This stage runs deep learning models (BRAILS++) to predict visual building attri
    * **Explanation**: Uses computer vision detectors on street-level photos to estimate floors of living area, predicting story height.
    * **Function**: :func:`openplaces.io.enricher.attributes.detect_n_stories`
 
-.. note::
-   Visual occupancy prediction (``US_footprint_built-occupancy-brails-2026`` via :func:`openplaces.io.enricher.attributes.classify_occupancy`) is run during enrichment but is not consumed at the final curation stage.
-
-
 Stage 5: Curation
 -----------------
 
