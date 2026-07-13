@@ -21,11 +21,11 @@ Its principal purpose is to support reproducible research for conservation, land
 
 ## Documentation
 
-- User guide: https://openplaces.readthedocs.io/
+- User guide: https://docs.openplaces.io
 
 ## Installation
 
-- Getting started: https://openplaces.readthedocs.io/en/latest/getting-started.html
+- Get started: https://docs.openplaces.io/en/latest/2_get-started
 
 ## Governance
 
@@ -36,14 +36,14 @@ Contact **contact@openplaces.io** if you would like to get involved.
 ## License
 
 Released under the **Apache License 2.0**. See [LICENSE.md](LICENSE.md) for details.  
-© 2026 Christoph Nolte and the openplaces contributors
+© 2025-2026 Christoph Nolte and the openplaces contributors
 
 ## Citation
 
 If you use **openplaces** in academic work, please cite:
 
 ```bibtex
-@misc{openplaces2025,
+@misc{openplaces2026,
   author       = {Christoph Nolte et al.},
   title        = {openplaces: A Python package for place-based geospatial analysis},
   year         = {2026},
@@ -55,6 +55,6 @@ If you use **openplaces** in academic work, please cite:
 
 This codebase combines code contributions developed under four federal research grants, supported by the U.S. National Science Foundation (NSF) and the National Aeronautics and Space Administration (NASA).
 
-For more information, visit: https://placeslab.org/research. 
+For more information, visit: https://placeslab.org/research
 
 Any opinions, findings, and conclusions or recommendations expressed are those of the authors and do not necessarily reflect the views of the supporting agencies.
