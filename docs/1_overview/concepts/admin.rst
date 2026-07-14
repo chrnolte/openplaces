@@ -2,10 +2,10 @@
 
 .. _administrative_units:
 
-Administrative units: the geography
-===================================
+Administrative units: geography
+===============================
 
-Administrative units are the geographic regions at which property data is organized.
+Administrative units are the geographic regions by which property data is organized.
 
 ``openplaces`` uses a globally resolvable, hierarchical (multi-level) set of identifiers for administrative units:
 
