@@ -119,7 +119,8 @@ def collect_link_ids(
         Explicit reference recipe ID of the link's other side.
     column : str, optional
         Output column written onto the curated entity (default
-        ``parcel_id_all``).
+        ``parcel_id_all``). Left missing where the collected value is
+        identical to the base id column (e.g. ``parcel_id``).
     include_below_threshold : bool, optional
         When False (default), only link-labeled pairs (those kept by the
         harmonize crosswalk's sliver thresholds) are collected. When
@@ -171,6 +172,15 @@ def collect_link_ids(
         lambda s: '|'.join(s.dropna().astype(str).unique())
     )
     curated[column] = collected.where(collected != '').reindex(curated.index)
+
+    # Like the harmonizer's `_join_distinct` convention, leave the `_all`
+    # column missing where it would just repeat the base id.
+    base_column = column.removesuffix('_all')
+    if base_column != column and base_column in curated.columns:
+        same = (
+            curated[column].astype('string') == curated[base_column].astype('string')
+        ).fillna(False)
+        curated[column] = curated[column].mask(same)
 
     if state.verbose:
         n_multi = int(curated[column].str.contains(r'\|', na=False).sum())
