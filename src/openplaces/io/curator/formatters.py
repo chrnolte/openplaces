@@ -174,19 +174,27 @@ def _key_fields(col: str) -> tuple:
     return (0, _attr_rank(base), 0, 0, 0)
 
 
-def _sort_key(col: str, original_index: int) -> tuple:
+def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
     """Deterministic sort key.
 
     Every ``{base}_source`` sidecar is grouped into one provenance band that
     sorts after all canonical columns (block 0) and before the source-variable
     block (block 1), ordered among themselves by their base column's rank.
+    An ``{base}_all`` variant whose base column is present sorts immediately
+    after that base (its key is the base's key plus a trailing marker), so
+    e.g. ``parcel_id_all`` follows ``parcel_id`` even though the bare id
+    columns tie on registry rank.
     """
     if col.endswith(SOURCE_SUFFIX):
         # Band 0.5 groups every sidecar between canonical (0) and source (1),
         # ordered among themselves by their base column's rank.
-        return (0.5, _key_fields(col[: -len(SOURCE_SUFFIX)]), original_index)
+        return (0.5, _key_fields(col[: -len(SOURCE_SUFFIX)]), index_of[col])
+    if col.endswith('_all'):
+        base = col[: -len('_all')]
+        if base in index_of:
+            return (*_sort_key(base, index_of), 1)
     fields = _key_fields(col)
-    return (float(fields[0]), fields, original_index)
+    return (float(fields[0]), fields, index_of[col])
 
 
 @_register('order_columns')
@@ -203,9 +211,9 @@ def order_columns(
     ordered by their base column's rank; (1) source variables inherited from
     other entities (relational counts first, then the suffixed evidence); (2)
     flag and visualization-only columns (``occupancy_type_conflict``/``_review``,
-    ``*_per_area``). ``geometry`` is always kept last. Computed from each
-    column's name and the registry, so the recipe needs no explicit column
-    list.
+    ``*_per_area``). An ``{col}_all`` variant always directly follows its base
+    column. ``geometry`` is always kept last. Computed from each column's name
+    and the registry, so the recipe needs no explicit column list.
 
     Parameters
     ----------
@@ -228,7 +236,7 @@ def order_columns(
     lead = [c for c in overrides if c in others]
     rest = [c for c in others if c not in lead]
     index_of = {c: i for i, c in enumerate(others)}
-    rest_sorted = sorted(rest, key=lambda c: _sort_key(c, index_of[c]))
+    rest_sorted = sorted(rest, key=lambda c: _sort_key(c, index_of))
 
     state.curated = curated[lead + rest_sorted + geom]
     return state
