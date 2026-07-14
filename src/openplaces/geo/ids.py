@@ -41,88 +41,68 @@ def get_geo_ids(
     gdf : GeoDataFrame
         GeoDataFrame with parcel geometries
     grid_degrees : float
-        Grid size in degrees (default 0.00003)
+        Grid size in degrees
     hash_length : int
-        Number of hex characters in output (default 18 = 72 bits)
+        Number of hex characters in output
     handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
+        Add unique numeric suffix to duplicate geo_ids (default True)
     verbose: bool
-        If True, prints information on duplicates
+        Print information on duplicates (default False)
 
     Returns
     -------
     pd.Series
         Series of geo_ids with same index as input GeoDataFrame
-
-    Notes
-    -----
-    Why degrees instead of projected CRS:
-    - No projection covers entire Earth without distortion/singularities
-    - Degree grid is globally consistent (same grid cell = same x/y)
-    - Simple, fast (no reprojection needed)
-    - Works everywhere including poles
-
-    Trade-off:
-    - Grid "size" in meters varies by latitude (larger at equator)
-    - But parcels at same location always use same grid
-    - This guarantees non-overlapping parcels get different IDs
     """
 
-    # Ensure EPSG:4326
+    # Ensure GeoDataFrame is in EPSG:4326 projection
     if gdf.crs != 'epsg:4326':
         print('Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
         gdf = gdf.to_crs('epsg:4326')
 
-    # Get bounds for each parcel
-    # (using fillna(0) to avoid checking for empty geometries)
-    bounds = gdf.bounds.fillna(0)
+    # Quantize bbox corners (consistent grid for all parcels; nan_to_num
+    # avoids checking for empty geometries)
+    geom = gdf.geometry.values
+    bounds_q = np.round(np.nan_to_num(shapely.bounds(geom)) / grid_degrees).astype(
+        np.int64
+    )
 
-    # Quantize bbox corners (consistent grid for all parcels)
-    minx_q = (bounds['minx'] / grid_degrees).round().astype(int)
-    miny_q = (bounds['miny'] / grid_degrees).round().astype(int)
-    maxx_q = (bounds['maxx'] / grid_degrees).round().astype(int)
-    maxy_q = (bounds['maxy'] / grid_degrees).round().astype(int)
-
-    # Area in square degrees (log scale)
+    # Area in square degrees (log scale, scaled up for precision)
     # Note: Area in degrees² varies with latitude, but that's okay
     # because we're comparing relative sizes at similar locations
-    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    area_deg2 = gdf.area.fillna(0)
-    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    area_q = (
-        (np.log10(area_deg2 * 1e10 + 1) * 100).round().fillna(0).astype(int)
-    )  # Scale up for precision
+    area_deg2 = np.nan_to_num(shapely.area(geom))
+    area_q = np.round(np.log10(area_deg2 * 1e10 + 1) * 100).astype(np.int64)
 
     # Compactness: perimeter²/area (dimensionless, so units don't matter)
-    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    compactness = (gdf.length**2) / (area_deg2 + 1e-10)
-    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    compact_q = (compactness * 10).round().fillna(0).astype(int)
+    length = np.nan_to_num(shapely.length(geom))
+    compact_q = np.round(length**2 / (area_deg2 + 1e-10) * 10).astype(np.int64)
 
     # Create hash inputs
-    hash_inputs = (
-        minx_q.astype(str)
-        + ','
-        + miny_q.astype(str)
-        + ','
-        + maxx_q.astype(str)
-        + ','
-        + maxy_q.astype(str)
-        + ','
-        + area_q.astype(str)
-        + ','
-        + compact_q.astype(str)
-    )
+    cols = [
+        c.tolist()
+        for c in (
+            bounds_q[:, 0],
+            bounds_q[:, 1],
+            bounds_q[:, 2],
+            bounds_q[:, 3],
+            area_q,
+            compact_q,
+        )
+    ]
+    hash_inputs = [f'{a},{b},{c},{d},{e},{f}' for a, b, c, d, e, f in zip(*cols)]
 
     # Generate hash
-    geo_ids = hash_inputs.apply(
-        lambda s: hashlib.sha256(s.encode()).hexdigest()[:hash_length]
+    sha = hashlib.sha256
+    geo_ids = pd.Series(
+        [sha(s.encode()).hexdigest()[:hash_length] for s in hash_inputs],
+        index=gdf.index,
     )
+
+    # Give empty geometries a 'no-geometry' string ID
+    geo_ids.loc[gdf.geometry.is_empty] = 'no-geometry'
 
     # Check for duplicates
     duplicates = geo_ids.duplicated(keep=False)
-
-    geo_ids.loc[gdf['geometry'].is_empty] = 'no-geometry'
 
     if duplicates.any():
         n_dupl = duplicates.sum()
@@ -137,11 +117,12 @@ def get_geo_ids(
             dup_examples = (
                 geo_ids[duplicates].sort_values().head(min(10, duplicates.sum())).index
             )
+            hash_input_series = pd.Series(hash_inputs, index=gdf.index)
             print(
                 pd.concat(
                     [
                         geo_ids[dup_examples].rename('geo_id'),
-                        hash_inputs[dup_examples].rename('hash_inputs'),
+                        hash_input_series[dup_examples].rename('hash_inputs'),
                         gdf.loc[dup_examples],
                     ],
                     axis=1,
