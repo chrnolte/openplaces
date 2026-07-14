@@ -157,15 +157,15 @@ Processing pipeline
   :alt: Illustration of pipeline
   :align: right
 
-The creation of the CHEER dataset proceeds through five core stages of the ``openplaces`` pipeline: **Ingest**, **Harmonize**, , **Enrich**, and **Curate**.
+The creation of the CHEER dataset proceeds through the four core stages of the ``openplaces`` pipeline: **Ingest** (twice: once for entities, once for images), **Harmonize**, **Enrich**, and **Curate**.
 
 Stage 1: ingest
 ---------------
 
 This stage downloads and extracts raw geometry and reference point datasets:
 
-1. **Footprint datasets**: Downloads and unzips raw footprints from OpenBuildingMap (OBM), Microsoft, and state/local layers.
-2. **Assessor parcels**: Gathers property tax assessor geometry and tax rolls from local/state agencies.
+1. **Footprint polygon datasets**: Downloads and unzips raw footprints from OpenBuildingMap (OBM), Microsoft, and state/local layers.
+2. **Parcel datasets**: Gathers property tax assessor geometry and tax rolls from local/state agencies.
 3. **Reference layers**: Downloads structure point databases (National Structure Inventory; NSI), geocoded residential address points (Overture), and FEMA USA Structures footprints (used for parcel-level occupancy evidence).
 
 Stage 2: harmonize
