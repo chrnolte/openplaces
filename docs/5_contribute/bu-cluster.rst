@@ -32,7 +32,7 @@ Connect
 
 .. note::
 
-   When accessing restricted data, you need to log onto ``scc4``
+   When accessing restricted data, you need to log onto ``scc4``:
 
    .. code-block:: bash
 
@@ -55,7 +55,7 @@ Create your copy of the code
       mkdir your_username
       cd your_username
 
--  Clone the ``openplaces`` Github repository:
+-  Clone the ``openplaces`` GitHub repository:
 
    .. code-block:: bash
 
@@ -193,7 +193,7 @@ Set up your data folders
 
 Upon the first call of ``import openplaces``, a configuration script is launched.
 
-See :ref:`configuring your installation<configure>` for the full explanation.
+See :ref:`configuring your installation <configure>` for the full explanation.
 
 On the cluster, you will have to pick this configuration:
 

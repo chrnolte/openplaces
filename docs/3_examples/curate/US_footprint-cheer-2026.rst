@@ -10,7 +10,7 @@ U.S. footprint inventory (CHEER)
   :alt: Illustration of footprints, buildings, and dwellings
   :align: right
 
-This recipe creates a footprint-level building inventory for U.S. hurricane damage and exposure modeling. 
+This recipe creates a footprint-level building inventory for hurricane damage and exposure modeling in the U.S.
 
 It resolves building :ref:`footprints <footprints>` from multiple geometry sources (OpenBuildingMap, Microsoft, and local datasets), then enriches each footprint with data from linked parcels, the National Structure Inventory (NSI), Overture :ref:`dwellings <dwellings>` (addresses), and deep-learning visual classifiers (BRAILS++). 
 
@@ -33,7 +33,7 @@ Canonical attributes
 ``geometry``
     The spatial polygon outlining the footprint, or the parcel polygon for fallback records.
 ``geometry_source``
-    Source of the geometry: ``obm`` (OpenBuildingMap), ``microsoft``, local state sources (e.g. ``nconemap``), or ``parcel.<source>`` for parcel-shaped fallbacks representing unlocated structures.
+    Source of the geometry: ``obm`` (OpenBuildingMap), ``microsoft``, local state sources (e.g., ``nconemap``), or ``parcel.<source>`` for parcel-shaped fallbacks representing unlocated structures.
 ``occupancy_type``
     Canonical occupancy class. Multi-Family structures are split into HAZUS height bands (Low-Rise: 1-3 stories, Mid-Rise: 4-7 stories, High-Rise: 8+ stories) using ``n_stories`` (stilts/open ground floors excluded).
 ``value``
@@ -67,9 +67,9 @@ Parcel-derived evidence (assessor)
 Attributes inherited from the primary parcel linked to the footprint.
 
 ``parcel_id``
-    Globally-unique id of the primary linked parcel, used to join parcels back onto footprints.
+    Globally unique ID of the primary linked parcel, used to join parcels back onto footprints.
 ``parcel_id_local`` / ``parcel_id_local_all``
-    Locally cross-comparable assessor ID of the primary linked parcel, and combined IDs of all intersected parcels (populated only if more than one distinct ID exists). Not unique across admin units, so it is not used as a join key.
+    Locally cross-comparable assessor ID of the primary linked parcel, and combined IDs of all intersected parcels (populated only if more than one distinct ID exists). Not unique across administrative units, so it is not used as a join key.
 ``use_group_combined_parcel`` / ``use_group_combined_parcel_all``
     Primary and combined land-use description strings (populated only if more than one distinct use exists).
 ``land_use_class_parcel``
@@ -102,7 +102,7 @@ Structure-level point attributes matched to the footprint.
 ``year_built_block_median_building_nsi``
     Median year built for the associated census block.
 ``source_building_nsi``
-    Underlying source database of the NSI record (e.g. Parcel, Model).
+    Underlying source database of the NSI record (e.g., Model).
 
 Overture dwelling and address evidence
 --------------------------------------
@@ -170,9 +170,9 @@ Stage 2: harmonize
 This stage merges geometries and links datasets to build the core footprint spine (``US_footprint-spine-2026``) and parcel spine (``US_parcel-spine-2026``):
 
 1. **Geometry deduplication**: Merges footprints in priority order (OBM first, then Microsoft, then state-specific sources). Footprints smaller than 10 m² are dropped. Candidate shapes are added to the spine only if their Intersection-over-Union (IoU) with existing shapes is < 0.02 and they do not fall within a size-scaled exclusion buffer around large existing spine footprints (area >= 250 m²; buffer distance scales with shape area).
-2. **Elongated-footprint filter**: Aspect ratios >= 2.5 with aligned axes (within 15°), longitudinal overlap >= 50%, and lateral spacing < 2x width are deduplicated to prevent parallel shifted footprint representations (common for manufactured homes) from appearing twice.
+2. **Elongated-footprint filter**: Aspect ratios >= 2.5 with aligned axes (within 15°), longitudinal overlap >= 50%, and lateral spacing < 2x width are deduplicated to prevent parallel-shifted footprint representations (common for manufactured homes) from appearing twice.
 3. **Parcel spatial overlay**: Intersects footprints with parcels via a polygon identity overlay. Intersections under 10 m² or minor slivers (< 1/6 of the footprint's largest parcel intersection) are filtered.
-4. **Synthetic fallbacks**: For parcels where assessor records indicate a structure exists but no footprint is detected, synthetic "footprint" rows are created using the parcel boundary geometry (labeled ``parcel.<source>``). Overlaps against detected footprints are spatial-trimmed. These fallback polygons are included in the parcel footprint count, are backfilled with the id (``parcel_id``) and local ID (``parcel_id_local``) of their source parcel, and are excluded from morphology metrics.
+4. **Synthetic fallbacks**: For parcels where assessor records indicate a structure exists but no footprint is detected, synthetic "footprint" rows are created using the parcel boundary geometry (labeled ``parcel.<source>``). Overlaps against detected footprints are spatial-trimmed. These fallback polygons are included in the parcel footprint count, are backfilled with the ID (``parcel_id``) and local ID (``parcel_id_local``) of their source parcel, and are excluded from morphology metrics.
 5. **Reference point linking**: Associates structure-level point evidence with the footprint spine using a tiered proximity join:
 
    * *Containment*: Point is within the footprint.
@@ -210,7 +210,7 @@ This stage curates the spines into clean, canonical datasets:
 1. **Parcel curation** (``US_parcel-openplaces-2026``): Derives parcel-level occupancy groups, calculates relative footprint area z-scores, and classifies land use (e.g., Manufactured Home Park, Vacant, Retail, Office) using weighted voting.
 2. **Footprint curation** (``US_footprint-cheer-2026``): Integrates curated parcels, corrected address counts, reconciled attribute priorities, base occupancy imputation, visual model prediction, and weighted voting to resolve final footprint occupancy classes. This footprint curation process executes the following steps:
 
-   * **Curated parcel linking**: Curated attributes from the parcel curation lane (FEMA occupancy, assessor values, combined land use, and the 11-class ``land_use_class_parcel`` classification) are joined by matching the footprint's parcel reference (``parcel_id``) to the curated parcel's own globally-unique id (``parcel_id``).
+   * **Curated parcel linking**: Curated attributes from the parcel curation lane (FEMA occupancy, assessor values, combined land use, and the 11-class ``land_use_class_parcel`` classification) are joined by matching the footprint's parcel reference (``parcel_id``) to the curated parcel's own globally unique ID (``parcel_id``).
    * **Address evidence correction (suppress_where)**: Suppresses (nulls) ``n_dwellings_overture`` counts on parcels classified as ``Vacant`` by the parcel land-use vote, filtering out pre-construction or platted address points that do not represent physical buildings.
    * **Implied Overture occupancy (resolve_by_vote)**: Resolves the transient implied occupancy type (``occupancy_type_dwelling_overture``) from corrected Overture counts alone (Single-Family for <= 1 dwelling, Multi-Family for >= 2).
    * **Attribute reconciliation**: Canonical attributes are resolved from competing evidence (such as prioritizing Overture dwelling counts over NSI, assessor construction year over NSI block-median, and assessor improvement value over NSI replacement value).
@@ -237,6 +237,6 @@ Lochhead M, Zsarnoczay A, Deierlein G (2026) Exposure matters: a synthesis frame
 
 .. _Cetiner et al. 2025:
 
-Cetiner, B., McKenna, F., Yi, S.-. ri ., Wang, B., & Manousakis, I. V. (2025). BRAILS++ (v4.2.0). Zenodo. `doi:10.5281/zenodo.17797364 <https://doi.org/10.5281/zenodo.17797364>`_
+Cetiner, B., McKenna, F., Yi, S.-ri, Wang, B., & Manousakis, I. V. (2025). BRAILS++ (v4.2.0). Zenodo. `doi:10.5281/zenodo.17797364 <https://doi.org/10.5281/zenodo.17797364>`_
 
 

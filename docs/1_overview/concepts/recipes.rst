@@ -2,14 +2,14 @@
 
 .. _recipes:
 
-Recipes: the processing instructions
-====================================
+Recipes: processing instructions
+================================
 
 Recipes are instructions for ingesting and transforming data.
 
-They describe where the input data comes from and how it needs to be processed at every step (e.g. data ingestion, harmonization, curation, etc.).
+They describe where the input data comes from and how it needs to be processed at every step (e.g., data ingestion, harmonization, curation, etc.).
 
-Recipes are what makes ``openplaces`` scalable: the package provides an abstraction logic, and the recipes translate external data to that logic.
+Recipes make ``openplaces`` scalable: the package provides an abstraction logic, and the recipes translate external data to that logic.
 
 :ref:`Contributed recipes <contribute>` expand the analytical capacities of all other users.
 
@@ -39,7 +39,7 @@ Examples:
 
        *This recipe contains instructions on how to access the data*
    * - ``US_admin-census-2021_admin3``
-     - United States: official county (``admin3``) boundaries from the US census
+     - United States: official county (``admin3``) boundaries from the US Census
    * - ``US_footprint-microsoft-v2``
      - US building footprints provided by Microsoft
    * - ``US-NC_parcel-nconemap-2023``

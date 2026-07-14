@@ -14,7 +14,7 @@ Install ``openplaces`` as an application with its own environment.
 
 This is the recommended setup for developers and collaborators.
 
-- It allows you to use the most recent functionality 
+- It allows you to use the most recent functionality.
 - It allows you to make :ref:`code contributions <contribute>`.
 
 
@@ -23,7 +23,7 @@ This is the recommended setup for developers and collaborators.
 Get the repository
 ------------------
 
--  Open a Terminal window:
+1. Open a Terminal window:
 
    .. tab-set::
 
@@ -42,7 +42,7 @@ Get the repository
       # Example: 'code' folder in the user directory
       cd ~/code
 
-3. Clone the ``openplaces`` Github repository:
+3. Clone the ``openplaces`` GitHub repository:
 
    .. code-block:: bash
 
@@ -60,7 +60,7 @@ Install the environment
 
 You need to have a version of the `Anaconda package manager <https://www.anaconda.com/docs/getting-started/main>`_ installed.
 
-Either ``conda`` or ``mamba`` need to be executable from your :gui:`Terminal`:
+Either ``conda`` or ``mamba`` needs to be executable from your :gui:`Terminal`:
 
 .. tab-set::
 
@@ -97,7 +97,7 @@ It will also ask you whether:
    The ``7z`` utility allows you to unpack uncommon formats of compressed :file:`.zip` files, such as Windows formats used to access public parcels in the state of Virginia, US (:input:`US-VA`).
 2. You want the :gui:`QGIS` tool installed in the :gui:`Processing Toolbox`.
 
-   This tool allows you to import openplaces' :file:`.parquet` tables with associated geometry parquet files as a single, joined vector layer.
+   This tool allows you to import ``openplaces``'s :file:`.parquet` tables with associated geometry parquet files as a single, joined vector layer.
 3. You want to install a shortcut in your user folder.
 
    This lets you type :input:`openplaces` into your :gui:`Terminal` to:

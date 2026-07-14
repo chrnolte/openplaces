@@ -9,7 +9,7 @@ Datasets: the attributes
 
 Datasets can come in many formats: tables, vectors, rasters, XML. What distinguishes them from :ref:`entities <entities>` is that datasets are *not yet* organized by entity: the rows don't refer to the entity yet (and therefore require some linkage algorithm).
 
-For instance, a user might have a dataset of elevation, flood risk, or hurricane wind fields and wants to link it to buildings, a type of :ref:`entity <entities>`.
+For instance, a user might have a dataset of elevation, flood risk, or hurricane wind fields and want to link it to buildings, a type of :ref:`entity <entities>`.
 
 
 Themes
@@ -38,7 +38,7 @@ Datasets are grouped into themes. The top-level themes are pre-defined, so the d
    * - ``population``
      - Demographic data (aggregate)
    * - ``persons``
-     - Data of persons, e.g. property owners (sensitive)
+     - Data of persons, e.g., property owners (sensitive)
    * - ``risk``
      - Floods, storms, wildfires
    * - ``rules``

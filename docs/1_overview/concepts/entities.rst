@@ -9,11 +9,11 @@ Entities are the units of analysis in ``openplaces``.
 
 They refer to the fundamental building blocks of property information: parcels, buildings, transactions, etc.
 
-In a table or dataframe, entities are represented by **rows**: reach row is a unique entity (e.g., a building).
+In a table or dataframe, entities are represented by **rows**: each row is a unique entity (e.g., a building).
 
 Most data processed in ``openplaces`` is attributed to an entity.
 
-Datasets organized by entities are covered here. For datasets that are not organized by entity (e.g. a global raster image, a text, a non-entity table), see :ref:`datasets <datasets>`.
+Datasets organized by entities are covered here. For datasets that are not organized by entity (e.g., a global raster image, a text file, or a non-entity table), see :ref:`datasets <datasets>`.
 
 
 Building blocks
@@ -49,8 +49,8 @@ Some buildings are separable from parcels, e.g., a manufactured home.
 
 Hazard risk models often require:
 
-- the location of buildings, e.g., for flood risk models.
-- structural properties, e.g., for earthquakes, hurricanes, tornados.
+- The location of buildings, e.g., for flood risk models.
+- Structural properties, e.g., for earthquakes, hurricanes, and tornadoes.
 
 Buildings are neither dwellings nor footprints.
 
@@ -60,13 +60,13 @@ Buildings are neither dwellings nor footprints.
 Footprints
 ----------
 
-Footprints are the boundaries a building envelope as seen from space.
+Footprints are the boundaries of a building envelope as seen from space.
 
 Footprints are usually produced from satellite imagery.
 
-An urban footprint, e.g. in New York, might contain multiple parcels, each with its own building, e.g. townhomes.
+An urban footprint, e.g., in New York might contain multiple parcels, each with its own building, e.g., townhomes.
 
-Some hazard models involving wind (e.g., for hurricane exposure) operate at the footprint level, e.g., :ref:`CHEER footprints <cheer_footprints>`.
+Some hazard models (e.g., for hurricane exposure) operate at the footprint level, e.g., :ref:`CHEER footprints <cheer_footprints>`.
 
 
 .. _dwellings:
@@ -79,10 +79,10 @@ Dwellings
   :alt: Illustration of footprints, buildings, and dwellings
   :align: right
 
-Dwellings are individual residential units within a building, e.g.:
+Dwellings are individual residential units within a building, e.g.,:
 
 - an apartment in a building.
-- a unit in a two-family.
+- a unit in a two-family home.
 - a condominium (separate ownership).
 - one single-family home.
 
@@ -94,17 +94,17 @@ Address and census databases commonly refer to dwellings.
 Properties
 ----------
 
-Properties are the assets (property rights) that are sold, valued and taxed.
+Properties are the assets (property rights) that are sold, valued, and taxed.
 
 The taxable property is the unit by which most tax assessors organize information.
 
-In practice, properties can be any collections of entities. A property can be:
+In practice, properties can be any collection of entities. A property can be:
 
-- a parcel (and not include the manufactured home on it)
+- a parcel (excluding any manufactured home on it)
 - a building (a multi-family unit)
 - a dwelling (a condominium)
 - both (a multi-apartment complex)
-- or an entirely different type of asset (e.g., right of way).
+- an entirely different type of asset (e.g., a right-of-way).
 
 
 .. _transactions:
@@ -118,13 +118,13 @@ This typically happens in the form of a sale or easement.
 
 They are recorded in deeds or similar documents.
 
-Transaction data may identify the seller, buyer, the property, and the date and is private in many countries.
+Transaction data, which may identify the seller, buyer, property, and date, is private in many countries.
 
 
 Spatial reference and partitioning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Two types of entities — :ref:`administrative units <administrative_units>` and :ref:`tiles <tiles>` — serve as spatial partitions for data storage and ingestion of other entities.
+Two types of entities - :ref:`administrative units <administrative_units>` and :ref:`tiles <tiles>` - serve as spatial partitions for data storage and ingestion of other entities.
 
 
 .. _entity_administrative_units:

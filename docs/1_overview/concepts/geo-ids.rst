@@ -45,7 +45,7 @@ To streamline data exchange, essential :ref:`entities <entities>` in ``openplace
 
      - Securely hashed, but not anonymous.
 
-       You can infer the polygon from a ``geo_id`` if you *already* know six of the polygon's geometric properties (bounds, area, complexity). Trivial to crack if the ``geo_id`` is a public parcel polygon.
+        You can infer the polygon from a ``geo_id`` if you *already* know six of the polygon's geometric properties (bounds, area, complexity). It is trivial to crack if the ``geo_id`` is derived from a public parcel polygon.
 
 
 Administrative units: ``admin_id``
@@ -77,9 +77,9 @@ All parcels in ``openplaces`` (so far) are indexed with a ``parcel_id``.
 
 Example: :input:`'a3f1c08e9b2d47e6c5a09f4b'`
 
-This type identifier is a ``geo_id``: a unique identifier derived from a geo-referenced 2D polygon.
+This type of identifier is a ``geo_id``: a unique identifier derived from a geo-referenced 2D polygon.
 
-The ``geo_id`` is designed to link parcel datasets across time and versions, without giving away the actual coordinates of the parcel (unless the exact coordinates are known to the "attacker", e.g. in a public parcel dataset).
+The ``geo_id`` is designed to link parcel datasets across time and versions, without giving away the actual coordinates of the parcel (unless the exact coordinates are known to the "attacker", e.g., in a public parcel dataset).
 
 
 Why stable, geometry-based parcel identifiers?
@@ -89,7 +89,7 @@ Source parcel numbers (e.g., assessor parcel numbers, map numbers) are unreliabl
 
 The ``geo_id`` answers the question:
 
-   *Is this the same piece of land I saw in a different download, from a different source?*.
+   *Is this the same piece of land I saw in a different download, from a different source?*
 
 A stable parcel boundary hashes to the same value. Therefore, the ``geo_id`` allows you to:
 
@@ -107,7 +107,7 @@ It reduces each polygon to six numbers, each computed in the global ``EPSG:4326`
 
 - Its bounding-box corners ``minx``, ``miny``, ``maxx``, and ``maxy``, snapped to a grid of 0.000001°
 - Its log-scaled and rounded ``area`` (in degrees)
-- Its ``compactness``  (perimeter² / area, a unitless shape measure), also scaled and rounded.
+- Its ``compactness`` (perimeter² / area, a unitless shape measure), also scaled and rounded.
 
 These six integers are joined into a single string::
 
@@ -143,4 +143,4 @@ A change is *significant*, and generates a new ``geo_id``, when it is large enou
 - Shift the log-scaled area by ~2.3% or more.
 - Shift the compactness (perimeter² / area ratio) by 0.1 or more.
 
-Subdividing a lot, merging two lots, lopping off a strip for a road widening, or a real resurvey of the outline all produce a new ID because they represent a different parcel of land.
+Subdividing a lot, merging two lots, lopping off a strip for road widening, or resurveying the outline all produce a new ID because they represent a different parcel of land.
