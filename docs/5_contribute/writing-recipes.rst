@@ -415,7 +415,7 @@ Data cleaning
 
 .. attribute:: null_value_strings
 
-   List of strings in the source data that should be interpreted as missing values (``None``).
+   List of strings in the source data that should be interpreted as missing values (:input:`None`).
 
    Applied to all non-ID columns before any other preprocessing.
 

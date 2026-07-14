@@ -1,7 +1,6 @@
 .. openplaces
 
 .. _geo_ids:
-.. _parcel_id:
 
 Geographic identifiers: ``geo_id``
 ==================================
@@ -69,6 +68,8 @@ These Plus Codes define a specific area on the Earth's surface. They are non-ano
 
 For buildings and footprints, that seems non-controversial: building geometries and locations are already publicly visible globally, often derived from open satellite imagery.
 
+
+.. _parcel_id:
 
 Parcels and the ``geo_id``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
