@@ -139,7 +139,7 @@ class GoogleSatellite:
             asset_footprints.append(asset.coordinates)
             asset_keys.append(key)
 
-        satellite_images = self._download_images(
+        satellite_images, image_set.counts = self._download_images(
             asset_footprints,
             asset_keys,
             dir_path,
@@ -183,8 +183,9 @@ class GoogleSatellite:
 
         Returns
         -------
-        List[Path]
-            List of paths to the downloaded images.
+        tuple[list[Path], dict]
+            Paths to the images (cached and downloaded alike) and a tally of
+            how they were obtained (``cached``/``downloaded``/``failed``).
         """
         satellite_image_paths = []
         inps = []
@@ -196,13 +197,24 @@ class GoogleSatellite:
             satellite_image_paths.append(image_path)
             inps.append((footprint, image_path))
 
-        with tqdm(total=len(footprints), desc='Obtaining satellite imagery') as pbar:
+        # Only images actually missing (or force-redownloaded) hit the network;
+        # a fully cached inventory produces no progress bar at all.
+        pending = [
+            (footprint, path)
+            for footprint, path in inps
+            if redownload or not path.exists()
+        ]
+        counts = {'cached': len(inps) - len(pending), 'downloaded': 0, 'failed': 0}
+        if not pending:
+            return satellite_image_paths, counts
+
+        with tqdm(total=len(pending), desc='Obtaining satellite imagery') as pbar:
             with ThreadPoolExecutor() as executor:
                 futures = {
                     executor.submit(
                         self._download_satellite_image, footprint, path, redownload
                     ): footprint
-                    for footprint, path in inps
+                    for footprint, path in pending
                 }
 
                 for future in as_completed(futures):
@@ -211,11 +223,14 @@ class GoogleSatellite:
                     try:
                         future.result()
                     except Exception as exc:
+                        counts['failed'] += 1
                         tqdm.write(
                             f'Error downloading image for footprint {footprint}: {exc}'
                         )
+                    else:
+                        counts['downloaded'] += 1
 
-        return satellite_image_paths
+        return satellite_image_paths, counts
 
     def _download_satellite_image(
         self,
