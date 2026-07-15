@@ -317,12 +317,20 @@ def apply_transformation(
             )
 
         elif transform_type == 'remap_file':
-            df[output_col] = _apply_remap_file(
-                df[config['input']],
-                config['crosswalk_file'],
-                config.get('key_col', 0),
-                config.get('value_col', 1),
-            )
+            if 'crosswalk_id' in config:
+                # A recipe-relative crosswalk asset (e.g. a '*-remap.csv'
+                # beside the recipe), resolved by recipe id like the
+                # harmonizer's remap_id.
+                df[output_col] = df[config['input']].map(
+                    get_crosswalk({'recipe_id': config['crosswalk_id']})
+                )
+            else:
+                df[output_col] = _apply_remap_file(
+                    df[config['input']],
+                    config['crosswalk_file'],
+                    config.get('key_col', 0),
+                    config.get('value_col', 1),
+                )
 
         elif transform_type == 'remap_conditional':
             df[output_col] = _apply_remap_conditional(

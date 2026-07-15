@@ -65,10 +65,22 @@ columns:
   census_tract_id: CENSUSCODE
   admin3_id_admin1: FIPS
 
+# Derived columns. `group` normalizes the raw PRIM_OCC occupancy into the
+# NSI-style group vocabulary (e.g. 'Multi - Family Dwelling' -> 'Multi
+# Family'; 'Unclassified' -> missing), so FEMA evidence is one-on-one
+# comparable with group_parcel/group_building_nsi downstream (it reaches the
+# parcel spine as group_footprint_fema).
+transformations:
+  - output: group
+    type: remap_file
+    input: occupancy_type
+    crosswalk_id: US_footprint-fema-2023_group-remap
+
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - occupancy_class
   - occupancy_type
+  - group
   - image_date
   - validation_method
   - building_code

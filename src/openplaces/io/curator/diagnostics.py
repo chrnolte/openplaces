@@ -340,7 +340,7 @@ def save_group_dwelling_candidates(state) -> None:
 # provisional cascade order; the report informs the final rank choice.
 _EVIDENCE_SOURCES = {
     'nsi': 'occupancy_type_building_nsi',
-    'fema': 'occupancy_type_footprint_fema',
+    'fema': 'group_footprint_fema',
     'parcel': 'group_parcel',
     'overture': 'occupancy_type_dwelling_overture',
 }

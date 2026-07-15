@@ -44,13 +44,15 @@ Canonical attributes
 
     Multi-Family structures are split into HAZUS height bands (Low-Rise: 1-3 stories, Mid-Rise: 4-7 stories, High-Rise: 8+ stories) based on ``n_stories``. Multi-Family rows with no story count keep the plain ``Multi-Family`` label.
 ``value``
-    Reconciled structure value in USD. Parcel's total improvement value where available (repeated on every footprint of the parcel, currently not apportioned), otherwise the NSI structure replacement value.
+    Reconciled structure value in USD. Prioritizes the parcel's improvement value (apportioned across its primary footprints by floor-area share), falling back to the NSI structure replacement value.
 ``year_built``
     Reconciled construction year. Prioritizes assessor parcel records over NSI block-median fallbacks.
 ``n_stories``
-    Number of stories predicted from street-level imagery (BRAILS++); currently the only story-count source carried to the output.
+    Reconciled number of stories. Prioritizes street-level imagery predictions (BRAILS++), then measured-height-derived counts (FEMA), and lastly NSI modeled block-median counts.
 ``n_dwellings``
     Reconciled count of dwelling units. Prioritizes Overture geocoded address counts over NSI structure counts, falling back to occupancy-class imputation.
+``height``
+    Reconciled building height in meters (where available from the footprint source, e.g. OpenBuildingMap).
 ``roof_shape``
     Reconciled roof structure classification (e.g., Gable, Hip, Flat) from visual models.
 ``m2``
@@ -86,9 +88,9 @@ Attributes inherited from the primary parcel linked to the footprint.
 ``occupancy_type_footprint_fema``
     Each parcel's dominant FEMA USA-Structures occupancy class by overlap area (remapped via the ``US_footprint-fema-2023_occupancy-type-remap`` crosswalk). Used as second-ranked evidence in the base occupancy cascade.
 ``land_value_parcel``
-    Assessor land valuation (parcel total from the curated parcel lane, repeated on each linked footprint).
+    Assessor land valuation. Kept in full on primary footprints and set to missing (null) on secondary footprints.
 ``improvement_value_parcel``
-    Assessor improvement valuation (parcel total from the curated parcel lane, repeated on each linked footprint).
+    Assessor improvement valuation. Apportioned across the parcel's primary footprints by floor-area share.
 ``year_built_parcel``
     Construction year recorded in assessor tax records.
 ``address_parcel``
@@ -142,7 +144,7 @@ Flags and intermediate calculations used for curation and quality control.
     Summary of conflicting occupancy labels across inputs (formatted :input:`"nsi: X | fema: Y | parcel: Z | overture: W"`). This column is only populated where two or more evidence sources disagree. Non-residential classes are collapsed to :input:`Non-Residential` before comparison, so only residential (or residential-vs-non-residential) disagreements are surfaced.
 ``occupancy_type_review``
     Flag (:input:`True`) for low improvement-value parcel shares indicating potential manufactured homes needing inspection.
-``improvement_value_parcel_per_area`` / ``structure_value_building_nsi_per_area``
+``value_per_area`` / ``improvement_value_parcel_per_area`` / ``structure_value_building_nsi_per_area``
     Calculated values divided by footprint area (USD/m²).
 ``manufactured_home_community``
     Boolean flag indicating whether the parcel is part of a manufactured home community (having more than 3 final Manufactured Home footprints).
@@ -192,6 +194,7 @@ This stage merges geometries and links datasets to build the core footprint spin
      - If no point evidence exists, all footprints on the parcel default to :input:`secondary`.
      - Sole footprints on a parcel are always classified as :input:`primary`.
      - Footprints not linked to any parcel are classified as :input:`unknown`, unless they carry dwelling-point evidence, in which case they are promoted to :input:`primary`.
+     - Synthetic, parcel-derived fallback geometries representing unlocated structures are always classified as :input:`primary`.
 
    * **Raw attribution**: Compiles all raw joined variables into source-suffixed evidence columns in the intermediate spine.
 
@@ -225,16 +228,18 @@ This stage curates the spines into clean, canonical datasets:
 1. **Parcel curation** (``US_parcel-openplaces-2026``): Derives parcel-level occupancy groups, calculates relative footprint area z-scores, and classifies land use (e.g., Manufactured Home Park, Vacant, Retail, Office) using weighted voting.
 2. **Footprint curation** (``US_footprint-cheer-2026``): Integrates curated parcels, corrected address counts, reconciled attribute priorities, base occupancy imputation, visual model prediction, and weighted voting to resolve final footprint occupancy classes. This footprint curation process executes the following steps:
 
-   * **Curated parcel linking**: Curated attributes from the parcel curation lane (including ``improvement_value``, ``land_value``, ``year_built``, ``use_group_combined``, ``group_parcel``, ``manufactured_home_park``, ``occupancy_type_footprint_fema``, and ``land_use_class``) are joined by matching the footprint's parcel reference (``parcel_id``) to the curated parcel's own globally unique ID (``parcel_id``).
+   * **Curated parcel linking**: Curated attributes from the parcel curation lane (including ``improvement_value``, ``land_value``, ``year_built``, ``use_group_combined``, ``group_parcel``, ``manufactured_home_park``, ``occupancy_type_footprint_fema``, ``n_stories_footprint_fema``, and ``land_use_class``) are joined by matching the footprint's parcel reference (``parcel_id``) to the curated parcel's own globally unique ID (``parcel_id``). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns, initially repeating the undivided per-parcel totals across every footprint on the parcel before they are apportioned in the next step.
+   * **Parcel value apportionment (apportion_parcel_values)**: Splits ``improvement_value_parcel`` across a multi-footprint parcel's dwelling-linked (or, absent those, all) primary footprints by floor-area share, while keeping ``land_value_parcel`` whole on the primary footprint only.
    * **Address evidence correction (suppress_where)**: Suppresses (nulls) ``n_dwellings_overture`` counts on parcels classified as :input:`Vacant` by the parcel land-use vote, filtering out pre-construction or platted address points that do not represent physical buildings.
    * **Implied Overture occupancy (resolve_by_vote)**: Resolves the transient implied occupancy type (``occupancy_type_dwelling_overture``) from corrected Overture counts alone (Single-Family for <= 1 dwelling, Multi-Family for >= 2).
    * **Attribute reconciliation**: Canonical attributes are resolved from competing evidence (such as prioritizing Overture dwelling counts over NSI, assessor construction year over NSI block-median, and assessor improvement value over NSI replacement value).
    * **Address count zero-filling (fill_missing_numeric)**: Fills missing or suppressed ``n_dwellings_overture`` counts with 0.
-   * **Compute footprint metrics (derive_metrics)**: Calculates structural metrics like footprint area (``m2``) and structural improvement value per unit area.
+   * **Compute footprint metrics (derive_metrics)**: Calculates structural metrics like footprint area (``m2``) and structural improvement value per area metrics for all value columns (e.g., ``value_per_area``).
    * **Dwelling-count imputation (impute_n_dwellings)**: Fills missing residential unit counts when no source evidence exists.
    * **Base occupancy imputation**: Assigns base occupancy class sequentially using NSI occupancy, FEMA parcel occupancy, parcel land-use mode fallbacks, and lastly, the implied Overture occupancy.
    * **Keyword corrections (resolve_occupancy)**: Refines occupancy classes using property-use keywords from ``parcel-occupancy-keywords.csv``.
    * **Merge visual predictions (merge_enrichments)**: Merges predicted building attributes from deep-learning visual classifiers.
+   * **Story count reconciliation (reconcile_values)**: Resolves the canonical ``n_stories`` attribute, prioritizing street-level imagery predictions (``n_stories_brails``), then measured-height-derived counts (``n_stories_footprint_fema``), and lastly NSI modeled counts (``n_stories_building_nsi``).
    * **Manufactured-home probability scoring (classify_manufactured_homes)**: Scores manufactured home probabilities using rulesets.
    * **Occupancy voting**: Resolves ambiguous Manufactured Home vs. Multi-Family cases using a weighted point vote scoring system.
    * **Height-band splits**: Splits Multi-Family classes into HAZUS height bands (Low-Rise: 1-3, Mid-Rise: 4-7, High-Rise: 8+) based on ``n_stories``.

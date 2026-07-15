@@ -17,6 +17,10 @@ import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
 from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer.apportion import (
+    APPORTIONED_VALUE_COLUMNS,
+    apportion_reference_values,
+)
 
 __all__ = [
     'classify_footprint_priority',
@@ -422,54 +426,34 @@ def _attribute_polygon_reference(
     n_spine_per_ref_col = f'n_{spine_entity_type}s_per_{ref_label}'
     avail_cols = [c for c in (columns or _POLYGON_REF_COLS) if c in ref_polys.columns]
 
-    overlay = overlay.copy()
-    overlay['area_fraction'] = overlay['area_intersection_m2'] / overlay.groupby(
-        'parcel_id'
-    )['area_intersection_m2'].transform('sum')
+    mask_has_ref = overlay.index.get_level_values('parcel_id').notnull()
 
+    volume_weight = None
     if use_volume_weight:
         stories_col = next(
             (c for c in spine.columns if c.startswith('n_stories')), None
         )
         if stories_col is not None:
-            fp_idx = overlay.index.get_level_values(spine_id_col)
-            n_eff = (
-                spine[stories_col].reindex(fp_idx).fillna(1.0).clip(lower=1.0).values
-            )
-            overlay['_w'] = overlay['area_intersection_m2'] * n_eff
-            overlay['area_fraction'] = overlay['_w'] / overlay.groupby('parcel_id')[
-                '_w'
-            ].transform('sum')
-            overlay = overlay.drop(columns='_w')
+            volume_weight = spine[stories_col]
 
-    mask_has_ref = overlay.index.get_level_values('parcel_id').notnull()
-
-    # Prefer dwelling-linked footprints when distributing parcel values across
-    # multiple footprints on the same parcel (Lochhead et al. 2026, Table 4).
-    # For parcels where ≥1 footprint has dwelling evidence, zero out
-    # area_fraction for footprints WITHOUT evidence so they receive no parcel
-    # value (improvement_value, n_dwellings). Suppressed IDs are tracked
-    # to apply the same rule to land_value below.
-    suppressed_ids: set = set()
-    if dwelling_linked_ids:
-        overlay_ref = overlay[mask_has_ref]
-        fp_ids_ref = overlay_ref.index.get_level_values(spine_id_col)
-        has_dwelling = pd.Series(
-            [fid in dwelling_linked_ids for fid in fp_ids_ref],
-            index=overlay_ref.index,
-        )
-        parcel_has_dwelling = has_dwelling.groupby('parcel_id').transform('any')
-        mask_suppress = parcel_has_dwelling & ~has_dwelling
-        if mask_suppress.any():
-            suppressed_ids = set(fp_ids_ref[mask_suppress])
-            new_frac = overlay_ref['area_fraction'].copy()
-            new_frac.loc[mask_suppress] = 0.0
-            frac_by_parcel = new_frac.groupby('parcel_id').transform('sum')
-            new_frac = (new_frac / frac_by_parcel.replace(0, float('nan'))).fillna(0.0)
-            overlay.loc[mask_has_ref, 'area_fraction'] = new_frac
+    # Value apportionment (improvement_value, n_dwellings, year_built,
+    # land_value, address — overlap-fraction shares, dwelling-linked
+    # suppression, primary-only and secondary rules) is delegated to the
+    # shared implementation the curate stage also uses on the persisted link
+    # sidecar; joined back onto the spine, suffixed, below.
+    value_result = apportion_reference_values(
+        overlay[mask_has_ref].reset_index()[
+            [spine_id_col, 'parcel_id', 'area_intersection_m2']
+        ],
+        ref_polys[[c for c in avail_cols if c in APPORTIONED_VALUE_COLUMNS]],
+        spine_id_col=spine_id_col,
+        priority=spine.get('priority_on_parcel'),
+        dwelling_linked_ids=dwelling_linked_ids,
+        volume_weight=volume_weight,
+    )
 
     footprint_ref_attrs = (
-        overlay[mask_has_ref][['area_intersection_m2', 'area_fraction']]
+        overlay[mask_has_ref][['area_intersection_m2']]
         .reset_index()
         .set_index('parcel_id')
         .join(ref_polys[avail_cols])
@@ -582,97 +566,22 @@ def _attribute_polygon_reference(
     else:
         spine[f'overlap_fraction{suffix}'] = np.nan
 
-    if (
-        'address' in footprint_ref_attrs.columns
-        or 'land_value' in footprint_ref_attrs.columns
-    ):
-        footprint_primary_row = (
-            footprint_ref_attrs.reset_index()
-            .sort_values('area_intersection_m2', ascending=False)
-            .drop_duplicates(spine_id_col)
-            .set_index(spine_id_col)
-        )
-        if 'address' in footprint_ref_attrs.columns:
-            spine[f'address{suffix}'] = footprint_primary_row['address'].reindex(
-                spine.index
-            )
-        if 'land_value' in footprint_ref_attrs.columns:
-            if 'priority_on_parcel' in spine.columns:
-                is_principal = spine['priority_on_parcel'].eq('primary')
-            else:
-                is_principal = spine[n_spine_per_ref_col].eq(1)
-            spine[f'land_value{suffix}'] = (
-                footprint_primary_row['land_value']
-                .reindex(spine.index)
-                .where(is_principal)
-            )
-
-    # Suppress land_value for footprints that have no dwelling evidence in
-    # parcels where other footprints do (Lochhead et al. 2026, Table 4).
-    if suppressed_ids and f'land_value{suffix}' in spine.columns:
-        spine.loc[spine.index.isin(suppressed_ids), f'land_value{suffix}'] = np.nan
-
-    footprint_ref_attrs = footprint_ref_attrs.copy()
-
-    # Zero n_dwellings for secondary footprints: accessory structures contain no
-    # dwellings. improvement_value is left missing after aggregation instead, to
-    # match land_value (see below).
-    if (
-        'n_dwellings' in footprint_ref_attrs.columns
-        and 'priority_on_parcel' in spine.columns
-    ):
-        secondary_ids = spine.index[spine['priority_on_parcel'].eq('secondary')]
-        footprint_ref_attrs.loc[
-            footprint_ref_attrs.index.isin(secondary_ids), 'n_dwellings'
-        ] = 0.0
-
-    if 'improvement_value' in footprint_ref_attrs.columns:
-        footprint_ref_attrs['improvement_value'] = (
-            footprint_ref_attrs['improvement_value']
-            .mul(footprint_ref_attrs['area_fraction'])
-            .round(2)
-        )
-
-    if 'year_built' in footprint_ref_attrs.columns:
-        footprint_ref_attrs['year_built'] = footprint_ref_attrs['year_built'].replace(
-            0, np.nan
-        )
-
-    if 'n_dwellings' in footprint_ref_attrs.columns:
-        footprint_ref_attrs['n_dwellings'] = (
-            footprint_ref_attrs['n_dwellings']
-            .mul(footprint_ref_attrs['area_fraction'])
-            .round(2)
-        )
-
-    numeric_agg: dict[str, str] = {}
-    if 'improvement_value' in footprint_ref_attrs.columns:
-        numeric_agg['improvement_value'] = 'sum'
-    if 'n_dwellings' in footprint_ref_attrs.columns:
-        numeric_agg['n_dwellings'] = 'sum'
-    if 'year_built' in footprint_ref_attrs.columns:
-        numeric_agg['year_built'] = 'mean'
-    if numeric_agg:
-        rename_map = {
-            'improvement_value': f'improvement_value{suffix}',
-            'n_dwellings': f'n_dwellings{suffix}',
-            'year_built': f'year_built{suffix}',
-        }
+    # Join the shared apportionment's value columns (computed above), suffixed.
+    if len(value_result.columns):
         spine = spine.join(
-            footprint_ref_attrs.groupby(spine_id_col)
-            .agg(numeric_agg)
-            .rename(columns={k: v for k, v in rename_map.items() if k in numeric_agg})
+            value_result.rename(
+                columns={c: f'{c}{suffix}' for c in value_result.columns}
+            )
         )
 
-    # Any other requested numeric column (e.g. FEMA height) not covered by a
-    # special case above: aggregate with the attribute registry's default
-    # function (fallback 'mean'), unweighted by area_fraction.
+    # Any other requested numeric column (e.g. FEMA height) not covered by the
+    # shared apportionment above: aggregate with the attribute registry's
+    # default function (fallback 'mean'), unweighted by overlap fraction.
     remaining_numeric_cols = [
         c
         for c in avail_cols
         if c in footprint_ref_attrs.columns
-        and c not in numeric_agg
-        and c not in {'land_value', 'address'}
+        and c not in APPORTIONED_VALUE_COLUMNS
         and pd.api.types.is_numeric_dtype(footprint_ref_attrs[c])
     ]
     if remaining_numeric_cols:
@@ -686,13 +595,6 @@ def _attribute_polygon_reference(
             .agg(registry_agg)
             .rename(columns=remaining_rename)
         )
-
-    # Secondary footprints carry no parcel improvement value, mirroring land_value
-    # (which is restricted to primary footprints). Set to NaN rather than 0 so the
-    # absence is explicit (Lochhead et al. 2026, Table 4).
-    imp_col = f'improvement_value{suffix}'
-    if imp_col in spine.columns and 'priority_on_parcel' in spine.columns:
-        spine.loc[spine['priority_on_parcel'].eq('secondary'), imp_col] = np.nan
 
     footprints_from_ref = state.metadata.get(f'inferred_from_{crosswalk_key}')
     mask_ref_src = spine['geometry_source'].str.contains(r'\.', regex=True, na=False)

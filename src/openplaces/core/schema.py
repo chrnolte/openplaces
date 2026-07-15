@@ -28,6 +28,21 @@ ENTITY_TYPES = [
     'transaction',
 ]
 
+
+def synthetic_geometry_pattern(exclude: str | None = None) -> str:
+    """Regex matching a reference-derived synthetic geometry_source label.
+
+    The harmonizer's infer_spine_additions labels a fallback geometry
+    '{entity_type}.{source}' (e.g. 'parcel.spine' — the parcel boundary
+    standing in for an inferred building), whereas a real geometry source is
+    a bare label ('obm', 'microsoft'). *exclude* omits the spine's own entity
+    type from the match, so only geometries derived from a different entity
+    type count as synthetic.
+    """
+    entities = [e for e in ENTITY_TYPES if e != exclude]
+    return rf'^({"|".join(entities)})\.'
+
+
 # Coarse-to-fine ordering of entity types for canonical entity-link paths:
 # a link between two entities is stored beside the finer (later-in-order)
 # entity's output. Entity types not listed here fall back to lexicographic

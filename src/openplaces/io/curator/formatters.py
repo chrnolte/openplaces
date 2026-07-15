@@ -106,10 +106,12 @@ _FINAL_COLUMNS = (
 _FLAG_COLUMNS = (
     'occupancy_type_conflict',
     'occupancy_type_review',
+    'land_use_class_conflict',
     'manufactured_home_community',
 )
 _MODIFIERS = ('_all', '_per_area', '_inferred')
 _RELATIONAL_COUNT = re.compile(r'^n_.+_per_.+$')
+_BARE_ID = re.compile(r'^(.+?)_id(_.+)?$')
 _BIG = 10_000
 
 
@@ -134,6 +136,12 @@ def _key_fields(col: str) -> tuple:
     Blocks: 0 = canonical/final (incl. m2), with ``priority_on_parcel`` last;
     1 = source variables (relational counts first, then suffixed evidence);
     2 = flags then visualization-only (``*_per_area``).
+
+    A bare id column whose entity prefix is itself an entity-only provenance
+    suffix (``parcel_id``, ``parcel_id_local`` — parcels map by ``_parcel``)
+    leads that source's evidence group in block 1: the id naming which
+    reference the group's columns describe belongs at its head, not stranded
+    in block 0 without a registry rank.
     """
     if col == 'priority_on_parcel':
         return (0, _BIG + 1, 0, 0, 0)  # end of the canonical block
@@ -159,6 +167,14 @@ def _key_fields(col: str) -> tuple:
         return (0, _attr_rank('m2'), 0, 0, 0)
     if col in _FINAL_COLUMNS:
         return (0, _attr_rank(col), 0, 0, 0)
+
+    id_match = _BARE_ID.match(base)
+    if id_match:
+        source = dict(_provenance_suffixes()).get(f'_{id_match.group(1)}')
+        if source is not None:
+            # kind -1: lead the source's evidence group (existing kinds:
+            # 0 counts, 1 suffixed ids, 2 other attributes)
+            return (1, _source_rank(source), -1, _attr_rank(base), 0)
 
     attr, source = _split_source(base)
     if source is not None:
@@ -209,8 +225,10 @@ def order_columns(
     attribute-registry ``sort`` rank, with ``priority_on_parcel`` ending the
     band; (0.5) every ``{col}_source`` provenance sidecar, grouped together and
     ordered by their base column's rank; (1) source variables inherited from
-    other entities (relational counts first, then the suffixed evidence); (2)
-    flag and visualization-only columns (``occupancy_type_conflict``/``_review``,
+    other entities (relational counts first, then each source's evidence group
+    led by its bare id columns — ``parcel_id``/``parcel_id_all``/
+    ``parcel_id_local`` head the ``_parcel`` group); (2) flag and
+    visualization-only columns (``occupancy_type_conflict``/``_review``,
     ``*_per_area``). An ``{col}_all`` variant always directly follows its base
     column. ``geometry`` is always kept last. Computed from each column's name
     and the registry, so the recipe needs no explicit column list.

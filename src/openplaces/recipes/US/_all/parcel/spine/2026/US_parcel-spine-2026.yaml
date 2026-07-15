@@ -114,9 +114,12 @@ pipeline:
   # Attach FEMA building occupancy by overlay: FEMA footprints are no longer a
   # footprint-spine geometry source (they caused IoU-merge errors), but their
   # occupancy is valuable. Link FEMA footprints to parcels (the footprint<->parcel
-  # overlay, reversed) and take each parcel's dominant FEMA occupancy by overlap
-  # area as occupancy_type_footprint_fema. The remap canonicalizes raw PRIM_OCC
-  # values (e.g. 'Multi - Family Dwelling') before downstream class coercion.
+  # overlay, reversed) and take each parcel's dominant FEMA occupancy by
+  # overlap area: occupancy_type_footprint_fema carries the raw PRIM_OCC
+  # values; group_footprint_fema carries the NSI-style group vocabulary
+  # (derived at FEMA ingest via US_footprint-fema-2023_group-remap), which
+  # makes it one-on-one comparable with group_parcel/group_building_nsi in
+  # the parcel curation lane's land-use reconciliation.
   - step: link_to_reference
     recipe_id: US_footprint-fema-2023
     source_geometry_type: mixed_type_footprint
@@ -127,9 +130,9 @@ pipeline:
   - step: reconcile_attributes
     sources:
       - recipe_id: US_footprint-fema-2023
-        remap_id: US_footprint-fema-2023_occupancy-type-remap
         columns:
           - occupancy_type
+          - group
           - height
 
   # Attach per-parcel footprint morphology (counts of small elongated /

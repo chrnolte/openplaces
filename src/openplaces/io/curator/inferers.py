@@ -9,6 +9,32 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
+def _footprint_areas(curated, recipe) -> pd.Series:
+    """Footprint areas (m2), left missing on synthetic reference-derived rows.
+
+    A synthetic fallback geometry (geometry_source '{entity}.{source}', e.g.
+    'parcel.spine', added by the harmonizer's infer_spine_additions) is the
+    reference polygon's boundary, not a building outline; its area stays
+    missing so it cannot be mistaken for a real footprint area downstream.
+    """
+    from openplaces.core.schema import synthetic_geometry_pattern
+    from openplaces.geo.polygon import get_areas
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        areas = get_areas(curated, unit='m2')
+    if 'geometry_source' in curated.columns:
+        entity = recipe.get('entity')
+        own = getattr(entity, 'entity_type', None)
+        synthetic = (
+            curated['geometry_source']
+            .astype('string')
+            .str.match(synthetic_geometry_pattern(str(own) if own else None), na=False)
+        )
+        areas = areas.mask(synthetic.to_numpy(dtype=bool, na_value=False))
+    return areas
+
+
 def _habitable_threshold(curated, result, mh_label, config) -> float:
     """Minimum footprint area (m2) for a park home to count as habitable.
 
@@ -39,14 +65,15 @@ def derive_metrics(state: CurateState) -> CurateState:
     ``value`` column plus every ``improvement_value*`` / ``structure_value*``
     evidence column, a matching ``{column}_per_area`` ratio (value per square
     metre).
-    """
-    from openplaces.geo.polygon import get_areas
 
+    ``m2`` is left missing on synthetic reference-derived rows
+    (``geometry_source`` like ``'parcel.spine'``, whose geometry is the
+    reference boundary rather than a building outline); their ``_per_area``
+    ratios inherit the missing denominator.
+    """
     curated = state.curated
 
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        curated['m2'] = get_areas(curated, unit='m2')
+    curated['m2'] = _footprint_areas(curated, state.recipe)
 
     for col in list(curated.columns):
         if col.endswith('_per_area'):
@@ -252,6 +279,12 @@ def classify_parcel_land_use(
         best_score.loc[take] = score.loc[take]
 
     curated[output] = pd.Categorical(winner)
+    if winner.notna().any():
+        # Provenance: distinguishes the rule-based classes from the
+        # evidence-vote defaults reconcile_land_use fills in afterwards.
+        from openplaces.io.curator.provenance import record_source
+
+        record_source(curated, output, winner.notna(), 'rule')
     if flag_column and flag_class is not None:
         curated[flag_column] = winner.eq(flag_class).fillna(False).to_numpy()
     if review_column:
@@ -918,9 +951,7 @@ def classify_manufactured_homes(
         assessor_labels = coerced.where(coerced.isin([mh_label, sf_label]))
 
     if 'm2' not in curated.columns:
-        from openplaces.geo.polygon import get_areas
-
-        curated['m2'] = get_areas(curated, unit='m2')
+        curated['m2'] = _footprint_areas(curated, state.recipe)
 
     # --- Candidate gate ---
     # Manufactured vs single-family discrimination only applies to small

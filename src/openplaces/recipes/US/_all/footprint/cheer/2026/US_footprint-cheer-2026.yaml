@@ -41,7 +41,7 @@ occupancy:
   secondary_class: Secondary
   evidence:                                  # priority order: first present sets the base class
     - {column: occupancy_type_building_nsi, label: nsi}   # ordering = NSI-first
-    - {column: occupancy_type_footprint_fema, label: fema}  # FEMA building occupancy (parcel-aggregated); provisional rank, see occupancy-evidence-comparison report
+    - {column: group_footprint_fema, label: fema}  # FEMA building group (parcel-aggregated, NSI-style vocabulary); provisional rank, see occupancy-evidence-comparison report
     - {column: group_parcel, label: parcel}              # label used in the conflict summary
     # Last resort only (fills the base class when nsi/fema/parcel are all null)
     # and a conflict-summary participant; never overrides real evidence. Derived
@@ -68,35 +68,36 @@ occupancy:
 
 pipeline:
   # Link the curated parcel lane FIRST, by the globally-unique parcel_id (see
-  # link_curated_entity's entity_key/ref_key docs for why). The harmonized
-  # footprint spine is evidence-only for parcels and (because parcels are curated
-  # from the same admin run, after the footprint spine) its raw parcel value
-  # columns are empty, so the curated parcel supersedes them here: the
-  # property-merged assessor values, the refined use_group_combined, the modal-NSI
-  # occupancy group, the FEMA building occupancy, and the manufactured_home_park
-  # flag. These feed the reconciliation, occupancy inference, and vote below.
+  # link_curated_entity's entity_key/ref_key docs for why). The footprint
+  # spine links against pre-roll-merge ingested parcels (the parcel spine is
+  # harmonized after it), so parcel attributes attach here, from the curated
+  # parcels: the refined use_group_combined, the modal-NSI occupancy group,
+  # the FEMA building occupancy, and the manufactured_home_park flag. These
+  # feed the reconciliation, occupancy inference, and vote below.
   - step: link_curated_entity
+    recipe_id: US_parcel-openplaces-2026
+    columns:
+      use_group_combined: use_group_combined_parcel
+      group_parcel: group_parcel
+      manufactured_home_park: manufactured_home_park
+      group_footprint_fema: group_footprint_fema
+      n_stories_footprint_fema: n_stories_footprint_fema
+      land_use_class: land_use_class_parcel
+
+  # Parcel VALUE columns take the apportioning path instead: re-use the n:m
+  # footprint-parcel overlay persisted by the harmonize stage (save_link) and
+  # the harmonizer's own apportionment implementation to distribute the
+  # curated parcel's values across its footprints (Lochhead et al. 2026,
+  # Table 4): improvement_value split by overlap-area share among
+  # dwelling-linked footprints (missing on secondary structures), land_value
+  # whole on the principal footprint only, year_built as the linked parcels'
+  # mean.
+  - step: apportion_curated_values
     recipe_id: US_parcel-openplaces-2026
     columns:
       improvement_value: improvement_value_parcel
       land_value: land_value_parcel
       year_built: year_built_parcel
-      use_group_combined: use_group_combined_parcel
-      group_parcel: group_parcel
-      manufactured_home_park: manufactured_home_park
-      occupancy_type_footprint_fema: occupancy_type_footprint_fema
-      n_stories_footprint_fema: n_stories_footprint_fema
-      land_use_class: land_use_class_parcel
-
-  # link_curated_entity above attaches the parcel's undivided total to every
-  # footprint on it; re-apportion improvement_value_parcel across a
-  # multi-footprint parcel's dwelling-linked (or, absent those, all) primary
-  # footprints by floor-area share, mirroring the harmonize stage's own
-  # parcel-value apportionment (Lochhead et al. 2026, Table 4). land_value_parcel
-  # is not split — it stays whole on the principal footprint only.
-  - step: apportion_parcel_values
-    split: [improvement_value_parcel]
-    keep_on_primary: [land_value_parcel]
 
   # Retain the full n:m footprint-parcel membership as a canonical column:
   # all overlapping parcels per footprint (pipe-joined, dominant first —
@@ -285,7 +286,7 @@ pipeline:
   # are transient inputs to occupancy inference/conflict detection; their
   # information is carried by occupancy_type_parcel and occupancy_type_conflict
   # respectively, so drop them from the canonical output. value_per_area is
-  # now kept: apportion_parcel_values above splits improvement_value_parcel
+  # now kept: apportion_curated_values above splits improvement_value_parcel
   # (value's dominant input) across a multi-footprint parcel's footprints
   # before derive_metrics computes the ratio, so it is no longer a flat parcel
   # average. occupancy_type_base, p_manufactured_home, and

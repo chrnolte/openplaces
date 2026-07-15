@@ -1,0 +1,29 @@
+group,land_use_class
+Single Family,Single-Family
+Manufactured Home,Manufactured Home
+Multi Family,Multi-Family
+Hotel,Commercial
+Institutional Dormitory,Institutional
+Nursing Home,Institutional
+Retail,Retail
+Wholesale,Industrial
+Personal & Repair Services,Commercial
+Professional Technical Services,Office
+Bank,Office
+Hospital,Institutional
+Medical Office,Office
+Entertainment/Recreation,Recreation
+Theater,Recreation
+Garage,Commercial
+Heavy Industrial,Industrial
+Light Industrial,Industrial
+Food/Drug/Chemical,Industrial
+Metals/Minerals processing,Industrial
+High Technology,Industrial
+Construction,Industrial
+Agricultural,Agricultural
+Church,Institutional
+Government Services,Institutional
+Emergency Response,Institutional
+Average School,Institutional
+College/University,Institutional
