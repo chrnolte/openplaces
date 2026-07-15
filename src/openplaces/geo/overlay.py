@@ -7,6 +7,7 @@ overlays.
 
 import contextlib
 import json
+import os
 import statistics
 import tempfile
 import time
@@ -138,6 +139,70 @@ def _as_parquet(layer):
         yield Path(layer)
 
 
+def _is_too_complex(
+    layer, max_vertices=50_000_000, max_bytes_per_row=10_000_000
+) -> bool:
+    """Determine if a layer's geometries are too complex for DuckDB's spatial join.
+
+    For parquet paths, complexity is judged by average geometry size per row
+    rather than total file size: a large file made of many simple polygons
+    (e.g. admin-4 boundaries) is cheap to join, while a small file with a few
+    highly detailed polygons (e.g. country outlines) is not. Per-row size is
+    read from row-group metadata without loading any geometry data.
+
+    The default threshold is a last-resort ceiling, not the primary safety
+    net: with :func:`_duckdb_resource_budget` sizing threads/memory off
+    currently available RAM, and the reactive fallback in
+    :func:`overlay_polygons_with_duckdb` catching genuine OOMs, DuckDB is
+    attempted for all but the most extreme inputs (e.g. the admin-1 GADM
+    layer, at ~2.2MB/row, now runs through DuckDB rather than being bypassed).
+    """
+    if isinstance(layer, gpd.GeoDataFrame):
+        return shapely.get_num_coordinates(layer.geometry).sum() > max_vertices
+
+    p = Path(layer)
+    for filepath in (p, p.with_stem(p.stem + '_geo')):
+        if not filepath.exists():
+            continue
+        pf = pq.ParquetFile(filepath)
+        metadata = pf.metadata
+        if metadata.num_rows == 0 or 'geometry' not in pf.schema_arrow.names:
+            continue
+        geo_idx = pf.schema_arrow.get_field_index('geometry')
+        geo_bytes = sum(
+            metadata.row_group(i).column(geo_idx).total_uncompressed_size
+            for i in range(metadata.num_row_groups)
+        )
+        if geo_bytes / metadata.num_rows > max_bytes_per_row:
+            return True
+    return False
+
+
+def _duckdb_resource_budget(
+    min_memory_gb=4, max_memory_gb=32, memory_fraction=0.6
+) -> tuple[int, float]:
+    """Pick a thread count and memory limit from currently available RAM.
+
+    Sizing off *available* memory (rather than a fixed worst-case budget)
+    matters because Python's allocator does not always return freed heap to
+    the OS: after a memory-heavy ingest, available RAM reflects that bloat
+    even though ``gc.collect()`` reports the objects as collected. Falls back
+    to a conservative fixed budget if psutil is unavailable.
+    """
+    try:
+        import psutil
+
+        available_gb = psutil.virtual_memory().available / 1e9
+    except ImportError:
+        return 2, min_memory_gb
+
+    memory_limit_gb = min(
+        max(available_gb * memory_fraction, min_memory_gb), max_memory_gb
+    )
+    threads = max(2, min(os.cpu_count() or 2, int(memory_limit_gb // 4)))
+    return threads, memory_limit_gb
+
+
 def overlay_polygons_with_duckdb(
     layer1: Path | gpd.GeoDataFrame,
     layer2: Path | gpd.GeoDataFrame,
@@ -146,6 +211,8 @@ def overlay_polygons_with_duckdb(
     iou: bool = False,
     suffixes: tuple[str, str] | None = None,
     how: str = 'intersection',
+    verbose: bool = True,
+    silent: bool = False,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     """Intersect two polygon datasets using DuckDB (parquet-streaming path).
 
@@ -183,6 +250,10 @@ def overlay_polygons_with_duckdb(
           original geometry and get NaN for the missing index level
         - 'identity': all polygons from layer1; unmatched layer1 polygons
           retain original geometry and get NaN for the layer2 index level
+    verbose :
+        If True, print warning/fallback messages.
+    silent :
+        If True, silence all print statements.
 
     Returns
     -------
@@ -206,10 +277,43 @@ def overlay_polygons_with_duckdb(
             f'how={how!r} is not supported. Choose from {sorted(_SUPPORTED_HOW)}.'
         )
 
-    with _as_parquet(layer1) as path1, _as_parquet(layer2) as path2:
-        return _overlay_polygons_paths(
-            path1,
-            path2,
+    # Proactive check to avoid OOM and resource waste
+    if _is_too_complex(layer1) or _is_too_complex(layer2):
+        if verbose and not silent:
+            print(
+                'Geometries are highly complex; bypassing DuckDB to avoid running '
+                'out of memory.',
+                flush=True,
+            )
+        return overlay_polygons(
+            layer1=layer1,
+            layer2=layer2,
+            columns=columns,
+            geom=geom,
+            iou=iou,
+            suffixes=suffixes,
+            how=how,
+        )
+
+    # Reactive fail-safe fallback
+    try:
+        with _as_parquet(layer1) as path1, _as_parquet(layer2) as path2:
+            return _overlay_polygons_paths(
+                path1,
+                path2,
+                columns=columns,
+                geom=geom,
+                iou=iou,
+                suffixes=suffixes,
+                how=how,
+            )
+    except Exception as e:
+        if verbose and not silent:
+            print(f'DuckDB spatial join failed or ran out of memory:\n{e}', flush=True)
+            print('Falling back to geopandas overlay...', flush=True)
+        return overlay_polygons(
+            layer1=layer1,
+            layer2=layer2,
             columns=columns,
             geom=geom,
             iou=iou,
@@ -297,9 +401,12 @@ def _overlay_polygons_paths(
         return f"ST_Area(ST_Transform({geom_expr}, '{src_crs}', 'EPSG:6933', true))"
 
     # Execute query
+    threads, memory_limit_gb = _duckdb_resource_budget()
     con = duckdb.connect()
     con.execute('INSTALL spatial; LOAD spatial;')
     con.execute('SET enable_progress_bar = false;')
+    con.execute(f'SET threads = {threads};')
+    con.execute(f"SET memory_limit = '{memory_limit_gb:.0f}GB';")
 
     if how == 'identity':
         # identity fast path: single CTE query, spatial join runs once

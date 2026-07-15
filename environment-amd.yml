@@ -37,6 +37,7 @@ dependencies:
   - tqdm>=4.65.0
   - pyyaml>=6.0.3
   - platformdirs>=4.9.2
+  - psutil>=5.9.0
 
   # Analysis
   - statsmodels>=0.14.0

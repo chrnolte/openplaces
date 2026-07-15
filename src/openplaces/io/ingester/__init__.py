@@ -408,15 +408,29 @@ class Ingester:
         entries = self.recipe.get('entity_links') or []
         if not entries:
             return
+
+        # Clean up memory-heavy ingestion caches to maximize available RAM
+        if hasattr(self, 'tile_admin_link'):
+            del self.tile_admin_link
+        import gc
+
+        gc.collect()
+        try:
+            import pyarrow as pa
+
+            pa.default_memory_pool().release_unused()
+        except ImportError:
+            pass
+
         self_recipe_id = get_recipe_id(self.recipe)
         for entry in entries:
             other_recipe_id = entry['recipe_id']
             link_path = get_entity_link_path(self_recipe_id, other_recipe_id)
             if link_path.exists() and not reprocess:
                 continue
-            if self.verbose:
-                print(f'Creating entity link: {self_recipe_id} - {other_recipe_id}')
             create_entity_link(self_recipe_id, other_recipe_id)
+            if self.timer is not None:
+                self.timer.mark(f'Create link: {self_recipe_id} - {other_recipe_id}')
 
     def show_ingested_geometries(self, **kwargs):
         """Plot the last ingested layer for visual inspection.

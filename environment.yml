@@ -29,6 +29,7 @@ dependencies:
   - tqdm>=4.65.0
   - pyyaml>=6.0.3
   - platformdirs>=4.9.2
+  - psutil>=5.9.0
 
   # Optional: analysis
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.analysis]
