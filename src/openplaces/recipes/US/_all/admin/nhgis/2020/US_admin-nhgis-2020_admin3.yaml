@@ -39,12 +39,12 @@ columns:
 query: "admin2_id_admin1 <= '56'"
 
 # Function that returns an indexed version of the input GeoDataFrame
-# (reconciles local admin-3 units against the global GADM spine)
+# (reconciles local admin-3 units against the global GADM spine; the
+# recipe-ID arg also declares the admin-2 dependency to the flow DAG)
 create_index:
   function: "openplaces.io.admin.admin3_id_index_from_local"
   args:
-    country_id: US
-    admin_entity: admin-nhgis-2020
+    admin2_recipe_id: US_admin-nhgis-2020_admin2
 
 save_to:
   data_dir: cache
