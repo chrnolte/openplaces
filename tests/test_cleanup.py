@@ -7,6 +7,8 @@ import time
 import pandas as pd
 import pytest
 
+import openplaces.diagnostics as diagnostics
+import openplaces.io as opio
 from openplaces.config import cfg
 from openplaces.io import cleanup as cl
 from openplaces.recipe import get_output_path, get_recipe_by_id
@@ -252,6 +254,74 @@ def test_cleanup_stage_filter(data_root):
         verbose=False,
     )
     assert (report['recipe_id'] != NSI).all()
+
+
+def _image_cache_frame(rows):
+    return pd.DataFrame(
+        rows,
+        columns=['admin_id', 'source', 'version', 'n_files', 'size_mb', 'path'],
+    )
+
+
+def test_delete_image_caches_dry_run_filters_without_deleting(
+    monkeypatch, tmp_path, capsys
+):
+    selected = tmp_path / 'selected'
+    other_version = tmp_path / 'other-version'
+    other_admin = tmp_path / 'other-admin'
+    for path in (selected, other_version, other_admin):
+        path.mkdir()
+
+    caches = _image_cache_frame(
+        [
+            ['US-NC-BS-SH', 'googlesatellite', 'z20', 10, 12.5, selected],
+            ['US-NC-BS-SM', 'googlesatellite', 'z19', 5, 6.0, other_version],
+            ['US-MA-MI', 'googlesatellite', 'z20', 3, 2.0, other_admin],
+        ]
+    )
+    monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
+
+    result = opio.delete_image_caches(
+        'US-NC-BS', source='googlesatellite', version='z20'
+    )
+
+    assert result['admin_id'].tolist() == ['US-NC-BS-SH']
+    assert selected.exists()
+    output = capsys.readouterr().out
+    assert 'Dry run: would delete 1 image cache(s), 12.5 MB total.' in output
+
+
+def test_delete_image_caches_removes_matching_directories(monkeypatch, tmp_path):
+    first = tmp_path / 'first'
+    second = tmp_path / 'second'
+    for path in (first, second):
+        path.mkdir()
+        (path / 'image.jpg').write_bytes(b'image')
+
+    caches = _image_cache_frame(
+        [
+            ['US-NC-BS-SH', 'googlesatellite', 'z20', 1, 1.0, first],
+            ['US-NC-BS-SM', 'googlesatellite', 'z20', 1, 2.0, second],
+        ]
+    )
+    monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
+
+    result = opio.delete_image_caches('US-NC-BS', dry_run=False)
+
+    assert len(result) == 2
+    assert not first.exists()
+    assert not second.exists()
+
+
+def test_delete_image_caches_handles_empty_inventory(monkeypatch, capsys):
+    caches = _image_cache_frame([])
+    monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
+
+    result = opio.delete_image_caches(dry_run=False)
+
+    assert result.empty
+    assert capsys.readouterr().out == 'No image caches found.\n'
+    assert not hasattr(diagnostics, 'delete_image_caches')
 
 
 # compact()

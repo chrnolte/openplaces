@@ -47,6 +47,42 @@ def test_all_column_follows_its_base():
 
 def test_all_without_base_untouched():
     # An _all column with no base present falls back to the existing rules
-    # and must not crash or be reordered relative to its peers.
+    # and must not crash. It stays in the canonical block (0), which sorts
+    # ahead of parcel_id (now leading the parcel group in the source block).
     state = order_columns(_state(['parcel_id', 'other_all']))
-    assert list(state.curated.columns) == ['parcel_id', 'other_all']
+    assert list(state.curated.columns) == ['other_all', 'parcel_id']
+
+
+def test_bare_parcel_ids_lead_the_parcel_evidence_group():
+    # Bare parcel-id columns carry no provenance suffix and no registry sort
+    # rank, so they used to strand at the tail of the canonical block (between
+    # roof_shape and m2). They identify which parcel the _parcel evidence
+    # columns describe, so they must lead that group in the source block
+    # instead: canonical (roof_shape, m2) < relational counts < parcel ids <
+    # _parcel evidence, geometry last.
+    state = order_columns(
+        _state(
+            [
+                'parcel_id',
+                'parcel_id_local',
+                'use_group_combined_parcel',
+                'roof_shape',
+                'geometry',
+                'improvement_value_parcel',
+                'm2',
+                'n_parcels_per_footprint',
+                'parcel_id_all',
+            ]
+        )
+    )
+    assert list(state.curated.columns) == [
+        'roof_shape',
+        'm2',
+        'n_parcels_per_footprint',
+        'parcel_id',
+        'parcel_id_all',
+        'parcel_id_local',
+        'use_group_combined_parcel',
+        'improvement_value_parcel',
+        'geometry',
+    ]
