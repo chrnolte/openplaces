@@ -173,6 +173,14 @@ class RecipeDAG:
             if not upstream_id or upstream_id in seen:
                 continue
             seen.add(upstream_id)
+            if node_admin is None:
+                # A global job (no admin split) consumes every in-scope job
+                # of the upstream recipe (e.g. the tile grid links to the
+                # country-level admin job)
+                for key in node_keys:
+                    if key[0] == upstream_id:
+                        yield key
+                continue
             try:
                 upstream_admins = self._node_admins(upstream_id, node_admin)
             except Exception:
@@ -200,7 +208,12 @@ class RecipeDAG:
         )
 
     def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
-        """Secondary declared outputs of one job (save_link sidecars)."""
+        """Secondary declared outputs of one job.
+
+        Harmonize steps with `save_link` and ingest-level `entity_links`
+        entries both persist an n:m link sidecar at the canonical
+        get_entity_link_path location.
+        """
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
         node_admin = self._node_admin(recipe_id, admin_id)
@@ -214,6 +227,10 @@ class RecipeDAG:
             )
             if ref_id is not None:
                 paths.append(get_entity_link_path(recipe_id, ref_id, node_admin))
+        for entry in recipe.get('entity_links') or []:
+            paths.append(
+                get_entity_link_path(recipe_id, entry['recipe_id'], node_admin)
+            )
         return paths
 
     def input_paths(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
@@ -235,9 +252,10 @@ class RecipeDAG:
                 upstream = self._recipe(upstream_id)
                 for upstream_admin in self._node_admins(upstream_id, node_admin):
                     paths.append(get_output_path(upstream, admin_id=upstream_admin))
-                if upstream.get('stage') == 'harmonize':
+                if upstream.get('stage') == 'harmonize' or upstream.get('entity_links'):
+                    upstream_stage = upstream.get('stage', 'ingest')
                     paths.extend(
-                        self.extra_outputs('harmonize', upstream_id, node_admin)
+                        self.extra_outputs(upstream_stage, upstream_id, node_admin)
                     )
             except Exception:
                 continue
