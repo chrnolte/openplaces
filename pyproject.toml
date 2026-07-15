@@ -53,7 +53,8 @@ dependencies = [
     "pyyaml>=6.0.3",
     "platformdirs>=4.9.2",
     "python-polylabel>=0.6",
-    "openlocationcode>=1.0.1"
+    "openlocationcode>=1.0.1",
+    "psutil>=5.9.0"
 ]
 
 [project.optional-dependencies]
