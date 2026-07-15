@@ -91,7 +91,7 @@ dependencies:
   # Optional: dev tools
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
   - jupyter>=1.0.0
-  - jupyterlab>=4.0.0
+  - jupyterlab>=4.6.1
   - jupyter-ruff>=0.2.0
   - jupyterlab_execute_time>=3.0.0
   - ruff>=0.1.0
