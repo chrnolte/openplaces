@@ -15,6 +15,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from openplaces.core.attribute_registry import get_agg_func
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 __all__ = [
@@ -663,6 +664,29 @@ def _attribute_polygon_reference(
             .rename(columns={k: v for k, v in rename_map.items() if k in numeric_agg})
         )
 
+    # Any other requested numeric column (e.g. FEMA height) not covered by a
+    # special case above: aggregate with the attribute registry's default
+    # function (fallback 'mean'), unweighted by area_fraction.
+    remaining_numeric_cols = [
+        c
+        for c in avail_cols
+        if c in footprint_ref_attrs.columns
+        and c not in numeric_agg
+        and c not in {'land_value', 'address'}
+        and pd.api.types.is_numeric_dtype(footprint_ref_attrs[c])
+    ]
+    if remaining_numeric_cols:
+        registry_agg = {c: get_agg_func(c) or 'mean' for c in remaining_numeric_cols}
+        remaining_rename = {
+            c: _attributed_name(c, suffix, reserved_cols)
+            for c in remaining_numeric_cols
+        }
+        spine = spine.join(
+            footprint_ref_attrs.groupby(spine_id_col)
+            .agg(registry_agg)
+            .rename(columns=remaining_rename)
+        )
+
     # Secondary footprints carry no parcel improvement value, mirroring land_value
     # (which is restricted to primary footprints). Set to NaN rather than 0 so the
     # absence is explicit (Lochhead et al. 2026, Table 4).
@@ -760,10 +784,19 @@ def _attribute_point_reference(
         )
         return state
 
+    # Always write the match count, zeros included, so its presence in the
+    # curated output doesn't vary by admin unit (some counties never have a
+    # footprint matched to >1 point). Skipped only where the name collides
+    # with a renamed attribute output (the Overture case: n_dwellings is
+    # itself renamed to n_dwellings_overture, identical to count_col here) --
+    # without this check, group_sizes.max() > 1 for that combination would
+    # make the assignment below collide with the later n_dwellings sum join.
     count_col = f'n_{entity_type}s_{source_id}' if entity_type else f'n_point{suffix}'
     group_sizes = crosswalk.groupby(spine_id_col).size()
-    if group_sizes.max() > 1:
-        spine[count_col] = group_sizes.reindex(spine.index, fill_value=0)
+    if count_col not in renamed.values():
+        spine[count_col] = group_sizes.reindex(spine.index, fill_value=0).astype(
+            'int64'
+        )
 
     purpose_group_col = next(
         (
@@ -851,11 +884,32 @@ def _attribute_point_reference(
             n_dwellings_sum.rename(renamed.get('n_dwellings', 'n_dwellings'))
         )
 
-    handled = set(numeric_agg) | {
-        'purpose_subgroup',
-        'occupancy_type',
-        'group',
-    }
+    # Any other requested numeric column (e.g. n_stories, area_sqft) not covered
+    # by a special case above: aggregate with the attribute registry's default
+    # function (fallback 'mean') so it still reaches the spine.
+    remaining_numeric_cols = [
+        c
+        for c in avail_cols
+        if c in crosswalk.columns
+        and c not in numeric_agg
+        and c != 'n_dwellings'
+        and pd.api.types.is_numeric_dtype(crosswalk[c])
+    ]
+    if remaining_numeric_cols:
+        registry_agg = {c: get_agg_func(c) or 'mean' for c in remaining_numeric_cols}
+        spine = spine.join(
+            crosswalk.groupby(spine_id_col).agg(registry_agg).rename(columns=renamed)
+        )
+
+    handled = (
+        set(numeric_agg)
+        | set(remaining_numeric_cols)
+        | {
+            'purpose_subgroup',
+            'occupancy_type',
+            'group',
+        }
+    )
     str_cols = [
         c
         for c in avail_cols
@@ -917,6 +971,13 @@ def classify_footprint_priority(
        ``'primary'``.
     5. Footprints not linked to any parcel are ``'unknown'``, unless they
        carry dwelling-point evidence — those are promoted to ``'primary'``.
+    6. A synthetic, parcel-derived fallback geometry (``geometry_source``
+       starting with ``'{entity_type}.'``, set by
+       :func:`~openplaces.io.harmonizer.links.infer_spine_additions`) is
+       always ``'primary'``, overriding the above: it stands in for the
+       parcel's one inferred building and was never eligible for the
+       crosswalk-seeded evidence rules (it postdates the footprint-parcel
+       crosswalk that seeds them).
 
     Parameters
     ----------
@@ -932,13 +993,30 @@ def classify_footprint_priority(
         return state
 
     spine_id_col = state.spine.index.name
-    parcel_type = entity_type or 'parcel'
+    entity_type = entity_type or 'parcel'
 
-    parcel_crosswalks = state.get_crosswalks_by_type(parcel_type)
+    # A synthetic, reference-derived fallback row (added by
+    # infer_spine_additions after the crosswalk below was built, so it can
+    # never appear in it) stands in for the reference entity's one inferred
+    # building and is always 'primary', regardless of what the
+    # crosswalk/evidence rules below would otherwise assign it. geometry_source
+    # is prefixed with the entity_type infer_spine_additions was called with
+    # (e.g. 'parcel.spine'); matching on entity_type specifically (not just
+    # any '.') avoids misclassifying a fallback synthesized from a different
+    # reference entity_type.
+    is_synthetic = (
+        state.spine['geometry_source']
+        .astype('string')
+        .str.startswith(f'{entity_type}.', na=False)
+        if 'geometry_source' in state.spine.columns
+        else pd.Series(False, index=state.spine.index)
+    )
+
+    parcel_crosswalks = state.get_crosswalks_by_type(entity_type)
     if not parcel_crosswalks:
         if state.verbose:
             print(
-                f'  classify_footprint_priority: no {parcel_type} crosswalk; skipping.'
+                f'  classify_footprint_priority: no {entity_type} crosswalk; skipping.'
             )
         return state
 
@@ -957,6 +1035,7 @@ def classify_footprint_priority(
     # Single-footprint parcels keep 'primary' and never enter the loop below.
     role = pd.Series('unknown', index=state.spine.index, dtype=object)
     role.loc[role.index.isin(set(fp_parcel[spine_id_col]))] = 'primary'
+    role.loc[is_synthetic] = 'primary'
 
     if multi_fp.empty:
         state.spine['priority_on_parcel'] = pd.Categorical(
@@ -1007,6 +1086,8 @@ def classify_footprint_priority(
     for fp_id in address_evidence:
         if fp_id in state.spine.index and role[fp_id] == 'unknown':
             role[fp_id] = 'primary'
+
+    role.loc[is_synthetic] = 'primary'
 
     state.spine['priority_on_parcel'] = pd.Categorical(
         role, categories=['primary', 'secondary', 'unknown']
