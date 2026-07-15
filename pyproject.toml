@@ -112,7 +112,7 @@ ml = []
 # Development and testing tools
 dev = [
     "jupyter>=1.0.0",
-    "jupyterlab>=4.0.0",
+    "jupyterlab>=4.6.1",
     "jupyter-ruff>=0.2.0",
     "jupyterlab-execute-time>=3.0.0",
     "ruff>=0.1.0",
