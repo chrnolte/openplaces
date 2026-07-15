@@ -87,6 +87,12 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED|MH PARK'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           - {type: count_at_least, column: n_small_elongated_footprints_per_parcel, min: 4}
+          # FEMA's dominant-by-area building occupancy on the parcel, an
+          # independent 4th vote: catches a park whose assessor use code is
+          # too local/generic for the keyword list and whose NSI link missed.
+          - type: keyword
+            column: occupancy_type_footprint_fema
+            pattern: MANUFACTURED
 
       - class: RV Park
         min_score: 2
@@ -104,6 +110,10 @@ pipeline:
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
+          # Same independent FEMA vote as Manufactured Home Park above.
+          - type: keyword
+            column: occupancy_type_footprint_fema
+            pattern: MANUFACTURED
 
       # Several detached, non-manufactured-home-shaped structures on one
       # parcel. "multiple houses on one parcel" is literal assessor vocabulary
@@ -124,7 +134,17 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'MULTIPLE HOUSES'}
           - {type: count_at_least, column: n_primary_footprints_per_parcel, min: 2}
           - {type: numeric_at_most, column: n_small_elongated_footprints_per_parcel, max: 0}
-          - {type: in_set, column: group_parcel, values: [Single Family]}
+          # any_of, not a 4th independent indicator: FEMA backs up group_parcel
+          # rather than adding its own vote, so the min_score:3 tuning above
+          # (guarding against the two generic indicators over-firing alone)
+          # isn't weakened by a source that agrees with group_parcel almost
+          # everywhere it's present.
+          - type: any_of
+            indicators:
+              - {type: in_set, column: group_parcel, values: [Single Family]}
+              - type: in_set
+                column: occupancy_type_footprint_fema
+                values: [Single Family]
 
       # One building in a footprint notably larger than typical single-family
       # for its assessor-use cohort — a row of units merged into one polygon
@@ -141,7 +161,16 @@ pipeline:
         indicators:
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 1}
           - {type: numeric_at_least, column: footprint_area_log_zscore, min: 1.0}
-          - {type: in_set, column: group_parcel, values: [Multi-Family, Single Family]}
+          # any_of, same reasoning as Multiple Single-Family above: FEMA
+          # corroborates group_parcel without adding an independent 4th vote.
+          - type: any_of
+            indicators:
+              - type: in_set
+                column: group_parcel
+                values: [Multi-Family, Single Family]
+              - type: in_set
+                column: occupancy_type_footprint_fema
+                values: [Single Family, Multi-Family]
 
       # No real footprint (small/absent relative to cohort, and none at all —
       # not even a value-inferred synthetic fallback), near-zero improvement
@@ -191,6 +220,11 @@ pipeline:
         indicators:
           - {type: in_set, column: group_parcel, values: [Commercial]}
           - {type: keyword, column: use_group_combined, pattern: 'COMMERCIAL'}
+
+  # FEMA USA Structures has no story count, only LiDAR-derived height; derive
+  # an approximate story count so the footprint curation lane (US_footprint-
+  # cheer-2026) can include it in its n_stories reconciliation.
+  - step: derive_stories_from_height
 
   - step: cast_categoricals
 

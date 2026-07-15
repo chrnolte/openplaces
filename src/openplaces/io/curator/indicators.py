@@ -28,9 +28,19 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     - ``in_set``: ``column`` value is in ``values``.
     - ``numeric_at_least`` (alias ``count_at_least``): ``column >= min``.
     - ``numeric_at_most``: ``column <= max``.
+    - ``any_of``: true where any of the nested ``indicators`` matches. Lets a
+      backing signal corroborate an existing indicator (e.g. an independent
+      source agreeing with a generic column) without contributing an extra
+      weighted vote of its own -- the whole group counts once.
     """
     false = pd.Series(False, index=curated.index)
     kind = indicator['type']
+
+    if kind == 'any_of':
+        matched = false
+        for sub in indicator.get('indicators', []):
+            matched = matched | evaluate_indicator(curated, sub)
+        return matched
 
     if kind == 'value_share_below':
         value_col = indicator['value']

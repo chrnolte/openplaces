@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from openplaces.geo.link import get_entity_link_path
@@ -87,6 +88,102 @@ def link_curated_entity(
             f'  link_curated_entity: {matched:,}/{len(curated):,} rows '
             f'matched {recipe_id} ({len(columns)} columns).'
         )
+    state.curated = curated
+    return state
+
+
+@_register('apportion_parcel_values')
+def apportion_parcel_values(
+    state: CurateState,
+    split: list[str],
+    keep_on_primary: list[str],
+    group_column: str = 'parcel_id',
+    priority_column: str = 'priority_on_parcel',
+    dwelling_column: str = 'n_dwellings_overture',
+) -> CurateState:
+    """Re-apportion curated-parcel values across a parcel's footprints.
+
+    ``link_curated_entity`` attaches the parcel's undivided total to every
+    footprint on that parcel; this step re-distributes it the way the
+    harmonize stage's polygon attribution does for its own parcel values
+    (Lochhead et al. 2026, Table 4), which ``link_curated_entity`` overwrites.
+
+    Recipients for a *split* column are the parcel's dwelling-linked primary
+    footprints (``priority_column`` is ``'primary'`` and ``dwelling_column`` is
+    positive) if any exist, else all primary footprints. The parcel's value is
+    then divided among recipients by floor-area share; non-recipients
+    (including every secondary footprint) get a missing value. A parcel with a
+    single footprint passes its value through unchanged, since that footprint
+    is always its own sole recipient.
+
+    Parameters
+    ----------
+    state : CurateState
+        The curation state with the target GeoDataFrame in state.curated.
+    split : list of str
+        Columns whose parcel total is divided among recipient footprints by
+        floor-area share. Missing columns are skipped.
+    keep_on_primary : list of str
+        Columns kept in full on primary footprints and set missing elsewhere
+        (not divided across footprints). Missing columns are skipped.
+    group_column : str, optional
+        Parcel id column shared by every footprint on the same parcel.
+    priority_column : str, optional
+        Column holding each footprint's priority_on_parcel role.
+    dwelling_column : str, optional
+        Column whose positive value marks a footprint as dwelling-linked.
+    """
+    curated = state.curated
+    if group_column not in curated.columns or priority_column not in curated.columns:
+        return state
+
+    split = [c for c in split if c in curated.columns]
+    keep_on_primary = [c for c in keep_on_primary if c in curated.columns]
+    if not split and not keep_on_primary:
+        return state
+
+    is_primary = curated[priority_column].eq('primary')
+
+    for col in keep_on_primary:
+        curated[col] = curated[col].where(is_primary)
+
+    if split:
+        import warnings
+
+        from openplaces.geo.polygon import get_areas
+
+        if 'm2' not in curated.columns:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore')
+                curated['m2'] = get_areas(curated, unit='m2')
+        m2 = curated['m2']
+
+        group = curated[group_column]
+        has_group = group.notna()
+        has_dwelling = (
+            curated[dwelling_column] > 0
+            if dwelling_column in curated.columns
+            else pd.Series(False, index=curated.index)
+        )
+        dwelling_primary = is_primary & has_dwelling
+        # groupby(group) drops rows with a missing group_column (a footprint
+        # never linked to any parcel) from its groups, so transform() leaves
+        # those rows NaN -- fillna(False) rather than let that NaN upcast the
+        # boolean result to float, which ~ can't invert.
+        parcel_has_dwelling_primary = (
+            dwelling_primary.groupby(group).transform('any').fillna(False)
+        )
+        recipient = (
+            is_primary & has_group & (~parcel_has_dwelling_primary | dwelling_primary)
+        )
+
+        recipient_area = m2.where(recipient, 0.0)
+        area_by_parcel = recipient_area.groupby(group).transform('sum')
+        share = recipient_area / area_by_parcel.replace(0, np.nan)
+
+        for col in split:
+            curated[col] = (curated[col] * share).where(recipient)
+
     state.curated = curated
     return state
 

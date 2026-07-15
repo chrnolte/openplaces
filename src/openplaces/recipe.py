@@ -418,8 +418,11 @@ def iter_entity_sources() -> frozenset:
     """Return the ``(entity_type, source_id)`` pairs across all entity recipes.
 
     Scans the bundled recipes directory once (cached) and parses each recipe
-    filename for its entity token. Dataset/theme recipes and files whose entity
-    token does not parse are skipped. Used to auto-generate the provenance suffix
+    filename for its entity token. Files whose entity token does not parse are
+    skipped. A bare entity token (e.g. ``footprint``) followed by a
+    ``{theme}-{source}-{version}`` remainder — an entity+dataset enrich recipe
+    such as ``US_footprint_built-n-stories-brails-2026`` — falls back to the
+    dataset's own source id. Used to auto-generate the provenance suffix
     vocabulary so adding a new source needs no hardcoded list edits.
     """
     root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
@@ -438,6 +441,11 @@ def iter_entity_sources() -> frozenset:
         except (ValueError, IndexError):
             continue
         source_id = getattr(entity.source, 'source_id', None) if entity.source else None
+        if source_id is None and len(parts) > 1:
+            try:
+                source_id = DataSet(parts[1]).source.source_id
+            except (ValueError, IndexError):
+                pass
         pairs.add((str(entity.entity_type), source_id))
     return frozenset(pairs)
 

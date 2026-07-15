@@ -85,7 +85,18 @@ pipeline:
       group_parcel: group_parcel
       manufactured_home_park: manufactured_home_park
       occupancy_type_footprint_fema: occupancy_type_footprint_fema
+      n_stories_footprint_fema: n_stories_footprint_fema
       land_use_class: land_use_class_parcel
+
+  # link_curated_entity above attaches the parcel's undivided total to every
+  # footprint on it; re-apportion improvement_value_parcel across a
+  # multi-footprint parcel's dwelling-linked (or, absent those, all) primary
+  # footprints by floor-area share, mirroring the harmonize stage's own
+  # parcel-value apportionment (Lochhead et al. 2026, Table 4). land_value_parcel
+  # is not split — it stays whole on the principal footprint only.
+  - step: apportion_parcel_values
+    split: [improvement_value_parcel]
+    keep_on_primary: [land_value_parcel]
 
   # Retain the full n:m footprint-parcel membership as a canonical column:
   # all overlapping parcels per footprint (pipe-joined, dominant first —
@@ -160,6 +171,10 @@ pipeline:
     ruleset: parcel-occupancy-keywords.csv
 
   # Evidence: merge image-derived enrichment columns (canonical values win).
+  # n_stories keeps its evidence name here (n_stories_brails) rather than
+  # writing canonical n_stories directly: the reconcile_values step below
+  # weighs it against the FEMA-height-derived and NSI-modeled story counts
+  # rather than letting direct floor detection win unconditionally.
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
@@ -167,7 +182,13 @@ pipeline:
           roof_shape_brails: roof_shape
       - recipe_id: US_footprint_built-n-stories-brails-2026
         columns:
-          n_stories_brails: n_stories
+          n_stories_brails: n_stories_brails
+
+  # Reconcile canonical n_stories: direct floor detection first, then
+  # measured-height-derived (FEMA), then NSI's modeled count.
+  - step: reconcile_values
+    priority:
+      n_stories: [n_stories_brails, n_stories_footprint_fema, n_stories_building_nsi]
 
   # Evidence: estimate manufactured-home probability from assessor labels,
   # footprint morphology, and imagery. Emits the single p_manufactured_home
@@ -224,7 +245,7 @@ pipeline:
             column: p_manufactured_home
             min: 0.5
       - class: Multi-Family
-        source: dwellings
+        source: multi_family_dwellings
         min_score: 1
         indicators:
           - type: numeric_at_least
@@ -264,18 +285,23 @@ pipeline:
   # are transient inputs to occupancy inference/conflict detection; their
   # information is carried by occupancy_type_parcel and occupancy_type_conflict
   # respectively, so drop them from the canonical output. value_per_area is
-  # dropped for now while value (its input) is badly imputed; drop this line
-  # once that's fixed. occupancy_type_base, p_manufactured_home, and
+  # now kept: apportion_parcel_values above splits improvement_value_parcel
+  # (value's dominant input) across a multi-footprint parcel's footprints
+  # before derive_metrics computes the ratio, so it is no longer a flat parcel
+  # average. occupancy_type_base, p_manufactured_home, and
   # manufactured_home_park are transient inputs consumed by earlier steps
   # (refine_occupancy_height, the manufactured-home vote, and
   # impute_occupancy_type respectively) and carry no information beyond what's
-  # already in occupancy_type/occupancy_type_source.
+  # already in occupancy_type/occupancy_type_source. n_stories_brails_source is
+  # a noise sidecar merge_enrichments writes while filling the n_stories_brails
+  # evidence column; the reconciled n_stories_source (from reconcile_values)
+  # already carries that provenance.
   - step: order_columns
     drop:
       - group_parcel
       - occupancy_type_dwelling_overture
       - occupancy_type_dwelling_overture_source
-      - value_per_area
       - occupancy_type_base
       - p_manufactured_home
       - manufactured_home_park
+      - n_stories_brails_source
