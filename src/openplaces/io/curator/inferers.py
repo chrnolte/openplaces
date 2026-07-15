@@ -62,6 +62,43 @@ def derive_metrics(state: CurateState) -> CurateState:
     return state
 
 
+@_register('derive_stories_from_height')
+def derive_stories_from_height(
+    state: CurateState,
+    column: str = 'n_stories_footprint_fema',
+    height_column: str = 'height_footprint_fema',
+    floor_height_m: float = 3.05,
+) -> CurateState:
+    """Derive a story count from a measured building height.
+
+    Approximates the story count as ``height / floor_height_m``, rounded and
+    floored at one story. A missing or non-positive height yields a missing
+    story count rather than a fabricated minimum.
+
+    Parameters
+    ----------
+    state : CurateState
+        The curation state with the target GeoDataFrame in state.curated.
+    column : str, optional
+        Output column name for the derived story count.
+    height_column : str, optional
+        Source column holding measured building height (metres). No-op if
+        absent from ``state.curated``.
+    floor_height_m : float, optional
+        Assumed height per story, in metres.
+    """
+    curated = state.curated
+    if height_column not in curated.columns:
+        return state
+
+    height = pd.to_numeric(curated[height_column], errors='coerce')
+    stories = (height / floor_height_m).round().clip(lower=1)
+    curated[column] = stories.where(height > 0)
+
+    state.curated = curated
+    return state
+
+
 @_register('score_relative_to_group')
 def score_relative_to_group(
     state: CurateState,
@@ -320,7 +357,7 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
             sf_max = float(sf_rule.get('max_dwellings', 1))
             sf_idx = eligible[units <= sf_max]
             result.loc[sf_idx] = sf_rule['class']
-            record_source(curated, 'occupancy_type', sf_idx, 'dwellings')
+            record_source(curated, 'occupancy_type', sf_idx, 'single_family_dwellings')
 
     # 4. Non-primary residential footprints become the secondary class — as do
     #    explicit-secondary footprints with no occupancy evidence (an accessory
