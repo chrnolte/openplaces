@@ -71,3 +71,25 @@ def test_admin_id_crosswalk_is_not_an_edge():
 def test_edges_carry_consumer_id():
     edges = get_recipe_dependencies('US_footprint-cheer-2026')
     assert all(e.recipe_id == 'US_footprint-cheer-2026' for e in edges)
+
+
+def test_admin3_create_index_declares_admin2_edge():
+    edges = get_recipe_dependencies('US_admin-census-2021_admin3')
+    by_kind = {}
+    for e in edges:
+        by_kind.setdefault(e.kind, set()).add(e.upstream_recipe_id)
+    assert by_kind.get('admin2_recipe_id') == {'US_admin-census-2021_admin2'}
+
+
+def test_tile_entity_links_declare_admin_edges():
+    edges = get_recipe_dependencies('tile-obm-2025')
+    upstream = _upstream_ids(edges)
+    assert {
+        'admin-gadm-4~1_admin1',
+        'admin-gadm-4~1_admin2',
+        'admin-gadm-4~1_admin3',
+        'US_admin-census-2021_admin2',
+        'US_admin-census-2021_admin3',
+    } <= upstream
+    steps = {e.step for e in edges if e.kind == 'recipe_id'}
+    assert 'entity_links' in steps

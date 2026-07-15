@@ -71,13 +71,24 @@ def test_collects_dominant_first(data_root):
     _write_sidecar()
     state = collect_link_ids(_state(), entity_type='parcel')
     out = state.curated['parcel_id_all']
-    assert out['f1'] == 'P1'
+    # Identical to parcel_id -> left missing (adds no information)
+    assert pd.isna(out['f1'])
     # Dominant (largest intersection) first
     assert out['f2'] == 'P2|P1'
     assert out['f2'].split('|')[0] == state.curated.loc['f2', 'parcel_id']
-    # Sliver pair excluded by default
-    assert out['f3'] == 'P1'
+    # Sliver pair excluded by default -> single id equal to parcel_id
+    assert pd.isna(out['f3'])
     assert pd.isna(out['f4'])
+
+
+def test_single_id_kept_when_it_differs_from_parcel_id(data_root):
+    _write_sidecar()
+    state = _state()
+    # f1's dominant parcel was assigned differently upstream; the collected
+    # single id is new information and must not be blanked.
+    state.curated.loc['f1', 'parcel_id'] = 'P9'
+    state = collect_link_ids(state, entity_type='parcel')
+    assert state.curated['parcel_id_all']['f1'] == 'P1'
 
 
 def test_include_below_threshold(data_root):

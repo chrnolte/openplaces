@@ -74,3 +74,28 @@ def test_retention_classes(dag):
 
 def test_target_paths(dag):
     assert dag.target_paths() == [get_output_path(TARGET, admin_id=COUNTY)]
+
+
+def test_admin_and_tile_link_nodes_and_edges(dag):
+    by_id = {node.recipe_id: node for node in dag.nodes()}
+    # admin2 enters the DAG through admin3's create_index recipe reference
+    assert by_id['US_admin-census-2021_admin2'].stage == 'ingest'
+    edge_ids = {(up[0], down[0]) for up, down in dag._edges}
+    assert ('US_admin-census-2021_admin2', 'US_admin-census-2021_admin3') in edge_ids
+    # the tile grid consumes the admin layers declared under entity_links
+    assert ('US_admin-census-2021_admin3', 'tile-obm-2025') in edge_ids
+
+
+def test_tile_entity_links_extra_outputs(dag):
+    extras = dag.extra_outputs('ingest', 'tile-obm-2025')
+    assert (
+        get_entity_link_path('tile-obm-2025', 'US_admin-census-2021_admin3') in extras
+    )
+    assert len(extras) == 5
+
+
+def test_footprint_inputs_include_tile_admin_link(dag):
+    inputs = dag.input_paths('ingest', 'footprint-obm-2025', COUNTY)
+    assert (
+        get_entity_link_path('tile-obm-2025', 'US_admin-census-2021_admin3') in inputs
+    )

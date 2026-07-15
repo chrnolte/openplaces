@@ -108,9 +108,8 @@ def test_mermaid_full_detail(dag):
 
 
 def test_mermaid_collapse(dag):
-    # This single-county DAG sits below the auto threshold: default = full
-    assert len(dag.nodes()) <= 30
-    assert dag.to_mermaid() == dag.to_mermaid(collapse_admin=False)
+    # The default auto-collapses if and only if the DAG exceeds the threshold
+    assert dag.to_mermaid() == dag.to_mermaid(collapse_admin=len(dag.nodes()) > 30)
     # Explicit collapse folds per-admin jobs into recipe-level nodes
     collapsed = dag.to_mermaid(collapse_admin=True)
     assert 'admin units)' in collapsed
