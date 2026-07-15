@@ -16,6 +16,7 @@ lot_size,Parcel lot size,sqft,float,mean,,,
 area_sqft,Floor area,sqft,float,mean,50,,
 n_stories,Number of stories,,float,mean,51,,
 n_dwellings,Number of dwelling units in the building,,float,sum,52,,
+height,Building height,m,float,max,53,,
 roof_shape,Roof shape classification,,categorical,first,60,,enrich
 occupancy_type_parcel,"Occupancy proposed from parcel land-use keywords (NSI-independent); reconciled into occupancy_type",,categorical,first,70,,curate
 occupancy_type_footprint_fema,"Dominant FEMA USA Structures building occupancy on the footprint's parcel (by overlap area); evidence for occupancy inference",,categorical,first,,footprint,curate

@@ -130,6 +130,7 @@ pipeline:
         remap_id: US_footprint-fema-2023_occupancy-type-remap
         columns:
           - occupancy_type
+          - height
 
   # Attach per-parcel footprint morphology (counts of small elongated /
   # manufactured-home-shaped footprints) for the land-use classifier. Joins by
