@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io import read_parquet
 from openplaces.io.curator import CurateState, _register
+from openplaces.io.harmonizer.apportion import (
+    APPORTIONED_VALUE_COLUMNS,
+    apportion_reference_values,
+)
 from openplaces.recipe import get_output_path, get_recipe_by_id, get_recipe_id
 
 
@@ -92,98 +95,187 @@ def link_curated_entity(
     return state
 
 
-@_register('apportion_parcel_values')
-def apportion_parcel_values(
+@_register('apportion_curated_values')
+def apportion_curated_values(
     state: CurateState,
-    split: list[str],
-    keep_on_primary: list[str],
-    group_column: str = 'parcel_id',
+    recipe_id: str,
+    columns: dict,
+    entity_type: str = 'parcel',
+    link_recipe_id: str | None = None,
+    ref_key: str = 'parcel_id',
+    entity_key: str = 'parcel_id',
     priority_column: str = 'priority_on_parcel',
     dwelling_column: str = 'n_dwellings_overture',
 ) -> CurateState:
-    """Re-apportion curated-parcel values across a parcel's footprints.
+    """Apportion a curated reference entity's values over the n:m link sidecar.
 
-    ``link_curated_entity`` attaches the parcel's undivided total to every
-    footprint on that parcel; this step re-distributes it the way the
-    harmonize stage's polygon attribution does for its own parcel values
-    (Lochhead et al. 2026, Table 4), which ``link_curated_entity`` overwrites.
+    The value-column counterpart of :func:`link_curated_entity`: instead of
+    mapping each entity's dominant reference's undivided value, this re-uses
+    the n:m overlay persisted by the harmonize stage (``link_to_reference``
+    with ``save_link: true``) and the shared apportionment implementation
+    (:func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`)
+    to distribute the *curated* reference's values exactly the way the
+    harmonize stage distributes raw reference values: overlap-area shares
+    for ``improvement_value``/``n_dwellings``, dwelling-linked suppression,
+    ``land_value``/``address`` whole on the dominant reference of principal
+    entities only, ``year_built`` as the linked references' mean.
 
-    Recipients for a *split* column are the parcel's dwelling-linked primary
-    footprints (``priority_column`` is ``'primary'`` and ``dwelling_column`` is
-    positive) if any exist, else all primary footprints. The parcel's value is
-    then divided among recipients by floor-area share; non-recipients
-    (including every secondary footprint) get a missing value. A parcel with a
-    single footprint passes its value through unchanged, since that footprint
-    is always its own sole recipient.
+    Synthetic reference-derived fallback geometries (``geometry_source``
+    starting with ``'{entity_type}.'``, added by ``infer_spine_additions``
+    *after* the overlay was persisted, so never present in the sidecar) are
+    appended as full-weight single links via their ``entity_key`` column.
 
     Parameters
     ----------
-    state : CurateState
-        The curation state with the target GeoDataFrame in state.curated.
-    split : list of str
-        Columns whose parcel total is divided among recipient footprints by
-        floor-area share. Missing columns are skipped.
-    keep_on_primary : list of str
-        Columns kept in full on primary footprints and set missing elsewhere
-        (not divided across footprints). Missing columns are skipped.
-    group_column : str, optional
-        Parcel id column shared by every footprint on the same parcel.
+    recipe_id : str
+        A stage ``curate`` recipe whose output supplies the values.
+    columns : dict
+        Mapping of ``{ref_column: entity_column}``. Every ref column must be
+        one the shared apportionment knows
+        (``APPORTIONED_VALUE_COLUMNS``); use :func:`link_curated_entity`
+        for plain dominant-reference attributes.
+    entity_type : str, optional
+        Reference entity type; resolves the link sidecar the same way the
+        harmonize overlay did (default ``parcel``). Ignored when
+        *link_recipe_id* is given.
+    link_recipe_id : str, optional
+        Explicit reference recipe id of the link's other side.
+    ref_key : str, optional
+        Id column on the referenced curated output (default ``parcel_id``).
+    entity_key : str, optional
+        Id column on the current entity holding its dominant reference id
+        (default ``parcel_id``); used only to link synthetic fallback rows,
+        which are absent from the sidecar.
     priority_column : str, optional
-        Column holding each footprint's priority_on_parcel role.
+        Column holding each entity's role on its reference (default
+        ``priority_on_parcel``); drives the secondary/principal rules.
     dwelling_column : str, optional
-        Column whose positive value marks a footprint as dwelling-linked.
+        Column whose positive value marks an entity as dwelling-linked
+        (default ``n_dwellings_overture``); drives the suppression rule.
+
+    Raises
+    ------
+    FileNotFoundError
+        When the sidecar is missing: curation cannot recompute the overlay,
+        so re-run harmonize with ``save_link: true`` first.
     """
+    from openplaces.io.harmonizer.links import _resolve_reference_recipe
+
+    unknown = [c for c in columns if c not in APPORTIONED_VALUE_COLUMNS]
+    if unknown:
+        raise ValueError(
+            f'apportion_curated_values: no apportionment semantics for '
+            f'{unknown}; supported: {list(APPORTIONED_VALUE_COLUMNS)}. '
+            'Use link_curated_entity for dominant-reference attributes.'
+        )
+
+    ref_recipe = get_recipe_by_id(recipe_id)
+    if ref_recipe.get('stage') != 'curate':
+        raise ValueError(f"Reference recipe '{recipe_id}' must have stage 'curate'.")
+
+    ref = read_parquet(get_output_path(ref_recipe, state.admin_id))
+    if ref_key not in ref.columns and ref.index.name == ref_key:
+        ref = ref.reset_index()
+    if ref_key not in ref.columns:
+        raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    missing = [c for c in columns if c not in ref.columns]
+    if missing:
+        raise ValueError(
+            f'Columns {missing} missing from curated reference {recipe_id!r}.'
+        )
+    ref_values = (
+        ref.dropna(subset=[ref_key])
+        .drop_duplicates(ref_key)
+        .set_index(ref_key)[list(columns)]
+    )
+
+    resolved_id, _ = _resolve_reference_recipe(
+        link_recipe_id, entity_type, state.admin_id
+    )
+    if resolved_id is None:
+        raise ValueError(
+            f'apportion_curated_values: no reference recipe found for '
+            f'entity_type={entity_type!r} and {state.admin_id}.'
+        )
+    entity_recipe_id = get_recipe_id(state.entity_recipe)
+    sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
+    if not sidecar_path.exists():
+        raise FileNotFoundError(
+            f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
+            f'{entity_recipe_id} with save_link: true on the overlay step '
+            'so curation can apportion the curated values.'
+        )
+
+    links = pd.read_parquet(sidecar_path)
     curated = state.curated
-    if group_column not in curated.columns or priority_column not in curated.columns:
-        return state
+    id_col = curated.index.name
+    if id_col not in links.columns:
+        # The sidecar records the harmonizer's working spine id column;
+        # fall back to the first (index) column
+        id_col = links.columns[0]
 
-    split = [c for c in split if c in curated.columns]
-    keep_on_primary = [c for c in keep_on_primary if c in curated.columns]
-    if not split and not keep_on_primary:
-        return state
+    # Only link-labeled pairs (kept by the harmonize crosswalk's sliver
+    # thresholds) participate, matching what the harmonize attribution saw.
+    if 'link' in links.columns:
+        links = links[links['link'].notna()]
+    pairs = links[[id_col, ref_key, 'area_intersection_m2']].rename(
+        columns={ref_key: 'parcel_id'}
+    )
+    pairs = pairs[pairs[id_col].isin(curated.index)]
 
-    is_primary = curated[priority_column].eq('primary')
+    # Synthetic fallback rows postdate the sidecar; add them as their
+    # reference's sole full-weight link.
+    if 'geometry_source' in curated.columns and entity_key in curated.columns:
+        is_synthetic = (
+            curated['geometry_source']
+            .astype('string')
+            .str.startswith(f'{entity_type}.', na=False)
+        )
+        synthetic = curated.loc[
+            is_synthetic
+            & curated[entity_key].notna()
+            & ~curated.index.isin(set(pairs[id_col])),
+            [entity_key],
+        ]
+        if len(synthetic):
+            pairs = pd.concat(
+                [
+                    pairs,
+                    pd.DataFrame(
+                        {
+                            id_col: synthetic.index,
+                            'parcel_id': synthetic[entity_key].to_numpy(),
+                            'area_intersection_m2': 1.0,
+                        }
+                    ),
+                ],
+                ignore_index=True,
+            )
 
-    for col in keep_on_primary:
-        curated[col] = curated[col].where(is_primary)
-
-    if split:
-        import warnings
-
-        from openplaces.geo.polygon import get_areas
-
-        if 'm2' not in curated.columns:
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore')
-                curated['m2'] = get_areas(curated, unit='m2')
-        m2 = curated['m2']
-
-        group = curated[group_column]
-        has_group = group.notna()
-        has_dwelling = (
-            curated[dwelling_column] > 0
+    result = apportion_reference_values(
+        pairs,
+        ref_values,
+        spine_id_col=id_col,
+        priority=curated.get(priority_column),
+        dwelling_linked_ids=(
+            set(curated.index[curated[dwelling_column] > 0])
             if dwelling_column in curated.columns
-            else pd.Series(False, index=curated.index)
-        )
-        dwelling_primary = is_primary & has_dwelling
-        # groupby(group) drops rows with a missing group_column (a footprint
-        # never linked to any parcel) from its groups, so transform() leaves
-        # those rows NaN -- fillna(False) rather than let that NaN upcast the
-        # boolean result to float, which ~ can't invert.
-        parcel_has_dwelling_primary = (
-            dwelling_primary.groupby(group).transform('any').fillna(False)
-        )
-        recipient = (
-            is_primary & has_group & (~parcel_has_dwelling_primary | dwelling_primary)
-        )
+            else None
+        ),
+    )
 
-        recipient_area = m2.where(recipient, 0.0)
-        area_by_parcel = recipient_area.groupby(group).transform('sum')
-        share = recipient_area / area_by_parcel.replace(0, np.nan)
+    for ref_col, entity_col in columns.items():
+        attributed = (
+            result[ref_col] if ref_col in result.columns else pd.Series(dtype='float64')
+        )
+        curated[entity_col] = attributed.reindex(curated.index)
 
-        for col in split:
-            curated[col] = (curated[col] * share).where(recipient)
-
+    if state.verbose:
+        n_linked = curated.index.isin(set(pairs[id_col])).sum()
+        print(
+            f'  apportion_curated_values: {n_linked:,}/{len(curated):,} rows '
+            f'linked to {recipe_id} ({len(columns)} columns).'
+        )
     state.curated = curated
     return state
 

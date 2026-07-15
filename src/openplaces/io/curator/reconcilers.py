@@ -108,6 +108,49 @@ def suppress_where(
     return state
 
 
+def _summarize_conflicts(
+    present: list[tuple[str, pd.Series]],
+    index: pd.Index,
+) -> pd.Series:
+    """Summarize disagreeing evidence values per row as a compact string.
+
+    *present* is a list of (label, values) pairs, each values Series aligned
+    to *index*. Returns an object Series that is missing except where at
+    least two present values disagree; there, sources are grouped by unique
+    value — groups ordered by first-appearing label, labels within a group
+    joined with '/' — e.g. 'nsi/parcel: Single Family | fema: Manufactured
+    Home', so agreements and disagreements are both visible at a glance.
+    """
+    from itertools import combinations
+
+    conflict = pd.Series(pd.NA, index=index, dtype=object)
+    if len(present) < 2:
+        return conflict
+
+    differ = pd.Series(False, index=index)
+    for (_, class_a), (_, class_b) in combinations(present, 2):
+        both = class_a.notna() & class_b.notna()
+        differ = differ | (both & class_a.ne(class_b))
+    if not differ.any():
+        return conflict
+
+    labels = [label for label, _ in present]
+    stacked = pd.concat(
+        {label: values.astype(object) for label, values in present}, axis=1
+    )
+
+    def _row_summary(row) -> str:
+        groups: dict[str, list[str]] = {}
+        for label in labels:
+            value = row[label]
+            if pd.notna(value):
+                groups.setdefault(str(value), []).append(label)
+        return ' | '.join(f'{"/".join(who)}: {value}' for value, who in groups.items())
+
+    conflict.loc[differ] = stacked.loc[differ].apply(_row_summary, axis=1)
+    return conflict
+
+
 @_register('resolve_occupancy')
 def resolve_occupancy(
     state: CurateState,
@@ -133,13 +176,16 @@ def resolve_occupancy(
     A review-flag column marks footprints whose improvement value is a small
     nonzero share of total value
     (``0 < improvement/(improvement+land) < review_max_ratio``).
-    ``occupancy_type_conflict`` is a categorical ``"{label}: {class} | ..."``
-    summary listing every present occupancy evidence (NSI, FEMA, parcel, and any
-    other source in ``occupancy.evidence``) for rows where two or more disagree
-    (else null). To keep the column low-cardinality, every non-residential class is
-    collapsed into a single bucket label (``occupancy.conflict_other_label``,
-    default ``Non-Residential``), so only residential — or
-    residential-vs-non-residential — disagreements are surfaced.
+    ``occupancy_type_conflict`` is a categorical summary of every present
+    occupancy evidence (NSI, FEMA, parcel, and any other source in
+    ``occupancy.evidence``) for rows where two or more disagree (else null),
+    with sources grouped by unique value — e.g.
+    ``"nsi/parcel: Single Family | fema: Manufactured Home"`` (see
+    :func:`_summarize_conflicts`). To keep the column low-cardinality, every
+    non-residential class is collapsed into a single bucket label
+    (``occupancy.conflict_other_label``, default ``Non-Residential``), so only
+    residential — or residential-vs-non-residential — disagreements are
+    surfaced.
 
     Parameters
     ----------
@@ -235,11 +281,7 @@ def resolve_occupancy(
     # Each non-residential class is collapsed into one bucket label so the column
     # stays low-cardinality — residential disagreements (incl. residential vs
     # non-residential) are surfaced, while two differing non-residential categories
-    # (e.g. Retail vs Hotel) are not. The string lists all present sources in
-    # recipe order so agreements and disagreements are both visible.
-    from itertools import combinations
-
-    conflict = pd.Series(pd.NA, index=curated.index, dtype=object)
+    # (e.g. Retail vs Hotel) are not.
     present = [
         (
             ev.get('label', ev['column']),
@@ -248,24 +290,7 @@ def resolve_occupancy(
         for ev in evidence
         if ev['column'] in curated.columns
     ]
-    if len(present) >= 2:
-        differ = pd.Series(False, index=curated.index)
-        for (_, class_a), (_, class_b) in combinations(present, 2):
-            both = class_a.notna() & class_b.notna()
-            differ = differ | (both & class_a.ne(class_b))
-        if differ.any():
-            parts = []
-            for label, classes in present:
-                mask = classes.notna()
-                part = pd.Series(pd.NA, index=curated.index, dtype=object)
-                part.loc[mask] = f'{label}: ' + classes[mask].astype(str)
-                parts.append(part)
-            # Join each row's present "label: class" parts, skipping absent sources.
-            stacked = pd.concat(parts, axis=1)
-            joined = stacked.apply(
-                lambda row: ' | '.join(v for v in row if isinstance(v, str)), axis=1
-            )
-            conflict.loc[differ] = joined.loc[differ]
+    conflict = _summarize_conflicts(present, curated.index)
 
     review_col = config.get('review_column', 'occupancy_type_review')
     curated['occupancy_type'] = pd.Categorical(base)
@@ -304,6 +329,162 @@ def resolve_occupancy(
             + (f' (report: {report_path})' if report_path is not None else '')
         )
 
+    return state
+
+
+@_register('reconcile_land_use')
+def reconcile_land_use(
+    state: CurateState,
+    columns: list[dict],
+    output: str = 'land_use_class',
+    tiebreaker: str = 'group_parcel',
+    class_map_id: str | None = None,
+    conflict_column: str = 'land_use_class_conflict',
+    report: str | None = None,
+) -> CurateState:
+    """Fill missing land-use classes by vote across group-vocabulary evidence.
+
+    Each listed column casts one vote per row with its (non-null) value; the
+    value with the most votes wins. On a tie, the *tiebreaker* column's value
+    wins when it is among the tied values; a residual tie (tiebreaker absent)
+    falls to the earliest listed column voting for a tied value. The winning
+    group is mapped through the *class_map_id* crosswalk to the coarse
+    land-use class and fills only rows where *output* is missing — classes
+    already assigned by the rule-based vote (``classify_parcel_land_use``)
+    stay on top. The ``{output}_source`` sidecar records the winning value's
+    contributing labels joined with '/' (e.g. ``nsi/parcel``).
+
+    Also writes *conflict_column* (see :func:`_summarize_conflicts`), a
+    grouped summary like ``"nsi/parcel: Single Family | fema: Manufactured
+    Home"`` for rows where the present values disagree, and saves its most
+    frequent combinations (count-sorted) to the reports directory.
+
+    Parameters
+    ----------
+    state : CurateState
+        The curation state with the target GeoDataFrame in state.curated.
+    columns : list of dict
+        Voting columns in priority order, each ``{column, label}``. All are
+        expected to share one vocabulary (normalize upstream, e.g. via
+        ``remap_column``); missing columns are skipped.
+    output : str, optional
+        Land-use class column to fill (default ``land_use_class``).
+    tiebreaker : str, optional
+        Column whose value breaks ties when present among the tied values
+        (default ``group_parcel``).
+    class_map_id : str, optional
+        Recipe id of the group -> class crosswalk CSV applied to the winning
+        value. Winning groups missing from the map leave the row unfilled.
+        When omitted, the winning group is written as-is.
+    conflict_column : str, optional
+        Output column for the grouped disagreement summary.
+    report : str, optional
+        Filename for the conflict-combination counts CSV written to the
+        reports directory (skipped when omitted or no conflicts exist).
+    """
+    from openplaces.io.curator.provenance import record_source
+    from openplaces.io.transform import get_crosswalk
+
+    curated = state.curated
+
+    present = [
+        (spec.get('label', spec['column']), curated[spec['column']].astype(object))
+        for spec in columns
+        if spec['column'] in curated.columns
+    ]
+    if not present:
+        if state.verbose:
+            print('  reconcile_land_use: no evidence columns present; skipping.')
+        return state
+    labels = [label for label, _ in present]
+    tiebreaker_label = next(
+        (
+            spec.get('label', spec['column'])
+            for spec in columns
+            if spec['column'] == tiebreaker and spec['column'] in curated.columns
+        ),
+        None,
+    )
+
+    conflict = _summarize_conflicts(present, curated.index)
+    curated[conflict_column] = pd.Categorical(conflict)
+
+    stacked = pd.concat(dict(present), axis=1)
+
+    def _vote(row) -> tuple:
+        votes = [(label, row[label]) for label in labels if pd.notna(row[label])]
+        if not votes:
+            return (pd.NA, pd.NA)
+        counts: dict[str, int] = {}
+        for _, value in votes:
+            counts[value] = counts.get(value, 0) + 1
+        max_votes = max(counts.values())
+        # dict preserves first-vote order, so ties fall to the earliest
+        # listed column unless the tiebreaker claims one of the tied values.
+        tied = [value for value, n in counts.items() if n == max_votes]
+        winner = tied[0]
+        if len(tied) > 1 and tiebreaker_label is not None:
+            tiebreaker_value = row[tiebreaker_label]
+            if pd.notna(tiebreaker_value) and tiebreaker_value in tied:
+                winner = tiebreaker_value
+        token = '/'.join(label for label, value in votes if value == winner)
+        return (winner, token)
+
+    mask_any = stacked.notna().any(axis=1)
+    winner = pd.Series(pd.NA, index=curated.index, dtype=object)
+    token = pd.Series(pd.NA, index=curated.index, dtype=object)
+    if mask_any.any():
+        voted = stacked.loc[mask_any].apply(_vote, axis=1)
+        winner.loc[mask_any] = voted.str[0]
+        token.loc[mask_any] = voted.str[1]
+
+    if class_map_id:
+        filled = winner.map(get_crosswalk({'recipe_id': class_map_id}))
+    else:
+        filled = winner
+    if output in curated.columns:
+        to_fill = curated[output].isna() & filled.notna()
+    else:
+        to_fill = filled.notna()
+
+    values = (
+        curated[output].astype(object)
+        if output in curated.columns
+        else pd.Series(pd.NA, index=curated.index, dtype=object)
+    )
+    values.loc[to_fill] = filled.loc[to_fill]
+    curated[output] = pd.Categorical(values)
+    for fill_token in token.loc[to_fill].dropna().unique():
+        record_source(curated, output, to_fill & token.eq(fill_token), fill_token)
+
+    report_path = None
+    if report and conflict.notna().any():
+        import warnings
+
+        try:
+            from openplaces.path import reports_path
+
+            summary = (
+                conflict.dropna()
+                .value_counts()
+                .rename('count')
+                .rename_axis(conflict_column)
+                .reset_index()
+            )
+            report_path = reports_path(state.admin_id, filename=report)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            summary.to_csv(report_path, index=False)
+        except Exception as exception:
+            warnings.warn(f'reconcile_land_use: conflict report failed: {exception}')
+            report_path = None
+
+    if state.verbose:
+        print(
+            f'  reconcile_land_use: {int(to_fill.sum()):,} filled, '
+            f'{int(conflict.notna().sum()):,} conflicts'
+            + (f' (report: {report_path})' if report_path is not None else '')
+        )
+    state.curated = curated
     return state
 
 

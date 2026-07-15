@@ -62,12 +62,12 @@ Footprint spine harmonization
 
 7. Classify structural role
 
-   * Determines whether a footprint represents a primary or secondary structure on multi-building parcels based on NSI and Overture matches, using the :input:`entity_type` ``parcel``.
+   * Determines whether a footprint represents a primary or secondary structure on multi-building parcels based on NSI and Overture matches, using the :input:`entity_type` ``parcel``. Synthetic, parcel-derived fallback geometries are always classified as ``'primary'``.
    * Function: :func:`openplaces.io.harmonizer.attributes.classify_footprint_priority`
 
 8. Package raw variables
 
-   * Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Note that :input:`n_stories` and :input:`area_sqft` requested from NSI are not carried to the spine during point-attribution, so NSI story counts do not reach the final output.
+   * Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Unhandled numeric columns (such as NSI's ``n_stories`` and ``area_sqft``) are aggregated using the attribute registry's default function so they are carried onto the spine.
    * Function: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
 Parcel spine harmonization
@@ -163,12 +163,17 @@ This stage curates the parcel spine to produce clean assessor attributes:
    * Assigns parcel land-use classes via weighted voting. It runs multi-indicator voting rules to identify Manufactured Home Park, RV Park, Standalone Manufactured Home, Townhome, Vacant, etc., saving to :input:`output` (``land_use_class``) with flags mapped to :input:`flag_column` (``manufactured_home_park``) and :input:`flag_class` (``Manufactured Home Park``), scoring columns via :input:`score_columns` (Vacant: ``land_use_vacancy_score``), review tracking on :input:`review_column` (``land_use_review``) with a margin of :input:`review_margin` (1.0) and the configured :input:`rules`.
    * Function: :func:`openplaces.io.curator.inferers.classify_parcel_land_use`
 
-4. Standardize data categories
+4. Derive story count from height
+
+   * Approximates the story count (``n_stories_footprint_fema``) as ``height / 3.05``, rounded and floored at one story, using the LiDAR-derived FEMA footprint height.
+   * Function: :func:`openplaces.io.curator.inferers.derive_stories_from_height`
+
+5. Standardize data categories
 
    * Casts string columns to pandas Categorical types to optimize storage footprint and query performance.
    * Function: :func:`openplaces.io.curator.formatters.cast_categoricals`
 
-5. Format curated parcel schema
+6. Format curated parcel schema
 
    * Enforces a standard column order on the final curated parcel schema.
    * Function: :func:`openplaces.io.curator.formatters.order_columns`
@@ -184,15 +189,20 @@ Initial evidence assembly
 
 1. Integrate clean assessor data
 
-   * Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (improvement_value, land_value, year_built, use_group_combined, group_parcel, manufactured_home_park, occupancy_type_footprint_fema, and land_use_class). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns, repeating the undivided per-parcel totals across every footprint on the parcel.
+   * Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (improvement_value, land_value, year_built, use_group_combined, group_parcel, manufactured_home_park, occupancy_type_footprint_fema, n_stories_footprint_fema, and land_use_class). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns, initially repeating the undivided per-parcel totals across every footprint on the parcel before they are apportioned in the next step.
    * Function: :func:`openplaces.io.curator.evidence.link_curated_entity`
 
-2. Correct address evidence
+2. Apportion parcel values
+
+   * Splits ``improvement_value_parcel`` across a multi-footprint parcel's dwelling-linked (or, absent those, all) primary footprints by floor-area share. ``land_value_parcel`` stays whole on the primary footprint only.
+   * Function: :func:`openplaces.io.curator.evidence.apportion_parcel_values`
+
+3. Correct address evidence
 
    * Suppresses Overture dwelling unit counts on vacant parcels. It sets :input:`column` (``n_dwellings_overture``) to null if the :input:`condition_column` (``land_use_class_parcel``) matches the value :input:`condition_value` (:input:`Vacant`).
    * Function: :func:`openplaces.io.curator.reconcilers.suppress_where`
 
-3. Determine implied Overture occupancy
+4. Determine implied Overture occupancy
 
    * Assigns a temporary occupancy class to :input:`target` (``occupancy_type_dwelling_overture``) based on the corrected Overture count using the configured :input:`decisions` rules.
    * Function: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
@@ -200,63 +210,68 @@ Initial evidence assembly
 Value reconciliation and metrics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-4. Select canonical values
+5. Select canonical values
 
    * Resolves conflicts between competing source attributes by selecting the canonical value from the prioritized lists in the :input:`priority` mapping (e.g. for dwelling counts, year built, and financial valuation).
    * Function: :func:`openplaces.io.curator.reconcilers.reconcile_values`
 
-5. Zero-fill address counts
+6. Zero-fill address counts
 
    * Fills missing or suppressed Overture dwelling unit counts listed in :input:`columns` (``[n_dwellings_overture]``) with ``0`` and casts the column to integer.
    * Function: :func:`openplaces.io.curator.imputers.fill_missing_numeric`
 
-6. Compute footprint metrics
+7. Compute footprint metrics
 
-   * Calculates structural indicators such as footprint area in square meters from geometry and computes structural value-per-area metrics for all value columns. Note that ``value_per_area`` is subsequently dropped from the final output.
+   * Calculates structural indicators such as footprint area in square meters from geometry and computes structural value-per-area metrics for all value columns. Note that ``value_per_area`` is kept in the final output.
    * Function: :func:`openplaces.io.curator.inferers.derive_metrics`
 
 Baseline attribute imputation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-7. Impute missing residential units
+8. Impute missing residential units
 
    * Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
    * Function: :func:`openplaces.io.curator.imputers.impute_n_dwellings`
 
-8. Establish baseline occupancy class
+9. Establish baseline occupancy class
 
    * Establishes a baseline occupancy class through a four-stage process: (1) selects the first present value from the prioritized evidence cascade (NSI, FEMA, parcel, Overture); (2) applies a geometry-based Manufactured Home fallback for long/narrow structures; (3) fills residential gaps using a single-family dwelling count check; and (4) assigns accessory structures to the Secondary class (excluding habitable structures in manufactured home parks).
    * Function: :func:`openplaces.io.curator.inferers.impute_occupancy_type`
 
-9. Apply property-use keyword corrections
+10. Apply property-use keyword corrections
 
-   * Refines the baseline occupancy class by correcting classes using property-use keywords from the ruleset (only rules marked reviewed can override the base class, and they never override Secondary). It also writes the ``occupancy_type_parcel`` column, sets the ``occupancy_type_review`` flag for low improvement-value shares, generates the ``occupancy_type_conflict`` summary, and outputs a county-level conflicts CSV report.
-   * Function: :func:`openplaces.io.curator.reconcilers.resolve_occupancy`
+    * Refines the baseline occupancy class by correcting classes using property-use keywords from the ruleset (only rules marked reviewed can override the base class, and they never override Secondary). It also writes the ``occupancy_type_parcel`` column, sets the ``occupancy_type_review`` flag for low improvement-value shares, generates the ``occupancy_type_conflict`` summary, and outputs a county-level conflicts CSV report.
+    * Function: :func:`openplaces.io.curator.reconcilers.resolve_occupancy`
 
-10. Merge visual model predictions
+11. Merge visual model predictions
 
     * Merges predicted building attributes from the configured :input:`recipes` (e.g. ``US_footprint_built-roof-shape-brails-2026`` and ``US_footprint_built-n-stories-brails-2026``) and their respective columns.
     * Function: :func:`openplaces.io.curator.evidence.merge_enrichments`
 
+12. Reconcile story counts
+
+    * Resolves conflicts between competing story count sources (street-level imagery predictions ``n_stories_brails``, FEMA height-derived counts ``n_stories_footprint_fema``, and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
+    * Function: :func:`openplaces.io.curator.reconcilers.reconcile_values`
+
 Occupancy voting and refinement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-11. Score manufactured home probability
+13. Score manufactured home probability
 
     * Computes a probability score for manufactured home classification based on the :input:`ruleset` (``parcel-occupancy-keywords.csv``) while setting the :input:`update_occupancy` parameter to :input:`false`.
     * Function: :func:`openplaces.io.curator.inferers.classify_manufactured_homes`
 
-12. Resolve occupancy by weighted vote
+14. Resolve occupancy by weighted vote
 
     * Resolves final occupancy class (specifically Manufactured Home vs. Multi-Family conflicts) to the :input:`target` column (``occupancy_type``) using the configured :input:`decisions` rules. Footprints under 20 m² are prevented from becoming Manufactured Home by a hard precondition, and the winning decision records its source label into ``occupancy_type_source``.
     * Function: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
 
-13. Split height bands
+15. Split height bands
 
     * Splits the standard :input:`multi_family_class` (``Multi-Family``) into HAZUS height bands based on the reconciled number of stories using the configured :input:`bands`.
     * Function: :func:`openplaces.io.curator.inferers.refine_occupancy_height`
 
-14. Flag manufactured home communities
+16. Flag manufactured home communities
 
     * Re-evaluates mobile home park boundaries and flags parcels containing more than :input:`min_homes` (3) final Manufactured Home footprints (i.e., 4 or more). It writes the count to ``n_manufactured_homes_per_parcel`` and the boolean flag to ``manufactured_home_community``.
     * Function: :func:`openplaces.io.curator.inferers.flag_manufactured_home_communities`
@@ -264,17 +279,17 @@ Occupancy voting and refinement
 Schema standardization and formatting
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-15. Standardize data categories
+17. Standardize data categories
 
     * Converts string columns to pandas Categorical types.
     * Function: :func:`openplaces.io.curator.formatters.cast_categoricals`
 
-16. Cast year built to integer
+18. Cast year built to integer
 
     * Rounds and casts the year of construction columns listed in :input:`columns` (``[year_built]``) to nullable integer data types.
     * Function: :func:`openplaces.io.curator.formatters.cast_integers`
 
-17. Clean up and order columns
+19. Clean up and order columns
 
-    * Enforces standard column order and drops transient helper columns (including ``group_parcel``, ``occupancy_type_dwelling_overture``, ``occupancy_type_dwelling_overture_source``, ``value_per_area``, ``occupancy_type_base``, ``p_manufactured_home``, and ``manufactured_home_park``).
+    * Enforces standard column order and drops transient helper columns (including ``group_parcel``, ``occupancy_type_dwelling_overture``, ``occupancy_type_dwelling_overture_source``, ``occupancy_type_base``, ``p_manufactured_home``, ``manufactured_home_park``, and ``n_stories_brails_source``).
     * Function: :func:`openplaces.io.curator.formatters.order_columns`

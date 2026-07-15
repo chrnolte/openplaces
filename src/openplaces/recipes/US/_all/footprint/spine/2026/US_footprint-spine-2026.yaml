@@ -107,15 +107,18 @@ pipeline:
           # the harmonizer, not requested here. parcel_id_local is kept only
           # for cross-referencing the assessment roll / sales transactions,
           # not as a join key (see summarize_footprint_morphology for why).
+          # Parcel VALUE columns (improvement_value, land_value, year_built,
+          # n_dwellings) are deliberately NOT attributed here: this overlay
+          # runs against pre-roll-merge ingested parcels (the parcel spine is
+          # harmonized after this recipe), so those columns would be empty or
+          # raw; the curate stage apportions them from the CURATED parcels
+          # over this step's persisted link sidecar instead
+          # (apportion_curated_values in US_footprint-cheer-2026).
           - parcel_id_local
           - use_group
           - use_subgroup
           - use_group_combined
-          - improvement_value
-          - land_value
-          - year_built
           - address
-          - n_dwellings
       - recipe_id: dwelling-overture-2025
         columns:
           - n_dwellings

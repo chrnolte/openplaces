@@ -6,9 +6,10 @@
 # footprint recipe) and classifying land use — including manufactured-home park
 # vs RV park vs standalone manufactured home, multiple-single-family vs townhome,
 # commercial subtypes, and vacant — from the same evidence mix (assessor codes,
-# linked-NSI group, footprint morphology, improvement value). The footprint
-# curation (US_footprint-cheer-2026) consumes this output, so parcels are
-# curated first.
+# linked-NSI group, footprint morphology, improvement value). Parcels no rule
+# claims get a default class voted from group_parcel / group_building_nsi /
+# group_footprint_fema (reconcile_land_use below). The footprint curation
+# (US_footprint-cheer-2026) consumes this output, so parcels are curated first.
 
 description: >-
   Canonical openplaces parcels: land-use classification (residential subtypes,
@@ -87,18 +88,16 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED|MH PARK'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           - {type: count_at_least, column: n_small_elongated_footprints_per_parcel, min: 4}
-          # FEMA's dominant-by-area building occupancy on the parcel, an
+          # FEMA's dominant-by-area building group on the parcel, an
           # independent 4th vote: catches a park whose assessor use code is
           # too local/generic for the keyword list and whose NSI link missed.
-          - type: keyword
-            column: occupancy_type_footprint_fema
-            pattern: MANUFACTURED
+          - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
       - class: RV Park
         min_score: 2
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'RV|CAMPGROUND|RECREATION|MOTORHOME'}
-          - {type: in_set, column: group_parcel, values: [Recreation, Commercial]}
+          - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
           - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
 
       # Standalone manufactured home: same keyword/NSI-group evidence as the
@@ -111,9 +110,7 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           # Same independent FEMA vote as Manufactured Home Park above.
-          - type: keyword
-            column: occupancy_type_footprint_fema
-            pattern: MANUFACTURED
+          - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
       # Several detached, non-manufactured-home-shaped structures on one
       # parcel. "multiple houses on one parcel" is literal assessor vocabulary
@@ -142,9 +139,7 @@ pipeline:
           - type: any_of
             indicators:
               - {type: in_set, column: group_parcel, values: [Single Family]}
-              - type: in_set
-                column: occupancy_type_footprint_fema
-                values: [Single Family]
+              - {type: in_set, column: group_footprint_fema, values: [Single Family]}
 
       # One building in a footprint notably larger than typical single-family
       # for its assessor-use cohort — a row of units merged into one polygon
@@ -165,12 +160,13 @@ pipeline:
           # corroborates group_parcel without adding an independent 4th vote.
           - type: any_of
             indicators:
+              # NSI group vocabulary spells it 'Multi Family' (no hyphen).
               - type: in_set
                 column: group_parcel
-                values: [Multi-Family, Single Family]
+                values: [Multi Family, Single Family]
               - type: in_set
-                column: occupancy_type_footprint_fema
-                values: [Single Family, Multi-Family]
+                column: group_footprint_fema
+                values: [Single Family, Multi Family]
 
       # No real footprint (small/absent relative to cohort, and none at all —
       # not even a value-inferred synthetic fallback), near-zero improvement
@@ -201,7 +197,7 @@ pipeline:
         min_score: 1
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'INDUSTRIAL|MANUFACTURING|WAREHOUSE'}
-          - {type: in_set, column: group_parcel, values: [Industrial]}
+          - {type: in_set, column: group_parcel, values: [Heavy Industrial, Light Industrial]}
 
       # Draws from both the `commercial` and `exempt` top-level assessor
       # buckets: municipal/religious/charitable land sits in `exempt`, not
@@ -215,11 +211,34 @@ pipeline:
 
       # Catch-all for commercial parcels that don't fit a specific subtype
       # above (e.g. hotel/motel, restaurant, parking garage, golf course).
+      # NSI's group vocabulary has no generic 'Commercial' bucket; list the
+      # commercial-flavored groups instead.
       - class: Commercial
         min_score: 1
         indicators:
-          - {type: in_set, column: group_parcel, values: [Commercial]}
+          - type: in_set
+            column: group_parcel
+            values: [Retail, Wholesale, 'Personal & Repair Services', Bank, Hotel]
           - {type: keyword, column: use_group_combined, pattern: 'COMMERCIAL'}
+
+  # Default land-use class for the parcels no rule above claimed: a vote
+  # across the three group-vocabulary evidence columns (each casts one vote;
+  # ties break to group_parcel when present, else to the earliest listed
+  # column), with the winning group coarsened to the recipe's class
+  # vocabulary via the class map. Also writes land_use_class_conflict
+  # (grouped source-disagreement summary, e.g. "nsi/parcel: Single Family |
+  # fema: Manufactured Home") and saves the most frequent conflicting
+  # combinations to the reports directory.
+  - step: reconcile_land_use
+    output: land_use_class
+    columns:
+      - {column: group_parcel, label: parcel}
+      - {column: group_building_nsi, label: nsi}
+      - {column: group_footprint_fema, label: fema}
+    tiebreaker: group_parcel
+    class_map_id: US_parcel-openplaces-2026_land-use-class-map
+    conflict_column: land_use_class_conflict
+    report: land-use-evidence-conflicts.csv
 
   # FEMA USA Structures has no story count, only LiDAR-derived height; derive
   # an approximate story count so the footprint curation lane (US_footprint-
