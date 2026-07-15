@@ -19,8 +19,10 @@ code in the `openplaces` repository.
   - Custom data structures or configuration objects
 - Do not include the .py filepath in the top-level docstring of scripts
 
-## Files
+## Directory structure
 Write plans to <repository_root>/plans/
+
+Create new worktrees in ``<repository_root>/_<worktree_branch_name>/``
 
 ## Commits
 - Do not add `Co-Authored-By` trailers for agents (e.g. Claude) to commits.
