@@ -22,6 +22,7 @@ from openplaces.core.constants import (
     ZIP_EXTENSIONS,
 )
 from openplaces.core.schema import AdminId
+from openplaces.geo.link import create_entity_link, get_entity_link_path
 from openplaces.io import (
     delete_data,
     delete_parquet,
@@ -50,6 +51,7 @@ from openplaces.recipe import (
     get_partition_ids,
     get_process_admin_level,
     get_recipe_by_id,
+    get_recipe_id,
     get_save_admin_level,
     get_table_recipe,
 )
@@ -390,6 +392,31 @@ class Ingester:
         self._aggregate_to()
 
         self._aggregate_partitions()
+
+        self._create_entity_links(reprocess)
+
+    def _create_entity_links(self, reprocess=False):
+        """Persist the n:m entity links declared under `entity_links`.
+
+        For each entry, computes the full intersection link to the
+        referenced entity with create_entity_link() and saves it at the
+        canonical get_entity_link_path() location (beside the finer
+        entity's output). Existing link files are reused unless
+        `reprocess` is True. Runs even when the primary output already
+        existed, so missing links are backfilled without a reingest.
+        """
+        entries = self.recipe.get('entity_links') or []
+        if not entries:
+            return
+        self_recipe_id = get_recipe_id(self.recipe)
+        for entry in entries:
+            other_recipe_id = entry['recipe_id']
+            link_path = get_entity_link_path(self_recipe_id, other_recipe_id)
+            if link_path.exists() and not reprocess:
+                continue
+            if self.verbose:
+                print(f'Creating entity link: {self_recipe_id} - {other_recipe_id}')
+            create_entity_link(self_recipe_id, other_recipe_id)
 
     def show_ingested_geometries(self, **kwargs):
         """Plot the last ingested layer for visual inspection.

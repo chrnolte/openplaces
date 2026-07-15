@@ -272,6 +272,7 @@ RECIPE_PER_TABLE_KEYS = (
     'encoding',
     'save_to',
     'overlay_admin_ids',
+    'entity_links',
 )
 
 
