@@ -8,9 +8,10 @@ name: openplaces
 channels:
   - conda-forge
   - bioconda
+  - nodefaults
 dependencies:
   # Python version
-  - python>=3.12
+  - python>=3.12,<3.13
 
   # Core geospatial dependencies (better via conda due to C/C++ libs)
   # KEEP IN SYNC WITH pyproject.toml [project.dependencies]
