@@ -388,7 +388,8 @@ def _attribute_polygon_reference(
     spine = state.spine
     spine_id_col = spine.index.name
     overlay = state.overlays.get(crosswalk_key)
-    if overlay is None or ref_polys is None:
+    trimmed_crosswalk = state.crosswalks.get(crosswalk_key)
+    if overlay is None or trimmed_crosswalk is None or ref_polys is None:
         return state
     # Snapshot the spine's own columns before this crosswalk attributes
     # anything, so every id-column naming decision in this call (including the
@@ -422,11 +423,21 @@ def _attribute_polygon_reference(
     # Relational counts read as n_{counted}s_per_{grouping}. Both are totals
     # (include the footprint/parcel itself), so the two directions are symmetric.
     ref_label = suffix.lstrip('_')
-    n_ref_per_spine_col = f'n_{ref_label}s_per_{spine_entity_type}'
+    # ref_label may be a compound "{entity_type}_{source_id}" (e.g. 'footprint_fema');
+    # pluralize just the entity-type word and keep the source suffix intact, so this
+    # reads 'footprints_fema', not the ungrammatical 'footprint_femas'.
+    if entity_type and ref_label.startswith(entity_type):
+        ref_label_plural = entity_type + 's' + ref_label[len(entity_type) :]
+    else:
+        ref_label_plural = f'{ref_label}s'
+    n_ref_per_spine_col = f'n_{ref_label_plural}_per_{spine_entity_type}'
     n_spine_per_ref_col = f'n_{spine_entity_type}s_per_{ref_label}'
     avail_cols = [c for c in (columns or _POLYGON_REF_COLS) if c in ref_polys.columns]
 
     mask_has_ref = overlay.index.get_level_values('parcel_id').notnull()
+    mask_has_ref_trimmed = trimmed_crosswalk.index.get_level_values(
+        'parcel_id'
+    ).notnull()
 
     volume_weight = None
     if use_volume_weight:
@@ -452,8 +463,14 @@ def _attribute_polygon_reference(
         volume_weight=volume_weight,
     )
 
+    # Categorical/numeric attribution and the relational counts below read the
+    # *trimmed* crosswalk (sub-threshold sliver overlaps already dropped by
+    # _build_crosswalk's fraction_of_largest/area_intersection_m2_min floors), not
+    # the raw identity overlay -- a footprint that merely clips a sliver of a
+    # neighboring parcel should not count as evidence of anything. Value
+    # apportionment above intentionally still reads the raw overlay, unchanged.
     footprint_ref_attrs = (
-        overlay[mask_has_ref][['area_intersection_m2']]
+        trimmed_crosswalk[mask_has_ref_trimmed][['area_intersection_m2']]
         .reset_index()
         .set_index('parcel_id')
         .join(ref_polys[avail_cols])
@@ -1063,6 +1080,8 @@ def summarize_footprint_morphology(
     min_overlap_m2: float = 10.0,
     overlap_column: str = 'area_intersection_m2_parcel',
     priority_column: str = 'priority_on_parcel',
+    dwelling_column: str = 'n_dwellings_overture',
+    span_column: str = 'n_parcels_per_footprint',
 ) -> HarmonizeState:
     """Attach per-parcel footprint morphology aggregates to the parcel spine.
 
@@ -1072,8 +1091,21 @@ def summarize_footprint_morphology(
     representative point), and writes the per-parcel counts the parcel land-use
     classifier consumes downstream: ``n_footprints_per_parcel``,
     ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
-    ``max_footprint_area_m2``, and ``n_primary_footprints_per_parcel``. The
+    ``max_footprint_area_m2``, ``n_primary_footprints_per_parcel``,
+    ``max_parcels_per_footprint``, and ``max_dwellings_per_footprint``. The
     classification itself is parcel-curate work.
+
+    ``max_parcels_per_footprint`` and ``max_dwellings_per_footprint`` are scoped
+    to *dwelling-confirmed* footprints only (*is_primary_candidate* — see below —
+    AND a positive *dwelling_column*): ``priority_on_parcel == 'primary'`` alone
+    is not evidence of a real dwelling — it's also assigned to a sole footprint
+    on its own parcel, an NSI-only-evidence footprint, or a synthetic fallback
+    row, none of which confirm occupancy. ``max_parcels_per_footprint`` is the
+    largest *span_column* value among those confirmed footprints (does any of
+    this parcel's confirmed footprints span multiple parcels — a real,
+    non-FEMA-geometry building-shape signal); ``max_dwellings_per_footprint`` is
+    the largest confirmed dwelling count on any single one of them (a footprint
+    itself holding multiple dwellings, independent of parcel boundaries).
 
     ``on`` defaults to the globally-unique ``parcel_id`` rather than
     ``parcel_id_local``: the latter is only locally cross-comparable and can
@@ -1126,6 +1158,18 @@ def summarize_footprint_morphology(
         Footprint-entity column holding each footprint's structural role on its
         parcel (default ``priority_on_parcel``, written by
         :func:`classify_footprint_priority`). Ignored (no exclusion applied) if
+        absent from the footprint entity.
+    dwelling_column : str, optional
+        Footprint-entity column holding each footprint's confirmed dwelling
+        count (default ``n_dwellings_overture``). A footprint counts toward
+        ``max_parcels_per_footprint``/``max_dwellings_per_footprint`` only when
+        this is positive. Ignored (neither output is set) if absent from the
+        footprint entity.
+    span_column : str, optional
+        Footprint-entity column holding how many parcels that footprint spans
+        (default ``n_parcels_per_footprint``, written by
+        :func:`_attribute_polygon_reference` when the footprint spine attributes
+        the parcel reference). Ignored (``max_parcels_per_footprint`` not set) if
         absent from the footprint entity.
     """
     import geopandas as gpd
@@ -1195,6 +1239,28 @@ def summarize_footprint_morphology(
         not_secondary = np.ones(len(footprints), dtype=bool)
     is_primary_candidate = meets_floor & not_secondary
 
+    # Confirmed-dwelling subset for max_parcels_per_footprint/
+    # max_dwellings_per_footprint: is_primary_candidate alone lets through
+    # sole-footprint-on-parcel, NSI-only, and synthetic rows with no dwelling
+    # evidence at all, so a positive dwelling_column is required on top of it.
+    if dwelling_column in footprints.columns:
+        dwellings = (
+            pd.to_numeric(footprints[dwelling_column], errors='coerce')
+            .fillna(0)
+            .to_numpy()
+        )
+        dwelling_confirmed = is_primary_candidate & (dwellings > 0)
+    else:
+        dwellings = np.zeros(len(footprints))
+        dwelling_confirmed = np.zeros(len(footprints), dtype=bool)
+
+    if span_column in footprints.columns:
+        n_parcels_span = pd.to_numeric(
+            footprints[span_column], errors='coerce'
+        ).to_numpy()
+    else:
+        n_parcels_span = np.full(len(footprints), np.nan)
+
     # A parcel spine's own true id (parcel_id) lives on the index during this
     # step under a renamed, working index name (e.g. 'spine_id') --
     # resolve_spine records the *original* name in
@@ -1214,6 +1280,9 @@ def summarize_footprint_morphology(
                 '_se': real_small_elong,
                 '_meets_floor': meets_floor,
                 '_primary': is_primary_candidate,
+                '_dwellings': dwellings,
+                '_confirmed': dwelling_confirmed,
+                '_span': n_parcels_span,
             }
         ).dropna(subset=['_pid'])
         key = (
@@ -1229,6 +1298,10 @@ def summarize_footprint_morphology(
 
         grp_primary = per_fp[per_fp['_primary']].groupby('_pid')
         n_primary = key.map(grp_primary.size())
+
+        grp_confirmed = per_fp[per_fp['_confirmed']].groupby('_pid')
+        max_dwellings = key.map(grp_confirmed['_dwellings'].max())
+        max_span = key.map(grp_confirmed['_span'].max())
     else:
         reps = gpd.GeoDataFrame(
             {
@@ -1236,6 +1309,9 @@ def summarize_footprint_morphology(
                 '_se': real_small_elong,
                 '_meets_floor': meets_floor,
                 '_primary': is_primary_candidate,
+                '_dwellings': dwellings,
+                '_confirmed': dwelling_confirmed,
+                '_span': n_parcels_span,
             },
             geometry=footprints.geometry.representative_point(),
             crs=footprints.crs,
@@ -1256,10 +1332,16 @@ def summarize_footprint_morphology(
         grp_primary = joined[joined['_primary']].groupby('_spine_id')
         n_primary = grp_primary.size().reindex(spine.index)
 
+        grp_confirmed = joined[joined['_confirmed']].groupby('_spine_id')
+        max_dwellings = grp_confirmed['_dwellings'].max().reindex(spine.index)
+        max_span = grp_confirmed['_span'].max().reindex(spine.index)
+
     spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
     spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
     spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
+    spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
+    spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')
     state.spine = spine
 
     if state.verbose:
