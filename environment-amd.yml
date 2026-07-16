@@ -17,6 +17,7 @@
 name: openplaces-amd
 channels:
   - conda-forge
+  - nodefaults
 dependencies:
   # AMD cp312 wheels require exactly Python 3.12
   - python=3.12

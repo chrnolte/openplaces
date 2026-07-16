@@ -101,6 +101,12 @@ pipeline:
     thresholds:
       proximity_m: 10
       far_proximity_m: 100
+      # Same colocated-duplicate resolution as the footprint spine's NSI
+      # link: ignore the outdated ESRI/HAZUS twin of a Parcel-sourced point
+      # (same UBID) when merging NSI evidence onto the parcels.
+      resolve_duplicates:
+        key: building_id_ubid
+        ignore_sources: [ESRI, HAZUS/NSI-2015]
 
   - step: reconcile_attributes
     sources:

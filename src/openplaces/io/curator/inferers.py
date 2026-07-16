@@ -302,6 +302,77 @@ def classify_parcel_land_use(
     return state
 
 
+def _vote_evidence_class(
+    curated,
+    evidence: list[dict],
+    config: dict,
+    rules: list[dict],
+) -> tuple[pd.Series, pd.Series]:
+    """Weighted consensus vote across the coerced occupancy evidence columns.
+
+    Each present evidence entry casts its ``weight`` (default 1.0) for its
+    residential-bucketed class (see
+    :func:`~openplaces.io.curator.occupancy.bucket_classes` — the same
+    granularity as the ``occupancy_type_conflict`` summary, so agreeing
+    non-residential sources pool their votes). The heaviest bucket wins; ties
+    fall to the bucket of the earliest listed evidence, preserving the recipe
+    ordering as precedence when there is no majority. Returns
+    ``(classes, tokens)``: the concrete class is the first-listed winning
+    voter's coerced class (a pooled non-residential win still yields a
+    specific class), and the token joins the winning voters' labels with '/'.
+    """
+    from openplaces.io.curator.occupancy import bucket_classes, coerce_to_class
+
+    classes = pd.Series(pd.NA, index=curated.index, dtype=object)
+    tokens = pd.Series(pd.NA, index=curated.index, dtype=object)
+
+    entries = []
+    for ev in evidence:
+        col = ev['column']
+        if col not in curated.columns:
+            continue
+        coerced = coerce_to_class(curated[col], rules)
+        label = ev.get('label', col)
+        weight = float(ev.get('weight', 1.0))
+        entries.append((label, weight, coerced, bucket_classes(coerced, config)))
+    if not entries:
+        return classes, tokens
+
+    labels = [label for label, _, _, _ in entries]
+    weights = {label: weight for label, weight, _, _ in entries}
+    stacked = pd.concat(
+        {
+            **{('bucket', label): b.astype(object) for label, _, _, b in entries},
+            **{('class', label): c.astype(object) for label, _, c, _ in entries},
+        },
+        axis=1,
+    )
+
+    def _row_vote(row) -> tuple:
+        totals: dict[str, float] = {}
+        for label in labels:
+            value = row[('bucket', label)]
+            if pd.notna(value):
+                totals[value] = totals.get(value, 0.0) + weights[label]
+        best = max(totals.values())
+        # dict preserves first-vote order, so ties fall to the earliest
+        # listed evidence's bucket.
+        winner = next(value for value, total in totals.items() if total == best)
+        voters = [
+            label
+            for label in labels
+            if pd.notna(row[('bucket', label)]) and row[('bucket', label)] == winner
+        ]
+        return (row[('class', voters[0])], '/'.join(voters))
+
+    has_vote = pd.concat([b.notna() for _, _, _, b in entries], axis=1).any(axis=1)
+    if has_vote.any():
+        voted = stacked.loc[has_vote].apply(_row_vote, axis=1)
+        classes.loc[has_vote] = voted.str[0]
+        tokens.loc[has_vote] = voted.str[1]
+    return classes, tokens
+
+
 @_register('impute_occupancy_type')
 def impute_occupancy_type(state: CurateState) -> CurateState:
     """Impute ``occupancy_type`` from ordered evidence, then geometry and dwellings.
@@ -310,10 +381,14 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     ``occupancy`` config block; this step holds no source- or class-specific
     names.
 
-    1. Base class: walk ``occupancy.evidence`` in priority order, coerce each
-       column to a class via the class-map ruleset, and take the first non-null
-       (the recipe ordering sets precedence, e.g. a structure source before an
-       area source).
+    1. Base class from ``occupancy.evidence``. Default (``evidence_mode:
+       cascade``): walk the entries in priority order, coerce each column to a
+       class via the class-map ruleset, and take the first non-null (the recipe
+       ordering sets precedence, e.g. a structure source before an area
+       source). With ``evidence_mode: vote``: a weighted consensus vote across
+       all present evidence, so agreeing lower-priority sources can outvote a
+       lone higher-priority one (see :func:`_vote_evidence_class`); per-entry
+       ``weight`` (default 1.0) tunes each source's say.
     2. Footprint-geometry signal (``rules.manufactured_home_geometry``) where all
        evidence was null.
     3. ``n_dwellings`` single-family gap-fill (``rules.single_family_dwellings``),
@@ -338,16 +413,27 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
 
     result = pd.Series(pd.NA, index=curated.index, dtype=object)
 
-    # 1. Ordered evidence cascade: first present evidence sets the base class.
-    for evidence in config.get('evidence', []):
-        col = evidence['column']
-        if col not in curated.columns:
-            continue
-        coerced = coerce_to_class(curated[col], rules)
-        fill = result.isna() & coerced.notna()
-        result.loc[fill] = coerced.loc[fill]
-        if fill.any():
-            record_source(curated, 'occupancy_type', fill, evidence.get('label', col))
+    # 1. Base class from the evidence columns: weighted consensus vote, or the
+    #    default first-non-null cascade (recipe order = precedence).
+    evidence_list = config.get('evidence', [])
+    if config.get('evidence_mode', 'cascade') == 'vote':
+        classes, tokens = _vote_evidence_class(curated, evidence_list, config, rules)
+        fill = classes.notna()
+        result.loc[fill] = classes.loc[fill]
+        for token in tokens.loc[fill].dropna().unique():
+            record_source(curated, 'occupancy_type', fill & tokens.eq(token), token)
+    else:
+        for evidence in evidence_list:
+            col = evidence['column']
+            if col not in curated.columns:
+                continue
+            coerced = coerce_to_class(curated[col], rules)
+            fill = result.isna() & coerced.notna()
+            result.loc[fill] = coerced.loc[fill]
+            if fill.any():
+                record_source(
+                    curated, 'occupancy_type', fill, evidence.get('label', col)
+                )
 
     # 2. Footprint-geometry manufactured-home signal where no evidence applied.
     geom_rule = rule_cfg.get('manufactured_home_geometry')
