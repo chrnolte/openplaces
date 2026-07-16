@@ -92,6 +92,16 @@ pipeline:
     thresholds:
       proximity_m: 10
       far_proximity_m: 100
+      # NSI carries duplicate points for one structure: a Parcel-sourced
+      # record plus an outdated ESRI (or HAZUS/NSI-2015) one at the same
+      # location, usually with a wrong occupancy and an inflated value that
+      # would win the value-weighted occupancy pick. Flag the low-rank twin
+      # (same UBID; 'olc' keys on the ~3 m location cell instead) so the
+      # merge onto the spine ignores it; the flagged rows stay on the
+      # crosswalk for inspection.
+      resolve_duplicates:
+        key: building_id_ubid
+        ignore_sources: [ESRI, HAZUS/NSI-2015]
 
   - step: link_to_reference
     recipe_id: dwelling-overture-2025

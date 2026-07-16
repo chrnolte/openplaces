@@ -37,7 +37,7 @@ Footprint spine harmonization
 
 2. Intersect footprints with parcels
 
-   * Performs a spatial identity overlay between footprints and parcels based on the :input:`join` method (``spatial_overlay``) and :input:`source_geometry_type` (``mixed_type_footprint``) for the :input:`entity_type` ``parcel``. It filters out minor intersections under :input:`area_intersection_m2_min` (10 m²) or slivers less than :input:`min_fraction_of_largest` (0.1667) of the largest parcel intersection, sorting by :input:`sort_by` (``area_intersection_m2``).
+   * Performs a spatial identity overlay between footprints and parcels based on the :input:`join` method (``spatial_overlay``) and :input:`source_geometry_type` (``mixed_type_footprint``) for the :input:`entity_type` ``parcel``. It filters out minor intersections under :input:`area_intersection_m2_min` (10 m²) or slivers less than :input:`min_fraction_of_largest` (0.1667) of the largest parcel intersection, sorting by :input:`sort_by` (``area_intersection_m2``). To resolve systematic spatial displacements between footprint and parcel layers that inflate parcel counts, it snaps chain-displaced footprints to their dominant parcel when all minor overlaps are below the :input:`chain_fraction_max` (0.75) threshold and land on neighbor parcels that have their own building.
    * Function: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
 3. Infer synthetic fallback footprints
@@ -52,7 +52,7 @@ Footprint spine harmonization
 
 5. Link building structure points
 
-   * Connects structure-level point evidence from the NSI database using a tiered containment, :input:`proximity_m` (10 m) inner proximity, or :input:`far_proximity_m` (100 m) outer proximity join (:ref:`Lochhead et al. 2026 <Lochhead et al. 2026>`). The join is configured as :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_building_point``) using the :input:`recipe_id` (``US_building-nsi-2022``) with a remapping crosswalk specified by :input:`remap_id` (``US_building-nsi-2022_occupancy-type-remap``).
+   * Connects structure-level point evidence from the NSI database using a tiered containment, :input:`proximity_m` (10 m) inner proximity, or :input:`far_proximity_m` (100 m) outer proximity join (:ref:`Lochhead et al. 2026 <Lochhead et al. 2026>`). The join is configured as :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_building_point``) using the :input:`recipe_id` (``US_building-nsi-2022``) with a remapping crosswalk specified by :input:`remap_id` (``US_building-nsi-2022_occupancy-type-remap``). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and labeling low-rank twins from ``ESRI`` and ``HAZUS/NSI-2015`` as ``'colocated low-rank source'`` via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to be excluded from downstream aggregates.
    * Function: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
 6. Link dwelling address points
@@ -67,7 +67,7 @@ Footprint spine harmonization
 
 8. Package raw variables
 
-   * Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Unhandled numeric columns (such as NSI's ``n_stories`` and ``area_sqft``) are aggregated using the attribute registry's default function so they are carried onto the spine.
+   * Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Unhandled numeric columns (such as NSI's ``n_stories`` and ``area_sqft``) are aggregated using the attribute registry's default function so they are carried onto the spine. Point reference records flagged by the duplicate resolution (where ``duplicate_resolution`` is non-null) are filtered out and excluded from all aggregates (match counts, sums, means, and value-weighted picks).
    * Function: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
 Parcel spine harmonization
@@ -90,12 +90,12 @@ Parcel spine harmonization
 
 4. Associate building points to parcels
 
-   * Joins NSI point data from the :input:`recipe_id` (``US_building-nsi-2022``) using a spatial overlay and proximity boundaries configured via :input:`join` (``spatial_point``), :input:`source_geometry_type` (``single_building_point``), :input:`proximity_m` (10 m), and :input:`far_proximity_m` (100 m).
+   * Joins NSI point data from the :input:`recipe_id` (``US_building-nsi-2022``) using a spatial overlay and proximity boundaries configured via :input:`join` (``spatial_point``), :input:`source_geometry_type` (``single_building_point``), :input:`proximity_m` (10 m), and :input:`far_proximity_m` (100 m). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and flagging ``ESRI`` and ``HAZUS/NSI-2015`` twins via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to exclude them from downstream aggregates.
    * Function: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
 5. Identify dominant building group
 
-   * Resolves and summarizes NSI building attributes to find the modal building group per parcel using the specified :input:`sources`.
+   * Resolves and summarizes NSI building attributes to find the modal building group per parcel using the specified :input:`sources`. Point records flagged by the duplicate resolution step are excluded from these summaries.
    * Function: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
 6. Integrate FEMA footprint occupancy
@@ -110,7 +110,7 @@ Parcel spine harmonization
 
 8. Summarize footprint morphology
 
-   * Counts total, primary, and small elongated footprint features on each parcel to feed downstream land-use classification. It links footprints from :input:`footprint_recipe_id` (``US_footprint-spine-2026``) matching on :input:`on` (``parcel_id``), filtering by :input:`small_area_max_m2` (185 m²), :input:`elongated_aspect_min` (2.0), and :input:`min_overlap_m2` (10 m²).
+   * Counts total, primary, and small elongated footprint features on each parcel to feed downstream land-use classification, and tracks the maximum parcels spanned and maximum dwellings contained by any single footprint on the parcel. It links footprints from :input:`footprint_recipe_id` (``US_footprint-spine-2026``) matching on :input:`on` (``parcel_id``), filtering by :input:`small_area_max_m2` (185 m²), :input:`elongated_aspect_min` (2.0), and :input:`min_overlap_m2` (10 m²), computing ``max_dwellings_per_footprint`` and ``max_parcels_per_footprint`` for townhome and multi-family detection.
    * Function: :func:`openplaces.io.harmonizer.attributes.summarize_footprint_morphology`
 
 
@@ -160,7 +160,7 @@ This stage curates the parcel spine to produce clean assessor attributes:
 
 3. Classify parcel land use
 
-   * Assigns parcel land-use classes via weighted voting. It runs multi-indicator voting rules to identify Manufactured Home Park, RV Park, Standalone Manufactured Home, Townhome, Vacant, etc., saving to :input:`output` (``land_use_class``) with flags mapped to :input:`flag_column` (``manufactured_home_park``) and :input:`flag_class` (``Manufactured Home Park``), scoring columns via :input:`score_columns` (Vacant: ``land_use_vacancy_score``), review tracking on :input:`review_column` (``land_use_review``) with a margin of :input:`review_margin` (1.0) and the configured :input:`rules`.
+   * Assigns parcel land-use classes via weighted voting. It runs multi-indicator voting rules to identify Manufactured Home Park, RV Park, Standalone Manufactured Home, Townhome, Vacant, etc., saving to :input:`output` (``land_use_class``) with flags mapped to :input:`flag_column` (``manufactured_home_park``) and :input:`flag_class` (``Manufactured Home Park``), scoring columns via :input:`score_columns` (Vacant: ``land_use_vacancy_score``), review tracking on :input:`review_column` (``land_use_review``) with a margin of :input:`review_margin` (1.0) and the configured :input:`rules`. In particular, Townhome classification uses the new morphology indicators ``max_parcels_per_footprint`` and ``max_dwellings_per_footprint`` combined with assessor keyword matches to detect shared-footprint row houses.
    * Function: :func:`openplaces.io.curator.inferers.classify_parcel_land_use`
 
 4. Derive story count from height
@@ -235,7 +235,7 @@ Baseline attribute imputation
 
 9. Establish baseline occupancy class
 
-   * Establishes a baseline occupancy class through a four-stage process: (1) selects the first present value from the prioritized evidence cascade (NSI, FEMA, parcel, Overture); (2) applies a geometry-based Manufactured Home fallback for long/narrow structures; (3) fills residential gaps using a single-family dwelling count check; and (4) assigns accessory structures to the Secondary class (excluding habitable structures in manufactured home parks).
+   * Establishes a baseline occupancy class through a four-stage process: (1) resolves a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture) where the heaviest class wins and Overture has a fractional (0.5) vote weight; (2) applies a geometry-based Manufactured Home fallback for long/narrow structures; (3) fills residential gaps using a single-family dwelling count check; and (4) assigns accessory structures to the Secondary class (excluding habitable structures in manufactured home parks).
    * Function: :func:`openplaces.io.curator.inferers.impute_occupancy_type`
 
 10. Apply property-use keyword corrections

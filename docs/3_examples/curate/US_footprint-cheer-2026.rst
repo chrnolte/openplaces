@@ -179,13 +179,14 @@ This stage merges geometries and links datasets to build the core footprint spin
 
    * **Geometry deduplication**: Merges footprints in priority order (OBM first, then Microsoft, then state-specific sources). Footprints smaller than 10 m² are dropped. Candidate shapes are added to the spine only if their Intersection-over-Union (IoU) with existing shapes is < 0.02 and they do not fall within a size-scaled exclusion buffer around large existing spine footprints (area >= 250 m²; buffer distance scales with the square root of the area: :input:`keep-out distance` = 2 m + 0.5 * sqrt(area)).
    * **Elongated-footprint filter**: Aspect ratios >= 2.5 with aligned axes (within 15°), longitudinal overlap >= 50%, and lateral spacing < 2x width are deduplicated to prevent parallel-shifted footprint representations (common for manufactured homes) from appearing twice.
-   * **Parcel spatial overlay**: Intersects footprints with parcels via a polygon identity overlay. Intersections under 10 m² or minor slivers (< 1/6 of the footprint's largest parcel intersection) are filtered.
+   * **Parcel spatial overlay**: Intersects footprints with parcels via a polygon identity overlay. Intersections under 10 m² or minor slivers (< 1/6 of the footprint's largest parcel intersection) are filtered. Systematic spatial displacements between footprint and parcel layers are corrected by snapping chain-displaced footprints to their dominant parcel when minor overlaps are small and land on neighbors with their own buildings.
    * **Synthetic fallbacks**: For parcels where assessor records indicate a structure exists but no footprint is detected, synthetic "footprint" rows are created using the parcel boundary geometry (labeled :input:`parcel.<source>`). Overlaps against detected footprints are spatial-trimmed. These fallback polygons are included in the parcel footprint count, are backfilled with the ID (``parcel_id``) and local ID (``parcel_id_local``) of their source parcel, and are excluded from morphology metrics.
    * **Reference point linking**: Associates structure-level point evidence with the footprint spine using a tiered proximity join (`Lochhead et al. 2026`_):
 
      - *Containment*: Point is within the footprint.
      - *Inner Proximity*: Points within 10 meters of an edge are assigned to the closest footprint.
      - *Outer Proximity*: Points within 100 meters (NSI) or 50 meters (Overture) are assigned to the closest footprint *on the same parcel*, ensuring points aren't misaligned across street boundaries.
+     - *Duplicate Resolution*: Colocated duplicate points from low-rank sources (such as outdated ESRI or HAZUS/NSI-2015 records sharing a building ID or location cell with a higher-ranking source) are flagged during the link step and excluded when NSI evidence is merged onto the footprint spine.
 
    * **Role classification**: Footprints on multi-structure parcels are classified to identify primary vs. accessory structures:
 
@@ -202,7 +203,7 @@ This stage merges geometries and links datasets to build the core footprint spin
 
    * **Boundary baseline**: Merges discovered statewide and local parcel geometry layers into a unified spatial spine.
    * **Assessor records merge**: Joins county and local assessment tables by matching local ID keys and standardizing property use codes.
-   * **Reference data enrichment**: Joins building structures (NSI), dominant building groups, and FEMA occupancy, and counts footprint morphology features (such as primary and small elongated footprints) on each parcel.
+   * **Reference data enrichment**: Joins building structures (NSI), dominant building groups, and FEMA occupancy, and counts footprint morphology features (such as primary and small elongated footprints) on each parcel. It resolves colocated duplicate NSI points using the same rules (flagging low-rank twins) to exclude them from parcel aggregates.
 
 Stage 3: ingest images
 ----------------------
@@ -225,7 +226,7 @@ Stage 5: curate
 
 This stage curates the spines into clean, canonical datasets:
 
-1. **Parcel curation** (``US_parcel-openplaces-2026``): Derives parcel-level occupancy groups, calculates relative footprint area z-scores, and classifies land use (e.g., Manufactured Home Park, Vacant, Retail, Office) using weighted voting.
+1. **Parcel curation** (``US_parcel-openplaces-2026``): Derives parcel-level occupancy groups, calculates relative footprint area z-scores, and classifies land use (e.g., Manufactured Home Park, Vacant, Retail, Office, Townhome) using weighted voting. Townhome classification is driven by structural and dwelling footprint indicators (spanned parcels or multiple units) combined with assessor use keywords.
 2. **Footprint curation** (``US_footprint-cheer-2026``): Integrates curated parcels, corrected address counts, reconciled attribute priorities, base occupancy imputation, visual model prediction, and weighted voting to resolve final footprint occupancy classes. This footprint curation process executes the following steps:
 
    * **Curated parcel linking**: Curated attributes from the parcel curation lane (including ``improvement_value``, ``land_value``, ``year_built``, ``use_group_combined``, ``group_parcel``, ``manufactured_home_park``, ``occupancy_type_footprint_fema``, ``n_stories_footprint_fema``, and ``land_use_class``) are joined by matching the footprint's parcel reference (``parcel_id``) to the curated parcel's own globally unique ID (``parcel_id``). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns, initially repeating the undivided per-parcel totals across every footprint on the parcel before they are apportioned in the next step.
@@ -236,7 +237,7 @@ This stage curates the spines into clean, canonical datasets:
    * **Address count zero-filling (fill_missing_numeric)**: Fills missing or suppressed ``n_dwellings_overture`` counts with 0.
    * **Compute footprint metrics (derive_metrics)**: Calculates structural metrics like footprint area (``m2``) and structural improvement value per area metrics for all value columns (e.g., ``value_per_area``).
    * **Dwelling-count imputation (impute_n_dwellings)**: Fills missing residential unit counts when no source evidence exists.
-   * **Base occupancy imputation**: Assigns base occupancy class sequentially using NSI occupancy, FEMA parcel occupancy, parcel land-use mode fallbacks, and lastly, the implied Overture occupancy.
+   * **Base occupancy imputation**: Assigns base occupancy class via a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture), falling back sequentially to geometry and single-family dwelling checks where no evidence exists.
    * **Keyword corrections (resolve_occupancy)**: Refines occupancy classes using property-use keywords from ``parcel-occupancy-keywords.csv``.
    * **Merge visual predictions (merge_enrichments)**: Merges predicted building attributes from deep-learning visual classifiers.
    * **Story count reconciliation (reconcile_values)**: Resolves the canonical ``n_stories`` attribute, prioritizing street-level imagery predictions (``n_stories_brails``), then measured-height-derived counts (``n_stories_footprint_fema``), and lastly NSI modeled counts (``n_stories_building_nsi``).
