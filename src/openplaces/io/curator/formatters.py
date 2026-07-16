@@ -7,12 +7,14 @@ reconcile any values.
 from __future__ import annotations
 
 import re
-from functools import cache
 
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.curator.provenance import SOURCE_SUFFIX
+from openplaces.recipe import provenance_suffixes as _provenance_suffixes
+from openplaces.recipe import resolve_attribute_name
+from openplaces.recipe import split_provenance_suffix as _split_source
 
 
 @_register('cast_categoricals')
@@ -60,32 +62,6 @@ def cast_integers(state: CurateState, columns: list[str]) -> CurateState:
     return state
 
 
-@cache
-def _provenance_suffixes() -> tuple[tuple[str, str], ...]:
-    """Provenance suffix -> source key, auto-generated from existing recipes.
-
-    For every ``(entity_type, source)`` pair known to the recipes, generate the
-    column suffixes the harmonizer can produce: ``_{entity}_{source}`` and the
-    bare ``_{source}`` fallback (e.g. ``_building_nsi`` and ``_nsi``;
-    ``_footprint_fema`` and ``_fema``). Parcels are interchangeable, so they map
-    by the entity-only ``_parcel``. Returned longest-first so a specific suffix
-    wins over its bare fallback. No hardcoded list — adding a source recipe
-    extends this automatically.
-    """
-    from openplaces.recipe import iter_entity_sources
-
-    suffixes: dict[str, str] = {}
-    for entity, source in iter_entity_sources():
-        if source is None:
-            continue
-        if entity == 'parcel':
-            suffixes.setdefault('_parcel', 'parcel')
-        else:
-            suffixes.setdefault(f'_{entity}_{source}', source)
-            suffixes.setdefault(f'_{source}', source)
-    return tuple(sorted(suffixes.items(), key=lambda kv: len(kv[0]), reverse=True))
-
-
 # Explicit display precedence for the source-variable block; auto-derived sources
 # not listed here sort after the known ones (tolerant lookup via _source_rank).
 _SOURCE_RANK = {'parcel': 0, 'overture': 1, 'nsi': 2, 'fema': 3, None: 9}
@@ -115,18 +91,10 @@ _BARE_ID = re.compile(r'^(.+?)_id(_.+)?$')
 _BIG = 10_000
 
 
-def _split_source(name: str) -> tuple[str, str | None]:
-    """Split a trailing provenance suffix off *name*; return (base, source)."""
-    for suffix, source in _provenance_suffixes():
-        if name.endswith(suffix):
-            return name[: -len(suffix)], source
-    return name, None
-
-
-def _attr_rank(base: str) -> int:
+def _attr_rank(name: str) -> int:
     from openplaces.core.attribute_registry import get_attribute_order
 
-    rank = get_attribute_order(base)
+    rank = get_attribute_order(resolve_attribute_name(name))
     return _BIG if rank is None else rank
 
 

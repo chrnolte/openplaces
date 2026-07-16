@@ -5,7 +5,7 @@ use_group_combined,Combined use group and subgroup label,,categorical,join_nonnu
 purpose_group,What the building was built (made) for; not applicable to unimproved land,,categorical,join_nonnull,10,building,
 purpose_subgroup,Building construction-purpose subgroup,,categorical,join_nonnull,11,building,
 purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull,12,footprint,curate
-occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category",,categorical,first,13,,curate
+occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
 group,OpenPlaces top-level group,,categorical,first,14,,
 land_value,Assessed land value,USD,float,sum,20,,
 improvement_value,Assessed improvement value,USD,float,sum,21,,
@@ -18,8 +18,6 @@ n_stories,Number of stories,,float,mean,51,,
 n_dwellings,Number of dwelling units in the building,,float,sum,52,,
 height,Building height,m,float,max,53,,
 roof_shape,Roof shape classification,,categorical,first,60,,enrich
-occupancy_type_parcel,"Occupancy proposed from parcel land-use keywords (NSI-independent); reconciled into occupancy_type",,categorical,first,70,,curate
-occupancy_type_footprint_fema,"Dominant FEMA USA Structures raw building occupancy (PRIM_OCC) on the parcel (by overlap area); group_footprint_fema carries its NSI-style group normalization",,categorical,first,,parcel,harmonize
 occupancy_type_base,"Occupancy class before Multi-Family is split into height bands (pre-refinement occupancy_type)",,categorical,first,14,,curate
 occupancy_type_conflict,"Occupancy evidence disagreement summary across all sources (e.g. 'nsi: X | fema: Y | parcel: Z'); null when the evidences agree",,categorical,first,71,,curate
 occupancy_type_review,Flag where improvement value is a small nonzero share of total value (possible manufactured home for review),,bool,first,71,footprint,curate

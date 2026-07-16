@@ -25,6 +25,7 @@ from openplaces.recipe import (
     get_process_admin_level,
     get_recipe_by_id,
     get_save_admin_level,
+    resolve_attribute_name,
 )
 
 
@@ -114,7 +115,7 @@ def aggregate_rows(
 
     agg_cols: dict = {}
     for col in df.columns:
-        fname = get_agg_func(col)
+        fname = get_agg_func(resolve_attribute_name(col))
         if fname is None:
             continue
         if callable(aggregation_function):

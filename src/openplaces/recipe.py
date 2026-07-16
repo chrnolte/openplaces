@@ -450,6 +450,69 @@ def iter_entity_sources() -> frozenset:
     return frozenset(pairs)
 
 
+@cache
+def provenance_suffixes() -> tuple[tuple[str, str], ...]:
+    """Provenance suffix -> source key, auto-generated from existing recipes.
+
+    For every ``(entity_type, source)`` pair known to the recipes, generate the
+    column suffixes the harmonizer can produce: ``_{entity}_{source}`` and the
+    bare ``_{source}`` fallback (e.g. ``_building_nsi`` and ``_nsi``;
+    ``_footprint_fema`` and ``_fema``). Parcels are interchangeable, so they map
+    by the entity-only ``_parcel``. Returned longest-first so a specific suffix
+    wins over its bare fallback. No hardcoded list — adding a source recipe
+    extends this automatically.
+    """
+    suffixes: dict[str, str] = {}
+    for entity, source in iter_entity_sources():
+        if source is None:
+            continue
+        if entity == 'parcel':
+            suffixes.setdefault('_parcel', 'parcel')
+        else:
+            suffixes.setdefault(f'_{entity}_{source}', source)
+            suffixes.setdefault(f'_{source}', source)
+    return tuple(sorted(suffixes.items(), key=lambda kv: len(kv[0]), reverse=True))
+
+
+def split_provenance_suffix(name: str) -> tuple[str, str | None]:
+    """Split a trailing provenance suffix off *name*; return (base, source)."""
+    for suffix, source in provenance_suffixes():
+        if name.endswith(suffix):
+            return name[: -len(suffix)], source
+    return name, None
+
+
+def resolve_attribute_name(column: str) -> str:
+    """Resolve a possibly provenance-suffixed column to its registry attribute.
+
+    An exact registry entry always wins, so genuinely distinct attributes whose
+    names merely end in a source-like token (``n_footprints_per_parcel``,
+    ``priority_on_parcel``, ``parcel_id_local``) resolve to themselves. Only
+    unregistered names fall back to stripping a provenance suffix
+    (``improvement_value_parcel`` -> ``improvement_value``); a name that is
+    neither registered nor suffixed is returned unchanged.
+    """
+    from openplaces.core.attribute_registry import load_registry
+
+    if column in load_registry().index:
+        return column
+    return split_provenance_suffix(column)[0]
+
+
+def source_id_from_recipe_id(recipe_id: str) -> str:
+    """Extract the source id from a recipe id.
+
+    A recipe id is ``{admin_id}_{entity_or_theme}-{source}-{version}[...]``;
+    takes the last ``_``-delimited token, then the second ``-``-delimited
+    field within it (e.g. ``'US_building-nsi-2022'`` -> ``'nsi'``). Falls
+    back to the whole token when it has no ``-`` (an un-versioned or
+    otherwise irregular recipe id).
+    """
+    base = recipe_id.rsplit('_', 1)[-1]
+    parts = base.split('-', 2)
+    return parts[1] if len(parts) > 1 else base
+
+
 def find_admin_recipe_id(admin_id, admin_level, silent=False):
     """Find the ID of an administrative data ingestion recipe
 

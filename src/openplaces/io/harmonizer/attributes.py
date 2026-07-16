@@ -21,6 +21,7 @@ from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
 )
+from openplaces.recipe import resolve_attribute_name, source_id_from_recipe_id
 
 __all__ = [
     'classify_footprint_priority',
@@ -51,9 +52,7 @@ def _resolve_suffix(
     spine_entity_type = (
         str(spine_entity.entity_type) if spine_entity is not None else None
     )
-    base = crosswalk_key.rsplit('_', 1)[-1]
-    parts = base.split('-', 2)
-    source_id = parts[1] if len(parts) > 1 else base
+    source_id = source_id_from_recipe_id(crosswalk_key)
     if entity_type and spine_entity_type and entity_type == spine_entity_type:
         return f'_{source_id}'
     if not entity_type:
@@ -80,9 +79,7 @@ def _point_suffix(
     ``dwelling-overture-2025``, ``dwelling``, col=``n_dwellings``
     -> ``_overture``.
     """
-    base = crosswalk_key.rsplit('_', 1)[-1]
-    parts = base.split('-', 2)
-    source_id = parts[1] if len(parts) > 1 else base
+    source_id = source_id_from_recipe_id(crosswalk_key)
     if entity_type:
         if col and entity_type in col:
             return f'_{source_id}'
@@ -602,7 +599,10 @@ def _attribute_polygon_reference(
         and pd.api.types.is_numeric_dtype(footprint_ref_attrs[c])
     ]
     if remaining_numeric_cols:
-        registry_agg = {c: get_agg_func(c) or 'mean' for c in remaining_numeric_cols}
+        registry_agg = {
+            c: get_agg_func(resolve_attribute_name(c)) or 'mean'
+            for c in remaining_numeric_cols
+        }
         remaining_rename = {
             c: _attributed_name(c, suffix, reserved_cols)
             for c in remaining_numeric_cols
@@ -681,8 +681,7 @@ def _attribute_point_reference(
     """Attribute a point reference (e.g. NSI) to the spine."""
     spine = state.spine
     suffix = _point_suffix(crosswalk_key, entity_type)
-    base = crosswalk_key.rsplit('_', 1)[-1]
-    source_id = base.split('-', 2)[1] if '-' in base else base
+    source_id = source_id_from_recipe_id(crosswalk_key)
 
     avail_cols = columns or [c for c in _POINT_REF_COLS if c in crosswalk.columns]
     renamed: dict[str, str] = {
@@ -815,7 +814,10 @@ def _attribute_point_reference(
         and pd.api.types.is_numeric_dtype(crosswalk[c])
     ]
     if remaining_numeric_cols:
-        registry_agg = {c: get_agg_func(c) or 'mean' for c in remaining_numeric_cols}
+        registry_agg = {
+            c: get_agg_func(resolve_attribute_name(c)) or 'mean'
+            for c in remaining_numeric_cols
+        }
         spine = spine.join(
             crosswalk.groupby(spine_id_col).agg(registry_agg).rename(columns=renamed)
         )

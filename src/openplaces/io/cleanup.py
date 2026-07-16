@@ -42,6 +42,7 @@ from openplaces.recipe import (
     get_recipe_id,
     get_recipe_retention,
     get_save_admin_level,
+    resolve_attribute_name,
 )
 
 RECEIPT_SUFFIX = '.consumed.json'
@@ -151,7 +152,7 @@ def _parquet_schema_ok(path) -> bool:
     except Exception:
         return False
     for field in schema:
-        expected = get_data_type(field.name)
+        expected = get_data_type(resolve_attribute_name(field.name))
         if expected in ('float', 'int'):
             t = field.type
             if not (

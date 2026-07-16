@@ -19,6 +19,12 @@ is not needed today.
 
 The registry is loaded from ``attribute_registry.csv`` (same directory) and
 cached on first access.
+
+Lookups are keyed on base attribute names only. A caller holding a possibly
+provenance-suffixed column (e.g. ``improvement_value_parcel``) should resolve
+it via :func:`openplaces.recipe.resolve_attribute_name` first. That helper
+lives in the higher recipe layer — not here — because the provenance suffix
+vocabulary is derived from the recipes directory, which layer 0 cannot import.
 """
 
 from __future__ import annotations

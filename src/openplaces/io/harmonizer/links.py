@@ -42,6 +42,8 @@ from openplaces.recipe import (
     get_recipe_dependencies,
     get_recipe_id,
     get_save_admin_level,
+    resolve_attribute_name,
+    source_id_from_recipe_id,
 )
 
 # Columns carried in spine-reference crosswalk tables (index levels excluded).
@@ -1510,7 +1512,7 @@ def link_by_id(
         # columns without a usable registry rule fall back to the first value.
         reducible = {'sum', 'mean', 'max', 'min', 'first', 'last', 'median'}
         for col in cols:
-            fname = get_agg_func(col)
+            fname = get_agg_func(resolve_attribute_name(col))
             func = fname if fname in reducible else 'first'
             name = f'{col}{suffix}' if suffix else col
             _write_prioritized(spine, name, skey.map(grouped[col].agg(func)))
@@ -1713,10 +1715,8 @@ def infer_spine_additions(
     footprints_from_ref = footprints_from_ref[
         ~footprints_from_ref.index.isin(state.spine.index)
     ]
-    _base = recipe_id.rsplit('_', 1)[-1]
-    _parts = _base.split('-', 2)
-    _source_id = _parts[1] if len(_parts) > 1 else _base
-    _et = entity_type or (_parts[0] if _parts else 'reference')
+    _source_id = source_id_from_recipe_id(recipe_id)
+    _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
     footprints_from_ref['geometry_source'] = f'{_et}.{_source_id}'
 
     state.spine = pd.concat(
