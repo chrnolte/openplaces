@@ -39,15 +39,25 @@ occupancy:
   class_map: occupancy-class-map.csv          # recipe-relative; pattern,match_type,occupancy_type
   residential_classes: [Single-Family, Multi-Family, Manufactured Home]
   secondary_class: Secondary
-  evidence:                                  # priority order: first present sets the base class
-    - {column: occupancy_type_building_nsi, label: nsi}   # ordering = NSI-first
+  # Weighted consensus vote across all present evidence (same residential-bucket
+  # granularity as occupancy_type_conflict, so resolution can never contradict
+  # the conflict summary): each entry casts its weight for its class, the
+  # heaviest class wins, and ties fall to the earliest listed entry — so the
+  # ordering below still sets precedence when there is no majority (NSI-first),
+  # but two agreeing sources outvote a lone higher-ranked one (e.g. a lone FEMA
+  # Multi-Family loses to a parcel+overture Single-Family consensus).
+  evidence_mode: vote
+  evidence:
+    - {column: occupancy_type_building_nsi, label: nsi}   # tiebreak order = NSI-first
     - {column: group_footprint_fema, label: fema}  # FEMA building group (parcel-aggregated, NSI-style vocabulary); provisional rank, see occupancy-evidence-comparison report
     - {column: group_parcel, label: parcel}              # label used in the conflict summary
-    # Last resort only (fills the base class when nsi/fema/parcel are all null)
-    # and a conflict-summary participant; never overrides real evidence. Derived
-    # below, after n_dwellings_overture's vacant-parcel correction, from the
-    # (corrected) Overture dwelling count alone.
-    - {column: occupancy_type_dwelling_overture, label: overture}
+    # Half a vote: the Overture-implied class (derived below, after
+    # n_dwellings_overture's vacant-parcel correction, from the corrected
+    # Overture dwelling count alone) loses every 1-vs-1 against real
+    # nsi/fema/parcel evidence and still fills the base class when it is the
+    # only evidence — but it tips the scale for a real source it agrees with
+    # (1.5 beats a lone opposing vote).
+    - {column: occupancy_type_dwelling_overture, label: overture, weight: 0.5}
   columns:                                   # generic attribute -> this recipe's column
     improvement_value: improvement_value_parcel
     land_value: land_value_parcel
@@ -161,8 +171,9 @@ pipeline:
   # Impute: fill any dwelling-unit gaps left after reconciliation.
   - step: impute_n_dwellings
 
-  # Occupancy base class imputation from the ordered evidence (NSI-first), then geometry and
-  # single-family dwelling fallbacks. Config is in the `occupancy` block above.
+  # Occupancy base class from the weighted evidence vote (NSI-first tiebreak),
+  # then geometry and single-family dwelling fallbacks. Config is in the
+  # `occupancy` block above.
   - step: impute_occupancy_type
 
   # Corrections: reviewed parcel keyword override of the base class, plus the

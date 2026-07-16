@@ -85,22 +85,29 @@ def coerce_to_class(series: pd.Series, rules: list[dict]) -> pd.Series:
     return result.where(series.notna())
 
 
-def bucket_to_residential(
-    series: pd.Series, config: dict, rules: list[dict]
-) -> pd.Series:
-    """Coerce *series* to occupancy classes, collapsing non-residential to a bucket.
+def bucket_classes(coerced: pd.Series, config: dict) -> pd.Series:
+    """Collapse already-coerced occupancy classes to residential granularity.
 
-    Used to compare occupancy evidence sources at residential granularity: every
-    class outside ``residential_classes`` plus the ``secondary_class`` is replaced
-    with a single ``conflict_other_label`` (default ``Non-Residential``), so two
-    differing non-residential categories (e.g. Retail vs Hotel) do not register as a
-    disagreement while residential subtypes (Single-Family vs Multi-Family) do.
-    Missing values stay missing.
+    Every class outside ``residential_classes`` plus the ``secondary_class`` is
+    replaced with a single ``conflict_other_label`` (default ``Non-Residential``),
+    so two differing non-residential categories (e.g. Retail vs Hotel) do not
+    register as a disagreement while residential subtypes (Single-Family vs
+    Multi-Family) do. Missing values stay missing.
     """
     keep = set(config.get('residential_classes', []))
     secondary = config.get('secondary_class')
     if secondary is not None:
         keep.add(secondary)
     other_label = config.get('conflict_other_label', 'Non-Residential')
-    coerced = coerce_to_class(series, rules)
     return coerced.where(coerced.isna() | coerced.isin(keep), other_label)
+
+
+def bucket_to_residential(
+    series: pd.Series, config: dict, rules: list[dict]
+) -> pd.Series:
+    """Coerce *series* to occupancy classes, collapsing non-residential to a bucket.
+
+    Used to compare occupancy evidence sources at residential granularity; see
+    :func:`bucket_classes` for the bucketing semantics.
+    """
+    return bucket_classes(coerce_to_class(series, rules), config)
