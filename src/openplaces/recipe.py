@@ -620,7 +620,7 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
 
 
 def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
-    """Extract upstream recipe references from a recipe.
+    r"""Extract upstream recipe references from a recipe.
 
     Edge sources (all present in committed recipes today):
 
@@ -632,7 +632,7 @@ def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
       ('recipe_id' in pipeline sources and steps, 'admin_recipe_id',
       'download_by.tile_recipe_id', 'footprint_recipe_id',
       merge_enrichments 'recipes' entries, ...); keys under a
-      '*crosswalk' block and 'remap_id' are excluded (value crosswalks,
+      '\*crosswalk' block and 'remap_id' are excluded (value crosswalks,
       not data dependencies)
     - pipeline steps or source entries with 'auto_discover' or a bare
       'entity_type', resolved per admin unit the same way the pipeline
