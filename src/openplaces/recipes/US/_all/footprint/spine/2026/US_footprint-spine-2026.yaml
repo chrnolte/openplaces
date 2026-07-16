@@ -59,6 +59,17 @@ pipeline:
     thresholds:
       min_fraction_of_largest: 0.1667
       area_intersection_m2_min: 10
+      # Some footprint layers are systematically displaced against the parcel
+      # layer, so every home on a block straddles its own parcel plus the next
+      # one over (footprint-parcel-footprint-parcel chaining), inflating
+      # n_parcels_per_footprint for ordinary single-family homes. Snap such a
+      # footprint back to its dominant parcel when every minor overlap lands
+      # on a parcel that demonstrably has its own building (a genuine shared
+      # row-house footprint never does) and stays below chain_fraction_max of
+      # the dominant overlap (see snap_chained_links). The full physical
+      # overlap remains queryable in the sidecar via its link_chain column.
+      snap_chains: true
+      chain_fraction_max: 0.75
     sort_by: area_intersection_m2
     # Persist the full n:m footprint-parcel overlay as a link sidecar
     # beside the spine; reloaded instead of recomputed on later runs and

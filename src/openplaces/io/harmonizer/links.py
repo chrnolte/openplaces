@@ -358,12 +358,31 @@ def _link_spatial_overlay(
         footprints_on_ref, spine_id_col, min_fraction, area_min_m2
     )
 
-    if save_link and computed_fresh:
+    snapped_links = None
+    if thresholds.get('snap_chains'):
+        crosswalk, snapped_links = snap_chained_links(
+            crosswalk,
+            spine_id_col,
+            fraction_max=float(thresholds.get('chain_fraction_max', 0.75)),
+        )
+        if state.verbose and len(snapped_links):
+            n_snapped = snapped_links.index.get_level_values(spine_id_col).nunique()
+            print(
+                f'  Link (overlay): snapped {n_snapped:,d} chain-displaced '
+                'footprints to their dominant parcel'
+            )
+
+    # Written on the reload path too (not just computed_fresh): the link and
+    # chain labels are rebuilt from the current crosswalk every run, so the
+    # sidecar must be rewritten to keep its stored labels in sync (the raw
+    # overlay rows and the fingerprint are carried over unchanged).
+    if save_link:
         _write_link_sidecar(
             sidecar_path,
             footprints_on_ref,
             crosswalk,
             fingerprint,
+            snapped=snapped_links,
             verbose=state.verbose,
         )
 
@@ -469,6 +488,91 @@ def _build_crosswalk(
     ).sort_index()
 
 
+def snap_chained_links(
+    crosswalk: pd.DataFrame,
+    spine_id_col: str,
+    fraction_max: float = 0.75,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Snap chain-displaced multi-parcel links to their dominant parcel.
+
+    A footprint layer displaced relative to the parcel layer makes each
+    footprint straddle its own parcel and the next one over, chaining
+    footprint-parcel-footprint-parcel down the block and inflating
+    n_parcels_per_footprint for every home on it. Such a footprint is snapped
+    to its dominant (largest-intersection) parcel when
+
+    - every minor link's parcel is a *different* footprint's dominant or
+      unique parcel — the neighbor demonstrably has its own building. A
+      genuine shared row-house footprint never satisfies this: the
+      neighboring parcels' only building is the shared footprint itself, so
+      real multi-parcel buildings keep their multi links; and
+    - every minor link's fraction_of_largest is at most *fraction_max* —
+      a near-equal split leaves the dominant side genuinely ambiguous, so it
+      is left alone.
+
+    Ownership is computed from the pre-snap crosswalk (dominants never move),
+    so one pass resolves whole chains deterministically regardless of row
+    order. Uses no geometry, so it works identically on a reloaded
+    geometry-free link sidecar.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, pandas.DataFrame)
+        The adjusted crosswalk — each snapped footprint collapses to a single
+        link relabeled ``'unique parcel (snapped from chain)'`` — and the
+        removed minor rows (empty when nothing was snapped).
+    """
+    multi = crosswalk[crosswalk['link'] == 'multi-parcel footprint']
+    if multi.empty:
+        return crosswalk, crosswalk.iloc[0:0]
+
+    flat = multi.reset_index().sort_values(
+        'area_intersection_m2', ascending=False, kind='stable'
+    )
+    is_dominant = ~flat.duplicated(subset=spine_id_col).to_numpy()
+
+    single_links = crosswalk['link'].astype('string').str.startswith('unique parcel')
+    owned = set(
+        crosswalk.index.get_level_values('parcel_id')[
+            single_links.fillna(False).to_numpy()
+        ].dropna()
+    )
+    owned |= set(flat.loc[is_dominant, 'parcel_id'].dropna())
+
+    if 'fraction_of_largest' in flat.columns:
+        fraction = pd.to_numeric(flat['fraction_of_largest'], errors='coerce')
+    else:
+        fraction = flat['area_intersection_m2'] / flat.groupby(spine_id_col)[
+            'area_intersection_m2'
+        ].transform('max')
+
+    # A minor link's parcel in `owned` is necessarily another footprint's home:
+    # a footprint is either a multi or a single link (never both), and within
+    # one footprint the dominant and minor parcels are distinct index entries.
+    # The dominant side must be a real parcel — a footprint whose largest
+    # overlap is the unmatched (null-parcel) identity remainder has nothing to
+    # snap to.
+    minor_ok = flat['parcel_id'].isin(owned) & (fraction <= fraction_max)
+    row_ok = pd.Series(
+        np.where(is_dominant, flat['parcel_id'].notna(), minor_ok),
+        index=flat.index,
+    )
+    snap_fp = row_ok.groupby(flat[spine_id_col]).transform('all').to_numpy()
+
+    minor_pairs = pd.MultiIndex.from_frame(
+        flat.loc[snap_fp & ~is_dominant, [spine_id_col, 'parcel_id']]
+    )
+    dominant_pairs = pd.MultiIndex.from_frame(
+        flat.loc[snap_fp & is_dominant, [spine_id_col, 'parcel_id']]
+    )
+    snapped = crosswalk.loc[crosswalk.index.isin(minor_pairs)]
+    out = crosswalk.drop(index=snapped.index)
+    out.loc[out.index.isin(dominant_pairs), 'link'] = (
+        'unique parcel (snapped from chain)'
+    )
+    return out, snapped
+
+
 def _truncate_admin_to_level(admin_id, level: int):
     """Truncate an AdminId to a save level (None at level 0)."""
     if admin_id is None or level <= 0:
@@ -561,7 +665,7 @@ def _load_link_sidecar(
         return None
     overlay = pd.read_parquet(sidecar_path)
     overlay = overlay.set_index([spine_id_col, 'parcel_id'])
-    overlay = overlay.drop(columns='link', errors='ignore')
+    overlay = overlay.drop(columns=['link', 'link_chain'], errors='ignore')
     if verbose:
         print(f'  Link (overlay): reloaded link sidecar {sidecar_path.name}')
     return overlay
@@ -572,6 +676,7 @@ def _write_link_sidecar(
     footprints_on_ref,
     crosswalk: pd.DataFrame,
     fingerprint: dict,
+    snapped: pd.DataFrame | None = None,
     verbose: bool = False,
 ) -> None:
     """Persist the geometry-free full identity overlay with link labels.
@@ -579,10 +684,24 @@ def _write_link_sidecar(
     The sidecar is a superset of the trimmed crosswalk: every raw overlay
     pair (including sub-threshold slivers and unmatched spine rows) with
     the crosswalk's link label left-joined on (null = trimmed-out pair).
+    With chain snapping enabled (*snapped* not None, see
+    :func:`snap_chained_links`), a ``link_chain`` column records the
+    adjustment: ``'snapped minor'`` on the removed minor pairs (whose
+    ``link`` is null, like any other pair excluded from attribution) and
+    ``'snapped dominant'`` on the promoted 1-1 link, so the full physical
+    overlap stays queryable even though it no longer drives attribution.
     """
     flat = pd.DataFrame(footprints_on_ref.drop(columns='geometry', errors='ignore'))
     if 'link' in crosswalk.columns:
         flat = flat.join(crosswalk['link'])
+    if snapped is not None:
+        chain = pd.Series(pd.NA, index=flat.index, dtype=object)
+        chain[flat.index.isin(snapped.index)] = 'snapped minor'
+        promoted = crosswalk.index[
+            crosswalk['link'] == 'unique parcel (snapped from chain)'
+        ]
+        chain[flat.index.isin(promoted)] = 'snapped dominant'
+        flat['link_chain'] = chain
     to_parquet(
         flat.reset_index(),
         sidecar_path,
