@@ -112,7 +112,12 @@ def impute_from_group_statistic(
 
     An optional *overrides* crosswalk corrects known-bad group mappings: a
     two-column lookup (group value -> corrected output) loaded by recipe id.
-    Corrections win; the grouped statistic fills the rest.
+    Corrections win wherever the row's group is a key in the table — even when
+    the correction itself is blank (explicit null), which suppresses the
+    learned statistic for that group rather than falling back to it. Matching
+    is exact after trimming surrounding whitespace only (no case-folding or
+    punctuation normalization), so override CSV keys must match the group
+    column's real values. The grouped statistic fills every other group.
 
     Generic over any pair of columns: holds no references to specific entities
     or sources, so it can be reused for any cross-linked categorical columns.
@@ -151,7 +156,10 @@ def impute_from_group_statistic(
         from openplaces.io.transform import get_crosswalk
 
         corrections = get_crosswalk({'recipe_id': overrides})
-        mapped = curated[group_column].map(corrections).combine_first(mapped)
+        keys = curated[group_column].astype('string').str.strip()
+        corrections.index = corrections.index.astype('string').str.strip()
+        has_override = keys.isin(corrections.index)
+        mapped = mapped.where(~has_override, keys.map(corrections))
 
     curated[output] = mapped
     state.curated = curated

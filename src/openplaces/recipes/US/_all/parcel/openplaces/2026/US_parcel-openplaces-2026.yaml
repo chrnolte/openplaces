@@ -47,7 +47,7 @@ pipeline:
   # relative to other parcels sharing its assessor use code? Log-space z-score:
   # footprint area is heavy-tailed, and comparing within the assessor-use cohort
   # avoids judging a house's footprint against a big-box store's. Feeds the
-  # Vacant and Townhome rules below. A parcel with no real footprint at all
+  # Vacant rule below. A parcel with no real footprint at all
   # (max_footprint_area_m2 missing — see summarize_footprint_morphology, which
   # excludes synthetic parcel-shaped fallback geometries from this column)
   # scores missing here, not an extreme value; n_footprints_per_parcel below
@@ -141,21 +141,21 @@ pipeline:
               - {type: in_set, column: group_parcel, values: [Single Family]}
               - {type: in_set, column: group_footprint_fema, values: [Single Family]}
 
-      # One building in a footprint notably larger than typical single-family
-      # for its assessor-use cohort — a row of units merged into one polygon
-      # by the footprint source. min_score is 3 (all 3 indicators), not 2: a
-      # single footprint on a residential parcel is the ordinary case, not
-      # evidence of a merged-unit row -- only footprint_area_log_zscore>=1.0
-      # actually signals that. With min_score:2, fixing n_footprints_per_parcel
-      # (see Multiple Single-Family above) exposed the same over-firing bug
-      # here: verified empirically that with min_score:2, ~90% of Townhome
-      # classifications in one county had no z-score evidence at all, firing
-      # on the other two indicators alone.
+      # Explicit townhome/row-house assessor vocabulary, or a single real
+      # (non-FEMA) footprint confirmed (by Overture dwelling-point evidence)
+      # to either span multiple parcels or itself hold multiple dwellings.
+      # min_score is 3 (all 3 indicators), not 2: a single footprint on a
+      # residential parcel is the ordinary case, not evidence of a
+      # shared-footprint row -- only these signals actually indicate that.
       - class: Townhome
         min_score: 3
         indicators:
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 1}
-          - {type: numeric_at_least, column: footprint_area_log_zscore, min: 1.0}
+          - type: any_of
+            indicators:
+              - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
+              - {type: numeric_at_least, column: max_dwellings_per_footprint, min: 2}
+              - {type: keyword, column: use_group_combined, pattern: 'TOWNHOUSE|TOWNHOME|ROW HOUSE|ROW-HOUSE'}
           # any_of, same reasoning as Multiple Single-Family above: FEMA
           # corroborates group_parcel without adding an independent 4th vote.
           - type: any_of
