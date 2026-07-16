@@ -931,6 +931,43 @@ def _aggregate_multipoint(
     return result
 
 
+def flag_duplicate_points(
+    ref: pd.DataFrame,
+    key_col: str,
+    ignore_sources: list[str],
+) -> pd.Series:
+    """Flag colocated duplicate points from low-rank sources.
+
+    Within groups of two or more points sharing *key_col* (e.g. NSI's
+    ``building_id_ubid``, or the ``_olc`` location cell), rows whose
+    ``source`` is in *ignore_sources* are labeled
+    ``'colocated low-rank source'`` when the group also contains at least one
+    source outside that set — a higher-level record to defer to. A group made
+    up entirely of ignorable sources stays unflagged (nothing better exists),
+    as does any point at a unique location. Returns an object Series aligned
+    to *ref* (null = kept); rows are never dropped here — the exclusion is
+    applied where the evidence is merged onto a spine
+    (:func:`~openplaces.io.harmonizer.attributes.reconcile_attributes`).
+    """
+    resolution = pd.Series(pd.NA, index=ref.index, dtype=object)
+    if not ignore_sources or 'source' not in ref.columns or key_col not in ref.columns:
+        return resolution
+
+    key = ref[key_col].astype('string')
+    in_group = key.notna() & key.duplicated(keep=False)
+    if not in_group.any():
+        return resolution
+
+    source = ref['source'].astype(object)
+    ignorable = source.isin(list(ignore_sources))
+    # Rows with a null key fall out of the groupby; treat them as having no
+    # better sibling (they are not in a group anyway).
+    has_better = (~ignorable).groupby(key).transform('any').fillna(False).astype(bool)
+    flagged = in_group & ignorable & has_better
+    resolution[flagged] = 'colocated low-rank source'
+    return resolution
+
+
 def _link_spatial_point(
     state: HarmonizeState,
     recipe_id: str,
@@ -1004,6 +1041,28 @@ def _link_spatial_point(
 
     ref = ref.copy()
     ref['_olc'] = get_openlocationcodes(ref, codelength=11, handle_duplicates=False)
+
+    # Duplicate resolution BEFORE any merging to footprints/parcels: flag (not
+    # drop) colocated duplicate points per the recipe-chosen rule. The label
+    # rides through every linking pass onto state.crosswalks; the actual
+    # exclusion is applied where NSI evidence is merged onto the spine
+    # (_attribute_point_reference), so the resolution stays inspectable and
+    # the method swappable per recipe.
+    resolve_dup = thresholds.get('resolve_duplicates')
+    if resolve_dup:
+        key_col = resolve_dup.get('key', 'building_id_ubid')
+        key_col = '_olc' if key_col == 'olc' else key_col
+        ignore_sources = resolve_dup.get('ignore_sources', [])
+        ref['duplicate_resolution'] = flag_duplicate_points(
+            ref, key_col, ignore_sources
+        )
+        if state.verbose:
+            n_flagged = int(ref['duplicate_resolution'].notna().sum())
+            if n_flagged:
+                print(
+                    f'  Dedup (colocated): {n_flagged:,d} low-rank duplicate '
+                    'point(s) flagged'
+                )
 
     # Address deduplication: keep building-level representative, count unit siblings
     if dedup_addresses:

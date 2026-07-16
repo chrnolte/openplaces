@@ -678,8 +678,19 @@ def _attribute_point_reference(
     columns: list[str] | None,
     collect_ids: bool = False,
 ) -> HarmonizeState:
-    """Attribute a point reference (e.g. NSI) to the spine."""
+    """Attribute a point reference (e.g. NSI) to the spine.
+
+    Points flagged by the link step's recipe-chosen duplicate resolution
+    (``duplicate_resolution`` non-null, see
+    :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) are
+    excluded here — the merge point — from every aggregate: the match count,
+    the value-weighted occupancy/group picks and their ``_all`` summaries,
+    the numeric sums/means, and the collected ids. The flagged rows stay on
+    ``state.crosswalks`` untouched.
+    """
     spine = state.spine
+    if 'duplicate_resolution' in crosswalk.columns:
+        crosswalk = crosswalk[crosswalk['duplicate_resolution'].isna()]
     suffix = _point_suffix(crosswalk_key, entity_type)
     base = crosswalk_key.rsplit('_', 1)[-1]
     source_id = base.split('-', 2)[1] if '-' in base else base
