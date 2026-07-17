@@ -39,9 +39,14 @@ ruff check src/             # lint
 ruff format src/            # format
 
 # Testing
-pytest                      # all tests
-pytest tests/test_path.py   # single file
-pytest -k "test_name"       # single test by name
+# Test files are organized in subdirectories matching the Layered Architecture:
+# - tests/core/ (Layers 0-1)
+# - tests/recipe/ (Layer 2)
+# - tests/io/ (Layers 3-9, with stage-specific ingester/, harmonizer/, enricher/, curator/)
+# - tests/flow/ (Layers 11-12)
+pytest                                # all tests
+pytest tests/core/test_path.py        # single file
+pytest -k "test_name"                 # single test by name
 ```
 
 ## Module layer hierarchy
