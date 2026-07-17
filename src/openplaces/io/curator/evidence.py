@@ -178,15 +178,22 @@ def apportion_curated_values(
         ref = ref.reset_index()
     if ref_key not in ref.columns:
         raise ValueError(f"Curated reference '{recipe_id}' has no '{ref_key}' column.")
+    # A ref column can be legitimately absent when its source never provided
+    # that attribute (e.g. a parcel source with no improvement_value split);
+    # skip it -- apportion_reference_values already only produces columns
+    # present in ref_values, and the final assignment loop below already
+    # defaults an unapportioned column to missing.
+    present = [c for c in columns if c in ref.columns]
     missing = [c for c in columns if c not in ref.columns]
-    if missing:
-        raise ValueError(
-            f'Columns {missing} missing from curated reference {recipe_id!r}.'
+    if missing and state.verbose:
+        print(
+            f'  apportion_curated_values: {missing} missing from curated '
+            f"reference '{recipe_id}'; skipping."
         )
     ref_values = (
         ref.dropna(subset=[ref_key])
         .drop_duplicates(ref_key)
-        .set_index(ref_key)[list(columns)]
+        .set_index(ref_key)[present]
     )
 
     resolved_id, _ = _resolve_reference_recipe(
@@ -392,6 +399,15 @@ def merge_enrichments(
     Each recipe specification must contain ``recipe_id`` and a ``columns``
     mapping from evidence-column names to canonical-column names. Existing
     canonical values take precedence; enrichment fills missing values.
+
+    A ``recipe_spec`` whose enrichment output doesn't exist yet for this admin
+    is skipped rather than raising -- e.g. an imagery-dependent enrichment
+    intentionally left unrun this pass (see
+    ``notebooks/examples/US_curate_footprints.ipynb``'s ``--no_streetview``/
+    ``--no_googlesatellite``, which skip billing-costly image ingestion and
+    the enrichment steps that depend on it). A ``recipe_spec`` whose evidence
+    *does* exist but lacks a requested column still raises -- that is a real
+    recipe misconfiguration, not evidence that simply hasn't been computed.
     """
     from openplaces.io.curator.provenance import record_source
 
@@ -415,6 +431,13 @@ def merge_enrichments(
             state.admin_id,
             entity_recipe_id=state.entity_recipe,
         )
+        if not evidence_path.exists():
+            if state.verbose:
+                print(
+                    f"  merge_enrichments: '{recipe_id}' has no evidence for "
+                    f'{state.admin_id} (enrichment not run this pass?); skipping.'
+                )
+            continue
         evidence = read_parquet(evidence_path)
 
         # Provenance token: 'source_id-version' (e.g. 'brails-2026'), an explicit

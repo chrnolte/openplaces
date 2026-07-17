@@ -21,6 +21,7 @@ from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
 )
+from openplaces.recipe import resolve_attribute_name, source_id_from_recipe_id
 
 __all__ = [
     'classify_footprint_priority',
@@ -51,9 +52,7 @@ def _resolve_suffix(
     spine_entity_type = (
         str(spine_entity.entity_type) if spine_entity is not None else None
     )
-    base = crosswalk_key.rsplit('_', 1)[-1]
-    parts = base.split('-', 2)
-    source_id = parts[1] if len(parts) > 1 else base
+    source_id = source_id_from_recipe_id(crosswalk_key)
     if entity_type and spine_entity_type and entity_type == spine_entity_type:
         return f'_{source_id}'
     if not entity_type:
@@ -80,9 +79,7 @@ def _point_suffix(
     ``dwelling-overture-2025``, ``dwelling``, col=``n_dwellings``
     -> ``_overture``.
     """
-    base = crosswalk_key.rsplit('_', 1)[-1]
-    parts = base.split('-', 2)
-    source_id = parts[1] if len(parts) > 1 else base
+    source_id = source_id_from_recipe_id(crosswalk_key)
     if entity_type:
         if col and entity_type in col:
             return f'_{source_id}'
@@ -602,7 +599,10 @@ def _attribute_polygon_reference(
         and pd.api.types.is_numeric_dtype(footprint_ref_attrs[c])
     ]
     if remaining_numeric_cols:
-        registry_agg = {c: get_agg_func(c) or 'mean' for c in remaining_numeric_cols}
+        registry_agg = {
+            c: get_agg_func(resolve_attribute_name(c)) or 'mean'
+            for c in remaining_numeric_cols
+        }
         remaining_rename = {
             c: _attributed_name(c, suffix, reserved_cols)
             for c in remaining_numeric_cols
@@ -692,8 +692,7 @@ def _attribute_point_reference(
     if 'duplicate_resolution' in crosswalk.columns:
         crosswalk = crosswalk[crosswalk['duplicate_resolution'].isna()]
     suffix = _point_suffix(crosswalk_key, entity_type)
-    base = crosswalk_key.rsplit('_', 1)[-1]
-    source_id = base.split('-', 2)[1] if '-' in base else base
+    source_id = source_id_from_recipe_id(crosswalk_key)
 
     avail_cols = columns or [c for c in _POINT_REF_COLS if c in crosswalk.columns]
     renamed: dict[str, str] = {
@@ -826,7 +825,10 @@ def _attribute_point_reference(
         and pd.api.types.is_numeric_dtype(crosswalk[c])
     ]
     if remaining_numeric_cols:
-        registry_agg = {c: get_agg_func(c) or 'mean' for c in remaining_numeric_cols}
+        registry_agg = {
+            c: get_agg_func(resolve_attribute_name(c)) or 'mean'
+            for c in remaining_numeric_cols
+        }
         spine = spine.join(
             crosswalk.groupby(spine_id_col).agg(registry_agg).rename(columns=renamed)
         )
@@ -1048,35 +1050,42 @@ def derive_use_classes(
     combines the two into the label the parcel land-use classifier groups and
     votes on, so it holds no code vocabulary of its own.
 
-    No-op when the spine lacks ``use_group`` or ``use_subgroup`` (e.g. an
-    admin whose source never produced a use code, or had none to crosswalk),
-    so it is safe to leave in a shared pipeline.
+    Falls back to whichever of ``use_group`` / ``use_subgroup`` reached the
+    spine when only one did (e.g. a source, like Florida's DOR use code, with
+    no subgroup taxonomy to crosswalk) rather than skipping the whole column.
 
     Parameters
     ----------
     combined_column : str, optional
         Output combined-label column (default ``use_group_combined``).
     """
-    if (
-        state.spine is None
-        or 'use_group' not in state.spine.columns
-        or 'use_subgroup' not in state.spine.columns
-    ):
+    if state.spine is None:
+        return state
+    spine = state.spine
+    has_group = 'use_group' in spine.columns
+    has_subgroup = 'use_subgroup' in spine.columns
+    if not has_group and not has_subgroup:
         if state.verbose:
             print('  derive_use_classes: no use_group/use_subgroup on spine; skipping.')
         return state
 
-    spine = state.spine
-    label = (
-        spine['use_group'].astype(str).fillna('n/a')
-        + ' | '
-        + spine['use_subgroup'].astype(str).fillna('n/a')
-    )
+    if has_group and has_subgroup:
+        label = (
+            spine['use_group'].astype(str).fillna('n/a')
+            + ' | '
+            + spine['use_subgroup'].astype(str).fillna('n/a')
+        )
+        mapped = int(spine['use_group'].notna().sum())
+    elif has_group:
+        label = spine['use_group']
+        mapped = int(spine['use_group'].notna().sum())
+    else:
+        label = spine['use_subgroup']
+        mapped = int(spine['use_subgroup'].notna().sum())
     spine[combined_column] = pd.Categorical(label)
 
     state.spine = spine
     if state.verbose:
-        mapped = int(spine['use_group'].notna().sum())
         print(f'  derive_use_classes: combined {mapped:,d}/{len(spine):,d} parcels')
     return state
 

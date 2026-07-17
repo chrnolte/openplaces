@@ -103,6 +103,14 @@ def test_is_output_complete_rejects_bad_registry_dtype(data_root):
     assert not cl.is_output_complete(NSI, COUNTY)
 
 
+def test_is_output_complete_rejects_bad_suffixed_registry_dtype(data_root):
+    # improvement_value_parcel resolves to the improvement_value registry
+    # float, so a string column must fail despite the provenance suffix
+    df = pd.DataFrame({'improvement_value_parcel': ['not', 'numeric']})
+    _write_parquet(_nsi_path(), df)
+    assert not cl.is_output_complete(NSI, COUNTY)
+
+
 def test_is_output_complete_rejects_truncated_parquet(data_root):
     path = _nsi_path()
     path.parent.mkdir(parents=True, exist_ok=True)
