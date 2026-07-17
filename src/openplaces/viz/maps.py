@@ -924,26 +924,34 @@ def show_ingested_geometries(
 
 
 def show_random_entity(
-    ingester,
+    recipe: dict,
+    admin_id,
+    partition_id: str | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] | None:
-    """Plot a random entity from the last ingested admin unit with its attributes.
+    """Plot a random entity from an admin unit's output with its attributes.
 
     Delegates to :func:`show_geometry_context`.
 
     Parameters
     ----------
-    ingester : openplaces.io.ingester.Ingester
-        Completed ingester whose last saved admin unit is sampled.
+    recipe : dict
+        Recipe whose saved output should be sampled.
+    admin_id : AdminId or str
+        Admin unit whose output file to sample from.
+    partition_id : str, optional
+        Partition to read, if the recipe's output is partitioned.
 
     Returns
     -------
-    fig, (ax_map, ax_table) : matplotlib Figure and Axes pair.
+    fig, (ax_map, ax_table) : matplotlib Figure and Axes pair, or None if the
+        recipe's output has no geometry to plot.
     """
-    admin_id = ingester.admin_ids_to_save[0] if ingester.admin_ids_to_save else None
-    partition_id = ingester._first_partition_id
+    if admin_id is None:
+        print('No admin unit configured; nothing to plot.')
+        return None
 
-    if not _has_geometry_output(ingester.recipe, admin_id, partition_id):
-        entity_label = str(ingester.recipe['entity'].entity_type)
+    if not _has_geometry_output(recipe, admin_id, partition_id):
+        entity_label = str(recipe['entity'].entity_type)
         print(
             f'No geometry data for this {entity_label} recipe (no _geo sidecar); '
             'nothing to plot. This is a tabular/property-level dataset — '
@@ -951,9 +959,7 @@ def show_random_entity(
         )
         return None
 
-    entities = get_entities(
-        ingester.recipe, admin_id, geom=True, partition_id=partition_id
-    )
+    entities = get_entities(recipe, admin_id, geom=True, partition_id=partition_id)
     idx = entities.sample().index[0]
     print(idx)
     return show_geometry_context(entities, idx)

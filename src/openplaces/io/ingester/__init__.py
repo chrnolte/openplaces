@@ -449,7 +449,8 @@ class Ingester:
         """
         from openplaces.viz.maps import show_random_entity
 
-        return show_random_entity(self)
+        admin_id = self.admin_ids_to_save[0] if self.admin_ids_to_save else None
+        return show_random_entity(self.recipe, admin_id, self._first_partition_id)
 
     def sample_layer(self, n=5):
         """Return a transposed sample of the principal entity DataFrame.
