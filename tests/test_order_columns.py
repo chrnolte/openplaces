@@ -53,6 +53,54 @@ def test_all_without_base_untouched():
     assert list(state.curated.columns) == ['other_all', 'parcel_id']
 
 
+def test_conflict_column_follows_its_source_sidecar():
+    # address_conflict must sort directly behind the address_source sidecar
+    # (band 0.5), not stay in the canonical block beside address.
+    state = order_columns(
+        _state(
+            [
+                'address_conflict',
+                'year_built',
+                'address',
+                'geometry',
+                'year_built_source',
+                'address_source',
+            ]
+        )
+    )
+    assert list(state.curated.columns) == [
+        'year_built',
+        'address',
+        'year_built_source',
+        'address_source',
+        'address_conflict',
+        'geometry',
+    ]
+
+
+def test_flag_conflict_columns_keep_their_flag_slot():
+    # occupancy_type_conflict has an explicit _FLAG_COLUMNS slot (block 2) and
+    # must not be pulled behind its sidecar by the generic _conflict rule.
+    state = order_columns(
+        _state(
+            [
+                'occupancy_type_conflict',
+                'occupancy_type',
+                'geometry',
+                'occupancy_type_source',
+                'improvement_value_parcel',
+            ]
+        )
+    )
+    assert list(state.curated.columns) == [
+        'occupancy_type',
+        'occupancy_type_source',
+        'improvement_value_parcel',
+        'occupancy_type_conflict',
+        'geometry',
+    ]
+
+
 def test_bare_parcel_ids_lead_the_parcel_evidence_group():
     # Bare parcel-id columns carry no provenance suffix and no registry sort
     # rank, so they used to strand at the tail of the canonical block (between

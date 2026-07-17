@@ -280,7 +280,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    a. **Integrate clean assessor data**
 
-      Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (improvement_value, land_value, year_built, use_group_combined, group_parcel, manufactured_home_park, occupancy_type_footprint_fema, n_stories_footprint_fema, and land_use_class). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns, initially repeating the undivided per-parcel totals across every footprint on the parcel before they are apportioned in the next step.
+      Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (use_group_combined, group_parcel, manufactured_home_park, group_footprint_fema, and land_use_class). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns.
 
       *Dependency*: Requires the completed parcel curation lane.
 
@@ -288,9 +288,9 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    b. **Apportion parcel values**
 
-      Splits ``improvement_value_parcel`` across a multi-footprint parcel's dwelling-linked (or, absent those, all) primary footprints by floor-area share. ``land_value_parcel`` stays whole on the primary footprint only.
+      Joins property valuation and construction year columns from the curated parcel lane, then: (1) splits ``improvement_value_parcel`` across a multi-footprint parcel's dwelling-linked (or, absent those, all) primary footprints by floor-area share; (2) keeps ``land_value_parcel`` whole on the principal footprint only; and (3) assigns the average ``year_built_parcel`` to all linked footprints.
 
-      *Dependency*: Requires curated parcel financial values integrated in Step 1.a.
+      *Dependency*: Requires the completed parcel curation lane.
 
       *Function*: :func:`openplaces.io.curator.evidence.apportion_curated_values`
 
@@ -330,7 +330,15 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
       *Function*: :func:`openplaces.io.curator.reconcilers.reconcile_values`
 
-   b. **Zero-fill address counts**
+   b. **Reconcile street addresses**
+
+      Reconciles and harmonizes street addresses from competing source inputs (parcel assessor addresses and Overture dwelling address components), completing missing components (like state names derived from administrative units) and checking for consistency.
+
+      *Dependency*: Requires integrated assessor data (Step 1.a) and Overture address evidence.
+
+      *Function*: :func:`openplaces.io.curator.reconcilers.reconcile_addresses`
+
+   c. **Zero-fill address counts**
 
       Fills missing or suppressed Overture dwelling unit counts listed in :input:`columns` (``[n_dwellings_overture]``) with ``0`` and casts the column to integer.
 
@@ -338,7 +346,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
       *Function*: :func:`openplaces.io.curator.imputers.fill_missing_numeric`
 
-   c. **Compute footprint metrics**
+   d. **Compute footprint metrics**
 
       Calculates structural indicators such as footprint area in square meters from geometry and computes structural value-per-area metrics for all value columns. Note that ``value_per_area`` is kept in the final output.
 
@@ -346,7 +354,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
       *Function*: :func:`openplaces.io.curator.inferers.derive_metrics`
 
-   d. **Impute missing residential units**
+   e. **Impute missing residential units**
 
       Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
 
@@ -384,7 +392,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    b. **Reconcile story counts**
 
-      Resolves conflicts between competing story count sources (street-level imagery predictions ``n_stories_brails``, FEMA height-derived counts ``n_stories_footprint_fema``, and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
+      Resolves conflicts between competing story count sources (street-level imagery predictions ``n_stories_brails`` and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
 
       *Dependency*: Requires merged visual predictions from Step 5.a.
 
