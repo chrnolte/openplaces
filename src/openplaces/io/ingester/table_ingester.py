@@ -523,6 +523,27 @@ class TableIngester:
         if isinstance(df, gpd.GeoDataFrame):
             _admin = self.processing_chunk.get('admin_id_to_process')
             _suffix = f': {_admin}' if _admin else ''
+
+            if self.recipe.get('force_2d', False):
+                import shapely
+
+                df['geometry'] = shapely.force_2d(df['geometry'])
+
+            if self.recipe.get('add_geometry_derivatives', False):
+                from openplaces.geo.polygon import add_geometry_derivatives
+
+                df = add_geometry_derivatives(df, self.timer, **self.recipe)
+
+            if self.recipe.get('add_tile_utm_derivatives', False):
+                from openplaces.geo.tiles import add_tile_utm_derivatives
+
+                cfg_utm = self.recipe['add_tile_utm_derivatives']
+                df = add_tile_utm_derivatives(
+                    df,
+                    tile_id_col=cfg_utm.get('tile_id_col', 'tile_id'),
+                    tile_type=cfg_utm.get('tile_type'),
+                )
+
             if (~df.geometry.is_valid).any():
                 df = fix_polygons(df)
             if self.recipe.get('resolve_overlaps', False):
