@@ -1050,35 +1050,42 @@ def derive_use_classes(
     combines the two into the label the parcel land-use classifier groups and
     votes on, so it holds no code vocabulary of its own.
 
-    No-op when the spine lacks ``use_group`` or ``use_subgroup`` (e.g. an
-    admin whose source never produced a use code, or had none to crosswalk),
-    so it is safe to leave in a shared pipeline.
+    Falls back to whichever of ``use_group`` / ``use_subgroup`` reached the
+    spine when only one did (e.g. a source, like Florida's DOR use code, with
+    no subgroup taxonomy to crosswalk) rather than skipping the whole column.
 
     Parameters
     ----------
     combined_column : str, optional
         Output combined-label column (default ``use_group_combined``).
     """
-    if (
-        state.spine is None
-        or 'use_group' not in state.spine.columns
-        or 'use_subgroup' not in state.spine.columns
-    ):
+    if state.spine is None:
+        return state
+    spine = state.spine
+    has_group = 'use_group' in spine.columns
+    has_subgroup = 'use_subgroup' in spine.columns
+    if not has_group and not has_subgroup:
         if state.verbose:
             print('  derive_use_classes: no use_group/use_subgroup on spine; skipping.')
         return state
 
-    spine = state.spine
-    label = (
-        spine['use_group'].astype(str).fillna('n/a')
-        + ' | '
-        + spine['use_subgroup'].astype(str).fillna('n/a')
-    )
+    if has_group and has_subgroup:
+        label = (
+            spine['use_group'].astype(str).fillna('n/a')
+            + ' | '
+            + spine['use_subgroup'].astype(str).fillna('n/a')
+        )
+        mapped = int(spine['use_group'].notna().sum())
+    elif has_group:
+        label = spine['use_group']
+        mapped = int(spine['use_group'].notna().sum())
+    else:
+        label = spine['use_subgroup']
+        mapped = int(spine['use_subgroup'].notna().sum())
     spine[combined_column] = pd.Categorical(label)
 
     state.spine = spine
     if state.verbose:
-        mapped = int(spine['use_group'].notna().sum())
         print(f'  derive_use_classes: combined {mapped:,d}/{len(spine):,d} parcels')
     return state
 
