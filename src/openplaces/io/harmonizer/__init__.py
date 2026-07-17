@@ -357,6 +357,16 @@ class Harmonizer:
             simplified_geometry=state.simplified_geometry,
         )
 
+    def show_random_entity(self):
+        """Plot a random entity from the first configured admin unit.
+
+        Delegates to :func:`openplaces.viz.maps.show_random_entity`.
+        """
+        from openplaces.viz.maps import show_random_entity
+
+        admin_id = self.admin_ids[0] if self.admin_ids else None
+        return show_random_entity(self.recipe, admin_id)
+
 
 def harmonize(
     recipe: str | dict,
