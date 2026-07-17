@@ -167,7 +167,9 @@ def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
     An ``{base}_all`` variant whose base column is present sorts immediately
     after that base (its key is the base's key plus a trailing marker), so
     e.g. ``parcel_id_all`` follows ``parcel_id`` even though the bare id
-    columns tie on registry rank.
+    columns tie on registry rank. Likewise a ``{base}_conflict`` column
+    follows its ``{base}_source`` sidecar (``address_conflict`` after
+    ``address_source``), unless it has an explicit ``_FLAG_COLUMNS`` slot.
     """
     if col.endswith(SOURCE_SUFFIX):
         # Band 0.5 groups every sidecar between canonical (0) and source (1),
@@ -177,6 +179,10 @@ def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
         base = col[: -len('_all')]
         if base in index_of:
             return (*_sort_key(base, index_of), 1)
+    if col.endswith('_conflict') and col not in _FLAG_COLUMNS:
+        sidecar = col[: -len('_conflict')] + SOURCE_SUFFIX
+        if sidecar in index_of:
+            return (*_sort_key(sidecar, index_of), 1)
     fields = _key_fields(col)
     return (float(fields[0]), fields, index_of[col])
 
