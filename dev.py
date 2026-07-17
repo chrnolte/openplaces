@@ -20,6 +20,7 @@ _SITECUSTOMIZE = """\
 import ctypes
 import os
 import sys
+from pathlib import Path
 
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
 
@@ -43,6 +44,43 @@ if sys.platform == 'win32':
                 ctypes.CDLL(_path)
             except OSError:
                 pass
+
+# Automatic Git Worktree / local checkout path resolver:
+# Traverses upwards from current working directory or script directory to find
+# the project root. If a different project checkout (like a git worktree) is
+# detected, prepends its 'src' folder to sys.path.
+def _setup_worktree():
+    start_paths = []
+    # 1. Directory of the script/notebook being run
+    if sys.path and sys.path[0]:
+        try:
+            start_paths.append(Path(sys.path[0]).resolve())
+        except Exception:
+            pass
+    # 2. Current working directory
+    start_paths.append(Path.cwd().resolve())
+
+    for start_path in start_paths:
+        for parent in [start_path] + list(start_path.parents):
+            if (
+                (parent / 'pyproject.toml').exists()
+                and (parent / 'src' / 'openplaces').exists()
+            ):
+                worktree_src = parent / 'src'
+                src_str = str(worktree_src)
+                # If it's already the primary path, nothing to do
+                if sys.path and sys.path[0] == src_str:
+                    return
+                # Insert at index 0 to override editable install path
+                if src_str in sys.path:
+                    sys.path.remove(src_str)
+                sys.path.insert(0, src_str)
+                return
+
+try:
+    _setup_worktree()
+except Exception:
+    pass
 """
 
 
@@ -304,18 +342,13 @@ def install_launcher(env_name):
             print(f'✗ Could not write to {rc_file}: {e}')
 
 
-def install_win_dll_hook(env_name):
-    """Write sitecustomize.py into the env so conda's Library\\bin is on the DLL path.
-
-    On Windows, conda-forge packages (e.g. pytorch) bundle their VC++ runtime
-    DLLs in Library\\bin. Without this hook, packages imported before torch
-    (e.g. numpy in Jupyter) may load a competing runtime version, causing
-    WinError 127 when torch's shm.dll loads. sitecustomize.py runs before any
-    user import, ensuring all packages in the env share the same DLLs.
+def install_sitecustomize_hook(env_name):
+    """Write sitecustomize.py into the env to:
+    1. Pre-load key torch DLLs on Windows to avoid WinError 127.
+    2. Dynamically add the current git worktree/checkout src/ directory to sys.path,
+       so pytest, scripts, and Jupyter notebooks automatically import from the worktree
+       rather than the main repository's editable install path.
     """
-    if sys.platform != 'win32':
-        return
-
     try:
         site_pkgs = subprocess.check_output(
             f'{PKG_MGR} run -n {env_name} python -c '
@@ -377,8 +410,8 @@ def setup():
         print('✗ Failed to create environment')
         return
 
-    print('\nConfiguring DLL search path for Windows (sitecustomize.py)...')
-    install_win_dll_hook(env_name)
+    print('\nConfiguring environment hooks (sitecustomize.py)...')
+    install_sitecustomize_hook(env_name)
 
     if zip_response in ('', 'y'):
         ensure_7zip()
@@ -523,8 +556,8 @@ def setup_gpu():
         print(f'  {PKG_MGR} env update -f environment-amd.yml -n {env_name} --prune')
         return
 
-    print('\nConfiguring DLL search path for Windows (sitecustomize.py)...')
-    install_win_dll_hook(env_name)
+    print('\nConfiguring environment hooks (sitecustomize.py)...')
+    install_sitecustomize_hook(env_name)
 
     print('\nInstalling openplaces in editable mode...')
     run(f'{PKG_MGR} run -n {env_name} pip install -e . --no-deps')
@@ -574,8 +607,8 @@ def update():
             '7z not found. Deflate64 ZIP extraction unavailable. Run setup to install.'
         )
 
-    print('\nConfiguring DLL search path for Windows (sitecustomize.py)...')
-    install_win_dll_hook(env_name)
+    print('\nConfiguring environment hooks (sitecustomize.py)...')
+    install_sitecustomize_hook(env_name)
 
     print('\nReinstalling openplaces...')
     run(f'{PKG_MGR} run -n {env_name} pip install -e . --no-deps')
