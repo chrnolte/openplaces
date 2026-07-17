@@ -91,7 +91,6 @@ pipeline:
       group_parcel: group_parcel
       manufactured_home_park: manufactured_home_park
       group_footprint_fema: group_footprint_fema
-      n_stories_footprint_fema: n_stories_footprint_fema
       land_use_class: land_use_class_parcel
 
   # Parcel VALUE columns take the apportioning path instead: re-use the n:m
@@ -158,6 +157,23 @@ pipeline:
       year_built: [year_built_parcel, year_built_block_median_building_nsi]
       value: [improvement_value_parcel, structure_value_building_nsi]
 
+  # Reconcile and harmonize street addresses. Sources are listed in priority
+  # order; agreeing lower-priority sources fill missing components (unit etc.)
+  - step: reconcile_addresses
+    output_col: address
+    sources:
+      parcel:
+        address_full: address_parcel
+      dwelling_overture:
+        address_street: address_street_dwelling_overture
+        address_number: address_number_dwelling_overture
+        city: city_dwelling_overture
+        postal_code: postal_code_dwelling_overture
+    # No source carries a state column: complete it from the run's admin
+    # unit (level-2 code) on rows that have a city or zip
+    complete_from_admin:
+      state: 2
+
   # n_dwellings_overture has already done its evidence work above (the
   # overture-implied-class vote, the n_dwellings reconciliation just above);
   # from here on a missing value only means "0 dwellings" for display, so
@@ -185,8 +201,8 @@ pipeline:
   # Evidence: merge image-derived enrichment columns (canonical values win).
   # n_stories keeps its evidence name here (n_stories_brails) rather than
   # writing canonical n_stories directly: the reconcile_values step below
-  # weighs it against the FEMA-height-derived and NSI-modeled story counts
-  # rather than letting direct floor detection win unconditionally.
+  # weighs it against the NSI-modeled story count rather than letting direct
+  # floor detection win unconditionally.
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
@@ -196,11 +212,11 @@ pipeline:
         columns:
           n_stories_brails: n_stories_brails
 
-  # Reconcile canonical n_stories: direct floor detection first, then
-  # measured-height-derived (FEMA), then NSI's modeled count.
+  # Reconcile canonical n_stories: direct floor detection first, then NSI's
+  # modeled count.
   - step: reconcile_values
     priority:
-      n_stories: [n_stories_brails, n_stories_footprint_fema, n_stories_building_nsi]
+      n_stories: [n_stories_brails, n_stories_building_nsi]
 
   # Evidence: estimate manufactured-home probability from assessor labels,
   # footprint morphology, and imagery. Emits the single p_manufactured_home
