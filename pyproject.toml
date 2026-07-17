@@ -54,7 +54,9 @@ dependencies = [
     "platformdirs>=4.9.2",
     "python-polylabel>=0.6",
     "openlocationcode>=1.0.1",
-    "psutil>=5.9.0"
+    "psutil>=5.9.0",
+    "usaddress>=0.5.14",
+    "rapidfuzz>=3.0.0"
 ]
 
 [project.optional-dependencies]
@@ -150,6 +152,8 @@ exclude = ["tests*"]
 [tool.setuptools.package-data]
 openplaces = [
     "qgis/*.py",
+    "core/*.csv",
+    "geo/*.csv",
 ]
 
 [tool.ruff]
