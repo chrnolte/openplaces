@@ -39,6 +39,8 @@ Canonical attributes
     The spatial polygon outlining the footprint, or the parcel polygon for fallback records.
 ``geometry_source``
     Source of the geometry: :input:`obm` (OpenBuildingMap), :input:`microsoft`, local state sources (e.g., :input:`nconemap`), or :input:`parcel.<source>` for parcel-shaped fallbacks representing unlocated structures.
+``address``
+    Reconciled street address. Prioritizes the assessor parcel address (where available), falling back to Overture dwelling address components, completed with state names derived from administrative units.
 ``occupancy_type``
     Canonical occupancy class.
 
@@ -48,7 +50,7 @@ Canonical attributes
 ``year_built``
     Reconciled construction year. Prioritizes assessor parcel records over NSI block-median fallbacks.
 ``n_stories``
-    Reconciled number of stories. Prioritizes street-level imagery predictions (BRAILS++), then measured-height-derived counts (FEMA), and lastly NSI modeled counts.
+    Reconciled number of stories. Prioritizes street-level imagery predictions (BRAILS++), falling back to NSI modeled counts.
 ``n_dwellings``
     Reconciled count of dwelling units. Prioritizes Overture geocoded address counts over NSI structure counts, falling back to occupancy-class imputation.
 ``height``
@@ -64,6 +66,7 @@ Provenance sidecars
 -------------------
 Indicates which input dataset or curation rule set decided the final canonical value (later steps override earlier ones). The values contain short method/source strings (e.g., ``parcel``, ``nsi``, ``overture``, ``imputed``, ``geometry``, ``dwellings``, ``secondary``, ``park``, ``keyword``, ``manufactured_home``, ``brails-2026``):
 
+* ``address_source``
 * ``occupancy_type_source``
 * ``value_source``
 * ``year_built_source``
@@ -142,6 +145,8 @@ Flags and intermediate calculations used for curation and quality control.
     Number of footprints on the associated parcel (includes synthetic fallbacks).
 ``occupancy_type_conflict``
     Summary of conflicting occupancy labels across inputs (formatted :input:`"nsi: X | fema: Y | parcel: Z | overture: W"`). This column is only populated where two or more evidence sources disagree. Non-residential classes are collapsed to :input:`Non-Residential` before comparison, so only residential (or residential-vs-non-residential) disagreements are surfaced.
+``address_conflict``
+    Summary of conflicting street address values across input sources, only populated where two or more address sources disagree.
 ``occupancy_type_review``
     Flag (:input:`True`) for low improvement-value parcel shares indicating potential manufactured homes needing inspection.
 ``value_per_area`` / ``improvement_value_parcel_per_area`` / ``structure_value_building_nsi_per_area``
@@ -270,8 +275,8 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
 
 1. Input integration and value apportionment
 
-   a. **Integrate clean assessor data**: Matches each footprint in the spine to its corresponding curated parcel, joining attributes like land-use class, value, and FEMA metrics (temporarily copying undivided per-parcel totals to all footprints on a parcel).
-   b. **Apportion parcel values**: Splits ``improvement_value_parcel`` across primary footprints by floor-area share, keeping ``land_value_parcel`` whole on the primary footprint only.
+   a. **Integrate clean assessor data**: Matches each footprint in the spine to its corresponding curated parcel, joining attributes like land-use class and FEMA metrics.
+   b. **Apportion parcel values**: Joins property valuation and construction year columns from the curated parcel lane, then splits ``improvement_value_parcel`` across primary footprints by floor-area share and keeps ``land_value_parcel`` whole on the principal footprint only.
    c. **Collect overlapping parcel IDs**: Retains the full n:m footprint-parcel membership as a canonical column (`parcel_id_all`) from the overlay link sidecar.
 
 2. Dwelling and address evidence prep
@@ -282,9 +287,10 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
 3. Core value and metric reconciliation
 
    a. **Select canonical values**: Resolves conflicts between competing source attributes by selecting canonical values for dwelling counts, construction year, and financial valuation.
-   b. **Zero-fill address counts**: Fills missing or suppressed ``n_dwellings_overture`` counts with 0.
-   c. **Compute footprint metrics**: Calculates structural area in square meters and value-per-area metrics.
-   d. **Impute missing residential units**: Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
+   b. **Reconcile street addresses**: Reconciles and harmonizes street addresses from parcel assessor and Overture dwelling address components, completing missing components (like state names).
+   c. **Zero-fill address counts**: Fills missing or suppressed ``n_dwellings_overture`` counts with 0.
+   d. **Compute footprint metrics**: Calculates structural area in square meters and value-per-area metrics.
+   e. **Impute missing residential units**: Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
 
 4. Occupancy consensus and correction
 
@@ -294,7 +300,7 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
 5. Imagery enrichment integration
 
    a. **Merge visual model predictions**: Merges predicted roof shape and story count attributes from visual model recipes.
-   b. **Reconcile story counts**: Resolves conflicts between competing story count sources (visual predictions ``n_stories_brails``, FEMA height-derived counts ``n_stories_footprint_fema``, and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
+   b. **Reconcile story counts**: Resolves conflicts between competing story count sources (visual predictions ``n_stories_brails`` and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
 
 6. Final occupancy voting and refinement
 
