@@ -1,0 +1,70 @@
+# Recipe: harmonized Colombia parcel spine.
+#
+# Merges the parcel sources currently ingested for Colombia into one spine.
+#
+# Sources merged by resolve_spine:
+#   - CO_parcel-igac-2026_urban / CO_parcel-igac-2026_rural: IGAC's national
+#     public cadastre (Catastro Público). Listed explicitly (not auto-discovered),
+#     both recipes share the spine's own admin_id (CO), which
+#     resolve_spine's auto_discover only expands to child admin_ids.
+#   - CO-AN_parcel-catastro-2018:
+#     picked up automatically via auto_discover, since these are scoped to a
+#     child admin_id (e.g. CO-AN) of the spine's CO.
+# IGAC and the departmental cadastres are geographically complementary
+# (a department that administers its own catastro falls outside IGAC's
+# public cadastre) rather than competing on precision for the same parcels,
+# so listing IGAC first and letting departmental sources fill in afterward
+# fills gaps rather than overriding IGAC where both happen to cover the same
+# municipality.
+
+
+description: >-
+  Harmonized Colombia parcel spine: IGAC national cadastre parcel geometry,
+  gap-filled by Antioquia catastro.
+
+stage: harmonize
+admin_id: CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: spine
+  version: 2026
+
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+  - step: resolve_spine
+    sources:
+      - recipe_id: CO_parcel-igac-2026_urban
+        label: igac_urban
+      - recipe_id: CO_parcel-igac-2026_rural
+        label: igac_rural
+      - recipe_id: CO-AN_parcel-catastro-2018
+        label: catastro
+      - auto_discover: true
+        entity_type: parcel
+    keep_columns:
+      - parcel_id_admin3
+      - parcel_id_admin3_2
+      - admin3_id_admin1
+      - manzana_code
+      - vereda_code
+      - m2
+      - object_id
+      - property_id
+      - use_group
+      - admin2_id_admin1
+      - admin3_id_admin2
+      - admin4_id_admin3
+      - admin5_id_admin4
+      - admin6_id_admin5
+      - n_dwellings
+      - street_number
+      - n_buildings
