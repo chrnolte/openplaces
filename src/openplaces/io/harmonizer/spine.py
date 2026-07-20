@@ -306,13 +306,24 @@ def resolve_spine(
     def _spine_cols(gdf):
         return ['geometry'] + [c for c in keep_columns if c in gdf.columns]
 
-    first_label = resolved[0].get('label', resolved[0]['recipe_id'])
+    # The highest-priority source may have no data for this admin unit (e.g.
+    # a national source with no coverage in a self-administered region) —
+    # use the first *loaded* source as the spine base, not always resolved[0].
+    first_idx = next(
+        (
+            i
+            for i, src in enumerate(resolved)
+            if src.get('label', src['recipe_id']) in source_gdfs
+        ),
+        None,
+    )
+    first_label = resolved[first_idx].get('label', resolved[first_idx]['recipe_id'])
     spine: gpd.GeoDataFrame = source_gdfs[first_label][
         _spine_cols(source_gdfs[first_label])
     ].copy()
     spine['geometry_source'] = first_label
 
-    for src in resolved[1:]:
+    for src in resolved[first_idx + 1 :]:
         label = src.get('label', src['recipe_id'])
         if label not in source_gdfs:
             continue
