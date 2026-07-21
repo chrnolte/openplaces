@@ -115,3 +115,13 @@ columns:
   last_sale_2_page: OR_PAGE2
   last_sale_2_clerk_instrument: CLERK_NO2
   last_sale_2_change_code: SAL_CHNG_CD2
+
+# FL's source data (JV, LND_VAL) reports total and land value but not
+# improvement value separately, unlike other states' recipes that map it
+# directly. Derive it here so downstream steps that expect improvement_value
+# (e.g. footprint curate's link_curated_entity) don't fail.
+transformations:
+  - type: binary
+    operation: subtract
+    inputs: [market_value, land_value]
+    output: improvement_value
