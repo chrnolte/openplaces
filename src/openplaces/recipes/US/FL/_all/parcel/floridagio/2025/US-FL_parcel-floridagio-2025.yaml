@@ -23,7 +23,7 @@ entity:
 compressed_file_name: "Cadastral_Statewide.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
-uncompressed_file_name: "CADASTRAL_DOR.gdb"
+uncompressed_file_name: "Parcels.gdb"
 
 # Layer that identifies parcels (10M parcels)
 layer: CADASTRAL_DOR
