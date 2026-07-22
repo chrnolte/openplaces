@@ -404,6 +404,58 @@ def test_reconcile_addresses_component_source_city_zip_and_admin_state():
     assert res.loc[1, 'address'] == '8618 Marina Dr'
 
 
+def test_reconcile_addresses_complete_city_from_postal():
+    # No source supplies a city (mirrors dwelling_overture's real-world gap
+    # in MA), but a ZIP is present: complete_city_from_postal fills city
+    # from the USPS-preferred name for that ZIP.
+    df = pd.DataFrame(
+        {
+            'address_street_overture': ['Beacon Street'],
+            'address_number_overture': ['123'],
+            'postal_code_overture': ['02459'],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(df),  # admin_id US-MA-MI -> state MA
+        sources={
+            'dwelling_overture': {
+                'address_street': 'address_street_overture',
+                'address_number': 'address_number_overture',
+                'postal_code': 'postal_code_overture',
+            },
+        },
+        complete_from_admin={'state': 2},
+        complete_city_from_postal=True,
+    )
+    res = state.curated
+    assert res.loc[0, 'address'] == '123 Beacon St, Newton Center, MA 02459'
+
+
+def test_reconcile_addresses_complete_city_from_postal_default_off():
+    # Same input as above, but the flag defaults to False: existing recipes
+    # that don't opt in keep their current (city-less) output unchanged.
+    df = pd.DataFrame(
+        {
+            'address_street_overture': ['Beacon Street'],
+            'address_number_overture': ['123'],
+            'postal_code_overture': ['02459'],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(df),
+        sources={
+            'dwelling_overture': {
+                'address_street': 'address_street_overture',
+                'address_number': 'address_number_overture',
+                'postal_code': 'postal_code_overture',
+            },
+        },
+        complete_from_admin={'state': 2},
+    )
+    res = state.curated
+    assert res.loc[0, 'address'] == '123 Beacon St, MA 02459'
+
+
 def test_reconcile_addresses_complete_from_admin_non_us():
     # The admin completion is country-agnostic: a German admin id fills the
     # Bavarian level-2 code, validated against ISO 3166-2 for DE.

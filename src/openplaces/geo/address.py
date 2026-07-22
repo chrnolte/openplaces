@@ -163,6 +163,82 @@ def get_admin2_codes(admin1_id: str) -> frozenset[str]:
     )
 
 
+# Postal-lookup backend capabilities, mirrors PARSER_BACKENDS below: backend
+# -> admin1 ids it supports. zipcodes is a US-only ZIP database; other
+# countries degrade to None rather than raising.
+POSTAL_CITY_BACKENDS = {'zipcodes': frozenset({'US'})}
+
+
+@dataclass(frozen=True)
+class PostalCityMatch:
+    """USPS-preferred and alternate city names for a 5-digit ZIP code.
+
+    Attributes
+    ----------
+    city : str
+        USPS-preferred city name.
+    acceptable_cities : tuple of str
+        USPS-acceptable alternate city names.
+    unacceptable_cities : tuple of str
+        City names USPS does not accept for this ZIP code.
+    state : str
+        Two-letter state code.
+    county : str
+        County name.
+    source : str
+        Provenance label for the backing lookup table.
+    """
+
+    city: str
+    acceptable_cities: tuple[str, ...] = ()
+    unacceptable_cities: tuple[str, ...] = ()
+    state: str = ''
+    county: str = ''
+    source: str = ''
+
+
+@cache
+def lookup_postal_city(
+    zip5: str, admin1_id: str | None = None
+) -> PostalCityMatch | None:
+    """USPS-preferred/acceptable city names for a 5-digit ZIP code.
+
+    Backed by the `zipcodes` package, gated to admin1_id == 'US' via
+    POSTAL_CITY_BACKENDS the same way PARSER_BACKENDS gates usaddress:
+    unsupported countries degrade to None rather than raising.
+
+    Parameters
+    ----------
+    zip5 : str
+        Five-digit ZIP code.
+    admin1_id : str, optional
+        Country code of the run; defaults to DEFAULT_ADMIN1_ID.
+
+    Returns
+    -------
+    PostalCityMatch or None
+        None for unsupported countries, or unknown/invalid ZIP codes.
+    """
+    admin1_id = admin1_id or DEFAULT_ADMIN1_ID
+    if admin1_id not in POSTAL_CITY_BACKENDS['zipcodes']:
+        return None
+
+    import zipcodes  # lazy import: keeps `postal` an optional extra
+
+    matches = zipcodes.matching(zip5)
+    if not matches:
+        return None
+    m = matches[0]
+    return PostalCityMatch(
+        city=m['city'],
+        acceptable_cities=tuple(m['acceptable_cities']),
+        unacceptable_cities=tuple(m['unacceptable_cities']),
+        state=m['state'],
+        county=m['county'],
+        source='zipcodes',
+    )
+
+
 # usaddress label -> component key used throughout this module
 _TAG_MAPPING = {
     'AddressNumberPrefix': 'address_number',

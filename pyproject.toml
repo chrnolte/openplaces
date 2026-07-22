@@ -99,6 +99,9 @@ docs = [
 # Excel I/O
 excel = ["openpyxl>=3.1.0"]
 
+# USPS ZIP-to-city lookup (curate-stage postal city inference, US only)
+postal = ["zipcodes>=1.2.0"]
+
 # Cloud storage
 cloud = ["rclone>=1.73.1"]
 
@@ -128,7 +131,7 @@ dev = [
 
 # All optional dependencies
 all = [
-    "openplaces[analysis,viz,raster,docs,excel,cloud,scrape,ml,dev]"
+    "openplaces[analysis,viz,raster,docs,excel,postal,cloud,scrape,ml,dev]"
 ]
 
 # For academic/research workflows

@@ -156,6 +156,7 @@ pipeline:
       n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
       year_built: [year_built_parcel, year_built_block_median_building_nsi]
       value: [improvement_value_parcel, structure_value_building_nsi]
+      postal_code: [postal_code_dwelling_overture]
 
   # Reconcile and harmonize street addresses. Sources are listed in priority
   # order; agreeing lower-priority sources fill missing components (unit etc.)
@@ -173,6 +174,9 @@ pipeline:
     # unit (level-2 code) on rows that have a city or zip
     complete_from_admin:
       state: 2
+    # dwelling_overture's city is often empty in this region; fall back to
+    # the USPS-preferred city for the row's resolved ZIP.
+    complete_city_from_postal: true
 
   # n_dwellings_overture has already done its evidence work above (the
   # overture-implied-class vote, the n_dwellings reconciliation just above);
@@ -183,6 +187,9 @@ pipeline:
 
   # Infer: derive new features from the reconciled evidence.
   - step: derive_metrics
+
+  # Infer: USPS-preferred city name for the reconciled ZIP code.
+  - step: infer_postal_city
 
   # Impute: fill any dwelling-unit gaps left after reconciliation.
   - step: impute_n_dwellings
