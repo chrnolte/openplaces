@@ -10,7 +10,6 @@ import csv
 import json
 import logging
 import sys
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter, process_time
@@ -18,7 +17,7 @@ from typing import Any
 
 from openplaces.path import logs_path
 
-__all__ = ['Timer', 'get_timer', 'log_step']
+__all__ = ['Timer', 'get_timer']
 
 
 @dataclass
@@ -60,9 +59,10 @@ class Timer:
     """
     Track time consumption across labeled milestones.
 
-    Two modes of use:
-    1. Milestones: mark points in time, duration = time since last mark
-    2. Steps: explicit begin/end or context manager for nested sections
+    Each ``mark()`` call records a milestone whose duration is measured from
+    the end of the previous mark (or timer creation) to the moment it is
+    recorded, so consecutive marks are always contiguous and their sum
+    always equals the total elapsed time.
 
     Example
     -------
@@ -85,13 +85,19 @@ class Timer:
     _last_mark: float = field(default=None, repr=False)
     _last_cpu_mark: float = field(default=None, repr=False)
     _records: list[TimerRecord] = field(default_factory=list, repr=False)
-    _active_step: TimerRecord | None = field(default=None, repr=False)
     _finished: bool = field(default=False, repr=False)
+    _total_duration: float | None = field(default=None, repr=False)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self._last_mark = self._created
         self._last_cpu_mark = self._cpu_created
+
+    def _log(self, label: str, duration: float, cpu_duration: float) -> None:
+        if self.logger:
+            self.logger.info(
+                f'{label:.<62} {duration:>8.2f}s  {cpu_duration:>8.2f}s cpu'
+            )
 
     def mark(self, label: str, **metadata) -> tuple[float, float]:
         """Record a milestone. Duration = time since last mark (or creation)."""
@@ -108,64 +114,48 @@ class Timer:
         self._records.append(record)
         self._last_mark = now
         self._last_cpu_mark = cpu_now
-        if self.logger:
-            self.logger.info(
-                f'{label:.<62} {record.duration:>8.2f}s  '
-                f'{record.cpu_duration:>8.2f}s cpu'
-            )
+        self._log(label, record.duration, record.cpu_duration)
         return record.duration, record.cpu_duration
 
-    def begin(self, label: str, **metadata):
-        """Begin a timed step (for explicit begin/end usage)."""
-        if self._active_step is not None:
-            self.end()
-        self._active_step = TimerRecord(
-            label=label,
-            start=perf_counter(),
-            cpu_start=process_time(),
-            metadata=metadata,
-        )
-
-    def end(self) -> tuple[float, float] | None:
-        """End the current timed step. Returns (wall_duration, cpu_duration)."""
-        if self._active_step is None:
-            return None
-        self._active_step.end = perf_counter()
-        self._active_step.cpu_end = process_time()
-        self._records.append(self._active_step)
-        duration = (self._active_step.duration, self._active_step.cpu_duration)
-        # Update last mark so subsequent mark() calls are consistent
-        self._last_mark = self._active_step.end
-        self._last_cpu_mark = self._active_step.cpu_end
-        if self.logger:
-            self.logger.info(
-                f'{self._active_step.label:.<62} {duration[0]:>8.2f}s  '
-                f'{duration[1]:>8.2f}s cpu'
-            )
-        self._active_step = None
-        return duration
-
     def finish(self, label: str = '_final'):
+        """Close out the timer, recording any remaining unmarked time.
+
+        Always appends a final record for the gap since the last mark (even
+        if it is ~0s), so `tracked_duration` stays exactly equal to
+        `total_duration` regardless of when the latter is later read. Only
+        logs it (like `mark()` would) when it rounds to a nonzero display
+        value — a genuinely unmarked stretch of code should surface as a
+        visible line, but a merely-0.00s bookkeeping record printed on every
+        run is just noise.
+        """
         if self._finished:
             return
-        if self._active_step is not None:
-            self.end()
         now = perf_counter()
         cpu_now = process_time()
-        if now - self._last_mark > 0.001:
-            record = TimerRecord(
-                label=label,
-                start=self._last_mark,
-                end=now,
-                cpu_start=self._last_cpu_mark,
-                cpu_end=cpu_now,
-            )
-            self._records.append(record)
+        record = TimerRecord(
+            label=label,
+            start=self._last_mark,
+            end=now,
+            cpu_start=self._last_cpu_mark,
+            cpu_end=cpu_now,
+        )
+        self._records.append(record)
+        self._last_mark = now
+        self._last_cpu_mark = cpu_now
+        self._total_duration = now - self._created
         self._finished = True
+        if round(record.duration, 2) or round(record.cpu_duration, 2):
+            self._log(label, record.duration, record.cpu_duration)
 
     @property
     def total_duration(self) -> float:
-        """Total elapsed time since timer creation."""
+        """Total elapsed time since timer creation.
+
+        Frozen at the value measured by :meth:`finish` once the timer has
+        finished; a live ``perf_counter()`` reading beforehand.
+        """
+        if self._finished:
+            return self._total_duration
         return perf_counter() - self._created
 
     @property
@@ -315,22 +305,3 @@ def get_timer(
 def clear_timers():
     """Clear all registered timers."""
     _timers.clear()
-
-
-@contextmanager
-def log_step(
-    label: str,
-    timer: Timer | str | None = None,
-    **metadata,
-):
-    if isinstance(timer, str):
-        timer = get_timer(timer)
-
-    if timer:
-        timer.begin(label, **metadata)
-
-    try:
-        yield
-    finally:
-        if timer:
-            timer.end()
