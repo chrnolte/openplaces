@@ -182,8 +182,9 @@ class Ingester:
                 f'{type(partition_ids)} ({partition_ids})'
             )
 
+        self._owns_timer = timer is None
         if timer is None:
-            timer = get_timer('Ingester', verbose=True)
+            timer = get_timer('Ingester', verbose=verbose, overwrite=True)
         self.timer = timer
 
         self.verbose = verbose
@@ -327,73 +328,81 @@ class Ingester:
         if redownload:
             reprocess = True
 
-        if self.recipe.get('image_scraper'):
-            from .image_ingester import fetch_images_by_admin
+        try:
+            if self.recipe.get('image_scraper'):
+                from .image_ingester import fetch_images_by_admin
 
-            # Expand requested admin IDs to the recipe's save level and skip
-            # admin units whose metadata parquet already exists (unless
-            # reprocess), mirroring `_resolve_admin_ids`.
-            save_level = get_save_admin_level(self.recipe)
-            admin_ids_at_save_level = list(
-                dict.fromkeys(
-                    str(save_admin_id)
-                    for requested in self.admin_ids
-                    for save_admin_id in (
-                        [AdminId(*requested.levels[:save_level])]
-                        if requested.get_level() >= save_level
-                        else get_admin(requested, save_level).index
+                # Expand requested admin IDs to the recipe's save level and
+                # skip admin units whose metadata parquet already exists
+                # (unless reprocess), mirroring `_resolve_admin_ids`.
+                save_level = get_save_admin_level(self.recipe)
+                admin_ids_at_save_level = list(
+                    dict.fromkeys(
+                        str(save_admin_id)
+                        for requested in self.admin_ids
+                        for save_admin_id in (
+                            [AdminId(*requested.levels[:save_level])]
+                            if requested.get_level() >= save_level
+                            else get_admin(requested, save_level).index
+                        )
                     )
                 )
-            )
-            self.admin_ids_to_process = [
-                admin_id
-                for admin_id in admin_ids_at_save_level
-                if reprocess or not get_output_path(self.recipe, admin_id).exists()
-            ]
-            if not self.admin_ids_to_process:
-                if self.verbose:
-                    print('All output files found. Processing skipped.\n')
+                self.admin_ids_to_process = [
+                    admin_id
+                    for admin_id in admin_ids_at_save_level
+                    if reprocess or not get_output_path(self.recipe, admin_id).exists()
+                ]
+                if not self.admin_ids_to_process:
+                    if self.verbose:
+                        print('All output files found. Processing skipped.\n')
+                    return
+                fetch_images_by_admin(
+                    self,
+                    n_sample=self.recipe.get('n_sample'),
+                    target_recipe_id=(
+                        target_recipe_id or self.recipe.get('entity_recipe')
+                    ),
+                    redownload=redownload,
+                )
                 return
-            fetch_images_by_admin(
-                self,
-                n_sample=self.recipe.get('n_sample'),
-                target_recipe_id=target_recipe_id or self.recipe.get('entity_recipe'),
-                redownload=redownload,
-            )
-            return
 
-        self._resolve_admin_ids(reprocess)
+            self._resolve_admin_ids(reprocess)
 
-        self._resolve_partition_ids(reprocess)
+            self._resolve_partition_ids(reprocess)
 
-        # Partition first so all admin units within the same partition are
-        # processed consecutively — this allows the downloaded file to be
-        # read once and cached (e.g. for tile-partitioned recipes).
-        for partition_id_to_download, admin_id_to_download in product(
-            self.partition_ids_to_download, self.admin_ids_to_download
-        ):
-            if self.verbose and (admin_id_to_download or partition_id_to_download):
-                print_txt = 'Ingesting data for '
-                if admin_id_to_download is not None:
-                    print_txt += f'geography: {admin_id_to_download}, '
-                if partition_id_to_download is not None:
-                    print_txt += f'partition: {partition_id_to_download}, '
-                print(print_txt[:-2])
-            self._ingest_download_partition(
-                admin_id_to_download=admin_id_to_download,
-                partition_id_to_download=partition_id_to_download,
-                redownload=redownload,
-                keep_unzipped=keep_unzipped,
-            )
+            # Partition first so all admin units within the same partition
+            # are processed consecutively — this allows the downloaded file
+            # to be read once and cached (e.g. for tile-partitioned recipes).
+            for partition_id_to_download, admin_id_to_download in product(
+                self.partition_ids_to_download, self.admin_ids_to_download
+            ):
+                if self.verbose and (admin_id_to_download or partition_id_to_download):
+                    print_txt = 'Ingesting data for '
+                    if admin_id_to_download is not None:
+                        print_txt += f'geography: {admin_id_to_download}, '
+                    if partition_id_to_download is not None:
+                        print_txt += f'partition: {partition_id_to_download}, '
+                    print(print_txt[:-2])
+                self._ingest_download_partition(
+                    admin_id_to_download=admin_id_to_download,
+                    partition_id_to_download=partition_id_to_download,
+                    redownload=redownload,
+                    keep_unzipped=keep_unzipped,
+                )
 
-        if self._is_tile_partition:
-            self._merge_tile_partials()
+            if self._is_tile_partition:
+                self._merge_tile_partials()
 
-        self._aggregate_to()
+            self._aggregate_to()
 
-        self._aggregate_partitions()
+            self._aggregate_partitions()
 
-        self._create_entity_links(reprocess)
+            self.timer.mark('Aggregate')
+
+            self._create_entity_links(reprocess)
+        finally:
+            if self._owns_timer:
+                self.timer.finish()
 
     def _create_entity_links(self, reprocess=False):
         """Persist the n:m entity links declared under `entity_links`.

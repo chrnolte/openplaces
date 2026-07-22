@@ -82,6 +82,55 @@ def test_get_entities_expands_parent_and_warns_for_missing(
     assert data.attrs['openplaces_missing_paths'] == [str(missing)]
 
 
+def test_get_entities_stamps_admin_id_when_combining_multiple(tmp_path, monkeypatch):
+    recipe = {'admin_id': AdminId('US'), 'save_to': {'admin_level': 3}}
+    path_mi = tmp_path / 'US-MA-MI_footprint.parquet'
+    path_su = tmp_path / 'US-MA-SU_footprint.parquet'
+    path_mi.touch()
+    path_su.touch()
+
+    def get_output_path(recipe, admin_id, partition_id=None):
+        return path_mi if str(admin_id) == 'US-MA-MI' else path_su
+
+    def read_parquet(path, **kwargs):
+        if path == path_mi:
+            return pd.DataFrame({'value': [1, 2]})
+        return pd.DataFrame({'value': [3]})
+
+    monkeypatch.setattr(readers, 'get_output_path', get_output_path)
+    monkeypatch.setattr(readers, 'read_parquet', read_parquet)
+
+    data = readers.get_entities(recipe, admin_id=['US-MA-MI', 'US-MA-SU'])
+
+    assert data['admin3_id'].tolist() == ['US-MA-MI', 'US-MA-MI', 'US-MA-SU']
+    assert data['value'].tolist() == [1, 2, 3]
+
+
+def test_get_entities_does_not_overwrite_existing_admin_id_column(
+    tmp_path, monkeypatch
+):
+    recipe = {'admin_id': AdminId('US'), 'save_to': {'admin_level': 3}}
+    path_mi = tmp_path / 'US-MA-MI_footprint.parquet'
+    path_su = tmp_path / 'US-MA-SU_footprint.parquet'
+    path_mi.touch()
+    path_su.touch()
+
+    def get_output_path(recipe, admin_id, partition_id=None):
+        return path_mi if str(admin_id) == 'US-MA-MI' else path_su
+
+    def read_parquet(path, **kwargs):
+        if path == path_mi:
+            return pd.DataFrame({'value': [1], 'admin3_id': ['custom']})
+        return pd.DataFrame({'value': [2], 'admin3_id': ['also-custom']})
+
+    monkeypatch.setattr(readers, 'get_output_path', get_output_path)
+    monkeypatch.setattr(readers, 'read_parquet', read_parquet)
+
+    data = readers.get_entities(recipe, admin_id=['US-MA-MI', 'US-MA-SU'])
+
+    assert data['admin3_id'].tolist() == ['custom', 'also-custom']
+
+
 def test_inspect_table_summarizes_and_returns_selected_sample(capsys):
     data = pd.DataFrame(
         {
@@ -105,3 +154,74 @@ def test_inspect_table_summarizes_and_returns_selected_sample(capsys):
     assert (
         capsys.readouterr().out == '2 rows x 3 columns from 2 file(s), 2 partition(s)\n'
     )
+
+
+def test_get_entities_adds_admin_column(tmp_path, monkeypatch):
+    recipe = {
+        'admin_id': AdminId('US', 'MA'),
+        'save_to': {'admin_level': 3},
+        'aggregate_by': {'single_file': False},
+    }
+
+    path1 = tmp_path / 'US-MA-BR.parquet'
+    path2 = tmp_path / 'US-MA-ES.parquet'
+    path1.touch()
+    path2.touch()
+
+    monkeypatch.setattr(
+        readers,
+        'get_admin',
+        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-BR', 'US-MA-ES']),
+    )
+
+    def get_output_path(recipe, admin_id, partition_id=None):
+        return path1 if str(admin_id) == 'US-MA-BR' else path2
+
+    monkeypatch.setattr(readers, 'get_output_path', get_output_path)
+
+    def mock_read_parquet(path, columns=None, **kwargs):
+        df = pd.DataFrame({'value': [1.0, 2.0]})
+        if columns is not None:
+            assert 'admin3_id' not in columns
+            df = df[[c for c in columns if c in df.columns]]
+        return df
+
+    monkeypatch.setattr(readers, 'read_parquet', mock_read_parquet)
+
+    # 1. Columns=None (default): should add admin3_id and cast to category
+    data = readers.get_entities(recipe, admin_id=['US-MA-BR', 'US-MA-ES'])
+    assert 'admin3_id' in data.columns
+    assert data['admin3_id'].dtype.name == 'category'
+    assert data['admin3_id'].tolist() == [
+        'US-MA-BR',
+        'US-MA-BR',
+        'US-MA-ES',
+        'US-MA-ES',
+    ]
+    assert data['value'].tolist() == [1.0, 2.0, 1.0, 2.0]
+
+    # 2. Columns containing admin3_id: should request 'value' from disk,
+    # add admin3_id, and cast to category.
+    data2 = readers.get_entities(
+        recipe,
+        admin_id=['US-MA-BR', 'US-MA-ES'],
+        columns=['value', 'admin3_id'],
+    )
+    assert 'admin3_id' in data2.columns
+    assert data2['admin3_id'].dtype.name == 'category'
+    assert data2['admin3_id'].tolist() == [
+        'US-MA-BR',
+        'US-MA-BR',
+        'US-MA-ES',
+        'US-MA-ES',
+    ]
+    assert data2['value'].tolist() == [1.0, 2.0, 1.0, 2.0]
+
+    # 3. Columns NOT containing admin3_id: should request 'value'
+    # and NOT add admin3_id.
+    data3 = readers.get_entities(
+        recipe,
+        admin_id=['US-MA-BR', 'US-MA-ES'],
+        columns=['value'],
+    )
+    assert 'admin3_id' not in data3.columns
