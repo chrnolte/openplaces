@@ -376,6 +376,7 @@ def get_entities(
         partition_id = 'all'
 
     frames = []
+    frame_admin_ids = []
     output_paths = []
     missing_paths = []
     for output_admin_id in _get_output_admin_ids(recipe, admin_id):
@@ -388,6 +389,7 @@ def get_entities(
             missing_paths.append(path)
             continue
         frames.append(read_parquet(path, geom=geom, columns=columns))
+        frame_admin_ids.append(output_admin_id)
         output_paths.append(path)
 
     if missing_paths:
@@ -405,6 +407,13 @@ def get_entities(
     elif len(frames) == 1:
         data = frames[0]
     else:
+        # Combining multiple admin units' outputs loses the per-row admin_id
+        # that used to be implicit in "which file did this row come from" —
+        # stamp it explicitly so rows stay attributable after concatenation.
+        admin_col = f'admin{get_save_admin_level(recipe)}_id'
+        for frame, frame_admin_id in zip(frames, frame_admin_ids):
+            if admin_col not in frame.columns:
+                frame[admin_col] = str(frame_admin_id)
         ignore_index = all(isinstance(frame.index, pd.RangeIndex) for frame in frames)
         data = pd.concat(frames, ignore_index=ignore_index)
         if geom:
