@@ -77,6 +77,22 @@ viz = [
     "contextily>=1.6.2"
 ]
 
+# Fast large-scale (1M+ polygon) rendering: GPU-accelerated interactive
+# (Lonboard/deck.gl) and CPU raster fallback (Datashader). Kept separate
+# from `viz` since these are heavier, GPU/WASM-oriented deps not needed for
+# the matplotlib-based static plotting in openplaces.viz.maps. datashader
+# >=0.16.0 renders geopandas GeoDataFrames directly, so spatialpandas isn't
+# needed as a conversion step. voila serves a notebook's Lonboard map with a
+# live kernel and zero notebook chrome (no toolbar/sidebar/max-width column)
+# -- the fix for viewing a 1M+ polygon map genuinely fullscreen, since
+# Map.to_html()'s static export embeds full geometry inline and doesn't
+# scale to that data volume.
+viz-fast = [
+    "lonboard>=0.10.0",
+    "datashader>=0.16.0",
+    "voila>=0.5.0"
+]
+
 # Advanced raster processing
 raster = [
     "rioxarray>=0.15.0", 
@@ -128,7 +144,7 @@ dev = [
 
 # All optional dependencies
 all = [
-    "openplaces[analysis,viz,raster,docs,excel,cloud,scrape,ml,dev]"
+    "openplaces[analysis,viz,viz-fast,raster,docs,excel,cloud,scrape,ml,dev]"
 ]
 
 # For academic/research workflows
