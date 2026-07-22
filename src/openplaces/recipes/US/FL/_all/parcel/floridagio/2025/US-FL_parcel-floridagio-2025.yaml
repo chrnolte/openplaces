@@ -116,12 +116,11 @@ columns:
   last_sale_2_clerk_instrument: CLERK_NO2
   last_sale_2_change_code: SAL_CHNG_CD2
 
-# FL's source data (JV, LND_VAL) reports total and land value but not
-# improvement value separately, unlike other states' recipes that map it
-# directly. Derive it here so downstream steps that expect improvement_value
-# (e.g. footprint curate's link_curated_entity) don't fail.
 transformations:
-  - type: binary
-    operation: subtract
-    inputs: [market_value, land_value]
-    output: improvement_value
+  # Florida DOR's assessment-roll edit guide (2026) defines the calculated
+  # Improvement Value as Just Value - Land Value - Special Features Value;
+  # Cadastral_Statewide has no direct improvement-value field of its own.
+  - output: improvement_value
+    type: expression
+    expression: "market_value - land_value - special_feature_value"
+    inputs: [market_value, land_value, special_feature_value]
