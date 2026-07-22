@@ -82,6 +82,55 @@ def test_get_entities_expands_parent_and_warns_for_missing(
     assert data.attrs['openplaces_missing_paths'] == [str(missing)]
 
 
+def test_get_entities_stamps_admin_id_when_combining_multiple(tmp_path, monkeypatch):
+    recipe = {'admin_id': AdminId('US'), 'save_to': {'admin_level': 3}}
+    path_mi = tmp_path / 'US-MA-MI_footprint.parquet'
+    path_su = tmp_path / 'US-MA-SU_footprint.parquet'
+    path_mi.touch()
+    path_su.touch()
+
+    def get_output_path(recipe, admin_id, partition_id=None):
+        return path_mi if str(admin_id) == 'US-MA-MI' else path_su
+
+    def read_parquet(path, **kwargs):
+        if path == path_mi:
+            return pd.DataFrame({'value': [1, 2]})
+        return pd.DataFrame({'value': [3]})
+
+    monkeypatch.setattr(readers, 'get_output_path', get_output_path)
+    monkeypatch.setattr(readers, 'read_parquet', read_parquet)
+
+    data = readers.get_entities(recipe, admin_id=['US-MA-MI', 'US-MA-SU'])
+
+    assert data['admin3_id'].tolist() == ['US-MA-MI', 'US-MA-MI', 'US-MA-SU']
+    assert data['value'].tolist() == [1, 2, 3]
+
+
+def test_get_entities_does_not_overwrite_existing_admin_id_column(
+    tmp_path, monkeypatch
+):
+    recipe = {'admin_id': AdminId('US'), 'save_to': {'admin_level': 3}}
+    path_mi = tmp_path / 'US-MA-MI_footprint.parquet'
+    path_su = tmp_path / 'US-MA-SU_footprint.parquet'
+    path_mi.touch()
+    path_su.touch()
+
+    def get_output_path(recipe, admin_id, partition_id=None):
+        return path_mi if str(admin_id) == 'US-MA-MI' else path_su
+
+    def read_parquet(path, **kwargs):
+        if path == path_mi:
+            return pd.DataFrame({'value': [1], 'admin3_id': ['custom']})
+        return pd.DataFrame({'value': [2], 'admin3_id': ['also-custom']})
+
+    monkeypatch.setattr(readers, 'get_output_path', get_output_path)
+    monkeypatch.setattr(readers, 'read_parquet', read_parquet)
+
+    data = readers.get_entities(recipe, admin_id=['US-MA-MI', 'US-MA-SU'])
+
+    assert data['admin3_id'].tolist() == ['custom', 'also-custom']
+
+
 def test_inspect_table_summarizes_and_returns_selected_sample(capsys):
     data = pd.DataFrame(
         {
