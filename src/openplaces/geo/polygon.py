@@ -16,7 +16,7 @@ import shapely.ops
 from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
 
-from openplaces.core.constants import AC_TO_HA, M2_TO_SQFT
+from openplaces.core.constants import AC_TO_HA, M2_PER_AREA_UNIT, M2_TO_SQFT
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
@@ -156,17 +156,80 @@ def get_areas(gdf, unit='ha', crs='epsg:6933'):
         gdf = gdf.to_crs(crs)
 
     if unit == 'm2':
-        return gdf.area.rename('m2')
+        return gdf.area.rename('area_m2')
     elif unit == 'ha':
-        return gdf.area.div(1e4).rename('ha')
+        return gdf.area.div(1e4).rename('area_ha')
     elif unit == 'ac':
-        return gdf.area.div(1e4 * AC_TO_HA).rename('ac')
+        return gdf.area.div(1e4 * AC_TO_HA).rename('area_ac')
     elif unit == 'km2':
-        return gdf.area.div(1e6).rename(unit)
+        return gdf.area.div(1e6).rename('area_km2')
     elif unit in ['ft2', 'sqft']:
-        return gdf.area.mul(M2_TO_SQFT).rename(unit)
+        return gdf.area.mul(M2_TO_SQFT).rename(f'area_{unit}')
+    elif unit == 'sqmi':
+        return gdf.area.div(1e4 * AC_TO_HA * 640).rename('area_sqmi')
     else:
         raise Exception('Unit not yet interpreted:' + str(unit))
+
+
+_AREA_UNITS = ('km2', 'ha', 'm2', 'ac', 'sqft', 'sqmi')
+
+
+def convert_area(value, from_unit: str, to_unit: str):
+    """Convert a raw area value/array (not a per-area rate) between units.
+
+    Complements `get_areas` (computes area directly from geometry in a
+    chosen unit). Distinct from `io.transform.convert_area_unit`, which
+    converts a *per-area rate* (e.g. a $/m2 price) and is the mathematically
+    inverse operation -- do not substitute one for the other.
+    """
+    for unit in (from_unit, to_unit):
+        if unit not in _AREA_UNITS:
+            raise ValueError(
+                f'Unsupported area unit {unit!r}; must be one of {_AREA_UNITS}.'
+            )
+    if from_unit == to_unit:
+        return value
+    return value * M2_PER_AREA_UNIT[from_unit] / M2_PER_AREA_UNIT[to_unit]
+
+
+def resolve_area(gdf, unit: str = 'm2', column: str | None = None):
+    """Resolve each row's area in `unit`.
+
+    Reuses an existing canonical `area_{src_unit}` column when present
+    (converted via `convert_area`); computes live from geometry via
+    `get_areas` only when none exists.
+
+    Parameters
+    ----------
+    unit : str
+        Desired output unit (default 'm2'); one of `km2`, `ha`, `m2`, `ac`,
+        `sqft`.
+    column : str, optional
+        An explicit column to read, named `area_{src_unit}` (its own unit is
+        parsed from that suffix, then converted to `unit`). When None
+        (default), auto-detects the first of `area_m2`, `area_ha`,
+        `area_km2`, `area_ac`, `area_sqft` present on `gdf`, in that order.
+    """
+
+    def _unit_of(col: str) -> str:
+        for u in _AREA_UNITS:
+            if col == f'area_{u}':
+                return u
+        raise ValueError(
+            f'Column {col!r} is not a recognized area_<unit> column; '
+            f'expected one of {[f"area_{u}" for u in _AREA_UNITS]}.'
+        )
+
+    if column is not None:
+        src_unit = _unit_of(column)
+        return convert_area(gdf[column].astype(float).to_numpy(), src_unit, unit)
+
+    for src_unit in _AREA_UNITS:
+        col = f'area_{src_unit}'
+        if col in gdf.columns:
+            return convert_area(gdf[col].astype(float).to_numpy(), src_unit, unit)
+
+    return get_areas(gdf, unit).to_numpy()
 
 
 def crs_is_mea(crs):

@@ -9,23 +9,27 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-def _footprint_areas(curated, recipe) -> pd.Series:
-    """Footprint areas (m2), left missing on synthetic reference-derived rows.
+def _polygon_areas(curated, recipe, unit: str = 'm2') -> pd.Series:
+    """Polygon areas in the specified unit, left missing on synthetic rows.
 
     A synthetic fallback geometry (geometry_source '{entity}.{source}', e.g.
     'parcel.spine', added by the harmonizer's infer_spine_additions) is the
-    reference polygon's boundary, not a building outline; its area stays
-    missing so it cannot be mistaken for a real footprint area downstream.
+    reference polygon's boundary, not a real building/parcel outline; its
+    area stays missing so it cannot be mistaken for a real area downstream.
     """
     from openplaces.core.schema import synthetic_geometry_pattern
     from openplaces.geo.polygon import get_areas
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
-        areas = get_areas(curated, unit='m2')
+        areas = get_areas(curated, unit=unit)
     if 'geometry_source' in curated.columns:
         entity = recipe.get('entity')
-        own = getattr(entity, 'entity_type', None)
+        own = (
+            entity.get('entity_type')
+            if isinstance(entity, dict)
+            else getattr(entity, 'entity_type', None)
+        )
         synthetic = (
             curated['geometry_source']
             .astype('string')
@@ -47,7 +51,7 @@ def _habitable_threshold(curated, result, mh_label, config) -> float:
     fraction = float(config.get('habitable_fraction', 0.5))
     floor = float(config.get('habitable_floor_m2', 25.0))
     areas = pd.to_numeric(
-        curated.loc[result.eq(mh_label), 'm2'], errors='coerce'
+        curated.loc[result.eq(mh_label), 'area_m2'], errors='coerce'
     ).dropna()
     avg = (
         float(areas.mean())
@@ -59,31 +63,43 @@ def _habitable_threshold(curated, result, mh_label, config) -> float:
 
 @_register('derive_metrics')
 def derive_metrics(state: CurateState) -> CurateState:
-    """Compute footprint area and per-area value ratios.
+    """Compute polygon area and per-area value ratios.
 
-    Adds ``m2`` (footprint area in square metres) and, for the canonical
-    ``value`` column plus every ``improvement_value*`` / ``structure_value*``
-    evidence column, a matching ``{column}_per_area`` ratio (value per square
-    metre).
+    Adds a canonical area column (entity-type-aware: ``area_ha`` for parcels,
+    ``area_m2`` for others) and, for the canonical ``value`` column plus
+    every ``improvement_value*`` / ``structure_value*`` evidence column, a
+    matching ``{column}_per_area`` ratio.
 
-    ``m2`` is left missing on synthetic reference-derived rows
+    Area is left missing on synthetic reference-derived rows
     (``geometry_source`` like ``'parcel.spine'``, whose geometry is the
-    reference boundary rather than a building outline); their ``_per_area``
+    reference boundary rather than a real outline); their ``_per_area``
     ratios inherit the missing denominator.
     """
+    from openplaces.io.curator.provenance import SOURCE_SUFFIX
+
     curated = state.curated
 
-    curated['m2'] = _footprint_areas(curated, state.recipe)
+    entity = state.recipe.get('entity')
+    entity_type = (
+        entity.get('entity_type')
+        if isinstance(entity, dict)
+        else getattr(entity, 'entity_type', None)
+    )
+    if entity_type and str(entity_type) == 'parcel':
+        area_col, unit = 'area_ha', 'ha'
+    else:
+        area_col, unit = 'area_m2', 'm2'
+    curated[area_col] = _polygon_areas(curated, state.recipe, unit)
 
     for col in list(curated.columns):
-        if col.endswith('_per_area'):
+        if col.endswith('_per_area') or col.endswith(SOURCE_SUFFIX):
             continue
         if (
             col == 'value'
             or col.startswith('improvement_value')
             or col.startswith('structure_value')
         ):
-            curated[f'{col}_per_area'] = curated[col] / curated['m2']
+            curated[f'{col}_per_area'] = curated[col] / curated[area_col]
 
     state.curated = curated
     return state
@@ -438,7 +454,7 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     # 2. Footprint-geometry manufactured-home signal where no evidence applied.
     geom_rule = rule_cfg.get('manufactured_home_geometry')
     null_mask = result.isna()
-    if geom_rule and null_mask.any() and 'm2' in curated.columns:
+    if geom_rule and null_mask.any() and 'area_m2' in curated.columns:
         aspect_min = float(geom_rule.get('aspect_min', 2.5))
         area_max = float(geom_rule.get('area_max_m2', 185.0))
         with warnings.catch_warnings():
@@ -447,7 +463,7 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
         length = dims.map(lambda x: x[1])
         width = dims.map(lambda x: x[2]).clip(lower=1e-6)
         aspect = length / width
-        area_m2 = curated.loc[null_mask, 'm2']
+        area_m2 = curated.loc[null_mask, 'area_m2']
         mfg = (aspect >= aspect_min) & (area_m2 <= area_max)
         mfg_idx = mfg[mfg].index
         result.loc[mfg_idx] = geom_rule['class']
@@ -501,10 +517,10 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
             else pd.Series(False, index=curated.index)
         )
         to_mh = pd.Series(False, index=curated.index)
-        if mh_label and bool(in_park.any()) and 'm2' in curated.columns:
+        if mh_label and bool(in_park.any()) and 'area_m2' in curated.columns:
             threshold = _habitable_threshold(curated, result, mh_label, config)
             habitable = (
-                pd.to_numeric(curated['m2'], errors='coerce') >= threshold
+                pd.to_numeric(curated['area_m2'], errors='coerce') >= threshold
             ).fillna(False)
             to_mh = non_primary & in_park & habitable
             if to_mh.any():
@@ -723,7 +739,7 @@ def _score_manufactured_home_candidates(
 
     # Metric geometry for every distance/shape computation.
     geom = work.geometry.to_crs(local_metric_crs(work))
-    area = pd.to_numeric(work['m2'], errors='coerce').to_numpy()
+    area = pd.to_numeric(work['area_m2'], errors='coerce').to_numpy()
     perimeter = geom.length.values
     perimeter_sq = np.clip(perimeter**2, a_min=1e-6, a_max=None)
     compactness = 4 * np.pi * area / perimeter_sq
@@ -870,7 +886,9 @@ def _score_manufactured_home_candidates(
         y_train = (assessor_labels[train_mask] == mh_label).astype(int)
 
         if model_type == 'calibrated_logistic':
-            model = LogisticRegression(max_iter=1000, random_state=42)
+            model = LogisticRegression(
+                solver='liblinear', max_iter=1000, random_state=42
+            )
         elif model_type == 'random_forest':
             model = RandomForestClassifier(n_estimators=100, random_state=42)
         elif model_type == 'gradient_boosting':
@@ -883,11 +901,19 @@ def _score_manufactured_home_candidates(
 
             model = XGBClassifier(random_state=42, eval_metric='logloss')
         else:
-            model = LogisticRegression(max_iter=1000, random_state=42)
+            model = LogisticRegression(
+                solver='liblinear', max_iter=1000, random_state=42
+            )
 
         try:
             model.fit(X_train, y_train)
-            if hasattr(model, 'predict_proba'):
+            if isinstance(model, LogisticRegression):
+                coef = model.coef_[0]
+                intercept = model.intercept_[0]
+                z = X.mul(coef, axis=1).sum(axis=1) + intercept
+                probs = 1.0 / (1.0 + np.exp(-z.to_numpy()))
+                p_mfg_morph = pd.Series(probs, index=work.index)
+            elif hasattr(model, 'predict_proba'):
                 probs = model.predict_proba(X)
                 p_mfg_morph = pd.Series(probs[:, 1], index=work.index)
             else:
@@ -1036,8 +1062,8 @@ def classify_manufactured_homes(
         coerced = coerce_to_class(curated[use_col], load_ruleset(state, ruleset))
         assessor_labels = coerced.where(coerced.isin([mh_label, sf_label]))
 
-    if 'm2' not in curated.columns:
-        curated['m2'] = _footprint_areas(curated, state.recipe)
+    if 'area_m2' not in curated.columns:
+        curated['area_m2'] = _polygon_areas(curated, state.recipe, unit='m2')
 
     # --- Candidate gate ---
     # Manufactured vs single-family discrimination only applies to small
@@ -1054,7 +1080,8 @@ def classify_manufactured_homes(
     keep_classes = residential_classes | (
         {secondary_class} if secondary_class else set()
     )
-    is_small = pd.to_numeric(curated['m2'], errors='coerce') <= plausible_area_max_m2
+    area_vals = pd.to_numeric(curated['area_m2'], errors='coerce')
+    is_small = area_vals <= plausible_area_max_m2
     if 'occupancy_type' in curated.columns and residential_classes:
         occ = curated['occupancy_type'].astype(object)
         # Unknown occupancy is kept (cannot be ruled out); only a known class
@@ -1090,7 +1117,6 @@ def classify_manufactured_homes(
     # Full-length output defaults to "not a manufactured home"; candidates are
     # scored on a reprojected metric geometry inside the helper.
     p_mfg_out = pd.Series(0.0, index=curated.index)
-
     if candidate.any():
         scored = _score_manufactured_home_candidates(
             curated.loc[candidate],

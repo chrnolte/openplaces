@@ -1111,9 +1111,10 @@ def summarize_footprint_morphology(
     representative point), and writes the per-parcel counts the parcel land-use
     classifier consumes downstream: ``n_footprints_per_parcel``,
     ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
-    ``max_footprint_area_m2``, ``n_primary_footprints_per_parcel``,
-    ``max_parcels_per_footprint``, and ``max_dwellings_per_footprint``. The
-    classification itself is parcel-curate work.
+    ``max_footprint_area_m2``, ``sum_footprint_area_m2``,
+    ``n_primary_footprints_per_parcel``, ``max_parcels_per_footprint``, and
+    ``max_dwellings_per_footprint``. The classification itself is parcel-curate
+    work.
 
     ``max_parcels_per_footprint`` and ``max_dwellings_per_footprint`` are scoped
     to *dwelling-confirmed* footprints only (*is_primary_candidate* — see below —
@@ -1140,8 +1141,11 @@ def summarize_footprint_morphology(
     regardless of overlap size when that is the parcel's only footprint — a
     fallback's geometry is the parcel boundary, so its "overlap" is trivially the
     whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``
-    and ``max_footprint_area_m2`` additionally exclude synthetic rows entirely: a
-    fallback's area/aspect ratio are not meaningful size/shape evidence.
+    ``max_footprint_area_m2``, and ``sum_footprint_area_m2`` additionally
+    exclude synthetic rows entirely: a fallback's area/aspect ratio are not
+    meaningful size/shape evidence. Like ``max_footprint_area_m2``,
+    ``sum_footprint_area_m2`` stays ``NaN`` (not ``0``) for a parcel with no
+    real, non-synthetic footprint at all.
     ``n_primary_footprints_per_parcel`` additionally excludes footprints whose
     *priority_column* value (when present) is ``'secondary'`` — a real, but
     accessory, structure (garage, shed) that clears the overlap floor but isn't a
@@ -1315,6 +1319,10 @@ def summarize_footprint_morphology(
         n_fp = key.map(grp.size())
         n_se = key.map(grp['_se'].sum())
         max_a = key.map(grp['_a'].max())
+        # min_count=1: an all-synthetic (all-NaN) or footprint-less group must
+        # stay NaN here too, matching max_a's "no real footprint" semantics,
+        # not silently become 0 (pandas' default sum-of-nothing).
+        sum_a = key.map(grp['_a'].sum(min_count=1))
 
         grp_primary = per_fp[per_fp['_primary']].groupby('_pid')
         n_primary = key.map(grp_primary.size())
@@ -1348,6 +1356,7 @@ def summarize_footprint_morphology(
         n_fp = grp.size().reindex(spine.index)
         n_se = grp['_se'].sum().reindex(spine.index)
         max_a = grp['_a'].max().reindex(spine.index)
+        sum_a = grp['_a'].sum(min_count=1).reindex(spine.index)
 
         grp_primary = joined[joined['_primary']].groupby('_spine_id')
         n_primary = grp_primary.size().reindex(spine.index)
@@ -1359,6 +1368,7 @@ def summarize_footprint_morphology(
     spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
     spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
+    spine['sum_footprint_area_m2'] = sum_a
     spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
     spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
     spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')

@@ -49,6 +49,12 @@ dependencies:
   - contextily>=1.6.2
   - altair>=5.0.0
 
+  # Optional: viz-fast (1M+ polygon rendering: Lonboard/deck.gl + Datashader)
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.viz-fast]
+  - lonboard>=0.10.0
+  - datashader>=0.16.0
+  - voila>=0.5.0
+
   # Optional: raster
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.raster]
   - rioxarray>=0.15.0

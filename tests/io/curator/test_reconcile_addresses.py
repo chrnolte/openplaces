@@ -237,6 +237,30 @@ def test_reconcile_addresses_curate_step():
     assert res.loc[[0, 1, 2], 'address_conflict'].isna().all()
 
 
+def test_reconcile_addresses_writes_street_output_col():
+    df = pd.DataFrame({'address_parcel': ['9-11 PEARSON AVE UNIT 1', '7 PEARSON AVE']})
+    state = reconcile_addresses(
+        make_state(df),
+        sources={'parcel': {'address_full': 'address_parcel'}},
+    )
+    res = state.curated
+    # Both resolve to the same parsed street, regardless of the unit suffix
+    # on the first -- the whole point of grouping by this column instead of
+    # the full formatted `address` string.
+    assert res.loc[0, 'address_street'] == 'PEARSON AVE'
+    assert res.loc[1, 'address_street'] == 'PEARSON AVE'
+
+
+def test_reconcile_addresses_street_output_col_disabled():
+    df = pd.DataFrame({'address_parcel': ['123 MAIN ST']})
+    state = reconcile_addresses(
+        make_state(df),
+        sources={'parcel': {'address_full': 'address_parcel'}},
+        street_output_col=None,
+    )
+    assert 'address_street' not in state.curated.columns
+
+
 def test_reconcile_addresses_full_string_with_city_state_zip():
     df = pd.DataFrame({'address_parcel': ['5006 BOGUE SOUND DR EMERALD ISLE NC 28594']})
     state = reconcile_addresses(
