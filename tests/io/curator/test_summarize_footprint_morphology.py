@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import geopandas as gpd
 import pandas as pd
+import pytest
 from shapely.geometry import box
 
 import openplaces.io.harmonizer.attributes as attrs
@@ -233,6 +234,53 @@ def test_missing_dwelling_and_span_columns_does_not_crash(monkeypatch):
 
     assert state.spine.loc['A', 'max_dwellings_per_footprint'] == 0
     assert state.spine.loc['A', 'max_parcels_per_footprint'] == 0
+
+
+def test_sum_footprint_area_reflects_total_not_just_the_largest(monkeypatch):
+    # Two differently-sized real footprints on one parcel: max_footprint_area_m2
+    # should be the larger one alone (100), sum_footprint_area_m2 the total of
+    # both (150) -- distinct aggregates, not aliases of each other.
+    state = _parcel_spine(['A'])
+    footprints = _footprints(
+        [
+            {'parcel_id': 'A', 'geometry': box(0, 0, 10, 10)},  # 100 m2
+            {'parcel_id': 'A', 'geometry': box(20, 0, 25, 10)},  # 50 m2
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
+
+    max_area = state.spine.loc['A', 'max_footprint_area_m2']
+    sum_area = state.spine.loc['A', 'sum_footprint_area_m2']
+    assert max_area == pytest.approx(100.0, rel=1e-2)
+    assert sum_area == pytest.approx(150.0, rel=1e-2)
+    assert sum_area > max_area
+
+
+def test_synthetic_fallback_excluded_from_sum_area(monkeypatch):
+    # A parcel whose only footprint is a synthetic parcel-shaped fallback: like
+    # max_footprint_area_m2, sum_footprint_area_m2 must stay NaN (no real
+    # footprint area evidence), not silently become 0.
+    state = _parcel_spine(['A'])
+    footprints = _footprints(
+        [
+            {
+                'parcel_id': 'A',
+                'geometry_source': 'parcel.nconemap',
+                'area_intersection_m2_parcel': 0.0,
+                'geometry': box(0, 0, 10, 10),
+            },
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(
+        state, footprint_recipe_id='fp', min_overlap_m2=10.0
+    )
+
+    assert pd.isna(state.spine.loc['A', 'max_footprint_area_m2'])
+    assert pd.isna(state.spine.loc['A', 'sum_footprint_area_m2'])
 
 
 def test_missing_overlap_and_priority_columns_does_not_crash(monkeypatch):

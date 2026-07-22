@@ -69,6 +69,14 @@ def _curated_parcels():
             'parcel_id': ['P1', 'P2', 'P3', 'P9'],
             'improvement_value': [100000.0, 400000.0, 70000.0, 999999.0],
             'land_value': [30000.0, 50000.0, 10000.0, 888888.0],
+            'land_value_imputed': [12000.0, 20000.0, 4000.0, 355555.0],
+            'improvement_value_imputed': [88000.0, 380000.0, 66000.0, 644444.0],
+            'land_use_class': [
+                'Single-Family',
+                'Commercial',
+                'Single-Family',
+                'Commercial',
+            ],
         }
     )
 
@@ -90,7 +98,9 @@ def _patch(monkeypatch, tmp_path, sidecar: pd.DataFrame, ref: pd.DataFrame):
     )
 
 
-def _apportion(df, monkeypatch, tmp_path, sidecar=None, ref=None, **kwargs):
+def _apportion(
+    df, monkeypatch, tmp_path, sidecar=None, ref=None, columns=None, **kwargs
+):
     _patch(
         monkeypatch,
         tmp_path,
@@ -100,7 +110,8 @@ def _apportion(df, monkeypatch, tmp_path, sidecar=None, ref=None, **kwargs):
     return apportion_curated_values(
         _state(df),
         recipe_id='US_parcel-openplaces-2026',
-        columns={
+        columns=columns
+        or {
             'improvement_value': 'improvement_value_parcel',
             'land_value': 'land_value_parcel',
         },
@@ -170,6 +181,126 @@ def test_unknown_column_semantics_raise():
             recipe_id='ref',
             columns={'use_group_combined': 'use_group_combined_parcel'},
         )
+
+
+def test_equal_area_non_residential_secondary_footprint_keeps_its_share(
+    monkeypatch, tmp_path
+):
+    # P2 is 'Commercial' (non-residential): F3, marked secondary, must now
+    # keep its overlap-area share of improvement_value instead of the
+    # residential-style secondary masking test_secondary_footprint_gets_
+    # missing_improvement_value exercises.
+    df = _curated_footprints()
+    df.loc['F3', 'priority_on_parcel'] = 'secondary'
+    out = _apportion(
+        df,
+        monkeypatch,
+        tmp_path,
+        land_use_column='land_use_class',
+        non_residential_classes=['Commercial'],
+    )
+    assert out.loc['F2', 'improvement_value_parcel'] == 100000.0  # 100/400
+    assert out.loc['F3', 'improvement_value_parcel'] == 300000.0  # 300/400
+    # land_value is unaffected by the non-residential equal-area rule.
+    assert pd.isna(out.loc['F3', 'land_value_parcel'])
+
+
+def test_equal_area_config_does_not_affect_residential_parcels(monkeypatch, tmp_path):
+    # P1 ('Single-Family') is not in non_residential_classes, so its lone
+    # footprint's behavior is unchanged.
+    out = _apportion(
+        _curated_footprints(),
+        monkeypatch,
+        tmp_path,
+        land_use_column='land_use_class',
+        non_residential_classes=['Commercial'],
+    )
+    assert out.loc['F1', 'improvement_value_parcel'] == 100000.0
+
+
+def test_missing_land_use_column_skips_equal_area_rule_without_raising(
+    monkeypatch, tmp_path
+):
+    df = _curated_footprints()
+    df.loc['F3', 'priority_on_parcel'] = 'secondary'
+    out = _apportion(
+        df,
+        monkeypatch,
+        tmp_path,
+        land_use_column='not_a_real_column',
+        non_residential_classes=['Commercial'],
+    )
+    # Falls back to ordinary (non-equal-area) secondary masking.
+    assert pd.isna(out.loc['F3', 'improvement_value_parcel'])
+
+
+_IMPUTED_COLUMNS = {
+    'land_value_imputed': 'land_value_imputed_parcel',
+    'improvement_value_imputed': 'improvement_value_imputed_parcel',
+}
+
+
+def test_improvement_value_imputed_splits_like_improvement_value(monkeypatch, tmp_path):
+    # improvement_value_imputed keeps improvement_value's own area-proportional
+    # split treatment (PROPORTIONAL_SPLIT_COLUMNS).
+    out = _apportion(
+        _curated_footprints(), monkeypatch, tmp_path, columns=_IMPUTED_COLUMNS
+    )
+    assert out.loc['F1', 'improvement_value_imputed_parcel'] == 88000.0
+    assert out.loc['F2', 'improvement_value_imputed_parcel'] == 95000.0
+    assert out.loc['F3', 'improvement_value_imputed_parcel'] == 285000.0
+
+
+def test_land_value_imputed_whole_on_principal_footprint(monkeypatch, tmp_path):
+    # land_value_imputed is conceptually "land_value, gap-filled" -- it gets
+    # land_value's own whole-on-principal-footprint-only treatment
+    # (WHOLE_VALUE_COLUMNS), not improvement_value's proportional split.
+    df = _curated_footprints()
+    df.loc['F3', 'priority_on_parcel'] = 'secondary'
+    out = _apportion(df, monkeypatch, tmp_path, columns=_IMPUTED_COLUMNS)
+    assert out.loc['F1', 'land_value_imputed_parcel'] == 12000.0  # sole on P1
+    assert out.loc['F2', 'land_value_imputed_parcel'] == 20000.0  # whole value
+    assert pd.isna(out.loc['F3', 'land_value_imputed_parcel'])  # secondary
+
+
+def test_imputed_value_columns_respect_secondary_masking_by_default(
+    monkeypatch, tmp_path
+):
+    df = _curated_footprints()
+    df.loc['F3', 'priority_on_parcel'] = 'secondary'
+    out = _apportion(df, monkeypatch, tmp_path, columns=_IMPUTED_COLUMNS)
+    assert pd.isna(out.loc['F3', 'land_value_imputed_parcel'])
+    assert pd.isna(out.loc['F3', 'improvement_value_imputed_parcel'])
+
+
+def test_imputed_value_columns_map_directly_to_bare_footprint_columns(
+    monkeypatch, tmp_path
+):
+    # Mirrors the actual recipe: land_value_imputed/improvement_value_imputed
+    # apportion straight into the footprint's own bare land_value/
+    # improvement_value -- these become the canonical, final columns, with no
+    # further reconciliation step needed.
+    out = _apportion(
+        _curated_footprints(),
+        monkeypatch,
+        tmp_path,
+        columns={
+            'land_value_imputed': 'land_value',
+            'improvement_value_imputed': 'improvement_value',
+        },
+    )
+    assert out.loc['F1', 'land_value'] == 12000.0
+    assert out.loc['F1', 'improvement_value'] == 88000.0
+
+
+def test_default_params_leave_existing_improvement_value_land_value_behavior_unchanged(
+    monkeypatch, tmp_path
+):
+    # No land_use_column/non_residential_classes passed: identical to the
+    # pre-existing behavior exercised by the tests above this section.
+    out = _apportion(_curated_footprints(), monkeypatch, tmp_path)
+    assert out.loc['F1', 'improvement_value_parcel'] == 100000.0
+    assert out.loc['F1', 'land_value_parcel'] == 30000.0
 
 
 def test_missing_sidecar_raises(monkeypatch, tmp_path):

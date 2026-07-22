@@ -74,7 +74,7 @@ def test_order_bands_with_grouped_sidecars():
             'occupancy_type_conflict': [pd.NA],
             'occupancy_type_review': [False],
             'improvement_value_parcel_per_area': [0.1],
-            'm2': [10.0],
+            'area_m2': [10.0],
             'priority_on_parcel': ['primary'],
             'geometry_source': ['obm'],
             'geometry': [None],
@@ -87,7 +87,7 @@ def test_order_bands_with_grouped_sidecars():
 
     # canonical block: values only, no sidecars interspersed
     assert before('occupancy_type', 'value')
-    assert before('value', 'm2') and before('m2', 'priority_on_parcel')
+    assert before('value', 'area_m2') and before('area_m2', 'priority_on_parcel')
     # priority_on_parcel ends the canonical block, before the grouped source band
     assert before('priority_on_parcel', 'occupancy_type_source')
     # all {col}_source sidecars are grouped and contiguous, ordered by base rank

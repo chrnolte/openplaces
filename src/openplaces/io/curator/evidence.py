@@ -106,6 +106,8 @@ def apportion_curated_values(
     entity_key: str = 'parcel_id',
     priority_column: str = 'priority_on_parcel',
     dwelling_column: str = 'n_dwellings_overture',
+    land_use_column: str | None = None,
+    non_residential_classes: list[str] | None = None,
 ) -> CurateState:
     """Apportion a curated reference entity's values over the n:m link sidecar.
 
@@ -152,6 +154,29 @@ def apportion_curated_values(
     dwelling_column : str, optional
         Column whose positive value marks an entity as dwelling-linked
         (default ``n_dwellings_overture``); drives the suppression rule.
+    land_use_column : str, optional
+        Classifier column on the curated reference (e.g. ``land_use_class``)
+        used to widen the split for non-residential references -- see
+        *non_residential_classes*. Read separately from *columns*: it is a
+        classifier input, not one of ``APPORTIONED_VALUE_COLUMNS``, and is
+        never itself apportioned. Ignored unless *non_residential_classes* is
+        also given; when given but absent from the reference, skipped with a
+        verbose message rather than raising (an entity recipe with no
+        land-use classification just gets the existing residential-style
+        behavior).
+    non_residential_classes : list of str, optional
+        *land_use_column* values identifying non-residential references,
+        passed as ``equal_area_ref_ids`` to
+        :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`
+        -- every entity linked to one of these references keeps its full
+        overlap-area share of
+        :data:`~openplaces.io.harmonizer.apportion.PROPORTIONAL_SPLIT_COLUMNS`
+        (``improvement_value``, ``land_value_imputed``,
+        ``improvement_value_imputed``), instead of the residential
+        dwelling-linked/secondary-structure exclusions: a warehouse plus its
+        loading dock, or a retail strip's several units, are all real
+        value-bearing structures with no single dwelling to anchor a
+        residential-style split to.
 
     Raises
     ------
@@ -195,6 +220,23 @@ def apportion_curated_values(
         .drop_duplicates(ref_key)
         .set_index(ref_key)[present]
     )
+
+    equal_area_ref_ids: set | None = None
+    if land_use_column and non_residential_classes:
+        if land_use_column in ref.columns:
+            land_use_lookup = (
+                ref.dropna(subset=[ref_key])
+                .drop_duplicates(ref_key)
+                .set_index(ref_key)[land_use_column]
+            )
+            equal_area_ref_ids = set(
+                land_use_lookup.index[land_use_lookup.isin(non_residential_classes)]
+            )
+        elif state.verbose:
+            print(
+                f'  apportion_curated_values: {land_use_column!r} missing from '
+                f"curated reference '{recipe_id}'; skipping equal-area rule."
+            )
 
     resolved_id, _ = _resolve_reference_recipe(
         link_recipe_id, entity_type, state.admin_id
@@ -269,6 +311,7 @@ def apportion_curated_values(
             if dwelling_column in curated.columns
             else None
         ),
+        equal_area_ref_ids=equal_area_ref_ids,
     )
 
     for ref_col, entity_col in columns.items():
