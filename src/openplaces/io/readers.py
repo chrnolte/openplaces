@@ -110,10 +110,29 @@ def get_admin(
                     f'AdminID not recognized: {type(_admin_id)} {_admin_id}.'
                 )
 
-        # Get lowest level of requested Admin IDs
+    # Cast recipe to a dict if a str (id) is provided
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    if isinstance(recipe, dict) and admin_id is None:
+        admin_id = recipe['admin_id']
+        admin_ids = [admin_id]
+
+    # Try to infer level from recipe if not explicitly specified
+    if not isinstance(level, int) and isinstance(recipe, dict):
+        filename = recipe.get('save_to', {}).get('filename', '')
+        if filename.startswith('admin') and filename[5:].isdigit():
+            level = int(filename[5:])
+        elif 'recipe_id' in recipe:
+            parts = recipe['recipe_id'].split('_')
+            for part in parts:
+                if part.startswith('admin') and part[5:].isdigit():
+                    level = int(part[5:])
+                    break
+
+    # If level is still not specified, use deep level from admin_ids
+    if not isinstance(level, int) and admin_id is not None:
         admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
-        if not isinstance(level, int):
-            level = admin_id_level
+        level = admin_id_level
 
     # Pick default recipe for geometry attributes if None is provided
     if geom and recipe is None:
@@ -132,20 +151,15 @@ def get_admin(
                     country_ids[0], level, silent=True
                 )
         recipe = in_country_recipe_id or f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
-
-    # Cast recipe to a dict if a str (id) is provided
-    if isinstance(recipe, str):
-        recipe = get_recipe_by_id(recipe)
-    if isinstance(recipe, dict) and admin_id is None:
-        admin_id = recipe['admin_id']
-        admin_ids = [admin_id]
+        if isinstance(recipe, str):
+            recipe = get_recipe_by_id(recipe)
 
     if admin_id is None and level is None:
         # Default to countries
         level = 1
 
     if admin_id is not None:
-        # Recompute level (as it could have been set by recipe admin ID
+        # Recompute level (as it could have been set by recipe admin ID)
         admin_id_level = max(_admin_id.get_level() for _admin_id in admin_ids)
 
         if level < admin_id_level:
@@ -294,10 +308,17 @@ def _as_admin_id(value):
 
 
 def _get_output_admin_ids(recipe, admin_id):
-    """Resolve requested admin IDs to the recipe's output granularity."""
+    """Resolve requested admin IDs to the recipe's output granularity.
+
+    Returns ``(output_admin_ids, finer_requested_ids)``: the deduped save-level
+    AdminIds whose files must be read, and the subset of originally requested
+    AdminIds strictly finer than the recipe's save level -- each such saved
+    file may cover admin units the caller didn't ask for (see get_entities'
+    post-read filtering).
+    """
     save_level = get_save_admin_level(recipe)
     if save_level == 0:
-        return [None]
+        return [None], []
 
     recipe_admin_id = _as_admin_id(recipe['admin_id'])
     requested = recipe_admin_id if admin_id is None else admin_id
@@ -305,6 +326,7 @@ def _get_output_admin_ids(recipe, admin_id):
         requested = [requested]
 
     output_admin_ids = []
+    finer_requested_ids = []
     for value in requested:
         requested_admin_id = _as_admin_id(value)
         if requested_admin_id.is_parent_or_equal_of(recipe_admin_id):
@@ -316,6 +338,8 @@ def _get_output_admin_ids(recipe, admin_id):
 
         if requested_admin_id.get_level() >= save_level:
             output_admin_ids.append(AdminId(*requested_admin_id.levels[:save_level]))
+            if requested_admin_id.get_level() > save_level:
+                finer_requested_ids.append(requested_admin_id)
             continue
 
         child_admin_ids = get_admin(
@@ -329,7 +353,7 @@ def _get_output_admin_ids(recipe, admin_id):
             if recipe_admin_id.is_parent_or_equal_of(_as_admin_id(child_admin_id))
         )
 
-    return list(dict.fromkeys(output_admin_ids))
+    return list(dict.fromkeys(output_admin_ids)), finer_requested_ids
 
 
 def get_entities(
@@ -340,6 +364,7 @@ def get_entities(
     partition_id=None,
     columns: Sequence[str] | None = None,
     missing='raise',
+    bbox: tuple[float, float, float, float] | None = None,
 ):
     """Load and combine processed Parquet tables for entities.
 
@@ -353,8 +378,11 @@ def get_entities(
         Recipe that defines the entity.
     admin_id : str, AdminId, or sequence
         Administrative unit(s) to load. Defaults to the recipe admin ID.
-    geom : bool
-        If True, include geometries and return a GeoDataFrame.
+    geom : bool or 'simplified'
+        If True, include geometries and return a GeoDataFrame. If
+        ``'simplified'``, join simplified geometries from the
+        ``_geo_simplified`` sidecar where one exists (see
+        :func:`openplaces.io.read_parquet`).
     layer : str, optional
         Secondary layer defined in ``additional_layers``.
     partition_id : str, optional
@@ -363,6 +391,13 @@ def get_entities(
         Columns to read.
     missing : {'raise', 'warn', 'ignore'}
         How to handle missing output files.
+    bbox : tuple of (minx, miny, maxx, maxy), optional
+        Spatial bounding box filter in EPSG:4326, forwarded to
+        :func:`openplaces.io.read_parquet` for each resolved output file.
+        Exploits per-file covering-bbox predicate pushdown, so files whose
+        extent doesn't overlap contribute no rows to the combined result —
+        this bounds memory use when loading a recipe across many
+        administrative units without loading every file in full.
     """
     if missing not in {'raise', 'warn', 'ignore'}:
         raise ValueError("missing must be 'raise', 'warn', or 'ignore'")
@@ -375,11 +410,28 @@ def get_entities(
     if partition_id is None and (recipe.get('aggregate_by') or {}).get('single_file'):
         partition_id = 'all'
 
+    save_level = get_save_admin_level(recipe)
+    admin_col = f'admin{save_level}_id' if save_level > 0 else None
+    read_columns = columns
+    if admin_col is not None and columns is not None:
+        if isinstance(columns, str):
+            columns = [columns]
+        if admin_col in columns:
+            read_columns = [col for col in columns if col != admin_col]
+        else:
+            admin_col = None
+
+    output_admin_ids, finer_requested_ids = _get_output_admin_ids(recipe, admin_id)
+    finer_by_level: dict[int, set[str]] = {}
+    for finer_admin_id in finer_requested_ids:
+        finer_by_level.setdefault(finer_admin_id.get_level(), set()).add(
+            str(finer_admin_id)
+        )
+
     frames = []
-    frame_admin_ids = []
     output_paths = []
     missing_paths = []
-    for output_admin_id in _get_output_admin_ids(recipe, admin_id):
+    for output_admin_id in output_admin_ids:
         path = get_output_path(
             recipe,
             output_admin_id,
@@ -388,8 +440,11 @@ def get_entities(
         if not path.exists():
             missing_paths.append(path)
             continue
-        frames.append(read_parquet(path, geom=geom, columns=columns))
-        frame_admin_ids.append(output_admin_id)
+        df = read_parquet(path, geom=geom, columns=read_columns, bbox=bbox)
+        if admin_col is not None and output_admin_id is not None:
+            if admin_col not in df.columns:
+                df[admin_col] = str(output_admin_id)
+        frames.append(df)
         output_paths.append(path)
 
     if missing_paths:
@@ -407,17 +462,41 @@ def get_entities(
     elif len(frames) == 1:
         data = frames[0]
     else:
-        # Combining multiple admin units' outputs loses the per-row admin_id
-        # that used to be implicit in "which file did this row come from" —
-        # stamp it explicitly so rows stay attributable after concatenation.
-        admin_col = f'admin{get_save_admin_level(recipe)}_id'
-        for frame, frame_admin_id in zip(frames, frame_admin_ids):
-            if admin_col not in frame.columns:
-                frame[admin_col] = str(frame_admin_id)
         ignore_index = all(isinstance(frame.index, pd.RangeIndex) for frame in frames)
         data = pd.concat(frames, ignore_index=ignore_index)
         if geom:
             data = gpd.GeoDataFrame(data, crs=frames[0].crs)
+
+    if admin_col is not None and admin_col in data.columns:
+        data[admin_col] = data[admin_col].astype('category')
+
+    # A requested admin_id finer than the recipe's save level (e.g. a town
+    # when the recipe saves one file per county) gets truncated to its
+    # save-level ancestor above, so a single read file can cover admin units
+    # the caller didn't ask for. Narrow back down to exactly what was
+    # requested, using a stored per-row id column when the recipe happens to
+    # carry one, or a spatial fallback (join to just the requested units'
+    # boundary polygons) otherwise.
+    for level, ids in finer_by_level.items():
+        if data.empty:
+            break
+        col = f'admin{level}_id'
+        if col in data.columns:
+            data = data[data[col].astype(str).isin(ids)]
+        elif geom:
+            from openplaces.geo.overlay import overlay_admin_ids
+
+            boundaries = get_admin(sorted(ids), level, geom=True)['geometry']
+            data = overlay_admin_ids(data, admin_geometries=boundaries)
+            data = data[data[col].astype(str).isin(ids)]
+        else:
+            warnings.warn(
+                f'Cannot restrict output to the requested admin{level} IDs: '
+                f"this recipe's saved data has no {col!r} column and "
+                'geom=False rules out a spatial fallback; returning '
+                f'unfiltered admin{save_level}-level data instead.',
+                stacklevel=2,
+            )
 
     partition_ids = set()
     if partition_id == 'all':

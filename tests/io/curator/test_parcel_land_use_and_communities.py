@@ -181,7 +181,7 @@ def test_habitable_threshold_floor_and_average():
     config = {'habitable_fraction': 0.5, 'habitable_floor_m2': 25.0}
     # Three MH-classed footprints averaging 100 m2 -> threshold 50 m2.
     curated = pd.DataFrame(
-        {'occupancy_type': ['Manufactured Home'] * 3, 'm2': [80.0, 100.0, 120.0]}
+        {'occupancy_type': ['Manufactured Home'] * 3, 'area_m2': [80.0, 100.0, 120.0]}
     )
     result = curated['occupancy_type'].astype(object)
     assert _habitable_threshold(curated, result, 'Manufactured Home', config) == 50.0
@@ -189,6 +189,6 @@ def test_habitable_threshold_floor_and_average():
     # Too few samples -> falls back to manufactured_home_avg_m2 (90) * 0.5 = 45,
     # but the floor (25) does not bind here.
     cfg2 = {**config, 'manufactured_home_avg_m2': 90.0}
-    small = pd.DataFrame({'occupancy_type': ['Manufactured Home'], 'm2': [100.0]})
+    small = pd.DataFrame({'occupancy_type': ['Manufactured Home'], 'area_m2': [100.0]})
     res2 = small['occupancy_type'].astype(object)
     assert _habitable_threshold(small, res2, 'Manufactured Home', cfg2) == 45.0
