@@ -8,8 +8,10 @@ purpose_group_combined,Combined purpose group and subgroup label,,categorical,jo
 occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
 group,OpenPlaces top-level group,,categorical,first,14,,
 land_value,Assessed land value,USD,float,sum,20,,
+land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, falling back to the county-scoped use_group_combined average) times the parcel's total footprint area",USD,float,sum,20.5,parcel,curate
 improvement_value,Assessed improvement value,USD,float,sum,21,,
-structure_value,NSI structure replacement value,USD,float,sum,22,building,
+improvement_value_imputed,"Improvement value re-derived as improvement_value minus land_value_imputed (clipped at 0), on the parcels land_value_imputed applies to",USD,float,sum,21.5,parcel,curate
+structure_value,"Building's own assessed/replacement value, net of land (real apportioned improvement value where available, else the NSI-modeled replacement value); structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
 year_built,Year building was built,,float,mean,30,,
 address,Street address,,string,join_nonnull,40,,
 address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
@@ -25,12 +27,13 @@ occupancy_type_review,Flag where improvement value is a small nonzero share of t
 p_manufactured_home,Probability of manufactured home classification,,float,mean,73,footprint,curate
 manufactured_home_community,Flag where the footprint sits on a parcel with more than the threshold count of manufactured-home footprints (a manufactured-home community),,bool,first,82,footprint,curate
 n_manufactured_homes_per_parcel,Number of manufactured-home footprints on the footprint's parcel,,float,first,,footprint,curate
-land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
+land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
 manufactured_home_park,Flag where the parcel is classified as a manufactured-home community/park,,bool,first,83,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
+sum_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel,m2,float,sum,,parcel,harmonize
 max_parcels_per_footprint,"Maximum number of parcels linked to any dwelling-confirmed primary footprint on the parcel (from the real, non-FEMA footprint spine)",,float,max,,parcel,harmonize
 max_dwellings_per_footprint,"Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel",,float,max,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
@@ -102,4 +105,8 @@ has_structure,Whether the parcel has a structure,,bool,first,,parcel,
 geometry_source,Dataset the footprint geometry came from,,categorical,first,,footprint,
 source_date,Source last-update date,,datetime,first,,,
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
-m2,Footprint area,m2,float,sum,,,curate
+area_m2,Footprint area,m2,float,sum,,,curate
+area_ha,Parcel lot area,ha,float,sum,,,curate
+area_ac,Parcel lot area,ac,float,sum,,,curate
+area_km2,Admin area,km2,float,sum,,,curate
+area_sqmi,Admin area,sqmi,float,sum,,,curate
