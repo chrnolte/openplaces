@@ -780,13 +780,26 @@ def show_building_imagery(
 
 
 def _has_geometry_output(recipe, admin_id, partition_id) -> bool:
-    """True if the recipe's output for this admin/partition has a `_geo` sidecar.
+    """True if the recipe's output for this admin/partition carries geometry.
 
-    Attribute-only recipes (e.g. tax rolls with no geometry) write no sidecar,
+    Checks both output layouts: a `_geo` sidecar (the standard split layout)
+    or, for a combined file (``save_parquet(..., combined=True)``), a
+    `geometry` column embedded directly in the main attribute parquet — same
+    schema-only peek `read_parquet` uses to detect combined files.
+    Attribute-only recipes (e.g. tax rolls with no geometry) write neither,
     so geometry-based inspection helpers should skip them rather than fail.
     """
     geo_path = get_output_path(recipe, admin_id, partition_id=partition_id, geo=True)
-    return geo_path.exists()
+    if geo_path.exists():
+        return True
+
+    main_path = get_output_path(recipe, admin_id, partition_id=partition_id)
+    if not main_path.exists():
+        return False
+
+    import pyarrow.parquet as pq
+
+    return 'geometry' in pq.ParquetFile(main_path).schema_arrow.names
 
 
 def show_ingested_geometries(

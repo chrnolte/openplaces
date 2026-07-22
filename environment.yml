@@ -122,6 +122,9 @@ dependencies:
   - pip:
     - python-polylabel>=0.6
     - openlocationcode>=1.0.1
+    # Optional: postal (not on conda-forge)
+    # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.postal]
+    - zipcodes>=1.2.0
     - -e .
 
 variables:

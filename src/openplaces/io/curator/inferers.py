@@ -126,6 +126,67 @@ def derive_stories_from_height(
     return state
 
 
+@_register('infer_postal_city')
+def infer_postal_city(state: CurateState, column: str = 'postal_code') -> CurateState:
+    """Derive the USPS-preferred city name for a reconciled ZIP code.
+
+    Extracts the 5-digit ZIP (``postal_zip5``) from *column* and looks each
+    unique value up via
+    :func:`openplaces.geo.address.lookup_postal_city`, writing the
+    USPS-preferred city (``postal_city``), its acceptable and unacceptable
+    alternate spellings (``postal_city_acceptable``,
+    ``postal_city_unacceptable``, joined with '; '), and a
+    ``postal_city_source`` provenance sidecar (via
+    :func:`~openplaces.io.curator.provenance.record_source`). The backing
+    lookup is US-only (see ``POSTAL_CITY_BACKENDS`` in ``geo/address.py``);
+    rows outside the run's admin1 country resolve to missing values rather
+    than raising.
+
+    Parameters
+    ----------
+    column : str, optional
+        Reconciled ZIP-code column to read (default ``postal_code``,
+        typically produced upstream by ``reconcile_values``). No-op if
+        absent, the same defensive convention ``reconcile_values`` uses for
+        columns the recipe never populated.
+    """
+    from openplaces.core.schema import AdminId
+    from openplaces.geo.address import lookup_postal_city
+    from openplaces.io.curator.provenance import record_source
+
+    curated = state.curated
+    if column not in curated.columns:
+        return state
+
+    # Same admin1-derivation reconcile_addresses uses for complete_from_admin
+    admin_str = str(state.admin_id) if state.admin_id else ''
+    admin_levels = AdminId(admin_str).levels if admin_str else ()
+    admin1_id = admin_levels[0] if admin_levels else None
+
+    zip5 = curated[column].astype('string').str.extract(r'(\d{5})', expand=False)
+    curated['postal_zip5'] = zip5
+
+    lookups = {z: lookup_postal_city(z, admin1_id) for z in zip5.dropna().unique()}
+    curated['postal_city'] = zip5.map(
+        lambda z: lookups[z].city if lookups.get(z) else pd.NA
+    )
+    curated['postal_city_acceptable'] = zip5.map(
+        lambda z: '; '.join(lookups[z].acceptable_cities) if lookups.get(z) else pd.NA
+    )
+    curated['postal_city_unacceptable'] = zip5.map(
+        lambda z: '; '.join(lookups[z].unacceptable_cities) if lookups.get(z) else pd.NA
+    )
+    resolved = curated['postal_city'].notna()
+    if resolved.any():
+        record_source(curated, 'postal_city', resolved, 'zipcodes')
+    state.curated = curated
+
+    if state.verbose:
+        n = int(curated['postal_city'].notna().sum())
+        print(f'  infer_postal_city: resolved {n:,} of {len(curated):,} rows.')
+    return state
+
+
 @_register('score_relative_to_group')
 def score_relative_to_group(
     state: CurateState,

@@ -13,6 +13,10 @@ structure_value,NSI structure replacement value,USD,float,sum,22,building,
 year_built,Year building was built,,float,mean,30,,
 address,Street address,,string,join_nonnull,40,,
 address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
+postal_zip5,Normalized 5-digit ZIP code used for postal_city lookups,,string,first,,,curate
+postal_city,USPS-preferred city name for postal_zip5,,string,first,,,curate
+postal_city_acceptable,USPS-acceptable alternate city names for postal_zip5 (joined with '; '),,string,first,,,curate
+postal_city_unacceptable,USPS-unacceptable city names for postal_zip5 (joined with '; '),,string,first,,,curate
 lot_size,Parcel lot size,sqft,float,mean,,,
 area_sqft,Floor area,sqft,float,mean,50,,
 n_stories,Number of stories,,float,mean,51,,

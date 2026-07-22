@@ -596,6 +596,7 @@ def reconcile_addresses(
     similarity_threshold: float = 80,
     conflict_column: str = 'address_conflict',
     complete_from_admin: dict[str, int] | None = None,
+    complete_city_from_postal: bool = False,
 ) -> CurateState:
     """Reconcile street addresses from any number of source inputs.
 
@@ -646,6 +647,12 @@ def reconcile_addresses(
         level-2 code (validated against ISO 3166-2 for the unit's country).
         Only rows that already carry another non-street component are
         completed, so street-only addresses stay untouched.
+    complete_city_from_postal : bool, optional
+        Fill a still-missing city from the row's resolved postal_code via
+        openplaces.geo.address.lookup_postal_city (USPS-preferred city
+        name; US only, degrades to no-op elsewhere). Applied after
+        complete_from_admin, to rows that have a postal_code but no city
+        from any source. Default False.
     """
     from openplaces.core.schema import AdminId
     from openplaces.geo.address import (
@@ -653,6 +660,7 @@ def reconcile_addresses(
         MATCH_COMPONENTS,
         get_admin2_codes,
         harmonize_address_case,
+        lookup_postal_city,
         match_streets,
         normalize_address_components,
         parse_address,
@@ -794,6 +802,21 @@ def reconcile_addresses(
         others = [c for c in fillable if c != comp]
         fill = merged[comp].eq('') & merged[others].ne('').any(axis=1)
         merged.loc[fill, comp] = code
+
+    # USPS-preferred city name for a still-missing city, from the row's own
+    # resolved postal_code (e.g. Overture address points often carry a ZIP
+    # but no city in this region). lookup_postal_city is US-only and cached.
+    if complete_city_from_postal:
+        missing_city = merged['city'].eq('') & merged['postal_code'].ne('')
+        if missing_city.any():
+            zip5 = merged.loc[missing_city, 'postal_code'].str.extract(
+                r'(\d{5})', expand=False
+            )
+            lookups = {
+                z: lookup_postal_city(z, admin1_id) for z in zip5.dropna().unique()
+            }
+            city_fill = zip5.map(lambda z: lookups[z].city if lookups.get(z) else None)
+            merged.loc[missing_city, 'city'] = city_fill.fillna('').to_numpy()
 
     # Summarize the disagreeing evidence per row (exact-equal values are
     # never summarized, and rows the fuzzy check accepted are masked out)
