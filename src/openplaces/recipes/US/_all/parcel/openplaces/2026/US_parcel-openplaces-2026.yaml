@@ -1,15 +1,9 @@
 # Recipe: canonical openplaces parcel dataset.
 #
-# Curates the harmonized parcel spine into canonical parcel attributes. Its main
-# job for the footprint lane is land-use classification: deriving the parcel's
-# occupancy group from linked NSI (the modal-NSI inference moved here from the
-# footprint recipe) and classifying land use — including manufactured-home park
-# vs RV park vs standalone manufactured home, multiple-single-family vs townhome,
-# commercial subtypes, and vacant — from the same evidence mix (assessor codes,
-# linked-NSI group, footprint morphology, improvement value). Parcels no rule
-# claims get a default class voted from group_parcel / group_building_nsi /
-# group_footprint_fema (reconcile_land_use below). The footprint curation
-# (US_footprint-cheer-2026) consumes this output, so parcels are curated first.
+# Curates the harmonized parcel spine into canonical attributes. Main tasks:
+# 1. Derive parcel occupancy from linked NSI.
+# 2. Classify land-use sub-types (e.g. parks, townhomes, vacant) using assessor,
+#    NSI, and footprint shape data. Default classes are voted if no rule fires.
 
 description: >-
   Canonical openplaces parcels: land-use classification (residential subtypes,
@@ -34,25 +28,15 @@ save_to:
   data_dir: core
 
 pipeline:
-  # Impute the parcel occupancy group from the most common NSI building group per
-  # assessor use code (the linked-data imputation moved here from the footprint
-  # recipe; it is parcel-level work).
+  # Impute parcel occupancy group from the modal NSI building group per assessor use code.
   - step: impute_from_group_statistic
     group_column: use_group_combined
     value_column: group_building_nsi
     statistic: mode
     output: group_parcel
 
-  # How anomalously small (or absent) is this parcel's largest real footprint,
-  # relative to other parcels sharing its assessor use code? Log-space z-score:
-  # footprint area is heavy-tailed, and comparing within the assessor-use cohort
-  # avoids judging a house's footprint against a big-box store's. Feeds the
-  # Vacant rule below. A parcel with no real footprint at all
-  # (max_footprint_area_m2 missing — see summarize_footprint_morphology, which
-  # excludes synthetic parcel-shaped fallback geometries from this column)
-  # scores missing here, not an extreme value; n_footprints_per_parcel below
-  # (which does count a value-inferred synthetic fallback) is the indicator
-  # that catches the "no real footprint" case directly.
+  # Compute log-space z-score of max footprint area relative to its assessor use cohort.
+  # Used to identify vacant parcels.
   - step: score_relative_to_group
     group_column: use_group_combined
     value_column: max_footprint_area_m2
@@ -60,19 +44,9 @@ pipeline:
     transform: log1p
     statistic: zscore
 
-  # Classify parcel land use by weighted indicator voting: multiple independent
-  # signals (assessor use keywords, linked-NSI group, footprint counts/shape,
-  # improvement value share) each cast a weighted vote, and no single source
-  # decides alone for the classes with real competing evidence (min_score 2).
-  # The commercial subtypes (Retail/Office/Industrial/Institutional) are the
-  # exception at min_score 1: assessor vocabulary is currently the only source
-  # granular enough to tell them apart (NSI's own group vocabulary only
-  # distinguishes them at the coarse Commercial/Industrial level), so requiring
-  # a second corroborating source isn't achievable with today's evidence.
-  # Vocabulary-neutral like resolve_by_vote — all class names, keywords, NSI
-  # groups, and thresholds live in `rules`, so this step holds no land-use
-  # terminology of its own. Rules are ordered most-specific-first so ties are
-  # broken toward the more specific class.
+  # Classify land use by voting across assessor keywords, NSI groups, and footprint shapes.
+  # - Most rules require min_score 2.
+  # - Coarse commercial subtypes require min_score 1 (relying on assessor codes).
   - step: classify_parcel_land_use
     output: land_use_class
     flag_column: manufactured_home_park
@@ -88,9 +62,7 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED|MH PARK'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           - {type: count_at_least, column: n_small_elongated_footprints_per_parcel, min: 4}
-          # FEMA's dominant-by-area building group on the parcel, an
-          # independent 4th vote: catches a park whose assessor use code is
-          # too local/generic for the keyword list and whose NSI link missed.
+          # Dominant FEMA building group on the parcel.
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
       - class: RV Park
@@ -100,55 +72,55 @@ pipeline:
           - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
           - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
 
-      # Standalone manufactured home: same keyword/NSI-group evidence as the
-      # park rule, minus the >=4-small-elongated-footprints indicator, so a
-      # single-unit case naturally scores below the park rule's threshold
-      # without needing a separate "at most" count indicator.
+      # Standalone Manufactured Home (excludes multi-unit parks).
       - class: Manufactured Home
         min_score: 2
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
-          # Same independent FEMA vote as Manufactured Home Park above.
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
-      # Several detached, non-manufactured-home-shaped structures on one
-      # parcel. "multiple houses on one parcel" is literal assessor vocabulary
-      # in at least one observed source (MassGIS use-subgroup 109).
-      # min_score is 3, not 2: the last two indicators (no small-elongated
-      # footprints, group_parcel is Single Family) are true for almost any
-      # ordinary single-family parcel regardless of whether it actually has
-      # multiple houses, so min_score:2 let this rule fire on those two alone,
-      # with neither of the two indicators that actually signal "multiple"
-      # (the keyword or the footprint count) required at all. Verified
-      # empirically: with min_score:2, 91% of one county's parcels were
-      # labeled Multiple Single-Family, including 78% of parcels with a
-      # confirmed, unambiguous single footprint. min_score:3 forces at least
-      # one genuine multiplicity signal to also be true.
+      # Multiple Single-Family homes on a single parcel.
+      # Requires min_score 4 to ensure genuine multiplicity evidence is present.
       - class: Multiple Single-Family
-        min_score: 3
+        min_score: 4
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'MULTIPLE HOUSES'}
           - {type: count_at_least, column: n_primary_footprints_per_parcel, min: 2}
           - {type: numeric_at_most, column: n_small_elongated_footprints_per_parcel, max: 0}
-          # any_of, not a 4th independent indicator: FEMA backs up group_parcel
-          # rather than adding its own vote, so the min_score:3 tuning above
-          # (guarding against the two generic indicators over-firing alone)
-          # isn't weakened by a source that agrees with group_parcel almost
-          # everywhere it's present.
+          # Backing occupancy classification.
           - type: any_of
             indicators:
               - {type: in_set, column: group_parcel, values: [Single Family]}
               - {type: in_set, column: group_footprint_fema, values: [Single Family]}
+          # Minimum land value share to filter out condominiums.
+          - type: value_share_at_least
+            value: land_value
+            total: [land_value, improvement_value]
+            min_ratio: 0.01
 
-      # Explicit townhome/row-house assessor vocabulary, or a single real
-      # (non-FEMA) footprint confirmed (by Overture dwelling-point evidence)
-      # to either span multiple parcels or itself hold multiple dwellings.
-      # min_score is 3 (all 3 indicators), not 2: a single footprint on a
-      # residential parcel is the ordinary case, not evidence of a
-      # shared-footprint row -- only these signals actually indicate that.
+      # Condominiums: characterized by near-zero land value and non-zero improvement value.
+      - class: Condominium
+        min_score: 2
+        indicators:
+          - type: value_share_below
+            value: land_value
+            total: [land_value, improvement_value]
+            max_ratio: 0.01
+            include_zero: true
+          - type: any_of
+            indicators:
+              - type: in_set
+                column: group_parcel
+                values: [Multi Family, Single Family]
+              - type: in_set
+                column: group_footprint_fema
+                values: [Multi Family, Single Family]
+          - {type: keyword, column: use_group_combined, pattern: 'CONDO|CONDOMINIUM'}
+
+      # Townhomes: single-footprint structures spanning multiple parcels or containing multiple units.
       - class: Townhome
-        min_score: 3
+        min_score: 4
         indicators:
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 1}
           - type: any_of
@@ -156,21 +128,21 @@ pipeline:
               - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
               - {type: numeric_at_least, column: max_dwellings_per_footprint, min: 2}
               - {type: keyword, column: use_group_combined, pattern: 'TOWNHOUSE|TOWNHOME|ROW HOUSE|ROW-HOUSE'}
-          # any_of, same reasoning as Multiple Single-Family above: FEMA
-          # corroborates group_parcel without adding an independent 4th vote.
           - type: any_of
             indicators:
-              # NSI group vocabulary spells it 'Multi Family' (no hyphen).
               - type: in_set
                 column: group_parcel
                 values: [Multi Family, Single Family]
               - type: in_set
                 column: group_footprint_fema
                 values: [Single Family, Multi Family]
+          # Excludes Condominium pattern by requiring a minimal land-value share.
+          - type: value_share_at_least
+            value: land_value
+            total: [land_value, improvement_value]
+            min_ratio: 0.01
 
-      # No real footprint (small/absent relative to cohort, and none at all —
-      # not even a value-inferred synthetic fallback), near-zero improvement
-      # value share, and/or explicit assessor "vacant" vocabulary.
+      # Vacant land based on negligible building area, low improvement value, or keyword evidence.
       - class: Vacant
         min_score: 2
         indicators:
@@ -199,9 +171,7 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'INDUSTRIAL|MANUFACTURING|WAREHOUSE'}
           - {type: in_set, column: group_parcel, values: [Heavy Industrial, Light Industrial]}
 
-      # Draws from both the `commercial` and `exempt` top-level assessor
-      # buckets: municipal/religious/charitable land sits in `exempt`, not
-      # `commercial`, in the normalized use_group vocabulary.
+      # Institutional land-use (hospitals, schools, churches, etc.).
       - class: Institutional
         min_score: 1
         indicators:
@@ -209,10 +179,7 @@ pipeline:
             column: use_group_combined
             pattern: 'HOSPITAL|NURSING|SCHOOL|MUNICIPAL|GOVERNMENT|RELIGIOUS|CHARITABLE|CHURCH|UNIVERSITY|COLLEGE'
 
-      # Catch-all for commercial parcels that don't fit a specific subtype
-      # above (e.g. hotel/motel, restaurant, parking garage, golf course).
-      # NSI's group vocabulary has no generic 'Commercial' bucket; list the
-      # commercial-flavored groups instead.
+      # Catch-all for commercial parcels (e.g. hotels, garages, restaurants).
       - class: Commercial
         min_score: 1
         indicators:
@@ -221,14 +188,7 @@ pipeline:
             values: [Retail, Wholesale, 'Personal & Repair Services', Bank, Hotel]
           - {type: keyword, column: use_group_combined, pattern: 'COMMERCIAL'}
 
-  # Default land-use class for the parcels no rule above claimed: a vote
-  # across the three group-vocabulary evidence columns (each casts one vote;
-  # ties break to group_parcel when present, else to the earliest listed
-  # column), with the winning group coarsened to the recipe's class
-  # vocabulary via the class map. Also writes land_use_class_conflict
-  # (grouped source-disagreement summary, e.g. "nsi/parcel: Single Family |
-  # fema: Manufactured Home") and saves the most frequent conflicting
-  # combinations to the reports directory.
+  # Reconcile default land use via voting across assessor, NSI, and FEMA source classes.
   - step: reconcile_land_use
     output: land_use_class
     columns:
@@ -240,10 +200,22 @@ pipeline:
     conflict_column: land_use_class_conflict
     report: land-use-evidence-conflicts.csv
 
-  # FEMA USA Structures has no story count, only LiDAR-derived height; derive
-  # an approximate story count so the footprint curation lane (US_footprint-
-  # cheer-2026) can include it in its n_stories reconciliation.
+  # Derive stories from FEMA LiDAR height.
   - step: derive_stories_from_height
+
+  # Calculate parcel lot area (ha) based on parcel geometry.
+  - step: derive_metrics
+
+  # Impute missing land_value for residential parcels using local per-area lot rates.
+  - step: impute_land_value
+    residential_classes:
+      [Single-Family, Multi-Family, Manufactured Home, Manufactured Home Park,
+       Multiple Single-Family, Townhome, Condominium]
+    footprint_area_column: sum_footprint_area_m2
+    parcel_area_column: area_ha
+    peer_group_column: use_group_combined
+    footprint_ratio_threshold: 0.25
+    city_column: city
 
   - step: cast_categoricals
 
