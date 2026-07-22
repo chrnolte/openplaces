@@ -1,28 +1,8 @@
 # Recipe: harmonized U.S. parcel spine.
 #
-# Generalizes US-NC-NE_parcel-spine-2026 to a discoverable, multi-source parcel
-# spine. Local tax / assessor rolls (county assessment records) are merged onto
-# the statewide parcel geometry automatically: the link_by_id step below
-# auto-discovers every ingest recipe (and bundled `additional_layers` entity,
-# e.g. a `property` roll) whose admin scope covers the unit being processed, and
-# joins each one onto the spine — no per-state/county recipe id is listed here.
-# Adding a new source's roll requires no change to this file: a standalone roll
-# recipe (e.g. a county assessment export) joins by the standardized
-# parcel_id_local key automatically; a roll bundled as an `additional_layers`
-# entry of a statewide GIS recipe (e.g. MassGIS's `property` table) instead
-# declares its own within-source `layer_key` (e.g. `parcel_id_admin2`) on that
-# additional_layers entry, since parcel_id_local is reserved for joining
-# genuinely different sources together. A `*-remap.csv` crosswalk dropped next
-# to any discovered source (e.g. a raw use-code crosswalk) is picked up and
-# applied automatically too. Discovered sources are joined oldest-to-newest, so
-# by default the most recently versioned source provides each attribute
-# column's value — but only where it covers a majority of parcels; a sparse
-# newer source instead just fills gaps left by an older one (link_by_id's
-# column-priority rule).
-#
-# It also attaches the evidence the parcel-curation lane (US_parcel-openplaces-2026)
-# needs: the linked-NSI building group (group_building_nsi) and per-parcel
-# footprint morphology counts (n_small_elongated_footprints_per_parcel, etc.).
+# Auto-discovers and joins local/state tax rolls onto the parcel spine geometry.
+# Standalone rolls or statewide GIS tables join by standardized local keys.
+# Also merges NSI building groups and footprint morphology summaries.
 
 description: >-
   Harmonized U.S. parcel spine: statewide parcel geometry linked to local tax rolls,
@@ -47,19 +27,7 @@ save_to:
   data_dir: core
 
 pipeline:
-  # Spine = discovered statewide/local parcel geometry (carries parcel_id_local
-  # and a coarse assessor use code). Carry the matching keys for id-based
-  # linking, plus the value-bearing attributes the same geometry source
-  # already provides on its own row: keeping these here (a direct, 1:1,
-  # collision-free carry) rather than leaving them to the auto-discovered
-  # link_by_id merge below means a county whose only source-side key isn't
-  # actually unique (a real, observed case) can't have its own
-  # improvement_value/land_value/year_built/n_dwellings corrupted by that
-  # source rejoining itself on an ambiguous key (link_by_id's auto_discover
-  # already skips re-deriving any keep_columns attribute for such a
-  # self-join). A genuinely separate roll (e.g. a dedicated county
-  # assessment recipe) still overrides these via the normal
-  # majority-coverage rule.
+  # Resolve spine geometry and retain primary attributes directly to prevent self-join key collisions.
   - step: resolve_spine
     sources:
       - auto_discover: true
@@ -75,16 +43,19 @@ pipeline:
       - year_built
       - n_dwellings
 
-  # Per-source assessor merge, auto-discovered (see header comment): joins
-  # every admin-covering parcel roll onto the spine by its resolved key,
-  # always aggregating (correct for both 1:1 and 1:many rolls, e.g. MassGIS
-  # L3_ASSESS condominium records stacked on one parcel polygon), with columns
-  # drawn from the attribute registry's canonical parcel/property attributes
-  # (land_value, improvement_value, n_dwellings, year_built, use_group_code, ...).
-  # Also applies any `*-remap.csv` crosswalk found beside a discovered source.
+  # Link discovered assessor tables to the spine, aggregating stacked condominium/unit records.
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
+
+  # Standardize addresses and generate clean street names for down-stream imputation blocks.
+  - step: reconcile_addresses
+    sources:
+      assessor:
+        address_full: address
+        city: city
+    complete_from_admin:
+      state: 2
 
   # Build the combined use_group_combined label from whatever use_group /
   # use_subgroup the link step above attached (via an auto-discovered
@@ -117,15 +88,7 @@ pipeline:
           - group
           - structure_value
 
-  # Attach FEMA building occupancy by overlay: FEMA footprints are no longer a
-  # footprint-spine geometry source (they caused IoU-merge errors), but their
-  # occupancy is valuable. Link FEMA footprints to parcels (the footprint<->parcel
-  # overlay, reversed) and take each parcel's dominant FEMA occupancy by
-  # overlap area: occupancy_type_footprint_fema carries the raw PRIM_OCC
-  # values; group_footprint_fema carries the NSI-style group vocabulary
-  # (derived at FEMA ingest via US_footprint-fema-2023_group-remap), which
-  # makes it one-on-one comparable with group_parcel/group_building_nsi in
-  # the parcel curation lane's land-use reconciliation.
+  # Link FEMA footprints to parcels and assign the dominant FEMA occupancy class by overlap area.
   - step: link_to_reference
     recipe_id: US_footprint-fema-2023
     source_geometry_type: mixed_type_footprint
