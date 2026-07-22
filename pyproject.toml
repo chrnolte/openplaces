@@ -102,9 +102,11 @@ excel = ["openpyxl>=3.1.0"]
 # Cloud storage
 cloud = ["rclone>=1.73.1"]
 
-# Browser-driven scrapers (e.g. wi_retr for Wisconsin RETR transactions).
-# After install, fetch the browser binary: `playwright install chromium`
-scrape = ["playwright>=1.40.0"]
+# Browser- and API-driven scrapers (e.g. wi_retr for Wisconsin RETR
+# transactions via Playwright; places-fmv2026 for Google-Drive-hosted parcel
+# data via gdown). After install, fetch the browser binary:
+# `playwright install chromium`
+scrape = ["playwright>=1.40.0", "gdown>=5.2.0"]
 
 # ML detectors (floor count, occupancy, roof shape).
 # torch/torchvision are intentionally NOT pip dependencies: they must be
