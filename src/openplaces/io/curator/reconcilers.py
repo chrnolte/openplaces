@@ -52,7 +52,11 @@ def reconcile_values(
         has_value = notnull.any(axis=1)
         winning = notnull.idxmax(axis=1)
         for col in cols:
-            token = _split_source(col)[1] or col
+            # An imputed-evidence column (e.g. land_value_imputed_parcel)
+            # would otherwise have its '_imputed' marker swallowed by the
+            # registered '_parcel' suffix strip below, losing the
+            # real/imputed distinction in the provenance sidecar.
+            token = 'imputed' if '_imputed' in col else (_split_source(col)[1] or col)
             mask = has_value & winning.eq(col)
             if mask.any():
                 record_source(curated, feature, mask, token)
@@ -577,302 +581,21 @@ def resolve_by_vote(
 # Recipe role keys accepted by reconcile_addresses: address_full is a
 # one-line string to parse; the rest are the component keys of
 # openplaces.geo.address.ADDRESS_COMPONENTS, used verbatim.
-_ADDRESS_ROLES = (
-    'address_full',
-    'address_number',
-    'address_street',
-    'unit_number',
-    'city',
-    'state',
-    'postal_code',
-)
+def reconcile_addresses(state: CurateState, **kwargs) -> CurateState:
+    """Curate-stage wrapper: reconcile addresses on ``state.curated``.
 
-
-@_register('reconcile_addresses')
-def reconcile_addresses(
-    state: CurateState,
-    sources: dict[str, dict[str, str]],
-    output_col: str = 'address',
-    similarity_threshold: float = 80,
-    conflict_column: str = 'address_conflict',
-    complete_from_admin: dict[str, int] | None = None,
-    complete_city_from_postal: bool = False,
-) -> CurateState:
-    """Reconcile street addresses from any number of source inputs.
-
-    Each key of *sources* is a provenance token recorded in the output's
-    source sidecar; its value maps component roles to evidence columns.
-    Roles: address_full (a one-line address string, parsed via
-    openplaces.geo.address.parse_address), address_number, address_street,
-    unit_number, city, state, postal_code.
-
-    Declaration order is priority. The base address comes from the
-    highest-priority source with a usable address on each row (non-empty
-    street; sources that declare address_number must also have the number).
-    A lower-priority source agrees with the base when house numbers match
-    and streets match per openplaces.geo.address.match_streets — notation
-    equivalences from address_equivalences.csv are applied, then rapidfuzz
-    similarity against *similarity_threshold* (0-100);
-    agreeing sources fill the base's missing components (every component
-    outside MATCH_COMPONENTS) and mark the row 'reconciled'. Disagreeing
-    sources
-    are excluded from selection but summarized in *conflict_column* (null
-    when the sources agree or only one is present; see
-    :func:`_summarize_conflicts`). Missing columns are skipped, like in
-    reconcile_values.
-
-    Parameters
-    ----------
-    sources : dict of {token: {role: column}}
-        Ordered mapping of provenance token to role-column spec.
-
-        Example::
-
-            sources:
-              parcel:
-                address_full: address_parcel
-              dwelling_overture:
-                address_street: address_street_dwelling_overture
-                address_number: address_number_dwelling_overture
-    output_col : str
-        Canonical output column (default 'address').
-    similarity_threshold : float
-        Minimum street similarity (0-100) for two sources to agree.
-    conflict_column : str
-        Output column for the grouped disagreement summary (default
-        'address_conflict').
-    complete_from_admin : dict of {component: admin_level}, optional
-        Fill components that no source provided from the run's admin id,
-        e.g. ``{state: 2}`` completes a missing state with the admin unit's
-        level-2 code (validated against ISO 3166-2 for the unit's country).
-        Only rows that already carry another non-street component are
-        completed, so street-only addresses stay untouched.
-    complete_city_from_postal : bool, optional
-        Fill a still-missing city from the row's resolved postal_code via
-        openplaces.geo.address.lookup_postal_city (USPS-preferred city
-        name; US only, degrades to no-op elsewhere). Applied after
-        complete_from_admin, to rows that have a postal_code but no city
-        from any source. Default False.
+    Thin wrapper around the shared, state-agnostic
+    :func:`~openplaces.io.harmonizer.addresses.reconcile_addresses_df` (see
+    that function's docstring for parameters and behavior) -- the harmonize
+    stage now runs the same reconciliation earlier, against ``state.spine``,
+    for entities this step's config was moved there for (see
+    ``US_footprint-spine-2026.yaml``/``US_parcel-spine-2026.yaml``); this
+    curate-stage registration remains available for any recipe that still
+    wants to reconcile addresses at curate time.
     """
-    from openplaces.core.schema import AdminId
-    from openplaces.geo.address import (
-        ADDRESS_COMPONENTS,
-        MATCH_COMPONENTS,
-        get_admin2_codes,
-        harmonize_address_case,
-        lookup_postal_city,
-        match_streets,
-        normalize_address_components,
-        parse_address,
+    from openplaces.io.harmonizer.addresses import reconcile_addresses_df
+
+    state.curated = reconcile_addresses_df(
+        state.curated, state.admin_id, state.verbose, **kwargs
     )
-    from openplaces.io.curator.provenance import record_source
-
-    curated = state.curated
-    components = list(ADDRESS_COMPONENTS)
-    fillable = [c for c in components if c not in MATCH_COMPONENTS]
-    admin_str = str(state.admin_id) if state.admin_id else ''
-    admin_levels = AdminId(admin_str).levels if admin_str else ()
-    admin1_id = admin_levels[0] if admin_levels else None
-
-    def normalize_component(value: str, component: str) -> str:
-        kwargs = {'address_street': '', 'admin1_id': admin1_id}
-        kwargs[component] = value
-        return normalize_address_components(**kwargs)[component]
-
-    # Build one normalized component frame per source (over unique values)
-    frames: dict[str, pd.DataFrame] = {}
-    needs_number: dict[str, bool] = {}
-    for name, spec in sources.items():
-        unknown = set(spec) - set(_ADDRESS_ROLES)
-        if unknown:
-            raise ValueError(
-                f'reconcile_addresses: unknown role(s) {sorted(unknown)} for '
-                f'source {name!r}; valid roles: {sorted(_ADDRESS_ROLES)}'
-            )
-        present = {role: col for role, col in spec.items() if col in curated.columns}
-        if not present:
-            continue
-        frame = pd.DataFrame('', index=curated.index, columns=components)
-        full_col = present.get('address_full')
-        if full_col is not None:
-            keys = curated[full_col].map(
-                lambda v: str(v).strip() if pd.notna(v) else ''
-            )
-            empty = dict.fromkeys(components, '')
-            lookup = {'': empty}
-            for value in keys.unique():
-                if not value:
-                    continue
-                parsed = parse_address(value, admin1_id=admin1_id).components
-                lookup[value] = normalize_address_components(
-                    address_street=parsed['address_street'] or '',
-                    address_number=parsed['address_number'],
-                    unit_number=parsed['unit_number'],
-                    postal_code=parsed['postal_code'],
-                    city=parsed['city'],
-                    state=parsed['state'],
-                    admin1_id=admin1_id,
-                )
-            for comp in components:
-                frame[comp] = keys.map(lambda k: lookup[k][comp])
-        for role, col in present.items():
-            if role == 'address_full':
-                continue
-            comp = role
-            values = curated[col].map(lambda v: str(v) if pd.notna(v) else '')
-            normed = {v: normalize_component(v, comp) for v in values.unique()}
-            frame[comp] = values.map(normed)
-        frames[name] = frame
-        needs_number[name] = 'address_number' in present
-
-    if not frames:
-        if state.verbose:
-            print('  reconcile_addresses: no address source columns found.')
-        return state
-
-    # Base = highest-priority source with a usable address on each row
-    usable: dict[str, pd.Series] = {}
-    for name, frame in frames.items():
-        mask = frame['address_street'].str.len() > 0
-        if needs_number[name]:
-            mask &= frame['address_number'].str.len() > 0
-        usable[name] = mask
-
-    base = pd.Series('', index=curated.index, dtype=object)
-    for name in frames:
-        take = base.eq('') & usable[name]
-        base.loc[take] = name
-
-    merged = pd.DataFrame('', index=curated.index, columns=components)
-    for name, frame in frames.items():
-        take = base.eq(name)
-        merged.loc[take] = frame.loc[take]
-
-    # Agreeing lower-priority sources fill the base's missing components;
-    # sources that fail the agreement check are tracked for conflict flagging
-    corroborated = pd.Series(False, index=curated.index)
-    disagreeing = pd.Series(False, index=curated.index)
-    for name, frame in frames.items():
-        others = usable[name] & base.ne('') & base.ne(name)
-        candidate = others & (
-            merged['address_number'].ne('')
-            & frame['address_number'].ne('')
-            & merged['address_number'].eq(frame['address_number'])
-        )
-        agree = pd.Series(False, index=curated.index)
-        if candidate.any():
-            pairs = pd.DataFrame(
-                {
-                    'a': merged.loc[candidate, 'address_street'],
-                    'b': frame.loc[candidate, 'address_street'],
-                }
-            )
-            uniq = pairs.drop_duplicates()
-            matched = {
-                (a, b): match_streets(a, b, similarity_threshold, admin1_id)
-                for a, b in zip(uniq['a'], uniq['b'])
-            }
-            hits = pd.Series(
-                [matched[(a, b)] for a, b in zip(pairs['a'], pairs['b'])],
-                index=pairs.index,
-            )
-            agree_index = hits.index[hits]
-            agree.loc[agree_index] = True
-            corroborated |= agree
-            for comp in fillable:
-                fill = merged.loc[agree_index, comp].eq('') & frame.loc[
-                    agree_index, comp
-                ].ne('')
-                fill_index = fill.index[fill]
-                merged.loc[fill_index, comp] = frame.loc[fill_index, comp]
-        disagreeing |= others & ~agree
-
-    # Recipe-configured completion from the run's admin unit (e.g. state: 2
-    # fills a missing state with the level-2 code, since most spines carry no
-    # state evidence). Level-2 codes are validated against ISO 3166-2 for the
-    # unit's country; only rows that already carry another non-street
-    # component are completed, so street-only addresses stay untouched.
-    for comp, level in (complete_from_admin or {}).items():
-        level = int(level)
-        if comp not in fillable or len(admin_levels) < level:
-            continue
-        code = admin_levels[level - 1]
-        if level == 2 and admin1_id and code not in get_admin2_codes(admin1_id):
-            continue
-        others = [c for c in fillable if c != comp]
-        fill = merged[comp].eq('') & merged[others].ne('').any(axis=1)
-        merged.loc[fill, comp] = code
-
-    # USPS-preferred city name for a still-missing city, from the row's own
-    # resolved postal_code (e.g. Overture address points often carry a ZIP
-    # but no city in this region). lookup_postal_city is US-only and cached.
-    if complete_city_from_postal:
-        missing_city = merged['city'].eq('') & merged['postal_code'].ne('')
-        if missing_city.any():
-            zip5 = merged.loc[missing_city, 'postal_code'].str.extract(
-                r'(\d{5})', expand=False
-            )
-            lookups = {
-                z: lookup_postal_city(z, admin1_id) for z in zip5.dropna().unique()
-            }
-            city_fill = zip5.map(lambda z: lookups[z].city if lookups.get(z) else None)
-            merged.loc[missing_city, 'city'] = city_fill.fillna('').to_numpy()
-
-    # Summarize the disagreeing evidence per row (exact-equal values are
-    # never summarized, and rows the fuzzy check accepted are masked out)
-    compare = [
-        (
-            name,
-            frame[MATCH_COMPONENTS[0]]
-            .str.cat(frame[list(MATCH_COMPONENTS[1:])], sep=' ')
-            .str.strip()
-            .where(usable[name]),
-        )
-        for name, frame in frames.items()
-    ]
-    conflict = _summarize_conflicts(compare, curated.index).where(disagreeing)
-    curated[conflict_column] = conflict
-
-    # Format over unique component tuples, then assign and record provenance
-    has = base.ne('')
-    subset = merged.loc[has]
-    keys = list(zip(*(subset[comp] for comp in components)))
-    formats = {
-        key: harmonize_address_case(
-            **{comp: value or None for comp, value in zip(components, key)},
-            admin1_id=admin1_id,
-        )
-        for key in set(keys)
-    }
-    formatted = pd.Series([formats[k] for k in keys], index=subset.index)
-
-    if output_col not in curated.columns:
-        curated[output_col] = pd.Series(pd.NA, index=curated.index, dtype=object)
-    curated.loc[formatted.index, output_col] = formatted
-
-    tokens = base.copy()
-    tokens[corroborated] = 'reconciled'
-    for token in sorted(set(tokens[has])):
-        record_source(curated, output_col, has & tokens.eq(token), token)
-
-    state.curated = curated
-
-    if state.verbose:
-        counts = tokens[has].value_counts()
-        summary = ', '.join(f'{k}={v:,d}' for k, v in counts.items()) or 'none'
-        n_conflicts = int(conflict.notna().sum())
-        print(
-            f'  reconcile_addresses: {output_col} populated -> {summary}, '
-            f'conflicts={n_conflicts:,d}'
-        )
-        if n_conflicts:
-            print('    sample conflicts:')
-            for sample in conflict.dropna().head(5):
-                print(f'      {sample}')
-            print(
-                '    tip: pairs that denote the same address in different '
-                'notations\n    (e.g. HIGHWAY ~ HWY) can be added to '
-                'src/openplaces/geo/address_equivalences.csv (kind=match).'
-            )
-
     return state

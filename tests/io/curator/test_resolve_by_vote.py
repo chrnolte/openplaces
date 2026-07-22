@@ -190,14 +190,14 @@ def test_require_blocks_decision_even_when_score_is_reached():
     decisions = [
         {
             **MANUFACTURED_HOME_DECISION,
-            'require': [{'type': 'numeric_at_least', 'column': 'm2', 'min': 20}],
+            'require': [{'type': 'numeric_at_least', 'column': 'area_m2', 'min': 20}],
         }
     ]
     df = _frame(
         occupancy_type=['Secondary'],
         improvement_value_parcel=[0.0],
         use_group_combined_parcel=['MOBILE HOME PARK'],
-        m2=[5.0],
+        area_m2=[5.0],
     )
     out = resolve_by_vote(
         _state(df), target='occupancy_type', decisions=decisions
@@ -210,14 +210,14 @@ def test_require_allows_decision_once_size_threshold_is_met():
     decisions = [
         {
             **MANUFACTURED_HOME_DECISION,
-            'require': [{'type': 'numeric_at_least', 'column': 'm2', 'min': 20}],
+            'require': [{'type': 'numeric_at_least', 'column': 'area_m2', 'min': 20}],
         }
     ]
     df = _frame(
         occupancy_type=['Secondary'],
         improvement_value_parcel=[0.0],
         use_group_combined_parcel=['MOBILE HOME PARK'],
-        m2=[25.0],
+        area_m2=[25.0],
     )
     out = resolve_by_vote(
         _state(df), target='occupancy_type', decisions=decisions
