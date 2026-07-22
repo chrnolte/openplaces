@@ -117,7 +117,7 @@ def test_bare_parcel_ids_lead_the_parcel_evidence_group():
                 'roof_shape',
                 'geometry',
                 'improvement_value_parcel',
-                'm2',
+                'area_m2',
                 'n_parcels_per_footprint',
                 'parcel_id_all',
             ]
@@ -125,7 +125,7 @@ def test_bare_parcel_ids_lead_the_parcel_evidence_group():
     )
     assert list(state.curated.columns) == [
         'roof_shape',
-        'm2',
+        'area_m2',
         'n_parcels_per_footprint',
         'parcel_id',
         'parcel_id_all',
