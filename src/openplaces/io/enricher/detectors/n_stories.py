@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import time
 import warnings
+from functools import cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -45,6 +46,21 @@ def _legacy_model_path() -> Path | None:
         Path(cfg.dir_external) / 'models' / _MODEL_FILENAME,
     ]
     return next((path for path in candidates if path.exists()), None)
+
+
+@cache
+def _load_infer(model_path: str, use_gpu: bool):
+    """Load the EfficientDet inference engine, cached per (path, use_gpu).
+
+    Avoids re-running `load_model` (weight deserialization + device
+    transfer) on every `NStoriesDetector.predict` call — the same engine
+    is reused across every admin unit processed in one pipeline run.
+    """
+    from openplaces.io.enricher.detectors.efficientdet_lib.infer import Infer
+
+    gtf_infer = Infer()
+    gtf_infer.load_model(model_path, ['floor'], use_gpu=use_gpu)
+    return gtf_infer
 
 
 class NStoriesDetector:
@@ -88,8 +104,6 @@ class NStoriesDetector:
             Mapping from the same keys as ``images.images`` to an integer
             story count, or ``None`` when the image file does not exist.
         """
-        from openplaces.io.enricher.detectors.efficientdet_lib.infer import Infer
-
         model_path = get_model(
             _MODEL_URL,
             _MODEL_FILENAME,
@@ -156,8 +170,7 @@ class NStoriesDetector:
         # --- inference ---
 
         print('\nDetermining the number of stories for each building...')
-        gtf_infer = Infer()
-        gtf_infer.load_model(str(model_path), ['floor'], use_gpu=gpu_enabled)
+        gtf_infer = _load_infer(str(model_path), gpu_enabled)
 
         start_time = time.time()
         predictions = {}
