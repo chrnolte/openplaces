@@ -15,10 +15,10 @@ structure_value,"Building's own assessed/replacement value, net of land (real ap
 year_built,Year building was built,,float,mean,30,,
 address,Street address,,string,join_nonnull,40,,
 address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
-postal_zip5,Normalized 5-digit ZIP code used for postal_city lookups,,string,first,,,curate
-postal_city,USPS-preferred city name for postal_zip5,,string,first,,,curate
-postal_city_acceptable,USPS-acceptable alternate city names for postal_zip5 (joined with '; '),,string,first,,,curate
-postal_city_unacceptable,USPS-unacceptable city names for postal_zip5 (joined with '; '),,string,first,,,curate
+postal_zip5,Normalized 5-digit ZIP code used for postal_city lookups,,string,first,,,harmonize
+postal_city,USPS-preferred city name for postal_zip5,,string,first,,,harmonize
+postal_city_acceptable,USPS-acceptable alternate city names for postal_zip5 (joined with '; '),,string,first,,,harmonize
+postal_city_unacceptable,USPS-unacceptable city names for postal_zip5 (joined with '; '),,string,first,,,harmonize
 lot_size,Parcel lot size,sqft,float,mean,,,
 area_sqft,Floor area,sqft,float,mean,50,,
 n_stories,Number of stories,,float,mean,51,,
@@ -29,10 +29,9 @@ occupancy_type_base,"Occupancy class before Multi-Family is split into height ba
 occupancy_type_conflict,"Occupancy evidence disagreement summary across all sources (e.g. 'nsi: X | fema: Y | parcel: Z'); null when the evidences agree",,categorical,first,71,,curate
 occupancy_type_review,Flag where improvement value is a small nonzero share of total value (possible manufactured home for review),,bool,first,71,footprint,curate
 p_manufactured_home,Probability of manufactured home classification,,float,mean,73,footprint,curate
-manufactured_home_community,Flag where the footprint sits on a parcel with more than the threshold count of manufactured-home footprints (a manufactured-home community),,bool,first,82,footprint,curate
+manufactured_home_community,"Flag where the parcel is classified as a manufactured-home community/park; footprints get the same-named, richer refinement of it (a parcel with more than the threshold count of manufactured-home footprints, per the final footprint occupancy)",,bool,first,82,,curate
 n_manufactured_homes_per_parcel,Number of manufactured-home footprints on the footprint's parcel,,float,first,,footprint,curate
 land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
-manufactured_home_park,Flag where the parcel is classified as a manufactured-home community/park,,bool,first,83,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize

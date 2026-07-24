@@ -49,7 +49,7 @@ pipeline:
   # - Coarse commercial subtypes require min_score 1 (relying on assessor codes).
   - step: classify_parcel_land_use
     output: land_use_class
-    flag_column: manufactured_home_park
+    flag_column: manufactured_home_community
     flag_class: Manufactured Home Park
     score_columns:
       Vacant: land_use_vacancy_score
@@ -220,3 +220,25 @@ pipeline:
   - step: cast_categoricals
 
   - step: order_columns
+    drop:
+      # Evidence-only: postal_city fed into `address`/`city` at harmonize
+      # time (impute_postal_city); not needed once it has.
+      - postal_city
+      - postal_zip5
+      - postal_city_acceptable
+      - postal_city_unacceptable
+      - postal_city_source
+      # Redundant with the direct dwelling link's own _dwelling_overture
+      # evidence (same underlying dwelling-overture-2025 source, just
+      # relayed via each parcel's primary footprint instead of a direct
+      # spatial link); already folded into the reconciled
+      # address/address_street/city.
+      - address_street_dwelling_footprint
+      - address_number_dwelling_footprint
+      - city_dwelling_footprint
+      - postal_code_dwelling_footprint
+      # Internal scoring inputs to classify_parcel_land_use, not meaningful
+      # standalone -- same treatment as the footprint recipe's own
+      # p_manufactured_home.
+      - footprint_area_log_zscore
+      - land_use_vacancy_score

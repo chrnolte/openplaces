@@ -167,10 +167,10 @@ def test_flag_column_still_works():
     out = classify_parcel_land_use(
         _state(df),
         rules=RULES,
-        flag_column='manufactured_home_park',
+        flag_column='manufactured_home_community',
         flag_class='Manufactured Home Park',
     ).curated
-    assert bool(out['manufactured_home_park'].iloc[0]) is True
+    assert bool(out['manufactured_home_community'].iloc[0]) is True
 
 
 # Mirrors the real US_parcel-openplaces-2026.yaml Multiple Single-Family rule:

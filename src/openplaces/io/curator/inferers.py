@@ -142,67 +142,6 @@ def derive_stories_from_height(
     return state
 
 
-@_register('infer_postal_city')
-def infer_postal_city(state: CurateState, column: str = 'postal_code') -> CurateState:
-    """Derive the USPS-preferred city name for a reconciled ZIP code.
-
-    Extracts the 5-digit ZIP (``postal_zip5``) from *column* and looks each
-    unique value up via
-    :func:`openplaces.geo.address.lookup_postal_city`, writing the
-    USPS-preferred city (``postal_city``), its acceptable and unacceptable
-    alternate spellings (``postal_city_acceptable``,
-    ``postal_city_unacceptable``, joined with '; '), and a
-    ``postal_city_source`` provenance sidecar (via
-    :func:`~openplaces.io.curator.provenance.record_source`). The backing
-    lookup is US-only (see ``POSTAL_CITY_BACKENDS`` in ``geo/address.py``);
-    rows outside the run's admin1 country resolve to missing values rather
-    than raising.
-
-    Parameters
-    ----------
-    column : str, optional
-        Reconciled ZIP-code column to read (default ``postal_code``,
-        typically produced upstream by ``reconcile_values``). No-op if
-        absent, the same defensive convention ``reconcile_values`` uses for
-        columns the recipe never populated.
-    """
-    from openplaces.core.schema import AdminId
-    from openplaces.geo.address import lookup_postal_city
-    from openplaces.io.curator.provenance import record_source
-
-    curated = state.curated
-    if column not in curated.columns:
-        return state
-
-    # Same admin1-derivation reconcile_addresses uses for complete_from_admin
-    admin_str = str(state.admin_id) if state.admin_id else ''
-    admin_levels = AdminId(admin_str).levels if admin_str else ()
-    admin1_id = admin_levels[0] if admin_levels else None
-
-    zip5 = curated[column].astype('string').str.extract(r'(\d{5})', expand=False)
-    curated['postal_zip5'] = zip5
-
-    lookups = {z: lookup_postal_city(z, admin1_id) for z in zip5.dropna().unique()}
-    curated['postal_city'] = zip5.map(
-        lambda z: lookups[z].city if lookups.get(z) else pd.NA
-    )
-    curated['postal_city_acceptable'] = zip5.map(
-        lambda z: '; '.join(lookups[z].acceptable_cities) if lookups.get(z) else pd.NA
-    )
-    curated['postal_city_unacceptable'] = zip5.map(
-        lambda z: '; '.join(lookups[z].unacceptable_cities) if lookups.get(z) else pd.NA
-    )
-    resolved = curated['postal_city'].notna()
-    if resolved.any():
-        record_source(curated, 'postal_city', resolved, 'zipcodes')
-    state.curated = curated
-
-    if state.verbose:
-        n = int(curated['postal_city'].notna().sum())
-        print(f'  infer_postal_city: resolved {n:,} of {len(curated):,} rows.')
-    return state
-
-
 @_register('score_relative_to_group')
 def score_relative_to_group(
     state: CurateState,
@@ -314,7 +253,7 @@ def classify_parcel_land_use(
         Output class column (default ``land_use_class``).
     flag_column, flag_class : str, optional
         When both are given, write a boolean ``flag_column`` set where ``output``
-        equals ``flag_class`` (e.g. ``manufactured_home_park``).
+        equals ``flag_class`` (e.g. ``manufactured_home_community``).
     score_columns : dict of {class: column}, optional
         For named classes, also write that rule's raw weighted score — not
         gated by its own ``min_score`` — to the given column. This is an
@@ -559,11 +498,15 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     #    explicit-secondary footprints with no occupancy evidence (an accessory
     #    structure on a parcel whose primary building is elsewhere). A non-primary
     #    footprint with a known non-residential class keeps that class. Exception:
-    #    habitable-size homes on a manufactured-home-park parcel are the park's
-    #    dwellings (Manufactured Home), not accessory structures; only sub-threshold
-    #    footprints there (sheds) stay secondary. The park flag is set by the parcel
-    #    curation lane (classify_parcel_land_use) and joined in by
-    #    link_curated_entity; absent it, behaviour is unchanged.
+    #    habitable-size homes on a manufactured-home-community parcel are the
+    #    community's dwellings (Manufactured Home), not accessory structures;
+    #    only sub-threshold footprints there (sheds) stay secondary. This flag
+    #    is set by the parcel curation lane (classify_parcel_land_use) and
+    #    joined in by link_curated_entity, under the same name
+    #    flag_manufactured_home_communities later refines from the final
+    #    footprint occupancy -- read here before that refinement runs, so this
+    #    step still sees the parcel-lane's one-pass value. Absent either,
+    #    behaviour is unchanged.
     residential = list(config.get('residential_classes', []))
     secondary = config.get('secondary_class')
     mh_label = rule_cfg.get('manufactured_home_geometry', {}).get('class')
@@ -573,8 +516,8 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
             result.isna() & priority.eq('secondary')
         )
         in_park = (
-            curated['manufactured_home_park'].astype('boolean').fillna(False)
-            if 'manufactured_home_park' in curated.columns
+            curated['manufactured_home_community'].astype('boolean').fillna(False)
+            if 'manufactured_home_community' in curated.columns
             else pd.Series(False, index=curated.index)
         )
         to_mh = pd.Series(False, index=curated.index)
@@ -700,8 +643,13 @@ def flag_manufactured_home_communities(
     Recomputed from the FINAL footprint occupancy (after imagery, vote, and height
     refinement), so it reflects the richest manufactured-home evidence — a
     correction the one-pass parcel lane cannot see, since it runs before footprint
-    curation. Written as footprint columns: a per-parcel count and a boolean flag.
-    A future second parcel pass can write this correction back to the parcel
+    curation. Written as footprint columns: a per-parcel count and a boolean flag,
+    under the same name (*output*, default ``manufactured_home_community``) the
+    parcel curation lane's own ``classify_parcel_land_use`` flag uses -- this
+    step's value is the intentional final word, overwriting whatever
+    ``link_curated_entity`` relayed from the parcel lane earlier in this
+    recipe (already consumed by then, see ``impute_occupancy_type``). A
+    future second parcel pass can write this correction back to the parcel
     dataset.
 
     Parameters

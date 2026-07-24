@@ -137,6 +137,15 @@ pipeline:
     # Complete state from the run's admin unit (level-2 code) where missing.
     complete_from_admin:
       state: 2
-    # dwelling_overture's city is often empty in this region; fall back to
-    # the USPS-preferred city for the row's resolved ZIP.
-    complete_city_from_postal: true
+    # Persist the resolved components too, so impute_postal_city below can
+    # fill a still-missing city and re-render `address` without re-parsing it.
+    number_output_col: address_number
+    unit_output_col: address_unit
+    city_output_col: city
+
+  # A ZIP code has exactly one USPS-preferred city, so this is imputed here
+  # rather than in curate. Reads dwelling_overture's raw ZIP directly (not
+  # reconcile_addresses's own, agreement-gated postal_code) for the broadest
+  # coverage, and completes `city`/`address` wherever they're still missing.
+  - step: impute_postal_city
+    column: postal_code_dwelling_overture

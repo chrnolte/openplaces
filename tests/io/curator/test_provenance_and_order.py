@@ -108,6 +108,54 @@ def test_order_bands_with_grouped_sidecars():
     assert cols[-1] == 'geometry'
 
 
+def test_order_columns_original_variant_follows_its_base():
+    # address_original/city_original (the raw, pre-reconciliation values
+    # US_parcel-spine-2026.yaml preserves ahead of reconcile_addresses) are
+    # not evidence attributed from another entity, so they carry no
+    # provenance suffix to key on -- they need the same "follows its base"
+    # treatment as {col}_all.
+    df = pd.DataFrame(
+        {
+            'address': ['1 Sample Ave, North Billerica, MA 01862'],
+            'address_original': ['1 SAMPLE AVE'],
+            'city': ['North Billerica'],
+            'city_original': ['BILLERICA'],
+            'n_parcels_per_footprint': [1],
+            'geometry': [None],
+        }
+    )
+    cols = list(order_columns(_state(df)).curated.columns)
+
+    assert cols.index('address_original') == cols.index('address') + 1
+    assert cols.index('city_original') == cols.index('city') + 1
+
+
+def test_order_columns_recognizes_parcel_flags():
+    # land_use_review/manufactured_home_community are the parcel lane's
+    # analogs of occupancy_type_review/manufactured_home_community on
+    # footprints -- _FLAG_COLUMNS needs both recognized so they land in the
+    # flags band (after canonical/sources/evidence) rather than falling
+    # through to the unranked-canonical bucket.
+    df = pd.DataFrame(
+        {
+            'land_use_class': ['Manufactured Home Park'],
+            'n_parcels_per_footprint': [1],
+            'land_use_class_conflict': [pd.NA],
+            'land_use_review': [False],
+            'manufactured_home_community': [True],
+            'geometry': [None],
+        }
+    )
+    cols = list(order_columns(_state(df)).curated.columns)
+
+    def before(a, b):
+        return cols.index(a) < cols.index(b)
+
+    assert before('n_parcels_per_footprint', 'land_use_class_conflict')
+    assert before('land_use_class_conflict', 'land_use_review')
+    assert before('land_use_review', 'manufactured_home_community')
+
+
 def test_order_columns_drops_multiple_transient_columns():
     # order_columns's drop param is what US_footprint-cheer-2026.yaml relies
     # on to keep occupancy_type_dwelling_overture (+ its _source sidecar) and
@@ -155,26 +203,29 @@ def test_cast_integers_skips_missing_columns():
 
 
 def test_order_columns_drops_transient_manufactured_home_inputs():
-    # occupancy_type_base, p_manufactured_home, and manufactured_home_park
-    # are each fully consumed by an earlier step (refine_occupancy_height,
-    # the manufactured-home vote, impute_occupancy_type respectively) in
-    # US_footprint-cheer-2026.yaml, so the recipe drops them here too.
+    # occupancy_type_base and p_manufactured_home are each fully consumed by
+    # an earlier step (refine_occupancy_height, the manufactured-home vote
+    # respectively) in US_footprint-cheer-2026.yaml, so the recipe drops them
+    # here too. (manufactured_home_community, formerly manufactured_home_park,
+    # is a different case: link_curated_entity seeds it from the parcel lane,
+    # impute_occupancy_type consumes that seed, and
+    # flag_manufactured_home_communities later overwrites it under the same
+    # name with its own refinement -- no drop needed, see that step's
+    # docstring.)
     df = pd.DataFrame(
         {
             'occupancy_type': ['Manufactured Home'],
             'occupancy_type_base': ['Multi-Family'],
             'p_manufactured_home': [0.8],
-            'manufactured_home_park': [True],
             'geometry': [None],
         }
     )
     out = order_columns(
         _state(df),
-        drop=['occupancy_type_base', 'p_manufactured_home', 'manufactured_home_park'],
+        drop=['occupancy_type_base', 'p_manufactured_home'],
     ).curated
     assert 'occupancy_type_base' not in out.columns
     assert 'p_manufactured_home' not in out.columns
-    assert 'manufactured_home_park' not in out.columns
     assert 'occupancy_type' in out.columns
 
 

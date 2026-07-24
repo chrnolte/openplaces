@@ -147,6 +147,13 @@ of the sub-modules:
   (`classify_footprint_priority`). Value selection, gap-filling, and occupancy
   inference now run in the curation stage, not here; the harmonized spine
   (`US_footprint-spine-2026`) is an evidence-only table.
+- `addresses.py` — reconcile a canonical street address from any number of
+  source inputs (`reconcile_addresses`) and derive the USPS-preferred city
+  for a ZIP code (`impute_postal_city`).
+  - These are a deliberate exception to the "gap-filling belongs in curate" rule: the
+    dividing line is whether there is dispute about how to derive its output. A ZIP code
+    has exactly one USPS-preferred city — nothing parameter-sensitive to defer — so it's
+    resolved once, in harmonize, where it's available early for downstream linking.
 - `filter.py` — subset rows (`filter_entities`)
 - `discover.py` — discover available data sources for an admin unit
 

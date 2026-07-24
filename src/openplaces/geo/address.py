@@ -632,7 +632,7 @@ def match_streets(
     return False
 
 
-def harmonize_address_case(
+def format_address_components(
     address_street: str,
     address_number: str | None = None,
     unit_number: str | None = None,
@@ -640,16 +640,17 @@ def harmonize_address_case(
     state: str | None = None,
     postal_code: str | None = None,
     admin1_id: str | None = None,
-) -> str:
-    """Format address components into a single harmonized address line.
+) -> dict[str, str]:
+    """Case-format address components without assembling them into a line.
 
     Applies title casing while preserving uppercase directionals (N, S, NE),
     state codes (NC, MA), Roman numerals, and unit alphanumerics (4B), and
-    standardizing suffixes (St, Ave) and ordinals (1st, 2nd). The segment
-    layout comes from the country's address_formats.csv row, e.g. the
-    default '1200 Seagrass Ln, Coastal City, NC 28500' and DE's
-    'Hauptstrasse 12, 80331 Munich'. Units keep their designator
-    ('123 N Main St Apt 4B'); bare identifiers render as '#4B'.
+    standardizing suffixes (St, Ave) and ordinals (1st, 2nd). Units keep their
+    designator ('Apt 4B'); bare identifiers render as '#4B'. Returns a dict
+    keyed by :data:`ADDRESS_COMPONENTS`. Shared by :func:`harmonize_address_case`
+    (which assembles the result into a single line) and any caller that wants
+    to persist formatted components individually rather than a rendered
+    string, e.g. :func:`openplaces.io.harmonizer.addresses.reconcile_addresses_df`.
     """
     norm = normalize_address_components(
         address_street,
@@ -693,15 +694,42 @@ def harmonize_address_case(
 
     city_harmonized = ' '.join(w.capitalize() for w in norm['city'].split())
 
-    # State code stays uppercase; segment layout comes from the country row
+    # State code stays uppercase
+    return {
+        'address_number': norm['address_number'],
+        'address_street': street_harmonized,
+        'unit_number': unit_harmonized,
+        'city': city_harmonized,
+        'state': norm['state'],
+        'postal_code': norm['postal_code'],
+    }
+
+
+def harmonize_address_case(
+    address_street: str,
+    address_number: str | None = None,
+    unit_number: str | None = None,
+    city: str | None = None,
+    state: str | None = None,
+    postal_code: str | None = None,
+    admin1_id: str | None = None,
+) -> str:
+    """Format address components into a single harmonized address line.
+
+    Thin wrapper around :func:`format_address_components`: applies the same
+    case formatting, then assembles the result per the country's segment
+    layout (``address_formats.csv``), e.g. the default '1200 Seagrass Ln,
+    Coastal City, NC 28500' and DE's 'Hauptstrasse 12, 80331 Munich'.
+    """
     return _assemble(
-        {
-            'address_number': norm['address_number'],
-            'address_street': street_harmonized,
-            'unit_number': unit_harmonized,
-            'city': city_harmonized,
-            'state': norm['state'],
-            'postal_code': norm['postal_code'],
-        },
+        format_address_components(
+            address_street,
+            address_number,
+            unit_number,
+            city,
+            state,
+            postal_code,
+            admin1_id=admin1_id,
+        ),
         admin1_id,
     )

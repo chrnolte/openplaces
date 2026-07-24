@@ -84,8 +84,10 @@ def test_reconcile_addresses_writes_street_output_col():
         sources={'parcel': {'address_full': 'address_parcel'}},
     )
     res = state.spine
-    assert res.loc[0, 'address_street'] == 'EXAMPLE AVE'
-    assert res.loc[1, 'address_street'] == 'EXAMPLE AVE'
+    # Case-formatted, like `address`, not the internal matching-only
+    # uppercase representation.
+    assert res.loc[0, 'address_street'] == 'Example Ave'
+    assert res.loc[1, 'address_street'] == 'Example Ave'
 
 
 def test_reconcile_addresses_complete_from_admin():

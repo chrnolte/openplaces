@@ -32,7 +32,7 @@ def link_curated_entity(
     Reads the output of a curate-stage recipe and maps each named column onto
     the current entity (1:many ref -> entity) on the id key. This is how, e.g.,
     the footprint lane consumes the parcel curation lane's land-use decisions
-    (the refined ``use_group_combined`` and the ``manufactured_home_park``
+    (the refined ``use_group_combined`` and the ``manufactured_home_community``
     flag), so the referenced entity's classification is finalized before the
     current one's is inferred. Existing columns are overwritten — the
     referenced curated value supersedes the raw harmonized one.
