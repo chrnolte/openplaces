@@ -89,6 +89,9 @@ def reconcile_addresses_df(
     complete_from_admin: dict[str, int] | None = None,
     complete_city_from_postal: bool = False,
     street_output_col: str | None = 'address_street',
+    number_output_col: str | None = None,
+    unit_output_col: str | None = None,
+    city_output_col: str | None = None,
 ) -> pd.DataFrame:
     """Reconcile street addresses from any number of source inputs.
 
@@ -119,6 +122,16 @@ def reconcile_addresses_df(
     selection but summarized in *conflict_column* (null when the sources
     agree or only one is present; see :func:`_summarize_conflicts`). Missing
     columns are skipped, like in reconcile_values.
+
+    The *_output_col* columns below persist each component's case-formatted
+    value (via openplaces.geo.address.format_address_components), matching
+    *output_col*'s own formatting -- not the internal uppercase, USPS-
+    abbreviated representation used for cross-source matching. The
+    ``{output_col}_source`` sidecar's token gets a '+usaddress' suffix (e.g.
+    'parcel' -> 'parcel+usaddress') on rows whose city could only be derived
+    by parsing a source's address_full string (no source contributing that
+    row's city declared an explicit ``city`` role) -- a meaningfully less
+    trustworthy derivation than reading a structured field.
 
     Parameters
     ----------
@@ -166,6 +179,13 @@ def reconcile_addresses_df(
         a clean grouping key for consumers that want "same street" without
         parsing *output_col*'s formatted string themselves. Set to ``None``
         to skip.
+    number_output_col, unit_output_col, city_output_col : str, optional
+        Also persist the resolved, normalized ``address_number``,
+        ``unit_number``, and ``city`` components under these names (default
+        ``None``, i.e. not persisted). Together with *street_output_col*,
+        this lets a later step (e.g. ``impute_postal_city``) fill a still-
+        missing component and cheaply re-render *output_col* from the saved
+        components, without re-parsing the formatted string.
 
     Returns
     -------
@@ -176,6 +196,7 @@ def reconcile_addresses_df(
     from openplaces.geo.address import (
         ADDRESS_COMPONENTS,
         MATCH_COMPONENTS,
+        format_address_components,
         get_admin2_codes,
         harmonize_address_case,
         lookup_postal_city,
@@ -198,6 +219,11 @@ def reconcile_addresses_df(
     # Build one normalized component frame per source (over unique values)
     frames: dict[str, pd.DataFrame] = {}
     needs_number: dict[str, bool] = {}
+    # A source's city is usaddress-derived when it only supplies address_full
+    # (parsed via parse_address) and declares no explicit city role -- an
+    # explicit role always overrides the parsed value (see class docstring),
+    # so a source with both never actually depends on the parse for city.
+    city_via_address_full: dict[str, bool] = {}
     for name, spec in sources.items():
         unknown = set(spec) - {
             'address_full',
@@ -216,6 +242,9 @@ def reconcile_addresses_df(
         present = {role: col for role, col in spec.items() if col in curated.columns}
         if not present:
             continue
+        city_via_address_full[name] = (
+            'address_full' in present and 'city' not in present
+        )
         frame = pd.DataFrame('', index=curated.index, columns=components)
         full_col = present.get('address_full')
         if full_col is not None:
@@ -268,9 +297,15 @@ def reconcile_addresses_df(
         base.loc[take] = name
 
     merged = pd.DataFrame('', index=curated.index, columns=components)
+    # Tracks whether the row's final `city` came from a source that had to
+    # parse it out of address_full (see city_via_address_full above) rather
+    # than an explicit city field, for the address_source annotation below.
+    city_from_usaddress = pd.Series(False, index=curated.index)
     for name, frame in frames.items():
         take = base.eq(name)
         merged.loc[take] = frame.loc[take]
+        if city_via_address_full.get(name):
+            city_from_usaddress.loc[take & frame['city'].ne('')] = True
 
     # Agreeing lower-priority sources fill the base's missing components;
     # sources that fail the agreement check are tracked for conflict flagging
@@ -309,6 +344,8 @@ def reconcile_addresses_df(
                 ].ne('')
                 fill_index = fill.index[fill]
                 merged.loc[fill_index, comp] = frame.loc[fill_index, comp]
+                if comp == 'city' and city_via_address_full.get(name):
+                    city_from_usaddress.loc[fill_index] = True
         disagreeing |= others & ~agree
 
     # Recipe-configured completion from the run's admin unit (e.g. state: 2
@@ -357,16 +394,30 @@ def reconcile_addresses_df(
     conflict = _summarize_conflicts(compare, curated.index).where(disagreeing)
     curated[conflict_column] = conflict
 
-    # Format over unique component tuples, then assign and record provenance
+    # Format over unique component tuples, then assign and record provenance.
+    # format_address_components is called separately from harmonize_address_case
+    # (which repeats the same normalization internally) rather than reusing its
+    # private _assemble step directly -- this module doesn't reach into another
+    # module's underscore-prefixed internals, same reasoning as _record_source
+    # and _summarize_conflicts above. Both calls are over the same deduplicated
+    # unique tuples, so the repeated work is cheap.
     has = base.ne('')
     subset = merged.loc[has]
     keys = list(zip(*(subset[comp] for comp in components)))
+    unique_keys = set(keys)
     formats = {
         key: harmonize_address_case(
             **{comp: value or None for comp, value in zip(components, key)},
             admin1_id=admin1_id,
         )
-        for key in set(keys)
+        for key in unique_keys
+    }
+    formatted_components = {
+        key: format_address_components(
+            **{comp: value or None for comp, value in zip(components, key)},
+            admin1_id=admin1_id,
+        )
+        for key in unique_keys
     }
     formatted = pd.Series([formats[k] for k in keys], index=subset.index)
 
@@ -374,17 +425,34 @@ def reconcile_addresses_df(
         curated[output_col] = pd.Series(pd.NA, index=curated.index, dtype=object)
     curated.loc[formatted.index, output_col] = formatted
 
-    if street_output_col:
-        if street_output_col not in curated.columns:
-            curated[street_output_col] = pd.Series(
-                pd.NA, index=curated.index, dtype=object
-            )
-        curated.loc[has, street_output_col] = merged.loc[has, 'address_street']
+    for component, out_col in (
+        ('address_number', number_output_col),
+        ('address_street', street_output_col),
+        ('unit_number', unit_output_col),
+        ('city', city_output_col),
+    ):
+        if not out_col:
+            continue
+        if out_col not in curated.columns:
+            curated[out_col] = pd.Series(pd.NA, index=curated.index, dtype=object)
+        values = pd.Series(
+            [formatted_components[k][component] for k in keys], index=subset.index
+        )
+        curated.loc[has, out_col] = values.mask(values.eq(''))
 
+    # A row's token is annotated '+usaddress' when its final city could only
+    # be derived by parsing address_full (see city_via_address_full above),
+    # rather than read from an explicit city field on any contributing source.
     tokens = base.copy()
     tokens[corroborated] = 'reconciled'
     for token in sorted(set(tokens[has])):
-        _record_source(curated, output_col, has & tokens.eq(token), token)
+        token_mask = has & tokens.eq(token)
+        plain_mask = token_mask & ~city_from_usaddress
+        usaddress_mask = token_mask & city_from_usaddress
+        if plain_mask.any():
+            _record_source(curated, output_col, plain_mask, token)
+        if usaddress_mask.any():
+            _record_source(curated, output_col, usaddress_mask, f'{token}+usaddress')
 
     if verbose:
         counts = tokens[has].value_counts()
@@ -419,4 +487,120 @@ def reconcile_addresses(state: HarmonizeState, **kwargs) -> HarmonizeState:
     state.spine = reconcile_addresses_df(
         state.spine, state.admin_id, state.verbose, **kwargs
     )
+    return state
+
+
+@_register('impute_postal_city')
+def impute_postal_city(
+    state: HarmonizeState,
+    column: str = 'postal_code',
+    city_column: str = 'city',
+    address_column: str = 'address',
+) -> HarmonizeState:
+    """Derive the USPS-preferred city for a ZIP code, and complete ``address``.
+
+    A ZIP code has exactly one USPS-preferred city -- unlike most curate-stage
+    work, there is no real dispute about how to derive it, so it belongs here
+    rather than in curate (see CLAUDE.md's harmonizer section). Writes
+    ``postal_zip5``/``postal_city``/``postal_city_acceptable``/
+    ``postal_city_unacceptable`` evidence columns from *column* via
+    :func:`openplaces.geo.address.lookup_postal_city` (US-only; other
+    countries resolve to missing). Where *city_column* is still missing, fills
+    it from ``postal_city`` and re-renders *address_column* from the
+    components :func:`reconcile_addresses_df` already persisted
+    (``address_number``/``address_street``/``address_unit``/*city_column*)
+    plus the run's admin-derived state code -- no re-parsing of the rendered
+    string, and bounded to just the rows a city was actually filled for. A
+    no-op if *column* is absent, or if *city_column*/*address_column* were
+    never persisted by ``reconcile_addresses``.
+
+    Parameters
+    ----------
+    column : str, optional
+        ZIP-code evidence column to read (default ``'postal_code'``); point
+        this at a recipe's raw, ungated ZIP evidence column (e.g.
+        ``'postal_code_dwelling_overture'``) for the broadest coverage --
+        deliberately not gated by address-source agreement the way
+        ``reconcile_addresses``'s own ``complete_city_from_postal`` is.
+    city_column, address_column : str, optional
+        Canonical city / formatted-address columns to backfill (defaults
+        ``'city'``, ``'address'``).
+    """
+    if state.spine is None or column not in state.spine.columns:
+        return state
+
+    from openplaces.core.schema import AdminId
+    from openplaces.geo.address import harmonize_address_case, lookup_postal_city
+
+    spine = state.spine
+    admin_str = str(state.admin_id) if state.admin_id else ''
+    admin_levels = AdminId(admin_str).levels if admin_str else ()
+    admin1_id = admin_levels[0] if admin_levels else None
+
+    zip5 = spine[column].astype('string').str.extract(r'(\d{5})', expand=False)
+    spine['postal_zip5'] = zip5
+
+    # ZIP lookups are cached over unique ZIPs only (typically far fewer than
+    # rows), then broadcast back with .map -- same cost as the pre-existing
+    # curate-stage version this replaces, just relocated.
+    lookups = {z: lookup_postal_city(z, admin1_id) for z in zip5.dropna().unique()}
+    spine['postal_city'] = zip5.map(
+        lambda z: lookups[z].city if lookups.get(z) else pd.NA
+    )
+    spine['postal_city_acceptable'] = zip5.map(
+        lambda z: '; '.join(lookups[z].acceptable_cities) if lookups.get(z) else pd.NA
+    )
+    spine['postal_city_unacceptable'] = zip5.map(
+        lambda z: '; '.join(lookups[z].unacceptable_cities) if lookups.get(z) else pd.NA
+    )
+    resolved = spine['postal_city'].notna()
+    if resolved.any():
+        _record_source(spine, 'postal_city', resolved, 'zipcodes')
+
+    if city_column in spine.columns:
+        missing_city = spine[city_column].isna() | spine[city_column].eq('')
+        fillable = missing_city & resolved
+        if fillable.any():
+            spine.loc[fillable, city_column] = spine.loc[fillable, 'postal_city']
+            _record_source(spine, city_column, fillable, 'zipcodes')
+
+            if address_column in spine.columns:
+                # Re-render only the rows just backfilled (a strict subset of
+                # `resolved`), caching over unique component tuples -- the
+                # same micro-optimization reconcile_addresses_df's own
+                # full-dataset formatting pass above already relies on.
+                empty = pd.Series('', index=spine.index, dtype=object)
+                number = spine.get('address_number', empty).fillna('')
+                street = spine.get('address_street', empty).fillna('')
+                unit = spine.get('address_unit', empty).fillna('')
+                admin_state = admin_levels[1] if len(admin_levels) > 1 else ''
+
+                idx = spine.index[fillable]
+                keys = list(
+                    zip(
+                        number.loc[idx],
+                        street.loc[idx],
+                        unit.loc[idx],
+                        spine.loc[idx, city_column].fillna(''),
+                        zip5.loc[idx].fillna(''),
+                    )
+                )
+                renders = {
+                    key: harmonize_address_case(
+                        address_street=key[1],
+                        address_number=key[0] or None,
+                        unit_number=key[2] or None,
+                        city=key[3] or None,
+                        state=admin_state or None,
+                        postal_code=key[4] or None,
+                        admin1_id=admin1_id,
+                    )
+                    for key in set(keys)
+                }
+                spine.loc[idx, address_column] = [renders[k] for k in keys]
+
+    state.spine = spine
+    if state.verbose:
+        n = int(spine['postal_city'].notna().sum())
+        print(f'  impute_postal_city: resolved {n:,} of {len(spine):,} rows.')
     return state

@@ -48,14 +48,76 @@ pipeline:
     auto_discover: true
     entity_type: parcel
 
+  # Preserve the assessor's raw address/city under their own names before
+  # reconcile_addresses's output (same bare names, by default) would
+  # otherwise overwrite them in place.
+  - step: rename_columns
+    columns:
+      address: address_original
+      city: city_original
+
+  # Direct parcel<->dwelling link: dwelling-overture-2025 points are usually
+  # only linked to footprints (below), so this alone catches a dwelling
+  # whose footprint was never detected. Same config as the footprint
+  # spine's own dwelling link.
+  - step: link_to_reference
+    recipe_id: dwelling-overture-2025
+    source_geometry_type: single_dwelling_point
+    join: spatial_point
+    thresholds:
+      proximity_m: 10
+      far_proximity_m: 50
+      aggregate_multipoint: true
+      dedup_addresses: true
+
+  - step: reconcile_attributes
+    sources:
+      - recipe_id: dwelling-overture-2025
+        columns: [address_street, address_number, postal_code, city]
+
+  # Relay dwelling evidence via each parcel's primary footprint (per
+  # classify_footprint_priority on the footprint spine) -- the cleaner,
+  # per-building-anchored signal, prioritized above the direct link above
+  # in reconcile_addresses below. A no-op wherever a state has no dwelling
+  # coverage at all.
+  - step: attribute_dwelling_address
+    footprint_recipe_id: US_footprint-spine-2026
+
   # Standardize addresses and generate clean street names for down-stream imputation blocks.
   - step: reconcile_addresses
     sources:
       assessor:
-        address_full: address
-        city: city
+        address_full: address_original
+        city: city_original
+        # Only some state sources map a genuine site-level postal_code (most
+        # only carry the owner's mailing owner_postal_code, which is the
+        # wrong field for the property's own city); this role is a no-op
+        # wherever a state source didn't map one.
+        postal_code: postal_code
+      dwelling_footprint:
+        address_street: address_street_dwelling_footprint
+        address_number: address_number_dwelling_footprint
+        city: city_dwelling_footprint
+        postal_code: postal_code_dwelling_footprint
+      dwelling_overture:
+        address_street: address_street_dwelling_overture
+        address_number: address_number_dwelling_overture
+        city: city_dwelling_overture
+        postal_code: postal_code_dwelling_overture
     complete_from_admin:
       state: 2
+    # Persist the resolved components too, so impute_postal_city below can
+    # fill a still-missing city and re-render `address` without re-parsing it.
+    number_output_col: address_number
+    unit_output_col: address_unit
+    city_output_col: city
+
+  # A ZIP code has exactly one USPS-preferred city, so this is imputed here
+  # rather than in curate. Reads the raw assessor ZIP directly (not
+  # reconcile_addresses's own, agreement-gated postal_code) for the broadest
+  # coverage, and completes `city`/`address` wherever they're still missing.
+  - step: impute_postal_city
+    column: postal_code
 
   # Build the combined use_group_combined label from whatever use_group /
   # use_subgroup the link step above attached (via an auto-discovered
