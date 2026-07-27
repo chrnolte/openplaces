@@ -61,9 +61,24 @@ def test_discover_link_sources_no_roll_for_uncovered_county():
 def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
     rows = pd.DataFrame(
         [
-            {'admin_id': 'US-MA', 'source_id': 'massgis', 'version': '2024'},
-            {'admin_id': 'US-MA', 'source_id': 'massgis', 'version': '2025'},
-            {'admin_id': 'US-CA', 'source_id': 'other', 'version': '2020'},
+            {
+                'admin_id': 'US-MA',
+                'source_id': 'massgis',
+                'version': '2024',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-MA',
+                'source_id': 'massgis',
+                'version': '2025',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-CA',
+                'source_id': 'other',
+                'version': '2020',
+                'exclude_from_auto_discover': False,
+            },
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -77,8 +92,18 @@ def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
 def test_find_admin_scoped_recipe_ids_orders_oldest_version_first(monkeypatch):
     rows = pd.DataFrame(
         [
-            {'admin_id': 'US-NC-NE', 'source_id': 'nhcgov', 'version': '2026'},
-            {'admin_id': 'US-NC', 'source_id': 'nconemap', 'version': '2025'},
+            {
+                'admin_id': 'US-NC-NE',
+                'source_id': 'nhcgov',
+                'version': '2026',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-NC',
+                'source_id': 'nconemap',
+                'version': '2025',
+                'exclude_from_auto_discover': False,
+            },
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -90,6 +115,31 @@ def test_find_admin_scoped_recipe_ids_orders_oldest_version_first(monkeypatch):
     # 'US-NC-NE' row appears first in the input; version order, not admin
     # specificity, decides join order.
     assert ids == ['US-NC_parcel-nconemap-2025', 'US-NC-NE_parcel-nhcgov-2026']
+
+
+def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
+    rows = pd.DataFrame(
+        [
+            {
+                'admin_id': 'US-MA',
+                'source_id': 'massgis',
+                'version': '2025',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-MA',
+                'source_id': 'placeslab',
+                'version': 'fmv2026',
+                'exclude_from_auto_discover': True,
+            },
+        ]
+    )
+    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+
+    state = _state('US-MA-MI-SO')
+    ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
+
+    assert ids == ['US-MA_parcel-massgis-2025']
 
 
 def test_write_prioritized_new_column_is_written_directly():

@@ -1347,11 +1347,18 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     Returned oldest-version-first: :func:`link_by_id`'s auto-discover mode
     joins sources in this order, so the most recent source's attributes are
     the ones applied last (see its column-priority rule).
+
+    Recipes with ``exclude_from_auto_discover: true`` are skipped -- for a
+    parcel-entity ingest recipe that is a reference dataset consumed only via
+    an explicit crosswalk (e.g. a legacy/external source's own attributes,
+    not meant to auto-roll into the canonical spine).
     """
     if state.admin_id is None:
         return []
     best: dict[tuple[str, str], tuple[str, str]] = {}
     for _, row in find_recipes(entity_type, stage='ingest').iterrows():
+        if row['exclude_from_auto_discover']:
+            continue
         admin_id_str = row['admin_id']
         if not admin_id_str or not AdminId(admin_id_str).is_parent_or_equal_of(
             state.admin_id
