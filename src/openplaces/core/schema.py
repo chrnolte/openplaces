@@ -472,6 +472,40 @@ class DataSet:
         return Path(*parts)
 
 
+def cast_dataset_or_entity(value):
+    """Cast a raw dict/string (or already-cast DataSet/Entity) to whichever fits.
+
+    Used where a recipe attaches either a themed dataset or another entity
+    recipe (e.g. an enrich recipe crosswalking to an entity from a different
+    time period) through the same `dataset` slot. `DataSet` and `Entity`
+    parse the same compact ``{first}-{source}-{version}`` shape, differing
+    only in which vocabulary validates the first token, so a `DataSet` is
+    tried first and an `Entity` is used as the fallback.
+
+    Parameters
+    ----------
+    value : dict, str, DataSet, or Entity
+        Raw value to cast.
+
+    Returns
+    -------
+    DataSet or Entity
+    """
+    if isinstance(value, DataSet | Entity):
+        return value
+    if isinstance(value, dict):
+        value = dict(value)
+        if isinstance(value.get('source'), dict):
+            value['source'] = Source(**value['source'])
+        if 'entity_type' in value:
+            return Entity(**value)
+        return DataSet(**value)
+    try:
+        return DataSet(value)
+    except ValueError:
+        return Entity(value)
+
+
 def sanitize(s, max_length=255):
     """Ensure that string is safe for filenames: only [a-zA-Z0-9_-].
 
