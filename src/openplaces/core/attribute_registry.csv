@@ -102,4 +102,55 @@ has_structure,Whether the parcel has a structure,,bool,first,,parcel,
 geometry_source,Dataset the footprint geometry came from,,categorical,first,,footprint,
 source_date,Source last-update date,,datetime,first,,,
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
-m2,Footprint area,m2,float,sum,,,curate
+area_m2,Footprint area,m2,float,sum,,,curate
+area_ha,Parcel lot area,ha,float,sum,,,curate
+area_ac,Parcel lot area,ac,float,sum,,,curate
+area_km2,Admin area,km2,float,sum,,,curate
+area_sqmi,Admin area,sqmi,float,sum,,,curate
+elevation,Average elevation,m,float,mean,,,enrich
+slope,Average slope of a parcel or surface,deg,float,mean,,,enrich
+precipitation_summer,"Average precipitation, Jun-Aug (30yr normal)",mm,float,mean,,,enrich
+precipitation_winter,"Average precipitation, Dec-Feb (30yr normal)",mm,float,mean,,,enrich
+temperature_mean_summer,"Average temperature, Jun-Aug (30yr normal)",C,float,mean,,,enrich
+temperature_mean_winter,"Average temperature, Dec-Feb (30yr normal)",C,float,mean,,,enrich
+coastal_water_share,Share of coastal waters within a radius,fraction (0-1),float,mean,,,enrich
+lake_distance,Distance to nearest lake larger than 4ha,m,float,mean,,,enrich
+lake_frontage,Approximate lake frontage,m,float,sum,,parcel,enrich
+river_frontage,Approximate river frontage,m,float,sum,,parcel,enrich
+wetland_share,Share of area covered by wetland polygons,fraction (0-1),float,mean,,,enrich
+public_land_acquisition_share,Share of area overlapping a public land acquisition,fraction (0-1),float,mean,,,enrich
+conservation_easement_share,Share of area under a conservation easement,fraction (0-1),float,mean,,,enrich
+protected_land_share,"Share of area under fee/easement protection, given year and radius",fraction (0-1),float,mean,,,enrich
+soil_farmland_local_share,Share classified as locally-important farmland soil,fraction (0-1),float,mean,,,enrich
+soil_farmland_prime_share,Share classified as prime farmland soil,fraction (0-1),float,mean,,,enrich
+soil_farmland_statewide_share,Share classified as statewide-important farmland soil,fraction (0-1),float,mean,,,enrich
+land_cover_barren_share,Land cover share: barren,fraction (0-1),float,mean,,,enrich
+land_cover_cropland_share,Land cover share: cultivated cropland,fraction (0-1),float,mean,,,enrich
+land_cover_forest_deciduous_share,Land cover share: deciduous forest,fraction (0-1),float,mean,,,enrich
+land_cover_forest_evergreen_share,Land cover share: evergreen forest,fraction (0-1),float,mean,,,enrich
+land_cover_forest_mixed_share,Land cover share: mixed forest,fraction (0-1),float,mean,,,enrich
+land_cover_grassland_share,Land cover share: grassland/herbaceous,fraction (0-1),float,mean,,,enrich
+land_cover_pasture_share,Land cover share: pasture/hay,fraction (0-1),float,mean,,,enrich
+land_cover_shrubland_share,Land cover share: shrub/scrub,fraction (0-1),float,mean,,,enrich
+building_footprint_share,Share of area within a radius covered by building footprints,fraction (0-1),float,mean,,,enrich
+footprint_area_m2,Total building footprint area on the parcel,m2,float,sum,,parcel,enrich
+n_footprints,Count of building footprints on the parcel,,float,sum,,parcel,enrich
+flood_depth_fluvial,"Average fluvial flood inundation depth, given return period",m,float,mean,,,enrich
+flood_depth_pluvial,"Average pluvial flood inundation depth, given return period",m,float,mean,,,enrich
+highway_distance,Minimum distance to nearest highway,m,float,mean,,,enrich
+paved_road_distance,Minimum distance to nearest paved road,m,float,mean,,,enrich
+travel_time_to_city,Travel time to nearest major city,min,float,mean,,,enrich
+household_income_median,Median household income,USD,float,mean,,,enrich
+population_asian_share,Population share: Asian,fraction (0-1),float,mean,,,enrich
+population_black_share,Population share: Black/African-American,fraction (0-1),float,mean,,,enrich
+population_hispanic_share,Population share: Hispanic,fraction (0-1),float,mean,,,enrich
+population_mixed_race_share,Population share: mixed race,fraction (0-1),float,mean,,,enrich
+population_native_american_share,Population share: American Indian/Alaska Native,fraction (0-1),float,mean,,,enrich
+population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
+population_gravity_index,"Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster",,float,mean,,,enrich
+census_tract_id,Census tract identifier,,string,first,,,enrich
+census_blockgroup_id,Census block group identifier,,string,first,,,enrich
+census_subdivision_id,Census county subdivision (town/township) identifier,,string,first,,,enrich
+land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb2,"Same; 'region-nb2' model (alternate neighborhood-region spec)",ln(USD/ha),float,mean,,parcel,enrich
+aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich

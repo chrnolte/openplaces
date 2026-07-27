@@ -1,0 +1,45 @@
+# Enrichment recipe: attach the legacy "placeslab-fmv" parcel dataset's
+# fair-market-value predictions and physical predictors onto current parcels
+# as area-weighted evidence. `entity` names the current-parcel spine being
+# enriched (any parcel entity works, source/version unpinned); `dataset`
+# names the historical parcel entity being attached (`Entity`, not a themed
+# `DataSet` -- accepted here since `dataset` casts to whichever of the two
+# validates, see `core.schema.cast_dataset_or_entity`), matching
+# `reference_parcel_recipe_id` below.
+
+description: >-
+  Placeslab-fmv2026 fair-market-value predictions and physical predictors as
+  area-weighted enrichment evidence on current parcels.
+
+stage: enrich
+admin_id: US
+
+entity:
+  entity_type: parcel
+
+dataset: parcel-placeslab-fmv2026
+
+# Needed for the crosswalk's overlay fallback (state.spine geometry).
+spine_geom: true
+
+# Pointer to the reference dataset, resolved analogously to how enrich
+# steps resolve `image_recipe` (io/enricher/attributes.py:_build_image_set):
+# get_recipe_by_id + get_entities, per-admin-unit FileNotFoundError tolerated.
+reference_parcel_recipe_id: US_parcel-placeslab-fmv2026
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_parcels_from_reference_crosswalk
+    min_overlap_m2: 10
+    area_ratio_tolerance: 0.01
+    # Batch/production runs should not block on a matplotlib window; run the
+    # crosswalk QA interactively (silent_qa: false, the function default)
+    # from the companion notebook instead.
+    silent_qa: true
+    # Publish the id-or-overlay crosswalk (parcel_id -> parcel_id_int, with
+    # area_ha/fraction_of_old/match_type) as a sidecar next to the evidence
+    # output, and reuse it on a later run instead of recomputing (the
+    # expensive part of this step) unless reprocess=True.
+    save_crosswalk: true

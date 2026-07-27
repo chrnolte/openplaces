@@ -764,6 +764,56 @@ def add_unique_suffix(s):
     return s
 
 
+def rename_index(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Rename `df`'s index to `name`, leaving values untouched.
+
+    Usable as a recipe's `create_index.function`
+    (`openplaces.io.transform.rename_index`) to opt a parcel entity out of
+    `TableIngester`'s automatic geometry-hash `geo_id` indexing while
+    keeping whatever index the source data already carries -- e.g. to
+    preserve a shared join key across several tables meant to be merged
+    later (see `io.aggregate.join_partitions_by_index`).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    name : str
+        New name for `df.index`.
+    """
+    return df.rename_axis(name)
+
+
+def index_by(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Index `df` by `name`, whether it's currently the index or a plain column.
+
+    Usable as a recipe's `create_index.function`
+    (`openplaces.io.transform.index_by`) for a shared join key that a
+    multi-table source doesn't expose consistently -- e.g. one table
+    already indexed by it (nothing to do) and another carrying it as an
+    ordinary column (promoted via `set_index`) -- so a single
+    `create_index` config works across all of a recipe's
+    `download_by: {partition: table}` tables regardless of which shape a
+    given one arrives in.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    name : str
+        Column or existing index name to make `df`'s index.
+
+    Raises
+    ------
+    ValueError
+        If `name` is neither `df`'s current index name nor one of its
+        columns.
+    """
+    if df.index.name == name:
+        return df
+    if name in df.columns:
+        return df.set_index(name)
+    raise ValueError(f'{name!r} is neither the current index nor a column of df.')
+
+
 def make_index_unique(
     df: pd.DataFrame,
     sort_by: str | None = None,

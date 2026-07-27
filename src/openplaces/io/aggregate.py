@@ -8,6 +8,7 @@ import warnings
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 from openplaces.core.attribute_registry import get_agg_func
@@ -140,6 +141,135 @@ def aggregate_rows(
         return None
 
     return df.groupby(by).agg(agg_cols)
+
+
+def aggregate_rows_weighted(
+    df: pd.DataFrame,
+    by: str | list[str],
+    wcol: str,
+    aggregation_function=None,
+) -> pd.DataFrame | None:
+    """Weighted-aggregate rows of *df* using per-column functions from the registry.
+
+    Weighted counterpart to :func:`aggregate_rows`, for join tables carrying a
+    per-row weight (e.g. an area-based crosswalk's ``area_ha`` or
+    ``fraction_of_old``). Only the two aggregation kinds that benefit from a
+    weight get weighted treatment; all other registry kinds (``'first'``,
+    ``'max'``, ``'join_nonnull'``, ...) are delegated to :func:`aggregate_rows`
+    unweighted, identical to its own behavior.
+
+    Semantics
+    ---------
+    ``'mean'`` columns
+        Weighted mean per group: ``sum(value * wcol) / sum(wcol * value.notnull())``.
+        *wcol* should reflect physical overlap magnitude (e.g. ``area_ha``) —
+        weight is normalized within each group implicitly by the division.
+    ``'sum'`` columns
+        Fraction-weighted (apportioned) sum per group: ``sum(value * wcol)``,
+        with **no further normalization**. The caller must pass an
+        already-source-normalized weight (e.g. a crosswalk's
+        ``fraction_of_old``, which sums to 1.0 per source row) so that
+        summing a value across every group sharing a source recovers exactly
+        that source's original total. Passing a non-normalized weight (e.g.
+        raw ``area_ha``) for a 'sum' column silently over- or under-counts —
+        this is a caller responsibility, easy to get backwards. Because
+        'mean' and 'sum' columns typically need *different* weight columns,
+        call this function once per weight column (on the relevant column
+        subset) when a table mixes both kinds.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input rows, one per (target, source) link — e.g. one row per
+        crosswalk (parcel_id_new, parcel_id_old) pair, with value columns to
+        aggregate plus *wcol*.
+    by : str or list of str
+        Column(s) to group by (e.g. ``'parcel_id_new'``).
+    wcol : str
+        Weight column. See 'Semantics' above for what it must represent.
+    aggregation_function : None, callable, or dict, optional
+        ``None`` or callable: same semantics as :func:`aggregate_rows`
+        (registry-driven default, or one function applied to every
+        aggregatable column). A dict, unlike :func:`aggregate_rows`, is not
+        limited to *overriding* registry-known columns: a column present as a
+        dict key is aggregated with that function whether or not it is in the
+        attribute registry, letting one-off columns from an external dataset
+        (not meant to join the shared registry) be weight-aggregated too.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Aggregated DataFrame with *by* as the index, or ``None`` when no
+        aggregatable columns are found in *df*.
+    """
+    if not (
+        aggregation_function is None
+        or callable(aggregation_function)
+        or isinstance(aggregation_function, dict)
+    ):
+        raise ValueError(
+            'aggregation_function must be None, a callable, or a dict; '
+            f'got {type(aggregation_function)}'
+        )
+
+    by_cols = [by] if isinstance(by, str) else list(by)
+
+    agg_cols: dict = {}
+    for col in df.columns:
+        if col in by_cols or col == wcol:
+            continue
+        if isinstance(aggregation_function, dict) and col in aggregation_function:
+            # An explicit dict entry fully specifies the column, whether or
+            # not it is in the shared attribute registry -- unlike
+            # aggregate_rows, this lets one-off columns outside the registry
+            # (e.g. a legacy external dataset's raw variable names) be
+            # weight-aggregated without adding registry rows for them.
+            agg_cols[col] = aggregation_function[col]
+            continue
+        fname = get_agg_func(resolve_attribute_name(col))
+        if fname is None:
+            continue
+        agg_cols[col] = (
+            aggregation_function if callable(aggregation_function) else fname
+        )
+
+    if not agg_cols:
+        return None
+
+    weighted_mean_cols = [c for c, f in agg_cols.items() if f == 'mean']
+    weighted_sum_cols = [c for c, f in agg_cols.items() if f == 'sum']
+    plain_cols = {c: f for c, f in agg_cols.items() if f not in ('mean', 'sum')}
+
+    group_keys = df[by] if isinstance(by, str) else [df[c] for c in by_cols]
+    w = pd.to_numeric(df[wcol], errors='coerce')
+    parts = []
+
+    if weighted_mean_cols:
+        numer = df[weighted_mean_cols].mul(w, axis=0).groupby(group_keys).sum()
+        denom = (
+            df[weighted_mean_cols]
+            .notna()
+            .mul(w, axis=0)
+            .groupby(group_keys)
+            .sum()
+            .replace(0, np.nan)
+        )
+        parts.append(numer / denom)
+
+    if weighted_sum_cols:
+        parts.append(df[weighted_sum_cols].mul(w, axis=0).groupby(group_keys).sum())
+
+    if plain_cols:
+        plain_result = aggregate_rows(
+            df[[*by_cols, *plain_cols]], by, aggregation_function=plain_cols
+        )
+        if plain_result is not None:
+            parts.append(plain_result)
+
+    if not parts:
+        return None
+
+    return pd.concat(parts, axis=1)
 
 
 def _strip_save_admin_level(recipe):
@@ -515,6 +645,123 @@ def aggregate_to_admin_level(
         combined=combined,
         verbose=verbose,
     )
+
+
+def join_partitions_by_index(
+    recipe,
+    table_names,
+    admin_ids=None,
+    join_key_name=None,
+    keep_original=False,
+    verbose=False,
+) -> None:
+    """Left-join per-table partition outputs into one entity file per admin unit.
+
+    Column-wise counterpart to :func:`aggregate_partitions` (which only
+    row-concatenates): for a recipe ingested with ``download_by: {partition:
+    table, table_names: [...]}``, each table is saved as its own partition
+    file (``get_output_path(recipe, admin_id, partition_id=table_name)``).
+    This reads them back and merges them into the single, un-partitioned
+    entity file (``get_output_path(recipe, admin_id)``) that the rest of the
+    codebase expects to read.
+
+    The *first* entry in `table_names` is treated as the base table (read
+    with geometry); every later one is a plain attribute table (its own
+    `geometry` column, if any, is dropped) left-joined onto the base by
+    their shared index -- every table is expected to already carry the same
+    join key as its index (e.g. via a recipe's `create_index` opting out of
+    `TableIngester`'s automatic geometry-hash `geo_id` indexing; see
+    `US_parcel-placeslab-fmv2026.yaml` for the reference example). Since
+    that opt-out means none of the partitions carry openplaces's own
+    `geo_id`/`parcel_id`, this computes it fresh on the joined result,
+    replicating `TableIngester.process`'s own logic
+    (`io/ingester/table_ingester.py:642-643`).
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID string or loaded recipe dict. Must be `entity_type:
+        parcel` (or another entity type `geo.ids.get_geo_ids` supports) with
+        geometry on its base table.
+    table_names : list of str
+        Partition ids to join, in join order; the first is the base table.
+    admin_ids : str, AdminId, or list, optional
+        Admin ID(s) to join. Defaults to every admin unit that has a saved
+        base-table (`table_names[0]`) partition file.
+    join_key_name : str, optional
+        If given, the shared index the tables were joined on is kept as a
+        column under this name in the output (for provenance -- nothing
+        downstream requires it). If omitted, the original join index is
+        dropped once the real `geo_id`/`parcel_id` index is assigned.
+    keep_original : bool
+        If False (default), delete the per-table partition files after a
+        successful join.
+    verbose : bool
+        If True, print a summary line per joined admin unit, and a note for
+        any admin unit skipped because its base-table partition is missing
+        (treated as "not yet published", matching how the Ingester itself
+        tolerates a missing partition).
+    """
+    from openplaces.geo.ids import get_geo_ids
+    from openplaces.io.transform import add_unique_suffix
+
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    base_table, *attribute_tables = table_names
+
+    if admin_ids is None:
+        save_level = get_save_admin_level(recipe)
+        admin_ids = [
+            str(a)
+            for a in get_admin(recipe['admin_id'], save_level).index
+            if get_output_path(recipe, a, partition_id=base_table).exists()
+        ]
+    else:
+        admin_ids = _to_id_list(admin_ids)
+
+    for admin_id in admin_ids:
+        base_path = get_output_path(recipe, admin_id, partition_id=base_table)
+        if not base_path.exists():
+            if verbose:
+                print(f'{admin_id}: no {base_table!r} partition, skipping')
+            continue
+
+        joined = read_parquet(base_path, geom=True)
+        partition_paths = [base_path]
+        for table_name in attribute_tables:
+            table_path = get_output_path(recipe, admin_id, partition_id=table_name)
+            if not table_path.exists():
+                if verbose:
+                    print(f'{admin_id}: no {table_name!r} partition, skipping it')
+                continue
+            table = read_parquet(table_path, geom=False)
+            table = table.drop(columns='geometry', errors='ignore')
+            overlap = set(table.columns) & set(joined.columns)
+            if overlap:
+                raise ValueError(
+                    f'{table_name!r} shares column name(s) {sorted(overlap)} with '
+                    'data already joined; join_partitions_by_index assumes joined '
+                    'tables have disjoint column names.'
+                )
+            joined = joined.join(table, how='left')
+            partition_paths.append(table_path)
+
+        if join_key_name:
+            joined = joined.rename_axis(join_key_name).reset_index()
+        joined['geo_id'] = get_geo_ids(joined, handle_duplicates=False)
+        joined.index = pd.Index(add_unique_suffix(joined['geo_id']), name='parcel_id')
+
+        output_path = get_output_path(recipe, admin_id)
+        save_parquet(joined, output_path)
+        if verbose:
+            print(f'{admin_id}: joined {len(joined):,} rows -> {output_path.name}')
+
+        if not keep_original:
+            for p in partition_paths:
+                geo_path = p.with_stem(p.stem + '_geo')
+                if geo_path.exists():
+                    delete_data(geo_path)
+                delete_data(p)
 
 
 def _legacy_upgrader(recipe):

@@ -22,12 +22,37 @@ import pyproj
 import shapely
 from openlocationcode import openlocationcode as olc
 
+from openplaces.geo.polygon import reproject
 from openplaces.io.transform import add_unique_suffix
+
+# Default area/compactness quantization, expressed as the historical hardcoded
+# multipliers (area_q = round(log10(area*1e10+1) * 100), compact_q =
+# round(compact * 10)). AREA_TOLERANCE_DEFAULT/COMPACTNESS_STEP_DEFAULT below are
+# derived from these so get_geo_ids' default output is unchanged.
+_AREA_PRECISION_DEFAULT = 100
+_COMPACT_PRECISION_DEFAULT = 10
+AREA_TOLERANCE_DEFAULT = 10 ** (1 / _AREA_PRECISION_DEFAULT) - 1
+COMPACTNESS_STEP_DEFAULT = 1 / _COMPACT_PRECISION_DEFAULT
+
+
+def _shape_signals(geom_arr):
+    """Return (area, compactness) for an array of geometries.
+
+    Compactness is perimeter^2 / area (dimensionless). Shared by `get_geo_ids`
+    and the crosswalk's shape-similarity gate (`crosswalk.py`), so both use the
+    exact same formula.
+    """
+    area = np.nan_to_num(shapely.area(geom_arr))
+    length = np.nan_to_num(shapely.length(geom_arr))
+    compact = length**2 / (area + 1e-10)
+    return area, compact
 
 
 def get_geo_ids(
     gdf,
     grid_degrees=0.000001,  # ~11cm at equator, ~8cm at 45°N
+    area_tolerance=AREA_TOLERANCE_DEFAULT,
+    compactness_step=COMPACTNESS_STEP_DEFAULT,
     hash_length=24,
     handle_duplicates=True,
     verbose=False,
@@ -42,6 +67,17 @@ def get_geo_ids(
         GeoDataFrame with parcel geometries
     grid_degrees : float
         Grid size in degrees
+    area_tolerance : float
+        Relative area tolerance (e.g. 0.02 = 2%): two areas whose ratio is
+        within this bound quantize to the same bucket. Default reproduces the
+        historical hardcoded area quantization exactly.
+    compactness_step : float
+        Absolute step size for compactness (perimeter^2/area) quantization.
+        Default reproduces the historical hardcoded compactness quantization
+        exactly. Kept linear (not ratio-based, unlike `area_tolerance`) because
+        compactness is not log-scaled internally -- ratio-scaling it would
+        silently change existing `geo_id` values for parcels away from the
+        tolerance's reference point.
     hash_length : int
         Number of hex characters in output
     handle_duplicates : bool
@@ -58,7 +94,7 @@ def get_geo_ids(
     # Ensure GeoDataFrame is in EPSG:4326 projection
     if gdf.crs != 'epsg:4326':
         print('Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
-        gdf = gdf.to_crs('epsg:4326')
+        gdf = reproject(gdf, 'epsg:4326')
 
     # Quantize bbox corners (consistent grid for all parcels; nan_to_num
     # avoids checking for empty geometries)
@@ -70,12 +106,13 @@ def get_geo_ids(
     # Area in square degrees (log scale, scaled up for precision)
     # Note: Area in degrees² varies with latitude, but that's okay
     # because we're comparing relative sizes at similar locations
-    area_deg2 = np.nan_to_num(shapely.area(geom))
-    area_q = np.round(np.log10(area_deg2 * 1e10 + 1) * 100).astype(np.int64)
+    area_deg2, compact = _shape_signals(geom)
+    area_precision = 1 / np.log10(1 + area_tolerance)
+    area_q = np.round(np.log10(area_deg2 * 1e10 + 1) * area_precision).astype(np.int64)
 
     # Compactness: perimeter²/area (dimensionless, so units don't matter)
-    length = np.nan_to_num(shapely.length(geom))
-    compact_q = np.round(length**2 / (area_deg2 + 1e-10) * 10).astype(np.int64)
+    compact_precision = 1 / compactness_step
+    compact_q = np.round(compact * compact_precision).astype(np.int64)
 
     # Create hash inputs
     cols = [
