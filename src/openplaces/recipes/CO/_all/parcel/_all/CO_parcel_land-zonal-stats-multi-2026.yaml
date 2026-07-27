@@ -1,0 +1,1276 @@
+# Recipe: consolidated zonal-statistics enrichment for Colombia parcels.
+#
+# One recipe, one evidence parquet per admin3 (saved next to the harmonized
+# CO_parcel-spine-2026 output, same as every enrich recipe), with many
+# pipeline steps each contributing one or more evidence columns -- rather
+# than one recipe (and one output file) per indicator. This mirrors the
+# `places` codebase's checkpoints_CO/ inventory
+# (notebooks/CO copy/enrich_testing/places_statistics_inventory.md), which is
+# the ground truth for exactly which rasters/years/stats are included here:
+# every entry below corresponds to one checkpoint file that already existed
+# for CO parcels under the old pipeline, just computed here via the
+# Enricher/EnrichState step-registry architecture instead.
+#
+# Three step types are used:
+#   - derive_from_spine: parcel-area/coordinate/density stats computed from
+#     spine geometry and existing spine columns alone, no raster involved
+#     (src/openplaces/io/enricher/derived.py).
+#   - zonal_stats: ordinary per-parcel raster sampling
+#     (src/openplaces/io/enricher/zonal.py).
+#   - vicinity_coverage: for protection and 3-year-deforestation, computes a
+#     vicinity-coverage raster on the fly from the raw boolean raster
+#     (`source_raster_path`), scoped to just the admin unit being processed
+#     -- not a full national precompute like
+#     notebooks/CO copy/enrich_testing/CO_Vicinity_Coverage.ipynb originally
+#     required. The read window is padded by `px_radius` pixels so
+#     neighboring admin units are still correctly accounted for at the
+#     boundary (see compute_vicinity_coverage's docstring); verified to match
+#     the old national-scale output pixel-for-pixel. The generated raster is
+#     cached under `{source raster's dir}/by_admin3/{admin_id}/...` and
+#     reused on subsequent runs. Generic over any boolean raster -- not
+#     specific to protection/deforestation.
+#     (src/openplaces/io/enricher/vicinity.py).
+#
+# SoilGrids rasters are intentionally excluded (out of scope per request).
+
+description: >-
+  Consolidated per-parcel zonal-statistics enrichment for Colombia: elevation,
+  travel accessibility, nighttime lights, MapBiomas forest/gain/loss/
+  deforestation (annual, 1986-2024), protection and 3-year-deforestation
+  vicinity coverage (computed on the fly per admin unit), and geometry-derived
+  stats (area, centroid, building density). One evidence table per admin3,
+  covering every indicator.
+
+stage: enrich
+admin_id: CO
+
+entity:
+  entity_type: parcel
+
+dataset:
+  theme: land-zonal-stats
+  source:
+    source_id: multi
+  version: 2026
+
+# Needed for zonal_stats/vicinity_coverage/derive_from_spine: they all
+# operate on parcel polygons.
+spine_geom: true
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: derive_from_spine
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/DEM/copernicus_30m/CO_DEM_copernicus_30m.tif
+    raster_key: elevation
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F142001.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F142001
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F142003.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F142003
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F152001.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F152001
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F152003.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F152003
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F152005.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F152005
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F152007.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F152007
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F162005.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F162005
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F162007.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F162007
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F162009.v4b.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F162009
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F182011.v4c.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F182011
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/lights/F182013.v4c.intercal.stable_lights.avg_vis.tif
+    raster_key: light_F182013
+    stat: max
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1989.tif
+    raster_key: mb_deforest3yr_vicinity_1989
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1990.tif
+    raster_key: mb_deforest3yr_vicinity_1990
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1991.tif
+    raster_key: mb_deforest3yr_vicinity_1991
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1992.tif
+    raster_key: mb_deforest3yr_vicinity_1992
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1993.tif
+    raster_key: mb_deforest3yr_vicinity_1993
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1994.tif
+    raster_key: mb_deforest3yr_vicinity_1994
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1995.tif
+    raster_key: mb_deforest3yr_vicinity_1995
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1996.tif
+    raster_key: mb_deforest3yr_vicinity_1996
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1997.tif
+    raster_key: mb_deforest3yr_vicinity_1997
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1998.tif
+    raster_key: mb_deforest3yr_vicinity_1998
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_1999.tif
+    raster_key: mb_deforest3yr_vicinity_1999
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2000.tif
+    raster_key: mb_deforest3yr_vicinity_2000
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2001.tif
+    raster_key: mb_deforest3yr_vicinity_2001
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2002.tif
+    raster_key: mb_deforest3yr_vicinity_2002
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2003.tif
+    raster_key: mb_deforest3yr_vicinity_2003
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2004.tif
+    raster_key: mb_deforest3yr_vicinity_2004
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2005.tif
+    raster_key: mb_deforest3yr_vicinity_2005
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2006.tif
+    raster_key: mb_deforest3yr_vicinity_2006
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2007.tif
+    raster_key: mb_deforest3yr_vicinity_2007
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2008.tif
+    raster_key: mb_deforest3yr_vicinity_2008
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2009.tif
+    raster_key: mb_deforest3yr_vicinity_2009
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2010.tif
+    raster_key: mb_deforest3yr_vicinity_2010
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2011.tif
+    raster_key: mb_deforest3yr_vicinity_2011
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2012.tif
+    raster_key: mb_deforest3yr_vicinity_2012
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2013.tif
+    raster_key: mb_deforest3yr_vicinity_2013
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2014.tif
+    raster_key: mb_deforest3yr_vicinity_2014
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2015.tif
+    raster_key: mb_deforest3yr_vicinity_2015
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2016.tif
+    raster_key: mb_deforest3yr_vicinity_2016
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2017.tif
+    raster_key: mb_deforest3yr_vicinity_2017
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2018.tif
+    raster_key: mb_deforest3yr_vicinity_2018
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2019.tif
+    raster_key: mb_deforest3yr_vicinity_2019
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2020.tif
+    raster_key: mb_deforest3yr_vicinity_2020
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2021.tif
+    raster_key: mb_deforest3yr_vicinity_2021
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2022.tif
+    raster_key: mb_deforest3yr_vicinity_2022
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2023.tif
+    raster_key: mb_deforest3yr_vicinity_2023
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest3yr_mbiomas_2024.tif
+    raster_key: mb_deforest3yr_vicinity_2024
+    stat: max
+    px_radius: 60
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1987.tif
+    raster_key: mb_deforest_1987
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1988.tif
+    raster_key: mb_deforest_1988
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1989.tif
+    raster_key: mb_deforest_1989
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1990.tif
+    raster_key: mb_deforest_1990
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1991.tif
+    raster_key: mb_deforest_1991
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1992.tif
+    raster_key: mb_deforest_1992
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1993.tif
+    raster_key: mb_deforest_1993
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1994.tif
+    raster_key: mb_deforest_1994
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1995.tif
+    raster_key: mb_deforest_1995
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1996.tif
+    raster_key: mb_deforest_1996
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1997.tif
+    raster_key: mb_deforest_1997
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1998.tif
+    raster_key: mb_deforest_1998
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_1999.tif
+    raster_key: mb_deforest_1999
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2000.tif
+    raster_key: mb_deforest_2000
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2001.tif
+    raster_key: mb_deforest_2001
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2002.tif
+    raster_key: mb_deforest_2002
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2003.tif
+    raster_key: mb_deforest_2003
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2004.tif
+    raster_key: mb_deforest_2004
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2005.tif
+    raster_key: mb_deforest_2005
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2006.tif
+    raster_key: mb_deforest_2006
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2007.tif
+    raster_key: mb_deforest_2007
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2008.tif
+    raster_key: mb_deforest_2008
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2009.tif
+    raster_key: mb_deforest_2009
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2010.tif
+    raster_key: mb_deforest_2010
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2011.tif
+    raster_key: mb_deforest_2011
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2012.tif
+    raster_key: mb_deforest_2012
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2013.tif
+    raster_key: mb_deforest_2013
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2014.tif
+    raster_key: mb_deforest_2014
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2015.tif
+    raster_key: mb_deforest_2015
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2016.tif
+    raster_key: mb_deforest_2016
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2017.tif
+    raster_key: mb_deforest_2017
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2018.tif
+    raster_key: mb_deforest_2018
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2019.tif
+    raster_key: mb_deforest_2019
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2020.tif
+    raster_key: mb_deforest_2020
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2021.tif
+    raster_key: mb_deforest_2021
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2022.tif
+    raster_key: mb_deforest_2022
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2023.tif
+    raster_key: mb_deforest_2023
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/deforest_mbiomas_2024.tif
+    raster_key: mb_deforest_2024
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1986.tif
+    raster_key: mb_forest_1986
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1987.tif
+    raster_key: mb_forest_1987
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1988.tif
+    raster_key: mb_forest_1988
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1989.tif
+    raster_key: mb_forest_1989
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1990.tif
+    raster_key: mb_forest_1990
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1991.tif
+    raster_key: mb_forest_1991
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1992.tif
+    raster_key: mb_forest_1992
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1993.tif
+    raster_key: mb_forest_1993
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1994.tif
+    raster_key: mb_forest_1994
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1995.tif
+    raster_key: mb_forest_1995
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1996.tif
+    raster_key: mb_forest_1996
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1997.tif
+    raster_key: mb_forest_1997
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1998.tif
+    raster_key: mb_forest_1998
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_1999.tif
+    raster_key: mb_forest_1999
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2000.tif
+    raster_key: mb_forest_2000
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2001.tif
+    raster_key: mb_forest_2001
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2002.tif
+    raster_key: mb_forest_2002
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2003.tif
+    raster_key: mb_forest_2003
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2004.tif
+    raster_key: mb_forest_2004
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2005.tif
+    raster_key: mb_forest_2005
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2006.tif
+    raster_key: mb_forest_2006
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2007.tif
+    raster_key: mb_forest_2007
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2008.tif
+    raster_key: mb_forest_2008
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2009.tif
+    raster_key: mb_forest_2009
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2010.tif
+    raster_key: mb_forest_2010
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2011.tif
+    raster_key: mb_forest_2011
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2012.tif
+    raster_key: mb_forest_2012
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2013.tif
+    raster_key: mb_forest_2013
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2014.tif
+    raster_key: mb_forest_2014
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2015.tif
+    raster_key: mb_forest_2015
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2016.tif
+    raster_key: mb_forest_2016
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2017.tif
+    raster_key: mb_forest_2017
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2018.tif
+    raster_key: mb_forest_2018
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2019.tif
+    raster_key: mb_forest_2019
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2020.tif
+    raster_key: mb_forest_2020
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2021.tif
+    raster_key: mb_forest_2021
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2022.tif
+    raster_key: mb_forest_2022
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2023.tif
+    raster_key: mb_forest_2023
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestBoolean_mbiomas_2024.tif
+    raster_key: mb_forest_2024
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1986.tif
+    raster_key: mb_gain_1986
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1987.tif
+    raster_key: mb_gain_1987
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1988.tif
+    raster_key: mb_gain_1988
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1989.tif
+    raster_key: mb_gain_1989
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1990.tif
+    raster_key: mb_gain_1990
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1991.tif
+    raster_key: mb_gain_1991
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1992.tif
+    raster_key: mb_gain_1992
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1993.tif
+    raster_key: mb_gain_1993
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1994.tif
+    raster_key: mb_gain_1994
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1995.tif
+    raster_key: mb_gain_1995
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1996.tif
+    raster_key: mb_gain_1996
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1997.tif
+    raster_key: mb_gain_1997
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1998.tif
+    raster_key: mb_gain_1998
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_1999.tif
+    raster_key: mb_gain_1999
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2000.tif
+    raster_key: mb_gain_2000
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2001.tif
+    raster_key: mb_gain_2001
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2002.tif
+    raster_key: mb_gain_2002
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2003.tif
+    raster_key: mb_gain_2003
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2004.tif
+    raster_key: mb_gain_2004
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2005.tif
+    raster_key: mb_gain_2005
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2006.tif
+    raster_key: mb_gain_2006
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2007.tif
+    raster_key: mb_gain_2007
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2008.tif
+    raster_key: mb_gain_2008
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2009.tif
+    raster_key: mb_gain_2009
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2010.tif
+    raster_key: mb_gain_2010
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2011.tif
+    raster_key: mb_gain_2011
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2012.tif
+    raster_key: mb_gain_2012
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2013.tif
+    raster_key: mb_gain_2013
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2014.tif
+    raster_key: mb_gain_2014
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2015.tif
+    raster_key: mb_gain_2015
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2016.tif
+    raster_key: mb_gain_2016
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2017.tif
+    raster_key: mb_gain_2017
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2018.tif
+    raster_key: mb_gain_2018
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2019.tif
+    raster_key: mb_gain_2019
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2020.tif
+    raster_key: mb_gain_2020
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2021.tif
+    raster_key: mb_gain_2021
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2022.tif
+    raster_key: mb_gain_2022
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2023.tif
+    raster_key: mb_gain_2023
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestGain_mbiomas_2024.tif
+    raster_key: mb_gain_2024
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1986.tif
+    raster_key: mb_loss_1986
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1987.tif
+    raster_key: mb_loss_1987
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1988.tif
+    raster_key: mb_loss_1988
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1989.tif
+    raster_key: mb_loss_1989
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1990.tif
+    raster_key: mb_loss_1990
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1991.tif
+    raster_key: mb_loss_1991
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1992.tif
+    raster_key: mb_loss_1992
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1993.tif
+    raster_key: mb_loss_1993
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1994.tif
+    raster_key: mb_loss_1994
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1995.tif
+    raster_key: mb_loss_1995
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1996.tif
+    raster_key: mb_loss_1996
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1997.tif
+    raster_key: mb_loss_1997
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1998.tif
+    raster_key: mb_loss_1998
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_1999.tif
+    raster_key: mb_loss_1999
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2000.tif
+    raster_key: mb_loss_2000
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2001.tif
+    raster_key: mb_loss_2001
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2002.tif
+    raster_key: mb_loss_2002
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2003.tif
+    raster_key: mb_loss_2003
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2004.tif
+    raster_key: mb_loss_2004
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2005.tif
+    raster_key: mb_loss_2005
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2006.tif
+    raster_key: mb_loss_2006
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2007.tif
+    raster_key: mb_loss_2007
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2008.tif
+    raster_key: mb_loss_2008
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2009.tif
+    raster_key: mb_loss_2009
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2010.tif
+    raster_key: mb_loss_2010
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2011.tif
+    raster_key: mb_loss_2011
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2012.tif
+    raster_key: mb_loss_2012
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2013.tif
+    raster_key: mb_loss_2013
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2014.tif
+    raster_key: mb_loss_2014
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2015.tif
+    raster_key: mb_loss_2015
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2016.tif
+    raster_key: mb_loss_2016
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2017.tif
+    raster_key: mb_loss_2017
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2018.tif
+    raster_key: mb_loss_2018
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2019.tif
+    raster_key: mb_loss_2019
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2020.tif
+    raster_key: mb_loss_2020
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2021.tif
+    raster_key: mb_loss_2021
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2022.tif
+    raster_key: mb_loss_2022
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2023.tif
+    raster_key: mb_loss_2023
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/mapbiomass_forest_booleans/forestLoss_mbiomas_2024.tif
+    raster_key: mb_loss_2024
+    stat: mean
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1985.tif
+    raster_key: pa_protection_1985
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1986.tif
+    raster_key: pa_protection_1986
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1987.tif
+    raster_key: pa_protection_1987
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1988.tif
+    raster_key: pa_protection_1988
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1989.tif
+    raster_key: pa_protection_1989
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1990.tif
+    raster_key: pa_protection_1990
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1991.tif
+    raster_key: pa_protection_1991
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1992.tif
+    raster_key: pa_protection_1992
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1993.tif
+    raster_key: pa_protection_1993
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1994.tif
+    raster_key: pa_protection_1994
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1995.tif
+    raster_key: pa_protection_1995
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1996.tif
+    raster_key: pa_protection_1996
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1997.tif
+    raster_key: pa_protection_1997
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1998.tif
+    raster_key: pa_protection_1998
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1999.tif
+    raster_key: pa_protection_1999
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2000.tif
+    raster_key: pa_protection_2000
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2001.tif
+    raster_key: pa_protection_2001
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2002.tif
+    raster_key: pa_protection_2002
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2003.tif
+    raster_key: pa_protection_2003
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2004.tif
+    raster_key: pa_protection_2004
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2005.tif
+    raster_key: pa_protection_2005
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2006.tif
+    raster_key: pa_protection_2006
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2007.tif
+    raster_key: pa_protection_2007
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2008.tif
+    raster_key: pa_protection_2008
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2009.tif
+    raster_key: pa_protection_2009
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2010.tif
+    raster_key: pa_protection_2010
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2011.tif
+    raster_key: pa_protection_2011
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2012.tif
+    raster_key: pa_protection_2012
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2013.tif
+    raster_key: pa_protection_2013
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2014.tif
+    raster_key: pa_protection_2014
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2015.tif
+    raster_key: pa_protection_2015
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2016.tif
+    raster_key: pa_protection_2016
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2017.tif
+    raster_key: pa_protection_2017
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2018.tif
+    raster_key: pa_protection_2018
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2019.tif
+    raster_key: pa_protection_2019
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2020.tif
+    raster_key: pa_protection_2020
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2021.tif
+    raster_key: pa_protection_2021
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2022.tif
+    raster_key: pa_protection_2022
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2023.tif
+    raster_key: pa_protection_2023
+    stat: max
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2024.tif
+    raster_key: pa_protection_2024
+    stat: max
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1985.tif
+    raster_key: pa_protection_vicinity_1985
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1986.tif
+    raster_key: pa_protection_vicinity_1986
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1987.tif
+    raster_key: pa_protection_vicinity_1987
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1988.tif
+    raster_key: pa_protection_vicinity_1988
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1989.tif
+    raster_key: pa_protection_vicinity_1989
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1990.tif
+    raster_key: pa_protection_vicinity_1990
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1991.tif
+    raster_key: pa_protection_vicinity_1991
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1992.tif
+    raster_key: pa_protection_vicinity_1992
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1993.tif
+    raster_key: pa_protection_vicinity_1993
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1994.tif
+    raster_key: pa_protection_vicinity_1994
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1995.tif
+    raster_key: pa_protection_vicinity_1995
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1996.tif
+    raster_key: pa_protection_vicinity_1996
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1997.tif
+    raster_key: pa_protection_vicinity_1997
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1998.tif
+    raster_key: pa_protection_vicinity_1998
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_1999.tif
+    raster_key: pa_protection_vicinity_1999
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2000.tif
+    raster_key: pa_protection_vicinity_2000
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2001.tif
+    raster_key: pa_protection_vicinity_2001
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2002.tif
+    raster_key: pa_protection_vicinity_2002
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2003.tif
+    raster_key: pa_protection_vicinity_2003
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2004.tif
+    raster_key: pa_protection_vicinity_2004
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2005.tif
+    raster_key: pa_protection_vicinity_2005
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2006.tif
+    raster_key: pa_protection_vicinity_2006
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2007.tif
+    raster_key: pa_protection_vicinity_2007
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2008.tif
+    raster_key: pa_protection_vicinity_2008
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2009.tif
+    raster_key: pa_protection_vicinity_2009
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2010.tif
+    raster_key: pa_protection_vicinity_2010
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2011.tif
+    raster_key: pa_protection_vicinity_2011
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2012.tif
+    raster_key: pa_protection_vicinity_2012
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2013.tif
+    raster_key: pa_protection_vicinity_2013
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2014.tif
+    raster_key: pa_protection_vicinity_2014
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2015.tif
+    raster_key: pa_protection_vicinity_2015
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2016.tif
+    raster_key: pa_protection_vicinity_2016
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2017.tif
+    raster_key: pa_protection_vicinity_2017
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2018.tif
+    raster_key: pa_protection_vicinity_2018
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2019.tif
+    raster_key: pa_protection_vicinity_2019
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2020.tif
+    raster_key: pa_protection_vicinity_2020
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2021.tif
+    raster_key: pa_protection_vicinity_2021
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2022.tif
+    raster_key: pa_protection_vicinity_2022
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2023.tif
+    raster_key: pa_protection_vicinity_2023
+    stat: max
+    px_radius: 60
+  - step: vicinity_coverage
+    source_raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/PAs/protectionBoolean_2024.tif
+    raster_key: pa_protection_vicinity_2024
+    stat: max
+    px_radius: 60
+  - step: zonal_stats
+    raster_path: /Users/alexanderweintraub/openplaces/data/cache/CO/_all/travel_Weiss/accessibility_to_cities_colombia copy.tif
+    raster_key: travel_accessibility
+    stat: max
