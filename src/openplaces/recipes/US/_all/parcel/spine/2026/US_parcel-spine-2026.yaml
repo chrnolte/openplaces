@@ -68,6 +68,7 @@ pipeline:
       - parcel_id_local
       - parcel_id_assessor
       - parcel_id_admin2
+      - admin4_id
       - use_group
       - use_subgroup
       - improvement_value

@@ -245,6 +245,84 @@ pipeline:
   # cheer-2026) can include it in its n_stories reconciliation.
   - step: derive_stories_from_height
 
+  # Evidence: merge placeslab-fmv2026 fair-market-value predictions and
+  # physical predictors (area-weighted crosswalk from the legacy reference
+  # parcel dataset). Canonical column names drop the `_fmv2026` product
+  # suffix (value suffixes like radius/year/model variant are kept, so e.g.
+  # the 2500m/50m coastal-water-share variants stay distinct); land_value
+  # additionally drops its `_2010` vintage suffix, landing on the plain
+  # registered name.
+  - step: merge_enrichments
+    recipes:
+      - recipe_id: US_parcel_parcel-placeslab-fmv2026
+        columns:
+          census_tract_id_2016_fmv2026: census_tract_id_2016
+          census_blockgroup_id_2016_fmv2026: census_blockgroup_id_2016
+          postal_code_2016_fmv2026: postal_code_2016
+          precipitation_summer_fmv2026: precipitation_summer
+          precipitation_winter_fmv2026: precipitation_winter
+          temperature_mean_summer_fmv2026: temperature_mean_summer
+          temperature_mean_winter_fmv2026: temperature_mean_winter
+          slope_fmv2026: slope
+          elevation_fmv2026: elevation
+          soil_farmland_local_share_fmv2026: soil_farmland_local_share
+          soil_farmland_prime_share_fmv2026: soil_farmland_prime_share
+          soil_farmland_statewide_share_fmv2026: soil_farmland_statewide_share
+          travel_time_to_city_fmv2026: travel_time_to_city
+          land_cover_barren_share_fmv2026: land_cover_barren_share
+          land_cover_forest_deciduous_share_fmv2026: land_cover_forest_deciduous_share
+          land_cover_forest_evergreen_share_fmv2026: land_cover_forest_evergreen_share
+          land_cover_forest_mixed_share_fmv2026: land_cover_forest_mixed_share
+          land_cover_shrubland_share_fmv2026: land_cover_shrubland_share
+          land_cover_grassland_share_fmv2026: land_cover_grassland_share
+          land_cover_pasture_share_fmv2026: land_cover_pasture_share
+          land_cover_cropland_share_fmv2026: land_cover_cropland_share
+          population_gravity_index_exp_c4_fmv2026: population_gravity_index_exp_c4
+          wetland_share_fmv2026: wetland_share
+          coastal_water_share_2500m_fmv2026: coastal_water_share_2500m
+          coastal_water_share_50m_fmv2026: coastal_water_share_50m
+          # flood_depth_fluvial_100yr/flood_depth_pluvial_100yr: not yet in the
+          # published placeslab predictors data (raw fld_fr_fath_f100/p100
+          # columns absent as of 2026-07-26) -- restore once available.
+          lake_frontage_fmv2026: lake_frontage
+          river_frontage_fmv2026: river_frontage
+          lake_distance_fmv2026: lake_distance
+          highway_distance_fmv2026: highway_distance
+          paved_road_distance_fmv2026: paved_road_distance
+          building_footprint_share_1000m_fmv2026: building_footprint_share_1000m
+          building_footprint_share_500m_fmv2026: building_footprint_share_500m
+          building_footprint_share_5000m_fmv2026: building_footprint_share_5000m
+          conservation_easement_share_fmv2026: conservation_easement_share
+          protected_land_share_2010_5000m_fmv2026: protected_land_share_2010_5000m
+          # conservation_transaction_share: not yet in the published placeslab
+          # predictors data (raw ct_p column absent as of 2026-07-26) --
+          # restore once available.
+          household_income_median_block_group_2012_2016_fmv2026: household_income_median_block_group_2012_2016
+          population_black_share_block_group_2012_2016_fmv2026: population_black_share_block_group_2012_2016
+          population_native_american_share_block_group_2012_2016_fmv2026: population_native_american_share_block_group_2012_2016
+          population_asian_share_block_group_2012_2016_fmv2026: population_asian_share_block_group_2012_2016
+          population_pacific_islander_share_block_group_2012_2016_fmv2026: population_pacific_islander_share_block_group_2012_2016
+          population_mixed_race_share_block_group_2012_2016_fmv2026: population_mixed_race_share_block_group_2012_2016
+          population_hispanic_share_block_group_2012_2016_fmv2026: population_hispanic_share_block_group_2012_2016
+          land_value_per_ha_log_region_nb_2010_fmv2026: land_value_per_ha_log_region_nb
+          land_value_per_ha_log_region_nb2_2010_fmv2026: land_value_per_ha_log_region_nb2_2010
+          aoa_region_nb_2010_blockgroup_fmv2026: aoa_region_nb_2010_blockgroup
+          aoa_region_nb2_2010_blockgroup_fmv2026: aoa_region_nb2_2010_blockgroup
+
+  # Calculate parcel lot area (ha) based on parcel geometry.
+  - step: derive_metrics
+
+  # Impute missing land_value for residential parcels using local per-area lot rates.
+  - step: impute_land_value
+    residential_classes:
+      [Single-Family, Multi-Family, Manufactured Home, Manufactured Home Park,
+       Multiple Single-Family, Townhome, Condominium]
+    footprint_area_column: sum_footprint_area_m2
+    parcel_area_column: area_ha
+    peer_group_column: use_group_combined
+    footprint_ratio_threshold: 0.25
+    city_column: city
+
   - step: cast_categoricals
 
   - step: order_columns

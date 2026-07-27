@@ -26,6 +26,7 @@ from openplaces.geo.overlay import overlay_admin_ids
 from openplaces.geo.polygon import (
     clean_polygons,
     fix_polygons,
+    reproject,
     resolve_overlapping_polygons,
 )
 from openplaces.io import (
@@ -143,7 +144,7 @@ class TableIngester:
         gdf = self._read_recipe_data(**read_kwargs)
 
         if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
-            gdf = gdf.to_crs(cfg.crs)
+            gdf = reproject(gdf, cfg.crs)
             self.timer.mark(f'Reproject to {cfg.crs}{suffix}')
 
         gdf = self._preprocess_recipe_data(gdf)
@@ -299,7 +300,15 @@ class TableIngester:
         if data_path.suffix == '.parquet':
             if 'fids' in kwargs:
                 raise ValueError('`fid`-based selection might not work with `parquet`.')
-            gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
+            try:
+                gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
+            except ValueError as e:
+                # A plain (non-geo) parquet partition -- e.g. one of several
+                # per-admin-unit tables meant to be joined later, only one of
+                # which carries geometry (see io.aggregate.join_partitions_by_index).
+                if 'Missing geo metadata' not in str(e):
+                    raise
+                gdf = pd.read_parquet(data_path, columns=columns)
             self.timer.mark('Read parquet file' + timer_suffix, path=data_path)
         elif data_path.suffix == '.gdb':
             try:
@@ -634,10 +643,17 @@ class TableIngester:
 
         # Set index
         _entity = self.recipe.get('entity')
+        _has_custom_index = (
+            'set_index' in self.recipe
+            or 'create_index' in self.recipe
+            or 'index_function' in self.recipe
+        )
         if (
             _entity is not None
             and str(_entity.entity_type) == 'parcel'
             and isinstance(df, gpd.GeoDataFrame)
+            and not _has_custom_index
+            and df.index.name != 'geo_id'
         ):
             df['geo_id'] = get_geo_ids(df, handle_duplicates=False)
             df.index = pd.Index(add_unique_suffix(df['geo_id']), name='parcel_id')
