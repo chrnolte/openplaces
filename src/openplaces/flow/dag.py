@@ -10,6 +10,7 @@ without it.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,10 +66,22 @@ class RecipeDAG:
         admin unit is truncated to its recipe's save level. None builds a
         DAG of admin-independent nodes only (auto-discovered references
         stay unresolved).
+    exclude_recipe_ids : set of str, optional
+        Recipe IDs to prune from the graph, along with everything only
+        reachable through them (e.g. an opt-in enrichment lane and its own
+        upstream ingest recipe). Composes with 'reference_parcel_recipe_id'/
+        'image_recipe'/etc. edges automatically -- nothing further needs to
+        be excluded by name. See `openplaces.recipe.get_recipe_dependencies`.
     """
 
-    def __init__(self, target_recipe_id: str, admin_ids: list[str] | None = None):
+    def __init__(
+        self,
+        target_recipe_id: str,
+        admin_ids: list[str] | None = None,
+        exclude_recipe_ids: set[str] | None = None,
+    ):
         self.target_recipe_id = target_recipe_id
+        self.exclude_recipe_ids = set(exclude_recipe_ids or ())
         self._recipes: dict[str, dict] = {}
         target = self._recipe(target_recipe_id)
         target_level = get_save_admin_level(target)
@@ -95,7 +108,10 @@ class RecipeDAG:
             target_admin = AdminId(admin_id) if admin_id else None
             _add(target_recipe_id, target, target_admin)
             for node_id, node_recipe, node_admin in _walk_dag(
-                target, target_admin, index=None
+                target,
+                target_admin,
+                index=None,
+                exclude_recipe_ids=self.exclude_recipe_ids,
             ):
                 # _walk_dag truncates finer-saving recipes to the walk
                 # admin; _node_admins re-expands them to their save level
@@ -163,7 +179,9 @@ class RecipeDAG:
         node_admin = AdminId(node.admin_id) if node.admin_id else None
         try:
             edges = get_recipe_dependencies(
-                self._recipe(node.recipe_id), admin_id=node_admin
+                self._recipe(node.recipe_id),
+                admin_id=node_admin,
+                exclude_recipe_ids=self.exclude_recipe_ids,
             )
         except Exception:
             return
@@ -239,7 +257,9 @@ class RecipeDAG:
         node_admin = self._node_admin(recipe_id, admin_id)
         paths: list[Path] = []
         try:
-            edges = get_recipe_dependencies(recipe, admin_id=node_admin)
+            edges = get_recipe_dependencies(
+                recipe, admin_id=node_admin, exclude_recipe_ids=self.exclude_recipe_ids
+            )
         except Exception:
             edges = []
         seen: set[str] = set()
@@ -351,7 +371,16 @@ class RecipeDAG:
             .reset_index(drop=True)
         )
 
-    def to_mermaid(self, collapse_admin: bool | None = None) -> str:
+    def to_mermaid(
+        self,
+        collapse_admin: bool | None = None,
+        direction: str = 'LR',
+        font_size: int = 24,
+        node_spacing: int = 20,
+        rank_spacing: int = 35,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> str:
         """Mermaid flowchart source of the job DAG, styled by stage.
 
         Render with `IPython.display.Markdown` in a mermaid-capable
@@ -363,7 +392,36 @@ class RecipeDAG:
             Collapse per-admin jobs into one node per recipe (labeled with
             the admin-unit count). None (default) auto-collapses when the
             full graph exceeds 30 nodes.
+        direction : str, default 'LR'
+            Mermaid flowchart direction: 'LR' (left-to-right), 'TB'
+            (top-to-bottom, useful for wide graphs in a narrow notebook),
+            'RL', or 'BT'.
+        font_size : int, default 24
+            Base font size in px (Mermaid `themeVariables.fontSize`).
+            Mermaid's own default is 16px; 24 is ~1.5x larger. Also sets
+            `flowchart.useMaxWidth: false`, so the diagram renders at its
+            natural size instead of being scaled down to fit a narrow
+            notebook cell (which would shrink the text back down along with
+            everything else) -- the notebook scrolls instead.
+        node_spacing : int, default 20
+            Horizontal gap between nodes on the same rank (Mermaid
+            `flowchart.nodeSpacing`, default 50) -- smaller packs the
+            layout tighter.
+        rank_spacing : int, default 35
+            Gap between ranks along the flow direction (Mermaid
+            `flowchart.rankSpacing`, default 50).
+        width, height : int, optional
+            Force the rendered SVG to a fixed pixel size via an injected
+            `themeCSS` rule. Mermaid's flowchart renderer has no
+            first-class width/height config, so this is a best-effort CSS
+            override -- omit one to let that dimension size itself from
+            content (typically: set only `width`, e.g. ~850 for a
+            portrait-rotated US-letter-wide screen, and leave `height` to
+            preserve the diagram's natural aspect ratio).
         """
+        if direction not in ('LR', 'TB', 'RL', 'BT'):
+            raise ValueError(f'direction must be one of LR/TB/RL/BT, got {direction!r}')
+
         if collapse_admin is None:
             collapse_admin = len(self._nodes) > 30
 
@@ -389,7 +447,24 @@ class RecipeDAG:
             used.add(gid)
             ids[group] = gid
 
-        lines = ['flowchart LR']
+        init_config = {
+            'theme': 'default',
+            'themeVariables': {'fontSize': f'{font_size}px'},
+            'flowchart': {
+                'useMaxWidth': False,
+                'nodeSpacing': node_spacing,
+                'rankSpacing': rank_spacing,
+            },
+        }
+        if width is not None or height is not None:
+            css = ' '.join(
+                f'{prop}: {value}px;'
+                for prop, value in (('width', width), ('height', height))
+                if value is not None
+            )
+            init_config['themeCSS'] = f'svg {{ {css} }}'
+
+        lines = [f'%%{{init: {json.dumps(init_config)}}}%%', f'flowchart {direction}']
         for group, info in groups.items():
             label = group[0]
             if not collapse_admin and group[1]:
