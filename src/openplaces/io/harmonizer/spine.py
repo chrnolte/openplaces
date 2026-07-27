@@ -220,7 +220,10 @@ def resolve_spine(
 
     Source entries may include an ``auto_discover: true`` sentinel entry,
     which is replaced at runtime by all ingest recipes of the same entity
-    type that are scoped to child admin_ids of the recipe's ``admin_id``.
+    type that are scoped to child admin_ids of the recipe's ``admin_id``,
+    excluding any recipe with ``exclude_from_auto_discover: true`` (a
+    reference dataset meant to be consumed only via an explicit crosswalk,
+    not folded into the canonical spine's geometry).
 
     Parameters
     ----------
@@ -428,6 +431,8 @@ def _expand_auto_discover(
     df = find_recipes(entity_type, stage='ingest')
     discovered: list[dict] = []
     for _, row in df.iterrows():
+        if row['exclude_from_auto_discover']:
+            continue
         rid_str = row['admin_id']
         if rid_str and rid_str != recipe_admin_str and admin_str.startswith(rid_str):
             prefix = f'{rid_str}_'
