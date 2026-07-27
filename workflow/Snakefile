@@ -34,7 +34,16 @@ ADMIN_IDS = config.get('admin_ids', [])
 if isinstance(ADMIN_IDS, str):
     ADMIN_IDS = [a for a in ADMIN_IDS.split(',') if a]
 
-dag = RecipeDAG(TARGET, admin_ids=ADMIN_IDS)
+# Recipe IDs to prune from the graph (and everything only reachable through
+# them), e.g. opt-in enrichment lanes not requested for this run. Not a
+# fixed constant -- read from the run's own config, so lowercase.
+exclude_recipe_ids = config.get('exclude_recipe_ids', [])
+if isinstance(exclude_recipe_ids, str):
+    exclude_recipe_ids = [r for r in exclude_recipe_ids.split(',') if r]
+
+dag = RecipeDAG(
+    TARGET, admin_ids=ADMIN_IDS, exclude_recipe_ids=set(exclude_recipe_ids) or None
+)
 
 
 # Per-stage resources, with single-admin pins for known heavy units and

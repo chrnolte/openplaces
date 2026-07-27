@@ -23,7 +23,14 @@ from openplaces.core.constants import (
     STANDARD_DIRS,
     STRING_SEPARATOR_BETWEEN_IDS,
 )
-from openplaces.core.schema import AdminId, DataSet, Entity, Source, sanitize
+from openplaces.core.schema import (
+    AdminId,
+    DataSet,
+    Entity,
+    Source,
+    cast_dataset_or_entity,
+    sanitize,
+)
 from openplaces.path import OpenPlacesReference, path, recipe_path
 
 
@@ -84,12 +91,8 @@ def _cast_entity(entity):
 
 
 def _cast_dataset(dataset):
-    """Cast a raw dict (or already-cast DataSet) to a DataSet object."""
-    if isinstance(dataset, DataSet):
-        return dataset
-    if isinstance(dataset.get('source'), dict):
-        dataset['source'] = Source(**dataset['source'])
-    return DataSet(**dataset)
+    """Cast a raw dict/string (or already-cast DataSet/Entity) to whichever fits."""
+    return cast_dataset_or_entity(dataset)
 
 
 def get_recipe_dict(filepath, *args, **kwargs):
@@ -219,9 +222,9 @@ def get_recipe_by_id(recipe_id, **kwargs):
     except ValueError:
         entity = None
 
-    # Split off dataset, if valid
+    # Split off dataset (or a linked entity), if valid
     try:
-        dataset = DataSet(remaining_parts[0])
+        dataset = cast_dataset_or_entity(remaining_parts[0])
         remaining_parts = remaining_parts[1:]
     except (ValueError, IndexError):
         dataset = None
@@ -682,7 +685,9 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
     return tuple(sources)
 
 
-def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
+def get_recipe_dependencies(
+    recipe, admin_id=None, exclude_recipe_ids: set[str] | None = None
+) -> list[DepEdge]:
     r"""Extract upstream recipe references from a recipe.
 
     Edge sources (all present in committed recipes today):
@@ -694,9 +699,9 @@ def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
     - any key matching the suffix 'recipe_id' anywhere in the recipe
       ('recipe_id' in pipeline sources and steps, 'admin_recipe_id',
       'download_by.tile_recipe_id', 'footprint_recipe_id',
-      merge_enrichments 'recipes' entries, ...); keys under a
-      '\*crosswalk' block and 'remap_id' are excluded (value crosswalks,
-      not data dependencies)
+      'reference_parcel_recipe_id', merge_enrichments 'recipes' entries,
+      ...); keys under a '\*crosswalk' block and 'remap_id' are excluded
+      (value crosswalks, not data dependencies)
     - pipeline steps or source entries with 'auto_discover' or a bare
       'entity_type', resolved per admin unit the same way the pipeline
       resolves them at run time
@@ -708,6 +713,12 @@ def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
     admin_id : str or AdminId, optional
         Admin unit to resolve auto-discovered references for. When None,
         auto-discovered references are returned as unresolved edges.
+    exclude_recipe_ids : set of str, optional
+        Recipe IDs to prune from the graph. An excluded recipe's own edges
+        are never evaluated (it's simply never emitted as an upstream), so
+        anything only reachable through it is pruned transitively too,
+        without needing to be named -- e.g. excluding an enrich recipe also
+        excludes the ingest recipe it names via 'reference_parcel_recipe_id'.
 
     Returns
     -------
@@ -722,18 +733,25 @@ def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
     if admin_id is not None and not isinstance(admin_id, AdminId):
         admin_id = AdminId(admin_id)
     admin_str = str(admin_id) if admin_id is not None else None
+    exclude_recipe_ids = exclude_recipe_ids or ()
 
     edges: list[DepEdge] = []
     seen: set[tuple] = set()
 
     def _add(upstream, kind, step=None, resolved=True):
+        if upstream in exclude_recipe_ids:
+            return
         key = (upstream, kind, step, resolved)
         if key not in seen:
             seen.add(key)
             edges.append(DepEdge(self_id, upstream, kind, step, resolved))
 
-    # Top-level literal references
-    for key in ('entity_recipe', 'image_recipe'):
+    # Top-level literal references. The generic *recipe_id walker below only
+    # matches keys nested inside a dict/list value (pipeline steps, sources,
+    # entity_links entries, ...); a top-level scalar field needs to be
+    # listed here explicitly to be seen at all, even though its name already
+    # matches _RECIPE_ID_KEY_REGEX.
+    for key in ('entity_recipe', 'image_recipe', 'reference_parcel_recipe_id'):
         if recipe.get(key):
             _add(str(recipe[key]), key)
 
@@ -774,7 +792,12 @@ def get_recipe_dependencies(recipe, admin_id=None) -> list[DepEdge]:
                 _walk(item, context)
 
     for key, value in recipe.items():
-        if key in ('recipe_id', 'entity_recipe', 'image_recipe'):
+        if key in (
+            'recipe_id',
+            'entity_recipe',
+            'image_recipe',
+            'reference_parcel_recipe_id',
+        ):
             continue
         _walk(value, context=key)
 

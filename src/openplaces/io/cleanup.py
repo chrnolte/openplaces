@@ -620,13 +620,19 @@ def _delete_output_with_receipt(
 # CLEANUP (DAG-SCOPED)
 
 
-def _walk_dag(root_recipe, admin_id, index: _DependencyIndex):
+def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids=None):
     """Yield (recipe_id, recipe, node_admin) for every node upstream of root.
 
     The root itself is not yielded. Each upstream node's admin unit is the
     walk admin truncated to that recipe's save level; recipes saving finer
     than the walk admin (e.g. per-town image caches under a county walk)
     keep the walk admin and are expanded by their handler.
+
+    exclude_recipe_ids : set of str, optional
+        Forwarded to `get_recipe_dependencies`. An excluded recipe's edges
+        are never evaluated, so it (and anything only reachable through it)
+        is pruned from the walk transitively -- see that function's
+        docstring.
     """
     root_id = get_recipe_id(root_recipe)
     admin_level = AdminId(str(admin_id)).get_level() if admin_id else 0
@@ -637,7 +643,9 @@ def _walk_dag(root_recipe, admin_id, index: _DependencyIndex):
     while pending:
         recipe = pending.pop()
         try:
-            edges = get_recipe_dependencies(recipe, admin_id=admin_id)
+            edges = get_recipe_dependencies(
+                recipe, admin_id=admin_id, exclude_recipe_ids=exclude_recipe_ids
+            )
         except Exception:
             continue
         for edge in edges:
