@@ -9,6 +9,7 @@ import os
 import warnings
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,22 @@ _IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
 _IMAGE_SIZE = 384
 _IMAGE_MEAN = (0.485, 0.456, 0.406)
 _IMAGE_STD = (0.229, 0.224, 0.225)
+
+
+@cache
+def _load_model(model_path: str, device):
+    """Deserialize and prepare a classifier model, cached per (path, device).
+
+    Avoids re-running `torch.load` and the device transfer on every
+    `predict_classes` call — the same model is reused across every admin
+    unit processed in one pipeline run.
+    """
+    import torch
+
+    model = torch.load(model_path, map_location='cpu', weights_only=False)
+    model.to(device)
+    model.eval()
+    return model
 
 
 def _prepare_image(image: Image.Image, torch: Any) -> Any:
@@ -85,9 +102,7 @@ def predict_classes(
     import torch
 
     device = get_device(device)
-    model = torch.load(model_path, map_location='cpu', weights_only=False)
-    model.to(device)
-    model.eval()
+    model = _load_model(str(model_path), device)
 
     predictions: dict[Any, str | None] = {}
     if checkpoint is not None:

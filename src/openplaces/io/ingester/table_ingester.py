@@ -45,7 +45,6 @@ from openplaces.io.transform import (
 )
 from openplaces.path import recipe_path
 from openplaces.recipe import get_output_path, get_recipe
-from openplaces.timing import log_step
 
 
 class TableIngester:
@@ -335,6 +334,7 @@ class TableIngester:
                             )
                     raise RuntimeError('Remove the folder manually and re-run.')
                 raise
+            self.timer.mark('Read GDB file' + timer_suffix, path=data_path)
         elif data_path.suffix in GEOPANDAS_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
@@ -524,14 +524,16 @@ class TableIngester:
                     index=values.index,
                 )
 
+        admin_id_to_process = self.processing_chunk.get('admin_id_to_process')
+        self.timer.mark('Transform' + self._mark_suffix(admin_id_to_process))
+
         # Clean geometries and resolve overlapping polygons (parcels, buildings).
         # Cleaning must precede the overlap test: invalid geometries cause
         # TopologyExceptions in shapely intersection.
         # Runs after transformations and categorical casting so that
         # 'prefer_higher' can reference a transformed or categorical column.
         if isinstance(df, gpd.GeoDataFrame):
-            _admin = self.processing_chunk.get('admin_id_to_process')
-            _suffix = f': {_admin}' if _admin else ''
+            _suffix = self._mark_suffix(admin_id_to_process)
 
             if self.recipe.get('force_2d', False):
                 import shapely
@@ -555,23 +557,25 @@ class TableIngester:
 
             if (~df.geometry.is_valid).any():
                 df = fix_polygons(df)
+            self.timer.mark(f'Clean geometries{_suffix}')
+
             if self.recipe.get('resolve_overlaps', False):
-                with log_step(f'Resolve overlaps{_suffix}', timer=self.timer):
-                    df = clean_polygons(df)
-                    keep = self.recipe.get('keep_overlapping_polygons', None)
-                    recipe_col_names = list(self.recipe.get('columns', {}) or {})
-                    skip = {c for c in df.columns if '_id' in c} | {'geometry'}
-                    compare_cols = [c for c in df.columns if c not in skip]
-                    snippet_cols = (
-                        [c for c in recipe_col_names if c in compare_cols]
-                        + [c for c in compare_cols if c not in set(recipe_col_names)]
-                    )[:5]
-                    df = resolve_overlapping_polygons(
-                        df,
-                        keep=keep,
-                        compare_cols=compare_cols,
-                        snippet_cols=snippet_cols,
-                    )
+                df = clean_polygons(df)
+                keep = self.recipe.get('keep_overlapping_polygons', None)
+                recipe_col_names = list(self.recipe.get('columns', {}) or {})
+                skip = {c for c in df.columns if '_id' in c} | {'geometry'}
+                compare_cols = [c for c in df.columns if c not in skip]
+                snippet_cols = (
+                    [c for c in recipe_col_names if c in compare_cols]
+                    + [c for c in compare_cols if c not in set(recipe_col_names)]
+                )[:5]
+                df = resolve_overlapping_polygons(
+                    df,
+                    keep=keep,
+                    compare_cols=compare_cols,
+                    snippet_cols=snippet_cols,
+                )
+                self.timer.mark(f'Resolve overlaps{_suffix}')
 
         # Attribute entities to administrative unit IDs via crosswalk
         # (Before admin ID index creation, which needs parent Admin ID)
@@ -609,6 +613,7 @@ class TableIngester:
                 if isinstance(admin_id_crosswalk, pd.Series)
                 else list(admin_id_crosswalk)
             )
+            self.timer.mark('Attribute admin IDs: crosswalk join')
 
         elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
             if self.verbose:
@@ -697,14 +702,14 @@ class TableIngester:
                         name=self.recipe['create_index']['name'],
                     )
         elif 'index_function' in self.recipe:
-            with log_step('Generate indices', timer=self.timer):
-                if not self.recipe['index_function'].startswith('openplaces.'):
-                    raise ValueError(
-                        'Function in `index_function` must start with `openplaces.`\n'
-                        'Changing this would create a security risk (run any function).'
-                    )
-                index_function = self._load_function(self.recipe['index_function'])
-                df = index_function(df)
+            if not self.recipe['index_function'].startswith('openplaces.'):
+                raise ValueError(
+                    'Function in `index_function` must start with `openplaces.`\n'
+                    'Changing this would create a security risk (run any function).'
+                )
+            index_function = self._load_function(self.recipe['index_function'])
+            df = index_function(df)
+            self.timer.mark('Generate indices')
 
         # Drop observations by index
         if 'drop' in self.recipe:

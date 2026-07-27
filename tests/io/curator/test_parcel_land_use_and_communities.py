@@ -87,7 +87,7 @@ def test_classify_parcel_land_use_separates_mh_park_from_rv_park():
         _state(df),
         rules=_LAND_USE_RULES,
         output='land_use_class',
-        flag_column='manufactured_home_park',
+        flag_column='manufactured_home_community',
         flag_class='Manufactured Home Park',
     ).curated
 
@@ -95,7 +95,7 @@ def test_classify_parcel_land_use_separates_mh_park_from_rv_park():
     assert classes[0] == 'Manufactured Home Park'
     assert classes[1] == 'RV Park'
     assert pd.isna(classes[2])
-    assert out['manufactured_home_park'].tolist() == [True, False, False]
+    assert out['manufactured_home_community'].tolist() == [True, False, False]
 
 
 def test_link_curated_entity_joins_by_parcel_id(monkeypatch):
@@ -109,7 +109,7 @@ def test_link_curated_entity_joins_by_parcel_id(monkeypatch):
         {
             'parcel_id': ['a', 'b'],
             'use_group_combined': ['MOBILE', 'SFR'],
-            'manufactured_home_park': [True, False],
+            'manufactured_home_community': [True, False],
         }
     )
     monkeypatch.setattr(ev, 'get_recipe_by_id', lambda rid: {'stage': 'curate'})
@@ -121,12 +121,12 @@ def test_link_curated_entity_joins_by_parcel_id(monkeypatch):
         recipe_id='US_parcel-openplaces-2026',
         columns={
             'use_group_combined': 'use_group_combined_parcel',
-            'manufactured_home_park': 'manufactured_home_park',
+            'manufactured_home_community': 'manufactured_home_community',
         },
     ).curated
 
     assert out['use_group_combined_parcel'].tolist() == ['MOBILE', 'SFR', 'MOBILE']
-    assert out['manufactured_home_park'].tolist() == [True, False, True]
+    assert out['manufactured_home_community'].tolist() == [True, False, True]
 
 
 def test_flag_manufactured_home_communities_counts_per_parcel():
@@ -181,7 +181,7 @@ def test_habitable_threshold_floor_and_average():
     config = {'habitable_fraction': 0.5, 'habitable_floor_m2': 25.0}
     # Three MH-classed footprints averaging 100 m2 -> threshold 50 m2.
     curated = pd.DataFrame(
-        {'occupancy_type': ['Manufactured Home'] * 3, 'm2': [80.0, 100.0, 120.0]}
+        {'occupancy_type': ['Manufactured Home'] * 3, 'area_m2': [80.0, 100.0, 120.0]}
     )
     result = curated['occupancy_type'].astype(object)
     assert _habitable_threshold(curated, result, 'Manufactured Home', config) == 50.0
@@ -189,6 +189,6 @@ def test_habitable_threshold_floor_and_average():
     # Too few samples -> falls back to manufactured_home_avg_m2 (90) * 0.5 = 45,
     # but the floor (25) does not bind here.
     cfg2 = {**config, 'manufactured_home_avg_m2': 90.0}
-    small = pd.DataFrame({'occupancy_type': ['Manufactured Home'], 'm2': [100.0]})
+    small = pd.DataFrame({'occupancy_type': ['Manufactured Home'], 'area_m2': [100.0]})
     res2 = small['occupancy_type'].astype(object)
     assert _habitable_threshold(small, res2, 'Manufactured Home', cfg2) == 45.0

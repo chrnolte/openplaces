@@ -238,13 +238,27 @@ REGEX_ADMIN_TYPE_EXTRACT = (
 # Essential unit conversions
 
 # Acres to square feet
-AC_TO_SQFT = 43460
+AC_TO_SQFT = 43560
 
 # Acres to hectares
 AC_TO_HA = 0.404686
 
 # Square meters to square feet
 M2_TO_SQFT = 10.7639
+
+# Square meters per unit of area -- canonical reference for converting a
+# per-area value between area units (see io.transform.convert_area_unit).
+# 'ac'/'sqft' derived from AC_TO_HA/M2_TO_SQFT above so this never drifts
+# out of sync with geo.polygon.get_areas's own area-unit conversions.
+M2_PER_AREA_UNIT = {
+    'm2': 1.0,
+    'ha': 10_000.0,
+    'km2': 1_000_000.0,
+    'ac': 1e4 * AC_TO_HA,
+    'sqft': 1 / M2_TO_SQFT,
+    'ft2': 1 / M2_TO_SQFT,
+    'sqmi': 1e4 * AC_TO_HA * 640,
+}
 
 
 # Default coordinate reference system

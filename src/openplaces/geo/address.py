@@ -163,6 +163,82 @@ def get_admin2_codes(admin1_id: str) -> frozenset[str]:
     )
 
 
+# Postal-lookup backend capabilities, mirrors PARSER_BACKENDS below: backend
+# -> admin1 ids it supports. zipcodes is a US-only ZIP database; other
+# countries degrade to None rather than raising.
+POSTAL_CITY_BACKENDS = {'zipcodes': frozenset({'US'})}
+
+
+@dataclass(frozen=True)
+class PostalCityMatch:
+    """USPS-preferred and alternate city names for a 5-digit ZIP code.
+
+    Attributes
+    ----------
+    city : str
+        USPS-preferred city name.
+    acceptable_cities : tuple of str
+        USPS-acceptable alternate city names.
+    unacceptable_cities : tuple of str
+        City names USPS does not accept for this ZIP code.
+    state : str
+        Two-letter state code.
+    county : str
+        County name.
+    source : str
+        Provenance label for the backing lookup table.
+    """
+
+    city: str
+    acceptable_cities: tuple[str, ...] = ()
+    unacceptable_cities: tuple[str, ...] = ()
+    state: str = ''
+    county: str = ''
+    source: str = ''
+
+
+@cache
+def lookup_postal_city(
+    zip5: str, admin1_id: str | None = None
+) -> PostalCityMatch | None:
+    """USPS-preferred/acceptable city names for a 5-digit ZIP code.
+
+    Backed by the `zipcodes` package, gated to admin1_id == 'US' via
+    POSTAL_CITY_BACKENDS the same way PARSER_BACKENDS gates usaddress:
+    unsupported countries degrade to None rather than raising.
+
+    Parameters
+    ----------
+    zip5 : str
+        Five-digit ZIP code.
+    admin1_id : str, optional
+        Country code of the run; defaults to DEFAULT_ADMIN1_ID.
+
+    Returns
+    -------
+    PostalCityMatch or None
+        None for unsupported countries, or unknown/invalid ZIP codes.
+    """
+    admin1_id = admin1_id or DEFAULT_ADMIN1_ID
+    if admin1_id not in POSTAL_CITY_BACKENDS['zipcodes']:
+        return None
+
+    import zipcodes  # lazy import: keeps `postal` an optional extra
+
+    matches = zipcodes.matching(zip5)
+    if not matches:
+        return None
+    m = matches[0]
+    return PostalCityMatch(
+        city=m['city'],
+        acceptable_cities=tuple(m['acceptable_cities']),
+        unacceptable_cities=tuple(m['unacceptable_cities']),
+        state=m['state'],
+        county=m['county'],
+        source='zipcodes',
+    )
+
+
 # usaddress label -> component key used throughout this module
 _TAG_MAPPING = {
     'AddressNumberPrefix': 'address_number',
@@ -556,7 +632,7 @@ def match_streets(
     return False
 
 
-def harmonize_address_case(
+def format_address_components(
     address_street: str,
     address_number: str | None = None,
     unit_number: str | None = None,
@@ -564,16 +640,17 @@ def harmonize_address_case(
     state: str | None = None,
     postal_code: str | None = None,
     admin1_id: str | None = None,
-) -> str:
-    """Format address components into a single harmonized address line.
+) -> dict[str, str]:
+    """Case-format address components without assembling them into a line.
 
     Applies title casing while preserving uppercase directionals (N, S, NE),
     state codes (NC, MA), Roman numerals, and unit alphanumerics (4B), and
-    standardizing suffixes (St, Ave) and ordinals (1st, 2nd). The segment
-    layout comes from the country's address_formats.csv row, e.g. the
-    default '5006 Bogue Sound Dr, Emerald Isle, NC 28594' and DE's
-    'Hauptstrasse 12, 80331 Munich'. Units keep their designator
-    ('123 N Main St Apt 4B'); bare identifiers render as '#4B'.
+    standardizing suffixes (St, Ave) and ordinals (1st, 2nd). Units keep their
+    designator ('Apt 4B'); bare identifiers render as '#4B'. Returns a dict
+    keyed by :data:`ADDRESS_COMPONENTS`. Shared by :func:`harmonize_address_case`
+    (which assembles the result into a single line) and any caller that wants
+    to persist formatted components individually rather than a rendered
+    string, e.g. :func:`openplaces.io.harmonizer.addresses.reconcile_addresses_df`.
     """
     norm = normalize_address_components(
         address_street,
@@ -617,15 +694,42 @@ def harmonize_address_case(
 
     city_harmonized = ' '.join(w.capitalize() for w in norm['city'].split())
 
-    # State code stays uppercase; segment layout comes from the country row
+    # State code stays uppercase
+    return {
+        'address_number': norm['address_number'],
+        'address_street': street_harmonized,
+        'unit_number': unit_harmonized,
+        'city': city_harmonized,
+        'state': norm['state'],
+        'postal_code': norm['postal_code'],
+    }
+
+
+def harmonize_address_case(
+    address_street: str,
+    address_number: str | None = None,
+    unit_number: str | None = None,
+    city: str | None = None,
+    state: str | None = None,
+    postal_code: str | None = None,
+    admin1_id: str | None = None,
+) -> str:
+    """Format address components into a single harmonized address line.
+
+    Thin wrapper around :func:`format_address_components`: applies the same
+    case formatting, then assembles the result per the country's segment
+    layout (``address_formats.csv``), e.g. the default '5006 Bogue Sound Dr,
+    Emerald Isle, NC 28594' and DE's 'Hauptstrasse 12, 80331 Munich'.
+    """
     return _assemble(
-        {
-            'address_number': norm['address_number'],
-            'address_street': street_harmonized,
-            'unit_number': unit_harmonized,
-            'city': city_harmonized,
-            'state': norm['state'],
-            'postal_code': norm['postal_code'],
-        },
+        format_address_components(
+            address_street,
+            address_number,
+            unit_number,
+            city,
+            state,
+            postal_code,
+            admin1_id=admin1_id,
+        ),
         admin1_id,
     )

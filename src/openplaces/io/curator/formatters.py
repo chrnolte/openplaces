@@ -83,6 +83,7 @@ _FLAG_COLUMNS = (
     'occupancy_type_conflict',
     'occupancy_type_review',
     'land_use_class_conflict',
+    'land_use_review',
     'manufactured_home_community',
 )
 _MODIFIERS = ('_all', '_per_area', '_inferred')
@@ -167,9 +168,13 @@ def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
     An ``{base}_all`` variant whose base column is present sorts immediately
     after that base (its key is the base's key plus a trailing marker), so
     e.g. ``parcel_id_all`` follows ``parcel_id`` even though the bare id
-    columns tie on registry rank. Likewise a ``{base}_conflict`` column
-    follows its ``{base}_source`` sidecar (``address_conflict`` after
-    ``address_source``), unless it has an explicit ``_FLAG_COLUMNS`` slot.
+    columns tie on registry rank. A ``{base}_original`` variant (a raw,
+    pre-reconciliation value preserved under its own name -- not evidence
+    attributed from another entity, so it carries no provenance suffix to key
+    on either) follows its base the same way, e.g. ``address_original`` after
+    ``address``. Likewise a ``{base}_conflict`` column follows its
+    ``{base}_source`` sidecar (``address_conflict`` after ``address_source``),
+    unless it has an explicit ``_FLAG_COLUMNS`` slot.
     """
     if col.endswith(SOURCE_SUFFIX):
         # Band 0.5 groups every sidecar between canonical (0) and source (1),
@@ -177,6 +182,10 @@ def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
         return (0.5, _key_fields(col[: -len(SOURCE_SUFFIX)]), index_of[col])
     if col.endswith('_all'):
         base = col[: -len('_all')]
+        if base in index_of:
+            return (*_sort_key(base, index_of), 1)
+    if col.endswith('_original'):
+        base = col[: -len('_original')]
         if base in index_of:
             return (*_sort_key(base, index_of), 1)
     if col.endswith('_conflict') and col not in _FLAG_COLUMNS:
@@ -203,9 +212,10 @@ def order_columns(
     led by its bare id columns — ``parcel_id``/``parcel_id_all``/
     ``parcel_id_local`` head the ``_parcel`` group); (2) flag and
     visualization-only columns (``occupancy_type_conflict``/``_review``,
-    ``*_per_area``). An ``{col}_all`` variant always directly follows its base
-    column. ``geometry`` is always kept last. Computed from each column's name
-    and the registry, so the recipe needs no explicit column list.
+    ``*_per_area``). An ``{col}_all`` or ``{col}_original`` variant always
+    directly follows its base column. ``geometry`` is always kept last.
+    Computed from each column's name and the registry, so the recipe needs no
+    explicit column list.
 
     Parameters
     ----------

@@ -3,9 +3,7 @@
 # Pipeline order:
 #   1. Harmonize source entities into the evidence-only US_footprint-spine-2026.
 #   2. Enrich the spine with image-derived evidence.
-#   3. Curate the evidence into canonical footprint attributes (below):
-#      select values, derive metrics, infer groups/occupancy, merge enrichment
-#      evidence, resolve occupancy against parcels, refine height, and format.
+#   3. Curate the evidence into canonical footprint attributes.
 
 description: >-
   Canonical CHEER footprint inventory: harmonized U.S. footprint spine curated with
@@ -27,36 +25,25 @@ process_by:
 
 save_to:
   data_dir: share
-  # Single merged geoparquet (attributes + geometry together, no `_geo`
-  # sidecar / synthetic `_join_id`), since this is the terminal CHEER
-  # deliverable meant for external sharing and direct GIS tool consumption
-  # rather than internal joinable-table processing.
+  # Save as a single combined GeoParquet (attributes + geometry) without sidecars,
+  # optimized for external sharing and direct GIS client consumption.
   combined: true
 
-# Occupancy classification config: all geography-specific terminology, evidence
-# columns, and thresholds live here so the curator steps stay vocabulary-neutral.
+# Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:
   class_map: occupancy-class-map.csv          # recipe-relative; pattern,match_type,occupancy_type
   residential_classes: [Single-Family, Multi-Family, Manufactured Home]
   secondary_class: Secondary
-  # Weighted consensus vote across all present evidence (same residential-bucket
-  # granularity as occupancy_type_conflict, so resolution can never contradict
-  # the conflict summary): each entry casts its weight for its class, the
-  # heaviest class wins, and ties fall to the earliest listed entry — so the
-  # ordering below still sets precedence when there is no majority (NSI-first),
-  # but two agreeing sources outvote a lone higher-ranked one (e.g. a lone FEMA
-  # Multi-Family loses to a parcel+overture Single-Family consensus).
+  # Weighted consensus voting across sources: heaviest class wins. Ties fall to
+  # the earliest listed entry (NSI-first). Multiple lower-rank agreeing sources
+  # can outvote a single higher-rank opponent.
   evidence_mode: vote
   evidence:
     - {column: occupancy_type_building_nsi, label: nsi}   # tiebreak order = NSI-first
-    - {column: group_footprint_fema, label: fema}  # FEMA building group (parcel-aggregated, NSI-style vocabulary); provisional rank, see occupancy-evidence-comparison report
+    - {column: group_footprint_fema, label: fema}  # FEMA building group
     - {column: group_parcel, label: parcel}              # label used in the conflict summary
-    # Half a vote: the Overture-implied class (derived below, after
-    # n_dwellings_overture's vacant-parcel correction, from the corrected
-    # Overture dwelling count alone) loses every 1-vs-1 against real
-    # nsi/fema/parcel evidence and still fills the base class when it is the
-    # only evidence — but it tips the scale for a real source it agrees with
-    # (1.5 beats a lone opposing vote).
+    # Overture-implied class has a 0.5 weight: fills missing values as a fallback
+    # but serves only as a tiebreaker when higher-weight sources are present.
     - {column: occupancy_type_dwelling_overture, label: overture, weight: 0.5}
   columns:                                   # generic attribute -> this recipe's column
     improvement_value: improvement_value_parcel
@@ -67,75 +54,64 @@ occupancy:
     manufactured_home_value: {zero_classifies: true, review_max_ratio: 0.025, class: Manufactured Home}
     multi_family_dwellings: {min_dwellings: 2, class: Multi-Family}
     single_family_dwellings: {max_dwellings: 1, class: Single-Family}
-  # Park-aware Secondary: on a manufactured_home_park parcel (set by the parcel
-  # curation lane, joined in by link_curated_entity), a footprint at least
-  # `habitable_fraction` of the average manufactured-home area counts as a home,
-  # not an accessory structure. manufactured_home_avg_m2 is the fallback
-  # average when too few homes are classified to estimate it from the data.
+  # Footprints on a manufactured_home_community parcel that meet the habitable
+  # size threshold are classified as homes rather than accessory structures.
   habitable_fraction: 0.5
   habitable_floor_m2: 25
   manufactured_home_avg_m2: 90
 
 pipeline:
-  # Link the curated parcel lane FIRST, by the globally-unique parcel_id (see
-  # link_curated_entity's entity_key/ref_key docs for why). The footprint
-  # spine links against pre-roll-merge ingested parcels (the parcel spine is
-  # harmonized after it), so parcel attributes attach here, from the curated
-  # parcels: the refined use_group_combined, the modal-NSI occupancy group,
-  # the FEMA building occupancy, and the manufactured_home_park flag. These
-  # feed the reconciliation, occupancy inference, and vote below.
+  # Link the curated parcel attributes (occupancy, use group, and community
+  # flags) by parcel_id to drive the downstream reconciliation and inference
+  # steps. manufactured_home_community seeds impute_occupancy_type below
+  # with the parcel lane's one-pass classification; flag_manufactured_home_
+  # communities later intentionally overwrites it under the same name with
+  # the richer, footprint-occupancy-based refinement (see that step's
+  # docstring) -- not a name collision to fix, the final value there is
+  # meant to supersede this seed.
   - step: link_curated_entity
     recipe_id: US_parcel-openplaces-2026
     columns:
       use_group_combined: use_group_combined_parcel
       group_parcel: group_parcel
-      manufactured_home_park: manufactured_home_park
+      manufactured_home_community: manufactured_home_community
       group_footprint_fema: group_footprint_fema
       land_use_class: land_use_class_parcel
 
-  # Parcel VALUE columns take the apportioning path instead: re-use the n:m
-  # footprint-parcel overlay persisted by the harmonize stage (save_link) and
-  # the harmonizer's own apportionment implementation to distribute the
-  # curated parcel's values across its footprints (Lochhead et al. 2026,
-  # Table 4): improvement_value split by overlap-area share among
-  # dwelling-linked footprints (missing on secondary structures), land_value
-  # whole on the principal footprint only, year_built as the linked parcels'
-  # mean.
+  # Apportion curated parcel values to footprints:
+  # - improvement_value is split by footprint overlap-area share (residential splitting
+  #   excludes secondary structures; non-residential splits share among all structures).
+  # - land_value goes entirely to the principal footprint.
+  # - imputed land and improvement values are directly mapped to canonical land_value and
+  #   structure_value columns without extra reconciliation.
   - step: apportion_curated_values
     recipe_id: US_parcel-openplaces-2026
     columns:
       improvement_value: improvement_value_parcel
       land_value: land_value_parcel
       year_built: year_built_parcel
+      land_value_imputed: land_value
+      improvement_value_imputed: structure_value
+    land_use_column: land_use_class
+    non_residential_classes:
+      [Commercial, Retail, Office, Industrial, Institutional, Recreation,
+       Agricultural, RV Park]
 
-  # Retain the full n:m footprint-parcel membership as a canonical column:
-  # all overlapping parcels per footprint (pipe-joined, dominant first —
-  # parcel_id is always the first element), collected from the link sidecar
-  # persisted by the harmonize overlay (save_link: true). Sliver overlaps
-  # below the overlay thresholds stay out (include_below_threshold: false);
-  # they remain queryable in the sidecar itself.
+  # Store the pipe-separated list of all overlapping parcels (dominant first),
+  # loaded from the persisted spatial overlay link sidecar.
   - step: collect_link_ids
     entity_type: parcel
     column: parcel_id_all
 
-  # An Overture address point does not prove a dwelling physically exists (it
-  # can be platted/assessed before, or without, construction). The parcel
-  # land-use vote already weighs footprint presence, improvement value, and
-  # assessor vocabulary together to flag genuinely vacant parcels
-  # (US_parcel-openplaces-2026's classify_parcel_land_use) — trust that
-  # multi-source decision here rather than re-deriving it from a single
-  # footprint-side heuristic.
+  # Suppress Overture dwelling counts on parcels that have been curated
+  # as vacant (trusting the multi-source parcel land-use classification).
   - step: suppress_where
     column: n_dwellings_overture
     condition_column: land_use_class_parcel
     condition_value: Vacant
 
-  # Cheap, single-source implied class from the (now vacant-corrected) Overture
-  # count alone, at the same >=2-dwellings threshold as
-  # occupancy.rules.multi_family_dwellings above. Feeds occupancy.evidence
-  # above: a last-resort fallback in impute_occupancy_type, and a
-  # conflict-summary participant in resolve_occupancy — never an override of
-  # real nsi/fema/parcel evidence.
+  # Vote a single-source occupancy class from Overture counts (>=2 is Multi-Family,
+  # <=1 is Single-Family) to serve as a low-weight fallback or tiebreaker.
   - step: resolve_by_vote
     target: occupancy_type_dwelling_overture
     decisions:
@@ -150,34 +126,23 @@ pipeline:
         indicators:
           - {type: numeric_at_most, column: n_dwellings_overture, max: 1}
 
-  # Reconcile: pick the canonical value from competing source columns.
+  # Reconcile values from competing sources:
+  # - land_value is pre-written by apportionment and needs no reconciliation.
+  # - structure_value is populated by apportionment and falls back to NSI structure
+  #   value only if apportionment left it missing.
   - step: reconcile_values
     priority:
       n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
       year_built: [year_built_parcel, year_built_block_median_building_nsi]
-      value: [improvement_value_parcel, structure_value_building_nsi]
+      structure_value: [structure_value, structure_value_building_nsi]
+      postal_code: [postal_code_dwelling_overture]
 
-  # Reconcile and harmonize street addresses. Sources are listed in priority
-  # order; agreeing lower-priority sources fill missing components (unit etc.)
-  - step: reconcile_addresses
-    output_col: address
-    sources:
-      parcel:
-        address_full: address_parcel
-      dwelling_overture:
-        address_street: address_street_dwelling_overture
-        address_number: address_number_dwelling_overture
-        city: city_dwelling_overture
-        postal_code: postal_code_dwelling_overture
-    # No source carries a state column: complete it from the run's admin
-    # unit (level-2 code) on rows that have a city or zip
-    complete_from_admin:
-      state: 2
+  # Address reconciliation and postal-city imputation are handled at the
+  # harmonization stage on the input spine (reconcile_addresses /
+  # impute_postal_city) -- a ZIP code's USPS-preferred city isn't
+  # parameter-sensitive, so it's resolved once, upstream of curation.
 
-  # n_dwellings_overture has already done its evidence work above (the
-  # overture-implied-class vote, the n_dwellings reconciliation just above);
-  # from here on a missing value only means "0 dwellings" for display, so
-  # zero-fill and cast to a clean integer count.
+  # Zero-fill missing overture counts.
   - step: fill_missing_numeric
     columns: [n_dwellings_overture]
 
@@ -187,22 +152,14 @@ pipeline:
   # Impute: fill any dwelling-unit gaps left after reconciliation.
   - step: impute_n_dwellings
 
-  # Occupancy base class from the weighted evidence vote (NSI-first tiebreak),
-  # then geometry and single-family dwelling fallbacks. Config is in the
-  # `occupancy` block above.
+  # Determine base occupancy class via weighted consensus voting and fallback rules.
   - step: impute_occupancy_type
 
-  # Corrections: reviewed parcel keyword override of the base class, plus the
-  # value-share review flag and the NSI-vs-parcel conflict summary. Value- and
-  # dwelling-based class assignment now happens in resolve_by_vote below.
+  # Apply keyword overrides, value-share flags, and conflict summaries.
   - step: resolve_occupancy
     ruleset: parcel-occupancy-keywords.csv
 
-  # Evidence: merge image-derived enrichment columns (canonical values win).
-  # n_stories keeps its evidence name here (n_stories_brails) rather than
-  # writing canonical n_stories directly: the reconcile_values step below
-  # weighs it against the NSI-modeled story count rather than letting direct
-  # floor detection win unconditionally.
+  # Merge image-derived enrichment columns (e.g. roof shape and story count from BRAILS).
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
@@ -212,44 +169,27 @@ pipeline:
         columns:
           n_stories_brails: n_stories_brails
 
-  # Reconcile canonical n_stories: direct floor detection first, then NSI's
-  # modeled count.
+  # Reconcile canonical n_stories: direct floor detection first, then NSI's modeled count.
   - step: reconcile_values
     priority:
       n_stories: [n_stories_brails, n_stories_building_nsi]
 
-  # Evidence: estimate manufactured-home probability from assessor labels,
-  # footprint morphology, and imagery. Emits the single p_manufactured_home
-  # column for the vote below; does not assign occupancy_type itself
-  # (update_occupancy: false). Heavy compute is gated to small residential
-  # candidates; to turn it off entirely set `enabled: false` here or pass
-  # skip_steps=['classify_manufactured_homes'] to curate.
+  # Estimate manufactured home probability using morphology/assessor keywords for voting.
   - step: classify_manufactured_homes
     ruleset: parcel-occupancy-keywords.csv
     update_occupancy: false
 
-  # Reconcile occupancy by weighted vote: low structure value, a parcel
-  # manufactured-home keyword, and an NSI manufactured-home use group each vote
-  # Manufactured Home, so two of three outvote the single n_dwellings>=2
-  # Multi-Family vote. A genuine multi-unit parcel with no manufactured-home
-  # evidence still resolves to Multi-Family. `require` is a hard precondition
-  # (unlike the weighted indicators below, no combination of the others can
-  # substitute for it): a footprint under 20m2 cannot become Manufactured Home
-  # here, however strongly the other evidence favors it — it keeps whatever
-  # impute_occupancy_type/resolve_occupancy already gave it (Secondary for a
-  # non-primary accessory structure).
+  # Reconcile final occupancy: resolve Manufactured Home vs Multi-Family using a
+  # weighted consensus vote. Requires a minimum area of 20 m2 for Manufactured Homes.
   - step: resolve_by_vote
     target: occupancy_type
     decisions:
-        # `source` is the concise reason recorded in occupancy_type_source for
-        # rows this decision wins, replacing the dropped classifier-metadata
-        # columns with one categorical label.
       - class: Manufactured Home
         source: manufactured_home
         min_score: 2
         require:
           - type: numeric_at_least
-            column: m2
+            column: area_m2
             min: 20
         indicators:
           - type: value_share_below
@@ -264,11 +204,7 @@ pipeline:
           - type: equals
             column: group_parcel
             value: Manufactured Home
-          # Footprint-morphology probability from classify_manufactured_homes.
-          # Catches manufactured-home parks whose parcel land-use is a local
-          # code the keyword list does not know (e.g. "WVC"): low value + this
-          # shape vote reach min_score 2 and outweigh the n_dwellings
-          # Multi-Family vote.
+          # Footprint-morphology shape classification probability.
           - type: numeric_at_least
             column: p_manufactured_home
             min: 0.5
@@ -280,50 +216,33 @@ pipeline:
             column: n_dwellings
             min: 2
 
-  # Refine: split Multi-Family into height bands by story count. Writes the
-  # canonical occupancy_type in place and keeps the pre-refinement class in
-  # occupancy_type_base (both share occupancy_type_source).
+  # Classify Multi-Family structures into Low/Mid/High-Rise bands based on story counts.
   - step: refine_occupancy_height
-    # Bands count floors of living area; open ground floors (e.g. first-floor
-    # stilts/pilotis, common in coastal flood zones) are not counted.
     multi_family_class: Multi-Family
     bands:
       - {max_stories: 3, class: Low-Rise Multi-Family}
       - {max_stories: 7, class: Mid-Rise Multi-Family}
       - {class: High-Rise Multi-Family}
 
-  # Correction sidecar: recompute the manufactured-home-community flag from the
-  # FINAL footprint occupancy (richer than the pre-occupancy parcel pass). A
-  # future second parcel pass can fold this back into the parcel dataset.
+  # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
     min_homes: 3
 
-  # Format: dtypes, then deterministic column order (rule-based, from the
-  # naming convention + attribute-registry `sort`; no explicit list needed).
+  # Format: dtypes, then deterministic column order.
   - step: cast_categoricals
 
-  # year_built is reconciled from float evidence (a parcel record or an NSI
-  # block-median fallback) but is conceptually a whole year; round and cast
-  # to a nullable integer so it displays as e.g. 1964, not 1964.0, while
-  # still leaving genuinely missing values as null rather than 0.
+  # Round and cast float year_built/n_stories/n_dwellings values to nullable
+  # integers. n_stories_building_nsi can be a fractional mean (the
+  # attribute registry's aggregation for n_stories, applied when >1 NSI
+  # point links to one footprint) and n_dwellings can carry the
+  # unrounded 3.5/14.5-unit midpoints impute_n_dwellings's occupancy-class
+  # fallback (_OCC_UNITS) assigns to a size range with no exact count
+  # evidence; both flow into these canonical columns via reconcile_values
+  # above, so they need the same integer cast year_built already got.
   - step: cast_integers
-    columns: [year_built]
+    columns: [year_built, n_stories, n_dwellings]
 
-  # group_parcel and occupancy_type_dwelling_overture (+ its _source sidecar)
-  # are transient inputs to occupancy inference/conflict detection; their
-  # information is carried by occupancy_type_parcel and occupancy_type_conflict
-  # respectively, so drop them from the canonical output. value_per_area is
-  # now kept: apportion_curated_values above splits improvement_value_parcel
-  # (value's dominant input) across a multi-footprint parcel's footprints
-  # before derive_metrics computes the ratio, so it is no longer a flat parcel
-  # average. occupancy_type_base, p_manufactured_home, and
-  # manufactured_home_park are transient inputs consumed by earlier steps
-  # (refine_occupancy_height, the manufactured-home vote, and
-  # impute_occupancy_type respectively) and carry no information beyond what's
-  # already in occupancy_type/occupancy_type_source. n_stories_brails_source is
-  # a noise sidecar merge_enrichments writes while filling the n_stories_brails
-  # evidence column; the reconciled n_stories_source (from reconcile_values)
-  # already carries that provenance.
+  # Drop transient intermediate/evidence columns and enforce canonical schema order.
   - step: order_columns
     drop:
       - group_parcel
@@ -331,5 +250,13 @@ pipeline:
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base
       - p_manufactured_home
-      - manufactured_home_park
       - n_stories_brails_source
+      # Evidence-only: postal_city fed into `address`/`city` at harmonize
+      # time (impute_postal_city); not needed once it has.
+      - postal_city
+      - postal_zip5
+      - postal_city_acceptable
+      - postal_city_unacceptable
+      - postal_city_source
+      # Redundant with the canonical, reconciled structure_value_per_area.
+      - improvement_value_parcel_per_area

@@ -167,10 +167,10 @@ def test_flag_column_still_works():
     out = classify_parcel_land_use(
         _state(df),
         rules=RULES,
-        flag_column='manufactured_home_park',
+        flag_column='manufactured_home_community',
         flag_class='Manufactured Home Park',
     ).curated
-    assert bool(out['manufactured_home_park'].iloc[0]) is True
+    assert bool(out['manufactured_home_community'].iloc[0]) is True
 
 
 # Mirrors the real US_parcel-openplaces-2026.yaml Multiple Single-Family rule:
@@ -300,6 +300,253 @@ def test_unknown_indicator_type_still_raises():
     df = pd.DataFrame({'a': ['X']})
     with pytest.raises(ValueError, match='Unknown voting indicator type'):
         evaluate_indicator(df, {'type': 'bogus', 'column': 'a'})
+
+
+# --- value_share_below / value_share_at_least -------------------------------
+
+
+def _value_share_indicator(kind: str, **extra) -> dict:
+    return {
+        'type': kind,
+        'value': 'land_value',
+        'total': ['land_value', 'improvement_value'],
+        **extra,
+    }
+
+
+def test_value_share_below_true_under_ratio():
+    df = pd.DataFrame({'land_value': [1_000], 'improvement_value': [199_000]})
+    matched = evaluate_indicator(
+        df, _value_share_indicator('value_share_below', max_ratio=0.01)
+    )
+    assert matched.iloc[0]
+
+
+def test_value_share_below_false_at_or_above_ratio():
+    df = pd.DataFrame({'land_value': [50_000], 'improvement_value': [150_000]})
+    matched = evaluate_indicator(
+        df, _value_share_indicator('value_share_below', max_ratio=0.01)
+    )
+    assert not matched.iloc[0]
+
+
+def test_value_share_below_include_zero_matches_zero_total():
+    df = pd.DataFrame({'land_value': [0], 'improvement_value': [0]})
+    matched = evaluate_indicator(
+        df,
+        _value_share_indicator('value_share_below', max_ratio=0.01, include_zero=True),
+    )
+    assert matched.iloc[0]
+
+
+def test_value_share_at_least_true_when_ratio_meets_minimum():
+    df = pd.DataFrame({'land_value': [50_000], 'improvement_value': [150_000]})
+    matched = evaluate_indicator(
+        df, _value_share_indicator('value_share_at_least', min_ratio=0.01)
+    )
+    assert matched.iloc[0]
+
+
+def test_value_share_at_least_false_when_ratio_below_minimum():
+    df = pd.DataFrame({'land_value': [0], 'improvement_value': [200_000]})
+    matched = evaluate_indicator(
+        df, _value_share_indicator('value_share_at_least', min_ratio=0.01)
+    )
+    assert not matched.iloc[0]
+
+
+def test_value_share_at_least_false_when_total_is_zero():
+    df = pd.DataFrame({'land_value': [0], 'improvement_value': [0]})
+    matched = evaluate_indicator(
+        df, _value_share_indicator('value_share_at_least', min_ratio=0.01)
+    )
+    assert not matched.iloc[0]
+
+
+# --- Condominium vs. Townhome (structural exclusion via land-value share) --
+
+# Mirrors the real US_parcel-openplaces-2026.yaml rules.
+CONDOMINIUM_RULE = {
+    'class': 'Condominium',
+    'min_score': 2,
+    'indicators': [
+        {
+            'type': 'value_share_below',
+            'value': 'land_value',
+            'total': ['land_value', 'improvement_value'],
+            'max_ratio': 0.01,
+            'include_zero': True,
+        },
+        {
+            'type': 'any_of',
+            'indicators': [
+                {
+                    'type': 'in_set',
+                    'column': 'group_parcel',
+                    'values': ['Multi Family', 'Single Family'],
+                },
+                {
+                    'type': 'in_set',
+                    'column': 'group_footprint_fema',
+                    'values': ['Multi Family', 'Single Family'],
+                },
+            ],
+        },
+        {
+            'type': 'keyword',
+            'column': 'use_group_combined',
+            'pattern': 'CONDO|CONDOMINIUM',
+        },
+    ],
+}
+
+TOWNHOME_RULE = {
+    'class': 'Townhome',
+    'min_score': 4,
+    'indicators': [
+        {'type': 'numeric_at_most', 'column': 'n_footprints_per_parcel', 'max': 1},
+        {
+            'type': 'any_of',
+            'indicators': [
+                {
+                    'type': 'numeric_at_least',
+                    'column': 'max_parcels_per_footprint',
+                    'min': 2,
+                },
+                {
+                    'type': 'numeric_at_least',
+                    'column': 'max_dwellings_per_footprint',
+                    'min': 2,
+                },
+                {
+                    'type': 'keyword',
+                    'column': 'use_group_combined',
+                    'pattern': 'TOWNHOUSE|TOWNHOME|ROW HOUSE|ROW-HOUSE',
+                },
+            ],
+        },
+        {
+            'type': 'any_of',
+            'indicators': [
+                {
+                    'type': 'in_set',
+                    'column': 'group_parcel',
+                    'values': ['Multi Family', 'Single Family'],
+                },
+                {
+                    'type': 'in_set',
+                    'column': 'group_footprint_fema',
+                    'values': ['Single Family', 'Multi Family'],
+                },
+            ],
+        },
+        {
+            'type': 'value_share_at_least',
+            'value': 'land_value',
+            'total': ['land_value', 'improvement_value'],
+            'min_ratio': 0.01,
+        },
+    ],
+}
+
+
+def _townhome_shaped_frame(**overrides) -> pd.DataFrame:
+    df = pd.DataFrame(
+        {
+            'use_group_combined': ['RESIDENTIAL PRIMARY'],
+            'group_parcel': ['Single Family'],
+            'n_footprints_per_parcel': [1],
+            'max_parcels_per_footprint': [2],
+        }
+    )
+    for key, value in overrides.items():
+        df[key] = value
+    return df
+
+
+def test_condominium_wins_over_townhome_on_zero_land_value_morphology():
+    # Regression test for US-MA-MI-SO parcel 48e681aa651e741b736033de:
+    # Townhome-shaped morphology (footprint shared across parcels) but
+    # land_value is 0 with a real improvement_value -- the Massachusetts
+    # condominium signature. Townhome's value_share_at_least indicator fails
+    # (0/(0+200000)=0 < 0.01), capping its score at 3 < min_score 4, so it
+    # never becomes eligible; Condominium (score 2 = min_score 2) wins.
+    df = _townhome_shaped_frame(land_value=[0], improvement_value=[200_000])
+    out = classify_parcel_land_use(
+        _state(df), rules=[CONDOMINIUM_RULE, TOWNHOME_RULE]
+    ).curated
+    assert out['land_use_class'].iloc[0] == 'Condominium'
+
+
+def test_townhome_still_wins_with_nonzero_land_value():
+    # Same morphology, but a real per-unit land_value (share 0.2, well above
+    # the 0.01 cutoff): Condominium's value_share_below fails, capping its
+    # score at 1 < min_score 2 (not eligible); Townhome reaches all 4
+    # indicators (score 4 = min_score 4) and wins.
+    df = _townhome_shaped_frame(land_value=[50_000], improvement_value=[200_000])
+    out = classify_parcel_land_use(
+        _state(df), rules=[CONDOMINIUM_RULE, TOWNHOME_RULE]
+    ).curated
+    assert out['land_use_class'].iloc[0] == 'Townhome'
+
+
+def test_condominium_fires_on_keyword_alone_plus_residential_context():
+    # A non-trivial land-value share (0.15) makes the value-share indicator
+    # fail, but the assessor "condominium" keyword plus residential context
+    # alone still reach min_score 2 -- an intentional consequence worth
+    # pinning down explicitly.
+    df = pd.DataFrame(
+        {
+            'use_group_combined': ['RESIDENTIAL CONDOMINIUM'],
+            'group_parcel': ['Single Family'],
+            'land_value': [15_000],
+            'improvement_value': [85_000],
+        }
+    )
+    out = classify_parcel_land_use(_state(df), rules=[CONDOMINIUM_RULE]).curated
+    assert out['land_use_class'].iloc[0] == 'Condominium'
+
+
+MULTIPLE_SF_RULE_WITH_VALUE_SHARE = {
+    **MULTIPLE_SF_RULE,
+    'min_score': 4,
+    'indicators': [
+        *MULTIPLE_SF_RULE['indicators'],
+        {
+            'type': 'value_share_at_least',
+            'value': 'land_value',
+            'total': ['land_value', 'improvement_value'],
+            'min_ratio': 0.01,
+        },
+    ],
+}
+
+
+def test_multiple_single_family_does_not_fire_on_zero_land_value_condo_shape():
+    # Same genuine-multiplicity morphology as
+    # test_multiple_single_family_fires_with_genuine_multiplicity_evidence,
+    # but land_value is 0 (condo shape): the original 4 indicators still
+    # score 3, but the new value_share_at_least indicator fails, capping the
+    # total at 3 < min_score 4 -- must not fire.
+    df = _ordinary_single_family_frame(
+        n_primary_footprints_per_parcel=[2], land_value=[0], improvement_value=[200_000]
+    )
+    out = classify_parcel_land_use(
+        _state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]
+    ).curated
+    assert pd.isna(out['land_use_class'].iloc[0])
+
+
+def test_multiple_single_family_fires_with_genuine_multiplicity_and_normal_land_value():
+    df = _ordinary_single_family_frame(
+        n_primary_footprints_per_parcel=[2],
+        land_value=[50_000],
+        improvement_value=[150_000],
+    )
+    out = classify_parcel_land_use(
+        _state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]
+    ).curated
+    assert out['land_use_class'].iloc[0] == 'Multiple Single-Family'
 
 
 # --- FEMA occupancy corroborating the residential land-use rules -----------

@@ -222,22 +222,39 @@ def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
     if df.empty:
         return None
     admin_str = str(admin_id)
-    best_level = -1
-    best_row = None
+    candidates = []
     for _, row in df.iterrows():
         rid_str = row['admin_id']
         if rid_str == '' or admin_str.startswith(rid_str):
             level = rid_str.count('-') + 1 if rid_str else 0
-            if level > best_level:
-                best_level = level
-                best_row = row
-    if best_row is None:
+            prefix = f'{rid_str}_' if rid_str else ''
+            recipe_id = f'{prefix}{entity_type}-{row["source_id"]}-{row["version"]}'
+
+            # Since this reference recipe is auto-discovered for a spatial join,
+            # we check if it has geometry. If it was ingested, a companion
+            # `_geo.parquet` file will exist.
+            has_geo = False
+            try:
+                path = get_output_path(recipe_id, admin_id)
+                geo_path = path.with_stem(path.stem + '_geo')
+                if geo_path.exists():
+                    has_geo = True
+            except Exception:
+                pass
+            candidates.append((level, has_geo, recipe_id))
+
+    if not candidates:
         return None
-    prefix = f'{best_row["admin_id"]}_' if best_row['admin_id'] else ''
-    return (
-        f'{prefix}{best_row["entity_type"]}'
-        f'-{best_row["source_id"]}-{best_row["version"]}'
-    )
+
+    # Prefer candidates that have geometry. If none do (e.g. before ingestion),
+    # fall back to all candidates.
+    geo_candidates = [c for c in candidates if c[1]]
+    if geo_candidates:
+        best_candidate = max(geo_candidates, key=lambda x: x[0])
+    else:
+        best_candidate = max(candidates, key=lambda x: x[0])
+
+    return best_candidate[2]
 
 
 def _link_spatial_overlay(
@@ -286,12 +303,28 @@ def _link_spatial_overlay(
                 _label = _label + ' | ' + ref[_sub].astype(str).fillna('n/a')
             ref[f'{_base}_combined'] = pd.Categorical(_label)
     ref['has_duplicate_geometry'] = ref['geo_id'].duplicated(keep=False)
-    ref['ha'] = get_areas(ref, 'ha')
+    if entity_type in ('footprint', 'building'):
+        metric_unit, imperial_unit = 'm2', 'sqft'
+    elif entity_type == 'admin':
+        metric_unit, imperial_unit = 'km2', 'sqmi'
+    else:
+        metric_unit, imperial_unit = 'ha', 'ac'
+
+    metric_col = f'area_{metric_unit}'
+    imperial_col = f'area_{imperial_unit}'
+    ref[metric_col] = get_areas(ref, metric_unit)
+    ref[imperial_col] = get_areas(ref, imperial_unit)
 
     ref_polys = ref[~ref['geo_id'].duplicated()][
         [
             c
-            for c in ['geometry', 'geo_id', 'ha', 'has_duplicate_geometry']
+            for c in [
+                'geometry',
+                'geo_id',
+                metric_col,
+                imperial_col,
+                'has_duplicate_geometry',
+            ]
             if c in ref.columns
         ]
     ].copy()
@@ -307,10 +340,26 @@ def _link_spatial_overlay(
     )
     if ref_agg is not None:
         ref_agg['n_parcels'] = ref.groupby('geo_id').size()
+        collision_cols = [
+            c for c in ref_polys.columns if c in ref_agg.columns and c != 'geo_id'
+        ]
+        if collision_cols:
+            from openplaces.io.harmonizer.attributes import _resolve_suffix
+
+            ref_suffix = _resolve_suffix(recipe_id, entity_type, state, default='_ref')
+            ref_polys = ref_polys.rename(
+                columns={c: f'{c}_geometry' for c in collision_cols}
+            )
+            ref_agg = ref_agg.rename(
+                columns={c: f'{c}{ref_suffix}' for c in collision_cols}
+            )
         ref_polys = ref_polys.join(ref_agg)
-    if 'improvement_value' in ref_polys.columns and 'ha' in ref_polys.columns:
+    area_ha_col = next(
+        (c for c in ('area_ha', 'area_ha_geometry') if c in ref_polys.columns), None
+    )
+    if 'improvement_value' in ref_polys.columns and area_ha_col is not None:
         ref_polys['improvement_value_per_ha'] = (
-            ref_polys['improvement_value'] / ref_polys['ha']
+            ref_polys['improvement_value'] / ref_polys[area_ha_col]
         )
 
     sidecar_path = None
@@ -1670,7 +1719,9 @@ def link_by_id(
         ref_unique.index = ref_unique[ref_key].astype('string')
         for col in cols:
             name = f'{col}{suffix}' if suffix else col
-            _write_prioritized(spine, name, skey.map(ref_unique[col]))
+            ref_series = ref_unique[col]
+            mapper = ref_series.to_dict() if ref_series.empty else ref_series
+            _write_prioritized(spine, name, skey.map(mapper))
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
@@ -1679,7 +1730,8 @@ def link_by_id(
             )
     elif mode == 'count':
         counts = rkey.dropna().value_counts()
-        spine[count_as] = skey.map(counts).fillna(0).astype('int64')
+        mapper = counts.to_dict() if counts.empty else counts
+        spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
         spine[flag_as] = spine[count_as] > 0
         if state.verbose:
             print(
@@ -1700,9 +1752,13 @@ def link_by_id(
             fname = get_agg_func(resolve_attribute_name(col))
             func = fname if fname in reducible else 'first'
             name = f'{col}{suffix}' if suffix else col
-            _write_prioritized(spine, name, skey.map(grouped[col].agg(func)))
+            agg_series = grouped[col].agg(func)
+            mapper = agg_series.to_dict() if agg_series.empty else agg_series
+            _write_prioritized(spine, name, skey.map(mapper))
         count_col = count_as if count_as != 'n_transactions' else 'n_records_per_key'
-        spine[count_col] = skey.map(grouped.size()).fillna(0).astype('int64')
+        gsize = grouped.size()
+        mapper = gsize.to_dict() if gsize.empty else gsize
+        spine[count_col] = skey.map(mapper).fillna(0).astype('int64')
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(

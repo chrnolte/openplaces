@@ -22,6 +22,9 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
 
     - ``value_share_below``: ``value / sum(total) < max_ratio``. With
       ``include_zero`` true, a zero ``value`` also matches (covers a zero total).
+    - ``value_share_at_least``: ``value / sum(total) >= min_ratio``, the mirror
+      of ``value_share_below``. No ``include_zero`` option: a zero ``value``
+      can never satisfy ``>= min_ratio`` for any positive ``min_ratio``.
     - ``keyword``: case-insensitive ``str.contains(pattern)`` on ``column``
       (``regex`` defaults to true; set false for a literal substring match).
     - ``equals``: ``column`` equals ``value``.
@@ -57,6 +60,19 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
         if indicator.get('include_zero'):
             matched = matched | (value == 0).fillna(False)
         return matched
+
+    if kind == 'value_share_at_least':
+        value_col = indicator['value']
+        total_cols = indicator['total']
+        if value_col not in curated.columns or any(
+            c not in curated.columns for c in total_cols
+        ):
+            return false
+        value = pd.to_numeric(curated[value_col], errors='coerce')
+        total = sum(pd.to_numeric(curated[c], errors='coerce') for c in total_cols)
+        min_ratio = float(indicator['min_ratio'])
+        ratio = value.where(total > 0) / total.where(total > 0)
+        return (ratio >= min_ratio).fillna(False)
 
     col = indicator.get('column')
     if col is None or col not in curated.columns:
