@@ -277,7 +277,7 @@ def add_openlocationcode_index(
     codelength=11,
     handle_duplicates=True,
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Return the GeoDataFrame using Open Location Code (OLC) as the index.
 
     Parameters
     ----------
@@ -288,7 +288,7 @@ def add_openlocationcode_index(
     codelength : int
         `openlocationcode` code length
     handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
+        If True, adds numeric suffix to duplicate OLCs (default True)
     """
 
     gdf = gdf.copy()
@@ -424,7 +424,7 @@ def add_ubid_index(
     name='ubid',
     duplicates='raise',
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Return the GeoDataFrame using Unique Building ID (UBID) as the index.
 
     Parameters
     ----------

@@ -11,13 +11,18 @@ code in the `openplaces` repository.
 - Do not use sequences of lines (`─`, `-`, `=`) in comments
 
 ## Docstrings
-- Use NumPy-style docstrings.
+- Use NumPy-style docstrings exclusively throughout the codebase (no Google-style docstrings).
 - Avoid double backticks.
 - Only add Sphinx cross-references when they are genuinely useful for navigation, e.g:
   - Important public functions or classes in this package
   - Key workflow entry points
   - Custom data structures or configuration objects
 - Do not include the .py filepath in the top-level docstring of scripts
+- Provide detailed individual docstrings for each class constructor detailing their specific parameters and validation rules in NumPy style (no placeholder or duplicate constructor docstrings).
+- Keep docstrings strictly accurate and formatted to the function, resolving copy-paste typos.
+- Standardize on American English spelling ('meter', 'center', 'reproject') throughout all comments and docstrings.
+- Retain deep technical/algorithmic rationale and historical context in comments and docstrings to help developers understand why decisions were made.
+- Keep docstrings clean and focused on user-facing API contracts, moving implementation notes (like psutil or RAM heuristics) to internal inline comments.
 
 ## Directory structure
 Write plans to <repository_root>/plans/

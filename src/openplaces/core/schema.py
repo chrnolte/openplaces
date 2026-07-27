@@ -77,7 +77,15 @@ class AdminId:
     levels: tuple[str] = field(default_factory=tuple)
 
     def __init__(self, *levels: str):
-        """Initialize AdminId with administrative levels."""
+        """Initialize AdminId with administrative levels.
+
+        Parameters
+        ----------
+        *levels : str
+            Administrative level strings (e.g., 'US', 'MA'). Can also
+            accept a single string with separators (e.g., 'US-MA-MI') or
+            a sequence of strings.
+        """
         if len(levels) == 0 or levels[0] is None:
             tuple_of_levels = ()
         elif len(levels) == 1 and STRING_SEPARATOR_WITHIN_IDS in levels[0]:
@@ -124,19 +132,24 @@ class AdminId:
         A parent AdminId has fewer levels and matches all its levels
         with the start of the child's levels.
 
-        Args:
-            admin_id: The potential child AdminId to check
+        Parameters
+        ----------
+        admin_id : AdminId
+            The potential child AdminId to check.
 
-        Returns:
-            True if self is a parent of admin_id, False otherwise
+        Returns
+        -------
+        bool
+            True if self is a parent of admin_id, False otherwise.
 
-        Examples:
-            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA', 'MI'))
-            True
-            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'CA'))
-            False
-            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA'))
-            False
+        Examples
+        --------
+        >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA', 'MI'))
+        True
+        >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'CA'))
+        False
+        >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA'))
+        False
         """
         if len(self.levels) >= len(admin_id.levels):
             return False
@@ -149,16 +162,19 @@ class AdminId:
         A parent AdminId has fewer levels and matches all its levels
         with the start of the child's levels.
 
-        Args:
-            admin_id: The potential child AdminId to check
+        Parameters
+        ----------
+        admin_id : AdminId
+            The potential child AdminId to check.
 
-        Examples:
-            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA', 'MI'))
-            True
-            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'CA'))
-            False
-            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA'))
-            True
+        Examples
+        --------
+        >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA', 'MI'))
+        True
+        >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'CA'))
+        False
+        >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA'))
+        True
         """
         if len(self.levels) > len(admin_id.levels):
             return False
@@ -176,7 +192,13 @@ class EntityType:
     entity_type: str
 
     def __init__(self, entity_type: str):
-        """Initialize AdminId with administrative levels."""
+        """Initialize EntityType with a validated entity type string.
+
+        Parameters
+        ----------
+        entity_type : str
+            The entity type identifier (must be in ENTITY_TYPES).
+        """
 
         if entity_type not in ENTITY_TYPES:
             raise ValueError(
@@ -243,7 +265,27 @@ class Source:
         doi: str = None,
         verify_ssl: bool = True,
     ):
-        """Initialize AdminId with administrative levels."""
+        """Initialize Source with metadata and download configurations.
+
+        Parameters
+        ----------
+        source_id : str, optional
+            Unique string identifier for the source.
+        portal_url : str, optional
+            URL for the source's data access portal.
+        download_url : str, optional
+            Direct download URL for automated retrieval.
+        download_url_source : str, optional
+            URL containing the dynamic download links.
+        download_url_source_regex : str, optional
+            Pattern to extract dynamic download URLs.
+        download_url_scraper : str, optional
+            Name of browser-driven scraper for terms gates.
+        doi : str, optional
+            Digital Object Identifier for the dataset.
+        verify_ssl : bool, default True
+            Verify SSL certificates during download.
+        """
 
         n_download_modes = sum(
             bool(x) for x in (download_url, download_url_source, download_url_scraper)
@@ -287,7 +329,17 @@ class Entity:
         source: [str, Source] = None,
         version: str = None,
     ):
-        """Initialize AdminId with administrative levels."""
+        """Initialize Entity with its type, source, and version details.
+
+        Parameters
+        ----------
+        entity_type : EntityType or str
+            The validated entity type or full separator-joined string.
+        source : Source or str, optional
+            The data source object or source ID.
+        version : str, optional
+            Version or date string.
+        """
 
         # If the first passed string contains separators, assume it
         # contains the other parameters
@@ -345,7 +397,15 @@ class Theme:
     levels: list[str] = field(default_factory=list)
 
     def __init__(self, *levels: str):
-        """Initialize Theme with levels."""
+        """Initialize Theme with hierarchical levels.
+
+        Parameters
+        ----------
+        *levels : str
+            The thematic level strings (e.g., 'built', 'zoning'). Can also
+            accept a single string with separators (e.g., 'land-cover') or
+            a sequence of strings.
+        """
         if len(levels) == 0:
             raise ValueError('Empty themes are not allowed')
 
@@ -410,7 +470,21 @@ class DataSet:
         is_raster: bool = False,
         nodata: int | float | None = None,
     ):
-        """Initialize AdminId with administrative levels."""
+        """Initialize DataSet with theme, source, version, and raster settings.
+
+        Parameters
+        ----------
+        theme : Theme or str or sequence
+            The theme classification or full separator-joined string.
+        source : Source or str, optional
+            The data source object or source ID.
+        version : str, optional
+            Version or date string.
+        is_raster : bool, default False
+            Set to True if this dataset contains raster data.
+        nodata : int or float, optional
+            The nodata value for raster bands.
+        """
 
         if (
             source is None
@@ -509,12 +583,17 @@ def cast_dataset_or_entity(value):
 def sanitize(s, max_length=255):
     """Ensure that string is safe for filenames: only [a-zA-Z0-9_-].
 
-    Args:
-        s: String to sanitize
-        max_length: Maximum filename length (default 255)
+    Parameters
+    ----------
+    s : str
+        String to sanitize.
+    max_length : int, default 255
+        Maximum filename length.
 
-    Returns:
-        Sanitized filename string with only alphanumeric, underscore, and dash
+    Returns
+    -------
+    str or None
+        Sanitized filename string with only alphanumeric, underscore, and dash.
     """
     # Replace any character that's not alphanumeric, underscore, dash
     # or a standard wildcard (*, ?) with tilde
