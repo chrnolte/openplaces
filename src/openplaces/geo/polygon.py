@@ -17,6 +17,7 @@ from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
 
 from openplaces.core.constants import AC_TO_HA, M2_TO_SQFT
+from openplaces.geo.crs_transforms import get_or_resolve_crs_transform
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
@@ -55,6 +56,51 @@ def local_metric_crs(gdf):
     minx, miny, maxx, maxy = geographic.total_bounds
     lon, lat = (minx + maxx) / 2, (miny + maxy) / 2
     return pyproj.CRS.from_proj4(PROJ4['aeqd'].format(LAT=lat, LON=lon))
+
+
+def reproject(gdf, crs, pinned=True):
+    """Reproject *gdf* to *crs*, using a deterministic, git-pinned operation.
+
+    Plain `to_crs()` lets PROJ dynamically resolve the "best available"
+    operation for a CRS pair -- for a datum change (e.g. NAD83-based state
+    plane to WGS84), that resolution can silently pick a much lower-accuracy
+    operation depending on network access and which grid files happen to be
+    cached locally, with no error, only an easily-missed `UserWarning`. This
+    surfaced as a several-cm-to-decimeter mismatch between two independently
+    ingested vintages of the same parcels. See `openplaces.geo.crs_transforms`
+    for the registry this pins against.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame or GeoSeries
+        Geometries to reproject.
+    crs : Any
+        Target CRS, in any form `pyproj.CRS` accepts.
+    pinned : bool, default True
+        If True (default), use the operation registered for `(gdf.crs, crs)`
+        in `geo.crs_transforms`, resolving and registering it on first use if
+        not already present. If False, use plain `to_crs()` instead -- PROJ's
+        dynamic resolution, no registry involved.
+
+    Returns
+    -------
+    GeoDataFrame or GeoSeries
+        Same type as *gdf*, reprojected to *crs*.
+    """
+    if gdf.crs is None or not pinned or pyproj.CRS(gdf.crs) == pyproj.CRS(crs):
+        return gdf.to_crs(crs)
+
+    entry = get_or_resolve_crs_transform(gdf.crs, crs)
+    transformer = pyproj.Transformer.from_pipeline(entry['operation_definition'])
+    is_frame = isinstance(gdf, gpd.GeoDataFrame)
+    geometry = gdf.geometry.values if is_frame else gdf.values
+    transformed = shapely.transform(geometry, transformer.transform, interleaved=False)
+    geoseries = gpd.GeoSeries(transformed, index=gdf.index, crs=crs)
+    if not is_frame:
+        return geoseries
+    result = gdf.copy()
+    result[result.geometry.name] = geoseries
+    return result
 
 
 def fix_polygons(gdf):
@@ -1165,6 +1211,7 @@ def overlay_polygons(
     columns: list[str] | None = None,
     geom: bool = False,
     iou: bool = False,
+    area_intersection: bool = False,
     suffixes: tuple[str, str] | None = None,
     how: str = 'intersection',
 ) -> 'pd.DataFrame | gpd.GeoDataFrame':
@@ -1181,7 +1228,18 @@ def overlay_polygons(
         If True, return intersection geometry.
     iou :
         If True, compute intersection-over-union. Areas are in m²
-        (EPSG:6933). Unmatched/leftover rows get NaN.
+        (EPSG:6933). Unmatched/leftover rows get NaN. Implies
+        `area_intersection`.
+    area_intersection :
+        If True (and `iou` is False), compute only `area_intersection_m2`
+        (m², EPSG:6933) without the per-side `area1_m2`/`area2_m2`/`iou`
+        columns `iou=True` also computes. Unlike the DuckDB path
+        (`overlay_polygons_with_duckdb`), this path already computes each
+        side's own area once before the join rather than per matched pair,
+        so this option mainly saves the caller from carrying/reading unused
+        columns, not a large compute cost -- kept for API parity between
+        the two implementations, since `overlay_polygons_with_duckdb` falls
+        back to this function and must accept the same arguments.
     suffixes :
         Required when both tables share the same index name, or when a
         requested column exists in both tables.
@@ -1267,21 +1325,30 @@ def overlay_polygons(
 
     result = result.set_index([alias1, alias2])
 
-    if iou:
-        _sfx1 = suffixes[0] if suffixes is not None else '_left'
-        _sfx2 = suffixes[1] if suffixes is not None else '_right'
-        aint = get_areas(result, 'm2')
-        has_both = result[_A1].notna() & result[_A2].notna()
-        aint_matched = aint.where(has_both)  # NaN for unmatched/leftover rows
-        denom = result[_A1] + result[_A2] - aint_matched
-        result = result.rename(
-            columns={
-                _A1: f'area{_sfx1}_m2',
-                _A2: f'area{_sfx2}_m2',
-            }
+    if iou or area_intersection:
+        # Unmatched/leftover rows (how='union'/'identity') get NaN for the
+        # index level on the side that didn't match -- use that, not _A1/_A2
+        # (only present when iou=True), to mask them out of the area calc.
+        has_both = (
+            result.index.get_level_values(0).notna()
+            & result.index.get_level_values(1).notna()
         )
+        aint = get_areas(result, 'm2')
+        aint_matched = aint.where(has_both)  # NaN for unmatched/leftover rows
+
+        if iou:
+            _sfx1 = suffixes[0] if suffixes is not None else '_left'
+            _sfx2 = suffixes[1] if suffixes is not None else '_right'
+            denom = result[_A1] + result[_A2] - aint_matched
+            result = result.rename(
+                columns={
+                    _A1: f'area{_sfx1}_m2',
+                    _A2: f'area{_sfx2}_m2',
+                }
+            )
+            result['iou'] = aint_matched / denom.replace(0, float('nan'))
+
         result['area_intersection_m2'] = aint_matched
-        result['iou'] = aint_matched / denom.replace(0, float('nan'))
 
     if not geom:
         return result.drop(columns=['geometry'])

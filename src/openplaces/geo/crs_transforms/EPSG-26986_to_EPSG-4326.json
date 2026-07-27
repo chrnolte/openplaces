@@ -1,0 +1,12 @@
+{
+  "accuracy_m": 2.0,
+  "grid_files": [
+    "us_noaa_nehpgn.tif",
+    "us_noaa_nyhpgn.tif"
+  ],
+  "operation_definition": "proj=pipeline step inv proj=lcc lat_0=41 lon_0=-71.5 lat_1=42.6833333333333 lat_2=41.7166666666667 x_0=200000 y_0=750000 ellps=GRS80 step proj=hgridshift grids=us_noaa_nehpgn.tif,us_noaa_nyhpgn.tif step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of SPCS83 Massachusetts Mainland zone (meter) + NAD83 to WGS 84 (29) + axis order change (2D) (merged with 1 same-shaped region grid(s))",
+  "registered": "2026-07-24",
+  "source_crs": "EPSG:26986",
+  "target_crs": "EPSG:4326"
+}
