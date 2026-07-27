@@ -9,7 +9,7 @@ from pathlib import Path
 
 from openplaces.config import cfg
 from openplaces.core.constants import STRING_SEPARATOR_BETWEEN_IDS
-from openplaces.core.schema import AdminId, DataSet, Entity
+from openplaces.core.schema import AdminId, DataSet, Entity, cast_dataset_or_entity
 
 __all__ = [
     'path',
@@ -48,7 +48,7 @@ class OpenPlacesReference:
 
     admin_id: AdminId
     entity: Entity
-    dataset: DataSet
+    dataset: DataSet | Entity
     filename: str
     root: Path
     by_admin: bool
@@ -86,12 +86,12 @@ class OpenPlacesReference:
         else:
             self.entity = Entity(entity)
 
-        # Handle dataset
-        if isinstance(dataset, DataSet) or dataset is None:
+        # Handle dataset (may also be another Entity being attached/crosswalked)
+        if isinstance(dataset, DataSet | Entity) or dataset is None:
             self.dataset = dataset
         else:
             # Parse string like 'bio-species'
-            self.dataset = DataSet(dataset)
+            self.dataset = cast_dataset_or_entity(dataset)
 
         self.filename = filename
 
