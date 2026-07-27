@@ -1,9 +1,6 @@
 # Recipe: footprint spine harmonization
 #
-# Merges footprints from multiple sources into a single spine using a
-# priority-based IoU identity test: a footprint from a lower-priority source
-# is added only if it does not overlap (IoU < overlap_iou_max) with any
-# footprint already in the spine.
+# Merges multiple footprint sources using a priority-based IoU overlap threshold.
 
 description: >-
   Harmonized U.S. footprint spine merging OBM, Microsoft, and state footprints
@@ -41,13 +38,8 @@ pipeline:
       elongated_angle_tol: 15.0
       elongated_long_overlap_min: 0.5
       elongated_lateral_sep_ratio: 2.0
-      # IoU alone is insensitive to size mismatch: a small lower-priority
-      # candidate (e.g. a US-NC_footprint-ncdps sliver) clipping the edge of a
-      # large already-accepted building can have a tiny IoU and still get
-      # added, producing spurious duplicates next to large/likely-multi-unit
-      # buildings. Give footprints at least buffer_min_area_m2 a size-scaled
-      # keep-out zone instead. Starting values -- retune against an affected
-      # admin (e.g. US-NC) once real duplicates are visible.
+      # Apply a size-scaled keep-out buffer to prevent small sliver overlaps
+      # from generating duplicate footprints next to large buildings.
       buffer_min_area_m2: 250.0
       buffer_base_m: 2.0
       buffer_area_scale: 0.5
@@ -59,21 +51,11 @@ pipeline:
     thresholds:
       min_fraction_of_largest: 0.1667
       area_intersection_m2_min: 10
-      # Some footprint layers are systematically displaced against the parcel
-      # layer, so every home on a block straddles its own parcel plus the next
-      # one over (footprint-parcel-footprint-parcel chaining), inflating
-      # n_parcels_per_footprint for ordinary single-family homes. Snap such a
-      # footprint back to its dominant parcel when every minor overlap lands
-      # on a parcel that demonstrably has its own building (a genuine shared
-      # row-house footprint never does) and stays below chain_fraction_max of
-      # the dominant overlap (see snap_chained_links). The full physical
-      # overlap remains queryable in the sidecar via its link_chain column.
+      # Snap displaced footprints back to their dominant parcel to prevent chain-link inflation.
       snap_chains: true
       chain_fraction_max: 0.75
     sort_by: area_intersection_m2
-    # Persist the full n:m footprint-parcel overlay as a link sidecar
-    # beside the spine; reloaded instead of recomputed on later runs and
-    # consumed by the curate stage's collect_link_ids (parcel_id_all).
+    # Save the n:m footprint-parcel spatial overlay mapping as a sidecar.
     save_link: true
 
   - step: infer_spine_additions
@@ -92,13 +74,7 @@ pipeline:
     thresholds:
       proximity_m: 10
       far_proximity_m: 100
-      # NSI carries duplicate points for one structure: a Parcel-sourced
-      # record plus an outdated ESRI (or HAZUS/NSI-2015) one at the same
-      # location, usually with a wrong occupancy and an inflated value that
-      # would win the value-weighted occupancy pick. Flag the low-rank twin
-      # (same UBID; 'olc' keys on the ~3 m location cell instead) so the
-      # merge onto the spine ignores it; the flagged rows stay on the
-      # crosswalk for inspection.
+      # Resolve NSI duplicate points at the same location by ignoring low-rank duplicates.
       resolve_duplicates:
         key: building_id_ubid
         ignore_sources: [ESRI, HAZUS/NSI-2015]
@@ -117,24 +93,12 @@ pipeline:
     entity_type: parcel
 
   # Attribution only: aggregate source columns into suffixed evidence columns.
-  # Value selection, gap-filling, and occupancy inference run in curation
-  # (US_footprint-cheer-2026).
   - step: reconcile_attributes
     sources:
       - entity_type: parcel
         columns:
-          # parcel_id (the dominant parcel's globally-unique key, used by the
-          # curate stage's link_curated_entity) is attributed automatically by
-          # the harmonizer, not requested here. parcel_id_local is kept only
-          # for cross-referencing the assessment roll / sales transactions,
-          # not as a join key (see summarize_footprint_morphology for why).
-          # Parcel VALUE columns (improvement_value, land_value, year_built,
-          # n_dwellings) are deliberately NOT attributed here: this overlay
-          # runs against pre-roll-merge ingested parcels (the parcel spine is
-          # harmonized after this recipe), so those columns would be empty or
-          # raw; the curate stage apportions them from the CURATED parcels
-          # over this step's persisted link sidecar instead
-          # (apportion_curated_values in US_footprint-cheer-2026).
+          # Pull basic parcel metadata; skip value columns (improvement_value, land_value,
+          # year_built) since they are apportioned in curation from the curated parcels.
           - parcel_id_local
           - use_group
           - use_subgroup
@@ -158,3 +122,30 @@ pipeline:
           - area_sqft
           - n_stories
           - n_dwellings
+
+  # Reconcile a canonical address and extract clean street names to support curation grouping.
+  - step: reconcile_addresses
+    output_col: address
+    sources:
+      parcel:
+        address_full: address_parcel
+      dwelling_overture:
+        address_street: address_street_dwelling_overture
+        address_number: address_number_dwelling_overture
+        city: city_dwelling_overture
+        postal_code: postal_code_dwelling_overture
+    # Complete state from the run's admin unit (level-2 code) where missing.
+    complete_from_admin:
+      state: 2
+    # Persist the resolved components too, so impute_postal_city below can
+    # fill a still-missing city and re-render `address` without re-parsing it.
+    number_output_col: address_number
+    unit_output_col: address_unit
+    city_output_col: city
+
+  # A ZIP code has exactly one USPS-preferred city, so this is imputed here
+  # rather than in curate. Reads dwelling_overture's raw ZIP directly (not
+  # reconcile_addresses's own, agreement-gated postal_code) for the broadest
+  # coverage, and completes `city`/`address` wherever they're still missing.
+  - step: impute_postal_city
+    column: postal_code_dwelling_overture

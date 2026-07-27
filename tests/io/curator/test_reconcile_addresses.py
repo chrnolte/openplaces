@@ -237,6 +237,121 @@ def test_reconcile_addresses_curate_step():
     assert res.loc[[0, 1, 2], 'address_conflict'].isna().all()
 
 
+def test_reconcile_addresses_writes_street_output_col():
+    df = pd.DataFrame({'address_parcel': ['9-11 EXAMPLE AVE UNIT 1', '7 EXAMPLE AVE']})
+    state = reconcile_addresses(
+        make_state(df),
+        sources={'parcel': {'address_full': 'address_parcel'}},
+    )
+    res = state.curated
+    # Both resolve to the same parsed street, regardless of the unit suffix
+    # on the first -- the whole point of grouping by this column instead of
+    # the full formatted `address` string. Case-formatted, like `address`.
+    assert res.loc[0, 'address_street'] == 'Example Ave'
+    assert res.loc[1, 'address_street'] == 'Example Ave'
+
+
+def test_reconcile_addresses_street_output_col_disabled():
+    df = pd.DataFrame({'address_parcel': ['123 MAIN ST']})
+    state = reconcile_addresses(
+        make_state(df),
+        sources={'parcel': {'address_full': 'address_parcel'}},
+        street_output_col=None,
+    )
+    assert 'address_street' not in state.curated.columns
+
+
+def test_reconcile_addresses_writes_number_unit_city_output_cols():
+    df = pd.DataFrame(
+        {'address_parcel': ['9 EXAMPLE AVE APT 4B, COASTAL CITY NC 28500']}
+    )
+    state = reconcile_addresses(
+        make_state(df),
+        sources={'parcel': {'address_full': 'address_parcel'}},
+        number_output_col='address_number',
+        unit_output_col='address_unit',
+        city_output_col='city',
+    )
+    res = state.curated
+    # The persisted components are case-formatted, matching what ended up in
+    # the formatted `address` string -- not the internal matching-only
+    # uppercase representation.
+    assert res.loc[0, 'address'] == '9 Example Ave Apt 4B, Coastal City, NC 28500'
+    assert res.loc[0, 'address_number'] == '9'
+    assert res.loc[0, 'address_unit'] == 'Apt 4B'
+    assert res.loc[0, 'city'] == 'Coastal City'
+
+
+def test_reconcile_addresses_output_cols_missing_component_stays_na():
+    # No unit/city on this row -> the opted-in output columns stay missing
+    # rather than getting written as empty strings.
+    df = pd.DataFrame({'address_parcel': ['123 MAIN ST']})
+    state = reconcile_addresses(
+        make_state(df),
+        sources={'parcel': {'address_full': 'address_parcel'}},
+        unit_output_col='address_unit',
+        city_output_col='city',
+    )
+    res = state.curated
+    assert pd.isna(res.loc[0, 'address_unit'])
+    assert pd.isna(res.loc[0, 'city'])
+
+
+def test_reconcile_addresses_source_column_survives_when_distinct_from_output():
+    # Regression guard for the parcel spine's former bug: a source column
+    # sharing a name with output_col/city_output_col gets silently
+    # overwritten by the reconciled value (no surviving raw copy). As long as
+    # the source's evidence columns are named distinctly from the output
+    # columns -- as US_parcel-spine-2026.yaml now ensures via a
+    # rename_columns step ahead of this call -- the raw values are untouched.
+    df = pd.DataFrame(
+        {
+            'address_original': ['1 sample ave'],
+            'city_original': ['billerica'],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(df),
+        sources={
+            'assessor': {
+                'address_full': 'address_original',
+                'city': 'city_original',
+            },
+        },
+        city_output_col='city',
+    )
+    res = state.curated
+    # Raw evidence untouched -- still exactly what came in.
+    assert res.loc[0, 'address_original'] == '1 sample ave'
+    assert res.loc[0, 'city_original'] == 'billerica'
+    # Reconciled output lands in the separate, canonical columns.
+    assert res.loc[0, 'address'] == '1 Sample Ave, Billerica'
+    assert res.loc[0, 'city'] == 'Billerica'
+
+
+def test_reconcile_addresses_usaddress_city_annotation():
+    # Same one-line string, same parsed city -- but one source declares an
+    # explicit city role that overrides the parsed value (per the class
+    # docstring), so only the address_full-only source's row is annotated.
+    df = pd.DataFrame(
+        {
+            'address_full_a': ['1200 SEAGRASS LN COASTAL CITY NC 28500', None],
+            'address_full_b': [None, '123 MAIN ST COASTAL CITY NC 28500'],
+            'city_b': [None, 'COASTAL CITY'],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(df),
+        sources={
+            'a': {'address_full': 'address_full_a'},
+            'b': {'address_full': 'address_full_b', 'city': 'city_b'},
+        },
+    )
+    res = state.curated
+    assert res.loc[0, 'address_source'] == 'a+usaddress'
+    assert res.loc[1, 'address_source'] == 'b'
+
+
 def test_reconcile_addresses_full_string_with_city_state_zip():
     df = pd.DataFrame({'address_parcel': ['1200 SEAGRASS LN COASTAL CITY NC 28500']})
     state = reconcile_addresses(
@@ -245,7 +360,9 @@ def test_reconcile_addresses_full_string_with_city_state_zip():
     )
     res = state.curated
     assert res.loc[0, 'address'] == '1200 Seagrass Ln, Coastal City, NC 28500'
-    assert res.loc[0, 'address_source'] == 'parcel'
+    # 'parcel' declares only address_full (no explicit city role), so its
+    # city could only come from parsing that string -- annotated accordingly.
+    assert res.loc[0, 'address_source'] == 'parcel+usaddress'
 
 
 def test_reconcile_addresses_three_sources_priority_and_fill():
@@ -273,9 +390,10 @@ def test_reconcile_addresses_three_sources_priority_and_fill():
     )
     res = state.curated
 
-    # Row 0: parcel base; agreeing source x fills city/state/zip
+    # Row 0: parcel base; agreeing source x fills city/state/zip. x also only
+    # declares address_full, so the filled city is usaddress-derived too.
     assert res.loc[0, 'address'] == '12 Oak St, Boston, MA 02129'
-    assert res.loc[0, 'address_source'] == 'reconciled'
+    assert res.loc[0, 'address_source'] == 'reconciled+usaddress'
 
     # Row 1: falls through to x
     assert res.loc[1, 'address'] == '9 Elm Rd'
@@ -402,6 +520,58 @@ def test_reconcile_addresses_component_source_city_zip_and_admin_state():
     assert res.loc[0, 'address_source'] == 'dwelling_overture'
     # No city/zip -> no dangling state appended
     assert res.loc[1, 'address'] == '8618 Juniper Dr'
+
+
+def test_reconcile_addresses_complete_city_from_postal():
+    # No source supplies a city (mirrors dwelling_overture's real-world gap
+    # in MA), but a ZIP is present: complete_city_from_postal fills city
+    # from the USPS-preferred name for that ZIP.
+    df = pd.DataFrame(
+        {
+            'address_street_overture': ['Hawthorn Street'],
+            'address_number_overture': ['123'],
+            'postal_code_overture': ['02459'],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(df),  # admin_id US-MA-MI -> state MA
+        sources={
+            'dwelling_overture': {
+                'address_street': 'address_street_overture',
+                'address_number': 'address_number_overture',
+                'postal_code': 'postal_code_overture',
+            },
+        },
+        complete_from_admin={'state': 2},
+        complete_city_from_postal=True,
+    )
+    res = state.curated
+    assert res.loc[0, 'address'] == '123 Hawthorn St, Newton Center, MA 02459'
+
+
+def test_reconcile_addresses_complete_city_from_postal_default_off():
+    # Same input as above, but the flag defaults to False: existing recipes
+    # that don't opt in keep their current (city-less) output unchanged.
+    df = pd.DataFrame(
+        {
+            'address_street_overture': ['Hawthorn Street'],
+            'address_number_overture': ['123'],
+            'postal_code_overture': ['02459'],
+        }
+    )
+    state = reconcile_addresses(
+        make_state(df),
+        sources={
+            'dwelling_overture': {
+                'address_street': 'address_street_overture',
+                'address_number': 'address_number_overture',
+                'postal_code': 'postal_code_overture',
+            },
+        },
+        complete_from_admin={'state': 2},
+    )
+    res = state.curated
+    assert res.loc[0, 'address'] == '123 Hawthorn St, MA 02459'
 
 
 def test_reconcile_addresses_complete_from_admin_non_us():

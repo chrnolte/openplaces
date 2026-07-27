@@ -901,3 +901,31 @@ def make_index_unique(
 
     out.index = pd.Index(new_idx, name=df.index.name)
     return out
+
+
+def convert_area_unit(value, from_unit: str, to_unit: str):
+    """Convert a per-unit-area value (e.g. a $/m2 rate) between area units.
+
+    Parameters
+    ----------
+    value : float, numpy.ndarray, or pandas.Series
+        Value(s) already expressed as an amount per `from_unit` of area.
+    from_unit, to_unit : str
+        Area units, keys of `core.constants.M2_PER_AREA_UNIT` (`'m2'`, `'ha'`,
+        `'km2'`, `'ac'`, `'sqft'`, `'ft2'`).
+
+    Returns
+    -------
+    Same type as `value`.
+    """
+    from openplaces.core.constants import M2_PER_AREA_UNIT
+
+    for unit in (from_unit, to_unit):
+        if unit not in M2_PER_AREA_UNIT:
+            raise ValueError(
+                f'Unsupported area unit {unit!r}; must be one of '
+                f'{sorted(M2_PER_AREA_UNIT)}.'
+            )
+    if from_unit == to_unit:
+        return value
+    return value * M2_PER_AREA_UNIT[to_unit] / M2_PER_AREA_UNIT[from_unit]
