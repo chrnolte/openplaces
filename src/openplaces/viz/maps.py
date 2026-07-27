@@ -64,7 +64,7 @@ def show_geometry_context(
     title : str
         Overrides the default title ('Feature {idx}').
     min_buffer_m : float
-        Minimum plot half-width in metres, applied when the feature's
+        Minimum plot half-width in meters, applied when the feature's
         projected extent is smaller than this value (most relevant for
         point geometries).  Default is 1 000 m.
 
@@ -116,7 +116,7 @@ def show_geometry_context(
     # For zero-extent geometries use a small nominal value so the buffer
     # arithmetic doesn't collapse to zero.
     # Minimum cx radius matching the minimum plot half-width (min_buffer_m *
-    # buffer_factor metres), converted to approximate degrees, with the same
+    # buffer_factor meters), converted to approximate degrees, with the same
     # 1.5x generous factor so context always covers the full plot extent.
     _min_cx = min_buffer_m * buffer_factor * 1.5 / 111_320
 

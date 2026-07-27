@@ -144,22 +144,34 @@ def _is_too_complex(
 ) -> bool:
     """Determine if a layer's geometries are too complex for DuckDB's spatial join.
 
-    For parquet paths, complexity is judged by average geometry size per row
-    rather than total file size: a large file made of many simple polygons
-    (e.g. admin-4 boundaries) is cheap to join, while a small file with a few
-    highly detailed polygons (e.g. country outlines) is not. Per-row size is
-    read from row-group metadata without loading any geometry data.
+    Parameters
+    ----------
+    layer : Path or GeoDataFrame
+        The layer to check.
+    max_vertices : int, default 50,000,000
+        Maximum coordinates threshold for GeoDataFrames.
+    max_bytes_per_row : int, default 10,000,000
+        Maximum average uncompressed geometry bytes per row for Parquet paths.
 
-    The default threshold is a last-resort ceiling, not the primary safety
-    net: with :func:`_duckdb_resource_budget` sizing threads/memory off
-    currently available RAM, and the reactive fallback in
-    :func:`overlay_polygons_with_duckdb` catching genuine OOMs, DuckDB is
-    attempted for all but the most extreme inputs (e.g. the admin-1 GADM
-    layer, at ~2.2MB/row, now runs through DuckDB rather than being bypassed).
+    Returns
+    -------
+    bool
+        True if the layer exceeds complexity thresholds, False otherwise.
     """
     if isinstance(layer, gpd.GeoDataFrame):
         return shapely.get_num_coordinates(layer.geometry).sum() > max_vertices
 
+    # For parquet paths, complexity is judged by average geometry size per row
+    # rather than total file size: a large file made of many simple polygons
+    # (e.g. admin-4 boundaries) is cheap to join, while a small file with a few
+    # highly detailed polygons (e.g. country outlines) is not. Per-row size is
+    # read from row-group metadata without loading any geometry data.
+    # The default threshold is a last-resort ceiling, not the primary safety
+    # net: with _duckdb_resource_budget sizing threads/memory off currently
+    # available RAM, and the reactive fallback in overlay_polygons_with_duckdb
+    # catching genuine OOMs, DuckDB is attempted for all but the most extreme
+    # inputs (e.g. the admin-1 GADM layer, at ~2.2MB/row, now runs through DuckDB
+    # rather than being bypassed).
     p = Path(layer)
     for filepath in (p, p.with_stem(p.stem + '_geo')):
         if not filepath.exists():
@@ -183,12 +195,25 @@ def _duckdb_resource_budget(
 ) -> tuple[int, float]:
     """Pick a thread count and memory limit from currently available RAM.
 
-    Sizing off *available* memory (rather than a fixed worst-case budget)
-    matters because Python's allocator does not always return freed heap to
-    the OS: after a memory-heavy ingest, available RAM reflects that bloat
-    even though ``gc.collect()`` reports the objects as collected. Falls back
-    to a conservative fixed budget if psutil is unavailable.
+    Parameters
+    ----------
+    min_memory_gb : float, default 4
+        Minimum memory allocation in GB.
+    max_memory_gb : float, default 32
+        Maximum memory allocation in GB.
+    memory_fraction : float, default 0.6
+        Fraction of available memory to allocate.
+
+    Returns
+    -------
+    threads : int
+    memory_limit_gb : float
     """
+    # Sizing off available memory (rather than a fixed worst-case budget)
+    # matters because Python's allocator does not always return freed heap to
+    # the OS: after a memory-heavy ingest, available RAM reflects that bloat
+    # even though gc.collect() reports the objects as collected. Falls back
+    # to a conservative fixed budget if psutil is unavailable.
     try:
         import psutil
 

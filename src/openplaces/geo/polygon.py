@@ -31,10 +31,10 @@ PROJ4 = {
 
 
 def local_metric_crs(gdf):
-    """Return a metre-based CRS centered on *gdf*, valid anywhere on Earth.
+    """Return a meter-based CRS centered on *gdf*, valid anywhere on Earth.
 
     Builds an Azimuthal Equidistant projection centered on the data's bounding-box
-    center, so metre distances are accurate for a local (admin-unit scale) extent
+    center, so meter distances are accurate for a local (admin-unit scale) extent
     regardless of hemisphere, UTM zone, or the antimeridian. Use this for
     distance-based operations (nearest-neighbor, ``dwithin`` queries, DBSCAN eps)
     on data that may be stored in a geographic CRS.

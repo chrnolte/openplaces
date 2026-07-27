@@ -284,12 +284,17 @@ def recipe_path(
 def path_matches_pattern(path: str, pattern: str) -> bool:
     """Check if path is a resolved instance of pattern with wildcards.
 
-    Args:
-        path: Concrete path to check
-        pattern: Path pattern with wildcards (*, ?, [seq], etc.)
+    Parameters
+    ----------
+    path : str
+        Concrete path to check.
+    pattern : str
+        Path pattern with wildcards (*, ?, [seq], etc.).
 
-    Returns:
-        True if path matches the pattern
+    Returns
+    -------
+    bool
+        True if path matches the pattern.
     """
     # Convert to Path objects for normalization
     concrete_path = Path(path)
