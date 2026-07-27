@@ -100,6 +100,7 @@ Key recipe fields:
 - `download_by` — controls download partitioning (by `admin_level`, `partition: year|table|tile_id|latlon_tile` etc.)
 - `process_by` — controls chunking granularity during processing (`admin_level`, `admin_id_column`)
 - `save_to` — output location (`data_dir`, `admin_level`). When `save_to.admin_level` is coarser than `process_by.admin_level`, the Ingester aggregates intermediate files to that level.
+- `join_partitions_by` — for `download_by: {partition: table}` recipes, opts into automatically left-joining the per-table partition outputs (column-wise, on their shared index) into one entity file per admin unit after ingest, via `join_key_name` (kept as a provenance column) and optional `keep_original`. See `io.aggregate.join_partitions_by_index`.
 - `additional_layers` — list of secondary entities extracted from the same source file (e.g., a property table alongside a parcel table)
 - `entity_recipe` — predecessor entity recipe used by enrichment or curation
 - `pipeline` — ordered named steps for harmonization, enrichment, or curation
