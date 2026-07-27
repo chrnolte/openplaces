@@ -245,7 +245,7 @@ def show_geometry_context(
     interesting = [
         (col, str(val))
         for col, val in attrs.items()
-        if val is not None and val != '' and str(val).lower() != 'nan'
+        if not pd.isna(val) and str(val) != '' and str(val).lower() != 'nan'
     ]
     interesting = interesting[:max_attrs]
 
@@ -780,13 +780,24 @@ def show_building_imagery(
 
 
 def _has_geometry_output(recipe, admin_id, partition_id) -> bool:
-    """True if the recipe's output for this admin/partition has a `_geo` sidecar.
+    """True if the recipe's output for this admin/partition has a `_geo` sidecar
+    or is a combined file containing geometry.
 
     Attribute-only recipes (e.g. tax rolls with no geometry) write no sidecar,
     so geometry-based inspection helpers should skip them rather than fail.
     """
     geo_path = get_output_path(recipe, admin_id, partition_id=partition_id, geo=True)
-    return geo_path.exists()
+    if geo_path.exists():
+        return True
+    main_path = get_output_path(recipe, admin_id, partition_id=partition_id)
+    if main_path.exists():
+        import pyarrow.parquet as pq
+
+        try:
+            return 'geometry' in pq.ParquetFile(main_path).schema_arrow.names
+        except Exception:
+            return False
+    return False
 
 
 def show_ingested_geometries(
