@@ -29,6 +29,7 @@ from openplaces.io import (
     download,
     find_latest_file_or_gdb,
     read_parquet,
+    release_unused_memory,
     save_parquet,
     unzip,
 )
@@ -451,15 +452,7 @@ class Ingester:
         # Clean up memory-heavy ingestion caches to maximize available RAM
         if hasattr(self, 'tile_admin_link'):
             del self.tile_admin_link
-        import gc
-
-        gc.collect()
-        try:
-            import pyarrow as pa
-
-            pa.default_memory_pool().release_unused()
-        except ImportError:
-            pass
+        release_unused_memory()
 
         self_recipe_id = get_recipe_id(self.recipe)
         for entry in entries:

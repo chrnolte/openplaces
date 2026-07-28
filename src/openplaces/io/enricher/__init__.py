@@ -17,7 +17,7 @@ from importlib import import_module as _import_module
 import pandas as pd
 
 from openplaces.core.schema import AdminId
-from openplaces.io import read_parquet, save_parquet
+from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import (
@@ -296,6 +296,7 @@ class Enricher:
                     include_images=include_images,
                     verbose=self.verbose,
                 )
+            release_unused_memory()
 
     @staticmethod
     def _read_coverage(out_path) -> set[str] | None:
