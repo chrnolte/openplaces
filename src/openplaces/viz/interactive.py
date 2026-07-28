@@ -237,6 +237,7 @@ def get_admin_boundary_layer(
         Fence face/wall opacity in [0.0, 1.0]. Only used in 'fence' mode.
     mode : {'floating_line', 'fence'}
         Visual style mode:
+
         - ``'floating_line'``: A single 3D line floating at `elevation`.
         - ``'fence'``: A 3D fence with vertical walls filled with `fill_color` at
           `fill_opacity`, raised to `elevation` (default 10m if elevation is None).
