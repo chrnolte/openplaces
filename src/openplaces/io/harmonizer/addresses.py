@@ -29,7 +29,7 @@ def _record_source(curated: pd.DataFrame, column: str, mask, token: str) -> None
 
     Inlined copy of :func:`openplaces.io.curator.provenance.record_source`'s
     (trivial) body: this module may not import from ``io.curator`` (higher
-    layer than ``io.harmonizer`` -- see ``CLAUDE.md``'s layer hierarchy).
+    layer than ``io.harmonizer``).
     """
     side = f'{column}{_SOURCE_SUFFIX}'
     if side not in curated.columns:
@@ -501,7 +501,7 @@ def impute_postal_city(
 
     A ZIP code has exactly one USPS-preferred city -- unlike most curate-stage
     work, there is no real dispute about how to derive it, so it belongs here
-    rather than in curate (see CLAUDE.md's harmonizer section). Writes
+    rather than in curate. Writes
     ``postal_zip5``/``postal_city``/``postal_city_acceptable``/
     ``postal_city_unacceptable`` evidence columns from *column* via
     :func:`openplaces.geo.address.lookup_postal_city` (US-only; other
