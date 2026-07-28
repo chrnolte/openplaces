@@ -11,6 +11,7 @@ from shapely.geometry import box
 
 from openplaces.core.schema import Entity
 from openplaces.io.ingester.table_ingester import TableIngester
+from openplaces.timing import Timer
 
 
 def _make_ingester(recipe):
@@ -19,6 +20,7 @@ def _make_ingester(recipe):
     ingester = TableIngester.__new__(TableIngester)
     ingester.recipe = recipe
     ingester.processing_chunk = {}
+    ingester.timer = Timer('test')
     return ingester
 
 
