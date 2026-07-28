@@ -59,7 +59,6 @@ code.docutils.literal.notranslate:not(.input):not(.file) .pre {
     font-size: 100%;
 }
 
-
 /* Format code blocks */
 div[class^="highlight"] {
     border-radius: 5px;
@@ -89,7 +88,13 @@ a.reference.external code.file span {
     display: none;
 }
 
-/* ── Start page hero ───────────────────────────────────────────────────── */
+.muted, .muted a {
+    font-size: 0.8rem;
+    color: #999;
+    text-align:center;
+}
+
+/* Start page hero */
 
 .op-hero {
     /*background: linear-gradient(160deg, #fdf8ec 0%, #fef3d0 55%, #fdefc0 100%);*/
@@ -173,7 +178,7 @@ a.reference.external code.file span {
 #openplaces > h2 {
     display: none;
 }
-/* ── Hero two-column layout ─────────────────────────────────────────────── */
+/* Hero two-column layout */
 
 .op-hero-image {
     padding-left: 1.5rem;
@@ -227,7 +232,7 @@ html[data-theme="dark"] .bd-content .op-hero-image img {
     }
 }
 
-/* ── Examples gallery ──────────────────────────────────────────────────────── */
+/* Examples gallery */
 
 .op-example-gallery .sd-card-img-top {
     height: 180px;
@@ -253,7 +258,7 @@ html[data-theme="dark"] .bd-content .op-hero-image img {
     line-height: 1.5;
 }
 
-/* ── PyData footer ─────────────────────────────────────────────────────────── */
+/* PyData footer */
 
 .bd-footer p,
 .bd-footer a {
