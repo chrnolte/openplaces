@@ -65,10 +65,31 @@ def test_resolve_picks_lowest_accuracy_and_downloads_grids(
 
     entry = ct.resolve_crs_transform('EPSG:26986', 'EPSG:4326')
 
-    assert entry['operation_name'] == 'a-accurate'
+    assert entry['operation_name'].startswith('a-accurate')
     assert entry['accuracy_m'] == 2.0
     assert entry['grid_files'] == ['fake_grid.tif']
+    assert 'grids=fake_grid.tif,@null' in entry['operation_definition']
     assert ct.load_crs_transform('EPSG:26986', 'EPSG:4326') == entry
+
+
+def test_resolve_exact_grid_free_operation_is_not_persisted(
+    isolated_registry, monkeypatch
+):
+    # e.g. WGS84 to Web Mercator: a pure formula, no datum grid involved, so
+    # there is nothing environment-dependent to pin against.
+    exact = _fake_transformer(0.0, 'webmerc-inverse', 'proj=pipeline no grid step')
+    fake_group = SimpleNamespace(transformers=[exact], unavailable_operations=[])
+    monkeypatch.setattr(
+        ct.pyproj.transformer, 'TransformerGroup', lambda *a, **kw: fake_group
+    )
+    monkeypatch.setattr(ct, '_download_grid', lambda filename: None)
+    monkeypatch.setattr(ct.pyproj.network, 'set_network_enabled', lambda enabled: None)
+
+    entry = ct.resolve_crs_transform('EPSG:3857', 'EPSG:4326')
+
+    assert entry['accuracy_m'] == 0.0
+    assert entry['grid_files'] == []
+    assert ct.load_crs_transform('EPSG:3857', 'EPSG:4326') is None
 
 
 def test_pipeline_template_blanks_grid_filename():
@@ -111,6 +132,17 @@ def test_resolve_merges_same_template_region_grids(isolated_registry, monkeypatc
         'grids=us_noaa_gahpgn.tif,us_noaa_nehpgn.tif' in entry['operation_definition']
     )
     assert 'merged with 1' in entry['operation_name']
+    # A point outside both merged grids must not resolve to `inf` (the
+    # EPSG:4269/Alaska incident: `unrelated_ballpark` here plays the role of
+    # Alaska's structurally different, grid-free `proj=noop` candidate -- it
+    # doesn't share the hgridshift template, so it's excluded from the merge
+    # by design, but the merged operation must still fall back to identity
+    # for points neither real grid covers, instead of returning inf.
+    assert entry['operation_definition'].count('@null') == 1
+    assert (
+        'grids=us_noaa_gahpgn.tif,us_noaa_nehpgn.tif,@null'
+        in (entry['operation_definition'])
+    )
 
 
 def test_resolve_raises_when_nothing_available(isolated_registry, monkeypatch):
