@@ -1,22 +1,20 @@
-"""
-Pinned, git-tracked registry of CRS-to-CRS reprojection operations.
+"""Pinned, git-tracked registry of CRS-to-CRS reprojection operations.
 
-Plain `to_crs()` accepts whatever operation PROJ's `Transformer.from_crs()`
-considers "best available" for a source/target CRS pair, resolved dynamically
-at call time. For a datum change (e.g. NAD83-based state plane to WGS84) that
-resolution can silently pick a much lower-accuracy operation depending on
-network access and which grid files happen to be cached locally, with no
-error -- only an easily-missed `UserWarning`. See `reproject()` in
-`geo/polygon.py` for the mismatch this caused between two independently
-ingested Massachusetts parcel datasets, traced to exactly this.
+By default, `to_crs()` dynamically resolves operations via PROJ's
+`Transformer.from_crs()`. For datum changes (e.g., NAD83-based state plane
+to WGS84), this can silently select low-accuracy transforms depending on local
+grid cache and network status, producing only a `UserWarning`. This caused a
+reprojection mismatch between independently ingested Massachusetts parcel datasets in
+`reproject()` in `geo/polygon.py`.
 
-Registry: one small JSON file per `(source_crs, target_crs)` pair under
-`crs_transforms/`, plus the actual grid files those operations reference
-under `crs_grids/` -- both committed to the repo, so a `git clone` alone
-gives deterministic, offline-capable reprojection. Entries are written
-either ahead of time via the CLI (``python -m openplaces.geo.crs_transforms
-EPSG:26986``) or lazily, the first time `reproject()` encounters an
-unregistered pair.
+To ensure deterministic, offline-capable reprojections, this module pins transforms.
+It stores a JSON file per `(source_crs, target_crs)` pair under `crs_transforms/`
+and downloads the required grid files to `crs_grids/`. Both are committed to the
+repository. Entries are registered either ahead of time via the CLI:
+
+    python -m openplaces.geo.crs_transforms EPSG:26986
+
+or lazily upon the first unregistered `reproject()` call.
 """
 
 from __future__ import annotations
@@ -42,7 +40,7 @@ pyproj.datadir.append_data_dir(str(GRIDS_DIR))
 
 
 def _crs_slug(crs) -> str:
-    """Filesystem-safe identifier for a CRS, preferring its authority code."""
+    """Generate a filesystem-safe identifier for a CRS, preferring authority code."""
     crs = pyproj.CRS(crs)
     authority = crs.to_authority()
     if authority is not None:
@@ -55,17 +53,19 @@ def _registry_path(source_crs, target_crs) -> Path:
 
 
 def load_crs_transform(source_crs, target_crs) -> dict | None:
-    """Return the registered transform entry for *source_crs* -> *target_crs*.
+    """Load the registered transform entry for a CRS pair.
 
     Parameters
     ----------
-    source_crs, target_crs : Any
-        CRS in any form `pyproj.CRS` accepts.
+    source_crs : Any
+        Source CRS in any form `pyproj.CRS` accepts.
+    target_crs : Any
+        Target CRS in any form `pyproj.CRS` accepts.
 
     Returns
     -------
     dict or None
-        The registry entry, or `None` if this pair hasn't been registered.
+        The registry entry, or `None` if the pair is not registered.
     """
     path = _registry_path(source_crs, target_crs)
     if not path.exists():
@@ -78,17 +78,14 @@ def _grid_filenames(definition: str) -> list[str]:
 
 
 def _pipeline_template(definition: str) -> str:
-    """Return *definition* with its grid filename(s) blanked out.
+    """Return the PROJ pipeline definition with grid filenames blanked out.
 
-    Two candidate operations that share a template differ only in which
-    single region-specific grid file they use -- e.g. every US state's own
-    HPGN/HARN correction for `EPSG:5070 -> EPSG:4326` is byte-identical
-    except for `grids=us_noaa_XXhpgn.tif`. Used to detect that case so those
-    candidates can be merged (see `resolve_crs_transform`) instead of one
-    single-region grid being picked and silently returning `inf` for every
-    point outside its own coverage -- the mechanism behind a real incident
-    where a source CRS spanning many states (`EPSG:5070`, Conus Albers) got
-    pinned to *one* state's grid.
+    This template is used to identify and merge sibling operations that share the
+    same structure but use different regional grid files. For example, regional
+    HPGN/HARN corrections for `EPSG:5070 -> EPSG:4326` are identical except for
+    their specific grid files. Blanking out filenames prevents pinning a multi-region
+    CRS (like `EPSG:5070` Conus Albers) to a single region's grid, which would
+    silently return `inf` for coordinates outside that region.
     """
     return re.sub(r'grids=\S+', 'grids=<GRID>', definition)
 
@@ -104,11 +101,11 @@ def _download_grid(filename: str) -> None:
 
 
 def _write_registry_entry(path: Path, entry: dict) -> None:
-    """Write *entry* to *path* via write-temp-then-atomic-rename.
+    """Write a registry entry to a file atomically.
 
-    Safe under concurrent callers: a race to resolve the same never-before-seen
-    pair computes identical content, so whichever write lands last is a no-op
-    in substance, not a corruption.
+    Uses a write-then-rename pattern to ensure safety under concurrent callers.
+    If multiple processes resolve the same unregistered pair, they generate
+    identical content, making the final overwrite safe from corruption.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, suffix='.tmp')
@@ -125,40 +122,28 @@ def _write_registry_entry(path: Path, entry: dict) -> None:
 def resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
     """Resolve, download, and register the best transform for a CRS pair.
 
-    Picks the most accurate operation `pyproj.transformer.TransformerGroup`
-    reports as available (lowest `accuracy`, ties broken by operation name for
-    determinism). If other available candidates share that operation's
-    pipeline template (same steps, differing only in which single grid file
-    they use -- the shape every per-state HPGN/HARN correction takes for a
-    source CRS spanning many regions, e.g. `EPSG:5070`/Conus Albers), they are
-    merged into one operation listing all of those grids
-    (`+proj=hgridshift +grids=a.tif,b.tif,...`), which PROJ resolves per point
-    by trying each grid in turn for the one whose area-of-use covers it.
-    Picking only the single globally-best-rated candidate is not safe here:
-    it may be the best-*rated* grid while covering only a fraction of the
-    source CRS's actual domain, silently returning `inf` for any point
-    outside it -- confirmed for `EPSG:5070 -> EPSG:4326`, whose single best
-    candidate is a Canadian NRCan grid that doesn't cover any US state.
-
-    Downloads any grid file(s) the resolved operation needs into
-    `crs_grids/`, and writes the registry entry.
+    Picks the most accurate available operation from PROJ. If the operation uses
+    regional grids, it merges sibling candidate grids into a single multi-grid
+    definition to ensure coverage across the source domain, downloads required
+    grid files to `crs_grids/`, and registers the transform in a JSON file.
 
     Parameters
     ----------
     source_crs : Any
-        Source CRS, in any form `pyproj.CRS` accepts.
+        Source CRS in any form `pyproj.CRS` accepts.
     target_crs : Any, default 'EPSG:4326'
-        Target CRS.
+        Target CRS in any form `pyproj.CRS` accepts.
 
     Returns
     -------
     dict
-        The registry entry that was written.
+        The resolved registry entry. The entry is persisted to disk unless the
+        operation is exact (`accuracy_m == 0.0`) and requires no grid files.
 
     Raises
     ------
     ValueError
-        If no operation is available for this CRS pair.
+        If no usable reprojection operation is found.
     """
     pyproj.network.set_network_enabled(True)
     source_crs = pyproj.CRS(source_crs)
@@ -172,12 +157,19 @@ def resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
             'operation(s) known but unavailable -- check network access).'
         )
 
+    # Sort available transformers by accuracy, breaking ties by description.
     def _sort_key(t):
         accuracy = t.accuracy if (t.accuracy or -1) >= 0 else float('inf')
         return (accuracy, t.description)
 
     best = min(group.transformers, key=_sort_key)
     template = _pipeline_template(best.definition)
+
+    # Merge same-template sibling operations. This handles cases where a source
+    # CRS covers multiple regions (e.g., EPSG:5070 Conus Albers). Using only the
+    # single best-rated candidate might cover only a fraction of the domain
+    # (e.g., a Canadian NRCan grid that doesn't cover the US), returning inf
+    # for points outside it. Merging allows PROJ to try each grid in turn.
     siblings = [
         t for t in group.transformers if _pipeline_template(t.definition) == template
     ]
@@ -186,14 +178,26 @@ def resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
     for filename in grid_files:
         _download_grid(filename)
 
-    if len(grid_files) > 1:
+    # Append @null as a final fallback for grids. A region's correction might
+    # not share the winning template (e.g., Alaska in EPSG:4269 -> EPSG:4326,
+    # which uses a grid-free proj=noop instead of hgridshift). Coordinates in
+    # such regions would silently become inf, causing GEOSExceptions later.
+    # Appending @null ensures points outside the regional grids fallback to
+    # ballpark/identity accuracy instead of failing.
+    if grid_files:
         definition = re.sub(
-            r'grids=\S+', f'grids={",".join(grid_files)}', best.definition
+            r'grids=\S+', f'grids={",".join(grid_files)},@null', best.definition
         )
-        operation_name = (
-            f'{best.description} (merged with {len(grid_files) - 1} '
-            'same-shaped region grid(s))'
-        )
+        if len(grid_files) > 1:
+            operation_name = (
+                f'{best.description} (merged with {len(grid_files) - 1} '
+                'same-shaped region grid(s), with identity fallback outside '
+                'their combined coverage)'
+            )
+        else:
+            operation_name = (
+                f'{best.description} (with identity fallback outside its coverage)'
+            )
     else:
         definition = best.definition
         operation_name = best.description
@@ -207,22 +211,30 @@ def resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
         'grid_files': grid_files,
         'registered': date.today().isoformat(),
     }
-    _write_registry_entry(_registry_path(source_crs, target_crs), entry)
+
+    # Write to the registry unless the operation is exact and grid-free
+    # (e.g., same-datum conversions like WGS84 to Web Mercator). These are pure
+    # mathematical formulas with no environment-dependent files, so there is
+    # nothing to pin or download.
+    if entry['accuracy_m'] != 0.0 or entry['grid_files']:
+        _write_registry_entry(_registry_path(source_crs, target_crs), entry)
     return entry
 
 
 def get_or_resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
-    """Return the registered transform for a CRS pair, resolving it if absent.
+    """Get the registered transform for a CRS pair, resolving it if not present.
 
     Parameters
     ----------
-    source_crs, target_crs : Any
-        CRS in any form `pyproj.CRS` accepts.
+    source_crs : Any
+        Source CRS in any form `pyproj.CRS` accepts.
+    target_crs : Any, default 'EPSG:4326'
+        Target CRS in any form `pyproj.CRS` accepts.
 
     Returns
     -------
     dict
-        The registry entry (pre-existing or newly resolved).
+        The pre-existing or newly resolved registry entry.
     """
     entry = load_crs_transform(source_crs, target_crs)
     if entry is not None:
@@ -242,8 +254,11 @@ def _main(argv: list[str] | None = None) -> None:
     print(f'  {entry["operation_name"]} (accuracy={entry["accuracy_m"]}m)')
     if entry['grid_files']:
         print(f'  grid file(s): {", ".join(entry["grid_files"])}')
-    print(f'  -> {_registry_path(source_crs, target_crs)}')
-    print('Review and commit the registry entry (and any new grid files) via a PR.')
+    if entry['accuracy_m'] == 0.0 and not entry['grid_files']:
+        print('  Exact, grid-free conversion -- not persisted (no pinning needed).')
+    else:
+        print(f'  -> {_registry_path(source_crs, target_crs)}')
+        print('Review and commit the registry entry (and any new grid files) via a PR.')
 
 
 if __name__ == '__main__':
