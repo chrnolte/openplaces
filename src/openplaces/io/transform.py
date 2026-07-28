@@ -36,6 +36,18 @@ def _parse_currency(x: pd.Series) -> pd.Series:
     return pd.to_numeric(values, errors='coerce')
 
 
+def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
+    """Expand a 2-digit year to 4 digits using the POSIX ``%y`` convention.
+
+    Values 0-``pivot`` map to 20xx; (``pivot``, 99] map to 19xx. Values
+    already >= 100 pass through unchanged. Matches the ``strptime('%y')``
+    rule (default pivot 68: 00-68 -> 2000-2068, 69-99 -> 1969-1999).
+    """
+    values = pd.to_numeric(x, errors='coerce')
+    century = pd.Series(np.where(values <= pivot, 2000, 1900), index=values.index)
+    return values.where(values >= 100, values + century)
+
+
 UNARY_OPS: dict[str, Callable] = {
     'log': np.log,
     'arcsinh': np.arcsinh,
@@ -45,6 +57,7 @@ UNARY_OPS: dict[str, Callable] = {
     'abs': np.abs,
     'power': lambda x, exponent: x**exponent,
     'parse_currency': _parse_currency,
+    'resolve_century': _resolve_century,
     'to_numeric': lambda x: pd.to_numeric(x, errors='coerce'),
     'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
 }

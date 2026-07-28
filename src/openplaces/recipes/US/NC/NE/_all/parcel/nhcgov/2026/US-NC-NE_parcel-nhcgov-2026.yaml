@@ -170,6 +170,15 @@ transformations:
     input: owner_city
     output: owner_city
 
+  # last_sale_year is a 2-digit year (fixed-width); expand it to 4 digits
+  # using the standard strptime('%y') pivot (00-68 -> 2000-2068, 69-99 ->
+  # 1969-1999) rather than the plain to_numeric cast applied to the other
+  # numeric fields below.
+  - type: unary
+    operation: resolve_century
+    input: last_sale_year
+    output: last_sale_year
+
 # Cast the zero-padded numeric fields (read as text because of `csv_dtype: str`)
 # to numbers. Monetary fields go through parse_currency (tolerant of $ and
 # commas); plain counts/years go through to_numeric.
@@ -190,7 +199,6 @@ transformation_patterns:
     pattern: "{column}"
     apply_to_columns:
       - year_built
-      - last_sale_year
       - last_sale_month
       - n_sales
 

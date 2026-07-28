@@ -46,11 +46,11 @@ columns:
   object_id: OBJECTID_1
   property_id: PK_PREDIOS
   use_group: TIPO
-  admin2_id_admin1: MUNICIPIO
-  admin3_id_admin2: SECTOR
-  admin4_id_admin3: CORREGIMIE
-  admin5_id_admin4: BARRIO
-  admin6_id_admin5: MANZANA_VE
+  admin3_id_admin1: MUNICIPIO
+  admin4_id_admin3: SECTOR
+  admin5_id_admin4: CORREGIMIE
+  admin6_id_admin5: BARRIO
+  admin7_id_admin6: MANZANA_VE
   n_dwellings: TOTAL_UNID
   street_number: NUMERORADI
   n_buildings: TOTAL_EDIF
@@ -59,7 +59,7 @@ keep_unnamed_columns: True
 
 # Derive admin3_id_admin1
 transformations:
-  - input: admin2_id_admin1
+  - input: admin3_id_admin1
     output: admin3_id_admin1_short
     type: string
     operation: zfill
