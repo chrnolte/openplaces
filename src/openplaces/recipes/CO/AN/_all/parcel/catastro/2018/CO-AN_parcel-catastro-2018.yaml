@@ -26,12 +26,12 @@ process_by:
   admin_level: 3
   admin_id_column: MUNICIPIO
   admin_id_transformation:
-    - output: admin3_id_admin1_short
+    - output: admin3_id_admin2_zfill
       type: string
       operation: zfill
       args:
         width: 3
-    - input: admin3_id_admin1_short
+    - input: admin3_id_admin2_zfill
       output: admin3_id_admin1
       type: string
       operation: add_prefix
@@ -46,7 +46,7 @@ columns:
   object_id: OBJECTID_1
   property_id: PK_PREDIOS
   use_group: TIPO
-  admin3_id_admin1: MUNICIPIO
+  admin3_id_admin2: MUNICIPIO
   admin4_id_admin3: SECTOR
   admin5_id_admin4: CORREGIMIE
   admin6_id_admin5: BARRIO
@@ -57,20 +57,26 @@ columns:
 
 keep_unnamed_columns: True
 
-# Derive admin3_id_admin1
+# Derive the country-qualified admin3_id_admin1 (e.g. "05001") from the
+# raw, department-scoped admin3_id_admin2 ("1"): zero-pad to 3 digits,
+# then prepend Antioquia's 2-digit DANE department prefix.
+# admin3_id_admin2_zfill is a disposable intermediate, dropped below.
 transformations:
-  - input: admin3_id_admin1
-    output: admin3_id_admin1_short
+  - input: admin3_id_admin2
+    output: admin3_id_admin2_zfill
     type: string
     operation: zfill
     args:
       width: 3
-  - input: admin3_id_admin1_short
+  - input: admin3_id_admin2_zfill
     output: admin3_id_admin1
     type: string
     operation: add_prefix
     args:
       prefix: "05"
+
+drop_columns:
+  - admin3_id_admin2_zfill
 
 save_to:
   data_dir: cache
