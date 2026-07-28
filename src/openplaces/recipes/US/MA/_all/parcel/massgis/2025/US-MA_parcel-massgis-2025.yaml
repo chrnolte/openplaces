@@ -37,7 +37,7 @@ process_by:
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
   parcel_id_admin2: LOC_ID
-  parcel_id_admin4: MAP_PAR_ID
+  parcel_id_assessor: MAP_PAR_ID
   admin4_id_source: TOWN_ID
   source_date: LAST_EDIT
   polygon_type: POLY_TYPE
@@ -84,7 +84,7 @@ additional_layers:
       property_id_admin2: MA_PROP_ID
       property_id_cama: CAMA_ID
       parcel_id_admin2: LOC_ID
-      parcel_id_admin4: MAP_PAR_ID
+      parcel_id_assessor: MAP_PAR_ID
       address: SITE_ADDR
       city: CITY
       zip: ZIP

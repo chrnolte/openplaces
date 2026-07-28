@@ -40,7 +40,7 @@ process_by:
 columns:
   parcel_id_admin2: STATE_PAR_
   parcel_id_admin2_2: MP_ID
-  parcel_id_admin3: PARCEL_ID
+  parcel_id_assessor: PARCEL_ID
   parcel_id_admin3_2: ALT_KEY
   address: PHY_ADDR1
   address2: PHY_ADDR2
