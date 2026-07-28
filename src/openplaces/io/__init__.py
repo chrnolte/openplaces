@@ -3,6 +3,7 @@ Input/output utilities
 """
 
 import bz2
+import gc
 import math
 import re
 import shutil
@@ -35,6 +36,7 @@ __all__ = [
     'delete_image_caches',
     'download',
     'read_parquet',
+    'release_unused_memory',
     'save',
     'save_parquet',
     'share',
@@ -55,6 +57,18 @@ _CONTENT_TYPE_EXT = {
     'application/x-zip-compressed': '.zip',
     'application/vnd.apache.parquet': '.parquet',
 }
+
+
+def release_unused_memory() -> None:
+    """Return freed Python and pyarrow allocations to the OS.
+
+    Geometry-heavy GeoDataFrames and pyarrow's arena allocator do not
+    reliably release freed memory back to the OS through refcounting
+    alone. Call this after finishing work on one admin unit in a
+    multi-admin-unit run to keep peak resident memory bounded.
+    """
+    gc.collect()
+    pyarrow.default_memory_pool().release_unused()
 
 
 def _content_type_to_ext(content_type: str) -> str | None:

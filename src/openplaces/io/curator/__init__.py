@@ -17,7 +17,7 @@ from importlib import import_module as _import_module
 import pandas as pd
 
 from openplaces.core.schema import AdminId
-from openplaces.io import read_parquet, save_parquet
+from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import (
     get_output_path,
@@ -194,6 +194,7 @@ class Curator:
                 from openplaces.io.cleanup import cleanup_consumed_inputs
 
                 cleanup_consumed_inputs(self.recipe, admin_id, verbose=self.verbose)
+            release_unused_memory()
 
     def _curate_one(self, admin_id: AdminId) -> None:
         pipeline = self.recipe.get('pipeline')

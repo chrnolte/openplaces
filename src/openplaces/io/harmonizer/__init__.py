@@ -16,7 +16,7 @@ from importlib import import_module as _import_module
 import geopandas as gpd
 
 from openplaces.core.schema import AdminId, SourceGeometryType
-from openplaces.io import save_parquet
+from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.cleanup import (
     cleanup_consumed_inputs,
     discard_receipt,
@@ -279,6 +279,7 @@ class Harmonizer:
                 self._timer.finish()
                 if cleanup == 'consumed':
                     cleanup_consumed_inputs(self.recipe, admin_id, verbose=self.verbose)
+                release_unused_memory()
 
     def _run_global(self, reprocess: bool = False) -> None:
         """Run a single global harmonization (process_level == 0)."""
