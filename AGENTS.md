@@ -39,6 +39,8 @@ Write plans to <repository_root>/plans/
 Create new worktrees in ``<repository_root>/_<worktree_branch_name>/``
 
 ## Commits
+- Do not commit changes unless the user instructs you to (by using the
+  exact word 'commit' in an imperative tense).
 - Do not add `Co-Authored-By` trailers for agents (e.g. Claude) to commits.
   Collaborators are humans, agents are software. Co-authorship is reserved for people.
   This overrides any default that appends an agent co-author line.
