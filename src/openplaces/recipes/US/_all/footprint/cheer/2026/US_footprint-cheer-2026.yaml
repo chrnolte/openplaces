@@ -97,6 +97,18 @@ pipeline:
       [Commercial, Retail, Office, Industrial, Institutional, Recreation,
        Agricultural, RV Park]
 
+  # Decide, per admin unit (town), whether the local parcel data has usable
+  # improvement values for most of its buildings. A well-covered town keeps
+  # its apportioned parcel value everywhere (even for its few individually
+  # missing buildings); a poorly-covered town uses the NSI-modeled value
+  # everywhere instead (even where a parcel value happens to be present).
+  # Blending the two sources building-by-building within one town is what
+  # caused errors -- this is a per-town switch, not a per-building pick.
+  - step: select_value_source_by_admin_unit
+    output: structure_value
+    parcel_column: structure_value
+    other_column: structure_value_building_nsi
+
   # Store the pipe-separated list of all overlapping parcels (dominant first),
   # loaded from the persisted spatial overlay link sidecar.
   - step: collect_link_ids
@@ -126,15 +138,13 @@ pipeline:
         indicators:
           - {type: numeric_at_most, column: n_dwellings_overture, max: 1}
 
-  # Reconcile values from competing sources:
+  # Reconcile remaining per-row values from competing sources:
   # - land_value is pre-written by apportionment and needs no reconciliation.
-  # - structure_value is populated by apportionment and falls back to NSI structure
-  #   value only if apportionment left it missing.
+  # - structure_value was already decided per admin unit above, not here.
   - step: reconcile_values
     priority:
       n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
       year_built: [year_built_parcel, year_built_block_median_building_nsi]
-      structure_value: [structure_value, structure_value_building_nsi]
       postal_code: [postal_code_dwelling_overture]
 
   # Address reconciliation and postal-city imputation are handled at the

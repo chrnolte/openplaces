@@ -12,6 +12,19 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
+def _source_token(col: str) -> str:
+    """Return the provenance token for *col*: its source suffix, or itself.
+
+    An imputed-evidence column (e.g. ``land_value_imputed_parcel``) would
+    otherwise have its ``_imputed`` marker swallowed by the registered
+    ``_parcel`` suffix strip, losing the real/imputed distinction in the
+    provenance sidecar.
+    """
+    from openplaces.io.curator.formatters import _split_source
+
+    return 'imputed' if '_imputed' in col else (_split_source(col)[1] or col)
+
+
 @_register('reconcile_values')
 def reconcile_values(
     state: CurateState,
@@ -36,7 +49,6 @@ def reconcile_values(
               year_built: [year_built_parcel]
               improvement_value: [improvement_value_parcel]
     """
-    from openplaces.io.curator.formatters import _split_source
     from openplaces.io.curator.provenance import record_source
 
     curated = state.curated
@@ -52,15 +64,194 @@ def reconcile_values(
         has_value = notnull.any(axis=1)
         winning = notnull.idxmax(axis=1)
         for col in cols:
-            # An imputed-evidence column (e.g. land_value_imputed_parcel)
-            # would otherwise have its '_imputed' marker swallowed by the
-            # registered '_parcel' suffix strip below, losing the
-            # real/imputed distinction in the provenance sidecar.
-            token = 'imputed' if '_imputed' in col else (_split_source(col)[1] or col)
             mask = has_value & winning.eq(col)
             if mask.any():
-                record_source(curated, feature, mask, token)
+                record_source(curated, feature, mask, _source_token(col))
     state.curated = curated
+    return state
+
+
+def _resolve_admin_group(
+    state: CurateState, curated, admin_level: int
+) -> pd.Series | None:
+    """Return a per-row admin-unit id `Series` at *admin_level*, or `None`.
+
+    `None` means every row of *curated* belongs to the same admin unit --
+    either because *admin_level* is at or above the level this curate call
+    already processes one unit of (see :func:`impute_land_value`'s note that
+    each call already processes exactly one admin unit, with no per-row
+    admin id column required), or because a finer per-row group could not be
+    resolved (no usable geometry, or no admin boundaries at that level) --
+    callers should then treat the whole chunk (`state.admin_id`) as one
+    group.
+
+    When a finer level is requested and an ``admin{admin_level}_id`` column
+    isn't already present, one is derived by spatially joining each row's
+    centroid to :func:`~openplaces.io.readers.get_admin`'s boundaries for
+    *admin_level* within `state.admin_id` -- the same fallback path
+    :func:`~openplaces.io.enricher.parcels._resolve_calibrate_group_col`
+    uses for town-level grouping. Never raises.
+    """
+    if admin_level <= state.admin_id.get_level():
+        return None
+
+    existing_col = f'admin{admin_level}_id'
+    if existing_col in curated.columns:
+        return curated[existing_col]
+
+    geom = getattr(curated, 'geometry', None)
+    if geom is None or geom.isna().all():
+        return None
+
+    try:
+        from openplaces.io.readers import get_admin
+
+        units = get_admin(state.admin_id, admin_level, geom=True)
+    except Exception:
+        return None
+    if units.empty:
+        return None
+
+    import warnings
+
+    import geopandas as gpd
+
+    with warnings.catch_warnings():
+        # Coarse "which admin unit is this footprint in" -- a geographic-CRS
+        # centroid is imprecise by at most a few meters, irrelevant next to
+        # an admin unit's own size, so this is safe to silence rather than
+        # reproject first.
+        warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
+        centroids = geom.centroid
+    points = gpd.GeoDataFrame(
+        geometry=centroids, index=curated.index, crs=curated.crs
+    ).to_crs(units.crs)
+    joined = gpd.sjoin(points, units[['geometry']], how='left', predicate='within')
+    id_col = existing_col if existing_col in joined.columns else 'index_right'
+    return joined[id_col].reindex(curated.index)
+
+
+@_register('select_value_source_by_admin_unit')
+def select_value_source_by_admin_unit(
+    state: CurateState,
+    output: str,
+    parcel_column: str,
+    other_column: str,
+    admin_level: int = 4,
+    coverage_threshold: float = 0.5,
+    priority_column: str = 'priority_on_parcel',
+    exclude_priority: str = 'secondary',
+    min_group_size: int = 5,
+) -> CurateState:
+    """Pick *parcel_column* or *other_column* per admin unit, not per row.
+
+    Blending two value sources row by row within one place is what causes
+    errors here: whether *parcel_column* (a parcel-apportioned assessor
+    value) is usable at all is a property of the local assessor data, not
+    something that varies building by building within a well-covered area.
+    This step instead decides, once per admin unit, which source that whole
+    unit uses -- an admin unit with good parcel coverage keeps
+    *parcel_column* everywhere in it (even for the few rows individually
+    missing one -- no per-row top-off from *other_column*); an admin unit
+    with poor coverage uses *other_column* everywhere in it (discarding
+    *parcel_column* even where individually present).
+
+    Coverage is computed only over rows where *priority_column* is not
+    *exclude_priority* (default excludes ``'secondary'``): a
+    ``'secondary'``-priority footprint structurally never receives an
+    apportioned value from
+    :func:`~openplaces.io.curator.evidence.apportion_curated_values`
+    regardless of local data quality, so including it in the denominator
+    would make every admin unit look artificially low-coverage. The
+    resulting per-unit decision still applies to every row in the unit,
+    including ``'secondary'``-priority ones.
+
+    Admin units are grouped at *admin_level* (default 4, town/MCD) via
+    :func:`_resolve_admin_group`, falling back to the whole processing
+    chunk (`state.admin_id`) as one group where a per-row group can't be
+    resolved. A group with fewer than *min_group_size* eligible rows falls
+    back to its enclosing chunk's coverage instead, so a handful of rows
+    near a chunk boundary don't get an unstable, small-sample estimate.
+
+    Parameters
+    ----------
+    output : str
+        Canonical column to write.
+    parcel_column, other_column : str
+        Competing source columns (e.g. ``'structure_value'``,
+        ``'structure_value_building_nsi'``). Skipped (returns *state*
+        unchanged) if either is absent from `state.curated`.
+    admin_level : int, optional
+        Admin level to group by (default 4).
+    coverage_threshold : float, optional
+        A group switches to *other_column* when the fraction of its eligible
+        rows with a real, positive *parcel_column* falls below this (default
+        0.5 -- a majority of buildings must be missing a value to switch).
+    priority_column : str, optional
+        Column marking each row's role in the parcel apportionment (default
+        ``'priority_on_parcel'``); rows are all treated as eligible when
+        absent.
+    exclude_priority : str, optional
+        *priority_column* value excluded from the coverage denominator
+        (default ``'secondary'``).
+    min_group_size : int, optional
+        Minimum eligible-row count for a group's own coverage to be trusted
+        (default 5); smaller groups fall back to the chunk-wide coverage.
+    """
+    curated = state.curated
+    if parcel_column not in curated.columns or other_column not in curated.columns:
+        if state.verbose:
+            print(
+                '  select_value_source_by_admin_unit: '
+                f'{parcel_column!r}/{other_column!r} missing; skipping.'
+            )
+        return state
+
+    if priority_column in curated.columns:
+        eligible = curated[priority_column].astype(object) != exclude_priority
+    else:
+        eligible = pd.Series(True, index=curated.index)
+
+    parcel_value = pd.to_numeric(curated[parcel_column], errors='coerce')
+    has_value = eligible & parcel_value.notna() & (parcel_value > 0)
+
+    chunk_key = str(state.admin_id)
+    chunk_keys = pd.Series(chunk_key, index=curated.index)
+    group = _resolve_admin_group(state, curated, admin_level)
+    group_keys = chunk_keys if group is None else group.fillna(chunk_key)
+
+    def _coverage(keys: pd.Series) -> tuple[pd.Series, pd.Series]:
+        size = eligible.groupby(keys).transform('sum')
+        covered = has_value.groupby(keys).transform('sum')
+        return (covered / size).where(size > 0), size
+
+    coverage, group_size = _coverage(group_keys)
+    chunk_coverage, _ = _coverage(chunk_keys)
+    too_small = group_size.fillna(0) < min_group_size
+    coverage = coverage.where(~too_small, chunk_coverage)
+
+    # No eligible evidence anywhere for a unit (coverage still unknown after
+    # the chunk-wide fallback) is itself a sign the parcel source has
+    # nothing usable here -- default to the other source rather than the
+    # parcel one.
+    use_other = coverage.fillna(0.0) < coverage_threshold
+
+    curated[output] = curated[other_column].where(use_other, curated[parcel_column])
+
+    from openplaces.io.curator.provenance import record_source
+
+    record_source(curated, output, ~use_other, _source_token(parcel_column))
+    record_source(curated, output, use_other, _source_token(other_column))
+    state.curated = curated
+
+    if state.verbose:
+        n_units = group_keys.nunique()
+        switched = group_keys[use_other].nunique()
+        print(
+            f'  select_value_source_by_admin_unit: {switched:,}/{n_units:,} '
+            f'admin unit(s) switched to {other_column!r} '
+            f'({int(use_other.sum()):,}/{len(curated):,} row(s)).'
+        )
     return state
 
 
