@@ -2,6 +2,8 @@ description: >-
   Per-building Google Street View imagery and depth maps, fetched with the BRAILS++
   scraper (API key required).
 
+admin_id: NULL
+
 entity:
   entity_type: image
   source:

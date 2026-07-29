@@ -2,6 +2,8 @@ description: >-
   Per-building Google satellite imagery at zoom level 20, fetched with the BRAILS++
   scraper (no API key required).
 
+admin_id: NULL
+
 entity:
   entity_type: image
   source:

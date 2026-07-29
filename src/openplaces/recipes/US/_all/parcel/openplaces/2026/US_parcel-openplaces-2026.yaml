@@ -59,18 +59,22 @@ pipeline:
     transform: log1p
     statistic: zscore
 
-  # Known caveat (see plan context): sum_footprint_area_m2 currently credits
-  # each footprint's full, unclipped area to its one dominant parcel, so
-  # this ratio can read above 1.0 for a footprint straddling a parcel line.
-  # Safe for the near-zero Mostly Vacant threshold below (the bug only
-  # inflates, never deflates); a correctly clipped replacement is planned
-  # separately -- prefer it here once available for any broader use.
+  # Real, clipped footprint coverage share of the parcel's own area --
+  # footprint_area_m2_in_parcel is bounded to the parcel's own area by
+  # construction (unlike footprint_area_m2_dominant/footprint_area_m2_primary,
+  # which credit each footprint's full unclipped area to its one dominant
+  # parcel and can push a naive ratio above 1.0).
   - step: derive_area_ratio
-    value_column: sum_footprint_area_m2
+    value_column: footprint_area_m2_in_parcel
     output: footprint_area_share
 
+  # Known caveat: footprint_area_m2_primary is the unclipped, dominant-parcel
+  # sum (see summarize_footprint_morphology), so this ratio can read above
+  # 1.0 for a footprint straddling a parcel line. No clipped, non-secondary-
+  # filtered equivalent exists yet -- prefer footprint_area_share above for
+  # any use beyond a non-secondary-specific signal.
   - step: derive_area_ratio
-    value_column: sum_primary_footprint_area_m2
+    value_column: footprint_area_m2_primary
     output: footprint_primary_area_share
 
   # Classify land use by voting across assessor keywords, NSI groups, and footprint shapes.
@@ -203,11 +207,7 @@ pipeline:
       # relative to its own near-empty assessor-use cohort, so a few small
       # structures look anomalously *large* there, not small, and it has
       # some real footprints (n_footprints_per_parcel=9), so Vacant's
-      # zero-footprint indicator doesn't fire either. Note:
-      # footprint_area_share can currently read above 1.0 for footprints
-      # straddling a parcel line (see the derive_area_ratio step above) --
-      # harmless here since that only inflates the ratio, and this rule
-      # requires it to be small.
+      # zero-footprint indicator doesn't fire either.
       - class: Mostly Vacant
         min_score: 2
         indicators:
@@ -332,7 +332,7 @@ pipeline:
     residential_classes:
       [Single-Family, Multi-Family, Manufactured Home, Manufactured Home Park,
        Multiple Single-Family, Townhome, Condominium]
-    footprint_area_column: sum_footprint_area_m2
+    footprint_area_column: footprint_area_m2_in_parcel
     parcel_area_column: area_ha
     peer_group_column: use_group_combined
     footprint_ratio_threshold: 0.25
@@ -362,4 +362,13 @@ pipeline:
       # standalone -- same treatment as the footprint recipe's own
       # p_manufactured_home.
       - footprint_area_log_zscore
+      # Raw absolute footprint-area building blocks: each footprint's full,
+      # unclipped area credited to its one dominant parcel (see
+      # summarize_footprint_morphology) -- can exceed the parcel's own area,
+      # so not meaningful standalone. footprint_area_share/
+      # footprint_primary_area_share (ratios) and footprint_area_m2_in_parcel
+      # (the clipped, coverage-safe sum) are the user-facing columns.
+      - max_footprint_area_m2
+      - footprint_area_m2_dominant
+      - footprint_area_m2_primary
       - land_use_vacancy_score

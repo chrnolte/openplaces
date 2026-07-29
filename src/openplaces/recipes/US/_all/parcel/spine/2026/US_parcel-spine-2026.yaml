@@ -55,6 +55,28 @@ pipeline:
     auto_discover: true
     entity_type: parcel
 
+  # Attach per-parcel transaction diagnostics from every auto-discovered
+  # transaction source scoped to this admin unit: a count, and the most
+  # recent sale's price/date. Renaming price/recorded_date on the way in
+  # (rather than a follow-up rename_columns) lets _write_prioritized's
+  # gap-fill apply directly against last_sale_price/last_sale_date already
+  # populated from a parcel source's own fields (FL, MA, NC) instead of
+  # blindly overwriting them; states with no native last-sale fields (WI)
+  # get these filled entirely from the transaction join. ref_sort_by sorts
+  # descending by recorded_date first, since raw transaction tables are not
+  # stored in chronological order and the registry's 'first' aggregation for
+  # last_sale_price/last_sale_date otherwise picks an arbitrary sale.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: transaction
+    mode: aggregate
+    columns:
+      price: last_sale_price
+      recorded_date: last_sale_date
+    count_as: n_transactions
+    ref_sort_by: recorded_date
+    ref_sort_ascending: false
+
   # Preserve the assessor's raw address/city under their own names before
   # reconcile_addresses's output (same bare names, by default) would
   # otherwise overwrite them in place.
@@ -125,6 +147,11 @@ pipeline:
   # coverage, and completes `city`/`address` wherever they're still missing.
   - step: impute_postal_city
     column: postal_code
+
+  # Town-scoped address matching key, for linking a reference that carries no
+  # parcel_id_local (e.g. MA masslandrecords transactions -- see
+  # US_transaction-spine-2026, which joins back onto this key).
+  - step: derive_address_id_local
 
   # Build the combined use_group_combined label from whatever use_group /
   # use_subgroup the link step above attached (via an auto-discovered
