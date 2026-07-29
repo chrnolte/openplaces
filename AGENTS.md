@@ -38,6 +38,11 @@ Write plans to <repository_root>/plans/
 
 Create new worktrees in ``<repository_root>/_<worktree_branch_name>/``
 
+## Jupyter notebooks
+When creating Jupyter notebooks under `notebooks/`, you must follow the guide in:
+notebooks/README.md
+
+
 ## Commits
 - Do not commit changes unless the user instructs you to (by using the
   exact word 'commit' in an imperative tense).
