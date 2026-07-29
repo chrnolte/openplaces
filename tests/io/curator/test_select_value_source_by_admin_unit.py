@@ -45,7 +45,7 @@ def test_high_coverage_group_keeps_parcel_even_for_its_own_gap():
     out = _call(df, min_group_size=1)
     assert out['structure_value'].iloc[:7].eq(100.0).all()
     assert pd.isna(out['structure_value'].iloc[7])
-    assert (out['structure_value_source'] == 'structure_value').all()
+    assert (out['structure_value_source'] == 'parcel').all()
 
 
 def test_low_coverage_group_switches_wholesale_even_for_present_parcel_value():
@@ -83,7 +83,7 @@ def test_secondary_priority_rows_excluded_from_coverage_denominator():
     out = _call(df, min_group_size=1)
     assert out['structure_value'].iloc[:4].eq(100.0).all()
     assert pd.isna(out['structure_value'].iloc[4:]).all()
-    assert (out['structure_value_source'] == 'structure_value').all()
+    assert (out['structure_value_source'] == 'parcel').all()
 
 
 def test_small_group_falls_back_to_chunk_wide_coverage():
@@ -100,7 +100,7 @@ def test_small_group_falls_back_to_chunk_wide_coverage():
         }
     )
     out = _call(df, min_group_size=5)
-    assert (out['structure_value_source'].iloc[:2] == 'structure_value').all()
+    assert (out['structure_value_source'].iloc[:2] == 'parcel').all()
     assert pd.isna(out['structure_value'].iloc[:2]).all()
 
 
@@ -124,5 +124,5 @@ def test_admin_level_at_or_above_chunk_level_treats_whole_chunk_as_one_group():
     )
     out = _call(df, admin_level=3, min_group_size=1)
     # Chunk-wide coverage = 6/8 = 0.75 >= 0.5 -> parcel everywhere.
-    assert (out['structure_value_source'] == 'structure_value').all()
+    assert (out['structure_value_source'] == 'parcel').all()
     assert out['structure_value'].iloc[:6].eq(100.0).all()
