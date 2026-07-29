@@ -13,7 +13,9 @@ repository.
   what the code does now, not a historical narrative of how it changed.
 
 ## Code style
-- Line length: 88 characters maximum. Use ``ruff format`` to enforce.
+- Line length:
+  - 88 characters maximum for code. Use ``ruff format`` to enforce.
+  - 72 characters maximum for comments.
 - Use the `|` union syntax for `isinstance` checks, never a tuple:
   `isinstance(x, Foo | Bar)` ✓
   `isinstance(x, (Foo, Bar))` ✗
@@ -37,6 +39,11 @@ repository.
 Write plans to <repository_root>/plans/
 
 Create new worktrees in ``<repository_root>/_<worktree_branch_name>/``
+
+## Jupyter notebooks
+When creating Jupyter notebooks under `notebooks/`, you must follow the guide in:
+notebooks/README.md
+
 
 ## Commits
 - Do not commit changes unless the user instructs you to (by using the

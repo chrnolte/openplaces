@@ -86,6 +86,15 @@ transformations:
     operation: concat
     inputs: [parcel_id_tax]
     output: parcel_id_assessor
+  # Per-row county admin id, derived from the free-text `County` column
+  # (admin3_name) via a static name -> admin3_id crosswalk. parcel_id_local
+  # below needs this per row: WI tax-PIN conventions vary by county, and a
+  # single statewide ingest chunk has no other way to key the per-county
+  # conversion (see US_transaction_id-overrides.csv).
+  - output: admin3_id
+    type: remap_file
+    input: admin3_name
+    crosswalk_id: US-WI_transaction-widor-2026_county-remap
 
 legacy_columns:
   consideration_raw: price_raw
@@ -98,10 +107,14 @@ keep_unnamed_columns: true
 csv_dtype: str
 
 # Standardized matching key (kind: tax) linking each sale to its parcel; lets us
-# track which parcels have been transacted.
+# track which parcels have been transacted. Per-county conversion rules come
+# from the recipe-external US_transaction_id-overrides.csv (kind: tax rows),
+# keyed by admin3_id -- not hardcoded here, so any future WI transaction
+# source shares the same county PIN conventions.
 parcel_id_local:
   source: parcel_id_assessor
   kind: tax
+  admin_id_column: admin3_id
 
 # Output: one parquet per month under the default (cache) data directory,
 # e.g. US-WI_transaction-widor-2026_202601.parquet.

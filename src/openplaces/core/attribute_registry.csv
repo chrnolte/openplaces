@@ -61,8 +61,9 @@ parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,
 parcel_id_tax,Tax-roll parcel identifier (assessor PIN),,string,first,,parcel,
 parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first,,,
 parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,
+address_id_local,"Standardized, town-scoped address matching key (no city component)",,string,first,,,
+address_id_local_city,"Standardized address matching key including city (only where city is available)",,string,first,,,
 n_transactions,Number of recorded transactions on the parcel,,float,sum,,parcel,harmonize
-is_transacted,Whether the parcel has any recorded transaction,,bool,first,,parcel,harmonize
 type,Record or unit type or class,,categorical,first,,
 address_number,Street address number,,string,first,,,
 address_street_name,Street name,,string,first,,,
