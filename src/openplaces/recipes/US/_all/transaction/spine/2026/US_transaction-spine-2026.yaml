@@ -96,3 +96,14 @@ pipeline:
     ref_key: address_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
               year_built, n_dwellings]
+
+  # A multi-unit deed sale's address_number (e.g. '704-706', a duplex) never
+  # matches a parcel's own single-number address_id_local key via the two
+  # link_by_id passes above. Try each individual number instead; a range
+  # normally resolves to exactly one parcel -- an ambiguous match (the two
+  # numbers resolving to two different parcels) is left unmatched with a
+  # warning rather than guessed at.
+  - step: link_address_ranges
+    recipe_id: US_parcel-spine-2026
+    columns: [use_group, use_subgroup, land_value, improvement_value,
+              year_built, n_dwellings]

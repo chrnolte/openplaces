@@ -11,12 +11,14 @@ import pandas as pd
 import pytest
 
 import openplaces.io.harmonizer.links as links
+from openplaces.core.schema import Entity
 from openplaces.io.harmonizer import HarmonizeState
 
 
-def _state(spine):
+def _state(spine, entity_type=None):
+    recipe = {'entity': Entity(entity_type)} if entity_type else {}
     return HarmonizeState(
-        recipe={}, admin_id='US-NC-NE', verbose=False, timer=None, spine=spine
+        recipe=recipe, admin_id='US-NC-NE', verbose=False, timer=None, spine=spine
     )
 
 
@@ -147,6 +149,41 @@ def test_duplicate_spine_key_warns_but_does_not_change_result(monkeypatch):
         )
 
     assert state.spine['land_value'].tolist() == [100, 100, 300]
+
+
+def test_duplicate_foreign_spine_key_does_not_warn(recwarn, monkeypatch):
+    # A transaction spine's parcel_id_local is a foreign key borrowed
+    # from parcel -- many transactions can share one parcel (sold more
+    # than once), so this must not warn.
+    spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
+    ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    links.link_by_id(
+        _state(spine, entity_type='transaction'),
+        'ref',
+        mode='attributes',
+        columns=['land_value'],
+    )
+
+    assert not any('is not unique' in str(w.message) for w in recwarn.list)
+
+
+def test_duplicate_own_spine_key_still_warns(monkeypatch):
+    # A parcel spine's parcel_id_local is its own identity key -- a
+    # duplicate here means two parcel-spine rows collide on one key, a
+    # real anomaly, so this must still warn.
+    spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
+    ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    with pytest.warns(UserWarning, match="'parcel_id_local' is not unique"):
+        links.link_by_id(
+            _state(spine, entity_type='parcel'),
+            'ref',
+            mode='attributes',
+            columns=['land_value'],
+        )
 
 
 def test_duplicate_attributes_ref_key_warns(monkeypatch):
