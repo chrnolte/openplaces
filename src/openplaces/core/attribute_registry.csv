@@ -37,6 +37,9 @@ n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
 sum_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel,m2,float,sum,,parcel,harmonize
+sum_primary_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel among non-secondary footprints,m2,float,sum,,parcel,harmonize
+footprint_area_share,"Total footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- see known caveat)",,float,mean,,parcel,curate
+footprint_primary_area_share,"Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 -- see known caveat)",,float,mean,,parcel,curate
 max_parcels_per_footprint,"Maximum number of parcels linked to any dwelling-confirmed primary footprint on the parcel (from the real, non-FEMA footprint spine)",,float,max,,parcel,harmonize
 max_dwellings_per_footprint,"Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel",,float,max,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
@@ -109,8 +112,10 @@ geometry_source,Dataset the footprint geometry came from,,categorical,first,,foo
 source_date,Source last-update date,,datetime,first,,,
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
 area_m2,Footprint area,m2,float,sum,,,curate
-area_ha,Parcel lot area,ha,float,sum,,,curate
+area_ha,Parcel lot area,ha,float,sum,,,harmonize
 area_ac,Parcel lot area,ac,float,sum,,,curate
+lat,Centroid latitude (WGS84),degrees,float,first,,,harmonize
+long,Centroid longitude (WGS84),degrees,float,first,,,harmonize
 area_km2,Admin area,km2,float,sum,,,curate
 area_sqmi,Admin area,sqmi,float,sum,,,curate
 elevation,Average elevation,m,float,mean,,,enrich

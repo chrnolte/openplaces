@@ -166,6 +166,35 @@ def test_secondary_priority_excluded_from_primary_count_only(monkeypatch):
     assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
 
 
+def test_sum_primary_footprint_area_excludes_secondary(monkeypatch):
+    # Same setup as above, but checking the area sum rather than the count:
+    # sum_footprint_area_m2 totals both footprints (200), while
+    # sum_primary_footprint_area_m2 reflects only the primary one (100).
+    state = _parcel_spine(['A'])
+    footprints = _footprints(
+        [
+            {
+                'parcel_id': 'A',
+                'priority_on_parcel': 'primary',
+                'geometry': box(0, 0, 10, 10),
+            },
+            {
+                'parcel_id': 'A',
+                'priority_on_parcel': 'secondary',
+                'geometry': box(20, 0, 30, 10),
+            },
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
+
+    sum_area = state.spine.loc['A', 'sum_footprint_area_m2']
+    sum_primary_area = state.spine.loc['A', 'sum_primary_footprint_area_m2']
+    assert sum_area == pytest.approx(200.0, rel=1e-2)
+    assert sum_primary_area == pytest.approx(100.0, rel=1e-2)
+
+
 def test_dwelling_confirmed_footprint_sets_span_and_dwelling_maxima(monkeypatch):
     # Footprint 1 is dwelling-confirmed (n_dwellings_overture > 0) and spans 2
     # parcels and holds 3 dwellings -> both maxima should reflect it.
