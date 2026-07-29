@@ -1,0 +1,98 @@
+# Recipe: harmonized U.S. transaction spine.
+#
+# Standardizes recorded-sale sources with very different raw schemas
+# (New Hanover County NC, Wisconsin DOR RETR, Massachusetts registry of
+# deeds) into one table, then attaches parcel attributes as evidence --
+# the precursor to a future canonical transaction curation recipe
+# (`US_transaction-openplaces-2026`, for hedonic valuation). Unlike the
+# parcel spine, sources here are always disjoint by admin scope (one sale
+# can't appear in two states' feeds), so assembly is a plain union, not an
+# overlap-dedup merge.
+
+description: >-
+  Harmonized U.S. transaction spine: recorded sales standardized across
+  sources and linked to the parcel(s) sold.
+
+stage: harmonize
+admin_id: US
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: spine
+  version: 2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+  - step: union_spine_sources
+    sources:
+      - auto_discover: true
+        entity_type: transaction
+
+  # Standardize addresses across sources. Each unioned row only ever has one
+  # source's columns populated (sources are disjoint by admin scope), so the
+  # usual multi-source conflict logic in reconcile_addresses just picks the
+  # one present source per row -- no new address-parsing code needed.
+  - step: reconcile_addresses
+    sources:
+      nhcgov:
+        address_full: address
+        city: city
+      widor:
+        address_full: address
+        city: city
+      masslandrecords:
+        address_street: street_name
+        address_number: street_number
+        unit_number: unit_from_description
+    number_output_col: address_number
+    unit_output_col: address_unit
+    # masslandrecords rows get no city_output_col: a MA registry district
+    # (admin4_id) can contain several villages that each use their own name
+    # as a street address's city (e.g. Newton, MA contains Newton Centre,
+    # Waban, ...) -- do not synthesize one from the containing town.
+
+  # Town-scoped fallback matching key for masslandrecords, which carries no
+  # parcel_id_local (see US_parcel-spine-2026's own derive_address_id_local
+  # step, computed identically there).
+  - step: derive_address_id_local
+
+  # NC/WI: transactions already carry parcel_id_local from ingest; discovers
+  # and joins every parcel source scoped to the admin unit being processed
+  # (auto_discover always runs as mode='aggregate' internally -- a correct
+  # generalization of 'attributes' for this 1:1-per-key case too; see
+  # link_by_id's own docstring). A no-op for MA rows (parcel_id_local is
+  # null there).
+  - step: link_by_id
+    auto_discover: true
+    entity_type: parcel
+    columns: [use_group, use_subgroup, land_value, improvement_value,
+              year_built, n_dwellings]
+
+  # MA: no parcel_id_local on the transaction side; join by address instead.
+  # Two passes, most specific first -- link_by_id's existing column-priority
+  # behavior (_write_prioritized) makes the second pass a pure gap-fill for
+  # whatever the city-inclusive pass left unmatched, so this needs no new
+  # join logic.
+  # recipe_id is the harmonized parcel spine, not the raw massgis ingest
+  # recipe -- address_id_local(_city) only exists once derive_address_id_local
+  # has run there.
+  - step: link_by_id
+    recipe_id: US_parcel-spine-2026
+    mode: attributes
+    spine_key: address_id_local_city
+    ref_key: address_id_local_city
+    columns: [use_group, use_subgroup, land_value, improvement_value,
+              year_built, n_dwellings]
+  - step: link_by_id
+    recipe_id: US_parcel-spine-2026
+    mode: attributes
+    spine_key: address_id_local
+    ref_key: address_id_local
+    columns: [use_group, use_subgroup, land_value, improvement_value,
+              year_built, n_dwellings]

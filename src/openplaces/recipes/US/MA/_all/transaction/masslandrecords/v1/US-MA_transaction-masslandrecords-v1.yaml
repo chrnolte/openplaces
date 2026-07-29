@@ -2,6 +2,8 @@ description: >-
   Massachusetts registry of deeds transactions, crawled from
   masslandrecords.com.
 
+admin_id: US-MA
+
 entity:
   entity_type: transaction
   source:
@@ -54,6 +56,20 @@ transformations:
     operation: parse_currency
     input: price_raw
     output: price
+  # Somerville-district (and others') `description` values embed condo unit
+  # info the raw record has no dedicated field for, e.g. "UNIT 208 W/PS 18"
+  # or "UNIT 1115" -- needed to join transactions down to a specific condo
+  # unit rather than just the containing parcel/lot. Validated against the
+  # full US-MA-MI-SO sample (3,290 UNIT-bearing descriptions): 99.97%
+  # extract cleanly; the one miss ("POST UNIT", no number) and a rare
+  # non-unit false positive ("UNIT PHASE II PARKING" -> "PHASE") are accepted
+  # residual noise from free-text extraction, not corrected here.
+  - type: string
+    operation: extract_named
+    input: description
+    output: unit_from_description
+    args:
+      pattern: 'UNITS?\s*#?\s*(\w+)'
 
 legacy_columns:
   consideration_raw: price_raw

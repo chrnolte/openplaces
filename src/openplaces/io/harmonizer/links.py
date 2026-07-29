@@ -33,7 +33,11 @@ from openplaces.geo.polygon import (
 from openplaces.io import to_parquet
 from openplaces.io.aggregate import aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
-from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer import (
+    HarmonizeState,
+    _register,
+    restrict_to_admin_by_name,
+)
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
 from openplaces.recipe import (
@@ -1555,6 +1559,23 @@ def _warn_if_duplicate_key(key_series: pd.Series, key_name: str, context: str) -
         )
 
 
+def _columns_as_pairs(
+    columns: list[str] | dict[str, str] | None,
+) -> list[tuple[str, str]]:
+    """Normalize *columns* to ``(ref_column, output_name)`` pairs.
+
+    A plain list keeps the reference column's own name as the output name; a
+    dict (``{ref_column: output_name}``) renames on the way in, e.g. joining a
+    transaction reference's ``price``/``recorded_date`` onto the canonical
+    ``last_sale_price``/``last_sale_date`` parcel attributes.
+    """
+    if not columns:
+        return []
+    if isinstance(columns, dict):
+        return list(columns.items())
+    return [(c, c) for c in columns]
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -1564,11 +1585,13 @@ def link_by_id(
     mode: str = 'attributes',
     spine_key: str = 'parcel_id_local',
     ref_key: str = 'parcel_id_local',
-    columns: list[str] | None = None,
+    columns: list[str] | dict[str, str] | None = None,
     suffix: str | None = None,
-    count_as: str = 'n_transactions',
-    flag_as: str = 'is_transacted',
+    count_as: str | None = None,
+    flag_as: str | None = 'is_transacted',
     layer: str | None = None,
+    ref_sort_by: str | None = None,
+    ref_sort_ascending: bool = True,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -1601,7 +1624,10 @@ def link_by_id(
         *columns* defaulting to the attribute registry's canonical columns
         for that entity type (:func:`~openplaces.core.attribute_registry.
         get_attributes`) — pass an explicit *columns* to override this
-        default for every discovered match. Any ``*-remap.csv`` crosswalk
+        default for every discovered match. *suffix* and *count_as* are
+        forwarded to each discovered match unchanged (e.g. a fixed
+        ``count_as='n_transactions'`` for every auto-discovered
+        ``entity_type='transaction'`` source). Any ``*-remap.csv`` crosswalk
         found beside a matched source is applied automatically (see
         :func:`_apply_remap_csvs`). A standalone match that is also one of
         the spine's own geometry sources has its ``resolve_spine``
@@ -1629,16 +1655,41 @@ def link_by_id(
         guaranteed unique; see :func:`_warn_if_duplicate_key`, which warns
         when either side turns out to have duplicates, so that risk is
         visible rather than silently assumed away.
-    columns : list of str, optional
-        Reference columns to attach in ``'attributes'`` mode.
+    columns : list of str or dict of {str: str}, optional
+        Reference columns to attach in ``'attributes'``/``'aggregate'`` mode.
+        A dict renames each reference column to its value on write (e.g.
+        ``{'price': 'last_sale_price', 'recorded_date': 'last_sale_date'}``),
+        so the registry aggregation lookup and ``_write_prioritized`` gap-fill
+        apply to the actual canonical output name rather than the reference's
+        own column name.
     suffix : str, optional
-        Suffix appended to attached column names (``'attributes'`` mode).
-    count_as, flag_as : str
-        Output column names in ``'count'`` mode.
+        Suffix appended to attached column names (``'attributes'``/
+        ``'aggregate'`` mode).
+    count_as, flag_as : str, optional
+        Output column names in ``'count'`` mode (default ``'n_transactions'``/
+        ``'is_transacted'`` when unset). In ``'aggregate'`` mode, *count_as*
+        names the per-key record count column (default ``'n_records_per_key'``
+        when unset — deliberately not ``'n_transactions'`` unless requested,
+        since ``'aggregate'`` is also used for non-transaction references like
+        MassGIS condo unit stacks); pass ``flag_as=None`` to skip the
+        ``'count'``-mode presence flag when it isn't needed (e.g. it's exactly
+        ``count_as > 0`` and not worth persisting).
     layer : str, optional
         Secondary layer (entity type or full entity string) of an
         ``additional_layers`` entity to load from *recipe_id*, e.g. the
         ``property`` assessor table bundled inside a MassGIS parcel recipe.
+    ref_sort_by : str, optional
+        Reference column to sort by before ``'aggregate'``/``'attributes'``
+        mode picks a row per key. The registry's ``'first'``/``'last'``
+        aggregation (and ``'attributes'`` mode's own duplicate-key pick) take
+        whichever row happens to come first in *ref*'s existing order, which
+        is not necessarily meaningful order (e.g. a raw transaction table is
+        not guaranteed sorted by date) -- set this to make ``'first'`` mean
+        "most recent" for a column like ``last_sale_price``/``last_sale_date``
+        derived from a ``recorded_date`` reference.
+    ref_sort_ascending : bool, default True
+        Sort direction for *ref_sort_by* (``False`` so ``'first'`` picks the
+        most recent row when sorting by a date column).
     """
     if auto_discover:
         # A standalone roll that is also one of the spine's own geometry
@@ -1669,7 +1720,11 @@ def link_by_id(
                 spine_key=match['key'],
                 ref_key=match['key'],
                 columns=match_columns,
+                suffix=suffix,
+                count_as=count_as,
                 layer=match['layer'],
+                ref_sort_by=ref_sort_by,
+                ref_sort_ascending=ref_sort_ascending,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
         return state
@@ -1698,11 +1753,20 @@ def link_by_id(
         if state.verbose:
             print(f'  link_by_id: no {recipe_id} for {state.admin_id}; skipping.')
         return state
+    if ref is not None and layer is None:
+        # A reference scoped coarser than state.admin_id with no matching
+        # admin-id column (e.g. a statewide transaction table keyed only by a
+        # free-text county name) comes back unfiltered from get_entities --
+        # restrict it here so a per-county aggregate isn't silently pooled
+        # across the whole state.
+        ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
     if ref is None or ref_key not in ref.columns:
         warnings.warn(
             f'link_by_id: reference {recipe_id} has no {ref_key!r}; skipping.'
         )
         return state
+    if ref_sort_by and ref_sort_by in ref.columns:
+        ref = ref.sort_values(ref_sort_by, ascending=ref_sort_ascending, kind='stable')
 
     spine = state.spine
     skey = spine[spine_key].astype('string')
@@ -1710,15 +1774,15 @@ def link_by_id(
     _warn_if_duplicate_key(skey, spine_key, 'spine key')
 
     if mode == 'attributes':
-        cols = [c for c in (columns or []) if c in ref.columns]
+        pairs = [(c, o) for c, o in _columns_as_pairs(columns) if c in ref.columns]
         # 'attributes' keeps one arbitrary row per key (no aggregation, unlike
         # 'aggregate'/'count') -- a duplicate ref_key here is silently resolved
         # by drop_duplicates below, so flag it before that happens.
         _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
         ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
         ref_unique.index = ref_unique[ref_key].astype('string')
-        for col in cols:
-            name = f'{col}{suffix}' if suffix else col
+        for col, out_name in pairs:
+            name = f'{out_name}{suffix}' if suffix else out_name
             ref_series = ref_unique[col]
             mapper = ref_series.to_dict() if ref_series.empty else ref_series
             _write_prioritized(spine, name, skey.map(mapper))
@@ -1726,36 +1790,45 @@ def link_by_id(
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (attributes): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} ({len(cols)} columns)'
+                f'rows matched {recipe_id} ({len(pairs)} columns)'
             )
     elif mode == 'count':
+        count_as = count_as or 'n_transactions'
         counts = rkey.dropna().value_counts()
         mapper = counts.to_dict() if counts.empty else counts
         spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
-        spine[flag_as] = spine[count_as] > 0
+        if flag_as:
+            spine[flag_as] = spine[count_as] > 0
         if state.verbose:
+            linked = int((spine[count_as] > 0).sum())
             print(
-                f'  Link by id (count): {int(spine[flag_as].sum()):,d}/'
-                f'{len(spine):,d} spine rows linked to {recipe_id} '
-                f'({count_as}, {flag_as})'
+                f'  Link by id (count): {linked:,d}/'
+                f'{len(spine):,d} spine rows linked to {recipe_id} ({count_as})'
             )
     elif mode == 'aggregate':
-        cols = [c for c in (columns or []) if c in ref.columns and c != ref_key]
+        pairs = [
+            (c, o)
+            for c, o in _columns_as_pairs(columns)
+            if c in ref.columns and c != ref_key
+        ]
         ref_valid = ref.dropna(subset=[ref_key]).copy()
         ref_valid[ref_key] = ref_valid[ref_key].astype('string')
         grouped = ref_valid.groupby(ref_key, sort=False)
 
         # Registry-driven reduction (sum values/dwellings, mean year, etc.);
         # columns without a usable registry rule fall back to the first value.
+        # Looked up by the *output* name -- the canonical slot being filled --
+        # not the reference's own column name, so a rename (e.g. price ->
+        # last_sale_price) still resolves the right aggregation.
         reducible = {'sum', 'mean', 'max', 'min', 'first', 'last', 'median'}
-        for col in cols:
-            fname = get_agg_func(resolve_attribute_name(col))
+        for col, out_name in pairs:
+            fname = get_agg_func(resolve_attribute_name(out_name))
             func = fname if fname in reducible else 'first'
-            name = f'{col}{suffix}' if suffix else col
+            name = f'{out_name}{suffix}' if suffix else out_name
             agg_series = grouped[col].agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
             _write_prioritized(spine, name, skey.map(mapper))
-        count_col = count_as if count_as != 'n_transactions' else 'n_records_per_key'
+        count_col = count_as or 'n_records_per_key'
         gsize = grouped.size()
         mapper = gsize.to_dict() if gsize.empty else gsize
         spine[count_col] = skey.map(mapper).fillna(0).astype('int64')
@@ -1763,7 +1836,7 @@ def link_by_id(
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} ({len(cols)} columns, {count_col})'
+                f'rows matched {recipe_id} ({len(pairs)} columns, {count_col})'
             )
     else:
         raise ValueError(
