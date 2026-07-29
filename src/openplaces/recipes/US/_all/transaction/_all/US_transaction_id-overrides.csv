@@ -1,0 +1,4 @@
+admin_id,source_id,kind,pattern,conv,tolerance
+US-WI-DA,,tax,Sx/Dx,drop_cols: 0 & skip_empty: 1,
+US-WI-ON,,tax,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,
+US-WI-VI,,tax,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,0.03

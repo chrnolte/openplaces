@@ -118,3 +118,8 @@ transformations:
     type: expression
     expression: "market_value - land_value - special_feature_value"
     inputs: [market_value, land_value, special_feature_value]
+
+# Standardized matching key (auto conversion; processed per admin3).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel

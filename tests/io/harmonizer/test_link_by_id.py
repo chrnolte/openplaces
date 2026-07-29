@@ -11,12 +11,14 @@ import pandas as pd
 import pytest
 
 import openplaces.io.harmonizer.links as links
+from openplaces.core.schema import Entity
 from openplaces.io.harmonizer import HarmonizeState
 
 
-def _state(spine):
+def _state(spine, entity_type=None):
+    recipe = {'entity': Entity(entity_type)} if entity_type else {}
     return HarmonizeState(
-        recipe={}, admin_id='US-NC-NE', verbose=False, timer=None, spine=spine
+        recipe=recipe, admin_id='US-NC-NE', verbose=False, timer=None, spine=spine
     )
 
 
@@ -149,6 +151,41 @@ def test_duplicate_spine_key_warns_but_does_not_change_result(monkeypatch):
     assert state.spine['land_value'].tolist() == [100, 100, 300]
 
 
+def test_duplicate_foreign_spine_key_does_not_warn(recwarn, monkeypatch):
+    # A transaction spine's parcel_id_local is a foreign key borrowed
+    # from parcel -- many transactions can share one parcel (sold more
+    # than once), so this must not warn.
+    spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
+    ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    links.link_by_id(
+        _state(spine, entity_type='transaction'),
+        'ref',
+        mode='attributes',
+        columns=['land_value'],
+    )
+
+    assert not any('is not unique' in str(w.message) for w in recwarn.list)
+
+
+def test_duplicate_own_spine_key_still_warns(monkeypatch):
+    # A parcel spine's parcel_id_local is its own identity key -- a
+    # duplicate here means two parcel-spine rows collide on one key, a
+    # real anomaly, so this must still warn.
+    spine = pd.DataFrame({'parcel_id_local': ['DUP', 'DUP', 'C']})
+    ref = pd.DataFrame({'parcel_id_local': ['DUP', 'C'], 'land_value': [100, 300]})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    with pytest.warns(UserWarning, match="'parcel_id_local' is not unique"):
+        links.link_by_id(
+            _state(spine, entity_type='parcel'),
+            'ref',
+            mode='attributes',
+            columns=['land_value'],
+        )
+
+
 def test_duplicate_attributes_ref_key_warns(monkeypatch):
     # 'attributes' mode keeps an arbitrary first match per key -- no
     # aggregation -- so a duplicated ref_key must be flagged.
@@ -173,6 +210,93 @@ def test_unique_key_emits_no_duplicate_warning(recwarn, monkeypatch):
     links.link_by_id(_state(spine), 'ref', mode='attributes', columns=['land_value'])
 
     assert not any('is not unique' in str(w.message) for w in recwarn.list)
+
+
+def test_attributes_mode_dict_columns_renames_on_write(monkeypatch):
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
+    ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'price': [100, 200]})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    state = links.link_by_id(
+        _state(spine), 'ref', mode='attributes', columns={'price': 'last_sale_price'}
+    )
+
+    assert 'price' not in state.spine.columns
+    assert state.spine['last_sale_price'].tolist() == [100, 200]
+
+
+def test_aggregate_mode_dict_columns_renames_and_uses_output_name_for_registry(
+    monkeypatch,
+):
+    # recorded_date has no registry rule under that name; last_sale_date does
+    # (aggregation='first') -- the lookup must use the *output* name.
+    spine = pd.DataFrame({'parcel_id_local': ['A']})
+    ref = pd.DataFrame(
+        {'parcel_id_local': ['A', 'A'], 'recorded_date': ['2020-01-01', '2021-06-01']}
+    )
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    state = links.link_by_id(
+        _state(spine),
+        'tx',
+        mode='aggregate',
+        columns={'recorded_date': 'last_sale_date'},
+    )
+
+    assert state.spine['last_sale_date'].iloc[0] == '2020-01-01'  # first row in ref
+
+
+def test_aggregate_mode_count_as_n_transactions_now_honored(monkeypatch):
+    # Regression: aggregate mode used to special-case the literal string
+    # 'n_transactions' and silently rename it to 'n_records_per_key' even when
+    # explicitly requested -- an explicit count_as must now be honored as-is.
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
+    ref = pd.DataFrame({'parcel_id_local': ['A', 'A', 'B']})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    state = links.link_by_id(
+        _state(spine), 'tx', mode='aggregate', count_as='n_transactions'
+    )
+
+    assert state.spine['n_transactions'].tolist() == [2, 1]
+    assert 'n_records_per_key' not in state.spine.columns
+
+
+def test_count_mode_flag_as_none_skips_flag_column(monkeypatch):
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
+    ref = pd.DataFrame({'parcel_id_local': ['A']})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    state = links.link_by_id(_state(spine), 'tx', mode='count', flag_as=None)
+
+    assert state.spine['n_transactions'].tolist() == [1, 0]
+    assert 'is_transacted' not in state.spine.columns
+
+
+def test_ref_sort_by_picks_most_recent_for_first_aggregation(monkeypatch):
+    # Raw reference rows are not chronologically ordered; ref_sort_by must
+    # sort before the registry's 'first' aggregation picks a row per key.
+    spine = pd.DataFrame({'parcel_id_local': ['A']})
+    ref = pd.DataFrame(
+        {
+            'parcel_id_local': ['A', 'A', 'A'],
+            'recorded_date': ['2022-06-01', '2020-01-01', '2024-03-15'],
+            'price': [200, 100, 400],
+        }
+    )
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    state = links.link_by_id(
+        _state(spine),
+        'tx',
+        mode='aggregate',
+        columns={'price': 'last_sale_price', 'recorded_date': 'last_sale_date'},
+        ref_sort_by='recorded_date',
+        ref_sort_ascending=False,
+    )
+
+    assert state.spine['last_sale_date'].iloc[0] == '2024-03-15'
+    assert state.spine['last_sale_price'].iloc[0] == 400
 
 
 def test_aggregate_mode_duplicate_spine_key_still_aggregates_and_warns(monkeypatch):
