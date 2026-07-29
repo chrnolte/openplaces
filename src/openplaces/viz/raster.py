@@ -89,6 +89,13 @@ def show_entities_raster(
         )
         gdf = gdf[is_polygonal]
 
+    if gdf.empty:
+        raise ValueError(
+            f'No polygon geometries to render for admin_id={admin_id!r}'
+            f'{f", bbox={bbox!r}" if bbox is not None else ""} -- '
+            'the selection returned zero rows.'
+        )
+
     # Canvas.polygons rasterizes raw x/y with no notion of projection; data
     # at rest is EPSG:4326 (lon/lat degrees), which visibly distorts aspect
     # ratio away from the equator. Reproject to match the convention already

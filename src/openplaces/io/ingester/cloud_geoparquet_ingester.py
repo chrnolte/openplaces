@@ -10,35 +10,99 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as pafs
-import pyarrow.parquet as pq
 import requests
+import shapely
 
 from openplaces.io.readers import get_admin
 
+# Base digit widths (sign excluded) for tile_size_deg=1: the exact minimum
+# to represent the +/-90 lat / +/-180 lon range guaranteed by EPSG:4326.
+# Finer tile sizes extend both by the number of decimal places tile_size_deg
+# itself needs (see _decimal_places), independent of these base widths.
+_LAT_BASE_DIGITS = 2
+_LON_BASE_DIGITS = 3
+_MAX_DECIMALS = 6
 
-def tile_str(lat: int, lon: int) -> str:
-    return f'lat{lat:+04d}_lon{lon:+05d}'
+#: Smallest tile_size_deg supported by the fixed-precision tile ID encoding
+#: (~0.11 m at the equator) -- below this, tile_size_deg would need more
+#: decimal digits than _MAX_DECIMALS to keep neighboring tiles distinguishable.
+MIN_TILE_SIZE_DEG = 10**-_MAX_DECIMALS
+
+
+def _validate_tile_size_deg(tile_size_deg: float) -> None:
+    if tile_size_deg < MIN_TILE_SIZE_DEG:
+        raise ValueError(
+            f'tile_size_deg={tile_size_deg} is too small: the latlon_tile ID '
+            f'encoding supports at most {_MAX_DECIMALS} decimal places, so '
+            f'the minimum supported tile_size_deg is {MIN_TILE_SIZE_DEG:g}.'
+        )
+
+
+def _decimal_places(tile_size_deg: float) -> int:
+    """Minimum decimal places needed to represent tile_size_deg exactly.
+
+    Assumes tile_size_deg has already been validated as >= MIN_TILE_SIZE_DEG;
+    formatting to _MAX_DECIMALS places also rounds away binary-float noise
+    (e.g. 0.1 -> '0.100000', not '0.099999999...').
+    """
+    fractional = f'{tile_size_deg:.{_MAX_DECIMALS}f}'.rstrip('0').split('.')[-1]
+    return len(fractional)
+
+
+def tile_str(lat_deg: float, lon_deg: float, tile_size_deg: float) -> str:
+    """Build a tile ID from a tile's actual (min-lat, min-lon) corner.
+
+    Uses the minimum decimal precision that distinguishes tiles at the given
+    tile_size_deg -- e.g. tile_size_deg=1 yields plain integer IDs like
+    'lat+035_lon-0078'; tile_size_deg=0.1 adds one extra digit of precision.
+    """
+    _validate_tile_size_deg(tile_size_deg)
+    decimals = _decimal_places(tile_size_deg)
+    scale = 10**decimals
+    lat_scaled = round(lat_deg * scale)
+    lon_scaled = round(lon_deg * scale)
+    lat_width = _LAT_BASE_DIGITS + decimals + 1  # +1 for the sign
+    lon_width = _LON_BASE_DIGITS + decimals + 1
+    return f'lat{lat_scaled:+0{lat_width}d}_lon{lon_scaled:+0{lon_width}d}'
 
 
 def tile_bounds(
     tile_id: str, tile_size_deg: float
 ) -> tuple[float, float, float, float]:
     """Return (minx, miny, maxx, maxy) in EPSG:4326 for a tile_id string."""
-    lat = int(tile_id[3:7])
-    lon = int(tile_id[11:])
-    return (lon, lat, lon + tile_size_deg, lat + tile_size_deg)
+    scale = 10 ** _decimal_places(tile_size_deg)
+    lat_part, lon_part = tile_id.split('_')
+    miny = int(lat_part.removeprefix('lat')) / scale
+    minx = int(lon_part.removeprefix('lon')) / scale
+    return (minx, miny, minx + tile_size_deg, miny + tile_size_deg)
 
 
 def tile_ids_for_admin(admin_id: str, tile_size_deg: float = 1.0) -> list[str]:
-    """Return all tile IDs whose bbox overlaps the admin polygon's bounding box."""
+    """Return tile IDs whose box actually intersects the admin polygon.
+
+    Candidate tiles are enumerated from the polygon's bounding box, then
+    filtered to those whose tile box intersects the polygon itself. For a
+    concave/irregular admin shape, some bbox corner tiles never touch any
+    part of the polygon; requesting one of those anyway would still trigger
+    a full remote scan of the cloud parquet dataset (see
+    ``fetch_latlon_tile_to_cache`` / ``_read_s3_parquet``) that is guaranteed
+    to return zero rows.
+    """
+    _validate_tile_size_deg(tile_size_deg)
     admin = get_admin(admin_id, geom=True).to_crs('EPSG:4326')
+    boundary = admin.union_all()
     minx, miny, maxx, maxy = admin.total_bounds
     tiles = []
     for lat in range(math.floor(miny / tile_size_deg), math.ceil(maxy / tile_size_deg)):
         for lon in range(
             math.floor(minx / tile_size_deg), math.ceil(maxx / tile_size_deg)
         ):
-            tiles.append(tile_str(lat, lon))
+            lat_deg, lon_deg = lat * tile_size_deg, lon * tile_size_deg
+            tile_box = shapely.box(
+                lon_deg, lat_deg, lon_deg + tile_size_deg, lat_deg + tile_size_deg
+            )
+            if tile_box.intersects(boundary):
+                tiles.append(tile_str(lat_deg, lon_deg, tile_size_deg))
     return tiles
 
 
@@ -229,9 +293,67 @@ def fetch_latlon_tile_to_cache(
         print(f'  Cached {len(gdf):,d} rows → {cache_path.name}')
 
 
+_s3_listing_cache: dict[str, list[tuple[str, int]]] = {}
+_s3_fragment_cache: dict[str, ds.Fragment] = {}
+_shared_s3_session: requests.Session | None = None
+
+
+def _get_shared_s3_session() -> requests.Session:
+    global _shared_s3_session
+    if _shared_s3_session is None:
+        _shared_s3_session = requests.Session()
+    return _shared_s3_session
+
+
+def _list_s3_parquet_files(base: str, prefix: str) -> list[tuple[str, int]]:
+    """List (key, size_bytes) for parquet files under an S3 prefix.
+
+    Cached at module scope: for `latlon_tile` recipes, this listing is
+    otherwise refetched identically for every tile in an ingest run even
+    though it never changes within a resolved release.
+    """
+    cache_key = f'{base}/{prefix}'
+    if cache_key in _s3_listing_cache:
+        return _s3_listing_cache[cache_key]
+
+    from urllib.parse import quote
+
+    list_url = f'{base}/?list-type=2&prefix={quote(prefix, safe="/")}'
+    resp = requests.get(list_url)
+    resp.raise_for_status()
+    _ns = 'http://s3.amazonaws.com/doc/2006-03-01/'
+    root = ET.fromstring(resp.content)
+    keys_sizes = []
+    for contents in root.iter(f'{{{_ns}}}Contents'):
+        key = contents.find(f'{{{_ns}}}Key').text
+        if key and key.endswith('.parquet'):
+            size = int(contents.find(f'{{{_ns}}}Size').text)
+            keys_sizes.append((key, size))
+
+    _s3_listing_cache[cache_key] = keys_sizes
+    return keys_sizes
+
+
+def _get_s3_parquet_fragment(url: str, size: int) -> ds.Fragment:
+    """Return a lazy, metadata-caching Fragment for one S3 parquet file.
+
+    Reusing the same Fragment across tiles means its footer (schema and
+    row-group statistics) is parsed once per file per process, not once per
+    tile: a Fragment caches its parsed metadata for its lifetime, so a later
+    ``to_table(filter=...)`` call with a different bbox only fetches the
+    newly-relevant row groups' byte ranges instead of re-fetching the footer.
+    """
+    if url not in _s3_fragment_cache:
+        fmt = ds.ParquetFileFormat()
+        _s3_fragment_cache[url] = fmt.make_fragment(
+            _HTTPRangeFile(url, _get_shared_s3_session()), file_size=size
+        )
+    return _s3_fragment_cache[url]
+
+
 def _read_s3_parquet(url, bbox_filter, region, verbose):
     """Read S3 parquet files via HTTPS range requests with row-group filtering."""
-    from urllib.parse import quote, urlparse
+    from urllib.parse import urlparse
 
     parsed = urlparse(url)
     bucket = parsed.netloc
@@ -239,24 +361,10 @@ def _read_s3_parquet(url, bbox_filter, region, verbose):
     region = region or 'us-east-1'
     base = f'https://{bucket}.s3.{region}.amazonaws.com'
 
-    list_url = f'{base}/?list-type=2&prefix={quote(prefix, safe="/")}'
-    resp = requests.get(list_url)
-    resp.raise_for_status()
-    _ns = 'http://s3.amazonaws.com/doc/2006-03-01/'
-    keys = [
-        e.text
-        for e in ET.fromstring(resp.content).iter(f'{{{_ns}}}Key')
-        if e.text and e.text.endswith('.parquet')
-    ]
-
-    session = requests.Session()
     parts = []
-    for key in keys:
-        table = pq.read_table(
-            _HTTPRangeFile(f'{base}/{key}', session),
-            filters=bbox_filter,
-            use_pandas_metadata=False,
-        )
+    for key, size in _list_s3_parquet_files(base, prefix):
+        fragment = _get_s3_parquet_fragment(f'{base}/{key}', size)
+        table = fragment.to_table(filter=bbox_filter)
         if len(table):
             parts.append(table)
 

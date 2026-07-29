@@ -1,6 +1,7 @@
 """
 Pipeline steps for building and refining the primary entity spine:
   - resolve_spine: merge multiple source GeoDataFrames via IoU dedup
+  - union_spine_sources: concatenate multiple source tables for a non-spatial entity
   - split_by_reference: split spine geometries at reference boundaries [stub]
 """
 
@@ -15,7 +16,11 @@ from shapely.strtree import STRtree
 
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons
-from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer import (
+    HarmonizeState,
+    _register,
+    restrict_to_admin_by_name,
+)
 from openplaces.io.readers import get_entities
 
 
@@ -406,6 +411,79 @@ def resolve_spine(
     return state
 
 
+@_register('union_spine_sources')
+def union_spine_sources(
+    state: HarmonizeState,
+    sources: list[dict] | None = None,
+) -> HarmonizeState:
+    """Build a non-spatial primary entity spine by concatenating sources.
+
+    Non-spatial peer of :func:`resolve_spine`, for entities with no geometry
+    (e.g. a transaction spine). ``resolve_spine``'s IoU-overlap dedup exists
+    because multiple sources genuinely *can* describe the same physical
+    parcel; sources for an entity like ``transaction`` are always disjoint by
+    admin scope instead (a sale recorded in one state's feed can't also
+    appear in another's), so this is a straightforward concatenation, not a
+    priority-merge -- no dedup logic beyond what ``pd.concat`` needs.
+
+    Parameters
+    ----------
+    sources : list of dict
+        Ordered source entries, each either ``{'recipe_id': str, 'label':
+        str}`` or the ``{'auto_discover': True, 'entity_type': str}``
+        sentinel (see :func:`resolve_spine`).
+    """
+    if not sources:
+        warnings.warn(
+            f'union_spine_sources: no sources configured for {state.admin_id}.'
+        )
+        return state
+
+    resolved = _expand_auto_discover(sources, state)
+    if not resolved:
+        warnings.warn(f'union_spine_sources: no sources resolved for {state.admin_id}.')
+        return state
+
+    parts = []
+    for src in resolved:
+        recipe_id = src['recipe_id']
+        label = src.get('label', recipe_id)
+        try:
+            # missing='ignore': a source scoped finer than state.admin_id
+            # (e.g. a per-town transaction crawl) may only have partial
+            # coverage -- some child units genuinely not yet ingested rather
+            # than an error -- so load whatever's available instead of
+            # failing the whole admin unit.
+            df = get_entities(recipe_id, state.admin_id, missing='ignore')
+        except Exception as exc:
+            warnings.warn(f'Could not load {recipe_id} for {state.admin_id}: {exc}')
+            continue
+        df = restrict_to_admin_by_name(df, recipe_id, state.admin_id)
+        if df.empty:
+            continue
+        df = df.copy()
+        df['source'] = label
+        parts.append(df)
+        if state.verbose:
+            print(f'  Load {label}: {len(df):,d} rows')
+
+    if not parts:
+        warnings.warn(f'union_spine_sources: no rows loaded for {state.admin_id}.')
+        return state
+
+    if state.timer:
+        state.timer.mark('Load')
+
+    spine = pd.concat(parts, ignore_index=True, sort=False)
+    state.metadata['spine_source_recipe_ids'] = {s['recipe_id'] for s in resolved}
+    state.spine = spine
+    if state.timer:
+        state.timer.mark('Union')
+    if state.verbose:
+        print(f'  union_spine_sources: {len(spine):,d} total rows')
+    return state
+
+
 def _expand_auto_discover(
     sources: list[dict],
     state: HarmonizeState,
@@ -446,6 +524,38 @@ def _expand_auto_discover(
     if sentinel_idx is not None:
         return sources[:sentinel_idx] + discovered + sources[sentinel_idx + 1 :]
     return sources + discovered
+
+
+@_register('derive_geometry_attributes')
+def derive_geometry_attributes(
+    state: HarmonizeState, area_unit: str = 'ha'
+) -> HarmonizeState:
+    """Compute this entity's own centroid lat/long and area, once.
+
+    Runs immediately after the spine's geometry is finalized (right after
+    resolve_spine, including any synthetic fallback rows added by
+    infer_spine_additions), so downstream harmonize and curate steps reuse
+    the lat/long/area_{area_unit} columns instead of recomputing them. Thin
+    wrapper around geo.polygon.add_geometry_derivatives -- the same
+    function ingest recipes opt into via add_geometry_derivatives: true --
+    so both entry points share one implementation.
+
+    Parameters
+    ----------
+    area_unit : str, optional
+        Area unit for the output area_{area_unit} column (default 'ha').
+    """
+    from openplaces.core.schema import is_synthetic_geometry
+    from openplaces.geo.polygon import add_geometry_derivatives
+
+    if state.spine is None:
+        return state
+    spine = state.spine
+    area_mask = ~is_synthetic_geometry(spine, state.recipe.get('entity'))
+    state.spine = add_geometry_derivatives(
+        spine, state.timer, area_unit=area_unit, area_mask=area_mask
+    )
+    return state
 
 
 @_register('split_by_reference')

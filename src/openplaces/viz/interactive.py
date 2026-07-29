@@ -101,6 +101,13 @@ def show_entities_interactive(
         )
         gdf = gdf[is_polygonal]
 
+    if gdf.empty:
+        raise ValueError(
+            f'No polygon geometries to render for admin_id={admin_id!r}'
+            f'{f", bbox={bbox!r}" if bbox is not None else ""} -- '
+            'the selection returned zero rows.'
+        )
+
     alpha = round(opacity * 255)
     fill_color = _resolve_fill_color(gdf, color_by, default_color, alpha)
 

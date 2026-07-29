@@ -67,3 +67,8 @@ columns:
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - legal_area_unit
+
+# Standardized matching key (auto conversion; processed per admin3).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel

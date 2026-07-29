@@ -30,6 +30,23 @@ def _parcel_spine(parcel_ids):
     )
 
 
+def _parcel_spine_m(parcel_ids, geometries):
+    """Like `_parcel_spine`, but caller-supplied geometries in the same
+    metric CRS as `_footprints`, so a real spatial overlay against footprint
+    geometry can be exercised (unlike `_parcel_spine`'s placeholder boxes,
+    which live in a different CRS and location and never spatially overlap
+    `_footprints`' boxes).
+    """
+    spine = gpd.GeoDataFrame(
+        index=pd.Index(parcel_ids, name='parcel_id'),
+        geometry=geometries,
+        crs='EPSG:32617',
+    )
+    return HarmonizeState(
+        recipe={}, admin_id='US-NC-CE', verbose=False, timer=None, spine=spine
+    )
+
+
 def _footprints(rows):
     """Build a footprint GeoDataFrame from a list of dicts (defaults filled in)."""
     defaults = {
@@ -166,6 +183,35 @@ def test_secondary_priority_excluded_from_primary_count_only(monkeypatch):
     assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
 
 
+def test_primary_footprint_area_excludes_secondary(monkeypatch):
+    # Same setup as above, but checking the area sum rather than the count:
+    # footprint_area_m2_dominant totals both footprints (200), while
+    # footprint_area_m2_primary reflects only the primary one (100).
+    state = _parcel_spine(['A'])
+    footprints = _footprints(
+        [
+            {
+                'parcel_id': 'A',
+                'priority_on_parcel': 'primary',
+                'geometry': box(0, 0, 10, 10),
+            },
+            {
+                'parcel_id': 'A',
+                'priority_on_parcel': 'secondary',
+                'geometry': box(20, 0, 30, 10),
+            },
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
+
+    dominant_area = state.spine.loc['A', 'footprint_area_m2_dominant']
+    primary_area = state.spine.loc['A', 'footprint_area_m2_primary']
+    assert dominant_area == pytest.approx(200.0, rel=1e-2)
+    assert primary_area == pytest.approx(100.0, rel=1e-2)
+
+
 def test_dwelling_confirmed_footprint_sets_span_and_dwelling_maxima(monkeypatch):
     # Footprint 1 is dwelling-confirmed (n_dwellings_overture > 0) and spans 2
     # parcels and holds 3 dwellings -> both maxima should reflect it.
@@ -236,10 +282,10 @@ def test_missing_dwelling_and_span_columns_does_not_crash(monkeypatch):
     assert state.spine.loc['A', 'max_parcels_per_footprint'] == 0
 
 
-def test_sum_footprint_area_reflects_total_not_just_the_largest(monkeypatch):
+def test_dominant_footprint_area_reflects_total_not_just_the_largest(monkeypatch):
     # Two differently-sized real footprints on one parcel: max_footprint_area_m2
-    # should be the larger one alone (100), sum_footprint_area_m2 the total of
-    # both (150) -- distinct aggregates, not aliases of each other.
+    # should be the larger one alone (100), footprint_area_m2_dominant the
+    # total of both (150) -- distinct aggregates, not aliases of each other.
     state = _parcel_spine(['A'])
     footprints = _footprints(
         [
@@ -252,15 +298,15 @@ def test_sum_footprint_area_reflects_total_not_just_the_largest(monkeypatch):
     state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
 
     max_area = state.spine.loc['A', 'max_footprint_area_m2']
-    sum_area = state.spine.loc['A', 'sum_footprint_area_m2']
+    dominant_area = state.spine.loc['A', 'footprint_area_m2_dominant']
     assert max_area == pytest.approx(100.0, rel=1e-2)
-    assert sum_area == pytest.approx(150.0, rel=1e-2)
-    assert sum_area > max_area
+    assert dominant_area == pytest.approx(150.0, rel=1e-2)
+    assert dominant_area > max_area
 
 
 def test_synthetic_fallback_excluded_from_sum_area(monkeypatch):
     # A parcel whose only footprint is a synthetic parcel-shaped fallback: like
-    # max_footprint_area_m2, sum_footprint_area_m2 must stay NaN (no real
+    # max_footprint_area_m2, footprint_area_m2_dominant must stay NaN (no real
     # footprint area evidence), not silently become 0.
     state = _parcel_spine(['A'])
     footprints = _footprints(
@@ -280,7 +326,10 @@ def test_synthetic_fallback_excluded_from_sum_area(monkeypatch):
     )
 
     assert pd.isna(state.spine.loc['A', 'max_footprint_area_m2'])
-    assert pd.isna(state.spine.loc['A', 'sum_footprint_area_m2'])
+    assert pd.isna(state.spine.loc['A', 'footprint_area_m2_dominant'])
+    # The synthetic fallback's geometry is the parcel boundary itself, not a
+    # real structure -- it must not count as coverage either.
+    assert pd.isna(state.spine.loc['A', 'footprint_area_m2_in_parcel'])
 
 
 def test_missing_overlap_and_priority_columns_does_not_crash(monkeypatch):
@@ -298,3 +347,85 @@ def test_missing_overlap_and_priority_columns_does_not_crash(monkeypatch):
     # prior (pre-fix) behavior.
     assert state.spine.loc['A', 'n_footprints_per_parcel'] == 1
     assert state.spine.loc['A', 'n_primary_footprints_per_parcel'] == 1
+    # This fixture's spine (EPSG:4326, near-origin unit boxes) and footprint
+    # (EPSG:32617, a UTM-meter box) never spatially coincide -- the new
+    # overlay-based column must degrade to NaN, not crash or silently 0-fill.
+    assert pd.isna(state.spine.loc['A', 'footprint_area_m2_in_parcel'])
+
+
+def test_dominant_sum_vs_clipped_coverage_sum_diverge_on_a_straddling_footprint(
+    monkeypatch,
+):
+    # Two adjoining parcels, A (x in [0, 10]) and B (x in [10, 20]), and one
+    # footprint straddling the boundary (x in [5, 15]), split 50/50 between
+    # them by area. The footprint's `parcel_id`/`area_intersection_m2_parcel`
+    # fixture fields independently declare A as its dominant parcel (these
+    # signals are set explicitly by the fixture, not derived from geometry).
+    state = _parcel_spine_m(['A', 'B'], [box(0, 0, 10, 10), box(10, 0, 20, 10)])
+    footprints = _footprints(
+        [
+            {
+                'parcel_id': 'A',
+                'area_intersection_m2_parcel': 50.0,
+                'geometry': box(5, 0, 15, 10),
+            },
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(
+        state, footprint_recipe_id='fp', min_overlap_m2=10.0
+    )
+
+    # Full, unclipped area (100) credited only to the dominant parcel A.
+    assert state.spine.loc['A', 'footprint_area_m2_dominant'] == pytest.approx(
+        100.0, rel=1e-2
+    )
+    assert pd.isna(state.spine.loc['B', 'footprint_area_m2_dominant'])
+
+    # Clipped area correctly split between both touching parcels.
+    assert state.spine.loc['A', 'footprint_area_m2_in_parcel'] == pytest.approx(
+        50.0, rel=1e-2
+    )
+    assert state.spine.loc['B', 'footprint_area_m2_in_parcel'] == pytest.approx(
+        50.0, rel=1e-2
+    )
+
+    # The exact discrepancy this whole change fixes: the dominant sum alone
+    # overstates A's coverage share; the in-parcel sum cannot.
+    assert (
+        state.spine.loc['A', 'footprint_area_m2_dominant']
+        > state.spine.loc['A', 'footprint_area_m2_in_parcel']
+    )
+
+
+def test_in_parcel_sum_excludes_a_sub_floor_sliver_on_a_non_dominant_parcel(
+    monkeypatch,
+):
+    # A third parcel, C (x in [20, 21]), touches the same straddling footprint
+    # (x in [5, 15]) not at all -- use a footprint that clips a <10 m2 sliver
+    # onto C instead, to confirm the per-pair min_overlap_m2 floor excludes it
+    # even though the footprint clears the floor on its dominant parcel A.
+    state = _parcel_spine_m(['A', 'C'], [box(0, 0, 10, 10), box(9.5, 0, 19.5, 10)])
+    footprints = _footprints(
+        [
+            {
+                'parcel_id': 'A',
+                'area_intersection_m2_parcel': 95.0,
+                'geometry': box(0, 0, 10, 10),
+            },
+        ]
+    )
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+
+    state = attrs.summarize_footprint_morphology(
+        state, footprint_recipe_id='fp', min_overlap_m2=10.0
+    )
+
+    # A's full footprint area, correctly clipped (the footprint is entirely
+    # within A here, so dominant == in-parcel).
+    assert state.spine.loc['A', 'footprint_area_m2_in_parcel'] == pytest.approx(
+        100.0, rel=1e-2
+    )
+    # C only overlaps a 0.5 x 10 = 5 m2 sliver, below the 10 m2 floor.
+    assert pd.isna(state.spine.loc['C', 'footprint_area_m2_in_parcel'])

@@ -11,7 +11,7 @@ land_value,Assessed land value,USD,float,sum,20,,
 land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, falling back to the county-scoped use_group_combined average) times the parcel's total footprint area",USD,float,sum,20.5,parcel,curate
 improvement_value,Assessed improvement value,USD,float,sum,21,,
 improvement_value_imputed,"Improvement value re-derived as improvement_value minus land_value_imputed (clipped at 0), on the parcels land_value_imputed applies to",USD,float,sum,21.5,parcel,curate
-structure_value,"Building's own assessed/replacement value, net of land (real apportioned improvement value where available, else the NSI-modeled replacement value); structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
+structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
 year_built,Year building was built,,float,mean,30,,
 address,Street address,,string,join_nonnull,40,,
 address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
@@ -36,7 +36,11 @@ n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
-sum_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel,m2,float,sum,,parcel,harmonize
+footprint_area_m2_dominant,"Total real (non-synthetic) footprint area on the parcel, summed from footprints for which this parcel is the dominant (largest-overlap) parcel -- each footprint's FULL, unclipped area, not the portion actually inside this parcel; can exceed the parcel's own area. See footprint_area_m2_in_parcel for a coverage-safe alternative.",m2,float,sum,,parcel,harmonize
+footprint_area_m2_in_parcel,"Real footprint area actually inside this parcel's own boundary: sum, per touching footprint, of its geometry clipped to this parcel (a real geometric intersection), across all footprints -- including non-dominant spillovers -- clearing min_overlap_m2 against this parcel. Bounded by the parcel's own area.",m2,float,sum,,parcel,harmonize
+footprint_area_m2_primary,"Total real (non-synthetic) footprint area on the parcel among non-secondary footprints, summed from footprints for which this parcel is the dominant parcel -- same unclipped-area caveat as footprint_area_m2_dominant.",m2,float,sum,,parcel,harmonize
+footprint_area_share,Total footprint area as a share of the parcel's own total area,,float,mean,,parcel,curate
+footprint_primary_area_share,"Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- footprint_area_m2_primary is unclipped)",,float,mean,,parcel,curate
 max_parcels_per_footprint,"Maximum number of parcels linked to any dwelling-confirmed primary footprint on the parcel (from the real, non-FEMA footprint spine)",,float,max,,parcel,harmonize
 max_dwellings_per_footprint,"Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel",,float,max,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
@@ -58,8 +62,9 @@ parcel_id_map,"Parcel identifier from a secondary map/plat-based numbering syste
 parcel_id_tax,Tax-roll parcel identifier (assessor PIN),,string,first,,parcel,
 parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first,,,
 parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,
+address_id_local,"Standardized, town-scoped address matching key (no city component)",,string,first,,,
+address_id_local_city,"Standardized address matching key including city (only where city is available)",,string,first,,,
 n_transactions,Number of recorded transactions on the parcel,,float,sum,,parcel,harmonize
-is_transacted,Whether the parcel has any recorded transaction,,bool,first,,parcel,harmonize
 type,Record or unit type or class,,categorical,first,,
 address_number,Street address number,,string,first,,,
 address_street_name,Street name,,string,first,,,
@@ -111,8 +116,10 @@ geometry_source,Dataset the footprint geometry came from,,categorical,first,,foo
 source_date,Source last-update date,,datetime,first,,,
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
 area_m2,Footprint area,m2,float,sum,,,curate
-area_ha,Parcel lot area,ha,float,sum,,,curate
+area_ha,Parcel lot area,ha,float,sum,,,harmonize
 area_ac,Parcel lot area,ac,float,sum,,,curate
+lat,Centroid latitude (WGS84),degrees,float,first,,,harmonize
+long,Centroid longitude (WGS84),degrees,float,first,,,harmonize
 area_km2,Admin area,km2,float,sum,,,curate
 area_sqmi,Admin area,sqmi,float,sum,,,curate
 elevation,Average elevation,m,float,mean,,,enrich

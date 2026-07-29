@@ -89,3 +89,14 @@ def test_m2_kept_when_geometry_source_absent():
     state = _state(value=[500.0])
     state = derive_metrics(state)
     assert state.curated['area_m2'].iloc[0] == 100.0
+
+
+def test_parcel_area_ha_is_not_recomputed():
+    # area_ha is computed once during harmonize spine assembly
+    # (derive_geometry_attributes) and must survive derive_metrics
+    # untouched for a parcel entity -- a sentinel value that disagrees with
+    # the real (100 m2 = 0.01 ha) box geometry proves it wasn't recomputed.
+    state = _state(area_ha=[42.0])
+    state.recipe = {'entity': {'entity_type': 'parcel'}}
+    state = derive_metrics(state)
+    assert state.curated['area_ha'].iloc[0] == 42.0

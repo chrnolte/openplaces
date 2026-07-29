@@ -277,10 +277,6 @@ def apply_transformation(
     transform_type = config['type']
     output_col = config['output']
 
-    # Check if output column already exists
-    if output_col in df.columns and not silent:
-        warnings.warn(f"Column '{output_col}' already exists and will be overwritten")
-
     # A recipe is written for the full source schema; a particular file (or a
     # focused test frame) may legitimately lack some of those columns. Skip a
     # transformation whose declared input column(s) are entirely absent rather
@@ -289,6 +285,21 @@ def apply_transformation(
     input_cols = config.get('inputs')
     if input_cols is None and 'input' in config:
         input_cols = [config['input']]
+
+    # Overwriting the output column is only worth flagging when it wasn't one
+    # of the transformation's own inputs. Reusing the input name as the output
+    # (successive `strip`/`concat` steps refining the same column, or a
+    # transformation_patterns cast like parse_currency("{column}") that casts
+    # a raw column in place) is the standard idiom for cleaning a column and
+    # always self-overwrites; that's not the accidental collision this warning
+    # is meant to catch.
+    if (
+        output_col in df.columns
+        and not silent
+        and not (input_cols and output_col in input_cols)
+    ):
+        warnings.warn(f"Column '{output_col}' already exists and will be overwritten")
+
     if input_cols and all(col not in df.columns for col in input_cols):
         if not silent:
             warnings.warn(

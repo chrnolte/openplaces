@@ -604,3 +604,86 @@ def impute_postal_city(
         n = int(spine['postal_city'].notna().sum())
         print(f'  impute_postal_city: resolved {n:,} of {len(spine):,} rows.')
     return state
+
+
+@_register('derive_address_id_local')
+def derive_address_id_local(
+    state: HarmonizeState,
+    street_column: str = 'address_street',
+    number_column: str = 'address_number',
+    city_column: str = 'city',
+    admin4_column: str = 'admin4_id',
+    output_column: str = 'address_id_local',
+    output_column_city: str = 'address_id_local_city',
+) -> HarmonizeState:
+    """Derive a town-scoped address matching key for id-free entity linking.
+
+    Companion to ``parcel_id_local``, for entities that have no shared parcel
+    id to join on (e.g. linking transactions to parcels where the transaction
+    source carries no parcel identifier). Building this from
+    *street_column*/*number_column*/*admin4_column* rather than a raw address
+    string keeps the key deterministic across sources that were reconciled
+    through :func:`reconcile_addresses_df` on both sides -- the same
+    normalized components produce the same key regardless of formatting
+    differences in the original source data.
+
+    *admin4_column* (the containing town), not *city_column*, is what scopes
+    the key: a town can contain several villages that each use their own name
+    as the address's ``city`` (e.g. Newton, MA contains Newton Centre,
+    Waban, ...), so two genuinely different streets of the same name in two
+    different villages of one town are not distinguishable by city text alone
+    -- but they are already disjoint by *admin4_column*, which is a coded id,
+    not free text. ``output_column`` therefore omits city entirely.
+    ``output_column_city`` additionally includes *city_column* and is only
+    populated where *city_column* is non-empty, for use as a more specific,
+    first-choice join key when both sides of a link happen to carry a city
+    (see ``link_by_id``'s column-priority gap-fill, which makes running the
+    city-inclusive join before the plain one a safe two-pass fallback).
+
+    A no-op when *street_column* or *number_column* is absent from the spine.
+    """
+    if state.spine is None:
+        return state
+    spine = state.spine
+    if street_column not in spine.columns or number_column not in spine.columns:
+        return state
+
+    from openplaces.core.schema import AdminId
+    from openplaces.geo.address import canonicalize_for_match
+
+    admin_str = str(state.admin_id) if state.admin_id else ''
+    admin_levels = AdminId(admin_str).levels if admin_str else ()
+    admin1_id = admin_levels[0] if admin_levels else None
+
+    street = spine[street_column].astype('string').fillna('')
+    canon_map = {
+        s: canonicalize_for_match(s, admin1_id) if s else '' for s in street.unique()
+    }
+    canon_street = street.map(canon_map)
+    number = spine[number_column].astype('string').str.strip().str.upper().fillna('')
+    admin4 = (
+        spine[admin4_column].astype('string').fillna('')
+        if admin4_column in spine.columns
+        else pd.Series('', index=spine.index)
+    )
+
+    has_base = canon_street.ne('') & number.ne('')
+    base_key = admin4 + '|' + canon_street + '|' + number
+    spine[output_column] = base_key.where(has_base, pd.NA)
+
+    if city_column in spine.columns:
+        city = spine[city_column].astype('string').str.strip().str.upper().fillna('')
+        has_city = has_base & city.ne('')
+        spine[output_column_city] = (base_key + '|' + city).where(has_city, pd.NA)
+    else:
+        spine[output_column_city] = pd.Series(pd.NA, index=spine.index, dtype='string')
+
+    state.spine = spine
+    if state.verbose:
+        n = int(spine[output_column].notna().sum())
+        n_city = int(spine[output_column_city].notna().sum())
+        print(
+            f'  derive_address_id_local: {n:,} of {len(spine):,} rows keyed '
+            f'({n_city:,} with city).'
+        )
+    return state

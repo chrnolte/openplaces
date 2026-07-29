@@ -1078,7 +1078,10 @@ def derive_use_classes(
 
     Falls back to whichever of ``use_group`` / ``use_subgroup`` reached the
     spine when only one did (e.g. a source, like Florida's DOR use code, with
-    no subgroup taxonomy to crosswalk) rather than skipping the whole column.
+    no subgroup taxonomy to crosswalk) rather than skipping the whole column
+    -- per-row as well as per-column, so a row with one field blank (empty or
+    whitespace-only, not just ``NaN``) falls back to the other alone instead
+    of producing a degenerate ``' | '`` label.
 
     Parameters
     ----------
@@ -1095,23 +1098,28 @@ def derive_use_classes(
             print('  derive_use_classes: no use_group/use_subgroup on spine; skipping.')
         return state
 
-    if has_group and has_subgroup:
-        label = (
-            spine['use_group'].astype(str).fillna('n/a')
-            + ' | '
-            + spine['use_subgroup'].astype(str).fillna('n/a')
-        )
-        mapped = int(spine['use_group'].notna().sum())
-    elif has_group:
-        label = spine['use_group']
-        mapped = int(spine['use_group'].notna().sum())
-    else:
-        label = spine['use_subgroup']
-        mapped = int(spine['use_subgroup'].notna().sum())
-    spine[combined_column] = pd.Categorical(label)
+    def _clean(column: str) -> pd.Series:
+        if column not in spine.columns:
+            return pd.Series(pd.NA, index=spine.index, dtype='string')
+        cleaned = spine[column].astype('string').str.strip()
+        return cleaned.mask(cleaned.eq(''))
 
+    group = _clean('use_group')
+    subgroup = _clean('use_subgroup')
+
+    both = group.notna() & subgroup.notna()
+    only_group = group.notna() & subgroup.isna()
+    only_subgroup = subgroup.notna() & group.isna()
+
+    label = pd.Series(pd.NA, index=spine.index, dtype='string')
+    label.loc[both] = group.loc[both] + ' | ' + subgroup.loc[both]
+    label.loc[only_group] = group.loc[only_group]
+    label.loc[only_subgroup] = subgroup.loc[only_subgroup]
+
+    spine[combined_column] = pd.Categorical(label)
     state.spine = spine
     if state.verbose:
+        mapped = int(label.notna().sum())
         print(f'  derive_use_classes: combined {mapped:,d}/{len(spine):,d} parcels')
     return state
 
@@ -1137,8 +1145,9 @@ def summarize_footprint_morphology(
     representative point), and writes the per-parcel counts the parcel land-use
     classifier consumes downstream: ``n_footprints_per_parcel``,
     ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
-    ``max_footprint_area_m2``, ``sum_footprint_area_m2``,
-    ``n_primary_footprints_per_parcel``, ``max_parcels_per_footprint``, and
+    ``max_footprint_area_m2``, ``footprint_area_m2_dominant``,
+    ``footprint_area_m2_in_parcel``, ``n_primary_footprints_per_parcel``,
+    ``footprint_area_m2_primary``, ``max_parcels_per_footprint``, and
     ``max_dwellings_per_footprint``. The classification itself is parcel-curate
     work.
 
@@ -1166,16 +1175,34 @@ def summarize_footprint_morphology(
     (``geometry_source`` containing ``.``, set by :func:`infer_spine_additions`)
     regardless of overlap size when that is the parcel's only footprint — a
     fallback's geometry is the parcel boundary, so its "overlap" is trivially the
-    whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``
-    ``max_footprint_area_m2``, and ``sum_footprint_area_m2`` additionally
+    whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``,
+    ``max_footprint_area_m2``, and ``footprint_area_m2_dominant`` additionally
     exclude synthetic rows entirely: a fallback's area/aspect ratio are not
     meaningful size/shape evidence. Like ``max_footprint_area_m2``,
-    ``sum_footprint_area_m2`` stays ``NaN`` (not ``0``) for a parcel with no
+    ``footprint_area_m2_dominant`` stays ``NaN`` (not ``0``) for a parcel with no
     real, non-synthetic footprint at all.
     ``n_primary_footprints_per_parcel`` additionally excludes footprints whose
     *priority_column* value (when present) is ``'secondary'`` — a real, but
     accessory, structure (garage, shed) that clears the overlap floor but isn't a
     distinct home; synthetic fallback rows still count here too.
+    ``footprint_area_m2_primary`` sums real footprint area over that same
+    non-secondary subset (excluding synthetic rows, like
+    ``footprint_area_m2_dominant``).
+
+    ``footprint_area_m2_dominant`` and ``footprint_area_m2_primary`` both sum
+    each contributing footprint's full, unclipped polygon area — even when
+    part of that footprint's geometry actually lies outside the parcel,
+    because the footprint straddles a boundary. **Never divide either by
+    parcel area to estimate footprint coverage share — the ratio can exceed
+    1.** ``footprint_area_m2_in_parcel`` is the coverage-safe alternative:
+    for every footprint that clears *min_overlap_m2* against *this* parcel
+    specifically (including footprints whose dominant parcel is a different,
+    neighboring one but that still spill a real sliver onto this parcel), it
+    sums that footprint's geometry clipped to this parcel's own boundary (a
+    real geometric intersection, via :func:`openplaces.geo.polygon.overlay_polygons`).
+    It is bounded by construction to at most this parcel's own area, and
+    (like the two sums above) excludes synthetic rows and stays ``NaN`` for a
+    parcel with no real footprint coverage at all.
 
     Parameters
     ----------
@@ -1224,7 +1251,7 @@ def summarize_footprint_morphology(
     """
     import geopandas as gpd
 
-    from openplaces.geo.polygon import local_metric_crs
+    from openplaces.geo.polygon import local_metric_crs, overlay_polygons
     from openplaces.io.harmonizer.spine import get_oriented_dims
     from openplaces.io.readers import get_entities
 
@@ -1352,6 +1379,7 @@ def summarize_footprint_morphology(
 
         grp_primary = per_fp[per_fp['_primary']].groupby('_pid')
         n_primary = key.map(grp_primary.size())
+        sum_a_primary = key.map(grp_primary['_a'].sum(min_count=1))
 
         grp_confirmed = per_fp[per_fp['_confirmed']].groupby('_pid')
         max_dwellings = key.map(grp_confirmed['_dwellings'].max())
@@ -1386,16 +1414,48 @@ def summarize_footprint_morphology(
 
         grp_primary = joined[joined['_primary']].groupby('_spine_id')
         n_primary = grp_primary.size().reindex(spine.index)
+        sum_a_primary = grp_primary['_a'].sum(min_count=1).reindex(spine.index)
 
         grp_confirmed = joined[joined['_confirmed']].groupby('_spine_id')
         max_dwellings = grp_confirmed['_dwellings'].max().reindex(spine.index)
         max_span = grp_confirmed['_span'].max().reindex(spine.index)
 
+    # footprint_area_m2_in_parcel: real, clipped footprint area actually
+    # inside this parcel's own boundary, across every non-synthetic footprint
+    # that touches it above min_overlap_m2 -- including footprints whose
+    # *dominant* parcel is a different, neighboring one but that still spill
+    # a real sliver onto this parcel. Unlike footprint_area_m2_dominant/
+    # footprint_area_m2_primary (full, unclipped footprint area, credited
+    # only to the one dominant parcel), this is bounded by construction to at
+    # most this parcel's own area -- computed independently of the id-join
+    # vs. spatial-fallback branch above, since it needs every touching
+    # parcel, not just each footprint's single assigned one.
+    non_synth = footprints.loc[~is_synthetic]
+    if len(non_synth) == 0:
+        in_parcel_sum = pd.Series(np.nan, index=spine.index)
+    else:
+        pairs = overlay_polygons(
+            spine,
+            non_synth.to_crs(spine.crs),
+            how='intersection',
+            area_intersection=True,
+            geom=False,
+            suffixes=('_spine', '_footprint'),
+        )
+        if len(pairs) == 0:
+            in_parcel_sum = pd.Series(np.nan, index=spine.index)
+        else:
+            clipped = pairs['area_intersection_m2']
+            clipped = clipped[clipped >= min_overlap_m2]
+            in_parcel_sum = clipped.groupby(level=0).sum().reindex(spine.index)
+
     spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
     spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
-    spine['sum_footprint_area_m2'] = sum_a
+    spine['footprint_area_m2_dominant'] = sum_a
+    spine['footprint_area_m2_in_parcel'] = in_parcel_sum
     spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
+    spine['footprint_area_m2_primary'] = sum_a_primary
     spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
     spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')
     state.spine = spine
