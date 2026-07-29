@@ -12,17 +12,24 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-def _source_token(col: str) -> str:
-    """Return the provenance token for *col*: its source suffix, or itself.
+def _source_token(col: str, default: str | None = None) -> str:
+    """Return the provenance token for *col*: its source suffix, or *default*.
 
     An imputed-evidence column (e.g. ``land_value_imputed_parcel``) would
     otherwise have its ``_imputed`` marker swallowed by the registered
     ``_parcel`` suffix strip, losing the real/imputed distinction in the
-    provenance sidecar.
+    provenance sidecar. A column with no provenance suffix at all (e.g. a
+    bare canonical name like ``structure_value``) falls back to *default*
+    when given, else to *col* itself.
     """
     from openplaces.io.curator.formatters import _split_source
 
-    return 'imputed' if '_imputed' in col else (_split_source(col)[1] or col)
+    if '_imputed' in col:
+        return 'imputed'
+    token = _split_source(col)[1]
+    if token is not None:
+        return token
+    return col if default is None else default
 
 
 @_register('reconcile_values')
@@ -240,8 +247,12 @@ def select_value_source_by_admin_unit(
 
     from openplaces.io.curator.provenance import record_source
 
-    record_source(curated, output, ~use_other, _source_token(parcel_column))
-    record_source(curated, output, use_other, _source_token(other_column))
+    record_source(
+        curated, output, ~use_other, _source_token(parcel_column, default='parcel')
+    )
+    record_source(
+        curated, output, use_other, _source_token(other_column, default='nsi')
+    )
     state.curated = curated
 
     if state.verbose:
