@@ -15,22 +15,71 @@ import requests
 
 from openplaces.io.readers import get_admin
 
+# Base digit widths (sign excluded) for tile_size_deg=1: the exact minimum
+# to represent the +/-90 lat / +/-180 lon range guaranteed by EPSG:4326.
+# Finer tile sizes extend both by the number of decimal places tile_size_deg
+# itself needs (see _decimal_places), independent of these base widths.
+_LAT_BASE_DIGITS = 2
+_LON_BASE_DIGITS = 3
+_MAX_DECIMALS = 6
 
-def tile_str(lat: int, lon: int) -> str:
-    return f'lat{lat:+04d}_lon{lon:+05d}'
+#: Smallest tile_size_deg supported by the fixed-precision tile ID encoding
+#: (~0.11 m at the equator) -- below this, tile_size_deg would need more
+#: decimal digits than _MAX_DECIMALS to keep neighboring tiles distinguishable.
+MIN_TILE_SIZE_DEG = 10**-_MAX_DECIMALS
+
+
+def _validate_tile_size_deg(tile_size_deg: float) -> None:
+    if tile_size_deg < MIN_TILE_SIZE_DEG:
+        raise ValueError(
+            f'tile_size_deg={tile_size_deg} is too small: the latlon_tile ID '
+            f'encoding supports at most {_MAX_DECIMALS} decimal places, so '
+            f'the minimum supported tile_size_deg is {MIN_TILE_SIZE_DEG:g}.'
+        )
+
+
+def _decimal_places(tile_size_deg: float) -> int:
+    """Minimum decimal places needed to represent tile_size_deg exactly.
+
+    Assumes tile_size_deg has already been validated as >= MIN_TILE_SIZE_DEG;
+    formatting to _MAX_DECIMALS places also rounds away binary-float noise
+    (e.g. 0.1 -> '0.100000', not '0.099999999...').
+    """
+    fractional = f'{tile_size_deg:.{_MAX_DECIMALS}f}'.rstrip('0').split('.')[-1]
+    return len(fractional)
+
+
+def tile_str(lat_deg: float, lon_deg: float, tile_size_deg: float) -> str:
+    """Build a tile ID from a tile's actual (min-lat, min-lon) corner.
+
+    Uses the minimum decimal precision that distinguishes tiles at the given
+    tile_size_deg -- e.g. tile_size_deg=1 yields plain integer IDs like
+    'lat+035_lon-0078'; tile_size_deg=0.1 adds one extra digit of precision.
+    """
+    _validate_tile_size_deg(tile_size_deg)
+    decimals = _decimal_places(tile_size_deg)
+    scale = 10**decimals
+    lat_scaled = round(lat_deg * scale)
+    lon_scaled = round(lon_deg * scale)
+    lat_width = _LAT_BASE_DIGITS + decimals + 1  # +1 for the sign
+    lon_width = _LON_BASE_DIGITS + decimals + 1
+    return f'lat{lat_scaled:+0{lat_width}d}_lon{lon_scaled:+0{lon_width}d}'
 
 
 def tile_bounds(
     tile_id: str, tile_size_deg: float
 ) -> tuple[float, float, float, float]:
     """Return (minx, miny, maxx, maxy) in EPSG:4326 for a tile_id string."""
-    lat = int(tile_id[3:7])
-    lon = int(tile_id[11:])
-    return (lon, lat, lon + tile_size_deg, lat + tile_size_deg)
+    scale = 10 ** _decimal_places(tile_size_deg)
+    lat_part, lon_part = tile_id.split('_')
+    miny = int(lat_part.removeprefix('lat')) / scale
+    minx = int(lon_part.removeprefix('lon')) / scale
+    return (minx, miny, minx + tile_size_deg, miny + tile_size_deg)
 
 
 def tile_ids_for_admin(admin_id: str, tile_size_deg: float = 1.0) -> list[str]:
     """Return all tile IDs whose bbox overlaps the admin polygon's bounding box."""
+    _validate_tile_size_deg(tile_size_deg)
     admin = get_admin(admin_id, geom=True).to_crs('EPSG:4326')
     minx, miny, maxx, maxy = admin.total_bounds
     tiles = []
@@ -38,7 +87,9 @@ def tile_ids_for_admin(admin_id: str, tile_size_deg: float = 1.0) -> list[str]:
         for lon in range(
             math.floor(minx / tile_size_deg), math.ceil(maxx / tile_size_deg)
         ):
-            tiles.append(tile_str(lat, lon))
+            tiles.append(
+                tile_str(lat * tile_size_deg, lon * tile_size_deg, tile_size_deg)
+            )
     return tiles
 
 
