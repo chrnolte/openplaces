@@ -44,7 +44,12 @@ from openplaces.io.transform import (
     get_crosswalk,
 )
 from openplaces.path import recipe_path
-from openplaces.recipe import get_output_path, get_recipe
+from openplaces.recipe import (
+    get_output_path,
+    get_process_admin_level,
+    get_recipe,
+    get_save_admin_level,
+)
 
 
 class TableIngester:
@@ -755,15 +760,18 @@ class TableIngester:
     def _load_parcel_id_overrides(self, kind: str) -> dict | None:
         """Load the recipe-tree id-conversion override table, if present.
 
-        Returns an ``{admin_id: {pattern, conv}}`` dict in the shape
-        :func:`~openplaces.geo.ids.compute_parcel_id_local`'s ``instruction``
-        parameter expects, built from rows of
+        Returns an ``{admin_id: {pattern, conv, [tolerance]}}`` dict in the
+        shape :func:`~openplaces.geo.ids.compute_parcel_id_local`'s
+        ``instruction`` parameter expects, built from rows of
         ``{country}_{entity_type}_id-overrides.csv``
         (``recipes/{country}/_all/{entity_type}/_all/``) matching *kind* and
         this recipe's ``source_id`` (a blank ``source_id`` row matches any
         source at that ``admin_id``; an exact-source row at the same
-        ``admin_id`` takes precedence). Admin-hierarchy walking from a
-        specific admin id to a broader one is handled by
+        ``admin_id`` takes precedence). A row's optional ``tolerance`` column
+        overrides the duplicate-guard tolerance for that admin unit (see
+        ``compute_parcel_id_local``); left blank, the caller's default
+        applies. Admin-hierarchy walking from a specific admin id to a
+        broader one is handled by
         :func:`~openplaces.geo.ids._resolve_instruction`, which already
         knows how to fall back within an ``instruction`` dict — this only
         builds the dict. Returns ``None`` when no override table exists for
@@ -787,19 +795,21 @@ class TableIngester:
 
         table = table[table['kind'] == kind]
         source_id = str(entity.source) if entity.source else ''
+
+        def _entry(row):
+            entry = {'pattern': row['pattern'], 'conv': row['conv']}
+            tolerance = row.get('tolerance', '')
+            if tolerance:
+                entry['tolerance'] = tolerance
+            return entry
+
         overrides: dict[str, dict] = {}
         for _, row in table[table['source_id'] == ''].iterrows():
             if row['admin_id']:
-                overrides[row['admin_id']] = {
-                    'pattern': row['pattern'],
-                    'conv': row['conv'],
-                }
+                overrides[row['admin_id']] = _entry(row)
         for _, row in table[table['source_id'] == source_id].iterrows():
             if row['admin_id']:
-                overrides[row['admin_id']] = {
-                    'pattern': row['pattern'],
-                    'conv': row['conv'],
-                }
+                overrides[row['admin_id']] = _entry(row)
         return overrides or None
 
     def _add_parcel_id_local(self, df):
@@ -818,7 +828,20 @@ class TableIngester:
         (:meth:`_load_parcel_id_overrides`), then the bundled default table
         (see :func:`openplaces.geo.ids.compute_parcel_id_local`), and is
         hardened so it never adds duplicates beyond those already in
-        `parcel_id_assessor`.
+        `parcel_id_assessor` -- but only *within* the admin unit a given
+        ingest chunk covers. When a recipe processes at a finer admin level
+        than it saves at (e.g. MassGIS: per-town `process_by`, per-county
+        `save_to`), multiple chunks' outputs are later merged, and nothing
+        has checked uniqueness *across* those chunks. Two different towns'
+        raw ids that happen to be identical (each perfectly valid, since a
+        raw MassGIS map-parcel id is only documented as unique within its own
+        town) would otherwise collapse into the same `parcel_id_local` once
+        merged -- confirmed empirically on real Middlesex County data: 29% of
+        parcels gained a "duplicate" this way, 99.9% of the colliding groups
+        spanning more than one town. Prefixing with the chunk's own admin id
+        whenever process level > save level closes this structurally, without
+        touching `compute_parcel_id_local`'s own (still correct, per-chunk)
+        duplicate guard.
         """
         spec = self.recipe.get('parcel_id_local')
         if not spec:
@@ -838,26 +861,35 @@ class TableIngester:
             **(spec.get('instruction') or {}),
         } or None
         admin_col = spec.get('admin_id_column')
+        scope_across_chunks = get_process_admin_level(
+            self.recipe
+        ) > get_save_admin_level(self.recipe)
 
         if admin_col and admin_col in df.columns:
             # Per-row admin-unit-specific conversion (e.g. Massachusetts towns).
             result = pd.Series(pd.NA, index=df.index, dtype='string')
             for admin_id, group in df.groupby(admin_col):
-                result.loc[group.index] = compute_parcel_id_local(
+                key = compute_parcel_id_local(
                     group[source],
                     admin_unit_id=admin_id,
                     instruction=instruction,
                     kind=kind,
                 )
+                if scope_across_chunks:
+                    key = str(admin_id) + '|' + key
+                result.loc[group.index] = key
             df['parcel_id_local'] = result
         else:
             admin_id = self.processing_chunk.get('admin_id_to_process')
-            df['parcel_id_local'] = compute_parcel_id_local(
+            key = compute_parcel_id_local(
                 df[source],
                 admin_unit_id=admin_id,
                 instruction=instruction,
                 kind=kind,
             )
+            if scope_across_chunks and admin_id is not None:
+                key = str(admin_id) + '|' + key
+            df['parcel_id_local'] = key
         return df
 
     # Save

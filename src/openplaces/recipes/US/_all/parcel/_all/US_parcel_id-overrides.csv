@@ -1,1 +1,3 @@
-admin_id,source_id,kind,pattern,conv
+admin_id,source_id,kind,pattern,conv,tolerance
+US-WI-ON,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,
+US-WI-VI,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,0.03
