@@ -543,7 +543,7 @@ class TableIngester:
             if self.recipe.get('add_geometry_derivatives', False):
                 from openplaces.geo.polygon import add_geometry_derivatives
 
-                df = add_geometry_derivatives(df, self.timer, **self.recipe)
+                df = add_geometry_derivatives(df, self.timer)
 
             if self.recipe.get('add_tile_utm_derivatives', False):
                 from openplaces.geo.tiles import add_tile_utm_derivatives

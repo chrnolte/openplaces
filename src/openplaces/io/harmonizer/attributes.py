@@ -1078,7 +1078,10 @@ def derive_use_classes(
 
     Falls back to whichever of ``use_group`` / ``use_subgroup`` reached the
     spine when only one did (e.g. a source, like Florida's DOR use code, with
-    no subgroup taxonomy to crosswalk) rather than skipping the whole column.
+    no subgroup taxonomy to crosswalk) rather than skipping the whole column
+    -- per-row as well as per-column, so a row with one field blank (empty or
+    whitespace-only, not just ``NaN``) falls back to the other alone instead
+    of producing a degenerate ``' | '`` label.
 
     Parameters
     ----------
@@ -1095,23 +1098,28 @@ def derive_use_classes(
             print('  derive_use_classes: no use_group/use_subgroup on spine; skipping.')
         return state
 
-    if has_group and has_subgroup:
-        label = (
-            spine['use_group'].astype(str).fillna('n/a')
-            + ' | '
-            + spine['use_subgroup'].astype(str).fillna('n/a')
-        )
-        mapped = int(spine['use_group'].notna().sum())
-    elif has_group:
-        label = spine['use_group']
-        mapped = int(spine['use_group'].notna().sum())
-    else:
-        label = spine['use_subgroup']
-        mapped = int(spine['use_subgroup'].notna().sum())
-    spine[combined_column] = pd.Categorical(label)
+    def _clean(column: str) -> pd.Series:
+        if column not in spine.columns:
+            return pd.Series(pd.NA, index=spine.index, dtype='string')
+        cleaned = spine[column].astype('string').str.strip()
+        return cleaned.mask(cleaned.eq(''))
 
+    group = _clean('use_group')
+    subgroup = _clean('use_subgroup')
+
+    both = group.notna() & subgroup.notna()
+    only_group = group.notna() & subgroup.isna()
+    only_subgroup = subgroup.notna() & group.isna()
+
+    label = pd.Series(pd.NA, index=spine.index, dtype='string')
+    label.loc[both] = group.loc[both] + ' | ' + subgroup.loc[both]
+    label.loc[only_group] = group.loc[only_group]
+    label.loc[only_subgroup] = subgroup.loc[only_subgroup]
+
+    spine[combined_column] = pd.Categorical(label)
     state.spine = spine
     if state.verbose:
+        mapped = int(label.notna().sum())
         print(f'  derive_use_classes: combined {mapped:,d}/{len(spine):,d} parcels')
     return state
 
@@ -1138,9 +1146,9 @@ def summarize_footprint_morphology(
     classifier consumes downstream: ``n_footprints_per_parcel``,
     ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
     ``max_footprint_area_m2``, ``sum_footprint_area_m2``,
-    ``n_primary_footprints_per_parcel``, ``max_parcels_per_footprint``, and
-    ``max_dwellings_per_footprint``. The classification itself is parcel-curate
-    work.
+    ``n_primary_footprints_per_parcel``, ``sum_primary_footprint_area_m2``,
+    ``max_parcels_per_footprint``, and ``max_dwellings_per_footprint``. The
+    classification itself is parcel-curate work.
 
     ``max_parcels_per_footprint`` and ``max_dwellings_per_footprint`` are scoped
     to *dwelling-confirmed* footprints only (*is_primary_candidate* — see below —
@@ -1176,6 +1184,8 @@ def summarize_footprint_morphology(
     *priority_column* value (when present) is ``'secondary'`` — a real, but
     accessory, structure (garage, shed) that clears the overlap floor but isn't a
     distinct home; synthetic fallback rows still count here too.
+    ``sum_primary_footprint_area_m2`` sums real footprint area over that same
+    non-secondary subset (excluding synthetic rows, like ``sum_footprint_area_m2``).
 
     Parameters
     ----------
@@ -1352,6 +1362,7 @@ def summarize_footprint_morphology(
 
         grp_primary = per_fp[per_fp['_primary']].groupby('_pid')
         n_primary = key.map(grp_primary.size())
+        sum_a_primary = key.map(grp_primary['_a'].sum(min_count=1))
 
         grp_confirmed = per_fp[per_fp['_confirmed']].groupby('_pid')
         max_dwellings = key.map(grp_confirmed['_dwellings'].max())
@@ -1386,6 +1397,7 @@ def summarize_footprint_morphology(
 
         grp_primary = joined[joined['_primary']].groupby('_spine_id')
         n_primary = grp_primary.size().reindex(spine.index)
+        sum_a_primary = grp_primary['_a'].sum(min_count=1).reindex(spine.index)
 
         grp_confirmed = joined[joined['_confirmed']].groupby('_spine_id')
         max_dwellings = grp_confirmed['_dwellings'].max().reindex(spine.index)
@@ -1396,6 +1408,7 @@ def summarize_footprint_morphology(
     spine['max_footprint_area_m2'] = max_a
     spine['sum_footprint_area_m2'] = sum_a
     spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
+    spine['sum_primary_footprint_area_m2'] = sum_a_primary
     spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
     spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')
     state.spine = spine

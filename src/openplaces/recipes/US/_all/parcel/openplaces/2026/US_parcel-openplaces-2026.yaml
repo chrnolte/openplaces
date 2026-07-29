@@ -28,6 +28,21 @@ save_to:
   data_dir: core
 
 pipeline:
+  # These parcel_id_assessor values are non-taxable placeholders, not real
+  # parcels (found empirically in Carteret County, NC): WATER (water
+  # bodies), ROW (road rights-of-way). Confirmed via direct data checks
+  # that these rows carry no use code and no value -- unlike e.g. STATE
+  # LAND or CALO (Cape Lookout National Seashore), which are real,
+  # valuable land despite unusual assessor IDs, and must not be swept in
+  # here. Idiosyncratic per source -- see
+  # notebooks/01_setup/04_detect_phantom_parcel_ids.ipynb to find
+  # candidates in newly ingested counties before adding them. Runs first
+  # so these rows never pollute impute_from_group_statistic's cohort
+  # statistics.
+  - step: exclude_by_value
+    column: parcel_id_assessor
+    values: [WATER, ROW]
+
   # Impute parcel occupancy group from the modal NSI building group per assessor use code.
   - step: impute_from_group_statistic
     group_column: use_group_combined
@@ -43,6 +58,20 @@ pipeline:
     output: footprint_area_log_zscore
     transform: log1p
     statistic: zscore
+
+  # Known caveat (see plan context): sum_footprint_area_m2 currently credits
+  # each footprint's full, unclipped area to its one dominant parcel, so
+  # this ratio can read above 1.0 for a footprint straddling a parcel line.
+  # Safe for the near-zero Mostly Vacant threshold below (the bug only
+  # inflates, never deflates); a correctly clipped replacement is planned
+  # separately -- prefer it here once available for any broader use.
+  - step: derive_area_ratio
+    value_column: sum_footprint_area_m2
+    output: footprint_area_share
+
+  - step: derive_area_ratio
+    value_column: sum_primary_footprint_area_m2
+    output: footprint_primary_area_share
 
   # Classify land use by voting across assessor keywords, NSI groups, and footprint shapes.
   # - Most rules require min_score 2.
@@ -154,6 +183,40 @@ pipeline:
             include_zero: true
           - {type: keyword, column: use_group_combined, pattern: 'VACANT'}
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 0}
+
+      # Vacant in area, not just improvement value: this parcel's total real
+      # footprint coverage is a vanishingly small share of its own area --
+      # corroborated by near-zero improvement value, so a large, actively-
+      # used, low-coverage parcel (e.g. a working farm with one real
+      # farmhouse) does not also qualify. Threshold from Carteret County, NC:
+      # ordinary Single-Family parcels' footprint-area share has a median of
+      # ~12%, a 10th-percentile of ~4%, and even its most extreme 0.1
+      # percentile is ~0.03% -- above this rule's 0.05% cutoff, but the real
+      # protection against false positives is the improvement-value
+      # indicator: every non-Vacant Carteret parcel below this cutoff already
+      # has exactly $0 recorded improvement value (i.e. very likely more
+      # instances of the same empty-cohort mislabeling the derive_use_classes
+      # fix addresses, not genuine developed homes). Catches parcel
+      # c2042c90816b4fc9f590b5a2 (a ~51,500-acre national-forest tract with a
+      # handful of small structures, footprint_area_share ~7e-6), which the
+      # existing Vacant rule cannot: its footprint z-score is computed
+      # relative to its own near-empty assessor-use cohort, so a few small
+      # structures look anomalously *large* there, not small, and it has
+      # some real footprints (n_footprints_per_parcel=9), so Vacant's
+      # zero-footprint indicator doesn't fire either. Note:
+      # footprint_area_share can currently read above 1.0 for footprints
+      # straddling a parcel line (see the derive_area_ratio step above) --
+      # harmless here since that only inflates the ratio, and this rule
+      # requires it to be small.
+      - class: Mostly Vacant
+        min_score: 2
+        indicators:
+          - {type: numeric_at_most, column: footprint_area_share, max: 0.0005}
+          - type: value_share_below
+            value: improvement_value
+            total: [improvement_value, land_value]
+            max_ratio: 0.01
+            include_zero: true
 
       - class: Retail
         min_score: 1
