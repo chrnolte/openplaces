@@ -448,6 +448,38 @@ def _expand_auto_discover(
     return sources + discovered
 
 
+@_register('derive_geometry_attributes')
+def derive_geometry_attributes(
+    state: HarmonizeState, area_unit: str = 'ha'
+) -> HarmonizeState:
+    """Compute this entity's own centroid lat/long and area, once.
+
+    Runs immediately after the spine's geometry is finalized (right after
+    resolve_spine, including any synthetic fallback rows added by
+    infer_spine_additions), so downstream harmonize and curate steps reuse
+    the lat/long/area_{area_unit} columns instead of recomputing them. Thin
+    wrapper around geo.polygon.add_geometry_derivatives -- the same
+    function ingest recipes opt into via add_geometry_derivatives: true --
+    so both entry points share one implementation.
+
+    Parameters
+    ----------
+    area_unit : str, optional
+        Area unit for the output area_{area_unit} column (default 'ha').
+    """
+    from openplaces.core.schema import is_synthetic_geometry
+    from openplaces.geo.polygon import add_geometry_derivatives
+
+    if state.spine is None:
+        return state
+    spine = state.spine
+    area_mask = ~is_synthetic_geometry(spine, state.recipe.get('entity'))
+    state.spine = add_geometry_derivatives(
+        spine, state.timer, area_unit=area_unit, area_mask=area_mask
+    )
+    return state
+
+
 @_register('split_by_reference')
 def split_by_reference(
     state: HarmonizeState,

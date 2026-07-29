@@ -44,6 +44,12 @@ pipeline:
       - year_built
       - n_dwellings
 
+  # Compute this entity's own centroid lat/long and area (ha) once, right
+  # after spine geometry is finalized (including synthetic fallback rows),
+  # so downstream harmonize and curate steps reuse these columns instead
+  # of recomputing them.
+  - step: derive_geometry_attributes
+
   # Link discovered assessor tables to the spine, aggregating stacked condominium/unit records.
   - step: link_by_id
     auto_discover: true

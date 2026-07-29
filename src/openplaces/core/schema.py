@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+import pandas as pd
+
 from .constants import (
     ESCAPE_DIR,
     STRING_SEPARATOR_BETWEEN_IDS,
@@ -41,6 +43,37 @@ def synthetic_geometry_pattern(exclude: str | None = None) -> str:
     """
     entities = [e for e in ENTITY_TYPES if e != exclude]
     return rf'^({"|".join(entities)})\.'
+
+
+def is_synthetic_geometry(gdf, entity=None) -> pd.Series:
+    """Boolean mask: True where geometry_source marks a synthetic reference-derived row.
+
+    A synthetic fallback geometry (e.g. geometry_source == 'parcel.spine')
+    is a different entity's boundary standing in for this row's own real
+    outline (see :func:`synthetic_geometry_pattern`) — not meaningful for
+    size/shape measurements. All-False when geometry_source isn't a column
+    on gdf.
+
+    Parameters
+    ----------
+    entity : dict or Entity, optional
+        The current recipe's entity block (or an Entity); only its
+        entity_type is used, to exclude that type from the match.
+    """
+    if 'geometry_source' not in gdf.columns:
+        return pd.Series(False, index=gdf.index)
+    own = (
+        entity.get('entity_type')
+        if isinstance(entity, dict)
+        else getattr(entity, 'entity_type', None)
+    )
+    return (
+        gdf['geometry_source']
+        .astype('string')
+        .str.match(synthetic_geometry_pattern(str(own) if own else None), na=False)
+        .fillna(False)
+        .astype(bool)
+    )
 
 
 # Coarse-to-fine ordering of entity types for canonical entity-link paths:
