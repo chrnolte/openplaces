@@ -1,0 +1,9 @@
+{
+  "accuracy_m": 2.0,
+  "grid_files": [],
+  "operation_definition": "proj=pipeline step inv proj=aea lat_0=24 lon_0=-84 lat_1=24 lat_2=31.5 x_0=400000 y_0=0 ellps=GRS80 step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of Florida GDL Albers (meter) + NAD83(2011) to WGS 84 (1) + axis order change (2D)",
+  "registered": "2026-07-28",
+  "source_crs": "EPSG:6439",
+  "target_crs": "EPSG:4326"
+}
