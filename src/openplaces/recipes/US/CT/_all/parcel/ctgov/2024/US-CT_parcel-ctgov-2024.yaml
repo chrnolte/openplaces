@@ -43,7 +43,7 @@ process_by:
 columns:
   address: Location
   parcel_id_admin2: CAMA_Link
-  parcel_id_admin4: Parcel_ID
+  parcel_id_assessor: Parcel_ID
   parcel_id_admin4_2: Link
   type: Parcel_Typ
   address_unit_type: Unit_Type

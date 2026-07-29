@@ -120,7 +120,7 @@ def fetch_images_by_admin(
             AdminId(admin_id_raw) if isinstance(admin_id_raw, str) else admin_id_raw
         )
         if ingester.verbose:
-            print(f'Fetching {scraper_name} images for {admin_id}...')
+            print(f'Checking {scraper_name} images for {admin_id}...')
 
         # Load footprints at the footprint recipe's save level, then clip
         fp_admin_id = AdminId(*admin_id.levels[:fp_save_level])
@@ -185,6 +185,13 @@ def fetch_images_by_admin(
         meta_df.to_parquet(output_path)
 
         if ingester.verbose:
+            if image_set.counts:
+                tally = ', '.join(
+                    f'{count:,d} {label}'
+                    for label, count in image_set.counts.items()
+                    if count
+                )
+                print(f'  Images: {tally or "none"}')
             n_missing = int(meta_df['image_path'].isna().sum())
             if n_missing:
                 print(

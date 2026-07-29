@@ -7,12 +7,14 @@ reconcile any values.
 from __future__ import annotations
 
 import re
-from functools import cache
 
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.curator.provenance import SOURCE_SUFFIX
+from openplaces.recipe import provenance_suffixes as _provenance_suffixes
+from openplaces.recipe import resolve_attribute_name
+from openplaces.recipe import split_provenance_suffix as _split_source
 
 
 @_register('cast_categoricals')
@@ -60,32 +62,6 @@ def cast_integers(state: CurateState, columns: list[str]) -> CurateState:
     return state
 
 
-@cache
-def _provenance_suffixes() -> tuple[tuple[str, str], ...]:
-    """Provenance suffix -> source key, auto-generated from existing recipes.
-
-    For every ``(entity_type, source)`` pair known to the recipes, generate the
-    column suffixes the harmonizer can produce: ``_{entity}_{source}`` and the
-    bare ``_{source}`` fallback (e.g. ``_building_nsi`` and ``_nsi``;
-    ``_footprint_fema`` and ``_fema``). Parcels are interchangeable, so they map
-    by the entity-only ``_parcel``. Returned longest-first so a specific suffix
-    wins over its bare fallback. No hardcoded list — adding a source recipe
-    extends this automatically.
-    """
-    from openplaces.recipe import iter_entity_sources
-
-    suffixes: dict[str, str] = {}
-    for entity, source in iter_entity_sources():
-        if source is None:
-            continue
-        if entity == 'parcel':
-            suffixes.setdefault('_parcel', 'parcel')
-        else:
-            suffixes.setdefault(f'_{entity}_{source}', source)
-            suffixes.setdefault(f'_{source}', source)
-    return tuple(sorted(suffixes.items(), key=lambda kv: len(kv[0]), reverse=True))
-
-
 # Explicit display precedence for the source-variable block; auto-derived sources
 # not listed here sort after the known ones (tolerant lookup via _source_rank).
 _SOURCE_RANK = {'parcel': 0, 'overture': 1, 'nsi': 2, 'fema': 3, None: 9}
@@ -106,25 +82,20 @@ _FINAL_COLUMNS = (
 _FLAG_COLUMNS = (
     'occupancy_type_conflict',
     'occupancy_type_review',
+    'land_use_class_conflict',
+    'land_use_review',
     'manufactured_home_community',
 )
 _MODIFIERS = ('_all', '_per_area', '_inferred')
 _RELATIONAL_COUNT = re.compile(r'^n_.+_per_.+$')
+_BARE_ID = re.compile(r'^(.+?)_id(_.+)?$')
 _BIG = 10_000
 
 
-def _split_source(name: str) -> tuple[str, str | None]:
-    """Split a trailing provenance suffix off *name*; return (base, source)."""
-    for suffix, source in _provenance_suffixes():
-        if name.endswith(suffix):
-            return name[: -len(suffix)], source
-    return name, None
-
-
-def _attr_rank(base: str) -> int:
+def _attr_rank(name: str) -> int:
     from openplaces.core.attribute_registry import get_attribute_order
 
-    rank = get_attribute_order(base)
+    rank = get_attribute_order(resolve_attribute_name(name))
     return _BIG if rank is None else rank
 
 
@@ -134,6 +105,12 @@ def _key_fields(col: str) -> tuple:
     Blocks: 0 = canonical/final (incl. m2), with ``priority_on_parcel`` last;
     1 = source variables (relational counts first, then suffixed evidence);
     2 = flags then visualization-only (``*_per_area``).
+
+    A bare id column whose entity prefix is itself an entity-only provenance
+    suffix (``parcel_id``, ``parcel_id_local`` — parcels map by ``_parcel``)
+    leads that source's evidence group in block 1: the id naming which
+    reference the group's columns describe belongs at its head, not stranded
+    in block 0 without a registry rank.
     """
     if col == 'priority_on_parcel':
         return (0, _BIG + 1, 0, 0, 0)  # end of the canonical block
@@ -160,6 +137,14 @@ def _key_fields(col: str) -> tuple:
     if col in _FINAL_COLUMNS:
         return (0, _attr_rank(col), 0, 0, 0)
 
+    id_match = _BARE_ID.match(base)
+    if id_match:
+        source = dict(_provenance_suffixes()).get(f'_{id_match.group(1)}')
+        if source is not None:
+            # kind -1: lead the source's evidence group (existing kinds:
+            # 0 counts, 1 suffixed ids, 2 other attributes)
+            return (1, _source_rank(source), -1, _attr_rank(base), 0)
+
     attr, source = _split_source(base)
     if source is not None:
         kind = 0 if attr.startswith('n_') else (1 if '_id' in attr else 2)
@@ -174,19 +159,41 @@ def _key_fields(col: str) -> tuple:
     return (0, _attr_rank(base), 0, 0, 0)
 
 
-def _sort_key(col: str, original_index: int) -> tuple:
+def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
     """Deterministic sort key.
 
     Every ``{base}_source`` sidecar is grouped into one provenance band that
     sorts after all canonical columns (block 0) and before the source-variable
     block (block 1), ordered among themselves by their base column's rank.
+    An ``{base}_all`` variant whose base column is present sorts immediately
+    after that base (its key is the base's key plus a trailing marker), so
+    e.g. ``parcel_id_all`` follows ``parcel_id`` even though the bare id
+    columns tie on registry rank. A ``{base}_original`` variant (a raw,
+    pre-reconciliation value preserved under its own name -- not evidence
+    attributed from another entity, so it carries no provenance suffix to key
+    on either) follows its base the same way, e.g. ``address_original`` after
+    ``address``. Likewise a ``{base}_conflict`` column follows its
+    ``{base}_source`` sidecar (``address_conflict`` after ``address_source``),
+    unless it has an explicit ``_FLAG_COLUMNS`` slot.
     """
     if col.endswith(SOURCE_SUFFIX):
         # Band 0.5 groups every sidecar between canonical (0) and source (1),
         # ordered among themselves by their base column's rank.
-        return (0.5, _key_fields(col[: -len(SOURCE_SUFFIX)]), original_index)
+        return (0.5, _key_fields(col[: -len(SOURCE_SUFFIX)]), index_of[col])
+    if col.endswith('_all'):
+        base = col[: -len('_all')]
+        if base in index_of:
+            return (*_sort_key(base, index_of), 1)
+    if col.endswith('_original'):
+        base = col[: -len('_original')]
+        if base in index_of:
+            return (*_sort_key(base, index_of), 1)
+    if col.endswith('_conflict') and col not in _FLAG_COLUMNS:
+        sidecar = col[: -len('_conflict')] + SOURCE_SUFFIX
+        if sidecar in index_of:
+            return (*_sort_key(sidecar, index_of), 1)
     fields = _key_fields(col)
-    return (float(fields[0]), fields, original_index)
+    return (float(fields[0]), fields, index_of[col])
 
 
 @_register('order_columns')
@@ -201,11 +208,14 @@ def order_columns(
     attribute-registry ``sort`` rank, with ``priority_on_parcel`` ending the
     band; (0.5) every ``{col}_source`` provenance sidecar, grouped together and
     ordered by their base column's rank; (1) source variables inherited from
-    other entities (relational counts first, then the suffixed evidence); (2)
-    flag and visualization-only columns (``occupancy_type_conflict``/``_review``,
-    ``*_per_area``). ``geometry`` is always kept last. Computed from each
-    column's name and the registry, so the recipe needs no explicit column
-    list.
+    other entities (relational counts first, then each source's evidence group
+    led by its bare id columns — ``parcel_id``/``parcel_id_all``/
+    ``parcel_id_local`` head the ``_parcel`` group); (2) flag and
+    visualization-only columns (``occupancy_type_conflict``/``_review``,
+    ``*_per_area``). An ``{col}_all`` or ``{col}_original`` variant always
+    directly follows its base column. ``geometry`` is always kept last.
+    Computed from each column's name and the registry, so the recipe needs no
+    explicit column list.
 
     Parameters
     ----------
@@ -228,7 +238,7 @@ def order_columns(
     lead = [c for c in overrides if c in others]
     rest = [c for c in others if c not in lead]
     index_of = {c: i for i, c in enumerate(others)}
-    rest_sorted = sorted(rest, key=lambda c: _sort_key(c, index_of[c]))
+    rest_sorted = sorted(rest, key=lambda c: _sort_key(c, index_of))
 
     state.curated = curated[lead + rest_sorted + geom]
     return state

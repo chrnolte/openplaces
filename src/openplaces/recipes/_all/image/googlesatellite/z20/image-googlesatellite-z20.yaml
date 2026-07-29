@@ -24,3 +24,6 @@ process_by:
 save_to:
   data_dir: external
   admin_level: 4
+  # Reclaimable after all enrich recipes referencing this image_recipe have
+  # full-coverage evidence (freely available; re-fetching is unbilled).
+  retention: until_consumed

@@ -6,7 +6,7 @@ Configure
 First-time setup
 ~~~~~~~~~~~~~~~~
 
-Upon you first ``import`` from ``openplaces``, you will be asked to configure your installation.
+Upon your first ``import`` from ``openplaces``, you will be asked to configure your installation.
 
 The first step is to define where your data will be stored, as well as who can read and edit it.
 
@@ -14,7 +14,7 @@ This notebook walks you through the configuration step and showcases functions f
 
 :gh-file:`notebooks/01_setup/01_first_steps.ipynb`
 
-Open and run it after :ref:`installing<install>` and activating your environment:
+Open and run it after :ref:`installing <install>` and activating your environment:
 
 .. code-block:: bash
 
@@ -29,7 +29,7 @@ Directory structure
 
 ``openplaces`` uses different directories for different stages of the analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications.
 
-This simplifies data sharing across different machines and cloud services and the setting of team and user-specific permissions. 
+This simplifies data sharing across different machines and cloud services, and makes it easier to configure team- and user-specific permissions. 
 
 .. list-table::
    :widths: 15 25 15 45
@@ -52,11 +52,11 @@ This simplifies data sharing across different machines and cloud services and th
    * - ``external``
      - :file:`data/external`
      - 🌍 Shared
-     - Downloaded data from third party sources
+     - Downloaded data from third-party sources
    * - ``raw``
      - :file:`data/raw`
      - 🌍 Shared
-     - Raw data from own data collection efforts
+     - Raw data from your own data collection efforts
    * - ``cache``
      - :file:`data/cache`
      - 👤 User (multi-user)
@@ -97,7 +97,7 @@ Credits to `Cookiecutter Data Science <https://cookiecutter-data-science.drivend
 Single vs. multi-user mode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The configuration script will ask you to choose between single vs. multi-user mode for your data directories.
+The configuration script will ask you to choose between single-user and multi-user mode for your data directories.
 
 Single-user mode
 ----------------
@@ -170,7 +170,7 @@ Configuration files are used in priority order: **user > project > defaults**.
 
 1. **User configuration** (highest priority)
    
-   *  A user configuration file is created interactively upon the first time a new user runs ``import openplaces``.
+   *  A user configuration file is created interactively the first time a new user runs ``import openplaces``.
      
       Its location depends on your operating system:
 

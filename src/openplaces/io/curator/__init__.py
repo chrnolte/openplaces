@@ -17,7 +17,7 @@ from importlib import import_module as _import_module
 import pandas as pd
 
 from openplaces.core.schema import AdminId
-from openplaces.io import read_parquet, save_parquet
+from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import (
     get_output_path,
@@ -163,8 +163,16 @@ class Curator:
             )
         return expanded
 
-    def curate(self, reprocess: bool = False) -> None:
-        """Run curation for all configured administrative units."""
+    def curate(self, reprocess: bool = False, cleanup: str | None = None) -> None:
+        """Run curation for all configured administrative units.
+
+        ``cleanup='consumed'`` deletes this recipe's direct inputs after
+        each admin unit finishes, iff every consumer in the recipe tree is
+        complete (see
+        :func:`~openplaces.io.cleanup.cleanup_consumed_inputs`).
+        """
+        if cleanup not in (None, 'consumed'):
+            raise ValueError(f"Unknown cleanup mode: {cleanup!r} (use 'consumed').")
         for admin_id_str in self.admin_ids:
             admin_id = AdminId(admin_id_str)
             out_path = get_output_path(self.recipe, admin_id)
@@ -182,6 +190,11 @@ class Curator:
             )
             self._curate_one(admin_id)
             self._timer.finish()
+            if cleanup == 'consumed':
+                from openplaces.io.cleanup import cleanup_consumed_inputs
+
+                cleanup_consumed_inputs(self.recipe, admin_id, verbose=self.verbose)
+            release_unused_memory()
 
     def _curate_one(self, admin_id: AdminId) -> None:
         pipeline = self.recipe.get('pipeline')
@@ -237,6 +250,16 @@ class Curator:
             state.curated, get_output_path(self.recipe, admin_id), combined=combined
         )
 
+    def show_random_entity(self):
+        """Plot a random entity from the first configured admin unit.
+
+        Delegates to :func:`openplaces.viz.maps.show_random_entity`.
+        """
+        from openplaces.viz.maps import show_random_entity
+
+        admin_id = self.admin_ids[0] if self.admin_ids else None
+        return show_random_entity(self.recipe, admin_id)
+
 
 def curate(
     recipe: str | dict,
@@ -245,6 +268,7 @@ def curate(
     verbose: bool = False,
     save_statistics: bool = False,
     skip_steps: str | list | set | None = None,
+    cleanup: str | None = None,
 ) -> None:
     """Instantiate and run curation for *recipe*.
 
@@ -256,6 +280,9 @@ def curate(
     Pass ``skip_steps`` (a step name or a collection of names) to skip
     computation-intensive pipeline steps for this run without editing the recipe;
     a recipe step may also be disabled persistently with ``enabled: false``.
+
+    ``cleanup='consumed'`` deletes the recipe's direct inputs after each
+    admin unit finishes, iff every consumer in the recipe tree is complete.
     """
     Curator(
         recipe,
@@ -263,7 +290,7 @@ def curate(
         verbose=verbose,
         save_statistics=save_statistics,
         skip_steps=skip_steps,
-    ).curate(reprocess=reprocess)
+    ).curate(reprocess=reprocess, cleanup=cleanup)
 
 
 __all__ = [

@@ -16,6 +16,10 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pyogrio
 
+from openplaces.geo.tiles import add_tile_utm_derivatives
+
+__all__ = ['get_crs', 'add_tile_utm_derivatives']
+
 
 def get_crs(filepath, layer=None):
     """Get the CRS from the metadata of a file."""

@@ -2,10 +2,10 @@
 
 .. _administrative_units:
 
-Administrative units: the geography
-===================================
+Administrative units: geography
+===============================
 
-Administrative units are the geographic regions at which property data is organized.
+Administrative units are the geographic regions by which property data is organized.
 
 ``openplaces`` uses a globally resolvable, hierarchical (multi-level) set of identifiers for administrative units:
 
@@ -49,10 +49,9 @@ Administrative hierarchies of any depth are supported.
 Default spine
 ~~~~~~~~~~~~~
 
-``openplaces`` ships with a default "spine": a canonical set of identifiers for the world
+``openplaces`` ships with a default "spine": a canonical set of identifiers for the world:
 
-
-   :gh-file:`src/openplaces/recipes/_all/admin/spine/2026`
+:gh-file:`src/openplaces/recipes/_all/admin/spine/2026`
 
 It is resolved for the first three administrative levels (countries > states > counties) and for part of the fourth (towns).
 
@@ -81,14 +80,14 @@ Official boundaries
 
 To import official in-country geometries (e.g., as a reference for your geoprocessing), run this notebook with a country recipe:
 
-   :gh-file:`notebooks/02_ingest/admin/ingest_admin.ipynb`
+:gh-file:`notebooks/02_ingest/admin/ingest_admin.ipynb`
 
 Global boundaries
 -----------------
 
 To import global geometries (GADM, >2 GB), run this notebook:
 
-   :gh-file:`notebooks/01_setup/03_ingest_global_administrative_units.ipynb`
+:gh-file:`notebooks/01_setup/03_ingest_global_administrative_units.ipynb`
 
 After that, you can make precise global maps.
 

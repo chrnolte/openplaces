@@ -220,7 +220,10 @@ def resolve_spine(
 
     Source entries may include an ``auto_discover: true`` sentinel entry,
     which is replaced at runtime by all ingest recipes of the same entity
-    type that are scoped to child admin_ids of the recipe's ``admin_id``.
+    type that are scoped to child admin_ids of the recipe's ``admin_id``,
+    excluding any recipe with ``exclude_from_auto_discover: true`` (a
+    reference dataset meant to be consumed only via an explicit crosswalk,
+    not folded into the canonical spine's geometry).
 
     Parameters
     ----------
@@ -428,6 +431,8 @@ def _expand_auto_discover(
     df = find_recipes(entity_type, stage='ingest')
     discovered: list[dict] = []
     for _, row in df.iterrows():
+        if row['exclude_from_auto_discover']:
+            continue
         rid_str = row['admin_id']
         if rid_str and rid_str != recipe_admin_str and admin_str.startswith(rid_str):
             prefix = f'{rid_str}_'
@@ -441,6 +446,38 @@ def _expand_auto_discover(
     if sentinel_idx is not None:
         return sources[:sentinel_idx] + discovered + sources[sentinel_idx + 1 :]
     return sources + discovered
+
+
+@_register('derive_geometry_attributes')
+def derive_geometry_attributes(
+    state: HarmonizeState, area_unit: str = 'ha'
+) -> HarmonizeState:
+    """Compute this entity's own centroid lat/long and area, once.
+
+    Runs immediately after the spine's geometry is finalized (right after
+    resolve_spine, including any synthetic fallback rows added by
+    infer_spine_additions), so downstream harmonize and curate steps reuse
+    the lat/long/area_{area_unit} columns instead of recomputing them. Thin
+    wrapper around geo.polygon.add_geometry_derivatives -- the same
+    function ingest recipes opt into via add_geometry_derivatives: true --
+    so both entry points share one implementation.
+
+    Parameters
+    ----------
+    area_unit : str, optional
+        Area unit for the output area_{area_unit} column (default 'ha').
+    """
+    from openplaces.core.schema import is_synthetic_geometry
+    from openplaces.geo.polygon import add_geometry_derivatives
+
+    if state.spine is None:
+        return state
+    spine = state.spine
+    area_mask = ~is_synthetic_geometry(spine, state.recipe.get('entity'))
+    state.spine = add_geometry_derivatives(
+        spine, state.timer, area_unit=area_unit, area_mask=area_mask
+    )
+    return state
 
 
 @_register('split_by_reference')

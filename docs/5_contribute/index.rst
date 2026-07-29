@@ -5,20 +5,15 @@
 Contribute
 ==========
 
-.. image:: images/contribute.png
-  :width: 350
-  :alt: Contribution visual
-  :align: right
-
-A single researcher can't build a comprehensive property data pipeline.
+A single researcher cannot build a comprehensive property data pipeline.
 
 But many can.
 
-Perhaps you find a parcel dataset for your town and :ref:`write your own data ingestion recipe <writing_recipes>`?
+Perhaps you found a parcel dataset for your town and want to :ref:`write your own data ingestion recipe <writing_recipes>`?
 
 You could be the first to run our data pipeline and inferential models on top of your data.
 
-If you want, you can submit recipes and code to the public `Github repository <https://github.com/chrnolte/openplaces>`_. That makes it easy for others to replicate your research. Anonymous submissions are welcome for review and discussion. Accepted contributions are recognized with contributor status and a GitHub contributor badge.
+If it works, you can submit your recipes and code to the public `GitHub repository <https://github.com/chrnolte/openplaces>`_. This allows others to use your advance in their research by replicating it. Accepted contributions are recognized with contributor status and a GitHub contributor badge.
 
 .. toctree::
    :maxdepth: 2

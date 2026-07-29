@@ -1,0 +1,3 @@
+admin1_id,format,postal_rewrite_pattern,postal_rewrite_replacement
+default,"{address_number} {address_street}( {unit_number})?, {city}, {state} {postal_code}",^(\d{5})(\d{4})$,\1-\2
+DE,"{address_street} {address_number}, {postal_code} {city}",,

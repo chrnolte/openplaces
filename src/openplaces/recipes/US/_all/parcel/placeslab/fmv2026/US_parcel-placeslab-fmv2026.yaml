@@ -1,0 +1,85 @@
+# Recipe for legacy "placeslab-fmv2026" parcel dataset (predicted
+# fair-market-value and physical predictors for historical parcels).
+# Used as area-weighted enrichment evidence for current parcels
+# (see US_parcel_parcel-placeslab-fmv2026.yaml).
+#
+# Ingests 3 separate tables (boundaries, predictions, predictors)
+# per county from Google Drive. Partitions are left-joined by their
+# shared `parcel_id_int` key post-ingest, which also computes the
+# standard openplaces `geo_id`/`parcel_id` for downstream use.
+
+description: >-
+  Legacy "placeslab-fmv" parcel dataset: predicted fair-market-value and
+  physical predictors for historical parcels, joined from three per-county
+  files (boundaries, predictions, predictors) published on Google Drive.
+
+# Nationally scoped, but only some counties are available. Restrict
+# using `admin_ids=[...]` in ingest() (see notebooks/04_enrich/
+# parcels/enrich_parcels_with_placeslab_fmv2026.ipynb).
+admin_id: US
+
+# Historical reference dataset for crosswalk enrichment only; must
+# be excluded from auto-discovery to prevent rolling into the
+# canonical parcel spine.
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: placeslab
+    portal_url: "https://drive.google.com/drive/folders/1do0acjW4-suAZ-TzX8TGOuypbqM1qYiJ"
+    # Public Drive folder. Scraped via google_drive_scraper using
+    # scraper_options.file_path.
+    download_url_scraper: google_drive_scraper
+  version: fmv2026
+
+# admin_key_column specifies the raw column name {admin3_id_admin1}
+# to match the admin boundary key. file_path mirrors the Google
+# Drive folder layout:
+# parcels/{state}/{fips}/{fips}_parcel_{kind}_parquet.zip.
+scraper_options:
+  admin_key_column: admin3_id_admin1
+  file_path: "parcels/{admin2}/{admin_key}/{admin_key}_parcel_{partition_id}_parquet.zip"
+
+download_by:
+  admin_level: 3
+  partition: table
+  table_names: [boundaries, predictions, predictors]
+
+# The google_drive_scraper handles extraction of the downloaded zip
+# itself, producing a single parquet file named
+# "{admin3_id_admin1}_parcel_{table}.parquet".
+uncompressed_file_name: "{admin3_id_admin1}_parcel_{table}.parquet"
+
+# Opts this entity_type: parcel recipe out of TableIngester's automatic
+# geometry-hash geo_id indexing (table_ingester.py:651-659), which would
+# otherwise fire for `boundaries` (the one table with geometry) and
+# discard its real parcel_id_int index -- predictions/predictors don't
+# have geometry so were never at risk from that branch, but boundaries
+# needs an explicit directive (any directive; rename_index here is a
+# same-name no-op relabel, since parcel_id_int already arrives as the
+# index on all three raw tables) to keep join_partitions_by_index's
+# shared join key intact across the 3-table join.
+create_index:
+  function: openplaces.io.transform.rename_index
+  args:
+    name: parcel_id_int
+
+# Automatically left-joins the 3 table partitions above (column-wise, on
+# their shared parcel_id_int index) into one entity per county once all are
+# ingested. join_key_name keeps parcel_id_int as a provenance column on the
+# joined output (whose own index becomes the standard openplaces
+# geo_id/parcel_id) -- see Ingester._join_table_partitions.
+join_partitions_by:
+  join_key_name: parcel_id_int
+
+# Keep all raw columns at ingest. They are mapped and canonicalized
+# later during enrichment using the column-notes CSV
+# (US_parcel-placeslab-fmv2026_column-notes.csv).
+keep_unnamed_columns: true
+
+# Omit save_to.admin_level to prevent splitting rows by admin columns,
+# since download_by already scopes the files by county. Data is saved
+# directly under each county's cache path.
+save_to:
+  data_dir: cache

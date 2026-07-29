@@ -1,18 +1,18 @@
 Contributor workflow
 ====================
 
-``openplaces`` is `public on Github <https://github.com/chrnolte/openplaces>`_.
+``openplaces`` is `public on GitHub <https://github.com/chrnolte/openplaces>`_.
 
 Understanding the contributor workflow helps you make clean and well-tested contributions.
 
-We assume you have :ref:`installed  <install>` ``openplaces``: you have a local clone of the repository and a ``conda`` environment on your machine. Otherwise, :ref:`do that first <install>`.
+We assume you have :ref:`installed <install>` ``openplaces``: you have a local clone of the repository and a ``conda`` environment on your machine. Otherwise, :ref:`do that first <install>`.
 
 We also assume prior knowledge of `git <https://git-scm.com/install/windows>`_.
 
 Best practices
 ~~~~~~~~~~~~~~
 
-We adopt the `Git version control best practices <https://about.gitlab.com/topics/version-control/version-control-best-practices/>`_ from Gitlab:
+We adopt the `Git version control best practices <https://about.gitlab.com/topics/version-control/version-control-best-practices/>`_ from GitLab:
 
 * `Make incremental, small changes <https://about.gitlab.com/topics/version-control/version-control-best-practices/#make-incremental-small-changes>`_
 * `Keep commits atomic <https://about.gitlab.com/topics/version-control/version-control-best-practices/#keep-commits-atomic>`_
@@ -54,7 +54,7 @@ If you wish to make a contribution to ``openplaces``, follow these steps:
 
 6. Push your changes to create a pull request.
 
-   Before you push, pull recent changes to the repository. This ensures your commits reflect the most recent version of the repository.
+   Before pushing, pull the latest changes from the remote repository. This ensures your commits reflect the most recent version of the repository.
 
    .. code-block::
 
@@ -72,7 +72,7 @@ If you wish to make a contribution to ``openplaces``, follow these steps:
 
       git push
 
-7. If your contributions pass review, they become part of the ``main`` branch. Your Github badge will appear on the public list of collaborators.
+7. If your contributions pass review, they become part of the ``main`` branch. Your GitHub badge will appear on the public list of collaborators.
 
 
 Activate your environment
@@ -140,7 +140,7 @@ Python scripts
 
 Before you ``git add`` any changes to Python scripts and Jupyter notebooks, make sure your code is compliant with the style format.
 
-Do do so, run ``ruff check`` or ``ruff format`` in your :gui:`Terminal`:
+To do so, run ``ruff check`` or ``ruff format`` in your :gui:`Terminal`:
 
 .. code-block:: bash
 
@@ -167,7 +167,7 @@ This will occur automatically: it is set in ``.gitattributes`` in the repository
 
 .. note::
 
-   User switching between machines or operating systems can lose their connection to ``nbstripout``. If you encounter errors related to ``nbstripout`` while your ``openplaces`` environment is active, re-running ``nbstripout --install`` frequently resolves the issue.
+   Users switching between machines or operating systems can lose their connection to ``nbstripout``. If you encounter errors related to ``nbstripout`` while your ``openplaces`` environment is active, re-running ``nbstripout --install`` frequently resolves the issue.
 
 
 .. _pre_commit_hooks:

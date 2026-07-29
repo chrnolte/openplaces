@@ -5,32 +5,43 @@ use_group_combined,Combined use group and subgroup label,,categorical,join_nonnu
 purpose_group,What the building was built (made) for; not applicable to unimproved land,,categorical,join_nonnull,10,building,
 purpose_subgroup,Building construction-purpose subgroup,,categorical,join_nonnull,11,building,
 purpose_group_combined,Combined purpose group and subgroup label,,categorical,join_nonnull,12,footprint,curate
-occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category",,categorical,first,13,,curate
+occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
 group,OpenPlaces top-level group,,categorical,first,14,,
 land_value,Assessed land value,USD,float,sum,20,,
+land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, falling back to the county-scoped use_group_combined average) times the parcel's total footprint area",USD,float,sum,20.5,parcel,curate
 improvement_value,Assessed improvement value,USD,float,sum,21,,
-structure_value,NSI structure replacement value,USD,float,sum,22,building,
+improvement_value_imputed,"Improvement value re-derived as improvement_value minus land_value_imputed (clipped at 0), on the parcels land_value_imputed applies to",USD,float,sum,21.5,parcel,curate
+structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
 year_built,Year building was built,,float,mean,30,,
 address,Street address,,string,join_nonnull,40,,
+address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
+postal_zip5,Normalized 5-digit ZIP code used for postal_city lookups,,string,first,,,harmonize
+postal_city,USPS-preferred city name for postal_zip5,,string,first,,,harmonize
+postal_city_acceptable,USPS-acceptable alternate city names for postal_zip5 (joined with '; '),,string,first,,,harmonize
+postal_city_unacceptable,USPS-unacceptable city names for postal_zip5 (joined with '; '),,string,first,,,harmonize
 lot_size,Parcel lot size,sqft,float,mean,,,
 area_sqft,Floor area,sqft,float,mean,50,,
 n_stories,Number of stories,,float,mean,51,,
 n_dwellings,Number of dwelling units in the building,,float,sum,52,,
+height,Building height,m,float,max,53,,
 roof_shape,Roof shape classification,,categorical,first,60,,enrich
-occupancy_type_parcel,"Occupancy proposed from parcel land-use keywords (NSI-independent); reconciled into occupancy_type",,categorical,first,70,,curate
-occupancy_type_footprint_fema,"Dominant FEMA USA Structures building occupancy on the footprint's parcel (by overlap area); evidence for occupancy inference",,categorical,first,,footprint,curate
 occupancy_type_base,"Occupancy class before Multi-Family is split into height bands (pre-refinement occupancy_type)",,categorical,first,14,,curate
 occupancy_type_conflict,"Occupancy evidence disagreement summary across all sources (e.g. 'nsi: X | fema: Y | parcel: Z'); null when the evidences agree",,categorical,first,71,,curate
 occupancy_type_review,Flag where improvement value is a small nonzero share of total value (possible manufactured home for review),,bool,first,71,footprint,curate
 p_manufactured_home,Probability of manufactured home classification,,float,mean,73,footprint,curate
-manufactured_home_community,Flag where the footprint sits on a parcel with more than the threshold count of manufactured-home footprints (a manufactured-home community),,bool,first,82,footprint,curate
+manufactured_home_community,"Flag where the parcel is classified as a manufactured-home community/park; footprints get the same-named, richer refinement of it (a parcel with more than the threshold count of manufactured-home footprints, per the final footprint occupancy)",,bool,first,82,,curate
 n_manufactured_homes_per_parcel,Number of manufactured-home footprints on the footprint's parcel,,float,first,,footprint,curate
-land_use_class,"Parcel land-use class inferred from assessor codes, linked-NSI group, and footprint morphology (e.g. Manufactured Home Park, RV Park)",,categorical,first,15,parcel,curate
-manufactured_home_park,Flag where the parcel is classified as a manufactured-home community/park,,bool,first,83,parcel,curate
+land_use_class,"Parcel land-use class: rule-based classes (e.g. Manufactured Home Park, RV Park, Townhome, Condominium, Vacant) with defaults voted from group_parcel/group_building_nsi/group_footprint_fema",,categorical,first,15,parcel,curate
 n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,harmonize
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
+sum_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel,m2,float,sum,,parcel,harmonize
+sum_primary_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel among non-secondary footprints,m2,float,sum,,parcel,harmonize
+footprint_area_share,"Total footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- see known caveat)",,float,mean,,parcel,curate
+footprint_primary_area_share,"Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 -- see known caveat)",,float,mean,,parcel,curate
+max_parcels_per_footprint,"Maximum number of parcels linked to any dwelling-confirmed primary footprint on the parcel (from the real, non-FEMA footprint spine)",,float,max,,parcel,harmonize
+max_dwellings_per_footprint,"Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel",,float,max,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
 recorded_date,Date the deed was recorded at the registry,,datetime,first,,transaction,
 doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first,,transaction,
@@ -42,6 +53,7 @@ grantee,Grantee (buyer) name as recorded,,string,first,,transaction,
 price,Transaction price,USD,float,first,,transaction,
 price_raw,Transaction price as provided by the source,,string,first,,transaction,
 parcel_id,Parcel identifier,,string,first,,parcel,
+parcel_id_all,All overlapping parcel identifiers (pipe-joined; dominant parcel first by descending intersection area; missing when identical to parcel_id),,string,first,,parcel,curate
 parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,
 parcel_id_admin3,Parcel identifier unique within its admin-3 unit,,string,first,,parcel,
 parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,,parcel,
@@ -99,4 +111,57 @@ has_structure,Whether the parcel has a structure,,bool,first,,parcel,
 geometry_source,Dataset the footprint geometry came from,,categorical,first,,footprint,
 source_date,Source last-update date,,datetime,first,,,
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
-m2,Footprint area,m2,float,sum,,,curate
+area_m2,Footprint area,m2,float,sum,,,curate
+area_ha,Parcel lot area,ha,float,sum,,,harmonize
+area_ac,Parcel lot area,ac,float,sum,,,curate
+lat,Centroid latitude (WGS84),degrees,float,first,,,harmonize
+long,Centroid longitude (WGS84),degrees,float,first,,,harmonize
+area_km2,Admin area,km2,float,sum,,,curate
+area_sqmi,Admin area,sqmi,float,sum,,,curate
+elevation,Average elevation,m,float,mean,,,enrich
+slope,Average slope of a parcel or surface,deg,float,mean,,,enrich
+precipitation_summer,"Average precipitation, Jun-Aug (30yr normal)",mm,float,mean,,,enrich
+precipitation_winter,"Average precipitation, Dec-Feb (30yr normal)",mm,float,mean,,,enrich
+temperature_mean_summer,"Average temperature, Jun-Aug (30yr normal)",C,float,mean,,,enrich
+temperature_mean_winter,"Average temperature, Dec-Feb (30yr normal)",C,float,mean,,,enrich
+coastal_water_share,Share of coastal waters within a radius,fraction (0-1),float,mean,,,enrich
+lake_distance,Distance to nearest lake larger than 4ha,m,float,mean,,,enrich
+lake_frontage,Approximate lake frontage,m,float,sum,,parcel,enrich
+river_frontage,Approximate river frontage,m,float,sum,,parcel,enrich
+wetland_share,Share of area covered by wetland polygons,fraction (0-1),float,mean,,,enrich
+public_land_acquisition_share,Share of area overlapping a public land acquisition,fraction (0-1),float,mean,,,enrich
+conservation_easement_share,Share of area under a conservation easement,fraction (0-1),float,mean,,,enrich
+protected_land_share,"Share of area under fee/easement protection, given year and radius",fraction (0-1),float,mean,,,enrich
+soil_farmland_local_share,Share classified as locally-important farmland soil,fraction (0-1),float,mean,,,enrich
+soil_farmland_prime_share,Share classified as prime farmland soil,fraction (0-1),float,mean,,,enrich
+soil_farmland_statewide_share,Share classified as statewide-important farmland soil,fraction (0-1),float,mean,,,enrich
+land_cover_barren_share,Land cover share: barren,fraction (0-1),float,mean,,,enrich
+land_cover_cropland_share,Land cover share: cultivated cropland,fraction (0-1),float,mean,,,enrich
+land_cover_forest_deciduous_share,Land cover share: deciduous forest,fraction (0-1),float,mean,,,enrich
+land_cover_forest_evergreen_share,Land cover share: evergreen forest,fraction (0-1),float,mean,,,enrich
+land_cover_forest_mixed_share,Land cover share: mixed forest,fraction (0-1),float,mean,,,enrich
+land_cover_grassland_share,Land cover share: grassland/herbaceous,fraction (0-1),float,mean,,,enrich
+land_cover_pasture_share,Land cover share: pasture/hay,fraction (0-1),float,mean,,,enrich
+land_cover_shrubland_share,Land cover share: shrub/scrub,fraction (0-1),float,mean,,,enrich
+building_footprint_share,Share of area within a radius covered by building footprints,fraction (0-1),float,mean,,,enrich
+footprint_area_m2,Total building footprint area on the parcel,m2,float,sum,,parcel,enrich
+n_footprints,Count of building footprints on the parcel,,float,sum,,parcel,enrich
+flood_depth_fluvial,"Average fluvial flood inundation depth, given return period",m,float,mean,,,enrich
+flood_depth_pluvial,"Average pluvial flood inundation depth, given return period",m,float,mean,,,enrich
+highway_distance,Minimum distance to nearest highway,m,float,mean,,,enrich
+paved_road_distance,Minimum distance to nearest paved road,m,float,mean,,,enrich
+travel_time_to_city,Travel time to nearest major city,min,float,mean,,,enrich
+household_income_median,Median household income,USD,float,mean,,,enrich
+population_asian_share,Population share: Asian,fraction (0-1),float,mean,,,enrich
+population_black_share,Population share: Black/African-American,fraction (0-1),float,mean,,,enrich
+population_hispanic_share,Population share: Hispanic,fraction (0-1),float,mean,,,enrich
+population_mixed_race_share,Population share: mixed race,fraction (0-1),float,mean,,,enrich
+population_native_american_share,Population share: American Indian/Alaska Native,fraction (0-1),float,mean,,,enrich
+population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
+population_gravity_index,"Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster",,float,mean,,,enrich
+census_tract_id,Census tract identifier,,string,first,,,enrich
+census_blockgroup_id,Census block group identifier,,string,first,,,enrich
+census_subdivision_id,Census county subdivision (town/township) identifier,,string,first,,,enrich
+land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
+land_value_per_ha_log_region_nb2,"Same; 'region-nb2' model (alternate neighborhood-region spec)",ln(USD/ha),float,mean,,parcel,enrich
+aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich

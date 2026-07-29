@@ -16,7 +16,8 @@ import shapely.ops
 from polylabel import polylabel
 from shapely.geometry import MultiPolygon, Point, Polygon
 
-from openplaces.core.constants import AC_TO_HA, M2_TO_SQFT
+from openplaces.core.constants import AC_TO_HA, M2_PER_AREA_UNIT, M2_TO_SQFT
+from openplaces.geo.crs_transforms import get_or_resolve_crs_transform
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
@@ -30,10 +31,10 @@ PROJ4 = {
 
 
 def local_metric_crs(gdf):
-    """Return a metre-based CRS centered on *gdf*, valid anywhere on Earth.
+    """Return a meter-based CRS centered on *gdf*, valid anywhere on Earth.
 
     Builds an Azimuthal Equidistant projection centered on the data's bounding-box
-    center, so metre distances are accurate for a local (admin-unit scale) extent
+    center, so meter distances are accurate for a local (admin-unit scale) extent
     regardless of hemisphere, UTM zone, or the antimeridian. Use this for
     distance-based operations (nearest-neighbor, ``dwithin`` queries, DBSCAN eps)
     on data that may be stored in a geographic CRS.
@@ -55,6 +56,51 @@ def local_metric_crs(gdf):
     minx, miny, maxx, maxy = geographic.total_bounds
     lon, lat = (minx + maxx) / 2, (miny + maxy) / 2
     return pyproj.CRS.from_proj4(PROJ4['aeqd'].format(LAT=lat, LON=lon))
+
+
+def reproject(gdf, crs, pinned=True):
+    """Reproject *gdf* to *crs*, using a deterministic, git-pinned operation.
+
+    Plain `to_crs()` lets PROJ dynamically resolve the "best available"
+    operation for a CRS pair -- for a datum change (e.g. NAD83-based state
+    plane to WGS84), that resolution can silently pick a much lower-accuracy
+    operation depending on network access and which grid files happen to be
+    cached locally, with no error, only an easily-missed `UserWarning`. This
+    surfaced as a several-cm-to-decimeter mismatch between two independently
+    ingested vintages of the same parcels. See `openplaces.geo.crs_transforms`
+    for the registry this pins against.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame or GeoSeries
+        Geometries to reproject.
+    crs : Any
+        Target CRS, in any form `pyproj.CRS` accepts.
+    pinned : bool, default True
+        If True (default), use the operation registered for `(gdf.crs, crs)`
+        in `geo.crs_transforms`, resolving and registering it on first use if
+        not already present. If False, use plain `to_crs()` instead -- PROJ's
+        dynamic resolution, no registry involved.
+
+    Returns
+    -------
+    GeoDataFrame or GeoSeries
+        Same type as *gdf*, reprojected to *crs*.
+    """
+    if gdf.crs is None or not pinned or pyproj.CRS(gdf.crs) == pyproj.CRS(crs):
+        return gdf.to_crs(crs)
+
+    entry = get_or_resolve_crs_transform(gdf.crs, crs)
+    transformer = pyproj.Transformer.from_pipeline(entry['operation_definition'])
+    is_frame = isinstance(gdf, gpd.GeoDataFrame)
+    geometry = gdf.geometry.values if is_frame else gdf.values
+    transformed = shapely.transform(geometry, transformer.transform, interleaved=False)
+    geoseries = gpd.GeoSeries(transformed, index=gdf.index, crs=crs)
+    if not is_frame:
+        return geoseries
+    result = gdf.copy()
+    result[result.geometry.name] = geoseries
+    return result
 
 
 def fix_polygons(gdf):
@@ -128,7 +174,7 @@ def clean_polygons(gdf):
     return gdf
 
 
-def get_areas(gdf, unit='ha', crs='epsg:6933'):
+def get_areas(gdf, unit='ha', crs='epsg:6933', mask=None):
     """Compute areas of polygons in a GeoDataFrame
 
     Parameters
@@ -141,6 +187,10 @@ def get_areas(gdf, unit='ha', crs='epsg:6933'):
     crs : coordinate reference system
         Coordinate system in which computation takes places
         Has to be equal-area and use meters as its unit.
+    mask : array-like of bool, optional
+        Restrict the computation to these rows only -- reprojection and
+        area measurement are skipped (not computed then discarded) for
+        excluded rows, which come back NaN. Default: compute for every row.
     """
 
     if not crs_is_mea(crs):
@@ -150,23 +200,92 @@ def get_areas(gdf, unit='ha', crs='epsg:6933'):
             'Requested CRS is: ' + str(crs)
         )
 
+    full_index = gdf.index
+    if mask is not None:
+        gdf = gdf.loc[np.asarray(mask, dtype=bool)]
+
     gdf = gdf[['geometry']].copy()
 
     if gdf.crs != crs:
         gdf = gdf.to_crs(crs)
 
     if unit == 'm2':
-        return gdf.area.rename('m2')
+        areas = gdf.area.rename('area_m2')
     elif unit == 'ha':
-        return gdf.area.div(1e4).rename('ha')
+        areas = gdf.area.div(1e4).rename('area_ha')
     elif unit == 'ac':
-        return gdf.area.div(1e4 * AC_TO_HA).rename('ac')
+        areas = gdf.area.div(1e4 * AC_TO_HA).rename('area_ac')
     elif unit == 'km2':
-        return gdf.area.div(1e6).rename(unit)
+        areas = gdf.area.div(1e6).rename('area_km2')
     elif unit in ['ft2', 'sqft']:
-        return gdf.area.mul(M2_TO_SQFT).rename(unit)
+        areas = gdf.area.mul(M2_TO_SQFT).rename(f'area_{unit}')
+    elif unit == 'sqmi':
+        areas = gdf.area.div(1e4 * AC_TO_HA * 640).rename('area_sqmi')
     else:
         raise Exception('Unit not yet interpreted:' + str(unit))
+
+    return areas.reindex(full_index) if mask is not None else areas
+
+
+_AREA_UNITS = ('km2', 'ha', 'm2', 'ac', 'sqft', 'sqmi')
+
+
+def convert_area(value, from_unit: str, to_unit: str):
+    """Convert a raw area value/array (not a per-area rate) between units.
+
+    Complements `get_areas` (computes area directly from geometry in a
+    chosen unit). Distinct from `io.transform.convert_area_unit`, which
+    converts a *per-area rate* (e.g. a $/m2 price) and is the mathematically
+    inverse operation -- do not substitute one for the other.
+    """
+    for unit in (from_unit, to_unit):
+        if unit not in _AREA_UNITS:
+            raise ValueError(
+                f'Unsupported area unit {unit!r}; must be one of {_AREA_UNITS}.'
+            )
+    if from_unit == to_unit:
+        return value
+    return value * M2_PER_AREA_UNIT[from_unit] / M2_PER_AREA_UNIT[to_unit]
+
+
+def resolve_area(gdf, unit: str = 'm2', column: str | None = None):
+    """Resolve each row's area in `unit`.
+
+    Reuses an existing canonical `area_{src_unit}` column when present
+    (converted via `convert_area`); computes live from geometry via
+    `get_areas` only when none exists.
+
+    Parameters
+    ----------
+    unit : str
+        Desired output unit (default 'm2'); one of `km2`, `ha`, `m2`, `ac`,
+        `sqft`.
+    column : str, optional
+        An explicit column to read, named `area_{src_unit}` (its own unit is
+        parsed from that suffix, then converted to `unit`). When None
+        (default), auto-detects the first of `area_m2`, `area_ha`,
+        `area_km2`, `area_ac`, `area_sqft` present on `gdf`, in that order.
+    """
+
+    def _unit_of(col: str) -> str:
+        for u in _AREA_UNITS:
+            if col == f'area_{u}':
+                return u
+        raise ValueError(
+            f'Column {col!r} is not a recognized area_<unit> column; '
+            f'expected one of {[f"area_{u}" for u in _AREA_UNITS]}.'
+        )
+
+    if column is not None:
+        src_unit = _unit_of(column)
+        return convert_area(gdf[column].astype(float).to_numpy(), src_unit, unit)
+
+    for src_unit in _AREA_UNITS:
+        col = f'area_{src_unit}'
+        if col in gdf.columns:
+            return convert_area(gdf[col].astype(float).to_numpy(), src_unit, unit)
+
+    return get_areas(gdf, unit).to_numpy()
 
 
 def crs_is_mea(crs):
@@ -509,31 +628,34 @@ def get_polygon_xy(geom):
     return [xy_ext] + xy_int_list
 
 
-def add_geometry_derivatives(gdf, timer, **kwargs):
-    """Add standardized geometry derivatives to the geodataframe
+def add_geometry_derivatives(gdf, timer=None, area_unit='ha', area_mask=None):
+    """Add centroid lat/long and this entity's own area to the geodataframe, once.
 
     Parameters
     ----------
     gdf : geopandas.GeoDataFrame
         GeoDataFrame
-    timer : openplaces.timing.Timer
-        Timer for data processing
-    kwargs : dict
-        Dictionary of arguments will be assumed as coming from an
-        openplaces.recipes.recipe
+    timer : openplaces.timing.Timer, optional
+        Timer for data processing; steps are skipped (not required) when None.
+    area_unit : str, optional
+        Area unit for the output `area_{area_unit}` column (default 'ha').
+    area_mask : array-like of bool, optional
+        Restrict area computation to these rows (e.g. skip rows whose
+        geometry is a placeholder/reference boundary -- see
+        `core.schema.is_synthetic_geometry`); `None` (default) computes
+        for every row. Centroid lat/long are always computed for every
+        row -- position stays meaningful even where area doesn't.
     """
 
     # Get latitude and longitude of centroids (for fast plotting)
     gdf = gdf.join(get_lat_long_centroids(gdf))
-    timer.mark('Get latitude and longitude at WGS84 centroid')
+    if timer:
+        timer.mark('Get latitude and longitude at WGS84 centroid')
 
-    # Get latitude and longitude of centroids (for plotting)
-    gdf = gdf.join(get_areas(gdf))
-    timer.mark('Get centroids')
-
-    # Get coordinates of poles of inaccessibility (66s - for labeling)
-    if kwargs and 'compute_poi' in kwargs:
-        warnings.warn('`compute_poi` is not part of ingestion recipes anymore')
+    # This entity's own area.
+    gdf[f'area_{area_unit}'] = get_areas(gdf, unit=area_unit, mask=area_mask)
+    if timer:
+        timer.mark('Get areas')
 
     return gdf
 
@@ -1165,6 +1287,7 @@ def overlay_polygons(
     columns: list[str] | None = None,
     geom: bool = False,
     iou: bool = False,
+    area_intersection: bool = False,
     suffixes: tuple[str, str] | None = None,
     how: str = 'intersection',
 ) -> 'pd.DataFrame | gpd.GeoDataFrame':
@@ -1181,7 +1304,18 @@ def overlay_polygons(
         If True, return intersection geometry.
     iou :
         If True, compute intersection-over-union. Areas are in m²
-        (EPSG:6933). Unmatched/leftover rows get NaN.
+        (EPSG:6933). Unmatched/leftover rows get NaN. Implies
+        `area_intersection`.
+    area_intersection :
+        If True (and `iou` is False), compute only `area_intersection_m2`
+        (m², EPSG:6933) without the per-side `area1_m2`/`area2_m2`/`iou`
+        columns `iou=True` also computes. Unlike the DuckDB path
+        (`overlay_polygons_with_duckdb`), this path already computes each
+        side's own area once before the join rather than per matched pair,
+        so this option mainly saves the caller from carrying/reading unused
+        columns, not a large compute cost -- kept for API parity between
+        the two implementations, since `overlay_polygons_with_duckdb` falls
+        back to this function and must accept the same arguments.
     suffixes :
         Required when both tables share the same index name, or when a
         requested column exists in both tables.
@@ -1267,21 +1401,30 @@ def overlay_polygons(
 
     result = result.set_index([alias1, alias2])
 
-    if iou:
-        _sfx1 = suffixes[0] if suffixes is not None else '_left'
-        _sfx2 = suffixes[1] if suffixes is not None else '_right'
-        aint = get_areas(result, 'm2')
-        has_both = result[_A1].notna() & result[_A2].notna()
-        aint_matched = aint.where(has_both)  # NaN for unmatched/leftover rows
-        denom = result[_A1] + result[_A2] - aint_matched
-        result = result.rename(
-            columns={
-                _A1: f'area{_sfx1}_m2',
-                _A2: f'area{_sfx2}_m2',
-            }
+    if iou or area_intersection:
+        # Unmatched/leftover rows (how='union'/'identity') get NaN for the
+        # index level on the side that didn't match -- use that, not _A1/_A2
+        # (only present when iou=True), to mask them out of the area calc.
+        has_both = (
+            result.index.get_level_values(0).notna()
+            & result.index.get_level_values(1).notna()
         )
+        aint = get_areas(result, 'm2')
+        aint_matched = aint.where(has_both)  # NaN for unmatched/leftover rows
+
+        if iou:
+            _sfx1 = suffixes[0] if suffixes is not None else '_left'
+            _sfx2 = suffixes[1] if suffixes is not None else '_right'
+            denom = result[_A1] + result[_A2] - aint_matched
+            result = result.rename(
+                columns={
+                    _A1: f'area{_sfx1}_m2',
+                    _A2: f'area{_sfx2}_m2',
+                }
+            )
+            result['iou'] = aint_matched / denom.replace(0, float('nan'))
+
         result['area_intersection_m2'] = aint_matched
-        result['iou'] = aint_matched / denom.replace(0, float('nan'))
 
     if not geom:
         return result.drop(columns=['geometry'])

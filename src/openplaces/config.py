@@ -12,6 +12,7 @@ On first use, users are prompted to customize directory paths or accept defaults
 """
 
 import argparse
+import copy
 import getpass
 import os
 import platform
@@ -23,7 +24,13 @@ from typing import Any
 import yaml
 from platformdirs import user_config_dir
 
-from openplaces.core.constants import CRS, GEO_MIN_AREA_M2, STANDARD_DIRS
+from openplaces.core.constants import (
+    CRS,
+    GEO_MIN_AREA_M2,
+    NEVER_DELETE,
+    RETENTION_CLASSES,
+    STANDARD_DIRS,
+)
 
 # Application name and author to locate user configuration files
 APPNAME = 'openplaces'
@@ -41,12 +48,34 @@ __all__ = [
 ]
 
 
+def _merge_nested(base: dict, override: dict) -> dict:
+    """Recursively merge override into base in place (dicts merge, else replace)."""
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _merge_nested(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 class OpenPlacesConfig:
     """Configuration manager with interactive first-use setup."""
 
     DEFAULTS = {
         'crs': CRS,
         'geo_min_area_m2': GEO_MIN_AREA_M2,
+        # Data lifecycle policy. Bucket-level overrides live directly under
+        # 'retention' (e.g. retention: {cache: keep}); per-recipe overrides
+        # under 'recipes'; cleanup behavior switches under 'cleanup'.
+        'retention': {
+            'cleanup': {
+                'enabled': True,
+                'honor_receipts': True,
+                'include_images': False,
+                'exclude_patterns': [],
+            },
+            'recipes': {},
+        },
     }
 
     def __init__(
@@ -274,8 +303,9 @@ class OpenPlacesConfig:
 
     def _load_hierarchical_config(self) -> dict[str, Any]:
         """Load configuration from all sources with correct priority."""
-        # Start with built-in defaults
-        config = self.DEFAULTS.copy()
+        # Start with built-in defaults (deep copy: 'retention' is nested and
+        # must not leak per-instance mutations back into class-level DEFAULTS)
+        config = copy.deepcopy(self.DEFAULTS)
         config['directories'] = self.default_dirs.copy()
 
         # Load project config (lower priority)
@@ -283,6 +313,8 @@ class OpenPlacesConfig:
             project_config = self._load_yaml_config(self.project_config_path)
             if 'directories' in project_config:
                 config['directories'].update(project_config.pop('directories'))
+            if 'retention' in project_config:
+                _merge_nested(config['retention'], project_config.pop('retention'))
             config.update(project_config)
 
         # Load user config (highest priority)
@@ -290,14 +322,77 @@ class OpenPlacesConfig:
             user_config = self._load_yaml_config(self.user_config_path)
             if 'directories' in user_config:
                 config['directories'].update(user_config.pop('directories'))
+            if 'retention' in user_config:
+                _merge_nested(config['retention'], user_config.pop('retention'))
             config.update(user_config)
 
         return config
 
     def _validate_config(self):
         """Validate configuration values."""
-        # Add validation logic as needed
-        pass
+        retention = self.config.get('retention') or {}
+        for key, value in retention.items():
+            if key in ('cleanup', 'recipes'):
+                continue
+            if key not in STANDARD_DIRS:
+                raise ValueError(
+                    f"Unknown bucket '{key}' in retention config. "
+                    f'Valid buckets: {sorted(STANDARD_DIRS)}'
+                )
+            if value not in RETENTION_CLASSES:
+                raise ValueError(
+                    f"Invalid retention class '{value}' for bucket '{key}'. "
+                    f'Valid classes: {RETENTION_CLASSES}'
+                )
+            if key in NEVER_DELETE and value != 'keep':
+                raise ValueError(
+                    f"Bucket '{key}' is protected (NEVER_DELETE) and cannot "
+                    f"be marked '{value}'."
+                )
+        for recipe_id, value in (retention.get('recipes') or {}).items():
+            if value not in RETENTION_CLASSES:
+                raise ValueError(
+                    f"Invalid retention class '{value}' for recipe "
+                    f"'{recipe_id}'. Valid classes: {RETENTION_CLASSES}"
+                )
+
+    def retention_for(
+        self,
+        data_dir: str,
+        recipe_id: str | None = None,
+        recipe_retention: str | None = None,
+    ) -> str:
+        """Resolve the retention class for an output in a data directory.
+
+        Resolution order (later wins): the bucket default in STANDARD_DIRS,
+        the bucket override in the config's retention block, the recipe's
+        own save_to.retention, and the per-recipe override in
+        retention.recipes. NEVER_DELETE buckets always resolve to 'keep'.
+
+        Parameters
+        ----------
+        data_dir : str
+            Bucket name from STANDARD_DIRS (e.g. 'cache', 'core').
+        recipe_id : str, optional
+            Recipe ID, for per-recipe overrides in retention.recipes.
+        recipe_retention : str, optional
+            The recipe's own save_to.retention value, if any.
+
+        Returns
+        -------
+        str
+            One of RETENTION_CLASSES.
+        """
+        if data_dir in NEVER_DELETE:
+            return 'keep'
+        retention = self.config.get('retention') or {}
+        value = STANDARD_DIRS.get(data_dir, {}).get('retention', 'keep')
+        value = retention.get(data_dir, value)
+        if recipe_retention is not None:
+            value = recipe_retention
+        if recipe_id is not None:
+            value = (retention.get('recipes') or {}).get(recipe_id, value)
+        return value
 
     def _resolve_directories(self):
         """Resolve all configured directory paths."""
