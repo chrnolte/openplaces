@@ -1,0 +1,35 @@
+# Recipe to import the Sentinel-2 tile grid
+description: >-
+  Sentinel-2 tile grid, used to resolve download partitions for Sentinel-2 images.
+
+admin_id: NULL
+
+entity:
+  entity_type: tile
+  source:
+    source_id: sentinel
+    portal_url: "https://sentinel.esa.int/web/sentinel/missions/sentinel-2/data-products"
+    download_url: "https://github.com/justinelliotmeyers/Sentinel-2-Shapefile-Index/archive/refs/heads/master.zip"
+  version: 2026
+
+compressed_file_name: "Sentinel-2-Shapefile-Index-master.zip"
+uncompressed_file_name: "Sentinel-2-Shapefile-Index-master/sentinel_2_index_shapefile.shp"
+
+columns:
+  tile_id: Name
+
+keep_unnamed_columns: True
+drop_duplicates:
+  - tile_id
+set_index: tile_id
+
+force_2d: True
+add_geometry_derivatives: True
+add_tile_utm_derivatives:
+  tile_id_col: tile_id
+  tile_type: sentinel
+
+entity_links:
+  - recipe_id: admin-openplaces-2026_admin2
+  - recipe_id: admin-openplaces-2026_admin3
+  - recipe_id: admin-openplaces-2026_admin4

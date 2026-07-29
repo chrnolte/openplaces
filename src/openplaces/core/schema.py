@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+import pandas as pd
+
 from .constants import (
     ESCAPE_DIR,
     STRING_SEPARATOR_BETWEEN_IDS,
@@ -27,6 +29,65 @@ ENTITY_TYPES = [
     'tile',
     'transaction',
 ]
+
+
+def synthetic_geometry_pattern(exclude: str | None = None) -> str:
+    """Regex matching a reference-derived synthetic geometry_source label.
+
+    The harmonizer's infer_spine_additions labels a fallback geometry
+    '{entity_type}.{source}' (e.g. 'parcel.spine' — the parcel boundary
+    standing in for an inferred building), whereas a real geometry source is
+    a bare label ('obm', 'microsoft'). *exclude* omits the spine's own entity
+    type from the match, so only geometries derived from a different entity
+    type count as synthetic.
+    """
+    entities = [e for e in ENTITY_TYPES if e != exclude]
+    return rf'^({"|".join(entities)})\.'
+
+
+def is_synthetic_geometry(gdf, entity=None) -> pd.Series:
+    """Boolean mask: True where geometry_source marks a synthetic reference-derived row.
+
+    A synthetic fallback geometry (e.g. geometry_source == 'parcel.spine')
+    is a different entity's boundary standing in for this row's own real
+    outline (see :func:`synthetic_geometry_pattern`) — not meaningful for
+    size/shape measurements. All-False when geometry_source isn't a column
+    on gdf.
+
+    Parameters
+    ----------
+    entity : dict or Entity, optional
+        The current recipe's entity block (or an Entity); only its
+        entity_type is used, to exclude that type from the match.
+    """
+    if 'geometry_source' not in gdf.columns:
+        return pd.Series(False, index=gdf.index)
+    own = (
+        entity.get('entity_type')
+        if isinstance(entity, dict)
+        else getattr(entity, 'entity_type', None)
+    )
+    return (
+        gdf['geometry_source']
+        .astype('string')
+        .str.match(synthetic_geometry_pattern(str(own) if own else None), na=False)
+        .fillna(False)
+        .astype(bool)
+    )
+
+
+# Coarse-to-fine ordering of entity types for canonical entity-link paths:
+# a link between two entities is stored beside the finer (later-in-order)
+# entity's output. Entity types not listed here fall back to lexicographic
+# recipe-ID ordering.
+ENTITY_LINK_ORDER = (
+    'admin',
+    'tile',
+    'parcel',
+    'footprint',
+    'building',
+    'dwelling',
+)
 
 TOP_LEVEL_THEMES = [
     'climate',  # temperature, precipitation, change
@@ -49,7 +110,15 @@ class AdminId:
     levels: tuple[str] = field(default_factory=tuple)
 
     def __init__(self, *levels: str):
-        """Initialize AdminId with administrative levels."""
+        """Initialize AdminId with administrative levels.
+
+        Parameters
+        ----------
+        *levels : str
+            Administrative level strings (e.g., 'US', 'MA'). Can also
+            accept a single string with separators (e.g., 'US-MA-MI') or
+            a sequence of strings.
+        """
         if len(levels) == 0 or levels[0] is None:
             tuple_of_levels = ()
         elif len(levels) == 1 and STRING_SEPARATOR_WITHIN_IDS in levels[0]:
@@ -96,19 +165,24 @@ class AdminId:
         A parent AdminId has fewer levels and matches all its levels
         with the start of the child's levels.
 
-        Args:
-            admin_id: The potential child AdminId to check
+        Parameters
+        ----------
+        admin_id : AdminId
+            The potential child AdminId to check.
 
-        Returns:
-            True if self is a parent of admin_id, False otherwise
+        Returns
+        -------
+        bool
+            True if self is a parent of admin_id, False otherwise.
 
-        Examples:
-            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA', 'MI'))
-            True
-            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'CA'))
-            False
-            >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA'))
-            False
+        Examples
+        --------
+        >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA', 'MI'))
+        True
+        >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'CA'))
+        False
+        >>> AdminId('US', 'MA').is_parent_of(AdminId('US', 'MA'))
+        False
         """
         if len(self.levels) >= len(admin_id.levels):
             return False
@@ -121,16 +195,19 @@ class AdminId:
         A parent AdminId has fewer levels and matches all its levels
         with the start of the child's levels.
 
-        Args:
-            admin_id: The potential child AdminId to check
+        Parameters
+        ----------
+        admin_id : AdminId
+            The potential child AdminId to check.
 
-        Examples:
-            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA', 'MI'))
-            True
-            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'CA'))
-            False
-            >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA'))
-            True
+        Examples
+        --------
+        >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA', 'MI'))
+        True
+        >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'CA'))
+        False
+        >>> AdminId('US', 'MA').is_parent_or_equal_of(AdminId('US', 'MA'))
+        True
         """
         if len(self.levels) > len(admin_id.levels):
             return False
@@ -148,7 +225,13 @@ class EntityType:
     entity_type: str
 
     def __init__(self, entity_type: str):
-        """Initialize AdminId with administrative levels."""
+        """Initialize EntityType with a validated entity type string.
+
+        Parameters
+        ----------
+        entity_type : str
+            The entity type identifier (must be in ENTITY_TYPES).
+        """
 
         if entity_type not in ENTITY_TYPES:
             raise ValueError(
@@ -215,7 +298,27 @@ class Source:
         doi: str = None,
         verify_ssl: bool = True,
     ):
-        """Initialize AdminId with administrative levels."""
+        """Initialize Source with metadata and download configurations.
+
+        Parameters
+        ----------
+        source_id : str, optional
+            Unique string identifier for the source.
+        portal_url : str, optional
+            URL for the source's data access portal.
+        download_url : str, optional
+            Direct download URL for automated retrieval.
+        download_url_source : str, optional
+            URL containing the dynamic download links.
+        download_url_source_regex : str, optional
+            Pattern to extract dynamic download URLs.
+        download_url_scraper : str, optional
+            Name of browser-driven scraper for terms gates.
+        doi : str, optional
+            Digital Object Identifier for the dataset.
+        verify_ssl : bool, default True
+            Verify SSL certificates during download.
+        """
 
         n_download_modes = sum(
             bool(x) for x in (download_url, download_url_source, download_url_scraper)
@@ -259,7 +362,17 @@ class Entity:
         source: [str, Source] = None,
         version: str = None,
     ):
-        """Initialize AdminId with administrative levels."""
+        """Initialize Entity with its type, source, and version details.
+
+        Parameters
+        ----------
+        entity_type : EntityType or str
+            The validated entity type or full separator-joined string.
+        source : Source or str, optional
+            The data source object or source ID.
+        version : str, optional
+            Version or date string.
+        """
 
         # If the first passed string contains separators, assume it
         # contains the other parameters
@@ -317,7 +430,15 @@ class Theme:
     levels: list[str] = field(default_factory=list)
 
     def __init__(self, *levels: str):
-        """Initialize Theme with levels."""
+        """Initialize Theme with hierarchical levels.
+
+        Parameters
+        ----------
+        *levels : str
+            The thematic level strings (e.g., 'built', 'zoning'). Can also
+            accept a single string with separators (e.g., 'land-cover') or
+            a sequence of strings.
+        """
         if len(levels) == 0:
             raise ValueError('Empty themes are not allowed')
 
@@ -382,7 +503,21 @@ class DataSet:
         is_raster: bool = False,
         nodata: int | float | None = None,
     ):
-        """Initialize AdminId with administrative levels."""
+        """Initialize DataSet with theme, source, version, and raster settings.
+
+        Parameters
+        ----------
+        theme : Theme or str or sequence
+            The theme classification or full separator-joined string.
+        source : Source or str, optional
+            The data source object or source ID.
+        version : str, optional
+            Version or date string.
+        is_raster : bool, default False
+            Set to True if this dataset contains raster data.
+        nodata : int or float, optional
+            The nodata value for raster bands.
+        """
 
         if (
             source is None
@@ -444,15 +579,54 @@ class DataSet:
         return Path(*parts)
 
 
+def cast_dataset_or_entity(value):
+    """Cast a raw dict/string (or already-cast DataSet/Entity) to whichever fits.
+
+    Used where a recipe attaches either a themed dataset or another entity
+    recipe (e.g. an enrich recipe crosswalking to an entity from a different
+    time period) through the same `dataset` slot. `DataSet` and `Entity`
+    parse the same compact ``{first}-{source}-{version}`` shape, differing
+    only in which vocabulary validates the first token, so a `DataSet` is
+    tried first and an `Entity` is used as the fallback.
+
+    Parameters
+    ----------
+    value : dict, str, DataSet, or Entity
+        Raw value to cast.
+
+    Returns
+    -------
+    DataSet or Entity
+    """
+    if isinstance(value, DataSet | Entity):
+        return value
+    if isinstance(value, dict):
+        value = dict(value)
+        if isinstance(value.get('source'), dict):
+            value['source'] = Source(**value['source'])
+        if 'entity_type' in value:
+            return Entity(**value)
+        return DataSet(**value)
+    try:
+        return DataSet(value)
+    except ValueError:
+        return Entity(value)
+
+
 def sanitize(s, max_length=255):
     """Ensure that string is safe for filenames: only [a-zA-Z0-9_-].
 
-    Args:
-        s: String to sanitize
-        max_length: Maximum filename length (default 255)
+    Parameters
+    ----------
+    s : str
+        String to sanitize.
+    max_length : int, default 255
+        Maximum filename length.
 
-    Returns:
-        Sanitized filename string with only alphanumeric, underscore, and dash
+    Returns
+    -------
+    str or None
+        Sanitized filename string with only alphanumeric, underscore, and dash.
     """
     # Replace any character that's not alphanumeric, underscore, dash
     # or a standard wildcard (*, ?) with tilde

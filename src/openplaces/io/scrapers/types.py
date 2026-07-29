@@ -59,11 +59,15 @@ class ImageSet:
         Root directory that contains the image files.
     images
         Mapping from asset ID to `Image`.
+    counts
+        Tally of how the images were obtained (e.g. ``cached``,
+        ``downloaded``), set by the scraper that produced the set.
     """
 
     def __init__(self) -> None:
         self.dir_path: str = ''
         self.images: dict = {}
+        self.counts: dict = {}
 
     def add_image(self, key: object, image: Image) -> None:
         self.images[key] = image

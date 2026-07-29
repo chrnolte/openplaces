@@ -17,6 +17,7 @@
 name: openplaces-amd
 channels:
   - conda-forge
+  - nodefaults
 dependencies:
   # AMD cp312 wheels require exactly Python 3.12
   - python=3.12
@@ -37,6 +38,9 @@ dependencies:
   - tqdm>=4.65.0
   - pyyaml>=6.0.3
   - platformdirs>=4.9.2
+  - psutil>=5.9.0
+  - usaddress>=0.5.14
+  - rapidfuzz>=3.0.0
 
   # Analysis
   - statsmodels>=0.14.0
@@ -50,6 +54,11 @@ dependencies:
   - seaborn>=0.12.0
   - contextily>=1.6.2
   - altair>=5.0.0
+
+  # Viz-fast (1M+ polygon rendering: Lonboard/deck.gl + Datashader)
+  - lonboard>=0.10.0
+  - datashader>=0.16.0
+  - voila>=0.5.0
 
   # Raster
   - rioxarray>=0.15.0

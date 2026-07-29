@@ -28,7 +28,11 @@ from openplaces.core.constants import (
 )
 from openplaces.io.readers import get_admin
 from openplaces.path import recipe_path
-from openplaces.recipe import find_admin_recipe_id, get_recipe  # noqa: F401
+from openplaces.recipe import (  # noqa: F401
+    find_admin_recipe_id,
+    get_recipe,
+    get_recipe_by_id,
+)
 from openplaces.utils import create_comparable_name_link, standardize_names
 
 
@@ -520,7 +524,7 @@ def admin3_id_index_from_admin3_gadm(admin3):
     return admin3.set_index('admin3_id').drop(columns='_name')
 
 
-def admin3_id_index_from_local(admin3_local, country_id, admin_entity):
+def admin3_id_index_from_local(admin3_local, admin2_recipe_id):
     """Index a country's local admin-3 source against the global spine.
 
     Joins the local admin-3 units to the global (GADM-derived) admin-3 layer by
@@ -529,21 +533,26 @@ def admin3_id_index_from_local(admin3_local, country_id, admin_entity):
     returns the frame indexed by ``admin3_id``.
 
     Wired from a recipe via ``create_index.function`` with
-    ``args: {country_id, admin_entity}`` (``index_function:`` cannot pass args).
+    ``args: {admin2_recipe_id}`` (``index_function:`` cannot pass args). The
+    explicit recipe reference also declares the admin-2 data dependency to
+    the flow DAG (recipe-ID keys are edge sources).
 
     Parameters
     ----------
     admin3_local : GeoDataFrame
         Local admin-3 source with at least ``name`` and ``admin2_id_admin1``
         (and usually ``name_long`` and ``admin3_id_admin1``).
-    country_id : str
-        Admin-1 country ID whose recipe assets are read (e.g. ``'US'``).
-    admin_entity : str
-        Admin recipe entity holding the crosswalk assets
-        (e.g. ``'admin-census-2021'``).
+    admin2_recipe_id : str
+        Recipe ID of the admin-2 ingest of the same source (e.g.
+        ``'US_admin-census-2021_admin2'``). Its country and admin entity
+        also locate the crosswalk assets stored beside the recipe.
     """
+    # Load the parent admin-2 recipe by ID and extract its components
+    admin2_recipe = get_recipe_by_id(admin2_recipe_id)
+    country_id = str(admin2_recipe['admin_id'])
+    admin_entity = str(admin2_recipe['entity'])
+
     # Join states (admin-2)
-    admin2_recipe = get_recipe(country_id, admin_entity, filename='admin2')
     admin2_crosswalk = (
         get_admin(level=2, recipe=admin2_recipe, columns=['admin2_id_admin1'])
         .reset_index()

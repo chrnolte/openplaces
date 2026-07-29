@@ -1,0 +1,5 @@
+stage,admin_id,mem_mb
+ingest,,4000
+harmonize,,16000
+enrich,,8000
+curate,,8000

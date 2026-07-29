@@ -7,9 +7,11 @@ get output paths etc.
 
 import glob
 import inspect
+import re
 from collections import Counter
 from functools import cache
 from pathlib import Path
+from typing import NamedTuple
 
 import pandas as pd
 import yaml
@@ -17,10 +19,18 @@ import yaml
 from openplaces.config import cfg
 from openplaces.core.constants import (
     RECIPE_PER_TABLE_KEYS,
+    RETENTION_CLASSES,
     STANDARD_DIRS,
     STRING_SEPARATOR_BETWEEN_IDS,
 )
-from openplaces.core.schema import AdminId, DataSet, Entity, Source, sanitize
+from openplaces.core.schema import (
+    AdminId,
+    DataSet,
+    Entity,
+    Source,
+    cast_dataset_or_entity,
+    sanitize,
+)
 from openplaces.path import OpenPlacesReference, path, recipe_path
 
 
@@ -81,12 +91,8 @@ def _cast_entity(entity):
 
 
 def _cast_dataset(dataset):
-    """Cast a raw dict (or already-cast DataSet) to a DataSet object."""
-    if isinstance(dataset, DataSet):
-        return dataset
-    if isinstance(dataset.get('source'), dict):
-        dataset['source'] = Source(**dataset['source'])
-    return DataSet(**dataset)
+    """Cast a raw dict/string (or already-cast DataSet/Entity) to whichever fits."""
+    return cast_dataset_or_entity(dataset)
 
 
 def get_recipe_dict(filepath, *args, **kwargs):
@@ -103,6 +109,10 @@ def get_recipe_dict(filepath, *args, **kwargs):
     """
     with open(filepath, encoding='utf-8') as f:
         recipe_dict = yaml.safe_load(f)
+
+    # Record the canonical recipe ID (the file stem), so a loaded recipe can
+    # be traced back to its ID even when it carries a filename suffix
+    recipe_dict['recipe_id'] = Path(filepath).stem
 
     # Get `admin_id` from arguments
     if len(args) > 0:
@@ -159,6 +169,13 @@ def get_recipe_dict(filepath, *args, **kwargs):
                     'known openplaces directory. Valid options:\n- '
                     + '\n- '.join(sorted(STANDARD_DIRS))
                 )
+        retention = recipe_dict['save_to'].get('retention')
+        if retention is not None and retention not in RETENTION_CLASSES:
+            raise ValueError(
+                f"Recipe 'save_to.retention' is '{retention}', which is not a "
+                'known retention class. Valid options:\n- '
+                + '\n- '.join(RETENTION_CLASSES)
+            )
 
     return recipe_dict
 
@@ -205,9 +222,9 @@ def get_recipe_by_id(recipe_id, **kwargs):
     except ValueError:
         entity = None
 
-    # Split off dataset, if valid
+    # Split off dataset (or a linked entity), if valid
     try:
-        dataset = DataSet(remaining_parts[0])
+        dataset = cast_dataset_or_entity(remaining_parts[0])
         remaining_parts = remaining_parts[1:]
     except (ValueError, IndexError):
         dataset = None
@@ -226,6 +243,58 @@ def get_recipe_by_id(recipe_id, **kwargs):
         dataset,
         filename=filename,
         **kwargs,
+    )
+
+
+def get_recipe_id(recipe: str | dict) -> str:
+    """Return the canonical recipe ID of a loaded recipe.
+
+    The ID is the recipe file's stem, recorded by get_recipe_dict at load
+    time. For recipe dicts constructed without a file (e.g. in tests), the
+    ID is rebuilt from admin_id and entity/dataset; filename suffixes cannot
+    be recovered in that case.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID string (returned unchanged, minus a .yaml extension) or a
+        loaded recipe dictionary.
+    """
+    if isinstance(recipe, str):
+        return recipe.removesuffix('.yaml')
+    if 'recipe_id' in recipe:
+        return str(recipe['recipe_id']).removesuffix('.yaml')
+    parts = []
+    admin_id = recipe.get('admin_id')
+    if admin_id is not None and len(str(admin_id)) > 0:
+        parts.append(str(admin_id))
+    entity_or_dataset = recipe.get('entity') or recipe.get('dataset')
+    if entity_or_dataset is None:
+        raise ValueError('Recipe has neither an entity nor a dataset.')
+    parts.append(str(entity_or_dataset))
+    return STRING_SEPARATOR_BETWEEN_IDS.join(parts)
+
+
+def get_recipe_retention(recipe: str | dict) -> str:
+    """Resolve the retention class of a recipe's output.
+
+    Combines the output bucket's default (STANDARD_DIRS), configuration
+    overrides, and the recipe's own save_to.retention via
+    :meth:`~openplaces.config.OpenPlacesConfig.retention_for`.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    data_dir, _ = _get_save_to(recipe)
+    save_to = recipe.get('save_to') or {}
+    return cfg.retention_for(
+        data_dir,
+        recipe_id=get_recipe_id(recipe),
+        recipe_retention=save_to.get('retention'),
     )
 
 
@@ -352,8 +421,11 @@ def iter_entity_sources() -> frozenset:
     """Return the ``(entity_type, source_id)`` pairs across all entity recipes.
 
     Scans the bundled recipes directory once (cached) and parses each recipe
-    filename for its entity token. Dataset/theme recipes and files whose entity
-    token does not parse are skipped. Used to auto-generate the provenance suffix
+    filename for its entity token. Files whose entity token does not parse are
+    skipped. A bare entity token (e.g. ``footprint``) followed by a
+    ``{theme}-{source}-{version}`` remainder — an entity+dataset enrich recipe
+    such as ``US_footprint_built-n-stories-brails-2026`` — falls back to the
+    dataset's own source id. Used to auto-generate the provenance suffix
     vocabulary so adding a new source needs no hardcoded list edits.
     """
     root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
@@ -372,8 +444,76 @@ def iter_entity_sources() -> frozenset:
         except (ValueError, IndexError):
             continue
         source_id = getattr(entity.source, 'source_id', None) if entity.source else None
+        if source_id is None and len(parts) > 1:
+            try:
+                source_id = DataSet(parts[1]).source.source_id
+            except (ValueError, IndexError):
+                pass
         pairs.add((str(entity.entity_type), source_id))
     return frozenset(pairs)
+
+
+@cache
+def provenance_suffixes() -> tuple[tuple[str, str], ...]:
+    """Provenance suffix -> source key, auto-generated from existing recipes.
+
+    For every ``(entity_type, source)`` pair known to the recipes, generate the
+    column suffixes the harmonizer can produce: ``_{entity}_{source}`` and the
+    bare ``_{source}`` fallback (e.g. ``_building_nsi`` and ``_nsi``;
+    ``_footprint_fema`` and ``_fema``). Parcels are interchangeable, so they map
+    by the entity-only ``_parcel``. Returned longest-first so a specific suffix
+    wins over its bare fallback. No hardcoded list — adding a source recipe
+    extends this automatically.
+    """
+    suffixes: dict[str, str] = {}
+    for entity, source in iter_entity_sources():
+        if source is None:
+            continue
+        if entity == 'parcel':
+            suffixes.setdefault('_parcel', 'parcel')
+        else:
+            suffixes.setdefault(f'_{entity}_{source}', source)
+            suffixes.setdefault(f'_{source}', source)
+    return tuple(sorted(suffixes.items(), key=lambda kv: len(kv[0]), reverse=True))
+
+
+def split_provenance_suffix(name: str) -> tuple[str, str | None]:
+    """Split a trailing provenance suffix off *name*; return (base, source)."""
+    for suffix, source in provenance_suffixes():
+        if name.endswith(suffix):
+            return name[: -len(suffix)], source
+    return name, None
+
+
+def resolve_attribute_name(column: str) -> str:
+    """Resolve a possibly provenance-suffixed column to its registry attribute.
+
+    An exact registry entry always wins, so genuinely distinct attributes whose
+    names merely end in a source-like token (``n_footprints_per_parcel``,
+    ``priority_on_parcel``, ``parcel_id_local``) resolve to themselves. Only
+    unregistered names fall back to stripping a provenance suffix
+    (``improvement_value_parcel`` -> ``improvement_value``); a name that is
+    neither registered nor suffixed is returned unchanged.
+    """
+    from openplaces.core.attribute_registry import load_registry
+
+    if column in load_registry().index:
+        return column
+    return split_provenance_suffix(column)[0]
+
+
+def source_id_from_recipe_id(recipe_id: str) -> str:
+    """Extract the source id from a recipe id.
+
+    A recipe id is ``{admin_id}_{entity_or_theme}-{source}-{version}[...]``;
+    takes the last ``_``-delimited token, then the second ``-``-delimited
+    field within it (e.g. ``'US_building-nsi-2022'`` -> ``'nsi'``). Falls
+    back to the whole token when it has no ``-`` (an un-versioned or
+    otherwise irregular recipe id).
+    """
+    base = recipe_id.rsplit('_', 1)[-1]
+    parts = base.split('-', 2)
+    return parts[1] if len(parts) > 1 else base
 
 
 def find_admin_recipe_id(admin_id, admin_level, silent=False):
@@ -464,6 +604,251 @@ def find_entity_recipe_id(
     if len(candidates) > 1 and not silent:
         print(f'Picked {recipe_id} for {admin_id} ({entity_type}).')
     return recipe_id
+
+
+class DepEdge(NamedTuple):
+    """One dependency edge: a recipe consuming another recipe's output.
+
+    Attributes
+    ----------
+    recipe_id : str
+        ID of the consuming recipe the edge was extracted from.
+    upstream_recipe_id : str or None
+        ID of the consumed recipe; None when auto-discovery could not
+        resolve a concrete recipe (see `resolved`).
+    kind : str
+        Reference style: the recipe key the edge came from ('entity_recipe',
+        'image_recipe', 'recipe_id', 'admin_recipe_id', 'tile_recipe_id',
+        'footprint_recipe_id', ...) or 'auto_discover'.
+    step : str or None
+        Pipeline step name (or top-level recipe section) where the
+        reference was found.
+    resolved : bool
+        False when an auto-discovered reference could not be resolved to a
+        concrete recipe. Consumers of the dependency graph must treat
+        unresolved edges as "may consume anything" (fail safe).
+    """
+
+    recipe_id: str
+    upstream_recipe_id: str | None
+    kind: str
+    step: str | None = None
+    resolved: bool = True
+
+
+# Recipe keys referencing another recipe's output, e.g. 'recipe_id',
+# 'admin_recipe_id', 'tile_recipe_id', 'footprint_recipe_id'. Keys like
+# 'remap_id' do not match: value crosswalks are not data dependencies.
+_RECIPE_ID_KEY_REGEX = re.compile(r'(^|_)recipe_id$')
+
+# Pipeline steps whose auto-discovery expands to ALL applicable ingest
+# recipes (mirroring the harmonizer's _expand_auto_discover), rather than
+# the single best match.
+_MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id')
+
+
+@cache
+def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
+    """List ingest recipes of an entity type, most specific and newest first.
+
+    Mirrors the harmonizer's auto-discovery scan
+    (io/harmonizer/discover.py) with recipe-layer machinery so dependency
+    extraction resolves auto_discover references the same way the pipeline
+    does at run time.
+    """
+    root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
+    sources = []
+    for filepath in sorted(root.glob(f'**/{entity_type}/*/*/*.yaml')):
+        try:
+            with open(filepath, encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            continue
+        if (data.get('stage') or 'ingest') != 'ingest':
+            continue
+        raw_admin_id = data.get('admin_id')
+        admin_id_str = (
+            str(raw_admin_id)
+            if raw_admin_id is not None and str(raw_admin_id) != 'None'
+            else ''
+        )
+        entity = data.get('entity') or {}
+        sources.append(
+            {
+                'recipe_id': filepath.stem,
+                'admin_id': admin_id_str,
+                'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
+                'version': str(entity.get('version') or ''),
+            }
+        )
+    sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
+    return tuple(sources)
+
+
+def get_recipe_dependencies(
+    recipe, admin_id=None, exclude_recipe_ids: set[str] | None = None
+) -> list[DepEdge]:
+    r"""Extract upstream recipe references from a recipe.
+
+    Edge sources (all present in committed recipes today):
+
+    - top-level 'entity_recipe' (curate/enrich -> harmonized spine) and
+      'image_recipe' (enrich -> image ingest); enrich recipes without an
+      explicit 'entity_recipe' resolve their spine dynamically, mirroring
+      the enricher
+    - any key matching the suffix 'recipe_id' anywhere in the recipe
+      ('recipe_id' in pipeline sources and steps, 'admin_recipe_id',
+      'download_by.tile_recipe_id', 'footprint_recipe_id',
+      'reference_parcel_recipe_id', merge_enrichments 'recipes' entries,
+      ...); keys under a '\*crosswalk' block and 'remap_id' are excluded
+      (value crosswalks, not data dependencies)
+    - pipeline steps or source entries with 'auto_discover' or a bare
+      'entity_type', resolved per admin unit the same way the pipeline
+      resolves them at run time
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    admin_id : str or AdminId, optional
+        Admin unit to resolve auto-discovered references for. When None,
+        auto-discovered references are returned as unresolved edges.
+    exclude_recipe_ids : set of str, optional
+        Recipe IDs to prune from the graph. An excluded recipe's own edges
+        are never evaluated (it's simply never emitted as an upstream), so
+        anything only reachable through it is pruned transitively too,
+        without needing to be named -- e.g. excluding an enrich recipe also
+        excludes the ingest recipe it names via 'reference_parcel_recipe_id'.
+
+    Returns
+    -------
+    list of DepEdge
+        Unresolved auto-discovery is returned as an edge with
+        upstream_recipe_id=None and resolved=False (fail safe: the caller
+        must assume such a recipe may consume anything it protects).
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    self_id = get_recipe_id(recipe)
+    if admin_id is not None and not isinstance(admin_id, AdminId):
+        admin_id = AdminId(admin_id)
+    admin_str = str(admin_id) if admin_id is not None else None
+    exclude_recipe_ids = exclude_recipe_ids or ()
+
+    edges: list[DepEdge] = []
+    seen: set[tuple] = set()
+
+    def _add(upstream, kind, step=None, resolved=True):
+        if upstream in exclude_recipe_ids:
+            return
+        key = (upstream, kind, step, resolved)
+        if key not in seen:
+            seen.add(key)
+            edges.append(DepEdge(self_id, upstream, kind, step, resolved))
+
+    # Top-level literal references. The generic *recipe_id walker below only
+    # matches keys nested inside a dict/list value (pipeline steps, sources,
+    # entity_links entries, ...); a top-level scalar field needs to be
+    # listed here explicitly to be seen at all, even though its name already
+    # matches _RECIPE_ID_KEY_REGEX.
+    for key in ('entity_recipe', 'image_recipe', 'reference_parcel_recipe_id'):
+        if recipe.get(key):
+            _add(str(recipe[key]), key)
+
+    # Enrich recipes without an explicit entity_recipe resolve their spine
+    # dynamically; mirror io/enricher's _resolve_entity_recipe
+    if recipe.get('stage') == 'enrich' and not recipe.get('entity_recipe'):
+        entity = recipe.get('entity')
+        entity_type = str(entity.entity_type) if entity is not None else None
+        found = (
+            find_entity_recipe_id(
+                recipe.get('admin_id'),
+                entity_type,
+                stage='harmonize',
+                source_id='spine',
+                silent=True,
+            )
+            if entity_type
+            else None
+        )
+        _add(found, 'entity_recipe', resolved=found is not None)
+
+    # Generic *recipe_id keys anywhere in the recipe (pipeline steps and
+    # sources, download_by/process_by blocks, merge_enrichments entries)
+    def _walk(node, context):
+        if isinstance(node, dict):
+            step_name = node.get('step')
+            if isinstance(step_name, str):
+                context = step_name
+            for key, value in node.items():
+                if isinstance(key, str) and key.endswith('crosswalk'):
+                    continue
+                if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
+                    _add(value, key, step=context)
+                else:
+                    _walk(value, context)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item, context)
+
+    for key, value in recipe.items():
+        if key in (
+            'recipe_id',
+            'entity_recipe',
+            'image_recipe',
+            'reference_parcel_recipe_id',
+        ):
+            continue
+        _walk(value, context=key)
+
+    # Auto-discovered references in pipeline steps and their sources
+    def _default_entity_type():
+        entity = recipe.get('entity')
+        return str(entity.entity_type) if entity is not None else None
+
+    def _add_discovered(entity_type, step_name, multi):
+        entity_type = entity_type or _default_entity_type()
+        if entity_type is None or admin_id is None:
+            _add(None, 'auto_discover', step=step_name, resolved=False)
+            return
+        if multi:
+            # All strictly-more-specific ingest recipes covering the admin
+            # unit (the harmonizer's _expand_auto_discover semantics); an
+            # empty result means the step legitimately has no source here
+            recipe_admin_str = str(recipe.get('admin_id') or '')
+            for src in _scan_ingest_recipe_ids(entity_type):
+                rid = src['admin_id']
+                if rid and rid != recipe_admin_str and admin_str.startswith(rid):
+                    _add(src['recipe_id'], 'auto_discover', step=step_name)
+        else:
+            found = find_entity_recipe_id(
+                admin_id, entity_type, stage='ingest', silent=True
+            )
+            _add(
+                found,
+                'auto_discover',
+                step=step_name,
+                resolved=found is not None,
+            )
+
+    for step_spec in recipe.get('pipeline') or []:
+        if not isinstance(step_spec, dict):
+            continue
+        step_name = step_spec.get('step')
+        multi = step_name in _MULTI_DISCOVER_STEPS
+        sources = step_spec.get('sources')
+        if isinstance(sources, list):
+            for source in sources:
+                if not isinstance(source, dict) or source.get('recipe_id'):
+                    continue
+                if source.get('auto_discover') or source.get('entity_type'):
+                    _add_discovered(source.get('entity_type'), step_name, multi)
+        elif not step_spec.get('recipe_id') and (
+            step_spec.get('auto_discover') or step_spec.get('entity_type')
+        ):
+            _add_discovered(step_spec.get('entity_type'), step_name, multi)
+
+    return edges
 
 
 def get_layers(recipe: str | dict) -> list[str]:

@@ -82,3 +82,92 @@ def impute_n_dwellings(state: CurateState) -> CurateState:
 
     state.curated = curated
     return state
+
+
+_GROUP_STATISTICS = {
+    'mode': lambda s: s.mode().iloc[0] if not s.mode().empty else pd.NA,
+    'mean': 'mean',
+    'median': 'median',
+    'min': 'min',
+    'max': 'max',
+}
+
+
+@_register('impute_from_group_statistic')
+def impute_from_group_statistic(
+    state: CurateState,
+    group_column: str,
+    value_column: str,
+    output: str,
+    statistic: str = 'mode',
+    overrides: str | None = None,
+) -> CurateState:
+    """Impute each row's output from a grouped statistic of another column.
+
+    For every row, *output* is set to a statistic of *value_column* computed
+    across all rows sharing the same *group_column* value (its cohort). The
+    default *statistic* is the mode (most common value), which learns a
+    group -> value mapping by majority vote; mean, median, min, and max are also
+    supported for numeric columns.
+
+    An optional *overrides* crosswalk corrects known-bad group mappings: a
+    two-column lookup (group value -> corrected output) loaded by recipe id.
+    Corrections win wherever the row's group is a key in the table — even when
+    the correction itself is blank (explicit null), which suppresses the
+    learned statistic for that group rather than falling back to it. Matching
+    is exact after trimming surrounding whitespace only (no case-folding or
+    punctuation normalization), so override CSV keys must match the group
+    column's real values. The grouped statistic fills every other group.
+
+    Generic over any pair of columns: holds no references to specific entities
+    or sources, so it can be reused for any cross-linked categorical columns.
+
+    Parameters
+    ----------
+    group_column : str
+        Column whose value defines each row's cohort.
+    value_column : str
+        Column the statistic is computed over within each cohort.
+    output : str
+        Name of the column to write.
+    statistic : str, optional
+        Cohort statistic: mode (default), mean, median, min, or max.
+    overrides : str, optional
+        Recipe id of a two-column correction crosswalk
+        (group value -> corrected output). Corrections take precedence over the
+        computed statistic.
+    """
+    curated = state.curated
+    if group_column not in curated or value_column not in curated:
+        return state
+
+    func = _GROUP_STATISTICS.get(statistic)
+    if func is None:
+        raise ValueError(
+            f'Unknown statistic {statistic!r}; expected one of '
+            f'{", ".join(_GROUP_STATISTICS)}.'
+        )
+
+    paired = curated[[group_column, value_column]].dropna()
+    base = paired.groupby(group_column, observed=True)[value_column].agg(func)
+    mapped = curated[group_column].map(base)
+
+    if overrides:
+        from openplaces.io.transform import get_crosswalk
+
+        corrections = get_crosswalk({'recipe_id': overrides})
+        keys = curated[group_column].astype('string').str.strip()
+        corrections.index = corrections.index.astype('string').str.strip()
+        has_override = keys.isin(corrections.index)
+        mapped = mapped.where(~has_override, keys.map(corrections))
+
+    curated[output] = mapped
+    state.curated = curated
+
+    if state.verbose:
+        n = int(mapped.notna().sum())
+        print(
+            f'  impute_from_group_statistic: {output} set for {n:,} rows '
+            f'(statistic={statistic}).'
+        )
+    return state

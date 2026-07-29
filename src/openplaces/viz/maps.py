@@ -64,7 +64,7 @@ def show_geometry_context(
     title : str
         Overrides the default title ('Feature {idx}').
     min_buffer_m : float
-        Minimum plot half-width in metres, applied when the feature's
+        Minimum plot half-width in meters, applied when the feature's
         projected extent is smaller than this value (most relevant for
         point geometries).  Default is 1 000 m.
 
@@ -116,7 +116,7 @@ def show_geometry_context(
     # For zero-extent geometries use a small nominal value so the buffer
     # arithmetic doesn't collapse to zero.
     # Minimum cx radius matching the minimum plot half-width (min_buffer_m *
-    # buffer_factor metres), converted to approximate degrees, with the same
+    # buffer_factor meters), converted to approximate degrees, with the same
     # 1.5x generous factor so context always covers the full plot extent.
     _min_cx = min_buffer_m * buffer_factor * 1.5 / 111_320
 
@@ -245,7 +245,7 @@ def show_geometry_context(
     interesting = [
         (col, str(val))
         for col, val in attrs.items()
-        if val is not None and val != '' and str(val).lower() != 'nan'
+        if not pd.isna(val) and str(val) != '' and str(val).lower() != 'nan'
     ]
     interesting = interesting[:max_attrs]
 
@@ -780,13 +780,27 @@ def show_building_imagery(
 
 
 def _has_geometry_output(recipe, admin_id, partition_id) -> bool:
-    """True if the recipe's output for this admin/partition has a `_geo` sidecar.
+    """True if the recipe's output for this admin/partition carries geometry.
 
-    Attribute-only recipes (e.g. tax rolls with no geometry) write no sidecar,
+    Checks both output layouts: a `_geo` sidecar (the standard split layout)
+    or, for a combined file (``save_parquet(..., combined=True)``), a
+    `geometry` column embedded directly in the main attribute parquet — same
+    schema-only peek `read_parquet` uses to detect combined files.
+    Attribute-only recipes (e.g. tax rolls with no geometry) write neither,
     so geometry-based inspection helpers should skip them rather than fail.
     """
     geo_path = get_output_path(recipe, admin_id, partition_id=partition_id, geo=True)
-    return geo_path.exists()
+    if geo_path.exists():
+        return True
+    main_path = get_output_path(recipe, admin_id, partition_id=partition_id)
+    if main_path.exists():
+        import pyarrow.parquet as pq
+
+        try:
+            return 'geometry' in pq.ParquetFile(main_path).schema_arrow.names
+        except Exception:
+            return False
+    return False
 
 
 def show_ingested_geometries(
@@ -924,26 +938,34 @@ def show_ingested_geometries(
 
 
 def show_random_entity(
-    ingester,
+    recipe: dict,
+    admin_id,
+    partition_id: str | None = None,
 ) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]] | None:
-    """Plot a random entity from the last ingested admin unit with its attributes.
+    """Plot a random entity from an admin unit's output with its attributes.
 
     Delegates to :func:`show_geometry_context`.
 
     Parameters
     ----------
-    ingester : openplaces.io.ingester.Ingester
-        Completed ingester whose last saved admin unit is sampled.
+    recipe : dict
+        Recipe whose saved output should be sampled.
+    admin_id : AdminId or str
+        Admin unit whose output file to sample from.
+    partition_id : str, optional
+        Partition to read, if the recipe's output is partitioned.
 
     Returns
     -------
-    fig, (ax_map, ax_table) : matplotlib Figure and Axes pair.
+    fig, (ax_map, ax_table) : matplotlib Figure and Axes pair, or None if the
+        recipe's output has no geometry to plot.
     """
-    admin_id = ingester.admin_ids_to_save[0] if ingester.admin_ids_to_save else None
-    partition_id = ingester._first_partition_id
+    if admin_id is None:
+        print('No admin unit configured; nothing to plot.')
+        return None
 
-    if not _has_geometry_output(ingester.recipe, admin_id, partition_id):
-        entity_label = str(ingester.recipe['entity'].entity_type)
+    if not _has_geometry_output(recipe, admin_id, partition_id):
+        entity_label = str(recipe['entity'].entity_type)
         print(
             f'No geometry data for this {entity_label} recipe (no _geo sidecar); '
             'nothing to plot. This is a tabular/property-level dataset — '
@@ -951,9 +973,7 @@ def show_random_entity(
         )
         return None
 
-    entities = get_entities(
-        ingester.recipe, admin_id, geom=True, partition_id=partition_id
-    )
+    entities = get_entities(recipe, admin_id, geom=True, partition_id=partition_id)
     idx = entities.sample().index[0]
     print(idx)
     return show_geometry_context(entities, idx)

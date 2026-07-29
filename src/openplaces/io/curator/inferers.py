@@ -21,7 +21,7 @@ def _habitable_threshold(curated, result, mh_label, config) -> float:
     fraction = float(config.get('habitable_fraction', 0.5))
     floor = float(config.get('habitable_floor_m2', 25.0))
     areas = pd.to_numeric(
-        curated.loc[result.eq(mh_label), 'm2'], errors='coerce'
+        curated.loc[result.eq(mh_label), 'area_m2'], errors='coerce'
     ).dropna()
     avg = (
         float(areas.mean())
@@ -33,113 +33,120 @@ def _habitable_threshold(curated, result, mh_label, config) -> float:
 
 @_register('derive_metrics')
 def derive_metrics(state: CurateState) -> CurateState:
-    """Compute footprint area and per-area value ratios.
+    """Compute polygon area and per-area value ratios.
 
-    Adds ``m2`` (footprint area in square metres) and, for the canonical
-    ``value`` column plus every ``improvement_value*`` / ``structure_value*``
-    evidence column, a matching ``{column}_per_area`` ratio (value per square
-    metre).
+    Adds a canonical area column (entity-type-aware: ``area_ha`` for parcels,
+    ``area_m2`` for others) and, for the canonical ``value`` column plus
+    every ``improvement_value*`` / ``structure_value*`` evidence column, a
+    matching ``{column}_per_area`` ratio.
+
+    For parcels, ``area_ha`` is computed once during harmonize spine
+    assembly (``derive_geometry_attributes``) and carried through here
+    unchanged -- not recomputed. For other entities, ``area_m2`` is
+    computed here, left missing on synthetic reference-derived rows
+    (``geometry_source`` like ``'parcel.spine'``, whose geometry is the
+    reference boundary rather than a real outline); their ``_per_area``
+    ratios inherit the missing denominator either way.
     """
+    from openplaces.core.schema import is_synthetic_geometry
     from openplaces.geo.polygon import get_areas
+    from openplaces.io.curator.provenance import SOURCE_SUFFIX
 
     curated = state.curated
 
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        curated['m2'] = get_areas(curated, unit='m2')
+    entity = state.recipe.get('entity')
+    entity_type = (
+        entity.get('entity_type')
+        if isinstance(entity, dict)
+        else getattr(entity, 'entity_type', None)
+    )
+    if entity_type and str(entity_type) == 'parcel':
+        area_col = 'area_ha'
+    else:
+        area_col = 'area_m2'
+        area_mask = ~is_synthetic_geometry(curated, entity)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            curated[area_col] = get_areas(curated, unit='m2', mask=area_mask)
 
     for col in list(curated.columns):
-        if col.endswith('_per_area'):
+        if col.endswith('_per_area') or col.endswith(SOURCE_SUFFIX):
             continue
         if (
             col == 'value'
             or col.startswith('improvement_value')
             or col.startswith('structure_value')
         ):
-            curated[f'{col}_per_area'] = curated[col] / curated['m2']
+            curated[f'{col}_per_area'] = curated[col] / curated[area_col]
 
     state.curated = curated
     return state
 
 
-_GROUP_STATISTICS = {
-    'mode': lambda s: s.mode().iloc[0] if not s.mode().empty else pd.NA,
-    'mean': 'mean',
-    'median': 'median',
-    'min': 'min',
-    'max': 'max',
-}
-
-
-@_register('infer_from_group_statistic')
-def infer_from_group_statistic(
-    state: CurateState,
-    group_column: str,
-    value_column: str,
-    output: str,
-    statistic: str = 'mode',
-    overrides: str | None = None,
+@_register('derive_area_ratio')
+def derive_area_ratio(
+    state: CurateState, value_column: str, output: str
 ) -> CurateState:
-    """Infer each row's output from a grouped statistic of another column.
+    """Compute *value_column*'s (m2) share of this entity's own area.
 
-    For every row, *output* is set to a statistic of *value_column* computed
-    across all rows sharing the same *group_column* value (its cohort). The
-    default *statistic* is the mode (most common value), which learns a
-    group -> value mapping by majority vote; mean, median, min, and max are also
-    supported for numeric columns.
-
-    An optional *overrides* crosswalk corrects known-bad group mappings: a
-    two-column lookup (group value -> corrected output) loaded by recipe id.
-    Corrections win; the grouped statistic fills the rest.
-
-    Generic over any pair of columns: holds no references to specific entities
-    or sources, so it can be reused for any cross-linked categorical columns.
+    Reuses an existing ``area_{unit}`` column (e.g. ``area_ha``, computed
+    once during harmonize spine assembly) via
+    :func:`~openplaces.geo.polygon.resolve_area`; falls back to computing
+    live from geometry only if no such column exists yet. Generic: holds
+    no entity- or column-specific vocabulary of its own.
 
     Parameters
     ----------
-    group_column : str
-        Column whose value defines each row's cohort.
     value_column : str
-        Column the statistic is computed over within each cohort.
+        Column (m2) to express as a share of this entity's own area.
+        No-op if absent.
     output : str
-        Name of the column to write.
-    statistic : str, optional
-        Cohort statistic: mode (default), mean, median, min, or max.
-    overrides : str, optional
-        Recipe id of a two-column correction crosswalk
-        (group value -> corrected output). Corrections take precedence over the
-        computed statistic.
+        Output ratio column.
+    """
+    from openplaces.geo.polygon import resolve_area
+
+    curated = state.curated
+    if value_column not in curated.columns:
+        return state
+    curated[output] = curated[value_column] / resolve_area(curated, unit='m2')
+    state.curated = curated
+    return state
+
+
+@_register('derive_stories_from_height')
+def derive_stories_from_height(
+    state: CurateState,
+    column: str = 'n_stories_footprint_fema',
+    height_column: str = 'height_footprint_fema',
+    floor_height_m: float = 3.05,
+) -> CurateState:
+    """Derive a story count from a measured building height.
+
+    Approximates the story count as ``height / floor_height_m``, rounded and
+    floored at one story. A missing or non-positive height yields a missing
+    story count rather than a fabricated minimum.
+
+    Parameters
+    ----------
+    state : CurateState
+        The curation state with the target GeoDataFrame in state.curated.
+    column : str, optional
+        Output column name for the derived story count.
+    height_column : str, optional
+        Source column holding measured building height (metres). No-op if
+        absent from ``state.curated``.
+    floor_height_m : float, optional
+        Assumed height per story, in metres.
     """
     curated = state.curated
-    if group_column not in curated or value_column not in curated:
+    if height_column not in curated.columns:
         return state
 
-    func = _GROUP_STATISTICS.get(statistic)
-    if func is None:
-        raise ValueError(
-            f'Unknown statistic {statistic!r}; expected one of '
-            f'{", ".join(_GROUP_STATISTICS)}.'
-        )
+    height = pd.to_numeric(curated[height_column], errors='coerce')
+    stories = (height / floor_height_m).round().clip(lower=1)
+    curated[column] = stories.where(height > 0)
 
-    paired = curated[[group_column, value_column]].dropna()
-    base = paired.groupby(group_column, observed=True)[value_column].agg(func)
-    mapped = curated[group_column].map(base)
-
-    if overrides:
-        from openplaces.io.transform import get_crosswalk
-
-        corrections = get_crosswalk({'recipe_id': overrides})
-        mapped = curated[group_column].map(corrections).combine_first(mapped)
-
-    curated[output] = mapped
     state.curated = curated
-
-    if state.verbose:
-        n = int(mapped.notna().sum())
-        print(
-            f'  infer_from_group_statistic: {output} set for {n:,} rows '
-            f'(statistic={statistic}).'
-        )
     return state
 
 
@@ -254,7 +261,7 @@ def classify_parcel_land_use(
         Output class column (default ``land_use_class``).
     flag_column, flag_class : str, optional
         When both are given, write a boolean ``flag_column`` set where ``output``
-        equals ``flag_class`` (e.g. ``manufactured_home_park``).
+        equals ``flag_class`` (e.g. ``manufactured_home_community``).
     score_columns : dict of {class: column}, optional
         For named classes, also write that rule's raw weighted score — not
         gated by its own ``min_score`` — to the given column. This is an
@@ -296,6 +303,12 @@ def classify_parcel_land_use(
         best_score.loc[take] = score.loc[take]
 
     curated[output] = pd.Categorical(winner)
+    if winner.notna().any():
+        # Provenance: distinguishes the rule-based classes from the
+        # evidence-vote defaults reconcile_land_use fills in afterwards.
+        from openplaces.io.curator.provenance import record_source
+
+        record_source(curated, output, winner.notna(), 'rule')
     if flag_column and flag_class is not None:
         curated[flag_column] = winner.eq(flag_class).fillna(False).to_numpy()
     if review_column:
@@ -313,18 +326,93 @@ def classify_parcel_land_use(
     return state
 
 
-@_register('infer_occupancy_type')
-def infer_occupancy_type(state: CurateState) -> CurateState:
-    """Infer ``occupancy_type`` from ordered evidence, then geometry and dwellings.
+def _vote_evidence_class(
+    curated,
+    evidence: list[dict],
+    config: dict,
+    rules: list[dict],
+) -> tuple[pd.Series, pd.Series]:
+    """Weighted consensus vote across the coerced occupancy evidence columns.
+
+    Each present evidence entry casts its ``weight`` (default 1.0) for its
+    residential-bucketed class (see
+    :func:`~openplaces.io.curator.occupancy.bucket_classes` — the same
+    granularity as the ``occupancy_type_conflict`` summary, so agreeing
+    non-residential sources pool their votes). The heaviest bucket wins; ties
+    fall to the bucket of the earliest listed evidence, preserving the recipe
+    ordering as precedence when there is no majority. Returns
+    ``(classes, tokens)``: the concrete class is the first-listed winning
+    voter's coerced class (a pooled non-residential win still yields a
+    specific class), and the token joins the winning voters' labels with '/'.
+    """
+    from openplaces.io.curator.occupancy import bucket_classes, coerce_to_class
+
+    classes = pd.Series(pd.NA, index=curated.index, dtype=object)
+    tokens = pd.Series(pd.NA, index=curated.index, dtype=object)
+
+    entries = []
+    for ev in evidence:
+        col = ev['column']
+        if col not in curated.columns:
+            continue
+        coerced = coerce_to_class(curated[col], rules)
+        label = ev.get('label', col)
+        weight = float(ev.get('weight', 1.0))
+        entries.append((label, weight, coerced, bucket_classes(coerced, config)))
+    if not entries:
+        return classes, tokens
+
+    labels = [label for label, _, _, _ in entries]
+    weights = {label: weight for label, weight, _, _ in entries}
+    stacked = pd.concat(
+        {
+            **{('bucket', label): b.astype(object) for label, _, _, b in entries},
+            **{('class', label): c.astype(object) for label, _, c, _ in entries},
+        },
+        axis=1,
+    )
+
+    def _row_vote(row) -> tuple:
+        totals: dict[str, float] = {}
+        for label in labels:
+            value = row[('bucket', label)]
+            if pd.notna(value):
+                totals[value] = totals.get(value, 0.0) + weights[label]
+        best = max(totals.values())
+        # dict preserves first-vote order, so ties fall to the earliest
+        # listed evidence's bucket.
+        winner = next(value for value, total in totals.items() if total == best)
+        voters = [
+            label
+            for label in labels
+            if pd.notna(row[('bucket', label)]) and row[('bucket', label)] == winner
+        ]
+        return (row[('class', voters[0])], '/'.join(voters))
+
+    has_vote = pd.concat([b.notna() for _, _, _, b in entries], axis=1).any(axis=1)
+    if has_vote.any():
+        voted = stacked.loc[has_vote].apply(_row_vote, axis=1)
+        classes.loc[has_vote] = voted.str[0]
+        tokens.loc[has_vote] = voted.str[1]
+    return classes, tokens
+
+
+@_register('impute_occupancy_type')
+def impute_occupancy_type(state: CurateState) -> CurateState:
+    """Impute ``occupancy_type`` from ordered evidence, then geometry and dwellings.
 
     Vocabulary, evidence columns, and thresholds all come from the recipe
     ``occupancy`` config block; this step holds no source- or class-specific
     names.
 
-    1. Base class: walk ``occupancy.evidence`` in priority order, coerce each
-       column to a class via the class-map ruleset, and take the first non-null
-       (the recipe ordering sets precedence, e.g. a structure source before an
-       area source).
+    1. Base class from ``occupancy.evidence``. Default (``evidence_mode:
+       cascade``): walk the entries in priority order, coerce each column to a
+       class via the class-map ruleset, and take the first non-null (the recipe
+       ordering sets precedence, e.g. a structure source before an area
+       source). With ``evidence_mode: vote``: a weighted consensus vote across
+       all present evidence, so agreeing lower-priority sources can outvote a
+       lone higher-priority one (see :func:`_vote_evidence_class`); per-entry
+       ``weight`` (default 1.0) tunes each source's say.
     2. Footprint-geometry signal (``rules.manufactured_home_geometry``) where all
        evidence was null.
     3. ``n_dwellings`` single-family gap-fill (``rules.single_family_dwellings``),
@@ -349,21 +437,32 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
 
     result = pd.Series(pd.NA, index=curated.index, dtype=object)
 
-    # 1. Ordered evidence cascade: first present evidence sets the base class.
-    for evidence in config.get('evidence', []):
-        col = evidence['column']
-        if col not in curated.columns:
-            continue
-        coerced = coerce_to_class(curated[col], rules)
-        fill = result.isna() & coerced.notna()
-        result.loc[fill] = coerced.loc[fill]
-        if fill.any():
-            record_source(curated, 'occupancy_type', fill, evidence.get('label', col))
+    # 1. Base class from the evidence columns: weighted consensus vote, or the
+    #    default first-non-null cascade (recipe order = precedence).
+    evidence_list = config.get('evidence', [])
+    if config.get('evidence_mode', 'cascade') == 'vote':
+        classes, tokens = _vote_evidence_class(curated, evidence_list, config, rules)
+        fill = classes.notna()
+        result.loc[fill] = classes.loc[fill]
+        for token in tokens.loc[fill].dropna().unique():
+            record_source(curated, 'occupancy_type', fill & tokens.eq(token), token)
+    else:
+        for evidence in evidence_list:
+            col = evidence['column']
+            if col not in curated.columns:
+                continue
+            coerced = coerce_to_class(curated[col], rules)
+            fill = result.isna() & coerced.notna()
+            result.loc[fill] = coerced.loc[fill]
+            if fill.any():
+                record_source(
+                    curated, 'occupancy_type', fill, evidence.get('label', col)
+                )
 
     # 2. Footprint-geometry manufactured-home signal where no evidence applied.
     geom_rule = rule_cfg.get('manufactured_home_geometry')
     null_mask = result.isna()
-    if geom_rule and null_mask.any() and 'm2' in curated.columns:
+    if geom_rule and null_mask.any() and 'area_m2' in curated.columns:
         aspect_min = float(geom_rule.get('aspect_min', 2.5))
         area_max = float(geom_rule.get('area_max_m2', 185.0))
         with warnings.catch_warnings():
@@ -372,7 +471,7 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
         length = dims.map(lambda x: x[1])
         width = dims.map(lambda x: x[2]).clip(lower=1e-6)
         aspect = length / width
-        area_m2 = curated.loc[null_mask, 'm2']
+        area_m2 = curated.loc[null_mask, 'area_m2']
         mfg = (aspect >= aspect_min) & (area_m2 <= area_max)
         mfg_idx = mfg[mfg].index
         result.loc[mfg_idx] = geom_rule['class']
@@ -401,17 +500,21 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
             sf_max = float(sf_rule.get('max_dwellings', 1))
             sf_idx = eligible[units <= sf_max]
             result.loc[sf_idx] = sf_rule['class']
-            record_source(curated, 'occupancy_type', sf_idx, 'dwellings')
+            record_source(curated, 'occupancy_type', sf_idx, 'single_family_dwellings')
 
     # 4. Non-primary residential footprints become the secondary class — as do
     #    explicit-secondary footprints with no occupancy evidence (an accessory
     #    structure on a parcel whose primary building is elsewhere). A non-primary
     #    footprint with a known non-residential class keeps that class. Exception:
-    #    habitable-size homes on a manufactured-home-park parcel are the park's
-    #    dwellings (Manufactured Home), not accessory structures; only sub-threshold
-    #    footprints there (sheds) stay secondary. The park flag is set by the parcel
-    #    curation lane (classify_parcel_land_use) and joined in by
-    #    link_curated_entity; absent it, behaviour is unchanged.
+    #    habitable-size homes on a manufactured-home-community parcel are the
+    #    community's dwellings (Manufactured Home), not accessory structures;
+    #    only sub-threshold footprints there (sheds) stay secondary. This flag
+    #    is set by the parcel curation lane (classify_parcel_land_use) and
+    #    joined in by link_curated_entity, under the same name
+    #    flag_manufactured_home_communities later refines from the final
+    #    footprint occupancy -- read here before that refinement runs, so this
+    #    step still sees the parcel-lane's one-pass value. Absent either,
+    #    behaviour is unchanged.
     residential = list(config.get('residential_classes', []))
     secondary = config.get('secondary_class')
     mh_label = rule_cfg.get('manufactured_home_geometry', {}).get('class')
@@ -421,15 +524,15 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
             result.isna() & priority.eq('secondary')
         )
         in_park = (
-            curated['manufactured_home_park'].astype('boolean').fillna(False)
-            if 'manufactured_home_park' in curated.columns
+            curated['manufactured_home_community'].astype('boolean').fillna(False)
+            if 'manufactured_home_community' in curated.columns
             else pd.Series(False, index=curated.index)
         )
         to_mh = pd.Series(False, index=curated.index)
-        if mh_label and bool(in_park.any()) and 'm2' in curated.columns:
+        if mh_label and bool(in_park.any()) and 'area_m2' in curated.columns:
             threshold = _habitable_threshold(curated, result, mh_label, config)
             habitable = (
-                pd.to_numeric(curated['m2'], errors='coerce') >= threshold
+                pd.to_numeric(curated['area_m2'], errors='coerce') >= threshold
             ).fillna(False)
             to_mh = non_primary & in_park & habitable
             if to_mh.any():
@@ -456,7 +559,7 @@ def infer_occupancy_type(state: CurateState) -> CurateState:
     if state.verbose:
         counts = curated['occupancy_type'].value_counts(dropna=False)
         print(
-            '  infer_occupancy_type: '
+            '  impute_occupancy_type: '
             + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
         )
     return state
@@ -548,8 +651,13 @@ def flag_manufactured_home_communities(
     Recomputed from the FINAL footprint occupancy (after imagery, vote, and height
     refinement), so it reflects the richest manufactured-home evidence — a
     correction the one-pass parcel lane cannot see, since it runs before footprint
-    curation. Written as footprint columns: a per-parcel count and a boolean flag.
-    A future second parcel pass can write this correction back to the parcel
+    curation. Written as footprint columns: a per-parcel count and a boolean flag,
+    under the same name (*output*, default ``manufactured_home_community``) the
+    parcel curation lane's own ``classify_parcel_land_use`` flag uses -- this
+    step's value is the intentional final word, overwriting whatever
+    ``link_curated_entity`` relayed from the parcel lane earlier in this
+    recipe (already consumed by then, see ``impute_occupancy_type``). A
+    future second parcel pass can write this correction back to the parcel
     dataset.
 
     Parameters
@@ -648,7 +756,7 @@ def _score_manufactured_home_candidates(
 
     # Metric geometry for every distance/shape computation.
     geom = work.geometry.to_crs(local_metric_crs(work))
-    area = pd.to_numeric(work['m2'], errors='coerce').to_numpy()
+    area = pd.to_numeric(work['area_m2'], errors='coerce').to_numpy()
     perimeter = geom.length.values
     perimeter_sq = np.clip(perimeter**2, a_min=1e-6, a_max=None)
     compactness = 4 * np.pi * area / perimeter_sq
@@ -795,7 +903,9 @@ def _score_manufactured_home_candidates(
         y_train = (assessor_labels[train_mask] == mh_label).astype(int)
 
         if model_type == 'calibrated_logistic':
-            model = LogisticRegression(max_iter=1000, random_state=42)
+            model = LogisticRegression(
+                solver='liblinear', max_iter=1000, random_state=42
+            )
         elif model_type == 'random_forest':
             model = RandomForestClassifier(n_estimators=100, random_state=42)
         elif model_type == 'gradient_boosting':
@@ -808,11 +918,19 @@ def _score_manufactured_home_candidates(
 
             model = XGBClassifier(random_state=42, eval_metric='logloss')
         else:
-            model = LogisticRegression(max_iter=1000, random_state=42)
+            model = LogisticRegression(
+                solver='liblinear', max_iter=1000, random_state=42
+            )
 
         try:
             model.fit(X_train, y_train)
-            if hasattr(model, 'predict_proba'):
+            if isinstance(model, LogisticRegression):
+                coef = model.coef_[0]
+                intercept = model.intercept_[0]
+                z = X.mul(coef, axis=1).sum(axis=1) + intercept
+                probs = 1.0 / (1.0 + np.exp(-z.to_numpy()))
+                p_mfg_morph = pd.Series(probs, index=work.index)
+            elif hasattr(model, 'predict_proba'):
                 probs = model.predict_proba(X)
                 p_mfg_morph = pd.Series(probs[:, 1], index=work.index)
             else:
@@ -961,10 +1079,14 @@ def classify_manufactured_homes(
         coerced = coerce_to_class(curated[use_col], load_ruleset(state, ruleset))
         assessor_labels = coerced.where(coerced.isin([mh_label, sf_label]))
 
-    if 'm2' not in curated.columns:
+    if 'area_m2' not in curated.columns:
+        from openplaces.core.schema import is_synthetic_geometry
         from openplaces.geo.polygon import get_areas
 
-        curated['m2'] = get_areas(curated, unit='m2')
+        area_mask = ~is_synthetic_geometry(curated, state.recipe.get('entity'))
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            curated['area_m2'] = get_areas(curated, unit='m2', mask=area_mask)
 
     # --- Candidate gate ---
     # Manufactured vs single-family discrimination only applies to small
@@ -981,7 +1103,8 @@ def classify_manufactured_homes(
     keep_classes = residential_classes | (
         {secondary_class} if secondary_class else set()
     )
-    is_small = pd.to_numeric(curated['m2'], errors='coerce') <= plausible_area_max_m2
+    area_vals = pd.to_numeric(curated['area_m2'], errors='coerce')
+    is_small = area_vals <= plausible_area_max_m2
     if 'occupancy_type' in curated.columns and residential_classes:
         occ = curated['occupancy_type'].astype(object)
         # Unknown occupancy is kept (cannot be ruled out); only a known class
@@ -1017,7 +1140,6 @@ def classify_manufactured_homes(
     # Full-length output defaults to "not a manufactured home"; candidates are
     # scored on a reprojected metric geometry inside the helper.
     p_mfg_out = pd.Series(0.0, index=curated.index)
-
     if candidate.any():
         scored = _score_manufactured_home_candidates(
             curated.loc[candidate],

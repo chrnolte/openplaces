@@ -295,7 +295,7 @@ class GoogleStreetview:
             asset_keys.append(key)
             asset_n_stories.append(getattr(asset, 'n_stories', None))
 
-        street_images, metadata = self._download_images(
+        street_images, metadata, image_set.counts = self._download_images(
             asset_footprints,
             asset_keys,
             base_dir_path,
@@ -353,8 +353,10 @@ class GoogleStreetview:
 
         Returns
         -------
-        tuple[list[Path], dict]
-            List of image paths and a metadata dictionary keyed by image path.
+        tuple[list[Path], dict, dict]
+            List of image paths, a metadata dictionary keyed by image path,
+            and a tally of how the images were obtained
+            (``found``/``missing``/``cached``).
         """
         image_dir = save_dir / FILE_SUBDIRECTORIES['images']
         image_dir.mkdir(parents=True, exist_ok=True)
@@ -383,24 +385,54 @@ class GoogleStreetview:
 
         results = {}
         counts = {'found': 0, 'missing': 0, 'cached': 0}
+
+        # Only buildings whose image is actually missing (or force-redownloaded)
+        # hit the API; a fully cached inventory produces no progress bar at all.
+        pending_inps = []
+        for footprint, footprint_cent, image_path, n_stories in inps:
+            if image_path.exists() and not redownload:
+                # Reuse the cached image; redownload would re-fetch it.
+                results[image_path] = None
+                counts['cached'] += 1
+            else:
+                pending_inps.append((footprint, footprint_cent, image_path, n_stories))
+
+        if pending_inps:
+            self._download_pending(
+                pending_inps,
+                results,
+                counts,
+                save_interim_images,
+                save_all_cam_metadata,
+            )
+
+        metadata = self._process_meta_for_images(
+            street_image_paths, bldg_centroids, results, save_all_cam_metadata
+        )
+
+        return street_image_paths, metadata, counts
+
+    def _download_pending(
+        self,
+        pending_inps: list[tuple],
+        results: dict,
+        counts: dict,
+        save_interim_images: bool,
+        save_all_cam_metadata: bool,
+    ) -> None:
+        """Download the images not found on disk, updating results and counts."""
         with (
             tqdm(
-                total=len(footprints),
+                total=len(pending_inps),
                 desc='Obtaining street-level imagery',
                 unit='building',
             ) as pbar,
             ThreadPoolExecutor(max_workers=self.max_workers) as executor,
         ):
-            for batch_start in range(0, len(inps), self.batch_size):
-                batch = inps[batch_start : batch_start + self.batch_size]
+            for batch_start in range(0, len(pending_inps), self.batch_size):
+                batch = pending_inps[batch_start : batch_start + self.batch_size]
                 futures = {}
                 for footprint, footprint_cent, image_path, n_stories in batch:
-                    if image_path.exists() and not redownload:
-                        # Reuse the cached image; redownload would re-fetch it.
-                        results[image_path] = None
-                        counts['cached'] += 1
-                        pbar.update()
-                        continue
                     future = executor.submit(
                         self._download_streetlev_image,
                         footprint,
@@ -440,12 +472,6 @@ class GoogleStreetview:
                         pbar.update()
 
                 pbar.set_postfix(counts, refresh=True)
-
-        metadata = self._process_meta_for_images(
-            street_image_paths, bldg_centroids, results, save_all_cam_metadata
-        )
-
-        return street_image_paths, metadata
 
     def _download_streetlev_image(
         self,

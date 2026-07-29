@@ -1,0 +1,16 @@
+{
+  "accuracy_m": 2.0,
+  "grid_files": [
+    "us_noaa_TN.tif",
+    "us_noaa_gahpgn.tif",
+    "us_noaa_kyhpgn.tif",
+    "us_noaa_nchpgn.tif",
+    "us_noaa_schpgn.tif",
+    "us_noaa_vahpgn.tif"
+  ],
+  "operation_definition": "proj=pipeline step proj=unitconvert xy_in=us-ft xy_out=m step inv proj=lcc lat_0=33.75 lon_0=-79 lat_1=36.1666666666667 lat_2=34.3333333333333 x_0=609601.219202438 y_0=0 ellps=GRS80 step proj=hgridshift grids=us_noaa_TN.tif,us_noaa_gahpgn.tif,us_noaa_kyhpgn.tif,us_noaa_nchpgn.tif,us_noaa_schpgn.tif,us_noaa_vahpgn.tif,@null step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of SPCS83 North Carolina zone (US survey foot) + NAD83 to WGS 84 (17) + axis order change (2D) (merged with 5 same-shaped region grid(s), with identity fallback outside their combined coverage)",
+  "registered": "2026-07-28",
+  "source_crs": "EPSG:2264",
+  "target_crs": "EPSG:4326"
+}

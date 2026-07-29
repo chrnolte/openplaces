@@ -7,9 +7,11 @@
 name: openplaces
 channels:
   - conda-forge
+  - bioconda
+  - nodefaults
 dependencies:
   # Python version
-  - python>=3.12
+  - python>=3.12,<3.13
 
   # Core geospatial dependencies (better via conda due to C/C++ libs)
   # KEEP IN SYNC WITH pyproject.toml [project.dependencies]
@@ -28,6 +30,9 @@ dependencies:
   - tqdm>=4.65.0
   - pyyaml>=6.0.3
   - platformdirs>=4.9.2
+  - psutil>=5.9.0
+  - usaddress>=0.5.14
+  - rapidfuzz>=3.0.0
 
   # Optional: analysis
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.analysis]
@@ -43,6 +48,12 @@ dependencies:
   - seaborn>=0.12.0
   - contextily>=1.6.2
   - altair>=5.0.0
+
+  # Optional: viz-fast (1M+ polygon rendering: Lonboard/deck.gl + Datashader)
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.viz-fast]
+  - lonboard>=0.10.0
+  - datashader>=0.16.0
+  - voila>=0.5.0
 
   # Optional: raster
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.raster]
@@ -88,10 +99,17 @@ dependencies:
   # After install, fetch the browser: `playwright install chromium`
   - playwright>=1.40.0
 
+  # Optional: workflow orchestration (workflow/Snakefile + flow/submit.py)
+  # Conda-only, like torch: not listed in pyproject.toml. The library
+  # itself (flow/dag.py, flow/run_stage.py) never imports snakemake.
+  # Pin exact versions after the first solve on the SCC.
+  - snakemake-minimal>=8
+  - snakemake-executor-plugin-cluster-generic
+
   # Optional: dev tools
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.dev]
   - jupyter>=1.0.0
-  - jupyterlab>=4.0.0
+  - jupyterlab>=4.6.1
   - jupyter-ruff>=0.2.0
   - jupyterlab_execute_time>=3.0.0
   - ruff>=0.1.0
@@ -110,6 +128,9 @@ dependencies:
   - pip:
     - python-polylabel>=0.6
     - openlocationcode>=1.0.1
+    # Optional: postal (not on conda-forge)
+    # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.postal]
+    - zipcodes>=1.2.0
     - -e .
 
 variables:

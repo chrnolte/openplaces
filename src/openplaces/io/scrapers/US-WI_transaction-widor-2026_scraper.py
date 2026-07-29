@@ -79,6 +79,7 @@ def fetch(
     target_path: str | Path,
     portal_url: str | None = None,
     *,
+    admin_id_to_download: str | None = None,
     headless: bool = False,
     timeout_s: int = 120,
     label: str | None = None,
@@ -90,6 +91,7 @@ def fetch(
     browser_channel: str | None = None,
     slow_mo_ms: int = 0,
     screenshot_on_error: bool = True,
+    redownload: bool = False,
     verbose: bool = False,
 ) -> Path:
     """Download one month of Wisconsin RETR data to *target_path*.
@@ -103,6 +105,11 @@ def fetch(
         Where to save the downloaded CSV. Parent directories are created.
     portal_url : str, optional
         TAP portal URL. Defaults to the public RETR landing page.
+    admin_id_to_download : str, optional
+        Unused: this recipe is partitioned by ``partition: year_month``, not
+        ``admin_level``, so the Ingester always passes ``None`` here. Accepted
+        for interface compatibility with `_run_download_scraper`'s shared
+        ``fetch`` contract.
     headless : bool, default False
         Run the browser without a visible window. The portal uses bot
         detection, so a visible (headed) browser is more reliable on first
@@ -134,6 +141,12 @@ def fetch(
     screenshot_on_error : bool, default True
         On failure, write ``{stem}_error.png`` and ``{stem}_error.html`` next
         to *target_path*.
+    redownload : bool, default False
+        Unused: this scraper always fetches when called (the Ingester's own
+        exists-and-not-redownload check happens before `fetch` is invoked, so
+        there is no "already downloaded" shortcut here to bypass). Accepted
+        for interface compatibility with `_run_download_scraper`'s shared
+        `fetch` contract.
     verbose : bool, default False
         Print progress messages.
 

@@ -34,5 +34,5 @@ Notebooks for data processing and analysis (:gh-file:`notebooks`) are grouped in
    * - ``09_show``
      - Interactive display of results, demonstrating quality, issues, or functionality
 
-These notebooks can be converted to scripts and be orchestrated across large computing clusters (to process data entire world regions).
+These notebooks can be converted to scripts and be orchestrated across large computing clusters (to process data for entire world regions).
 

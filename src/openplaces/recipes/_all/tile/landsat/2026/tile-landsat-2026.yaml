@@ -1,0 +1,34 @@
+# Recipe to import the Landsat tile grid
+description: >-
+  Landsat WRS-2 descending tile grid.
+
+admin_id: NULL
+
+entity:
+  entity_type: tile
+  source:
+    source_id: landsat
+    portal_url: "https://www.usgs.gov/landsat-missions/landsat-path-row-shapefiles-and-kml-files"
+    download_url: "https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/atoms/files/WRS2_descending_0.zip"
+  version: 2026
+
+compressed_file_name: "WRS2_descending_0.zip"
+uncompressed_file_name: "WRS2_descending.shp"
+
+columns:
+  tile_id: PR
+  path: PATH
+  row: ROW
+
+set_index: tile_id
+
+force_2d: True
+add_geometry_derivatives: True
+add_tile_utm_derivatives:
+  tile_id_col: tile_id
+  tile_type: landsat
+
+entity_links:
+  - recipe_id: admin-openplaces-2026_admin2
+  - recipe_id: admin-openplaces-2026_admin3
+  - recipe_id: admin-openplaces-2026_admin4

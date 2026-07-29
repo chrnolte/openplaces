@@ -70,13 +70,13 @@ Dataset description and source
 
    :ref:`Entity <entities>` of the dataset: the "thing" that every row of the dataset table refers to.
 
-   Use :attr:`entity` when each row in the data is a fundamental building block of ``openplaces`` — a parcel, building, admin unit, etc.
+   Use :attr:`entity` when each row in the data is a fundamental building block of ``openplaces`` - a parcel, building, admin unit, etc.
 
    Use :attr:`dataset` instead when the data is not itself an entity type (see :attr:`dataset` below).
 
    .. attribute:: entity_type
 
-      Type of entity, e.g. :ref:`admin <administrative_units>`, :ref:`parcel <parcels>`, :ref:`property <properties>`, :ref:`building <buildings>`, :ref:`transaction <transactions>`, :ref:`tile <tiles>`.
+      Type of entity, e.g., :ref:`admin <administrative_units>`, :ref:`parcel <parcels>`, :ref:`property <properties>`, :ref:`building <buildings>`, :ref:`transaction <transactions>`, :ref:`tile <tiles>`.
 
    .. attribute:: source
 
@@ -90,7 +90,7 @@ Dataset description and source
 
          URL to download the data directly.
 
-         If :attr:`download_by` is also set, :attr:`download_url` can include placeholders to be resolved, e.g.:
+         If :attr:`download_by` is also set, :attr:`download_url` can include placeholders to be resolved, e.g.,:
 
          :input:`https://nsi.sec.usace.army.mil/downloads/nsi_2022/nsi_2022_{admin2_id_admin1}.gpkg.zip`
 
@@ -102,7 +102,7 @@ Dataset description and source
 
          String pattern (regular expression) that extracts the download URL from the HTML content of :attr:`download_url_source`.
 
-         Placeholders in the pattern (e.g. ``{admin3_name}``) are substituted with the current partition value before matching.
+         Placeholders in the pattern (e.g., ``{admin3_name}``) are substituted with the current partition value before matching.
 
    .. attribute:: version
 
@@ -116,7 +116,7 @@ Dataset description and source
 
    .. attribute:: theme
 
-      Short descriptor of the data theme, e.g. :input:`landcover-annual`.
+      Short descriptor of the data theme, e.g., :input:`landcover-annual`.
 
    .. attribute:: source
       :no-index:
@@ -149,7 +149,7 @@ File handling
 
    .. attribute:: admin_key_transform
 
-      Rules to transform admin key values before substituting them into the download URL (e.g. remove spaces from county names).
+      Rules to transform admin key values before substituting them into the download URL (e.g., remove spaces from county names).
 
       Example (NC building recipe, which uses the county name in the URL):
 
@@ -211,7 +211,7 @@ File handling
 
    Providing this skips re-downloading when the file is already present.
 
-   Can include placeholders substituted by :attr:`download_by` (e.g. ``{admin2_id_leaf}``) and wildcards (the ingester will search for a matching file).
+   Can include placeholders substituted by :attr:`download_by` (e.g., ``{admin2_id_leaf}``) and wildcards (the ingester will search for a matching file).
 
 .. attribute:: uncompressed_file_name
 
@@ -225,13 +225,13 @@ File handling
 
 .. attribute:: encoding
 
-   Character encoding of the source file, passed directly to the underlying reader (e.g. :input:`latin-1`).
+   Character encoding of the source file, passed directly to the underlying reader (e.g., :input:`latin-1`).
 
    Only needed when the file is not UTF-8.
 
 .. attribute:: process_by
 
-   Instructions to process a large data file in smaller chunks, typically by administrative subdivision (e.g. reading a state-wide geodatabase county by county to avoid loading it entirely into memory).
+   Instructions to process a large data file in smaller chunks, typically by administrative subdivision (e.g., reading a state-wide geodatabase county by county to avoid loading it entirely into memory).
 
    .. attribute:: admin_level
       :no-index:
@@ -246,7 +246,7 @@ File handling
 
       Optional transformation to apply to the values in :attr:`admin_id_column` before building the crosswalk.
 
-      Useful when the source column contains a partial identifier that needs to be modified to match ``openplaces`` Admin IDs (e.g. prefixing a 3-digit county code with a state FIPS code to produce a 5-digit FIPS).
+      Useful when the source column contains a partial identifier that needs to be modified to match ``openplaces`` Admin IDs (e.g., prefixing a 3-digit county code with a state FIPS code to produce a 5-digit FIPS).
 
       Uses the same transformation dict format as :attr:`transformations`.
 
@@ -267,14 +267,14 @@ File handling
 
       Two forms are supported:
 
-      **Recipe shorthand** — points to a prebuilt crosswalk table:
+      **Recipe shorthand** - points to a prebuilt crosswalk table:
 
       .. code-block:: yaml
 
          admin_id_crosswalk:
            recipe_id: "US-MA_parcel-massgis-2025_admin4-crosswalk"
 
-      **Dynamic crosswalk** — built at runtime from an admin recipe:
+      **Dynamic crosswalk** - built at runtime from an admin recipe:
 
       .. code-block:: yaml
 
@@ -288,7 +288,7 @@ File handling
       .. attribute:: admin_level
          :no-index:
 
-         Administrative level of the crosswalk target, e.g. :input:`3` for counties.
+         Administrative level of the crosswalk target, e.g., :input:`3` for counties.
 
       .. attribute:: admin_id_column
          :no-index:
@@ -298,7 +298,7 @@ File handling
       .. attribute:: admin_recipe_id
          :no-index:
 
-         Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-census-2021_admin3"`.
+         Recipe from which to derive the crosswalk, e.g., :input:`"US_admin-census-2021_admin3"`.
 
    .. attribute:: use_spatial_index
 
@@ -350,14 +350,14 @@ Columns
 
    - **snake_case**, with role prefixes such as ``owner_``, ``tax_``,
      ``last_sale_``, ``source_``; ``{qualifier}_value`` for monetary fields;
-     ``_code`` twins for coded categoricals; ``m2`` for square metres.
+     ``_code`` twins for coded categoricals; ``m2`` for square meters.
    - **Do not prefix a column with the dataset's own entity type, except for
      identifiers.** In a ``parcel`` dataset, ``parcel_id`` / ``parcel_id_admin1``
      (identifiers) are fine, but the parcel's own type is ``type`` (not
      ``parcel_type``) and its map number is ``mapnumber`` (not
-     ``parcel_mapnumber``). Prefixes naming a *different* entity (e.g.
+     ``parcel_mapnumber``). Prefixes naming a *different* entity (e.g.,
      ``owner_name``) are fine.
-   - **Do not abbreviate words** — ``value`` not ``val``, ``subdivision`` not
+   - **Do not abbreviate words** - ``value`` not ``val``, ``subdivision`` not
      ``subd``, ``market`` not ``mkt``, ``number`` not ``no``.
    - **``n_``** is the prefix for counts (``n_dwellings``, ``n_sales``).
 
@@ -380,13 +380,13 @@ Columns
 
    Set to :input:`True` to retain all columns not listed in :attr:`columns`.
 
-   Also retains columns generated during index creation (e.g. by :attr:`create_index`).
+   Also retains columns generated during index creation (e.g., by :attr:`create_index`).
 
 .. attribute:: parcel_id_local
 
    Compute a standardized, locally cross-comparable parcel matching key at
    ingest, so parcel, tax, and transaction datasets in the same locality can be
-   linked without re-deriving ids. ``parcel_id_assessor`` is the raw source id;
+   linked without re-deriving IDs. ``parcel_id_assessor`` is the raw source ID;
    ``parcel_id_local`` is the standardized key derived from it.
 
    .. code-block:: yaml
@@ -394,7 +394,7 @@ Columns
       parcel_id_local:
         source: parcel_id_assessor   # raw column to standardize
         kind: parcel                 # parcel | tax (selects the default conversion)
-        admin_id_column: admin4_id   # optional: per-row admin unit (e.g. MA towns)
+        admin_id_column: admin4_id   # optional: per-row admin unit (e.g., MA towns)
         instruction:                 # optional source-supplied override
           "US-NC-NE": {pattern: ..., conv: ...}
 
@@ -404,7 +404,7 @@ Columns
    ``simple`` (uppercase, keep alphanumerics). The engine
    (:func:`openplaces.geo.ids.compute_parcel_id_local`) is hardened so the
    conversion never adds duplicates over those already in
-   ``parcel_id_assessor`` — it falls back to ``simple`` then the raw id. The
+   ``parcel_id_assessor`` - it falls back to ``simple`` then the raw ID. The
    harmonizer ``link_by_id`` step then joins datasets on ``parcel_id_local``
    (attaching attributes, or counting transactions per parcel). The methodology
    is adapted from the ZTRAX/parcel APN-matching workflow.
@@ -415,7 +415,7 @@ Data cleaning
 
 .. attribute:: null_value_strings
 
-   List of strings in the source data that should be interpreted as missing values (``None``).
+   List of strings in the source data that should be interpreted as missing values (:input:`None`).
 
    Applied to all non-ID columns before any other preprocessing.
 
@@ -496,6 +496,7 @@ Data transformations
 
 
 Indexing
+indexing
 --------
 
 .. attribute:: set_index
@@ -555,21 +556,21 @@ Use :attr:`admin_id_crosswalk` when the source data already contains an admin id
    .. attribute:: admin_level
       :noindex:
 
-      Administrative level of the target Admin IDs, e.g. :input:`3`.
+      Administrative level of the target Admin IDs, e.g., :input:`3`.
 
    .. attribute:: admin_id_column
       :noindex:
 
-      Column in the input data to join on, e.g. :input:`admin3_id_admin1`.
+      Column in the input data to join on, e.g., :input:`admin3_id_admin1`.
 
    .. attribute:: admin_recipe_id
       :noindex:
 
-      Recipe from which to derive the crosswalk, e.g. :input:`"US_admin-census-2021_admin3"`.
+      Recipe from which to derive the crosswalk, e.g., :input:`"US_admin-census-2021_admin3"`.
 
 .. attribute:: overlay_admin_ids
 
-   Assign Admin IDs to rows by spatial overlay — intersecting geometries with admin unit boundaries.
+   Assign Admin IDs to rows by spatial overlay - intersecting geometries with admin unit boundaries.
 
    Use when the source data has no reliable admin ID column and spatial containment must be used instead.
 
@@ -583,7 +584,7 @@ Use :attr:`admin_id_crosswalk` when the source data already contains an admin id
 
       Recipe that provides the admin unit geometries.
 
-      Should use a high-resolution in-country boundary dataset for accurate allocation (e.g. building footprints require county-level precision).
+      Should use a high-resolution in-country boundary dataset for accurate allocation (e.g., building footprints require county-level precision).
 
       Example: :input:`'US_admin-census-2021_admin3'` for US counties.
 
@@ -599,7 +600,7 @@ Saving
 
       Name of the ``openplaces`` data directory in which to save output.
 
-      Must be one of the registered directory names (e.g. :input:`cache`, :input:`core`, :input:`out`).
+      Must be one of the registered directory names (e.g., :input:`cache`, :input:`core`, :input:`out`).
 
       Defaults to :input:`cache` if omitted.
 
@@ -614,14 +615,14 @@ Saving
 
       .. note::
 
-         When this level is **coarser** than :attr:`download_by: admin_level` or attr:`process_by: admin_level` (e.g. save at county=3 while processing by town=4), the ingester automatically aggregates the intermediate files to the coarser level and deletes the intermediates, including any empty directories that remain.
+          When this level is **coarser** than :attr:`download_by: admin_level` or attr:`process_by: admin_level` (e.g., save at county=3 while processing by town=4), the ingester automatically aggregates the intermediate files to the coarser level and deletes the intermediates, including any empty directories that remain.
 
    .. attribute:: filename
 
       Override the auto-generated output filename stem.
 
       The auto-generated name is derived from the reference (admin ID, entity, source, version).
-      Use this when the default is ambiguous — for example, a recipe that produces
+      Use this when the default is ambiguous - for example, a recipe that produces
       multiple files for different admin levels, or a dataset that needs a fixed conventional name.
 
       Example: :input:`admin2` (used in admin recipes to produce :file:`admin-gadm-4~1_admin2.parquet`).
@@ -638,7 +639,7 @@ Aggregating partitions
 
    The aggregated file's parquet footer records the partition IDs it contains
    under the key ``openplaces:partitions``. With ``reprocess=False``, the
-   ingester reads this footer to skip partitions that are already integrated —
+   ingester reads this footer to skip partitions that are already integrated -
    the per-partition files do not need to be kept for re-runs to be
    incremental.
 
@@ -651,7 +652,7 @@ Aggregating partitions
    .. attribute:: partition
       :no-index:
 
-      Roll-up granularity when :attr:`single_file` is not set, e.g.
+      Roll-up granularity when :attr:`single_file` is not set, e.g.,
       :input:`year` to combine the twelve months of each year into one
       per-year file.
 
@@ -663,7 +664,7 @@ Aggregating partitions
       :input:`union` (default)
          Integrate the new partitions into the existing file, de-duplicating
          by full row. Re-adding an unchanged partition is a no-op, and rows
-         that are only present in the existing file are never deleted — safe
+         that are only present in the existing file are never deleted - safe
          when partition files may be missing or out of sync.
 
       :input:`replace`

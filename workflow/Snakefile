@@ -1,0 +1,120 @@
+# Snakemake workflow for the openplaces pipeline.
+#
+# One job = one (stage, recipe, admin unit) node of the recipe DAG, the
+# same granularity as the recipes themselves. RecipeDAG derives every
+# job, its inputs/outputs, and its retention class from the recipe tree,
+# so the recipes stay the single source of truth: adding an enrichment
+# recipe to a curation pipeline automatically adds its jobs and its
+# image-cache dependency.
+#
+# Retention maps onto Snakemake flags: until_consumed outputs are temp()
+# (deleted only after every consuming job has finished — the
+# reference-counted semantics of the lifecycle design, with zero
+# openplaces bookkeeping), share outputs are protected(), everything
+# else is a plain output. Snakemake never writes tombstone receipts;
+# run_stage sets OPENPLACES_ORCHESTRATED so receipt-based skips are
+# voided and the physical files Snakemake expects are always produced.
+#
+# Run with --rerun-triggers mtime (set in the profile): recipe-YAML
+# edits must not cascade re-runs (openplaces has no parameter hashing).
+#
+# Usage:
+#   snakemake -n --config recipe=US_footprint-cheer-2026 \
+#       admin_ids=US-NC-BS,US-NC-CE
+#   python -m openplaces.flow.submit --config recipe=... admin_ids=...
+
+import csv
+from pathlib import Path
+
+from openplaces.flow import RecipeDAG
+from openplaces.flow.dag import rule_name
+
+TARGET = config.get('recipe', 'US_footprint-cheer-2026')
+ADMIN_IDS = config.get('admin_ids', [])
+if isinstance(ADMIN_IDS, str):
+    ADMIN_IDS = [a for a in ADMIN_IDS.split(',') if a]
+
+# Recipe IDs to prune from the graph (and everything only reachable through
+# them), e.g. opt-in enrichment lanes not requested for this run. Not a
+# fixed constant -- read from the run's own config, so lowercase.
+exclude_recipe_ids = config.get('exclude_recipe_ids', [])
+if isinstance(exclude_recipe_ids, str):
+    exclude_recipe_ids = [r for r in exclude_recipe_ids.split(',') if r]
+
+dag = RecipeDAG(
+    TARGET, admin_ids=ADMIN_IDS, exclude_recipe_ids=set(exclude_recipe_ids) or None
+)
+
+
+# Per-stage resources, with single-admin pins for known heavy units and
+# attempt-scaled memory on retries (see workflow/profiles/scc/mem_lookup.csv)
+def _load_mem_lookup():
+    lookup = {}
+    lookup_path = Path(workflow.basedir) / 'profiles' / 'scc' / 'mem_lookup.csv'
+    if lookup_path.exists():
+        with open(lookup_path, encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                key = (row['stage'], row['admin_id'] or None)
+                lookup[key] = int(row['mem_mb'])
+    return lookup
+
+
+MEM_LOOKUP = _load_mem_lookup()
+STAGE_RUNTIME_MIN = {'ingest': 720, 'harmonize': 240, 'enrich': 720, 'curate': 240}
+
+
+def mem_mb(stage, admin_id):
+    return MEM_LOOKUP.get((stage, admin_id), MEM_LOOKUP.get((stage, None), 8000))
+
+
+rule all:
+    input:
+        [str(p) for p in dag.target_paths()]
+
+
+for node in dag.nodes():
+    _out = str(dag.output_path(node.stage, node.recipe_id, node.admin_id))
+    _retention = dag.retention(node.stage, node.recipe_id, node.admin_id)
+    if _retention == 'until_consumed':
+        _flagged = temp(_out)
+    elif dag.bucket(node.recipe_id) == 'share':
+        _flagged = protected(_out)
+    else:
+        _flagged = _out
+    _job = (node.stage, node.recipe_id, node.admin_id)
+    _extra = [str(p) for p in dag.extra_outputs(*_job)]
+    _inputs = [str(p) for p in dag.input_paths(*_job)]
+    _admin_arg = f' {node.admin_id}' if node.admin_id else ''
+
+    rule:
+        name:
+            rule_name(node)
+        input:
+            _inputs
+        output:
+            _flagged,
+            *_extra,
+        resources:
+            mem_mb=lambda wc, attempt, _s=node.stage, _a=node.admin_id: (
+                mem_mb(_s, _a) * attempt
+            ),
+            runtime=STAGE_RUNTIME_MIN.get(node.stage, 240),
+        shell:
+            f'python -m openplaces.flow.run_stage {node.stage}'
+            f' {node.recipe_id}{_admin_arg}'
+
+
+onsuccess:
+    if config.get('email'):
+        shell(
+            'echo "openplaces workflow finished: {t}" | mail -s '
+            '"openplaces: {t} done" {e}'.format(t=TARGET, e=config['email'])
+        )
+
+
+onerror:
+    if config.get('email'):
+        shell(
+            'echo "openplaces workflow FAILED: {t}" | mail -s '
+            '"openplaces: {t} FAILED" {e}'.format(t=TARGET, e=config['email'])
+        )

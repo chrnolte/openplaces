@@ -3,7 +3,6 @@ System diagnostics: recipe availability, geographic coverage, disk usage, etc.
 """
 
 import os
-import shutil
 import time
 import warnings
 from pathlib import Path
@@ -38,8 +37,9 @@ def find_recipes(
     -------
     pd.DataFrame
         Columns: ``admin_id``, ``stage``, ``entity_type``, ``source_id``,
-        ``version``, ``n_companion_files``. Sorted by admin_id then source_id.
-        Global recipes have an empty string for ``admin_id``.
+        ``version``, ``n_companion_files``, ``exclude_from_auto_discover``.
+        Sorted by admin_id then source_id. Global recipes have an empty
+        string for ``admin_id``.
     """
     recipes_root = Path(__file__).parent / 'recipes'
 
@@ -79,6 +79,9 @@ def find_recipes(
                 'source_id': source_id,
                 'version': version,
                 'n_companion_files': n_companion,
+                'exclude_from_auto_discover': bool(
+                    data.get('exclude_from_auto_discover', False)
+                ),
             }
         )
 
@@ -388,71 +391,4 @@ def list_image_caches() -> pd.DataFrame:
         )
         for row in caches.itertuples()
     ]
-    return caches
-
-
-def delete_image_caches(
-    admin_ids: str | list | None = None,
-    source: str | None = None,
-    version: str | None = None,
-    dry_run: bool = True,
-) -> pd.DataFrame:
-    """Delete location-specific image caches from the external directory.
-
-    Parameters
-    ----------
-    admin_ids : str, AdminId, list, or None
-        Admin units whose caches to delete; a coarser unit (e.g. a county)
-        matches all caches of its children. None matches all locations.
-    source : str or None
-        Restrict to one image source (e.g. 'googlesatellite').
-    version : str or None
-        Restrict to one recipe version (e.g. 'z20').
-    dry_run : bool
-        If True (default), only report what would be deleted. If False,
-        remove each matched cache directory, including images and the
-        image metadata parquet.
-
-    Returns
-    -------
-    pd.DataFrame
-        The matched caches: admin_id, source, version, n_files, size_mb,
-        path.
-    """
-    caches = list_image_caches()
-    if caches.empty:
-        print('No image caches found.')
-        return caches
-
-    if admin_ids is not None:
-        if isinstance(admin_ids, str | AdminId):
-            admin_ids = [admin_ids]
-        selectors = [AdminId(str(a)) for a in admin_ids]
-        caches = caches[
-            [
-                any(
-                    str(sel) == str(aid) or sel.is_parent_of(aid)
-                    for sel in selectors
-                    for aid in [AdminId(cache_admin_id)]
-                )
-                for cache_admin_id in caches['admin_id']
-            ]
-        ]
-    if source is not None:
-        caches = caches[caches['source'] == source]
-    if version is not None:
-        caches = caches[caches['version'] == str(version)]
-    caches = caches.reset_index(drop=True)
-
-    total_mb = caches['size_mb'].sum()
-    if dry_run:
-        print(
-            f'Dry run: would delete {len(caches)} image cache(s), '
-            f'{total_mb:,.1f} MB total. Pass dry_run=False to delete.'
-        )
-        return caches
-
-    for cache_path in caches['path']:
-        shutil.rmtree(cache_path, ignore_errors=True)
-    print(f'Deleted {len(caches)} image cache(s), {total_mb:,.1f} MB total.')
     return caches

@@ -8,6 +8,7 @@ reference datasets:
 
 from __future__ import annotations
 
+import json
 import warnings
 
 import geopandas as gpd
@@ -22,16 +23,28 @@ from openplaces.core.attribute_registry import (
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import add_openlocationcode_index, get_geo_ids
+from openplaces.geo.link import get_entity_link_path
 from openplaces.geo.polygon import (
     clean_polygons,
     get_areas,
     overlay_polygons,
     resolve_overlapping_polygons,
 )
-from openplaces.io.aggregate import aggregate_rows
+from openplaces.io import to_parquet
+from openplaces.io.aggregate import aggregate_rows, read_file_metadata
+from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
+from openplaces.recipe import (
+    get_output_path,
+    get_recipe_by_id,
+    get_recipe_dependencies,
+    get_recipe_id,
+    get_save_admin_level,
+    resolve_attribute_name,
+    source_id_from_recipe_id,
+)
 
 # Columns carried in spine-reference crosswalk tables (index levels excluded).
 _CROSSWALK_COLS = [
@@ -40,6 +53,9 @@ _CROSSWALK_COLS = [
     'area_intersection_m2_inner',
     'fraction_of_largest',
 ]
+
+# Parquet footer key holding a link sidecar's validity fingerprint.
+_LINK_METADATA_KEY = 'openplaces:link'
 
 
 @_register('link_to_reference')
@@ -54,6 +70,7 @@ def link_to_reference(
     aggregation_function=None,
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
+    save_link: bool = False,
 ) -> HarmonizeState:
     """Load a reference dataset and build a spine ↔ reference crosswalk.
 
@@ -116,6 +133,18 @@ def link_to_reference(
         aggregated reference, collecting all values per ``geo_id`` into a list.
         Normal scalar aggregation for each column still applies alongside.
         Only used for ``spatial_overlay`` joins.
+    save_link : bool, optional
+        Persist the full many-to-many identity overlay (geometry-free,
+        every spine-reference pair including sub-threshold slivers, with
+        the crosswalk's link label joined on) as a sidecar parquet at the
+        canonical entity-link path. On later runs the sidecar is reloaded
+        instead of recomputing the overlay — the single most expensive
+        harmonize step — iff its footer fingerprint (step config plus
+        size/mtime of the ingest inputs) still matches; a deleted input
+        with a tombstone receipt stays verifiable. After a reload,
+        ``state.overlays[recipe_id]`` carries no geometry column (only the
+        area/IoU columns are consumed downstream). Only used for
+        ``spatial_overlay`` joins.
     """
     if state.spine is None:
         warnings.warn('link_to_reference: spine is None; skipping.')
@@ -147,6 +176,7 @@ def link_to_reference(
             aggregation_function,
             sort_by,
             list_columns,
+            save_link,
         )
     elif join == 'spatial_point':
         return _link_spatial_point(
@@ -192,22 +222,39 @@ def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
     if df.empty:
         return None
     admin_str = str(admin_id)
-    best_level = -1
-    best_row = None
+    candidates = []
     for _, row in df.iterrows():
         rid_str = row['admin_id']
         if rid_str == '' or admin_str.startswith(rid_str):
             level = rid_str.count('-') + 1 if rid_str else 0
-            if level > best_level:
-                best_level = level
-                best_row = row
-    if best_row is None:
+            prefix = f'{rid_str}_' if rid_str else ''
+            recipe_id = f'{prefix}{entity_type}-{row["source_id"]}-{row["version"]}'
+
+            # Since this reference recipe is auto-discovered for a spatial join,
+            # we check if it has geometry. If it was ingested, a companion
+            # `_geo.parquet` file will exist.
+            has_geo = False
+            try:
+                path = get_output_path(recipe_id, admin_id)
+                geo_path = path.with_stem(path.stem + '_geo')
+                if geo_path.exists():
+                    has_geo = True
+            except Exception:
+                pass
+            candidates.append((level, has_geo, recipe_id))
+
+    if not candidates:
         return None
-    prefix = f'{best_row["admin_id"]}_' if best_row['admin_id'] else ''
-    return (
-        f'{prefix}{best_row["entity_type"]}'
-        f'-{best_row["source_id"]}-{best_row["version"]}'
-    )
+
+    # Prefer candidates that have geometry. If none do (e.g. before ingestion),
+    # fall back to all candidates.
+    geo_candidates = [c for c in candidates if c[1]]
+    if geo_candidates:
+        best_candidate = max(geo_candidates, key=lambda x: x[0])
+    else:
+        best_candidate = max(candidates, key=lambda x: x[0])
+
+    return best_candidate[2]
 
 
 def _link_spatial_overlay(
@@ -218,6 +265,7 @@ def _link_spatial_overlay(
     aggregation_function=None,
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
+    save_link: bool = False,
 ) -> HarmonizeState:
     """Polygon-on-polygon identity overlay; builds spine-reference crosswalk."""
     min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
@@ -255,12 +303,28 @@ def _link_spatial_overlay(
                 _label = _label + ' | ' + ref[_sub].astype(str).fillna('n/a')
             ref[f'{_base}_combined'] = pd.Categorical(_label)
     ref['has_duplicate_geometry'] = ref['geo_id'].duplicated(keep=False)
-    ref['ha'] = get_areas(ref, 'ha')
+    if entity_type in ('footprint', 'building'):
+        metric_unit, imperial_unit = 'm2', 'sqft'
+    elif entity_type == 'admin':
+        metric_unit, imperial_unit = 'km2', 'sqmi'
+    else:
+        metric_unit, imperial_unit = 'ha', 'ac'
+
+    metric_col = f'area_{metric_unit}'
+    imperial_col = f'area_{imperial_unit}'
+    ref[metric_col] = get_areas(ref, metric_unit)
+    ref[imperial_col] = get_areas(ref, imperial_unit)
 
     ref_polys = ref[~ref['geo_id'].duplicated()][
         [
             c
-            for c in ['geometry', 'geo_id', 'ha', 'has_duplicate_geometry']
+            for c in [
+                'geometry',
+                'geo_id',
+                metric_col,
+                imperial_col,
+                'has_duplicate_geometry',
+            ]
             if c in ref.columns
         ]
     ].copy()
@@ -276,20 +340,63 @@ def _link_spatial_overlay(
     )
     if ref_agg is not None:
         ref_agg['n_parcels'] = ref.groupby('geo_id').size()
+        collision_cols = [
+            c for c in ref_polys.columns if c in ref_agg.columns and c != 'geo_id'
+        ]
+        if collision_cols:
+            from openplaces.io.harmonizer.attributes import _resolve_suffix
+
+            ref_suffix = _resolve_suffix(recipe_id, entity_type, state, default='_ref')
+            ref_polys = ref_polys.rename(
+                columns={c: f'{c}_geometry' for c in collision_cols}
+            )
+            ref_agg = ref_agg.rename(
+                columns={c: f'{c}{ref_suffix}' for c in collision_cols}
+            )
         ref_polys = ref_polys.join(ref_agg)
-    if 'improvement_value' in ref_polys.columns and 'ha' in ref_polys.columns:
+    area_ha_col = next(
+        (c for c in ('area_ha', 'area_ha_geometry') if c in ref_polys.columns), None
+    )
+    if 'improvement_value' in ref_polys.columns and area_ha_col is not None:
         ref_polys['improvement_value_per_ha'] = (
-            ref_polys['improvement_value'] / ref_polys['ha']
+            ref_polys['improvement_value'] / ref_polys[area_ha_col]
         )
 
-    footprints_on_ref = overlay_polygons(
-        state.spine,
-        ref_polys,
-        suffixes=('_spine', '_ref'),
-        how='identity',
-        iou=True,
-        geom=True,
-    )
+    sidecar_path = None
+    fingerprint = None
+    footprints_on_ref = None
+    if save_link:
+        sidecar_path = get_entity_link_path(
+            get_recipe_id(state.recipe), recipe_id, state.admin_id
+        )
+        fingerprint = _link_fingerprint(
+            state,
+            recipe_id,
+            {
+                'min_fraction_of_largest': min_fraction,
+                'area_intersection_m2_min': area_min_m2,
+                'sort_by': sort_by,
+                'list_columns': list_columns,
+                'aggregation_function': (
+                    None if aggregation_function is None else str(aggregation_function)
+                ),
+            },
+        )
+        if not state.reprocess:
+            footprints_on_ref = _load_link_sidecar(
+                sidecar_path, fingerprint, spine_id_col, verbose=state.verbose
+            )
+    computed_fresh = footprints_on_ref is None
+
+    if computed_fresh:
+        footprints_on_ref = overlay_polygons(
+            state.spine,
+            ref_polys,
+            suffixes=('_spine', '_ref'),
+            how='identity',
+            iou=True,
+            geom=True,
+        )
     if state.verbose:
         print(
             f'  Link (overlay): {len(footprints_on_ref):,d} '
@@ -298,6 +405,58 @@ def _link_spatial_overlay(
     if state.timer:
         state.timer.mark('Link')
 
+    crosswalk = _build_crosswalk(
+        footprints_on_ref, spine_id_col, min_fraction, area_min_m2
+    )
+
+    snapped_links = None
+    if thresholds.get('snap_chains'):
+        crosswalk, snapped_links = snap_chained_links(
+            crosswalk,
+            spine_id_col,
+            fraction_max=float(thresholds.get('chain_fraction_max', 0.75)),
+        )
+        if state.verbose and len(snapped_links):
+            n_snapped = snapped_links.index.get_level_values(spine_id_col).nunique()
+            print(
+                f'  Link (overlay): snapped {n_snapped:,d} chain-displaced '
+                'footprints to their dominant parcel'
+            )
+
+    # Written on the reload path too (not just computed_fresh): the link and
+    # chain labels are rebuilt from the current crosswalk every run, so the
+    # sidecar must be rewritten to keep its stored labels in sync (the raw
+    # overlay rows and the fingerprint are carried over unchanged).
+    if save_link:
+        _write_link_sidecar(
+            sidecar_path,
+            footprints_on_ref,
+            crosswalk,
+            fingerprint,
+            snapped=snapped_links,
+            verbose=state.verbose,
+        )
+
+    state.references[recipe_id] = ref_polys
+    state.crosswalks[recipe_id] = crosswalk
+    state.overlays[recipe_id] = footprints_on_ref
+    if entity_type:
+        state.reference_types[recipe_id] = entity_type
+    return state
+
+
+def _build_crosswalk(
+    footprints_on_ref,
+    spine_id_col: str,
+    min_fraction: float,
+    area_min_m2: float,
+) -> pd.DataFrame:
+    """Build the trimmed spine-reference crosswalk from the identity overlay.
+
+    Pure function shared by the fresh-overlay and sidecar-reload paths, so
+    the sliver trimming and link labeling can never diverge between them.
+    Tolerates a geometry-free overlay (the reloaded sidecar).
+    """
     crosswalk_cols = [v for v in _CROSSWALK_COLS if v in footprints_on_ref.columns]
     mask_multi = footprints_on_ref.index.get_level_values(spine_id_col).duplicated(
         keep=False
@@ -368,23 +527,239 @@ def _link_spatial_overlay(
 
     split_cols = [v for v in _CROSSWALK_COLS if v in footprints_multi_trimmed.columns]
     footprints_to_split = footprints_multi_trimmed[mask_still_multi][
-        split_cols + ['geometry']
+        split_cols + (['geometry'] if 'geometry' in footprints_multi_trimmed else [])
     ].copy()
     footprints_to_split.insert(0, 'link', 'multi-parcel footprint')
 
-    crosswalk = pd.concat(
+    return pd.concat(
         [
             footprints_single.reset_index().set_index([spine_id_col, 'parcel_id']),
-            footprints_to_split.drop(columns='geometry'),
+            footprints_to_split.drop(columns='geometry', errors='ignore'),
         ]
     ).sort_index()
 
-    state.references[recipe_id] = ref_polys
-    state.crosswalks[recipe_id] = crosswalk
-    state.overlays[recipe_id] = footprints_on_ref
-    if entity_type:
-        state.reference_types[recipe_id] = entity_type
-    return state
+
+def snap_chained_links(
+    crosswalk: pd.DataFrame,
+    spine_id_col: str,
+    fraction_max: float = 0.75,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Snap chain-displaced multi-parcel links to their dominant parcel.
+
+    A footprint layer displaced relative to the parcel layer makes each
+    footprint straddle its own parcel and the next one over, chaining
+    footprint-parcel-footprint-parcel down the block and inflating
+    n_parcels_per_footprint for every home on it. Such a footprint is snapped
+    to its dominant (largest-intersection) parcel when
+
+    - every minor link's parcel is a *different* footprint's dominant or
+      unique parcel — the neighbor demonstrably has its own building. A
+      genuine shared row-house footprint never satisfies this: the
+      neighboring parcels' only building is the shared footprint itself, so
+      real multi-parcel buildings keep their multi links; and
+    - every minor link's fraction_of_largest is at most *fraction_max* —
+      a near-equal split leaves the dominant side genuinely ambiguous, so it
+      is left alone.
+
+    Ownership is computed from the pre-snap crosswalk (dominants never move),
+    so one pass resolves whole chains deterministically regardless of row
+    order. Uses no geometry, so it works identically on a reloaded
+    geometry-free link sidecar.
+
+    Returns
+    -------
+    tuple of (pandas.DataFrame, pandas.DataFrame)
+        The adjusted crosswalk — each snapped footprint collapses to a single
+        link relabeled ``'unique parcel (snapped from chain)'`` — and the
+        removed minor rows (empty when nothing was snapped).
+    """
+    multi = crosswalk[crosswalk['link'] == 'multi-parcel footprint']
+    if multi.empty:
+        return crosswalk, crosswalk.iloc[0:0]
+
+    flat = multi.reset_index().sort_values(
+        'area_intersection_m2', ascending=False, kind='stable'
+    )
+    is_dominant = ~flat.duplicated(subset=spine_id_col).to_numpy()
+
+    single_links = crosswalk['link'].astype('string').str.startswith('unique parcel')
+    owned = set(
+        crosswalk.index.get_level_values('parcel_id')[
+            single_links.fillna(False).to_numpy()
+        ].dropna()
+    )
+    owned |= set(flat.loc[is_dominant, 'parcel_id'].dropna())
+
+    if 'fraction_of_largest' in flat.columns:
+        fraction = pd.to_numeric(flat['fraction_of_largest'], errors='coerce')
+    else:
+        fraction = flat['area_intersection_m2'] / flat.groupby(spine_id_col)[
+            'area_intersection_m2'
+        ].transform('max')
+
+    # A minor link's parcel in `owned` is necessarily another footprint's home:
+    # a footprint is either a multi or a single link (never both), and within
+    # one footprint the dominant and minor parcels are distinct index entries.
+    # The dominant side must be a real parcel — a footprint whose largest
+    # overlap is the unmatched (null-parcel) identity remainder has nothing to
+    # snap to.
+    minor_ok = flat['parcel_id'].isin(owned) & (fraction <= fraction_max)
+    row_ok = pd.Series(
+        np.where(is_dominant, flat['parcel_id'].notna(), minor_ok),
+        index=flat.index,
+    )
+    snap_fp = row_ok.groupby(flat[spine_id_col]).transform('all').to_numpy()
+
+    minor_pairs = pd.MultiIndex.from_frame(
+        flat.loc[snap_fp & ~is_dominant, [spine_id_col, 'parcel_id']]
+    )
+    dominant_pairs = pd.MultiIndex.from_frame(
+        flat.loc[snap_fp & is_dominant, [spine_id_col, 'parcel_id']]
+    )
+    snapped = crosswalk.loc[crosswalk.index.isin(minor_pairs)]
+    out = crosswalk.drop(index=snapped.index)
+    out.loc[out.index.isin(dominant_pairs), 'link'] = (
+        'unique parcel (snapped from chain)'
+    )
+    return out, snapped
+
+
+def _truncate_admin_to_level(admin_id, level: int):
+    """Truncate an AdminId to a save level (None at level 0)."""
+    if admin_id is None or level <= 0:
+        return None
+    if not isinstance(admin_id, AdminId):
+        admin_id = AdminId(admin_id)
+    return AdminId(*admin_id.levels[:level])
+
+
+def _link_fingerprint(
+    state: HarmonizeState, ref_recipe_id: str, step_config: dict
+) -> dict:
+    """Validity fingerprint stored in (and checked against) a link sidecar.
+
+    Records the step configuration and the size/mtime of every resolvable
+    ingest-stage input of the harmonize recipe for this admin unit (the
+    reference parquet among them). The mid-pipeline spine itself is
+    deliberately not fingerprinted. A source that was deliberately deleted
+    stays verifiable through its tombstone receipt's recorded size/mtime;
+    a missing source with no receipt yields nulls, which no longer match
+    once the file reappears (fail safe: recompute).
+    """
+    from openplaces.io.cleanup import _relative_posix
+
+    upstream_ids = {ref_recipe_id}
+    try:
+        edges = get_recipe_dependencies(state.recipe, admin_id=state.admin_id)
+        upstream_ids |= {e.upstream_recipe_id for e in edges if e.upstream_recipe_id}
+    except Exception:
+        pass
+
+    sources = []
+    for upstream_id in sorted(upstream_ids):
+        try:
+            upstream = get_recipe_by_id(upstream_id)
+            if upstream.get('stage', 'ingest') != 'ingest':
+                continue
+            source_admin = _truncate_admin_to_level(
+                state.admin_id, get_save_admin_level(upstream)
+            )
+            path = get_output_path(upstream, admin_id=source_admin)
+        except Exception:
+            continue
+        entry = {'path': _relative_posix(path), 'size': None, 'mtime': None}
+        if path.exists():
+            stat = path.stat()
+            entry['size'] = stat.st_size
+            entry['mtime'] = round(stat.st_mtime, 3)
+        else:
+            receipt = read_receipt(path)
+            if receipt is not None:
+                entry['size'] = receipt.get('source_size_bytes')
+                mtime = receipt.get('source_mtime')
+                entry['mtime'] = round(mtime, 3) if mtime is not None else None
+        sources.append(entry)
+
+    return {
+        'format': 1,
+        'spine_recipe_id': get_recipe_id(state.recipe),
+        'ref_recipe_id': ref_recipe_id,
+        'admin_id': str(state.admin_id) if state.admin_id is not None else None,
+        'step_config': step_config,
+        'sources': sources,
+    }
+
+
+def _load_link_sidecar(
+    sidecar_path, fingerprint: dict, spine_id_col: str, verbose: bool = False
+):
+    """Reload the persisted identity overlay iff its fingerprint matches.
+
+    Returns the geometry-free overlay (MultiIndex [spine_id, parcel_id])
+    or None when the sidecar is absent or invalid (recompute, fail safe).
+    Only the footer is read for the validity check.
+    """
+    if sidecar_path is None or not sidecar_path.exists():
+        return None
+    stored_raw = read_file_metadata(sidecar_path).get(_LINK_METADATA_KEY)
+    if stored_raw is None:
+        return None
+    try:
+        stored = json.loads(stored_raw)
+    except json.JSONDecodeError:
+        return None
+    if stored != fingerprint:
+        if verbose:
+            print(
+                '  Link (overlay): sidecar fingerprint mismatch; recomputing overlay.'
+            )
+        return None
+    overlay = pd.read_parquet(sidecar_path)
+    overlay = overlay.set_index([spine_id_col, 'parcel_id'])
+    overlay = overlay.drop(columns=['link', 'link_chain'], errors='ignore')
+    if verbose:
+        print(f'  Link (overlay): reloaded link sidecar {sidecar_path.name}')
+    return overlay
+
+
+def _write_link_sidecar(
+    sidecar_path,
+    footprints_on_ref,
+    crosswalk: pd.DataFrame,
+    fingerprint: dict,
+    snapped: pd.DataFrame | None = None,
+    verbose: bool = False,
+) -> None:
+    """Persist the geometry-free full identity overlay with link labels.
+
+    The sidecar is a superset of the trimmed crosswalk: every raw overlay
+    pair (including sub-threshold slivers and unmatched spine rows) with
+    the crosswalk's link label left-joined on (null = trimmed-out pair).
+    With chain snapping enabled (*snapped* not None, see
+    :func:`snap_chained_links`), a ``link_chain`` column records the
+    adjustment: ``'snapped minor'`` on the removed minor pairs (whose
+    ``link`` is null, like any other pair excluded from attribution) and
+    ``'snapped dominant'`` on the promoted 1-1 link, so the full physical
+    overlap stays queryable even though it no longer drives attribution.
+    """
+    flat = pd.DataFrame(footprints_on_ref.drop(columns='geometry', errors='ignore'))
+    if 'link' in crosswalk.columns:
+        flat = flat.join(crosswalk['link'])
+    if snapped is not None:
+        chain = pd.Series(pd.NA, index=flat.index, dtype=object)
+        chain[flat.index.isin(snapped.index)] = 'snapped minor'
+        promoted = crosswalk.index[
+            crosswalk['link'] == 'unique parcel (snapped from chain)'
+        ]
+        chain[flat.index.isin(promoted)] = 'snapped dominant'
+        flat['link_chain'] = chain
+    to_parquet(
+        flat.reset_index(),
+        sidecar_path,
+        file_metadata={_LINK_METADATA_KEY: json.dumps(fingerprint)},
+    )
+    if verbose:
+        print(f'  Link (overlay): wrote link sidecar {sidecar_path.name}')
 
 
 def _rename_right_index(
@@ -607,6 +982,43 @@ def _aggregate_multipoint(
     return result
 
 
+def flag_duplicate_points(
+    ref: pd.DataFrame,
+    key_col: str,
+    ignore_sources: list[str],
+) -> pd.Series:
+    """Flag colocated duplicate points from low-rank sources.
+
+    Within groups of two or more points sharing *key_col* (e.g. NSI's
+    ``building_id_ubid``, or the ``_olc`` location cell), rows whose
+    ``source`` is in *ignore_sources* are labeled
+    ``'colocated low-rank source'`` when the group also contains at least one
+    source outside that set — a higher-level record to defer to. A group made
+    up entirely of ignorable sources stays unflagged (nothing better exists),
+    as does any point at a unique location. Returns an object Series aligned
+    to *ref* (null = kept); rows are never dropped here — the exclusion is
+    applied where the evidence is merged onto a spine
+    (:func:`~openplaces.io.harmonizer.attributes.reconcile_attributes`).
+    """
+    resolution = pd.Series(pd.NA, index=ref.index, dtype=object)
+    if not ignore_sources or 'source' not in ref.columns or key_col not in ref.columns:
+        return resolution
+
+    key = ref[key_col].astype('string')
+    in_group = key.notna() & key.duplicated(keep=False)
+    if not in_group.any():
+        return resolution
+
+    source = ref['source'].astype(object)
+    ignorable = source.isin(list(ignore_sources))
+    # Rows with a null key fall out of the groupby; treat them as having no
+    # better sibling (they are not in a group anyway).
+    has_better = (~ignorable).groupby(key).transform('any').fillna(False).astype(bool)
+    flagged = in_group & ignorable & has_better
+    resolution[flagged] = 'colocated low-rank source'
+    return resolution
+
+
 def _link_spatial_point(
     state: HarmonizeState,
     recipe_id: str,
@@ -680,6 +1092,28 @@ def _link_spatial_point(
 
     ref = ref.copy()
     ref['_olc'] = get_openlocationcodes(ref, codelength=11, handle_duplicates=False)
+
+    # Duplicate resolution BEFORE any merging to footprints/parcels: flag (not
+    # drop) colocated duplicate points per the recipe-chosen rule. The label
+    # rides through every linking pass onto state.crosswalks; the actual
+    # exclusion is applied where NSI evidence is merged onto the spine
+    # (_attribute_point_reference), so the resolution stays inspectable and
+    # the method swappable per recipe.
+    resolve_dup = thresholds.get('resolve_duplicates')
+    if resolve_dup:
+        key_col = resolve_dup.get('key', 'building_id_ubid')
+        key_col = '_olc' if key_col == 'olc' else key_col
+        ignore_sources = resolve_dup.get('ignore_sources', [])
+        ref['duplicate_resolution'] = flag_duplicate_points(
+            ref, key_col, ignore_sources
+        )
+        if state.verbose:
+            n_flagged = int(ref['duplicate_resolution'].notna().sum())
+            if n_flagged:
+                print(
+                    f'  Dedup (colocated): {n_flagged:,d} low-rank duplicate '
+                    'point(s) flagged'
+                )
 
     # Address deduplication: keep building-level representative, count unit siblings
     if dedup_addresses:
@@ -962,11 +1396,18 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     Returned oldest-version-first: :func:`link_by_id`'s auto-discover mode
     joins sources in this order, so the most recent source's attributes are
     the ones applied last (see its column-priority rule).
+
+    Recipes with ``exclude_from_auto_discover: true`` are skipped -- for a
+    parcel-entity ingest recipe that is a reference dataset consumed only via
+    an explicit crosswalk (e.g. a legacy/external source's own attributes,
+    not meant to auto-roll into the canonical spine).
     """
     if state.admin_id is None:
         return []
     best: dict[tuple[str, str], tuple[str, str]] = {}
     for _, row in find_recipes(entity_type, stage='ingest').iterrows():
+        if row['exclude_from_auto_discover']:
+            continue
         admin_id_str = row['admin_id']
         if not admin_id_str or not AdminId(admin_id_str).is_parent_or_equal_of(
             state.admin_id
@@ -1278,7 +1719,9 @@ def link_by_id(
         ref_unique.index = ref_unique[ref_key].astype('string')
         for col in cols:
             name = f'{col}{suffix}' if suffix else col
-            _write_prioritized(spine, name, skey.map(ref_unique[col]))
+            ref_series = ref_unique[col]
+            mapper = ref_series.to_dict() if ref_series.empty else ref_series
+            _write_prioritized(spine, name, skey.map(mapper))
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
@@ -1287,7 +1730,8 @@ def link_by_id(
             )
     elif mode == 'count':
         counts = rkey.dropna().value_counts()
-        spine[count_as] = skey.map(counts).fillna(0).astype('int64')
+        mapper = counts.to_dict() if counts.empty else counts
+        spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
         spine[flag_as] = spine[count_as] > 0
         if state.verbose:
             print(
@@ -1305,12 +1749,16 @@ def link_by_id(
         # columns without a usable registry rule fall back to the first value.
         reducible = {'sum', 'mean', 'max', 'min', 'first', 'last', 'median'}
         for col in cols:
-            fname = get_agg_func(col)
+            fname = get_agg_func(resolve_attribute_name(col))
             func = fname if fname in reducible else 'first'
             name = f'{col}{suffix}' if suffix else col
-            _write_prioritized(spine, name, skey.map(grouped[col].agg(func)))
+            agg_series = grouped[col].agg(func)
+            mapper = agg_series.to_dict() if agg_series.empty else agg_series
+            _write_prioritized(spine, name, skey.map(mapper))
         count_col = count_as if count_as != 'n_transactions' else 'n_records_per_key'
-        spine[count_col] = skey.map(grouped.size()).fillna(0).astype('int64')
+        gsize = grouped.size()
+        mapper = gsize.to_dict() if gsize.empty else gsize
+        spine[count_col] = skey.map(mapper).fillna(0).astype('int64')
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
@@ -1508,10 +1956,8 @@ def infer_spine_additions(
     footprints_from_ref = footprints_from_ref[
         ~footprints_from_ref.index.isin(state.spine.index)
     ]
-    _base = recipe_id.rsplit('_', 1)[-1]
-    _parts = _base.split('-', 2)
-    _source_id = _parts[1] if len(_parts) > 1 else _base
-    _et = entity_type or (_parts[0] if _parts else 'reference')
+    _source_id = source_id_from_recipe_id(recipe_id)
+    _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
     footprints_from_ref['geometry_source'] = f'{_et}.{_source_id}'
 
     state.spine = pd.concat(

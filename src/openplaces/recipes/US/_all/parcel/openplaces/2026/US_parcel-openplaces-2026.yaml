@@ -1,14 +1,9 @@
 # Recipe: canonical openplaces parcel dataset.
 #
-# Curates the harmonized parcel spine into canonical parcel attributes. Its main
-# job for the footprint lane is land-use classification: deriving the parcel's
-# occupancy group from linked NSI (the modal-NSI inference moved here from the
-# footprint recipe) and classifying land use — including manufactured-home park
-# vs RV park vs standalone manufactured home, multiple-single-family vs townhome,
-# commercial subtypes, and vacant — from the same evidence mix (assessor codes,
-# linked-NSI group, footprint morphology, improvement value). The footprint
-# curation (US_footprint-cheer-2026) consumes this output, so parcels are
-# curated first.
+# Curates the harmonized parcel spine into canonical attributes. Main tasks:
+# 1. Derive parcel occupancy from linked NSI.
+# 2. Classify land-use sub-types (e.g. parks, townhomes, vacant) using assessor,
+#    NSI, and footprint shape data. Default classes are voted if no rule fires.
 
 description: >-
   Canonical openplaces parcels: land-use classification (residential subtypes,
@@ -33,25 +28,30 @@ save_to:
   data_dir: core
 
 pipeline:
-  # Infer the parcel occupancy group from the most common NSI building group per
-  # assessor use code (the linked-data inference moved here from the footprint
-  # recipe; it is parcel-level work).
-  - step: infer_from_group_statistic
+  # These parcel_id_assessor values are non-taxable placeholders, not real
+  # parcels (found empirically in Carteret County, NC): WATER (water
+  # bodies), ROW (road rights-of-way). Confirmed via direct data checks
+  # that these rows carry no use code and no value -- unlike e.g. STATE
+  # LAND or CALO (Cape Lookout National Seashore), which are real,
+  # valuable land despite unusual assessor IDs, and must not be swept in
+  # here. Idiosyncratic per source -- see
+  # notebooks/01_setup/04_detect_phantom_parcel_ids.ipynb to find
+  # candidates in newly ingested counties before adding them. Runs first
+  # so these rows never pollute impute_from_group_statistic's cohort
+  # statistics.
+  - step: exclude_by_value
+    column: parcel_id_assessor
+    values: [WATER, ROW]
+
+  # Impute parcel occupancy group from the modal NSI building group per assessor use code.
+  - step: impute_from_group_statistic
     group_column: use_group_combined
     value_column: group_building_nsi
     statistic: mode
     output: group_parcel
 
-  # How anomalously small (or absent) is this parcel's largest real footprint,
-  # relative to other parcels sharing its assessor use code? Log-space z-score:
-  # footprint area is heavy-tailed, and comparing within the assessor-use cohort
-  # avoids judging a house's footprint against a big-box store's. Feeds the
-  # Vacant and Townhome rules below. A parcel with no real footprint at all
-  # (max_footprint_area_m2 missing — see summarize_footprint_morphology, which
-  # excludes synthetic parcel-shaped fallback geometries from this column)
-  # scores missing here, not an extreme value; n_footprints_per_parcel below
-  # (which does count a value-inferred synthetic fallback) is the indicator
-  # that catches the "no real footprint" case directly.
+  # Compute log-space z-score of max footprint area relative to its assessor use cohort.
+  # Used to identify vacant parcels.
   - step: score_relative_to_group
     group_column: use_group_combined
     value_column: max_footprint_area_m2
@@ -59,22 +59,26 @@ pipeline:
     transform: log1p
     statistic: zscore
 
-  # Classify parcel land use by weighted indicator voting: multiple independent
-  # signals (assessor use keywords, linked-NSI group, footprint counts/shape,
-  # improvement value share) each cast a weighted vote, and no single source
-  # decides alone for the classes with real competing evidence (min_score 2).
-  # The commercial subtypes (Retail/Office/Industrial/Institutional) are the
-  # exception at min_score 1: assessor vocabulary is currently the only source
-  # granular enough to tell them apart (NSI's own group vocabulary only
-  # distinguishes them at the coarse Commercial/Industrial level), so requiring
-  # a second corroborating source isn't achievable with today's evidence.
-  # Vocabulary-neutral like resolve_by_vote — all class names, keywords, NSI
-  # groups, and thresholds live in `rules`, so this step holds no land-use
-  # terminology of its own. Rules are ordered most-specific-first so ties are
-  # broken toward the more specific class.
+  # Known caveat (see plan context): sum_footprint_area_m2 currently credits
+  # each footprint's full, unclipped area to its one dominant parcel, so
+  # this ratio can read above 1.0 for a footprint straddling a parcel line.
+  # Safe for the near-zero Mostly Vacant threshold below (the bug only
+  # inflates, never deflates); a correctly clipped replacement is planned
+  # separately -- prefer it here once available for any broader use.
+  - step: derive_area_ratio
+    value_column: sum_footprint_area_m2
+    output: footprint_area_share
+
+  - step: derive_area_ratio
+    value_column: sum_primary_footprint_area_m2
+    output: footprint_primary_area_share
+
+  # Classify land use by voting across assessor keywords, NSI groups, and footprint shapes.
+  # - Most rules require min_score 2.
+  # - Coarse commercial subtypes require min_score 1 (relying on assessor codes).
   - step: classify_parcel_land_use
     output: land_use_class
-    flag_column: manufactured_home_park
+    flag_column: manufactured_home_community
     flag_class: Manufactured Home Park
     score_columns:
       Vacant: land_use_vacancy_score
@@ -87,65 +91,87 @@ pipeline:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED|MH PARK'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           - {type: count_at_least, column: n_small_elongated_footprints_per_parcel, min: 4}
+          # Dominant FEMA building group on the parcel.
+          - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
       - class: RV Park
         min_score: 2
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'RV|CAMPGROUND|RECREATION|MOTORHOME'}
-          - {type: in_set, column: group_parcel, values: [Recreation, Commercial]}
+          - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
           - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
 
-      # Standalone manufactured home: same keyword/NSI-group evidence as the
-      # park rule, minus the >=4-small-elongated-footprints indicator, so a
-      # single-unit case naturally scores below the park rule's threshold
-      # without needing a separate "at most" count indicator.
+      # Standalone Manufactured Home (excludes multi-unit parks).
       - class: Manufactured Home
         min_score: 2
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED'}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
+          - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
-      # Several detached, non-manufactured-home-shaped structures on one
-      # parcel. "multiple houses on one parcel" is literal assessor vocabulary
-      # in at least one observed source (MassGIS use-subgroup 109).
-      # min_score is 3, not 2: the last two indicators (no small-elongated
-      # footprints, group_parcel is Single Family) are true for almost any
-      # ordinary single-family parcel regardless of whether it actually has
-      # multiple houses, so min_score:2 let this rule fire on those two alone,
-      # with neither of the two indicators that actually signal "multiple"
-      # (the keyword or the footprint count) required at all. Verified
-      # empirically: with min_score:2, 91% of one county's parcels were
-      # labeled Multiple Single-Family, including 78% of parcels with a
-      # confirmed, unambiguous single footprint. min_score:3 forces at least
-      # one genuine multiplicity signal to also be true.
+      # Multiple Single-Family homes on a single parcel.
+      # Requires min_score 4 to ensure genuine multiplicity evidence is present.
       - class: Multiple Single-Family
-        min_score: 3
+        min_score: 4
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'MULTIPLE HOUSES'}
           - {type: count_at_least, column: n_primary_footprints_per_parcel, min: 2}
           - {type: numeric_at_most, column: n_small_elongated_footprints_per_parcel, max: 0}
-          - {type: in_set, column: group_parcel, values: [Single Family]}
+          # Backing occupancy classification.
+          - type: any_of
+            indicators:
+              - {type: in_set, column: group_parcel, values: [Single Family]}
+              - {type: in_set, column: group_footprint_fema, values: [Single Family]}
+          # Minimum land value share to filter out condominiums.
+          - type: value_share_at_least
+            value: land_value
+            total: [land_value, improvement_value]
+            min_ratio: 0.01
 
-      # One building in a footprint notably larger than typical single-family
-      # for its assessor-use cohort — a row of units merged into one polygon
-      # by the footprint source. min_score is 3 (all 3 indicators), not 2: a
-      # single footprint on a residential parcel is the ordinary case, not
-      # evidence of a merged-unit row -- only footprint_area_log_zscore>=1.0
-      # actually signals that. With min_score:2, fixing n_footprints_per_parcel
-      # (see Multiple Single-Family above) exposed the same over-firing bug
-      # here: verified empirically that with min_score:2, ~90% of Townhome
-      # classifications in one county had no z-score evidence at all, firing
-      # on the other two indicators alone.
+      # Condominiums: characterized by near-zero land value and non-zero improvement value.
+      - class: Condominium
+        min_score: 2
+        indicators:
+          - type: value_share_below
+            value: land_value
+            total: [land_value, improvement_value]
+            max_ratio: 0.01
+            include_zero: true
+          - type: any_of
+            indicators:
+              - type: in_set
+                column: group_parcel
+                values: [Multi Family, Single Family]
+              - type: in_set
+                column: group_footprint_fema
+                values: [Multi Family, Single Family]
+          - {type: keyword, column: use_group_combined, pattern: 'CONDO|CONDOMINIUM'}
+
+      # Townhomes: single-footprint structures spanning multiple parcels or containing multiple units.
       - class: Townhome
-        min_score: 3
+        min_score: 4
         indicators:
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 1}
-          - {type: numeric_at_least, column: footprint_area_log_zscore, min: 1.0}
-          - {type: in_set, column: group_parcel, values: [Multi-Family, Single Family]}
+          - type: any_of
+            indicators:
+              - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
+              - {type: numeric_at_least, column: max_dwellings_per_footprint, min: 2}
+              - {type: keyword, column: use_group_combined, pattern: 'TOWNHOUSE|TOWNHOME|ROW HOUSE|ROW-HOUSE'}
+          - type: any_of
+            indicators:
+              - type: in_set
+                column: group_parcel
+                values: [Multi Family, Single Family]
+              - type: in_set
+                column: group_footprint_fema
+                values: [Single Family, Multi Family]
+          # Excludes Condominium pattern by requiring a minimal land-value share.
+          - type: value_share_at_least
+            value: land_value
+            total: [land_value, improvement_value]
+            min_ratio: 0.01
 
-      # No real footprint (small/absent relative to cohort, and none at all —
-      # not even a value-inferred synthetic fallback), near-zero improvement
-      # value share, and/or explicit assessor "vacant" vocabulary.
+      # Vacant land based on negligible building area, low improvement value, or keyword evidence.
       - class: Vacant
         min_score: 2
         indicators:
@@ -157,6 +183,40 @@ pipeline:
             include_zero: true
           - {type: keyword, column: use_group_combined, pattern: 'VACANT'}
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 0}
+
+      # Vacant in area, not just improvement value: this parcel's total real
+      # footprint coverage is a vanishingly small share of its own area --
+      # corroborated by near-zero improvement value, so a large, actively-
+      # used, low-coverage parcel (e.g. a working farm with one real
+      # farmhouse) does not also qualify. Threshold from Carteret County, NC:
+      # ordinary Single-Family parcels' footprint-area share has a median of
+      # ~12%, a 10th-percentile of ~4%, and even its most extreme 0.1
+      # percentile is ~0.03% -- above this rule's 0.05% cutoff, but the real
+      # protection against false positives is the improvement-value
+      # indicator: every non-Vacant Carteret parcel below this cutoff already
+      # has exactly $0 recorded improvement value (i.e. very likely more
+      # instances of the same empty-cohort mislabeling the derive_use_classes
+      # fix addresses, not genuine developed homes). Catches parcel
+      # c2042c90816b4fc9f590b5a2 (a ~51,500-acre national-forest tract with a
+      # handful of small structures, footprint_area_share ~7e-6), which the
+      # existing Vacant rule cannot: its footprint z-score is computed
+      # relative to its own near-empty assessor-use cohort, so a few small
+      # structures look anomalously *large* there, not small, and it has
+      # some real footprints (n_footprints_per_parcel=9), so Vacant's
+      # zero-footprint indicator doesn't fire either. Note:
+      # footprint_area_share can currently read above 1.0 for footprints
+      # straddling a parcel line (see the derive_area_ratio step above) --
+      # harmless here since that only inflates the ratio, and this rule
+      # requires it to be small.
+      - class: Mostly Vacant
+        min_score: 2
+        indicators:
+          - {type: numeric_at_most, column: footprint_area_share, max: 0.0005}
+          - type: value_share_below
+            value: improvement_value
+            total: [improvement_value, land_value]
+            max_ratio: 0.01
+            include_zero: true
 
       - class: Retail
         min_score: 1
@@ -172,11 +232,9 @@ pipeline:
         min_score: 1
         indicators:
           - {type: keyword, column: use_group_combined, pattern: 'INDUSTRIAL|MANUFACTURING|WAREHOUSE'}
-          - {type: in_set, column: group_parcel, values: [Industrial]}
+          - {type: in_set, column: group_parcel, values: [Heavy Industrial, Light Industrial]}
 
-      # Draws from both the `commercial` and `exempt` top-level assessor
-      # buckets: municipal/religious/charitable land sits in `exempt`, not
-      # `commercial`, in the normalized use_group vocabulary.
+      # Institutional land-use (hospitals, schools, churches, etc.).
       - class: Institutional
         min_score: 1
         indicators:
@@ -184,14 +242,124 @@ pipeline:
             column: use_group_combined
             pattern: 'HOSPITAL|NURSING|SCHOOL|MUNICIPAL|GOVERNMENT|RELIGIOUS|CHARITABLE|CHURCH|UNIVERSITY|COLLEGE'
 
-      # Catch-all for commercial parcels that don't fit a specific subtype
-      # above (e.g. hotel/motel, restaurant, parking garage, golf course).
+      # Catch-all for commercial parcels (e.g. hotels, garages, restaurants).
       - class: Commercial
         min_score: 1
         indicators:
-          - {type: in_set, column: group_parcel, values: [Commercial]}
+          - type: in_set
+            column: group_parcel
+            values: [Retail, Wholesale, 'Personal & Repair Services', Bank, Hotel]
           - {type: keyword, column: use_group_combined, pattern: 'COMMERCIAL'}
+
+  # Reconcile default land use via voting across assessor, NSI, and FEMA source classes.
+  - step: reconcile_land_use
+    output: land_use_class
+    columns:
+      - {column: group_parcel, label: parcel}
+      - {column: group_building_nsi, label: nsi}
+      - {column: group_footprint_fema, label: fema}
+    tiebreaker: group_parcel
+    class_map_id: US_parcel-openplaces-2026_land-use-class-map
+    conflict_column: land_use_class_conflict
+    report: land-use-evidence-conflicts.csv
+
+  # Derive stories from FEMA LiDAR height.
+  - step: derive_stories_from_height
+
+  # Evidence: merge placeslab-fmv2026 fair-market-value predictions and
+  # physical predictors (area-weighted crosswalk from the legacy reference
+  # parcel dataset). Canonical column names drop the `_fmv2026` product
+  # suffix (value suffixes like radius/year/model variant are kept, so e.g.
+  # the 2500m/50m coastal-water-share variants stay distinct); land_value
+  # additionally drops its `_2010` vintage suffix, landing on the plain
+  # registered name.
+  - step: merge_enrichments
+    recipes:
+      - recipe_id: US_parcel_parcel-placeslab-fmv2026
+        columns:
+          census_tract_id_2016_fmv2026: census_tract_id_2016
+          census_blockgroup_id_2016_fmv2026: census_blockgroup_id_2016
+          postal_code_2016_fmv2026: postal_code_2016
+          precipitation_summer_fmv2026: precipitation_summer
+          precipitation_winter_fmv2026: precipitation_winter
+          temperature_mean_summer_fmv2026: temperature_mean_summer
+          temperature_mean_winter_fmv2026: temperature_mean_winter
+          slope_fmv2026: slope
+          elevation_fmv2026: elevation
+          soil_farmland_local_share_fmv2026: soil_farmland_local_share
+          soil_farmland_prime_share_fmv2026: soil_farmland_prime_share
+          soil_farmland_statewide_share_fmv2026: soil_farmland_statewide_share
+          travel_time_to_city_fmv2026: travel_time_to_city
+          land_cover_barren_share_fmv2026: land_cover_barren_share
+          land_cover_forest_deciduous_share_fmv2026: land_cover_forest_deciduous_share
+          land_cover_forest_evergreen_share_fmv2026: land_cover_forest_evergreen_share
+          land_cover_forest_mixed_share_fmv2026: land_cover_forest_mixed_share
+          land_cover_shrubland_share_fmv2026: land_cover_shrubland_share
+          land_cover_grassland_share_fmv2026: land_cover_grassland_share
+          land_cover_pasture_share_fmv2026: land_cover_pasture_share
+          land_cover_cropland_share_fmv2026: land_cover_cropland_share
+          population_gravity_index_exp_c4_fmv2026: population_gravity_index_exp_c4
+          wetland_share_fmv2026: wetland_share
+          coastal_water_share_2500m_fmv2026: coastal_water_share_2500m
+          coastal_water_share_50m_fmv2026: coastal_water_share_50m
+          lake_frontage_fmv2026: lake_frontage
+          river_frontage_fmv2026: river_frontage
+          lake_distance_fmv2026: lake_distance
+          highway_distance_fmv2026: highway_distance
+          paved_road_distance_fmv2026: paved_road_distance
+          building_footprint_share_1000m_fmv2026: building_footprint_share_1000m
+          building_footprint_share_500m_fmv2026: building_footprint_share_500m
+          building_footprint_share_5000m_fmv2026: building_footprint_share_5000m
+          conservation_easement_share_fmv2026: conservation_easement_share
+          protected_land_share_2010_5000m_fmv2026: protected_land_share_2010_5000m
+          household_income_median_block_group_2012_2016_fmv2026: household_income_median_block_group_2012_2016
+          population_black_share_block_group_2012_2016_fmv2026: population_black_share_block_group_2012_2016
+          population_native_american_share_block_group_2012_2016_fmv2026: population_native_american_share_block_group_2012_2016
+          population_asian_share_block_group_2012_2016_fmv2026: population_asian_share_block_group_2012_2016
+          population_pacific_islander_share_block_group_2012_2016_fmv2026: population_pacific_islander_share_block_group_2012_2016
+          population_mixed_race_share_block_group_2012_2016_fmv2026: population_mixed_race_share_block_group_2012_2016
+          population_hispanic_share_block_group_2012_2016_fmv2026: population_hispanic_share_block_group_2012_2016
+          land_value_per_ha_log_region_nb_2010_fmv2026: land_value_per_ha_log_region_nb
+          land_value_per_ha_log_region_nb2_2010_fmv2026: land_value_per_ha_log_region_nb2_2010
+          aoa_region_nb_2010_blockgroup_fmv2026: aoa_region_nb_2010_blockgroup
+          aoa_region_nb2_2010_blockgroup_fmv2026: aoa_region_nb2_2010_blockgroup
+
+  # Calculate parcel lot area (ha) based on parcel geometry.
+  - step: derive_metrics
+
+  # Impute missing land_value for residential parcels using local per-area lot rates.
+  - step: impute_land_value
+    residential_classes:
+      [Single-Family, Multi-Family, Manufactured Home, Manufactured Home Park,
+       Multiple Single-Family, Townhome, Condominium]
+    footprint_area_column: sum_footprint_area_m2
+    parcel_area_column: area_ha
+    peer_group_column: use_group_combined
+    footprint_ratio_threshold: 0.25
+    city_column: city
 
   - step: cast_categoricals
 
   - step: order_columns
+    drop:
+      # Evidence-only: postal_city fed into `address`/`city` at harmonize
+      # time (impute_postal_city); not needed once it has.
+      - postal_city
+      - postal_zip5
+      - postal_city_acceptable
+      - postal_city_unacceptable
+      - postal_city_source
+      # Redundant with the direct dwelling link's own _dwelling_overture
+      # evidence (same underlying dwelling-overture-2025 source, just
+      # relayed via each parcel's primary footprint instead of a direct
+      # spatial link); already folded into the reconciled
+      # address/address_street/city.
+      - address_street_dwelling_footprint
+      - address_number_dwelling_footprint
+      - city_dwelling_footprint
+      - postal_code_dwelling_footprint
+      # Internal scoring inputs to classify_parcel_land_use, not meaningful
+      # standalone -- same treatment as the footprint recipe's own
+      # p_manufactured_home.
+      - footprint_area_log_zscore
+      - land_use_vacancy_score

@@ -22,16 +22,19 @@ from openplaces.core.constants import (
     ZIP_EXTENSIONS,
 )
 from openplaces.core.schema import AdminId
+from openplaces.geo.link import create_entity_link, get_entity_link_path
 from openplaces.io import (
     delete_data,
     delete_parquet,
     download,
     find_latest_file_or_gdb,
     read_parquet,
+    release_unused_memory,
     save_parquet,
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
+from openplaces.io.cleanup import discard_receipt, receipt_justifies_skip
 from openplaces.io.ingester.raster_ingester import fetch_rasters_by_admin
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.io.readers import get_admin, get_entities
@@ -49,6 +52,7 @@ from openplaces.recipe import (
     get_partition_ids,
     get_process_admin_level,
     get_recipe_by_id,
+    get_recipe_id,
     get_save_admin_level,
     get_table_recipe,
 )
@@ -105,6 +109,16 @@ def _warn_registry_type_mismatches(gdf) -> None:
                 f"Column '{col}' expected numeric dtype but got {actual}.",
                 stacklevel=2,
             )
+
+
+# Scraper modules are loaded dynamically by file path (see
+# `Ingester._load_scraper_fetch`) rather than via a normal `import`, since
+# their filenames may contain hyphens (e.g. geography/recipe-specific
+# scrapers). A normal `import` is cached by `sys.modules` for free; this
+# cache restores the same "load and execute once per process" behavior for
+# the dynamic path, so a scraper's own module-level state (e.g. caches it
+# keeps for itself) survives across repeated calls within a run.
+_SCRAPER_MODULE_CACHE: dict[str, object] = {}
 
 
 class Ingester:
@@ -179,8 +193,9 @@ class Ingester:
                 f'{type(partition_ids)} ({partition_ids})'
             )
 
+        self._owns_timer = timer is None
         if timer is None:
-            timer = get_timer('Ingester', verbose=True)
+            timer = get_timer('Ingester', verbose=verbose, overwrite=True)
         self.timer = timer
 
         self.verbose = verbose
@@ -203,6 +218,13 @@ class Ingester:
     def _is_tile_partition(self):
         partition = (self.recipe.get('download_by') or {}).get('partition')
         return partition in ('tile_id', 'latlon_tile')
+
+    @property
+    def _is_joined_table_partition(self):
+        """True when the recipe declares `join_partitions_by` -- column-wise join
+        of `download_by: {partition: table}` outputs, distinct from `aggregate_by`
+        (row-concat) and from tile-partition merging."""
+        return bool(self.recipe.get('join_partitions_by'))
 
     @property
     def _process_level(self):
@@ -292,6 +314,16 @@ class Ingester:
                 'Read in bulk or write code to use `where=`, if faster.'
             )
 
+        if self.recipe.get('join_partitions_by'):
+            download_by = self.recipe.get('download_by') or {}
+            if download_by.get('partition') != 'table' or not download_by.get(
+                'table_names'
+            ):
+                raise ValueError(
+                    "'join_partitions_by' requires "
+                    'download_by: {partition: table, table_names: [...]}.'
+                )
+
     def ingest(
         self,
         reprocess=False,
@@ -324,71 +356,113 @@ class Ingester:
         if redownload:
             reprocess = True
 
-        if self.recipe.get('image_scraper'):
-            from .image_ingester import fetch_images_by_admin
+        try:
+            if self.recipe.get('image_scraper'):
+                from .image_ingester import fetch_images_by_admin
 
-            # Expand requested admin IDs to the recipe's save level and skip
-            # admin units whose metadata parquet already exists (unless
-            # reprocess), mirroring `_resolve_admin_ids`.
-            save_level = get_save_admin_level(self.recipe)
-            admin_ids_at_save_level = list(
-                dict.fromkeys(
-                    str(save_admin_id)
-                    for requested in self.admin_ids
-                    for save_admin_id in (
-                        [AdminId(*requested.levels[:save_level])]
-                        if requested.get_level() >= save_level
-                        else get_admin(requested, save_level).index
+                # Expand requested admin IDs to the recipe's save level and
+                # skip admin units whose metadata parquet already exists
+                # (unless reprocess), mirroring `_resolve_admin_ids`.
+                save_level = get_save_admin_level(self.recipe)
+                admin_ids_at_save_level = list(
+                    dict.fromkeys(
+                        str(save_admin_id)
+                        for requested in self.admin_ids
+                        for save_admin_id in (
+                            [AdminId(*requested.levels[:save_level])]
+                            if requested.get_level() >= save_level
+                            else get_admin(requested, save_level).index
+                        )
                     )
                 )
-            )
-            self.admin_ids_to_process = [
-                admin_id
-                for admin_id in admin_ids_at_save_level
-                if reprocess or not get_output_path(self.recipe, admin_id).exists()
-            ]
-            if not self.admin_ids_to_process:
-                if self.verbose:
-                    print('All output files found. Processing skipped.\n')
+                self.admin_ids_to_process = [
+                    admin_id
+                    for admin_id in admin_ids_at_save_level
+                    if reprocess or not get_output_path(self.recipe, admin_id).exists()
+                ]
+                if not self.admin_ids_to_process:
+                    if self.verbose:
+                        print('All output files found. Processing skipped.\n')
+                    return
+                fetch_images_by_admin(
+                    self,
+                    n_sample=self.recipe.get('n_sample'),
+                    target_recipe_id=(
+                        target_recipe_id or self.recipe.get('entity_recipe')
+                    ),
+                    redownload=redownload,
+                )
                 return
-            fetch_images_by_admin(
-                self,
-                n_sample=self.recipe.get('n_sample'),
-                target_recipe_id=target_recipe_id or self.recipe.get('entity_recipe'),
-                redownload=redownload,
-            )
+
+            self._resolve_admin_ids(reprocess)
+
+            self._resolve_partition_ids(reprocess)
+
+            # Partition first so all admin units within the same partition
+            # are processed consecutively — this allows the downloaded file
+            # to be read once and cached (e.g. for tile-partitioned recipes).
+            for partition_id_to_download, admin_id_to_download in product(
+                self.partition_ids_to_download, self.admin_ids_to_download
+            ):
+                if self.verbose and (admin_id_to_download or partition_id_to_download):
+                    print_txt = 'Ingesting data for '
+                    if admin_id_to_download is not None:
+                        print_txt += f'geography: {admin_id_to_download}, '
+                    if partition_id_to_download is not None:
+                        print_txt += f'partition: {partition_id_to_download}, '
+                    print(print_txt[:-2])
+                self._ingest_download_partition(
+                    admin_id_to_download=admin_id_to_download,
+                    partition_id_to_download=partition_id_to_download,
+                    redownload=redownload,
+                    keep_unzipped=keep_unzipped,
+                )
+
+            if self._is_tile_partition:
+                self._merge_tile_partials()
+
+            if self._is_joined_table_partition:
+                self._join_table_partitions()
+
+            self._aggregate_to()
+
+            self._aggregate_partitions()
+
+            self.timer.mark('Aggregate')
+
+            self._create_entity_links(reprocess)
+        finally:
+            if self._owns_timer:
+                self.timer.finish()
+
+    def _create_entity_links(self, reprocess=False):
+        """Persist the n:m entity links declared under `entity_links`.
+
+        For each entry, computes the full intersection link to the
+        referenced entity with create_entity_link() and saves it at the
+        canonical get_entity_link_path() location (beside the finer
+        entity's output). Existing link files are reused unless
+        `reprocess` is True. Runs even when the primary output already
+        existed, so missing links are backfilled without a reingest.
+        """
+        entries = self.recipe.get('entity_links') or []
+        if not entries:
             return
 
-        self._resolve_admin_ids(reprocess)
+        # Clean up memory-heavy ingestion caches to maximize available RAM
+        if hasattr(self, 'tile_admin_link'):
+            del self.tile_admin_link
+        release_unused_memory()
 
-        self._resolve_partition_ids(reprocess)
-
-        # Partition first so all admin units within the same partition are
-        # processed consecutively — this allows the downloaded file to be
-        # read once and cached (e.g. for tile-partitioned recipes).
-        for partition_id_to_download, admin_id_to_download in product(
-            self.partition_ids_to_download, self.admin_ids_to_download
-        ):
-            if self.verbose and (admin_id_to_download or partition_id_to_download):
-                print_txt = 'Ingesting data for '
-                if admin_id_to_download is not None:
-                    print_txt += f'geography: {admin_id_to_download}, '
-                if partition_id_to_download is not None:
-                    print_txt += f'partition: {partition_id_to_download}, '
-                print(print_txt[:-2])
-            self._ingest_download_partition(
-                admin_id_to_download=admin_id_to_download,
-                partition_id_to_download=partition_id_to_download,
-                redownload=redownload,
-                keep_unzipped=keep_unzipped,
-            )
-
-        if self._is_tile_partition:
-            self._merge_tile_partials()
-
-        self._aggregate_to()
-
-        self._aggregate_partitions()
+        self_recipe_id = get_recipe_id(self.recipe)
+        for entry in entries:
+            other_recipe_id = entry['recipe_id']
+            link_path = get_entity_link_path(self_recipe_id, other_recipe_id)
+            if link_path.exists() and not reprocess:
+                continue
+            create_entity_link(self_recipe_id, other_recipe_id)
+            if self.timer is not None:
+                self.timer.mark(f'Create link: {self_recipe_id} - {other_recipe_id}')
 
     def show_ingested_geometries(self, **kwargs):
         """Plot the last ingested layer for visual inspection.
@@ -407,7 +481,8 @@ class Ingester:
         """
         from openplaces.viz.maps import show_random_entity
 
-        return show_random_entity(self)
+        admin_id = self.admin_ids_to_save[0] if self.admin_ids_to_save else None
+        return show_random_entity(self.recipe, admin_id, self._first_partition_id)
 
     def sample_layer(self, n=5):
         """Return a transposed sample of the principal entity DataFrame.
@@ -536,6 +611,22 @@ class Ingester:
                     f'tile partial(s) → {final_path.name}'
                 )
 
+    def _join_table_partitions(self):
+        """Column-join per-table partition outputs per the recipe's
+        `join_partitions_by` block (table-partition counterpart to
+        `_merge_tile_partials`)."""
+        from openplaces.io.aggregate import join_partitions_by_index
+
+        join_cfg = self.recipe.get('join_partitions_by') or {}
+        join_partitions_by_index(
+            self.recipe,
+            table_names=self.recipe['download_by']['table_names'],
+            admin_ids=self.admin_ids_to_save,
+            join_key_name=join_cfg.get('join_key_name'),
+            keep_original=join_cfg.get('keep_original', False),
+            verbose=self.verbose,
+        )
+
     def _aggregate_to(self):
         """Aggregate process-level intermediate files into save-level outputs.
 
@@ -657,10 +748,18 @@ class Ingester:
         admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
 
         if not reprocess:
+            # Skip if the output exists, or a tombstone receipt records its
+            # deliberate deletion with all consumers intact (section 4.3 of
+            # the lifecycle design; gated by retention.cleanup.honor_receipts
+            # and voided under an orchestrator)
             admin_ids_to_save = [
                 admin_id
                 for admin_id in admin_ids_to_save
                 if not get_output_path(self.recipe, admin_id, partition_id).exists()
+                and not (
+                    partition_id is None
+                    and receipt_justifies_skip(self.recipe, admin_id)
+                )
             ]
 
         return admin_ids_to_save
@@ -693,6 +792,10 @@ class Ingester:
                 operation_keys=('download_by', 'process_by', 'save_to'),
                 reprocess=reprocess,
             )
+            if reprocess:
+                # A deliberate re-run supersedes any tombstone receipt
+                for admin_id in self.admin_ids_to_save:
+                    discard_receipt(get_output_path(self.recipe, admin_id))
 
     def _output_is_incomplete(self, admin_id_to_save):
         """Is the existing output file missing any requested process-level chunks?"""
@@ -1504,7 +1607,9 @@ class Ingester:
         entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
         source = entity_or_dataset.source if entity_or_dataset else None
         if source is not None and getattr(source, 'download_url_scraper', None):
-            self._run_download_scraper(source.download_url_scraper)
+            self._run_download_scraper(
+                source.download_url_scraper, redownload=redownload
+            )
             return
 
         _dl_suffix = self._mark_suffix(
@@ -1637,7 +1742,7 @@ class Ingester:
                 + str(self.download_partition['data_path'])
             )
 
-    def _run_download_scraper(self, scraper_name):
+    def _run_download_scraper(self, scraper_name, redownload=False):
         """Produce a partition's source file via a browser-driven scraper.
 
         Invoked from `_download_and_unzip_recipe_data` when the source defines
@@ -1657,8 +1762,20 @@ class Ingester:
             ``'US-WI_transaction-widor-2026_scraper'``). The module is loaded by
             path — geography-specific scrapers are named like their recipe ID
             and so contain hyphens that a normal import cannot handle — and must
-            expose a ``fetch(partition_id, target_path, portal_url, **options)``
-            entrypoint.
+            expose a ``fetch(partition_id, target_path, portal_url,
+            admin_id_to_download, redownload, **options)`` entrypoint
+            (``admin_id_to_download`` is the current admin unit for recipes
+            partitioned by ``admin_level`` rather than a partition key;
+            scrapers that don't need it, or don't need ``redownload``, should
+            still accept and ignore the keyword).
+        redownload : bool
+            Forwarded to the scraper's ``fetch`` so it can bypass any of its
+            own "already downloaded/extracted" shortcuts. This method is only
+            reached when the caller has already decided a fetch is needed
+            (`_download_and_unzip_recipe_data`'s own exists-and-not-redownload
+            skip happens before this is called), so scrapers that fetch
+            unconditionally on every call don't need to consult this flag
+            themselves.
         """
         data_path = self.download_partition['data_path']
         target_path = self.download_partition['downloaded_path'] or data_path
@@ -1688,7 +1805,9 @@ class Ingester:
             target_path=target_path,
             portal_url=options.pop('portal_url', None)
             or (source.portal_url if source else None),
+            admin_id_to_download=self.download_partition.get('admin_id_to_download'),
             label=options.pop('label', None) or scraper_name.removesuffix('_scraper'),
+            redownload=redownload,
             verbose=self.verbose,
             **options,
         )
@@ -1725,7 +1844,13 @@ class Ingester:
         Scraper modules live in ``openplaces/io/scrapers/``. Geography-specific
         scrapers are named like their recipe ID (e.g.
         ``US-WI_transaction-widor-2026_scraper``) and contain hyphens, so they
-        are loaded by file path rather than imported by dotted name.
+        are loaded by file path rather than imported by dotted name. The
+        loaded module is cached in `_SCRAPER_MODULE_CACHE` by *scraper_name*
+        (same name always maps to the same file) so it is loaded and executed
+        once per process, like a normal `import` -- this call runs once per
+        (admin unit, partition), so without the cache a scraper's own
+        module-level state (e.g. an in-process cache it keeps for itself)
+        would be silently reset before every single call.
 
         Parameters
         ----------
@@ -1740,18 +1865,21 @@ class Ingester:
         import importlib.util
         from pathlib import Path as _Path
 
-        scrapers_dir = _Path(__file__).parent / 'scrapers'
-        module_path = scrapers_dir / f'{scraper_name}.py'
-        if not module_path.exists():
-            raise ValueError(
-                f"Unknown download_url_scraper '{scraper_name}': no module at "
-                f'{module_path}.'
+        module = _SCRAPER_MODULE_CACHE.get(scraper_name)
+        if module is None:
+            scrapers_dir = _Path(__file__).parent.parent / 'scrapers'
+            module_path = scrapers_dir / f'{scraper_name}.py'
+            if not module_path.exists():
+                raise ValueError(
+                    f"Unknown download_url_scraper '{scraper_name}': no module at "
+                    f'{module_path}.'
+                )
+            spec = importlib.util.spec_from_file_location(
+                f'_op_scraper_{scraper_name}', module_path
             )
-        spec = importlib.util.spec_from_file_location(
-            f'_op_scraper_{scraper_name}', module_path
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            _SCRAPER_MODULE_CACHE[scraper_name] = module
         if not hasattr(module, 'fetch'):
             raise AttributeError(
                 f"Scraper module '{scraper_name}' has no 'fetch' entrypoint."

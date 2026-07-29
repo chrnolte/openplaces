@@ -22,12 +22,37 @@ import pyproj
 import shapely
 from openlocationcode import openlocationcode as olc
 
+from openplaces.geo.polygon import reproject
 from openplaces.io.transform import add_unique_suffix
+
+# Default area/compactness quantization, expressed as the historical hardcoded
+# multipliers (area_q = round(log10(area*1e10+1) * 100), compact_q =
+# round(compact * 10)). AREA_TOLERANCE_DEFAULT/COMPACTNESS_STEP_DEFAULT below are
+# derived from these so get_geo_ids' default output is unchanged.
+_AREA_PRECISION_DEFAULT = 100
+_COMPACT_PRECISION_DEFAULT = 10
+AREA_TOLERANCE_DEFAULT = 10 ** (1 / _AREA_PRECISION_DEFAULT) - 1
+COMPACTNESS_STEP_DEFAULT = 1 / _COMPACT_PRECISION_DEFAULT
+
+
+def _shape_signals(geom_arr):
+    """Return (area, compactness) for an array of geometries.
+
+    Compactness is perimeter^2 / area (dimensionless). Shared by `get_geo_ids`
+    and the crosswalk's shape-similarity gate (`crosswalk.py`), so both use the
+    exact same formula.
+    """
+    area = np.nan_to_num(shapely.area(geom_arr))
+    length = np.nan_to_num(shapely.length(geom_arr))
+    compact = length**2 / (area + 1e-10)
+    return area, compact
 
 
 def get_geo_ids(
     gdf,
     grid_degrees=0.000001,  # ~11cm at equator, ~8cm at 45°N
+    area_tolerance=AREA_TOLERANCE_DEFAULT,
+    compactness_step=COMPACTNESS_STEP_DEFAULT,
     hash_length=24,
     handle_duplicates=True,
     verbose=False,
@@ -41,88 +66,80 @@ def get_geo_ids(
     gdf : GeoDataFrame
         GeoDataFrame with parcel geometries
     grid_degrees : float
-        Grid size in degrees (default 0.00003)
+        Grid size in degrees
+    area_tolerance : float
+        Relative area tolerance (e.g. 0.02 = 2%): two areas whose ratio is
+        within this bound quantize to the same bucket. Default reproduces the
+        historical hardcoded area quantization exactly.
+    compactness_step : float
+        Absolute step size for compactness (perimeter^2/area) quantization.
+        Default reproduces the historical hardcoded compactness quantization
+        exactly. Kept linear (not ratio-based, unlike `area_tolerance`) because
+        compactness is not log-scaled internally -- ratio-scaling it would
+        silently change existing `geo_id` values for parcels away from the
+        tolerance's reference point.
     hash_length : int
-        Number of hex characters in output (default 18 = 72 bits)
+        Number of hex characters in output
     handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
+        Add unique numeric suffix to duplicate geo_ids (default True)
     verbose: bool
-        If True, prints information on duplicates
+        Print information on duplicates (default False)
 
     Returns
     -------
     pd.Series
         Series of geo_ids with same index as input GeoDataFrame
-
-    Notes
-    -----
-    Why degrees instead of projected CRS:
-    - No projection covers entire Earth without distortion/singularities
-    - Degree grid is globally consistent (same grid cell = same x/y)
-    - Simple, fast (no reprojection needed)
-    - Works everywhere including poles
-
-    Trade-off:
-    - Grid "size" in meters varies by latitude (larger at equator)
-    - But parcels at same location always use same grid
-    - This guarantees non-overlapping parcels get different IDs
     """
 
-    # Ensure EPSG:4326
+    # Ensure GeoDataFrame is in EPSG:4326 projection
     if gdf.crs != 'epsg:4326':
         print('Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
-        gdf = gdf.to_crs('epsg:4326')
+        gdf = reproject(gdf, 'epsg:4326')
 
-    # Get bounds for each parcel
-    # (using fillna(0) to avoid checking for empty geometries)
-    bounds = gdf.bounds.fillna(0)
+    # Quantize bbox corners (consistent grid for all parcels; nan_to_num
+    # avoids checking for empty geometries)
+    geom = gdf.geometry.values
+    bounds_q = np.round(np.nan_to_num(shapely.bounds(geom)) / grid_degrees).astype(
+        np.int64
+    )
 
-    # Quantize bbox corners (consistent grid for all parcels)
-    minx_q = (bounds['minx'] / grid_degrees).round().astype(int)
-    miny_q = (bounds['miny'] / grid_degrees).round().astype(int)
-    maxx_q = (bounds['maxx'] / grid_degrees).round().astype(int)
-    maxy_q = (bounds['maxy'] / grid_degrees).round().astype(int)
-
-    # Area in square degrees (log scale)
+    # Area in square degrees (log scale, scaled up for precision)
     # Note: Area in degrees² varies with latitude, but that's okay
     # because we're comparing relative sizes at similar locations
-    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    area_deg2 = gdf.area.fillna(0)
-    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    area_q = (
-        (np.log10(area_deg2 * 1e10 + 1) * 100).round().fillna(0).astype(int)
-    )  # Scale up for precision
+    area_deg2, compact = _shape_signals(geom)
+    area_precision = 1 / np.log10(1 + area_tolerance)
+    area_q = np.round(np.log10(area_deg2 * 1e10 + 1) * area_precision).astype(np.int64)
 
     # Compactness: perimeter²/area (dimensionless, so units don't matter)
-    warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-    compactness = (gdf.length**2) / (area_deg2 + 1e-10)
-    warnings.filterwarnings('default', 'Geometry is in a geographic CRS')
-    compact_q = (compactness * 10).round().fillna(0).astype(int)
+    compact_precision = 1 / compactness_step
+    compact_q = np.round(compact * compact_precision).astype(np.int64)
 
     # Create hash inputs
-    hash_inputs = (
-        minx_q.astype(str)
-        + ','
-        + miny_q.astype(str)
-        + ','
-        + maxx_q.astype(str)
-        + ','
-        + maxy_q.astype(str)
-        + ','
-        + area_q.astype(str)
-        + ','
-        + compact_q.astype(str)
-    )
+    cols = [
+        c.tolist()
+        for c in (
+            bounds_q[:, 0],
+            bounds_q[:, 1],
+            bounds_q[:, 2],
+            bounds_q[:, 3],
+            area_q,
+            compact_q,
+        )
+    ]
+    hash_inputs = [f'{a},{b},{c},{d},{e},{f}' for a, b, c, d, e, f in zip(*cols)]
 
     # Generate hash
-    geo_ids = hash_inputs.apply(
-        lambda s: hashlib.sha256(s.encode()).hexdigest()[:hash_length]
+    sha = hashlib.sha256
+    geo_ids = pd.Series(
+        [sha(s.encode()).hexdigest()[:hash_length] for s in hash_inputs],
+        index=gdf.index,
     )
+
+    # Give empty geometries a 'no-geometry' string ID
+    geo_ids.loc[gdf.geometry.is_empty] = 'no-geometry'
 
     # Check for duplicates
     duplicates = geo_ids.duplicated(keep=False)
-
-    geo_ids.loc[gdf['geometry'].is_empty] = 'no-geometry'
 
     if duplicates.any():
         n_dupl = duplicates.sum()
@@ -137,11 +154,12 @@ def get_geo_ids(
             dup_examples = (
                 geo_ids[duplicates].sort_values().head(min(10, duplicates.sum())).index
             )
+            hash_input_series = pd.Series(hash_inputs, index=gdf.index)
             print(
                 pd.concat(
                     [
                         geo_ids[dup_examples].rename('geo_id'),
-                        hash_inputs[dup_examples].rename('hash_inputs'),
+                        hash_input_series[dup_examples].rename('hash_inputs'),
                         gdf.loc[dup_examples],
                     ],
                     axis=1,
@@ -259,7 +277,7 @@ def add_openlocationcode_index(
     codelength=11,
     handle_duplicates=True,
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Return the GeoDataFrame using Open Location Code (OLC) as the index.
 
     Parameters
     ----------
@@ -270,7 +288,7 @@ def add_openlocationcode_index(
     codelength : int
         `openlocationcode` code length
     handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
+        If True, adds numeric suffix to duplicate OLCs (default True)
     """
 
     gdf = gdf.copy()
@@ -406,7 +424,7 @@ def add_ubid_index(
     name='ubid',
     duplicates='raise',
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Return the GeoDataFrame using Unique Building ID (UBID) as the index.
 
     Parameters
     ----------

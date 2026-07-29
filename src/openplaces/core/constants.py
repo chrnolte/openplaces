@@ -9,64 +9,94 @@ ESCAPE_DIR = '_all'
 # - default: path relative to data_root (or None for the root itself)
 # - description: human-readable label shown during interactive setup
 # - shared: if True, the directory is shared across users in multi-user mode
+# - retention: default lifecycle class for files in the directory (one of
+#   RETENTION_CLASSES); overridable per bucket in openplaces.yaml and per
+#   recipe via save_to.retention, except for NEVER_DELETE buckets
 
 STANDARD_DIRS = {
     'data_root': {
         'default': None,
         'description': 'Root directory for data, models, reports. None = package root',
         'shared': True,
+        'retention': 'keep',
     },
     'core': {
         'default': 'data/core',
         'description': 'Processed, standardized, analysis-ready data',
         'shared': False,
+        'retention': 'keep',
     },
     'external': {
         'default': 'data/external',
         'description': 'Downloaded data from third party sources',
         'shared': True,
+        'retention': 'keep',
     },
     'raw': {
         'default': 'data/raw',
         'description': 'Raw data from own data collection efforts',
         'shared': True,
+        'retention': 'keep',
     },
     'cache': {
         'default': 'data/cache',
         'description': 'Interim data, can be safely deleted or regenerated',
         'shared': False,
+        'retention': 'until_consumed',
     },
     'heap': {
         'default': 'data/cache/_heap',
         'description': 'Freshly unzipped data, to be deleted after use',
         'shared': False,
+        'retention': 'transient',
     },
     'logs': {
         'default': 'data/cache/_logs',
         'description': 'Logs from script runs for performance profiling',
         'shared': False,
+        'retention': 'keep',
     },
     'out': {
         'default': 'data/out',
         'description': 'Output and results data',
         'shared': False,
+        'retention': 'keep',
     },
     'share': {
         'default': 'data/share',
         'description': 'Shared data between users',
         'shared': True,
+        'retention': 'keep',
     },
     'models': {
         'default': 'models',
         'description': 'Trained and serialized models',
         'shared': False,
+        'retention': 'keep',
     },
     'reports': {
         'default': 'reports',
         'description': 'Reports, publications, figures',
         'shared': False,
+        'retention': 'keep',
     },
 }
+
+
+# DATA LIFECYCLE
+
+# Lifecycle classes assignable to buckets (STANDARD_DIRS) and recipe outputs:
+# - keep: never auto-deleted; reported by compact(), removed only manually or
+#   by reprocess
+# - until_consumed: deletable once ALL consuming recipes' outputs exist and
+#   are complete; deletion leaves a tombstone receipt
+# - transient: deleted at the end of the producing/consuming stage in the
+#   same process (e.g. heap)
+RETENTION_CLASSES = ('keep', 'until_consumed', 'transient')
+
+# Hard floor enforced in code below the config layer: no configuration can
+# mark these buckets deletable.
+NEVER_DELETE = frozenset({'share', 'raw'})
 
 
 # FILE HANDLING
@@ -208,13 +238,27 @@ REGEX_ADMIN_TYPE_EXTRACT = (
 # Essential unit conversions
 
 # Acres to square feet
-AC_TO_SQFT = 43460
+AC_TO_SQFT = 43560
 
 # Acres to hectares
 AC_TO_HA = 0.404686
 
 # Square meters to square feet
 M2_TO_SQFT = 10.7639
+
+# Square meters per unit of area -- canonical reference for converting a
+# per-area value between area units (see io.transform.convert_area_unit).
+# 'ac'/'sqft' derived from AC_TO_HA/M2_TO_SQFT above so this never drifts
+# out of sync with geo.polygon.get_areas's own area-unit conversions.
+M2_PER_AREA_UNIT = {
+    'm2': 1.0,
+    'ha': 10_000.0,
+    'km2': 1_000_000.0,
+    'ac': 1e4 * AC_TO_HA,
+    'sqft': 1 / M2_TO_SQFT,
+    'ft2': 1 / M2_TO_SQFT,
+    'sqmi': 1e4 * AC_TO_HA * 640,
+}
 
 
 # Default coordinate reference system
@@ -242,6 +286,7 @@ RECIPE_PER_TABLE_KEYS = (
     'encoding',
     'save_to',
     'overlay_admin_ids',
+    'entity_links',
 )
 
 

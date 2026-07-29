@@ -53,9 +53,9 @@ Open source
 
 ``openplaces`` is open source.
 
-It is published `on Github <https://github.com/chrnolte/openplaces>`_ under a permissive `Apache 2.0 license <https://www.apache.org/licenses/LICENSE-2.0>`_.
+It is published `on GitHub <https://github.com/chrnolte/openplaces>`_ under a permissive `Apache 2.0 license <https://www.apache.org/licenses/LICENSE-2.0>`_.
 
-Science lift everyone's boat when data synthesis and analysis are publicly accessible and replicable. Leading public funders - the `US National Science Foundation <https://www.nsf.gov/public-access>`_, the `European Research Council <https://erc.europa.eu/manage-your-project/open-science>`_, `Japan’s Science & Technology Agency <https://www.jst.go.jp/EN/about/strategy.html>`_, and Brazil's `FAPESP <https://www.fapesp.br/openscience/en>`_ - expect open access, data management plans, and public sharing of research outputs. Global frameworks like the `UNESCO Recommendation on Open Science <https://www.unesco.org/en/open-science/about>`_ and initiatives like `cOAlition S <https://www.coalition-s.org/>`_  promote the idea of code and datasets as public infrastructure.
+Science lifts everyone's boat when data synthesis and analysis are publicly accessible and replicable. Leading public funders - the `US National Science Foundation <https://www.nsf.gov/public-access>`_, the `European Research Council <https://erc.europa.eu/manage-your-project/open-science>`_, `Japan’s Science & Technology Agency <https://www.jst.go.jp/EN/about/strategy.html>`_, and Brazil's `FAPESP <https://www.fapesp.br/openscience/en>`_ - expect open access, data management plans, and public sharing of research outputs. Global frameworks like the `UNESCO Recommendation on Open Science <https://www.unesco.org/en/open-science/about>`_ and initiatives like `cOAlition S <https://www.coalition-s.org/>`_  promote the idea of code and datasets as public infrastructure.
 
 But land ownership and property data is rarely openly shared. It is sensitive, often identifiable, and subject to privacy protections. Public records are created by thousands of government agencies in a myriad of formats, making aggregation a formidable task. Researchers conducting large-scale analyses usually buy data licenses from commercial aggregators who discourage public sharing.
 
@@ -87,13 +87,13 @@ With ``openplaces``, you can create a city-wide analysis on your laptop.
 
 Later, you can send your script to a cluster and run the same analysis for thousands of cities.
 
-At Boston University's `placeslab <https://placeslab.org>`_, we attributed data from satellite to 133 million parcels in the US. We used this data for `land valuation <https://placeslab.org/research/#cost>`_ and `hedonic valuation <https://placeslab.org/research/#valuation>`_, producing tens of terabytes of trained models on our research cluster.
+At Boston University's `placeslab <https://placeslab.org>`_, we attributed satellite data to 133 million parcels in the US. We used this data for `land valuation <https://placeslab.org/research/#cost>`_ and `hedonic valuation <https://placeslab.org/research/#valuation>`_, producing tens of terabytes of trained models on our research cluster.
 
 
 Global referencing
 ~~~~~~~~~~~~~~~~~~
 
-To simplify data integration and exchange, ``openplaces`` ships with a globally consistent, hierarchical referencing system of :ref:`administrative units<administrative_units>`:
+To simplify data integration and exchange, ``openplaces`` ships with a globally consistent, hierarchical referencing system of :ref:`administrative units <administrative_units>`:
 
 - :input:`US` -> United States
 - :input:`CO-AN` -> Antioquia, a department of Colombia
@@ -102,7 +102,7 @@ To simplify data integration and exchange, ``openplaces`` ships with a globally 
 
 These identifiers organize the :ref:`directory structure <directory_structure>` of ``openplaces``. This makes it easy to restrict or expand access to sensitive data on different locations or from different sources to different groups of collaborators.
 
-Similarly, parcels receive a globally unique permanent identifier (``parcel_id``) that is derived from its geometry, snapped to avoid rounding errors, and securely hashed to keep parcel locations private when needed. 
+Similarly, each parcel receives a globally unique permanent identifier (``parcel_id``) that is derived from its geometry, snapped to avoid rounding errors, and securely hashed to keep parcel locations private when needed. 
 
 
 Privacy-enabling
@@ -110,7 +110,7 @@ Privacy-enabling
 
 While the code of ``openplaces``, including contributed recipes, is open-source, the underlying data doesn't have to be.
 
-``openplaces`` allows the privacy-conscious analysts to create a data set from for their home location from restricted data in a secure computing environment, analyze it with publicly shared methods, and share replicable results for feedback and publication - all without ever providing access to the underlying data.
+``openplaces`` allows the privacy-conscious analysts to create a dataset from restricted data for their home location in a secure computing environment, analyze it with publicly shared methods, and share replicable results for feedback and publication - all without ever providing access to the underlying data.
 
 
 Extensible
@@ -122,7 +122,7 @@ Recipes are machine-readable instructions for data ingestion, harmonization, enr
 
 New users :ref:`write recipes<writing_recipes>` to ingest new datasets, add attributes, and create canonical, publishable datasets for subsequent analysis.
 
-Recipes can be :ref:`contributed <contribute>` to the public repository to permit others to replicate and expand on prior work. Contributors receive recognition through badges and added exposure and citations for their research papers.
+Recipes can be :ref:`contributed <contribute>` to the public repository to permit others to replicate and expand on prior work. Contributors receive recognition through badges and increased exposure and citations for their research papers.
 
 
 Cross-platform

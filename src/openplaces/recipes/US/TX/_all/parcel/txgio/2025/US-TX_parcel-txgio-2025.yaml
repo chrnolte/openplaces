@@ -36,7 +36,7 @@ process_by:
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
-  parcel_id_admin2: Prop_ID
+  parcel_id_assessor: Prop_ID
   parcel_id_admin2_2: GEO_ID
   legal_description: LEGAL_DESC
   address: SITUS_ADDR
@@ -47,8 +47,8 @@ columns:
   city: SITUS_CITY
   legal_area: LEGAL_AREA
   legal_area_unit: LGL_AREA_UNIT
-  use_group_admin2: STAT_LAND_USE
-  use_group_admin3: LOC_LAND_USE
+  use_group: STAT_LAND_USE     # State: coarser, seems more complete
+  use_subgroup: LOC_LAND_USE   # Local: no 1-1 mapping to use_group
   year_built: YEAR_BUILT
   owner_name: OWNER_NAME
   owner_name_co: NAME_CARE

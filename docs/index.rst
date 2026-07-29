@@ -146,8 +146,10 @@ openplaces
          Contributing guide
 
 
+.. container:: muted
 
-
+   | **openplaces™** is an open-source software project and academic initiative dedicated to geospatial and property analytics.
+   | We are not affiliated with, sponsored by, or endorsed by any commercial mapping, travel, or event permitting services operating under similar names.
 
 
 .. toctree::
