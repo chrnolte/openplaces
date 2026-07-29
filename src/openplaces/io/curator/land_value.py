@@ -30,7 +30,7 @@ def impute_land_value(
     state: CurateState,
     land_value_column: str = 'land_value',
     improvement_value_column: str = 'improvement_value',
-    footprint_area_column: str = 'sum_footprint_area_m2',
+    footprint_area_column: str = 'footprint_area_m2_in_parcel',
     parcel_area_column: str = 'area_ha',
     land_use_column: str = 'land_use_class',
     residential_classes: list[str] | None = None,
@@ -127,8 +127,9 @@ def impute_land_value(
         Bare parcel value columns (defaults ``'land_value'``,
         ``'improvement_value'``).
     footprint_area_column : str, optional
-        Per-parcel total *building footprint* area in m2 (default
-        ``'sum_footprint_area_m2'``, written by
+        Per-parcel total *building footprint* area in m2, clipped to each
+        parcel's own boundary (default ``'footprint_area_m2_in_parcel'``,
+        written by
         :func:`openplaces.io.harmonizer.attributes.summarize_footprint_morphology`).
         Used **only** for the footprint-share eligibility ratio -- never for
         the rate or the final dollar estimate; see *parcel_area_column*.
