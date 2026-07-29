@@ -1074,7 +1074,14 @@ def _link_spatial_point(
     use_size_limit: bool = bool(thresholds.get('use_size_limit', False))
     aggregate_mp: bool = bool(thresholds.get('aggregate_multipoint', False))
 
-    ref = get_entities(recipe_id, state.admin_id, geom=True)
+    ref = get_entities(recipe_id, state.admin_id, geom=True, missing='ignore')
+    if len(ref) == 0:
+        if state.verbose:
+            print(
+                f'  Link (point): no {entity_type or "point"} data for '
+                f'{state.admin_id} ({recipe_id}), skipping'
+            )
+        return state
     if remap_id:
         ref = remap(ref, remap_id)
     if state.verbose:
