@@ -39,7 +39,23 @@ def test_combines_both_columns():
     combined = state.spine['use_group_combined'].astype(str)
     assert combined[0] == 'residential | manufactured home'
     assert combined[1] == 'residential | single family'
-    assert combined[2] == 'n/a | Vacant'
+    # use_group is genuinely missing here (None), not empty -- falls back to
+    # use_subgroup alone, no 'n/a' filler.
+    assert combined[2] == 'Vacant'
+
+
+def test_empty_strings_are_treated_as_missing():
+    spine = pd.DataFrame(
+        {
+            'use_group': ['', 'residential', '  '],
+            'use_subgroup': ['', '', 'single family'],
+        }
+    )
+    state = attrs.derive_use_classes(_state(spine))
+    combined = state.spine['use_group_combined']
+    assert pd.isna(combined[0])  # both empty -> missing, not ' | '
+    assert combined[1] == 'residential'  # subgroup empty -> group alone
+    assert combined[2] == 'single family'  # group whitespace-only -> subgroup alone
 
 
 def test_falls_back_to_use_group_only():

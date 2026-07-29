@@ -174,7 +174,7 @@ def clean_polygons(gdf):
     return gdf
 
 
-def get_areas(gdf, unit='ha', crs='epsg:6933'):
+def get_areas(gdf, unit='ha', crs='epsg:6933', mask=None):
     """Compute areas of polygons in a GeoDataFrame
 
     Parameters
@@ -187,6 +187,10 @@ def get_areas(gdf, unit='ha', crs='epsg:6933'):
     crs : coordinate reference system
         Coordinate system in which computation takes places
         Has to be equal-area and use meters as its unit.
+    mask : array-like of bool, optional
+        Restrict the computation to these rows only -- reprojection and
+        area measurement are skipped (not computed then discarded) for
+        excluded rows, which come back NaN. Default: compute for every row.
     """
 
     if not crs_is_mea(crs):
@@ -196,25 +200,31 @@ def get_areas(gdf, unit='ha', crs='epsg:6933'):
             'Requested CRS is: ' + str(crs)
         )
 
+    full_index = gdf.index
+    if mask is not None:
+        gdf = gdf.loc[np.asarray(mask, dtype=bool)]
+
     gdf = gdf[['geometry']].copy()
 
     if gdf.crs != crs:
         gdf = gdf.to_crs(crs)
 
     if unit == 'm2':
-        return gdf.area.rename('area_m2')
+        areas = gdf.area.rename('area_m2')
     elif unit == 'ha':
-        return gdf.area.div(1e4).rename('area_ha')
+        areas = gdf.area.div(1e4).rename('area_ha')
     elif unit == 'ac':
-        return gdf.area.div(1e4 * AC_TO_HA).rename('area_ac')
+        areas = gdf.area.div(1e4 * AC_TO_HA).rename('area_ac')
     elif unit == 'km2':
-        return gdf.area.div(1e6).rename('area_km2')
+        areas = gdf.area.div(1e6).rename('area_km2')
     elif unit in ['ft2', 'sqft']:
-        return gdf.area.mul(M2_TO_SQFT).rename(f'area_{unit}')
+        areas = gdf.area.mul(M2_TO_SQFT).rename(f'area_{unit}')
     elif unit == 'sqmi':
-        return gdf.area.div(1e4 * AC_TO_HA * 640).rename('area_sqmi')
+        areas = gdf.area.div(1e4 * AC_TO_HA * 640).rename('area_sqmi')
     else:
         raise Exception('Unit not yet interpreted:' + str(unit))
+
+    return areas.reindex(full_index) if mask is not None else areas
 
 
 _AREA_UNITS = ('km2', 'ha', 'm2', 'ac', 'sqft', 'sqmi')
@@ -618,31 +628,34 @@ def get_polygon_xy(geom):
     return [xy_ext] + xy_int_list
 
 
-def add_geometry_derivatives(gdf, timer, **kwargs):
-    """Add standardized geometry derivatives to the geodataframe
+def add_geometry_derivatives(gdf, timer=None, area_unit='ha', area_mask=None):
+    """Add centroid lat/long and this entity's own area to the geodataframe, once.
 
     Parameters
     ----------
     gdf : geopandas.GeoDataFrame
         GeoDataFrame
-    timer : openplaces.timing.Timer
-        Timer for data processing
-    kwargs : dict
-        Dictionary of arguments will be assumed as coming from an
-        openplaces.recipes.recipe
+    timer : openplaces.timing.Timer, optional
+        Timer for data processing; steps are skipped (not required) when None.
+    area_unit : str, optional
+        Area unit for the output `area_{area_unit}` column (default 'ha').
+    area_mask : array-like of bool, optional
+        Restrict area computation to these rows (e.g. skip rows whose
+        geometry is a placeholder/reference boundary -- see
+        `core.schema.is_synthetic_geometry`); `None` (default) computes
+        for every row. Centroid lat/long are always computed for every
+        row -- position stays meaningful even where area doesn't.
     """
 
     # Get latitude and longitude of centroids (for fast plotting)
     gdf = gdf.join(get_lat_long_centroids(gdf))
-    timer.mark('Get latitude and longitude at WGS84 centroid')
+    if timer:
+        timer.mark('Get latitude and longitude at WGS84 centroid')
 
-    # Get latitude and longitude of centroids (for plotting)
-    gdf = gdf.join(get_areas(gdf))
-    timer.mark('Get centroids')
-
-    # Get coordinates of poles of inaccessibility (66s - for labeling)
-    if kwargs and 'compute_poi' in kwargs:
-        warnings.warn('`compute_poi` is not part of ingestion recipes anymore')
+    # This entity's own area.
+    gdf[f'area_{area_unit}'] = get_areas(gdf, unit=area_unit, mask=area_mask)
+    if timer:
+        timer.mark('Get areas')
 
     return gdf
 

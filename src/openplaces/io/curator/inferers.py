@@ -9,36 +9,6 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-def _polygon_areas(curated, recipe, unit: str = 'm2') -> pd.Series:
-    """Polygon areas in the specified unit, left missing on synthetic rows.
-
-    A synthetic fallback geometry (geometry_source '{entity}.{source}', e.g.
-    'parcel.spine', added by the harmonizer's infer_spine_additions) is the
-    reference polygon's boundary, not a real building/parcel outline; its
-    area stays missing so it cannot be mistaken for a real area downstream.
-    """
-    from openplaces.core.schema import synthetic_geometry_pattern
-    from openplaces.geo.polygon import get_areas
-
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        areas = get_areas(curated, unit=unit)
-    if 'geometry_source' in curated.columns:
-        entity = recipe.get('entity')
-        own = (
-            entity.get('entity_type')
-            if isinstance(entity, dict)
-            else getattr(entity, 'entity_type', None)
-        )
-        synthetic = (
-            curated['geometry_source']
-            .astype('string')
-            .str.match(synthetic_geometry_pattern(str(own) if own else None), na=False)
-        )
-        areas = areas.mask(synthetic.to_numpy(dtype=bool, na_value=False))
-    return areas
-
-
 def _habitable_threshold(curated, result, mh_label, config) -> float:
     """Minimum footprint area (m2) for a park home to count as habitable.
 
@@ -70,11 +40,16 @@ def derive_metrics(state: CurateState) -> CurateState:
     every ``improvement_value*`` / ``structure_value*`` evidence column, a
     matching ``{column}_per_area`` ratio.
 
-    Area is left missing on synthetic reference-derived rows
+    For parcels, ``area_ha`` is computed once during harmonize spine
+    assembly (``derive_geometry_attributes``) and carried through here
+    unchanged -- not recomputed. For other entities, ``area_m2`` is
+    computed here, left missing on synthetic reference-derived rows
     (``geometry_source`` like ``'parcel.spine'``, whose geometry is the
     reference boundary rather than a real outline); their ``_per_area``
-    ratios inherit the missing denominator.
+    ratios inherit the missing denominator either way.
     """
+    from openplaces.core.schema import is_synthetic_geometry
+    from openplaces.geo.polygon import get_areas
     from openplaces.io.curator.provenance import SOURCE_SUFFIX
 
     curated = state.curated
@@ -86,10 +61,13 @@ def derive_metrics(state: CurateState) -> CurateState:
         else getattr(entity, 'entity_type', None)
     )
     if entity_type and str(entity_type) == 'parcel':
-        area_col, unit = 'area_ha', 'ha'
+        area_col = 'area_ha'
     else:
-        area_col, unit = 'area_m2', 'm2'
-    curated[area_col] = _polygon_areas(curated, state.recipe, unit)
+        area_col = 'area_m2'
+        area_mask = ~is_synthetic_geometry(curated, entity)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            curated[area_col] = get_areas(curated, unit='m2', mask=area_mask)
 
     for col in list(curated.columns):
         if col.endswith('_per_area') or col.endswith(SOURCE_SUFFIX):
@@ -101,6 +79,36 @@ def derive_metrics(state: CurateState) -> CurateState:
         ):
             curated[f'{col}_per_area'] = curated[col] / curated[area_col]
 
+    state.curated = curated
+    return state
+
+
+@_register('derive_area_ratio')
+def derive_area_ratio(
+    state: CurateState, value_column: str, output: str
+) -> CurateState:
+    """Compute *value_column*'s (m2) share of this entity's own area.
+
+    Reuses an existing ``area_{unit}`` column (e.g. ``area_ha``, computed
+    once during harmonize spine assembly) via
+    :func:`~openplaces.geo.polygon.resolve_area`; falls back to computing
+    live from geometry only if no such column exists yet. Generic: holds
+    no entity- or column-specific vocabulary of its own.
+
+    Parameters
+    ----------
+    value_column : str
+        Column (m2) to express as a share of this entity's own area.
+        No-op if absent.
+    output : str
+        Output ratio column.
+    """
+    from openplaces.geo.polygon import resolve_area
+
+    curated = state.curated
+    if value_column not in curated.columns:
+        return state
+    curated[output] = curated[value_column] / resolve_area(curated, unit='m2')
     state.curated = curated
     return state
 
@@ -1072,7 +1080,13 @@ def classify_manufactured_homes(
         assessor_labels = coerced.where(coerced.isin([mh_label, sf_label]))
 
     if 'area_m2' not in curated.columns:
-        curated['area_m2'] = _polygon_areas(curated, state.recipe, unit='m2')
+        from openplaces.core.schema import is_synthetic_geometry
+        from openplaces.geo.polygon import get_areas
+
+        area_mask = ~is_synthetic_geometry(curated, state.recipe.get('entity'))
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            curated['area_m2'] = get_areas(curated, unit='m2', mask=area_mask)
 
     # --- Candidate gate ---
     # Manufactured vs single-family discrimination only applies to small
