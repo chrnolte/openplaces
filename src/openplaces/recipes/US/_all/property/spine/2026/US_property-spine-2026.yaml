@@ -1,0 +1,65 @@
+# Recipe: harmonized U.S. property spine.
+#
+# One row per individual property/unit record (e.g. a condo unit), not per
+# land parcel -- the parcel spine collapses these via link_by_id(mode=
+# 'aggregate'), whose registry-driven aggregation silently degrades a
+# non-reducible function like join_nonnull to pandas' arbitrary 'first',
+# discarding every unit but one. Sources are non-spatial (a property/unit
+# record has no geometry of its own -- only a parcel_id_admin2-style join
+# key), so this unions them (like the transaction spine) rather than
+# resolving spine geometry.
+#
+# Today the only source is MassGIS's L3_ASSESS table, bundled as an
+# 'additional_layers' entry on US-MA_parcel-massgis-2025 rather than
+# registered as its own standalone ingest recipe.
+
+description: >-
+  Harmonized U.S. property spine: one row per individual property/unit
+  record, standardized across sources and addressed independently of its
+  parcel.
+
+stage: harmonize
+admin_id: US
+
+entity:
+  entity_type: property
+  source:
+    source_id: spine
+  version: 2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: core
+
+pipeline:
+  - step: union_spine_sources
+    sources:
+      - auto_discover: true
+        entity_type: property
+
+  # Standardize each unit's own address independently -- the whole point of
+  # this spine: "21 Sample Ave #2" and "19 Sample Ave #1" are two distinct,
+  # correct addresses on the same land parcel, not a collapse candidate.
+  - step: reconcile_addresses
+    sources:
+      massgis:
+        address_full: address
+        city: city
+        postal_code: zip
+    number_output_col: address_number
+    unit_output_col: address_unit
+    city_output_col: city
+
+  # MassGIS's raw zip column is named 'zip' (not the canonical 'postal_code'
+  # reconcile_addresses persists no output column for), so point directly at
+  # the raw evidence column, same convention as US_parcel-spine-2026's own
+  # impute_postal_city step.
+  - step: impute_postal_city
+    column: zip
+
+  # Town-scoped address matching key, joinable back onto the parcel spine's
+  # own address_id_local (see US_transaction-spine-2026 for the same
+  # pattern joining a non-parcel-keyed spine back by address).
+  - step: derive_address_id_local

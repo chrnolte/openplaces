@@ -448,13 +448,16 @@ def union_spine_sources(
     for src in resolved:
         recipe_id = src['recipe_id']
         label = src.get('label', recipe_id)
+        layer = src.get('layer')
         try:
             # missing='ignore': a source scoped finer than state.admin_id
             # (e.g. a per-town transaction crawl) may only have partial
             # coverage -- some child units genuinely not yet ingested rather
             # than an error -- so load whatever's available instead of
-            # failing the whole admin unit.
-            df = get_entities(recipe_id, state.admin_id, missing='ignore')
+            # failing the whole admin unit. layer selects a bundled
+            # additional_layers table (e.g. 'property') on a recipe whose
+            # own primary entity is a different type.
+            df = get_entities(recipe_id, state.admin_id, layer=layer, missing='ignore')
         except Exception as exc:
             warnings.warn(f'Could not load {recipe_id} for {state.admin_id}: {exc}')
             continue
@@ -488,7 +491,19 @@ def _expand_auto_discover(
     sources: list[dict],
     state: HarmonizeState,
 ) -> list[dict]:
-    """Replace any ``auto_discover: true`` sentinel with discovered recipes."""
+    """Replace any ``auto_discover: true`` sentinel with discovered recipes.
+
+    Standalone ingest recipes of *entity_type* are found via ``find_recipes``
+    as before. Additionally, entries bundled as an ``additional_layers``
+    entry inside a *different* host entity's recipe (e.g. MassGIS's
+    ``property`` table, bundled inside its ``parcel`` recipe rather than
+    registered on its own) are found via
+    :func:`openplaces.recipe.find_additional_layer_recipes` -- necessary for
+    entity types like ``property`` that, today, have no standalone ingest
+    recipe anywhere and would otherwise never resolve.
+    """
+    from openplaces.recipe import find_additional_layer_recipes
+
     sentinel_idx = next(
         (i for i, s in enumerate(sources) if s.get('auto_discover')),
         None,
@@ -520,6 +535,20 @@ def _expand_auto_discover(
             if child_id not in existing_ids:
                 discovered.append({'recipe_id': child_id, 'label': row['source_id']})
                 existing_ids.add(child_id)
+
+    if state.admin_id is not None:
+        for match in find_additional_layer_recipes(entity_type, state.admin_id):
+            key = (match['recipe_id'], match['layer'])
+            if key in existing_ids:
+                continue
+            discovered.append(
+                {
+                    'recipe_id': match['recipe_id'],
+                    'label': match['label'],
+                    'layer': match['layer'],
+                }
+            )
+            existing_ids.add(key)
 
     if sentinel_idx is not None:
         return sources[:sentinel_idx] + discovered + sources[sentinel_idx + 1 :]
