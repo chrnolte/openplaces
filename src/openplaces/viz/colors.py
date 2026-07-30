@@ -1,94 +1,87 @@
 """Default category-color mappings for openplaces standard columns.
 
-Keys are label strings as stored in parquet files after ingestion
-(i.e. post-labels-CSV remapping, not raw source codes).
+Labels are strings as stored in parquet files after ingestion (i.e.
+post-labels-CSV remapping, not raw source codes). The mapping itself lives
+in ``category_colors.csv`` (same directory) rather than as Python dicts, so
+it can be shared with non-Python consumers (e.g. a future QGIS map-styling
+export) instead of being locked into this module.
 """
+
+import hashlib
+from functools import cache
+from pathlib import Path
 
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
 
-# building.group
-# Standardized building use groups, as defined in the purpose-subgroup-remap
-# CSV. Covers NSI HAZUS occupancy classes; additional categories from other
-# datasets (FEMA, OBM, etc.) may be added with consistent color shading.
-_GROUP = {
-    # Residential — single family
-    'Single Family': '#E07850',
-    # Residential — other
-    'Manufactured Home': '#D4A830',
-    'Multi Family': '#9070C8',
-    'Hotel': '#E8D09A',
-    'Institutional Dormitory': '#E8C880',
-    'Nursing Home': '#F0D8A8',
-    # Commercial
-    'Retail': '#C55A11',
-    'Wholesale': '#B85010',
-    'Personal & Repair Services': '#D06820',
-    'Professional Technical Services': '#D07830',
-    'Bank': '#A84000',
-    'Hospital': '#C86050',
-    'Medical Office': '#D07060',
-    'Entertainment/Recreation': '#D88040',
-    'Theater': '#C87040',
-    'Garage': '#A06030',
-    # Industrial
-    'Heavy Industrial': '#606060',
-    'Light Industrial': '#787878',
-    'Food/Drug/Chemical': '#909090',
-    'Metals/Minerals processing': '#505050',
-    'High Technology': '#A0A0A0',
-    'Construction': '#B0A090',
-    # Agricultural
-    'Agricultural': '#D0A100',
-    # Government
-    'Government Services': '#00B8E0',
-    'Emergency Response': '#0090B8',
-    # Education
-    'Average School': '#A090D8',
-    'College/University': '#B8A0E8',
-    # Religious
-    'Church': '#F680CB',
-}
+_CATEGORY_COLORS_CSV = Path(__file__).parent / 'category_colors.csv'
 
-# building.purpose_group  (NSI: RES / COM / IND / PUB, post-label remapping)
-_PURPOSE_GROUP = {
-    'Residential': '#EF643F',
-    'Commercial': '#C55A11',
-    'Industrial': '#808080',
-    'Public': '#7B9FD4',
-}
 
-# footprint.occupancy_type  (harmonize-stage evidence values + curate-stage
-# canonical classes, colored consistently with _GROUP's matching entries.
-# 'Mobile Home' is the harmonize-stage label; 'Manufactured Home' is the
-# curate-stage canonical class for the same category (see the CHEER recipe's
-# `occupancy.residential_classes` and `refine_occupancy_height` bands) --
-# both map to the same color. Height-banded Multi-Family subclasses only
-# exist after CHEER's refine_occupancy_height step, not on the harmonize
-# spine.
-_OCCUPANCY_TYPE = {
-    'Single-Family': '#E07850',
-    'Mobile Home': '#D4A830',
-    'Manufactured Home': '#D4A830',
-    'Multi-Family': '#9070C8',
-    'Low-Rise Multi-Family': '#9070C8',
-    'Mid-Rise Multi-Family': '#7050A8',
-    'High-Rise Multi-Family': '#503080',
-    'Secondary': '#B0A090',
-}
+@cache
+def load_category_colors_table() -> pd.DataFrame:
+    """Return ``category_colors.csv`` as a DataFrame.
 
-# building.source  (NSI, post-label remapping from source-labels CSV)
-# Green for highest-quality (Parcel), grading to grey for legacy/fallback,
-# matching the ordered categorical priority set in the source-labels CSV.
-_SOURCE = {
-    'Parcel': '#5a9e6f',
-    'National Center for Education Statistics': '#7a9ec8',
-    'HIFLD Nursing Home': '#9eb8d8',
-    'HIFLD Hospital': '#8aafd0',
-    'ESRI': '#e68a3c',
-    'HAZUS/NSI-2015': '#b0b0b0',
-}
+    Columns: ``column`` (the categorical column a row applies to, e.g.
+    ``'occupancy_type'``), ``label``, ``color`` (hex ``#rrggbb``), and
+    ``parent`` (optional -- for a subgroup label, the `label` within the
+    same `column` it's a variant of, e.g. ``'Low-Rise Multi-Family'``'s
+    parent is ``'Multi-Family'``; blank for top-level/unspecified labels).
+    """
+    return pd.read_csv(_CATEGORY_COLORS_CSV, keep_default_na=False)
+
+
+def _build_category_colors() -> dict[str, dict[str, str]]:
+    table = load_category_colors_table()
+    return {
+        column: dict(zip(rows['label'], rows['color'], strict=True))
+        for column, rows in table.groupby('column')
+    }
+
+
+def _build_category_parents() -> dict[str, dict[str, str]]:
+    table = load_category_colors_table()
+    with_parent = table[table['parent'] != '']
+    return {
+        column: dict(zip(rows['label'], rows['parent'], strict=True))
+        for column, rows in with_parent.groupby('column')
+    }
+
+
+# building.group -- standardized building use groups, as defined in the
+# purpose-subgroup-remap CSV. Covers NSI HAZUS occupancy classes; additional
+# categories from other datasets (FEMA, OBM, etc.) may be added to
+# category_colors.csv with consistent color shading.
+#
+# building.purpose_group -- NSI: RES / COM / IND / PUB, post-label remapping.
+#
+# footprint.occupancy_type -- curate-stage canonical classes, colored
+# consistently with _GROUP's matching entries where the concepts overlap
+# (e.g. 'Single-Family'/'Single Family'). Height-banded Multi-Family
+# subclasses ('Low-Rise'/'Mid-Rise'/'High-Rise') are colored as related-but-
+# distinguishable shades of the unspecified 'Multi-Family' color, recorded
+# via each row's `parent` in category_colors.csv, rather than aliased to an
+# identical color.
+#
+# building.source -- NSI, post-label remapping from source-labels CSV. Green
+# for highest-quality (Parcel), grading to grey for legacy/fallback, matching
+# the ordered categorical priority set in the source-labels CSV.
+_CATEGORY_COLORS_BY_COLUMN = _build_category_colors()
+_CATEGORY_PARENTS = _build_category_parents()
+_GROUP = _CATEGORY_COLORS_BY_COLUMN['group']
+_PURPOSE_GROUP = _CATEGORY_COLORS_BY_COLUMN['purpose_group']
+_OCCUPANCY_TYPE = _CATEGORY_COLORS_BY_COLUMN['occupancy_type']
+_SOURCE = _CATEGORY_COLORS_BY_COLUMN['geometry_source']
+
+# Category values with no entry in category_colors.csv (e.g. a footprint's
+# occupancy_type filled in from a raw, non-residential evidence label that
+# CHEER's occupancy class-map doesn't recognize) get a color deterministically
+# auto-assigned by resolve_category_colors below, rather than all sharing one
+# flat, ambiguous fallback. Missing/NaN values are the one exception: they
+# always get the fixed RESERVED_NEUTRAL_COLOR below, not an auto-assigned one.
+MISSING_LABEL = '(missing)'
+RESERVED_NEUTRAL_COLOR = '#999999'
+_AUTO_ASSIGN_BINS = 64
 
 # Continuous "value"/"price" colormaps: many stops, full saturation
 # throughout (no washed-out midpoint the way a typical diverging colormap
@@ -335,6 +328,83 @@ def match_palette(values, col_name=None, weights=None, threshold=0.5):
     if best_score >= threshold:
         return best
     return None
+
+
+@cache
+def _auto_assign_bin_colors() -> list[str]:
+    """`_AUTO_ASSIGN_BINS` hex colors, evenly spaced across `'full_hue_vivid'`.
+
+    Sampled at evenly spaced positions (not adjacent stops of the
+    underlying 256-line source file, which form a smooth ramp and would
+    look near-identical) so that two different auto-assigned bins read as
+    visually distinct. Cached since it's rebuilt from a 256-line file
+    otherwise.
+    """
+    cmap = get_diverging_colormap('full_hue_vivid')
+    return [
+        mpl.colors.to_hex(cmap(i / _AUTO_ASSIGN_BINS)) for i in range(_AUTO_ASSIGN_BINS)
+    ]
+
+
+def _auto_assign_color(label: str) -> str:
+    """Deterministic per-label color for a label with no curated entry.
+
+    Uses a stable hash (`hashlib.md5`, not the builtin `hash()`, which is
+    salted per-process) so the same label always gets the same color across
+    calls, admin-unit scopes, and rendering tracks (Lonboard vs Datashader).
+    """
+    digest = hashlib.md5(label.encode('utf-8')).hexdigest()
+    bin_index = int(digest[:8], 16) % _AUTO_ASSIGN_BINS
+    return _auto_assign_bin_colors()[bin_index]
+
+
+def resolve_category_colors(values, col_name: str | None = None) -> dict[str, str]:
+    """Resolve one color per distinct label actually present in `values`.
+
+    Curated colors (via `match_palette`) are used where available; every
+    other distinct label -- including ones with no palette entry at all,
+    e.g. a footprint's `occupancy_type` filled in from a raw evidence label
+    CHEER's occupancy class-map doesn't recognize -- gets a deterministic
+    per-label color from `_auto_assign_color` instead of a single shared
+    fallback. This guarantees the same label always maps to the same color
+    regardless of admin-unit scope or which rendering track (Lonboard vs
+    Datashader) is asking, which a flat "unmatched" fallback color cannot.
+
+    Not a collision-free guarantee for arbitrarily many uncurated labels,
+    but legends only ever display a handful of labels at once
+    (`openplaces.viz.legend.MAX_CATEGORICAL_ENTRIES`), so it only needs to
+    keep whatever actually competes for those slots visually distinct in
+    practice.
+
+    Parameters
+    ----------
+    values : pandas.Series
+        Category values actually present in the plotted/rasterized data.
+        `NaN` is treated as the literal label `MISSING_LABEL`.
+    col_name : str, optional
+        Column name hint, forwarded to `match_palette`.
+
+    Returns
+    -------
+    dict
+        ``{label: hex_color}``, covering every distinct label in `values`
+        (as `str`, with `NaN` folded to `MISSING_LABEL`). Never `None`.
+    """
+    # dropna=True here (rather than folding NaN into the coverage count)
+    # matches match_palette's pre-existing calling convention across every
+    # other call site (interactive.py/raster.py/tabulation.py all compute
+    # weights from a dropna=True value_counts()) -- NaN's color is decided
+    # separately below, not by the curated-palette match itself.
+    counts = values.value_counts(dropna=True)
+    labels = [str(label) for label in counts.index]
+    curated = match_palette(labels, col_name=col_name, weights=counts.to_numpy()) or {}
+
+    resolved = {
+        label: curated.get(label, _auto_assign_color(label)) for label in labels
+    }
+    if values.isna().any():
+        resolved[MISSING_LABEL] = RESERVED_NEUTRAL_COLOR
+    return resolved
 
 
 def to_rgba_array(
