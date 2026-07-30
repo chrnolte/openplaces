@@ -490,6 +490,14 @@ class TableIngester:
         else:
             cols_added = []
 
+        # Discard scratch columns a transformation needed only as an
+        # intermediate step (e.g. a zero-padded value before a prefix is
+        # added), so they never reach the saved output.
+        if 'drop_columns' in self.recipe:
+            to_drop = [c for c in self.recipe['drop_columns'] if c in df]
+            df = df.drop(columns=to_drop)
+            cols_added = [c for c in cols_added if c not in to_drop]
+
         # Cast columns to categorical
         # Each item is either a plain column name (unordered) or a single-key
         # dict {column: [cat1, cat2, ...]} for an inline ordered categorical.

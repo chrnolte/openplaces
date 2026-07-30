@@ -47,7 +47,7 @@ columns:
   parcel_id_admin2_2: GLIST_SPAN
   address_911: E911ADDR
   town_name: TNAME
-  location: LOCAPROP
+  address: LOCAPROP
   owner_name: OWNER1
   owner_name_2: OWNER2
   owner_address: ADDRGL1
@@ -55,7 +55,7 @@ columns:
   owner_city: CITYGL
   owner_admin2_id_admin1: STGL
   owner_postal_code: ZIPGL
-  description: DESCPROP
+  legal_description: DESCPROP
   use_group: CAT
   use_subgroup: PROPTYPE
   resident_type: RESCODE
