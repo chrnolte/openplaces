@@ -13,9 +13,19 @@ from lonboard import BitmapTileLayer, Map, PathLayer, PolygonLayer, SolidPolygon
 from lonboard.layer_extension import PathStyleExtension
 
 from openplaces.io.readers import get_admin, get_entities
-from openplaces.viz.colors import match_palette, to_rgba_array
+from openplaces.viz.colors import (
+    MISSING_LABEL,
+    RESERVED_NEUTRAL_COLOR,
+    resolve_category_colors,
+    to_rgba_array,
+)
+from openplaces.viz.legend import categorical_legend_entries, legend_html
 
 DEFAULT_FILL_COLOR = '#5a9e6f'
+# Matches openplaces.viz.colors.continuous_to_rgba's own defaults -- kept as
+# a literal here (rather than imported) since _numeric_to_rgba below
+# reimplements that ramp directly rather than calling continuous_to_rgba.
+NUMERIC_RAMP = ('#e5e7db', '#5a2828')
 
 # Free, keyless XYZ tile providers spanning visually distinct basemap styles
 # for use as the ground plane under an extruded scene (e.g.
@@ -40,6 +50,7 @@ def show_entities_interactive(
     opacity: float = 0.8,
     default_color: str = DEFAULT_FILL_COLOR,
     missing: str = 'raise',
+    legend: bool = True,
 ) -> Map:
     """Render entity polygons as an interactive GPU map via Lonboard/deck.gl.
 
@@ -61,29 +72,39 @@ def show_entities_interactive(
         Spatial bounding box filter in EPSG:4326, forwarded to `get_entities`
         for viewport-bounded loading across a recipe's per-admin-unit files.
     color_by : str, optional
-        Column to color polygons by. Categorical columns are matched against
-        `openplaces.viz.colors.CATEGORY_COLORS` via `match_palette`; values
-        without a palette match (including missing data) fall back to
-        `default_color`. Numeric columns use a linear light-to-dark ramp
-        over their observed range.
+        Column to color polygons by, via
+        `openplaces.viz.colors.resolve_category_colors` for categorical
+        columns (curated colors from `openplaces.viz.colors.CATEGORY_COLORS`
+        where available, a deterministic per-label color for everything
+        else -- never a single shared fallback, so the same label always
+        gets the same color regardless of admin-unit scope). Numeric columns
+        use a linear light-to-dark ramp over their observed range.
     simplified : bool
         If True, load simplified geometries (``geom='simplified'``) where a
         sidecar exists, trading vertex fidelity for faster transport/render.
     opacity : float
         Fill opacity in [0, 1].
     default_color : str
-        Hex fill color used when `color_by` is None, or for values with no
-        palette match.
+        Hex fill color used when `color_by` is None (a plain solid-color
+        map).
     missing : {'raise', 'warn', 'ignore'}
         How to handle missing output files, forwarded to `get_entities`.
         Useful for rendering whatever subset of a multi-admin-unit recipe is
         already processed (e.g. a state where only some counties are done).
+    legend : bool
+        If True and `color_by` is given, display an HTML legend above the
+        map via `IPython.display.display`. deck.gl's WebGL canvas can't
+        host a DOM overlay the way a raster image can be drawn on directly,
+        so the legend renders as a separate widget rather than being
+        composited into the map itself. No legend is shown when `color_by`
+        is None (a plain solid-color map has nothing to key a legend to).
 
     Returns
     -------
     lonboard.Map
         Renders automatically in Jupyter; remains user-customizable (add
-        layers, reassign ``layers[0].get_fill_color``, etc.).
+        layers, reassign ``layers[0].get_fill_color``, etc.). Any legend is
+        displayed as a side effect, not part of the returned object.
     """
     gdf = get_entities(
         recipe,
@@ -101,26 +122,51 @@ def show_entities_interactive(
         )
         gdf = gdf[is_polygonal]
 
+    if gdf.empty:
+        raise ValueError(
+            f'No polygon geometries to render for admin_id={admin_id!r}'
+            f'{f", bbox={bbox!r}" if bbox is not None else ""} -- '
+            'the selection returned zero rows.'
+        )
+
     alpha = round(opacity * 255)
-    fill_color = _resolve_fill_color(gdf, color_by, default_color, alpha)
+    fill_color, legend_kwargs = _resolve_fill_color(gdf, color_by, default_color, alpha)
+
+    if legend and legend_kwargs is not None:
+        from IPython.display import HTML, display
+
+        display(HTML(legend_html(color_by, **legend_kwargs)))
 
     layer = SolidPolygonLayer.from_geopandas(gdf, get_fill_color=fill_color)
     return Map(layer)
 
 
 def _resolve_fill_color(gdf: gpd.GeoDataFrame, color_by, default_color, alpha):
+    """Resolve a per-row fill color, plus `legend_html` kwargs (or None)."""
     if color_by is None:
-        return _hex_to_rgba(default_color, alpha)
+        return _hex_to_rgba(default_color, alpha), None
 
     values = gdf[color_by]
     if pd.api.types.is_numeric_dtype(values):
-        return _numeric_to_rgba(values, alpha)
+        finite = values[np.isfinite(values)]
+        if finite.empty:
+            return _hex_to_rgba(DEFAULT_FILL_COLOR, alpha), None
+        legend_kwargs = {
+            'numeric': True,
+            'vmin': finite.min(),
+            'vmax': finite.max(),
+            'low_color': NUMERIC_RAMP[0],
+            'high_color': NUMERIC_RAMP[1],
+        }
+        return _numeric_to_rgba(values, alpha), legend_kwargs
 
-    counts = values.value_counts(dropna=True)
-    palette = match_palette(counts.index, col_name=color_by, weights=counts.to_numpy())
-    if palette is None:
-        return _hex_to_rgba(default_color, alpha)
-    return to_rgba_array(values, palette, default=default_color, alpha=alpha)
+    filled = values.astype('object').fillna(MISSING_LABEL).astype(str)
+    palette = resolve_category_colors(values, col_name=color_by)
+    fill_color = to_rgba_array(
+        filled, palette, default=RESERVED_NEUTRAL_COLOR, alpha=alpha
+    )
+    entries = categorical_legend_entries(filled, palette)
+    return fill_color, {'entries': entries}
 
 
 def _hex_to_rgba(hex_color: str, alpha: int) -> tuple[int, int, int, int]:

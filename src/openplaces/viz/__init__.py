@@ -9,6 +9,7 @@ from openplaces.viz.colors import (
     adjust_brightness,
     continuous_to_rgba,
     match_palette,
+    resolve_category_colors,
     to_rgba_array,
 )
 from openplaces.viz.maps import (
@@ -44,6 +45,7 @@ __all__ = [
     'get_basemap_layer',
     'match_palette',
     'plot_tabulation',
+    'resolve_category_colors',
     'show_building',
     'show_building_imagery',
     'show_entities_interactive',

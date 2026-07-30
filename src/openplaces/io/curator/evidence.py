@@ -442,6 +442,13 @@ def merge_enrichments(
     Each recipe specification must contain ``recipe_id`` and a ``columns``
     mapping from evidence-column names to canonical-column names. Existing
     canonical values take precedence; enrichment fills missing values.
+    An optional ``record_source`` (default ``False``) writes a ``{column}
+    _source`` provenance sidecar for that spec's columns -- reserve this
+    for genuinely canonical, possibly-multi-sourced columns (e.g. a value
+    later reconciled against a second source); leave it off for a bulk,
+    single-source enrichment batch (e.g. dozens of physical/environmental
+    predictors from one model), where a sidecar per column is pure
+    bookkeeping bloat with no downstream reconciliation to inform.
 
     A ``recipe_spec`` whose enrichment output doesn't exist yet for this admin
     is skipped rather than raising -- e.g. an imagery-dependent enrichment
@@ -451,14 +458,27 @@ def merge_enrichments(
     the enrichment steps that depend on it). A ``recipe_spec`` whose evidence
     *does* exist but lacks a requested column still raises -- that is a real
     recipe misconfiguration, not evidence that simply hasn't been computed.
+
+    Every column this step touches -- across every ``recipe_spec``, values
+    and source sidecars alike -- is collected in memory and written to
+    ``curated`` in a single batched ``pd.concat`` at the end, rather than
+    one ``curated[col] = ...`` assignment per column: a wide, already
+    highly-columned entity table (e.g. the curated parcel table, 170+
+    columns) fragments its internal block manager under dozens of
+    one-at-a-time inserts, tripping pandas' own
+    ``PerformanceWarning: DataFrame is highly fragmented`` -- exactly the
+    pattern a large ``merge_enrichments`` call (e.g. ~45 columns from one
+    enrichment source) produces.
     """
-    from openplaces.io.curator.provenance import record_source
+    from openplaces.io.curator.provenance import _apply_source_mask, source_column
 
     curated = state.curated
+    pending: dict[str, pd.Series] = {}
 
     for recipe_spec in recipes:
         recipe_id = recipe_spec.get('recipe_id')
         columns = recipe_spec.get('columns') or {}
+        want_source = recipe_spec.get('record_source', False)
         if not recipe_id:
             raise ValueError("Enrichment specifications require 'recipe_id'.")
         if not columns:
@@ -501,17 +521,40 @@ def merge_enrichments(
                     f'{evidence_path}.'
                 )
             values = evidence[evidence_column].reindex(curated.index)
-            if canonical_column in curated:
-                was_null = curated[canonical_column].isna()
-                curated[canonical_column] = curated[canonical_column].combine_first(
-                    values
-                )
+
+            # A prior recipe_spec in this same call may have already
+            # queued a value for this column -- read that first so
+            # declaration order still acts as a priority chain (a later
+            # spec only fills rows still missing), matching the
+            # pre-batching combine_first behavior exactly.
+            current = pending.get(canonical_column)
+            if current is None and canonical_column in curated.columns:
+                current = curated[canonical_column]
+            if current is not None:
+                was_null = current.isna()
+                merged = current.combine_first(values)
             else:
                 was_null = pd.Series(True, index=curated.index)
-                curated[canonical_column] = values
-            filled = was_null & curated[canonical_column].notna()
-            if filled.any():
-                record_source(curated, canonical_column, filled, token)
+                merged = values
+            pending[canonical_column] = merged
+
+            if want_source:
+                filled = was_null & merged.notna()
+                if filled.any():
+                    side = source_column(canonical_column)
+                    side_existing = pending.get(side)
+                    if side_existing is None and side in curated.columns:
+                        side_existing = curated[side]
+                    pending[side] = _apply_source_mask(
+                        side_existing, curated.index, filled, token
+                    )
+
+    if pending:
+        new_cols = pd.DataFrame(pending, index=curated.index)
+        overlap = [c for c in new_cols.columns if c in curated.columns]
+        if overlap:
+            curated = curated.drop(columns=overlap)
+        curated = pd.concat([curated, new_cols], axis=1)
 
     state.curated = curated
     return state

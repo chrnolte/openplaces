@@ -10,8 +10,8 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.dataset as ds
 import pyarrow.fs as pafs
-import pyarrow.parquet as pq
 import requests
+import shapely
 
 from openplaces.io.readers import get_admin
 
@@ -78,18 +78,31 @@ def tile_bounds(
 
 
 def tile_ids_for_admin(admin_id: str, tile_size_deg: float = 1.0) -> list[str]:
-    """Return all tile IDs whose bbox overlaps the admin polygon's bounding box."""
+    """Return tile IDs whose box actually intersects the admin polygon.
+
+    Candidate tiles are enumerated from the polygon's bounding box, then
+    filtered to those whose tile box intersects the polygon itself. For a
+    concave/irregular admin shape, some bbox corner tiles never touch any
+    part of the polygon; requesting one of those anyway would still trigger
+    a full remote scan of the cloud parquet dataset (see
+    ``fetch_latlon_tile_to_cache`` / ``_read_s3_parquet``) that is guaranteed
+    to return zero rows.
+    """
     _validate_tile_size_deg(tile_size_deg)
     admin = get_admin(admin_id, geom=True).to_crs('EPSG:4326')
+    boundary = admin.union_all()
     minx, miny, maxx, maxy = admin.total_bounds
     tiles = []
     for lat in range(math.floor(miny / tile_size_deg), math.ceil(maxy / tile_size_deg)):
         for lon in range(
             math.floor(minx / tile_size_deg), math.ceil(maxx / tile_size_deg)
         ):
-            tiles.append(
-                tile_str(lat * tile_size_deg, lon * tile_size_deg, tile_size_deg)
+            lat_deg, lon_deg = lat * tile_size_deg, lon * tile_size_deg
+            tile_box = shapely.box(
+                lon_deg, lat_deg, lon_deg + tile_size_deg, lat_deg + tile_size_deg
             )
+            if tile_box.intersects(boundary):
+                tiles.append(tile_str(lat_deg, lon_deg, tile_size_deg))
     return tiles
 
 
@@ -280,9 +293,67 @@ def fetch_latlon_tile_to_cache(
         print(f'  Cached {len(gdf):,d} rows → {cache_path.name}')
 
 
+_s3_listing_cache: dict[str, list[tuple[str, int]]] = {}
+_s3_fragment_cache: dict[str, ds.Fragment] = {}
+_shared_s3_session: requests.Session | None = None
+
+
+def _get_shared_s3_session() -> requests.Session:
+    global _shared_s3_session
+    if _shared_s3_session is None:
+        _shared_s3_session = requests.Session()
+    return _shared_s3_session
+
+
+def _list_s3_parquet_files(base: str, prefix: str) -> list[tuple[str, int]]:
+    """List (key, size_bytes) for parquet files under an S3 prefix.
+
+    Cached at module scope: for `latlon_tile` recipes, this listing is
+    otherwise refetched identically for every tile in an ingest run even
+    though it never changes within a resolved release.
+    """
+    cache_key = f'{base}/{prefix}'
+    if cache_key in _s3_listing_cache:
+        return _s3_listing_cache[cache_key]
+
+    from urllib.parse import quote
+
+    list_url = f'{base}/?list-type=2&prefix={quote(prefix, safe="/")}'
+    resp = requests.get(list_url)
+    resp.raise_for_status()
+    _ns = 'http://s3.amazonaws.com/doc/2006-03-01/'
+    root = ET.fromstring(resp.content)
+    keys_sizes = []
+    for contents in root.iter(f'{{{_ns}}}Contents'):
+        key = contents.find(f'{{{_ns}}}Key').text
+        if key and key.endswith('.parquet'):
+            size = int(contents.find(f'{{{_ns}}}Size').text)
+            keys_sizes.append((key, size))
+
+    _s3_listing_cache[cache_key] = keys_sizes
+    return keys_sizes
+
+
+def _get_s3_parquet_fragment(url: str, size: int) -> ds.Fragment:
+    """Return a lazy, metadata-caching Fragment for one S3 parquet file.
+
+    Reusing the same Fragment across tiles means its footer (schema and
+    row-group statistics) is parsed once per file per process, not once per
+    tile: a Fragment caches its parsed metadata for its lifetime, so a later
+    ``to_table(filter=...)`` call with a different bbox only fetches the
+    newly-relevant row groups' byte ranges instead of re-fetching the footer.
+    """
+    if url not in _s3_fragment_cache:
+        fmt = ds.ParquetFileFormat()
+        _s3_fragment_cache[url] = fmt.make_fragment(
+            _HTTPRangeFile(url, _get_shared_s3_session()), file_size=size
+        )
+    return _s3_fragment_cache[url]
+
+
 def _read_s3_parquet(url, bbox_filter, region, verbose):
     """Read S3 parquet files via HTTPS range requests with row-group filtering."""
-    from urllib.parse import quote, urlparse
+    from urllib.parse import urlparse
 
     parsed = urlparse(url)
     bucket = parsed.netloc
@@ -290,24 +361,10 @@ def _read_s3_parquet(url, bbox_filter, region, verbose):
     region = region or 'us-east-1'
     base = f'https://{bucket}.s3.{region}.amazonaws.com'
 
-    list_url = f'{base}/?list-type=2&prefix={quote(prefix, safe="/")}'
-    resp = requests.get(list_url)
-    resp.raise_for_status()
-    _ns = 'http://s3.amazonaws.com/doc/2006-03-01/'
-    keys = [
-        e.text
-        for e in ET.fromstring(resp.content).iter(f'{{{_ns}}}Key')
-        if e.text and e.text.endswith('.parquet')
-    ]
-
-    session = requests.Session()
     parts = []
-    for key in keys:
-        table = pq.read_table(
-            _HTTPRangeFile(f'{base}/{key}', session),
-            filters=bbox_filter,
-            use_pandas_metadata=False,
-        )
+    for key, size in _list_s3_parquet_files(base, prefix):
+        fragment = _get_s3_parquet_fragment(f'{base}/{key}', size)
+        table = fragment.to_table(filter=bbox_filter)
         if len(table):
             parts.append(table)
 

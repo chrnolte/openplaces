@@ -31,9 +31,13 @@ from openplaces.geo.polygon import (
     resolve_overlapping_polygons,
 )
 from openplaces.io import to_parquet
-from openplaces.io.aggregate import aggregate_rows, read_file_metadata
+from openplaces.io.aggregate import _agg_func_for, aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
-from openplaces.io.harmonizer import HarmonizeState, _register
+from openplaces.io.harmonizer import (
+    HarmonizeState,
+    _register,
+    restrict_to_admin_by_name,
+)
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import make_index_unique, remap
 from openplaces.recipe import (
@@ -272,7 +276,14 @@ def _link_spatial_overlay(
     area_min_m2 = thresholds.get('area_intersection_m2_min', 10)
     spine_id_col = state.spine.index.name
 
-    ref_raw = get_entities(recipe_id, state.admin_id, geom=True)
+    # missing='warn': a reference recipe can genuinely have zero coverage for
+    # this admin unit (see _link_spatial_point's identical handling) -- an
+    # expected admin-scoped gap, not an error.
+    ref_raw = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
+    if ref_raw is None or len(ref_raw) == 0:
+        if state.verbose:
+            print(f'  Link (overlay): no {recipe_id} for {state.admin_id}; skipping.')
+        return state
     if state.verbose:
         print(
             f'  Link (overlay): {len(ref_raw):,d} {entity_type or "ref"} ({recipe_id})'
@@ -1074,7 +1085,19 @@ def _link_spatial_point(
     use_size_limit: bool = bool(thresholds.get('use_size_limit', False))
     aggregate_mp: bool = bool(thresholds.get('aggregate_multipoint', False))
 
-    ref = get_entities(recipe_id, state.admin_id, geom=True)
+    # missing='warn': a reference recipe (e.g. dwelling-overture-2025) can
+    # genuinely have zero coverage for this admin unit -- many rural U.S.
+    # counties have no Overture address points at all, not merely an
+    # unfinished ingest -- so this is a normal, expected admin-scoped gap,
+    # not an error.
+    ref = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
+    if ref is None or len(ref) == 0:
+        if state.verbose:
+            print(
+                f'  Link ({entity_type or "point"}): no {recipe_id} for '
+                f'{state.admin_id}; skipping.'
+            )
+        return state
     if remap_id:
         ref = remap(ref, remap_id)
     if state.verbose:
@@ -1534,7 +1557,12 @@ def _write_prioritized(
         spine[name] = spine[name].combine_first(new_vals)
 
 
-def _warn_if_duplicate_key(key_series: pd.Series, key_name: str, context: str) -> None:
+def _warn_if_duplicate_key(
+    key_series: pd.Series,
+    key_name: str,
+    context: str,
+    is_own_identity_key: bool = True,
+) -> None:
     """Warn when *key_series* has duplicate values.
 
     openplaces indices (e.g. ``parcel_id``, a geo_id) are unique by design.
@@ -1542,7 +1570,15 @@ def _warn_if_duplicate_key(key_series: pd.Series, key_name: str, context: str) -
     is fine as long as it's *known* to be a many-to-one key (and, for
     'aggregate'/'count' modes, is actually aggregated); this makes that
     non-uniqueness visible instead of a silent assumption.
+
+    *is_own_identity_key* silences the warning when *key_name* is a foreign
+    key borrowed from another entity (e.g. ``parcel_id_local`` on a
+    transaction spine) rather than the checked side's own identity -- there,
+    duplicates are structurally expected (many transactions share one
+    parcel) rather than a same-entity collision.
     """
+    if not is_own_identity_key:
+        return
     valid = key_series.dropna()
     dup_mask = valid.duplicated(keep=False)
     n_dup_rows = int(dup_mask.sum())
@@ -1555,6 +1591,23 @@ def _warn_if_duplicate_key(key_series: pd.Series, key_name: str, context: str) -
         )
 
 
+def _columns_as_pairs(
+    columns: list[str] | dict[str, str] | None,
+) -> list[tuple[str, str]]:
+    """Normalize *columns* to ``(ref_column, output_name)`` pairs.
+
+    A plain list keeps the reference column's own name as the output name; a
+    dict (``{ref_column: output_name}``) renames on the way in, e.g. joining a
+    transaction reference's ``price``/``recorded_date`` onto the canonical
+    ``last_sale_price``/``last_sale_date`` parcel attributes.
+    """
+    if not columns:
+        return []
+    if isinstance(columns, dict):
+        return list(columns.items())
+    return [(c, c) for c in columns]
+
+
 @_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
@@ -1564,11 +1617,13 @@ def link_by_id(
     mode: str = 'attributes',
     spine_key: str = 'parcel_id_local',
     ref_key: str = 'parcel_id_local',
-    columns: list[str] | None = None,
+    columns: list[str] | dict[str, str] | None = None,
     suffix: str | None = None,
-    count_as: str = 'n_transactions',
-    flag_as: str = 'is_transacted',
+    count_as: str | None = None,
+    flag_as: str | None = 'is_transacted',
     layer: str | None = None,
+    ref_sort_by: str | None = None,
+    ref_sort_ascending: bool = True,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -1601,7 +1656,10 @@ def link_by_id(
         *columns* defaulting to the attribute registry's canonical columns
         for that entity type (:func:`~openplaces.core.attribute_registry.
         get_attributes`) — pass an explicit *columns* to override this
-        default for every discovered match. Any ``*-remap.csv`` crosswalk
+        default for every discovered match. *suffix* and *count_as* are
+        forwarded to each discovered match unchanged (e.g. a fixed
+        ``count_as='n_transactions'`` for every auto-discovered
+        ``entity_type='transaction'`` source). Any ``*-remap.csv`` crosswalk
         found beside a matched source is applied automatically (see
         :func:`_apply_remap_csvs`). A standalone match that is also one of
         the spine's own geometry sources has its ``resolve_spine``
@@ -1629,16 +1687,41 @@ def link_by_id(
         guaranteed unique; see :func:`_warn_if_duplicate_key`, which warns
         when either side turns out to have duplicates, so that risk is
         visible rather than silently assumed away.
-    columns : list of str, optional
-        Reference columns to attach in ``'attributes'`` mode.
+    columns : list of str or dict of {str: str}, optional
+        Reference columns to attach in ``'attributes'``/``'aggregate'`` mode.
+        A dict renames each reference column to its value on write (e.g.
+        ``{'price': 'last_sale_price', 'recorded_date': 'last_sale_date'}``),
+        so the registry aggregation lookup and ``_write_prioritized`` gap-fill
+        apply to the actual canonical output name rather than the reference's
+        own column name.
     suffix : str, optional
-        Suffix appended to attached column names (``'attributes'`` mode).
-    count_as, flag_as : str
-        Output column names in ``'count'`` mode.
+        Suffix appended to attached column names (``'attributes'``/
+        ``'aggregate'`` mode).
+    count_as, flag_as : str, optional
+        Output column names in ``'count'`` mode (default ``'n_transactions'``/
+        ``'is_transacted'`` when unset). In ``'aggregate'`` mode, *count_as*
+        names the per-key record count column (default ``'n_records_per_key'``
+        when unset — deliberately not ``'n_transactions'`` unless requested,
+        since ``'aggregate'`` is also used for non-transaction references like
+        MassGIS condo unit stacks); pass ``flag_as=None`` to skip the
+        ``'count'``-mode presence flag when it isn't needed (e.g. it's exactly
+        ``count_as > 0`` and not worth persisting).
     layer : str, optional
         Secondary layer (entity type or full entity string) of an
         ``additional_layers`` entity to load from *recipe_id*, e.g. the
         ``property`` assessor table bundled inside a MassGIS parcel recipe.
+    ref_sort_by : str, optional
+        Reference column to sort by before ``'aggregate'``/``'attributes'``
+        mode picks a row per key. The registry's ``'first'``/``'last'``
+        aggregation (and ``'attributes'`` mode's own duplicate-key pick) take
+        whichever row happens to come first in *ref*'s existing order, which
+        is not necessarily meaningful order (e.g. a raw transaction table is
+        not guaranteed sorted by date) -- set this to make ``'first'`` mean
+        "most recent" for a column like ``last_sale_price``/``last_sale_date``
+        derived from a ``recorded_date`` reference.
+    ref_sort_ascending : bool, default True
+        Sort direction for *ref_sort_by* (``False`` so ``'first'`` picks the
+        most recent row when sorting by a date column).
     """
     if auto_discover:
         # A standalone roll that is also one of the spine's own geometry
@@ -1669,7 +1752,11 @@ def link_by_id(
                 spine_key=match['key'],
                 ref_key=match['key'],
                 columns=match_columns,
+                suffix=suffix,
+                count_as=count_as,
                 layer=match['layer'],
+                ref_sort_by=ref_sort_by,
+                ref_sort_ascending=ref_sort_ascending,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
         return state
@@ -1698,27 +1785,43 @@ def link_by_id(
         if state.verbose:
             print(f'  link_by_id: no {recipe_id} for {state.admin_id}; skipping.')
         return state
+    if ref is not None and layer is None:
+        # A reference scoped coarser than state.admin_id with no matching
+        # admin-id column (e.g. a statewide transaction table keyed only by a
+        # free-text county name) comes back unfiltered from get_entities --
+        # restrict it here so a per-county aggregate isn't silently pooled
+        # across the whole state.
+        ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
     if ref is None or ref_key not in ref.columns:
         warnings.warn(
             f'link_by_id: reference {recipe_id} has no {ref_key!r}; skipping.'
         )
         return state
+    if ref_sort_by and ref_sort_by in ref.columns:
+        ref = ref.sort_values(ref_sort_by, ascending=ref_sort_ascending, kind='stable')
 
     spine = state.spine
     skey = spine[spine_key].astype('string')
     rkey = ref[ref_key].astype('string')
-    _warn_if_duplicate_key(skey, spine_key, 'spine key')
+    spine_entity = state.recipe.get('entity')
+    spine_entity_type = (
+        str(spine_entity.entity_type) if spine_entity is not None else None
+    )
+    is_own_key = spine_entity_type is None or spine_key.startswith(
+        f'{spine_entity_type}_id'
+    )
+    _warn_if_duplicate_key(skey, spine_key, 'spine key', is_own_identity_key=is_own_key)
 
     if mode == 'attributes':
-        cols = [c for c in (columns or []) if c in ref.columns]
+        pairs = [(c, o) for c, o in _columns_as_pairs(columns) if c in ref.columns]
         # 'attributes' keeps one arbitrary row per key (no aggregation, unlike
         # 'aggregate'/'count') -- a duplicate ref_key here is silently resolved
         # by drop_duplicates below, so flag it before that happens.
         _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
         ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
         ref_unique.index = ref_unique[ref_key].astype('string')
-        for col in cols:
-            name = f'{col}{suffix}' if suffix else col
+        for col, out_name in pairs:
+            name = f'{out_name}{suffix}' if suffix else out_name
             ref_series = ref_unique[col]
             mapper = ref_series.to_dict() if ref_series.empty else ref_series
             _write_prioritized(spine, name, skey.map(mapper))
@@ -1726,36 +1829,71 @@ def link_by_id(
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (attributes): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} ({len(cols)} columns)'
+                f'rows matched {recipe_id} ({len(pairs)} columns)'
             )
     elif mode == 'count':
+        count_as = count_as or 'n_transactions'
         counts = rkey.dropna().value_counts()
         mapper = counts.to_dict() if counts.empty else counts
         spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
-        spine[flag_as] = spine[count_as] > 0
+        if flag_as:
+            spine[flag_as] = spine[count_as] > 0
         if state.verbose:
+            linked = int((spine[count_as] > 0).sum())
             print(
-                f'  Link by id (count): {int(spine[flag_as].sum()):,d}/'
-                f'{len(spine):,d} spine rows linked to {recipe_id} '
-                f'({count_as}, {flag_as})'
+                f'  Link by id (count): {linked:,d}/'
+                f'{len(spine):,d} spine rows linked to {recipe_id} ({count_as})'
             )
     elif mode == 'aggregate':
-        cols = [c for c in (columns or []) if c in ref.columns and c != ref_key]
+        pairs = [
+            (c, o)
+            for c, o in _columns_as_pairs(columns)
+            if c in ref.columns and c != ref_key
+        ]
         ref_valid = ref.dropna(subset=[ref_key]).copy()
         ref_valid[ref_key] = ref_valid[ref_key].astype('string')
         grouped = ref_valid.groupby(ref_key, sort=False)
 
         # Registry-driven reduction (sum values/dwellings, mean year, etc.);
         # columns without a usable registry rule fall back to the first value.
-        reducible = {'sum', 'mean', 'max', 'min', 'first', 'last', 'median'}
-        for col in cols:
-            fname = get_agg_func(resolve_attribute_name(col))
-            func = fname if fname in reducible else 'first'
-            name = f'{col}{suffix}' if suffix else col
+        # Looked up by the *output* name -- the canonical slot being filled --
+        # not the reference's own column name, so a rename (e.g. price ->
+        # last_sale_price) still resolves the right aggregation. 'join_nonnull'
+        # (e.g. address, use_group) is not a pandas groupby function on its
+        # own -- routed through _agg_func_for (the same helper aggregate_rows
+        # uses) to concatenate every distinct non-null value instead of
+        # silently degrading to 'first' (an arbitrary row's value, discarding
+        # every other row's -- the original multi-property-per-parcel
+        # collapse bug). 'address' gets its own joiner there
+        # (join_nonnull_addresses) rather than the generic one: a condo/
+        # apartment building's per-unit property records typically differ
+        # only by an APT/UNIT/# suffix, and the plain joiner's ' + '-
+        # concatenation of every unit's full address corrupts downstream
+        # address parsing (no parser can split a multi-address blob back
+        # into one street/number). 'use_group' and other join_nonnull
+        # columns keep the plain joiner -- their concatenated values are
+        # consumed directly, never re-parsed.
+        reducible = {
+            'sum',
+            'mean',
+            'max',
+            'min',
+            'first',
+            'last',
+            'median',
+            'join_nonnull',
+        }
+        for col, out_name in pairs:
+            canonical_name = resolve_attribute_name(out_name)
+            fname = get_agg_func(canonical_name)
+            func = (
+                _agg_func_for(canonical_name, fname) if fname in reducible else 'first'
+            )
+            name = f'{out_name}{suffix}' if suffix else out_name
             agg_series = grouped[col].agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
             _write_prioritized(spine, name, skey.map(mapper))
-        count_col = count_as if count_as != 'n_transactions' else 'n_records_per_key'
+        count_col = count_as or 'n_records_per_key'
         gsize = grouped.size()
         mapper = gsize.to_dict() if gsize.empty else gsize
         spine[count_col] = skey.map(mapper).fillna(0).astype('int64')
@@ -1763,7 +1901,7 @@ def link_by_id(
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} ({len(cols)} columns, {count_col})'
+                f'rows matched {recipe_id} ({len(pairs)} columns, {count_col})'
             )
     else:
         raise ValueError(
@@ -1772,6 +1910,209 @@ def link_by_id(
         )
 
     state.spine = spine
+    return state
+
+
+@_register('link_address_ranges')
+def link_address_ranges(
+    state: HarmonizeState,
+    recipe_id: str,
+    columns: list[str] | dict[str, str] | None = None,
+    street_column: str = 'address_street',
+    number_column: str = 'address_number',
+    admin4_column: str = 'admin4_id',
+    suffix: str | None = None,
+) -> HarmonizeState:
+    """Resolve multi-unit address ranges left unmatched by :func:`link_by_id`.
+
+    A raw address number like ``'704-706'`` (a standard multi-unit/multi-
+    family deed notation, preserved by
+    :func:`~openplaces.geo.address.normalize_address_components` rather than
+    squashed into ``'704706'``) never matches a parcel reference's own
+    single-number ``address_id_local`` key via the ordinary
+    :func:`link_by_id` steps -- no real parcel has that combined number. This
+    step splits the range (:func:`~openplaces.geo.address.split_number_range`)
+    and tries each individual number against *recipe_id*'s own
+    ``admin4|street|number`` key components (the same construction
+    :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local` uses)
+    instead. It also handles the mirror case: a *reference* row whose own
+    number is a range (e.g. a parcel recorded as ``'20-22 Main St'``) while
+    the spine lists a single plain number that's one of the two halves --
+    for spine rows :func:`link_by_id` left unmatched, each reference range
+    is likewise registered under both of its individual numbers.
+
+    A multi-family range normally corresponds to one parcel: if exactly one
+    distinct reference row resolves (from either side's range, or a plain
+    match), link it (gap-fill only, via :func:`_write_prioritized`, so an
+    already-linked row is never touched). If more than one distinct
+    reference row resolves -- ambiguous, and not expected in the normal case
+    -- the row is left unmatched rather than guessed at; every such row this
+    call finds is reported in a single warning with a small sample, since
+    arbitrarily picking one parcel over the other would be wrong until the
+    ambiguity is looked at deliberately.
+
+    Parameters mirror :func:`link_by_id`'s naming for the columns it shares
+    (*street_column*/*number_column*/*admin4_column* also match
+    :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local`'s
+    defaults, so a recipe using those defaults on both sides needs none of
+    them repeated here).
+    """
+    if state.spine is None or number_column not in state.spine.columns:
+        return state
+
+    from openplaces.geo.address import canonicalize_for_match, split_number_range
+
+    spine = state.spine
+    split = (
+        spine[number_column]
+        .astype('string')
+        .map(lambda v: split_number_range(v) if pd.notna(v) else None)
+    )
+    is_range = split.notna()
+
+    try:
+        ref = get_entities(recipe_id, state.admin_id)
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        if state.verbose:
+            print(
+                f'  link_address_ranges: no {recipe_id} for {state.admin_id}; skipping.'
+            )
+        return state
+    if ref is not None:
+        ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
+    if (
+        ref is None
+        or street_column not in ref.columns
+        or number_column not in ref.columns
+    ):
+        return state
+
+    admin_str = str(state.admin_id) if state.admin_id else ''
+    admin_levels = AdminId(admin_str).levels if admin_str else ()
+    admin1_id = admin_levels[0] if admin_levels else None
+
+    def _base_key(frame):
+        street = frame[street_column].astype('string').fillna('')
+        canon_map = {
+            s: canonicalize_for_match(s, admin1_id) if s else ''
+            for s in street.unique()
+        }
+        canon_street = street.map(canon_map)
+        number = (
+            frame[number_column].astype('string').str.strip().str.upper().fillna('')
+        )
+        admin4 = (
+            frame[admin4_column].astype('string').fillna('')
+            if admin4_column in frame.columns
+            else pd.Series('', index=frame.index)
+        )
+        has_base = canon_street.ne('') & number.ne('')
+        return (
+            admin4 + '|' + canon_street + '|' + number,
+            has_base,
+            canon_street,
+            admin4,
+        )
+
+    def _register_key(index_by_key: dict, key, row_id) -> None:
+        bucket = index_by_key.setdefault(key, [])
+        if row_id not in bucket:
+            bucket.append(row_id)
+
+    # Reference key index: each row's own combined key, plus -- for a row
+    # whose own number is itself a range -- each half's key too, pointing
+    # back to the same row. A key claimed by more than one distinct row
+    # (e.g. a real plain parcel at '22 Main St' *and* a range parcel
+    # '20-22 Main St' both registering '.../22') is kept as an explicit
+    # multi-row bucket rather than silently picking one, so it surfaces as
+    # an ambiguous match below like any other multi-parcel case.
+    ref_key, ref_has_base, ref_canon_street, ref_admin4 = _base_key(ref)
+    ref_key_to_rows: dict[str, list] = {}
+    for row_id, key in ref_key[ref_has_base].items():
+        _register_key(ref_key_to_rows, key, row_id)
+
+    ref_range_split = (
+        ref[number_column]
+        .astype('string')
+        .map(lambda v: split_number_range(v) if pd.notna(v) else None)
+    )
+    for row_id in ref.index[ref_range_split.notna() & ref_has_base]:
+        num1, num2 = ref_range_split.loc[row_id]
+        prefix = f'{ref_admin4.loc[row_id]}|{ref_canon_street.loc[row_id]}|'
+        _register_key(ref_key_to_rows, prefix + num1, row_id)
+        _register_key(ref_key_to_rows, prefix + num2, row_id)
+
+    pairs = [(c, o) for c, o in _columns_as_pairs(columns) if c in ref.columns]
+    output_names = [f'{o}{suffix}' if suffix else o for _, o in pairs]
+
+    _, _, spine_canon_street, spine_admin4 = _base_key(spine)
+
+    existing = [n for n in output_names if n in spine.columns]
+    already_matched = (
+        spine[existing].notna().any(axis=1)
+        if existing
+        else pd.Series(False, index=spine.index)
+    )
+    plain_unmatched = ~is_range & spine[number_column].notna() & ~already_matched
+    attempt_rows = is_range | plain_unmatched
+    if not attempt_rows.any():
+        return state
+
+    matched_index: dict = {}
+    ambiguous_rows = []
+    n_range_attempted = 0
+    for idx in spine.index[attempt_rows]:
+        if is_range.loc[idx]:
+            n_range_attempted += 1
+            num1, num2 = split.loc[idx]
+            candidates = [num1, num2]
+        else:
+            candidates = [str(spine.loc[idx, number_column]).strip().upper()]
+        prefix = f'{spine_admin4.loc[idx]}|{spine_canon_street.loc[idx]}|'
+
+        distinct_rows: list = []
+        matched_keys: list = []
+        for key in dict.fromkeys(prefix + c for c in candidates):
+            for row_id in ref_key_to_rows.get(key, []):
+                if row_id not in distinct_rows:
+                    distinct_rows.append(row_id)
+                    matched_keys.append(key)
+
+        if len(distinct_rows) == 1:
+            matched_index[idx] = distinct_rows[0]
+        elif len(distinct_rows) > 1:
+            ambiguous_rows.append(
+                {
+                    'street': spine_canon_street.loc[idx],
+                    'number': spine.loc[idx, number_column],
+                    'matched_keys': matched_keys,
+                }
+            )
+
+    if ambiguous_rows:
+        warnings.warn(
+            f'link_address_ranges: {len(ambiguous_rows)} row(s) have an '
+            f'address number matching more than one distinct parcel in '
+            f'{recipe_id!r} (via a range on either side); a multi-family '
+            'range should normally resolve to a single parcel, so these '
+            'rows are left unmatched until the ambiguity is resolved. '
+            f'Sample: {ambiguous_rows[:5]}',
+            stacklevel=2,
+        )
+
+    match_series = pd.Series(matched_index, dtype='object')
+    for col, out_name in pairs:
+        name = f'{out_name}{suffix}' if suffix else out_name
+        new_vals = match_series.map(ref[col]).reindex(spine.index)
+        _write_prioritized(spine, name, new_vals)
+
+    state.spine = spine
+    if state.verbose:
+        print(
+            f'  Link address ranges: {len(matched_index):,d}/'
+            f'{int(attempt_rows.sum()):,d} rows matched {recipe_id} '
+            f'({n_range_attempted:,d} range-shaped) ({len(pairs)} columns)'
+        )
     return state
 
 
@@ -1977,6 +2318,239 @@ def infer_spine_additions(
         state.timer.mark('Infer')
 
     state.metadata[f'inferred_from_{recipe_id}'] = footprints_from_ref
+    return state
+
+
+@_register('consolidate_condo_cluster_footprints')
+def consolidate_condo_cluster_footprints(
+    state: HarmonizeState,
+    entity_type: str | None = 'parcel',
+    recipe_id: str | None = None,
+    cluster_thresholds: dict | None = None,
+) -> HarmonizeState:
+    """Collapse a stacked-condo building's parcels to one footprint row.
+
+    Runs the same parcel-side clustering as
+    :func:`~openplaces.io.harmonizer.attributes.detect_condo_building_clusters`
+    (the ``'touches'``-adjacency, tiny-unit-parcel pattern), but against the
+    raw parcel reference this footprint spine's own :func:`link_to_reference`
+    step already loaded (``state.references``/``state.crosswalks``) --
+    necessarily a separate pass, not a read of the parcel spine's own output,
+    since the parcel spine's ``summarize_footprint_morphology`` step reads
+    *this* recipe's saved output, and a footprint-spine step reading the
+    parcel spine's output in the same admin run would be circular.
+
+    For each qualifying cluster: unions whatever real footprint geometries
+    are already linked to any of the cluster's parcels (however partial or
+    fragmented -- e.g. two footprints each dominant-linked only to the
+    cluster's own shared common-area parcel, confirmed on real data to
+    otherwise leave most of a 24-unit building's own units with no per-unit
+    footprint credit at all) with the union of the cluster's own parcel
+    geometries (covering the remainder, where no real footprint reaches),
+    and writes **one** new consolidated spine row crosswalked to every
+    parcel in the cluster. The original per-fragment real rows are dropped
+    (superseded), and every cluster parcel's crosswalk entry is rewritten to
+    point at the new row -- so :func:`infer_spine_additions`, which must run
+    *after* this step, correctly treats every cluster parcel as already
+    covered and does not also generate a per-unit synthetic fallback for
+    whichever units the original fragments didn't dominate.
+
+    Explicitly not a goal: preserving a 1:1 unit-to-footprint-row mapping.
+    A condo unit's individual identity is expected to live at the parcel/
+    property layer (``n_properties_per_parcel``, the harmonized property
+    spine), not the footprint layer -- this step deliberately trades away
+    per-unit footprint rows for one geometrically coherent building shape.
+
+    Parameters
+    ----------
+    entity_type : str, optional
+        Selects the crosswalk/reference the same way
+        :func:`infer_spine_additions` does (default ``'parcel'``). Ignored
+        when *recipe_id* is given.
+    recipe_id : str, optional
+        Explicit crosswalk key. Takes precedence over *entity_type*.
+    cluster_thresholds : dict, optional
+        Forwarded to
+        :func:`~openplaces.io.harmonizer.attributes._cluster_condo_parcels`
+        (``max_unit_area_ha``, ``max_hub_area_ha``, ``max_hub_aspect_ratio``,
+        ``min_group_size``, ``max_group_size``) -- same defaults as
+        ``detect_condo_building_clusters``.
+    """
+    if state.spine is None:
+        return state
+
+    if recipe_id is None and entity_type is not None:
+        candidates = list(state.get_crosswalks_by_type(entity_type).keys())
+        if not candidates:
+            if state.verbose:
+                print(
+                    '  consolidate_condo_cluster_footprints: no crosswalk for '
+                    f'entity_type={entity_type!r}; skipping.'
+                )
+            return state
+        recipe_id = candidates[0]
+    if recipe_id is None:
+        return state
+
+    crosswalk = state.crosswalks.get(recipe_id)
+    ref_polys = state.references.get(recipe_id)
+    if crosswalk is None or ref_polys is None:
+        return state
+
+    spine_id_col = state.spine.index.name
+    if spine_id_col is None or spine_id_col not in crosswalk.index.names:
+        return state
+
+    from openplaces.io.harmonizer.attributes import _cluster_condo_parcels
+
+    ref_for_clustering = ref_polys.copy()
+    if 'area_ha' not in ref_for_clustering.columns:
+        ref_for_clustering['area_ha'] = get_areas(ref_for_clustering, 'ha')
+
+    result = _cluster_condo_parcels(
+        ref_for_clustering, verbose=state.verbose, **(cluster_thresholds or {})
+    )
+    if result is None:
+        return state
+    component, hub_ids = result
+
+    spine = state.spine
+    _source_id = source_id_from_recipe_id(recipe_id)
+    _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
+
+    new_rows = []
+    crosswalk_additions = []
+    superseded_spine_ids: set = set()
+    superseded_pair_mask = pd.Series(False, index=crosswalk.index)
+
+    for cluster_pids in component.groupby(component).groups.values():
+        cluster_pids = list(cluster_pids)
+        linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
+        linked_spine_ids = (
+            crosswalk[linked_mask].index.get_level_values(spine_id_col).unique()
+        )
+        real_geoms = (
+            spine.loc[spine.index.intersection(linked_spine_ids), 'geometry']
+            .dropna()
+            .tolist()
+        )
+        # The parcel-geometry fallback covers units no real footprint
+        # reaches -- it must never include a hub/common-area parcel's own
+        # polygon (the surrounding lot, typically an order of magnitude
+        # larger than a real unit), or the consolidated shape balloons to
+        # roughly the whole lot instead of the building. A hub's real
+        # footprint fragments (if any) still enter via real_geoms above,
+        # and it still keeps its crosswalk link below -- only this shape
+        # fallback excludes it.
+        unit_pids = [pid for pid in cluster_pids if pid not in hub_ids]
+        parcel_geom = ref_polys.loc[
+            ref_polys.index.intersection(unit_pids or cluster_pids), 'geometry'
+        ].union_all()
+        consolidated = (
+            gpd.GeoSeries(real_geoms + [parcel_geom], crs=spine.crs).union_all()
+            if real_geoms
+            else parcel_geom
+        )
+
+        new_row = add_openlocationcode_index(
+            gpd.GeoDataFrame({'geometry': [consolidated]}, crs=spine.crs),
+            name=spine_id_col,
+        )
+        new_row['geometry_source'] = f'condo_cluster.{_et}.{_source_id}'
+        new_rows.append(new_row)
+        new_id = new_row.index[0]
+
+        for pid in cluster_pids:
+            area_m2 = get_areas(ref_polys.loc[[pid]], 'm2').iloc[0]
+            crosswalk_additions.append(
+                {
+                    spine_id_col: new_id,
+                    'parcel_id': pid,
+                    'link': 'condo cluster',
+                    'area_intersection_m2': area_m2,
+                }
+            )
+        superseded_spine_ids.update(linked_spine_ids)
+        superseded_pair_mask |= linked_mask
+
+    if not new_rows:
+        return state
+
+    state.spine = pd.concat(
+        [spine.drop(index=spine.index.intersection(superseded_spine_ids)), *new_rows]
+    ).sort_index()
+    if state.spine.index.duplicated().any():
+        state.spine = make_index_unique(state.spine, sort_duplicates_by_area=True)
+
+    additions_df = pd.DataFrame(crosswalk_additions).set_index(
+        [spine_id_col, 'parcel_id']
+    )
+    state.crosswalks[recipe_id] = pd.concat(
+        [crosswalk[~superseded_pair_mask], additions_df]
+    ).sort_index()
+
+    overlay = state.overlays.get(recipe_id)
+    if overlay is not None:
+        overlay_superseded = overlay.index.get_level_values(spine_id_col).isin(
+            superseded_spine_ids
+        )
+        state.overlays[recipe_id] = pd.concat(
+            [overlay.loc[~overlay_superseded], additions_df[['area_intersection_m2']]]
+        ).sort_index()
+
+    # Re-persist link_to_reference's identity-overlay sidecar (save_link:
+    # true), if one exists, so curate-stage readers -- apportion_curated_
+    # values, collect_link_ids -- see this cluster's consolidated links
+    # too. Without this, the sidecar (written by link_to_reference *before*
+    # this step ran) has no rows at all for the new consolidated footprint,
+    # and its 'condo_cluster.*' geometry_source prefix never matches
+    # apportion_curated_values' own synthetic-row carve-out (which only
+    # recognizes infer_spine_additions's '{entity_type}.*' rows) -- so the
+    # footprint silently gets no parcel link and resolves to a $0 value
+    # despite every real parcel underneath it having a positive one.
+    # Rewritten as a direct read-modify-write of the existing parquet
+    # (reusing its already-stored fingerprint verbatim) rather than via
+    # _write_link_sidecar, which would need a *snapped* argument to
+    # reproduce this recipe's own snap_chains link_chain labels -- info
+    # this step has no reason to recompute when every pre-existing,
+    # non-superseded row's own columns (including link_chain) can simply
+    # be carried through untouched.
+    sidecar_path = get_entity_link_path(
+        get_recipe_id(state.recipe), recipe_id, state.admin_id
+    )
+    if sidecar_path.exists():
+        stored_raw = read_file_metadata(sidecar_path).get(_LINK_METADATA_KEY)
+        if stored_raw is not None:
+            existing = pd.read_parquet(sidecar_path).set_index(
+                [spine_id_col, 'parcel_id']
+            )
+            kept = existing.loc[
+                ~existing.index.get_level_values(spine_id_col).isin(
+                    superseded_spine_ids
+                )
+            ]
+            merged = pd.concat(
+                [kept, additions_df[['area_intersection_m2', 'link']]]
+            ).sort_index()
+            to_parquet(
+                merged.reset_index(),
+                sidecar_path,
+                file_metadata={_LINK_METADATA_KEY: stored_raw},
+            )
+            if state.verbose:
+                print(
+                    '  consolidate_condo_cluster_footprints: re-persisted link '
+                    f'sidecar {sidecar_path.name}'
+                )
+
+    if state.verbose:
+        print(
+            f'  consolidate_condo_cluster_footprints: {len(new_rows):,} building '
+            f'clusters consolidated ({len(superseded_spine_ids):,} fragment rows '
+            'replaced).'
+        )
+    if state.timer:
+        state.timer.mark('Consolidate condo clusters')
     return state
 
 

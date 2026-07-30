@@ -8,7 +8,7 @@ purpose_group_combined,Combined purpose group and subgroup label,,categorical,jo
 occupancy_type,"Inferred occupancy: residential class (Single-Family / Multi-Family split into HAZUS Low/Mid/High-Rise bands by n_stories / Manufactured Home / Secondary) or NSI/parcel non-residential category; also the base for provenance-suffixed evidence variants attributed during harmonize (occupancy_type_building_nsi, occupancy_type_footprint_fema, ...) and curate (occupancy_type_parcel)",,categorical,first,13,,curate
 group,OpenPlaces top-level group,,categorical,first,14,,
 land_value,Assessed land value,USD,float,sum,20,,
-land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, falling back to the county-scoped use_group_combined average) times the parcel's total footprint area",USD,float,sum,20.5,parcel,curate
+land_value_imputed,"Estimated land value for a parcel whose land value is missing or zero despite a positive improvement value and evidence it should carry one (residential land use, or footprint area disproportionate to its use_group_combined peers); a local per-area estimate (street+city cohort, then city-scoped, falling back to a county-wide residential-vs-non-residential average) times the parcel's own lot area",USD,float,sum,20.5,parcel,curate
 improvement_value,Assessed improvement value,USD,float,sum,21,,
 improvement_value_imputed,"Improvement value re-derived as improvement_value minus land_value_imputed (clipped at 0), on the parcels land_value_imputed applies to",USD,float,sum,21.5,parcel,curate
 structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
@@ -36,12 +36,16 @@ n_footprints_per_parcel,Number of footprints on the parcel,,float,first,,parcel,
 n_small_elongated_footprints_per_parcel,Number of small elongated (manufactured-home-shaped) footprints on the parcel,,float,first,,parcel,harmonize
 n_primary_footprints_per_parcel,Number of non-accessory footprints on the parcel (excludes secondary/accessory structures),,float,first,,parcel,harmonize
 max_footprint_area_m2,Largest footprint area on the parcel,m2,float,max,,parcel,harmonize
-sum_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel,m2,float,sum,,parcel,harmonize
-sum_primary_footprint_area_m2,Total real (non-synthetic) footprint area on the parcel among non-secondary footprints,m2,float,sum,,parcel,harmonize
-footprint_area_share,"Total footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- see known caveat)",,float,mean,,parcel,curate
-footprint_primary_area_share,"Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 -- see known caveat)",,float,mean,,parcel,curate
+footprint_area_m2_dominant,"Total real (non-synthetic) footprint area on the parcel, summed from footprints for which this parcel is the dominant (largest-overlap) parcel -- each footprint's FULL, unclipped area, not the portion actually inside this parcel; can exceed the parcel's own area. See footprint_area_m2_in_parcel for a coverage-safe alternative.",m2,float,sum,,parcel,harmonize
+footprint_area_m2_in_parcel,"Real footprint area actually inside this parcel's own boundary: sum, per touching footprint, of its geometry clipped to this parcel (a real geometric intersection), across all footprints -- including non-dominant spillovers -- clearing min_overlap_m2 against this parcel. Bounded by the parcel's own area.",m2,float,sum,,parcel,harmonize
+footprint_area_m2_primary,"Total real (non-synthetic) footprint area on the parcel among non-secondary footprints, summed from footprints for which this parcel is the dominant parcel -- same unclipped-area caveat as footprint_area_m2_dominant.",m2,float,sum,,parcel,harmonize
+footprint_area_share,Total footprint area as a share of the parcel's own total area,,float,mean,,parcel,curate
+footprint_primary_area_share,"Total non-secondary (non-accessory) footprint area as a share of the parcel's own total area (can exceed 1.0 for footprints straddling a parcel line -- footprint_area_m2_primary is unclipped)",,float,mean,,parcel,curate
 max_parcels_per_footprint,"Maximum number of parcels linked to any dwelling-confirmed primary footprint on the parcel (from the real, non-FEMA footprint spine)",,float,max,,parcel,harmonize
 max_dwellings_per_footprint,"Maximum confirmed dwelling-unit count (Overture) on any single dwelling-confirmed primary footprint on the parcel",,float,max,,parcel,harmonize
+n_properties_per_parcel,"Number of individual property/unit records grouped under this parcel, keyed by parcel_id_admin2. Exact where a native property-spine source exists (property_source='source' or 'shared_land_group'); estimated from confirmed footprint/dwelling multiplicity where none does (property_source='estimated')",,float,first,,parcel,harmonize
+property_source,"Provenance of this parcel's property/unit count: 'source' (a real per-unit source table, e.g. MassGIS L3_ASSESS), 'shared_land_group' (geometrically inferred from a shared-land parcel group), 'estimated' (no per-unit source, but internal multiplicity evidence exists), or 'none'",,categorical,first,,parcel,harmonize
+shared_land_parcel_id,"Index value of this parcel's shared-land group parcel (a near-zero-land-value parcel this one is entirely enclosed by, alongside >=1 other unit), where detect_shared_land_groups found one",,string,first,,parcel,harmonize
 year_first_buildup_hisdac,First build-up year from HISDAC FBUY raster,,float,first,,,enrich
 recorded_date,Date the deed was recorded at the registry,,datetime,first,,transaction,
 doc_type,Document/instrument type (e.g. deed warranty quitclaim),,categorical,first,,transaction,
@@ -57,11 +61,16 @@ parcel_id_all,All overlapping parcel identifiers (pipe-joined; dominant parcel f
 parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,
 parcel_id_admin3,Parcel identifier unique within its admin-3 unit,,string,first,,parcel,
 parcel_id_admin4,Parcel identifier unique within its admin-4 unit,,string,first,,parcel,
+parcel_id_map,"Parcel identifier from a secondary map/plat-based numbering system (e.g. VT's Grand List MAPID)",,string,first,,parcel,
 parcel_id_tax,Tax-roll parcel identifier (assessor PIN),,string,first,,parcel,
 parcel_id_assessor,Raw parcel identifier as provided by the source,,string,first,,,
 parcel_id_local,"Standardized, locally cross-comparable parcel matching key",,string,first,,,
+property_id_assessor,Raw property/unit identifier as provided by the source,,string,first,,property,
+property_id_admin2,Property/unit identifier unique within its admin-2 unit,,string,first,,property,
+property_id_cama,Computer-assisted mass appraisal (CAMA) system identifier for the property/unit record,,string,first,,property,
+address_id_local,"Standardized, town-scoped address matching key (no city component)",,string,first,,,
+address_id_local_city,"Standardized address matching key including city (only where city is available)",,string,first,,,
 n_transactions,Number of recorded transactions on the parcel,,float,sum,,parcel,harmonize
-is_transacted,Whether the parcel has any recorded transaction,,bool,first,,parcel,harmonize
 type,Record or unit type or class,,categorical,first,,
 address_number,Street address number,,string,first,,,
 address_street_name,Street name,,string,first,,,
@@ -77,6 +86,7 @@ subdivision,Subdivision name,,string,first,,parcel,
 subdivision_code,Subdivision code,,string,first,,parcel,
 owner_name,Owner name as recorded,,string,first,,parcel,
 owner_name_2,Second owner name as recorded,,string,first,,parcel,
+owner_name_january_1,Owner of record as of January 1 (the tax-roll assessment date),,string,first,,parcel,
 owner_address,Owner mailing street address,,string,first,,parcel,
 owner_address_2,Owner mailing street address continuation line,,string,first,,parcel,
 owner_city,Owner mailing city,,string,first,,parcel,

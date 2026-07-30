@@ -84,6 +84,7 @@ ENTITY_LINK_ORDER = (
     'admin',
     'tile',
     'parcel',
+    'property',
     'footprint',
     'building',
     'dwelling',

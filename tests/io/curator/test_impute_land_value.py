@@ -24,7 +24,7 @@ def _row(**overrides) -> dict:
     row = {
         'land_value': None,
         'improvement_value': None,
-        'sum_footprint_area_m2': None,
+        'footprint_area_m2_in_parcel': None,
         'area_ha': None,
         'land_use_class': None,
         'use_group_combined': None,
@@ -66,7 +66,7 @@ def test_imputes_land_value_for_residential_candidate():
 
 def test_rate_and_estimate_use_parcel_area_not_footprint_area():
     # Two donors with IDENTICAL land_value/m2 (same true rate, 200/m2 of lot)
-    # but WILDLY DIFFERENT sum_footprint_area_m2 -- if the rate were ever
+    # but WILDLY DIFFERENT footprint_area_m2_in_parcel -- if the rate were ever
     # computed against footprint area instead of lot area, these two donors
     # would disagree and/or the final estimate would be wrong. A candidate
     # with its own small footprint on a much larger lot must get an estimate
@@ -76,19 +76,19 @@ def test_rate_and_estimate_use_parcel_area_not_footprint_area():
             land_use_class='Single-Family',
             land_value=20_000,
             area_ha=100,
-            sum_footprint_area_m2=10,  # tiny building on this lot
+            footprint_area_m2_in_parcel=10,  # tiny building on this lot
         ),
         _row(
             land_use_class='Single-Family',
             land_value=20_000,
             area_ha=100,
-            sum_footprint_area_m2=90,  # huge building on the same-size lot
+            footprint_area_m2_in_parcel=90,  # huge building on the same-size lot
         ),
         _row(
             land_use_class='Single-Family',
             land_value=20_000,
             area_ha=100,
-            sum_footprint_area_m2=50,
+            footprint_area_m2_in_parcel=50,
         ),
     ]
     candidate = _row(
@@ -96,7 +96,7 @@ def test_rate_and_estimate_use_parcel_area_not_footprint_area():
         land_value=0,
         improvement_value=50_000,
         area_ha=500,  # a large lot...
-        sum_footprint_area_m2=5,  # ...with a tiny footprint on it
+        footprint_area_m2_in_parcel=5,  # ...with a tiny footprint on it
     )
     df = _frame([*donors, candidate])
     out = impute_land_value(_state(df), min_group_size=3).curated
@@ -165,7 +165,7 @@ def test_improvement_value_passes_through_when_not_a_candidate():
             land_value=v,
             improvement_value=100_000 - v,
             area_ha=100,
-            sum_footprint_area_m2=100,
+            footprint_area_m2_in_parcel=100,
         )
         for v in (10_000, 20_000, 30_000)
     ]
@@ -177,7 +177,7 @@ def test_improvement_value_passes_through_when_not_a_candidate():
         area_ha=25,
         # Exactly 25% of the group median (100, computed including this row)
         # -- the ">" comparison isn't satisfied, so not footprint-heavy.
-        sum_footprint_area_m2=25,
+        footprint_area_m2_in_parcel=25,
     )
     df = _frame([*peers, not_a_candidate])
     out = impute_land_value(_state(df), min_group_size=3).curated
@@ -201,7 +201,7 @@ def test_footprint_ratio_detection_fires_above_threshold():
             land_value=v,
             improvement_value=100_000 - v,
             area_ha=100,
-            sum_footprint_area_m2=100,
+            footprint_area_m2_in_parcel=100,
         )
         for v in (10_000, 20_000, 30_000)
     ]
@@ -211,7 +211,7 @@ def test_footprint_ratio_detection_fires_above_threshold():
         land_value=0,
         improvement_value=500_000,
         area_ha=2000,
-        sum_footprint_area_m2=1000,
+        footprint_area_m2_in_parcel=1000,
     )
     df = _frame([*peers, candidate])
     out = impute_land_value(_state(df), min_group_size=3).curated
@@ -232,7 +232,7 @@ def test_footprint_ratio_detection_does_not_fire_at_threshold():
             land_value=v,
             improvement_value=100_000 - v,
             area_ha=100,
-            sum_footprint_area_m2=100,
+            footprint_area_m2_in_parcel=100,
         )
         for v in (10_000, 20_000, 30_000)
     ]
@@ -242,7 +242,7 @@ def test_footprint_ratio_detection_does_not_fire_at_threshold():
         land_value=0,
         improvement_value=500_000,
         area_ha=25,
-        sum_footprint_area_m2=25,
+        footprint_area_m2_in_parcel=25,
     )
     df = _frame([*peers, candidate])
     out = impute_land_value(_state(df), min_group_size=3).curated
@@ -292,6 +292,50 @@ def test_tier1_street_city_wins_over_broader_fallback():
 
     assert out['land_value_imputed'].iloc[-1] == 500 * 100
     assert out['land_value_imputed_source'].iloc[-1] == 'address_street_city'
+
+
+def test_city_tier_wins_over_county_wide_fallback():
+    # Regression test for a real Middlesex County, MA case: the candidate's
+    # own street has no donors at all (e.g. an address-parsing gap left it
+    # unmatched to any real same-street neighbor), so tier 1 must fail. The
+    # candidate's city (TOWNA) has a distinct, lower $/area-of-lot rate (500)
+    # than a different city (TOWNB, rate 5000) -- if the final,
+    # unconditional _is_residential-only tier fired instead of the
+    # intermediate city tier, the estimate would reflect a blend of both
+    # cities (a ~5.5x-too-high rate here), not the pure TOWNA rate.
+    city_donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=50_000,
+            area_ha=100,
+            address_street=f'OTHER ST {i}',
+            city='TOWNA',
+        )
+        for i in range(5)
+    ]
+    other_city_donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=500_000,
+            area_ha=100,
+            address_street=f'FAR ST {i}',
+            city='TOWNB',
+        )
+        for i in range(5)
+    ]
+    candidate = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=200_000,
+        area_ha=100,
+        address_street='MAIN ST',
+        city='TOWNA',
+    )
+    df = _frame([*city_donors, *other_city_donors, candidate])
+    out = impute_land_value(_state(df), min_group_size=5).curated
+
+    assert out['land_value_imputed'].iloc[-1] == 50_000
+    assert out['land_value_imputed_source'].iloc[-1] == 'city__is_residential'
 
 
 def test_tier1_gracefully_skipped_when_city_missing():

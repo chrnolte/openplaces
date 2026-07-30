@@ -13,7 +13,9 @@ repository.
   what the code does now, not a historical narrative of how it changed.
 
 ## Code style
-- Line length: 88 characters maximum. Use ``ruff format`` to enforce.
+- Line length:
+  - 88 characters maximum for code. Use ``ruff format`` to enforce.
+  - 72 characters maximum for comments.
 - Use the `|` union syntax for `isinstance` checks, never a tuple:
   `isinstance(x, Foo | Bar)` ✓
   `isinstance(x, (Foo, Bar))` ✗
@@ -34,9 +36,13 @@ repository.
 - Keep docstrings clean and focused on user-facing API contracts, moving implementation notes (like psutil or RAM heuristics) to internal inline comments.
 
 ## Directory structure
-Write plans to <repository_root>/plans/
+Write all plans to ``<repository_root>/plans/``, not ``.claude\plans``.
 
-Create new worktrees in ``<repository_root>/_<worktree_branch_name>/``
+Implement all complex plans (plans affecting the functionality of multiple src/ files or notebooks) on a new git worktree in ``<repository_root>/_<worktree_branch_name>/``. If the plan is simple (variable renaming, comments, single file), ask the user whether implementing the plan directly on 'main' is acceptable.
+
+## Jupyter notebooks
+When creating Jupyter notebooks under `notebooks/`, you must follow the guide in:
+notebooks/README.md
 
 ## Commits
 - Do not commit changes unless the user instructs you to (by using the

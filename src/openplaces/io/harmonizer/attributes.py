@@ -507,6 +507,23 @@ def _attribute_polygon_reference(
         .reindex(spine.index, fill_value=0)
     )
 
+    # Every reference this spine row links to in the trimmed crosswalk, not
+    # just the single dominant one a plain id column (e.g. 'parcel_id') would
+    # give -- lets a downstream consumer credit a minor link too (e.g.
+    # summarize_footprint_morphology crediting a parcel a footprint spans but
+    # doesn't dominate). Harmonize-stage and scoped to the trimmed crosswalk
+    # (post fraction_of_largest/area_intersection_m2_min); distinct from the
+    # curate-stage collect_link_ids/'parcel_id_all' (reads the raw, untrimmed
+    # overlay sidecar with its own threshold options) even where the name
+    # coincides -- the two run on different recipes' outputs and are never
+    # compared directly.
+    spine[f'{ref_label}_id_all'] = (
+        footprint_ref_attrs.reset_index()
+        .groupby(spine_id_col)['parcel_id']
+        .agg(lambda s: '|'.join(s.dropna().astype(str).unique()))
+        .reindex(spine.index)
+    )
+
     footprint_parcel_areas = footprint_ref_attrs.reset_index()[
         [spine_id_col, 'parcel_id', 'area_intersection_m2']
     ]
@@ -1145,10 +1162,11 @@ def summarize_footprint_morphology(
     representative point), and writes the per-parcel counts the parcel land-use
     classifier consumes downstream: ``n_footprints_per_parcel``,
     ``n_small_elongated_footprints_per_parcel`` (manufactured-home-shaped),
-    ``max_footprint_area_m2``, ``sum_footprint_area_m2``,
-    ``n_primary_footprints_per_parcel``, ``sum_primary_footprint_area_m2``,
-    ``max_parcels_per_footprint``, and ``max_dwellings_per_footprint``. The
-    classification itself is parcel-curate work.
+    ``max_footprint_area_m2``, ``footprint_area_m2_dominant``,
+    ``footprint_area_m2_in_parcel``, ``n_primary_footprints_per_parcel``,
+    ``footprint_area_m2_primary``, ``max_parcels_per_footprint``, and
+    ``max_dwellings_per_footprint``. The classification itself is parcel-curate
+    work.
 
     ``max_parcels_per_footprint`` and ``max_dwellings_per_footprint`` are scoped
     to *dwelling-confirmed* footprints only (*is_primary_candidate* — see below —
@@ -1174,18 +1192,34 @@ def summarize_footprint_morphology(
     (``geometry_source`` containing ``.``, set by :func:`infer_spine_additions`)
     regardless of overlap size when that is the parcel's only footprint — a
     fallback's geometry is the parcel boundary, so its "overlap" is trivially the
-    whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``
-    ``max_footprint_area_m2``, and ``sum_footprint_area_m2`` additionally
+    whole parcel and it needs no floor. ``n_small_elongated_footprints_per_parcel``,
+    ``max_footprint_area_m2``, and ``footprint_area_m2_dominant`` additionally
     exclude synthetic rows entirely: a fallback's area/aspect ratio are not
     meaningful size/shape evidence. Like ``max_footprint_area_m2``,
-    ``sum_footprint_area_m2`` stays ``NaN`` (not ``0``) for a parcel with no
+    ``footprint_area_m2_dominant`` stays ``NaN`` (not ``0``) for a parcel with no
     real, non-synthetic footprint at all.
     ``n_primary_footprints_per_parcel`` additionally excludes footprints whose
     *priority_column* value (when present) is ``'secondary'`` — a real, but
     accessory, structure (garage, shed) that clears the overlap floor but isn't a
     distinct home; synthetic fallback rows still count here too.
-    ``sum_primary_footprint_area_m2`` sums real footprint area over that same
-    non-secondary subset (excluding synthetic rows, like ``sum_footprint_area_m2``).
+    ``footprint_area_m2_primary`` sums real footprint area over that same
+    non-secondary subset (excluding synthetic rows, like
+    ``footprint_area_m2_dominant``).
+
+    ``footprint_area_m2_dominant`` and ``footprint_area_m2_primary`` both sum
+    each contributing footprint's full, unclipped polygon area — even when
+    part of that footprint's geometry actually lies outside the parcel,
+    because the footprint straddles a boundary. **Never divide either by
+    parcel area to estimate footprint coverage share — the ratio can exceed
+    1.** ``footprint_area_m2_in_parcel`` is the coverage-safe alternative:
+    for every footprint that clears *min_overlap_m2* against *this* parcel
+    specifically (including footprints whose dominant parcel is a different,
+    neighboring one but that still spill a real sliver onto this parcel), it
+    sums that footprint's geometry clipped to this parcel's own boundary (a
+    real geometric intersection, via :func:`openplaces.geo.polygon.overlay_polygons`).
+    It is bounded by construction to at most this parcel's own area, and
+    (like the two sums above) excludes synthetic rows and stays ``NaN`` for a
+    parcel with no real footprint coverage at all.
 
     Parameters
     ----------
@@ -1202,7 +1236,13 @@ def summarize_footprint_morphology(
         see ``resolve_spine``) the spine's index. When absent on either side, a
         spatial within-join is used instead (which has no overlap-area or
         priority data to apply *min_overlap_m2*/*priority_column* with, so every
-        contained footprint counts toward all four outputs).
+        contained footprint counts toward all four outputs). When a
+        ``{on}_all`` column is present (e.g. ``parcel_id_all``, written by
+        :func:`_attribute_polygon_reference`), every pipe-joined id counts
+        toward this parcel's outputs, not just *on*'s single dominant one --
+        the fix for a footprint spanning many parcels (e.g. one real building
+        over many tiny condo-unit parcels) that would otherwise only ever
+        credit whichever parcel it overlaps most.
     min_overlap_m2 : float, optional
         Minimum overlap (m²) with this parcel, from *overlap_column*, for a
         non-synthetic footprint to count toward any of the four outputs (default
@@ -1234,7 +1274,7 @@ def summarize_footprint_morphology(
     """
     import geopandas as gpd
 
-    from openplaces.geo.polygon import local_metric_crs
+    from openplaces.geo.polygon import local_metric_crs, overlay_polygons
     from openplaces.io.harmonizer.spine import get_oriented_dims
     from openplaces.io.readers import get_entities
 
@@ -1242,7 +1282,12 @@ def summarize_footprint_morphology(
         return state
     spine = state.spine
 
-    footprints = get_entities(footprint_recipe_id, state.admin_id, geom=True)
+    # missing='ignore': an admin unit can genuinely have no footprint
+    # coverage at all (no OBM/Microsoft source ingested there), the same
+    # tolerated case this function's own empty check below already expects.
+    footprints = get_entities(
+        footprint_recipe_id, state.admin_id, geom=True, missing='ignore'
+    )
     if footprints is None or len(footprints) == 0:
         if state.verbose:
             print('  summarize_footprint_morphology: no footprints; skipping.')
@@ -1333,9 +1378,24 @@ def summarize_footprint_morphology(
         or on == state.metadata.get('spine_index_name')
     )
     if on and on in footprints.columns and on_in_spine:
+        # {on}_all (written by _attribute_polygon_reference, e.g.
+        # 'parcel_id_all') pipe-joins every reference this footprint links to
+        # in the trimmed crosswalk, not just its single dominant one -- a
+        # footprint spanning several parcels (e.g. one real building over
+        # many tiny condo-unit parcels) would otherwise only ever credit
+        # whichever parcel it overlaps most, leaving every other linked
+        # parcel silently uncounted by every output below. Falls back to the
+        # plain dominant-only column when the reference recipe hasn't been
+        # regenerated with it yet.
+        on_all_col = f'{on}_all'
+        pid_source = (
+            footprints[on_all_col]
+            if on_all_col in footprints.columns
+            else footprints[on]
+        )
         per_fp = pd.DataFrame(
             {
-                '_pid': footprints[on].astype('string').to_numpy(),
+                '_pid': pid_source.astype('string').to_numpy(),
                 '_a': real_area,
                 '_se': real_small_elong,
                 '_meets_floor': meets_floor,
@@ -1345,6 +1405,8 @@ def summarize_footprint_morphology(
                 '_span': n_parcels_span,
             }
         ).dropna(subset=['_pid'])
+        if on_all_col in footprints.columns:
+            per_fp = per_fp.assign(_pid=per_fp['_pid'].str.split('|')).explode('_pid')
         key = (
             spine[on].astype('string')
             if on in spine.columns
@@ -1403,12 +1465,42 @@ def summarize_footprint_morphology(
         max_dwellings = grp_confirmed['_dwellings'].max().reindex(spine.index)
         max_span = grp_confirmed['_span'].max().reindex(spine.index)
 
+    # footprint_area_m2_in_parcel: real, clipped footprint area actually
+    # inside this parcel's own boundary, across every non-synthetic footprint
+    # that touches it above min_overlap_m2 -- including footprints whose
+    # *dominant* parcel is a different, neighboring one but that still spill
+    # a real sliver onto this parcel. Unlike footprint_area_m2_dominant/
+    # footprint_area_m2_primary (full, unclipped footprint area, credited
+    # only to the one dominant parcel), this is bounded by construction to at
+    # most this parcel's own area -- computed independently of the id-join
+    # vs. spatial-fallback branch above, since it needs every touching
+    # parcel, not just each footprint's single assigned one.
+    non_synth = footprints.loc[~is_synthetic]
+    if len(non_synth) == 0:
+        in_parcel_sum = pd.Series(np.nan, index=spine.index)
+    else:
+        pairs = overlay_polygons(
+            spine,
+            non_synth.to_crs(spine.crs),
+            how='intersection',
+            area_intersection=True,
+            geom=False,
+            suffixes=('_spine', '_footprint'),
+        )
+        if len(pairs) == 0:
+            in_parcel_sum = pd.Series(np.nan, index=spine.index)
+        else:
+            clipped = pairs['area_intersection_m2']
+            clipped = clipped[clipped >= min_overlap_m2]
+            in_parcel_sum = clipped.groupby(level=0).sum().reindex(spine.index)
+
     spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
     spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
-    spine['sum_footprint_area_m2'] = sum_a
+    spine['footprint_area_m2_dominant'] = sum_a
+    spine['footprint_area_m2_in_parcel'] = in_parcel_sum
     spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
-    spine['sum_primary_footprint_area_m2'] = sum_a_primary
+    spine['footprint_area_m2_primary'] = sum_a_primary
     spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
     spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')
     state.spine = spine
@@ -1421,6 +1513,564 @@ def summarize_footprint_morphology(
         )
     if state.timer:
         state.timer.mark('Summarize')
+    return state
+
+
+@_register('detect_shared_land_groups')
+def detect_shared_land_groups(
+    state: HarmonizeState,
+    land_value_column: str = 'land_value',
+    improvement_value_column: str = 'improvement_value',
+    max_land_area_ha: float = 2.0,
+    max_land_aspect_ratio: float = 2.5,
+    min_group_size: int = 2,
+    max_group_size: int = 15,
+    group_id_column: str = 'shared_land_parcel_id',
+    property_count_column: str = 'n_properties_per_parcel',
+    source_column: str = 'property_source',
+) -> HarmonizeState:
+    """Detect shared-land parcel groups (horizontally-separated townhomes).
+
+    A real, MassGIS-condo-style per-unit source (:func:`link_by_id`'s
+    property-spine count join) represents one land parcel plus several
+    *virtual* sub-records with no geometry of their own. This step detects
+    the horizontally-separated mirror image, observed in Carteret County,
+    NC: two or more separately-parceled, real unit polygons (each with its
+    own improvement value -- e.g. a townhome) clustered around a
+    *different*, real "land" parcel that carries no value of its own at all
+    (the common land's value having been rolled into the units, exactly
+    like a MassGIS condo's land parcel).
+
+    Real cadastral parcels tile the plane rather than overlapping, so a
+    shared-land parcel is *adjacent* to its units, not literally overlapping
+    them -- this uses a ``'touches'`` spatial join (shared boundary), not
+    area intersection. Adjacency alone massively overcounts: it also matches
+    every ordinary lot fronting a road or water body, whose GIS parcel can
+    be a single record touching hundreds of unrelated lots county-wide.
+    *max_land_area_ha* and *max_land_aspect_ratio* (oriented length/width,
+    via :func:`openplaces.io.harmonizer.spine.get_oriented_dims`) filter a
+    land candidate down to what a real, compact shared common area looks
+    like, rejecting the long thin shape of a road/right-of-way/waterway
+    parcel; *max_group_size* additionally rejects an implausibly large
+    cluster (a subdivision-wide common area or HOA amenity parcel, not a
+    handful of townhome units sharing a strip of land). This is a heuristic,
+    not a proof of enclosure -- validated empirically against Carteret
+    County, NC (e.g. an 8-unit group at "111 New Bern St, Atlantic Beach,
+    NC", the land parcel itself carrying $0 of both values); the thresholds
+    are tunable per state if they prove too permissive or too strict
+    elsewhere.
+
+    A parcel is a land candidate when both *land_value_column* and
+    *improvement_value_column* are 0 (or missing), its own area is at most
+    *max_land_area_ha*, and its oriented aspect ratio is at most
+    *max_land_aspect_ratio*. A (non-candidate) parcel with positive
+    *improvement_value_column* qualifies as a unit when it touches a land
+    candidate; a unit touching more than one land candidate is assigned to
+    whichever it shares the most touching pairs with (ties broken
+    arbitrarily). Land candidates whose qualifying unit count falls outside
+    ``[min_group_size, max_group_size]`` are discarded.
+
+    Writes *property_count_column* / *source_column* (``'shared_land_group'``)
+    on each qualifying land parcel (the group's unit count) and each
+    enclosed unit parcel (count 1 -- it is itself one property), and
+    *group_id_column* on each unit parcel (its land parcel's own index
+    value) -- run before :func:`estimate_property_counts`, which never
+    overwrites a *source_column* value this step already set.
+
+    Parameters
+    ----------
+    land_value_column, improvement_value_column : str, optional
+        Bare parcel value columns (defaults ``'land_value'``,
+        ``'improvement_value'``).
+    max_land_area_ha : float, optional
+        Maximum area for a land candidate (default 2.0 ha).
+    max_land_aspect_ratio : float, optional
+        Maximum oriented length/width ratio for a land candidate (default
+        2.5) -- excludes elongated road/right-of-way/waterway parcels.
+    min_group_size, max_group_size : int, optional
+        Qualifying unit count window for a land candidate's group to count
+        (default 2-15) -- excludes a single ambiguous enclosed parcel
+        (could be a driveway easement) and an implausibly large cluster.
+    group_id_column : str, optional
+        Output column on each unit parcel, holding its land parcel's index
+        value (default ``'shared_land_parcel_id'``).
+    property_count_column, source_column : str, optional
+        Output rollup columns (defaults ``'n_properties_per_parcel'``,
+        ``'property_source'``) -- shared with :func:`estimate_property_counts`
+        and the property-spine count join.
+    """
+    if state.spine is None:
+        return state
+    spine = state.spine
+    required = {land_value_column, improvement_value_column, 'area_ha'}
+    if not required.issubset(spine.columns):
+        if state.verbose:
+            print(
+                f'  detect_shared_land_groups: {sorted(required - set(spine.columns))} '
+                'missing; skipping.'
+            )
+        return state
+
+    import geopandas as gpd
+
+    from openplaces.geo.polygon import local_metric_crs
+    from openplaces.io.harmonizer.spine import get_oriented_dims
+
+    land_value = pd.to_numeric(spine[land_value_column], errors='coerce').fillna(0)
+    improvement_value = pd.to_numeric(
+        spine[improvement_value_column], errors='coerce'
+    ).fillna(0)
+    area_ha = pd.to_numeric(spine['area_ha'], errors='coerce')
+
+    is_land_candidate = (
+        (land_value <= 0)
+        & (improvement_value <= 0)
+        & area_ha.notna()
+        & (area_ha > 0)
+        & (area_ha <= max_land_area_ha)
+    )
+    is_unit_candidate = improvement_value > 0
+
+    if not is_land_candidate.any() or not is_unit_candidate.any():
+        if state.verbose:
+            print('  detect_shared_land_groups: no candidates found.')
+        return state
+
+    land_sub = spine.loc[is_land_candidate]
+    geom_m = land_sub.geometry.to_crs(local_metric_crs(land_sub))
+    dims = geom_m.map(get_oriented_dims)
+    length = np.array([d[1] for d in dims])
+    width = np.clip(np.array([d[2] for d in dims]), 1e-6, None)
+    is_land_candidate.loc[land_sub.index] = (length / width) <= max_land_aspect_ratio
+
+    if not is_land_candidate.any():
+        if state.verbose:
+            print('  detect_shared_land_groups: no compact candidates found.')
+        return state
+
+    idx_name = spine.index.name or 'index'
+    land_gdf = spine.loc[is_land_candidate, ['geometry']].reset_index()
+    unit_gdf = spine.loc[is_unit_candidate, ['geometry']].reset_index()
+    land_col, unit_col = f'{idx_name}_land', f'{idx_name}_unit'
+    touching = gpd.sjoin(
+        unit_gdf,
+        land_gdf,
+        predicate='touches',
+        how='inner',
+        lsuffix='_unit',
+        rsuffix='_land',
+    ).rename(columns={f'{idx_name}__unit': unit_col, f'{idx_name}__land': land_col})
+    if len(touching) == 0:
+        if state.verbose:
+            print('  detect_shared_land_groups: no touching units found.')
+        return state
+
+    # A unit touching more than one land candidate goes to whichever it
+    # shares the most touching pairs with (a compact land candidate normally
+    # touches a unit along one boundary segment, so this is rarely a tie).
+    pair_counts = (
+        touching.groupby([unit_col, land_col]).size().rename('_n').reset_index()
+    )
+    pair_counts = pair_counts.sort_values('_n', ascending=False)
+    assigned = pair_counts.drop_duplicates(subset=[unit_col], keep='first')
+
+    group_sizes = assigned.groupby(land_col).size()
+    qualifying = group_sizes[
+        (group_sizes >= min_group_size) & (group_sizes <= max_group_size)
+    ]
+    if qualifying.empty:
+        if state.verbose:
+            print(
+                f'  detect_shared_land_groups: no group with '
+                f'{min_group_size}-{max_group_size} units found.'
+            )
+        return state
+    assigned = assigned[assigned[land_col].isin(qualifying.index)]
+
+    source = (
+        spine[source_column].astype(object)
+        if source_column in spine.columns
+        else pd.Series(pd.NA, index=spine.index, dtype=object)
+    )
+    count = (
+        pd.to_numeric(spine[property_count_column], errors='coerce')
+        if property_count_column in spine.columns
+        else pd.Series(np.nan, index=spine.index)
+    )
+
+    is_qualifying_land = spine.index.to_series().isin(qualifying.index)
+    source = source.mask(is_qualifying_land, 'shared_land_group')
+    count = count.mask(is_qualifying_land, spine.index.to_series().map(qualifying))
+
+    unit_to_land = assigned.set_index(unit_col)[land_col]
+    is_unit = spine.index.to_series().isin(unit_to_land.index)
+    source = source.mask(is_unit, 'shared_land_group')
+    count = count.mask(is_unit, 1)
+
+    spine[property_count_column] = count
+    spine[source_column] = source
+    spine[group_id_column] = spine.index.to_series().map(unit_to_land)
+    state.spine = spine
+
+    if state.verbose:
+        print(
+            f'  detect_shared_land_groups: {len(qualifying):,} shared-land groups '
+            f'covering {len(unit_to_land):,} units.'
+        )
+    return state
+
+
+@_register('detect_condo_building_clusters')
+def detect_condo_building_clusters(
+    state: HarmonizeState,
+    land_value_column: str = 'land_value',
+    improvement_value_column: str = 'improvement_value',
+    area_column: str = 'area_ha',
+    max_unit_area_ha: float = 0.02,
+    max_hub_area_ha: float = 2.0,
+    max_hub_aspect_ratio: float = 2.5,
+    min_group_size: int = 2,
+    max_group_size: int = 60,
+    group_id_column: str = 'building_cluster_id',
+) -> HarmonizeState:
+    """Detect stacked-condo-unit parcel clusters sharing one physical building.
+
+    A real, vertically-stacked condo building (unlike the horizontally-
+    separated townhome pattern :func:`detect_shared_land_groups` targets) is
+    platted as one legal parcel per unit, each a tiny sliver of the
+    building's own footprint (tens of m², not the hundreds-to-thousands m²
+    of an ordinary house lot), often alongside one or more shared "common
+    area" parcels (land held in common -- $0 land AND improvement value,
+    e.g. Carteret County, NC's condo-recording convention) that the units
+    touch. Confirmed on real data (a 24-99 unit oceanfront complex in
+    Carteret County): a single building's real footprint can end up split
+    across the parcel/footprint linking pipeline as one or two partial real
+    footprints (dominant-linked only to the shared common-area parcel,
+    per-unit overlap shares too small to survive
+    :func:`~openplaces.io.harmonizer.links.link_to_reference`'s
+    ``fraction_of_largest`` trim) plus a scatter of per-unit synthetic
+    fallback footprints for whichever units the real footprint(s) don't
+    happen to dominate -- this step exists to recognize the underlying
+    one-building reality *before* that footprint-side mess, from parcel-side
+    evidence alone, so a later footprint-spine step can consolidate it back
+    into one coherent shape.
+
+    This reuses :func:`detect_shared_land_groups`'s ``'touches'``-adjacency
+    pattern but is a distinct step with a distinct trigger, not a parameter
+    variant of it: raising that step's own ``max_group_size`` to cover a
+    30-unit condo building would re-admit the county-wide `WATER`/`ROW`
+    placeholder-parcel false positives it excludes by design. The
+    discriminator here is *unit parcel size* (``max_unit_area_ha``, tens of
+    m², two orders of magnitude below an ordinary house lot) rather than
+    that step's near-zero-*hub*-value-only test, which alone cannot tell a
+    condo common area from an HOA park serving ordinary single-family lots.
+
+    A unit candidate has area at most *max_unit_area_ha* and positive
+    *improvement_value_column*. A hub candidate (optional -- a cluster with
+    no separate common-area parcel still forms from mutually-touching units
+    alone) has near-zero land and improvement value, area at most
+    *max_hub_area_ha*, and oriented aspect ratio at most
+    *max_hub_aspect_ratio*. Clusters are the connected components of the
+    ``'touches'`` adjacency graph restricted to unit and hub candidates;
+    a component's *group_id_column* is one of its own unit parcel index
+    values (the smallest, for a stable choice), so both a hub-anchored and a
+    hub-less cluster resolve the same way. Components outside
+    ``[min_group_size, max_group_size]`` are dropped.
+
+    Parameters
+    ----------
+    land_value_column, improvement_value_column : str, optional
+        Bare parcel value columns (defaults ``'land_value'``,
+        ``'improvement_value'``).
+    area_column : str, optional
+        Parcel area in hectares (default ``'area_ha'``).
+    max_unit_area_ha : float, optional
+        Maximum area for a unit candidate (default 0.02 ha = 200 m²).
+    max_hub_area_ha, max_hub_aspect_ratio : float, optional
+        Hub candidate filters, same semantics as
+        :func:`detect_shared_land_groups` (defaults 2.0 ha, 2.5).
+    min_group_size, max_group_size : int, optional
+        Component size window (default 2-60) -- wide enough for a real
+        multi-story condo building's full unit count, still well below the
+        hundreds-to-thousands of parcels a `WATER`/`ROW` megaparcel touches.
+    group_id_column : str, optional
+        Output column on every cluster member, hub included (default
+        ``'building_cluster_id'``).
+    """
+    if state.spine is None:
+        return state
+    spine = state.spine
+    result = _cluster_condo_parcels(
+        spine,
+        land_value_column=land_value_column,
+        improvement_value_column=improvement_value_column,
+        area_column=area_column,
+        max_unit_area_ha=max_unit_area_ha,
+        max_hub_area_ha=max_hub_area_ha,
+        max_hub_aspect_ratio=max_hub_aspect_ratio,
+        min_group_size=min_group_size,
+        max_group_size=max_group_size,
+        verbose=state.verbose,
+    )
+    if result is None:
+        return state
+    # A hub parcel is tagged with the same building_cluster_id as its
+    # units here regardless -- the geometry-side hub/unit distinction
+    # only matters to consolidate_condo_cluster_footprints.
+    component, _hub_ids = result
+
+    spine[group_id_column] = spine.index.to_series().map(component)
+    state.spine = spine
+    return state
+
+
+def _cluster_condo_parcels(
+    parcels,
+    land_value_column: str = 'land_value',
+    improvement_value_column: str = 'improvement_value',
+    area_column: str = 'area_ha',
+    max_unit_area_ha: float = 0.02,
+    max_hub_area_ha: float = 2.0,
+    max_hub_aspect_ratio: float = 2.5,
+    min_group_size: int = 2,
+    max_group_size: int = 60,
+    verbose: bool = False,
+) -> tuple[pd.Series, set] | None:
+    """Core clustering logic behind :func:`detect_condo_building_clusters`.
+
+    Factored out (state-free, operating on any parcel GeoDataFrame) so
+    :func:`~openplaces.io.harmonizer.links.consolidate_condo_cluster_footprints`
+    can run the identical detection against the raw parcel reference a
+    footprint-spine pipeline already has loaded, not just against an already-
+    harmonized parcel spine -- the two recipes' pipelines run in an order
+    (footprint spine before parcel spine, since the parcel spine's own
+    ``summarize_footprint_morphology`` step reads the harmonized footprint
+    spine) that makes a footprint-side step reading the parcel spine's own
+    *output* impossible without a circular dependency.
+
+    Parameters are exactly the *state*-independent subset of
+    :func:`detect_condo_building_clusters`'s -- see there for the full
+    algorithm description.
+
+    Returns
+    -------
+    tuple of (pandas.Series, set) or None
+        ``(component, hub_ids)``: *component* is the cluster id per
+        qualifying parcel, indexed like *parcels* (only member rows
+        present, not the full index); *hub_ids* is the subset of that same
+        index classified as a hub/common-area candidate (real, positive
+        ``improvement_value_column`` decides a unit; near-zero land *and*
+        improvement value plus a compact shape decides a hub -- see the
+        ``is_hub_candidate`` test below) -- callers that fall back to a
+        cluster's own parcel geometry (e.g.
+        :func:`~openplaces.io.harmonizer.links.consolidate_condo_cluster_footprints`)
+        must exclude *hub_ids* from that union: a hub's own polygon is the
+        surrounding lot/common area, not part of the building, and is
+        typically an order of magnitude larger than a real unit parcel.
+        ``None`` if no candidates, no touching pairs, or no qualifying
+        cluster was found.
+    """
+    required = {land_value_column, improvement_value_column, area_column}
+    if not required.issubset(parcels.columns):
+        if verbose:
+            print(
+                f'  detect_condo_building_clusters: '
+                f'{sorted(required - set(parcels.columns))} missing; skipping.'
+            )
+        return None
+
+    import geopandas as gpd
+
+    from openplaces.geo.polygon import local_metric_crs
+    from openplaces.io.harmonizer.spine import get_oriented_dims
+
+    land_value = pd.to_numeric(parcels[land_value_column], errors='coerce').fillna(0)
+    improvement_value = pd.to_numeric(
+        parcels[improvement_value_column], errors='coerce'
+    ).fillna(0)
+    area_ha = pd.to_numeric(parcels[area_column], errors='coerce')
+
+    is_unit_candidate = (
+        area_ha.notna() & (area_ha <= max_unit_area_ha) & (improvement_value > 0)
+    )
+    is_hub_candidate = (
+        (land_value <= 0)
+        & (improvement_value <= 0)
+        & area_ha.notna()
+        & (area_ha > 0)
+        & (area_ha <= max_hub_area_ha)
+    )
+    if is_hub_candidate.any():
+        hub_sub = parcels.loc[is_hub_candidate]
+        geom_m = hub_sub.geometry.to_crs(local_metric_crs(hub_sub))
+        dims = geom_m.map(get_oriented_dims)
+        length = np.array([d[1] for d in dims])
+        width = np.clip(np.array([d[2] for d in dims]), 1e-6, None)
+        is_hub_candidate.loc[hub_sub.index] = (length / width) <= max_hub_aspect_ratio
+
+    is_candidate = is_unit_candidate | is_hub_candidate
+    if is_candidate.sum() < min_group_size:
+        if verbose:
+            print('  detect_condo_building_clusters: no candidates found.')
+        return None
+
+    idx_name = parcels.index.name or 'index'
+    cand_gdf = parcels.loc[is_candidate, ['geometry']].reset_index()
+    a_col, b_col = f'{idx_name}_a', f'{idx_name}_b'
+    touching = gpd.sjoin(
+        cand_gdf, cand_gdf, predicate='touches', how='inner', lsuffix='_a', rsuffix='_b'
+    ).rename(columns={f'{idx_name}__a': a_col, f'{idx_name}__b': b_col})
+    if len(touching) == 0:
+        if verbose:
+            print('  detect_condo_building_clusters: no touching candidates found.')
+        return None
+
+    # Connected components over the candidate 'touches' graph (a plain
+    # union-find over a small edge list -- one building's worth of parcels at
+    # a time, not a large general graph, so no need for a library dependency).
+    parent: dict[str, str] = {}
+
+    def _find(x: str) -> str:
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+
+    def _union(x: str, y: str) -> None:
+        rx, ry = _find(x), _find(y)
+        if rx != ry:
+            parent[max(rx, ry)] = min(rx, ry)
+
+    hub_ids = set(parcels.index[is_hub_candidate])
+    for pid in cand_gdf[idx_name]:
+        parent.setdefault(pid, pid)
+    for a, b in zip(touching[a_col], touching[b_col]):
+        # Two adjacent common-area/hub parcels (e.g. neighboring walkway
+        # segments) must not union on their own -- confirmed on real data
+        # (a 4-building, 99-parcel complex) that hub-to-hub adjacency alone
+        # chains otherwise-separate buildings' common areas into one
+        # county-wide-sized blob, which then simply fails the group-size
+        # window instead of resolving to 4 real per-building clusters. A
+        # hub only joins a component via an edge to an actual unit.
+        if a in hub_ids and b in hub_ids:
+            continue
+        _union(a, b)
+
+    component = pd.Series({pid: _find(pid) for pid in cand_gdf[idx_name]})
+    sizes = component.value_counts()
+    qualifying = sizes[(sizes >= min_group_size) & (sizes <= max_group_size)]
+    if qualifying.empty:
+        if verbose:
+            print(
+                f'  detect_condo_building_clusters: no cluster with '
+                f'{min_group_size}-{max_group_size} parcels found.'
+            )
+        return None
+    component = component[component.isin(qualifying.index)]
+    hub_ids = hub_ids & set(component.index)
+
+    if verbose:
+        print(
+            f'  detect_condo_building_clusters: {len(qualifying):,} building clusters '
+            f'covering {len(component):,} parcels.'
+        )
+    return component, hub_ids
+
+
+@_register('estimate_property_counts')
+def estimate_property_counts(
+    state: HarmonizeState,
+    property_count_column: str = 'n_properties_per_parcel',
+    source_column: str = 'property_source',
+    dwelling_column: str = 'n_dwellings',
+    footprint_dwelling_column: str = 'max_dwellings_per_footprint',
+) -> HarmonizeState:
+    """Fill in ``property_source``/``n_properties_per_parcel`` where still unset.
+
+    A real per-unit property source (a bundled ``additional_layers`` table,
+    e.g. MassGIS's L3_ASSESS) or a geometrically inferred shared-land group
+    (see the parcel spine's own shared-land step) each write
+    *property_count_column*/*source_column* themselves, with
+    ``source_column`` set to ``'source'``/``'shared_land_group'``
+    respectively -- this step never overwrites either. Everywhere else, it
+    estimates a count from evidence that already implies internal
+    multiplicity even though no per-unit row exists to count directly:
+    *dwelling_column* (the parcel's own recorded dwelling-unit count) or
+    *footprint_dwelling_column* (confirmed Overture dwelling points on a
+    single footprint on the parcel, from
+    :func:`summarize_footprint_morphology` -- run this step after that one).
+    A parcel with neither a real source nor multiplicity evidence gets
+    ``source_column = 'none'`` and *property_count_column* left at 0/missing.
+
+    This estimate is deliberately not a fabricated 1:1 property row (that
+    would misrepresent a state with no per-unit source as having verified
+    unit-level data) -- it only ever raises the count, and only when the
+    parcel's own evidence already shows multiplicity; ``'estimated'`` marks
+    that distinction so downstream consumers (e.g. transaction linking) know
+    not to trust it as a real, addressable list of units the way a
+    ``'source'``/``'shared_land_group'`` parcel's units are.
+
+    Parameters
+    ----------
+    property_count_column : str, optional
+        Per-parcel property/unit count (default ``'n_properties_per_parcel'``).
+    source_column : str, optional
+        Provenance of *property_count_column* (default ``'property_source'``).
+    dwelling_column : str, optional
+        Parcel's own recorded dwelling-unit count (default ``'n_dwellings'``).
+    footprint_dwelling_column : str, optional
+        Confirmed dwelling count on a single footprint on the parcel (default
+        ``'max_dwellings_per_footprint'``).
+    """
+    if state.spine is None:
+        return state
+    spine = state.spine
+
+    # Built as fresh Series and assigned back wholesale (never a partial
+    # `.loc[mask, col] = ...` mutation of an existing column) -- a column
+    # freshly written by an upstream `.map(mapper).astype(...)` call (e.g.
+    # link_by_id's count mode) can carry a read-only backing array in some
+    # pandas/geopandas dtype combinations, which a partial in-place
+    # assignment then fails on.
+    source = (
+        spine[source_column].astype(object)
+        if source_column in spine.columns
+        else pd.Series(pd.NA, index=spine.index, dtype=object)
+    )
+    count = (
+        pd.to_numeric(spine[property_count_column], errors='coerce')
+        if property_count_column in spine.columns
+        else pd.Series(np.nan, index=spine.index)
+    )
+
+    unset = source.isna()
+    has_real_source = unset & (count.fillna(0) > 0)
+    source = source.mask(has_real_source, 'source')
+
+    n_dwellings = (
+        pd.to_numeric(spine[dwelling_column], errors='coerce').fillna(0)
+        if dwelling_column in spine.columns
+        else pd.Series(0.0, index=spine.index)
+    )
+    n_footprint_dwellings = (
+        pd.to_numeric(spine[footprint_dwelling_column], errors='coerce').fillna(0)
+        if footprint_dwelling_column in spine.columns
+        else pd.Series(0.0, index=spine.index)
+    )
+    estimate = pd.concat([n_dwellings, n_footprint_dwellings], axis=1).max(axis=1)
+
+    needs_estimate = source.isna() & (estimate >= 2)
+    count = count.mask(needs_estimate, estimate)
+    source = source.mask(needs_estimate, 'estimated')
+    source = source.mask(source.isna(), 'none')
+
+    spine[property_count_column] = count
+    spine[source_column] = source.astype('category')
+    state.spine = spine
+
+    if state.verbose:
+        counts = spine[source_column].value_counts()
+        print(f'  estimate_property_counts: {counts.to_dict()}')
     return state
 
 
@@ -1499,7 +2149,13 @@ def attribute_dwelling_address(
         for comp in ('address_street', 'address_number', 'city', 'postal_code')
     }
 
-    footprints = get_entities(footprint_recipe_id, state.admin_id, geom=False)
+    # missing='ignore': footprint_recipe_id genuinely has no output yet for
+    # some admin units (not yet harmonized, or itself skipped a reference
+    # with zero coverage) -- documented as a tolerated no-op above, not an
+    # error; this function already prints its own message below.
+    footprints = get_entities(
+        footprint_recipe_id, state.admin_id, geom=False, missing='ignore'
+    )
     if footprints is None or len(footprints) == 0:
         if state.verbose:
             print('  attribute_dwelling_address: no footprints; skipping.')

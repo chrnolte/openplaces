@@ -58,6 +58,17 @@ pipeline:
     # Save the n:m footprint-parcel spatial overlay mapping as a sidecar.
     save_link: true
 
+  # A stacked-condo building's real footprint(s) can end up dominant-linked
+  # only to the units' shared common-area parcel (the min_fraction_of_largest
+  # trim above drops each individual unit's much smaller overlap share),
+  # leaving most of the building's own units with no real footprint credit.
+  # Recognize the parcel-side cluster and consolidate before
+  # infer_spine_additions runs, so it doesn't also generate a redundant
+  # per-unit synthetic fallback for whichever units the trimmed real
+  # footprint(s) didn't happen to dominate.
+  - step: consolidate_condo_cluster_footprints
+    entity_type: parcel
+
   - step: infer_spine_additions
     entity_type: parcel
     thresholds:

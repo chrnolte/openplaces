@@ -56,6 +56,58 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
+_NUMBER_RANGE = re.compile(r'^\s*(\d+[A-Z]?)\s*-\s*(\d+[A-Z]?)\s*$', re.IGNORECASE)
+
+
+def _clean_number(text: str) -> str:
+    """Like `clean_text`, but preserves a hyphen joining two number-like
+    groups (e.g. '704-706', '36-36A' -- standard multi-unit range notation,
+    each side optionally carrying a single trailing letter) that
+    `clean_text`'s generic punctuation stripping would otherwise squash into
+    an unmatchable concatenated number.
+    """
+    match = _NUMBER_RANGE.fullmatch(text.strip()) if text else None
+    if match:
+        return f'{match.group(1).upper()}-{match.group(2).upper()}'
+    return clean_text(text)
+
+
+_LEADING_NUMBER_RANGE = re.compile(
+    r'^\s*(\d+[A-Z]?)\s*-\s*(\d+[A-Z]?)(?=\s|$)', re.IGNORECASE
+)
+
+
+def _leading_number_range(addr_str: str) -> str | None:
+    """Return a preserved range string if *addr_str* starts with one.
+
+    Used by `_parse_fallback` to rescue a multi-unit range (e.g.
+    '704-706 BROADWAY') before its own whole-string `clean_text` call
+    strips the hyphen -- unlike `_NUMBER_RANGE`, this only anchors the
+    start, since the fallback parser sees the full address string, not an
+    already-isolated number.
+    """
+    match = _LEADING_NUMBER_RANGE.match(addr_str) if addr_str else None
+    if not match:
+        return None
+    return f'{match.group(1).upper()}-{match.group(2).upper()}'
+
+
+def split_number_range(text: str) -> tuple[str, str] | None:
+    """Split a multi-unit address-number range into its two numbers.
+
+    E.g. ``'704-706'`` -> ``('704', '706')``, ``'36-36A'`` -> ``('36', '36A')``.
+    Returns ``None`` if *text* isn't range-shaped. Shares `_clean_number`'s
+    pattern so range detection stays in sync with how
+    `normalize_address_components` preserves such numbers -- used by the
+    harmonizer's `link_address_ranges` step to try each individual number
+    against a parcel reference when the combined range has no direct match.
+    """
+    match = _NUMBER_RANGE.fullmatch(text.strip()) if text else None
+    if not match:
+        return None
+    return match.group(1).upper(), match.group(2).upper()
+
+
 _EQUIVALENCES_PATH = Path(__file__).parent / 'address_equivalences.csv'
 _FORMATS_PATH = Path(__file__).parent / 'address_formats.csv'
 
@@ -298,6 +350,42 @@ except importlib.metadata.PackageNotFoundError:
 _UNIT_PREFIXES = r'APT|STE|UNIT|SUITE|APARTMENT|DEPT|RM|ROOM|FL|FLOOR|BLDG|BUILDING|#'
 
 
+# Not simply `\b({_UNIT_PREFIXES})\b` (as used inside _parse_fallback's own
+# regex below): '#' is a non-word character, so a trailing `\b` never
+# matches right after it (`\b` only fires at a word/non-word transition,
+# and both sides of a lone '#' are non-word) -- '#' is matched as a literal
+# preceded by whitespace/start instead, while the word-based prefixes keep
+# their `\b` boundary.
+_UNIT_SUFFIX_RE = re.compile(
+    rf'(?:^|\s)(?:#|(?:{_UNIT_PREFIXES.replace("|#", "")})\b)',
+    flags=re.IGNORECASE,
+)
+
+
+def strip_unit_suffix(addr_str: str) -> str:
+    """Return *addr_str* with a trailing unit designator removed.
+
+    Matches the same unit vocabulary :func:`_parse_fallback` peels off
+    (``APT``, ``UNIT``, ``#``, ...), so a caller can compare two address
+    strings for "same building, different unit" (e.g. deduplicating a
+    condo building's per-unit addresses down to one base address) without
+    a full parse.
+
+    Parameters
+    ----------
+    addr_str : str
+        A one-line address string.
+
+    Returns
+    -------
+    str
+        *addr_str* truncated just before its first unit designator, or the
+        original (whitespace-trimmed) string when none is found.
+    """
+    match = _UNIT_SUFFIX_RE.search(addr_str)
+    return (addr_str[: match.start()] if match else addr_str).strip()
+
+
 @dataclass(frozen=True)
 class ParsedAddress:
     """Structured result of `parse_address`.
@@ -359,7 +447,7 @@ def normalize_address_components(
     units = _tables('unit', admin1_id)
 
     street_clean = clean_text(address_street)
-    number_clean = clean_text(address_number or '')
+    number_clean = _clean_number(address_number or '')
     unit_clean = clean_text(unit_number or '')
     city_clean = clean_text(city or '')
     state_clean = clean_text(state or '')
@@ -428,6 +516,9 @@ def _assemble(components: dict[str, str], admin1_id: str | None = None) -> str:
 
 def _parse_fallback(addr_str: str, admin1_id: str) -> dict[str, str | None]:
     """Regex fallback used when usaddress cannot tag a string unambiguously."""
+    # Captured before the whole-string clean_text below strips a leading
+    # range's hyphen (e.g. '704-706 BROADWAY' -> '704706 BROADWAY').
+    leading_range = _leading_number_range(addr_str)
     addr_str = clean_text(addr_str)
     parsed: dict[str, str | None] = dict.fromkeys(ADDRESS_COMPONENTS)
     if not addr_str:
@@ -453,7 +544,14 @@ def _parse_fallback(addr_str: str, admin1_id: str) -> dict[str, str | None]:
     if not words:
         return parsed
     if any(c.isdigit() for c in words[0]):
-        parsed['address_number'] = words[0]
+        # Use the preserved range only if it's still consistent with this
+        # token (guards against the rare case where an earlier peeling step
+        # -- zip/state/unit -- already consumed what looked like a leading
+        # range, so it no longer corresponds to the address number here).
+        if leading_range and leading_range.replace('-', '') == words[0]:
+            parsed['address_number'] = leading_range
+        else:
+            parsed['address_number'] = words[0]
         parsed['address_street'] = ' '.join(words[1:]) or None
     else:
         parsed['address_street'] = addr_str
@@ -468,7 +566,10 @@ def _parse_cached(addr_str: str, admin1_id: str) -> tuple[tuple[str | None, ...]
     except usaddress.RepeatedLabelError:
         parsed = _parse_fallback(addr_str, admin1_id)
         return tuple(parsed[c] for c in ADDRESS_COMPONENTS), 'regex'
-    parsed = {c: clean_text(tagged[c]) or None for c in tagged}
+    parsed = {
+        c: (_clean_number if c == 'address_number' else clean_text)(tagged[c]) or None
+        for c in tagged
+    }
     return tuple(parsed.get(c) for c in ADDRESS_COMPONENTS), 'usaddress'
 
 

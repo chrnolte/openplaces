@@ -644,7 +644,7 @@ _RECIPE_ID_KEY_REGEX = re.compile(r'(^|_)recipe_id$')
 # Pipeline steps whose auto-discovery expands to ALL applicable ingest
 # recipes (mirroring the harmonizer's _expand_auto_discover), rather than
 # the single best match.
-_MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id')
+_MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id', 'union_spine_sources')
 
 
 @cache
@@ -811,6 +811,7 @@ def get_recipe_dependencies(
         if entity_type is None or admin_id is None:
             _add(None, 'auto_discover', step=step_name, resolved=False)
             return
+        additional = find_additional_layer_recipes(entity_type, admin_id)
         if multi:
             # All strictly-more-specific ingest recipes covering the admin
             # unit (the harmonizer's _expand_auto_discover semantics); an
@@ -820,10 +821,17 @@ def get_recipe_dependencies(
                 rid = src['admin_id']
                 if rid and rid != recipe_admin_str and admin_str.startswith(rid):
                     _add(src['recipe_id'], 'auto_discover', step=step_name)
+            for match in additional:
+                _add(match['recipe_id'], 'auto_discover', step=step_name)
         else:
             found = find_entity_recipe_id(
                 admin_id, entity_type, stage='ingest', silent=True
             )
+            # If no standalone ingest recipe exists, check if a bundled
+            # additional layer is available before flagging as unresolved.
+            if found is None and additional:
+                # Use the newest/best host recipe as the single match
+                found = additional[-1]['recipe_id']
             _add(
                 found,
                 'auto_discover',
@@ -875,6 +883,92 @@ def get_layers(recipe: str | dict) -> list[str]:
         for layer_spec in recipe.get('additional_layers', [])
         if 'entity' in layer_spec
     ]
+
+
+def find_additional_layer_recipes(
+    layer_entity_type: str,
+    admin_id: AdminId | str,
+    host_entity_type: str = 'parcel',
+) -> list[dict]:
+    """Find additional_layers-bundled recipes of *layer_entity_type*.
+
+    Walks every ingest recipe of *host_entity_type* (default ``'parcel'``)
+    whose admin scope covers *admin_id* and returns each one that bundles a
+    matching *layer_entity_type* entry in its ``additional_layers`` list --
+    e.g. MassGIS's L3_ASSESS ``property`` table, bundled inside its
+    ``US-MA_parcel-massgis-2025`` parcel recipe rather than registered as its
+    own standalone ingest recipe. Neither ``find_recipes`` nor a plain
+    ``entity_type`` search ever surfaces a bundled layer this way, since its
+    entity type never appears as a directory path component of the host
+    recipe's own YAML file. Used by
+    :func:`openplaces.io.harmonizer.spine._expand_auto_discover` so
+    ``union_spine_sources``/``resolve_spine`` auto-discovery can see a
+    bundled layer whose host is a different entity type (e.g. a
+    ``property`` table bundled inside a ``parcel`` recipe) -- the same
+    additional_layers walk :func:`openplaces.io.harmonizer.links._discover_link_sources`
+    already does inline for the *same*-entity-type case (host and layer both
+    ``'parcel'``), which that function keeps doing itself rather than calling
+    this one.
+
+    Recipes with ``exclude_from_auto_discover: true`` are skipped, and only
+    the newest version per (admin_id, source_id) is kept, mirroring
+    :func:`find_entity_recipe_id`'s specificity/version precedence.
+
+    Parameters
+    ----------
+    layer_entity_type : str
+        The bundled entity type to look for (e.g. ``'property'``).
+    admin_id : AdminId or str
+        Admin unit the host recipe must cover.
+    host_entity_type : str, optional
+        Entity type of the recipes to search for bundled layers on (default
+        ``'parcel'``, the only host type in use today).
+
+    Returns
+    -------
+    list of dict
+        Each entry: ``{'recipe_id': host recipe id, 'layer':
+        layer_entity_type, 'label': host source_id, 'layer_key': the join
+        key declared on the layer, falling back to ``'parcel_id_local'``}``.
+        Ordered oldest-version-first, mirroring
+        :func:`find_entity_recipe_id`'s "most recent applied last"
+        precedence for callers that fold matches together.
+    """
+    from openplaces.diagnostics import find_recipes
+
+    admin_id = admin_id if isinstance(admin_id, AdminId) else AdminId(admin_id)
+    best: dict[tuple[str, str], tuple[str, str, str]] = {}
+    for _, row in find_recipes(host_entity_type, stage='ingest').iterrows():
+        if row['exclude_from_auto_discover']:
+            continue
+        admin_id_str = row['admin_id']
+        if not admin_id_str or not AdminId(admin_id_str).is_parent_or_equal_of(
+            admin_id
+        ):
+            continue
+        key = (admin_id_str, row['source_id'])
+        recipe_id = (
+            f'{admin_id_str}_{host_entity_type}-{row["source_id"]}-{row["version"]}'
+        )
+        if key not in best or row['version'] > best[key][0]:
+            best[key] = (row['version'], recipe_id, row['source_id'])
+
+    matches = []
+    for _version, recipe_id, source_id in sorted(best.values(), key=lambda vrs: vrs[0]):
+        recipe = get_recipe_by_id(recipe_id)
+        for layer_spec in recipe.get('additional_layers') or []:
+            entity = layer_spec.get('entity')
+            if entity is None or str(entity.entity_type) != layer_entity_type:
+                continue
+            matches.append(
+                {
+                    'recipe_id': recipe_id,
+                    'layer': layer_entity_type,
+                    'label': source_id,
+                    'layer_key': layer_spec.get('layer_key', 'parcel_id_local'),
+                }
+            )
+    return matches
 
 
 def _get_save_to(recipe):

@@ -1,0 +1,126 @@
+# Recipe to import the parcel database of the state of Florida, US
+
+description: >-
+  Florida statewide parcel database from the Florida Geographic Information Office
+  (2026).
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US-FL
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: parcel
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: floridagio
+    portal_url: "https://geodata.floridagio.gov/datasets/efa909d6b1c841d298b0a649e7f71cf2_0/explore"
+    # URL to download (takes a while: this is a 10.4G file)
+    download_url: "https://publicfiles.dep.state.fl.us/otis/gis/data/Cadastral_Statewide.zip"
+  version: 2026
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "Cadastral_Statewide.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "CADASTRAL_DOR.gdb"
+
+# Layer that identifies parcels (10M parcels)
+layer: CADASTRAL_DOR
+
+# Standardized, locally cross-comparable parcel matching key parcel_id_local
+# derives from (consistent across parcel recipes).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+# Column that splits the data into chunks for processing
+# (avoids reading very large geodatabase into memory)
+process_by:
+  admin_level: 3
+  admin_id_column: CO_NO
+  admin_id_crosswalk:
+    recipe_id: "US-FL_parcel-floridagio-2026_admin3-crosswalk"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  parcel_id_admin2: STATE_PAR_
+  parcel_id_admin2_2: MP_ID
+  parcel_id_admin3_2: ALT_KEY
+  parcel_id_assessor: PARCEL_ID
+  address: PHY_ADDR1
+  address2: PHY_ADDR2
+  city: PHY_CITY
+  postal_code: PHY_ZIPCD
+  legal_description: S_LEGAL
+  census_block_id: CENSUS_BK
+  area_sqft: LND_SQFOOT
+  n_buildings: NO_BULDNG
+  structure_quality_code: IMP_QUAL
+  construction_class: CONST_CLAS
+  effective_year_built: EFF_YR_BLT
+  year_built: ACT_YR_BLT
+  living_area_sqft: TOT_LVG_AR
+  n_dwellings: NO_RES_UNT
+  use_group_code: DOR_UC
+  use_group_admin3: PA_UC
+  land_unit_code: LND_UNTS_C
+  n_land_units: NO_LND_UNT
+  last_inspection_date: DT_LAST_IN
+  disaster_code: DISTR_CD
+  disaster_year: DISTR_YR
+  owner_name: OWN_NAME
+  owner_address: OWN_ADDR1
+  owner_address2: OWN_ADDR2
+  owner_city: OWN_CITY
+  owner_admin2_id_admin1: OWN_STATE
+  owner_postal_code: OWN_ZIPCD
+  owner_admin2_id_admin1_domicile: OWN_STATE_
+  owner_public_code: PUBLIC_LND
+  tax_use_group: BAS_STRT
+  tax_use_subgroup: ATV_STRT
+  tax_market_area: MKT_AR
+  tax_neighborhood_code: NBRHD_CD
+  tax_special_assessment: SPASS_CD
+  tax_year: ASMNT_YR
+  tax_authority: TAX_AUTH_C
+  value_group: GRP_NO
+  market_value: JV
+  market_value_change: JV_CHNG
+  market_value_change_code: JV_CHNG_CD
+  assessed_value_school_district: AV_SD
+  assessed_value_non_school_district: AV_NSD
+  tax_value_school_district: TV_SD
+  tax_value_non_school_district: TV_NSD
+  new_construction_value: NCONST_VAL
+  land_value: LND_VAL
+  special_feature_value: SPEC_FEAT_
+  last_sale_multi_parcel: M_PAR_SAL1
+  last_sale_qualification_code: QUAL_CD1
+  last_sale_vacant: VI_CD1
+  last_sale_price: SALE_PRC1
+  last_sale_year: SALE_YR1
+  last_sale_month: SALE_MO1
+  last_sale_book: OR_BOOK1
+  last_sale_page: OR_PAGE1
+  last_sale_clerk_instrument: CLERK_NO1
+  last_sale_change_code: SAL_CHNG_CD1
+  last_sale_2_multi_parcel: M_PAR_SAL2
+  last_sale_2_qualification_code: QUAL_CD2
+  last_sale_2_vacant: VI_CD2
+  last_sale_2_price: SALE_PRC2
+  last_sale_2_year: SALE_YR2
+  last_sale_2_month: SALE_MO2
+  last_sale_2_book: OR_BOOK2
+  last_sale_2_page: OR_PAGE2
+  last_sale_2_clerk_instrument: CLERK_NO2
+  last_sale_2_change_code: SAL_CHNG_CD2
+
+transformations:
+  # Florida DOR's assessment-roll edit guide (2026) defines the calculated
+  # Improvement Value as Just Value - Land Value - Special Features Value;
+  # Cadastral_Statewide has no direct improvement-value field of its own.
+  - output: improvement_value
+    type: expression
+    expression: "market_value - land_value - special_feature_value"
+    inputs: [market_value, land_value, special_feature_value]

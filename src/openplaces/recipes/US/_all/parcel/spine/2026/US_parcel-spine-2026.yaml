@@ -43,6 +43,7 @@ pipeline:
       - land_value
       - year_built
       - n_dwellings
+      - address
 
   # Compute this entity's own centroid lat/long and area (ha) once, right
   # after spine geometry is finalized (including synthetic fallback rows),
@@ -50,10 +51,66 @@ pipeline:
   # of recomputing them.
   - step: derive_geometry_attributes
 
-  # Link discovered assessor tables to the spine, aggregating stacked condominium/unit records.
+  # Link discovered assessor tables to the spine, aggregating stacked
+  # condominium/unit records (a bundled additional_layers property table,
+  # e.g. MassGIS's L3_ASSESS, joins here too -- join_nonnull columns like
+  # address/use_group now properly concatenate every unit's value instead of
+  # picking one arbitrarily; see link_by_id's aggregate-mode docs).
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
+
+  # Exact per-parcel property/unit count from the harmonized property spine
+  # (the authoritative per-unit source, built directly from the same
+  # additional_layers tables above without the aggregate-join's lossy
+  # single-value collapse -- see US_property-spine-2026). count_as always
+  # fills 0 for an unmatched parcel, not NaN; estimate_property_counts below
+  # (which needs this run first) treats a 0/missing count alike.
+  - step: link_by_id
+    recipe_id: US_property-spine-2026
+    mode: count
+    spine_key: parcel_id_admin2
+    ref_key: parcel_id_admin2
+    count_as: n_properties_per_parcel
+
+  # Horizontally-separated townhome pattern (observed in Carteret County,
+  # NC): >=2 separately-parceled units entirely surrounded by a different,
+  # real "land" parcel carrying near-zero land value. Must run before
+  # estimate_property_counts below, which never overwrites a property_source
+  # this step already set.
+  - step: detect_shared_land_groups
+
+  # Vertically-stacked condo buildings platted as many tiny per-unit
+  # parcels (observed on the same 4400 Sample Dr complex in Carteret County
+  # that motivated the footprint-side consolidation in
+  # US_footprint-spine-2026 -- see consolidate_condo_cluster_footprints
+  # there). A distinct signal from detect_shared_land_groups above (unit
+  # parcel size, not just a near-zero-value hub): reusing that step's own
+  # max_group_size would re-admit the WATER/ROW placeholder-parcel false
+  # positives it excludes by design.
+  - step: detect_condo_building_clusters
+
+  # Attach per-parcel transaction diagnostics from every auto-discovered
+  # transaction source scoped to this admin unit: a count, and the most
+  # recent sale's price/date. Renaming price/recorded_date on the way in
+  # (rather than a follow-up rename_columns) lets _write_prioritized's
+  # gap-fill apply directly against last_sale_price/last_sale_date already
+  # populated from a parcel source's own fields (FL, MA, NC) instead of
+  # blindly overwriting them; states with no native last-sale fields (WI)
+  # get these filled entirely from the transaction join. ref_sort_by sorts
+  # descending by recorded_date first, since raw transaction tables are not
+  # stored in chronological order and the registry's 'first' aggregation for
+  # last_sale_price/last_sale_date otherwise picks an arbitrary sale.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: transaction
+    mode: aggregate
+    columns:
+      price: last_sale_price
+      recorded_date: last_sale_date
+    count_as: n_transactions
+    ref_sort_by: recorded_date
+    ref_sort_ascending: false
 
   # Preserve the assessor's raw address/city under their own names before
   # reconcile_addresses's output (same bare names, by default) would
@@ -126,6 +183,11 @@ pipeline:
   - step: impute_postal_city
     column: postal_code
 
+  # Town-scoped address matching key, for linking a reference that carries no
+  # parcel_id_local (e.g. MA masslandrecords transactions -- see
+  # US_transaction-spine-2026, which joins back onto this key).
+  - step: derive_address_id_local
+
   # Build the combined use_group_combined label from whatever use_group /
   # use_subgroup the link step above attached (via an auto-discovered
   # crosswalk); no-ops when neither reached the spine.
@@ -184,3 +246,10 @@ pipeline:
     elongated_aspect_min: 2.0
     'on': parcel_id
     min_overlap_m2: 10
+
+  # Classify property_source and, where no property-spine source exists (see
+  # the count-only link_by_id step above), estimate a property/unit count
+  # from evidence that already implies internal multiplicity
+  # (n_dwellings/max_dwellings_per_footprint) rather than leaving a
+  # multi-unit parcel looking like a single, unverified property.
+  - step: estimate_property_counts
