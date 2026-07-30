@@ -170,9 +170,14 @@ pipeline:
     ruleset: parcel-occupancy-keywords.csv
 
   # Merge image-derived enrichment columns (e.g. roof shape and story count from BRAILS).
+  # roof_shape is a direct, non-reconciled canonical column, so it keeps a
+  # provenance sidecar; n_stories_brails is only an intermediate evidence
+  # column reconciled into canonical n_stories below (which records its
+  # own provenance there), so its own sidecar would be dead weight.
   - step: merge_enrichments
     recipes:
       - recipe_id: US_footprint_built-roof-shape-brails-2026
+        record_source: true
         columns:
           roof_shape_brails: roof_shape
       - recipe_id: US_footprint_built-n-stories-brails-2026
@@ -260,7 +265,6 @@ pipeline:
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base
       - p_manufactured_home
-      - n_stories_brails_source
       # Evidence-only: postal_city fed into `address`/`city` at harmonize
       # time (impute_postal_city); not needed once it has.
       - postal_city
