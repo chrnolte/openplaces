@@ -2,7 +2,7 @@
 
 description: >-
   Florida statewide parcel database from the Florida Geographic Information Office
-  (2025).
+  (2026).
 
 # Administrative unit identifier: where does this data come from?
 admin_id: US-FL
@@ -17,13 +17,13 @@ entity:
     portal_url: "https://geodata.floridagio.gov/datasets/efa909d6b1c841d298b0a649e7f71cf2_0/explore"
     # URL to download (takes a while: this is a 10.4G file)
     download_url: "https://publicfiles.dep.state.fl.us/otis/gis/data/Cadastral_Statewide.zip"
-  version: 2025
+  version: 2026
 
 # Name of compressed file (set to skip re-downloading)
 compressed_file_name: "Cadastral_Statewide.zip"
 
 # Name of uncompressed file (set to skip re-extracting)
-uncompressed_file_name: "Parcels.gdb"
+uncompressed_file_name: "CADASTRAL_DOR.gdb"
 
 # Layer that identifies parcels (10M parcels)
 layer: CADASTRAL_DOR
@@ -40,14 +40,14 @@ process_by:
   admin_level: 3
   admin_id_column: CO_NO
   admin_id_crosswalk:
-    recipe_id: "US-FL_parcel-floridagio-2025_admin3-crosswalk"
+    recipe_id: "US-FL_parcel-floridagio-2026_admin3-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
   parcel_id_admin2: STATE_PAR_
   parcel_id_admin2_2: MP_ID
-  parcel_id_assessor: PARCEL_ID
   parcel_id_admin3_2: ALT_KEY
+  parcel_id_assessor: PARCEL_ID
   address: PHY_ADDR1
   address2: PHY_ADDR2
   city: PHY_CITY
@@ -124,8 +124,3 @@ transformations:
     type: expression
     expression: "market_value - land_value - special_feature_value"
     inputs: [market_value, land_value, special_feature_value]
-
-# Standardized matching key (auto conversion; processed per admin3).
-parcel_id_local:
-  source: parcel_id_assessor
-  kind: parcel
