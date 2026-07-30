@@ -294,6 +294,50 @@ def test_tier1_street_city_wins_over_broader_fallback():
     assert out['land_value_imputed_source'].iloc[-1] == 'address_street_city'
 
 
+def test_city_tier_wins_over_county_wide_fallback():
+    # Regression test for a real Middlesex County, MA case: the candidate's
+    # own street has no donors at all (e.g. an address-parsing gap left it
+    # unmatched to any real same-street neighbor), so tier 1 must fail. The
+    # candidate's city (TOWNA) has a distinct, lower $/area-of-lot rate (500)
+    # than a different city (TOWNB, rate 5000) -- if the final,
+    # unconditional _is_residential-only tier fired instead of the
+    # intermediate city tier, the estimate would reflect a blend of both
+    # cities (a ~5.5x-too-high rate here), not the pure TOWNA rate.
+    city_donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=50_000,
+            area_ha=100,
+            address_street=f'OTHER ST {i}',
+            city='TOWNA',
+        )
+        for i in range(5)
+    ]
+    other_city_donors = [
+        _row(
+            land_use_class='Single-Family',
+            land_value=500_000,
+            area_ha=100,
+            address_street=f'FAR ST {i}',
+            city='TOWNB',
+        )
+        for i in range(5)
+    ]
+    candidate = _row(
+        land_use_class='Condominium',
+        land_value=0,
+        improvement_value=200_000,
+        area_ha=100,
+        address_street='MAIN ST',
+        city='TOWNA',
+    )
+    df = _frame([*city_donors, *other_city_donors, candidate])
+    out = impute_land_value(_state(df), min_group_size=5).curated
+
+    assert out['land_value_imputed'].iloc[-1] == 50_000
+    assert out['land_value_imputed_source'].iloc[-1] == 'city__is_residential'
+
+
 def test_tier1_gracefully_skipped_when_city_missing():
     # The candidate's own city is NaN, so its street/city key can never match
     # any donor group (by construction, regardless of what donor groups

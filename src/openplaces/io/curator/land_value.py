@@ -77,28 +77,35 @@ def impute_land_value(
     never ``improvement_value``, and never divided by footprint area -- learned
     from donor parcels (real, positive *land_value_column*, real positive
     *parcel_area_column*) sharing an increasingly broad cohort, tried in order
-    via *group_tiers*: each tier is a
-    list of column names donors and candidates are grouped by (default a single
-    tier, ``[street_column, city_column]``, where *street_column* defaults to
-    ``'address_street'`` -- the genuinely parsed, canonical street name
+    via *group_tiers*: each tier is a list of column names donors and
+    candidates are grouped by (default two tiers, ``[street_column,
+    city_column]`` then ``[city_column, fallback_group_column]``, where
+    *street_column* defaults to ``'address_street'`` -- the genuinely parsed,
+    canonical street name
     :func:`openplaces.io.harmonizer.addresses.reconcile_addresses_df` writes at
     harmonize time, not a name this step derives itself -- skipped
-    automatically when *street_column*/*city_column* are absent, or when a
+    automatically when a tier's own columns are absent, or when a
     candidate's own key has a missing component: a merge on a missing key
     never matches, so it simply falls through to the next tier). A tier's
     group rate is suppressed when fewer than *min_group_size* donors back it.
     After every configured tier, a final, unconditional fallback groups donors
-    by *fallback_group_column* (default ``'_is_residential'``, a synthetic
-    residential-vs-non-residential split reusing *residential_classes* --
-    grouping this broadly, rather than by an exact category like
-    *peer_group_column*, matters: a narrow category (e.g. a specific
-    condominium use-subtype) can have too few *recorded* land values to be a
-    reliable donor pool, and worse, per-unit condo land values are
+    by *fallback_group_column* alone (default ``'_is_residential'``, a
+    synthetic residential-vs-non-residential split reusing
+    *residential_classes* -- grouping this broadly, rather than by an exact
+    category like *peer_group_column*, matters: a narrow category (e.g. a
+    specific condominium use-subtype) can have too few *recorded* land values
+    to be a reliable donor pool, and worse, per-unit condo land values are
     structurally smaller than a typical lot's, systematically biasing a
     narrowly-scoped fallback low). Since each curate call already processes
     exactly one admin-3 (county) unit (``process_by.admin_level: 3``), this
-    fallback tier is implicitly county-scoped for free too, with no per-row
-    admin id column required. Extending the tier chain (a future
+    last-resort fallback tier is implicitly county-scoped for free too -- but
+    a county can span towns with wildly different land economics (a real
+    Middlesex County, MA measurement: one town's average recorded rate was
+    ~3.4x the county-wide average), so the second, *city*-scoped tier exists
+    specifically to catch a candidate whose own street tier failed (e.g. no
+    same-street donor at all, or an upstream address-parsing gap left its
+    *street_column* unmatched to any real neighbor) *before* diluting it
+    across the whole county. Extending the tier chain further (a future
     near-house-number match, an ``admin4_id`` or ``census_block_group_id``
     cohort) is a matter of adding another entry to *group_tiers* once the
     backing column exists; unresolved tiers are skipped gracefully rather than
@@ -156,8 +163,11 @@ def impute_land_value(
         ``'address_street'``, ``'city'``).
     group_tiers : list of list of str, optional
         Ordered local-to-broad grouping tiers, tried before
-        *fallback_group_column* (default a single ``[street_column,
-        city_column]`` tier).
+        *fallback_group_column* alone (default two tiers: ``[street_column,
+        city_column]``, then ``[city_column, fallback_group_column]`` --
+        the latter catches a street-tier miss without diluting the rate
+        across the whole county the way the final, unconditional fallback
+        does).
     fallback_group_column : str, optional
         Guaranteed final grouping column (default ``'_is_residential'``, a
         synthetic residential-vs-non-residential split -- see above for why
@@ -193,7 +203,10 @@ def impute_land_value(
     if residential_classes is None:
         residential_classes = _DEFAULT_RESIDENTIAL_CLASSES
     if group_tiers is None:
-        group_tiers = [[street_column, city_column]]
+        group_tiers = [
+            [street_column, city_column],
+            [city_column, fallback_group_column],
+        ]
 
     land_value = pd.to_numeric(curated[land_value_column], errors='coerce')
     improvement_value = pd.to_numeric(
