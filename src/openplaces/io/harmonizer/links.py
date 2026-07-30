@@ -31,7 +31,7 @@ from openplaces.geo.polygon import (
     resolve_overlapping_polygons,
 )
 from openplaces.io import to_parquet
-from openplaces.io.aggregate import _AGG_ALIASES, aggregate_rows, read_file_metadata
+from openplaces.io.aggregate import _agg_func_for, aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import (
     HarmonizeState,
@@ -1860,11 +1860,19 @@ def link_by_id(
         # not the reference's own column name, so a rename (e.g. price ->
         # last_sale_price) still resolves the right aggregation. 'join_nonnull'
         # (e.g. address, use_group) is not a pandas groupby function on its
-        # own -- routed through _AGG_ALIASES (the same table aggregate_rows
+        # own -- routed through _agg_func_for (the same helper aggregate_rows
         # uses) to concatenate every distinct non-null value instead of
         # silently degrading to 'first' (an arbitrary row's value, discarding
         # every other row's -- the original multi-property-per-parcel
-        # collapse bug).
+        # collapse bug). 'address' gets its own joiner there
+        # (join_nonnull_addresses) rather than the generic one: a condo/
+        # apartment building's per-unit property records typically differ
+        # only by an APT/UNIT/# suffix, and the plain joiner's ' + '-
+        # concatenation of every unit's full address corrupts downstream
+        # address parsing (no parser can split a multi-address blob back
+        # into one street/number). 'use_group' and other join_nonnull
+        # columns keep the plain joiner -- their concatenated values are
+        # consumed directly, never re-parsed.
         reducible = {
             'sum',
             'mean',
@@ -1876,8 +1884,11 @@ def link_by_id(
             'join_nonnull',
         }
         for col, out_name in pairs:
-            fname = get_agg_func(resolve_attribute_name(out_name))
-            func = _AGG_ALIASES.get(fname, fname) if fname in reducible else 'first'
+            canonical_name = resolve_attribute_name(out_name)
+            fname = get_agg_func(canonical_name)
+            func = (
+                _agg_func_for(canonical_name, fname) if fname in reducible else 'first'
+            )
             name = f'{out_name}{suffix}' if suffix else out_name
             agg_series = grouped[col].agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
@@ -2396,11 +2407,12 @@ def consolidate_condo_cluster_footprints(
     if 'area_ha' not in ref_for_clustering.columns:
         ref_for_clustering['area_ha'] = get_areas(ref_for_clustering, 'ha')
 
-    component = _cluster_condo_parcels(
+    result = _cluster_condo_parcels(
         ref_for_clustering, verbose=state.verbose, **(cluster_thresholds or {})
     )
-    if component is None:
+    if result is None:
         return state
+    component, hub_ids = result
 
     spine = state.spine
     _source_id = source_id_from_recipe_id(recipe_id)
@@ -2422,8 +2434,17 @@ def consolidate_condo_cluster_footprints(
             .dropna()
             .tolist()
         )
+        # The parcel-geometry fallback covers units no real footprint
+        # reaches -- it must never include a hub/common-area parcel's own
+        # polygon (the surrounding lot, typically an order of magnitude
+        # larger than a real unit), or the consolidated shape balloons to
+        # roughly the whole lot instead of the building. A hub's real
+        # footprint fragments (if any) still enter via real_geoms above,
+        # and it still keeps its crosswalk link below -- only this shape
+        # fallback excludes it.
+        unit_pids = [pid for pid in cluster_pids if pid not in hub_ids]
         parcel_geom = ref_polys.loc[
-            ref_polys.index.intersection(cluster_pids), 'geometry'
+            ref_polys.index.intersection(unit_pids or cluster_pids), 'geometry'
         ].union_all()
         consolidated = (
             gpd.GeoSeries(real_geoms + [parcel_geom], crs=spine.crs).union_all()
@@ -2467,6 +2488,60 @@ def consolidate_condo_cluster_footprints(
     state.crosswalks[recipe_id] = pd.concat(
         [crosswalk[~superseded_pair_mask], additions_df]
     ).sort_index()
+
+    overlay = state.overlays.get(recipe_id)
+    if overlay is not None:
+        overlay_superseded = overlay.index.get_level_values(spine_id_col).isin(
+            superseded_spine_ids
+        )
+        state.overlays[recipe_id] = pd.concat(
+            [overlay.loc[~overlay_superseded], additions_df[['area_intersection_m2']]]
+        ).sort_index()
+
+    # Re-persist link_to_reference's identity-overlay sidecar (save_link:
+    # true), if one exists, so curate-stage readers -- apportion_curated_
+    # values, collect_link_ids -- see this cluster's consolidated links
+    # too. Without this, the sidecar (written by link_to_reference *before*
+    # this step ran) has no rows at all for the new consolidated footprint,
+    # and its 'condo_cluster.*' geometry_source prefix never matches
+    # apportion_curated_values' own synthetic-row carve-out (which only
+    # recognizes infer_spine_additions's '{entity_type}.*' rows) -- so the
+    # footprint silently gets no parcel link and resolves to a $0 value
+    # despite every real parcel underneath it having a positive one.
+    # Rewritten as a direct read-modify-write of the existing parquet
+    # (reusing its already-stored fingerprint verbatim) rather than via
+    # _write_link_sidecar, which would need a *snapped* argument to
+    # reproduce this recipe's own snap_chains link_chain labels -- info
+    # this step has no reason to recompute when every pre-existing,
+    # non-superseded row's own columns (including link_chain) can simply
+    # be carried through untouched.
+    sidecar_path = get_entity_link_path(
+        get_recipe_id(state.recipe), recipe_id, state.admin_id
+    )
+    if sidecar_path.exists():
+        stored_raw = read_file_metadata(sidecar_path).get(_LINK_METADATA_KEY)
+        if stored_raw is not None:
+            existing = pd.read_parquet(sidecar_path).set_index(
+                [spine_id_col, 'parcel_id']
+            )
+            kept = existing.loc[
+                ~existing.index.get_level_values(spine_id_col).isin(
+                    superseded_spine_ids
+                )
+            ]
+            merged = pd.concat(
+                [kept, additions_df[['area_intersection_m2', 'link']]]
+            ).sort_index()
+            to_parquet(
+                merged.reset_index(),
+                sidecar_path,
+                file_metadata={_LINK_METADATA_KEY: stored_raw},
+            )
+            if state.verbose:
+                print(
+                    '  consolidate_condo_cluster_footprints: re-persisted link '
+                    f'sidecar {sidecar_path.name}'
+                )
 
     if state.verbose:
         print(

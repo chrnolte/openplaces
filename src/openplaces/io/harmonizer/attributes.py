@@ -1800,7 +1800,7 @@ def detect_condo_building_clusters(
     if state.spine is None:
         return state
     spine = state.spine
-    component = _cluster_condo_parcels(
+    result = _cluster_condo_parcels(
         spine,
         land_value_column=land_value_column,
         improvement_value_column=improvement_value_column,
@@ -1812,8 +1812,12 @@ def detect_condo_building_clusters(
         max_group_size=max_group_size,
         verbose=state.verbose,
     )
-    if component is None:
+    if result is None:
         return state
+    # A hub parcel is tagged with the same building_cluster_id as its
+    # units here regardless -- the geometry-side hub/unit distinction
+    # only matters to consolidate_condo_cluster_footprints.
+    component, _hub_ids = result
 
     spine[group_id_column] = spine.index.to_series().map(component)
     state.spine = spine
@@ -1831,7 +1835,7 @@ def _cluster_condo_parcels(
     min_group_size: int = 2,
     max_group_size: int = 60,
     verbose: bool = False,
-) -> pd.Series | None:
+) -> tuple[pd.Series, set] | None:
     """Core clustering logic behind :func:`detect_condo_building_clusters`.
 
     Factored out (state-free, operating on any parcel GeoDataFrame) so
@@ -1850,10 +1854,21 @@ def _cluster_condo_parcels(
 
     Returns
     -------
-    pandas.Series or None
-        Cluster id per qualifying parcel, indexed like *parcels* (only
-        member rows present, not the full index); ``None`` if no candidates,
-        no touching pairs, or no qualifying cluster was found.
+    tuple of (pandas.Series, set) or None
+        ``(component, hub_ids)``: *component* is the cluster id per
+        qualifying parcel, indexed like *parcels* (only member rows
+        present, not the full index); *hub_ids* is the subset of that same
+        index classified as a hub/common-area candidate (real, positive
+        ``improvement_value_column`` decides a unit; near-zero land *and*
+        improvement value plus a compact shape decides a hub -- see the
+        ``is_hub_candidate`` test below) -- callers that fall back to a
+        cluster's own parcel geometry (e.g.
+        :func:`~openplaces.io.harmonizer.links.consolidate_condo_cluster_footprints`)
+        must exclude *hub_ids* from that union: a hub's own polygon is the
+        surrounding lot/common area, not part of the building, and is
+        typically an order of magnitude larger than a real unit parcel.
+        ``None`` if no candidates, no touching pairs, or no qualifying
+        cluster was found.
     """
     required = {land_value_column, improvement_value_column, area_column}
     if not required.issubset(parcels.columns):
@@ -1952,13 +1967,14 @@ def _cluster_condo_parcels(
             )
         return None
     component = component[component.isin(qualifying.index)]
+    hub_ids = hub_ids & set(component.index)
 
     if verbose:
         print(
             f'  detect_condo_building_clusters: {len(qualifying):,} building clusters '
             f'covering {len(component):,} parcels.'
         )
-    return component
+    return component, hub_ids
 
 
 @_register('estimate_property_counts')
