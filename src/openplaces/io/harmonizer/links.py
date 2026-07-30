@@ -31,7 +31,7 @@ from openplaces.geo.polygon import (
     resolve_overlapping_polygons,
 )
 from openplaces.io import to_parquet
-from openplaces.io.aggregate import aggregate_rows, read_file_metadata
+from openplaces.io.aggregate import _AGG_ALIASES, aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import (
     HarmonizeState,
@@ -276,7 +276,14 @@ def _link_spatial_overlay(
     area_min_m2 = thresholds.get('area_intersection_m2_min', 10)
     spine_id_col = state.spine.index.name
 
-    ref_raw = get_entities(recipe_id, state.admin_id, geom=True)
+    # missing='warn': a reference recipe can genuinely have zero coverage for
+    # this admin unit (see _link_spatial_point's identical handling) -- an
+    # expected admin-scoped gap, not an error.
+    ref_raw = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
+    if ref_raw is None or len(ref_raw) == 0:
+        if state.verbose:
+            print(f'  Link (overlay): no {recipe_id} for {state.admin_id}; skipping.')
+        return state
     if state.verbose:
         print(
             f'  Link (overlay): {len(ref_raw):,d} {entity_type or "ref"} ({recipe_id})'
@@ -1078,7 +1085,19 @@ def _link_spatial_point(
     use_size_limit: bool = bool(thresholds.get('use_size_limit', False))
     aggregate_mp: bool = bool(thresholds.get('aggregate_multipoint', False))
 
-    ref = get_entities(recipe_id, state.admin_id, geom=True)
+    # missing='warn': a reference recipe (e.g. dwelling-overture-2025) can
+    # genuinely have zero coverage for this admin unit -- many rural U.S.
+    # counties have no Overture address points at all, not merely an
+    # unfinished ingest -- so this is a normal, expected admin-scoped gap,
+    # not an error.
+    ref = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
+    if ref is None or len(ref) == 0:
+        if state.verbose:
+            print(
+                f'  Link ({entity_type or "point"}): no {recipe_id} for '
+                f'{state.admin_id}; skipping.'
+            )
+        return state
     if remap_id:
         ref = remap(ref, remap_id)
     if state.verbose:
@@ -1839,11 +1858,26 @@ def link_by_id(
         # columns without a usable registry rule fall back to the first value.
         # Looked up by the *output* name -- the canonical slot being filled --
         # not the reference's own column name, so a rename (e.g. price ->
-        # last_sale_price) still resolves the right aggregation.
-        reducible = {'sum', 'mean', 'max', 'min', 'first', 'last', 'median'}
+        # last_sale_price) still resolves the right aggregation. 'join_nonnull'
+        # (e.g. address, use_group) is not a pandas groupby function on its
+        # own -- routed through _AGG_ALIASES (the same table aggregate_rows
+        # uses) to concatenate every distinct non-null value instead of
+        # silently degrading to 'first' (an arbitrary row's value, discarding
+        # every other row's -- the original multi-property-per-parcel
+        # collapse bug).
+        reducible = {
+            'sum',
+            'mean',
+            'max',
+            'min',
+            'first',
+            'last',
+            'median',
+            'join_nonnull',
+        }
         for col, out_name in pairs:
             fname = get_agg_func(resolve_attribute_name(out_name))
-            func = fname if fname in reducible else 'first'
+            func = _AGG_ALIASES.get(fname, fname) if fname in reducible else 'first'
             name = f'{out_name}{suffix}' if suffix else out_name
             agg_series = grouped[col].agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
@@ -2273,6 +2307,175 @@ def infer_spine_additions(
         state.timer.mark('Infer')
 
     state.metadata[f'inferred_from_{recipe_id}'] = footprints_from_ref
+    return state
+
+
+@_register('consolidate_condo_cluster_footprints')
+def consolidate_condo_cluster_footprints(
+    state: HarmonizeState,
+    entity_type: str | None = 'parcel',
+    recipe_id: str | None = None,
+    cluster_thresholds: dict | None = None,
+) -> HarmonizeState:
+    """Collapse a stacked-condo building's parcels to one footprint row.
+
+    Runs the same parcel-side clustering as
+    :func:`~openplaces.io.harmonizer.attributes.detect_condo_building_clusters`
+    (the ``'touches'``-adjacency, tiny-unit-parcel pattern), but against the
+    raw parcel reference this footprint spine's own :func:`link_to_reference`
+    step already loaded (``state.references``/``state.crosswalks``) --
+    necessarily a separate pass, not a read of the parcel spine's own output,
+    since the parcel spine's ``summarize_footprint_morphology`` step reads
+    *this* recipe's saved output, and a footprint-spine step reading the
+    parcel spine's output in the same admin run would be circular.
+
+    For each qualifying cluster: unions whatever real footprint geometries
+    are already linked to any of the cluster's parcels (however partial or
+    fragmented -- e.g. two footprints each dominant-linked only to the
+    cluster's own shared common-area parcel, confirmed on real data to
+    otherwise leave most of a 24-unit building's own units with no per-unit
+    footprint credit at all) with the union of the cluster's own parcel
+    geometries (covering the remainder, where no real footprint reaches),
+    and writes **one** new consolidated spine row crosswalked to every
+    parcel in the cluster. The original per-fragment real rows are dropped
+    (superseded), and every cluster parcel's crosswalk entry is rewritten to
+    point at the new row -- so :func:`infer_spine_additions`, which must run
+    *after* this step, correctly treats every cluster parcel as already
+    covered and does not also generate a per-unit synthetic fallback for
+    whichever units the original fragments didn't dominate.
+
+    Explicitly not a goal: preserving a 1:1 unit-to-footprint-row mapping.
+    A condo unit's individual identity is expected to live at the parcel/
+    property layer (``n_properties_per_parcel``, the harmonized property
+    spine), not the footprint layer -- this step deliberately trades away
+    per-unit footprint rows for one geometrically coherent building shape.
+
+    Parameters
+    ----------
+    entity_type : str, optional
+        Selects the crosswalk/reference the same way
+        :func:`infer_spine_additions` does (default ``'parcel'``). Ignored
+        when *recipe_id* is given.
+    recipe_id : str, optional
+        Explicit crosswalk key. Takes precedence over *entity_type*.
+    cluster_thresholds : dict, optional
+        Forwarded to
+        :func:`~openplaces.io.harmonizer.attributes._cluster_condo_parcels`
+        (``max_unit_area_ha``, ``max_hub_area_ha``, ``max_hub_aspect_ratio``,
+        ``min_group_size``, ``max_group_size``) -- same defaults as
+        ``detect_condo_building_clusters``.
+    """
+    if state.spine is None:
+        return state
+
+    if recipe_id is None and entity_type is not None:
+        candidates = list(state.get_crosswalks_by_type(entity_type).keys())
+        if not candidates:
+            if state.verbose:
+                print(
+                    '  consolidate_condo_cluster_footprints: no crosswalk for '
+                    f'entity_type={entity_type!r}; skipping.'
+                )
+            return state
+        recipe_id = candidates[0]
+    if recipe_id is None:
+        return state
+
+    crosswalk = state.crosswalks.get(recipe_id)
+    ref_polys = state.references.get(recipe_id)
+    if crosswalk is None or ref_polys is None:
+        return state
+
+    spine_id_col = state.spine.index.name
+    if spine_id_col is None or spine_id_col not in crosswalk.index.names:
+        return state
+
+    from openplaces.io.harmonizer.attributes import _cluster_condo_parcels
+
+    ref_for_clustering = ref_polys.copy()
+    if 'area_ha' not in ref_for_clustering.columns:
+        ref_for_clustering['area_ha'] = get_areas(ref_for_clustering, 'ha')
+
+    component = _cluster_condo_parcels(
+        ref_for_clustering, verbose=state.verbose, **(cluster_thresholds or {})
+    )
+    if component is None:
+        return state
+
+    spine = state.spine
+    _source_id = source_id_from_recipe_id(recipe_id)
+    _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
+
+    new_rows = []
+    crosswalk_additions = []
+    superseded_spine_ids: set = set()
+    superseded_pair_mask = pd.Series(False, index=crosswalk.index)
+
+    for cluster_pids in component.groupby(component).groups.values():
+        cluster_pids = list(cluster_pids)
+        linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
+        linked_spine_ids = (
+            crosswalk[linked_mask].index.get_level_values(spine_id_col).unique()
+        )
+        real_geoms = (
+            spine.loc[spine.index.intersection(linked_spine_ids), 'geometry']
+            .dropna()
+            .tolist()
+        )
+        parcel_geom = ref_polys.loc[
+            ref_polys.index.intersection(cluster_pids), 'geometry'
+        ].union_all()
+        consolidated = (
+            gpd.GeoSeries(real_geoms + [parcel_geom], crs=spine.crs).union_all()
+            if real_geoms
+            else parcel_geom
+        )
+
+        new_row = add_openlocationcode_index(
+            gpd.GeoDataFrame({'geometry': [consolidated]}, crs=spine.crs),
+            name=spine_id_col,
+        )
+        new_row['geometry_source'] = f'condo_cluster.{_et}.{_source_id}'
+        new_rows.append(new_row)
+        new_id = new_row.index[0]
+
+        for pid in cluster_pids:
+            area_m2 = get_areas(ref_polys.loc[[pid]], 'm2').iloc[0]
+            crosswalk_additions.append(
+                {
+                    spine_id_col: new_id,
+                    'parcel_id': pid,
+                    'link': 'condo cluster',
+                    'area_intersection_m2': area_m2,
+                }
+            )
+        superseded_spine_ids.update(linked_spine_ids)
+        superseded_pair_mask |= linked_mask
+
+    if not new_rows:
+        return state
+
+    state.spine = pd.concat(
+        [spine.drop(index=spine.index.intersection(superseded_spine_ids)), *new_rows]
+    ).sort_index()
+    if state.spine.index.duplicated().any():
+        state.spine = make_index_unique(state.spine, sort_duplicates_by_area=True)
+
+    additions_df = pd.DataFrame(crosswalk_additions).set_index(
+        [spine_id_col, 'parcel_id']
+    )
+    state.crosswalks[recipe_id] = pd.concat(
+        [crosswalk[~superseded_pair_mask], additions_df]
+    ).sort_index()
+
+    if state.verbose:
+        print(
+            f'  consolidate_condo_cluster_footprints: {len(new_rows):,} building '
+            f'clusters consolidated ({len(superseded_spine_ids):,} fragment rows '
+            'replaced).'
+        )
+    if state.timer:
+        state.timer.mark('Consolidate condo clusters')
     return state
 
 

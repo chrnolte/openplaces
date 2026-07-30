@@ -151,7 +151,14 @@ pipeline:
                 values: [Multi Family, Single Family]
           - {type: keyword, column: use_group_combined, pattern: 'CONDO|CONDOMINIUM'}
 
-      # Townhomes: single-footprint structures spanning multiple parcels or containing multiple units.
+      # Townhomes: single-footprint structures genuinely spanning multiple
+      # separately-parceled units (horizontally adjacent, each with its own
+      # parcel) -- max_parcels_per_footprint confirms that separation
+      # directly. max_dwellings_per_footprint alone (multiple confirmed
+      # dwellings on ONE footprint, regardless of how many parcels it spans)
+      # is deliberately excluded here: that pattern is a vertically-stacked
+      # condo/multi-family building on a single parcel, not a townhome --
+      # see Condominium below and the vote-based Multi-Family default.
       - class: Townhome
         min_score: 4
         indicators:
@@ -159,7 +166,6 @@ pipeline:
           - type: any_of
             indicators:
               - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
-              - {type: numeric_at_least, column: max_dwellings_per_footprint, min: 2}
               - {type: keyword, column: use_group_combined, pattern: 'TOWNHOUSE|TOWNHOME|ROW HOUSE|ROW-HOUSE'}
           - type: any_of
             indicators:
