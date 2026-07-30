@@ -644,7 +644,7 @@ _RECIPE_ID_KEY_REGEX = re.compile(r'(^|_)recipe_id$')
 # Pipeline steps whose auto-discovery expands to ALL applicable ingest
 # recipes (mirroring the harmonizer's _expand_auto_discover), rather than
 # the single best match.
-_MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id')
+_MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id', 'union_spine_sources')
 
 
 @cache
