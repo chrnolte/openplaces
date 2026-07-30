@@ -13,7 +13,7 @@ from openplaces.config import cfg
 from openplaces.io import cleanup as cl
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
-NSI = 'US_building-nsi-2022'
+NSI = 'US_building-nsi-2026'
 FOOTPRINT_SPINE = 'US_footprint-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
 COUNTY = 'US-NC-BS'
@@ -70,7 +70,7 @@ def test_receipt_round_trip(data_root):
         ],
     }
     rp = cl.write_receipt(out, receipt)
-    assert rp.name == f'{COUNTY}_building-nsi-2022.consumed.json'
+    assert rp.name == f'{COUNTY}_building-nsi-2026.consumed.json'
     loaded = cl.read_receipt(out)
     assert loaded['format'] == 1
     assert loaded['recipe_id'] == NSI
