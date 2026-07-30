@@ -350,6 +350,42 @@ except importlib.metadata.PackageNotFoundError:
 _UNIT_PREFIXES = r'APT|STE|UNIT|SUITE|APARTMENT|DEPT|RM|ROOM|FL|FLOOR|BLDG|BUILDING|#'
 
 
+# Not simply `\b({_UNIT_PREFIXES})\b` (as used inside _parse_fallback's own
+# regex below): '#' is a non-word character, so a trailing `\b` never
+# matches right after it (`\b` only fires at a word/non-word transition,
+# and both sides of a lone '#' are non-word) -- '#' is matched as a literal
+# preceded by whitespace/start instead, while the word-based prefixes keep
+# their `\b` boundary.
+_UNIT_SUFFIX_RE = re.compile(
+    rf'(?:^|\s)(?:#|(?:{_UNIT_PREFIXES.replace("|#", "")})\b)',
+    flags=re.IGNORECASE,
+)
+
+
+def strip_unit_suffix(addr_str: str) -> str:
+    """Return *addr_str* with a trailing unit designator removed.
+
+    Matches the same unit vocabulary :func:`_parse_fallback` peels off
+    (``APT``, ``UNIT``, ``#``, ...), so a caller can compare two address
+    strings for "same building, different unit" (e.g. deduplicating a
+    condo building's per-unit addresses down to one base address) without
+    a full parse.
+
+    Parameters
+    ----------
+    addr_str : str
+        A one-line address string.
+
+    Returns
+    -------
+    str
+        *addr_str* truncated just before its first unit designator, or the
+        original (whitespace-trimmed) string when none is found.
+    """
+    match = _UNIT_SUFFIX_RE.search(addr_str)
+    return (addr_str[: match.start()] if match else addr_str).strip()
+
+
 @dataclass(frozen=True)
 class ParsedAddress:
     """Structured result of `parse_address`.

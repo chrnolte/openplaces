@@ -36,7 +36,46 @@ def join_nonnull_strings(x):
     return ' + '.join(parts) if parts else None
 
 
+def join_nonnull_addresses(x):
+    """Join non-null address strings, collapsing same-building unit variants.
+
+    Like :func:`join_nonnull_strings`, but first deduplicates by each
+    value's base address (unit designator stripped via
+    :func:`openplaces.geo.address.strip_unit_suffix`) -- a condo/apartment
+    building's per-unit property records otherwise differ only by an
+    APT/UNIT/# suffix, and joining every one of them with ``' + '`` produces
+    a multi-address string that no downstream address parser can split back
+    into a single street/number. Genuinely different base addresses (e.g. a
+    parcel spanning two streets) still join with ``' + '``, unchanged from
+    :func:`join_nonnull_strings`.
+    """
+    from openplaces.geo.address import strip_unit_suffix
+
+    parts = [str(v) for v in x if v is not None and pd.notna(v)]
+    if not parts:
+        return None
+    by_base: dict[str, str] = {}
+    for part in parts:
+        base_key = ' '.join(strip_unit_suffix(part).split()).casefold()
+        by_base.setdefault(base_key, part)
+    return ' + '.join(by_base.values())
+
+
 _AGG_ALIASES = {'join_nonnull': join_nonnull_strings}
+
+
+def _agg_func_for(canonical_name: str, fname: str):
+    """Resolve a registry aggregation name to a concrete callable/name.
+
+    Identical to a plain ``_AGG_ALIASES.get(fname, fname)`` lookup, except
+    *address* gets :func:`join_nonnull_addresses` instead of the plain
+    :func:`join_nonnull_strings` every other ``'join_nonnull'`` column
+    (e.g. ``use_group``) still uses -- see that function's docstring for
+    why a plain string join corrupts a multi-unit building's address.
+    """
+    if fname == 'join_nonnull' and canonical_name == 'address':
+        return join_nonnull_addresses
+    return _AGG_ALIASES.get(fname, fname)
 
 
 def _has_default_index(df) -> bool:
@@ -123,10 +162,10 @@ def aggregate_rows(
             agg_cols[col] = aggregation_function
         elif isinstance(aggregation_function, dict):
             agg_cols[col] = aggregation_function.get(
-                col, _AGG_ALIASES.get(fname, fname)
+                col, _agg_func_for(resolve_attribute_name(col), fname)
             )
         else:
-            agg_cols[col] = _AGG_ALIASES.get(fname, fname)
+            agg_cols[col] = _agg_func_for(resolve_attribute_name(col), fname)
 
     for col in list_columns or []:
         if col not in df.columns:
