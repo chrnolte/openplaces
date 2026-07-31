@@ -1,0 +1,105 @@
+# Recipe to import the Florida Department of Revenue's SDF sales data
+
+description: >-
+  Florida Department of Revenue Sales Data File (SDF), the state's raw
+  annual real property transaction extract (2026 schema vintage).
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US-FL
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: transaction
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: fldor
+    portal_url: "https://floridarevenue.com/property/Pages/DataPortal_RequestAssessmentRollGISData.aspx"
+    # No download_url: historical SDF files are obtained by request, not
+    # from a stable public URL (same PTO Data Library as the NAL property
+    # recipe). Place `{year}F.zip` into this recipe's external-file cache
+    # manually; a year without a local file is skipped with a warning
+    # rather than raising (see `download_by`).
+  version: 2026
+
+# One download partition per year. Each partition is a single statewide zip
+# containing all 67 counties' files, already split one CSV per county.
+# Earliest available year is 2010 (unlike the NAL roll, which goes back to
+# 2002 -- SDF sales history is not published that far back).
+download_by:
+  partition: year
+  first: 2010
+  last: 2026
+
+compressed_file_name: "{year}F.zip"
+# The zip's single common top-level folder (e.g. "2010F/") is stripped on
+# extraction (see io.unzip's strip-prefix behavior), so all 67 counties'
+# files land flat under the heap directory. Alachua (CO_NO 11) is always
+# present -- its presence is the "already unzipped" signal for the whole
+# (multi-county) partition.
+uncompressed_file_name: "SDF_{year}_11Alachua_F.csv"
+
+# Each county already has its own file inside the shared unzip, so it's
+# resolved per admin unit by file_pattern instead of splitting one file by
+# an in-data admin_id_column. `{partition_id}` is the current download
+# partition's id (the year); `{admin3_id_admin2}` is this admin unit's raw
+# code, looked up from admin_id_crosswalk (matches the crosswalk's own
+# value-column name -- see TableIngester._resolve_file_pattern_path). The
+# trailing `*` absorbs the county name spelling in the real filename
+# (e.g. `SDF_2010_11Alachua_F.csv`).
+process_by:
+  admin_level: 3
+  file_pattern: "SDF_{partition_id}_{admin3_id_admin2}*_F.csv"
+  admin_id_crosswalk:
+    # Reuse floridagio's existing CO_NO -> admin3_id crosswalk (same DOR
+    # county-numbering system as the NAL property recipe).
+    recipe_id: "US-FL_parcel-floridagio-2026_admin3-crosswalk"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  parcel_id_assessor: PARCEL_ID
+  tax_year: ASMNT_YR
+  tax_use_subgroup: ATV_STRT
+  value_group: GRP_NO
+  use_group_code: DOR_UC
+  tax_neighborhood_code: NBRHD_CD
+  tax_market_area: MKT_AR
+  census_block_id: CENSUS_BK
+  transaction_id_source: SALE_ID_CD
+  sale_change_code: SAL_CHG_CD
+  sale_vacant: VI_CD
+  sale_book: OR_BOOK
+  sale_page: OR_PAGE
+  sale_clerk_instrument: CLERK_NO
+  sale_qualification_code: QUAL_CD
+  sale_year: SALE_YR
+  sale_month: SALE_MO
+  price: SALE_PRC
+  sale_multi_parcel: MULTI_PAR_SAL
+  submission_id: RS_ID
+  parcel_id_admin2_2: MP_ID
+  parcel_id_admin2: STATE_PAR_ID
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - tax_use_subgroup
+  - use_group_code
+  - sale_change_code
+  - sale_vacant
+  - sale_qualification_code
+  - sale_multi_parcel
+
+# Standardized cross-comparable matching key from the raw DOR parcel id --
+# links to US-FL_property-fldor-2026 and US-FL_parcel-floridagio-2026 (same
+# DOR PARCEL_ID system).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+# Integrate each county's per-year files into one dataset-wide _all.parquet
+# and delete them; the file's footer records the ingested years so re-runs
+# skip them. Matches US-WI_transaction-widor-2026's convention -- lets the
+# shared ingest_transactions.ipynb "Inspect output" cell load a recipe's
+# full history with a plain get_entities() call (no explicit partition_id).
+aggregate_by:
+  single_file: true

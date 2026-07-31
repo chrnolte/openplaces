@@ -677,9 +677,11 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     """Standardize raw parcel ids into a matching key via a conversion code.
 
     Implements only the operations seen in the auto-selected best solutions:
-    ``simple`` (keep alphanumerics), ``no_conv``, ``string_lengths``,
-    ``split_groups``, ``drop_cols``, ``keep_length``, ``fill_zeros``,
-    ``switch``, ``merge_after``, ``max_length``, ``join_char``, ``skip_empty``.
+    ``simple`` (keep alphanumerics), ``pipe`` (keep alphanumerics, but
+    replace each run of separator characters with ``|`` instead of deleting
+    it), ``no_conv``, ``string_lengths``, ``split_groups``, ``drop_cols``,
+    ``keep_length``, ``fill_zeros``, ``switch``, ``merge_after``,
+    ``max_length``, ``join_char``, ``skip_empty``.
 
     Parameters
     ----------
@@ -687,10 +689,12 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
         Raw parcel identifiers (``parcel_id_assessor``).
     pattern : str, optional
         Pattern name (in ``parcel_id_patterns.csv``) or a raw ``^...$`` regex
-        with capture groups. Ignored when ``string_lengths`` is in the code.
+        with capture groups. Ignored when ``string_lengths`` is in the code,
+        or when ``conv_code`` is ``'simple'`` or ``'pipe'`` (both act on the
+        whole string without a pattern).
     conv_code : str
         Conversion code, e.g. ``'string_lengths: 2 2 3 & skip_empty: 1'`` or
-        the bare ``'simple'`` / ``'no_conv'``.
+        the bare ``'simple'`` / ``'pipe'`` / ``'no_conv'``.
 
     Returns
     -------
@@ -701,6 +705,14 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
     s = series.astype('string').str.strip().str.upper()
     if conv_code == 'simple':
         out = s.str.replace(r'[^0-9A-Z]', '', regex=True)
+        return out.where(out.ne(''), pd.NA)
+    if conv_code == 'pipe':
+        # Less lossy than 'simple': collapsing every separator run to '|'
+        # (rather than deleting it) keeps segment boundaries and leading
+        # zeros significant, so two raw ids that only match after 'simple'
+        # strips their punctuation (e.g. '1-23' and '12-3', both 'simple'
+        # -> '123') stay distinct here ('1|23' vs '12|3').
+        out = s.str.replace(r'[^0-9A-Z]+', '|', regex=True).str.strip('|')
         return out.where(out.ne(''), pd.NA)
 
     p = _conv_dict(conv_code)

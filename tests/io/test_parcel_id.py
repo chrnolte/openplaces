@@ -24,6 +24,26 @@ def test_simple_keeps_alphanumeric_uppercase():
     assert pd.isna(out.iloc[2])
 
 
+def test_pipe_replaces_separators_instead_of_deleting():
+    s = pd.Series(['00015 002 000', '00015-002-000', None])
+    out = convert_parcel_id(s, conv_code='pipe')
+    assert out.iloc[0] == '00015|002|000'
+    assert out.iloc[1] == '00015|002|000'  # space and dash both normalize to '|'
+    assert pd.isna(out.iloc[2])
+
+
+def test_pipe_keeps_ids_distinct_that_simple_would_collapse():
+    # '1-23' and '12-3' both strip to '123' under 'simple', colliding two
+    # otherwise-distinct raw ids; 'pipe' keeps the segment boundary.
+    s = pd.Series(['1-23', '12-3'])
+    simple_out = convert_parcel_id(s, conv_code='simple')
+    pipe_out = convert_parcel_id(s, conv_code='pipe')
+    assert simple_out.iloc[0] == simple_out.iloc[1] == '123'
+    assert pipe_out.iloc[0] == '1|23'
+    assert pipe_out.iloc[1] == '12|3'
+    assert pipe_out.iloc[0] != pipe_out.iloc[1]
+
+
 def test_string_lengths_skip_empty():
     out = convert_parcel_id(
         pd.Series(['00123456789']), None, 'string_lengths: 3 3 5 & skip_empty: 1'
