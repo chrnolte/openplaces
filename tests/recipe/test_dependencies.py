@@ -23,10 +23,10 @@ def test_footprint_spine_literal_edges():
     upstream = _upstream_ids(edges)
     assert 'footprint-obm-2025' in upstream
     assert 'US_footprint-microsoft-v2' in upstream
-    assert 'US_building-nsi-2022' in upstream
+    assert 'US_building-nsi-2026' in upstream
     assert 'dwelling-overture-2025' in upstream
     # Value crosswalks are not data dependencies
-    assert 'US_building-nsi-2022_occupancy-type-remap' not in upstream
+    assert 'US_building-nsi-2026_occupancy-type-remap' not in upstream
 
 
 def test_footprint_spine_auto_discover_unresolved_without_admin():

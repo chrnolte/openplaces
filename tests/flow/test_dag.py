@@ -27,7 +27,7 @@ def test_nodes_cover_the_worked_example(dag):
     assert by_id['US_parcel-openplaces-2026'].stage == 'curate'
     # Ingest inputs (literal + auto-discovered for the county)
     for recipe_id in (
-        'US_building-nsi-2022',
+        'US_building-nsi-2026',
         'footprint-obm-2025',
         'US_footprint-microsoft-v2',
         'dwelling-overture-2025',
@@ -65,7 +65,7 @@ def test_input_paths_of_curate_include_spine_and_sidecar(dag):
 
 
 def test_retention_classes(dag):
-    assert dag.retention('ingest', 'US_building-nsi-2022') == 'until_consumed'
+    assert dag.retention('ingest', 'US_building-nsi-2026') == 'until_consumed'
     assert dag.retention('harmonize', 'US_footprint-spine-2026') == 'keep'
     assert dag.retention('ingest', 'image-googlestreetview-2026') == ('until_consumed')
     assert dag.retention('curate', TARGET) == 'keep'

@@ -1,0 +1,10 @@
+style_key,entity_type,source,role,template_layer_name,group_path,default_visible,priority,variant_of,variant_label,notes,dynamic_categorize_attr
+test-output,footprint,,output,proto_output,Curated,true,0,,,Joined attr/geo output prototype.,
+test-output-by-roof-shape,footprint,,output,proto_output_by_roof_shape,Curated,false,2,test-output,Roof shape,Column-variant prototype joined to proto_output_attr_id.,
+test-output-combined,parcel,,output,proto_output_combined,Curated,true,1,,,Single-file combined output prototype (no attr sibling).,
+test-output-combined-by-zone,parcel,,output,proto_output_combined_by_zone,Curated,false,3,test-output-combined,Zone,Combined-spec column-variant prototype; no join (attrs already on the geometry).,
+test-input,footprint,obm,input,proto_input,Inputs,false,10,,,Joined attr/geo input prototype.,
+test-admin,admin,,admin,proto_admin,Admin,true,20,,,Joined attr/geo admin boundary prototype.,
+test-dynamic-cat,footprint,dynamiccat,output,proto_dynamic_cat,Curated,true,4,,,Combined prototype with a categorized-symbol renderer to regenerate from real data.,conflict_field
+basemap-open,,,basemap,proto_basemap,Basemaps,true,90,,,Always-kept basemap prototype.,
+_fallback,,,static,proto_fallback,,false,999,,,Reserved generic fallback prototype.,

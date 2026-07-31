@@ -135,7 +135,13 @@ class TableIngester:
         suffix = self._mark_suffix(admin_id_to_process, partition_id)
 
         read_kwargs = {}
-        if process_in_chunks:
+        data_path_override = None
+        file_pattern = (self.recipe.get('process_by') or {}).get('file_pattern')
+        if process_in_chunks and file_pattern:
+            # Some sources (e.g. FL DOR's NAL rolls) ship one file per admin
+            # unit already, rather than one shared file to split by FID.
+            data_path_override = self._resolve_file_pattern_path(file_pattern)
+        elif process_in_chunks:
             if bbox is not None:
                 read_kwargs['bbox'] = bbox
             else:
@@ -145,7 +151,9 @@ class TableIngester:
                     fids_series[fids_series.eq(admin_id_to_process)].index
                 )
 
-        gdf = self._read_recipe_data(**read_kwargs)
+        gdf = self._read_recipe_data(
+            data_path_override=data_path_override, **read_kwargs
+        )
 
         if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
             gdf = reproject(gdf, cfg.crs)
@@ -185,6 +193,69 @@ class TableIngester:
         self.download_partition['admin_id_crosswalk'] = get_crosswalk(
             admin_id_crosswalk_dict, flip=True
         )
+
+    def _prepare_reverse_admin_id_crosswalk(self):
+        """Build crosswalk from AdminIds to source admin column values.
+
+        The inverse of :meth:`_prepare_admin_id_crosswalk`: needed by
+        ``process_by.file_pattern`` resolution, which looks up the raw
+        per-admin code for the *current* processing admin unit to format
+        into a filename, rather than mapping a column of raw codes found in
+        the data to AdminIds.
+        """
+        process_by = self.recipe.get('process_by', {})
+        if 'admin_id_crosswalk' not in process_by:
+            raise ValueError('No crosswalk recipe found in process_by.')
+        admin_id_crosswalk_dict = dict(process_by['admin_id_crosswalk'])
+        admin_id_crosswalk_dict['admin_id'] = self.download_partition[
+            'admin_id_to_download'
+        ]
+        self.download_partition['admin_id_crosswalk_reverse'] = get_crosswalk(
+            admin_id_crosswalk_dict, flip=False
+        )
+
+    def _resolve_file_pattern_path(self, file_pattern: str) -> Path:
+        """Resolve the per-admin-unit source file named by a file pattern.
+
+        Some sources (e.g. FL DOR's NAL rolls) ship one already-split file
+        per admin unit inside a single shared download, rather than one
+        file with an in-data admin column to filter rows by.
+        ``process_by.file_pattern`` names that file relative to the
+        recipe's heap directory, with ``{partition_id}`` substituted for
+        the current download partition id and the crosswalk's raw-code
+        column name (e.g. ``{admin3_id_admin2}``) substituted for this
+        admin unit's code, looked up via :meth:`_prepare_reverse_admin_id_crosswalk`.
+        Any remaining glob wildcards (e.g. a trailing ``*``) absorb parts
+        of the filename that vary independently of the admin code (e.g.
+        the county name spelling).
+
+        Parameters
+        ----------
+        file_pattern : str
+            Pattern from ``process_by.file_pattern``, relative to
+            :attr:`recipe_heap_dir`.
+        """
+        if 'admin_id_crosswalk_reverse' not in self.download_partition:
+            self._prepare_reverse_admin_id_crosswalk()
+        reverse_crosswalk = self.download_partition['admin_id_crosswalk_reverse']
+
+        admin_id_to_process = self.processing_chunk['admin_id_to_process']
+        raw_code = reverse_crosswalk.loc[admin_id_to_process]
+
+        pattern = file_pattern.replace(
+            '{partition_id}',
+            str(self.download_partition.get('partition_id_to_download')),
+        )
+        pattern = pattern.replace('{' + reverse_crosswalk.name + '}', str(raw_code))
+
+        matches = list(self.recipe_heap_dir.glob(pattern))
+        if len(matches) != 1:
+            raise ValueError(
+                f"process_by.file_pattern '{pattern}' matched {len(matches)} "
+                f'files under {self.recipe_heap_dir} for {admin_id_to_process} '
+                '(expected exactly 1):\n' + '\n'.join(str(m) for m in matches)
+            )
+        return matches[0]
 
     def _prepare_table_fid_filter(self):
         """Build FID → admin_id mapping for this table's layer.
@@ -272,13 +343,19 @@ class TableIngester:
 
     # Read
 
-    def _read_recipe_data(self, columns=None, **kwargs):
+    def _read_recipe_data(self, columns=None, data_path_override=None, **kwargs):
         """Read data from the resolved data path for this table's layer.
 
         Parameters
         ----------
         columns : list, optional
             Column names to read. Enables lightweight reads for FID prep.
+        data_path_override : Path, optional
+            Read from this path instead of ``download_partition['data_path']``,
+            without mutating the shared partition state. Used by
+            ``process_by.file_pattern`` (see :meth:`_resolve_file_pattern_path`),
+            where each admin unit within the same download partition reads a
+            different physical file.
         kwargs : dict
             Passed to the underlying reader (e.g. fids, bbox,
             read_geometry, fid_as_index).
@@ -299,7 +376,7 @@ class TableIngester:
             timer_suffix = ''
 
         layer = self.recipe.get('layer')
-        data_path = self.download_partition['data_path']
+        data_path = data_path_override or self.download_partition['data_path']
 
         if data_path.suffix == '.parquet':
             if 'fids' in kwargs:

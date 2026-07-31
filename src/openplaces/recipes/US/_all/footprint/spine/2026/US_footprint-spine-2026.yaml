@@ -78,10 +78,10 @@ pipeline:
   - step: resolve_overlaps
 
   - step: link_to_reference
-    recipe_id: US_building-nsi-2022
+    recipe_id: US_building-nsi-2026
     source_geometry_type: single_building_point
     join: spatial_point
-    remap_id: US_building-nsi-2022_occupancy-type-remap
+    remap_id: US_building-nsi-2026_occupancy-type-remap
     thresholds:
       proximity_m: 10
       far_proximity_m: 100
@@ -122,7 +122,7 @@ pipeline:
           - address_number
           - postal_code
           - city
-      - recipe_id: US_building-nsi-2022
+      - recipe_id: US_building-nsi-2026
         collect_ids: true
         columns:
           - occupancy_type

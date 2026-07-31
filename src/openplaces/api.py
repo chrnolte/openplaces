@@ -24,6 +24,7 @@ _SOURCES = {
     'cleanup': 'openplaces.io.cleanup:cleanup',
     'compact': 'openplaces.io.cleanup:compact',
     'inspect_table': 'openplaces.utils:inspect_table',
+    'export_qgis_map': 'openplaces.viz.qgis_map:export_qgis_map',
 }
 
 __all__ = list(_SOURCES)

@@ -1,0 +1,101 @@
+code,label
+0,Vacant Residential
+1,Single Family
+2,Mobile Homes
+3,Multi-family - 10 units or more
+4,Condominiums
+5,Cooperatives
+6,Retirement Homes not eligible for exemption
+7,Miscellaneous Residential
+8,Multi-family - fewer than 10 units
+9,Residential Common Elements/Areas
+10,Vacant Commercial
+11,"Stores, one story"
+12,Mixed use - store and office or store and residential combination
+13,Department Stores
+14,Supermarkets
+15,Regional Shopping Centers
+16,Community Shopping Centers
+17,"Office buildings, non-professional service buildings, one story"
+18,"Office buildings, non-professional service buildings, multi-story"
+19,Professional service buildings
+20,"Airports, bus terminals, marine terminals, piers, marinas"
+21,"Restaurants, cafeterias"
+22,Drive-in Restaurants
+23,Financial institutions
+24,Insurance company offices
+25,Repair service shops (excluding automotive)
+26,Service stations
+27,"Auto sales, auto repair and storage, and related services"
+28,"Parking lots, mobile home parks"
+29,"Wholesale outlets, produce houses, manufacturing outlets"
+30,"Florists, greenhouses"
+31,"Drive-in theaters, open stadiums"
+32,"Enclosed theaters, enclosed auditoriums"
+33,"Nightclubs, cocktail lounges, bars"
+34,"Bowling alleys, skating rinks, pool halls, enclosed arenas"
+35,Tourist attractions and other entertainment facilities
+36,Camps
+37,"Race tracks (horse, auto, or dog)"
+38,"Golf courses, driving ranges"
+39,"Hotels, motels"
+40,Vacant Industrial
+41,Light manufacturing and small equipment manufacturing plants
+42,Heavy industrial and heavy equipment manufacturing
+43,"Lumber yards, sawmills, planing mills"
+44,Packing plants
+45,"Canneries, bottlers and brewers, distilleries, wineries"
+46,Other food processing
+47,Mineral processing
+48,"Warehousing, distribution terminals, trucking terminals"
+49,Open storage
+50,Improved agricultural
+51,Cropland soil capability Class I
+52,Cropland soil capability Class II
+53,Cropland soil capability Class III
+54,Timberland - site index 90 and above
+55,Timberland - site index 80 to 89
+56,Timberland - site index 70 to 79
+57,Timberland - site index 60 to 69
+58,Timberland - site index 50 to 59
+59,Timberland not classified by site index to Pines
+60,Grazing land soil capability Class I
+61,Grazing land soil capability Class II
+62,Grazing land soil capability Class III
+63,Grazing land soil capability Class IV
+64,Grazing land soil capability Class V
+65,Grazing land soil capability Class VI
+66,"Orchard groves, citrus, etc."
+67,"Poultry, bees, tropical fish, rabbits, etc."
+68,"Dairies, feed lots"
+69,"Ornamentals, miscellaneous agricultural"
+70,"Vacant Institutional, with or without extra features"
+71,Churches
+72,Private schools and colleges
+73,Privately owned hospitals
+74,Homes for the aged
+75,"Orphanages, other non-profit or charitable services"
+76,"Mortuaries, cemeteries, crematoriums"
+77,"Clubs, lodges, union halls"
+78,"Sanitariums, convalescent and rest homes"
+79,"Cultural organizations, facilities"
+80,Vacant Governmental
+81,Military
+82,"Forest, parks, recreational areas"
+83,Public county schools
+84,Colleges (non-private)
+85,Hospitals (non-private)
+86,Counties (other than public schools/colleges/hospitals)
+87,State (other than military/forests/parks/colleges/hospitals)
+88,Federal (other than military/forests/parks/hospitals/colleges)
+89,Municipal (other than parks/recreational areas/colleges/hospitals)
+90,Leasehold interests
+91,"Utility, gas and electricity, telephone and telegraph, railroads, water/sewer, pipelines, canals, radio/television"
+92,"Mining lands, petroleum lands, or gas lands"
+93,Subsurface rights
+94,"Right-of-way, streets, roads, irrigation channel, ditch, etc."
+95,"Rivers and lakes, submerged lands"
+96,"Sewage disposal, solid waste, borrow pits, drainage reservoirs, waste land, marsh, sand dunes, swamps"
+97,Outdoor recreational or parkland or high-water recharge (classified use)
+98,Centrally assessed
+99,Acreage not zoned agricultural

@@ -1,0 +1,10 @@
+code,label
+F,Federal
+S,State
+C,"County, County School District"
+M,Municipal/City/Town
+D,Special Taxing Districts/Authorities
+W,Water management districts
+T,State of Florida TIITF
+R,Railroad Owned (locally assessed)
+P,Other public land

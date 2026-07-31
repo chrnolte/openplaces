@@ -1,0 +1,41 @@
+occupancy_type,group,n_dwellings,has_basement
+"Single Family, 1 story, no basement",Single Family,1,FALSE
+"Single Family, 1 story, with basement",Single Family,1,TRUE
+"Single Family, 2 story, no basement",Single Family,1,FALSE
+"Single Family, 2 story, with basement",Single Family,1,TRUE
+"Single Family, 3 story, no basement",Single Family,1,FALSE
+"Single Family, 3 story, with basement",Single Family,1,TRUE
+"Single Family, split-level, no basement",Single Family,1,FALSE
+"Single Family, split-level, with basement",Single Family,1,TRUE
+Manufactured Home,Manufactured Home,1,
+"Multi-Family, 2 units",Multi Family,2,
+"Multi-Family, 3-4 units",Multi Family,3.5,
+"Multi-Family, 5-10 units",Multi Family,7,
+"Multi-Family, 10-19 units",Multi Family,14.5,
+"Multi-Family, 20-50 units",Multi Family,35,
+"Multi-Family, 50 plus units",Multi Family,51,
+Hotel,Hotel,,
+Institutional Dormitory,Institutional Dormitory,,
+Nursing Home,Nursing Home,,
+Retail,Retail,,
+Wholesale,Wholesale,,
+Personal & Repair Services,Personal & Repair Services,,
+Professional Technical Services,Professional Technical Services,,
+Bank,Bank,,
+Hospital,Hospital,,
+Medical Office,Medical Office,,
+Entertainment/Recreation,Entertainment/Recreation,,
+Theater,Theater,,
+Garage,Garage,,
+Heavy Industrial,Heavy Industrial,,
+Light Industrial,Light Industrial,,
+Food/Drug/Chemical,Food/Drug/Chemical,,
+Metals/Minerals processing,Metals/Minerals processing,,
+High Technology,High Technology,,
+Construction,Construction,,
+Agricultural,Agricultural,,
+Church,Church,,
+Government Services,Government Services,,
+Emergency Response,Emergency Response,,
+Average School,Average School,,
+College/University,College/University,,

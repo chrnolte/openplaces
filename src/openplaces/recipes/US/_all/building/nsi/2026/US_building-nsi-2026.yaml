@@ -1,0 +1,139 @@
+# Recipe to import USACE's National Structure Inventory (2026)
+
+description: >-
+  USACE National Structure Inventory (NSI) 2026 building points with occupancy and value
+  attributes.
+
+# Administrative unit identifier of the highest administrative geography
+# that the dataset covers (single files can cover a lower admin level)
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: building
+   # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: nsi
+    # Link to portal with metadata
+    portal_url: "https://www.hec.usace.army.mil/confluence/nsi"
+    # The bulk Download Tool (nsi.sec.usace.army.mil/downloads/) does not yet
+    # serve 2026 data (only nsi_2022_*.gpkg.zip exists there as of this
+    # writing). USACE's own guidance for 2026 access points to LSRI, DST,
+    # LST, or LifeSim, but none of those are bulk-download utilities: LSRI
+    # needs an approved USACE login, DST/LST are dam/levee screening tools,
+    # and LifeSim is desktop life-loss-modeling software that consumes NSI
+    # data rather than exporting it. This instead queries the public NSI
+    # REST API directly, which requires no authentication and already
+    # serves 2026 data (verified live: fields such as fullrep, depindex,
+    # creprcnt, novehprob only exist in the 2026 schema). `fips` accepts a
+    # 5-digit county FIPS code; `fmt=fc` (the default) returns a standard
+    # GeoJSON FeatureCollection.
+    download_url: "https://nsi.sec.usace.army.mil/nsiapi/structures?fips={admin3_id_admin1}&fmt=fc"
+  version: 2026
+
+# Name of downloaded file (set to skip re-downloading). Not actually
+# compressed -- the API returns GeoJSON directly -- but naming it here
+# still lets the Ingester skip re-downloading an existing file, and the
+# non-archive suffix (.geojson) means no unzip step is attempted.
+compressed_file_name: "nsi_2026_{admin3_id_admin1}.geojson"
+
+# How is the download data partitioned?
+# County (not state, unlike the 2022 recipe): a whole-state API response can
+# run into the multi-GB range (e.g. Los Angeles County alone returned ~2GB),
+# so county keeps each request's payload manageable and independently
+# retryable. Because download_by and save_to are both admin_level 3, no
+# process_by/admin_id_crosswalk split step is needed -- each downloaded
+# county file is saved as a single chunk.
+download_by:
+  admin_level: 3
+
+# Columns: `openplaces` variable name -> variable name in imported table
+columns:
+  building_id_nsi: fd_id
+  purpose_group: st_damcat
+  occupancy_type: occtype
+  n_stories: num_story
+  area_sqft: sqft
+  construction_type: bldgtype
+  foundation_type: found_type
+  foundation_height_ft: found_ht
+  ground_elevation_m: grnd_elv_m
+  ground_elevation_ft: ground_elv
+  structure_value: val_struct
+  content_value: val_cont
+  vehicle_value: val_vehic
+  flood_zone: firmzone
+  flood_zone_subtype: zone_sub
+  flood_base_elevation_ft: static_bfe
+  year_built_block_median: med_yr_blt
+  n_people_night_lt65: pop2amu65
+  n_people_night_gt65: pop2amo65
+  n_people_day_lt65: pop2pmu65
+  n_people_day_gt65: pop2pmo65
+  perc_people_cnty_lt65_disabled: u65disable
+  perc_people_cnty_gt65_disabled: o65disable
+  n_students_school: students
+  census_block_id: cbfips
+  source: source
+  building_id_ubid: bid
+  footprint_id: ftprntid
+  footprint_source: ftprntsrc
+  # New in 2026 (not part of the 2022 public schema):
+  n_dwellings: resunits
+  footprint_area_sqft: ftprntsqft
+  height: bldheight
+  building_id_usastructures: usastrucid
+  n_people_ornl_median: ornl_med
+  n_people_ornl_low: ornl_low
+  n_people_ornl_high: ornl_hgh
+  perc_households_no_vehicle: novehprob
+  n_vehicles_per_household: vehperunit
+  perc_vehicles_low_clearance_state: pctlowclr
+  structure_value_full: fullrep
+  depreciation_index_percentile: depindex
+  perc_households_cre_vulnerable: creprcnt
+  cre_vulnerability_percentile: crerank
+
+# x/y raw coordinate properties from the API response are intentionally
+# left unmapped: geopandas already builds the geometry column from each
+# GeoJSON feature's Point geometry.
+
+transformations:
+  # Get county FIPS identifier: first 5 characters of census_block_id
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: census_block_id
+    args:
+      start: 0
+      end: 5
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - purpose_group
+  - occupancy_type
+  - construction_type
+  - foundation_type
+  - source
+  - footprint_source
+  - flood_zone_subtype
+
+# Translate `admin_id` information from source to `openplaces` admin_ids.
+# Also acts as a data-quality filter: structures whose census block FIPS
+# doesn't match the queried county (possible at query boundaries) are
+# dropped by the inner join.
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-census-2021_admin3"
+
+# Set the index from an existing column
+set_index: building_id_nsi
+
+save_to:
+  data_dir: cache
+  # Split output into per-admin-unit files at this level
+  # (1: state, 2: county, 3: town etc.)
+  # Column adminX_id must exist in the pre-processed data.
+  admin_level: 3

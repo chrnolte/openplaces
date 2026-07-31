@@ -1,0 +1,13 @@
+code,label
+1,Residential (one primary living unit)
+2,Retirement homes and 2-9 unit residential
+3,Non-homestead agricultural and other use-valued property
+4,Vacant and miscellaneous residential
+5,Non-agricultural acreage and other undeveloped parcels
+6,Improved commercial and industrial property
+7,Taxable institutional/governmental/utility/railroad/mineral land
+9,Homestead agricultural
+10,Government/institutional use codes where taxable value is $0
+11,New construction greater than just value
+12,New construction greater than assessed value (agricultural)
+13,Residential common area/elements

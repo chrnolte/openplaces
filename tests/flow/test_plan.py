@@ -15,7 +15,7 @@ from openplaces.recipe import get_output_path
 
 TARGET = 'US_footprint-cheer-2026'
 SPINE = 'US_footprint-spine-2026'
-NSI = 'US_building-nsi-2022'
+NSI = 'US_building-nsi-2026'
 COUNTY = 'US-NC-BS'
 
 

@@ -196,10 +196,10 @@ pipeline:
   # Attach the modal NSI building group per parcel (group_building_nsi), the
   # linked-data signal the parcel land-use classifier votes on.
   - step: link_to_reference
-    recipe_id: US_building-nsi-2022
+    recipe_id: US_building-nsi-2026
     source_geometry_type: single_building_point
     join: spatial_point
-    remap_id: US_building-nsi-2022_occupancy-type-remap
+    remap_id: US_building-nsi-2026_occupancy-type-remap
     thresholds:
       proximity_m: 10
       far_proximity_m: 100
@@ -212,7 +212,7 @@ pipeline:
 
   - step: reconcile_attributes
     sources:
-      - recipe_id: US_building-nsi-2022
+      - recipe_id: US_building-nsi-2026
         # structure_value is required: reconcile picks each parcel's dominant NSI
         # group by summed structure value, so group_building_nsi needs both.
         columns:

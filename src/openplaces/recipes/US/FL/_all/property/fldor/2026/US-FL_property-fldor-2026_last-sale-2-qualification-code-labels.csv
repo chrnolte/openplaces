@@ -1,0 +1,34 @@
+code,label
+1,Qualified arm's length - deed/instrument examination
+2,Qualified arm's length - documented evidence
+3,Qualified but excluded - physical/legal characteristics changed after transfer
+4,Qualified but excluded - legal characteristics changed after transfer
+5,Qualified - multiple parcels with multiple parcel IDs
+6,Qualified - single parcel crossing county lines
+11,Disqualified - corrective/quit claim/tax deed or minimal stamps
+12,Disqualified - transfer to/from financial institution or in lieu of foreclosure
+13,Disqualified - cemetery lots or parcels
+14,Disqualified - reservation of occupancy over 90 days (life estate)
+15,Removed - not currently accepted
+16,Disqualified - conveys less than 100% undivided interest
+17,Disqualified - transfer to/from religious/charitable/benevolent entity
+18,Disqualified - transfer to/from government agency
+19,Disqualified - transfer to/from bankruptcy trustee/administrator/executor/guardian/receiver
+20,Disqualified - transfer to/from utility company
+21,Disqualified - contract or agreement for deed
+30,Disqualified - transfer between relatives or corporate affiliates
+31,Disqualified - trade or exchange of land
+32,Disqualified - abnormal time between contract and sale date
+33,Disqualified - incomplete or unbuilt common property
+34,Disqualified - satisfied payment in full of prior property contract
+35,Disqualified - atypical amounts of personal property
+36,Disqualified - atypical costs of sale
+37,Disqualified - atypical market exposure or motivation/knowledge of participants
+38,Disqualified - forced transfer or under duress
+39,Disqualified - consideration differs from documentary stamps
+40,Disqualified - significantly influenced by non-market financing or lease assumption
+41,"Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)"
+42,Disqualified - mortgage fraud per law enforcement notification
+43,Disqualified - allocated price as part of a package or bulk transaction
+98,Pending - unable to process because of transfer instrument errors
+99,"Pending - recorded/discovered in previous 90 days, qualification decision pending"
