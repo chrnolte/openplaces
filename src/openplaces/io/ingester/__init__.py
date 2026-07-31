@@ -1192,13 +1192,39 @@ class Ingester:
                     print(f'Processing {self._recipe_id()} for {target}:')
                 self._process_recipe_data(admin_id_to_process)
 
-        # Delete unzipped files in heap folder
-        if not keep_unzipped and self.download_partition['data_path'].is_relative_to(
-            self.recipe_heap_dir
-        ):
-            if self.verbose:
-                print('Deleting unzipped data.')
-            delete_data(self.download_partition['data_path'])
+        # Delete unzipped files in heap folder. A process_by.file_pattern
+        # recipe reads a different physical file per admin unit (see
+        # TableIngester._resolve_file_pattern_path), but download_partition
+        # ['data_path'] stays pinned to the single sentinel file used for
+        # the "already unzipped" check -- deleting only that path would
+        # leave every other admin unit's file behind forever. Delete every
+        # file matching this partition instead, regardless of which admin
+        # subset was actually requested (the source zip stays on disk, so a
+        # later run touching a different admin unit just re-extracts).
+        if not keep_unzipped:
+            process_by = self.recipe.get('process_by') or {}
+            if process_by.get('file_pattern'):
+                partition_glob = process_by['file_pattern'].replace(
+                    '{partition_id}',
+                    str(self.download_partition.get('partition_id_to_download')),
+                )
+                partition_glob = re.sub(r'\{[^}]+\}', '*', partition_glob)
+                # Collapse any '**' created by a placeholder substitution
+                # landing next to a literal '*' in the pattern (e.g. an
+                # admin-code placeholder immediately followed by a wildcard
+                # absorbing the rest of a filename) -- pathlib rejects '**'
+                # unless it's an entire path component on its own.
+                partition_glob = re.sub(r'\*+', '*', partition_glob)
+                if self.verbose:
+                    print('Deleting unzipped data.')
+                for matched_path in self.recipe_heap_dir.glob(partition_glob):
+                    delete_data(matched_path)
+            elif self.download_partition['data_path'].is_relative_to(
+                self.recipe_heap_dir
+            ):
+                if self.verbose:
+                    print('Deleting unzipped data.')
+                delete_data(self.download_partition['data_path'])
 
     def _catch_missing_partition_ids_error(self):
         # Error checks
@@ -1628,6 +1654,30 @@ class Ingester:
                 or not self.download_partition['data_path'].exists()
             )
         ):
+            # A partitioned recipe (e.g. one zip per year) with no download
+            # mechanism at all -- typically request-only historical data,
+            # manually placed on disk -- treats a missing partition as
+            # "not yet available" rather than an error: skip it and move on,
+            # reusing the same unavailable-partition short-circuit that
+            # download scrapers use for an unpublished period.
+            entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+            source = entity_or_dataset.source if entity_or_dataset else None
+            if (
+                (self.recipe.get('download_by') or {}).get('partition')
+                and source is not None
+                and not source.download_url
+                and not source.download_url_source
+                and not getattr(source, 'download_url_scraper', None)
+            ):
+                warnings.warn(
+                    f'\n\nNo download URL and no local file found for partition '
+                    f"'{self.download_partition.get('partition_id_to_download')}'. "
+                    'Skipping (assumed not yet available).\n',
+                    stacklevel=2,
+                )
+                self.download_partition['unavailable'] = True
+                return
+
             self._catch_missing_download_url_error()
 
             if self.verbose:

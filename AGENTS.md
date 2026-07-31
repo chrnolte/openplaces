@@ -125,7 +125,13 @@ Key recipe fields:
   year|year_month|table|tile_id|latlon_tile`. `year_month` computes a YYYY-MM date range,
   `table` takes an explicit table-name list; unrecognized partition types raise
   `NotImplementedError`.
-- `process_by` — controls chunking granularity during processing (`admin_level`, `admin_id_column`)
+- `process_by` — controls chunking granularity during processing (`admin_level`, `admin_id_column`).
+  For sources that ship one already-split file per admin unit inside a single shared
+  download (rather than one file with an in-data admin column to filter rows by), use
+  `file_pattern` instead of `admin_id_column`: a filename pattern relative to the recipe's
+  heap directory, with `{partition_id}` and the crosswalk's raw-code column name (e.g.
+  `{admin3_id_admin2}`) as placeholders, resolved per admin unit
+  (`TableIngester._resolve_file_pattern_path`).
 - `save_to` — output location (`data_dir` from `STANDARD_DIRS`, `admin_level`, optional
   `retention` class). When `save_to.admin_level` is coarser than `process_by.admin_level`,
   the Ingester aggregates intermediate files to that level.
