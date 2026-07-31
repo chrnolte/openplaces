@@ -1,0 +1,196 @@
+# Recipe to import the Florida Department of Revenue's NAL assessment roll
+
+description: >-
+  Florida Department of Revenue Name-Address-Legal (NAL) assessment roll,
+  the state's raw annual property tax roll extract (2026 schema vintage).
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US-FL
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: property
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: fldor
+    portal_url: "https://floridarevenue.com/property/Pages/DataPortal_RequestAssessmentRollGISData.aspx"
+    # No download_url: historical NAL files are obtained by request, not
+    # from a stable public URL. Place `{year}F.zip` into this recipe's
+    # external-file cache manually; a year without a local file is skipped
+    # with a warning rather than raising (see `download_by`).
+  version: 2026
+
+# One download partition per year. Each partition is a single statewide zip
+# containing all 67 counties' files, already split one CSV per county.
+download_by:
+  partition: year
+  first: 2002
+  last: 2026
+
+compressed_file_name: "{year}F.zip"
+# The zip's single common top-level folder (e.g. "2025F/") is stripped on
+# extraction (see io.unzip's strip-prefix behavior), so all 67 counties'
+# files land flat under the heap directory. Alachua (CO_NO 11) is always
+# present -- its presence is the "already unzipped" signal for the whole
+# (multi-county) partition.
+uncompressed_file_name: "NAL_{year}_11Alachua_F.csv"
+
+# Each county already has its own file inside the shared unzip, so it's
+# resolved per admin unit by file_pattern instead of splitting one file by
+# an in-data admin_id_column. `{partition_id}` is the current download
+# partition's id (the year); `{admin3_id_admin2}` is this admin unit's raw
+# code, looked up from admin_id_crosswalk (matches the crosswalk's own
+# value-column name -- see TableIngester._resolve_file_pattern_path). The
+# trailing `*` absorbs the county name spelling in the real filename
+# (e.g. `NAL_2025_11Alachua_F.csv`).
+process_by:
+  admin_level: 3
+  file_pattern: "NAL_{partition_id}_{admin3_id_admin2}*_F.csv"
+  admin_id_crosswalk:
+    # Reuse floridagio's existing CO_NO -> admin3_id crosswalk: same DOR
+    # county-numbering system (verified 11 = Alachua in both sources).
+    recipe_id: "US-FL_parcel-floridagio-2026_admin3-crosswalk"
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  parcel_id_assessor: PARCEL_ID
+  roll_type: FILE_T
+  tax_year: ASMNT_YR
+  tax_use_group: BAS_STRT
+  tax_use_subgroup: ATV_STRT
+  value_group: GRP_NO
+  use_group_code: DOR_UC
+  use_group_admin3: PA_UC
+  tax_special_assessment: SPASS_CD
+  market_value: JV
+  market_value_change: JV_CHNG
+  market_value_change_code: JV_CHNG_CD
+  assessed_value_school_district: AV_SD
+  assessed_value_non_school_district: AV_NSD
+  tax_value_school_district: TV_SD
+  tax_value_non_school_district: TV_NSD
+  market_value_homestead: JV_HMSTD
+  assessed_value_homestead: AV_HMSTD
+  market_value_non_homestead_residential: JV_NON_HMSTD_RESD
+  assessed_value_non_homestead_residential: AV_NON_HMSTD_RESD
+  market_value_residential_and_non_residential: JV_RESD_NON_RESD
+  assessed_value_residential_and_non_residential: AV_RESD_NON_RESD
+  market_value_classified_use: JV_CLASS_USE
+  assessed_value_classified_use: AV_CLASS_USE
+  market_value_water_recharge: JV_H2O_RECHRGE
+  assessed_value_water_recharge: AV_H2O_RECHRGE
+  market_value_conservation_land: JV_CONSRV_LND
+  assessed_value_conservation_land: AV_CONSRV_LND
+  market_value_historic_commercial: JV_HIST_COM_PROP
+  assessed_value_historic_commercial: AV_HIST_COM_PROP
+  market_value_historically_significant: JV_HIST_SIGNF
+  assessed_value_historically_significant: AV_HIST_SIGNF
+  market_value_working_waterfront: JV_WRKNG_WTRFNT
+  assessed_value_working_waterfront: AV_WRKNG_WTRFNT
+  new_construction_value: NCONST_VAL
+  deletion_value: DEL_VAL
+  parcel_split_code: PAR_SPLT
+  disaster_code: DISTR_CD
+  disaster_year: DISTR_YR
+  land_value: LND_VAL
+  land_unit_code: LND_UNTS_CD
+  n_land_units: NO_LND_UNTS
+  area_sqft: LND_SQFOOT
+  last_inspection_date: DT_LAST_INSPT
+  structure_quality_code: IMP_QUAL
+  construction_class: CONST_CLASS
+  effective_year_built: EFF_YR_BLT
+  year_built: ACT_YR_BLT
+  living_area_sqft: TOT_LVG_AREA
+  n_buildings: NO_BULDNG
+  n_dwellings: NO_RES_UNTS
+  special_feature_value: SPEC_FEAT_VAL
+  last_sale_multi_parcel: MULTI_PAR_SAL1
+  last_sale_qualification_code: QUAL_CD1
+  last_sale_vacant: VI_CD1
+  last_sale_price: SALE_PRC1
+  last_sale_year: SALE_YR1
+  last_sale_month: SALE_MO1
+  last_sale_book: OR_BOOK1
+  last_sale_page: OR_PAGE1
+  last_sale_clerk_instrument: CLERK_NO1
+  last_sale_change_code: SAL_CHNG_CD1
+  last_sale_2_multi_parcel: MULTI_PAR_SAL2
+  last_sale_2_qualification_code: QUAL_CD2
+  last_sale_2_vacant: VI_CD2
+  last_sale_2_price: SALE_PRC2
+  last_sale_2_year: SALE_YR2
+  last_sale_2_month: SALE_MO2
+  last_sale_2_book: OR_BOOK2
+  last_sale_2_page: OR_PAGE2
+  last_sale_2_clerk_instrument: CLERK_NO2
+  last_sale_2_change_code: SAL_CHNG_CD2
+  owner_name: OWN_NAME
+  owner_address: OWN_ADDR1
+  owner_address2: OWN_ADDR2
+  owner_city: OWN_CITY
+  owner_admin2_id_admin1: OWN_STATE
+  owner_postal_code: OWN_ZIPCD
+  owner_admin2_id_admin1_domicile: OWN_STATE_DOM
+  legal_description: S_LEGAL
+  homestead_applicant_status: APP_STAT
+  homestead_co_applicant_status: CO_APP_STAT
+  tax_market_area: MKT_AR
+  tax_neighborhood_code: NBRHD_CD
+  owner_public_code: PUBLIC_LND
+  tax_authority: TAX_AUTH_CD
+  township: TWN
+  range: RNG
+  section: SEC
+  census_block_id: CENSUS_BK
+  address: PHY_ADDR1
+  address2: PHY_ADDR2
+  city: PHY_CITY
+  postal_code: PHY_ZIPCD
+  parcel_id_admin3_2: ALT_KEY
+  homestead_transfer_flag: ASS_TRNSFR_FG
+  n_previous_homestead_owners: PREV_HMSTD_OWN
+  assessment_differential_transferred: ASS_DIF_TRNS
+  previous_homestead_county_code: CONO_PRV_HM
+  previous_homestead_parcel_id: PARCEL_ID_PRV_HMSTD
+  homestead_value_transfer_year: YR_VAL_TRNSF
+  exemption_value: EXEMPTIONS
+  file_sequence_number: SEQ_NO
+  submission_id: RS_ID
+  parcel_id_admin2_2: MP_ID
+  parcel_id_admin2: STATE_PAR_ID
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - roll_type
+  - tax_use_group
+  - tax_use_subgroup
+  - use_group_code
+  - use_group_admin3
+  - tax_special_assessment
+  - market_value_change_code
+  - land_unit_code
+  - structure_quality_code
+  - construction_class
+  - last_sale_multi_parcel
+  - last_sale_qualification_code
+  - last_sale_vacant
+  - last_sale_change_code
+  - last_sale_2_multi_parcel
+  - last_sale_2_qualification_code
+  - last_sale_2_vacant
+  - last_sale_2_change_code
+  - owner_admin2_id_admin1
+  - owner_admin2_id_admin1_domicile
+  - owner_public_code
+  - disaster_code
+  - homestead_transfer_flag
+  - tax_authority
+
+# Standardized cross-comparable matching key from the raw DOR parcel id --
+# links to floridagio's parcel geometry (same DOR PARCEL_ID system) and to
+# FL transaction sources.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
