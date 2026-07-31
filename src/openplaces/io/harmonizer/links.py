@@ -14,6 +14,7 @@ import warnings
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import shapely
 
 from openplaces.core.attribute_registry import (
     get_agg_func,
@@ -27,6 +28,7 @@ from openplaces.geo.link import get_entity_link_path
 from openplaces.geo.polygon import (
     clean_polygons,
     get_areas,
+    local_metric_crs,
     overlay_polygons,
     resolve_overlapping_polygons,
 )
@@ -60,6 +62,19 @@ _CROSSWALK_COLS = [
 
 # Parquet footer key holding a link sidecar's validity fingerprint.
 _LINK_METADATA_KEY = 'openplaces:link'
+
+# Buffer applied to a condo cluster's own parcel footprint before testing
+# whether a real footprint fragment touches it, to tolerate the usual
+# building-outline/parcel-boundary digitization slack without admitting a
+# genuinely disjoint fragment from an unrelated cluster.
+_REAL_FOOTPRINT_TOUCH_TOLERANCE_M = 2.0
+
+# Floor applied to a per-parcel coverage fraction before raising it to a
+# negative power (the generalized-mean coverage score) -- avoids a literal
+# 0 producing inf, while still driving the score for a fully-uncovered
+# parcel down close to 0 (a tiny base raised to a negative power is huge,
+# dominating the weighted sum).
+_COVERAGE_SCORE_EPS = 1e-12
 
 
 @_register('link_to_reference')
@@ -2320,6 +2335,8 @@ def consolidate_condo_cluster_footprints(
     entity_type: str | None = 'parcel',
     recipe_id: str | None = None,
     cluster_thresholds: dict | None = None,
+    coverage_power: float = -2.0,
+    min_coverage_score: float = 0.5,
 ) -> HarmonizeState:
     """Collapse a stacked-condo building's parcels to one footprint row.
 
@@ -2333,20 +2350,43 @@ def consolidate_condo_cluster_footprints(
     *this* recipe's saved output, and a footprint-spine step reading the
     parcel spine's output in the same admin run would be circular.
 
-    For each qualifying cluster: unions whatever real footprint geometries
-    are already linked to any of the cluster's parcels (however partial or
-    fragmented -- e.g. two footprints each dominant-linked only to the
-    cluster's own shared common-area parcel, confirmed on real data to
-    otherwise leave most of a 24-unit building's own units with no per-unit
-    footprint credit at all) with the union of the cluster's own parcel
-    geometries (covering the remainder, where no real footprint reaches),
-    and writes **one** new consolidated spine row crosswalked to every
-    parcel in the cluster. The original per-fragment real rows are dropped
-    (superseded), and every cluster parcel's crosswalk entry is rewritten to
-    point at the new row -- so :func:`infer_spine_additions`, which must run
-    *after* this step, correctly treats every cluster parcel as already
-    covered and does not also generate a per-unit synthetic fallback for
-    whichever units the original fragments didn't dominate.
+    For each qualifying cluster: picks **one** geometry source rather than
+    combining them. Any real footprint fragments already linked to the
+    cluster's parcels are unioned together and, if that union adequately
+    covers the cluster's own parcels, it is used as-is; otherwise the union
+    of the cluster's own parcel geometries is used instead. "Adequately
+    covers" is a single smooth score (see ``_coverage_score`` below) rather
+    than a hard cutoff, since real data (a 12-unit cluster, 11 parcels
+    97.9-100% covered, one at 30.9%) showed that a lone straggler parcel
+    can otherwise sink an excellent match. A real fragment's geometry is
+    first trimmed to whichever of its connected parts actually touch the
+    cluster's own parcels, since a spine id's crosswalk link can be shared
+    with an unrelated, non-adjacent cluster (confirmed on real data:
+    `link_to_reference`'s permissive ``min_fraction_of_largest`` trim
+    allows one footprint id to link to parcels in two different clusters)
+    and its full raw geometry must never be carried wholesale into an
+    unrelated cluster's output.
+
+    Separately, if two or more of :func:`_cluster_condo_parcels`'s
+    parcel-topology clusters each *independently* qualify for the *same*
+    real footprint (confirmed on real data: one ~18-unit building's
+    parcels form 3 disconnected touching-groups, each dominated by the
+    same single OBM polygon), they are merged into one output row before
+    the pick-one-source decision above runs. Without this, each cluster
+    would independently claim the *entire* shared polygon, producing
+    duplicate/near-identical rows that a later overlap-resolution step
+    silently drops -- real, well-evidenced buildings losing footprint
+    coverage entirely, not just an imprecise shape. See the ``merge_groups``
+    step below.
+
+    Writes **one** new consolidated spine row per (possibly merged)
+    cluster, crosswalked to every parcel in it. The original per-fragment
+    real rows are dropped (superseded), and every cluster parcel's
+    crosswalk entry is rewritten to point at the new row -- so
+    :func:`infer_spine_additions`, which must run *after* this step,
+    correctly treats every cluster parcel as already covered and does not
+    also generate a per-unit synthetic fallback for whichever units the
+    original fragments didn't dominate.
 
     Explicitly not a goal: preserving a 1:1 unit-to-footprint-row mapping.
     A condo unit's individual identity is expected to live at the parcel/
@@ -2368,6 +2408,19 @@ def consolidate_condo_cluster_footprints(
         (``max_unit_area_ha``, ``max_hub_area_ha``, ``max_hub_aspect_ratio``,
         ``min_group_size``, ``max_group_size``) -- same defaults as
         ``detect_condo_building_clusters``.
+    coverage_power : float, optional
+        Exponent *p* of the area-weighted generalized-mean coverage score
+        (default -2.0; must be negative). At ``p=1`` the score would equal
+        the plain area-weighted average per-parcel coverage; as
+        ``p -> -inf`` it converges to the harshest possible test, the
+        per-parcel minimum. Negative ``p`` smoothly interpolates: a
+        low-weight straggler parcel gets outvoted by well-covered peers
+        while still pulling the score down, and a parcel with ~0 coverage
+        still drives the whole score toward 0 (a tiny base raised to a
+        negative power dominates the weighted sum).
+    min_coverage_score : float, optional
+        Minimum coverage score (default 0.5) for the real footprint union
+        to be preferred over the parcel union.
     """
     if state.spine is None:
         return state
@@ -2411,13 +2464,16 @@ def consolidate_condo_cluster_footprints(
     _source_id = source_id_from_recipe_id(recipe_id)
     _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
 
-    new_rows = []
-    crosswalk_additions = []
-    superseded_spine_ids: set = set()
-    superseded_pair_mask = pd.Series(False, index=crosswalk.index)
+    def _evaluate_cluster(cluster_pids: list) -> dict:
+        """Real-vs-parcel geometry choice for one cluster's parcel set.
 
-    for cluster_pids in component.groupby(component).groups.values():
-        cluster_pids = list(cluster_pids)
+        Shared by the per-original-cluster pass (to decide merges below)
+        and the final pass over merged clusters -- simplest correct way to
+        get the right combined real-footprint geometry for a merged group
+        without hand-merging partial results: re-deriving from the
+        combined parcel set naturally re-collects every relevant spine id
+        from the crosswalk.
+        """
         linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
         linked_spine_ids = (
             crosswalk[linked_mask].index.get_level_values(spine_id_col).unique()
@@ -2436,14 +2492,119 @@ def consolidate_condo_cluster_footprints(
         # and it still keeps its crosswalk link below -- only this shape
         # fallback excludes it.
         unit_pids = [pid for pid in cluster_pids if pid not in hub_ids]
-        parcel_geom = ref_polys.loc[
+        unit_polys = ref_polys.loc[
             ref_polys.index.intersection(unit_pids or cluster_pids), 'geometry'
-        ].union_all()
-        consolidated = (
-            gpd.GeoSeries(real_geoms + [parcel_geom], crs=spine.crs).union_all()
-            if real_geoms
-            else parcel_geom
+        ]
+        parcel_geom = unit_polys.union_all()
+
+        # Never output a geometry that mixes a real footprint with parcel
+        # boundaries -- pick one source per cluster. A spine id's crosswalk
+        # link can be shared with an unrelated, non-adjacent cluster (the
+        # crosswalk's own min_fraction_of_largest trim is permissive
+        # enough to allow this), so first drop any connected piece of the
+        # real geometry that doesn't actually touch this cluster's own
+        # parcels -- carrying in a stray, disjoint chunk of someone else's
+        # building would corrupt this cluster's shape even if the
+        # remaining, genuinely-touching part is trustworthy. Spine/parcel
+        # geometry is stored geographic, so the touch-tolerance buffer and
+        # the coverage score below both need a local metric reprojection
+        # (mirrors _cluster_condo_parcels's own use of local_metric_crs).
+        real_union_raw = (
+            gpd.GeoSeries(real_geoms, crs=spine.crs).union_all() if real_geoms else None
         )
+        real_union = None
+        coverage_score = 0.0
+        if real_union_raw is not None:
+            crs_m = local_metric_crs(gpd.GeoSeries([parcel_geom], crs=spine.crs))
+            parcel_geom_m = (
+                gpd.GeoSeries([parcel_geom], crs=spine.crs).to_crs(crs_m).iloc[0]
+            )
+            parts = shapely.get_parts(real_union_raw)
+            parts_m = gpd.GeoSeries(parts, crs=spine.crs).to_crs(crs_m)
+            touch_zone_m = parcel_geom_m.buffer(_REAL_FOOTPRINT_TOUCH_TOLERANCE_M)
+            keep = parts_m.intersects(touch_zone_m).to_numpy()
+            if keep.any():
+                real_union = shapely.union_all(parts[keep])
+                real_union_m = shapely.union_all(parts_m.to_numpy()[keep])
+
+                # Prefer the real footprint only if it credibly represents
+                # the whole cluster -- an area-weighted generalized mean
+                # of every unit parcel's own coverage fraction (see the
+                # coverage_power docstring for why this replaces a hard
+                # group-coverage-and-per-parcel-minimum pair of cutoffs).
+                unit_polys_m = unit_polys.to_crs(crs_m)
+                if parcel_geom_m.area > 0:
+                    areas_m = unit_polys_m.area
+                    weights = areas_m / areas_m.sum()
+                    fracs = (
+                        unit_polys_m.intersection(real_union_m).area / areas_m
+                    ).clip(lower=_COVERAGE_SCORE_EPS)
+                    coverage_score = float(
+                        (weights * fracs**coverage_power).sum()
+                        ** (1.0 / coverage_power)
+                    )
+        return {
+            'cluster_pids': cluster_pids,
+            'linked_spine_ids': linked_spine_ids,
+            'real_union': real_union,
+            'parcel_geom': parcel_geom,
+            'passes': real_union is not None and coverage_score >= min_coverage_score,
+        }
+
+    cluster_pid_lists = [
+        list(pids) for pids in component.groupby(component).groups.values()
+    ]
+    evaluations = [_evaluate_cluster(pids) for pids in cluster_pid_lists]
+
+    # Merge clusters that each independently qualify for the same real
+    # footprint -- confirmed on real data: an ~18-unit building's parcels
+    # form 3 disconnected touching-groups (no shared hub ties them), each
+    # separately proving strong coverage against the same single OBM
+    # polygon. Left unmerged, each would claim the entire shared polygon,
+    # producing duplicate/near-identical rows that a later overlap-
+    # resolution step silently drops (real footprint coverage lost
+    # entirely, not just an imprecise shape). A spine id that only one
+    # side actually passes with can't trigger a merge on its own -- both
+    # sides must independently prove strong coverage first.
+    merge_parent = list(range(len(cluster_pid_lists)))
+
+    def _find_root(i: int) -> int:
+        while merge_parent[i] != i:
+            merge_parent[i] = merge_parent[merge_parent[i]]
+            i = merge_parent[i]
+        return i
+
+    def _union_roots(i: int, j: int) -> None:
+        ri, rj = _find_root(i), _find_root(j)
+        if ri != rj:
+            merge_parent[max(ri, rj)] = min(ri, rj)
+
+    passing_spine_id_clusters: dict = {}
+    for i, ev in enumerate(evaluations):
+        if not ev['passes']:
+            continue
+        for sid in ev['linked_spine_ids']:
+            passing_spine_id_clusters.setdefault(sid, []).append(i)
+    n_merges = 0
+    for idxs in passing_spine_id_clusters.values():
+        for idx in idxs[1:]:
+            if _find_root(idx) != _find_root(idxs[0]):
+                n_merges += 1
+            _union_roots(idxs[0], idx)
+
+    merge_groups: dict = {}
+    for i in range(len(cluster_pid_lists)):
+        merge_groups.setdefault(_find_root(i), []).append(i)
+
+    new_rows = []
+    crosswalk_additions = []
+    superseded_spine_ids: set = set()
+    superseded_pair_mask = pd.Series(False, index=crosswalk.index)
+
+    for idxs in merge_groups.values():
+        cluster_pids = sum((cluster_pid_lists[i] for i in idxs), [])
+        ev = _evaluate_cluster(cluster_pids) if len(idxs) > 1 else evaluations[idxs[0]]
+        consolidated = ev['real_union'] if ev['passes'] else ev['parcel_geom']
 
         new_row = add_openlocationcode_index(
             gpd.GeoDataFrame({'geometry': [consolidated]}, crs=spine.crs),
@@ -2463,7 +2624,8 @@ def consolidate_condo_cluster_footprints(
                     'area_intersection_m2': area_m2,
                 }
             )
-        superseded_spine_ids.update(linked_spine_ids)
+        linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
+        superseded_spine_ids.update(ev['linked_spine_ids'])
         superseded_pair_mask |= linked_mask
 
     if not new_rows:
@@ -2537,10 +2699,13 @@ def consolidate_condo_cluster_footprints(
                 )
 
     if state.verbose:
+        merge_note = (
+            f', {n_merges:,} merged via a shared real footprint' if n_merges else ''
+        )
         print(
             f'  consolidate_condo_cluster_footprints: {len(new_rows):,} building '
             f'clusters consolidated ({len(superseded_spine_ids):,} fragment rows '
-            'replaced).'
+            f'replaced{merge_note}).'
         )
     if state.timer:
         state.timer.mark('Consolidate condo clusters')
