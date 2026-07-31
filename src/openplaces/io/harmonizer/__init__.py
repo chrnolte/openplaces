@@ -16,13 +16,13 @@ from importlib import import_module as _import_module
 import geopandas as gpd
 
 from openplaces.core.schema import AdminId, SourceGeometryType
-from openplaces.io import save_parquet
+from openplaces.io import release_unused_memory, save_parquet
 from openplaces.io.cleanup import (
     cleanup_consumed_inputs,
     discard_receipt,
     receipt_justifies_skip,
 )
-from openplaces.io.readers import get_admin_ids
+from openplaces.io.readers import get_admin, get_admin_ids
 from openplaces.recipe import get_output_path, get_recipe_by_id
 from openplaces.timing import get_timer
 
@@ -104,6 +104,43 @@ class HarmonizeState:
             for rid, ref in self.references.items()
             if self.reference_types.get(rid) == entity_type
         }
+
+
+def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
+    """Fall back to a plain-text admin-name filter for an over-broad source.
+
+    ``get_entities`` cannot restrict a non-spatial source to *admin_id* when
+    the source has no matching admin-id column of its own (e.g. a statewide
+    transaction table with only a free-text county name column, no
+    ``admin3_id``) -- it returns the whole unfiltered table instead, which
+    would otherwise duplicate that entire table into every child admin unit's
+    output (or pool every admin unit's counts/aggregates together). Shared by
+    :mod:`spine` (``union_spine_sources``) and :mod:`links` (``link_by_id``'s
+    reference load), since both can hit the same over-broad source.
+
+    When *df* carries an ``admin{level}_name`` column and its own recipe is
+    scoped coarser than *admin_id*, filter locally by matching that column
+    (case/whitespace-insensitively) against *admin_id*'s registered name. A
+    no-op when no such column exists or the source is already scoped at or
+    finer than *admin_id*.
+    """
+    if not isinstance(admin_id, AdminId):
+        admin_id = AdminId(admin_id)
+    level = admin_id.get_level()
+    name_col = f'admin{level}_name'
+    if name_col not in df.columns:
+        return df
+    source_admin_id = get_recipe_by_id(recipe_id)['admin_id']
+    if not isinstance(source_admin_id, AdminId):
+        source_admin_id = AdminId(source_admin_id)
+    if source_admin_id.get_level() >= level:
+        return df
+    target = get_admin(admin_id, level)
+    if target.empty:
+        return df
+    target_name = str(target['name'].iloc[0]).strip().casefold()
+    match = df[name_col].astype('string').str.strip().str.casefold() == target_name
+    return df[match]
 
 
 #: Maps step name strings (as used in recipe ``pipeline`` sections) to the
@@ -279,6 +316,7 @@ class Harmonizer:
                 self._timer.finish()
                 if cleanup == 'consumed':
                     cleanup_consumed_inputs(self.recipe, admin_id, verbose=self.verbose)
+                release_unused_memory()
 
     def _run_global(self, reprocess: bool = False) -> None:
         """Run a single global harmonization (process_level == 0)."""

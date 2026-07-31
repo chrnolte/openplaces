@@ -36,7 +36,7 @@ process_by:
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
+  parcel_id_assessor: PARCELID
   parcel_id_admin2: VGIN_QPID
-  parcel_id_admin3: PARCELID
   parcel_id_admin3_2: PTM_ID
   source_date: LASTUPDATE

@@ -1,0 +1,101 @@
+use_group_code,use_group,use_subgroup
+000,residential,vacant
+001,residential,single family
+002,residential,mobile home
+003,residential,multi-family 10 or more
+004,residential,condominium
+005,residential,cooperative
+006,residential,retirement home
+007,residential,miscellaneous residential
+008,residential,multi-family less than 10
+009,residential,residential common elements/areas
+010,commercial,vacant
+011,commercial,stores one story
+012,mixed,mixed use commercial
+013,commercial,department store
+014,commercial,supermarket
+015,commercial,regional shopping center
+016,commercial,community shopping center
+017,commercial,office one story
+018,commercial,office multi-story
+019,commercial,professional building
+020,commercial,airports terminals piers
+021,commercial,restaurants cafeterias
+022,commercial,drive-in restaurants
+023,commercial,financial institutions
+024,commercial,insurance company offices
+025,commercial,repair service shops
+026,commercial,service stations
+027,commercial,auto sales repair etc
+028,commercial,parking lots manufactured home parks etc
+029,commercial,wholesale produce manufacturing
+030,commercial,florists greenhouses
+031,commercial,drive-in theater open stadium
+032,commercial,enclosed theater auditorium
+033,commercial,night clubs lounges bars
+034,commercial,bowling alleys rinks arenas
+035,commercial,tourist attractions
+036,commercial,camps
+037,commercial,race tracks
+038,commercial,golf course driving range
+039,commercial,hotels motels
+040,industrial,vacant
+041,industrial,light manufacturing
+042,industrial,heavy industrial
+043,industrial,lumber yards sawmills
+044,industrial,packing plants
+045,industrial,cannery brewery winery
+046,industrial,other food processing
+047,industrial,mineral processing
+048,industrial,warehousing distribution terminals
+049,industrial,open storage
+050,open_space,improved agricultural
+051,open_space,cropland class i
+052,open_space,cropland class ii
+053,open_space,cropland class iii
+054,open_space,timberland index 90+
+055,open_space,timberland index 80-89
+056,open_space,timberland index 70-79
+057,open_space,timberland index 60-69
+058,open_space,timberland index 50-59
+059,open_space,timberland not classified
+060,open_space,grazing land class i
+061,open_space,grazing land class ii
+062,open_space,grazing land class iii
+063,open_space,grazing land class iv
+064,open_space,grazing land class v
+065,open_space,grazing land class vi
+066,open_space,orchard groves citrus etc
+067,open_space,poultry bees tropical fish rabbits
+068,open_space,dairies feed lots
+069,open_space,ornamentals miscellaneous agricultural
+070,exempt,vacant institutional
+071,exempt,churches temples
+072,exempt,private schools and colleges
+073,exempt,privately owned hospitals
+074,exempt,homes for the aged
+075,exempt,orphanages non-profit service
+076,exempt,mortuary cemetery crematorium
+077,exempt,clubs lodges union halls
+078,exempt,sanitarium convalescent and rest home
+079,exempt,cultural organizations facilities
+080,exempt,vacant governmental
+081,exempt,military
+082,open_space,forest parks recreational
+083,exempt,public county schools
+084,exempt,colleges
+085,exempt,hospitals
+086,exempt,counties other
+087,exempt,state other
+088,exempt,federal other
+089,exempt,municipal other
+090,exempt,leasehold interests
+091,industrial,utility
+092,industrial,mining petroleum gas lands
+093,exempt,subsurface rights
+094,exempt,right-of-way
+095,open_space,rivers lakes submerged land
+096,industrial,sewage disposal waste lands
+097,open_space,outdoor recreational
+098,exempt,centrally assessed
+099,open_space,acreage not agricultural classified

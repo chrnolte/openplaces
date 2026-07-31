@@ -18,6 +18,32 @@ def source_column(column: str) -> str:
     return f'{column}{SOURCE_SUFFIX}'
 
 
+def _apply_source_mask(
+    existing: pd.Series | None, index: pd.Index, mask, token: str
+) -> pd.Series:
+    """Return a ``_source`` sidecar series with *token* set for *mask* rows.
+
+    Pure, allocation-only core shared by :func:`record_source` (writes
+    in-place onto a live DataFrame) and any caller that must defer the
+    actual DataFrame write itself (e.g.
+    :func:`~openplaces.io.curator.evidence.merge_enrichments`, batching
+    many columns into a single concat to avoid fragmenting a wide frame
+    -- see its docstring). Creates the sidecar (object dtype) when
+    *existing* is ``None``; casts an existing Categorical sidecar back to
+    object first (``cast_categoricals`` re-applies the Categorical dtype
+    at format time); otherwise copies *existing* so the caller's own
+    series is never mutated.
+    """
+    if existing is None:
+        existing = pd.Series(pd.NA, index=index, dtype=object)
+    elif isinstance(existing.dtype, pd.CategoricalDtype):
+        existing = existing.astype(object)
+    else:
+        existing = existing.copy()
+    existing.loc[mask] = token
+    return existing
+
+
 def record_source(curated, column: str, mask, token: str):
     """Set the ``{column}_source`` sidecar to *token* for the *mask* rows.
 
@@ -27,9 +53,10 @@ def record_source(curated, column: str, mask, token: str):
     ``cast_categoricals`` at format time.
     """
     side = source_column(column)
-    if side not in curated.columns:
-        curated[side] = pd.Series(pd.NA, index=curated.index, dtype=object)
-    elif isinstance(curated[side].dtype, pd.CategoricalDtype):
-        curated[side] = curated[side].astype(object)
-    curated.loc[mask, side] = token
+    curated[side] = _apply_source_mask(
+        curated[side] if side in curated.columns else None,
+        curated.index,
+        mask,
+        token,
+    )
     return curated

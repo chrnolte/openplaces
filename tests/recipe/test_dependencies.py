@@ -23,10 +23,10 @@ def test_footprint_spine_literal_edges():
     upstream = _upstream_ids(edges)
     assert 'footprint-obm-2025' in upstream
     assert 'US_footprint-microsoft-v2' in upstream
-    assert 'US_building-nsi-2022' in upstream
+    assert 'US_building-nsi-2026' in upstream
     assert 'dwelling-overture-2025' in upstream
     # Value crosswalks are not data dependencies
-    assert 'US_building-nsi-2022_occupancy-type-remap' not in upstream
+    assert 'US_building-nsi-2026_occupancy-type-remap' not in upstream
 
 
 def test_footprint_spine_auto_discover_unresolved_without_admin():
@@ -93,3 +93,26 @@ def test_tile_entity_links_declare_admin_edges():
     } <= upstream
     steps = {e.step for e in edges if e.kind == 'recipe_id'}
     assert 'entity_links' in steps
+
+
+def test_reference_parcel_recipe_id_is_a_real_edge():
+    edges = get_recipe_dependencies('US_parcel_parcel-placeslab-fmv2026')
+    by_kind = {e.kind: e for e in edges}
+    assert (
+        by_kind['reference_parcel_recipe_id'].upstream_recipe_id
+        == 'US_parcel-placeslab-fmv2026'
+    )
+
+
+def test_exclude_recipe_ids_suppresses_edge():
+    edges = get_recipe_dependencies(
+        'US_parcel-openplaces-2026',
+        exclude_recipe_ids={'US_parcel_parcel-placeslab-fmv2026'},
+    )
+    upstream = _upstream_ids(edges)
+    assert 'US_parcel_parcel-placeslab-fmv2026' not in upstream
+
+
+def test_exclude_recipe_ids_default_is_unaffected():
+    upstream = _upstream_ids(get_recipe_dependencies('US_parcel-openplaces-2026'))
+    assert 'US_parcel_parcel-placeslab-fmv2026' in upstream

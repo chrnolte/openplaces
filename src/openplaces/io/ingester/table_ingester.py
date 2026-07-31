@@ -26,6 +26,7 @@ from openplaces.geo.overlay import overlay_admin_ids
 from openplaces.geo.polygon import (
     clean_polygons,
     fix_polygons,
+    reproject,
     resolve_overlapping_polygons,
 )
 from openplaces.io import (
@@ -43,8 +44,12 @@ from openplaces.io.transform import (
     get_crosswalk,
 )
 from openplaces.path import recipe_path
-from openplaces.recipe import get_output_path, get_recipe
-from openplaces.timing import log_step
+from openplaces.recipe import (
+    get_output_path,
+    get_process_admin_level,
+    get_recipe,
+    get_save_admin_level,
+)
 
 
 class TableIngester:
@@ -143,7 +148,7 @@ class TableIngester:
         gdf = self._read_recipe_data(**read_kwargs)
 
         if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
-            gdf = gdf.to_crs(cfg.crs)
+            gdf = reproject(gdf, cfg.crs)
             self.timer.mark(f'Reproject to {cfg.crs}{suffix}')
 
         gdf = self._preprocess_recipe_data(gdf)
@@ -299,7 +304,15 @@ class TableIngester:
         if data_path.suffix == '.parquet':
             if 'fids' in kwargs:
                 raise ValueError('`fid`-based selection might not work with `parquet`.')
-            gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
+            try:
+                gdf = gpd.read_parquet(data_path, columns=columns, **kwargs)
+            except ValueError as e:
+                # A plain (non-geo) parquet partition -- e.g. one of several
+                # per-admin-unit tables meant to be joined later, only one of
+                # which carries geometry (see io.aggregate.join_partitions_by_index).
+                if 'Missing geo metadata' not in str(e):
+                    raise
+                gdf = pd.read_parquet(data_path, columns=columns)
             self.timer.mark('Read parquet file' + timer_suffix, path=data_path)
         elif data_path.suffix == '.gdb':
             try:
@@ -326,6 +339,7 @@ class TableIngester:
                             )
                     raise RuntimeError('Remove the folder manually and re-run.')
                 raise
+            self.timer.mark('Read GDB file' + timer_suffix, path=data_path)
         elif data_path.suffix in GEOPANDAS_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
@@ -476,6 +490,14 @@ class TableIngester:
         else:
             cols_added = []
 
+        # Discard scratch columns a transformation needed only as an
+        # intermediate step (e.g. a zero-padded value before a prefix is
+        # added), so they never reach the saved output.
+        if 'drop_columns' in self.recipe:
+            to_drop = [c for c in self.recipe['drop_columns'] if c in df]
+            df = df.drop(columns=to_drop)
+            cols_added = [c for c in cols_added if c not in to_drop]
+
         # Cast columns to categorical
         # Each item is either a plain column name (unordered) or a single-key
         # dict {column: [cat1, cat2, ...]} for an inline ordered categorical.
@@ -515,14 +537,16 @@ class TableIngester:
                     index=values.index,
                 )
 
+        admin_id_to_process = self.processing_chunk.get('admin_id_to_process')
+        self.timer.mark('Transform' + self._mark_suffix(admin_id_to_process))
+
         # Clean geometries and resolve overlapping polygons (parcels, buildings).
         # Cleaning must precede the overlap test: invalid geometries cause
         # TopologyExceptions in shapely intersection.
         # Runs after transformations and categorical casting so that
         # 'prefer_higher' can reference a transformed or categorical column.
         if isinstance(df, gpd.GeoDataFrame):
-            _admin = self.processing_chunk.get('admin_id_to_process')
-            _suffix = f': {_admin}' if _admin else ''
+            _suffix = self._mark_suffix(admin_id_to_process)
 
             if self.recipe.get('force_2d', False):
                 import shapely
@@ -532,7 +556,7 @@ class TableIngester:
             if self.recipe.get('add_geometry_derivatives', False):
                 from openplaces.geo.polygon import add_geometry_derivatives
 
-                df = add_geometry_derivatives(df, self.timer, **self.recipe)
+                df = add_geometry_derivatives(df, self.timer)
 
             if self.recipe.get('add_tile_utm_derivatives', False):
                 from openplaces.geo.tiles import add_tile_utm_derivatives
@@ -546,23 +570,25 @@ class TableIngester:
 
             if (~df.geometry.is_valid).any():
                 df = fix_polygons(df)
+            self.timer.mark(f'Clean geometries{_suffix}')
+
             if self.recipe.get('resolve_overlaps', False):
-                with log_step(f'Resolve overlaps{_suffix}', timer=self.timer):
-                    df = clean_polygons(df)
-                    keep = self.recipe.get('keep_overlapping_polygons', None)
-                    recipe_col_names = list(self.recipe.get('columns', {}) or {})
-                    skip = {c for c in df.columns if '_id' in c} | {'geometry'}
-                    compare_cols = [c for c in df.columns if c not in skip]
-                    snippet_cols = (
-                        [c for c in recipe_col_names if c in compare_cols]
-                        + [c for c in compare_cols if c not in set(recipe_col_names)]
-                    )[:5]
-                    df = resolve_overlapping_polygons(
-                        df,
-                        keep=keep,
-                        compare_cols=compare_cols,
-                        snippet_cols=snippet_cols,
-                    )
+                df = clean_polygons(df)
+                keep = self.recipe.get('keep_overlapping_polygons', None)
+                recipe_col_names = list(self.recipe.get('columns', {}) or {})
+                skip = {c for c in df.columns if '_id' in c} | {'geometry'}
+                compare_cols = [c for c in df.columns if c not in skip]
+                snippet_cols = (
+                    [c for c in recipe_col_names if c in compare_cols]
+                    + [c for c in compare_cols if c not in set(recipe_col_names)]
+                )[:5]
+                df = resolve_overlapping_polygons(
+                    df,
+                    keep=keep,
+                    compare_cols=compare_cols,
+                    snippet_cols=snippet_cols,
+                )
+                self.timer.mark(f'Resolve overlaps{_suffix}')
 
         # Attribute entities to administrative unit IDs via crosswalk
         # (Before admin ID index creation, which needs parent Admin ID)
@@ -600,6 +626,7 @@ class TableIngester:
                 if isinstance(admin_id_crosswalk, pd.Series)
                 else list(admin_id_crosswalk)
             )
+            self.timer.mark('Attribute admin IDs: crosswalk join')
 
         elif use_spatial_mask or ('overlay_admin_ids' in self.recipe):
             if self.verbose:
@@ -634,10 +661,17 @@ class TableIngester:
 
         # Set index
         _entity = self.recipe.get('entity')
+        _has_custom_index = (
+            'set_index' in self.recipe
+            or 'create_index' in self.recipe
+            or 'index_function' in self.recipe
+        )
         if (
             _entity is not None
             and str(_entity.entity_type) == 'parcel'
             and isinstance(df, gpd.GeoDataFrame)
+            and not _has_custom_index
+            and df.index.name != 'geo_id'
         ):
             df['geo_id'] = get_geo_ids(df, handle_duplicates=False)
             df.index = pd.Index(add_unique_suffix(df['geo_id']), name='parcel_id')
@@ -681,14 +715,14 @@ class TableIngester:
                         name=self.recipe['create_index']['name'],
                     )
         elif 'index_function' in self.recipe:
-            with log_step('Generate indices', timer=self.timer):
-                if not self.recipe['index_function'].startswith('openplaces.'):
-                    raise ValueError(
-                        'Function in `index_function` must start with `openplaces.`\n'
-                        'Changing this would create a security risk (run any function).'
-                    )
-                index_function = self._load_function(self.recipe['index_function'])
-                df = index_function(df)
+            if not self.recipe['index_function'].startswith('openplaces.'):
+                raise ValueError(
+                    'Function in `index_function` must start with `openplaces.`\n'
+                    'Changing this would create a security risk (run any function).'
+                )
+            index_function = self._load_function(self.recipe['index_function'])
+            df = index_function(df)
+            self.timer.mark('Generate indices')
 
         # Drop observations by index
         if 'drop' in self.recipe:
@@ -734,19 +768,31 @@ class TableIngester:
     def _load_parcel_id_overrides(self, kind: str) -> dict | None:
         """Load the recipe-tree id-conversion override table, if present.
 
-        Returns an ``{admin_id: {pattern, conv}}`` dict in the shape
-        :func:`~openplaces.geo.ids.compute_parcel_id_local`'s ``instruction``
-        parameter expects, built from rows of
-        ``{country}_{entity_type}_id-overrides.csv``
+        Returns an ``{admin_id: {pattern, conv, [tolerance], [source]}}`` dict
+        in the shape :func:`~openplaces.geo.ids.compute_parcel_id_local`'s
+        ``instruction`` parameter expects (plus the ``source`` key this
+        method also resolves for -- see :meth:`_resolve_parcel_id_source`),
+        built from rows of ``{country}_{entity_type}_id-overrides.csv``
         (``recipes/{country}/_all/{entity_type}/_all/``) matching *kind* and
         this recipe's ``source_id`` (a blank ``source_id`` row matches any
         source at that ``admin_id``; an exact-source row at the same
-        ``admin_id`` takes precedence). Admin-hierarchy walking from a
-        specific admin id to a broader one is handled by
-        :func:`~openplaces.geo.ids._resolve_instruction`, which already
-        knows how to fall back within an ``instruction`` dict — this only
-        builds the dict. Returns ``None`` when no override table exists for
-        this recipe's country/entity_type (the common case today).
+        ``admin_id`` takes precedence). A row's optional ``tolerance`` column
+        overrides the duplicate-guard tolerance for that admin unit (see
+        ``compute_parcel_id_local``); left blank, the caller's default
+        applies. A row's optional ``source`` column overrides which raw
+        column feeds ``parcel_id_local`` for that admin unit (e.g. a county
+        whose usual id column is itself truncated/degenerate at the source --
+        confirmed for Carteret County, NC's ``ALTPARNO`` field, block-level
+        truncated to 8 of the real 15-digit PIN's digits for ~99% of its
+        rows: no amount of pattern/conv tuning can recover precision a
+        source field never had, so a different column must be chosen
+        instead). Admin-hierarchy walking from a specific admin id to a
+        broader one is handled by
+        :func:`~openplaces.geo.ids._resolve_instruction` for
+        pattern/conv/tolerance and by :meth:`_resolve_parcel_id_source` for
+        ``source`` -- this only builds the dict. Returns ``None`` when no
+        override table exists for this recipe's country/entity_type (the
+        common case today).
         """
         entity = self.recipe.get('entity')
         admin_id = self.recipe.get('admin_id')
@@ -766,20 +812,48 @@ class TableIngester:
 
         table = table[table['kind'] == kind]
         source_id = str(entity.source) if entity.source else ''
+
+        def _entry(row):
+            entry = {'pattern': row['pattern'], 'conv': row['conv']}
+            tolerance = row.get('tolerance', '')
+            if tolerance:
+                entry['tolerance'] = tolerance
+            source = row.get('source', '')
+            if source:
+                entry['source'] = source
+            return entry
+
         overrides: dict[str, dict] = {}
         for _, row in table[table['source_id'] == ''].iterrows():
             if row['admin_id']:
-                overrides[row['admin_id']] = {
-                    'pattern': row['pattern'],
-                    'conv': row['conv'],
-                }
+                overrides[row['admin_id']] = _entry(row)
         for _, row in table[table['source_id'] == source_id].iterrows():
             if row['admin_id']:
-                overrides[row['admin_id']] = {
-                    'pattern': row['pattern'],
-                    'conv': row['conv'],
-                }
+                overrides[row['admin_id']] = _entry(row)
         return overrides or None
+
+    @staticmethod
+    def _resolve_parcel_id_source(
+        admin_unit_id, instruction: dict | None, default: str
+    ) -> str:
+        """Return the per-admin-unit ``source`` column override, if any.
+
+        Walks from *admin_unit_id* up to broader admin units (same
+        dash-truncation walk :func:`~openplaces.geo.ids._resolve_instruction`
+        uses for ``pattern``/``conv``/``tolerance``), returning the first
+        ``instruction`` entry that declares a ``source``. *instruction* is
+        not itself admin-hierarchy-aware for this key (`_resolve_instruction`
+        only resolves pattern/conv/tolerance), so this is a distinct, small
+        walk rather than a call into that function.
+        """
+        if instruction:
+            aid = str(admin_unit_id) if admin_unit_id is not None else None
+            while aid:
+                entry = instruction.get(aid)
+                if entry and entry.get('source'):
+                    return entry['source']
+                aid = aid.rsplit('-', 1)[0] if '-' in aid else None
+        return default
 
     def _add_parcel_id_local(self, df):
         """Add `parcel_id_local` from `parcel_id_assessor` per the recipe directive.
@@ -787,56 +861,100 @@ class TableIngester:
         Recipe directive::
 
             parcel_id_local:
-              source: parcel_id_assessor   # raw column to standardize
+              source: parcel_id_assessor   # default raw column to standardize
               kind: parcel                 # parcel | tax (selects default conv)
               admin_id_column: admin4_id   # optional: per-row admin unit (MA towns)
-              instruction: {<admin_id>: {pattern: ..., conv: ...}}   # optional override
+              # optional per-admin-unit override:
+              instruction: {<admin_id>: {pattern: ..., conv: ..., source: ...}}
+
+        An ``instruction`` entry's ``source`` (recipe-inline or from the
+        recipe-tree override table, :meth:`_load_parcel_id_overrides`)
+        overrides which raw column feeds ``parcel_id_local`` for that admin
+        unit specifically, resolved by :meth:`_resolve_parcel_id_source` --
+        for an admin unit whose usual *source* column is itself
+        truncated/non-unique at the source (no ``pattern``/``conv`` tuning
+        can recover precision a field never had).
 
         The conversion is admin-unit-specific: a recipe-inline `instruction`
         wins, then the recipe-tree override table
         (:meth:`_load_parcel_id_overrides`), then the bundled default table
         (see :func:`openplaces.geo.ids.compute_parcel_id_local`), and is
         hardened so it never adds duplicates beyond those already in
-        `parcel_id_assessor`.
+        `parcel_id_assessor` -- but only *within* the admin unit a given
+        ingest chunk covers. When a recipe processes at a finer admin level
+        than it saves at (e.g. MassGIS: per-town `process_by`, per-county
+        `save_to`), multiple chunks' outputs are later merged, and nothing
+        has checked uniqueness *across* those chunks. Two different towns'
+        raw ids that happen to be identical (each perfectly valid, since a
+        raw MassGIS map-parcel id is only documented as unique within its own
+        town) would otherwise collapse into the same `parcel_id_local` once
+        merged -- confirmed empirically on real Middlesex County data: 29% of
+        parcels gained a "duplicate" this way, 99.9% of the colliding groups
+        spanning more than one town. Prefixing with the chunk's own admin id
+        whenever process level > save level closes this structurally, without
+        touching `compute_parcel_id_local`'s own (still correct, per-chunk)
+        duplicate guard.
         """
         spec = self.recipe.get('parcel_id_local')
         if not spec:
             return df
         from openplaces.geo.ids import compute_parcel_id_local
 
-        source = spec.get('source', 'parcel_id_assessor')
-        if source not in df.columns:
-            warnings.warn(
-                f"parcel_id_local: source column '{source}' not found; skipping.",
-                stacklevel=2,
-            )
-            return df
+        default_source = spec.get('source', 'parcel_id_assessor')
         kind = spec.get('kind', 'parcel')
         instruction = {
             **(self._load_parcel_id_overrides(kind) or {}),
             **(spec.get('instruction') or {}),
         } or None
         admin_col = spec.get('admin_id_column')
+        scope_across_chunks = get_process_admin_level(
+            self.recipe
+        ) > get_save_admin_level(self.recipe)
 
         if admin_col and admin_col in df.columns:
             # Per-row admin-unit-specific conversion (e.g. Massachusetts towns).
             result = pd.Series(pd.NA, index=df.index, dtype='string')
             for admin_id, group in df.groupby(admin_col):
-                result.loc[group.index] = compute_parcel_id_local(
+                source = self._resolve_parcel_id_source(
+                    admin_id, instruction, default_source
+                )
+                if source not in group.columns:
+                    warnings.warn(
+                        f"parcel_id_local: source column '{source}' not found "
+                        f'for admin {admin_id}; skipping.',
+                        stacklevel=2,
+                    )
+                    continue
+                key = compute_parcel_id_local(
                     group[source],
                     admin_unit_id=admin_id,
                     instruction=instruction,
                     kind=kind,
                 )
+                if scope_across_chunks:
+                    key = str(admin_id) + '|' + key
+                result.loc[group.index] = key
             df['parcel_id_local'] = result
         else:
             admin_id = self.processing_chunk.get('admin_id_to_process')
-            df['parcel_id_local'] = compute_parcel_id_local(
+            source = self._resolve_parcel_id_source(
+                admin_id, instruction, default_source
+            )
+            if source not in df.columns:
+                warnings.warn(
+                    f"parcel_id_local: source column '{source}' not found; skipping.",
+                    stacklevel=2,
+                )
+                return df
+            key = compute_parcel_id_local(
                 df[source],
                 admin_unit_id=admin_id,
                 instruction=instruction,
                 kind=kind,
             )
+            if scope_across_chunks and admin_id is not None:
+                key = str(admin_id) + '|' + key
+            df['parcel_id_local'] = key
         return df
 
     # Save

@@ -6,7 +6,10 @@ fixed-width fields). A regression guard: an earlier implementation joined whole
 Series instead of per-row values.
 """
 
+import warnings
+
 import pandas as pd
+import pytest
 
 from openplaces.io.transform import apply_transformations
 
@@ -137,3 +140,47 @@ def test_lstrip_strips_leading_zeros():
     result = apply_transformations(df, recipe)
 
     assert result['address_number'].tolist() == ['1705', '416', '']
+
+
+def test_in_place_transform_does_not_warn():
+    # An output column that is also the transformation's own input (a strip/
+    # cast refining a column in place, or a concat chain consuming its own
+    # prior output) is the standard cleaning idiom, not an accidental
+    # collision, and must not raise the 'already exists' warning.
+    recipe = {
+        'transformations': [
+            {
+                'type': 'string',
+                'operation': 'strip',
+                'input': 'address_number',
+                'output': 'address_number',
+            }
+        ]
+    }
+    df = pd.DataFrame({'address_number': [' 1705 ', ' 416 ']})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        result = apply_transformations(df, recipe)
+
+    assert result['address_number'].tolist() == ['1705', '416']
+
+
+def test_unrelated_column_overwrite_still_warns():
+    # A transformation whose output collides with an existing, unrelated
+    # column (not one of its own inputs) is a genuine accidental overwrite and
+    # should still be flagged.
+    recipe = {
+        'transformations': [
+            {
+                'type': 'string',
+                'operation': 'strip',
+                'input': 'raw_value',
+                'output': 'other_column',
+            }
+        ]
+    }
+    df = pd.DataFrame({'raw_value': [' 1705 '], 'other_column': ['placeholder']})
+
+    with pytest.warns(UserWarning, match="Column 'other_column' already exists"):
+        apply_transformations(df, recipe)

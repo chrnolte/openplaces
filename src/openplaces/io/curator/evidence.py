@@ -32,7 +32,7 @@ def link_curated_entity(
     Reads the output of a curate-stage recipe and maps each named column onto
     the current entity (1:many ref -> entity) on the id key. This is how, e.g.,
     the footprint lane consumes the parcel curation lane's land-use decisions
-    (the refined ``use_group_combined`` and the ``manufactured_home_park``
+    (the refined ``use_group_combined`` and the ``manufactured_home_community``
     flag), so the referenced entity's classification is finalized before the
     current one's is inferred. Existing columns are overwritten — the
     referenced curated value supersedes the raw harmonized one.
@@ -106,6 +106,8 @@ def apportion_curated_values(
     entity_key: str = 'parcel_id',
     priority_column: str = 'priority_on_parcel',
     dwelling_column: str = 'n_dwellings_overture',
+    land_use_column: str | None = None,
+    non_residential_classes: list[str] | None = None,
 ) -> CurateState:
     """Apportion a curated reference entity's values over the n:m link sidecar.
 
@@ -152,6 +154,29 @@ def apportion_curated_values(
     dwelling_column : str, optional
         Column whose positive value marks an entity as dwelling-linked
         (default ``n_dwellings_overture``); drives the suppression rule.
+    land_use_column : str, optional
+        Classifier column on the curated reference (e.g. ``land_use_class``)
+        used to widen the split for non-residential references -- see
+        *non_residential_classes*. Read separately from *columns*: it is a
+        classifier input, not one of ``APPORTIONED_VALUE_COLUMNS``, and is
+        never itself apportioned. Ignored unless *non_residential_classes* is
+        also given; when given but absent from the reference, skipped with a
+        verbose message rather than raising (an entity recipe with no
+        land-use classification just gets the existing residential-style
+        behavior).
+    non_residential_classes : list of str, optional
+        *land_use_column* values identifying non-residential references,
+        passed as ``equal_area_ref_ids`` to
+        :func:`~openplaces.io.harmonizer.apportion.apportion_reference_values`
+        -- every entity linked to one of these references keeps its full
+        overlap-area share of
+        :data:`~openplaces.io.harmonizer.apportion.PROPORTIONAL_SPLIT_COLUMNS`
+        (``improvement_value``, ``land_value_imputed``,
+        ``improvement_value_imputed``), instead of the residential
+        dwelling-linked/secondary-structure exclusions: a warehouse plus its
+        loading dock, or a retail strip's several units, are all real
+        value-bearing structures with no single dwelling to anchor a
+        residential-style split to.
 
     Raises
     ------
@@ -195,6 +220,23 @@ def apportion_curated_values(
         .drop_duplicates(ref_key)
         .set_index(ref_key)[present]
     )
+
+    equal_area_ref_ids: set | None = None
+    if land_use_column and non_residential_classes:
+        if land_use_column in ref.columns:
+            land_use_lookup = (
+                ref.dropna(subset=[ref_key])
+                .drop_duplicates(ref_key)
+                .set_index(ref_key)[land_use_column]
+            )
+            equal_area_ref_ids = set(
+                land_use_lookup.index[land_use_lookup.isin(non_residential_classes)]
+            )
+        elif state.verbose:
+            print(
+                f'  apportion_curated_values: {land_use_column!r} missing from '
+                f"curated reference '{recipe_id}'; skipping equal-area rule."
+            )
 
     resolved_id, _ = _resolve_reference_recipe(
         link_recipe_id, entity_type, state.admin_id
@@ -269,6 +311,7 @@ def apportion_curated_values(
             if dwelling_column in curated.columns
             else None
         ),
+        equal_area_ref_ids=equal_area_ref_ids,
     )
 
     for ref_col, entity_col in columns.items():
@@ -399,6 +442,13 @@ def merge_enrichments(
     Each recipe specification must contain ``recipe_id`` and a ``columns``
     mapping from evidence-column names to canonical-column names. Existing
     canonical values take precedence; enrichment fills missing values.
+    An optional ``record_source`` (default ``False``) writes a ``{column}
+    _source`` provenance sidecar for that spec's columns -- reserve this
+    for genuinely canonical, possibly-multi-sourced columns (e.g. a value
+    later reconciled against a second source); leave it off for a bulk,
+    single-source enrichment batch (e.g. dozens of physical/environmental
+    predictors from one model), where a sidecar per column is pure
+    bookkeeping bloat with no downstream reconciliation to inform.
 
     A ``recipe_spec`` whose enrichment output doesn't exist yet for this admin
     is skipped rather than raising -- e.g. an imagery-dependent enrichment
@@ -408,14 +458,27 @@ def merge_enrichments(
     the enrichment steps that depend on it). A ``recipe_spec`` whose evidence
     *does* exist but lacks a requested column still raises -- that is a real
     recipe misconfiguration, not evidence that simply hasn't been computed.
+
+    Every column this step touches -- across every ``recipe_spec``, values
+    and source sidecars alike -- is collected in memory and written to
+    ``curated`` in a single batched ``pd.concat`` at the end, rather than
+    one ``curated[col] = ...`` assignment per column: a wide, already
+    highly-columned entity table (e.g. the curated parcel table, 170+
+    columns) fragments its internal block manager under dozens of
+    one-at-a-time inserts, tripping pandas' own
+    ``PerformanceWarning: DataFrame is highly fragmented`` -- exactly the
+    pattern a large ``merge_enrichments`` call (e.g. ~45 columns from one
+    enrichment source) produces.
     """
-    from openplaces.io.curator.provenance import record_source
+    from openplaces.io.curator.provenance import _apply_source_mask, source_column
 
     curated = state.curated
+    pending: dict[str, pd.Series] = {}
 
     for recipe_spec in recipes:
         recipe_id = recipe_spec.get('recipe_id')
         columns = recipe_spec.get('columns') or {}
+        want_source = recipe_spec.get('record_source', False)
         if not recipe_id:
             raise ValueError("Enrichment specifications require 'recipe_id'.")
         if not columns:
@@ -458,17 +521,40 @@ def merge_enrichments(
                     f'{evidence_path}.'
                 )
             values = evidence[evidence_column].reindex(curated.index)
-            if canonical_column in curated:
-                was_null = curated[canonical_column].isna()
-                curated[canonical_column] = curated[canonical_column].combine_first(
-                    values
-                )
+
+            # A prior recipe_spec in this same call may have already
+            # queued a value for this column -- read that first so
+            # declaration order still acts as a priority chain (a later
+            # spec only fills rows still missing), matching the
+            # pre-batching combine_first behavior exactly.
+            current = pending.get(canonical_column)
+            if current is None and canonical_column in curated.columns:
+                current = curated[canonical_column]
+            if current is not None:
+                was_null = current.isna()
+                merged = current.combine_first(values)
             else:
                 was_null = pd.Series(True, index=curated.index)
-                curated[canonical_column] = values
-            filled = was_null & curated[canonical_column].notna()
-            if filled.any():
-                record_source(curated, canonical_column, filled, token)
+                merged = values
+            pending[canonical_column] = merged
+
+            if want_source:
+                filled = was_null & merged.notna()
+                if filled.any():
+                    side = source_column(canonical_column)
+                    side_existing = pending.get(side)
+                    if side_existing is None and side in curated.columns:
+                        side_existing = curated[side]
+                    pending[side] = _apply_source_mask(
+                        side_existing, curated.index, filled, token
+                    )
+
+    if pending:
+        new_cols = pd.DataFrame(pending, index=curated.index)
+        overlap = [c for c in new_cols.columns if c in curated.columns]
+        if overlap:
+            curated = curated.drop(columns=overlap)
+        curated = pd.concat([curated, new_cols], axis=1)
 
     state.curated = curated
     return state

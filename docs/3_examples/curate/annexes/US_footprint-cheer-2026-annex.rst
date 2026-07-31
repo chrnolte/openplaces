@@ -63,7 +63,7 @@ Core dataset ingestion
 
 6. **Reference point databases**
 
-   Downloads the National Structure Inventory (NSI) 2022 point database (``US_building-nsi-2022``) and Overture 2025 dwelling address points (``dwelling-overture-2025``).
+   Downloads the National Structure Inventory (NSI) 2026 point database (``US_building-nsi-2026``) and Overture 2025 dwelling address points (``dwelling-overture-2025``).
 
    *Function*: :func:`openplaces.io.ingester.ingest`
 
@@ -104,7 +104,7 @@ Recipe: ``US_footprint-spine-2026``
 
 5. **Link building structure points**
 
-   Connects structure-level point evidence from the NSI database using a tiered containment, :input:`proximity_m` (10 m) inner proximity, or :input:`far_proximity_m` (100 m) outer proximity join (:ref:`Lochhead et al. 2026 <Lochhead et al. 2026>`). The join is configured as :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_building_point``) using the :input:`recipe_id` (``US_building-nsi-2022``) with a remapping crosswalk specified by :input:`remap_id` (``US_building-nsi-2022_occupancy-type-remap``). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and labeling low-rank twins from ``ESRI`` and ``HAZUS/NSI-2015`` as ``'colocated low-rank source'`` via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to be excluded from downstream aggregates.
+   Connects structure-level point evidence from the NSI database using a tiered containment, :input:`proximity_m` (10 m) inner proximity, or :input:`far_proximity_m` (100 m) outer proximity join (:ref:`Lochhead et al. 2026 <Lochhead et al. 2026>`). The join is configured as :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_building_point``) using the :input:`recipe_id` (``US_building-nsi-2026``) with a remapping crosswalk specified by :input:`remap_id` (``US_building-nsi-2026_occupancy-type-remap``). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and labeling low-rank twins from ``ESRI`` and ``HAZUS/NSI-2015`` as ``'colocated low-rank source'`` via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to be excluded from downstream aggregates.
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
@@ -151,7 +151,7 @@ Recipe: ``US_parcel-spine-2026``
 
 4. **Associate building points to parcels**
 
-   Joins NSI point data from the :input:`recipe_id` (``US_building-nsi-2022``) using a spatial overlay and proximity boundaries configured via :input:`join` (``spatial_point``), :input:`source_geometry_type` (``single_building_point``), :input:`proximity_m` (10 m), and :input:`far_proximity_m` (100 m). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and flagging ``ESRI`` and ``HAZUS/NSI-2015`` twins via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to exclude them from downstream aggregates.
+   Joins NSI point data from the :input:`recipe_id` (``US_building-nsi-2026``) using a spatial overlay and proximity boundaries configured via :input:`join` (``spatial_point``), :input:`source_geometry_type` (``single_building_point``), :input:`proximity_m` (10 m), and :input:`far_proximity_m` (100 m). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and flagging ``ESRI`` and ``HAZUS/NSI-2015`` twins via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to exclude them from downstream aggregates.
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_to_reference`
 

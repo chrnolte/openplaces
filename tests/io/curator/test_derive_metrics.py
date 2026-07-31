@@ -25,7 +25,7 @@ def _state(n_rows=1, **columns):
 def test_derive_metrics_builds_value_per_area():
     state = _state(value=[500.0])
     state = derive_metrics(state)
-    assert state.curated['m2'].iloc[0] == 100.0
+    assert state.curated['area_m2'].iloc[0] == 100.0
     assert state.curated['value_per_area'].iloc[0] == 5.0
 
 
@@ -35,6 +35,26 @@ def test_derive_metrics_does_not_touch_value_source():
     state = _state(value=[500.0], value_source=['improvement_value_parcel'])
     state = derive_metrics(state)
     assert 'value_source_per_area' not in state.curated.columns
+
+
+def test_derive_metrics_does_not_touch_improvement_value_source():
+    # improvement_value_source (a reconcile_values provenance sidecar for a
+    # bare 'improvement_value' column) starts with 'improvement_value' and
+    # would otherwise be swept up by the prefix match and divided as if it
+    # were numeric, raising a TypeError (str / float).
+    state = _state(improvement_value=[500.0], improvement_value_source=['imputed'])
+    state = derive_metrics(state)
+    assert state.curated['improvement_value_per_area'].iloc[0] == 5.0
+    assert 'improvement_value_source_per_area' not in state.curated.columns
+
+
+def test_derive_metrics_does_not_touch_structure_value_source():
+    state = _state(
+        structure_value_building_nsi=[300.0],
+        structure_value_building_nsi_source=['building_nsi'],
+    )
+    state = derive_metrics(state)
+    assert 'structure_value_building_nsi_source_per_area' not in state.curated.columns
 
 
 def test_derive_metrics_still_builds_evidence_per_area_columns():
@@ -57,8 +77,8 @@ def test_m2_missing_on_synthetic_reference_derived_rows():
         improvement_value_parcel=[200.0, 200.0],
     )
     state = derive_metrics(state)
-    assert state.curated['m2'].iloc[0] == 100.0
-    assert pd.isna(state.curated['m2'].iloc[1])
+    assert state.curated['area_m2'].iloc[0] == 100.0
+    assert pd.isna(state.curated['area_m2'].iloc[1])
     assert state.curated['improvement_value_parcel_per_area'].iloc[0] == 2.0
     assert pd.isna(state.curated['improvement_value_parcel_per_area'].iloc[1])
 
@@ -68,4 +88,15 @@ def test_m2_kept_when_geometry_source_absent():
     # keep their computed area everywhere.
     state = _state(value=[500.0])
     state = derive_metrics(state)
-    assert state.curated['m2'].iloc[0] == 100.0
+    assert state.curated['area_m2'].iloc[0] == 100.0
+
+
+def test_parcel_area_ha_is_not_recomputed():
+    # area_ha is computed once during harmonize spine assembly
+    # (derive_geometry_attributes) and must survive derive_metrics
+    # untouched for a parcel entity -- a sentinel value that disagrees with
+    # the real (100 m2 = 0.01 ha) box geometry proves it wasn't recomputed.
+    state = _state(area_ha=[42.0])
+    state.recipe = {'entity': {'entity_type': 'parcel'}}
+    state = derive_metrics(state)
+    assert state.curated['area_ha'].iloc[0] == 42.0

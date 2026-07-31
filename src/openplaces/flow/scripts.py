@@ -278,10 +278,10 @@ def convert_to_script(
         print(
             'Test run (commit=False).\n\n'
             + 'Main script has not been updated:\n'
-            + code_path(*script_dirs, script + '.py')
+            + str(code_path(*script_dirs, script + '.py'))
             + '\n\nPass commit=True to overwrite main script.\n\n'
             + 'Test script written to:\n'
-            + py_filepath
+            + str(py_filepath)
             + '\n'
         )
 

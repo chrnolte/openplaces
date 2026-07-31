@@ -36,6 +36,18 @@ def _parse_currency(x: pd.Series) -> pd.Series:
     return pd.to_numeric(values, errors='coerce')
 
 
+def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
+    """Expand a 2-digit year to 4 digits using the POSIX ``%y`` convention.
+
+    Values 0-``pivot`` map to 20xx; (``pivot``, 99] map to 19xx. Values
+    already >= 100 pass through unchanged. Matches the ``strptime('%y')``
+    rule (default pivot 68: 00-68 -> 2000-2068, 69-99 -> 1969-1999).
+    """
+    values = pd.to_numeric(x, errors='coerce')
+    century = pd.Series(np.where(values <= pivot, 2000, 1900), index=values.index)
+    return values.where(values >= 100, values + century)
+
+
 UNARY_OPS: dict[str, Callable] = {
     'log': np.log,
     'arcsinh': np.arcsinh,
@@ -45,6 +57,7 @@ UNARY_OPS: dict[str, Callable] = {
     'abs': np.abs,
     'power': lambda x, exponent: x**exponent,
     'parse_currency': _parse_currency,
+    'resolve_century': _resolve_century,
     'to_numeric': lambda x: pd.to_numeric(x, errors='coerce'),
     'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
 }
@@ -264,10 +277,6 @@ def apply_transformation(
     transform_type = config['type']
     output_col = config['output']
 
-    # Check if output column already exists
-    if output_col in df.columns and not silent:
-        warnings.warn(f"Column '{output_col}' already exists and will be overwritten")
-
     # A recipe is written for the full source schema; a particular file (or a
     # focused test frame) may legitimately lack some of those columns. Skip a
     # transformation whose declared input column(s) are entirely absent rather
@@ -276,6 +285,21 @@ def apply_transformation(
     input_cols = config.get('inputs')
     if input_cols is None and 'input' in config:
         input_cols = [config['input']]
+
+    # Overwriting the output column is only worth flagging when it wasn't one
+    # of the transformation's own inputs. Reusing the input name as the output
+    # (successive `strip`/`concat` steps refining the same column, or a
+    # transformation_patterns cast like parse_currency("{column}") that casts
+    # a raw column in place) is the standard idiom for cleaning a column and
+    # always self-overwrites; that's not the accidental collision this warning
+    # is meant to catch.
+    if (
+        output_col in df.columns
+        and not silent
+        and not (input_cols and output_col in input_cols)
+    ):
+        warnings.warn(f"Column '{output_col}' already exists and will be overwritten")
+
     if input_cols and all(col not in df.columns for col in input_cols):
         if not silent:
             warnings.warn(
@@ -764,6 +788,56 @@ def add_unique_suffix(s):
     return s
 
 
+def rename_index(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Rename `df`'s index to `name`, leaving values untouched.
+
+    Usable as a recipe's `create_index.function`
+    (`openplaces.io.transform.rename_index`) to opt a parcel entity out of
+    `TableIngester`'s automatic geometry-hash `geo_id` indexing while
+    keeping whatever index the source data already carries -- e.g. to
+    preserve a shared join key across several tables meant to be merged
+    later (see `io.aggregate.join_partitions_by_index`).
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    name : str
+        New name for `df.index`.
+    """
+    return df.rename_axis(name)
+
+
+def index_by(df: pd.DataFrame, name: str) -> pd.DataFrame:
+    """Index `df` by `name`, whether it's currently the index or a plain column.
+
+    Usable as a recipe's `create_index.function`
+    (`openplaces.io.transform.index_by`) for a shared join key that a
+    multi-table source doesn't expose consistently -- e.g. one table
+    already indexed by it (nothing to do) and another carrying it as an
+    ordinary column (promoted via `set_index`) -- so a single
+    `create_index` config works across all of a recipe's
+    `download_by: {partition: table}` tables regardless of which shape a
+    given one arrives in.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+    name : str
+        Column or existing index name to make `df`'s index.
+
+    Raises
+    ------
+    ValueError
+        If `name` is neither `df`'s current index name nor one of its
+        columns.
+    """
+    if df.index.name == name:
+        return df
+    if name in df.columns:
+        return df.set_index(name)
+    raise ValueError(f'{name!r} is neither the current index nor a column of df.')
+
+
 def make_index_unique(
     df: pd.DataFrame,
     sort_by: str | None = None,
@@ -851,3 +925,31 @@ def make_index_unique(
 
     out.index = pd.Index(new_idx, name=df.index.name)
     return out
+
+
+def convert_area_unit(value, from_unit: str, to_unit: str):
+    """Convert a per-unit-area value (e.g. a $/m2 rate) between area units.
+
+    Parameters
+    ----------
+    value : float, numpy.ndarray, or pandas.Series
+        Value(s) already expressed as an amount per `from_unit` of area.
+    from_unit, to_unit : str
+        Area units, keys of `core.constants.M2_PER_AREA_UNIT` (`'m2'`, `'ha'`,
+        `'km2'`, `'ac'`, `'sqft'`, `'ft2'`).
+
+    Returns
+    -------
+    Same type as `value`.
+    """
+    from openplaces.core.constants import M2_PER_AREA_UNIT
+
+    for unit in (from_unit, to_unit):
+        if unit not in M2_PER_AREA_UNIT:
+            raise ValueError(
+                f'Unsupported area unit {unit!r}; must be one of '
+                f'{sorted(M2_PER_AREA_UNIT)}.'
+            )
+    if from_unit == to_unit:
+        return value
+    return value * M2_PER_AREA_UNIT[to_unit] / M2_PER_AREA_UNIT[from_unit]

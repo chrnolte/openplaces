@@ -4,7 +4,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
 [![Docs](https://img.shields.io/badge/docs-latest-brightgreen.svg)](https://openplaces.readthedocs.io/en/latest/)
 
-**openplaces** is an open-source data and analytics platform for integrating property data (parcels, buildings, transactions), environmental indicators, and socio‑economic data at scale.
+**openplaces™** is an open-source data and analytics platform for integrating property data (parcels, buildings, transactions), environmental indicators, and socio‑economic data at scale.
 
 Its principal purpose is to support reproducible research for conservation, land policy, and environmental analytics, anywhere.
 
@@ -45,7 +45,7 @@ If you use **openplaces** in academic work, please cite:
 ```bibtex
 @misc{openplaces2026,
   author       = {Christoph Nolte et al.},
-  title        = {openplaces: A Python package for place-based geospatial analysis},
+  title        = {openplaces: an open-source processing engine for land, building, and property data},
   year         = {2026},
   howpublished = {\url{https://github.com/chrnolte/openplaces}}
 }

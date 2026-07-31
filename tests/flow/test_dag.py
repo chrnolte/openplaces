@@ -27,7 +27,7 @@ def test_nodes_cover_the_worked_example(dag):
     assert by_id['US_parcel-openplaces-2026'].stage == 'curate'
     # Ingest inputs (literal + auto-discovered for the county)
     for recipe_id in (
-        'US_building-nsi-2022',
+        'US_building-nsi-2026',
         'footprint-obm-2025',
         'US_footprint-microsoft-v2',
         'dwelling-overture-2025',
@@ -65,7 +65,7 @@ def test_input_paths_of_curate_include_spine_and_sidecar(dag):
 
 
 def test_retention_classes(dag):
-    assert dag.retention('ingest', 'US_building-nsi-2022') == 'until_consumed'
+    assert dag.retention('ingest', 'US_building-nsi-2026') == 'until_consumed'
     assert dag.retention('harmonize', 'US_footprint-spine-2026') == 'keep'
     assert dag.retention('ingest', 'image-googlestreetview-2026') == ('until_consumed')
     assert dag.retention('curate', TARGET) == 'keep'
@@ -99,3 +99,60 @@ def test_footprint_inputs_include_tile_admin_link(dag):
     assert (
         get_entity_link_path('tile-obm-2025', 'US_admin-census-2021_admin3') in inputs
     )
+
+
+def test_placeslab_present_by_default(dag):
+    # Opt-in lane, but present without exclusion: both the enrich recipe
+    # (declared by US_parcel-openplaces-2026's merge_enrichments) and its
+    # own reference ingest recipe (reference_parcel_recipe_id).
+    ids = {n.recipe_id for n in dag.nodes()}
+    assert 'US_parcel_parcel-placeslab-fmv2026' in ids
+    assert 'US_parcel-placeslab-fmv2026' in ids
+
+
+def test_excluding_placeslab_enrich_prunes_its_ingest_recipe_too():
+    excluded = RecipeDAG(
+        TARGET,
+        admin_ids=[COUNTY],
+        exclude_recipe_ids={'US_parcel_parcel-placeslab-fmv2026'},
+    )
+    ids = {n.recipe_id for n in excluded.nodes()}
+    assert 'US_parcel_parcel-placeslab-fmv2026' not in ids
+    assert 'US_parcel-placeslab-fmv2026' not in ids
+
+
+def test_excluded_lane_leaves_no_dangling_curate_input():
+    excluded = RecipeDAG(
+        TARGET,
+        admin_ids=[COUNTY],
+        exclude_recipe_ids={'US_parcel_parcel-placeslab-fmv2026'},
+    )
+    inputs = excluded.input_paths('curate', 'US_parcel-openplaces-2026', COUNTY)
+    assert not any('placeslab' in str(p) for p in inputs)
+
+
+def test_excluding_image_enrich_recipe_prunes_its_image_ingest_too():
+    excluded = RecipeDAG(
+        TARGET,
+        admin_ids=[COUNTY],
+        exclude_recipe_ids={'US_footprint_built-n-stories-brails-2026'},
+    )
+    ids = {n.recipe_id for n in excluded.nodes()}
+    assert 'US_footprint_built-n-stories-brails-2026' not in ids
+    assert 'image-googlestreetview-2026' not in ids
+    # The unrelated satellite-dependent enrich recipe is unaffected
+    assert 'US_footprint_built-roof-shape-brails-2026' in ids
+    assert 'image-googlesatellite-z20' in ids
+
+
+def test_to_mermaid_defaults_to_horizontal(dag):
+    assert 'flowchart LR' in dag.to_mermaid()
+
+
+def test_to_mermaid_supports_vertical_direction(dag):
+    assert 'flowchart TB' in dag.to_mermaid(direction='TB')
+
+
+def test_to_mermaid_rejects_invalid_direction(dag):
+    with pytest.raises(ValueError, match='direction'):
+        dag.to_mermaid(direction='sideways')

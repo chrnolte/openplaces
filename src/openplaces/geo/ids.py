@@ -22,12 +22,37 @@ import pyproj
 import shapely
 from openlocationcode import openlocationcode as olc
 
+from openplaces.geo.polygon import reproject
 from openplaces.io.transform import add_unique_suffix
+
+# Default area/compactness quantization, expressed as the historical hardcoded
+# multipliers (area_q = round(log10(area*1e10+1) * 100), compact_q =
+# round(compact * 10)). AREA_TOLERANCE_DEFAULT/COMPACTNESS_STEP_DEFAULT below are
+# derived from these so get_geo_ids' default output is unchanged.
+_AREA_PRECISION_DEFAULT = 100
+_COMPACT_PRECISION_DEFAULT = 10
+AREA_TOLERANCE_DEFAULT = 10 ** (1 / _AREA_PRECISION_DEFAULT) - 1
+COMPACTNESS_STEP_DEFAULT = 1 / _COMPACT_PRECISION_DEFAULT
+
+
+def _shape_signals(geom_arr):
+    """Return (area, compactness) for an array of geometries.
+
+    Compactness is perimeter^2 / area (dimensionless). Shared by `get_geo_ids`
+    and the crosswalk's shape-similarity gate (`crosswalk.py`), so both use the
+    exact same formula.
+    """
+    area = np.nan_to_num(shapely.area(geom_arr))
+    length = np.nan_to_num(shapely.length(geom_arr))
+    compact = length**2 / (area + 1e-10)
+    return area, compact
 
 
 def get_geo_ids(
     gdf,
     grid_degrees=0.000001,  # ~11cm at equator, ~8cm at 45°N
+    area_tolerance=AREA_TOLERANCE_DEFAULT,
+    compactness_step=COMPACTNESS_STEP_DEFAULT,
     hash_length=24,
     handle_duplicates=True,
     verbose=False,
@@ -42,6 +67,17 @@ def get_geo_ids(
         GeoDataFrame with parcel geometries
     grid_degrees : float
         Grid size in degrees
+    area_tolerance : float
+        Relative area tolerance (e.g. 0.02 = 2%): two areas whose ratio is
+        within this bound quantize to the same bucket. Default reproduces the
+        historical hardcoded area quantization exactly.
+    compactness_step : float
+        Absolute step size for compactness (perimeter^2/area) quantization.
+        Default reproduces the historical hardcoded compactness quantization
+        exactly. Kept linear (not ratio-based, unlike `area_tolerance`) because
+        compactness is not log-scaled internally -- ratio-scaling it would
+        silently change existing `geo_id` values for parcels away from the
+        tolerance's reference point.
     hash_length : int
         Number of hex characters in output
     handle_duplicates : bool
@@ -58,7 +94,7 @@ def get_geo_ids(
     # Ensure GeoDataFrame is in EPSG:4326 projection
     if gdf.crs != 'epsg:4326':
         print('Reprojecting vector data to `epsg:4326` to compute `geo_ids`.')
-        gdf = gdf.to_crs('epsg:4326')
+        gdf = reproject(gdf, 'epsg:4326')
 
     # Quantize bbox corners (consistent grid for all parcels; nan_to_num
     # avoids checking for empty geometries)
@@ -70,12 +106,13 @@ def get_geo_ids(
     # Area in square degrees (log scale, scaled up for precision)
     # Note: Area in degrees² varies with latitude, but that's okay
     # because we're comparing relative sizes at similar locations
-    area_deg2 = np.nan_to_num(shapely.area(geom))
-    area_q = np.round(np.log10(area_deg2 * 1e10 + 1) * 100).astype(np.int64)
+    area_deg2, compact = _shape_signals(geom)
+    area_precision = 1 / np.log10(1 + area_tolerance)
+    area_q = np.round(np.log10(area_deg2 * 1e10 + 1) * area_precision).astype(np.int64)
 
     # Compactness: perimeter²/area (dimensionless, so units don't matter)
-    length = np.nan_to_num(shapely.length(geom))
-    compact_q = np.round(length**2 / (area_deg2 + 1e-10) * 10).astype(np.int64)
+    compact_precision = 1 / compactness_step
+    compact_q = np.round(compact * compact_precision).astype(np.int64)
 
     # Create hash inputs
     cols = [
@@ -240,7 +277,7 @@ def add_openlocationcode_index(
     codelength=11,
     handle_duplicates=True,
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Return the GeoDataFrame using Open Location Code (OLC) as the index.
 
     Parameters
     ----------
@@ -251,7 +288,7 @@ def add_openlocationcode_index(
     codelength : int
         `openlocationcode` code length
     handle_duplicates : bool
-        If True, adds numeric suffix to duplicate GIDs (default True)
+        If True, adds numeric suffix to duplicate OLCs (default True)
     """
 
     gdf = gdf.copy()
@@ -387,7 +424,7 @@ def add_ubid_index(
     name='ubid',
     duplicates='raise',
 ):
-    """Return the GeoDataFrame using `geo_id` as the index
+    """Return the GeoDataFrame using Unique Building ID (UBID) as the index.
 
     Parameters
     ----------
@@ -751,6 +788,57 @@ def dominant_parcel_id_pattern(series: pd.Series, min_match_ratio: float = 0.5) 
     return 'Useless'
 
 
+def simplest_parcel_id_pattern(
+    series: pd.Series,
+    min_match_ratio: float = 0.5,
+    conv_code: str = 'skip_empty: 1',
+    tolerance: float = 0.005,
+) -> str:
+    """Return the simplest pattern that matches well without adding duplicates.
+
+    Offline helper used to (re)generate the per-admin-unit conversion table;
+    not used on the ingest path. Complements :func:`dominant_parcel_id_pattern`
+    (which optimizes for match ratio alone, breaking ties by lower
+    complexity): this instead walks the active pattern library from lowest to
+    highest ``complexity`` and returns the first pattern that both clears
+    ``min_match_ratio`` and, once converted with ``conv_code``, does not
+    collapse distinct raw ids beyond ``tolerance`` (see ``_adds_duplicates``,
+    the same guard :func:`compute_parcel_id_local` applies at ingest time). A
+    simpler pattern that already clears both bars generalizes better to id
+    variants absent from the sample than the most specific pattern that
+    happens to match it -- useful for a family like
+    ``Sx-[S.]x(-Sx)(-Sx)(-Sx)`` where several ladder members (``Sx-Sx``,
+    ``Sx-Sx(-Sx)``, ...) may fit a given county equally well.
+
+    Falls back to :func:`dominant_parcel_id_pattern`'s result if no candidate
+    clears both gates.
+
+    Caveat: ranking trusts the bundled ``complexity`` column, which is
+    hand-curated from the original ZTRAX port and occasionally under-scores
+    old, overly permissive patterns (e.g. ones tolerating optional
+    whitespace around every separator, which match more incidentally than a
+    strict fixed-delimiter pattern despite a low stored complexity). Treat
+    the return value as a starting point to eyeball, not a final answer --
+    especially when it comes back looking fussier (more optional groups,
+    looser separators) than a stricter same- or lower-complexity candidate
+    you'd expect to win instead.
+    """
+    s = series.astype('string').str.strip().str.upper()
+    s = s[s.notnull() & s.ne('')]
+    if len(s) == 0:
+        return 'Empty'
+
+    patterns = _parcel_id_patterns().sort_values('complexity', kind='stable')
+    for name, row in patterns.iterrows():
+        if s.str.match(row['regex']).mean() < min_match_ratio:
+            continue
+        candidate = convert_parcel_id(s, name, conv_code)
+        if not _adds_duplicates(s, candidate, tolerance):
+            return name
+
+    return dominant_parcel_id_pattern(series, min_match_ratio)
+
+
 def _adds_duplicates(raw: pd.Series, candidate: pd.Series, tolerance: float) -> bool:
     """True if *candidate* collapses distinct raw ids beyond *tolerance*.
 
@@ -767,26 +855,33 @@ def _adds_duplicates(raw: pd.Series, candidate: pd.Series, tolerance: float) -> 
 
 
 def _resolve_instruction(admin_unit_id, instruction, kind):
-    """Resolve (pattern, conv_code) for an admin unit and source kind.
+    """Resolve (pattern, conv_code, tolerance) for an admin unit and source kind.
 
     Order: explicit recipe ``instruction`` for the most-specific admin id, then
-    the bundled default table, then ``(None, 'simple')``.
+    the bundled default table, then ``(None, 'simple', None)``. ``tolerance``
+    (the duplicate-guard override, see ``compute_parcel_id_local``) is only
+    ever read from ``instruction`` entries -- the bundled default table has no
+    such column, and always resolves it as ``None`` (caller's default).
     """
     if instruction:
         aid = str(admin_unit_id) if admin_unit_id is not None else None
         while aid:
             if aid in instruction:
                 entry = instruction[aid]
-                return entry.get('pattern'), entry.get('conv', 'simple')
+                return (
+                    entry.get('pattern'),
+                    entry.get('conv', 'simple'),
+                    entry.get('tolerance'),
+                )
             aid = aid.rsplit('-', 1)[0] if '-' in aid else None
     links = _parcel_id_links()
     aid = str(admin_unit_id) if admin_unit_id is not None else None
     while aid:
         if aid in links.index:
             row = links.loc[aid]
-            return row.get(f'pattern_{kind}'), row.get(f'conv_{kind}') or 'simple'
+            return row.get(f'pattern_{kind}'), row.get(f'conv_{kind}') or 'simple', None
         aid = aid.rsplit('-', 1)[0] if '-' in aid else None
-    return None, 'simple'
+    return None, 'simple', None
 
 
 def compute_parcel_id_local(
@@ -803,10 +898,18 @@ def compute_parcel_id_local(
     applies a hardened duplicate guard: if the conversion would collapse
     distinct ``parcel_id_assessor`` values beyond *tolerance*, it falls back to
     ``simple`` and then to the raw (uppercased, alphanumeric) id, never adding
-    new duplicates over the source.
+    new duplicates over the source. An ``instruction`` entry may set its own
+    ``tolerance`` (e.g. for a county where standardizing away an inconsistently
+    zero-padded segment is expected to legitimately collapse repeat-sale
+    filings of the same parcel beyond the default 0.5%) -- it overrides the
+    *tolerance* parameter when present.
     """
     raw = series.astype('string').str.strip().str.upper()
-    pattern, conv_code = _resolve_instruction(admin_unit_id, instruction, kind)
+    pattern, conv_code, resolved_tolerance = _resolve_instruction(
+        admin_unit_id, instruction, kind
+    )
+    if resolved_tolerance is not None:
+        tolerance = float(resolved_tolerance)
 
     candidate = convert_parcel_id(raw, pattern, conv_code)
     if not _adds_duplicates(raw, candidate, tolerance):

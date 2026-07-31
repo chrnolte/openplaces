@@ -82,13 +82,15 @@ columns_to_categorical:
   - school_district_name
   - admin3_name
 
-# Expose the raw tax/assessor parcel id under the canonical name
-# parcel_id_assessor (a copy of parcel_id_tax), so it is the raw key
-# parcel_id_local derives from (consistent across parcel recipes).
+# Expose the raw assessor-original parcel id under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin3 -- PARCELID), so it is the
+# raw key parcel_id_local derives from (consistent across parcel recipes).
+# TAXPARCELID (parcel_id_tax) is empty statewide in the V11 dataset (verified
+# across Dane, Oconto, and Vilas counties), so it cannot be the source here.
 transformations:
   - type: string
     operation: concat
-    inputs: [parcel_id_tax]
+    inputs: [parcel_id_admin3]
     output: parcel_id_assessor
 
 # Standardized matching key from the tax parcel number, per county (auto

@@ -17,7 +17,7 @@ from importlib import import_module as _import_module
 import pandas as pd
 
 from openplaces.core.schema import AdminId
-from openplaces.io import read_parquet, save_parquet
+from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.io.readers import get_admin_ids
 from openplaces.recipe import (
@@ -54,6 +54,11 @@ class EnrichState:
         (deeper than the process level) instead of all children.
     metadata
         Step-specific intermediate data.
+    reprocess
+        Whether this run was invoked with `reprocess=True`. Lets a step
+        decide whether to reuse a cached artifact it saved on a prior run
+        (e.g. `enrich_parcels_from_reference_crosswalk`'s crosswalk sidecar)
+        instead of always recomputing.
     """
 
     recipe: dict
@@ -65,6 +70,7 @@ class EnrichState:
     evidence: pd.DataFrame
     image_admin_ids: list[str] | None = None
     metadata: dict = field(default_factory=dict)
+    reprocess: bool = False
 
 
 _STEP_REGISTRY: dict[str, Callable] = {}
@@ -279,7 +285,7 @@ class Enricher:
                 verbose=self.verbose,
                 overwrite=True,
             )
-            self._enrich_one(admin_id, sub_admin_ids)
+            self._enrich_one(admin_id, sub_admin_ids, reprocess=reprocess)
             self._timer.finish()
             if cleanup == 'consumed':
                 from openplaces.io.cleanup import cleanup_consumed_inputs
@@ -290,6 +296,7 @@ class Enricher:
                     include_images=include_images,
                     verbose=self.verbose,
                 )
+            release_unused_memory()
 
     @staticmethod
     def _read_coverage(out_path) -> set[str] | None:
@@ -316,6 +323,7 @@ class Enricher:
         self,
         admin_id: AdminId,
         sub_admin_ids: list[str] | None = None,
+        reprocess: bool = False,
     ) -> None:
         pipeline = self.recipe.get('pipeline')
         if not pipeline:
@@ -337,6 +345,7 @@ class Enricher:
             spine=spine,
             evidence=evidence,
             image_admin_ids=sub_admin_ids,
+            reprocess=reprocess,
         )
 
         for step_cfg in pipeline:

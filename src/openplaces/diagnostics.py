@@ -37,8 +37,9 @@ def find_recipes(
     -------
     pd.DataFrame
         Columns: ``admin_id``, ``stage``, ``entity_type``, ``source_id``,
-        ``version``, ``n_companion_files``. Sorted by admin_id then source_id.
-        Global recipes have an empty string for ``admin_id``.
+        ``version``, ``n_companion_files``, ``exclude_from_auto_discover``.
+        Sorted by admin_id then source_id. Global recipes have an empty
+        string for ``admin_id``.
     """
     recipes_root = Path(__file__).parent / 'recipes'
 
@@ -78,6 +79,9 @@ def find_recipes(
                 'source_id': source_id,
                 'version': version,
                 'n_companion_files': n_companion,
+                'exclude_from_auto_discover': bool(
+                    data.get('exclude_from_auto_discover', False)
+                ),
             }
         )
 

@@ -28,6 +28,12 @@ uncompressed_file_name: "Parcels.gdb"
 # Layer that identifies parcels (10M parcels)
 layer: CADASTRAL_DOR
 
+# Standardized, locally cross-comparable parcel matching key parcel_id_local
+# derives from (consistent across parcel recipes).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
@@ -40,7 +46,7 @@ process_by:
 columns:
   parcel_id_admin2: STATE_PAR_
   parcel_id_admin2_2: MP_ID
-  parcel_id_admin3: PARCEL_ID
+  parcel_id_assessor: PARCEL_ID
   parcel_id_admin3_2: ALT_KEY
   address: PHY_ADDR1
   address2: PHY_ADDR2
@@ -56,7 +62,7 @@ columns:
   year_built: ACT_YR_BLT
   living_area_sqft: TOT_LVG_AR
   n_dwellings: NO_RES_UNT
-  use_group: DOR_UC
+  use_group_code: DOR_UC
   use_group_admin3: PA_UC
   land_unit_code: LND_UNTS_C
   n_land_units: NO_LND_UNT
@@ -118,3 +124,8 @@ transformations:
     type: expression
     expression: "market_value - land_value - special_feature_value"
     inputs: [market_value, land_value, special_feature_value]
+
+# Standardized matching key (auto conversion; processed per admin3).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel

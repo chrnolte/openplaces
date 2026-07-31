@@ -3,6 +3,7 @@ Input/output utilities
 """
 
 import bz2
+import gc
 import math
 import re
 import shutil
@@ -35,6 +36,7 @@ __all__ = [
     'delete_image_caches',
     'download',
     'read_parquet',
+    'release_unused_memory',
     'save',
     'save_parquet',
     'share',
@@ -55,6 +57,18 @@ _CONTENT_TYPE_EXT = {
     'application/x-zip-compressed': '.zip',
     'application/vnd.apache.parquet': '.parquet',
 }
+
+
+def release_unused_memory() -> None:
+    """Return freed Python and pyarrow allocations to the OS.
+
+    Geometry-heavy GeoDataFrames and pyarrow's arena allocator do not
+    reliably release freed memory back to the OS through refcounting
+    alone. Call this after finishing work on one admin unit in a
+    multi-admin-unit run to keep peak resident memory bounded.
+    """
+    gc.collect()
+    pyarrow.default_memory_pool().release_unused()
 
 
 def _content_type_to_ext(content_type: str) -> str | None:
@@ -826,7 +840,8 @@ def read_parquet(
     # into the same file as the attributes -- no `_geo` sidecar, no join-id
     # column. Detected via a cheap schema-only peek, before deciding whether
     # to read through pandas or geopandas.
-    if 'geometry' in pq.ParquetFile(parquet_path).schema_arrow.names:
+    schema_names = pq.ParquetFile(parquet_path).schema_arrow.names
+    if 'geometry' in schema_names:
         if geom == 'simplified':
             raise ValueError(
                 f'{parquet_path} is a combined geoparquet file (geometry merged '
@@ -834,8 +849,6 @@ def read_parquet(
                 'geometry sidecar was never written for it.'
             )
         columns = kwargs.pop('columns', None)
-        if geom and columns is not None and 'geometry' not in columns:
-            columns = [*columns, 'geometry']
         read_filters = filters
         if bbox is not None:
             minx, miny, maxx, maxy = bbox
@@ -845,11 +858,21 @@ def read_parquet(
                 & (pyarrow.compute.field('bbox', 'xmax') >= minx)
                 & (pyarrow.compute.field('bbox', 'ymax') >= miny)
             )
-        df = gpd.read_parquet(
-            parquet_path, filters=read_filters, columns=columns, **kwargs
-        )
-        if not geom:
-            df = pd.DataFrame(df.drop(columns='geometry'))
+        if geom:
+            if columns is not None and 'geometry' not in columns:
+                columns = [*columns, 'geometry']
+            df = gpd.read_parquet(
+                parquet_path, filters=read_filters, columns=columns, **kwargs
+            )
+        else:
+            # geom is the ultimate decision on whether geometry is read at
+            # all: skip gpd.read_parquet (which requires a geometry column
+            # present to build a GeoDataFrame) and the WKB decode it implies,
+            # reading everything else straight through pandas instead.
+            columns = [c for c in (columns or schema_names) if c != 'geometry']
+            df = pd.read_parquet(
+                parquet_path, filters=read_filters, columns=columns, **kwargs
+            )
         if drop_join_id and '_join_id' in df:
             df = df.drop(columns='_join_id')
         return df
