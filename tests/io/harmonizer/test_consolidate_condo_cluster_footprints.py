@@ -8,12 +8,17 @@ rows in that sidecar at all, so curate-stage readers
 (`apportion_curated_values`, `collect_link_ids`) never see its cluster
 parcels and the footprint resolves to a $0 structure value despite real,
 positive `improvement_value` on every parcel underneath it.
+
+Also covers the geometry-source selection logic: a real footprint linked
+to a cluster's parcels is used as-is only if it adequately covers them,
+never unioned together with the parcel boundaries, and any part of it
+that belongs to an unrelated, non-adjacent cluster is clipped out first.
 """
 
 import geopandas as gpd
 import pandas as pd
 import pytest
-from shapely.geometry import box
+from shapely.geometry import MultiPolygon, box
 
 from openplaces.config import cfg
 from openplaces.core.schema import AdminId
@@ -211,3 +216,279 @@ def test_no_sidecar_is_a_no_op_write(state):
 
     state = links_mod.consolidate_condo_cluster_footprints(state)
     assert not _sidecar_path().exists()
+
+
+def _new_cluster_rows(state):
+    new_ids = [
+        i
+        for i in state.spine.index
+        if str(state.spine.at[i, 'geometry_source']).startswith('condo_cluster.')
+    ]
+    return new_ids
+
+
+def _new_cluster_geometry(state):
+    new_ids = _new_cluster_rows(state)
+    assert len(new_ids) == 1
+    return state.spine.at[new_ids[0], 'geometry']
+
+
+def _state_with_real_footprint(data_root, monkeypatch, real_geom):
+    # A real footprint alongside the ordinary, unrelated dummy footprint --
+    # overlaps the two condo unit parcels well enough (>=50% of their
+    # combined area, >=33% of each individually) to be linked to both by
+    # _link_spatial_overlay before consolidation runs.
+    monkeypatch.setattr(
+        links_mod, 'get_entities', lambda *a, **k: _condo_unit_parcels_gdf()
+    )
+    recipe = get_recipe_by_id(SPINE)
+    spine = gpd.GeoDataFrame(
+        {'geometry': [box(100, 100, 101, 101), real_geom]},
+        index=pd.Index(['f_other', 'f_real'], name='footprint_id'),
+        crs='epsg:4326',
+    )
+    return HarmonizeState(
+        recipe=recipe,
+        admin_id=AdminId(COUNTY),
+        verbose=False,
+        timer=None,
+        spine=spine,
+    )
+
+
+def test_real_footprint_covering_cluster_is_chosen_over_parcel_union(
+    data_root, monkeypatch
+):
+    # Inset within the U1+U2 parcel union (box(0, 0, 0.0002, 0.0001)) --
+    # 72% of the combined area and 72% of each unit individually, well
+    # above both coverage thresholds, and visibly distinct from the raw
+    # parcel boundaries so the assertion can't pass by coincidence.
+    real_geom = box(0.00001, 0.00001, 0.00019, 0.00009)
+    state = _state_with_real_footprint(data_root, monkeypatch, real_geom)
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    consolidated = _new_cluster_geometry(state)
+    assert consolidated.equals(real_geom)
+    assert not consolidated.equals(box(0, 0, 0.0002, 0.0001))
+
+
+def test_real_footprint_missing_one_unit_falls_back_to_parcel_union(
+    data_root, monkeypatch
+):
+    # Fully covers U1 but only 20% of U2 -- group coverage (60%) alone
+    # would pass, but the per-parcel guard (20% < 33% for U2) must still
+    # reject it, falling back to the plain parcel union rather than
+    # unioning the real fragment with the parcel boundary.
+    real_geom = box(0, 0, 0.00012, 0.0001)
+    state = _state_with_real_footprint(data_root, monkeypatch, real_geom)
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    consolidated = _new_cluster_geometry(state)
+    parcel_union = box(0, 0, 0.0002, 0.0001)
+    assert consolidated.equals(parcel_union)
+    assert not consolidated.equals(real_geom)
+
+
+def test_real_footprint_fragment_shared_with_unrelated_cluster_is_clipped(
+    data_root, monkeypatch
+):
+    # A messy real footprint spanning both this cluster's own parcels
+    # (72% inset coverage, same shape as the "chosen as-is" case) and a
+    # totally disjoint, unrelated location far away -- as if its spine id
+    # were also crosswalk-linked to a different, non-adjacent cluster.
+    # Only the part touching this cluster's own parcels may survive.
+    near_part = box(0.00001, 0.00001, 0.00019, 0.00009)
+    far_part = box(1, 1, 1.0001, 1.0001)
+    real_geom = MultiPolygon([near_part, far_part])
+    state = _state_with_real_footprint(data_root, monkeypatch, real_geom)
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    consolidated = _new_cluster_geometry(state)
+    assert consolidated.equals(near_part)
+    assert not consolidated.intersects(far_part)
+    assert consolidated.bounds[2] < 1  # max x nowhere near the far part
+
+
+def _ten_unit_parcels_gdf():
+    # 10 touching unit parcels in a row, equal area -- U0-U8 fully real-
+    # footprint-covered, U9 only 20% covered (real data: Carteret County's
+    # 8764JWX6+3PV, 11 of 12 parcels 97.9-100% covered, one at 30.9%, well
+    # under the old 33% per-parcel floor).
+    geo_ids = [f'U{i}' for i in range(10)]
+    return gpd.GeoDataFrame(
+        {
+            'geo_id': geo_ids,
+            'land_value': [0.0] * 10,
+            'improvement_value': [300_000.0] * 10,
+            'geometry': [
+                box(i * 0.0001, 0, (i + 1) * 0.0001, 0.0001) for i in range(10)
+            ],
+        },
+        crs='epsg:4326',
+    )
+
+
+def test_one_straggler_far_below_old_floor_still_passes_smooth_score(
+    data_root, monkeypatch
+):
+    # Real footprint covers U0-U8 fully and only 20% of U9 -- under the
+    # old hard per-parcel floor (33%) this cluster would have fallen back
+    # to the parcel union despite 92% overall coverage; the smooth,
+    # area-weighted score must let U9's shortfall get outvoted by the
+    # other 9 parcels.
+    real_geom = box(0, 0, 0.00092, 0.0001)
+    monkeypatch.setattr(
+        links_mod, 'get_entities', lambda *a, **k: _ten_unit_parcels_gdf()
+    )
+    recipe = get_recipe_by_id(SPINE)
+    spine = gpd.GeoDataFrame(
+        {'geometry': [box(100, 100, 101, 101), real_geom]},
+        index=pd.Index(['f_other', 'f_real'], name='footprint_id'),
+        crs='epsg:4326',
+    )
+    state = HarmonizeState(
+        recipe=recipe,
+        admin_id=AdminId(COUNTY),
+        verbose=False,
+        timer=None,
+        spine=spine,
+    )
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    consolidated = _new_cluster_geometry(state)
+    assert consolidated.equals(real_geom)
+
+
+def _two_far_apart_unit_pairs_gdf():
+    # Two 2-unit pairs, far enough apart (0.01 deg, ~1 km) that they never
+    # touch and _cluster_condo_parcels keeps them as separate components.
+    return gpd.GeoDataFrame(
+        {
+            'geo_id': ['U1', 'U2', 'U3', 'U4'],
+            'land_value': [0.0, 0.0, 0.0, 0.0],
+            'improvement_value': [300_000.0, 250_000.0, 280_000.0, 260_000.0],
+            'geometry': [
+                box(0, 0, 0.0001, 0.0001),
+                box(0.0001, 0, 0.0002, 0.0001),
+                box(0.01, 0, 0.0101, 0.0001),
+                box(0.0101, 0, 0.0102, 0.0001),
+            ],
+        },
+        crs='epsg:4326',
+    )
+
+
+def test_two_clusters_sharing_one_real_footprint_are_merged(data_root, monkeypatch):
+    # One real footprint spans both far-apart pairs' full extent -- both
+    # clusters independently pass coverage against the SAME spine id, so
+    # they must merge into one row rather than each claiming the whole
+    # shared polygon (which real Carteret County data showed produces
+    # duplicate rows a later dedup step then silently drops entirely).
+    monkeypatch.setattr(
+        links_mod, 'get_entities', lambda *a, **k: _two_far_apart_unit_pairs_gdf()
+    )
+    recipe = get_recipe_by_id(SPINE)
+    real_geom = box(0, 0, 0.0102, 0.0001)
+    spine = gpd.GeoDataFrame(
+        {'geometry': [box(100, 100, 101, 101), real_geom]},
+        index=pd.Index(['f_other', 'f_real'], name='footprint_id'),
+        crs='epsg:4326',
+    )
+    state = HarmonizeState(
+        recipe=recipe,
+        admin_id=AdminId(COUNTY),
+        verbose=False,
+        timer=None,
+        spine=spine,
+    )
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    new_ids = _new_cluster_rows(state)
+    assert len(new_ids) == 1
+    crosswalk = state.crosswalks[PARCEL]
+    linked = set(
+        crosswalk.xs(new_ids[0], level='footprint_id').index.get_level_values(
+            'parcel_id'
+        )
+    )
+    assert linked == {'U1', 'U2', 'U3', 'U4'}
+
+
+def test_two_clusters_with_different_real_footprints_are_not_merged(
+    data_root, monkeypatch
+):
+    # Same two far-apart pairs, but each covered by its OWN separate real
+    # footprint -- no shared spine id, so they must stay as two distinct
+    # consolidated rows.
+    monkeypatch.setattr(
+        links_mod, 'get_entities', lambda *a, **k: _two_far_apart_unit_pairs_gdf()
+    )
+    recipe = get_recipe_by_id(SPINE)
+    real_geom_1 = box(0, 0, 0.0002, 0.0001)
+    real_geom_2 = box(0.01, 0, 0.0102, 0.0001)
+    spine = gpd.GeoDataFrame(
+        {'geometry': [box(100, 100, 101, 101), real_geom_1, real_geom_2]},
+        index=pd.Index(['f_other', 'f_real_1', 'f_real_2'], name='footprint_id'),
+        crs='epsg:4326',
+    )
+    state = HarmonizeState(
+        recipe=recipe,
+        admin_id=AdminId(COUNTY),
+        verbose=False,
+        timer=None,
+        spine=spine,
+    )
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+    state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    new_ids = _new_cluster_rows(state)
+    assert len(new_ids) == 2
+    crosswalk = state.crosswalks[PARCEL]
+    memberships = {
+        frozenset(
+            crosswalk.xs(nid, level='footprint_id').index.get_level_values('parcel_id')
+        )
+        for nid in new_ids
+    }
+    assert memberships == {frozenset({'U1', 'U2'}), frozenset({'U3', 'U4'})}
