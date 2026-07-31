@@ -152,8 +152,10 @@ exclude = ["tests*"]
 [tool.setuptools.package-data]
 openplaces = [
     "qgis/*.py",
+    "qgis/templates/*.qgz",
     "core/*.csv",
     "geo/*.csv",
+    "viz/qgis_map/*.csv",
 ]
 
 [tool.ruff]
