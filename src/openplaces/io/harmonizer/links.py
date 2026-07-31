@@ -575,15 +575,6 @@ def snap_chained_links(
     return out, snapped
 
 
-def _truncate_admin_to_level(admin_id, level: int):
-    """Truncate an AdminId to a save level (None at level 0)."""
-    if admin_id is None or level <= 0:
-        return None
-    if not isinstance(admin_id, AdminId):
-        admin_id = AdminId(admin_id)
-    return AdminId(*admin_id.levels[:level])
-
-
 def _link_fingerprint(
     state: HarmonizeState, ref_recipe_id: str, step_config: dict
 ) -> dict:
@@ -612,8 +603,10 @@ def _link_fingerprint(
             upstream = get_recipe_by_id(upstream_id)
             if upstream.get('stage', 'ingest') != 'ingest':
                 continue
-            source_admin = _truncate_admin_to_level(
-                state.admin_id, get_save_admin_level(upstream)
+            source_admin = (
+                state.admin_id.truncate_to_level(get_save_admin_level(upstream))
+                if state.admin_id
+                else None
             )
             path = get_output_path(upstream, admin_id=source_admin)
         except Exception:

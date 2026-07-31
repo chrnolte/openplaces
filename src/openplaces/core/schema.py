@@ -168,6 +168,25 @@ class AdminId:
     def get_level(self):
         return len(self.levels)
 
+    def truncate_to_level(self, level: int) -> 'AdminId | None':
+        """Return this AdminId truncated to *level* levels.
+
+        Parameters
+        ----------
+        level : int
+            Number of levels to keep. ``level <= 0`` yields ``None``.
+
+        Examples
+        --------
+        >>> AdminId('US', 'MA', 'MI').truncate_to_level(2)
+        AdminId(levels=('US', 'MA'))
+        >>> AdminId('US', 'MA', 'MI').truncate_to_level(0) is None
+        True
+        """
+        if level <= 0:
+            return None
+        return AdminId(*self.levels[:level])
+
 
 @dataclass
 class EntityType:
