@@ -1,0 +1,73 @@
+# Recipe: Northampton County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (hosted by GIS vendor AGD,
+# org id nJbIFHiSnaX0z0hS), backing its public parcel viewer. Caps a single
+# query at 1,000 features (`maxRecordCount`), so `arcgis_rest_scraper` pages
+# through it.
+#
+# NOTE: the layer carries only a single combined value field (`Tax_Value`)
+# -- no land/building split, so no `improvement_value` is available from
+# this source (verified populated: 977/1000 sampled records).
+
+description: >-
+  Northampton County, NC parcel roll (total assessed value, owner, situs,
+  deed reference) from the county's ArcGIS parcel layer. No land/building
+  value split is available from this source.
+
+admin_id: US-NC-NO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: northamptoncounty
+    portal_url: "https://gis.northamptoncounty.org/taxparcelviewer/"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "northampton_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/NorthamptonService/FeatureServer/8"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN
+  address: Parcel_Address
+  owner_name: Owner
+  owner_address: Billing_Address
+  owner_postal_code: Billing_Zip
+  last_sale_book_page: Deed_Reference
+  last_sale_date: Date_Recorded
+  last_sale_price: Sale_Price
+  subdivision: Subdivision
+  value: Tax_Value
+
+# Billing_City_ST is a single "CITY, ST" field; split into the canonical
+# owner_city / owner_admin2_id_admin1 pair.
+transformations:
+  - type: string
+    operation: split_take
+    input: Billing_City_ST
+    args:
+      sep: ", "
+      index: 0
+    output: owner_city
+  - type: string
+    operation: split_take
+    input: Billing_City_ST
+    args:
+      sep: ", "
+      index: 1
+    output: owner_admin2_id_admin1
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - subdivision
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

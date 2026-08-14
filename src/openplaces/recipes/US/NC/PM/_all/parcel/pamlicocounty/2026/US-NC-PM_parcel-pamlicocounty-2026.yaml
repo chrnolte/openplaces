@@ -1,0 +1,71 @@
+# Recipe: Pamlico County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (`services3.arcgis.com`,
+# org id nJbIFHiSnaX0z0hS, service `Pamlico_ParcelService`, layer
+# `Parcel_Poly`), reached not through the county's own JS-only map viewer
+# (no discoverable REST endpoint) but through the shared AGD organization's
+# service directory. Caps a single query at 2,000 features
+# (`maxRecordCount`), so `arcgis_rest_scraper` pages through it.
+#
+# NOTE: the same service also has an address-point layer with a `yearBuilt`
+# field (`BuildingPoints`, layer 0) that looked promising, but it is
+# entirely null across all 9,191 records (verified) -- an unpopulated NENA
+# E911-schema field, not real data. Not used. Land and building value in
+# this parcel layer are populated (977/1000 and 638/1000 sampled records
+# respectively), so land/building value is included as a bonus.
+
+description: >-
+  Pamlico County, NC parcel roll (assessed land/building/total values,
+  owner, situs, most recent sale) from the county's ArcGIS parcel layer. No
+  year built is available from this source.
+
+admin_id: US-NC-PM
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: pamlicocounty
+    portal_url: "https://pamlicocounty.org/online_services/gis_mapping_service.php"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "pamlico_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/Pamlico_ParcelService/FeatureServer/5"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN
+  address: SITUS_ADDR
+  owner_name: OWNER_NAME
+  owner_name_2: OWNER_NAME2
+  owner_address: OWNER_ADDR
+  owner_city: OWNER_CITY
+  owner_admin2_id_admin1: OWNER_STATE
+  owner_postal_code: OWNER_ZIP
+  legal_description: LEGAL_DESC
+  last_sale_date: SALEDATE
+  last_sale_price: SALE_AMT
+  land_value: LAND_VAL
+  improvement_value: BLDG_VAL
+  value: TOTAL_VAL
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEEDBOOK, DEEDPAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

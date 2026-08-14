@@ -1,0 +1,101 @@
+# Recipe: Perquimans County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (hosted by GIS vendor AGD,
+# org id nJbIFHiSnaX0z0hS), backing its public parcel viewer. Caps a single
+# query at 1,000 features (`maxRecordCount`), so `arcgis_rest_scraper` pages
+# through it.
+#
+# NOTE: the layer carries only a single combined value field (`TAX_VAL`) --
+# no land/building split, so no `improvement_value` is available from this
+# source (verified populated: 997/1000 sampled records). `LAND_USE_V` is a
+# land-use code, not a land value, despite the name.
+
+description: >-
+  Perquimans County, NC parcel roll (total assessed value, owner, situs,
+  deed reference) from the county's ArcGIS parcel layer. No land/building
+  value split is available from this source.
+
+admin_id: US-NC-PQ
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: perquimanscounty
+    portal_url: "https://agdonline.maps.arcgis.com/apps/webappviewer/index.html?id=559506e85ee046a194333eb12e80710f"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "perquimans_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/Perquimans_Service/FeatureServer/2"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: pin
+  address: ADDRESS_1
+  owner_name: NAME
+  use_group_code: LAND_USE_V
+  last_sale_date: DATE_SOLD
+  value: TAX_VAL
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEED_BK_1, DEED_PG_1]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+  # DATE_SOLD is a lossy MYYYY/MMYYYY concatenation with no zero-padding and
+  # no day (e.g. "62022" = month 6, year 2022; "0" = blank/unset). Zero-pad
+  # to 6 digits, then split into month/year and let to_datetime default the
+  # day to the 1st. A bare 4-digit value (e.g. "1973") is ambiguous between
+  # a year-only record and a 1-digit month + 3-digit year, so it is left
+  # unparsed (NaT) rather than guessed.
+  - type: string
+    operation: zfill
+    input: last_sale_date
+    args:
+      width: 6
+    output: _date_sold_padded
+  - type: string
+    operation: substring
+    input: _date_sold_padded
+    args:
+      start: 0
+      end: 2
+    output: _date_sold_month
+  - type: string
+    operation: substring
+    input: _date_sold_padded
+    args:
+      start: 2
+      end: 6
+    output: _date_sold_year
+  - type: string
+    operation: concat
+    inputs: [_date_sold_year, _date_sold_month]
+    args:
+      sep: "-"
+    output: last_sale_date
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+drop_columns:
+  - _date_sold_padded
+  - _date_sold_month
+  - _date_sold_year
+
+columns_to_categorical:
+  - use_group_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

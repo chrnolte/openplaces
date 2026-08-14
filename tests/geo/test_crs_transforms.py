@@ -30,6 +30,58 @@ def test_crs_slug_prefers_authority_code():
     assert ct._crs_slug('EPSG:4326') == 'EPSG-4326'
 
 
+# A real-world NC State Plane (ftUS) definition (as parsed from a source .prj) whose
+# false-easting constant is rounded a hair differently from the canonical EPSG:2264
+# definition -- enough to drop `to_authority()`'s default-confidence match to nothing.
+_NC_FTUS_ESRI_VARIANT_WKT = (
+    'PROJCRS["NAD83 / North Carolina (ftUS)",'
+    'BASEGEOGCRS["NAD83",'
+    'DATUM["North American Datum 1983",'
+    'ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]],'
+    'ID["EPSG",6269]],'
+    'PRIMEM["Greenwich",0,ANGLEUNIT["Degree",0.0174532925199433]]],'
+    'CONVERSION["unnamed",'
+    'METHOD["Lambert Conic Conformal (2SP)",ID["EPSG",9802]],'
+    'PARAMETER["Latitude of false origin",33.75,'
+    'ANGLEUNIT["Degree",0.0174532925199433],ID["EPSG",8821]],'
+    'PARAMETER["Longitude of false origin",-79,'
+    'ANGLEUNIT["Degree",0.0174532925199433],ID["EPSG",8822]],'
+    'PARAMETER["Latitude of 1st standard parallel",34.3333333333333,'
+    'ANGLEUNIT["Degree",0.0174532925199433],ID["EPSG",8823]],'
+    'PARAMETER["Latitude of 2nd standard parallel",36.1666666666667,'
+    'ANGLEUNIT["Degree",0.0174532925199433],ID["EPSG",8824]],'
+    'PARAMETER["Easting at false origin",2000000.00261667,'
+    'LENGTHUNIT["US survey foot",0.304800609601219],ID["EPSG",8826]],'
+    'PARAMETER["Northing at false origin",0,'
+    'LENGTHUNIT["US survey foot",0.304800609601219],ID["EPSG",8827]]],'
+    'CS[Cartesian,2],'
+    'AXIS["easting",east,ORDER[1],'
+    'LENGTHUNIT["US survey foot",0.304800609601219,ID["EPSG",9003]]],'
+    'AXIS["northing",north,ORDER[2],'
+    'LENGTHUNIT["US survey foot",0.304800609601219,ID["EPSG",9003]]]]'
+)
+
+
+def test_crs_slug_resolves_near_match_to_epsg_code():
+    assert ct._crs_slug(_NC_FTUS_ESRI_VARIANT_WKT) == 'EPSG-2264'
+
+
+def test_crs_slug_does_not_guess_for_ambiguous_ad_hoc_crs():
+    # Same proj4 template as local_metric_crs() in geo/polygon.py. It reports
+    # name 'unknown' and matches several unrelated ESRI world-projection codes at
+    # low confidence, so it must fall back to the sanitized-name slug rather than
+    # picking one arbitrarily -- otherwise unrelated local projections centered on
+    # different datasets would collide onto the same registry filename.
+    proj4 = (
+        '+proj=aeqd +lat_0=42.4 +lon_0=-71.1 +x_0=0 +y_0=0 +datum=WGS84 '
+        '+units=m +no_defs'
+    )
+    slug = ct._crs_slug(proj4)
+    assert not slug.startswith('ESRI-')
+    assert not slug.startswith('EPSG-')
+    assert slug == 'unknown'
+
+
 def test_registry_round_trip(isolated_registry):
     entry = {
         'source_crs': 'EPSG:26986',

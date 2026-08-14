@@ -280,7 +280,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    a. **Integrate clean assessor data**
 
-      Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (use_group_combined, group_parcel, manufactured_home_park, group_footprint_fema, and land_use_class). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns.
+      Matches each footprint in the spine to its corresponding parcel in the curated parcel lane using :input:`recipe_id` (``US_parcel-openplaces-2026``) and joins the configured :input:`columns` (use_group_combined, group_parcel, manufactured_home_community, group_footprint_fema, and land_use_class). Note that the joined curated-parcel columns overwrite any raw harmonized ``_parcel`` evidence columns.
 
       *Dependency*: Requires the completed parcel curation lane.
 
@@ -348,7 +348,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    d. **Compute footprint metrics**
 
-      Calculates structural indicators such as footprint area in square meters from geometry and computes structural value-per-area metrics for all value columns. Note that ``value_per_area`` is kept in the final output.
+      Calculates structural indicators such as footprint area in square meters from geometry and computes structural value-per-area metrics for all value columns. Note that ``structure_value_per_area`` is kept in the final output.
 
       *Dependency*: Requires canonical values from Step 3.a and footprint geometries.
 
@@ -356,7 +356,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    e. **Impute missing residential units**
 
-      Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
+      Imputes residential unit counts when no matched source evidence exists, falling back to the first available raw ``occupancy_type*`` or ``use_subgroup*`` evidence column (such as ``occupancy_type_building_nsi``).
 
       *Dependency*: Requires reconciled dwelling counts from Step 3.a.
 
@@ -366,7 +366,9 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    a. **Establish baseline occupancy class**
 
-      Resolves a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture) where the heaviest class wins and Overture has a fractional (0.5) vote weight; (2) applies a geometry-based Manufactured Home fallback for long/narrow structures; (3) fills residential gaps using a single-family dwelling count check; and (4) assigns accessory structures to the Secondary class (excluding habitable structures in manufactured home parks).
+      Resolves a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture) where the heaviest class wins and Overture has a fractional (0.5) vote weight; (2) applies a geometry-based Manufactured Home fallback for long/narrow structures; (3) fills residential gaps using a single-family dwelling count check; and (4) assigns accessory structures to the Secondary class (excluding habitable structures in manufactured home communities).
+
+      To determine if a structure on a manufactured home community parcel is habitable (and should therefore be classified as ``Manufactured Home`` rather than ``Secondary``), it compares the footprint area against a threshold calculated from the parameters :input:`habitable_fraction` (0.5), :input:`habitable_floor_m2` (25), and :input:`manufactured_home_avg_m2` (90). The habitable threshold is the average area of footprints already classified as ``Manufactured Home`` in the current administrative unit multiplied by :input:`habitable_fraction`, floored at :input:`habitable_floor_m2`. If fewer than 3 such footprints exist to compute an average, it falls back to :input:`manufactured_home_avg_m2`.
 
       *Dependency*: Requires joined parcel occupancy groups (Step 1.a) and implied Overture occupancy (Step 2.b).
 
@@ -448,6 +450,6 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    c. **Clean up and order columns**
 
-      Enforces standard column order and drops transient helper columns (including ``group_parcel``, ``occupancy_type_dwelling_overture``, ``occupancy_type_dwelling_overture_source``, ``occupancy_type_base``, ``p_manufactured_home``, ``manufactured_home_park``, and ``n_stories_brails_source``).
+      Enforces standard column order and drops transient helper columns (including ``group_parcel``, ``occupancy_type_dwelling_overture``, ``occupancy_type_dwelling_overture_source``, ``occupancy_type_base``, ``p_manufactured_home``, ``postal_city``, ``postal_zip5``, ``postal_city_acceptable``, ``postal_city_unacceptable``, ``postal_city_source``, and ``improvement_value_parcel_per_area``).
 
       *Function*: :func:`openplaces.io.curator.formatters.order_columns`

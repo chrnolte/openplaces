@@ -45,7 +45,7 @@ Canonical attributes
     Canonical occupancy class.
 
     Multi-Family structures are split into HAZUS height bands (Low-Rise: 1-3 stories, Mid-Rise: 4-7 stories, High-Rise: 8+ stories) based on ``n_stories``. Multi-Family rows with no story count keep the plain ``Multi-Family`` label.
-``value``
+``structure_value``
     Reconciled structure value in USD. Prioritizes the parcel's improvement value (apportioned across its primary footprints by floor-area share), falling back to the NSI structure replacement value.
 ``year_built``
     Reconciled construction year. Prioritizes assessor parcel records over NSI block-median fallbacks.
@@ -68,7 +68,7 @@ Indicates which input dataset or curation rule set decided the final canonical v
 
 * ``address_source``
 * ``occupancy_type_source``
-* ``value_source``
+* ``structure_value_source``
 * ``year_built_source``
 * ``n_stories_source``
 * ``n_dwellings_source``
@@ -149,7 +149,7 @@ Flags and intermediate calculations used for curation and quality control.
     Summary of conflicting street address values across input sources, only populated where two or more address sources disagree.
 ``occupancy_type_review``
     Flag (:input:`True`) for low improvement-value parcel shares indicating potential manufactured homes needing inspection.
-``value_per_area`` / ``improvement_value_parcel_per_area`` / ``structure_value_building_nsi_per_area``
+``structure_value_per_area`` / ``structure_value_building_nsi_per_area``
     Calculated values divided by footprint area (USD/m²).
 ``manufactured_home_community``
     Boolean flag indicating whether the parcel is part of a manufactured home community (having more than 3 final Manufactured Home footprints).
@@ -290,11 +290,19 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
    b. **Reconcile street addresses**: Reconciles and harmonizes street addresses from parcel assessor and Overture dwelling address components, completing missing components (like state names).
    c. **Zero-fill address counts**: Fills missing or suppressed ``n_dwellings_overture`` counts with 0.
    d. **Compute footprint metrics**: Calculates structural area in square meters and value-per-area metrics.
-   e. **Impute missing residential units**: Imputes residential unit counts when no matched source evidence exists based on the occupancy base class.
+   e. **Impute missing residential units**: Imputes residential unit counts when no
+      matched source evidence exists, falling back to the first available raw
+      ``occupancy_type*`` or ``use_subgroup*`` evidence column (such as
+      ``occupancy_type_building_nsi``).
 
 4. Occupancy consensus and correction
 
-   a. **Establish baseline occupancy class**: Resolves a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture) where the heaviest class wins. It applies a geometry-based manufactured home fallback and fills residential gaps.
+   a. **Establish baseline occupancy class**: Resolves a weighted consensus
+      vote across present evidence columns (NSI, FEMA, parcel, Overture) where
+      the heaviest class wins. It applies a geometry-based manufactured home
+      fallback, fills residential gaps, and demotes non-primary residential and
+      unclassified secondary-priority footprints to the ``Secondary`` occupancy
+      class (excluding habitable structures in manufactured home communities).
    b. **Apply property-use keyword corrections**: Refines baseline occupancy using county property-use keyword rules. It also writes the ``occupancy_type_parcel`` column, sets review flags, and creates conflicts reports.
 
 5. Imagery enrichment integration

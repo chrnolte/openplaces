@@ -16,7 +16,11 @@ from importlib import import_module as _import_module
 import geopandas as gpd
 
 from openplaces.core.schema import AdminId, SourceGeometryType
-from openplaces.io import release_unused_memory, save_parquet
+from openplaces.io import (
+    coerce_mixed_object_columns,
+    release_unused_memory,
+    save_parquet,
+)
 from openplaces.io.cleanup import (
     cleanup_consumed_inputs,
     discard_receipt,
@@ -389,6 +393,12 @@ class Harmonizer:
             state.spine.index = state.spine.index.rename(restore_name)
 
         out_path = get_output_path(self.recipe, admin_id)
+        # A source column can be pure numeric in one merged/linked reference
+        # (e.g. an all-numeric-looking parcel PIN inferred as float64) and
+        # genuine string in another; concatenation then yields a mixed
+        # object column pyarrow cannot serialize. Same defensive cast used
+        # at ingest save and partition aggregation.
+        state.spine = coerce_mixed_object_columns(state.spine)
         save_parquet(
             state.spine,
             out_path,

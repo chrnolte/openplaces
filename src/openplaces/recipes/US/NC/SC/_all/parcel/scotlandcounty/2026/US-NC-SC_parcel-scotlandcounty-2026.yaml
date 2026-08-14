@@ -1,0 +1,70 @@
+# Recipe: Scotland County, NC parcel roll.
+#
+# Source: the joint Laurinburg-Scotland County GIS ArcGIS FeatureServer
+# (`services3.arcgis.com`, org id bgKigTDifCMNj8OU), layer 6
+# ("Tax_Parcels_Scotland_County_view"), covering the full county (22,012
+# parcels, not just the city). A same-named "parcels" service exists under
+# a different org (services8.arcgis.com/eJ9GuQwMsO1iIOw1) but returns
+# Northampton County records -- confirmed not to use. Caps a single query
+# at 2,000 features (`maxRecordCount`), so `arcgis_rest_scraper` pages
+# through it.
+#
+# NOTE: no year_built field in this layer's 49-field schema (verified; a
+# companion Parcel_Sales layer has a `year` field, but that is a sale year,
+# not construction year). Land and building value are populated (995/1000
+# and 748/1000 sampled records respectively), so land/building value is
+# included as a bonus.
+
+description: >-
+  Scotland County, NC parcel roll (assessed land/building/total values,
+  owner, situs, deed reference) from the county's ArcGIS parcel layer. No
+  year built is available from this source.
+
+admin_id: US-NC-SC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: scotlandcounty
+    portal_url: "https://scotlandcounty.org/456/GIS-Maps"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "scotland_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/bgKigTDifCMNj8OU/arcgis/rest/services/Tax_Parcels_Scotland_County_view/FeatureServer/6"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN
+  address: PropertyAd
+  owner_name: Name
+  owner_address: Address1
+  owner_city: City
+  owner_admin2_id_admin1: State
+  owner_postal_code: ZipCode
+  last_sale_doc_type: SaleInstru
+  land_value: MarketLand
+  improvement_value: BuildingVa
+  value: AssessedVa
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DeedBook, DeedPage]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - last_sale_doc_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

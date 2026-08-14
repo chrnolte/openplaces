@@ -155,6 +155,18 @@ class TableIngester:
             data_path_override=data_path_override, **read_kwargs
         )
 
+        # Some source shapefiles ship a blank/unreadable .prj (no CRS on
+        # read) despite genuinely being in a known projection -- declare it
+        # via the recipe's `source_crs` rather than guessing. Only applied
+        # when the read geometry truly has no CRS, so it can't silently
+        # override a valid one that merely differs from `source_crs`.
+        if (
+            isinstance(gdf, gpd.GeoDataFrame)
+            and gdf.crs is None
+            and self.recipe.get('source_crs')
+        ):
+            gdf = gdf.set_crs(self.recipe['source_crs'])
+
         if isinstance(gdf, gpd.GeoDataFrame) and gdf.crs != cfg.crs:
             gdf = reproject(gdf, cfg.crs)
             self.timer.mark(f'Reproject to {cfg.crs}{suffix}')

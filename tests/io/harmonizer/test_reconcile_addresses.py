@@ -90,6 +90,33 @@ def test_reconcile_addresses_writes_street_output_col():
     assert res.loc[1, 'address_street'] == 'Example Ave'
 
 
+def test_reconcile_addresses_output_col_preexisting_float64():
+    # A prior join can leave an output-col name on the spine already, entirely
+    # missing on this admin unit -- pandas infers float64 for an all-NaN
+    # column with no dtype of its own. Assigning the resolved string values
+    # into it must not raise (regression for a LossySetitemError).
+    spine = pd.DataFrame(
+        {
+            'address_street_overture': ['Cedar Dr'],
+            'address_number_overture': ['502'],
+            'address_number': pd.Series([float('nan')], dtype='float64'),
+            'city': pd.Series([float('nan')], dtype='float64'),
+        }
+    )
+    state = reconcile_addresses(
+        make_state(spine),
+        sources={
+            'dwelling_overture': {
+                'address_street': 'address_street_overture',
+                'address_number': 'address_number_overture',
+            },
+        },
+        number_output_col='address_number',
+        city_output_col='city',
+    )
+    assert state.spine.loc[0, 'address_number'] == '502'
+
+
 def test_reconcile_addresses_complete_from_admin():
     spine = pd.DataFrame(
         {

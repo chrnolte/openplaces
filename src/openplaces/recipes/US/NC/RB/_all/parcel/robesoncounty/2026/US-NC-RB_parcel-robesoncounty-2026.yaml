@@ -1,0 +1,66 @@
+# Recipe: Robeson County, NC parcel roll.
+#
+# Source: the county's ArcGIS REST service on the ROKtech "ROKMAPS"
+# platform (`arcgis4.roktech.net`), layer 15 ("Parcels"), backing the
+# county's interactive viewer's own "Extract Data" tool. Not a documented
+# public API, so may change without notice. Caps a single query at 1,000
+# features (`maxRecordCount`), so `arcgis_rest_scraper` pages through it.
+#
+# NOTE: no year_built field in this layer's 74-field schema (verified; no
+# non-spatial CAMA table exists on this service either). Land and building
+# value are populated (979/1000 and 631/1000 sampled records
+# respectively), so land/building value is included as a bonus.
+
+description: >-
+  Robeson County, NC parcel roll (assessed land/building values, owner,
+  situs, most recent sale) from the county's ArcGIS parcel layer. No year
+  built is available from this source.
+
+admin_id: US-NC-RB
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: robesoncounty
+    portal_url: "https://maps.roktech.net/ROKMAPS_Robeson/"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "robeson_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://arcgis4.roktech.net/arcgis/rest/services/robeson/ROKMAPS_v2/MapServer/15"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN_NUMBER
+  address: PHYSTRADR
+  owner_name: OWNAM1
+  owner_name_2: OWNAM2
+  owner_address: OWADR1
+  owner_city: OWCITY
+  owner_admin2_id_admin1: OWSTATE
+  owner_postal_code: OWZIP
+  last_sale_date: DATESOLD
+  last_sale_price: SALEAMT
+  land_value: LNDASVCUR
+  improvement_value: IMPASVCUR
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEEDBOOK, DEEDPAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

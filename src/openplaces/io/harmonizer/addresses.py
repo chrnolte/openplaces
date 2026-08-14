@@ -24,6 +24,24 @@ from openplaces.io.harmonizer import HarmonizeState, _register
 _SOURCE_SUFFIX = '_source'
 
 
+def _ensure_object_column(curated: pd.DataFrame, column: str) -> None:
+    """Ensure *column* exists on *curated* and can hold string values.
+
+    Creates it as an all-missing object column if absent. An existing
+    column can carry a non-object dtype (e.g. float64, when a prior join
+    left it entirely missing on this admin unit -- pandas infers a numeric
+    dtype for an all-NaN column with no explicit dtype of its own) which
+    would otherwise raise a ``TypeError`` the first time a string is
+    assigned into it.
+    """
+    if column not in curated.columns:
+        curated[column] = pd.Series(pd.NA, index=curated.index, dtype=object)
+    elif isinstance(
+        curated[column].dtype, pd.CategoricalDtype
+    ) or pd.api.types.is_numeric_dtype(curated[column].dtype):
+        curated[column] = curated[column].astype(object)
+
+
 def _record_source(curated: pd.DataFrame, column: str, mask, token: str) -> None:
     """Set the ``{column}_source`` sidecar to *token* for the *mask* rows.
 
@@ -32,10 +50,7 @@ def _record_source(curated: pd.DataFrame, column: str, mask, token: str) -> None
     layer than ``io.harmonizer``).
     """
     side = f'{column}{_SOURCE_SUFFIX}'
-    if side not in curated.columns:
-        curated[side] = pd.Series(pd.NA, index=curated.index, dtype=object)
-    elif isinstance(curated[side].dtype, pd.CategoricalDtype):
-        curated[side] = curated[side].astype(object)
+    _ensure_object_column(curated, side)
     curated.loc[mask, side] = token
 
 
@@ -421,8 +436,7 @@ def reconcile_addresses_df(
     }
     formatted = pd.Series([formats[k] for k in keys], index=subset.index)
 
-    if output_col not in curated.columns:
-        curated[output_col] = pd.Series(pd.NA, index=curated.index, dtype=object)
+    _ensure_object_column(curated, output_col)
     curated.loc[formatted.index, output_col] = formatted
 
     for component, out_col in (
@@ -433,8 +447,7 @@ def reconcile_addresses_df(
     ):
         if not out_col:
             continue
-        if out_col not in curated.columns:
-            curated[out_col] = pd.Series(pd.NA, index=curated.index, dtype=object)
+        _ensure_object_column(curated, out_col)
         values = pd.Series(
             [formatted_components[k][component] for k in keys], index=subset.index
         )

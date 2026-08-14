@@ -43,6 +43,19 @@ def _crs_slug(crs) -> str:
     """Generate a filesystem-safe identifier for a CRS, preferring authority code."""
     crs = pyproj.CRS(crs)
     authority = crs.to_authority()
+    if authority is None and crs.name != 'unknown':
+        # A source CRS parsed from a real .prj/database definition can differ from
+        # the canonical EPSG definition by sub-millimeter rounding in a projection
+        # constant (e.g. NC State Plane ftUS false easting), which drops PROJ's
+        # match confidence below to_authority()'s default threshold (70) to 0. At
+        # PROJ's lowest confidence bucket (25) it usually still resolves -- but only
+        # accept it if it's the sole candidate: ad hoc CRSs (e.g. the AEQD
+        # projections in local_metric_crs()) report name 'unknown' and match
+        # several unrelated ESRI codes at confidence 25, so an unguarded lookup
+        # would collide unrelated local projections onto one registry file.
+        candidates = crs.list_authority(min_confidence=25)
+        if len(candidates) == 1:
+            authority = (candidates[0].auth_name, candidates[0].code)
     if authority is not None:
         return f'{authority[0]}-{authority[1]}'
     return re.sub(r'[^A-Za-z0-9]+', '-', crs.name).strip('-')

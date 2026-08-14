@@ -1,0 +1,56 @@
+# Recipe: Hoke County, NC parcel roll.
+#
+# Source: the county's own ArcGIS Server (`maps.hokecounty.org`), layer
+# `Parcels/MapServer/0`. Caps a single query at 1,000 features
+# (`maxRecordCount`), so `arcgis_rest_scraper` pages through it.
+#
+# NOTE: the layer carries only a single combined value field (`COST_TOTAL`)
+# -- no land/building split, so no `improvement_value` is available from
+# this source (verified populated: 1000/1000 sampled records have
+# COST_TOTAL, all as one undivided total).
+
+description: >-
+  Hoke County, NC parcel roll (total assessed value, owner, situs, deed
+  reference) from the county's ArcGIS parcel layer. No land/building value
+  split is available from this source.
+
+admin_id: US-NC-HO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: hokecounty
+    portal_url: "https://www.hokecounty.net/211/Property-Search---GIS"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "hoke_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://maps.hokecounty.org/server/rest/services/Parcels/MapServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: TWN_PIN
+  address: PHY_ADDRES
+  owner_name: OWNER_NAME
+  owner_name_2: OWNER_NA_1
+  owner_address: MAILING_AD
+  value: COST_TOTAL
+  last_sale_date: DEED_DATE
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEED_BOOK, DEED_PAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

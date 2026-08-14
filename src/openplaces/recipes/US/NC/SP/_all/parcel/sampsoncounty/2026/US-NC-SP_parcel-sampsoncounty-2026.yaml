@@ -1,0 +1,62 @@
+# Recipe: Sampson County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (`services3.arcgis.com`,
+# org id fM4kjZmPOS4ay2Ff), an ArcGIS Online item description states the
+# data is "updated monthly". Caps a single query at 2,000 features
+# (`maxRecordCount`), so `arcgis_rest_scraper` pages through it.
+#
+# NOTE: `APPRAISED`/`ASSESSED_V` are undivided totals -- no land/building
+# split, so no `improvement_value` is available from this source. The one
+# candidate field name suggesting a per-improvement value, `APPR_SEG_V`, is
+# actually a pipe-delimited string of multiple segment values (e.g.
+# `"$4,466|$20,235|$467|$17,250"`) with many blank/zero records; not usable
+# as a single numeric field and intentionally omitted. `YEAR_BUILT` is
+# clean and populated (~45% of sampled records), so it is included even
+# though this county's dataset was not selected for that field.
+
+description: >-
+  Sampson County, NC parcel roll (total assessed value, year built, owner,
+  situs, most recent sale) from the county's ArcGIS parcel layer. No
+  land/building value split is available from this source.
+
+admin_id: US-NC-SP
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: sampsoncounty
+    portal_url: "https://www.sampsoncountync.gov/My-Property/GIS-Maps-Property-Records"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "sampson_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/fM4kjZmPOS4ay2Ff/arcgis/rest/services/Parcels/FeatureServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN
+  address: PARCEL_ADD
+  owner_name: CURRENT_OW
+  owner_address: CURRENT_AD
+  owner_city: CURRENT_CI
+  owner_admin2_id_admin1: CURRENT_ST
+  owner_postal_code: CURRENT_ZI
+  last_sale_book_page: BK_PG
+  last_sale_price: SALE_PRICE
+  last_sale_date: DATE_RECOR
+  value: ASSESSED_V
+  year_built: YEAR_BUILT
+  area_sqft: LIVING_ARE
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

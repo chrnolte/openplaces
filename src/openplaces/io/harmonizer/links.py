@@ -306,6 +306,23 @@ def _link_spatial_overlay(
 
     ref = ref_raw.copy()
 
+    # A source can carry a handful of degenerate non-polygon geometries
+    # (digitizing artifacts, e.g. a 2-point LineString parcel boundary, or a
+    # null geometry) that would otherwise crash geopandas.overlay's
+    # mixed-geometry-type check for the entire admin unit. This function is
+    # a polygon-on-polygon identity overlay (see docstring), so drop them
+    # here instead.
+    valid_polygon = ref.geometry.notna() & ref.geometry.geom_type.isin(
+        ('Polygon', 'MultiPolygon')
+    )
+    if (~valid_polygon).any():
+        if state.verbose:
+            print(
+                f'  Link (overlay): dropped {(~valid_polygon).sum()} '
+                f'non-polygon/null {entity_type or "ref"} geometries'
+            )
+        ref = ref[valid_polygon]
+
     # geo_id is generated at ingest only for parcels; footprint/building
     # references (e.g. FEMA) arrive without it, so derive the same stable
     # geometry-hash id here to dedup identical geometries below.
@@ -1898,7 +1915,20 @@ def link_by_id(
                 _agg_func_for(canonical_name, fname) if fname in reducible else 'first'
             )
             name = f'{out_name}{suffix}' if suffix else out_name
-            agg_series = grouped[col].agg(func)
+            col_series = ref_valid[col]
+            # A registry-numeric column can still arrive here as pandas
+            # 'string'/object dtype (e.g. cast by coerce_mixed_object_columns
+            # at an earlier ingest); a numeric reducer then crashes outright
+            # rather than silently mis-aggregating, so coerce first.
+            if fname in ('sum', 'mean', 'median') and not pd.api.types.is_numeric_dtype(
+                col_series
+            ):
+                grouped_col = pd.to_numeric(col_series, errors='coerce').groupby(
+                    ref_valid[ref_key], sort=False
+                )
+            else:
+                grouped_col = grouped[col]
+            agg_series = grouped_col.agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
             _write_prioritized(spine, name, skey.map(mapper))
         count_col = count_as or 'n_records_per_key'

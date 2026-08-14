@@ -1337,6 +1337,25 @@ def overlay_polygons(
     if isinstance(layer2, Path):
         layer2 = read_parquet(layer2, geom=True)
 
+    # A source can carry a handful of degenerate non-polygon geometries
+    # (digitizing artifacts, e.g. a 2-point LineString parcel boundary, or a
+    # null geometry). gpd.overlay refuses mixed geometry types outright, so
+    # drop them here rather than failing the whole overlay for one bad row.
+    for _name, _layer in (('layer1', layer1), ('layer2', layer2)):
+        _valid = _layer.geometry.notna() & _layer.geometry.geom_type.isin(
+            ('Polygon', 'MultiPolygon')
+        )
+        if (~_valid).any():
+            warnings.warn(
+                f'overlay_polygons: dropping {(~_valid).sum()} non-polygon/null '
+                f'geometries from {_name}.',
+                stacklevel=2,
+            )
+            if _name == 'layer1':
+                layer1 = layer1[_valid]
+            else:
+                layer2 = layer2[_valid]
+
     # Resolve index aliases
     idx1 = layer1.index.name or 'index'
     idx2 = layer2.index.name or 'index'

@@ -229,6 +229,16 @@ File handling
 
    Only needed when the file is not UTF-8.
 
+.. attribute:: source_crs
+
+   CRS to assign to the read geometry when the source file itself carries
+   none (e.g. a shapefile with a blank or unreadable ``.prj`` sidecar).
+   Any value :meth:`geopandas.GeoDataFrame.set_crs` accepts, e.g.
+   :input:`"EPSG:2264"`.
+
+   Only applied when the read geometry has no CRS -- never overrides one
+   that was read successfully but merely differs from :attr:`source_crs`.
+
 .. attribute:: process_by
 
    Instructions to process a large data file in smaller chunks, typically by administrative subdivision (e.g., reading a state-wide geodatabase county by county to avoid loading it entirely into memory).
