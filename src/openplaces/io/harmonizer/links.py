@@ -1441,9 +1441,12 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     several exist for the same source (mirrors the specificity/version
     precedence ``find_entity_recipe_id`` uses, ``recipe.py:444-463``).
 
-    Returned oldest-version-first: :func:`link_by_id`'s auto-discover mode
-    joins sources in this order, so the most recent source's attributes are
-    the ones applied last (see its column-priority rule).
+    Returned least-specific-admin-id-first, version ascending within a tier:
+    :func:`link_by_id`'s auto-discover mode joins sources in this order, so
+    the most admin-specific source's attributes are the ones applied last
+    (see its column-priority rule) -- a county-scoped recipe's own values
+    win over a statewide recipe's by default, not whichever happens to have
+    the newer version string.
 
     Recipes with ``exclude_from_auto_discover: true`` are skipped -- for a
     parcel-entity ingest recipe that is a reference dataset consumed only via
@@ -1452,7 +1455,7 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     """
     if state.admin_id is None:
         return []
-    best: dict[tuple[str, str], tuple[str, str]] = {}
+    best: dict[tuple[str, str], tuple[str, str, int]] = {}
     for _, row in find_recipes(entity_type, stage='ingest').iterrows():
         if row['exclude_from_auto_discover']:
             continue
@@ -1463,10 +1466,14 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
             continue
         key = (admin_id_str, row['source_id'])
         recipe_id = f'{admin_id_str}_{entity_type}-{row["source_id"]}-{row["version"]}'
+        specificity = admin_id_str.count('-') + 1
         if key not in best or row['version'] > best[key][0]:
-            best[key] = (row['version'], recipe_id)
+            best[key] = (row['version'], recipe_id, specificity)
     return [
-        recipe_id for _version, recipe_id in sorted(best.values(), key=lambda vr: vr[0])
+        recipe_id
+        for _version, recipe_id, _specificity in sorted(
+            best.values(), key=lambda vrs: (vrs[2], vrs[0])
+        )
     ]
 
 
@@ -1480,12 +1487,13 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     MassGIS's ``parcel_id_admin2``), else also falls back to
     ``parcel_id_local``.
 
-    Ordered oldest-version-first (see :func:`_find_admin_scoped_recipe_ids`):
-    :func:`link_by_id` joins matches in this order and, for any column
-    covered by more than one match, prefers whichever source is applied last
-    (i.e. most recent) as long as it covers a majority of parcels — so
-    recency, not admin specificity, decides which source's attributes win by
-    default.
+    Ordered least-specific-admin-id-first, version ascending within a tier
+    (see :func:`_find_admin_scoped_recipe_ids`): :func:`link_by_id` joins
+    matches in this order and, for any column covered by more than one
+    match, prefers whichever source is applied last as long as it covers a
+    majority of parcels — so the most admin-specific source's attributes
+    win by default, falling back to version only among equally-specific
+    sources.
     """
     from openplaces.recipe import get_recipe_by_id
 
@@ -1562,24 +1570,49 @@ def _write_prioritized(
     name: str,
     new_vals: pd.Series,
     majority_coverage: float = 0.5,
+    provenance_token: str | None = None,
 ) -> None:
     """Write *new_vals* into ``spine[name]``, applying the recency/coverage rule.
 
-    A column already on the spine came from an earlier (older, per
-    :func:`_find_admin_scoped_recipe_ids`'s ordering) source. *new_vals* only
-    overwrites it outright when *new_vals* itself covers at least
+    A column already on the spine came from an earlier (less admin-specific,
+    per :func:`_find_admin_scoped_recipe_ids`'s ordering) source. *new_vals*
+    only overwrites it outright when *new_vals* itself covers at least
     *majority_coverage* of the spine; otherwise it only fills the existing
-    column's gaps, so a sparse newer source can't blank out a more complete
-    older one.
+    column's gaps, so a sparse more-specific source can't blank out a more
+    complete less-specific one.
+
+    Parameters
+    ----------
+    provenance_token : str, optional
+        When given, also updates the ``{name}_source`` categorical sidecar
+        (via :func:`openplaces.io.harmonizer._record_source`) for exactly
+        the cells this call actually changes -- a value written where none
+        existed, or an existing value outright replaced on a
+        majority-coverage overwrite. Cells left unchanged (including
+        still-null cells) are never touched. Reserve this for a recipe's
+        declared "key" columns (see ``link_by_id``'s ``track_provenance``)
+        rather than every joined attribute, to avoid a provenance-sidecar
+        column explosion.
     """
+    from openplaces.io.harmonizer import _record_source
+
     if name not in spine.columns:
         spine[name] = new_vals
+        if provenance_token:
+            _record_source(spine, name, new_vals.notna(), provenance_token)
         return
+
+    before = spine[name].copy() if provenance_token else None
     coverage = new_vals.notna().mean() if len(new_vals) else 0.0
     if coverage >= majority_coverage:
         spine[name] = new_vals.combine_first(spine[name])
     else:
         spine[name] = spine[name].combine_first(new_vals)
+
+    if provenance_token:
+        after = spine[name]
+        changed = after.notna() & (before.isna() | (before != after))
+        _record_source(spine, name, changed, provenance_token)
 
 
 def _warn_if_duplicate_key(
@@ -1649,6 +1682,8 @@ def link_by_id(
     layer: str | None = None,
     ref_sort_by: str | None = None,
     ref_sort_ascending: bool = True,
+    track_provenance: list[str] | None = None,
+    _protect_own_columns: set[str] | None = None,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -1660,9 +1695,10 @@ def link_by_id(
     *auto_discover* match), the new source only overwrites it outright if the
     new source covers a majority of spine rows for that column; otherwise it
     only fills the existing column's gaps (see :func:`_write_prioritized`).
-    Combined with *auto_discover*'s oldest-to-newest join order, this makes
-    the most recent source the default winner for each column, without
-    letting a sparse recent source blank out a more complete older one.
+    Combined with *auto_discover*'s least-specific-to-most-specific join
+    order, this makes the most admin-specific source the default winner for
+    each column, without letting a sparse more-specific source blank out a
+    more complete less-specific one.
 
     Parameters
     ----------
@@ -1688,9 +1724,21 @@ def link_by_id(
         found beside a matched source is applied automatically (see
         :func:`_apply_remap_csvs`). A standalone match that is also one of
         the spine's own geometry sources has its ``resolve_spine``
-        ``keep_columns`` dropped from the join (already correct on the
-        spine; re-deriving them via a non-unique local key would pool
-        values across every row sharing it).
+        ``keep_columns`` protected row-by-row (via ``_protect_own_columns``,
+        internal-only) rather than dropped from the join outright: only the
+        rows where *this* source's own geometry actually won
+        (``geometry_source`` equals its label) are shielded, since those
+        already carry a correct, un-aggregated value from ``resolve_spine``
+        directly -- re-deriving one via this aggregate join would pool
+        values across every row sharing a non-unique local key. Every other
+        row (geometry won by a *different* source) is free to receive this
+        source's value through the ordinary null-aware
+        :func:`_write_prioritized` gap-fill/overwrite, so a more
+        admin-specific source's richer keep_columns data can still fill a
+        gap left by whichever source won geometry there. Falls back to the
+        old, coarser "drop the column from this match entirely" guard when
+        the spine has no ``geometry_source`` column at all (e.g. a
+        :func:`union_spine_sources`-built, non-spatial spine).
     entity_type : str
         Entity type to discover when *auto_discover* is set (default
         ``'parcel'``).
@@ -1747,6 +1795,14 @@ def link_by_id(
     ref_sort_ascending : bool, default True
         Sort direction for *ref_sort_by* (``False`` so ``'first'`` picks the
         most recent row when sorting by a date column).
+    track_provenance : list of str, optional
+        Output column names (post-rename, post-suffix base names) to record
+        per-cell source provenance for via :func:`_write_prioritized`'s
+        ``provenance_token`` (see there) -- writes a ``{column}_source``
+        sidecar for exactly the columns named here, not every joined
+        attribute. In ``auto_discover`` mode, forwarded unchanged to every
+        discovered match, each stamping its own ``source_id`` (see
+        :func:`~openplaces.recipe.source_id_from_recipe_id`) as the token.
     """
     if auto_discover:
         # A standalone roll that is also one of the spine's own geometry
@@ -1756,20 +1812,37 @@ def link_by_id(
         # every spine row sharing its join key -- overwriting an
         # already-correct per-geometry value with one pooled from unrelated
         # rows. Those columns are already on the spine directly from the
-        # same source's own row, so drop them from this match; every other
-        # attribute (improvement_value, ...) still needs the join.
+        # same source's own row wherever its geometry won; protect exactly
+        # those rows (see _protect_own_columns below) rather than dropping
+        # the column from the whole match, so this same source can still
+        # fill a keep_columns gap on a row a *different* source's geometry
+        # occupies.
         spine_source_ids = state.metadata.get('spine_source_recipe_ids', set())
         spine_keep_columns = state.metadata.get('spine_keep_columns', set())
+        has_geometry_source = (
+            state.spine is not None and 'geometry_source' in state.spine.columns
+        )
         for match in _discover_link_sources(state, entity_type):
             match_columns = columns or list(
                 get_attributes(match['layer'] or entity_type).index
             )
+            protect_columns: set[str] | None = None
             if match['layer'] is None and match['recipe_id'] in spine_source_ids:
-                match_columns = [
-                    c for c in match_columns if c not in spine_keep_columns
-                ]
-                if not match_columns:
-                    continue
+                keep_overlap = {c for c in match_columns if c in spine_keep_columns}
+                if keep_overlap:
+                    if has_geometry_source:
+                        protect_columns = keep_overlap
+                    else:
+                        # No geometry_source to key row-level protection on
+                        # (e.g. a union_spine_sources-built non-spatial
+                        # spine) -- fall back to the coarser column drop
+                        # rather than risk the pooled-duplicate-key
+                        # corruption this guard exists to prevent.
+                        match_columns = [
+                            c for c in match_columns if c not in keep_overlap
+                        ]
+                        if not match_columns:
+                            continue
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
@@ -1782,6 +1855,8 @@ def link_by_id(
                 layer=match['layer'],
                 ref_sort_by=ref_sort_by,
                 ref_sort_ascending=ref_sort_ascending,
+                track_provenance=track_provenance,
+                _protect_own_columns=protect_columns,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
         return state
@@ -1845,11 +1920,18 @@ def link_by_id(
         _warn_if_duplicate_key(rkey, ref_key, 'attributes reference key')
         ref_unique = ref.dropna(subset=[ref_key]).drop_duplicates(ref_key).copy()
         ref_unique.index = ref_unique[ref_key].astype('string')
+        provenance_cols = set(track_provenance or [])
+        token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
         for col, out_name in pairs:
             name = f'{out_name}{suffix}' if suffix else out_name
             ref_series = ref_unique[col]
             mapper = ref_series.to_dict() if ref_series.empty else ref_series
-            _write_prioritized(spine, name, skey.map(mapper))
+            _write_prioritized(
+                spine,
+                name,
+                skey.map(mapper),
+                provenance_token=token if out_name in provenance_cols else None,
+            )
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
@@ -1908,6 +1990,12 @@ def link_by_id(
             'median',
             'join_nonnull',
         }
+        own_geometry_mask = None
+        if _protect_own_columns and 'geometry_source' in spine.columns:
+            own_label = source_id_from_recipe_id(recipe_id)
+            own_geometry_mask = spine['geometry_source'].astype('string') == own_label
+        provenance_cols = set(track_provenance or [])
+        token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
         for col, out_name in pairs:
             canonical_name = resolve_attribute_name(out_name)
             fname = get_agg_func(canonical_name)
@@ -1930,7 +2018,19 @@ def link_by_id(
                 grouped_col = grouped[col]
             agg_series = grouped_col.agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
-            _write_prioritized(spine, name, skey.map(mapper))
+            new_vals = skey.map(mapper)
+            if (
+                _protect_own_columns
+                and out_name in _protect_own_columns
+                and own_geometry_mask is not None
+            ):
+                new_vals = new_vals.mask(own_geometry_mask)
+            _write_prioritized(
+                spine,
+                name,
+                new_vals,
+                provenance_token=token if out_name in provenance_cols else None,
+            )
         count_col = count_as or 'n_records_per_key'
         gsize = grouped.size()
         mapper = gsize.to_dict() if gsize.empty else gsize

@@ -130,3 +130,42 @@ def test_resolve_spine_keep_columns_carries_value_fields(monkeypatch):
         'land_value',
     }
     assert state.metadata['spine_source_recipe_ids'] == {'nconemap'}
+
+
+def test_resolve_spine_falls_back_when_highest_priority_source_has_no_geometry(
+    monkeypatch,
+):
+    # Regression test for a real bug: Craven County's parcel roll is a
+    # geometry-less attribute table by design (its companion property
+    # recipe carries the geometry instead) -- when it's the highest-priority
+    # (first) source in `sources`, resolve_spine used to assume sources[0]
+    # always loaded and crashed with KeyError building the primary spine
+    # frame. It must instead fall back to the next source that actually has
+    # geometry for this admin unit.
+    fallback = gpd.GeoDataFrame(
+        {'parcel_id_local': ['p1']},
+        geometry=[box(0, 0, 10, 10)],
+        crs='EPSG:4326',
+        index=pd.Index(['A'], name='parcel_id'),
+    )
+
+    def _get_entities(recipe_id, admin_id, geom=True):
+        if recipe_id == 'cravencounty':
+            raise FileNotFoundError(f'no _geo.parquet for {recipe_id}')
+        return fallback
+
+    monkeypatch.setattr(spine_mod, 'get_entities', _get_entities)
+    state = HarmonizeState(
+        recipe={'admin_id': 'US-NC-CN'}, admin_id='US-NC-CN', verbose=False, timer=None
+    )
+    state = spine_mod.resolve_spine(
+        state,
+        sources=[
+            {'recipe_id': 'cravencounty', 'label': 'cravencounty'},
+            {'recipe_id': 'nconemap', 'label': 'nconemap'},
+        ],
+        keep_columns=['parcel_id_local'],
+    )
+
+    assert state.spine['geometry_source'].tolist() == ['nconemap']
+    assert state.metadata['spine_source_recipe_ids'] == {'cravencounty', 'nconemap'}

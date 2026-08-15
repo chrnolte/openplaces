@@ -89,7 +89,7 @@ def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
     assert ids == ['US-MA_parcel-massgis-2025']  # newest version only, US-CA excluded
 
 
-def test_find_admin_scoped_recipe_ids_orders_oldest_version_first(monkeypatch):
+def test_find_admin_scoped_recipe_ids_orders_by_specificity_then_version(monkeypatch):
     rows = pd.DataFrame(
         [
             {
@@ -111,10 +111,65 @@ def test_find_admin_scoped_recipe_ids_orders_oldest_version_first(monkeypatch):
     state = _state('US-NC-NE')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
-    # Broader-scope 'US-NC' (2025) sorts first even though the county-scoped
-    # 'US-NC-NE' row appears first in the input; version order, not admin
-    # specificity, decides join order.
+    # Broader-scope 'US-NC' (2025) sorts first, county-scoped 'US-NC-NE'
+    # (2026) sorts last (wins link_by_id's write-priority): admin
+    # specificity decides join order here, version merely happens to agree
+    # with it in this fixture (see the disagreeing case below).
     assert ids == ['US-NC_parcel-nconemap-2025', 'US-NC-NE_parcel-nhcgov-2026']
+
+
+def test_find_admin_scoped_recipe_ids_specificity_beats_newer_version(monkeypatch):
+    # A newer-versioned but less-specific state recipe must NOT out-rank an
+    # older-versioned but more-specific county recipe: specificity is the
+    # primary sort key, version only breaks ties within the same tier.
+    rows = pd.DataFrame(
+        [
+            {
+                'admin_id': 'US-NC',
+                'source_id': 'nconemap',
+                'version': '2026',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-NC-BL',
+                'source_id': 'bladenco',
+                'version': '2020',
+                'exclude_from_auto_discover': False,
+            },
+        ]
+    )
+    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+
+    state = _state('US-NC-BL')
+    ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
+
+    assert ids == ['US-NC_parcel-nconemap-2026', 'US-NC-BL_parcel-bladenco-2020']
+
+
+def test_find_admin_scoped_recipe_ids_version_tiebreaks_same_specificity(monkeypatch):
+    # At the same admin specificity, version remains the tiebreaker.
+    rows = pd.DataFrame(
+        [
+            {
+                'admin_id': 'US-NC-BL',
+                'source_id': 'old_source',
+                'version': '2019',
+                'exclude_from_auto_discover': False,
+            },
+            {
+                'admin_id': 'US-NC-BL',
+                'source_id': 'bladenco',
+                'version': '2026',
+                'exclude_from_auto_discover': False,
+            },
+        ]
+    )
+    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+
+    state = _state('US-NC-BL')
+    ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
+
+    assert ids == ['US-NC-BL_parcel-old_source-2019', 'US-NC-BL_parcel-bladenco-2026']
 
 
 def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
@@ -215,6 +270,45 @@ def test_link_by_id_auto_discover_recent_majority_source_wins_use_subgroup(
     assert state.spine['value'].tolist() == [150.0, 250.0]
 
 
+def test_link_by_id_auto_discover_track_provenance_records_winning_source(
+    monkeypatch,
+):
+    # Same setup as the majority-source test above, but with track_provenance
+    # requested for 'value': every cell it wrote is stamped with the source
+    # that actually supplied it.
+    matches = [
+        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
+        {'recipe_id': 'nhcgov', 'layer': None, 'key': 'parcel_id_local'},
+    ]
+    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
+    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+
+    refs = {
+        'nconemap': pd.DataFrame(
+            {'parcel_id_local': ['A', 'B'], 'value': [100.0, 200.0]}
+        ),
+        'nhcgov': pd.DataFrame(
+            {'parcel_id_local': ['A', 'B'], 'value': [150.0, 250.0]}
+        ),
+    }
+    monkeypatch.setattr(
+        links, 'get_entities', lambda recipe_id, admin_id, layer=None: refs[recipe_id]
+    )
+
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
+    state = _state('US-NC-NE', spine=spine)
+    state = links.link_by_id(
+        state,
+        auto_discover=True,
+        entity_type='parcel',
+        columns=['value'],
+        track_provenance=['value'],
+    )
+
+    assert state.spine['value'].tolist() == [150.0, 250.0]
+    assert state.spine['value_source'].tolist() == ['nhcgov', 'nhcgov']
+
+
 def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
     # A standalone roll that is also the spine's own geometry source (e.g. a
     # single-source county with no separate assessor roll) must not
@@ -227,7 +321,9 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
     # the join (summed across the colliding key, same as any other
     # ambiguous aggregate — that risk is inherent to a non-unique key and
     # out of scope here; only keep_columns, which already have a correct
-    # per-geometry value, are protected from it).
+    # per-geometry value, are protected from it). The spine's
+    # geometry_source is 'nconemap' (this same source), so the row-level
+    # mask path is exercised, not the no-geometry_source fallback.
     matches = [
         {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
     ]
@@ -250,6 +346,7 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
         {
             'parcel_id_local': ['DUP'],
             'use_subgroup': ['MOBILE HOME PARK'],
+            'geometry_source': ['nconemap'],
         },
         index=pd.Index(['mh-park'], name='parcel_id'),
     )
@@ -278,7 +375,99 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
     # 'old-house' (1964) with an unrelated 'new-house' (1998) into a
     # meaningless mean and broadcasting it back onto both. Once year_built
     # is added to keep_columns, it's protected the same way use_subgroup
-    # already is.
+    # already is. geometry_source is 'nconemap' (this same source), so the
+    # row-level mask path is exercised, not the no-geometry_source fallback.
+    matches = [
+        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
+    ]
+    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
+    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+
+    ref = pd.DataFrame(
+        {
+            'parcel_id_local': ['DUP', 'DUP'],
+            'year_built': [1964.0, 1998.0],
+        },
+        index=pd.Index(['old-house', 'new-house'], name='parcel_id'),
+    )
+    monkeypatch.setattr(
+        links, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+    )
+
+    spine = pd.DataFrame(
+        {
+            'parcel_id_local': ['DUP'],
+            'year_built': [1964.0],
+            'geometry_source': ['nconemap'],
+        },
+        index=pd.Index(['old-house'], name='parcel_id'),
+    )
+    state = _state('US-NC-CE', spine=spine)
+    state.metadata['spine_source_recipe_ids'] = {'nconemap'}
+    state.metadata['spine_keep_columns'] = {'year_built'}
+
+    state = links.link_by_id(
+        state,
+        auto_discover=True,
+        entity_type='parcel',
+        columns=['year_built'],
+    )
+
+    # Protected: stays 1964, not pooled to mean(1964, 1998) = 1981.
+    assert state.spine['year_built'].tolist() == [1964.0]
+
+
+def test_link_by_id_auto_discover_keep_column_fallback_fills_gap_from_other_source(
+    monkeypatch,
+):
+    # The actual bug this row-level mask fixes: row A's geometry came from
+    # 'bladenco' itself, so bladenco's own value there is already correct
+    # and must not change (protected). Row B's geometry came from a
+    # DIFFERENT source ('nconemap', not discovered as a match here -- it
+    # left this parcel's year_built null), so bladenco -- despite also
+    # being one of the spine's overall geometry sources -- is free to fill
+    # row B's gap from its own reference data for that same key, since
+    # row B isn't one of bladenco's own winning-geometry rows.
+    matches = [
+        {'recipe_id': 'bladenco', 'layer': None, 'key': 'parcel_id_local'},
+    ]
+    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
+    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+
+    ref = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'year_built': [1998.0, 2005.0]})
+    monkeypatch.setattr(
+        links, 'get_entities', lambda recipe_id, admin_id, layer=None: ref
+    )
+
+    spine = pd.DataFrame(
+        {
+            'parcel_id_local': ['A', 'B'],
+            'year_built': [1998.0, None],
+            'geometry_source': ['bladenco', 'nconemap'],
+        },
+        index=pd.Index(['row-a', 'row-b'], name='parcel_id'),
+    )
+    state = _state('US-NC-BL', spine=spine)
+    state.metadata['spine_source_recipe_ids'] = {'bladenco', 'nconemap'}
+    state.metadata['spine_keep_columns'] = {'year_built'}
+
+    state = links.link_by_id(
+        state,
+        auto_discover=True,
+        entity_type='parcel',
+        columns=['year_built'],
+    )
+
+    assert state.spine['year_built'].tolist() == [1998.0, 2005.0]
+
+
+def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
+    monkeypatch,
+):
+    # A union_spine_sources-built (non-spatial) spine has no geometry_source
+    # to key row-level protection on -- fall back to dropping the column
+    # from this match entirely, the original coarser guard, rather than
+    # risk the pooled-duplicate-key corruption the guard exists to prevent.
     matches = [
         {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
     ]
@@ -314,7 +503,6 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
         columns=['year_built'],
     )
 
-    # Protected: stays 1964, not pooled to mean(1964, 1998) = 1981.
     assert state.spine['year_built'].tolist() == [1964.0]
 
 

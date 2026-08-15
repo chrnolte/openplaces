@@ -18,6 +18,7 @@ from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons
 from openplaces.io.harmonizer import (
     HarmonizeState,
+    _record_source,
     _register,
     restrict_to_admin_by_name,
 )
@@ -216,6 +217,7 @@ def resolve_spine(
     sources: list[dict] | None = None,
     thresholds: dict | None = None,
     keep_columns: list[str] | None = None,
+    track_provenance: list[str] | None = None,
 ) -> HarmonizeState:
     """Build the primary entity spine from multiple prioritized sources.
 
@@ -256,6 +258,17 @@ def resolve_spine(
         all — set it to the rough size of an ordinary house to protect only
         large/likely-multi-unit buildings (also the main performance lever,
         since it excludes most footprints from ever being buffered).
+    track_provenance : list of str, optional
+        Subset of *keep_columns* to seed per-cell source provenance for: a
+        ``{column}_source`` sidecar recording which resolved source's own
+        row supplied that cell's value (its ``label``/``source_id``), via
+        :func:`openplaces.io.harmonizer._record_source`. Unlike
+        :func:`~openplaces.io.harmonizer.links.link_by_id`'s same-named
+        parameter (which records provenance for values it joins later),
+        this seeds provenance for the values *this* function writes
+        directly here, so a later ``link_by_id(auto_discover=True,
+        track_provenance=[...])`` step covering the same columns has a
+        correct baseline to build on rather than a blank sidecar.
     """
     if not sources:
         warnings.warn(f'resolve_spine: no sources configured for {state.admin_id}.')
@@ -310,17 +323,34 @@ def resolve_spine(
     # source attributes (e.g. parcel_id_local) onto the spine for non-footprint
     # entities; absent columns are ignored.
     keep_columns = keep_columns or []
+    track_cols = set(track_provenance or []) & set(keep_columns)
 
     def _spine_cols(gdf):
         return ['geometry'] + [c for c in keep_columns if c in gdf.columns]
 
-    first_label = resolved[0].get('label', resolved[0]['recipe_id'])
+    # resolved[0] is the highest-priority source by admin specificity, but it
+    # doesn't necessarily have geometry for THIS admin unit (e.g. Craven
+    # County's parcel roll is a geometry-less attribute table by design --
+    # its own property recipe carries the geometry instead); take the
+    # highest-priority source that actually loaded as primary, not
+    # unconditionally resolved[0].
+    primary_idx = next(
+        (
+            i
+            for i, src in enumerate(resolved)
+            if src.get('label', src['recipe_id']) in source_gdfs
+        ),
+        None,
+    )
+    first_label = resolved[primary_idx].get('label', resolved[primary_idx]['recipe_id'])
     spine: gpd.GeoDataFrame = source_gdfs[first_label][
         _spine_cols(source_gdfs[first_label])
     ].copy()
     spine['geometry_source'] = first_label
+    for col in track_cols & set(spine.columns):
+        _record_source(spine, col, spine[col].notna(), first_label)
 
-    for src in resolved[1:]:
+    for src in resolved[:primary_idx] + resolved[primary_idx + 1 :]:
         label = src.get('label', src['recipe_id'])
         if label not in source_gdfs:
             continue
@@ -365,6 +395,8 @@ def resolve_spine(
             n_elong_dropped = 0
 
         to_add['geometry_source'] = label
+        for col in track_cols & set(to_add.columns):
+            _record_source(to_add, col, to_add[col].notna(), label)
         if candidate.index.name != spine.index.name:
             warnings.warn(
                 f'resolve_spine: index name mismatch — spine has '
@@ -494,13 +526,19 @@ def _expand_auto_discover(
     """Replace any ``auto_discover: true`` sentinel with discovered recipes.
 
     Standalone ingest recipes of *entity_type* are found via ``find_recipes``
-    as before. Additionally, entries bundled as an ``additional_layers``
-    entry inside a *different* host entity's recipe (e.g. MassGIS's
-    ``property`` table, bundled inside its ``parcel`` recipe rather than
-    registered on its own) are found via
+    as before, ordered most-specific-admin-id first (newest version breaking
+    a tie within the same specificity) -- ``resolve_spine`` treats
+    ``sources[0]`` as primary for an IoU-tie, so a county-scoped recipe
+    should out-prioritize a statewide one covering the same admin unit,
+    mirroring :func:`openplaces.io.harmonizer.discover._best_recipe_for`'s
+    single-winner precedent. Additionally, entries bundled as an
+    ``additional_layers`` entry inside a *different* host entity's recipe
+    (e.g. MassGIS's ``property`` table, bundled inside its ``parcel`` recipe
+    rather than registered on its own) are found via
     :func:`openplaces.recipe.find_additional_layer_recipes` -- necessary for
     entity types like ``property`` that, today, have no standalone ingest
-    recipe anywhere and would otherwise never resolve.
+    recipe anywhere and would otherwise never resolve. These are appended
+    after the standalone recipes, in their own (unordered) discovery order.
     """
     from openplaces.recipe import find_additional_layer_recipes
 
@@ -522,7 +560,7 @@ def _expand_auto_discover(
     )
 
     df = find_recipes(entity_type, stage='ingest')
-    discovered: list[dict] = []
+    ranked: list[tuple[int, str, dict]] = []
     for _, row in df.iterrows():
         if row['exclude_from_auto_discover']:
             continue
@@ -533,8 +571,17 @@ def _expand_auto_discover(
                 f'{prefix}{row["entity_type"]}-{row["source_id"]}-{row["version"]}'
             )
             if child_id not in existing_ids:
-                discovered.append({'recipe_id': child_id, 'label': row['source_id']})
+                specificity = rid_str.count('-') + 1
+                ranked.append(
+                    (
+                        specificity,
+                        str(row['version']),
+                        {'recipe_id': child_id, 'label': row['source_id']},
+                    )
+                )
                 existing_ids.add(child_id)
+    ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    discovered: list[dict] = [entry for _specificity, _version, entry in ranked]
 
     if state.admin_id is not None:
         for match in find_additional_layer_recipes(entity_type, state.admin_id):

@@ -44,6 +44,14 @@ pipeline:
       - year_built
       - n_dwellings
       - address
+    # Which ingest source (its own geometry row, or a later null-aware
+    # fallback join) supplied each of these key fields -- see the
+    # resolve_spine/link_by_id docs for track_provenance.
+    track_provenance:
+      - use_group
+      - improvement_value
+      - land_value
+      - year_built
 
   # Compute this entity's own centroid lat/long and area (ha) once, right
   # after spine geometry is finalized (including synthetic fallback rows),
@@ -59,6 +67,11 @@ pipeline:
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
+    track_provenance:
+      - use_group
+      - improvement_value
+      - land_value
+      - year_built
 
   # Exact per-parcel property/unit count from the harmonized property spine
   # (the authoritative per-unit source, built directly from the same

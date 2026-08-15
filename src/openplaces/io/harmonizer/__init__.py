@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from importlib import import_module as _import_module
 
 import geopandas as gpd
+import pandas as pd
 
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.io import (
@@ -145,6 +146,41 @@ def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
     target_name = str(target['name'].iloc[0]).strip().casefold()
     match = df[name_col].astype('string').str.strip().str.casefold() == target_name
     return df[match]
+
+
+_PROVENANCE_SUFFIX = '_source'
+
+
+def _ensure_object_source_column(df, column: str) -> None:
+    """Ensure ``column`` exists on *df* and can hold string tokens.
+
+    Creates it as an all-missing object column if absent; casts an existing
+    Categorical or numeric column (e.g. an all-NaN float64 column a prior
+    join left behind without ever populating it) to object first, since a
+    numeric/categorical dtype can't hold an arbitrary source-id string.
+    """
+    if column not in df.columns:
+        df[column] = pd.Series(pd.NA, index=df.index, dtype=object)
+    elif isinstance(
+        df[column].dtype, pd.CategoricalDtype
+    ) or pd.api.types.is_numeric_dtype(df[column].dtype):
+        df[column] = df[column].astype(object)
+
+
+def _record_source(df, column: str, mask, token: str) -> None:
+    """Set the ``{column}_source`` sidecar to *token* for the *mask* rows.
+
+    Harmonize-stage peer of
+    :func:`openplaces.io.curator.provenance.record_source` -- this package
+    may not import from ``io.curator`` (a later pipeline stage), so this is
+    a shared, independent copy for :mod:`spine` and :mod:`links` (mirroring
+    how :mod:`addresses` already inlines its own private copy of the same
+    idiom for the identical layering reason). *mask* may be a boolean
+    Series aligned to *df*'s index.
+    """
+    side = f'{column}{_PROVENANCE_SUFFIX}'
+    _ensure_object_source_column(df, side)
+    df.loc[mask, side] = token
 
 
 #: Maps step name strings (as used in recipe ``pipeline`` sections) to the
@@ -461,4 +497,6 @@ __all__ = [
     'harmonize',
     '_STEP_REGISTRY',
     '_register',
+    '_record_source',
+    '_ensure_object_source_column',
 ]
