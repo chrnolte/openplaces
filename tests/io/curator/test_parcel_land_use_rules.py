@@ -1,4 +1,9 @@
-"""Tests for `classify_parcel_land_use`'s score_columns and review_column."""
+"""Tests for the parcel land-use vote and the shared indicator vocabulary.
+
+Covers `resolve_by_vote`'s score_columns and review_column (the two features
+the retired `classify_parcel_land_use` wrapper contributed), the real recipe's
+rule shapes, and `evaluate_indicator`'s predicate types.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +13,26 @@ import pytest
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
 from openplaces.io.curator.indicators import evaluate_indicator
-from openplaces.io.curator.inferers import classify_parcel_land_use
+from openplaces.io.curator.reconcilers import resolve_by_vote
+
+
+def _classify(state, rules, output='land_use_class', **kwargs):
+    """Score parcel land-use rules through the shared vote.
+
+    The parcel lane used to call a `classify_parcel_land_use` wrapper; these
+    are the two settings that distinguished it. `preserve_base=False` means
+    the vote *is* the classification rather than a correction to one, so
+    parcels no decision claims stay null for `reconcile_land_use` to fill.
+    """
+    return resolve_by_vote(
+        state,
+        target=output,
+        decisions=rules,
+        preserve_base=False,
+        default_source='rule',
+        **kwargs,
+    )
+
 
 RULES = [
     {
@@ -77,7 +101,7 @@ def test_winner_selection_unchanged_with_shared_indicators():
     df = _frame(
         use_group_combined=['MOBILE HOME PARK'], group_parcel=['Manufactured Home']
     )
-    out = classify_parcel_land_use(_state(df), rules=RULES).curated
+    out = _classify(_state(df), rules=RULES).curated
     assert out['land_use_class'].iloc[0] == 'Manufactured Home Park'
 
 
@@ -87,7 +111,7 @@ def test_score_columns_exposes_raw_score_even_when_not_winning():
         group_parcel=['Manufactured Home'],
         footprint_area_log_zscore=[-2.0],
     )
-    out = classify_parcel_land_use(
+    out = _classify(
         _state(df), rules=RULES, score_columns={'Vacant': 'vacancy_score'}
     ).curated
     # Manufactured Home Park wins (score 2), but Vacant's own score (1) is
@@ -98,7 +122,7 @@ def test_score_columns_exposes_raw_score_even_when_not_winning():
 
 def test_score_columns_zero_when_no_indicator_matches():
     df = _frame(footprint_area_log_zscore=[0.0])
-    out = classify_parcel_land_use(
+    out = _classify(
         _state(df), rules=RULES, score_columns={'Vacant': 'vacancy_score'}
     ).curated
     assert out['vacancy_score'].iloc[0] == 0.0
@@ -108,9 +132,7 @@ def test_review_column_false_when_no_rule_wins():
     # No rule's indicators match this generic residential parcel, so no
     # decision reaches its min_score; review stays False (nothing to flag).
     df = _frame()
-    out = classify_parcel_land_use(
-        _state(df), rules=RULES, review_column='land_use_review'
-    ).curated
+    out = _classify(_state(df), rules=RULES, review_column='land_use_review').curated
     assert not out['land_use_review'].iloc[0]
 
 
@@ -131,7 +153,7 @@ def test_review_column_flags_narrow_margin_between_winner_and_runner_up():
         },
     ]
     df = pd.DataFrame({'x': [1], 'y': [1]})
-    out = classify_parcel_land_use(
+    out = _classify(
         _state(df), rules=rules, review_column='review', review_margin=2.0
     ).curated
     # A scores 1, B scores 2: winner is B, margin is 1 < review_margin 2.
@@ -153,9 +175,7 @@ def test_review_column_false_for_clear_winner():
         },
     ]
     df = pd.DataFrame({'x': [1], 'y': [0]})
-    out = classify_parcel_land_use(
-        _state(df), rules=rules, review_column='review'
-    ).curated
+    out = _classify(_state(df), rules=rules, review_column='review').curated
     assert out['land_use_class'].iloc[0] == 'A'
     assert bool(out['review'].iloc[0]) is False
 
@@ -164,7 +184,7 @@ def test_flag_column_still_works():
     df = _frame(
         use_group_combined=['MOBILE HOME PARK'], group_parcel=['Manufactured Home']
     )
-    out = classify_parcel_land_use(
+    out = _classify(
         _state(df),
         rules=RULES,
         flag_column='manufactured_home_community',
@@ -221,7 +241,7 @@ def test_multiple_single_family_does_not_fire_on_two_weak_indicators_alone():
     # normal home" indicators (no small-elongated footprints, group is
     # Single Family) match. Score 2 < min_score 3 -> rule must not fire.
     df = _ordinary_single_family_frame()
-    out = classify_parcel_land_use(_state(df), rules=[MULTIPLE_SF_RULE]).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE]).curated
     assert pd.isna(out['land_use_class'].iloc[0])
 
 
@@ -230,7 +250,7 @@ def test_multiple_single_family_ignores_stale_n_footprints_per_parcel():
     # sliver or an accessory structure) must not affect the outcome; only
     # n_primary_footprints_per_parcel (here 1) is read.
     df = _ordinary_single_family_frame(n_footprints_per_parcel=[2])
-    out = classify_parcel_land_use(_state(df), rules=[MULTIPLE_SF_RULE]).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE]).curated
     assert pd.isna(out['land_use_class'].iloc[0])
 
 
@@ -238,13 +258,13 @@ def test_multiple_single_family_fires_with_genuine_multiplicity_evidence():
     # A genuine multi-home parcel: n_primary_footprints_per_parcel=2 supplies
     # the third indicator alongside the two weak ones -> score 3 = min_score.
     df = _ordinary_single_family_frame(n_primary_footprints_per_parcel=[2])
-    out = classify_parcel_land_use(_state(df), rules=[MULTIPLE_SF_RULE]).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Multiple Single-Family'
 
 
 def test_multiple_single_family_fires_on_keyword_alone_plus_weak_indicators():
     df = _ordinary_single_family_frame(use_group_combined=['MULTIPLE HOUSES'])
-    out = classify_parcel_land_use(_state(df), rules=[MULTIPLE_SF_RULE]).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Multiple Single-Family'
 
 
@@ -472,9 +492,7 @@ def test_condominium_wins_over_townhome_on_zero_land_value_morphology():
     # (0/(0+200000)=0 < 0.01), capping its score at 3 < min_score 4, so it
     # never becomes eligible; Condominium (score 2 = min_score 2) wins.
     df = _townhome_shaped_frame(land_value=[0], improvement_value=[200_000])
-    out = classify_parcel_land_use(
-        _state(df), rules=[CONDOMINIUM_RULE, TOWNHOME_RULE]
-    ).curated
+    out = _classify(_state(df), rules=[CONDOMINIUM_RULE, TOWNHOME_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Condominium'
 
 
@@ -484,9 +502,7 @@ def test_townhome_still_wins_with_nonzero_land_value():
     # score at 1 < min_score 2 (not eligible); Townhome reaches all 4
     # indicators (score 4 = min_score 4) and wins.
     df = _townhome_shaped_frame(land_value=[50_000], improvement_value=[200_000])
-    out = classify_parcel_land_use(
-        _state(df), rules=[CONDOMINIUM_RULE, TOWNHOME_RULE]
-    ).curated
+    out = _classify(_state(df), rules=[CONDOMINIUM_RULE, TOWNHOME_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Townhome'
 
 
@@ -503,7 +519,7 @@ def test_condominium_fires_on_keyword_alone_plus_residential_context():
             'improvement_value': [85_000],
         }
     )
-    out = classify_parcel_land_use(_state(df), rules=[CONDOMINIUM_RULE]).curated
+    out = _classify(_state(df), rules=[CONDOMINIUM_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Condominium'
 
 
@@ -531,9 +547,7 @@ def test_multiple_single_family_does_not_fire_on_zero_land_value_condo_shape():
     df = _ordinary_single_family_frame(
         n_primary_footprints_per_parcel=[2], land_value=[0], improvement_value=[200_000]
     )
-    out = classify_parcel_land_use(
-        _state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]
-    ).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]).curated
     assert pd.isna(out['land_use_class'].iloc[0])
 
 
@@ -543,9 +557,7 @@ def test_multiple_single_family_fires_with_genuine_multiplicity_and_normal_land_
         land_value=[50_000],
         improvement_value=[150_000],
     )
-    out = classify_parcel_land_use(
-        _state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]
-    ).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE_WITH_VALUE_SHARE]).curated
     assert out['land_use_class'].iloc[0] == 'Multiple Single-Family'
 
 
@@ -586,9 +598,7 @@ def test_multiple_single_family_any_of_does_not_fire_from_group_and_fema_alone()
     # fire. Without any_of (FEMA as an independent vote), this would
     # incorrectly reach score 3 and fire.
     df = _ordinary_single_family_frame(group_footprint_fema=['Single Family'])
-    out = classify_parcel_land_use(
-        _state(df), rules=[MULTIPLE_SF_RULE_WITH_FEMA]
-    ).curated
+    out = _classify(_state(df), rules=[MULTIPLE_SF_RULE_WITH_FEMA]).curated
     assert pd.isna(out['land_use_class'].iloc[0])
 
 
@@ -629,7 +639,7 @@ def test_manufactured_home_park_fires_on_group_and_fema_vote():
             'group_footprint_fema': ['Manufactured Home'],
         }
     )
-    out = classify_parcel_land_use(_state(df), rules=[MH_PARK_RULE]).curated
+    out = _classify(_state(df), rules=[MH_PARK_RULE]).curated
     assert out['land_use_class'].iloc[0] == 'Manufactured Home Park'
 
 
@@ -646,6 +656,6 @@ def test_rule_wins_are_recorded_in_source_sidecar():
         ],
         ignore_index=True,
     )
-    out = classify_parcel_land_use(_state(df), rules=RULES).curated
+    out = _classify(_state(df), rules=RULES).curated
     assert out['land_use_class_source'].iloc[0] == 'rule'
     assert pd.isna(out['land_use_class_source'].iloc[1])

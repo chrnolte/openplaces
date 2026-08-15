@@ -242,12 +242,44 @@ def _derive_group_statistic(state: CurateState, spec: dict) -> pd.Series | None:
     )
 
 
+def _derive_cohort_threshold(state: CurateState, spec: dict) -> pd.Series | None:
+    """Flag rows at or above a threshold set by a reference cohort's own size.
+
+    For "is this structure big enough to be a dwelling rather than a shed",
+    where the answer depends on how big dwellings actually are around here. The
+    threshold is a *fraction* of the reference cohort's mean, floored so a
+    degenerate cohort cannot drive it to zero, and replaced by a fallback when
+    the cohort is too small to average meaningfully.
+    """
+    curated = state.curated
+    value_column = spec['value_column']
+    cohort_column = spec.get('cohort_column')
+    if value_column not in curated.columns:
+        return None
+
+    values = pd.to_numeric(curated[value_column], errors='coerce')
+    cohort = values
+    if cohort_column and cohort_column in curated.columns:
+        in_cohort = curated[cohort_column].astype(object).eq(spec['cohort_value'])
+        cohort = values.where(in_cohort)
+    sample = cohort.dropna()
+
+    fraction = float(spec.get('fraction', 0.5))
+    floor = float(spec.get('floor', 0.0))
+    fallback = float(spec.get('fallback', 0.0))
+    min_samples = int(spec.get('min_samples', 3))
+    mean = float(sample.mean()) if len(sample) >= min_samples else fallback
+    threshold = max(floor, fraction * mean)
+    return (values >= threshold).fillna(False)
+
+
 _INDICATOR_DERIVATIONS = {
     'ruleset_class': _derive_ruleset_class,
     'pooled_vote': _derive_pooled_vote,
     'ratio': _derive_ratio,
     'shape_metric': _derive_shape_metric,
     'group_statistic': _derive_group_statistic,
+    'cohort_threshold': _derive_cohort_threshold,
 }
 
 
@@ -288,6 +320,12 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
     - ``group_statistic``: score ``value_column`` against its ``group_column``
       cohort via ``statistic`` (``zscore`` default, or ``percentile``), after
       an optional ``transform`` (``log1p`` default, or None).
+    - ``cohort_threshold``: flag rows whose ``value_column`` reaches a
+      threshold derived from a reference cohort's own mean -- ``fraction`` of
+      it, at least ``floor``, using ``fallback`` when fewer than
+      ``min_samples`` rows match ``cohort_column``/``cohort_value``. For
+      "large enough to be a dwelling here", where what counts as large
+      depends on the local building stock.
 
     Parameters
     ----------
@@ -355,72 +393,6 @@ def derive_stories_from_height(
     return state
 
 
-@_register('classify_parcel_land_use')
-def classify_parcel_land_use(
-    state: CurateState,
-    rules: list[dict],
-    output: str = 'land_use_class',
-    flag_column: str | None = None,
-    flag_class: str | None = None,
-    score_columns: dict[str, str] | None = None,
-    review_column: str | None = None,
-    review_margin: float = 1.0,
-) -> CurateState:
-    """Classify each parcel's land-use class by weighted indicator voting.
-
-    .. deprecated::
-        Kept only so recipes not yet migrated keep working. This is now a thin
-        wrapper over :func:`~openplaces.io.curator.reconcilers.resolve_by_vote`
-        with ``preserve_base=False`` and ``default_source='rule'``, which is
-        exactly what it always did — the parcel-curation "rules" and the
-        occupancy "decisions" were the same weighted vote written twice. Point
-        recipes at ``resolve_by_vote`` directly; this wrapper is removed once
-        none reference it.
-
-    Parameters
-    ----------
-    rules : list of dict
-        Ordered candidate classes, each ``{class, min_score, indicators, weight}``;
-        ``indicators`` is a list of specs (see
-        :func:`~openplaces.io.curator.indicators.evaluate_indicator`). For each
-        parcel a rule's score sums its matched indicator weights; among the rules
-        reaching ``min_score`` (default 1) the highest score wins, ties broken by
-        order. Parcels matching no rule are left null.
-    output : str, optional
-        Output class column (default ``land_use_class``).
-    flag_column, flag_class : str, optional
-        When both are given, write a boolean ``flag_column`` set where ``output``
-        equals ``flag_class`` (e.g. ``manufactured_home_community``).
-    score_columns : dict of {class: column}, optional
-        For named classes, also write that rule's raw weighted score — not
-        gated by its own ``min_score`` — to the given column. This is an
-        ordered/graded signal (e.g. a vacancy likelihood) usable by later
-        steps even for parcels where that class did not win the vote.
-    review_column : str, optional
-        Boolean column flagging parcels where the winning class's score beat
-        the runner-up's (among rules that individually reached their own
-        ``min_score``) by less than *review_margin* — the "unresolved"
-        confusion cases worth a second look (e.g. Manufactured Home Park vs.
-        RV Park scoring close or tied). Left unset (``None``) by default.
-    review_margin : float, optional
-        Score margin below which ``review_column`` is set (default 1.0).
-    """
-    from openplaces.io.curator.reconcilers import resolve_by_vote
-
-    return resolve_by_vote(
-        state,
-        target=output,
-        decisions=rules,
-        preserve_base=False,
-        default_source='rule',
-        score_columns=score_columns,
-        review_column=review_column,
-        review_margin=review_margin,
-        flag_column=flag_column,
-        flag_class=flag_class,
-    )
-
-
 def _vote_evidence_class(
     curated,
     evidence: list[dict],
@@ -470,17 +442,16 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     ``occupancy`` config block; this step holds no source- or class-specific
     names.
 
-    1. Base class from ``occupancy.evidence``. Default (``evidence_mode:
-       cascade``): walk the entries in priority order, coerce each column to a
-       class via the class-map ruleset, and take the first non-null (the recipe
-       ordering sets precedence, e.g. a structure source before an area
-       source). With ``evidence_mode: vote``: a weighted consensus vote across
-       all present evidence, so agreeing lower-priority sources can outvote a
-       lone higher-priority one (see :func:`_vote_evidence_class`); per-entry
-       ``weight`` (default 1.0) tunes each source's say.
-    2. Non-primary ``residential_classes`` footprints become ``secondary_class``.
+    Sets the base class from ``occupancy.evidence`` and nothing else. Default
+    (``evidence_mode: cascade``): walk the entries in priority order, coerce
+    each column to a class via the class-map ruleset, and take the first
+    non-null (the recipe ordering sets precedence, e.g. a structure source
+    before an area source). With ``evidence_mode: vote``: a weighted consensus
+    vote across all present evidence, so agreeing lower-priority sources can
+    outvote a lone higher-priority one (see :func:`_vote_evidence_class`);
+    per-entry ``weight`` (default 1.0) tunes each source's say.
 
-    Two one-shot rules that used to sit inside this step have moved out to
+    Three one-shot rules that used to follow it here have moved out to
     ``resolve_by_vote``, where they compete on evidence instead of claiming
     rows first and unopposed:
 
@@ -493,8 +464,11 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
       null and so could never contest a class the evidence vote had already
       assigned — the structural reason single-family was the pipeline's
       least-corroborated class.
-
-    Multi-Family is later refined into height bands by ``refine_occupancy_height``.
+    - the secondary-class demotion and its habitable-park-home exception, now
+      a ``Secondary`` decision plus a paired community/size indicator on the
+      manufactured-home decision. The habitable threshold is expressed as a
+      ``cohort_threshold`` indicator, measured against a source classification
+      rather than against this step's own output.
     """
     from openplaces.io.curator.occupancy import (
         coerce_to_class,
@@ -506,12 +480,11 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
     curated = state.curated
     config = get_occupancy_config(state)
     rules = load_ruleset(state, config['class_map'])
-    rule_cfg = config.get('rules', {})
 
     result = pd.Series(pd.NA, index=curated.index, dtype=object)
 
-    # 1. Base class from the evidence columns: weighted consensus vote, or the
-    #    default first-non-null cascade (recipe order = precedence).
+    # Base class from the evidence columns: weighted consensus vote, or the
+    # default first-non-null cascade (recipe order = precedence).
     evidence_list = config.get('evidence', [])
     if config.get('evidence_mode', 'cascade') == 'vote':
         classes, tokens = _vote_evidence_class(curated, evidence_list, config, rules)
@@ -531,46 +504,6 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
                 record_source(
                     curated, 'occupancy_type', fill, evidence.get('label', col)
                 )
-
-    # 2. Non-primary residential footprints become the secondary class — as do
-    #    explicit-secondary footprints with no occupancy evidence (an accessory
-    #    structure on a parcel whose primary building is elsewhere). A non-primary
-    #    footprint with a known non-residential class keeps that class. Exception:
-    #    habitable-size homes on a manufactured-home-community parcel are the
-    #    community's dwellings (Manufactured Home), not accessory structures;
-    #    only sub-threshold footprints there (sheds) stay secondary. This flag
-    #    is set by the parcel curation lane (classify_parcel_land_use) and
-    #    joined in by link_curated_entity, under the same name
-    #    flag_manufactured_home_communities later refines from the final
-    #    footprint occupancy -- read here before that refinement runs, so this
-    #    step still sees the parcel-lane's one-pass value. Absent either,
-    #    behaviour is unchanged.
-    residential = list(config.get('residential_classes', []))
-    secondary = config.get('secondary_class')
-    mh_label = rule_cfg.get('manufactured_home_geometry', {}).get('class')
-    if residential and secondary and 'priority_on_parcel' in curated.columns:
-        priority = curated['priority_on_parcel'].astype(object)
-        non_primary = (result.isin(residential) & ~priority.eq('primary')) | (
-            result.isna() & priority.eq('secondary')
-        )
-        in_park = (
-            curated['manufactured_home_community'].astype('boolean').fillna(False)
-            if 'manufactured_home_community' in curated.columns
-            else pd.Series(False, index=curated.index)
-        )
-        to_mh = pd.Series(False, index=curated.index)
-        if mh_label and bool(in_park.any()) and 'area_m2' in curated.columns:
-            threshold = _habitable_threshold(curated, result, mh_label, config)
-            habitable = (
-                pd.to_numeric(curated['area_m2'], errors='coerce') >= threshold
-            ).fillna(False)
-            to_mh = non_primary & in_park & habitable
-            if to_mh.any():
-                result.loc[to_mh] = mh_label
-                record_source(curated, 'occupancy_type', to_mh, 'park')
-        sec_mask = non_primary & ~to_mh
-        result.loc[sec_mask] = secondary
-        record_source(curated, 'occupancy_type', sec_mask, 'secondary')
 
     curated['occupancy_type'] = pd.Categorical(result)
     state.curated = curated

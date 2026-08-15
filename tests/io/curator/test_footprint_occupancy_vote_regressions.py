@@ -34,6 +34,7 @@ DEFAULTS = {
     'occupancy_type_building_nsi': None,
     'land_use_class_parcel': None,
     'land_use_class_source_parcel': None,
+    'manufactured_home_community': False,
     'priority_on_parcel': 'primary',
     'p_manufactured_home': 0.0,
     # 0 is the zero-filled "Overture saw nothing here" value, so this
@@ -239,16 +240,49 @@ def test_minimum_area_floor_applies_to_every_route_to_the_class(recipe):
     assert result.iloc[0] != 'Manufactured Home'
 
 
-def test_accessory_structures_keep_their_secondary_class(recipe):
-    # Without the priority allow-list the single-family residual would
-    # relabel every shed on a single-dwelling parcel as a house.
+def test_accessory_structures_resolve_to_secondary(recipe):
+    # Without the priority gate the single-family residual would relabel
+    # every shed on a single-dwelling parcel as a house.
+    result = _classify(
+        recipe,
+        [{'n_dwellings_overture': 1, 'priority_on_parcel': 'secondary'}],
+    )
+    assert result.iloc[0] == 'Secondary'
+
+
+def test_habitable_home_in_a_community_outscores_the_secondary_residual(recipe):
+    # A manufactured-home community's own dwellings are frequently marked
+    # non-primary on their parcel. They are homes, not accessory structures,
+    # so the paired community/size indicator has to beat Secondary -- this is
+    # the carve-out that used to be a special case inside impute_occupancy_type.
     result = _classify(
         recipe,
         [
             {
-                'occupancy_type': 'Secondary',
                 'n_dwellings_overture': 1,
                 'priority_on_parcel': 'secondary',
+                'manufactured_home_community': True,
+                'occupancy_type_building_nsi': 'Manufactured Home',
+                'length_m': 18.0,
+                'width_m': 5.0,
+            }
+        ],
+    )
+    assert result.iloc[0] == 'Manufactured Home'
+
+
+def test_a_shed_in_a_community_stays_secondary(recipe):
+    # The mirror, and the reason the size half of the pair exists: a small
+    # structure on the same community parcel is still a shed.
+    result = _classify(
+        recipe,
+        [
+            {
+                'n_dwellings_overture': 1,
+                'priority_on_parcel': 'secondary',
+                'manufactured_home_community': True,
+                'length_m': 4.0,
+                'width_m': 3.0,
             }
         ],
     )

@@ -202,6 +202,22 @@ pipeline:
         ruleset: parcel-occupancy-keywords.csv
         reviewed_only: true
 
+      # Large enough to be somebody's home rather than a shed, judged against
+      # how big manufactured homes actually are in this admin unit. The
+      # cohort is NSI's own manufactured-home classification rather than the
+      # vote's output, so the threshold cannot be moved by the decision it
+      # feeds. occupancy.habitable_* supply the fraction, floor and
+      # small-sample fallback.
+      - output: is_habitable_size
+        type: cohort_threshold
+        value_column: area_m2
+        cohort_column: occupancy_type_nsi_class
+        cohort_value: Manufactured Home
+        fraction: 0.5
+        floor: 25
+        fallback: 90
+        min_samples: 3
+
   # Impute: fill any dwelling-unit gaps left after reconciliation.
   - step: impute_n_dwellings
 
@@ -350,6 +366,17 @@ pipeline:
                 column: land_use_class_parcel
                 value: Manufactured Home Park
               - {type: equals, column: land_use_class_source_parcel, value: rule}
+          # A habitable-size structure on a manufactured-home-community
+          # parcel is one of the community's homes, not an accessory
+          # building. Weight 2 rests on the pair holding together: the
+          # parcel must be a community AND this footprint must be big
+          # enough to live in, so it outscores the Secondary residual
+          # below while a shed on the same parcel does not.
+          - type: all_of
+            weight: 2
+            indicators:
+              - {type: equals, column: manufactured_home_community, value: true}
+              - {type: equals, column: is_habitable_size, value: true}
 
       - class: Multi-Family
         source: multi_family
@@ -370,16 +397,29 @@ pipeline:
         min_score: 1
         require:
           - {type: equals, column: dwelling_multiplicity, value: single}
-          # Accessory structures keep the Secondary class the earlier step
-          # assigned them; without this the residual would relabel every shed
-          # and detached garage on a single-dwelling parcel as a house.
-          # Expressed as an allow-list because the predicate vocabulary has
-          # no negation.
+          # An accessory structure is not a house, so the residual must not
+          # claim it -- the Secondary decision below does. Expressed as an
+          # allow-list because the predicate vocabulary has no negation.
           - type: in_set
             column: priority_on_parcel
             values: [primary, unknown]
         indicators:
           - {type: equals, column: dwelling_multiplicity, value: single}
+
+      # Accessory structures -- sheds, detached garages -- on a parcel whose
+      # principal building is elsewhere. Listed last as the true residual and
+      # reached only when nothing above claimed the footprint: a habitable
+      # home in a manufactured-home community outscores it via the paired
+      # community/size indicator on the Manufactured Home decision, while a
+      # shed on that same parcel does not.
+      - class: Secondary
+        source: secondary
+        min_score: 1
+        require:
+          - {type: equals, column: priority_on_parcel, value: secondary}
+        indicators:
+          - {type: equals, column: priority_on_parcel, value: secondary}
+
   # Split Multi-Family into height bands. This is the same weighted vote as
   # every other classification here, not a bespoke cascade: each band
   # requires the pre-refinement class and scores a single story-count bound,

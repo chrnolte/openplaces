@@ -289,9 +289,12 @@ def test_unknown_class_passes_through(monkeypatch):
     assert out.curated['occupancy_type'].iloc[0] == 'Retail'
 
 
-def test_secondary_priority_without_evidence_is_secondary(monkeypatch):
-    # A non-primary footprint with no occupancy evidence is an accessory
-    # structure -> Secondary, even though no class-map rule matched.
+def test_secondary_priority_is_no_longer_decided_here(monkeypatch):
+    # The accessory-structure demotion moved out of this step into a
+    # Secondary decision in resolve_by_vote, so that a habitable home on a
+    # manufactured-home-community parcel can outscore it on evidence rather
+    # than being demoted first and rescued afterwards. This step now reports
+    # only what the evidence says, which for this row is nothing.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = pd.DataFrame(
         {
@@ -301,8 +304,7 @@ def test_secondary_priority_without_evidence_is_secondary(monkeypatch):
         }
     )
     out = impute_occupancy_type(_state(curated)).curated
-    assert out['occupancy_type'].astype(object).iloc[0] == 'Secondary'
-    assert out['occupancy_type_source'].iloc[0] == 'secondary'
+    assert out['occupancy_type'].isna().all()
 
 
 @pytest.mark.parametrize('improvement', [0.0, 1000.0])

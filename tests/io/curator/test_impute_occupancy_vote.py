@@ -154,12 +154,13 @@ def test_non_residential_sources_pool_their_votes(monkeypatch):
     assert out['occupancy_type_source'].iloc[0] == 'nsi/fema'
 
 
-def test_no_evidence_leaves_row_for_fallbacks(monkeypatch):
-    # All evidence null -> the vote assigns nothing and later fallback rules
-    # still apply (secondary priority here).
+def test_no_evidence_leaves_the_row_unclassified(monkeypatch):
+    # This step now does one thing: the evidence vote. With all evidence null
+    # it assigns nothing and says so, rather than reaching for a structural
+    # fallback. Secondary is decided later, as a contested vote decision --
+    # see test_footprint_occupancy_vote_regressions.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame()
     curated['priority_on_parcel'] = ['secondary']
     out = impute_occupancy_type(_state(curated)).curated
-    assert out['occupancy_type'].astype(object).iloc[0] == 'Secondary'
-    assert out['occupancy_type_source'].iloc[0] == 'secondary'
+    assert out['occupancy_type'].isna().all()

@@ -18,9 +18,21 @@ from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
 from openplaces.io.curator.inferers import (
     _habitable_threshold,
-    classify_parcel_land_use,
     flag_manufactured_home_communities,
 )
+from openplaces.io.curator.reconcilers import resolve_by_vote
+
+
+def _classify(state, rules, output='land_use_class', **kwargs):
+    """Score parcel land-use rules through the shared vote."""
+    return resolve_by_vote(
+        state,
+        target=output,
+        decisions=rules,
+        preserve_base=False,
+        default_source='rule',
+        **kwargs,
+    )
 
 
 def _state(df, recipe=None):
@@ -83,7 +95,7 @@ def test_classify_parcel_land_use_separates_mh_park_from_rv_park():
             'n_small_elongated_footprints_per_parcel': [8, 1, 0],
         }
     )
-    out = classify_parcel_land_use(
+    out = _classify(
         _state(df),
         rules=_LAND_USE_RULES,
         output='land_use_class',
