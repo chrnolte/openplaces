@@ -10,6 +10,31 @@
 # non-spatial CAMA table exists on this service either). Land and building
 # value are populated (979/1000 and 631/1000 sampled records
 # respectively), so land/building value is included as a bonus.
+#
+# NOTE: `use_group`/`use_subgroup` are unmapped today, so every
+# use-code-derived indicator downstream is inert for this county. Of the 74
+# raw fields across 80,386 features, most candidates are dead: `PARCELTYPE`
+# is administrative (Base Parcel 80,211 / Non Par 163 / Other 6 / ROW Overlap
+# 2); `NBHCLASS`, `QUALCODE` and `RECTYPE` are empty; `PAR_CODE` is blank on
+# 78,073 parcels and its ~600 non-blank values (HOS, INF, VCN...) look like
+# special designations.
+#
+# PARDESC1 IS THE EXCEPTION AND IS UNRESOLVED. Its 74 codes are structured
+# like a conventional CAMA scheme -- letter prefix for broad class, number for
+# subtype -- and have been read as D-10 single-family (24,606), D-71 mobile
+# home on land (8,830), V-* vacant (V-00 20,190, V-80 10,324), A-* / C-* /
+# I-* / E-* agricultural, commercial, industrial, exempt. If that decoding
+# holds, D-71 alone is a substantial manufactured-home signal for a county
+# that otherwise has none, and this field should be mapped.
+#
+# It is NOT yet verified against ground truth, and should be before anyone
+# relies on it: the code distribution is certain, the meaning of the letters
+# is inference from a common convention, with no published key located.
+# Robeson carries 232 CHEER hand-labelled points -- 17% of that set -- so the
+# test is cheap once the join works. It does not today: the local source keys
+# on a 12-digit PIN_NUMBER ('111111111111') while the curated parcel entity's
+# parcel_id_assessor holds a different lineage ('222222222'), and only 227 of
+# 80,297 parcels join. Resolving that mismatch is the prerequisite.
 
 description: >-
   Robeson County, NC parcel roll (assessed land/building values, owner,

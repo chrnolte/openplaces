@@ -11,6 +11,26 @@
 # building value are populated (1957/2000 and 931/2000 sampled records
 # respectively), so land/building value is included as a bonus, along with
 # heated area.
+#
+# NOTE: no assessor land-use code either, so `use_group`/`use_subgroup` are
+# deliberately unmapped and every use-code-derived indicator downstream is
+# inert for this county. Checked all 42 raw fields: `USE_` is populated on 5%
+# of parcels with a single value ('U'); `PCL_CLASS` (99% populated) is a tax
+# class -- R 50,169 / C 2,110 / E 1,438 plus EX-* and EC-* exemption codes --
+# which separates residential from commercial but says nothing about building
+# type.
+#
+# OPEN QUESTION, not yet measured: `ZONE` (98% populated, 31 values) is mapped
+# as `zoning_code` and carries categories that bear directly on the
+# distinctions the occupancy vote struggles with -- MH (247 parcels, where
+# manufactured homes are permitted), RM-CD1/RM-CD2 (265, multi-family), RP/RA
+# (33,680, residential). Zoning states what may be built rather than what is,
+# but that is an empirical question about predictive value, not a reason to
+# dismiss it: unlike group_parcel it is not derived from NSI, so testing it
+# against NSI would not be circular. Two things block the test today --
+# `zoning_code` does not survive to the curated parcel entity, and this
+# recipe's `parcel_id_assessor: PIN` yields '0' for every row (raw PIN samples
+# null), so a source join fails. Both are worth fixing before judging zoning.
 
 description: >-
   Pender County, NC parcel roll (assessed land/building/total values,
