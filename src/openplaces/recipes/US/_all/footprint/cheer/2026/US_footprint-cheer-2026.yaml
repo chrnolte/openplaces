@@ -77,6 +77,12 @@ pipeline:
       manufactured_home_community: manufactured_home_community
       group_footprint_fema: group_footprint_fema
       land_use_class: land_use_class_parcel
+      # 'rule' marks the parcel lane's own weighted vote, whose inputs include
+      # assessor keywords and footprint morphology. Any other token marks a
+      # reconcile_land_use fill, voted purely from group_parcel /
+      # group_building_nsi / group_footprint_fema -- NSI and FEMA under a
+      # second name. Only the rule route may carry weight downstream.
+      land_use_class_source: land_use_class_source_parcel
 
   # Apportion curated parcel values to footprints:
   # - improvement_value is split by footprint overlap-area share (residential splitting
@@ -159,6 +165,43 @@ pipeline:
   # Infer: derive new features from the reconciled evidence.
   - step: derive_metrics
 
+  # Derivation layer: the named precursors the occupancy vote scores against.
+  # Values only, no thresholds -- every cutoff lives in the decisions below,
+  # so a given threshold appears exactly once in this recipe.
+  - step: derive_indicators
+    indicators:
+      # Minimum-bounding-rectangle elongation, measured on a locally
+      # projected metric copy. The retired geometry fallback measured raw
+      # lon/lat instead, where the x axis is compressed by cos(latitude) --
+      # roughly 0.82 across North Carolina, skewing every aspect ratio it
+      # compared against the 2.5 cutoff.
+      - output: aspect_ratio
+        type: shape_metric
+        metric: aspect_ratio
+
+      # Each occupancy source coerced to the canonical class vocabulary, kept
+      # as its own column rather than pooled: per-class reliability differs
+      # sharply between sources (parcel is the strongest evidence for
+      # single-family and among the weakest for manufactured homes), and
+      # pooling would average exactly that signal away.
+      - output: occupancy_type_nsi_class
+        type: ruleset_class
+        column: occupancy_type_building_nsi
+        ruleset: occupancy-class-map.csv
+      - output: occupancy_type_fema_class
+        type: ruleset_class
+        column: group_footprint_fema
+        ruleset: occupancy-class-map.csv
+
+      # Reviewed-only: unreviewed ruleset rows (MODULAR, bare MH, COMMERCIAL,
+      # RETAIL) stay out of the class decision, preserving the gate
+      # resolve_occupancy's keyword override already applied.
+      - output: occupancy_keyword_class
+        type: ruleset_class
+        column: use_group_combined_parcel
+        ruleset: parcel-occupancy-keywords.csv
+        reviewed_only: true
+
   # Impute: fill any dwelling-unit gaps left after reconciliation.
   - step: impute_n_dwellings
 
@@ -194,8 +237,78 @@ pipeline:
     ruleset: parcel-occupancy-keywords.csv
     update_occupancy: false
 
-  # Reconcile final occupancy: resolve Manufactured Home vs Multi-Family using a
-  # weighted consensus vote. Requires a minimum area of 20 m2 for Manufactured Homes.
+  # Occupancy is decided in two steps, because the evidence answers two
+  # different questions and almost no source answers both.
+  #
+  #   1. dwelling multiplicity -- one dwelling (single-family or manufactured)
+  #      or several (multi-family)?
+  #   2. construction type, among single-dwelling footprints only --
+  #      manufactured or site-built?
+  #
+  # Measured against the CHEER ground truth
+  # (scripts/analyze_occupancy_stages.py), sources specialize almost
+  # perfectly. Overture's dwelling count is 92% precise for multi-dwelling and
+  # carries a lift of 1.03 on question 2 -- i.e. no information at all about
+  # construction type, which is expected, since a manufactured home is also
+  # one dwelling. Conversely every manufactured-home signal is 0-6% precise
+  # for multi-dwelling. Asking one flat three-way vote made these fight each
+  # other; split, each is cited once on the question it can answer.
+  #
+  # The clearest consequence: an aspect ratio at or above 2.5 is 90% precise
+  # for Manufactured Home once the population is restricted to single-dwelling
+  # footprints, against 26% for multi-dwelling. In the flat vote that signal
+  # was competing with dwelling counts and had to be capped; here it is the
+  # strongest evidence available.
+  - step: resolve_by_vote
+    target: dwelling_multiplicity
+    preserve_base: false
+    default_source: dwelling_vote
+    decisions:
+      # Listed first so it wins ties: a positive count of two or more
+      # dwellings is a specific claim, single-dwelling is the residual.
+      - class: multi
+        source: multi_dwelling
+        min_score: 2
+        indicators:
+          # 92.3% precise on its own -- the single best signal for this
+          # question, and sufficient unaided.
+          - type: numeric_at_least
+            column: n_dwellings_overture
+            min: 2
+            weight: 2
+          # 83.6% precise; assessor keywords naming a multi-unit building.
+          - type: equals
+            column: occupancy_keyword_class
+            value: Multi-Family
+            weight: 2
+          - {type: equals, column: occupancy_type_nsi_class, value: Multi-Family}
+          - {type: equals, column: occupancy_type_fema_class, value: Multi-Family}
+
+      - class: single
+        source: single_dwelling
+        min_score: 1
+        indicators:
+          # Exactly one dwelling, not "at most one": the count is zero-filled
+          # upstream, so a bare upper bound would let absent Overture data
+          # vote as though it were evidence.
+          - type: all_of
+            indicators:
+              - {type: numeric_at_least, column: n_dwellings_overture, min: 1}
+              - {type: numeric_at_most, column: n_dwellings_overture, max: 1}
+          # Every manufactured-home signal is also a single-dwelling signal,
+          # and measures 100% precise as one -- a manufactured home is by
+          # definition one dwelling. This is exactly the information the flat
+          # vote discarded by treating "manufactured" and "single-family" as
+          # competitors at this stage rather than as siblings.
+          - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
+          - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
+          - {type: equals, column: occupancy_keyword_class, value: Manufactured Home}
+          - {type: numeric_at_least, column: p_manufactured_home, min: 0.75}
+          - {type: equals, column: occupancy_type_fema_class, value: Single-Family}
+          - {type: equals, column: occupancy_type_nsi_class, value: Single-Family}
+
+  # Question 2. Each decision is gated by question 1's answer, so the three
+  # classes partition cleanly instead of competing across populations.
   - step: resolve_by_vote
     target: occupancy_type
     decisions:
@@ -203,41 +316,97 @@ pipeline:
         source: manufactured_home
         min_score: 2
         require:
-          - type: numeric_at_least
-            column: area_m2
-            min: 20
+          - {type: equals, column: dwelling_multiplicity, value: single}
+          - {type: numeric_at_least, column: area_m2, min: 20}
         indicators:
+          # 90% precise within the single-dwelling population; the strongest
+          # evidence for this class by a wide margin, hence sufficient alone.
+          - type: all_of
+            weight: 2
+            indicators:
+              - {type: numeric_at_least, column: aspect_ratio, min: 2.5}
+              - {type: numeric_at_most, column: area_m2, max: 185}
+          - {type: numeric_at_least, column: p_manufactured_home, min: 0.75}
+          - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
+          - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
+          - {type: equals, column: occupancy_keyword_class, value: Manufactured Home}
           - type: value_share_below
             value: improvement_value_parcel
             total: [improvement_value_parcel, land_value_parcel]
             max_ratio: 0.025
             include_zero: true
-          - type: keyword
-            column: use_group_combined_parcel
-            pattern: MOBILE|MANUFACTURED|SINGLE WIDE|DOUBLE WIDE
-            regex: true
-          - type: equals
-            column: group_parcel
-            value: Manufactured Home
-          # Footprint-morphology shape classification probability.
-          - type: numeric_at_least
-            column: p_manufactured_home
-            min: 0.5
-      - class: Multi-Family
-        source: multi_family_dwellings
-        min_score: 1
-        indicators:
-          - type: numeric_at_least
-            column: n_dwellings
-            min: 2
+          # The parcel lane's park classification, restricted to its rule
+          # route. That route carries a hard require on
+          # n_small_elongated_footprints_per_parcel >= 4 -- footprint
+          # morphology, independent of NSI. Rows filled by reconcile_land_use
+          # instead are an NSI/FEMA re-vote under a second name and are
+          # excluded by the source check. Read here rather than the joined
+          # manufactured_home_community flag, which
+          # flag_manufactured_home_communities later overwrites from THIS
+          # vote's own output -- scoring that would be a feedback loop.
+          - type: all_of
+            indicators:
+              - type: equals
+                column: land_use_class_parcel
+                value: Manufactured Home Park
+              - {type: equals, column: land_use_class_source_parcel, value: rule}
 
-  # Classify Multi-Family structures into Low/Mid/High-Rise bands based on story counts.
-  - step: refine_occupancy_height
-    multi_family_class: Multi-Family
-    bands:
-      - {max_stories: 3, class: Low-Rise Multi-Family}
-      - {max_stories: 7, class: Mid-Rise Multi-Family}
-      - {class: High-Rise Multi-Family}
+      - class: Multi-Family
+        source: multi_family
+        min_score: 1
+        require:
+          - {type: equals, column: dwelling_multiplicity, value: multi}
+        indicators:
+          # Question 1 already decided this; the indicator simply carries that
+          # decision through so the class is written.
+          - {type: equals, column: dwelling_multiplicity, value: multi}
+
+      # Single-family is the residual of the single-dwelling group: one
+      # dwelling and no manufactured-home evidence is a site-built house.
+      # Listed after Manufactured Home, which outscores it wherever real
+      # manufactured-home evidence exists.
+      - class: Single-Family
+        source: single_family
+        min_score: 1
+        require:
+          - {type: equals, column: dwelling_multiplicity, value: single}
+          # Accessory structures keep the Secondary class the earlier step
+          # assigned them; without this the residual would relabel every shed
+          # and detached garage on a single-dwelling parcel as a house.
+          # Expressed as an allow-list because the predicate vocabulary has
+          # no negation.
+          - type: in_set
+            column: priority_on_parcel
+            values: [primary, unknown]
+        indicators:
+          - {type: equals, column: dwelling_multiplicity, value: single}
+  # Split Multi-Family into height bands. This is the same weighted vote as
+  # every other classification here, not a bespoke cascade: each band
+  # requires the pre-refinement class and scores a single story-count bound,
+  # and earliest-listed-wins turns three overlapping bounds into a cascade.
+  # A two-story building satisfies both the 3 and the 7 bound and takes
+  # Low-Rise; a footprint with no story count satisfies none, so no decision
+  # is eligible and preserve_base leaves it as plain Multi-Family.
+  - step: resolve_by_vote
+    target: occupancy_type
+    base_output: occupancy_type_base
+    default_source: height_band
+    decisions:
+      - class: Low-Rise Multi-Family
+        require:
+          - {type: equals, column: occupancy_type_base, value: Multi-Family}
+        indicators:
+          - {type: numeric_at_most, column: n_stories, max: 3}
+      - class: Mid-Rise Multi-Family
+        require:
+          - {type: equals, column: occupancy_type_base, value: Multi-Family}
+        indicators:
+          - {type: numeric_at_most, column: n_stories, max: 7}
+      - class: High-Rise Multi-Family
+        require:
+          - {type: equals, column: occupancy_type_base, value: Multi-Family}
+        indicators:
+          - {type: numeric_at_least, column: n_stories, min: 0}
 
   # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
@@ -260,11 +429,25 @@ pipeline:
   # Drop transient intermediate/evidence columns and enforce canonical schema order.
   - step: order_columns
     drop:
-      - group_parcel
       - occupancy_type_dwelling_overture
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base
+      # Question 1's answer: a scoring intermediate the occupancy decisions
+      # gate on, not a published attribute.
+      - dwelling_multiplicity
+      - dwelling_multiplicity_source
+      # Vote inputs: scoring intermediates, not user-facing attributes, so
+      # the shared output schema is unchanged by the move to an explicit
+      # derivation layer. The occupancy diagnostics in scripts/ need these
+      # columns, so comment this block out and re-curate before running
+      # analyze_occupancy_stages.py or export_cheer_nsi_conflicts.py.
       - p_manufactured_home
+      - aspect_ratio
+      - occupancy_type_nsi_class
+      - occupancy_type_fema_class
+      - occupancy_keyword_class
+      - group_parcel
+      - land_use_class_source_parcel
       # Evidence-only: postal_city fed into `address`/`city` at harmonize
       # time (impute_postal_city); not needed once it has.
       - postal_city
