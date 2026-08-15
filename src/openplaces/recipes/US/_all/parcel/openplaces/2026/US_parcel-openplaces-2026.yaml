@@ -50,58 +50,91 @@ pipeline:
     statistic: mode
     output: group_parcel
 
-  # Compute log-space z-score of max footprint area relative to its assessor use cohort.
-  # Used to identify vacant parcels.
-  - step: score_relative_to_group
-    group_column: use_group_combined
-    value_column: max_footprint_area_m2
-    output: footprint_area_log_zscore
-    transform: log1p
-    statistic: zscore
+  # Derivation layer: compute every named precursor the vote below scores
+  # against. Values only -- no thresholds live here, so each cutoff appears
+  # exactly once, in the decision that applies it.
+  - step: derive_indicators
+    indicators:
+      # One ordered keyword vocabulary replacing the twelve inline regexes
+      # the rules used to each restate. Because first match wins, a parcel
+      # can only ever be assigned one keyword class -- which is what stops
+      # the park and standalone manufactured-home patterns (the latter a
+      # strict superset of the former) from both claiming the same parcel
+      # and being separated by rule order rather than by evidence.
+      - output: keyword_class
+        type: ruleset_class
+        column: use_group_combined
+        ruleset: land-use-keywords.csv
 
-  # Real, clipped footprint coverage share of the parcel's own area --
-  # footprint_area_m2_in_parcel is bounded to the parcel's own area by
-  # construction (unlike footprint_area_m2_dominant/footprint_area_m2_primary,
-  # which credit each footprint's full unclipped area to its one dominant
-  # parcel and can push a naive ratio above 1.0).
-  - step: derive_area_ratio
-    value_column: footprint_area_m2_in_parcel
-    output: footprint_area_share
+      # Log-space z-score of max footprint area within its assessor use
+      # cohort. Used to identify vacant parcels.
+      - output: footprint_area_log_zscore
+        type: group_statistic
+        group_column: use_group_combined
+        value_column: max_footprint_area_m2
+        transform: log1p
+        statistic: zscore
 
-  # Known caveat: footprint_area_m2_primary is the unclipped, dominant-parcel
-  # sum (see summarize_footprint_morphology), so this ratio can read above
-  # 1.0 for a footprint straddling a parcel line. No clipped, non-secondary-
-  # filtered equivalent exists yet -- prefer footprint_area_share above for
-  # any use beyond a non-secondary-specific signal.
-  - step: derive_area_ratio
-    value_column: footprint_area_m2_primary
-    output: footprint_primary_area_share
+      # Real, clipped footprint coverage share of the parcel's own area --
+      # footprint_area_m2_in_parcel is bounded to the parcel's own area by
+      # construction (unlike footprint_area_m2_dominant/_primary, which
+      # credit each footprint's full unclipped area to its one dominant
+      # parcel and can push a naive ratio above 1.0).
+      - output: footprint_area_share
+        type: ratio
+        numerator: footprint_area_m2_in_parcel
+        denominator: own_area
 
-  # Classify land use by voting across assessor keywords, NSI groups, and footprint shapes.
-  # - Most rules require min_score 2.
-  # - Coarse commercial subtypes require min_score 1 (relying on assessor codes).
-  - step: classify_parcel_land_use
-    output: land_use_class
+      # Known caveat: footprint_area_m2_primary is the unclipped,
+      # dominant-parcel sum (see summarize_footprint_morphology), so this
+      # ratio can read above 1.0 for a footprint straddling a parcel line.
+      # No clipped, non-secondary-filtered equivalent exists yet -- prefer
+      # footprint_area_share above for any use beyond a non-secondary
+      # specific signal.
+      - output: footprint_primary_area_share
+        type: ratio
+        numerator: footprint_area_m2_primary
+        denominator: own_area
+
+  # Vote a land-use class from the derived precursors above. Same weighted
+  # vote as every other classification in the pipeline (see resolve_by_vote):
+  # each decision scores its indicators, the highest eligible score wins, and
+  # ties fall to the earliest listed decision.
+  - step: resolve_by_vote
+    target: land_use_class
+    # This vote *is* the classification, not a correction to one: parcels no
+    # decision claims stay null for reconcile_land_use to fill below.
+    preserve_base: false
+    default_source: rule
     flag_column: manufactured_home_community
     flag_class: Manufactured Home Park
     score_columns:
       Vacant: land_use_vacancy_score
     review_column: land_use_review
     review_margin: 1.0
-    rules:
+    decisions:
+      # Park scale is now a hard precondition rather than one more vote.
+      # Previously a parcel with manufactured-home keyword + group evidence
+      # but no park-scale footprint count tied this decision against the
+      # standalone Manufactured Home below and won purely by being listed
+      # first -- contradicting that decision's own "excludes multi-unit
+      # parks" intent. The require makes the footprint count decide.
       - class: Manufactured Home Park
         min_score: 2
+        require:
+          - type: count_at_least
+            column: n_small_elongated_footprints_per_parcel
+            min: 4
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED|MH PARK'}
+          - {type: equals, column: keyword_class, value: Manufactured Home Park}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
-          - {type: count_at_least, column: n_small_elongated_footprints_per_parcel, min: 4}
           # Dominant FEMA building group on the parcel.
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
       - class: RV Park
         min_score: 2
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'RV|CAMPGROUND|RECREATION|MOTORHOME'}
+          - {type: equals, column: keyword_class, value: RV Park}
           - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
           - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
 
@@ -109,7 +142,7 @@ pipeline:
       - class: Manufactured Home
         min_score: 2
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'MOBILE|MANUFACTURED'}
+          - {type: equals, column: keyword_class, value: Manufactured Home}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
@@ -118,7 +151,7 @@ pipeline:
       - class: Multiple Single-Family
         min_score: 4
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'MULTIPLE HOUSES'}
+          - {type: equals, column: keyword_class, value: Multiple Single-Family}
           - {type: count_at_least, column: n_primary_footprints_per_parcel, min: 2}
           - {type: numeric_at_most, column: n_small_elongated_footprints_per_parcel, max: 0}
           # Backing occupancy classification.
@@ -149,7 +182,7 @@ pipeline:
               - type: in_set
                 column: group_footprint_fema
                 values: [Multi Family, Single Family]
-          - {type: keyword, column: use_group_combined, pattern: 'CONDO|CONDOMINIUM'}
+          - {type: equals, column: keyword_class, value: Condominium}
 
       # Townhomes: single-footprint structures genuinely spanning multiple
       # separately-parceled units (horizontally adjacent, each with its own
@@ -166,7 +199,7 @@ pipeline:
           - type: any_of
             indicators:
               - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
-              - {type: keyword, column: use_group_combined, pattern: 'TOWNHOUSE|TOWNHOME|ROW HOUSE|ROW-HOUSE'}
+              - {type: equals, column: keyword_class, value: Townhome}
           - type: any_of
             indicators:
               - type: in_set
@@ -191,7 +224,7 @@ pipeline:
             total: [improvement_value, land_value]
             max_ratio: 0.01
             include_zero: true
-          - {type: keyword, column: use_group_combined, pattern: 'VACANT'}
+          - {type: equals, column: keyword_class, value: Vacant}
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 0}
 
       # Vacant in area, not just improvement value: this parcel's total real
@@ -224,38 +257,64 @@ pipeline:
             max_ratio: 0.01
             include_zero: true
 
+      # The coarse non-residential classes below keep min_score 1 (assessor
+      # codes are the only evidence for many of them), but their evidence is
+      # now disjoint: keyword_class holds exactly one value per parcel, and
+      # no group_parcel value appears in more than one decision's in_set.
+      # Previously a bank parcel scored Office and Commercial equally and
+      # Office won by list position; the same held for Retail vs Commercial.
+      # Making the evidence mutually exclusive removes the tie at its source,
+      # which is safer than raising thresholds that would leave keyword-only
+      # parcels unclassified.
       - class: Retail
         min_score: 1
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'RETAIL|SHOPPING|SUPERMARKET|STORE'}
+          - {type: equals, column: keyword_class, value: Retail}
+          - {type: in_set, column: group_parcel, values: [Retail]}
 
       - class: Office
         min_score: 1
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'OFFICE|BANK'}
+          - {type: equals, column: keyword_class, value: Office}
+          - type: in_set
+            column: group_parcel
+            values: [Bank, Medical Office, Professional Technical Services]
 
+      # Wholesale sits here, not under Commercial: the land-use class map
+      # already maps it to Industrial, and having both decisions claim it
+      # was a straight contradiction between the rule vote and the crosswalk
+      # fallback over the very same raw value.
       - class: Industrial
         min_score: 1
         indicators:
-          - {type: keyword, column: use_group_combined, pattern: 'INDUSTRIAL|MANUFACTURING|WAREHOUSE'}
-          - {type: in_set, column: group_parcel, values: [Heavy Industrial, Light Industrial]}
+          - {type: equals, column: keyword_class, value: Industrial}
+          - type: in_set
+            column: group_parcel
+            values:
+              [Heavy Industrial, Light Industrial, Wholesale,
+               Food/Drug/Chemical, Metals/Minerals processing, High Technology,
+               Construction]
 
       # Institutional land-use (hospitals, schools, churches, etc.).
       - class: Institutional
         min_score: 1
         indicators:
-          - type: keyword
-            column: use_group_combined
-            pattern: 'HOSPITAL|NURSING|SCHOOL|MUNICIPAL|GOVERNMENT|RELIGIOUS|CHARITABLE|CHURCH|UNIVERSITY|COLLEGE'
+          - {type: equals, column: keyword_class, value: Institutional}
+          - type: in_set
+            column: group_parcel
+            values:
+              [Hospital, Nursing Home, Institutional Dormitory, Church,
+               Government Services, Emergency Response, Average School,
+               College/University]
 
       # Catch-all for commercial parcels (e.g. hotels, garages, restaurants).
       - class: Commercial
         min_score: 1
         indicators:
+          - {type: equals, column: keyword_class, value: Commercial}
           - type: in_set
             column: group_parcel
-            values: [Retail, Wholesale, 'Personal & Repair Services', Bank, Hotel]
-          - {type: keyword, column: use_group_combined, pattern: 'COMMERCIAL'}
+            values: ['Personal & Repair Services', Hotel, Garage]
 
   # Reconcile default land use via voting across assessor, NSI, and FEMA source classes.
   - step: reconcile_land_use
