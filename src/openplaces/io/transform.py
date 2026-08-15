@@ -60,6 +60,7 @@ UNARY_OPS: dict[str, Callable] = {
     'resolve_century': _resolve_century,
     'to_numeric': lambda x: pd.to_numeric(x, errors='coerce'),
     'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
+    'null_if_equal': lambda x, value: x.mask(x == value),
 }
 
 BINARY_OPS: dict[str, Callable] = {

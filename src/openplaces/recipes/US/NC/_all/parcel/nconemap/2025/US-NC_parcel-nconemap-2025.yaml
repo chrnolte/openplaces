@@ -59,6 +59,9 @@ columns:
   owner_postal_code: mzip
   has_structure: struct
   n_buildings: structno
+  # structyear is 0 (not null) wherever this county's contribution to the
+  # statewide layer never recorded a construction year -- nulled generically
+  # at ingest (attribute_registry.csv's year_built null_placeholder).
   year_built: structyear
   has_multi_structure: multistruc
   value_type: parvaltype

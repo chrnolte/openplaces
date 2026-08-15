@@ -84,6 +84,23 @@ def get_data_type(attr: str) -> str | None:
     return None
 
 
+def get_null_placeholder(attr: str) -> object | None:
+    """Return the raw sentinel value that means "missing" for *attr*.
+
+    Some sources use a placeholder (e.g. ``0`` for "year never recorded")
+    instead of a true null. Declaring it here lets ingestion null it out
+    generically for every recipe that maps a column to this attribute --
+    current or future -- rather than requiring each recipe to declare its
+    own transformation. Returns ``None`` when *attr* has no declared
+    placeholder.
+    """
+    reg = load_registry()
+    if attr not in reg.index or 'null_placeholder' not in reg.columns:
+        return None
+    value = reg.at[attr, 'null_placeholder']
+    return None if pd.isna(value) else value
+
+
 def get_categorical_attrs() -> frozenset[str]:
     """Return the set of attribute names whose ``data_type`` is ``'categorical'``."""
     reg = load_registry()

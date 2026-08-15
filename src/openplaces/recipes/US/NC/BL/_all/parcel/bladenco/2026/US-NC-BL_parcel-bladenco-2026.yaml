@@ -10,7 +10,11 @@
 # This is one of the few county rolls in the region that publishes both a
 # land/building value split and a construction year (`YearActual`) in its
 # public layer -- most neighboring counties' public parcel layers expose
-# only a single combined value field, with no year built.
+# only a single combined value field, with no year built. `YearActual` uses
+# 0 (not null) for "never recorded": 21,755 of 33,335 sampled records are
+# exactly 0, vs. 11,580 genuine non-zero years -- nulled generically at
+# ingest instead of masquerading as a real construction year
+# (attribute_registry.csv's year_built null_placeholder).
 
 description: >-
   Bladen County, NC parcel tax roll (assessed land/building/total values,

@@ -11,8 +11,12 @@
 # actually a pipe-delimited string of multiple segment values (e.g.
 # `"$4,466|$20,235|$467|$17,250"`) with many blank/zero records; not usable
 # as a single numeric field and intentionally omitted. `YEAR_BUILT` is
-# clean and populated (~45% of sampled records), so it is included even
-# though this county's dataset was not selected for that field.
+# included even though this county's dataset was not selected for that
+# field, but it uses 0 (not null) for "never recorded": ~59% of records are
+# exactly 0, vs. ~41% genuine non-zero years -- the original "~45%
+# populated" note undercounted this because a plain non-null check treats
+# the placeholder zeros as populated too; nulled generically at ingest
+# instead (attribute_registry.csv's year_built null_placeholder).
 
 description: >-
   Sampson County, NC parcel roll (total assessed value, year built, owner,

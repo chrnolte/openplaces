@@ -14,6 +14,7 @@ import pandas as pd
 from pyogrio.errors import DataSourceError
 
 from openplaces.config import cfg
+from openplaces.core.attribute_registry import get_null_placeholder
 from openplaces.core.constants import (
     GEOPANDAS_EXTENSIONS,
     PANDAS_EXTENSIONS,
@@ -49,6 +50,7 @@ from openplaces.recipe import (
     get_process_admin_level,
     get_recipe,
     get_save_admin_level,
+    resolve_attribute_name,
 )
 
 
@@ -546,6 +548,17 @@ class TableIngester:
         # Rename columns
         if 'columns' in self.recipe:
             df = df.rename(columns={v: k for k, v in self.recipe['columns'].items()})
+
+        # Null out registry-declared placeholder sentinels (e.g. year_built's
+        # 0 for "never recorded") -- applies to every recipe that maps a
+        # column to this attribute, current or future, without per-recipe
+        # opt-in. See attribute_registry.csv's null_placeholder column.
+        for col in df.columns:
+            placeholder = get_null_placeholder(resolve_attribute_name(col))
+            if placeholder is None:
+                continue
+            numeric = pd.to_numeric(df[col], errors='coerce')
+            df[col] = df[col].mask(numeric == float(placeholder))
 
         # Replace known NA value strings with None
         if 'null_value_strings' in self.recipe:

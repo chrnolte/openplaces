@@ -1,4 +1,4 @@
-name,description,unit,data_type,aggregation,sort,entity_type,stage
+name,description,unit,data_type,aggregation,sort,entity_type,stage,null_placeholder
 use_group,What the parcel or building is used for: current occupancy or taxation grouping (land and buildings),,categorical,join_nonnull,10,,
 use_subgroup,OpenPlaces use subgroup,,categorical,join_nonnull,11,,
 use_group_combined,Combined use group and subgroup label,,categorical,join_nonnull,12,,curate
@@ -12,7 +12,7 @@ land_value_imputed,"Estimated land value for a parcel whose land value is missin
 improvement_value,Assessed improvement value,USD,float,sum,21,,
 improvement_value_imputed,"Improvement value re-derived as improvement_value minus land_value_imputed (clipped at 0), on the parcels land_value_imputed applies to",USD,float,sum,21.5,parcel,curate
 structure_value,"Building's own assessed/replacement value, net of land: the parcel-apportioned improvement value or the NSI-modeled replacement value, chosen per admin unit by which source has usable coverage there, not per building; structure_value_building_nsi is the NSI-only evidence variant",USD,float,sum,22,building,
-year_built,Year building was built,,float,mean,30,,
+year_built,Year building was built,,float,mean,30,,,0
 address,Street address,,string,join_nonnull,40,,
 address_conflict,"Address evidence disagreement summary across sources (e.g. 'parcel: 789 ELM ST | dwelling_overture: 999 PINE ST'); null when the sources agree",,string,first,41,,curate
 postal_zip5,Normalized 5-digit ZIP code used for postal_city lookups,,string,first,,,harmonize

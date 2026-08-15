@@ -10,6 +10,7 @@ from openplaces.core.attribute_registry import (
     get_agg_func,
     get_attributes,
     get_data_type,
+    get_null_placeholder,
     load_registry,
 )
 
@@ -29,6 +30,11 @@ def test_source_suffix_falls_back_to_base_without_registry_row():
 def test_source_suffix_fallback_requires_registered_base():
     assert get_agg_func('totally_made_up_source') is None
     assert get_data_type('totally_made_up_source') is None
+
+
+def test_get_null_placeholder():
+    assert get_null_placeholder('year_built') == 0
+    assert get_null_placeholder('address') is None
 
 
 def test_get_attributes_parcel_includes_shared_excludes_other_entities():
