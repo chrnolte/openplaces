@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-SOURCE_SUFFIX = '_source'
+from openplaces.core.attribute_registry import (
+    PROVENANCE_SOURCE_SUFFIX as SOURCE_SUFFIX,
+)
 
 
 def source_column(column: str) -> str:

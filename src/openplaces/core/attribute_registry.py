@@ -25,6 +25,13 @@ provenance-suffixed column (e.g. ``improvement_value_parcel``) should resolve
 it via :func:`openplaces.recipe.resolve_attribute_name` first. That helper
 lives in the higher recipe layer — not here — because the provenance suffix
 vocabulary is derived from the recipes directory, which layer 0 cannot import.
+
+One suffix *is* handled here rather than in the recipe layer:
+``{base}_source`` provenance sidecars (see :data:`PROVENANCE_SOURCE_SUFFIX`).
+Unlike the recipe-derived suffixes above, this one is a fixed literal, not
+tied to any particular ingest source, so :func:`get_agg_func` and
+:func:`get_data_type` fall back to it generically for any ``{base}_source``
+column whose base is itself registered -- no per-column CSV row needed.
 """
 
 from __future__ import annotations
@@ -36,6 +43,8 @@ import pandas as pd
 
 _REGISTRY_PATH = Path(__file__).parent / 'attribute_registry.csv'
 
+PROVENANCE_SOURCE_SUFFIX = '_source'
+
 
 @cache
 def load_registry() -> pd.DataFrame:
@@ -44,15 +53,35 @@ def load_registry() -> pd.DataFrame:
 
 
 def get_agg_func(attr: str) -> str | None:
-    """Return the default aggregation function name for *attr*, or ``None``."""
+    """Return the default aggregation function name for *attr*, or ``None``.
+
+    Falls back to ``'first'`` for an unregistered ``{base}_source``
+    provenance sidecar when *base* is itself registered.
+    """
     reg = load_registry()
-    return reg.at[attr, 'aggregation'] if attr in reg.index else None
+    if attr in reg.index:
+        return reg.at[attr, 'aggregation']
+    if attr.endswith(PROVENANCE_SOURCE_SUFFIX):
+        base = attr[: -len(PROVENANCE_SOURCE_SUFFIX)]
+        if base in reg.index:
+            return 'first'
+    return None
 
 
 def get_data_type(attr: str) -> str | None:
-    """Return the expected data type string for *attr*, or ``None``."""
+    """Return the expected data type string for *attr*, or ``None``.
+
+    Falls back to ``'categorical'`` for an unregistered ``{base}_source``
+    provenance sidecar when *base* is itself registered.
+    """
     reg = load_registry()
-    return reg.at[attr, 'data_type'] if attr in reg.index else None
+    if attr in reg.index:
+        return reg.at[attr, 'data_type']
+    if attr.endswith(PROVENANCE_SOURCE_SUFFIX):
+        base = attr[: -len(PROVENANCE_SOURCE_SUFFIX)]
+        if base in reg.index:
+            return 'categorical'
+    return None
 
 
 def get_categorical_attrs() -> frozenset[str]:

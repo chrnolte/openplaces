@@ -55,3 +55,22 @@ def test_aggregate_rows_includes_suffixed_numeric_column():
     assert out is not None
     assert out.loc['a', 'improvement_value_parcel'] == 3.0
     assert out.loc['b', 'improvement_value_parcel'] == 4.0
+
+
+def test_aggregate_rows_keeps_unregistered_source_sidecar():
+    # year_built_source has no registry row of its own (unlike
+    # improvement_value_parcel above, it isn't a recognized recipe-derived
+    # provenance suffix either) -- get_agg_func's generic _source fallback
+    # is what keeps it from being silently dropped here.
+    df = pd.DataFrame(
+        {
+            'group_id': ['a', 'a', 'b'],
+            'year_built': [1964, 1980, 1990],
+            'year_built_source': ['countyx', 'countyx', 'countyy'],
+        }
+    )
+    out = aggregate_rows(df, by='group_id')
+    assert out is not None
+    assert 'year_built_source' in out.columns
+    assert out.loc['a', 'year_built_source'] == 'countyx'
+    assert out.loc['b', 'year_built_source'] == 'countyy'

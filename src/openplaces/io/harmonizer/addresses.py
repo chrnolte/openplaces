@@ -19,9 +19,10 @@ from itertools import combinations
 
 import pandas as pd
 
+from openplaces.core.attribute_registry import (
+    PROVENANCE_SOURCE_SUFFIX as _SOURCE_SUFFIX,
+)
 from openplaces.io.harmonizer import HarmonizeState, _register
-
-_SOURCE_SUFFIX = '_source'
 
 
 def _ensure_object_column(curated: pd.DataFrame, column: str) -> None:

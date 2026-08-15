@@ -16,6 +16,9 @@ from importlib import import_module as _import_module
 import geopandas as gpd
 import pandas as pd
 
+from openplaces.core.attribute_registry import (
+    PROVENANCE_SOURCE_SUFFIX as _PROVENANCE_SUFFIX,
+)
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.io import (
     coerce_mixed_object_columns,
@@ -146,9 +149,6 @@ def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
     target_name = str(target['name'].iloc[0]).strip().casefold()
     match = df[name_col].astype('string').str.strip().str.casefold() == target_name
     return df[match]
-
-
-_PROVENANCE_SUFFIX = '_source'
 
 
 def _ensure_object_source_column(df, column: str) -> None:

@@ -6,11 +6,29 @@ name), and `get_attributes` must scope by entity type while always including the
 shared (blank entity_type) rows.
 """
 
-from openplaces.core.attribute_registry import get_attributes, load_registry
+from openplaces.core.attribute_registry import (
+    get_agg_func,
+    get_attributes,
+    get_data_type,
+    load_registry,
+)
 
 
 def test_registry_names_unique():
     assert load_registry().index.is_unique
+
+
+def test_source_suffix_falls_back_to_base_without_registry_row():
+    # year_built_source has no CSV row of its own -- it's a provenance
+    # sidecar of the registered year_built attribute, and both accessors
+    # must recognize that generically.
+    assert get_agg_func('year_built_source') == 'first'
+    assert get_data_type('year_built_source') == 'categorical'
+
+
+def test_source_suffix_fallback_requires_registered_base():
+    assert get_agg_func('totally_made_up_source') is None
+    assert get_data_type('totally_made_up_source') is None
 
 
 def test_get_attributes_parcel_includes_shared_excludes_other_entities():
