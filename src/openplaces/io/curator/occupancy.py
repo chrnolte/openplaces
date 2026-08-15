@@ -21,19 +21,29 @@ def get_occupancy_config(state: CurateState) -> dict:
     return state.recipe.get('occupancy') or {}
 
 
-def load_ruleset(state: CurateState, ruleset: str) -> list[dict]:
+def load_ruleset(
+    state: CurateState, ruleset: str, class_column: str | None = None
+) -> list[dict]:
     """Load an ordered label-mapping ruleset CSV stored beside the curate recipe.
 
     Columns: ``pattern``, ``match_type`` (contains | regex; default contains),
-    ``occupancy_type`` (the output class), and an optional ``reviewed``
-    (true | false; default false). Rows apply top to bottom, first match wins, so
-    more specific terms must precede general ones. Matching is case-insensitive.
+    the output class column, and an optional ``reviewed`` (true | false;
+    default false). Rows apply top to bottom, first match wins, so more
+    specific terms must precede general ones. Matching is case-insensitive.
+
+    Rules are returned with the output class under the key ``occupancy_type``
+    whatever the CSV calls it, so every caller reads one shape.
 
     Parameters
     ----------
     ruleset : str
         Filename (or recipe-id stem) of the CSV beside the curate recipe; a
         ``.csv`` extension is added when missing.
+    class_column : str, optional
+        CSV column holding the output class. Defaults to whichever of
+        ``occupancy_type`` or ``land_use_class`` the file actually has, so a
+        ruleset naming a non-occupancy vocabulary need not mislabel its
+        column.
     """
     from openplaces.path import recipe_path
 
@@ -45,16 +55,27 @@ def load_ruleset(state: CurateState, ruleset: str) -> list[dict]:
         filename=filename,
     )
     if not csv_path.exists():
-        raise FileNotFoundError(f'Occupancy ruleset not found: {csv_path}')
+        raise FileNotFoundError(f'Classification ruleset not found: {csv_path}')
 
     table = pd.read_csv(csv_path)
+    if class_column is None:
+        class_column = next(
+            (c for c in ('occupancy_type', 'land_use_class') if c in table.columns),
+            'occupancy_type',
+        )
+    if class_column not in table.columns:
+        raise KeyError(
+            f'Ruleset {csv_path.name} has no {class_column!r} column; '
+            f'found {list(table.columns)}.'
+        )
+
     rules = []
     for _, row in table.iterrows():
         rules.append(
             {
                 'pattern': str(row['pattern']),
                 'match_type': str(row.get('match_type', 'contains')).strip().lower(),
-                'occupancy_type': str(row['occupancy_type']),
+                'occupancy_type': str(row[class_column]),
                 'reviewed': str(row.get('reviewed', '')).strip().lower()
                 in ('true', '1', 'yes'),
             }

@@ -83,33 +83,238 @@ def derive_metrics(state: CurateState) -> CurateState:
     return state
 
 
-@_register('derive_area_ratio')
-def derive_area_ratio(
-    state: CurateState, value_column: str, output: str
-) -> CurateState:
-    """Compute *value_column*'s (m2) share of this entity's own area.
+def _match_ruleset(terms: pd.Series, rules: list[dict]) -> tuple[pd.Series, pd.Series]:
+    """Apply an ordered label ruleset, returning (matched class, reviewed).
 
-    Reuses an existing ``area_{unit}`` column (e.g. ``area_ha``, computed
-    once during harmonize spine assembly) via
-    :func:`~openplaces.geo.polygon.resolve_area`; falls back to computing
-    live from geometry only if no such column exists yet. Generic: holds
-    no entity- or column-specific vocabulary of its own.
+    First match wins, mirroring
+    :func:`~openplaces.io.curator.occupancy.coerce_to_class` -- except a term
+    matching no rule yields a missing class rather than passing through
+    unchanged, because this answers "which class did the label assert?", not
+    "normalize this label".
+    """
+    proposal = pd.Series(pd.NA, index=terms.index, dtype=object)
+    reviewed = pd.Series(False, index=terms.index)
+    unmatched = pd.Series(True, index=terms.index)
+    for rule in rules:
+        mask = unmatched & terms.str.contains(
+            rule['pattern'],
+            case=False,
+            na=False,
+            regex=rule['match_type'] == 'regex',
+        )
+        if mask.any():
+            proposal.loc[mask] = rule['occupancy_type']
+            reviewed.loc[mask] = rule['reviewed']
+            unmatched.loc[mask] = False
+    return proposal, reviewed
+
+
+def _derive_ruleset_class(state: CurateState, spec: dict) -> pd.Series | None:
+    """Classify a label column through an ordered ruleset CSV."""
+    from openplaces.io.curator.occupancy import load_ruleset
+
+    curated = state.curated
+    column = spec['column']
+    if column not in curated.columns:
+        return None
+    rules = load_ruleset(state, spec['ruleset'], spec.get('class_column'))
+    proposal, reviewed = _match_ruleset(curated[column].astype(object), rules)
+    if spec.get('reviewed_only'):
+        # Null out matches whose winning rule is unreviewed rather than
+        # pre-filtering the ruleset: pre-filtering would let a term that
+        # legitimately matched an unreviewed rule fall through to a later
+        # reviewed one, silently changing which class it asserts.
+        proposal = proposal.where(reviewed)
+    return proposal
+
+
+def _derive_pooled_vote(state: CurateState, spec: dict) -> pd.Series | None:
+    """Pool several same-vocabulary columns into one value by weighted vote."""
+    from openplaces.io.curator.indicators import vote_dynamic_values
+
+    curated = state.curated
+    values: dict[str, pd.Series] = {}
+    weights: dict[str, float] = {}
+    for entry in spec['columns']:
+        column = entry['column']
+        if column not in curated.columns:
+            continue
+        label = entry.get('label', column)
+        values[label] = curated[column].astype(object)
+        weights[label] = float(entry.get('weight', 1.0))
+    if not values:
+        return None
+
+    tiebreaker = spec.get('tiebreaker')
+    tiebreak_series = None
+    if tiebreaker is not None and tiebreaker in curated.columns:
+        tiebreak_series = curated[tiebreaker].astype(object)
+    winner, _ = vote_dynamic_values(values, weights, tiebreaker=tiebreak_series)
+    return winner
+
+
+def _derive_ratio(state: CurateState, spec: dict) -> pd.Series | None:
+    """Express one column as a share of a column sum or of the entity's area."""
+    curated = state.curated
+    numerator = spec['numerator']
+    if numerator not in curated.columns:
+        return None
+    value = pd.to_numeric(curated[numerator], errors='coerce')
+
+    denominator = spec['denominator']
+    if denominator == 'own_area':
+        from openplaces.geo.polygon import resolve_area
+
+        # resolve_area returns a plain array; index it to align with value.
+        total = pd.Series(resolve_area(curated, unit='m2'), index=curated.index)
+    else:
+        columns = [denominator] if isinstance(denominator, str) else denominator
+        if any(c not in curated.columns for c in columns):
+            return None
+        total = sum(pd.to_numeric(curated[c], errors='coerce') for c in columns)
+    # Guard a zero or negative total the same way the value_share
+    # indicators do, so the ratio is missing rather than infinite.
+    return value.where(total > 0) / total.where(total > 0)
+
+
+def _derive_shape_metric(state: CurateState, spec: dict) -> pd.Series | None:
+    """Measure a minimum-bounding-rectangle dimension of each geometry."""
+    from openplaces.geo.polygon import local_metric_crs
+    from openplaces.io.harmonizer.spine import get_oriented_dims
+
+    curated = state.curated
+    if 'geometry' not in curated.columns or curated.empty:
+        return None
+
+    # get_oriented_dims measures raw coordinates, so the geometry must be
+    # metric first -- on lon/lat degrees the x axis is compressed by
+    # cos(latitude) and every dimension (aspect ratio included) is skewed.
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        geometry = curated.geometry.to_crs(local_metric_crs(curated))
+    dims = geometry.map(get_oriented_dims)
+    length = dims.map(lambda d: d[1])
+    width = dims.map(lambda d: d[2])
+
+    metric = spec.get('metric', 'aspect_ratio')
+    if metric == 'aspect_ratio':
+        return length / width.clip(lower=1e-6)
+    if metric == 'length':
+        return length
+    if metric == 'width':
+        return width
+    if metric == 'orientation':
+        return dims.map(lambda d: d[0])
+    raise ValueError(
+        f'Unknown shape_metric {metric!r}; expected aspect_ratio, length, '
+        f'width, or orientation.'
+    )
+
+
+def _derive_group_statistic(state: CurateState, spec: dict) -> pd.Series | None:
+    """Score a value against the distribution of its own cohort."""
+    import numpy as np
+
+    curated = state.curated
+    group_column = spec['group_column']
+    value_column = spec['value_column']
+    if group_column not in curated.columns or value_column not in curated.columns:
+        return None
+
+    value = pd.to_numeric(curated[value_column], errors='coerce')
+    transform = spec.get('transform', 'log1p')
+    if transform == 'log1p':
+        value = np.log1p(value)
+    elif transform is not None:
+        raise ValueError(f"Unknown transform {transform!r}; expected 'log1p' or None.")
+
+    grouped = value.groupby(curated[group_column], observed=True)
+    statistic = spec.get('statistic', 'zscore')
+    if statistic == 'zscore':
+        mean = grouped.transform('mean')
+        # A zero-variance cohort scores missing rather than dividing by 0.
+        std = grouped.transform('std', ddof=0).replace(0, np.nan)
+        return (value - mean) / std
+    if statistic == 'percentile':
+        return grouped.rank(pct=True)
+    raise ValueError(
+        f"Unknown statistic {statistic!r}; expected 'zscore' or 'percentile'."
+    )
+
+
+_INDICATOR_DERIVATIONS = {
+    'ruleset_class': _derive_ruleset_class,
+    'pooled_vote': _derive_pooled_vote,
+    'ratio': _derive_ratio,
+    'shape_metric': _derive_shape_metric,
+    'group_statistic': _derive_group_statistic,
+}
+
+
+@_register('derive_indicators')
+def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState:
+    """Compute the named precursor columns the voting steps score against.
+
+    The derivation half of the curate stage's two-layer classification: this
+    step produces indicator *columns*, and
+    :func:`~openplaces.io.curator.reconcilers.resolve_by_vote` turns them into
+    a class. Each spec carries an ``output`` column name and a ``type`` from a
+    small closed vocabulary, mirroring how
+    :func:`~openplaces.io.curator.indicators.evaluate_indicator` dispatches its
+    own predicate types -- so both layers read the same way.
+
+    Deriving a value once and naming it is what keeps a threshold from being
+    restated per rule: recipes reference ``aspect_ratio`` or ``keyword_class``
+    by name, and the cutoff applied to it lives in exactly one place, the vote.
+    Values are deliberately *not* thresholded here -- an indicator column holds
+    a measurement or a label, never a pre-baked boolean, so the vote layer
+    stays the single home of every cutoff.
+
+    Supported ``type`` values:
+
+    - ``ruleset_class``: classify ``column`` through an ordered ruleset CSV
+      (``ruleset``), first match wins; unmatched rows are missing. With
+      ``reviewed_only`` true, only rows whose winning rule is marked reviewed
+      keep their class -- the high-confidence subset.
+    - ``pooled_vote``: pool several same-vocabulary ``columns``
+      (``{column, label, weight}``) into one value by weighted vote, with an
+      optional ``tiebreaker`` column.
+    - ``ratio``: ``numerator`` over the sum of ``denominator`` columns, or over
+      the entity's own area when ``denominator`` is ``own_area``. A
+      non-positive total yields a missing ratio.
+    - ``shape_metric``: a minimum-bounding-rectangle ``metric`` of each
+      geometry -- ``aspect_ratio`` (default), ``length``, ``width``, or
+      ``orientation``. Measured on a locally-projected metric copy.
+    - ``group_statistic``: score ``value_column`` against its ``group_column``
+      cohort via ``statistic`` (``zscore`` default, or ``percentile``), after
+      an optional ``transform`` (``log1p`` default, or None).
 
     Parameters
     ----------
-    value_column : str
-        Column (m2) to express as a share of this entity's own area.
-        No-op if absent.
-    output : str
-        Output ratio column.
+    indicators : list of dict
+        Ordered specs, each ``{output, type, ...}`` with the type-specific keys
+        above. A spec whose input columns are absent is skipped, leaving the
+        output column unwritten so downstream indicators simply cast no vote.
     """
-    from openplaces.geo.polygon import resolve_area
-
     curated = state.curated
-    if value_column not in curated.columns:
-        return state
-    curated[output] = curated[value_column] / resolve_area(curated, unit='m2')
+    written = []
+    for spec in indicators:
+        kind = spec['type']
+        if kind not in _INDICATOR_DERIVATIONS:
+            raise ValueError(
+                f'Unknown indicator derivation type: {kind!r}. Expected one of '
+                f'{", ".join(sorted(_INDICATOR_DERIVATIONS))}.'
+            )
+        derived = _INDICATOR_DERIVATIONS[kind](state, spec)
+        if derived is None:
+            continue
+        curated[spec['output']] = derived
+        written.append(spec['output'])
+
     state.curated = curated
+    if state.verbose:
+        summary = ', '.join(written) or 'none'
+        print(f'  derive_indicators: wrote {len(written)} column(s) -> {summary}')
     return state
 
 
@@ -150,84 +355,6 @@ def derive_stories_from_height(
     return state
 
 
-@_register('score_relative_to_group')
-def score_relative_to_group(
-    state: CurateState,
-    group_column: str,
-    value_column: str,
-    output: str,
-    transform: str | None = 'log1p',
-    statistic: str = 'zscore',
-) -> CurateState:
-    """Score each row's value against the distribution of its group cohort.
-
-    For every row, scores *value_column* (optionally transformed first)
-    against the distribution of that same column within its *group_column*
-    cohort. With ``statistic='zscore'`` (default), the score is
-    ``(value - cohort_mean) / cohort_std`` (population std, ``ddof=0``); a
-    cohort with zero variance (or a single member) scores every member
-    missing rather than dividing by zero. With ``statistic='percentile'``,
-    the score is the value's rank within its cohort, in ``[0, 1]``. Rows
-    with a missing *value_column* score missing, propagating rather than
-    being silently zeroed — a downstream step (e.g. a voting indicator)
-    decides how to treat "no measurement" evidence.
-
-    Generic over any pair of columns: holds no reference to specific
-    entities or sources, so it is reusable for any "how anomalous is this
-    value relative to its peers" signal — e.g. comparing a footprint's size,
-    or a structure's value per area, against a local cohort.
-
-    Parameters
-    ----------
-    group_column : str
-        Column whose value defines each row's cohort.
-    value_column : str
-        Column to score within each cohort.
-    output : str
-        Name of the column to write.
-    transform : {'log1p', None}, optional
-        Applied to *value_column* before scoring (default ``'log1p'``, useful
-        for right-skewed measures like area; pass ``None`` to score the raw
-        value).
-    statistic : {'zscore', 'percentile'}, optional
-        Scoring method (default ``'zscore'``).
-    """
-    import numpy as np
-
-    curated = state.curated
-    if group_column not in curated or value_column not in curated:
-        return state
-
-    value = pd.to_numeric(curated[value_column], errors='coerce')
-    if transform == 'log1p':
-        value = np.log1p(value)
-    elif transform is not None:
-        raise ValueError(f"Unknown transform {transform!r}; expected 'log1p' or None.")
-
-    grouped = value.groupby(curated[group_column], observed=True)
-    if statistic == 'zscore':
-        mean = grouped.transform('mean')
-        std = grouped.transform('std', ddof=0).replace(0, np.nan)
-        score = (value - mean) / std
-    elif statistic == 'percentile':
-        score = grouped.rank(pct=True)
-    else:
-        raise ValueError(
-            f"Unknown statistic {statistic!r}; expected 'zscore' or 'percentile'."
-        )
-
-    curated[output] = score
-    state.curated = curated
-
-    if state.verbose:
-        n = int(score.notna().sum())
-        print(
-            f'  score_relative_to_group: {output} set for {n:,} rows '
-            f'(statistic={statistic}).'
-        )
-    return state
-
-
 @_register('classify_parcel_land_use')
 def classify_parcel_land_use(
     state: CurateState,
@@ -241,12 +368,14 @@ def classify_parcel_land_use(
 ) -> CurateState:
     """Classify each parcel's land-use class by weighted indicator voting.
 
-    The parcel-curation seam that separates, e.g., a manufactured-home park from
-    an RV park using the same mix of evidence as the NSI group inference:
-    assessor use keywords, the linked-NSI modal occupancy group, and per-parcel
-    footprint morphology counts. Vocabulary-neutral like ``resolve_by_vote`` — all
-    class names, keywords, NSI groups, and thresholds live in *rules*, so this step
-    holds no land-use terminology of its own.
+    .. deprecated::
+        Kept only so recipes not yet migrated keep working. This is now a thin
+        wrapper over :func:`~openplaces.io.curator.reconcilers.resolve_by_vote`
+        with ``preserve_base=False`` and ``default_source='rule'``, which is
+        exactly what it always did — the parcel-curation "rules" and the
+        occupancy "decisions" were the same weighted vote written twice. Point
+        recipes at ``resolve_by_vote`` directly; this wrapper is removed once
+        none reference it.
 
     Parameters
     ----------
@@ -276,54 +405,20 @@ def classify_parcel_land_use(
     review_margin : float, optional
         Score margin below which ``review_column`` is set (default 1.0).
     """
-    from openplaces.io.curator.indicators import evaluate_indicator
+    from openplaces.io.curator.reconcilers import resolve_by_vote
 
-    curated = state.curated
-    winner = pd.Series(pd.NA, index=curated.index, dtype=object)
-    best_score = pd.Series(-1.0, index=curated.index)
-    second_score = pd.Series(-1.0, index=curated.index)
-    for rule in rules:
-        score = pd.Series(0.0, index=curated.index)
-        for indicator in rule.get('indicators', []):
-            weight = float(indicator.get('weight', 1.0))
-            score = (
-                score + evaluate_indicator(curated, indicator).astype(float) * weight
-            )
-        if score_columns and rule['class'] in score_columns:
-            curated[score_columns[rule['class']]] = score
-        eligible = score >= float(rule.get('min_score', 1))
-        take = eligible & (score > best_score)
-        # The rule this decision displaces becomes the new runner-up.
-        second_score.loc[take] = best_score.loc[take]
-        # An eligible rule that doesn't win outright may still beat the
-        # current runner-up.
-        runner_up = eligible & ~take & (score > second_score)
-        second_score.loc[runner_up] = score.loc[runner_up]
-        winner.loc[take] = rule['class']
-        best_score.loc[take] = score.loc[take]
-
-    curated[output] = pd.Categorical(winner)
-    if winner.notna().any():
-        # Provenance: distinguishes the rule-based classes from the
-        # evidence-vote defaults reconcile_land_use fills in afterwards.
-        from openplaces.io.curator.provenance import record_source
-
-        record_source(curated, output, winner.notna(), 'rule')
-    if flag_column and flag_class is not None:
-        curated[flag_column] = winner.eq(flag_class).fillna(False).to_numpy()
-    if review_column:
-        margin = best_score - second_score
-        curated[review_column] = (winner.notna() & (margin < review_margin)).to_numpy()
-    state.curated = curated
-
-    if state.verbose:
-        counts = winner.value_counts(dropna=False)
-        summary = ', '.join(f'{k}={v:,d}' for k, v in counts.items()) or 'none'
-        extra = ''
-        if review_column:
-            extra = f', {int(curated[review_column].sum()):,} flagged for review'
-        print(f'  classify_parcel_land_use: {output} -> {summary}{extra}')
-    return state
+    return resolve_by_vote(
+        state,
+        target=output,
+        decisions=rules,
+        preserve_base=False,
+        default_source='rule',
+        score_columns=score_columns,
+        review_column=review_column,
+        review_margin=review_margin,
+        flag_column=flag_column,
+        flag_class=flag_class,
+    )
 
 
 def _vote_evidence_class(
@@ -345,61 +440,31 @@ def _vote_evidence_class(
     voter's coerced class (a pooled non-residential win still yields a
     specific class), and the token joins the winning voters' labels with '/'.
     """
+    from openplaces.io.curator.indicators import vote_dynamic_values
     from openplaces.io.curator.occupancy import bucket_classes, coerce_to_class
 
-    classes = pd.Series(pd.NA, index=curated.index, dtype=object)
-    tokens = pd.Series(pd.NA, index=curated.index, dtype=object)
-
-    entries = []
+    values: dict[str, pd.Series] = {}
+    buckets: dict[str, pd.Series] = {}
+    weights: dict[str, float] = {}
     for ev in evidence:
         col = ev['column']
         if col not in curated.columns:
             continue
         coerced = coerce_to_class(curated[col], rules)
         label = ev.get('label', col)
-        weight = float(ev.get('weight', 1.0))
-        entries.append((label, weight, coerced, bucket_classes(coerced, config)))
-    if not entries:
-        return classes, tokens
+        values[label] = coerced
+        buckets[label] = bucket_classes(coerced, config)
+        weights[label] = float(ev.get('weight', 1.0))
+    if not values:
+        empty = pd.Series(pd.NA, index=curated.index, dtype=object)
+        return empty, empty.copy()
 
-    labels = [label for label, _, _, _ in entries]
-    weights = {label: weight for label, weight, _, _ in entries}
-    stacked = pd.concat(
-        {
-            **{('bucket', label): b.astype(object) for label, _, _, b in entries},
-            **{('class', label): c.astype(object) for label, _, c, _ in entries},
-        },
-        axis=1,
-    )
-
-    def _row_vote(row) -> tuple:
-        totals: dict[str, float] = {}
-        for label in labels:
-            value = row[('bucket', label)]
-            if pd.notna(value):
-                totals[value] = totals.get(value, 0.0) + weights[label]
-        best = max(totals.values())
-        # dict preserves first-vote order, so ties fall to the earliest
-        # listed evidence's bucket.
-        winner = next(value for value, total in totals.items() if total == best)
-        voters = [
-            label
-            for label in labels
-            if pd.notna(row[('bucket', label)]) and row[('bucket', label)] == winner
-        ]
-        return (row[('class', voters[0])], '/'.join(voters))
-
-    has_vote = pd.concat([b.notna() for _, _, _, b in entries], axis=1).any(axis=1)
-    if has_vote.any():
-        voted = stacked.loc[has_vote].apply(_row_vote, axis=1)
-        classes.loc[has_vote] = voted.str[0]
-        tokens.loc[has_vote] = voted.str[1]
-    return classes, tokens
+    return vote_dynamic_values(values, weights, buckets=buckets)
 
 
 @_register('impute_occupancy_type')
 def impute_occupancy_type(state: CurateState) -> CurateState:
-    """Impute ``occupancy_type`` from ordered evidence, then geometry and dwellings.
+    """Impute ``occupancy_type`` from ordered evidence, then dwellings.
 
     Vocabulary, evidence columns, and thresholds all come from the recipe
     ``occupancy`` config block; this step holds no source- or class-specific
@@ -413,12 +478,21 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
        all present evidence, so agreeing lower-priority sources can outvote a
        lone higher-priority one (see :func:`_vote_evidence_class`); per-entry
        ``weight`` (default 1.0) tunes each source's say.
-    2. Footprint-geometry signal (``rules.manufactured_home_geometry``) where all
-       evidence was null.
-    3. ``n_dwellings`` single-family gap-fill (``rules.single_family_dwellings``),
-       residential gaps only. The multi-family-by-dwellings rule is a broad
-       override applied later in ``resolve_occupancy``.
-    4. Non-primary ``residential_classes`` footprints become ``secondary_class``.
+    2. Non-primary ``residential_classes`` footprints become ``secondary_class``.
+
+    Two one-shot rules that used to sit inside this step have moved out to
+    ``resolve_by_vote``, where they compete on evidence instead of claiming
+    rows first and unopposed:
+
+    - the footprint-geometry manufactured-home signal, which wrote the class
+      from shape alone ahead of — and unreachable by — the vote that owns the
+      final call, so it bypassed that vote's minimum-area precondition
+      entirely. Shape now enters as weighted indicators built from the
+      ``aspect_ratio`` that ``derive_indicators`` produces.
+    - the ``n_dwellings`` single-family gap-fill, which could only ever fill a
+      null and so could never contest a class the evidence vote had already
+      assigned — the structural reason single-family was the pipeline's
+      least-corroborated class.
 
     Multi-Family is later refined into height bands by ``refine_occupancy_height``.
     """
@@ -428,7 +502,6 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
         load_ruleset,
     )
     from openplaces.io.curator.provenance import record_source
-    from openplaces.io.harmonizer.spine import get_oriented_dims
 
     curated = state.curated
     config = get_occupancy_config(state)
@@ -459,50 +532,7 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
                     curated, 'occupancy_type', fill, evidence.get('label', col)
                 )
 
-    # 2. Footprint-geometry manufactured-home signal where no evidence applied.
-    geom_rule = rule_cfg.get('manufactured_home_geometry')
-    null_mask = result.isna()
-    if geom_rule and null_mask.any() and 'area_m2' in curated.columns:
-        aspect_min = float(geom_rule.get('aspect_min', 2.5))
-        area_max = float(geom_rule.get('area_max_m2', 185.0))
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            dims = curated.loc[null_mask, 'geometry'].map(get_oriented_dims)
-        length = dims.map(lambda x: x[1])
-        width = dims.map(lambda x: x[2]).clip(lower=1e-6)
-        aspect = length / width
-        area_m2 = curated.loc[null_mask, 'area_m2']
-        mfg = (aspect >= aspect_min) & (area_m2 <= area_max)
-        mfg_idx = mfg[mfg].index
-        result.loc[mfg_idx] = geom_rule['class']
-        record_source(curated, 'occupancy_type', mfg_idx, 'geometry')
-
-    # 3. n_dwellings single-family gap-fill (residential gaps only).
-    sf_rule = rule_cfg.get('single_family_dwellings')
-    n_dwellings_col = config.get('columns', {}).get('n_dwellings', 'n_dwellings')
-    null_mask = result.isna()
-    if sf_rule and null_mask.any() and n_dwellings_col in curated.columns:
-        group_col = next(
-            (c for c in curated.columns if c in ('use_group', 'purpose_group')), None
-        )
-        if group_col is not None:
-            res_mask = (
-                curated.loc[null_mask, group_col]
-                .astype(object)
-                .str.startswith('Residential')
-                .fillna(False)
-            )
-        else:
-            res_mask = pd.Series(True, index=curated.index[null_mask])
-        eligible = res_mask[res_mask].index
-        if len(eligible):
-            units = curated.loc[eligible, n_dwellings_col]
-            sf_max = float(sf_rule.get('max_dwellings', 1))
-            sf_idx = eligible[units <= sf_max]
-            result.loc[sf_idx] = sf_rule['class']
-            record_source(curated, 'occupancy_type', sf_idx, 'single_family_dwellings')
-
-    # 4. Non-primary residential footprints become the secondary class — as do
+    # 2. Non-primary residential footprints become the secondary class — as do
     #    explicit-secondary footprints with no occupancy evidence (an accessory
     #    structure on a parcel whose primary building is elsewhere). A non-primary
     #    footprint with a known non-residential class keeps that class. Exception:
@@ -562,80 +592,6 @@ def impute_occupancy_type(state: CurateState) -> CurateState:
             '  impute_occupancy_type: '
             + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
         )
-    return state
-
-
-@_register('refine_occupancy_height')
-def refine_occupancy_height(
-    state: CurateState,
-    multi_family_class: str,
-    bands: list[dict],
-    output: str = 'occupancy_type',
-    base_output: str | None = 'occupancy_type_base',
-    n_stories_column: str = 'n_stories',
-) -> CurateState:
-    """Refine the multi-family class into height bands by story count.
-
-    Writes *output*: a copy of ``occupancy_type`` in which rows equal to
-    *multi_family_class* are split into the recipe-defined height *bands*
-    wherever a story count is available. All other classes and the base
-    ``occupancy_type`` are carried over unchanged. Rows of *multi_family_class*
-    with a missing story count keep that class. By default *output* is
-    ``occupancy_type`` itself, so the height-banded class becomes the canonical
-    one; the pre-refinement class is preserved in *base_output*.
-
-    The story count reflects merged evidence, so this step runs after
-    ``merge_enrichments``. All terminology (the multi-family class and the band
-    labels/thresholds) comes from the recipe — this step has no hardcoded class
-    names.
-
-    Parameters
-    ----------
-    multi_family_class : str
-        The class to split (e.g. the recipe's multi-family label).
-    bands : list of dict
-        Ordered bands, each ``{max_stories: <int>, class: <str>}``. The first
-        band whose ``max_stories`` is not exceeded wins; a final band with no
-        ``max_stories`` is the open-ended catch-all (e.g. high-rise).
-    output : str, optional
-        Output column name (default ``occupancy_type``).
-    base_output : str, optional
-        Column to snapshot the pre-refinement class into (default
-        ``occupancy_type_base``). Pass None to skip. It carries no provenance
-        sidecar of its own — the shared ``occupancy_type_source`` records which
-        source picked the class.
-    n_stories_column : str, optional
-        Story-count column (default ``n_stories``).
-    """
-    curated = state.curated
-    if 'occupancy_type' not in curated or n_stories_column not in curated:
-        return state
-
-    occupancy = curated['occupancy_type'].astype(object).copy()
-    if base_output:
-        curated[base_output] = pd.Categorical(occupancy)
-    n_stories = curated[n_stories_column]
-    multi_family = occupancy.eq(multi_family_class) & n_stories.notna()
-
-    assigned = pd.Series(False, index=curated.index)
-    for band in bands:
-        if band.get('max_stories') is not None:
-            mask = multi_family & ~assigned & (n_stories <= float(band['max_stories']))
-        else:
-            mask = multi_family & ~assigned
-        occupancy.loc[mask] = band['class']
-        assigned.loc[mask] = True
-
-    curated[output] = pd.Categorical(occupancy)
-    state.curated = curated
-
-    if state.verbose:
-        counts = occupancy.value_counts(dropna=False)
-        print(
-            '  refine_occupancy_height: '
-            + ', '.join(f'{k}={v:,d}' for k, v in counts.items())
-        )
-
     return state
 
 

@@ -588,6 +588,7 @@ def reconcile_land_use(
         Filename for the conflict-combination counts CSV written to the
         reports directory (skipped when omitted or no conflicts exist).
     """
+    from openplaces.io.curator.indicators import vote_dynamic_values
     from openplaces.io.curator.provenance import record_source
     from openplaces.io.transform import get_crosswalk
 
@@ -602,7 +603,6 @@ def reconcile_land_use(
         if state.verbose:
             print('  reconcile_land_use: no evidence columns present; skipping.')
         return state
-    labels = [label for label, _ in present]
     tiebreaker_label = next(
         (
             spec.get('label', spec['column'])
@@ -615,34 +615,14 @@ def reconcile_land_use(
     conflict = _summarize_conflicts(present, curated.index)
     curated[conflict_column] = pd.Categorical(conflict)
 
-    stacked = pd.concat(dict(present), axis=1)
-
-    def _vote(row) -> tuple:
-        votes = [(label, row[label]) for label in labels if pd.notna(row[label])]
-        if not votes:
-            return (pd.NA, pd.NA)
-        counts: dict[str, int] = {}
-        for _, value in votes:
-            counts[value] = counts.get(value, 0) + 1
-        max_votes = max(counts.values())
-        # dict preserves first-vote order, so ties fall to the earliest
-        # listed column unless the tiebreaker claims one of the tied values.
-        tied = [value for value, n in counts.items() if n == max_votes]
-        winner = tied[0]
-        if len(tied) > 1 and tiebreaker_label is not None:
-            tiebreaker_value = row[tiebreaker_label]
-            if pd.notna(tiebreaker_value) and tiebreaker_value in tied:
-                winner = tiebreaker_value
-        token = '/'.join(label for label, value in votes if value == winner)
-        return (winner, token)
-
-    mask_any = stacked.notna().any(axis=1)
-    winner = pd.Series(pd.NA, index=curated.index, dtype=object)
-    token = pd.Series(pd.NA, index=curated.index, dtype=object)
-    if mask_any.any():
-        voted = stacked.loc[mask_any].apply(_vote, axis=1)
-        winner.loc[mask_any] = voted.str[0]
-        token.loc[mask_any] = voted.str[1]
+    # Each column votes for its own value at equal weight -- an
+    # open-vocabulary vote, since the candidate classes are whatever the
+    # source group columns happen to hold, not a recipe-listed set.
+    values = dict(present)
+    winner, token = vote_dynamic_values(
+        values,
+        tiebreaker=values[tiebreaker_label] if tiebreaker_label else None,
+    )
 
     if class_map_id:
         filled = winner.map(get_crosswalk({'recipe_id': class_map_id}))
@@ -699,45 +679,72 @@ def resolve_by_vote(
     state: CurateState,
     target: str,
     decisions: list[dict],
+    preserve_base: bool = True,
+    base_output: str | None = None,
+    default_source: str = 'vote',
+    score_columns: dict[str, str] | None = None,
+    review_column: str | None = None,
+    review_margin: float = 1.0,
+    flag_column: str | None = None,
+    flag_class: str | None = None,
 ) -> CurateState:
-    """Override *target* by tallying weighted votes from independent indicators.
+    """Set *target* by tallying weighted votes from independent indicators.
 
-    Each decision proposes one class and lists indicators (predicates over
-    existing columns). For every row, a decision's score is the sum of the
-    weights of its matched indicators; the decision is eligible where that score
-    reaches its ``min_score``. Among the eligible decisions the highest score
-    wins (ties broken by recipe order), and the winning class overwrites
-    *target*. Rows with no eligible decision keep their existing value.
+    The single voting seam of the curate stage. Each decision proposes one
+    class and lists indicators (predicates over existing columns); scoring,
+    eligibility, and tie-breaking are delegated to
+    :func:`~openplaces.io.curator.indicators.score_decisions`, so every
+    classification in the pipeline resolves the same way.
 
-    This is the generic, vocabulary-neutral reconciliation seam: it holds no
-    class names or thresholds of its own, so the same step resolves any
-    categorical column. New evidence (e.g. a model probability) joins a decision
-    as one more weighted indicator without code changes — a
+    Vocabulary-neutral by construction: it holds no class names or thresholds
+    of its own, so the same step decides occupancy, land use, or any other
+    categorical column. New evidence (e.g. a model probability) joins a
+    decision as one more weighted indicator without code changes — a
     ``numeric_at_least`` over ``p_manufactured_home`` is all it takes.
 
     Parameters
     ----------
     target : str
-        Categorical column to override (e.g. ``occupancy_type``). Created as
-        an all-missing column first when not already present, so this step can
-        also populate a brand-new derived classification, not just correct an
-        existing one.
+        Categorical column to write (e.g. ``occupancy_type``). Created as an
+        all-missing column first when not already present, so this step can
+        populate a brand-new derived classification, not just correct one.
     decisions : list of dict
-        Ordered candidate classes. Each is
-        ``{class, min_score, indicators, require, source}``, where
-        ``indicators`` is a list of indicator specs (see
-        :func:`~openplaces.io.curator.indicators.evaluate_indicator`);
-        ``min_score`` defaults to 1 and each indicator's ``weight`` defaults to
-        1. ``require`` is an optional list of indicator specs (same vocabulary)
-        that must *all* hold, on top of reaching ``min_score`` — a hard
-        precondition rather than one more weighted vote, for evidence that
-        should veto a decision outright regardless of how strongly the other
-        indicators favor it (e.g. a minimum footprint size). The optional
-        ``source`` is the provenance token recorded in ``{target}_source`` for
-        rows this decision wins (default ``'vote'``), so the single reason
-        column distinguishes one decision's outcome from another.
+        Ordered candidate classes; see
+        :func:`~openplaces.io.curator.indicators.score_decisions` for the
+        ``{class, min_score, indicators, require, source}`` contract. A
+        decision's ``source`` is the provenance token recorded in
+        ``{target}_source`` for the rows it wins, so the single reason column
+        distinguishes one decision's outcome from another.
+    base_output : str, optional
+        Column to snapshot *target*'s incoming value into, written **before**
+        any decision is scored so the decisions themselves can ``require`` it.
+        That is what lets a vote refine its own target — a height band asking
+        "was this Multi-Family before this step?" — without the first decision
+        to fire changing the answer for the ones after it.
+    preserve_base : bool, optional
+        When True (default), rows where no decision is eligible keep
+        *target*'s existing value — the step corrects an existing
+        classification. When False, *target* is rebuilt from the vote alone
+        and rows no decision claimed are left missing, for the case where
+        this vote *is* the classification rather than a correction to one.
+    default_source : str, optional
+        Provenance token for decisions that set no ``source`` of their own
+        (default ``'vote'``).
+    score_columns : dict of {class: column}, optional
+        Expose named decisions' raw weighted scores; see
+        :func:`~openplaces.io.curator.indicators.score_decisions`.
+    review_column : str, optional
+        Boolean column flagging rows where the winning decision beat the
+        runner-up (among decisions that individually reached their own
+        ``min_score``) by less than *review_margin* — the unresolved
+        confusion cases worth a second look. Left unset by default.
+    review_margin : float, optional
+        Score margin below which *review_column* is set (default 1.0).
+    flag_column, flag_class : str, optional
+        When both are given, write a boolean *flag_column* set where the
+        vote's winner equals *flag_class*.
     """
-    from openplaces.io.curator.indicators import evaluate_indicator
+    from openplaces.io.curator.indicators import score_decisions
     from openplaces.io.curator.provenance import record_source
 
     curated = state.curated
@@ -747,35 +754,38 @@ def resolve_by_vote(
         curated[target] = pd.Series(pd.NA, index=curated.index, dtype=object)
 
     base = curated[target].astype(object).copy()
-    winner = pd.Series(pd.NA, index=curated.index, dtype=object)
-    token = pd.Series(pd.NA, index=curated.index, dtype=object)
-    best_score = pd.Series(-1.0, index=curated.index)
-    for decision in decisions:
-        score = pd.Series(0.0, index=curated.index)
-        for indicator in decision.get('indicators', []):
-            weight = float(indicator.get('weight', 1.0))
-            matched = evaluate_indicator(curated, indicator).astype(float)
-            score = score + matched * weight
-        eligible = score >= float(decision.get('min_score', 1))
-        for req in decision.get('require', []):
-            eligible = eligible & evaluate_indicator(curated, req)
-        # Strict > keeps the earlier decision on ties (recipe order).
-        take = eligible & (score > best_score)
-        winner.loc[take] = decision['class']
-        token.loc[take] = decision.get('source', 'vote')
-        best_score.loc[take] = score.loc[take]
+    # Snapshot before scoring: decisions may `require` this column, and a
+    # value written mid-vote would make the outcome depend on decision order.
+    if base_output:
+        curated[base_output] = pd.Categorical(base)
+    winner, token, best_score, second_score = score_decisions(
+        curated, decisions, score_columns
+    )
+    token = token.where(token.notna(), default_source)
 
     assign = winner.notna()
-    base.loc[assign] = winner.loc[assign]
-    curated[target] = pd.Categorical(base)
+    if preserve_base:
+        base.loc[assign] = winner.loc[assign]
+        curated[target] = pd.Categorical(base)
+    else:
+        curated[target] = pd.Categorical(winner)
     for tok in token[assign].dropna().unique():
         record_source(curated, target, assign & token.eq(tok), tok)
+
+    if flag_column and flag_class is not None:
+        curated[flag_column] = winner.eq(flag_class).fillna(False).to_numpy()
+    if review_column:
+        margin = best_score - second_score
+        curated[review_column] = (assign & (margin < review_margin)).to_numpy()
     state.curated = curated
 
     if state.verbose:
         counts = winner[assign].value_counts()
         summary = ', '.join(f'{k}={v:,d}' for k, v in counts.items()) or 'none'
-        print(f'  resolve_by_vote: {target} overridden -> {summary}')
+        extra = ''
+        if review_column:
+            extra = f', {int(curated[review_column].sum()):,} flagged for review'
+        print(f'  resolve_by_vote: {target} -> {summary}{extra}')
 
     return state
 

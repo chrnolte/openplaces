@@ -272,20 +272,60 @@ def test_impute_records_evidence_source(monkeypatch):
     assert out['occupancy_type_source'].astype(object).tolist() == ['nsi', 'parcel']
 
 
-def test_impute_records_single_family_dwellings_source(monkeypatch):
-    # No NSI/parcel evidence at all: only the n_dwellings single-family
-    # gap-fill (rules.single_family_dwellings) applies, and its token must be
-    # the rule's own name, not the bare 'dwellings' this used to collide with
-    # occupancy.rules.multi_family_dwellings's resolve_by_vote source.
+def test_impute_no_longer_gap_fills_single_family_from_dwellings(monkeypatch):
+    # The n_dwellings single-family gap-fill has moved out of this step into
+    # resolve_by_vote. It only ever filled a null, so it could never contest a
+    # class the evidence vote had already assigned -- the structural reason
+    # single-family ended up the least-corroborated class. A dwelling count
+    # alone must now leave this step's output empty, and single-family is
+    # decided later, on competing evidence.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     df = pd.DataFrame({'n_dwellings': [1.0]})
     out = impute_occupancy_type(
         _state(df, recipe={'entity': 'e', 'admin_id': 'US', 'occupancy': OCC})
     ).curated
-    assert out['occupancy_type'].astype(object).tolist() == ['Single-Family']
-    assert out['occupancy_type_source'].astype(object).tolist() == [
-        'single_family_dwellings'
+    assert out['occupancy_type'].isna().all()
+
+
+def test_single_family_is_decided_by_a_contested_vote(monkeypatch):
+    # The replacement for the gap-fill above: a real dwelling count of one
+    # scores the Single-Family decision, and the provenance token is that
+    # decision's own source.
+    from openplaces.io.curator.reconcilers import resolve_by_vote
+
+    df = pd.DataFrame({'n_dwellings_overture': [1]})
+    decisions = [
+        {
+            'class': 'Single-Family',
+            'source': 'single_family',
+            'min_score': 2,
+            'indicators': [
+                {
+                    'type': 'all_of',
+                    'weight': 2,
+                    'indicators': [
+                        {
+                            'type': 'numeric_at_least',
+                            'column': 'n_dwellings_overture',
+                            'min': 1,
+                        },
+                        {
+                            'type': 'numeric_at_most',
+                            'column': 'n_dwellings_overture',
+                            'max': 1,
+                        },
+                    ],
+                }
+            ],
+        }
     ]
+    out = resolve_by_vote(
+        _state(df, recipe={'entity': 'e', 'admin_id': 'US', 'occupancy': OCC}),
+        target='occupancy_type',
+        decisions=decisions,
+    ).curated
+    assert out['occupancy_type'].astype(object).tolist() == ['Single-Family']
+    assert out['occupancy_type_source'].astype(object).tolist() == ['single_family']
 
 
 def _patch_resolve(monkeypatch, tmp_path, keyword_rules):
