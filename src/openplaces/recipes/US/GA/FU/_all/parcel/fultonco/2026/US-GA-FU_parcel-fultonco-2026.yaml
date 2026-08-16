@@ -1,0 +1,72 @@
+# Recipe: Fulton County, GA parcel roll.
+#
+# Source: the county's ArcGIS Hub open-data site
+# (`gisdata.fultoncountyga.gov`), a bulk GeoJSON export -- one request
+# rather than ~190 pages of REST paging.
+#
+# NOTE on source selection. The county also runs a self-hosted ArcGIS
+# Server (`gismaps.fultoncountyga.gov/arcgispub`) whose
+# `OpenData/Tax_Parcels/MapServer/0` layer carries 373,307 parcels but
+# only 29 fields with NO value columns at all. The Hub-hosted
+# `Tax_Parcels_2025` layer used here carries 369,847 parcels and 34
+# fields including the full assessed/appraised value split. The 3,460
+# row difference is the price of the value columns, and worth it.
+# The current-year `Tax_Parcels` item (no year suffix) is also
+# value-free, so the 2025 vintage is the richest available.
+#
+# NOTE: `Current Parcels` on the same portal is NOT countywide -- it is
+# a 29,781 row city subset. Do not substitute it.
+#
+# NOTE on value basis. Georgia assesses at 40% of fair market value, so
+# each parcel carries both. The appraised (fair market) columns are
+# mapped here because they are the cross-county comparable basis;
+# TotAssess/LandAssess/ImprAssess hold the 40% figures and are left
+# unmapped.
+#
+# NOTE: no zoning and no year built in this source's 34 columns.
+# `ClassCode` ('R3', 'C1', ...) is the assessor's property class, not a
+# zoning district, so it is deliberately unmapped rather than passed off
+# as `zoning_code`; `LUCode` carries the land-use code instead.
+
+description: >-
+  Fulton County, GA parcel roll (appraised land/improvement/total values,
+  owner, situs, land use, dwelling units) from the county open-data bulk
+  GeoJSON export.
+
+admin_id: US-GA-FU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: fultonco
+    portal_url: "https://gisdata.fultoncountyga.gov/datasets/fulcogis::tax-parcels-2025"
+    download_url: "https://gisdata.fultoncountyga.gov/api/download/v1/items/c805da9aa51d4c508440358c00498fcf/geojson?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "fulton_tax_parcels_2025.geojson"
+
+columns:
+  parcel_id_assessor: ParcelID
+  address: Address
+  owner_name: Owner
+  owner_address: OwnerAddr1
+  land_value: LandAppr
+  improvement_value: ImprAppr
+  value: TotAppr
+  use_group_code: LUCode
+  n_dwellings: LivUnits
+  area_ac: LandAcres
+  tax_neighborhood_code: NbrHood
+  tax_year: TaxYear
+  subdivision: Subdiv
+
+columns_to_categorical:
+  - use_group_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

@@ -1,0 +1,104 @@
+# Recipe: DeKalb County, GA parcel roll.
+#
+# Source: two, combined by the scraper. Geometry and most attributes come
+# from the county's open-data bulk export of `TaxParcelsOD`
+# (`dekalbinsights-dekalbgis.opendata.arcgis.com`, item
+# e383e80264c24402b5d5711b671acb56). Four columns absent from that export
+# are pulled attribute-only from the live
+# `Tax_Parcels_Assessment_View/MapServer` layer 2 on
+# `dcgis.dekalbcountyga.gov/mapping` and joined on PARCELID:
+#   LAND_VALUE   98.3%    BUILD_VALUE  92.8%
+#   LANDUSECODE  99.7%    PROP_CLASS   99.7%
+# The land-use code feeds the downstream occupancy indicators, so it is
+# worth the second request. Both sources carry the same 246,063 parcels.
+#
+# NOTE on value basis, measured not assumed: LAND_VALUE + BUILD_VALUE
+# equals TOTAPR1 exactly (12 of 12 sampled parcels), and CNTASSDVAL is
+# exactly 40% of TOTAPR1 -- the Georgia assessment ratio. All three
+# mapped value columns are therefore on the appraised (fair market)
+# basis, matching Fulton and Clayton. CNTASSDVAL is left unmapped.
+#
+# NOTE: many columns in this 95-field layer exist but are entirely
+# empty. Measured at 0%: USECD, USEDSCRP, CLASSCD, RESYRBLT, RESFLRAREA,
+# BLDGAREA, FLOORCOUNT, NGHBRHDCD, PRPRTYDSCRP, LNDVALUE. That last one
+# is a decoy for LAND_VALUE -- similar name, no data. DeKalb therefore
+# has no year built and no floor area from any published source.
+#
+# NOTE: `PROP_CLASS` ('C3', 'I3', 'R4') is the assessor's property class
+# whose leading letter encodes the broad class, not a zoning district;
+# it is mapped as `land_use_group` rather than `zoning_code`. The real
+# `ZONING` column is mapped separately but is only 56.8% populated.
+
+description: >-
+  DeKalb County, GA parcel roll (appraised land/improvement/total values,
+  land use, owner, situs, zoning, acreage) from the county assessment
+  view ArcGIS layer.
+
+admin_id: US-GA-DA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dekalbco
+    portal_url: "https://dekalbinsights-dekalbgis.opendata.arcgis.com/datasets/tax-parcels"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "dekalb_tax_parcels.geojson"
+
+# Geometry comes from the county's own bulk export; the four columns that
+# export lacks are pulled attribute-only from the live assessment view and
+# joined on PARCELID.
+#
+# Why not page the assessment view for everything: geometry is what makes
+# that service fall over. Measured, 2026-08-16 -- 2,000 attribute-only
+# rows return in ~0.4s at ANY offset (0 through 200,000), while 500 rows
+# carrying polygons and all 95 columns close the connection at a 60s
+# server-side timeout. A full geometry scrape ran ~2.6h at best and in
+# practice stalled; this pulls the same data in about a minute.
+#
+# It is a weak server, not a throttle or a licence restriction: no 429, no
+# Retry-After, no rate-limit headers, no WAF, and lightweight queries stay
+# instant even under load. The county publishes the bulk export itself
+# (accessLevel public, no licence or terms text), so bulk IS the intended
+# route for whole-layer use.
+scraper_options:
+  bulk_url: "https://dekalbinsights-dekalbgis.opendata.arcgis.com/api/download/v1/items/e383e80264c24402b5d5711b671acb56/geojson?layers=0"
+  layer_url: "https://dcgis.dekalbcountyga.gov/mapping/rest/services/Tax_Parcels_Assessment_View/MapServer/2"
+  timeout: 120
+  retries: 4
+  attribute_join:
+    key: PARCELID
+    fields: [LAND_VALUE, BUILD_VALUE, LANDUSECODE, PROP_CLASS]
+    page_size: 2000
+
+columns:
+  parcel_id_assessor: PARCELID
+  address: SITEADDRESS
+  owner_name: OWNERNME1
+  owner_name_2: OWNERNME2
+  owner_address: PSTLADDRESS
+  owner_city: PSTLCITY
+  owner_admin2_id_admin1: PSTLSTATE
+  owner_postal_code: PSTLZIP5
+  land_value: LAND_VALUE
+  improvement_value: BUILD_VALUE
+  value: TOTAPR1
+  use_group_code: LANDUSECODE
+  land_use_group: PROP_CLASS
+  zoning_code: ZONING
+  area_ac: ACREAGE
+  tax_year: TAX_YEAR
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - use_group_code
+  - land_use_group
+  - zoning_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

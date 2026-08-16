@@ -1,0 +1,80 @@
+# Recipe: Cherokee County, GA parcel roll.
+#
+# Source: the county's self-hosted ArcGIS Server
+# (`gis.cherokeecountyga.gov`), `MainLayers/MapServer` layer 1.
+#
+# NOTE on why this one pages instead of downloading in bulk. Checked and
+# rejected, in order: the service advertises only `Query,Map,Data` (no
+# `Extract`, so no createReplica); the county runs no ArcGIS Hub
+# open-data site (no DCAT catalog on any candidate domain); and the
+# county GIS pages expose no zipped shapefile or geodatabase. No bulk
+# route exists, so `arcgis_rest_scraper` is the fallback rather than the
+# first choice. Re-check for a Hub site before assuming this is still
+# true.
+#
+# NOTE: `maxRecordCount` here is 1,000, half the usual 2,000, so this is
+# ~117 pages for 116,005 parcels -- the slowest of the Georgia set.
+#
+# NOTE: the plan that preceded this recipe listed
+# `gis.cherokeega.com/.../TaxParcels/MapServer/0`. That host is a
+# redirect shim to `gis.cherokeecountyga.gov` and the `TaxParcels`
+# service does not exist; the parcels live in `MainLayers` layer 1.
+#
+# NOTE: `Owner` is present in the schema but sampled empty across 150
+# records, so owner name is effectively unavailable despite the column
+# existing. `Mailing_Address` and the other mailing fields ARE
+# populated, so the owner's mailing address survives even though the
+# name does not. Measure before relying on `owner_name`.
+
+description: >-
+  Cherokee County, GA parcel roll (situs, owner mailing address,
+  acreage, zoning, subdivision, deed reference) from the county ArcGIS
+  layer. No assessed values.
+
+admin_id: US-GA-CE
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: cherokeeco
+    portal_url: "https://www.cherokeecountyga.gov/departments/information-technology/gis/"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "cherokee_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://gis.cherokeecountyga.gov/arcgis/rest/services/MainLayers/MapServer/1"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN
+  address: Property_Address
+  owner_name: Owner
+  owner_address: Mailing_Address
+  owner_city: Mailing_City
+  owner_admin2_id_admin1: Mailing_State
+  owner_postal_code: Mailing_Zip
+  zoning_code: Zoning
+  area_ac: Acreage
+  subdivision: Subdivision
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEEDBOOK, DEEDPAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - zoning_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
