@@ -6,7 +6,6 @@ Covers:
 - link_curated_entity: joining another curated entity's attributes onto the
   current one by a shared parcel id.
 - flag_manufactured_home_communities: per-parcel manufactured-home count + flag.
-- _habitable_threshold: the size cutoff that keeps sheds Secondary.
 """
 
 from __future__ import annotations
@@ -16,10 +15,7 @@ import pandas as pd
 import openplaces.io.curator.evidence as ev
 from openplaces.core.schema import AdminId
 from openplaces.io.curator import CurateState
-from openplaces.io.curator.inferers import (
-    _habitable_threshold,
-    flag_manufactured_home_communities,
-)
+from openplaces.io.curator.inferers import flag_manufactured_home_communities
 from openplaces.io.curator.reconcilers import resolve_by_vote
 
 
@@ -187,20 +183,3 @@ def test_flag_manufactured_home_communities_prefers_parcel_id_over_local():
     assert out.loc[p1, 'manufactured_home_community'].all()
     assert out.loc[p2, 'n_manufactured_homes_per_parcel'].eq(0).all()
     assert not out.loc[p2, 'manufactured_home_community'].any()
-
-
-def test_habitable_threshold_floor_and_average():
-    config = {'habitable_fraction': 0.5, 'habitable_floor_m2': 25.0}
-    # Three MH-classed footprints averaging 100 m2 -> threshold 50 m2.
-    curated = pd.DataFrame(
-        {'occupancy_type': ['Manufactured Home'] * 3, 'area_m2': [80.0, 100.0, 120.0]}
-    )
-    result = curated['occupancy_type'].astype(object)
-    assert _habitable_threshold(curated, result, 'Manufactured Home', config) == 50.0
-
-    # Too few samples -> falls back to manufactured_home_avg_m2 (90) * 0.5 = 45,
-    # but the floor (25) does not bind here.
-    cfg2 = {**config, 'manufactured_home_avg_m2': 90.0}
-    small = pd.DataFrame({'occupancy_type': ['Manufactured Home'], 'area_m2': [100.0]})
-    res2 = small['occupancy_type'].astype(object)
-    assert _habitable_threshold(small, res2, 'Manufactured Home', cfg2) == 45.0

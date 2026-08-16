@@ -106,6 +106,31 @@ def coerce_to_class(series: pd.Series, rules: list[dict]) -> pd.Series:
     return result.where(series.notna())
 
 
+def match_ruleset(terms: pd.Series, rules: list[dict]) -> tuple[pd.Series, pd.Series]:
+    """Apply an ordered label ruleset, returning (matched class, reviewed).
+
+    First match wins, mirroring :func:`coerce_to_class` -- except a term
+    matching no rule yields a missing class rather than passing through
+    unchanged, because this answers "which class did the label assert?", not
+    "normalize this label".
+    """
+    proposal = pd.Series(pd.NA, index=terms.index, dtype=object)
+    reviewed = pd.Series(False, index=terms.index)
+    unmatched = pd.Series(True, index=terms.index)
+    for rule in rules:
+        mask = unmatched & terms.str.contains(
+            rule['pattern'],
+            case=False,
+            na=False,
+            regex=rule['match_type'] == 'regex',
+        )
+        if mask.any():
+            proposal.loc[mask] = rule['occupancy_type']
+            reviewed.loc[mask] = rule['reviewed']
+            unmatched.loc[mask] = False
+    return proposal, reviewed
+
+
 def bucket_classes(coerced: pd.Series, config: dict) -> pd.Series:
     """Collapse already-coerced occupancy classes to residential granularity.
 

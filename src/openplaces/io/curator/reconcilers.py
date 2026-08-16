@@ -405,6 +405,7 @@ def resolve_occupancy(
         coerce_to_class,
         get_occupancy_config,
         load_ruleset,
+        match_ruleset,
     )
 
     curated = state.curated
@@ -419,20 +420,7 @@ def resolve_occupancy(
 
     # Keyword proposal from the parcel land-use string.
     terms = curated[parcel_column].astype(object)
-    proposal = pd.Series(pd.NA, index=curated.index, dtype=object)
-    reviewed = pd.Series(False, index=curated.index)
-    unmatched = pd.Series(True, index=curated.index)
-    for rule in load_ruleset(state, ruleset):
-        mask = unmatched & terms.str.contains(
-            rule['pattern'],
-            case=False,
-            na=False,
-            regex=rule['match_type'] == 'regex',
-        )
-        if mask.any():
-            proposal.loc[mask] = rule['occupancy_type']
-            reviewed.loc[mask] = rule['reviewed']
-            unmatched.loc[mask] = False
+    proposal, reviewed = match_ruleset(terms, load_ruleset(state, ruleset))
 
     # occupancy_type_parcel: keyword proposal, else the parcel-evidence class.
     # Select the parcel evidence by its label so inserting other sources (e.g.
@@ -731,13 +719,16 @@ def resolve_by_vote(
         Provenance token for decisions that set no ``source`` of their own
         (default ``'vote'``).
     score_columns : dict of {class: column}, optional
-        Expose named decisions' raw weighted scores; see
+        Expose named decisions' raw weighted scores as columns; the scores
+        come ungated from
         :func:`~openplaces.io.curator.indicators.score_decisions`.
     review_column : str, optional
-        Boolean column flagging rows where the winning decision beat the
-        runner-up (among decisions that individually reached their own
-        ``min_score``) by less than *review_margin* — the unresolved
-        confusion cases worth a second look. Left unset by default.
+        Boolean column flagging rows where the winning decision beat an
+        eligible runner-up (among decisions that individually reached their
+        own ``min_score``) by less than *review_margin* — the unresolved
+        confusion cases worth a second look. A winner with no eligible
+        runner-up has no margin at all and is never flagged: it is
+        uncontested, not narrowly won. Left unset by default.
     review_margin : float, optional
         Score margin below which *review_column* is set (default 1.0).
     flag_column, flag_class : str, optional
@@ -758,9 +749,12 @@ def resolve_by_vote(
     # value written mid-vote would make the outcome depend on decision order.
     if base_output:
         curated[base_output] = pd.Categorical(base)
-    winner, token, best_score, second_score = score_decisions(
-        curated, decisions, score_columns
+    winner, token, best_score, second_score, class_scores = score_decisions(
+        curated, decisions, set(score_columns) if score_columns else None
     )
+    for cls, column in (score_columns or {}).items():
+        if cls in class_scores:
+            curated[column] = class_scores[cls]
     token = token.where(token.notna(), default_source)
 
     assign = winner.notna()

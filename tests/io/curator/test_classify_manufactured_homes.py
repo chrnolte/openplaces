@@ -17,7 +17,7 @@ OCC_CONFIG = {
             'area_max_m2': 185,
             'class': 'Manufactured Home',
         },
-        'single_family_dwellings': {'max_dwellings': 1, 'class': 'Single-Family'},
+        'single_family_dwellings': {'class': 'Single-Family'},
     },
 }
 
@@ -104,6 +104,35 @@ def test_classify_manufactured_homes_fallback_rule(monkeypatch):
     # not.
     assert curated.loc[1, 'p_manufactured_home'] > 0.5
     assert curated.loc[0, 'p_manufactured_home'] < 0.5
+
+
+def test_fallback_area_score_grades_continuously_without_a_plateau(monkeypatch):
+    _patch(monkeypatch)
+    # Same aspect ratio (4.0), different small areas: 12x3 = 36 m2 vs
+    # 20x5 = 100 m2. The retired /100 denominator saturated the area term
+    # at 0.5 for everything under ~150 m2, so these two scored identically
+    # and p >= 0.5 fired on 17-58% of all footprints per county. Graded
+    # over the full plausible range, the smaller building must score
+    # strictly higher.
+    geoms = [
+        box(BX, BY, BX + 12, BY + 3),
+        box(BX + 50, BY, BX + 70, BY + 5),
+    ]
+    df = gpd.GeoDataFrame(
+        {
+            'geometry': geoms,
+            'use_group_combined_parcel': [pd.NA, pd.NA],
+            'parcel_id_local': ['p1', 'p2'],
+        },
+        geometry='geometry',
+        crs=CRS,
+    )
+    out = classify_manufactured_homes(
+        _state(df), ruleset='kw.csv', min_training_samples=10
+    ).curated
+    p_small = out.loc[0, 'p_manufactured_home']
+    p_large = out.loc[1, 'p_manufactured_home']
+    assert p_small > p_large
 
 
 def test_classify_manufactured_homes_local_ml(monkeypatch):

@@ -39,6 +39,9 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
       (``regex`` defaults to true; set false for a literal substring match).
     - ``equals``: ``column`` equals ``value``.
     - ``in_set``: ``column`` value is in ``values``.
+    - ``not_null``: ``column`` has any value at all. The presence test --
+      "an observation exists" as evidence in its own right, e.g. a story
+      count being recorded at all qualifying a row for a height band.
     - ``numeric_at_least`` (alias ``count_at_least``): ``column >= min``.
     - ``numeric_at_most``: ``column <= max``.
     - ``any_of``: true where any of the nested ``indicators`` matches. Lets a
@@ -120,6 +123,9 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     if kind == 'in_set':
         return curated[col].astype(object).isin(set(indicator['values'])).fillna(False)
 
+    if kind == 'not_null':
+        return curated[col].notna()
+
     if kind in ('numeric_at_least', 'count_at_least'):
         return (
             pd.to_numeric(curated[col], errors='coerce') >= float(indicator['min'])
@@ -136,8 +142,8 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
 def score_decisions(
     curated: pd.DataFrame,
     decisions: list[dict],
-    score_columns: dict[str, str] | None = None,
-) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
+    score_classes: set[str] | None = None,
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, dict[str, pd.Series]]:
     """Score every row against each ordered *decision* and pick a winner.
 
     The enumerated-vote core shared by every curate step that chooses among
@@ -146,6 +152,9 @@ def score_decisions(
     where that score reaches its ``min_score`` and every one of its
     ``require`` indicators also holds. Among the eligible decisions the
     highest score wins, ties broken by recipe order.
+
+    Reads *curated* and never writes to it -- a pure scoring core, so a
+    trained model could replace it behind the same seam.
 
     Parameters
     ----------
@@ -157,11 +166,11 @@ def score_decisions(
         ``weight`` to 1. ``require`` is a hard AND-gate applied on top of
         ``min_score``, for evidence that should veto a decision outright
         however strongly its other indicators score.
-    score_columns : dict of {class: column}, optional
-        For named classes, write that decision's raw weighted score to the
-        given column of *curated*. Deliberately ungated by ``min_score`` and
-        by whether the decision won, so a later step can use the graded
-        signal (e.g. a vacancy likelihood) even where the class lost.
+    score_classes : set of str, optional
+        Classes whose raw weighted score should be returned in *scores*.
+        Deliberately ungated by ``min_score`` and by whether the decision
+        won, so a later step can use the graded signal (e.g. a vacancy
+        likelihood) even where the class lost.
 
     Returns
     -------
@@ -172,13 +181,20 @@ def score_decisions(
         callers apply their own default.
     best_score, second_score : pandas.Series
         Winning and runner-up scores among decisions that individually
-        reached their own ``min_score``; the gap between them is how
-        callers flag narrow, review-worthy wins.
+        reached their own ``min_score``. ``second_score`` is missing where
+        no runner-up was eligible, so the ``best - second`` margin exists
+        only for genuinely contested rows -- an uncorroborated lone winner
+        reports no margin rather than a large one.
+    scores : dict of {class: pandas.Series}
+        Raw weighted score per row for each requested *score_classes* entry
+        that appears among *decisions*.
     """
     winner = pd.Series(pd.NA, index=curated.index, dtype=object)
     token = pd.Series(pd.NA, index=curated.index, dtype=object)
     best_score = pd.Series(-1.0, index=curated.index)
     second_score = pd.Series(-1.0, index=curated.index)
+    has_second = pd.Series(False, index=curated.index)
+    scores: dict[str, pd.Series] = {}
 
     for decision in decisions:
         score = pd.Series(0.0, index=curated.index)
@@ -186,8 +202,8 @@ def score_decisions(
             weight = float(indicator.get('weight', 1.0))
             matched = evaluate_indicator(curated, indicator).astype(float)
             score = score + matched * weight
-        if score_columns and decision['class'] in score_columns:
-            curated[score_columns[decision['class']]] = score
+        if score_classes and decision['class'] in score_classes:
+            scores[decision['class']] = score
 
         eligible = score >= float(decision.get('min_score', 1))
         for req in decision.get('require', []):
@@ -195,19 +211,22 @@ def score_decisions(
 
         # Strict > keeps the earlier decision on ties (recipe order).
         take = eligible & (score > best_score)
-        # The decision this one displaces becomes the new runner-up.
+        # The decision this one displaces becomes the new runner-up (a
+        # real one only where a previous winner actually existed).
         second_score.loc[take] = best_score.loc[take]
+        has_second.loc[take] = winner.notna().loc[take]
         # An eligible decision that doesn't win outright may still beat
         # the current runner-up.
         runner_up = eligible & ~take & (score > second_score)
         second_score.loc[runner_up] = score.loc[runner_up]
+        has_second.loc[runner_up] = True
 
         winner.loc[take] = decision['class']
         source = decision.get('source')
         token.loc[take] = source if source is not None else pd.NA
         best_score.loc[take] = score.loc[take]
 
-    return winner, token, best_score, second_score
+    return winner, token, best_score, second_score.where(has_second), scores
 
 
 def vote_dynamic_values(

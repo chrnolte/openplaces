@@ -368,3 +368,39 @@ def test_condominium_parcel_class_is_never_read(recipe):
                                 values.append(sub['value'])
                             values.extend(sub.get('values', []) or [])
     assert 'Condominium' not in values
+
+
+def test_restricted_shovels_columns_are_never_published(recipe):
+    """Shovels permit evidence is restricted-use and must never be published.
+
+    Permit-derived columns may inform curation, but the shipped recipe's
+    order_columns drop list has to remove every one of them from the output
+    -- including columns another branch's steps might join in. Runs the
+    shipped drop list over a frame carrying the known shovels columns and
+    asserts none survive.
+    """
+    from openplaces.io.curator.formatters import order_columns
+
+    restricted = [
+        'occupancy_type_property_shovels',
+        'occupancy_type_property_shovels_source',
+        'n_permits_per_footprint',
+        'n_permits_per_footprint_address',
+    ]
+    frame = pd.DataFrame(
+        {'occupancy_type': ['Single-Family'], **{c: [1] for c in restricted}}
+    )
+    state = CurateState(
+        recipe=recipe,
+        entity_recipe={},
+        admin_id=None,
+        verbose=False,
+        timer=None,
+        curated=frame,
+    )
+    step = next(s for s in recipe['pipeline'] if s['step'] == 'order_columns')
+    out = order_columns(
+        state, overrides=step.get('overrides'), drop=step.get('drop')
+    ).curated
+    leaked = [c for c in out.columns if 'shovels' in c or 'permit' in c]
+    assert not leaked, f'restricted permit columns survive order_columns: {leaked}'

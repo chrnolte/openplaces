@@ -44,6 +44,11 @@ pipeline:
       - year_built
       - n_dwellings
       - address
+      # Carried on the geometry row, so it survives even where the
+      # parcel_id_local join is degenerate (e.g. Pender's all-'0' PINs).
+      # Zoning states what may be built, not what is -- kept as evidence
+      # for validating whether it *predicts* occupancy, not as a vote input.
+      - zoning_code
     # Which ingest source (its own geometry row, or a later null-aware
     # fallback join) supplied each of these key fields -- see the
     # resolve_spine/link_by_id docs for track_provenance.
@@ -253,6 +258,11 @@ pipeline:
   # the globally-unique parcel_id (see the step's `on` docs for why).
   # min_overlap_m2 excludes a sliver footprint whose only detected parcel
   # candidate happens to be this one.
+  # Known, deliberate-until-measured divergence: elongated_aspect_min is 2.0
+  # here (a *count* of candidate shapes per parcel, where a looser net is
+  # tolerable) while the footprint occupancy vote's per-building geometry
+  # indicator uses 2.5 (US_footprint-cheer-2026, mh_aspect_min anchor).
+  # Aligning them changes park detection, so it awaits out-of-band evidence.
   - step: summarize_footprint_morphology
     footprint_recipe_id: US_footprint-spine-2026
     small_area_max_m2: 185

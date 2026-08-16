@@ -40,12 +40,11 @@ OCC = {
     },
     'rules': {
         'manufactured_home_value': {
-            'zero_classifies': True,
             'review_max_ratio': 0.025,
             'class': 'Manufactured Home',
         },
-        'multi_family_dwellings': {'min_dwellings': 2, 'class': 'Multi-Family'},
-        'single_family_dwellings': {'max_dwellings': 1, 'class': 'Single-Family'},
+        'multi_family_dwellings': {'class': 'Multi-Family'},
+        'single_family_dwellings': {'class': 'Single-Family'},
     },
 }
 

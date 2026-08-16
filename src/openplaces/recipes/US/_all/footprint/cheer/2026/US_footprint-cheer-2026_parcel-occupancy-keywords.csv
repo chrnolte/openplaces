@@ -3,6 +3,7 @@ MANUFACTURED,contains,Manufactured Home,true
 SINGLE WIDE,contains,Manufactured Home,true
 DOUBLE WIDE,contains,Manufactured Home,true
 MOBILE HOME,contains,Manufactured Home,true
+MULTI[- ]?SECTION,regex,Manufactured Home,true
 TOWNHOME|TOWNHOUSE|DUPLEX|TRIPLEX|QUADPLEX|APARTMENT|CONDO|MULTI,regex,Multi-Family,true
 SINGLE FAMILY,contains,Single-Family,true
 SFR,contains,Single-Family,true

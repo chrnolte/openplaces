@@ -229,3 +229,78 @@ def test_require_with_no_indicators_behaves_like_before():
     # A decision with no `require` key is unaffected (fully backward compatible).
     out = _vote(_frame(improvement_value_parcel=[300000.0], n_dwellings=[4.0]))
     assert out['occupancy_type'].iloc[0] == 'Multi-Family'
+
+
+def test_not_null_indicator_scores_presence_only():
+    # not_null votes wherever the column holds any value, and never where it
+    # is missing -- the presence test the vocabulary previously faked with a
+    # numeric_at_least min: 0.
+    decisions = [
+        {
+            'class': 'Counted',
+            'min_score': 1,
+            'indicators': [{'type': 'not_null', 'column': 'n_stories'}],
+        }
+    ]
+    df = pd.DataFrame({'occupancy_type': [None, None], 'n_stories': [3.0, None]})
+    out = resolve_by_vote(
+        _state(df), target='occupancy_type', decisions=decisions
+    ).curated
+    assert out['occupancy_type'].iloc[0] == 'Counted'
+    assert pd.isna(out['occupancy_type'].iloc[1])
+
+
+def test_uncontested_winner_has_no_margin_and_is_never_review_flagged():
+    # Rows: (0) contested 2-vs-1 -> margin 1, flagged at review_margin 2;
+    # (1) uncontested lone winner -> no runner-up, no margin, never flagged,
+    # however large the review_margin. Before this contract an uncontested
+    # score-1 win reported margin 2.0 (score minus a -1 sentinel) and read
+    # as *more* corroborated than a genuine 3-vs-2 contest.
+    decisions = [
+        {
+            'class': 'A',
+            'min_score': 1,
+            'indicators': [
+                {'type': 'equals', 'column': 'x', 'value': 1},
+                {'type': 'equals', 'column': 'y', 'value': 1},
+            ],
+        },
+        {
+            'class': 'B',
+            'min_score': 1,
+            'indicators': [{'type': 'equals', 'column': 'x', 'value': 1}],
+        },
+    ]
+    df = pd.DataFrame({'occupancy_type': [None, None], 'x': [1, 0], 'y': [1, 1]})
+    out = resolve_by_vote(
+        _state(df),
+        target='occupancy_type',
+        decisions=decisions,
+        review_column='review',
+        review_margin=100.0,
+    ).curated
+    assert out['occupancy_type'].tolist() == ['A', 'A']
+    assert bool(out['review'].iloc[0]) is True  # contested: margin 1 < 100
+    assert bool(out['review'].iloc[1]) is False  # uncontested: no margin
+
+
+def test_score_decisions_is_pure_and_returns_requested_scores():
+    # The scoring core never writes to the frame it reads -- score columns
+    # are returned and assigned by the resolve_by_vote wrapper.
+    from openplaces.io.curator.indicators import score_decisions
+
+    decisions = [
+        {
+            'class': 'A',
+            'min_score': 1,
+            'indicators': [{'type': 'equals', 'column': 'x', 'value': 1}],
+        }
+    ]
+    df = pd.DataFrame({'x': [1, 0]})
+    columns_before = list(df.columns)
+    winner, token, best, second, scores = score_decisions(df, decisions, {'A'})
+    assert list(df.columns) == columns_before
+    assert scores['A'].tolist() == [1.0, 0.0]
+    assert winner.tolist()[0] == 'A' and pd.isna(winner.iloc[1])
+    # A lone winner has no runner-up: second_score is missing, not -1.
+    assert second.isna().all()

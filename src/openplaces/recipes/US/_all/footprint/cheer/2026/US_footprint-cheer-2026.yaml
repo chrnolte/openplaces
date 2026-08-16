@@ -49,16 +49,24 @@ occupancy:
     improvement_value: improvement_value_parcel
     land_value: land_value_parcel
     n_dwellings: n_dwellings
-  rules:                                     # each rule names its output class
-    manufactured_home_geometry: {aspect_min: 2.5, area_max_m2: 185, class: Manufactured Home}
-    manufactured_home_value: {zero_classifies: true, review_max_ratio: 0.025, class: Manufactured Home}
-    multi_family_dwellings: {min_dwellings: 2, class: Multi-Family}
-    single_family_dwellings: {max_dwellings: 1, class: Single-Family}
-  # Footprints on a manufactured_home_community parcel that meet the habitable
-  # size threshold are classified as homes rather than accessory structures.
-  habitable_fraction: 0.5
-  habitable_floor_m2: 25
-  manufactured_home_avg_m2: 90
+  # Each rule names its output class. The numeric cutoffs are anchored
+  # (&name) here and aliased (*name) from the vote decisions below, so every
+  # cutoff is stated exactly once even though classify_manufactured_homes
+  # reads it here and the vote scores it there. One deliberate cousin lives
+  # elsewhere: the harmonize-stage per-parcel candidate count
+  # (n_small_elongated_footprints_per_parcel, US_parcel-spine-2026) uses
+  # aspect >= 2.0 with the same 185 m2 -- a looser net for counting shapes,
+  # not this per-building cutoff; see the comment there.
+  rules:
+    manufactured_home_geometry:
+      aspect_min: &mh_aspect_min 2.5
+      area_max_m2: &mh_area_max_m2 185
+      class: Manufactured Home
+    manufactured_home_value:
+      review_max_ratio: &mh_value_share_max 0.025
+      class: Manufactured Home
+    multi_family_dwellings: {class: Multi-Family}
+    single_family_dwellings: {class: Single-Family}
 
 pipeline:
   # Link the curated parcel attributes (occupancy, use group, and community
@@ -137,12 +145,16 @@ pipeline:
         source: overture
         min_score: 1
         indicators:
-          - {type: numeric_at_least, column: n_dwellings_overture, min: 2}
+          - type: numeric_at_least
+            column: n_dwellings_overture
+            min: &multi_dwelling_min 2
       - class: Single-Family
         source: overture
         min_score: 1
         indicators:
-          - {type: numeric_at_most, column: n_dwellings_overture, max: 1}
+          - type: numeric_at_most
+            column: n_dwellings_overture
+            max: &single_dwelling_max 1
 
   # Reconcile remaining per-row values from competing sources:
   # - land_value is pre-written by apportionment and needs no reconciliation.
@@ -202,13 +214,15 @@ pipeline:
         ruleset: parcel-occupancy-keywords.csv
         reviewed_only: true
 
-      # Large enough to be somebody's home rather than a shed, judged against
+      # Size relative to "somebody's home rather than a shed", judged against
       # how big manufactured homes actually are in this admin unit. The
       # cohort is NSI's own manufactured-home classification rather than the
       # vote's output, so the threshold cannot be moved by the decision it
-      # feeds. occupancy.habitable_* supply the fraction, floor and
-      # small-sample fallback.
-      - output: is_habitable_size
+      # feeds. Emitted as a value/threshold ratio, not a boolean; the vote
+      # below applies the cutoff (>= 1.0). The parameters here define the
+      # reference statistic (half the cohort's mean area, floored at 25 m2,
+      # 90 m2 when fewer than 3 cohort samples), not a class cutoff.
+      - output: habitable_size_ratio
         type: cohort_threshold
         value_column: area_m2
         cohort_column: occupancy_type_nsi_class
@@ -290,7 +304,7 @@ pipeline:
           # question, and sufficient unaided.
           - type: numeric_at_least
             column: n_dwellings_overture
-            min: 2
+            min: *multi_dwelling_min
             weight: 2
           # 83.6% precise; assessor keywords naming a multi-unit building.
           - type: equals
@@ -310,7 +324,9 @@ pipeline:
           - type: all_of
             indicators:
               - {type: numeric_at_least, column: n_dwellings_overture, min: 1}
-              - {type: numeric_at_most, column: n_dwellings_overture, max: 1}
+              - type: numeric_at_most
+                column: n_dwellings_overture
+                max: *single_dwelling_max
           # Every manufactured-home signal is also a single-dwelling signal,
           # and measures 100% precise as one -- a manufactured home is by
           # definition one dwelling. This is exactly the information the flat
@@ -340,8 +356,8 @@ pipeline:
           - type: all_of
             weight: 2
             indicators:
-              - {type: numeric_at_least, column: aspect_ratio, min: 2.5}
-              - {type: numeric_at_most, column: area_m2, max: 185}
+              - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min}
+              - {type: numeric_at_most, column: area_m2, max: *mh_area_max_m2}
           - {type: numeric_at_least, column: p_manufactured_home, min: 0.75}
           - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
           - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
@@ -349,7 +365,7 @@ pipeline:
           - type: value_share_below
             value: improvement_value_parcel
             total: [improvement_value_parcel, land_value_parcel]
-            max_ratio: 0.025
+            max_ratio: *mh_value_share_max
             include_zero: true
           # The parcel lane's park classification, restricted to its rule
           # route. That route carries a hard require on
@@ -376,7 +392,7 @@ pipeline:
             weight: 2
             indicators:
               - {type: equals, column: manufactured_home_community, value: true}
-              - {type: equals, column: is_habitable_size, value: true}
+              - {type: numeric_at_least, column: habitable_size_ratio, min: 1.0}
 
       - class: Multi-Family
         source: multi_family
@@ -446,7 +462,10 @@ pipeline:
         require:
           - {type: equals, column: occupancy_type_base, value: Multi-Family}
         indicators:
-          - {type: numeric_at_least, column: n_stories, min: 0}
+          # Any recorded story count at all: the two bands above already
+          # claimed everything at 7 stories or fewer, so a count reaching
+          # this decision is 8+ by elimination.
+          - {type: not_null, column: n_stories}
 
   # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
@@ -469,6 +488,14 @@ pipeline:
   # Drop transient intermediate/evidence columns and enforce canonical schema order.
   - step: order_columns
     drop:
+      # Restricted-use third-party permit evidence (Shovels): may inform
+      # curation but must never appear in published output, whichever
+      # branch's steps produced it. Enforced by
+      # test_restricted_shovels_columns_are_never_published.
+      - occupancy_type_property_shovels
+      - occupancy_type_property_shovels_source
+      - n_permits_per_footprint
+      - n_permits_per_footprint_address
       - occupancy_type_dwelling_overture
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base

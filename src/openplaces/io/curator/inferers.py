@@ -9,28 +9,6 @@ import pandas as pd
 from openplaces.io.curator import CurateState, _register
 
 
-def _habitable_threshold(curated, result, mh_label, config) -> float:
-    """Minimum footprint area (m2) for a park home to count as habitable.
-
-    Realizes "average manufactured-home footage x habitable_fraction": the
-    average is taken over the footprints already classed as *mh_label*
-    (falling back to the config ``manufactured_home_avg_m2`` when too few
-    samples), and the result is floored at ``habitable_floor_m2`` so a
-    degenerate average cannot drop it to zero.
-    """
-    fraction = float(config.get('habitable_fraction', 0.5))
-    floor = float(config.get('habitable_floor_m2', 25.0))
-    areas = pd.to_numeric(
-        curated.loc[result.eq(mh_label), 'area_m2'], errors='coerce'
-    ).dropna()
-    avg = (
-        float(areas.mean())
-        if len(areas) >= 3
-        else float(config.get('manufactured_home_avg_m2', 90.0))
-    )
-    return max(floor, fraction * avg)
-
-
 @_register('derive_metrics')
 def derive_metrics(state: CurateState) -> CurateState:
     """Compute polygon area and per-area value ratios.
@@ -83,42 +61,16 @@ def derive_metrics(state: CurateState) -> CurateState:
     return state
 
 
-def _match_ruleset(terms: pd.Series, rules: list[dict]) -> tuple[pd.Series, pd.Series]:
-    """Apply an ordered label ruleset, returning (matched class, reviewed).
-
-    First match wins, mirroring
-    :func:`~openplaces.io.curator.occupancy.coerce_to_class` -- except a term
-    matching no rule yields a missing class rather than passing through
-    unchanged, because this answers "which class did the label assert?", not
-    "normalize this label".
-    """
-    proposal = pd.Series(pd.NA, index=terms.index, dtype=object)
-    reviewed = pd.Series(False, index=terms.index)
-    unmatched = pd.Series(True, index=terms.index)
-    for rule in rules:
-        mask = unmatched & terms.str.contains(
-            rule['pattern'],
-            case=False,
-            na=False,
-            regex=rule['match_type'] == 'regex',
-        )
-        if mask.any():
-            proposal.loc[mask] = rule['occupancy_type']
-            reviewed.loc[mask] = rule['reviewed']
-            unmatched.loc[mask] = False
-    return proposal, reviewed
-
-
 def _derive_ruleset_class(state: CurateState, spec: dict) -> pd.Series | None:
     """Classify a label column through an ordered ruleset CSV."""
-    from openplaces.io.curator.occupancy import load_ruleset
+    from openplaces.io.curator.occupancy import load_ruleset, match_ruleset
 
     curated = state.curated
     column = spec['column']
     if column not in curated.columns:
         return None
     rules = load_ruleset(state, spec['ruleset'], spec.get('class_column'))
-    proposal, reviewed = _match_ruleset(curated[column].astype(object), rules)
+    proposal, reviewed = match_ruleset(curated[column].astype(object), rules)
     if spec.get('reviewed_only'):
         # Null out matches whose winning rule is unreviewed rather than
         # pre-filtering the ruleset: pre-filtering would let a term that
@@ -243,13 +195,20 @@ def _derive_group_statistic(state: CurateState, spec: dict) -> pd.Series | None:
 
 
 def _derive_cohort_threshold(state: CurateState, spec: dict) -> pd.Series | None:
-    """Flag rows at or above a threshold set by a reference cohort's own size.
+    """Express each value relative to a threshold set by a reference cohort.
 
     For "is this structure big enough to be a dwelling rather than a shed",
     where the answer depends on how big dwellings actually are around here. The
     threshold is a *fraction* of the reference cohort's mean, floored so a
     degenerate cohort cannot drive it to zero, and replaced by a fallback when
     the cohort is too small to average meaningfully.
+
+    Returns the value/threshold ratio, not a boolean -- the vote applies the
+    cutoff (typically ``numeric_at_least`` with ``min: 1.0``), keeping this
+    layer's contract that indicator columns hold measurements, never
+    pre-baked decisions. The parameters here define the reference statistic,
+    not the class cutoff. A non-positive threshold yields a missing ratio,
+    mirroring the ``ratio`` type's zero-total guard.
     """
     curated = state.curated
     value_column = spec['value_column']
@@ -270,7 +229,9 @@ def _derive_cohort_threshold(state: CurateState, spec: dict) -> pd.Series | None
     min_samples = int(spec.get('min_samples', 3))
     mean = float(sample.mean()) if len(sample) >= min_samples else fallback
     threshold = max(floor, fraction * mean)
-    return (values >= threshold).fillna(False)
+    if threshold <= 0:
+        return pd.Series(pd.NA, index=curated.index, dtype='Float64')
+    return values / threshold
 
 
 _INDICATOR_DERIVATIONS = {
@@ -320,12 +281,13 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
     - ``group_statistic``: score ``value_column`` against its ``group_column``
       cohort via ``statistic`` (``zscore`` default, or ``percentile``), after
       an optional ``transform`` (``log1p`` default, or None).
-    - ``cohort_threshold``: flag rows whose ``value_column`` reaches a
+    - ``cohort_threshold``: each ``value_column`` entry as a ratio to a
       threshold derived from a reference cohort's own mean -- ``fraction`` of
       it, at least ``floor``, using ``fallback`` when fewer than
       ``min_samples`` rows match ``cohort_column``/``cohort_value``. For
       "large enough to be a dwelling here", where what counts as large
-      depends on the local building stock.
+      depends on the local building stock; the vote applies the cutoff
+      (``numeric_at_least`` over the ratio, ``min: 1.0``).
 
     Parameters
     ----------
@@ -833,11 +795,20 @@ def _score_manufactured_home_candidates(
                 )
 
     if not model_trained:
-        # Fallback rule-based morphology classifier.
+        # Fallback rule-based morphology classifier. The area term grades
+        # over the full plausible range: an earlier /100 denominator
+        # saturated it at 0.5 for everything under
+        # plausible_area_max_m2 - 100 (~150 m2), so a shed, a single-wide
+        # and a bungalow all scored alike and p >= 0.5 fired on 17-58% of
+        # all footprints per county. Graded continuously, a high p needs
+        # genuine elongation AND a genuinely small area together.
         aspect = X['aspect_ratio']
         area_val = X['area']
         aspect_score = np.clip((aspect - 1.5) / 1.0, 0, 1) * 0.5
-        area_score = np.clip((plausible_area_max_m2 - area_val) / 100.0, 0, 1) * 0.5
+        area_score = (
+            np.clip((plausible_area_max_m2 - area_val) / plausible_area_max_m2, 0, 1)
+            * 0.5
+        )
         p_mfg_morph = aspect_score + area_score
         model_type = 'rule_based_fallback'
 

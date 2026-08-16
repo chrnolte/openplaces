@@ -273,6 +273,64 @@ def test_group_statistic_zscore_scores_within_each_cohort():
     assert out['z'].iloc[3:].isna().all()
 
 
+def test_cohort_threshold_emits_a_ratio_not_a_boolean():
+    # Cohort = the three NSI-classed rows, mean area 100 -> threshold
+    # max(floor 25, 0.5 * 100) = 50. Every row is scored against it,
+    # cohort member or not, as a value/threshold ratio -- the vote applies
+    # the >= 1.0 cutoff, not this derivation.
+    df = pd.DataFrame(
+        {
+            'nsi_class': ['MH', 'MH', 'MH', None, None],
+            'area_m2': [80.0, 100.0, 120.0, 40.0, None],
+        }
+    )
+    out = derive_indicators(
+        _state(df),
+        [
+            {
+                'output': 'habitable_size_ratio',
+                'type': 'cohort_threshold',
+                'value_column': 'area_m2',
+                'cohort_column': 'nsi_class',
+                'cohort_value': 'MH',
+                'fraction': 0.5,
+                'floor': 25,
+                'fallback': 90,
+                'min_samples': 3,
+            }
+        ],
+    ).curated
+
+    assert out['habitable_size_ratio'].iloc[0] == pytest.approx(80.0 / 50.0)
+    assert out['habitable_size_ratio'].iloc[3] == pytest.approx(40.0 / 50.0)
+    # A missing value has no ratio; the vote's numeric_at_least casts no vote.
+    assert pd.isna(out['habitable_size_ratio'].iloc[4])
+
+
+def test_cohort_threshold_small_cohort_uses_the_fallback_mean():
+    # Only one cohort sample (< min_samples 3): the mean comes from the
+    # fallback (90) -> threshold max(25, 0.5 * 90) = 45.
+    df = pd.DataFrame({'nsi_class': ['MH', None], 'area_m2': [100.0, 45.0]})
+    out = derive_indicators(
+        _state(df),
+        [
+            {
+                'output': 'ratio',
+                'type': 'cohort_threshold',
+                'value_column': 'area_m2',
+                'cohort_column': 'nsi_class',
+                'cohort_value': 'MH',
+                'fraction': 0.5,
+                'floor': 25,
+                'fallback': 90,
+                'min_samples': 3,
+            }
+        ],
+    ).curated
+    assert out['ratio'].iloc[0] == pytest.approx(100.0 / 45.0)
+    assert out['ratio'].iloc[1] == pytest.approx(1.0)
+
+
 def test_absent_input_columns_skip_the_spec():
     df = pd.DataFrame({'present': [1.0]})
     out = derive_indicators(

@@ -237,12 +237,19 @@ a shared `CurateState` (canonical GeoDataFrame in `state.curated`).
 Steps are organized by the nature of the transformation:
 
 - `evidence.py` — incorporate enrichment evidence (`merge_enrichments`)
+- `indicators.py` — the shared voting vocabulary and scoring cores
+  (`evaluate_indicator` predicates; `score_decisions` enumerated votes;
+  `vote_dynamic_values` open-vocabulary votes). Pure functions over a
+  DataFrame — no thresholds, class names, or geography of their own.
 - `reconcilers.py` — resolve conflicts between competing source columns
-  (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI)
+  (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI;
+  `resolve_by_vote`, the single voting seam every curate classification
+  resolves through)
 - `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
   `impute_from_group_statistic`, `impute_occupancy_type`)
 - `inferers.py` — derive new canonical features (`derive_metrics`,
-  `refine_occupancy_height`)
+  `derive_indicators` — named indicator columns holding values, never
+  pre-thresholded booleans; every cutoff lives in the vote decisions)
 - `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical

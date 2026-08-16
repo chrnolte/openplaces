@@ -354,7 +354,15 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
       *Function*: :func:`openplaces.io.curator.inferers.derive_metrics`
 
-   e. **Impute missing residential units**
+   e. **Derive named indicator columns**
+
+      Computes the named precursor columns the occupancy votes score against: the metric minimum-bounding-rectangle ``aspect_ratio``; each occupancy source coerced to the canonical class vocabulary (``occupancy_type_nsi_class``, ``occupancy_type_fema_class``, and the reviewed-only ``occupancy_keyword_class``); and ``habitable_size_ratio``, each footprint's area relative to a locally derived habitable-size threshold. Indicator columns hold measurements or labels, never pre-thresholded booleans — every cutoff lives in the vote decisions, so each threshold is stated exactly once in the recipe.
+
+      *Dependency*: Requires footprint metrics from Step 3.d and joined parcel evidence (Step 1.a).
+
+      *Function*: :func:`openplaces.io.curator.inferers.derive_indicators`
+
+   f. **Impute missing residential units**
 
       Imputes residential unit counts when no matched source evidence exists, falling back to the first available raw ``occupancy_type*`` or ``use_subgroup*`` evidence column (such as ``occupancy_type_building_nsi``).
 
@@ -366,9 +374,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    a. **Establish baseline occupancy class**
 
-      Resolves a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture) where the heaviest class wins and Overture has a fractional (0.5) vote weight; (2) applies a geometry-based Manufactured Home fallback for long/narrow structures; (3) fills residential gaps using a single-family dwelling count check; and (4) assigns accessory structures to the Secondary class (excluding habitable structures in manufactured home communities).
-
-      To determine if a structure on a manufactured home community parcel is habitable (and should therefore be classified as ``Manufactured Home`` rather than ``Secondary``), it compares the footprint area against a threshold calculated from the parameters :input:`habitable_fraction` (0.5), :input:`habitable_floor_m2` (25), and :input:`manufactured_home_avg_m2` (90). The habitable threshold is the average area of footprints already classified as ``Manufactured Home`` in the current administrative unit multiplied by :input:`habitable_fraction`, floored at :input:`habitable_floor_m2`. If fewer than 3 such footprints exist to compute an average, it falls back to :input:`manufactured_home_avg_m2`.
+      Resolves a weighted consensus vote across present evidence columns (NSI, FEMA, parcel, Overture) where the heaviest class wins and Overture has a fractional (0.5) vote weight. The geometry-based Manufactured Home fallback, the single-family dwelling gap-fill, and the Secondary demotion this step once performed are retired: those calls now belong to the two-question vote in Section 6, where each is an explicit, weighted decision.
 
       *Dependency*: Requires joined parcel occupancy groups (Step 1.a) and implied Overture occupancy (Step 2.b).
 
@@ -410,27 +416,35 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
       *Function*: :func:`openplaces.io.curator.inferers.classify_manufactured_homes`
 
-   b. **Resolve occupancy by weighted vote**
+   b. **Vote dwelling multiplicity**
 
-      Resolves final occupancy class (specifically Manufactured Home vs. Multi-Family conflicts) to the :input:`target` column (``occupancy_type``) using the configured :input:`decisions` rules. Footprints under 20 m² are prevented from becoming Manufactured Home by a hard precondition, and the winning decision records its source label into ``occupancy_type_source``.
+      The first of two questions: does this footprint hold one dwelling or several? A weighted vote over Overture dwelling counts, assessor keywords, and the NSI/FEMA classes writes ``multi`` or ``single`` to the intermediate ``dwelling_multiplicity`` column. Every manufactured-home signal also scores as single-dwelling evidence here — a manufactured home is by definition one dwelling — which is precisely the information a flat three-way vote discarded by treating the classes as competitors.
 
-      *Dependency*: Requires reconciled dwelling counts (Step 3.a) and manufactured home probability (Step 6.a).
+      *Dependency*: Requires derived indicators (Step 3.e), reconciled dwelling counts (Step 3.a), and manufactured home probability (Step 6.a).
 
       *Function*: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
 
-   c. **Split height bands**
+   c. **Vote occupancy class**
 
-      Splits the standard :input:`multi_family_class` (``Multi-Family``) into HAZUS height bands based on the reconciled number of stories using the configured :input:`bands`.
+      The second question, gated by the first: among single-dwelling footprints, manufactured or site-built? Each decision carries a ``require`` list referencing ``dwelling_multiplicity``, so the three classes partition cleanly instead of competing across populations. Footprints under 20 m² are prevented from becoming Manufactured Home by a hard precondition, Single-Family is the residual of the single-dwelling group, accessory structures resolve to Secondary via the ``priority_on_parcel`` gate, and the winning decision records its source label into ``occupancy_type_source``.
 
-      *Dependency*: Requires final occupancy (Step 6.b) and reconciled story counts (Step 5.b).
+      *Dependency*: Requires dwelling multiplicity (Step 6.b).
 
-      *Function*: :func:`openplaces.io.curator.inferers.refine_occupancy_height`
+      *Function*: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
 
-   d. **Flag manufactured home communities**
+   d. **Split height bands**
 
-      Re-evaluates mobile home park boundaries and flags parcels containing more than :input:`min_homes` (3) final Manufactured Home footprints (i.e., 4 or more). It writes the count to ``n_manufactured_homes_per_parcel`` and the boolean flag to ``manufactured_home_community``.
+      Splits ``Multi-Family`` into HAZUS height bands with a third vote over the reconciled story count: three overlapping story-count bounds plus earliest-listed-wins form a cascade, the pre-refinement class is snapshotted to ``occupancy_type_base``, and a footprint with no story count keeps plain ``Multi-Family``.
 
-      *Dependency*: Requires final occupancy classification from Step 6.b.
+      *Dependency*: Requires final occupancy (Step 6.c) and reconciled story counts (Step 5.b).
+
+      *Function*: :func:`openplaces.io.curator.reconcilers.resolve_by_vote`
+
+   e. **Flag manufactured home communities**
+
+      Re-evaluates mobile home park boundaries and flags parcels containing more than :input:`min_homes` (3) final Manufactured Home footprints (i.e., 4 or more). It writes the count to ``n_manufactured_homes_per_parcel`` and the boolean flag to ``manufactured_home_community``, deliberately overwriting the parcel-lane seed joined in Step 1.a — the final value supersedes the seed.
+
+      *Dependency*: Requires final occupancy classification from Step 6.c.
 
       *Function*: :func:`openplaces.io.curator.inferers.flag_manufactured_home_communities`
 
