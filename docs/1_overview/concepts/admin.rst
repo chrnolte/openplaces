@@ -78,16 +78,16 @@ If you want to make maps of administrative boundaries or use them for geoprocess
 Official boundaries
 -------------------
 
-To import official in-country geometries (e.g., as a reference for your geoprocessing), run this notebook with a country recipe:
+To import official in-country geometries (e.g., as a reference for your geoprocessing), run this notebook and choose the admin_ids for your scope:
 
-:gh-file:`notebooks/02_ingest/admin/ingest_admin.ipynb`
+:gh-file:`notebooks/01_setup/02_set_up_admin_scope.ipynb`
 
 Global boundaries
 -----------------
 
 To import global geometries (GADM, >2 GB), run this notebook:
 
-:gh-file:`notebooks/01_setup/03_ingest_global_administrative_units.ipynb`
+:gh-file:`notebooks/01_setup/05_ingest_global_administrative_units.ipynb`
 
 After that, you can make precise global maps.
 
