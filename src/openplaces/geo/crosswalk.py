@@ -142,7 +142,16 @@ def _resolve_duplicate_geo_ids(gdf, geo_id_col, id_col, on_duplicate, side_label
 
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-        rep_idx = dup_part.geometry.area.groupby(dup_part[geo_id_col]).idxmax()
+        # fillna(-1): a null/invalid geometry area-quantizes to the same
+        # degenerate geo_id as any other null geometry, so a "duplicate"
+        # group can end up entirely null-area (no real geometry to prefer).
+        # idxmax on an all-NaN group raises; treating null area as -1 still
+        # picks a real geometry over a null one when the group has both, and
+        # deterministically picks *a* row (arbitrarily, since none is more
+        # "representative") when every geometry in the group is null.
+        rep_idx = (
+            dup_part.geometry.area.fillna(-1).groupby(dup_part[geo_id_col]).idxmax()
+        )
     representative = dup_part.loc[rep_idx].set_index(geo_id_col)[[geom_col]]
     ids_list = dup_part.groupby(geo_id_col)[id_col].apply(list).rename(f'{id_col}_list')
 

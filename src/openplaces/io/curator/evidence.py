@@ -455,9 +455,13 @@ def merge_enrichments(
     intentionally left unrun this pass (see
     ``notebooks/examples/US_curate_footprints.ipynb``'s ``--no_streetview``/
     ``--no_googlesatellite``, which skip billing-costly image ingestion and
-    the enrichment steps that depend on it). A ``recipe_spec`` whose evidence
-    *does* exist but lacks a requested column still raises -- that is a real
-    recipe misconfiguration, not evidence that simply hasn't been computed.
+    the enrichment steps that depend on it). A single requested column
+    missing from evidence that *does* exist is tolerated the same way and
+    skipped on its own (warned when verbose) -- e.g. a per-source predictor
+    that simply was never computed for this admin unit's geography (a legacy
+    reference dataset's SSURGO-derived soil columns, present for the states
+    it originally covered, can be genuinely absent for a newly added one).
+    Every *other* column in the same ``recipe_spec`` still merges normally.
 
     Every column this step touches -- across every ``recipe_spec``, values
     and source sidecars alike -- is collected in memory and written to
@@ -516,10 +520,13 @@ def merge_enrichments(
 
         for evidence_column, canonical_column in columns.items():
             if evidence_column not in evidence:
-                raise ValueError(
-                    f"Evidence column '{evidence_column}' is missing from "
-                    f'{evidence_path}.'
-                )
+                if state.verbose:
+                    print(
+                        f"  merge_enrichments: '{evidence_column}' missing from "
+                        f'{evidence_path.name} (not computed for this admin unit?); '
+                        'skipping.'
+                    )
+                continue
             values = evidence[evidence_column].reindex(curated.index)
 
             # A prior recipe_spec in this same call may have already

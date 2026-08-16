@@ -1,0 +1,119 @@
+use_group_code,use_group,use_subgroup
+E26,exempt,municipal water
+E27,exempt,state gameland
+E28,exempt,railroad right of way
+L01,residential,buildable lot under 1 acre
+L02,residential,buildable lot 1 to 5 acres
+L03,residential,buildable lot over 5 acres
+L04,residential,developable residential land
+L05,commercial,vacant commercial land
+L06,industrial,vacant industrial land
+L07,open_space,farm land unimproved
+L08,open_space,farm land with buildings
+L09,open_space,mountainland timberland
+L10,industrial,quarry mineral lands
+L11,industrial,landfill
+L12,open_space,miscellaneous land
+L13,residential,mobile home site
+L14,open_space,unbuildable lot
+L15,residential,planned residential development common area
+L16,commercial,air rights
+P01,residential,cabin cottage
+P02,commercial,golf course
+P03,commercial,camp sites
+P04,commercial,recreational parks
+P05,commercial,swim clubs
+P06,commercial,marina
+P07,commercial,indoor sports facility
+P08,commercial,miscellaneous recreational
+R01,residential,single family 1 story
+R02,residential,single family 1.5 story
+R03,residential,single family 2 story
+R04,residential,single family 3 story
+R05,residential,split level
+R06,residential,bi level
+R07,residential,condominium
+R08,residential,modular residence
+R09,residential,mobile home
+R10,residential,country estate to 10 acres
+R11,residential,apartments 4 or less units
+R12,residential,apartments 4 to 10 units
+R13,residential,apartments over 10 units
+R14,residential,miscellaneous residential
+R15,residential,multiple dwellings on one parcel
+R16,residential,unhabitable dwelling
+R17,residential,group residence
+R18,residential,time share condominium
+U01,industrial,water company
+U02,industrial,gas company
+U03,industrial,electric company
+U04,industrial,telephone telegraph company
+U05,industrial,oil company
+U06,industrial,railroad
+U07,industrial,miscellaneous public utility
+U08,industrial,pipeline
+C35,exempt,PILOT court ordered
+C36,commercial,keystone opportunity zone
+E29,exempt,PILOT program
+L17,open_space,non active parcel
+R33,residential,single family 2.5 story
+R20,residential,planned unit development
+C01,commercial,office
+C02,commercial,store retail
+C03,commercial,shopping center
+C04,mixed,store office with apartments
+C05,commercial,medical office
+C06,commercial,financial institution
+C07,commercial,condominium office
+C08,commercial,restaurant tavern
+C09,commercial,fast food restaurant
+C10,commercial,gas station
+C11,commercial,garage auto dealer
+C12,commercial,lodging facility
+C13,exempt,private educational facility
+C14,residential,mobile home park
+C15,commercial,parking lot garage
+C16,industrial,communications facility
+C17,commercial,private nursing home
+C18,commercial,funeral home
+C19,commercial,theatre
+C20,commercial,race track
+C21,industrial,truck terminal
+C22,industrial,warehouse under 10000 sqft
+C23,industrial,warehouse 10000 to 50000 sqft
+C24,industrial,warehouse over 50000 sqft
+C25,commercial,miscellaneous commercial industrial
+C26,commercial,diner
+C27,commercial,carwash
+C28,commercial,laundromat
+C29,commercial,private hospital clinic
+C30,commercial,unusable commercial
+C31,industrial,electric generating company
+C32,industrial,cell communication tower
+C33,commercial,tax increment financing office
+C34,commercial,tax increment financing shopping center
+E01,exempt,church
+E02,exempt,hospital clinic
+E18,exempt,state government buildings
+E17,exempt,waste treatment
+E16,exempt,post office
+E15,exempt,airport
+E14,exempt,fairground hall
+E13,exempt,residential
+E12,exempt,park recreation
+E11,exempt,library
+E10,exempt,miscellaneous
+E09,exempt,extended care
+E08,exempt,municipal
+E07,exempt,legion vfw club
+E06,exempt,fire house
+E05,exempt,parking lot
+E04,exempt,vacant
+E03,exempt,educational
+E19,exempt,disabled veteran dwelling
+E20,exempt,cemetery
+E21,exempt,redevelopment authority
+E22,exempt,group residence
+E23,exempt,emergency medical
+E24,exempt,historic site
+E25,exempt,community center
