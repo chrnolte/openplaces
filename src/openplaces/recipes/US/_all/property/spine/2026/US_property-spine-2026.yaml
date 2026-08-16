@@ -9,9 +9,10 @@
 # key), so this unions them (like the transaction spine) rather than
 # resolving spine geometry.
 #
-# Today the only source is MassGIS's L3_ASSESS table, bundled as an
-# 'additional_layers' entry on US-MA_parcel-massgis-2025 rather than
-# registered as its own standalone ingest recipe.
+# Sources today: MassGIS's L3_ASSESS table, bundled as an 'additional_layers'
+# entry on US-MA_parcel-massgis-2025 rather than registered as its own
+# standalone ingest recipe; and US-NC_property-shovels-2026 (NC building
+# permits), a standalone ingest recipe auto-discovered like any other.
 
 description: >-
   Harmonized U.S. property spine: one row per individual property/unit
@@ -48,6 +49,11 @@ pipeline:
         address_full: address
         city: city
         postal_code: zip
+      shovels:
+        address_number: street_no
+        address_street: street
+        city: city
+        postal_code: postal_code
     number_output_col: address_number
     unit_output_col: address_unit
     city_output_col: city

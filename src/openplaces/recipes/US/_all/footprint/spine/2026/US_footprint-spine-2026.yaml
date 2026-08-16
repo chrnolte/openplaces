@@ -160,3 +160,44 @@ pipeline:
   # coverage, and completes `city`/`address` wherever they're still missing.
   - step: impute_postal_city
     column: postal_code_dwelling_overture
+
+  # Town-scoped address matching key, for id-free linking to sources with no
+  # shared parcel id (e.g. the address-fallback pass below).
+  - step: derive_address_id_local
+
+  # Independent occupancy_type evidence from NC building permits: APN-based
+  # linking first (parcel_id_local, computed by both sides at ingest time),
+  # then an address fallback for footprints the APN pass missed. Deliberately
+  # not yet added to US_footprint-cheer-2026's occupancy vote -- that vote/
+  # kernel mechanism is mid-overhaul on a separate branch; see this recipe's
+  # evidence-only mandate above.
+  #
+  # The address pass runs FIRST and the APN pass SECOND, not the other way
+  # round: link_by_id's column-priority rule (_write_prioritized) lets
+  # whichever call writes *last* win outright when its own coverage is a
+  # majority of the spine (>=50%) -- both passes clear that bar here, so
+  # write order, not declaration order, decides which source is "first".
+  # Ending on the APN pass makes it the one that wins on rows both sources
+  # matched, with the address pass's matches surviving only as a gap-fill
+  # for rows the APN pass missed.
+  - step: link_by_id
+    recipe_id: US_property-spine-2026
+    mode: aggregate
+    spine_key: address_id_local
+    ref_key: address_id_local
+    columns:
+      occupancy_type_raw: occupancy_type_property_shovels
+    ref_sort_by: permit_start_date
+    ref_sort_ascending: false
+    count_as: n_permits_per_footprint_address
+
+  - step: link_by_id
+    recipe_id: US-NC_property-shovels-2026
+    mode: aggregate
+    spine_key: parcel_id_local
+    ref_key: parcel_id_local
+    columns:
+      occupancy_type_raw: occupancy_type_property_shovels
+    ref_sort_by: permit_start_date
+    ref_sort_ascending: false
+    count_as: n_permits_per_footprint
