@@ -1,0 +1,71 @@
+# Recipe to import county subdivisions for the United States (2025)
+
+description: >-
+  U.S. county subdivision boundaries from Census TIGER/Line 2025 (admin level 4).
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: census
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/COUSUB/tl_2025_{admin2_id_admin1}_cousub.zip"
+  version: 2025
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "tl_2025_{admin2_id_admin1}_cousub.zip"
+
+# How is the download data partitioned?
+download_by:
+  admin_level: 2
+  admin_recipe_id: 'US_admin-census-2025_admin2'
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin4_id_admin1: GEOID
+  admin4_id_ansi: COUSUBNS
+  admin2_id_admin1: STATEFP
+  type_source: CLASSFP
+  functional_status: FUNCSTAT
+  stats_area_id_legal: LSAD
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56' and name != 'County subdivisions not defined'"
+
+transformations:
+  # Get county FIPS: first 5 characters of county subdivision FIPS
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: admin4_id_admin1
+    args:
+      start: 0
+      end: 5
+
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-census-2025_admin3"
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+
+save_to:
+  data_dir: cache
+  filename: admin4
+  admin_level: 1
