@@ -1734,7 +1734,12 @@ class Ingester:
             and _dl_path != self.download_partition['data_path']
             and bool(_archive_suffixes & ZIP_EXTENSIONS)
         )
-        if redownload or _is_archive:
+        # Extraction is driven purely by whether the download IS an archive.
+        # `redownload` must not force it: unzip() has no
+        # skip-if-already-extracted branch, so archives re-extract on every
+        # run regardless, and forcing it on a flat file (a .geojson or .csv
+        # fetched directly) fed unzip a non-archive and raised BadZipFile.
+        if _is_archive:
             if self.verbose:
                 print('Unzipping...')
 
