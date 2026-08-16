@@ -1,0 +1,42 @@
+# Recipe to import ONS's LAD-to-County/Unitary-Authority lookup (2024)
+#
+# England/Wales only (`_EW_LU`): Scotland's council areas and Northern
+# Ireland's local government districts are already single-tier, so their
+# own LAD code IS their Counties-and-Unitary-Authorities code -- there is
+# no separate lookup row for them, and none is needed. Consumed by
+# `openplaces.io.admin.admin4_id_index_from_gb_ons` to resolve each LAD's
+# admin3 (County/UA) parent when building GB_admin-ons-2024_admin4; not an
+# admin entity itself (no geometry), hence `dataset`/theme `reference`
+# rather than `entity`/`admin`.
+
+description: >-
+  ONS Local Authority District to County and Unitary Authority lookup
+  (December 2024), England and Wales.
+
+admin_id: GB
+
+dataset:
+  theme: reference
+  source:
+    source_id: ons
+    portal_url: "https://geoportal.statistics.gov.uk/"
+    # Single unpaginated query: 318 rows, well under the layer's
+    # maxRecordCount.
+    download_url: "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/LAD24_CTYUA24_EW_LU/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+  version: 2024
+
+compressed_file_name: "lad24_ctyua24_ew_lu.geojson"
+
+columns:
+  admin4_id_admin1: LAD24CD
+  admin3_id_admin1: CTYUA24CD
+
+set_index: admin4_id_admin1
+
+save_to:
+  data_dir: cache
+  # Explicit filename: without one, this and
+  # GB_reference-ons-2024_lad-to-nuts.yaml (same admin_id/theme/source/
+  # version, differing only in the recipe-id filename suffix) resolve to
+  # the same default output path and silently overwrite each other.
+  filename: lad-to-ctyua

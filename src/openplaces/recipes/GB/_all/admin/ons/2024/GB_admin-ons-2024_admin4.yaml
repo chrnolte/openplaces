@@ -1,0 +1,48 @@
+# Recipe to import ONS Local Authority District boundaries for the United
+# Kingdom (2024)
+#
+# Replaces GADM as GB's admin level-4 source of record (GADM's coverage
+# was noted as incomplete/low-quality for the UK). Parentage into admin3
+# (County/UA) is resolved from ONS's own LAD-to-County/UA lookup rather
+# than a spatial join -- see `openplaces.io.admin.admin4_id_index_from_gb_ons`.
+
+description: >-
+  ONS Local Authority District boundaries, as admin level 4 for the
+  United Kingdom.
+
+# Administrative unit identifier: where does this data come from?
+admin_id: GB
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  entity_type: admin
+  source:
+    source_id: ons
+    portal_url: "https://geoportal.statistics.gov.uk/"
+    # Single unpaginated query: 361 features, well under the layer's
+    # maxRecordCount, so no scraper/pagination is needed.
+    download_url: "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/Local_Authority_Districts_December_2024_Boundaries_UK_BGC/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+  version: 2024
+
+# Not actually compressed -- the ArcGIS REST API returns GeoJSON directly
+# -- but naming it here still lets the Ingester skip re-downloading, and
+# the non-archive suffix (.geojson) means no unzip step is attempted.
+compressed_file_name: "lad_dec2024_uk_bgc.geojson"
+
+# Columns from `openplaces` dictionary -> columns in imported table
+columns:
+  name: LAD24NM
+  admin4_id_admin1: LAD24CD
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (resolves each LAD's admin3 parent via the ONS lookup, then mints
+# admin4_ids the same way GADM's own admin4 recipe does)
+create_index:
+  function: "openplaces.io.admin.admin4_id_index_from_gb_ons"
+  args:
+    admin3_recipe_id: GB_admin-ons-2024_admin3
+    lookup_recipe_id: GB_reference-ons-2024_lad-to-ctyua
+
+save_to:
+  data_dir: cache
+  filename: admin4

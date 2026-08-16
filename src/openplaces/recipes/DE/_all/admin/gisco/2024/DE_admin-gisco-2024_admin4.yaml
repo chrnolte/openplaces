@@ -1,0 +1,70 @@
+# Recipe to import GISCO Local Administrative Unit (LAU) boundaries for
+# Germany (2024)
+#
+# Replaces GADM as DE's admin level-4 source of record: GADM's DE admin4
+# has only 4,677 rows against ~10,980 real German municipalities (LAU is
+# the whole point of this recipe -- a complete, ID-compatible source, not
+# a data-quality fix as it was for GB). Parentage into admin3 (Kreis) is
+# resolved by prefix-truncating the German AGS municipal code (confirmed
+# against real data: Barnim's municipalities' 8-digit codes all share
+# Barnim's own 5-digit Kreis code as their prefix) -- an ID-based join,
+# no name-matching or spatial overlay. admin1/admin2 (country, 16
+# Länder) are untouched: GADM/ISO already names and codes them correctly.
+#
+# Source file: one GeoJSON covering every NUTS/EFTA/candidate country at
+# once (https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units),
+# filtered here to CNTR_CODE == 'DE'.
+
+description: >-
+  GISCO Local Administrative Units boundaries, filtered to Germany, as
+  admin level 4.
+
+# Administrative unit identifier: where does this data come from?
+admin_id: DE
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  entity_type: admin
+  source:
+    source_id: gisco
+    portal_url: "https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units"
+    download_url: "https://gisco-services.ec.europa.eu/distribution/v2/lau/download/ref-lau-2024-01m.geojson.zip"
+  version: 2024
+
+compressed_file_name: "ref-lau-2024-01m.geojson.zip"
+uncompressed_file_name: "LAU_RG_01M_2024_4326.geojson"
+
+# Columns from `openplaces` dictionary -> columns in imported table
+columns:
+  name: LAU_NAME
+  _gisco_id: GISCO_ID
+  cntr_code: CNTR_CODE
+
+# Filter to Germany only (the source file covers the whole continent)
+query: "cntr_code == 'DE'"
+
+transformations:
+  # National LAU (AGS) code, stripping the "DE_" country prefix
+  - output: admin4_id_admin1
+    type: string
+    operation: substring
+    input: _gisco_id
+    args:
+      start: 3
+
+# Keep the derived admin4_id_admin1 column (not a literal `columns:` key,
+# so dropped by the default reorder otherwise).
+keep_unnamed_columns: true
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (resolves each LAU's admin3 parent by AGS-code prefix truncation, then
+# mints admin4_ids the same way GADM's own admin4 recipe does)
+create_index:
+  function: "openplaces.io.admin.admin4_id_index_from_gisco_lau"
+  args:
+    admin3_country_id: DE
+    admin3_code_lengths: [5]
+
+save_to:
+  data_dir: cache
+  filename: admin4
