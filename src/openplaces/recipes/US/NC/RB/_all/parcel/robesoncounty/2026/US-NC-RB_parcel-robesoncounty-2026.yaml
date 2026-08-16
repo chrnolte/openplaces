@@ -60,6 +60,17 @@ scraper_options:
 
 columns:
   parcel_id_assessor: PIN_NUMBER
+  # Land class code, carried raw and unexpanded on purpose. The codes are
+  # structured like a conventional CAMA scheme (see the note above) but the
+  # reading of the letters is unverified, so nothing here asserts what D-10 or
+  # D-71 mean -- mapping the field simply makes it available on the parcel
+  # entity, which is what the verification needs. Expanding the codes to
+  # occupancy labels, and any keyword rules that depend on them, waits until
+  # the decoding is checked against Robeson's 232 hand-labelled points.
+  use_subgroup: PARDESC1
+  # Improvement-type code on ~7,000 parcels; reported to distinguish mobile
+  # homes from farm structures, likewise unverified.
+  use_group: PARDESC3
   address: PHYSTRADR
   owner_name: OWNAM1
   owner_name_2: OWNAM2
