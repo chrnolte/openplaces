@@ -909,8 +909,13 @@ def compute_parcel_id_local(
     bundled default table, by source ``kind`` ``'parcel'`` or ``'tax'``), and
     applies a hardened duplicate guard: if the conversion would collapse
     distinct ``parcel_id_assessor`` values beyond *tolerance*, it falls back to
-    ``simple`` and then to the raw (uppercased, alphanumeric) id, never adding
-    new duplicates over the source. An ``instruction`` entry may set its own
+    ``pipe`` and then to the raw (uppercased, alphanumeric) id, never adding
+    new duplicates over the source. ``pipe`` (not ``simple``) is the fallback
+    because it keeps separators between segments (``'1-23'`` -> ``'1|23'``)
+    instead of deleting them (``'1-23'`` -> ``'123'``, now indistinguishable
+    from ``'12-3'``) -- a fallback's whole job is to avoid manufacturing new
+    collisions, so it must never be more lossy than necessary. An
+    ``instruction`` entry may set its own
     ``tolerance`` (e.g. for a county where standardizing away an inconsistently
     zero-padded segment is expected to legitimately collapse repeat-sale
     filings of the same parcel beyond the default 0.5%) -- it overrides the
@@ -929,10 +934,10 @@ def compute_parcel_id_local(
 
     warnings.warn(
         f'parcel_id_local conversion for admin {admin_unit_id} (kind={kind}, '
-        f'conv={conv_code!r}) added duplicates; falling back to simple.',
+        f'conv={conv_code!r}) added duplicates; falling back to pipe.',
         stacklevel=2,
     )
-    candidate = convert_parcel_id(raw, None, 'simple')
+    candidate = convert_parcel_id(raw, None, 'pipe')
     if not _adds_duplicates(raw, candidate, tolerance):
         return candidate
 
