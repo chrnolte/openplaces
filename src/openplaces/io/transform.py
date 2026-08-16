@@ -646,8 +646,13 @@ def _apply_remap(
 def _apply_remap_pattern(
     series: pd.Series, patterns: list[dict], default: Any = None
 ) -> pd.Series:
-    """Apply regex pattern-based mapping."""
-    result = pd.Series(default, index=series.index)
+    """Apply regex pattern-based mapping.
+
+    The result is object-dtype from the start: with no *default* the seed
+    is all-NaN, which pandas would otherwise type float64 and then refuse
+    to hold the (typically string) pattern values.
+    """
+    result = pd.Series(default, index=series.index, dtype=object)
     for pattern_dict in patterns:
         pattern = pattern_dict['pattern']
         value = pattern_dict['value']

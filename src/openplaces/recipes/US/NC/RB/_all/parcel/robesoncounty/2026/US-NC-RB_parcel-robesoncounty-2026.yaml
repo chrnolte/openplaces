@@ -19,22 +19,29 @@
 # 78,073 parcels and its ~600 non-blank values (HOS, INF, VCN...) look like
 # special designations.
 #
-# PARDESC1 IS THE EXCEPTION AND IS UNRESOLVED. Its 74 codes are structured
-# like a conventional CAMA scheme -- letter prefix for broad class, number for
-# subtype -- and have been read as D-10 single-family (24,606), D-71 mobile
-# home on land (8,830), V-* vacant (V-00 20,190, V-80 10,324), A-* / C-* /
-# I-* / E-* agricultural, commercial, industrial, exempt. If that decoding
-# holds, D-71 alone is a substantial manufactured-home signal for a county
-# that otherwise has none, and this field should be mapped.
+# PARDESC1 IS THE EXCEPTION. Three codes are now verified against the CHEER
+# hand labels (232 points spatially joined to this layer's own geometry, so
+# the id-lineage mismatch below does not bias the test) and expanded via the
+# remap_pattern transformation:
 #
-# It is NOT yet verified against ground truth, and should be before anyone
-# relies on it: the code distribution is certain, the meaning of the letters
-# is inference from a common convention, with no published key located.
-# Robeson carries 232 CHEER hand-labelled points -- 17% of that set -- so the
-# test is cheap once the join works. It does not today: the local source keys
-# on a 12-digit PIN_NUMBER ('111111111111') while the curated parcel entity's
-# parcel_id_assessor holds a different lineage ('222222222'), and only 227 of
-# 80,297 parcels join. Resolving that mismatch is the prerequisite.
+#   D-10 -> SINGLE FAMILY RESIDENCE  65/67 points, 66 independent parcels;
+#                                    24,606 parcels county-wide
+#   C-92 -> MOBILE HOME PARK         49/49 points, but only 9 independent
+#                                    parcels; 118 county-wide
+#   C-65 -> APARTMENTS               29/29 points, 7 independent parcels;
+#                                    32 county-wide
+#
+# The earlier letter-prefix reading (D-71 = mobile home on land) did NOT
+# hold: D-71 measured only 7/10 manufactured-home on 10 parcels, so its
+# 8,830 parcels stay unmapped. V-80 ('vacant', 10,324 parcels) carried
+# manufactured homes on 15/17 labelled points -- the leased-land signature,
+# where the structure's record is separate from the land parcel -- also
+# left unmapped pending corroboration from a second source.
+#
+# Separate, still open: the local source keys on a 12-digit PIN_NUMBER
+# ('111111111111') while the curated parcel entity's parcel_id_assessor
+# holds a different lineage ('222222222'), and only 227 of 80,297 parcels
+# join by id.
 
 description: >-
   Robeson County, NC parcel roll (assessed land/building values, owner,
@@ -60,17 +67,14 @@ scraper_options:
 
 columns:
   parcel_id_assessor: PIN_NUMBER
-  # Land class code, carried raw and unexpanded on purpose. The codes are
-  # structured like a conventional CAMA scheme (see the note above) but the
-  # reading of the letters is unverified, so nothing here asserts what D-10 or
-  # D-71 mean -- mapping the field simply makes it available on the parcel
-  # entity, which is what the verification needs. Expanding the codes to
-  # occupancy labels, and any keyword rules that depend on them, waits until
-  # the decoding is checked against Robeson's 232 hand-labelled points.
+  # Raw land class code (with the source's trailing space), kept verbatim
+  # so the code itself stays on the parcel entity; the verified labels are
+  # written to use_group by the remap_pattern transformation below, and
+  # derive_use_classes combines both ('MOBILE HOME PARK | C-92 ').
   use_subgroup: PARDESC1
-  # Improvement-type code on ~7,000 parcels; reported to distinguish mobile
-  # homes from farm structures, likewise unverified.
-  use_group: PARDESC3
+  # PARDESC3 (an improvement-type code, blank on 91% of parcels and
+  # unverified) is deliberately no longer mapped: use_group now carries the
+  # CHEER-verified PARDESC1 labels instead.
   address: PHYSTRADR
   owner_name: OWNAM1
   owner_name_2: OWNAM2
@@ -90,6 +94,19 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # CHEER-verified PARDESC1 expansions (see the header note for the
+  # evidence). The labels are chosen to match the existing shared keyword
+  # rulesets (land-use-keywords, parcel-occupancy-keywords) so no new
+  # global rules are needed; unmatched codes leave use_group missing and
+  # travel on in use_subgroup unchanged. Patterns are end-anchored because
+  # the source pads every code with a trailing space.
+  - output: use_group
+    type: remap_pattern
+    input: use_subgroup
+    patterns:
+      - {pattern: 'D-10\s*$', value: SINGLE FAMILY RESIDENCE}
+      - {pattern: 'C-92\s*$', value: MOBILE HOME PARK}
+      - {pattern: 'C-65\s*$', value: APARTMENTS}
 
 columns_to_categorical:
   - owner_admin2_id_admin1
