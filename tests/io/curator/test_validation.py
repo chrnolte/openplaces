@@ -59,6 +59,75 @@ def test_address_match_beats_a_nearer_wrong_building():
     assert linked['occupancy_type_inv'].iloc[0] == 'Single-Family'
 
 
+def _shared_address_entities():
+    """A house and its garage at one address, garage listed first.
+
+    Listing the garage first is the point: without a tie-break the linker
+    returns whichever entity the row order happens to put first.
+    """
+    return gpd.GeoDataFrame(
+        {
+            'address_number': ['5114', '5114'],
+            'address_street': ['S VIRGINIA DARE TRL', 'S VIRGINIA DARE TRL'],
+            'priority_on_parcel': ['secondary', 'primary'],
+            'occupancy_type': ['Secondary', 'Single-Family'],
+        },
+        geometry=[_box(-78.0, 35.0), _box(-78.01, 35.0)],
+        crs='EPSG:4326',
+    )
+
+
+def _shared_address_point():
+    return pd.DataFrame(
+        {
+            'address_number': [5114.0],
+            'address_street': ['SOUTH VIRGINIA DARE TRAIL'],
+            'lon': [-78.0],
+            'lat': [35.0],
+        }
+    )
+
+
+def test_prefer_column_breaks_an_address_tie_toward_the_primary_structure():
+    linked = link_points_to_entities(
+        _shared_address_point(),
+        _shared_address_entities(),
+        admin1_id='US-NC',
+        prefer_column='priority_on_parcel',
+        prefer_values=('primary', 'unknown'),
+    )
+
+    assert linked['matched_by'].iloc[0] == 'address'
+    assert linked['occupancy_type_inv'].iloc[0] == 'Single-Family'
+
+
+def test_without_prefer_column_the_first_matching_row_still_wins():
+    # Pins the historical behavior: the tie-break is opt-in, so a caller
+    # that does not ask for it sees exactly what it saw before.
+    linked = link_points_to_entities(
+        _shared_address_point(),
+        _shared_address_entities(),
+        admin1_id='US-NC',
+    )
+
+    assert linked['occupancy_type_inv'].iloc[0] == 'Secondary'
+
+
+def test_prefer_column_is_ignored_when_the_entities_lack_it():
+    # A caller may share one config across entity sets that do not all
+    # carry the ranking column; that must not raise.
+    entities = _shared_address_entities().drop(columns='priority_on_parcel')
+    linked = link_points_to_entities(
+        _shared_address_point(),
+        entities,
+        admin1_id='US-NC',
+        prefer_column='priority_on_parcel',
+        prefer_values=('primary',),
+    )
+
+    assert linked['occupancy_type_inv'].iloc[0] == 'Secondary'
+
+
 def test_distance_fallback_applies_and_respects_the_radius():
     entities = gpd.GeoDataFrame(
         {'occupancy_type': ['Single-Family']},
