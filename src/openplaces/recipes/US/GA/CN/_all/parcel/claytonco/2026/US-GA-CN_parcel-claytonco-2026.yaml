@@ -1,0 +1,92 @@
+# Recipe: Clayton County, GA parcel roll.
+#
+# Source: the county's AGOL-hosted `Clayton_County_Parcels_2023` feature
+# service, layer 5 (`clayton_parcels`), pulled as a bulk GeoJSON export
+# through the ArcGIS Hub download API rather than ~46 pages of REST
+# paging.
+#
+# After Forsyth this is the richest Greater Atlanta source: fair-market
+# and assessed values with a land/improvement split, year built, heated
+# area, bed/bath counts, land-use code and description, zoning, and a
+# most-recent-sale snapshot.
+#
+# NOTE on vintage: the service is named for 2023 and is accepted as the
+# current published product on the user's instruction. It is the only
+# countywide Clayton parcel layer that verifies (90,418 features,
+# 60/60 sampled centroids inside the county). Treat the vintage as
+# provisional and re-check before a release that depends on recency.
+#
+# NOTE on value basis. LANDFMV / IMPROVEMNT / APPRVAL are the
+# fair-market figures and are the ones mapped, matching Fulton's
+# appraised basis. ASSESSVAL holds the Georgia 40% assessed total and is
+# left unmapped so the two counties stay comparable.
+#
+# NOTE: `Name` is not an owner name despite being 100% populated -- it
+# repeats the parcel identifier verbatim. `OWNERNME` is the owner. A
+# name-based column match walks straight into this.
+#
+# NOTE: `ACERAGE` is the source's own spelling, not a typo here.
+#
+# NOTE: `SALEDATE` is a YYYYMMDD INTEGER (20170413), not a date. Casting
+# it straight to the registry's datetime type would read it as an epoch
+# offset and silently yield 1970 dates, so `last_sale_date` is left
+# unmapped pending a parse step; `last_sale_price` is mapped without it.
+
+description: >-
+  Clayton County, GA parcel roll (fair-market land/improvement/total
+  values, year built, heated area, land use, zoning, owner, situs, last
+  sale) from the county bulk GeoJSON export.
+
+admin_id: US-GA-CN
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: claytonco
+    portal_url: "https://publicaccess.claytoncountyga.gov/"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/3e57523a1ba64c809635a160700c7c13/geojson?layers=5"
+  version: "2026"
+
+uncompressed_file_name: "clayton_parcels.geojson"
+
+columns:
+  parcel_id_assessor: PARCELID
+  address: SITEADDRES
+  owner_name: OWNERNME
+  owner_address: PSTLADDRES
+  owner_city: PSTLCITY
+  owner_admin2_id_admin1: PSTLSTATE
+  owner_postal_code: PSTLZIP5
+  land_value: LANDFMV
+  improvement_value: IMPROVEMNT
+  value: APPRVAL
+  year_built: YEARBUILT
+  area_sqft: SQRFT
+  area_ac: ACERAGE
+  use_group: LANDUSED
+  use_group_code: LANDUSEC
+  zoning_code: ZONE
+  tax_neighborhood_code: NEIGHBORCO
+  last_sale_price: SALEPRICE
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [CURRENTDEE, CURRENTD_1]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - use_group
+  - use_group_code
+  - zoning_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

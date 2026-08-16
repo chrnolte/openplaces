@@ -1,0 +1,64 @@
+# Recipe: Fayette County, GA parcel roll.
+#
+# Source: the county's self-hosted ArcGIS Server
+# (`gis.fayettecountyga.gov`), `Pictometry/parcelsRO/MapServer` layer 0.
+#
+# NOTE on why this one pages instead of downloading in bulk. Checked and
+# rejected: the service advertises only `Map,Query,Data` (no `Extract`);
+# no ArcGIS Hub open-data site exists for the county; and the county GIS
+# pages expose no downloadable file (`fayettecountyga.gov/gis/` 404s).
+# `arcgis_rest_scraper` is the fallback, not the first choice.
+#
+# NOTE: the thinnest source of the nine Greater Atlanta counties -- a
+# cartographic parcel layer, not an assessment extract. 27 columns, of
+# which most are map-book plumbing (plat image paths, district/square
+# keys, edit tracking). There is NO owner, NO address, NO value and NO
+# year built. What survives is geometry, the parcel number, acreage and
+# zoning, so every attribute-driven indicator downstream is inert for
+# Fayette.
+#
+# NOTE: `acres` sampled 0 on some records while `Acreage_Ch` holds a
+# change flag rather than an area; `acres` is still the area column and
+# is mapped, but check its zero rate before using it.
+#
+# NOTE: the layer name `parcelsRO` and its Pictometry folder mean this
+# is the read-only copy published for the imagery viewer. It is the only
+# countywide Fayette parcel layer reachable, and it verifies (49,074
+# features, 60/60 sampled centroids inside the county).
+
+description: >-
+  Fayette County, GA parcel boundaries with parcel number, acreage and
+  zoning from the county ArcGIS layer. No owner, address, value or year
+  built.
+
+admin_id: US-GA-FY
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: fayetteco
+    portal_url: "https://gis.fayettecountyga.gov/"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "fayette_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://gis.fayettecountyga.gov/arcgis/rest/services/Pictometry/parcelsRO/MapServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PARCEL_NO
+  zoning_code: Zoning
+  area_ac: acres
+
+columns_to_categorical:
+  - zoning_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

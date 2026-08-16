@@ -1,0 +1,73 @@
+# Recipe: Forsyth County, GA parcel roll.
+#
+# Source: the county's ArcGIS Hub open-data site
+# (`geo-forsythcoga.opendata.arcgis.com`), a bulk GeoJSON export of the
+# `Public/Tax_Parcel` layer served from `geo.forsythco.com`.
+#
+# The richest of the Greater Atlanta county sources: land value, both
+# value bases, year built, floor area, floor count, land-use code and
+# description, and zoning all in one layer.
+#
+# CAUTION: do not confuse this county with Forsyth County, NORTH
+# CAROLINA. An AGOL layer literally named `Forsyth_County_Tax_Parcels`
+# (157,449 features, healthy-looking schema) is the NC county; its
+# extent overlap with GA Forsyth is 0.0. Keyword search surfaces the NC
+# layer and not this one. Verified by sampling: 60/60 sampled features
+# of this layer fall inside GA Forsyth.
+#
+# NOTE on value basis. Georgia assesses at 40% of fair market value.
+# CNTASSDVAL is the assessed (40%) total, while LNDVALUE reads as a
+# fair-market land figure (sampled LNDVALUE 195,000 against
+# CNTASSDVAL 551,880 on a ~1.38M fair-market parcel). The two are
+# therefore on different bases; `value` takes the assessed total and
+# `land_value` the land figure as published, unreconciled. Measure
+# before relying on their ratio.
+
+description: >-
+  Forsyth County, GA parcel roll (land and assessed values, year built,
+  floor area, land use, zoning, owner, situs) from the county open-data
+  bulk GeoJSON export.
+
+admin_id: US-GA-FO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: forsythco
+    portal_url: "https://geo-forsythcoga.opendata.arcgis.com/datasets/tax-parcel"
+    download_url: "https://geo-forsythcoga.opendata.arcgis.com/api/download/v1/items/a57125fcac534eb58c1d63325894e6e8/geojson?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "forsyth_tax_parcel.geojson"
+
+columns:
+  parcel_id_assessor: PARCELID
+  address: SITEADDRESS
+  owner_name: CNVYNAME
+  owner_address: PSTLADDRESS
+  owner_city: PSTLCITY
+  owner_admin2_id_admin1: PSTLSTATE
+  owner_postal_code: PSTLZIP5
+  land_value: LNDVALUE
+  value: CNTASSDVAL
+  year_built: RESYRBLT
+  area_sqft: RESFLRAREA
+  use_group: USEDSCRP
+  use_group_code: USECD
+  zoning_code: ZONING
+  tax_neighborhood_code: NGHBRHDCD
+  tax_year: TAXYEAR
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - use_group
+  - use_group_code
+  - zoning_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
