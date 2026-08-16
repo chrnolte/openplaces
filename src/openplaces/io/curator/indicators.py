@@ -42,6 +42,11 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     - ``not_null``: ``column`` has any value at all. The presence test --
       "an observation exists" as evidence in its own right, e.g. a story
       count being recorded at all qualifying a row for a height band.
+    - ``is_null``: ``column`` holds no value. The absence test, typically
+      inside an ``any_of`` next to an ``in_set`` allow-list to express
+      "one of these values, or nothing known" -- the closest the
+      vocabulary comes to negation. An absent column still yields
+      all-False like every other type, not all-True.
     - ``numeric_at_least`` (alias ``count_at_least``): ``column >= min``.
     - ``numeric_at_most``: ``column <= max``.
     - ``any_of``: true where any of the nested ``indicators`` matches. Lets a
@@ -125,6 +130,9 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
 
     if kind == 'not_null':
         return curated[col].notna()
+
+    if kind == 'is_null':
+        return curated[col].isna()
 
     if kind in ('numeric_at_least', 'count_at_least'):
         return (

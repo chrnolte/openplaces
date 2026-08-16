@@ -231,6 +231,41 @@ def test_require_with_no_indicators_behaves_like_before():
     assert out['occupancy_type'].iloc[0] == 'Multi-Family'
 
 
+def test_is_null_indicator_matches_only_missing_values():
+    # is_null is the absence half of not_null: inside an any_of with an
+    # in_set allow-list it expresses "one of these values, or nothing
+    # known" -- the vocabulary's stand-in for negation.
+    decisions = [
+        {
+            'class': 'Allowed',
+            'min_score': 1,
+            'require': [
+                {
+                    'type': 'any_of',
+                    'indicators': [
+                        {'type': 'in_set', 'column': 'base', 'values': ['Res']},
+                        {'type': 'is_null', 'column': 'base'},
+                    ],
+                }
+            ],
+            'indicators': [{'type': 'equals', 'column': 'x', 'value': 1}],
+        }
+    ]
+    df = pd.DataFrame(
+        {
+            'occupancy_type': [None, None, 'Retail'],
+            'base': ['Res', None, 'Retail'],
+            'x': [1, 1, 1],
+        }
+    )
+    out = resolve_by_vote(
+        _state(df), target='occupancy_type', decisions=decisions
+    ).curated
+    # Residential and missing bases resolve; a positively different base
+    # vetoes the decision and the incoming value stands.
+    assert out['occupancy_type'].tolist() == ['Allowed', 'Allowed', 'Retail']
+
+
 def test_not_null_indicator_scores_presence_only():
     # not_null votes wherever the column holds any value, and never where it
     # is missing -- the presence test the vocabulary previously faked with a

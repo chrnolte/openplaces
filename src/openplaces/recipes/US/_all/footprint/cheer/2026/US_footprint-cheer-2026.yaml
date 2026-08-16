@@ -307,12 +307,34 @@ pipeline:
             min: *multi_dwelling_min
             weight: 2
           # 83.6% precise; assessor keywords naming a multi-unit building.
+          # Keywords also beat both modeled sources when they disagree
+          # (permits back keyword over NSI 77/23 and over FEMA 80/20;
+          # CHEER backs keyword 60/9 and 36/3), justifying the weight.
           - type: equals
             column: occupancy_keyword_class
             value: Multi-Family
             weight: 2
-          - {type: equals, column: occupancy_type_nsi_class, value: Multi-Family}
-          - {type: equals, column: occupancy_type_fema_class, value: Multi-Family}
+          # NSI and FEMA are near-copies of one another (97.5% identical
+          # against permits, 95.8% at the CHEER points, and FEMA is right
+          # only a third of the time where NSI is wrong), so their
+          # agreement corroborates once rather than voting twice. Counted
+          # separately, the pair reached min_score by itself and flipped
+          # true single-family homes to Multi-Family wherever FEMA
+          # coverage is complete -- measured against CHEER, rows where
+          # 'multi' rested on this pair alone were 50% Single-Family.
+          - type: any_of
+            indicators:
+              - {type: equals, column: occupancy_type_nsi_class, value: Multi-Family}
+              - {type: equals, column: occupancy_type_fema_class, value: Multi-Family}
+          # NSI's unit-count claims split cleanly by specificity against
+          # CHEER: the '2 units' duplex guess is 35% Multi-Family (noise),
+          # while its 3-plus-unit claims are 80-86% right (evidence). A
+          # specific multi-unit claim therefore earns the corroborating
+          # second vote that generic NSI/FEMA agreement above
+          # deliberately does not.
+          - type: keyword
+            column: occupancy_type_building_nsi
+            pattern: 'MULTI-FAMILY, (?:3-4|5-10|10-19|20-50|50 PLUS) UNITS'
 
       - class: single
         source: single_dwelling
@@ -331,18 +353,31 @@ pipeline:
           # and measures 100% precise as one -- a manufactured home is by
           # definition one dwelling. This is exactly the information the flat
           # vote discarded by treating "manufactured" and "single-family" as
-          # competitors at this stage rather than as siblings.
-          - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
-          - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
+          # competitors at this stage rather than as siblings. The NSI/FEMA
+          # pairs pool via any_of for the same near-copy reason as in the
+          # multi decision above.
+          - type: any_of
+            indicators:
+              - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
+              - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
           - {type: equals, column: occupancy_keyword_class, value: Manufactured Home}
           - {type: numeric_at_least, column: p_manufactured_home, min: 0.75}
-          - {type: equals, column: occupancy_type_fema_class, value: Single-Family}
-          - {type: equals, column: occupancy_type_nsi_class, value: Single-Family}
+          - type: any_of
+            indicators:
+              - {type: equals, column: occupancy_type_fema_class, value: Single-Family}
+              - {type: equals, column: occupancy_type_nsi_class, value: Single-Family}
 
   # Question 2. Each decision is gated by question 1's answer, so the three
   # classes partition cleanly instead of competing across populations.
+  # base_output snapshots the incoming class (from impute_occupancy_type /
+  # resolve_occupancy) so the residual decisions below can refuse to
+  # overwrite a positively non-residential base -- permits confirmed
+  # ~2,650 New Hanover footprints (churches, retail, warehouses) that the
+  # Single-Family residual had claimed, an error CHEER cannot see because
+  # the survey labels only residential structures.
   - step: resolve_by_vote
     target: occupancy_type
+    base_output: occupancy_type_prevote
     decisions:
       - class: Manufactured Home
         source: manufactured_home
@@ -399,6 +434,15 @@ pipeline:
         min_score: 1
         require:
           - {type: equals, column: dwelling_multiplicity, value: multi}
+          # A positively non-residential base class stands; the carry-through
+          # only writes where the base is residential, Secondary, or unknown.
+          # Allow-list plus is_null because the vocabulary has no negation.
+          - type: any_of
+            indicators:
+              - type: in_set
+                column: occupancy_type_prevote
+                values: [Single-Family, Multi-Family, Manufactured Home, Secondary]
+              - {type: is_null, column: occupancy_type_prevote}
         indicators:
           # Question 1 already decided this; the indicator simply carries that
           # decision through so the class is written.
@@ -419,6 +463,16 @@ pipeline:
           - type: in_set
             column: priority_on_parcel
             values: [primary, unknown]
+          # The residual is a claim about houses, so it must not swallow a
+          # positively non-residential base class (see the base_output
+          # comment on this vote). A missing base still resolves: no
+          # evidence contradicts the residual there.
+          - type: any_of
+            indicators:
+              - type: in_set
+                column: occupancy_type_prevote
+                values: [Single-Family, Multi-Family, Manufactured Home, Secondary]
+              - {type: is_null, column: occupancy_type_prevote}
         indicators:
           - {type: equals, column: dwelling_multiplicity, value: single}
 
@@ -499,6 +553,7 @@ pipeline:
       - occupancy_type_dwelling_overture
       - occupancy_type_dwelling_overture_source
       - occupancy_type_base
+      - occupancy_type_prevote
       # Question 1's answer: a scoring intermediate the occupancy decisions
       # gate on, not a published attribute.
       - dwelling_multiplicity

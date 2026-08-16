@@ -370,6 +370,74 @@ def test_condominium_parcel_class_is_never_read(recipe):
     assert 'Condominium' not in values
 
 
+def test_residuals_do_not_overwrite_a_nonresidential_base(recipe):
+    """A positively non-residential base class survives both residuals.
+
+    Permits confirmed ~2,650 New Hanover footprints (churches, retail,
+    warehouses) that the Single-Family residual had claimed; the
+    occupancy_type_prevote gate stops the overwrite while a missing base
+    still resolves normally (one-dwelling residual case above).
+    """
+    out = _run(
+        recipe,
+        [
+            {'occupancy_type': 'Retail', 'n_dwellings_overture': 1},
+            {
+                'occupancy_type': 'Commercial',
+                'n_dwellings_overture': 2,
+                'use_group_combined_parcel': 'APARTMENTS',
+            },
+        ],
+    )
+    got = out['occupancy_type'].astype(object)
+    assert got.iloc[0] == 'Retail'
+    assert got.iloc[1] == 'Commercial'
+
+
+def test_nsi_and_fema_agreement_alone_cannot_prove_multi(recipe):
+    """The NSI/FEMA pair pools to one corroborating vote, not two.
+
+    The two sources are near-copies (97.5% identical), so their agreement
+    must not reach the multi decision's min_score by itself -- that is
+    what flipped true single-family homes wherever FEMA coverage is
+    complete. With a dwelling count of one, the row resolves single.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'occupancy_type_building_nsi': 'Multi-Family, 2 units',
+                'group_footprint_fema': 'Multi-Family',
+                'n_dwellings_overture': 1,
+            }
+        ],
+    )
+    assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'single'
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+
+def test_a_specific_multi_unit_claim_corroborates_the_pooled_pair(recipe):
+    """NSI's 3-plus-unit claims are evidence; its duplex guess is noise.
+
+    Measured against CHEER, 'Multi-Family, 2 units' is 35% right while
+    the 3-plus-unit claims are 80-86% right -- so a specific claim earns
+    the second vote that generic NSI/FEMA agreement deliberately does
+    not, and the row resolves multi even with a dwelling count of one.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'occupancy_type_building_nsi': 'Multi-Family, 10-19 units',
+                'group_footprint_fema': 'Multi-Family',
+                'n_dwellings_overture': 1,
+            }
+        ],
+    )
+    assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'multi'
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
+
+
 def test_restricted_shovels_columns_are_never_published(recipe):
     """Shovels permit evidence is restricted-use and must never be published.
 
