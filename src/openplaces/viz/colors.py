@@ -233,17 +233,57 @@ DIVERGING_COLORMAPS = {
         (0.88, '#dc0000'),
         (1.0, '#870098'),
     ],
+    # -- 0-100% "data availability" family: muted, desaturated stops (no pure
+    # hues) so it reads as a status gradient rather than a categorical/hazard
+    # scale. Low coverage anchors on brick red, rising through orange/ochre/
+    # yellow at the midpoint, then olive/green toward full coverage. Pair with
+    # `DATA_AVAILABILITY_MISSING_COLOR` for genuinely absent (not just
+    # low-coverage) data -- that gray is deliberately outside the ramp itself
+    # so "missing" never gets misread as "0%".
+    'data_availability': [
+        (0.00, '#A94F3D'),  # 0%   muted brick red
+        (0.20, '#C9763E'),  # 20%  burnt orange
+        (0.40, '#D9A640'),  # 40%  ochre
+        (0.50, '#E5C84F'),  # 50%  egg-yolk yellow
+        (0.65, '#B5BC55'),  # 65%  yellow-olive
+        (0.80, '#78A85B'),  # 80%  fresh muted green
+        (1.00, '#3F895C'),  # 100% medium forest green
+    ],
+    # Warm-to-cool diverging spread: brick red -> orange -> gold -> yellow-
+    # green -> muted green -> teal -> blue. Flip it with the '_r' suffix
+    # (`get_diverging_colormap('ember_ocean_r')`), same convention matplotlib
+    # uses for its own built-in colormaps.
+    'ember_ocean': [
+        (0.000, '#A94F3D'),
+        (0.167, '#C9763E'),
+        (0.333, '#E2B842'),
+        (0.500, '#D4CA55'),
+        (0.667, '#79AA72'),
+        (0.833, '#579A96'),
+        (1.000, '#5387B2'),
+    ],
 }
+
+# Companion "no data" gray for the 'data_availability' ramp -- kept separate
+# from the ramp's own 0% stop (a muted red) so a genuinely missing value
+# never reads as "0% available" on a legend or a map's `missing_kwds`.
+DATA_AVAILABILITY_MISSING_COLOR = '#858585'
 
 
 def get_diverging_colormap(name: str) -> mpl.colors.Colormap:
     """Build a matplotlib colormap from `DIVERGING_COLORMAPS[name]`, falling back
     to standard matplotlib colormaps if name is not in the custom registry.
 
+    Any custom name can be flipped (low/high endpoints swapped) with a
+    trailing ``'_r'``, e.g. ``get_diverging_colormap('ember_ocean_r')`` --
+    the same convention matplotlib uses for its own built-in colormaps,
+    which already support ``_r`` natively (handled by the fallback below).
+
     Parameters
     ----------
     name : str
-        Key into `DIVERGING_COLORMAPS` or a standard matplotlib colormap name.
+        Key into `DIVERGING_COLORMAPS` (optionally suffixed with ``'_r'``
+        to reverse it) or a standard matplotlib colormap name.
 
     Returns
     -------
@@ -253,6 +293,10 @@ def get_diverging_colormap(name: str) -> mpl.colors.Colormap:
         return mpl.colors.LinearSegmentedColormap.from_list(
             name, DIVERGING_COLORMAPS[name]
         )
+    if name.endswith('_r') and name[:-2] in DIVERGING_COLORMAPS:
+        stops = DIVERGING_COLORMAPS[name[:-2]]
+        reversed_stops = [(1 - position, color) for position, color in reversed(stops)]
+        return mpl.colors.LinearSegmentedColormap.from_list(name, reversed_stops)
     return mpl.colormaps[name]
 
 
