@@ -286,14 +286,20 @@ def resolve_spine(
         warnings.warn(f'resolve_spine: no sources resolved for {state.admin_id}.')
         return state
 
-    # Load all sources
+    # Load all sources, keyed by recipe_id: `label` (default the source_id)
+    # is not guaranteed unique -- two recipes of the same entity_type can
+    # share a source_id, e.g. a geometry recipe and a same-source
+    # attribute-only roll distinguished only by version. Keying by label
+    # would let the second silently alias the first in `source_gdfs`.
     source_gdfs: dict[str, gpd.GeoDataFrame] = {}
+    loaded: list[dict] = []
     for src in resolved:
         recipe_id = src['recipe_id']
         label = src.get('label', recipe_id)
         try:
             gdf = get_entities(recipe_id, state.admin_id, geom=True)
-            source_gdfs[label] = gdf
+            source_gdfs[recipe_id] = gdf
+            loaded.append(src)
             if state.verbose:
                 print(f'  Load {label}: {len(gdf):,d} footprints')
         except Exception as exc:
@@ -308,11 +314,13 @@ def resolve_spine(
 
     min_area_m2: float = thresholds.get('min_area_m2', 0.0)
     if min_area_m2 > 0:
-        for label in list(source_gdfs):
-            areas = get_areas(source_gdfs[label], unit='m2')
-            before = len(source_gdfs[label])
-            source_gdfs[label] = source_gdfs[label][areas >= min_area_m2].copy()
-            dropped = before - len(source_gdfs[label])
+        for src in loaded:
+            recipe_id = src['recipe_id']
+            label = src.get('label', recipe_id)
+            areas = get_areas(source_gdfs[recipe_id], unit='m2')
+            before = len(source_gdfs[recipe_id])
+            source_gdfs[recipe_id] = source_gdfs[recipe_id][areas >= min_area_m2].copy()
+            dropped = before - len(source_gdfs[recipe_id])
             if dropped and state.verbose:
                 print(
                     f'  Filter {label}: dropped {dropped:,d} footprints < '
@@ -328,33 +336,24 @@ def resolve_spine(
     def _spine_cols(gdf):
         return ['geometry'] + [c for c in keep_columns if c in gdf.columns]
 
-    # resolved[0] is the highest-priority source by admin specificity, but it
-    # doesn't necessarily have geometry for THIS admin unit (e.g. Craven
-    # County's parcel roll is a geometry-less attribute table by design --
-    # its own property recipe carries the geometry instead); take the
-    # highest-priority source that actually loaded as primary, not
-    # unconditionally resolved[0].
-    primary_idx = next(
-        (
-            i
-            for i, src in enumerate(resolved)
-            if src.get('label', src['recipe_id']) in source_gdfs
-        ),
-        None,
-    )
-    first_label = resolved[primary_idx].get('label', resolved[primary_idx]['recipe_id'])
-    spine: gpd.GeoDataFrame = source_gdfs[first_label][
-        _spine_cols(source_gdfs[first_label])
+    # loaded[0] is the highest-priority source by admin specificity that
+    # actually loaded (not necessarily resolved[0] -- e.g. Craven County's
+    # parcel roll is a geometry-less attribute table by design, its own
+    # property recipe carries the geometry instead), keyed by recipe_id
+    # since `label` (default the source_id) is not guaranteed unique.
+    first_recipe_id = loaded[0]['recipe_id']
+    first_label = loaded[0].get('label', first_recipe_id)
+    spine: gpd.GeoDataFrame = source_gdfs[first_recipe_id][
+        _spine_cols(source_gdfs[first_recipe_id])
     ].copy()
     spine['geometry_source'] = first_label
     for col in track_cols & set(spine.columns):
         _record_source(spine, col, spine[col].notna(), first_label)
 
-    for src in resolved[:primary_idx] + resolved[primary_idx + 1 :]:
-        label = src.get('label', src['recipe_id'])
-        if label not in source_gdfs:
-            continue
-        candidate = source_gdfs[label]
+    for src in loaded[1:]:
+        recipe_id = src['recipe_id']
+        label = src.get('label', recipe_id)
+        candidate = source_gdfs[recipe_id]
 
         overlap = overlay_polygons(
             spine,
@@ -477,6 +476,7 @@ def union_spine_sources(
         return state
 
     parts = []
+    loaded_recipe_ids = set()
     for src in resolved:
         recipe_id = src['recipe_id']
         label = src.get('label', recipe_id)
@@ -499,6 +499,7 @@ def union_spine_sources(
         df = df.copy()
         df['source'] = label
         parts.append(df)
+        loaded_recipe_ids.add(recipe_id)
         if state.verbose:
             print(f'  Load {label}: {len(df):,d} rows')
 
@@ -510,7 +511,7 @@ def union_spine_sources(
         state.timer.mark('Load')
 
     spine = pd.concat(parts, ignore_index=True, sort=False)
-    state.metadata['spine_source_recipe_ids'] = {s['recipe_id'] for s in resolved}
+    state.metadata['spine_source_recipe_ids'] = loaded_recipe_ids
     state.spine = spine
     if state.timer:
         state.timer.mark('Union')

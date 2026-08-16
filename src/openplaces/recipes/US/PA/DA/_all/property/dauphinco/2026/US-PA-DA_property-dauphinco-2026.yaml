@@ -1,0 +1,130 @@
+# Recipe: Dauphin County, PA tax roll.
+#
+# Source: `Tax_Roll_Table`, a periodic extract from the county's Tax
+# Assessment database keyed by `property_id`. Confirmed empirically to be
+# genuinely 1:n against parcel geometry (173,541 rows, only 114,162 distinct
+# property_id -- ~1.5 rows/parcel, most likely multiple owner/relationship
+# rows per parcel), so this is a `property` entity per the project's
+# 1:1-vs-1:n distinction (contrast with the 1:1 Parcel Characteristics table,
+# US-PA-DA_parcel-dauphinco-2026pc).
+
+description: >-
+  Dauphin County, PA tax roll: assessed land and building values, use code,
+  owner, and situs address (2026).
+
+notes: >-
+  py_used_code is decoded by the county's "Tax Assessment Land Use Codes"
+  reference table, committed as
+  US-PA-DA_property-dauphinco-2026_landuse-codes.csv next to this recipe
+  (not wired into ingestion; decoding happens downstream). relationship
+  explains the 1:n fan-out against parcel_id_assessor (multiple
+  owner/relationship rows per parcel) but is kept as raw evidence, not
+  decoded here.
+
+admin_id: US-PA-DA
+
+entity:
+  entity_type: property
+  source:
+    source_id: dauphinco
+    portal_url: "https://data-dauphinco.opendata.arcgis.com/datasets/dauphinco::tax-roll-table-1"
+    download_url: "https://data-dauphinco.opendata.arcgis.com/api/download/v1/items/d00e2041f34f4d9883341fdfea796e2c/csv?layers=0"
+  version: 2026
+
+# Direct CSV download (not zipped): no compressed_file_name needed, but
+# uncompressed_file_name must still be set so the ingester can locate the
+# downloaded file (its name comes from the server's Content-Disposition
+# header, not the URL). Source is UTF-8 with a BOM.
+uncompressed_file_name: "Tax_Roll_Table.csv"
+encoding: utf-8-sig
+
+# Read every field as text; the value columns are cast to numbers below.
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: property_id
+  land_value: land
+  improvement_value: building
+  clean_and_green: cleangrn
+  use_group_code: py_used_code
+  owner_relationship: relationship
+  # Kept under a working name; converted to lot_size (sqft) below.
+  lot_size_acres: acres
+  owner_city: city
+  owner_admin2_id_admin1: state_code
+  owner_postal_code: zip_code
+  # Kept under working names to feed the concat transformations below.
+  house_number: house_number
+  house_number_suffix: house_number_suffix
+  prefix_directional: prefix_directional
+  street_name: street_name
+  street_suffix: street_suffix
+  post_directional: post_directional
+  last_name: last_name
+  first_name: first_name
+  middle_initial: middle_initial
+  suffix: suffix
+  address1: address1
+  address2: address2
+
+transformations:
+  # Assemble the situs street address from its split fields.
+  - type: string
+    operation: concat
+    inputs:
+      [house_number, house_number_suffix, prefix_directional, street_name,
+       street_suffix, post_directional]
+    args:
+      sep: " "
+    output: address
+  - type: string
+    operation: strip
+    input: address
+    output: address
+
+  # Assemble owner name and mailing address from their split fields.
+  - type: string
+    operation: concat
+    inputs: [last_name, first_name, middle_initial, suffix]
+    args:
+      sep: " "
+    output: owner_name
+  - type: string
+    operation: strip
+    input: owner_name
+    output: owner_name
+  - type: string
+    operation: concat
+    inputs: [address1, address2]
+    args:
+      sep: " "
+    output: owner_address
+  - type: string
+    operation: strip
+    input: owner_address
+    output: owner_address
+
+  # lot_size's canonical unit is sqft; the source gives acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size_acres
+    output: lot_size
+
+transformation_patterns:
+  - type: unary
+    operation: to_numeric
+    pattern: "{column}"
+    apply_to_columns:
+      - land_value
+      - improvement_value
+
+# Standardized cross-comparable matching key, joining this evidence back
+# onto the parcel geometry spine (US-PA-DA_parcel-dauphinco-2026) during
+# harmonize. Not unique per row here (genuinely 1:n) -- same convention as
+# FL's property-fldor-2026.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

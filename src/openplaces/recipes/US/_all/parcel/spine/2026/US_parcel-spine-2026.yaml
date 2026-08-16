@@ -78,6 +78,19 @@ pipeline:
       - land_value
       - year_built
 
+  # Attach every auto-discovered standalone `property`-entity source (e.g. a
+  # county tax roll keyed by parcel_id_local, genuinely 1:n against parcels
+  # -- multiple owner/unit rows per parcel) as aggregated evidence: sum for
+  # value-like columns, mean/first per the attribute registry's own
+  # aggregation for everything else (see link_by_id's aggregate-mode docs).
+  # Distinct from the count-only US_property-spine-2026 join below, which
+  # only covers additional_layers-bundled property tables (parcel_id_admin2
+  # keyed) and never carries these sources' own value columns.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: property
+    mode: aggregate
+
   # Exact per-parcel property/unit count from the harmonized property spine
   # (the authoritative per-unit source, built directly from the same
   # additional_layers tables above without the aggregate-join's lossy

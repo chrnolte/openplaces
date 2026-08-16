@@ -1,0 +1,135 @@
+# Recipe: Dauphin County, PA parcel characteristics.
+#
+# Source: `DC_ParcelCharacteristic`, a non-spatial CAMA/assessment extract
+# keyed by `property_id`. Confirmed empirically (row count == distinct
+# property_id count, 113,746 == 113,746) to be exactly 1:1 with the county's
+# parcel geometry (US-PA-DA_parcel-dauphinco-2026, PID == property_id) --
+# some parcels (e.g. exempt ones) have no row here. A single-row-per-parcel
+# table like this is a `parcel` entity, not `property`, per the project's
+# 1:1-vs-1:n distinction (contrast with the genuinely 1:n Tax Roll Table,
+# US-PA-DA_property-dauphinco-2026).
+#
+# Distinguished from the primary geometry recipe by version (`2026pc`), not
+# `source_id` -- both are the same Dauphin County source. Deliberately has no
+# `exclude_from_auto_discover`: this non-spatial recipe is swept into
+# resolve_spine's auto_discover geometry-source expansion too, but the
+# resulting `get_entities(..., geom=True)` failure is caught there and only
+# produces a warning; the same auto-discovery also feeds this recipe's
+# columns into the spine as evidence via `_discover_link_sources`, which is
+# the behavior actually wanted here.
+
+description: >-
+  Dauphin County, PA parcel characteristics: taxable/exempt/preferential
+  land and building values, use and tax-district codes, deed reference
+  (2026).
+
+notes: >-
+  py_use_code and the Tax Roll Table's py_used_code are decoded by the
+  county's "Tax Assessment Land Use Codes" reference table, committed as
+  US-PA-DA_property-dauphinco-2026_landuse-codes.csv next to the tax roll
+  recipe (not wired into ingestion; decoding happens downstream).
+
+admin_id: US-PA-DA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dauphinco
+    portal_url: "https://data-dauphinco.opendata.arcgis.com/datasets/dauphinco::parcel-characteristics"
+    download_url: "https://data-dauphinco.opendata.arcgis.com/api/download/v1/items/0596c7d380da423a92e23e7f304c9387/csv?layers=0"
+  version: "2026pc"
+
+# Direct CSV download (not zipped): no compressed_file_name needed, but
+# uncompressed_file_name must still be set so the ingester can locate the
+# downloaded file (its name comes from the server's Content-Disposition
+# header, not the URL). Source is UTF-8 with a BOM.
+uncompressed_file_name: "Parcel_Characteristics.csv"
+encoding: utf-8-sig
+
+# Read every field as text; the value columns are cast to numbers below.
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: property_id
+  tax_district: py_tax_code
+  use_group_code: py_use_code
+  deed_reference: document_number
+  land_value_exempt: exeland
+  improvement_value_exempt: exebuild
+  land_value_taxable: taxland
+  improvement_value_taxable: taxbuild
+  land_value_preferential: prefland
+  owner_city: city
+  owner_admin2_id_admin1: state_code
+  owner_postal_code: zip_code
+  # Kept under working names to feed the concat transformations below.
+  house_number: house_number
+  house_number_suffix: house_number_suffix
+  prefix_directional: prefix_directional
+  street_name: street_name
+  street_suffix: street_suffix
+  post_directional: post_directional
+  last_name: last_name
+  first_name: first_name
+  middle_initial: middle_initial
+  suffix: suffix
+  address1: address1
+  address2: address2
+
+transformations:
+  # Assemble the situs street address from its split fields.
+  - type: string
+    operation: concat
+    inputs:
+      [house_number, house_number_suffix, prefix_directional, street_name,
+       street_suffix, post_directional]
+    args:
+      sep: " "
+    output: address
+  - type: string
+    operation: strip
+    input: address
+    output: address
+
+  # Assemble owner name and mailing address from their split fields.
+  - type: string
+    operation: concat
+    inputs: [last_name, first_name, middle_initial, suffix]
+    args:
+      sep: " "
+    output: owner_name
+  - type: string
+    operation: strip
+    input: owner_name
+    output: owner_name
+  - type: string
+    operation: concat
+    inputs: [address1, address2]
+    args:
+      sep: " "
+    output: owner_address
+  - type: string
+    operation: strip
+    input: owner_address
+    output: owner_address
+
+transformation_patterns:
+  - type: unary
+    operation: to_numeric
+    pattern: "{column}"
+    apply_to_columns:
+      - land_value_exempt
+      - improvement_value_exempt
+      - land_value_taxable
+      - improvement_value_taxable
+      - land_value_preferential
+
+# Standardized cross-comparable matching key, joining this evidence back
+# onto the parcel geometry spine (US-PA-DA_parcel-dauphinco-2026) during
+# harmonize.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

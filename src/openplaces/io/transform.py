@@ -22,6 +22,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
+from openplaces.core.constants import AC_TO_SQFT
 from openplaces.io.readers import get_admin
 from openplaces.recipe import get_recipe_by_id
 
@@ -61,6 +62,7 @@ UNARY_OPS: dict[str, Callable] = {
     'to_numeric': lambda x: pd.to_numeric(x, errors='coerce'),
     'to_datetime': lambda x: pd.to_datetime(x, errors='coerce'),
     'null_if_equal': lambda x, value: x.mask(x == value),
+    'acres_to_sqft': lambda x: pd.to_numeric(x, errors='coerce') * AC_TO_SQFT,
 }
 
 BINARY_OPS: dict[str, Callable] = {
