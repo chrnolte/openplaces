@@ -392,3 +392,219 @@ def list_image_caches() -> pd.DataFrame:
         for row in caches.itertuples()
     ]
     return caches
+
+
+def profile_columns(
+    gdf: pd.DataFrame,
+    entity_type: str | None = None,
+    stage: str | None = None,
+) -> pd.DataFrame:
+    """Profile column completeness and registry schema conformance.
+
+    For each column, reports how often it is populated -- both a strict
+    non-null fraction and a "meaningfully populated" fraction that also
+    excludes placeholder-looking values (``0`` or ``''``). The gap between
+    the two flags data that looks complete but isn't: e.g. an ingest
+    source's ``year_built`` field can be 100% non-null while being ``0``
+    (a placeholder, not a real construction year) for every row in a given
+    admin unit -- a plain ``notna()`` check never surfaces that, but the
+    meaningfully-populated fraction drops straight to 0%.
+
+    When *entity_type* is given, each column is resolved to its canonical
+    registry name (:func:`openplaces.recipe.resolve_attribute_name`, which
+    strips a provenance suffix such as ``_parcel``/``_building_nsi``) and
+    checked against the registry's declared ``data_type`` for that
+    entity_type/stage (see :func:`~openplaces.core.attribute_registry.
+    get_attributes`) -- the same check
+    :func:`openplaces.io.ingester._warn_registry_type_mismatches` makes at
+    ingest time, but as a queryable report rather than a runtime warning.
+
+    Parameters
+    ----------
+    gdf : DataFrame or GeoDataFrame
+        Table to profile. A ``geometry`` column, if present, is skipped
+        (see :func:`check_geometry` for geometry-specific diagnostics).
+    entity_type : str, optional
+        Entity type to check declared data types against (e.g.
+        ``'parcel'``). When ``None``, ``dtype_mismatch`` is always
+        ``False`` and ``expected_data_type`` is always ``None``.
+    stage : str, optional
+        Pipeline stage to scope the registry lookup to (see
+        :func:`~openplaces.core.attribute_registry.get_attributes`).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexed by column name. Columns: ``dtype`` (the column's pandas
+        dtype, as a string), ``n_values``/``frac_values`` (non-null
+        count/fraction), ``n_meaningful``/``frac_meaningful`` (non-null and
+        not a placeholder-looking ``0``/``''``), ``expected_data_type``
+        (registry value, or ``None`` when unregistered or *entity_type*
+        wasn't given), ``dtype_mismatch`` (bool).
+    """
+    from openplaces.core.attribute_registry import get_attributes
+    from openplaces.recipe import resolve_attribute_name
+
+    registry = get_attributes(entity_type, stage) if entity_type else None
+
+    n = len(gdf)
+    rows = []
+    for col in gdf.columns:
+        if col == 'geometry':
+            continue
+        series = gdf[col]
+        non_null = series.notna()
+        n_values = int(non_null.sum())
+        meaningful = non_null & ~series.isin([0, ''])
+        n_meaningful = int(meaningful.sum())
+
+        expected_data_type = None
+        dtype_mismatch = False
+        if registry is not None:
+            canonical = resolve_attribute_name(col)
+            if canonical in registry.index:
+                expected_data_type = registry.at[canonical, 'data_type']
+                actual = series.dtype
+                if expected_data_type == 'categorical':
+                    # A categorical column is often still plain string/object
+                    # dtype until an explicit `columns_to_categorical` cast
+                    # runs -- accept any string-like dtype (object, pandas
+                    # 'string', pandas 3's default 'str', or an already-cast
+                    # CategoricalDtype), not just a literal 'category'/
+                    # 'object' name match.
+                    dtype_mismatch = not (
+                        pd.api.types.is_string_dtype(actual)
+                        or isinstance(actual, pd.CategoricalDtype)
+                    )
+                elif expected_data_type in ('float', 'int'):
+                    dtype_mismatch = not pd.api.types.is_numeric_dtype(actual)
+
+        rows.append(
+            {
+                'column': col,
+                'dtype': str(series.dtype),
+                'n_values': n_values,
+                'frac_values': n_values / n if n else 0.0,
+                'n_meaningful': n_meaningful,
+                'frac_meaningful': n_meaningful / n if n else 0.0,
+                'expected_data_type': expected_data_type,
+                'dtype_mismatch': dtype_mismatch,
+            }
+        )
+    return pd.DataFrame(rows).set_index('column')
+
+
+_NON_CATEGORICAL_SUFFIXES = ('_id', '_id_local', '_id_assessor', '_date')
+_NON_CATEGORICAL_SUBSTRINGS = ('city', 'postal_code')
+
+
+def _looks_non_categorical(column: str) -> bool:
+    """True for an id/date/city/postal_code-like column name.
+
+    These can have a high duplication ratio (many rows share the same
+    city, for instance) without being meaningfully categorical for
+    :func:`summarize_categoricals`'s purposes.
+    """
+    return column.endswith(_NON_CATEGORICAL_SUFFIXES) or any(
+        token in column for token in _NON_CATEGORICAL_SUBSTRINGS
+    )
+
+
+def summarize_categoricals(
+    gdf: pd.DataFrame,
+    nmax: int = 100,
+) -> dict[str, pd.Series]:
+    """Value-count near-categorical columns.
+
+    Auto-detects candidate categorical columns the same way
+    ``notebooks/diagnostics/inspect_building_statistics.ipynb``'s own
+    ``get_value_counts()`` did before this function existed: object/
+    category dtype columns whose values repeat heavily
+    (``duplicated(keep=False).mean() > 0.9``), excluding id-like/date-like/
+    city/postal_code-suffixed columns (see :func:`_looks_non_categorical`)
+    -- these are high-duplication but not meaningfully categorical. Any
+    attribute already registered as categorical (see
+    :func:`~openplaces.core.attribute_registry.get_categorical_attrs`,
+    resolved through :func:`openplaces.recipe.resolve_attribute_name` to
+    handle a provenance-suffixed column) is always included regardless of
+    the duplication heuristic, since a sparse but genuinely categorical
+    column (e.g. a rare occupancy class) would otherwise be missed.
+
+    Parameters
+    ----------
+    gdf : DataFrame or GeoDataFrame
+        Table to summarize.
+    nmax : int
+        Maximum number of distinct values to report per column.
+
+    Returns
+    -------
+    dict[str, pandas.Series]
+        Maps each detected column name to its ``value_counts().head(nmax)``.
+    """
+    from openplaces.core.attribute_registry import get_categorical_attrs
+    from openplaces.recipe import resolve_attribute_name
+
+    registered_categorical = get_categorical_attrs()
+
+    result: dict[str, pd.Series] = {}
+    for col in gdf.columns:
+        if col == 'geometry':
+            continue
+        series = gdf[col]
+        is_registered = resolve_attribute_name(col) in registered_categorical
+        if is_registered:
+            candidate = True
+        elif series.dtype.name in ('object', 'category') and not (
+            _looks_non_categorical(col)
+        ):
+            dup_ratio = series.duplicated(keep=False).mean() if len(series) else 0.0
+            candidate = dup_ratio > 0.9
+        else:
+            candidate = False
+        if candidate:
+            result[col] = series.value_counts().head(nmax)
+    return result
+
+
+def check_geometry(gdf) -> dict:
+    """Check a GeoDataFrame's geometry column for common defects.
+
+    Flags exactly the two defect classes that (independently) crashed the
+    harmonizer in production before being fixed: a degenerate non-polygon
+    geometry (e.g. a 2-point ``LineString`` parcel boundary) mixed into an
+    otherwise-polygon layer, and a null geometry -- both silently tolerated
+    by a plain non-null check but fatal to ``geopandas.overlay`` (see
+    :func:`openplaces.geo.polygon.overlay_polygons`, which now defensively
+    drops both before any spatial join, rather than crashing the whole
+    admin unit).
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        Table to check. Must have a ``geometry`` column.
+
+    Returns
+    -------
+    dict
+        ``n_total``, ``n_null`` (missing geometry), ``n_empty`` (present
+        but empty, e.g. ``POLYGON EMPTY``), ``n_invalid`` (present,
+        non-empty, but topologically invalid per ``geometry.is_valid``),
+        and ``geom_type_counts`` (a :class:`pandas.Series` of
+        ``geometry.geom_type`` value counts, including a count for null
+        geometries).
+    """
+    geometry = gdf.geometry
+    is_null = geometry.isna()
+    is_present = ~is_null
+    is_empty = is_present & geometry.is_empty
+    is_valid = is_present & ~is_empty & geometry.is_valid
+    n_invalid = int((is_present & ~is_empty & ~is_valid).sum())
+
+    return {
+        'n_total': len(gdf),
+        'n_null': int(is_null.sum()),
+        'n_empty': int(is_empty.sum()),
+        'n_invalid': n_invalid,
+        'geom_type_counts': geometry.geom_type.value_counts(dropna=False),
+    }
