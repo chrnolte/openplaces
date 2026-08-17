@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # Single version on purpose: pyproject sets requires-python >=3.12 and
+    # environment.yml pins <3.13, so a matrix would only test versions the
+    # project does not support.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install
+        # Installed from wheels rather than the conda environment: every core
+        # dependency publishes manylinux wheels, and this keeps CI to a couple
+        # of minutes. environment.yml remains the supported developer install.
+        # `viz` is included because tests/viz imports openplaces.viz.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,viz]"
+
+      - name: Format
+        run: ruff format --check src/ tests/
+
+      - name: Lint
+        run: ruff check src/ tests/
+
+      - name: Test
+        # Agg because the suite imports matplotlib-backed modules and no
+        # display is available on the runner.
+        env:
+          MPLBACKEND: Agg
+        run: pytest
