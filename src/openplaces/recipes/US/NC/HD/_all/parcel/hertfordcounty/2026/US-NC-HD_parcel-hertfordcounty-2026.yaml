@@ -9,6 +9,19 @@
 # building value are populated (881/1000 and 550/1000 sampled records
 # respectively), so land/building value is included as a bonus, along with
 # heated area.
+#
+# NOTE: this county needs a `conv: simple` row in
+# US_parcel_id-overrides.csv, scoped to this source_id. The bundled
+# default for US-NC-HD is `pattern: Sx-Sx-Sx`, written for NC OneMap's
+# dashed ALTPARNO ('9999-99-9999'); this layer's PIN carries the same
+# 10-digit key with no separators at all ('9999999999'), so the dashed
+# pattern matches nothing and every row's parcel_id_local came out
+# null. That silently cost the county its whole roll: last_sale_price
+# and the value fields reach the parcel spine only through the
+# parcel_id_local join (they are not in the spine's keep_columns), so a
+# null key drops them rather than erroring. `simple` recovers all
+# 16,109 rows at 15,752 distinct keys -- exactly the raw PIN's own
+# distinct count, so the conversion adds no duplicates.
 
 description: >-
   Hertford County, NC parcel roll (assessed land/building/total values,
@@ -42,6 +55,11 @@ columns:
   improvement_value: TOTAL_BLDG_ASSESSED
   value: TOTAL_PROP_VALUE
   area_sqft: HEATED_AREA
+  # LAND_CLASS is the county land-use class (RES / FRM / MAN-HOU / COM /
+  # FRST / WTRF), 97% populated. Without it this county reached curate
+  # with no use_group at all, and the footprint deliverable with no
+  # use_group_combined.
+  use_group: LAND_CLASS
   zoning_code: ZONING
 
 transformations:
@@ -53,6 +71,7 @@ transformations:
     output: last_sale_book_page
 
 columns_to_categorical:
+  - use_group
   - zoning_code
 
 parcel_id_local:

@@ -50,12 +50,26 @@ columns:
   owner_postal_code: CURRENT_ZI
   last_sale_book_page: BK_PG
   last_sale_price: SALE_PRICE
+  # SEG_TYPE_D is the land segment type (HOMESITE / CROPLAND / WOODLAND,
+  # pipe-joined per segment), 99.8% populated -- the land use. Note that
+  # USE_DESC, despite the name, is building style and is mapped to
+  # building_style below, not to use_group.
+  use_group: SEG_TYPE_D
+  # Building style incl. the manufactured-home markers this county uses
+  # ("DOUBLE WIDE MOHO"), 59.2% populated, pipe-joined per structure.
+  building_style: USE_DESC
+  n_rooms: TOTAL_ROOM
+  n_bedrooms: BEDROOMS
+  n_bathrooms: FULL_BATH
+  n_stories: STORY_HEIG
   last_sale_date: DATE_RECOR
   value: ASSESSED_V
   year_built: YEAR_BUILT
   area_sqft: LIVING_ARE
 
 columns_to_categorical:
+  - use_group
+  - building_style
   - owner_admin2_id_admin1
 
 parcel_id_local:

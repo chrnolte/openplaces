@@ -1,0 +1,95 @@
+# Recipe: Cumberland County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer
+# (`services.arcgis.com`, org id j3zNT485kmwrBtMJ), service
+# `Parcels_Cumberland_County`. Caps a single query at 2,000 features
+# (`maxRecordCount`), so `arcgis_rest_scraper` pages through it.
+#
+# This is the one county in this batch with no bulk download, and the
+# scraper is a considered fallback rather than a default. Checked and
+# ruled out: the ArcGIS Hub download API (the service is AGOL-hosted,
+# but its item is not publicly shared, so there is no Hub dataset to
+# export -- searched by service URL, by service name, and across the
+# owning org); the service's own capabilities, which are 'Query' only
+# with no Extract; and the Hub dataset index, which returns no
+# Cumberland NC parcel item. Every other county added alongside this one
+# does have a Hub export and uses it. Re-check before assuming this
+# still holds -- if the county ever shares the item publicly, switch to
+# `download_url`.
+#
+# The largest county in the CHEER study area by parcel count: 137,532
+# features against NC OneMap's 140,365.
+#
+# NOTE: this is a deliberately thin layer -- 23 fields in total, and the
+# whole schema is mapped below apart from geometry, PLAT, LOTS and
+# TAX_DIST. There are no assessed-value fields of any kind, no year
+# built, and no sale date; SALE_PRICE (62.5% positive in a 400-record
+# sample) and an 8-character DEED reference are the entire transaction
+# record. The county's value and construction data are not published
+# through this endpoint, so every value-derived indicator downstream
+# stays inert for Cumberland even after this recipe runs. It is worth
+# ingesting anyway: sale price is exactly what this county was missing,
+# and at this parcel count it is the single largest gain available in
+# the study area.
+#
+# NOTE: this county needs a `conv: simple` row in
+# US_parcel_id-overrides.csv, scoped to this source_id. The bundled
+# default for US-NC-CU is `pattern: Sx-Sx-Sx`, but NAD83_PIN carries a
+# fourth, empty segment and so ends in a trailing dash ('9999-99-9999-')
+# that the three-segment pattern refuses -- leaving parcel_id_local null
+# for every row, the same silent failure documented in the Hertford,
+# Northampton and Pamlico recipes. `simple` keeps 100% of rows at 3,999
+# distinct keys per 4,000 sampled.
+#
+# NC OneMap publishes no ALTPARNO for this county, so its default key is
+# empty and it needs a second override row of its own -- scoped to
+# `source_id: nconemap` at US-NC-CU, pointing `source` at
+# parcel_id_admin3 (PARNO) instead, exactly as Craven does. Under
+# `simple` that yields 132,704 distinct keys covering 97.0% of NC
+# OneMap's Cumberland rows, of which 128,766 (93.6%) meet this roll. Both
+# sides therefore join, rather than only this layer's own geometry
+# carrying the roll.
+
+description: >-
+  Cumberland County, NC parcel roll (owner, situs, subdivision, most recent
+  sale price) from the county's ArcGIS parcel layer. No values or year built.
+
+admin_id: US-NC-CU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: cumberlandcounty
+    portal_url: "https://www.cumberlandcountync.gov/departments/information-services-group/gis"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "cumberland_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services.arcgis.com/j3zNT485kmwrBtMJ/arcgis/rest/services/Parcels_Cumberland_County/FeatureServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: NAD83_PIN
+  address: SITUS_FULL
+  owner_name: OWNERNAME
+  owner_address: OWNER_MAIL
+  owner_city: OWNER_MA_1
+  owner_admin2_id_admin1: OWNER_MA_2
+  owner_postal_code: OWNER_MA_3
+  subdivision: SUB_NAME
+  area_sqft: RES_SQFT
+  last_sale_price: SALE_PRICE
+  last_sale_book_page: DEED
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

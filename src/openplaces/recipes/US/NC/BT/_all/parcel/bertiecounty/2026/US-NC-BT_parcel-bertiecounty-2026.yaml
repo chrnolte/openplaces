@@ -36,6 +36,12 @@ columns:
   parcel_id_assessor: GEOPIN
   address: PARADDR
   owner_name: OWNER
+  # PARCLASS is a coarse but near-complete land-use class (RESIDENTIAL /
+  # EXEMPT / BUSINESS), 99.6% populated. PARZONE is the zoning district,
+  # 32% populated -- partial because this county zones only part of its
+  # area, not because the field is unreliable.
+  use_group: PARCLASS
+  zoning_code: PARZONE
   owner_address: ADDR1
   owner_address_2: ADDR2
   owner_city: OWNCITY
@@ -48,6 +54,8 @@ columns:
   n_buildings: NUMBLDG
 
 columns_to_categorical:
+  - use_group
+  - zoning_code
   - owner_admin2_id_admin1
 
 parcel_id_local:

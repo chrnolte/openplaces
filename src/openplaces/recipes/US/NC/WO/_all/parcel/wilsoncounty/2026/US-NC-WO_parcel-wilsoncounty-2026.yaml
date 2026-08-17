@@ -1,0 +1,140 @@
+# Recipe: Wilson County, NC parcel roll.
+#
+# Source: the county's own ArcGIS Server (`gis.wilson-co.com`, on-prem,
+# not ArcGIS Online), service `Open_gov/Opengov_Address_Taxparcels`. Caps
+# a single query at 2,000 features (`maxRecordCount`), so
+# `arcgis_rest_scraper` pages through it.
+#
+# NOTE: a bulk download exists for this layer and is deliberately NOT
+# used -- the one county in this batch where bulk is the wrong choice.
+# The service is registered as an ArcGIS Online item
+# (059aeeb406a34f05b55e6ab05aeb0101), and the Hub download API does
+# return a ~273 MB GeoJSON for it, but that export carries only the base
+# geometry: PIN, CACRES and OBJECTID are populated and every CAMA field
+# is null. Measured on the real export -- 42,097 rows, of which just 341
+# had a value in SalesAmount, LandFMVCur or PhysicalStreetAddress, i.e.
+# 0.8%, against 44.2% for SalesAmount when the same fields are read
+# through the REST layer. The layer is a join/view that the live service
+# resolves per query and Hub materializes without, so the two are not
+# interchangeable here. Paging costs ~22 sequential requests; getting
+# the attributes at all is worth them.
+#
+# The lesson generalizes: before switching any layer to a Hub bulk URL,
+# compare a populated field's fill rate between the export and the REST
+# layer, not just the feature count.
+#
+# The richest CAMA join of the nine counties added in this pass --
+# values in both assessed and fair-market form, year built, finished
+# area, story count, sale instrument and qualification code.
+#
+# IMPORTANT: this is an *address*-keyed parcel layer, not a parcel-keyed
+# one, and it carries genuine duplicate parcels: 43,538 features against
+# NC OneMap's 43,196, with PIN resolving to only 3,644 distinct values
+# per 4,000 sampled rows. A parcel with several addresses appears
+# several times, each row repeating the same geometry and the same CAMA
+# attributes. This is not an ingest defect to fix here -- the raw field
+# has exactly that many distinct values, so the id conversion adds no
+# duplicates of its own and the guard in compute_parcel_id_local passes.
+# It does mean the spine's link_by_id keeps one arbitrary row per key
+# (its 'attributes' mode drops duplicates), which is harmless while the
+# duplicated rows agree, and that per-parcel counts taken directly off
+# this table will overcount. Deduplicating on PIN before use is the safe
+# habit.
+#
+# Join key: PIN ('9999-99-9999.000'), which matches NC OneMap's own
+# parcel_id_local on 98.3% of sampled rows under the bundled `simple`
+# conversion, so no id-override row is needed.
+#
+# NOTE on the sale date: DateSold is an integer in 'YYYYMMDD' form
+# (20011009), not a date and not an epoch offset. Mapping it to
+# last_sale_date would store a bare number that pandas reads as
+# nanoseconds since 1970, so it is deliberately left unmapped and the
+# clean DeedYear field (98.2% populated) carries the sale year instead.
+# Recovering the full date needs a string round-trip this recipe layer
+# cannot express today.
+#
+# NOTE on values: the layer publishes both an assessed family
+# (Land/Improve/TotalASVCur) and a fair-market family
+# (Land/Improve/TotalFMVCur). The fair-market split is mapped to
+# land_value/improvement_value and its total to market_value; the
+# assessed total becomes `value`, matching how the other NC recipes use
+# that column.
+
+description: >-
+  Wilson County, NC parcel roll (market and assessed values, year built, floor
+  area, owner, situs, most recent sale) from the county's ArcGIS parcel layer.
+
+admin_id: US-NC-WO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: wilsoncounty
+    portal_url: "https://www.wilson-co.com/166/Geographic-Information-Systems"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "wilson_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://gis.wilson-co.com/arcgis/rest/services/Open_gov/Opengov_Address_Taxparcels/FeatureServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN
+  address: PhysicalStreetAddress
+  city: CityCodeDesc
+  owner_name: Name1
+  owner_name_2: Name2
+  owner_address: TaxpayerAddress1
+  owner_address_2: TaxpayerAddress2
+  owner_city: TaxpayerCity
+  owner_admin2_id_admin1: State
+  owner_postal_code: ZIPCode
+  legal_description: LegalDescription1
+  use_group: Description1
+  use_group_code: ParcelDescrCode2
+  tax_neighborhood_code: NeighborhoodCodeDesc
+  tax_year: TaxYear
+  year_built: YearActuallyBuilt1Imp
+  area_sqft: FinishedArea1Imp
+  n_stories: NumberOfStories1Imp
+  # Structure detail for the first improvement on the parcel; this
+  # layer numbers its fields per improvement (1Imp, 2Imp, 3Imp) and
+  # only the first is mapped, matching the year/area fields above.
+  n_bedrooms: NumberofBedrooms1Imp
+  n_bathrooms: NumberofFBT1Imp
+  effective_year_built: EffYrBuilt
+  last_sale_year: DeedYear
+  last_sale_price: SalesAmount
+  last_sale_doc_type: SalesInstrumentDesc
+  last_sale_qualification_code: QualifyCodeDesc
+  land_value: LandFMVCur
+  improvement_value: ImproveFMVCur
+  market_value: TotalFMVCurrent
+  value: TotalASVCurrent
+  current_use_value: LandLUVCur
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DeedBook, DeedPage]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - tax_neighborhood_code
+  - last_sale_doc_type
+  - last_sale_qualification_code
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
