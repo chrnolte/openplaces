@@ -145,3 +145,44 @@ A change is *significant*, and generates a new ``geo_id``, when it is large enou
 - Shift the compactness (perimeter² / area ratio) by 0.1 or more.
 
 Subdividing a lot, merging two lots, lopping off a strip for road widening, or resurveying the outline all produce a new ID because they represent a different parcel of land.
+
+
+.. _containing_area_ids:
+
+Identifiers of the containing area
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The identifiers above name the entity itself. A second, separate family names the *area the entity sits in*: the town it belongs to, the census tract it falls in, the ZIP code area that covers it.
+
+These are assigned during :ref:`harmonization <pipeline>` by the ``link_geographic_ids`` step (:func:`openplaces.io.harmonizer.spine.link_geographic_ids`), and they travel with the entity into the curated output. They exist so that entity data can be joined to any statistic published for those areas - census demographics, ZIP-level market data, municipal policy - without every analysis repeating the same spatial join.
+
+The parcel and footprint spines currently assign:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Column
+     - Containing area
+   * - ``admin4_id``
+     - ``openplaces`` :ref:`administrative unit <administrative_units>` at level 4 (town, city, county subdivision)
+   * - ``census_subdivision_id``
+     - The raw U.S. Census county subdivision (COUSUB) code for that same level-4 unit
+   * - ``census_tract_id``
+     - U.S. Census tract
+   * - ``census_blockgroup_id``
+     - U.S. Census block group
+   * - ``census_block_id``
+     - U.S. Census block
+   * - ``zcta5_id``
+     - 5-digit ZIP Code Tabulation Area
+
+.. note::
+
+   A ZCTA is the Census Bureau's statistical approximation of a ZIP code's service area, not the ZIP code itself. Where an authoritative postal code is needed, use ``postal_code``, which prefers a real address-parsed ZIP and only falls back to ``zcta5_id`` for places where no address source has coverage.
+
+   Expect ``zcta5_id`` to be markedly less complete than the other columns here. ZCTAs follow postal delivery areas rather than partitioning the land surface, so an entity outside any carrier route simply has no ZCTA to fall in. The Census geographies and admin units above do tile their extent, and reach near-complete coverage.
+
+Each id is resolved in two passes: a point-in-polygon test on the entity's own centroid, then - only for rows the first pass missed - an overlay of the entity's actual geometry, keeping the reference polygon it overlaps most. Rows matched by neither pass are left empty, so a coverage gap stays visible rather than being silently filled.
+
+Which reference layers are used is a recipe setting, not a hardcoded list. Any layer that partitions space without overlaps can be added.

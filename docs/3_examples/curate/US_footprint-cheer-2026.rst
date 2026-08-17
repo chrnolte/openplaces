@@ -16,12 +16,47 @@ It first resolves building :ref:`footprints <footprints>` from multiple polygon 
 
 It also integrates deep-learning-based recognition of roof shapes and story counts from Google Satellite and Street View imagery (BRAILS++).
 
+Where a modeled inventory already exists for a region, the same attributes can be read off it instead of re-running inference. In North Carolina, the CHEER Inventory v0 supplies statewide roof shape, foundation, construction type, garage, and story evidence at no imagery cost.
+
 The pipeline is currently being tested in Florida, North Carolina, and Texas.
 
 * **Curation recipe**: :gh-file:`src/openplaces/recipes/US/_all/footprint/cheer/2026/US_footprint-cheer-2026.yaml`
 * **Companion notebook**: :gh-file:`notebooks/examples/US_curate_footprints.ipynb`
 
-This work is supported by NSF's Coastal Hazards, Economic Prosperity & Resilience hub (`CHEER <https://www.drc.udel.edu/cheer/>`_). 
+This work is supported by NSF's Coastal Hazards, Economic Prosperity & Resilience hub (`CHEER <https://www.drc.udel.edu/cheer/>`_).
+
+Regional release: Eastern North Carolina
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The companion notebook pools the curated per-county outputs of the 45 Eastern North Carolina counties into one shareable file, :file:`US-NC_footprint-cheer-2026.parquet`, carrying the canonical attributes and their provenance sidecars plus a matching geometry sidecar.
+
+The pooled export holds 2,581,592 rows. The canonical attribute and geometry pair is slightly smaller, at 2,581,559, because footprints captured by two neighboring counties' pipelines near a shared county line are deduplicated - 33 rows - keeping whichever copy has the fuller attribute coverage.
+
+Coverage of the :ref:`containing-area identifiers <containing_area_ids>`, as a minimum across the 45 counties:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 55 45
+
+   * - Column
+     - Minimum county coverage
+   * - ``admin4_id``, ``census_subdivision_id``, ``census_tract_id``, ``census_blockgroup_id``
+     - ≥ 99.8%
+   * - ``census_block_id``
+     - ≥ 98.9%
+   * - ``zcta5_id``
+     - ≥ 62.2%
+
+The lower floor on ``zcta5_id`` is expected rather than a defect: ZIP Code Tabulation Areas follow postal delivery areas and do not tile all land, so a footprint in an area no carrier route covers has no ZCTA to fall in.
+
+Running the pipeline
+~~~~~~~~~~~~~~~~~~~~
+
+The stages are driven from the companion notebook, which can also be run as a script for whole regions.
+
+.. warning::
+
+   On Windows, set :input:`PYTHONIOENCODING=utf-8` for any non-interactive run whose output is redirected to a file or a log. Progress messages contain non-ASCII characters that the default :input:`cp1252` console encoding cannot encode, which aborts the run with a ``UnicodeEncodeError`` partway through - after the expensive work has already been done.
 
 Output columns
 ~~~~~~~~~~~~~~
@@ -50,17 +85,45 @@ Canonical attributes
 ``year_built``
     Reconciled construction year. Prioritizes assessor parcel records over NSI block-median fallbacks.
 ``n_stories``
-    Reconciled number of stories. Prioritizes street-level imagery predictions (BRAILS++), falling back to NSI modeled counts.
+    Reconciled number of stories. Prioritizes street-level imagery predictions (BRAILS++), then NSI modeled counts, then a modeled inventory's count - last because it shares NSI's modeled lineage rather than being an independent observation.
 ``n_dwellings``
     Reconciled count of dwelling units. Prioritizes Overture geocoded address counts over NSI structure counts, falling back to occupancy-class imputation.
 ``height``
     Reconciled building height in meters (where available from the footprint source, e.g. OpenBuildingMap).
 ``roof_shape``
-    Reconciled roof structure classification (e.g., Gable, Hip, Flat) from visual models.
+    Reconciled roof structure classification (e.g., Gable, Hip, Flat) from visual models. Prioritizes this repository's own per-image classification, falling back to the CHEER Inventory v0 run of the same classifier. Both are BRAILS++ outputs, so this is a coverage cascade rather than a quality ranking: whichever actually ran for the county wins.
+``roof_shape_confidence``
+    Classifier confidence in ``roof_shape``.
+``roof_shape_2`` / ``roof_shape_3``
+    The classifier's second- and third-ranked alternative roof shapes, with ``roof_shape_confidence_2`` / ``roof_shape_confidence_3``. The top class is near-saturated, so the runner-up is what carries information when the leader is weak.
+``foundation_type``
+    Reconciled foundation classification. Prioritizes NSI, using Inventory v0 only where NSI is silent - not a blanket judgement on the inventory, but a guard against a failure mode NSI's regional prior cannot have: the inventory's per-county class shares swing widely, and in at least one coastal county where basements are near-absent the Basement class collapses onto most buildings and carries no information.
+``construction_type``
+    Structural construction material class (e.g., wood, masonry, steel, concrete).
+``has_garage``
+    Whether the building has a garage.
 ``m2``
     Calculated footprint area in square meters.
 ``priority_on_parcel``
     Structural role: :input:`primary` (main structure), :input:`secondary` (accessory structure), or :input:`unknown` (unlinked to parcel).
+
+.. note::
+
+   ``roof_shape_confidence``, the ranked roof-shape alternatives, ``construction_type``, and ``has_garage`` currently reach the output only for counties covered by a modeled inventory (North Carolina). They are empty elsewhere.
+
+Containing-area identifiers
+---------------------------
+
+Identifiers of the areas each footprint falls in, assigned during harmonization (see :ref:`containing-area identifiers <containing_area_ids>`). They let the inventory be joined to any statistic published for those areas without repeating the spatial join.
+
+``admin4_id``
+    ``openplaces`` administrative unit at level 4 (town, city, county subdivision).
+``census_subdivision_id``
+    Raw U.S. Census county subdivision (COUSUB) code for that same level-4 unit.
+``census_tract_id`` / ``census_blockgroup_id`` / ``census_block_id``
+    U.S. Census tract, block group, and block.
+``zcta5_id``
+    5-digit ZIP Code Tabulation Area. A statistical approximation of a ZIP code's service area, not the authoritative ZIP; ``postal_code`` prefers a real address-parsed value and only falls back to this.
 
 Provenance sidecars
 -------------------
@@ -135,6 +198,17 @@ Residential unit address points matched from Overture.
 ``postal_code_dwelling_overture`` / ``city_dwelling_overture``
     Postal code and city components.
 
+Modeled inventory evidence (CHEER Inventory v0)
+------------------------------------------------
+Attributes of the reference building each footprint overlaps most, retained as evidence rather than merged onto a canonical name because a competing source is reconciled against them. Present for North Carolina only.
+
+``roof_shape_building_cheer``
+    Inventory roof shape, second-ranked behind this repository's own per-image classification in ``roof_shape``.
+``foundation_type_building_cheer``
+    Inventory foundation class, second-ranked behind NSI in ``foundation_type``.
+``n_stories_building_cheer``
+    Inventory story count. Ranked last in ``n_stories``, behind direct street-level floor detection and NSI, because it shares NSI's modeled lineage rather than being an independent observation.
+
 Diagnostics and special metrics
 -------------------------------
 Flags and intermediate calculations used for curation and quality control.
@@ -180,6 +254,8 @@ Core assets
 1. **Footprint polygon datasets**: Downloads and unzips raw footprints from OpenBuildingMap (OBM), Microsoft, and state/local layers.
 2. **Parcel datasets**: Gathers property tax assessor geometry and tax rolls from local/state agencies.
 3. **Reference layers**: Downloads structure point databases (National Structure Inventory; NSI), geocoded residential address points (Overture), and FEMA USA Structures footprints (used for parcel-level occupancy evidence).
+4. **Census statistical geographies**: Downloads Census tract, block group, block, and ZCTA5 boundaries, plus county subdivisions, so harmonization can stamp each entity with the areas containing it.
+5. **Modeled building inventories** (where available): Registers a precomputed regional inventory as a building entity - for North Carolina, the CHEER Inventory v0 (``US-NC_building-cheer-v0``). This is a project deliverable rather than a public download, so the file is placed by hand in the recipe's external directory.
 
 Stage 2: harmonize
 ------------------
@@ -197,6 +273,7 @@ Creates the spatial exposure units by merging and deduplicating footprint bounda
 * **Elongated-footprint filter**: Aspect ratios >= 2.5 with aligned axes (within 15°), longitudinal overlap >= 50%, and lateral spacing < 2x width are deduplicated to prevent parallel-shifted footprint representations (common for manufactured homes) from appearing twice.
 * **Parcel spatial overlay**: Intersects footprints with parcels via a polygon identity overlay. Intersections under 10 m² or minor slivers (< 1/6 of the footprint's largest parcel intersection) are filtered. Systematic spatial displacements between footprint and parcel layers are corrected by snapping chain-displaced footprints to their dominant parcel when minor overlaps are small and land on neighbors with their own buildings.
 * **Synthetic fallbacks**: For parcels where assessor records indicate a structure exists but no footprint is detected, synthetic "footprint" rows are created using the parcel boundary geometry (labeled :input:`parcel.<source>`). Overlaps against detected footprints are spatial-trimmed. These fallback polygons are included in the parcel footprint count, are backfilled with the ID (``parcel_id``) and local ID (``parcel_id_local``) of their source parcel, and are excluded from morphology metrics.
+* **Containing-area identifiers**: Stamps each footprint with the level-4 admin unit and the Census tract, block group, block, and ZCTA5 that contain it. A point-in-polygon test on the footprint's centroid resolves nearly all rows; only the misses pay for a geometry overlay. This runs on the footprint spine first so the parcel spine can inherit the result rather than repeating the join.
 * **Reference point linking**: Associates structure-level point evidence with the footprint spine using a tiered proximity join (`Lochhead et al. 2026`_).
 
   *Containment*: Point is within the footprint.
@@ -227,7 +304,8 @@ Recipe: ``US_parcel-spine-2026``
 Creates the parcel-level matching baseline by compiling land boundaries, merging tax assessor records, and linking point evidence:
 
 * **Boundary baseline**: Merges discovered statewide and local parcel geometry layers into a unified spatial spine.
-* **Assessor records merge**: Joins county and local assessment tables by matching local ID keys and standardizing property use codes.
+* **Containing-area identifiers**: Inherits the same admin and Census identifiers from the footprint spine, rolled up per parcel wherever every footprint on it agrees. Only parcels with no footprint, or with disagreeing ones, pay for a fresh spatial join.
+* **Assessor records merge**: Joins county and local assessment tables by matching local ID keys and standardizing property use codes. The combined use label is built from an ordered list of source columns, ending with the structure description (``building_style``): some counties record a *land segment* type (homesite, cropland, woodland) that matches no land-use keyword at all, while their style column names the building and identifies thousands of manufactured homes the classifier would otherwise never see. Listed last, it only ever extends the assessor's own use label.
 * **Reference data enrichment**: Joins building structures (NSI), dominant building groups, and FEMA occupancy, and counts footprint morphology features (such as primary and small elongated footprints) on each parcel. It resolves colocated duplicate NSI points using the same rules (flagging low-rank twins) to exclude them from parcel aggregates.
 
 Stage 3: ingest images
@@ -241,10 +319,11 @@ This stage fetches external imagery required for deep-learning visual classifica
 Stage 4: enrich
 ---------------
 
-This stage runs deep learning models (BRAILS++) on the ingested imagery to predict visual building attributes (`Cetiner et al. 2025`_):
+This stage produces entity-keyed evidence without selecting any canonical value. Two routes lead to the same attributes: running the models here, or reading them off an inventory that already ran them.
 
-1. **Roof shape prediction**: Runs neural network classifiers on the scraped satellite imagery to predict ``roof_shape``.
-2. **Story count detection**: Runs detectors on the Street View photos to infer ``n_stories``.
+1. **Roof shape prediction**: Runs neural network classifiers (BRAILS++) on the scraped satellite imagery to predict ``roof_shape`` (`Cetiner et al. 2025`_).
+2. **Story count detection**: Runs detectors on the Street View photos to infer ``n_stories`` (`Cetiner et al. 2025`_).
+3. **Modeled inventory attributes**: Matches each footprint to the reference building it overlaps most and copies that building's attributes across as ``*_building_cheer`` evidence. Matching is by intersection-over-union, not raw overlap area: the two sides are independent renderings of the same buildings, and a large reference building clipping a small footprint's corner shares more area with it than the correct small building does. Counties the reference does not cover are skipped, so this changes nothing outside North Carolina.
 
 Stage 5: curate
 ---------------
@@ -305,10 +384,17 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
       class (excluding habitable structures in manufactured home communities).
    b. **Apply property-use keyword corrections**: Refines baseline occupancy using county property-use keyword rules. It also writes the ``occupancy_type_parcel`` column, sets review flags, and creates conflicts reports.
 
-5. Imagery enrichment integration
+5. Enrichment integration
 
-   a. **Merge visual model predictions**: Merges predicted roof shape and story count attributes from visual model recipes.
-   b. **Reconcile story counts**: Resolves conflicts between competing story count sources (visual predictions ``n_stories_brails`` and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
+   a. **Merge enrichment evidence**: Merges predicted roof shape and story
+      count from the visual model recipes and, where a modeled inventory
+      covers the county, its ranked roof shapes and confidences, construction
+      type, garage flag, foundation, and story count.
+   b. **Reconcile canonical values**: Resolves the competing sources into
+      canonical ``n_stories`` (street-level floor detection, then NSI's
+      modeled count, then the inventory's), ``roof_shape`` (this repository's
+      own classification, then the inventory's run of the same classifier),
+      and ``foundation_type`` (NSI, then the inventory).
 
 6. Final occupancy voting and refinement
 

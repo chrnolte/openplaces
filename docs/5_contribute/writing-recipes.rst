@@ -104,6 +104,11 @@ Dataset description and source
 
          Placeholders in the pattern (e.g., ``{admin3_name}``) are substituted with the current partition value before matching.
 
+      .. attribute:: download_url_scraper
+
+         Name of a scraper module that produces the source file when no
+         plain :attr:`download_url` exists (see :ref:`scraped_downloads`).
+
    .. attribute:: version
 
       Version of the dataset (year, date, or version number).
@@ -169,8 +174,33 @@ File handling
          Download one file per calendar month. Requires :attr:`first` and
          :attr:`last` as ``YYYYMM`` values.
 
+      :input:`table`
+         Download one file per named table of a multi-table source (e.g. an
+         assessor's separate parcel, building, and sales extracts). Requires
+         :attr:`table_names`. See :ref:`join_partitions_by` to rejoin the
+         per-table outputs into one entity file afterwards.
+
       :input:`tile_id`
          Download one file per tile. Requires :attr:`tile_recipe_id`.
+
+      :input:`latlon_tile`
+         Download one tile per whole-degree lat/lon cell covering the admin
+         unit. Unlike :input:`tile_id`, no tile index has to be ingested
+         first: the cells are computed from the admin unit's own bounds.
+         Optional :attr:`tile_size_deg` (default :input:`1.0`) sets the cell
+         size.
+
+      Any other value raises ``NotImplementedError``.
+
+   .. attribute:: table_names
+
+      List of table names to download when :attr:`partition` is
+      :input:`table`.
+
+   .. attribute:: tile_size_deg
+
+      Cell size in degrees when :attr:`partition` is :input:`latlon_tile`
+      (default :input:`1.0`).
 
    .. attribute:: first
 
@@ -323,6 +353,100 @@ File handling
       Useful when source data does not have a reliable admin ID column and rows must be assigned by spatial containment.
 
 
+.. _scraped_downloads:
+
+Scraped downloads
+-----------------
+
+Some sources publish no stable download URL at all: the data sits behind an
+interactive portal, or is only served by a query API. For these, the recipe
+names a scraper module instead of a URL.
+
+.. attribute:: source.download_url_scraper
+   :no-index:
+
+   Stem of a module in :gh-file:`src/openplaces/io/scrapers` (e.g.
+   :input:`arcgis_rest_scraper`). The module exposes a ``fetch()``
+   entrypoint that writes the current partition's file to the path the
+   recipe's :attr:`uncompressed_file_name` resolves to; processing then
+   continues through the normal reading path.
+
+   A recipe using a scraper must therefore define a target filename.
+
+.. attribute:: scraper_options
+
+   Dictionary of keyword arguments passed through to the scraper's
+   ``fetch()``. The accepted keys are the scraper's own.
+
+ArcGIS REST layers
+^^^^^^^^^^^^^^^^^^
+
+:input:`arcgis_rest_scraper` is the generic, recipe-agnostic downloader for a
+single ArcGIS ``FeatureServer``/``MapServer`` layer. It reads the layer's
+``maxRecordCount``, pages through it, and writes one combined GeoJSON
+``FeatureCollection``.
+
+.. important::
+
+   Check for a bulk or direct file download **before** reaching for it.
+   Paging a county's live service can mean hundreds of requests against a
+   server that a single published export would have answered once, and the
+   export is usually the access route the agency intends for whole-layer use.
+
+Useful ``scraper_options`` keys:
+
+:input:`layer_url`
+   Base URL of the layer, without a trailing ``/query``.
+
+:input:`bulk_url`
+   Fetch a ready-made export instead of paging the layer for geometry.
+
+:input:`attribute_join`
+   Page a REST layer for **attributes only** and join the result onto the
+   downloaded features by a shared key. Takes ``key``, ``fields``, and
+   optionally ``layer_url``, ``where`` and ``page_size``.
+
+   Geometry is what makes these services fall over: attribute-only pages
+   return in a fraction of a second where the same rows carrying polygons
+   time out. Combining :input:`bulk_url` with :input:`attribute_join` takes
+   geometry from the agency's own export and tops it up with the handful of
+   fields that exist only on the live service.
+
+:input:`page_size`, :input:`timeout`, :input:`retries`
+   Lower the page size and raise the timeout for services that drop heavy
+   requests.
+
+:input:`allow_partial`
+   By default the scraper compares the features it wrote against the count
+   the service reported, and discards the file if it came up short - a flaky
+   service otherwise yields a plausible but truncated layer that no later
+   step can detect. Set :input:`True` only to deliberately accept a
+   known-incomplete extract.
+
+Example (bulk geometry, plus four columns joined attribute-only from the live
+assessment view):
+
+.. code-block:: yaml
+
+   entity:
+     entity_type: parcel
+     source:
+       source_id: examplecounty
+       download_url_scraper: arcgis_rest_scraper
+
+   uncompressed_file_name: "example_tax_parcels.geojson"
+
+   scraper_options:
+     bulk_url: "https://example.org/api/download/v1/items/abc123/geojson"
+     layer_url: "https://gis.example.org/rest/services/Parcels/MapServer/2"
+     timeout: 120
+     retries: 4
+     attribute_join:
+       key: PARCELID
+       fields: [LAND_VALUE, BUILD_VALUE, LANDUSECODE, PROP_CLASS]
+       page_size: 2000
+
+
 Reading
 -------
 
@@ -411,13 +535,41 @@ Columns
    The conversion is admin-unit-specific: a recipe ``instruction`` if given,
    else the bundled default table (``geo/parcel_id_links.csv``, keyed by
    ``admin_id`` with separate ``parcel`` and ``tax`` conversions), else
-   ``simple`` (uppercase, keep alphanumerics). The engine
-   (:func:`openplaces.geo.ids.compute_parcel_id_local`) is hardened so the
-   conversion never adds duplicates over those already in
-   ``parcel_id_assessor`` - it falls back to ``simple`` then the raw ID. The
-   harmonizer ``link_by_id`` step then joins datasets on ``parcel_id_local``
-   (attaching attributes, or counting transactions per parcel). The methodology
-   is adapted from the ZTRAX/parcel APN-matching workflow.
+   ``simple`` (uppercase, keep alphanumerics).
+
+   The engine (:func:`openplaces.geo.ids.compute_parcel_id_local`) applies two
+   guards, because a bad key fails silently in both directions:
+
+   - **Too few keys.** If the conversion would collapse distinct
+     ``parcel_id_assessor`` values into one key, it falls back to ``pipe``
+     and then to the raw ID. ``pipe`` (not ``simple``) is the first fallback
+     because it keeps separators between segments (:input:`1-23` ->
+     :input:`1|23`) instead of deleting them (:input:`1-23` -> :input:`123`,
+     now indistinguishable from :input:`12-3`). A fallback's whole job is to
+     avoid manufacturing collisions, so it must never be more lossy than
+     necessary.
+   - **No keys at all.** A conversion whose pattern does not fit the source
+     matches nothing and returns an all-null key. The duplicate guard cannot
+     see this - it only compares rows where both sides are populated - and
+     the null key then drops the entire table wherever it is joined by
+     ``parcel_id_local``, without raising. So the conversion's failure rate
+     is also compared against a plain ``simple`` conversion of the same
+     column, and a conversion losing far more than ``simple`` does falls
+     back too.
+
+   The harmonizer ``link_by_id`` step then joins datasets on
+   ``parcel_id_local`` (attaching attributes, or counting transactions per
+   parcel). The methodology is adapted from the ZTRAX/parcel APN-matching
+   workflow.
+
+   To derive a conversion for an admin unit the bundled table does not cover,
+   :func:`openplaces.geo.build_parcel_id_links.propose_parcel_id_overrides`
+   grid-searches each side's extraction pattern and conversion options
+   against your own already-ingested parcel and transaction/property recipes,
+   scoring candidates by cross-dataset match rate. It proposes rows for the
+   per-country ``{entity_type}_id-overrides.csv`` files rather than editing
+   the bundled table, and is a maintenance tool - it never runs on the ingest
+   path.
 
 
 Data cleaning
@@ -506,7 +658,6 @@ Data transformations
 
 
 Indexing
-indexing
 --------
 
 .. attribute:: set_index
@@ -714,6 +865,34 @@ Aggregating partitions
       aggregate_by:
         single_file: true
         keep_partitions: true
+
+
+.. _join_partitions_by:
+
+Joining table partitions
+------------------------
+
+.. attribute:: join_partitions_by
+
+   Column-wise counterpart to :ref:`aggregate_by`, for recipes downloaded with
+   ``download_by: {partition: table}``. Where ``aggregate_by`` stacks
+   partitions as rows, this left-joins them as columns into the single,
+   un-partitioned entity file the rest of the codebase expects to read - one
+   per admin unit.
+
+   The **first** name in :attr:`table_names` is the base table and is read
+   with geometry; every later one is joined onto it by the shared index each
+   table already carries.
+
+   .. attribute:: join_key_name
+
+      Keep the shared join index as a column under this name, for
+      provenance. Omitted, it is dropped once the real ``geo_id`` index is
+      assigned.
+
+   .. attribute:: keep_original
+
+      Retain the per-table partition files after joining.
 
 
 Additional layers

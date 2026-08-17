@@ -61,6 +61,68 @@ repository.
   recipe is a separate, parallel concern — check the source's license and
   redistribution terms the same way before writing the recipe.
 
+## Patent risk: new algorithms in the parcel/property-matching and valuation space
+- **"Open-source, non-commercial, public-benefit" is not a legal shield
+  against patent infringement in the U.S.** — this is a common and
+  understandable misconception, but it's wrong, and a specific, on-point
+  precedent says so directly: *Madey v. Duke University*, 307 F.3d 1351
+  (Fed. Cir. 2002) held that a university's own research use of a patented
+  invention did not qualify for the "experimental use" defense, because it
+  still furthered the university's legitimate institutional
+  objectives — the defense is limited to use "for amusement, to satisfy
+  idle curiosity, or for strictly philosophical inquiry," which a
+  maintained, publicly-used research tool is not. Don't let the project's
+  mission stand in for an actual legal analysis when a specific technique
+  looks close to a known patent.
+- **Where risk actually concentrates, based on research done so far**:
+  the parcel/property-record-linking space has real, active patent
+  holders — CoreLogic/Cotality, Black Knight/ICE Mortgage Technology, and
+  First American chief among them — whose claims cluster around three
+  specific technique *shapes*, not the general goal of "link/match
+  property records" (which itself isn't patentable, only a particular
+  claimed method for doing it is):
+  1. Geometric neighbor/"community" detection (buffer-enlarge, union,
+     reduce a group of parcel boundaries) used to impute or validate a
+     *missing address number* by interpolating between neighbors.
+  2. A trained machine-learning model used to score match probability
+     between two property/record representations (as opposed to a fixed,
+     deterministic rule set with no learned parameters).
+  3. Detecting records *internally inconsistent* with their own source's
+     mapping/address data, grouping them, and normalizing the group.
+  A new feature that does one of these three things, in this domain,
+  deserves a specific check against that sub-area before merging — not a
+  general "we checked patents once" assumption. `openplaces`'s existing
+  `parcel_id_local`/`geo_id` matching is deterministic string/geometry
+  fingerprinting with no learned parameters and no neighbor-comparison or
+  address-imputation step, which is why it reads as a different mechanism
+  from all three shapes above — that reasoning doesn't automatically carry
+  over to a new ML-based imputation or inference feature, which may
+  resemble shape 2 much more closely by design.
+- **Process for a new imputation/inference/matching/valuation feature
+  touching parcel, property, or transaction data**: (1) identify the
+  specific technique, not just the goal, and check whether it resembles
+  one of the three shapes above or another known patent in this space;
+  (2) if it does, flag it to the user explicitly before merging — this is
+  a judgment call for a human, not something an agent should silently wave
+  through, the same posture as the IP-ownership section above; (3) where
+  more than one technically valid approach exists, prefer the one that is
+  most clearly mechanistically different from a known patented approach —
+  this is not purely defensive: a genuinely distinct method is also a
+  stronger, more citable methodological contribution for a research
+  project, so the incentive runs the same direction as the science; (4)
+  document the technical rationale for a new method in the code itself
+  (why this approach, not a more obvious alternative) — ordinary good
+  practice that also creates a contemporaneous record of independent
+  development.
+- **Publishing openly and promptly is itself a protective strategy, not
+  just a defensive one** — a clearly dated, technically detailed
+  description of a novel method (in code, docs, or a paper) becomes prior
+  art that keeps the technique in the public domain and available to
+  everyone, rather than leaving room for someone else to patent it later
+  and assert it against future users of this or a similar tool. This is
+  directly aligned with the project's own public-benefit mission, not a
+  tradeoff against it.
+
 ## Code style
 - Line length:
   - 88 characters maximum for code. Use ``ruff format`` to enforce.
@@ -132,12 +194,12 @@ pytest -k "test_name"                 # single test by name
 
 ```
 Layer 0  core
-Layer 1  config, path
+Layer 1  config, path, diagnostics
 Layer 2  recipe
-Layer 3  io/__init__
-Layer 4  io/readers
-Layer 5  geo/*
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/aggregate, io/admin, io/transform, io/cleanup
+Layer 3  io/__init__, geo/address
+Layer 4  io/readers, table
+Layer 5  geo/* (except geo/address, above)
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/transform, io/cleanup
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -146,6 +208,15 @@ Layer 11 api.py
 Layer 12 flow/* (scripts, dag, run_stage, submit)
 ```
 Higher-numbered layers may only import from lower-numbered layers.
+
+Two placements are worth knowing. `table` holds the registry-driven row
+helpers (`aggregate_rows`, `add_unique_suffix`, the `join_nonnull_*`
+functions); they sit below `geo/` because `geo/crosswalk` and `geo/ids`
+call them, and keeping them in `io/aggregate`/`io/transform` created a
+module-level import cycle. `io/aggregate` and `io/transform` re-export
+them, so the older import paths still work. `geo/address` is listed
+separately because it depends on nothing above `recipe`, which is what
+lets `table` use `strip_unit_suffix` without reintroducing that cycle.
 
 ## Architecture overview
 
@@ -247,10 +318,15 @@ of the sub-modules:
 - `links.py` — join to reference datasets spatially or via crosswalks
   (`link_to_reference`)
 - `attributes.py` — attribute source columns to the spine as suffixed evidence
-  columns (`reconcile_attributes`) and assign each footprint's parcel priority
-  (`classify_footprint_priority`). Value selection, gap-filling, and occupancy
-  inference now run in the curation stage, not here; the harmonized spine
-  (`US_footprint-spine-2026`) is an evidence-only table.
+  columns (`reconcile_attributes`), assign each footprint's parcel priority
+  (`classify_footprint_priority`), and build the combined land-use label the
+  parcel classifier votes on (`derive_use_classes`, which joins an ordered
+  `columns` list, default `use_group` + `use_subgroup`; the parcel spine
+  appends `building_style` last so a county whose land-use text carries no
+  occupancy signal can contribute one from its structure description).
+  Value selection, gap-filling, and occupancy inference now run in the
+  curation stage, not here; the harmonized spine (`US_footprint-spine-2026`)
+  is an evidence-only table.
 - `addresses.py` — reconcile a canonical street address from any number of
   source inputs (`reconcile_addresses`); coalesce ZIP-code evidence from
   multiple columns by priority (`reconcile_postal_code` — e.g. an
@@ -291,13 +367,28 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
   ingested at admin level 4; admin units without imagery are skipped). Missing
   imagery is fetched automatically on first ingest; `redownload` only re-fetches
   images that already exist on disk (cached images are otherwise reused).
+- `buildings.py` — `enrich_footprints_from_reference_buildings`: attach an
+  already-built reference *building* entity's attributes onto footprints,
+  each footprint taking the single reference building it overlaps most by
+  IoU (not raw intersection area — a large reference building clipping a
+  small footprint's corner shares more area with it than the correct small
+  building does). Source-agnostic: any building recipe with polygon
+  geometry works, so a precomputed inventory can substitute for re-running
+  imagery inference. An admin unit the reference does not cover still gets
+  the declared columns written as all-null, because curate treats a present
+  evidence file missing a declared column as a recipe error.
+- `parcels.py` — attach a reference *parcel* dataset's attributes to current
+  parcels through a fractional area-weighted crosswalk, driven by a sidecar
+  `{recipe_id}_column-notes.csv` beside the reference recipe
 - `detectors/` — attribute-specific detectors and shared inference runtimes
   (EfficientDet/EfficientNet ports; torch is conda-only)
 - `models.py` — pretrained-model download and cache handling
 
-Examples include roof-shape, occupancy, and story-count evidence from imagery.
-Evidence columns retain provenance-oriented names such as
-`roof_shape_brails` and `n_stories_brails`.
+Examples include roof-shape, occupancy, and story-count evidence from imagery,
+and the same attributes read off a precomputed inventory
+(`US-NC_footprint_building-cheer-v0`). Evidence columns retain
+provenance-oriented names such as `roof_shape_brails`, `n_stories_brails`, and
+`foundation_type_building_cheer`.
 
 Public entrypoint: `enrich(recipe, admin_ids, entity_recipe_id, reprocess, verbose)`.
 
@@ -329,6 +420,17 @@ Steps are organized by the nature of the transformation:
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical
   dataset
+
+Alongside the step modules sit support modules that register no steps of their
+own: `occupancy.py` (shared, vocabulary-neutral occupancy helpers),
+`provenance.py` (`{col}_source` sidecars), `land_value.py` (land-value
+estimation, split out because it is expected to grow), `diagnostics.py`
+(cache-written conflict reports), and `validation.py` — scoring a curated
+classification against hand-labelled points. `validation.py`'s
+`link_points_to_entities` links by address first and distance only as a
+fallback; because a house and its shed share one address, callers break the
+resulting ties with `prefer_column`/`prefer_values` (e.g. rank
+`priority_on_parcel == 'primary'` first) rather than letting row order decide.
 
 These concern-based modules mirror the processor categories used by related
 inventory systems, while remaining native to the openplaces recipe and state

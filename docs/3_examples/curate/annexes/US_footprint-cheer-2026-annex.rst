@@ -67,6 +67,22 @@ Core dataset ingestion
 
    *Function*: :func:`openplaces.io.ingester.ingest`
 
+7. **Census statistical geographies**
+
+   Downloads Census tract, block group, block, and ZCTA5 boundaries (``US_tile-census-2025_tract``, ``_blockgroup``, ``_block``, ``_zcta5``) and county subdivisions (``US_admin-census-2025_admin4``).
+
+   *Dependency*: Consumed by ``link_geographic_ids`` in Stage 2.
+
+   *Function*: :func:`openplaces.io.ingester.ingest`
+
+8. **Modeled building inventory** (regional, optional)
+
+   Registers a precomputed building inventory as a ``building`` entity - for North Carolina, CHEER Inventory v0 (``US-NC_building-cheer-v0``), carrying modeled roof shape (three ranked classes with confidences), foundation, construction type, garage flag, and story count.
+
+   The source is a CHEER/SimCenter deliverable rather than a public download, so the file is placed by hand in the recipe's external directory; the recipe declares only ``uncompressed_file_name``. It is read in one statewide pass and split into per-county outputs on save, because the parquet reader cannot chunk by an in-data admin column. The roof-shape column carries the non-classes ``Unknown`` and ``No Structure`` instead of nulls, which are nulled on ingest so they cannot travel downstream as if they were roof shapes.
+
+   *Function*: :func:`openplaces.io.ingester.ingest`
+
 
 Stage 2: harmonize
 ------------------
@@ -102,27 +118,45 @@ Recipe: ``US_footprint-spine-2026``
 
    *Function*: :func:`openplaces.io.harmonizer.links.resolve_overlaps`
 
-5. **Link building structure points**
+5. **Derive geometry attributes**
+
+   Computes each spine row's own centroid (``lat``/``long``) and area once, immediately after the geometry is final (synthetic fallbacks and overlap trimming included), so later harmonize and curate steps reuse them instead of recomputing.
+
+   *Function*: :func:`openplaces.io.harmonizer.spine.derive_geometry_attributes`
+
+6. **Assign containing-area identifiers**
+
+   Stamps each footprint with the id of every reference polygon containing it: the level-4 admin unit (``admin4_id``), the Census county subdivision (``census_subdivision_id``), tract, block group, block, and the 5-digit ZCTA (``zcta5_id``). Each entry in the step's :input:`links` list names either an :input:`admin_level` or a :input:`recipe_id`, plus the :input:`id_column` to copy and the :input:`output_column` to write, so the reference set is recipe configuration rather than a fixed list.
+
+   Two passes, in this order: a point-in-polygon test on the row's own centroid, then - only for rows that missed - an identity overlay of the row's actual geometry, keeping the reference polygon with the largest intersection. Rows matched by neither are left null, so a coverage gap stays visible instead of being masked. Unlike ``link_to_reference``, every configured reference is assumed to tile space without overlaps, so the result is exactly one containing polygon per row, never a many-to-many crosswalk.
+
+   *Dependency*: Requires ``lat``/``long`` from Step 5. Runs on the footprint spine first so the parcel spine can inherit the result (see that recipe's ``inherit_from``).
+
+   *Function*: :func:`openplaces.io.harmonizer.spine.link_geographic_ids`
+
+7. **Link building structure points**
 
    Connects structure-level point evidence from the NSI database using a tiered containment, :input:`proximity_m` (10 m) inner proximity, or :input:`far_proximity_m` (100 m) outer proximity join (:ref:`Lochhead et al. 2026 <Lochhead et al. 2026>`). The join is configured as :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_building_point``) using the :input:`recipe_id` (``US_building-nsi-2026``) with a remapping crosswalk specified by :input:`remap_id` (``US_building-nsi-2026_occupancy-type-remap``). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and labeling low-rank twins from ``ESRI`` and ``HAZUS/NSI-2015`` as ``'colocated low-rank source'`` via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to be excluded from downstream aggregates.
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
-6. **Link dwelling address points**
+8. **Link dwelling address points**
 
    Integrates Overture geocoded residential address points from the :input:`recipe_id` (``dwelling-overture-2025``) using a tiered proximity join configured via :input:`join` (``spatial_point``) for the :input:`source_geometry_type` (``single_dwelling_point``). It uses a proximity range from :input:`proximity_m` (10 m) to :input:`far_proximity_m` (50 m), with :input:`aggregate_multipoint` (:input:`true`) and address deduplication enabled via :input:`dedup_addresses` (:input:`true`).
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
-7. **Classify structural role**
+9. **Classify structural role**
 
    Determines whether a footprint represents a primary or secondary structure on multi-building parcels based on NSI and Overture matches, using the :input:`entity_type` ``parcel``. Synthetic, parcel-derived fallback geometries are always classified as ``'primary'``.
 
    *Function*: :func:`openplaces.io.harmonizer.attributes.classify_footprint_priority`
 
-8. **Package raw variables**
+10. **Package raw variables**
 
    Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Unhandled numeric columns (such as NSI's ``n_stories`` and ``area_sqft``) are aggregated using the attribute registry's default function so they are carried onto the spine. Point reference records flagged by the duplicate resolution (where ``duplicate_resolution`` is non-null) are filtered out and excluded from all aggregates (match counts, sums, means, and value-weighted picks).
+
+   NSI's ``foundation_type`` is among the columns carried across, as ``foundation_type_building_nsi``. NSI assigns foundation from regional and flood-zone rules, so it is a prior rather than a per-building observation - but a stable one, which a per-building classifier is not guaranteed to be. That is why it leads the foundation reconciliation in curation.
 
    *Function*: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
@@ -137,43 +171,55 @@ Recipe: ``US_parcel-spine-2026``
 
    *Function*: :func:`openplaces.io.harmonizer.spine.resolve_spine`
 
-2. **Merge assessor tax records**
+2. **Assign containing-area identifiers**
+
+   Writes the same admin and Census identifiers the footprint spine resolves (``admin4_id``, ``census_subdivision_id``, tract, block group, block, ``zcta5_id``), but takes them second-hand where it can: :input:`inherit_from` names the footprint spine and a :input:`group_by` key (``parcel_id``), and each parcel adopts a value only where **every** footprint on it agrees. Disagreeing groups, and parcels with no footprint at all, are left null and resolved by the same two-pass centroid-then-overlay join the footprint spine uses. Disagreements are recorded in the run's metadata rather than silently averaged away.
+
+   *Dependency*: Requires the completed footprint spine, which already runs first for :func:`~openplaces.io.harmonizer.attributes.summarize_footprint_morphology`.
+
+   *Function*: :func:`openplaces.io.harmonizer.spine.link_geographic_ids`
+
+3. **Merge assessor tax records**
 
    Discovers and joins county/local assessment tables by matching local ID keys, applying custom attribute remapping crosswalks. It automatically discovers and links tables for the :input:`entity_type` ``parcel`` using :input:`auto_discover` (:input:`true`).
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_by_id`
 
-3. **Standardize property use codes**
+4. **Standardize property use codes**
 
-   Constructs a combined property use description and maps it to normalized use classifications.
+   Joins an ordered :input:`columns` list into the combined use label (``use_group_combined``) that the parcel land-use classifier groups and votes on. The default pair is ``use_group`` + ``use_subgroup``; this recipe appends ``building_style`` last.
+
+   The reason is that in some counties the occupancy signal is in neither land-use field. Sampson County, NC is the measured case: its ``use_group`` is a land *segment* type (homesite, cropland, woodland) matching no land-use keyword at all, while its style column names the structure and identifies thousands of manufactured homes. Adding it took the share of parcels receiving a keyword class from 0% to 15%. Listed last, it only ever extends the assessor's own label rather than displacing it.
+
+   The combined label is also the grouping key for cohort statistics such as ``footprint_area_log_zscore``, so a high-cardinality column added here fragments those cohorts - a reason to measure before adding another one.
 
    *Function*: :func:`openplaces.io.harmonizer.attributes.derive_use_classes`
 
-4. **Associate building points to parcels**
+5. **Associate building points to parcels**
 
    Joins NSI point data from the :input:`recipe_id` (``US_building-nsi-2026``) using a spatial overlay and proximity boundaries configured via :input:`join` (``spatial_point``), :input:`source_geometry_type` (``single_building_point``), :input:`proximity_m` (10 m), and :input:`far_proximity_m` (100 m). It resolves and flags colocated duplicate points from low-rank sources (grouping by `building_id_ubid` and flagging ``ESRI`` and ``HAZUS/NSI-2015`` twins via :func:`~openplaces.io.harmonizer.links.flag_duplicate_points`) to exclude them from downstream aggregates.
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
-5. **Identify dominant building group**
+6. **Identify dominant building group**
 
    Resolves and summarizes NSI building attributes to find the modal building group per parcel using the specified :input:`sources`. Point records flagged by the duplicate resolution step are excluded from these summaries.
 
    *Function*: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
-6. **Integrate FEMA footprint occupancy**
+7. **Integrate FEMA footprint occupancy**
 
    Links FEMA footprints to parcels via spatial overlay from the :input:`recipe_id` (``US_footprint-fema-2023``) using the :input:`join` (``spatial_overlay``) method for the :input:`source_geometry_type` (``mixed_type_footprint``) and filters out minor intersections under :input:`area_intersection_m2_min` (10 m²).
 
    *Function*: :func:`openplaces.io.harmonizer.links.link_to_reference`
 
-7. **Extract dominant FEMA occupancy**
+8. **Extract dominant FEMA occupancy**
 
    Reconciles FEMA occupancy types from the :input:`sources` using the remapping crosswalk specified by :input:`remap_id` (``US_footprint-fema-2023_occupancy-type-remap``).
 
    *Function*: :func:`openplaces.io.harmonizer.attributes.reconcile_attributes`
 
-8. **Summarize footprint morphology**
+9. **Summarize footprint morphology**
 
    Counts total, primary, and small elongated footprint features on each parcel to feed downstream land-use classification, and tracks the maximum parcels spanned and maximum dwellings contained by any single footprint on the parcel. It links footprints from :input:`footprint_recipe_id` (``US_footprint-spine-2026``) matching on :input:`on` (``parcel_id``), filtering by :input:`small_area_max_m2` (185 m²), :input:`elongated_aspect_min` (2.0), and :input:`min_overlap_m2` (10 m²), computing ``max_dwellings_per_footprint`` and ``max_parcels_per_footprint`` for townhome and multi-family detection.
 
@@ -196,7 +242,7 @@ This stage fetches imagery required for deep-learning visual classification:
 Stage 4: enrich
 ---------------
 
-This stage runs deep learning models (BRAILS++) to predict visual building attributes:
+This stage produces entity-keyed evidence without selecting any canonical value. Two routes reach the same attributes: running the visual models here (Steps 1-2), or reading them off an inventory that already ran them (Step 3).
 
 1. **Infer roof shape**
 
@@ -213,6 +259,20 @@ This stage runs deep learning models (BRAILS++) to predict visual building attri
    *Dependency*: Requires Street View photos from Stage 3.
 
    *Function*: :func:`openplaces.io.enricher.attributes.detect_n_stories`
+
+3. **Attach modeled inventory attributes**
+
+   Recipe: ``US-NC_footprint_building-cheer-v0``
+
+   Matches each footprint to the single reference building it overlaps most and copies that building's declared :input:`columns` across as ``{column}_building_cheer`` evidence.
+
+   Ranking is by intersection-over-union, not raw intersection area. The two sides are independent renderings of the same buildings, and a large reference building clipping the corner of a small footprint shares more area with it than the correct small building does; only normalizing by the union rejects that. :input:`min_iou` defaults to a permissive 0.1, because roof-versus-wall outlines and building-versus-complex splits routinely put a correct pair well below a half.
+
+   Two details worth knowing. First, the inventory's roof-shape confidences survive rows whose class was nulled at ingest; :input:`null_with` gates each confidence on its own class so a confidence never reads as certainty about a class that was dropped. Second, an admin unit the reference does not cover still gets the declared columns written as all-null - curate skips a missing evidence file, but treats a present one lacking a declared column as a recipe error, so a column-less table would poison every later curate for that unit.
+
+   *Dependency*: Requires the ingested reference building entity (Stage 1) and a spine loaded with geometry (:input:`spine_geom` (:input:`true`)).
+
+   *Function*: :func:`openplaces.io.enricher.buildings.enrich_footprints_from_reference_buildings`
 
 
 Stage 5: curate
@@ -388,21 +448,36 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
       *Function*: :func:`openplaces.io.curator.reconcilers.resolve_occupancy`
 
-5. Imagery enrichment integration
+5. Enrichment integration
 
-   a. **Merge visual model predictions**
+   a. **Merge enrichment evidence**
 
-      Merges predicted building attributes from the configured :input:`recipes` (e.g. ``US_footprint_built-roof-shape-brails-2026`` and ``US_footprint_built-n-stories-brails-2026``) and their respective columns.
+      Merges predicted building attributes from the configured :input:`recipes` and their respective columns: ``US_footprint_built-roof-shape-brails-2026``, ``US_footprint_built-n-stories-brails-2026``, and - where it covers the admin unit - ``US-NC_footprint_building-cheer-v0``. A recipe with no evidence for the admin unit is skipped, so the inventory entry changes nothing outside North Carolina.
 
-      *Dependency*: Requires completed Stage 4 (Visual enrichment).
+      ``record_source`` is set only on the roof-shape enrichment, which writes a direct canonical column with a competing source to reconcile against. The inventory's columns are single-source or already reconciled elsewhere, so a provenance sidecar there would be bookkeeping with nothing to record.
+
+      The inventory's roof-shape ranks and confidences, construction type, and garage flag land directly on their canonical names. Its roof shape, foundation, and story count are deliberately kept under evidence names (``roof_shape_building_cheer``, ``foundation_type_building_cheer``, ``n_stories_building_cheer``) because each has a competing source reconciled in Step 5.b.
+
+      *Dependency*: Requires completed Stage 4 (enrichment).
 
       *Function*: :func:`openplaces.io.curator.evidence.merge_enrichments`
 
-   b. **Reconcile story counts**
+   b. **Reconcile enrichment evidence into canonical values**
 
-      Resolves conflicts between competing story count sources (street-level imagery predictions ``n_stories_brails`` and NSI block-median counts ``n_stories_building_nsi``) by selecting the canonical value.
+      Resolves three sets of competing sources by priority:
 
-      *Dependency*: Requires merged visual predictions from Step 5.a.
+      ``n_stories``
+         Street-level floor detection (``n_stories_brails``), then NSI's modeled count (``n_stories_building_nsi``), then the inventory's (``n_stories_building_cheer``) - last because it shares NSI's modeled lineage rather than being an independent observation.
+
+      ``roof_shape``
+         This repository's own per-image classification, then the inventory's. Both are BRAILS++ outputs, so this is a coverage cascade rather than a quality ranking: whichever actually ran for the admin unit wins.
+
+      ``foundation_type``
+         NSI first, the inventory only where NSI is silent. This is not a blanket judgement on the inventory - the two agree on about 65% of 1.57M buildings across 45 NC counties, and the inventory's classes are informative there. It guards against a failure mode NSI's regional prior cannot have: the inventory's per-county class shares swing from a few percent to over 90% Basement, and in New Hanover County 84% of buildings come back Basement with essentially no lift over the marginal - the class collapsed, on a coast where basements are near-absent.
+
+      Known residue: roughly 2% of rows carry a joined value such as :input:`'Slab; Crawl'`, where several NSI points land on one footprint with differing foundations. ``reconcile_attributes`` joins every string column it is not specifically handling, honoring the attribute registry's per-attribute aggregation for numeric columns only - the same reason ``address_number_dwelling_overture`` and ``city_dwelling_overture`` carry joined values.
+
+      *Dependency*: Requires merged evidence from Step 5.a.
 
       *Function*: :func:`openplaces.io.curator.reconcilers.reconcile_values`
 
