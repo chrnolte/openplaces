@@ -155,6 +155,54 @@ def zonal_stats_with_exactextract(
     return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf.crs)
 
 
+def sample_raster_at_points(raster_path, x, y):
+    """Sample a single-band raster at arbitrary points, vectorized.
+
+    Reads the full band into memory once, then resolves every point's
+    pixel via the raster's inverse affine transform and fancy-indexes the
+    array in bulk. This is much faster than iterating points one at a time
+    (e.g. ``rasterio``'s own ``sample()`` generator) at the scale of a
+    county's worth of parcel vertices (hundreds of thousands to millions of
+    points) -- appropriate for the resolution/extent of a single ingested
+    COG (e.g. a county-level 10m DEM), not for rasters too large to fit in
+    memory.
+
+    Parameters
+    ----------
+    raster_path : str or Path
+        Path to a single-band raster (e.g. a COG written by
+        `io.ingester.raster_ingester.fetch_raster_from_vrt`), in whatever
+        CRS it was ingested in. `x`/`y` must already be in that CRS.
+    x, y : array-like of float
+        Point coordinates, in the raster's own CRS.
+
+    Returns
+    -------
+    numpy.ndarray
+        One value per point, `float`. NaN for points outside the raster's
+        extent or landing on a nodata pixel.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
+    with rasterio.open(raster_path) as src:
+        band = src.read(1, masked=True)
+        cols, rows = ~src.transform * (x, y)
+
+    cols = np.floor(cols).astype(np.int64)
+    rows = np.floor(rows).astype(np.int64)
+    in_bounds = (
+        (rows >= 0) & (rows < band.shape[0]) & (cols >= 0) & (cols < band.shape[1])
+    )
+
+    values = np.full(len(x), np.nan)
+    sampled = band[rows[in_bounds], cols[in_bounds]]
+    values[in_bounds] = np.where(
+        np.ma.getmaskarray(sampled), np.nan, np.ma.getdata(sampled)
+    )
+    return values
+
+
 def clip(
     from_filepath,
     to_filepath,

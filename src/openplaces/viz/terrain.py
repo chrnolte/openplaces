@@ -19,6 +19,7 @@ from openplaces.core.constants import M2_PER_AREA_UNIT
 from openplaces.geo.polygon import resolve_area
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import convert_area_unit
+from openplaces.viz import elevation
 from openplaces.viz.colors import adjust_brightness, continuous_to_rgba
 
 _EQUAL_AREA_CRS = 'epsg:6933'
@@ -55,8 +56,14 @@ class TerrainLayer(NamedTuple):
         to stack another layer on top of this one.
     rendered_elevation : numpy.ndarray
         Each row's actual rendered elevation in meters
-        (`height_value * elevation_scale`, before any `stack_on` base
-        offset of its own).
+        (`height_value * elevation_scale`, before any `elevation_column` or
+        `stack_on` base offset of its own).
+    total_elevation : numpy.ndarray
+        Each row's absolute top-of-stack elevation in meters: `rendered_elevation`
+        plus its own base (`elevation_column`'s ground elevation, if given,
+        plus any `stack_on` base of its own). Pass this (via `gdf`, not
+        `rendered_elevation`) as a subsequent call's `stack_on` so that call's
+        base lines up with this layer's true top, not just its value height.
     outline_layer : lonboard.PolygonLayer or None
         A companion wireframe-only layer outlining each polygon in a darker
         shade of its own fill color, or `None` when `outline_width=0`. Add
@@ -75,6 +82,7 @@ class TerrainLayer(NamedTuple):
     value_range: tuple[float, float]
     gdf: gpd.GeoDataFrame
     rendered_elevation: np.ndarray
+    total_elevation: np.ndarray
     outline_layer: PolygonLayer | None
     clipped_layer: SolidPolygonLayer | None
 
@@ -93,6 +101,10 @@ def show_value_terrain_layer(
     height_clip_percentile: float | None = 99.9,
     height_clip_value: float | None = None,
     elevation_scale: float = DEFAULT_ELEVATION_SCALE,
+    elevation_column: str | None = None,
+    elevation_recipe: str | dict | None = None,
+    elevation_mode: str = 'flat',
+    terrain_exaggeration: float = 1.0,
     stack_on: TerrainLayer | None = None,
     brightness: float = 1.0,
     outline_width: float = 0,
@@ -136,6 +148,8 @@ def show_value_terrain_layer(
     `lonboard.Map([layer_a, layer_b])`, optionally passing the first call's
     `TerrainLayer` as the second call's `stack_on` to physically stack one
     on top of the other rather than have both extrude from elevation 0.
+    Pass `elevation_column` to additionally (or instead) ground a layer at
+    its own real-world elevation rather than extruding from sea level.
 
     Parameters
     ----------
@@ -212,6 +226,53 @@ def show_value_terrain_layer(
         box; pass an explicit value to override, e.g. to exaggerate one
         entity's layer relative to another's, or to match a specific
         real-world reference height by hand.
+    elevation_column : str, optional
+        Column already present in the loaded entity holding each row's
+        real-world ground elevation in meters (e.g. `'elevation'` on curated
+        parcels — see `core.attribute_registry`). Applied as a base
+        z-offset from 0 to the *bottom* of each polygon, i.e. the ground the
+        geometry physically sits on, via a 3D polygon Z-coordinate — additive
+        with `stack_on`'s own base if both are given (see `total_elevation`
+        under Returns). Missing values fill to 0 (sea level), with a warning
+        unless `silent=True`. Defaults to `None`: every polygon's base stays
+        at 0 (unaffected by real-world terrain).
+    elevation_recipe : str or dict, optional
+        DEM dataset recipe (e.g. `'US_land-elevation-usgs-3dep'`) to sample
+        real-world ground elevation from directly, via `viz.elevation`. An
+        alternative, additional source to `elevation_column` feeding the
+        same z-offset base -- both can be given together, though that's
+        unusual. Requires the rows loaded by `recipe` to carry an
+        `'admin3_id'` column (curated parcels/footprints already do) to
+        resolve each row's DEM tile. Results are cached to disk per admin
+        unit under `cfg.cache_dir`, keyed by each row's own index, and
+        reused across calls whose rows haven't changed shape -- see the
+        `viz.elevation` module docstring. Defaults to `None`: no DEM-based
+        elevation.
+    elevation_mode : {'flat', 'drape'}
+        How `elevation_recipe` grounds this layer; ignored when
+        `elevation_recipe` is `None`. `'flat'` (the default -- use for
+        buildings) samples one zonal-mean elevation per polygon
+        (`viz.elevation.get_building_elevation`) and applies it uniformly,
+        like `elevation_column` -- appropriate since a real building's
+        base is flat. `'drape'` (use for land/parcel layers) samples
+        elevation at every polygon vertex and follows the terrain along
+        each polygon's own boundary (`viz.elevation.drape_parcel_elevation`)
+        instead of sitting at one flat elevation -- geometrically correct
+        for land, which spans real, unevenly sloped terrain. Any
+        `elevation_column`/`stack_on` scalar offset is still added on top
+        of the per-vertex terrain in `'drape'` mode (see
+        `viz.elevation.add_z_offset`), not used to overwrite it.
+    terrain_exaggeration : float
+        Multiplier applied to real-world ground elevation (from
+        `elevation_column` and/or `elevation_recipe`, including every
+        vertex of a `'drape'`-mode geometry, via `viz.elevation.scale_z`)
+        before rendering. A visualization aid only -- real terrain relief
+        across one parcel is often just a few meters, easy to miss next to
+        the value-based extrusion height, which this leaves untouched
+        (`elevation_scale` controls that independently). Defaults to `1.0`
+        (true-to-scale, no exaggeration). Not reapplied to a `stack_on`
+        layer's own inherited ground offset, which already reflects
+        whatever exaggeration that base layer applied to itself.
     stack_on : TerrainLayer, optional
         A previously built layer to stack this one on top of: each row here
         is matched to whichever `stack_on.gdf` row it overlaps with the
@@ -221,13 +282,18 @@ def show_value_terrain_layer(
         `parcel_id` — an id-based lookup reusing the harmonizer's own
         already-resolved link instead, orders of magnitude faster than a
         live spatial join at large scale; see `_match_largest_overlap`).
-        Its base is set to that row's `stack_on.rendered_elevation` (0 for
+        Its base is set to that row's `stack_on.total_elevation` (0 for
         rows with no match) via a 3D polygon Z-coordinate — deck.gl adds
         `get_elevation` on top of a polygon's own Z when one is present, so
         this layer's rendered zmin lines up with the matched `stack_on`
-        row's zmax. Requires that base layer's `TerrainLayer` to already
-        exist (built in an earlier call), for its geometry/
-        `rendered_elevation` to match against.
+        row's true top (its own ground elevation, if any, plus its rendered
+        value height). Requires that base layer's `TerrainLayer` to already
+        exist (built in an earlier call), for its geometry/`total_elevation`
+        to match against. When this call also supplies its own ground
+        elevation (`elevation_column` or `elevation_recipe`), the match uses
+        `stack_on.rendered_elevation` (value height only, no ground) instead,
+        so `stack_on`'s own ground elevation isn't added a second time on
+        top of this layer's independently sourced one.
     brightness : float
         HSV-value multiplier applied to the fill color after `cmap`
         (`openplaces.viz.colors.adjust_brightness`) — `1.0` leaves colors
@@ -306,6 +372,11 @@ def show_value_terrain_layer(
         raise ValueError(
             f'Unsupported area_unit {area_unit!r}; must be one of '
             f'{sorted(M2_PER_AREA_UNIT)}.'
+        )
+
+    if elevation_mode not in ('flat', 'drape'):
+        raise ValueError(
+            f"elevation_mode must be 'flat' or 'drape', got {elevation_mode!r}."
         )
 
     is_polygonal = gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
@@ -393,9 +464,75 @@ def show_value_terrain_layer(
     ]
     gdf = gdf[[*lead_columns, *other_columns, 'geometry']]
 
+    has_own_ground_elevation = (
+        elevation_column is not None or elevation_recipe is not None
+    )
+
+    # `base_z` is the full ground-elevation total, used for the returned
+    # `total_elevation` (and as the `stack_on` target for whatever's stacked
+    # on this layer). `extra_z` is what actually gets added to the rendered
+    # geometry's own Z -- identical to `base_z` except it excludes drape's
+    # `mean_elevation`, which is already baked into each vertex of the
+    # draped geometry itself and must not be added a second time.
+    base_z = np.zeros(len(gdf))
+    extra_z = np.zeros(len(gdf))
+
+    if elevation_column is not None:
+        elev = gdf[elevation_column]
+        n_missing_elev = elev.isna().sum()
+        if n_missing_elev and not silent:
+            warnings.warn(
+                f'Setting {n_missing_elev} row(s) with missing {elevation_column!r} '
+                'to 0 (sea level).',
+                stacklevel=2,
+            )
+        contribution = elev.fillna(0).to_numpy(dtype=float) * terrain_exaggeration
+        base_z = base_z + contribution
+        extra_z = extra_z + contribution
+
+    draped = False
+    if elevation_recipe is not None and elevation_mode == 'drape':
+        drape_geometry, mean_elevation = elevation.drape_parcel_elevation(
+            gdf, elevation_recipe, silent=silent
+        )
+        gdf['geometry'] = elevation.scale_z(
+            drape_geometry.to_numpy(), terrain_exaggeration
+        )
+        base_z = base_z + mean_elevation * terrain_exaggeration
+        draped = True
+    elif elevation_recipe is not None:
+        building_elev = elevation.get_building_elevation(
+            gdf, elevation_recipe, silent=silent
+        )
+        n_missing_building_elev = int(np.isnan(building_elev).sum())
+        if n_missing_building_elev and not silent:
+            warnings.warn(
+                f'Setting {n_missing_building_elev} row(s) with missing DEM elevation '
+                "(from 'elevation_recipe') to 0 (sea level).",
+                stacklevel=2,
+            )
+        contribution = np.nan_to_num(building_elev, nan=0.0) * terrain_exaggeration
+        base_z = base_z + contribution
+        extra_z = extra_z + contribution
+
     if stack_on is not None:
-        base_z = _match_largest_overlap(gdf, stack_on.gdf, stack_on.rendered_elevation)
-        gdf['geometry'] = shapely.force_3d(gdf.geometry.to_numpy(), z=base_z)
+        stack_source = (
+            stack_on.rendered_elevation
+            if has_own_ground_elevation
+            else stack_on.total_elevation
+        )
+        contribution = _match_largest_overlap(gdf, stack_on.gdf, stack_source)
+        base_z = base_z + contribution
+        extra_z = extra_z + contribution
+
+    if draped:
+        gdf['geometry'] = elevation.add_z_offset(gdf.geometry.to_numpy(), extra_z)
+    elif (
+        elevation_column is not None
+        or elevation_recipe is not None
+        or stack_on is not None
+    ):
+        gdf['geometry'] = shapely.force_3d(gdf.geometry.to_numpy(), z=extra_z)
 
     layer = SolidPolygonLayer.from_geopandas(
         gdf,
@@ -443,12 +580,14 @@ def show_value_terrain_layer(
         )
 
     value_range = (per_area_display.min(), per_area_display.max())
+    total_elevation = base_z + rendered_elevation
     return TerrainLayer(
         layer,
         elevation_scale,
         value_range,
         gdf,
         rendered_elevation,
+        total_elevation,
         outline_layer,
         clipped_layer,
     )
