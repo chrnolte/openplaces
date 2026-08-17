@@ -8,12 +8,18 @@ from __future__ import annotations
 import geopandas as gpd
 import numpy as np
 
+from openplaces.geo.polygon import get_areas
 from openplaces.io.enricher import EnrichState, _register
 
-# Equal-area projection used to compute parcel area.
-_EQUAL_AREA_CRS = 'EPSG:6933'
+_SUPPORTED_COLUMNS = [
+    'area_ha',
+    'area_ha_log',
+    'centroid_x',
+    'centroid_y',
+    'n_buildings_per_ha',
+]
 
-_SUPPORTED_COLUMNS = ['ha', 'ln_ha', 'x', 'y', 'n_bld_fp_per_ha']
+_AREA_DEPENDENTS = {'area_ha', 'area_ha_log', 'n_buildings_per_ha'}
 
 
 @_register('derive_from_spine')
@@ -23,17 +29,23 @@ def derive_from_spine(
 ) -> EnrichState:
     """Derive simple per-parcel variables from spine geometry/columns.
 
-    Requires spine geometry (set ``spine_geom: true`` on the enrich recipe)
-    for every supported column except a bare pass-through.
+    Requires spine geometry (set ``spine_geom: true`` on the enrich recipe).
+
+    Overlaps the harmonize step ``derive_geometry_attributes``, which writes
+    ``area_ha`` and centroid lat/long onto a spine that runs it. This step
+    exists for spines that do not, and shares the same area measurement via
+    :func:`~openplaces.geo.polygon.get_areas` so the two agree. A spine that
+    already carries these columns should prefer the harmonize step.
 
     Parameters
     ----------
     columns : list of str, optional
         Which derived variables to compute. Defaults to all of:
-        ``ha`` (parcel area, hectares), ``ln_ha`` (log of ``ha``),
-        ``x``/``y`` (centroid coordinates, in the spine's own CRS),
-        ``n_bld_fp_per_ha`` (``n_buildings / ha``; missing where the spine
-        has no ``n_buildings`` column, e.g. IGAC-covered parcels).
+        ``area_ha`` (parcel area in hectares), ``area_ha_log`` (its natural
+        log), ``centroid_x``/``centroid_y`` (centroid coordinates in the
+        spine's own CRS), and ``n_buildings_per_ha`` (``n_buildings`` per
+        hectare; missing where the spine has no ``n_buildings`` column, as
+        for IGAC-covered parcels).
     """
     columns = columns or _SUPPORTED_COLUMNS
     unknown = set(columns) - set(_SUPPORTED_COLUMNS)
@@ -41,31 +53,32 @@ def derive_from_spine(
         raise ValueError(f'Unsupported derive_from_spine columns: {sorted(unknown)}')
 
     spine = state.spine
-    needs_geometry = bool({'ha', 'ln_ha', 'x', 'y', 'n_bld_fp_per_ha'} & set(columns))
-    if needs_geometry and not isinstance(spine, gpd.GeoDataFrame):
+    if not isinstance(spine, gpd.GeoDataFrame):
         raise ValueError(
             "derive_from_spine requires spine geometry; set 'spine_geom: "
             "true' on the enrich recipe."
         )
 
-    ha = None
-    if {'ha', 'ln_ha', 'n_bld_fp_per_ha'} & set(columns):
-        ha = spine.geometry.to_crs(_EQUAL_AREA_CRS).area.div(10_000)
+    area_ha = None
+    if _AREA_DEPENDENTS & set(columns):
+        # Shared with derive_geometry_attributes rather than reprojecting
+        # here, so both routes report the same area for the same parcel.
+        area_ha = get_areas(spine, unit='ha')
 
-    if 'ha' in columns:
-        state.evidence['ha'] = ha
-    if 'ln_ha' in columns:
-        state.evidence['ln_ha'] = np.log(ha)
-    if 'x' in columns or 'y' in columns:
+    if 'area_ha' in columns:
+        state.evidence['area_ha'] = area_ha
+    if 'area_ha_log' in columns:
+        state.evidence['area_ha_log'] = np.log(area_ha)
+    if 'centroid_x' in columns or 'centroid_y' in columns:
         centroids = spine.geometry.centroid
-        if 'x' in columns:
-            state.evidence['x'] = centroids.x
-        if 'y' in columns:
-            state.evidence['y'] = centroids.y
-    if 'n_bld_fp_per_ha' in columns:
+        if 'centroid_x' in columns:
+            state.evidence['centroid_x'] = centroids.x
+        if 'centroid_y' in columns:
+            state.evidence['centroid_y'] = centroids.y
+    if 'n_buildings_per_ha' in columns:
         if 'n_buildings' in spine.columns:
-            state.evidence['n_bld_fp_per_ha'] = spine['n_buildings'].div(ha)
+            state.evidence['n_buildings_per_ha'] = spine['n_buildings'].div(area_ha)
         else:
-            state.evidence['n_bld_fp_per_ha'] = np.nan
+            state.evidence['n_buildings_per_ha'] = np.nan
 
     return state

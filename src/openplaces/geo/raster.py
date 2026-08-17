@@ -91,6 +91,8 @@ def compute_vicinity_coverage(
         row_offset = round(core_window.row_off - padded_window.row_off)
         col_offset = round(core_window.col_off - padded_window.col_off)
 
+        crs = src.crs
+
     valid = (arr >= 0).astype(np.float64)
     filled = np.where(arr >= 0, arr, 0)
 
@@ -103,9 +105,6 @@ def compute_vicinity_coverage(
         col_offset : col_offset + round(core_window.width),
     ]
     out = np.where(np.isnan(core), 255, core).astype('uint8')
-
-    with rasterio.open(raster_path) as src:
-        crs = src.crs
 
     return out, out_transform, crs
 

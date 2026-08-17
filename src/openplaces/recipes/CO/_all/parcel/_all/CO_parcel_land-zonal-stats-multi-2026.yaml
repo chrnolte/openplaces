@@ -24,7 +24,7 @@
 #     neighboring admin units are still correctly accounted for at the
 #     boundary (see compute_vicinity_coverage's docstring); verified to match
 #     the old national-scale output pixel-for-pixel. The generated raster is
-#     cached under `{source raster's dir}/by_admin3/{admin_id}/...` and
+#     cached under `{source raster's dir}/vicinity_coverage/{admin_id}/...` and
 #     reused on subsequent runs. Generic over any boolean raster -- not
 #     specific to protection/deforestation.
 #     (src/openplaces/io/enricher/vicinity.py).

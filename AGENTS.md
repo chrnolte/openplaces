@@ -383,9 +383,26 @@ canonical value, reconciling disagreements, or filling unrelated gaps.
 - `parcels.py` — attach a reference *parcel* dataset's attributes to current
   parcels through a fractional area-weighted crosswalk, driven by a sidecar
   `{recipe_id}_column-notes.csv` beside the reference recipe
+- `zonal.py` — `zonal_stats`: per-entity raster statistics over polygon
+  geometry, dispatching to one of three backends in `geo/raster.py`
+  (`exactextract` for fractional pixel-area weighting, `rasterstats`, or
+  `rasterized` for a burn-and-groupby). Requires `spine_geom: true`.
+- `vicinity.py` — `vicinity_coverage`: derives a neighborhood-percentage
+  raster from a boolean source raster by FFT convolution, windowed to one
+  admin unit and padded so neighboring units still count, then samples it
+  through `zonal.py`. The derived raster is cached per admin unit and reused.
+- `derived.py` — `derive_from_spine`: per-entity metrics from spine geometry
+  and existing spine columns alone, no raster involved. Overlaps the
+  harmonize step `derive_geometry_attributes` and shares its area
+  measurement (`geo.polygon.get_areas`); it exists for spines that do not
+  run that step.
 - `detectors/` — attribute-specific detectors and shared inference runtimes
   (EfficientDet/EfficientNet ports; torch is conda-only)
 - `models.py` — pretrained-model download and cache handling
+
+Raster-consuming steps name their raster by a path relative to the configured
+`rasters` directory, resolved by `path.resolve_raster_path()`, so a recipe
+stays portable across machines. An absolute path passes through unchanged.
 
 Examples include roof-shape, occupancy, and story-count evidence from imagery,
 and the same attributes read off a precomputed inventory

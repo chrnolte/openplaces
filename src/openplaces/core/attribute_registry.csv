@@ -142,6 +142,10 @@ priority_on_parcel,Footprint priority on its parcel (primary secondary or unknow
 area_m2,Footprint area,m2,float,sum,,,curate
 area_ha,Parcel lot area,ha,float,sum,,,harmonize
 area_ac,Parcel lot area,ac,float,sum,,,curate
+area_ha_log,Natural log of parcel lot area in hectares,,float,mean,,parcel,enrich
+centroid_x,Centroid x coordinate in the spine CRS,,float,first,,parcel,enrich
+centroid_y,Centroid y coordinate in the spine CRS,,float,first,,parcel,enrich
+n_buildings_per_ha,Buildings per hectare of parcel lot area,,float,mean,,parcel,enrich
 lat,Centroid latitude (WGS84),degrees,float,first,,,harmonize
 long,Centroid longitude (WGS84),degrees,float,first,,,harmonize
 area_km2,Admin area,km2,float,sum,,,curate
