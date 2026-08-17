@@ -3,13 +3,111 @@ from pathlib import Path
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import rasterio
 from exactextract import exact_extract
-from rasterio.features import geometry_mask
+from rasterio.features import geometry_mask, rasterize
 from rasterio.mask import mask
+from rasterio.windows import Window, from_bounds
+from scipy.signal import fftconvolve
 from shapely.geometry import box
 
 from openplaces.geo.polygon import clean_polygons
+
+
+def get_circular_footprint(radius: int) -> np.ndarray:
+    """Circular kernel of given radius (in pixels); shape (2r+1, 2r+1)."""
+    size = 2 * radius
+    footprint = np.zeros((size + 1, size + 1))
+    for x in range(size + 1):
+        for y in range(size + 1):
+            footprint[x, y] = (x - radius) ** 2 + (y - radius) ** 2 <= radius**2
+    return footprint
+
+
+def compute_vicinity_coverage(
+    raster_path,
+    bounds,
+    bounds_crs=None,
+    px_radius: int = 60,
+):
+    """Compute vicinity coverage for the window covering *bounds*.
+
+    For every pixel in the (cropped) output window, the % of the surrounding
+    ``px_radius``-pixel circular neighborhood that is 1 (vs. 0) in the source
+    raster scoped to one bounds window instead of tiling the full national raster.
+
+    To get correct values at the edges of *bounds* (e.g. an admin unit's own
+    bounding box), the read window is padded by ``px_radius`` pixels on every
+    side before convolving, so neighboring pixels outside *bounds* in an
+    adjoining admin unit are still counted.
+
+    Parameters
+    ----------
+    raster_path : str or Path
+        Path to the source boolean (0/1) raster.
+    bounds : tuple of float
+        ``(minx, miny, maxx, maxy)`` to compute coverage for.
+    bounds_crs : str or CRS, optional
+        CRS of *bounds*. Defaults to the raster's own CRS (no reprojection).
+    px_radius : int
+        Neighborhood radius, in source-raster pixels.
+
+    Returns
+    -------
+    array : numpy.ndarray
+        uint8 array (percent coverage, 0-100; 255 = nodata) for the *bounds*
+        window (halo already cropped off).
+    transform : affine.Affine
+        Transform for `array`.
+    crs
+        The source raster's CRS.
+    """
+    kernel = get_circular_footprint(px_radius)
+
+    with rasterio.open(raster_path) as src:
+        if bounds_crs is not None and str(bounds_crs) != str(src.crs):
+            bounds = rasterio.warp.transform_bounds(bounds_crs, src.crs, *bounds)
+
+        core_window = from_bounds(*bounds, transform=src.transform)
+        core_window = core_window.round_lengths().round_offsets()
+
+        padded_window = Window(
+            core_window.col_off - px_radius,
+            core_window.row_off - px_radius,
+            core_window.width + 2 * px_radius,
+            core_window.height + 2 * px_radius,
+        )
+        raster_window = Window(0, 0, src.width, src.height)
+        padded_window = padded_window.intersection(raster_window)
+
+        arr = src.read(1, window=padded_window).astype(np.float64)
+        out_transform = src.window_transform(core_window)
+
+        # Where the halo was clipped by the raster's own extent (e.g. a
+        # coastal/border admin unit), the padded window is smaller than
+        # `px_radius` on that side; track the offset so the core crop below
+        # still lines up with `core_window`.
+        row_offset = round(core_window.row_off - padded_window.row_off)
+        col_offset = round(core_window.col_off - padded_window.col_off)
+
+    valid = (arr >= 0).astype(np.float64)
+    filled = np.where(arr >= 0, arr, 0)
+
+    num = fftconvolve(filled, kernel, mode='same')
+    den = fftconvolve(valid, kernel, mode='same')
+    coverage = np.where(den > 0, num / den * 100, np.nan)
+
+    core = coverage[
+        row_offset : row_offset + round(core_window.height),
+        col_offset : col_offset + round(core_window.width),
+    ]
+    out = np.where(np.isnan(core), 255, core).astype('uint8')
+
+    with rasterio.open(raster_path) as src:
+        crs = src.crs
+
+    return out, out_transform, crs
 
 
 def zonal_stats_with_exactextract(
@@ -201,6 +299,97 @@ def sample_raster_at_points(raster_path, x, y):
         np.ma.getmaskarray(sampled), np.nan, np.ma.getdata(sampled)
     )
     return values
+
+
+_RASTERIZED_STAT_FN = {
+    'mean': np.nanmean,
+    'max': np.nanmax,
+    'min': np.nanmin,
+    'sum': np.nansum,
+    'std': np.nanstd,
+    'count': lambda x: np.sum(~np.isnan(x)),
+}
+
+
+def sample_exactextract(parcels_r, raster_path, raster_key, stat) -> pd.Series:
+    """Per-parcel zonal statistic via exactextract (fractional-area weighting)."""
+    result = zonal_stats_with_exactextract(
+        parcels_r,
+        raster_path,
+        stats=[stat],
+        col_prefix=f'{raster_key}_',
+        reproject=False,
+        clean_geometry=False,
+    )
+    return result[f'{raster_key}_{stat}']
+
+
+def sample_rasterstats(parcels_r, raster_path, raster_key, stat) -> pd.Series:
+    """Per-parcel zonal statistic via the ``rasterstats`` library."""
+    from rasterstats import zonal_stats as rasterstats_zonal_stats
+
+    with rasterio.open(raster_path) as src:
+        nodata = src.nodata
+
+    raw = rasterstats_zonal_stats(
+        vectors=parcels_r.geometry,
+        raster=str(raster_path),
+        stats=[stat],
+        all_touched=False,
+        nodata=nodata,
+    )
+    result = pd.DataFrame(raw, index=parcels_r.index)[stat]
+    return result
+
+
+def sample_rasterized(parcels_r, raster_path, raster_key, stat) -> pd.Series:
+    """Burn polygons to the raster grid, then aggregate with a numpy groupby.
+
+    No fractional-overlap weighting (unlike ``sample_exactextract``), but no
+    extra dependency either.
+    """
+    if stat not in _RASTERIZED_STAT_FN:
+        raise ValueError(
+            f"method='rasterized' does not support stat={stat!r}. Choose "
+            f'from: {list(_RASTERIZED_STAT_FN)}'
+        )
+    agg_fn = _RASTERIZED_STAT_FN[stat]
+
+    with rasterio.open(raster_path) as src:
+        bounds = parcels_r.total_bounds
+        win = src.window(*bounds)
+        win = win.intersection(Window(0, 0, src.width, src.height))
+        win_transform = src.window_transform(win)
+        raster_data = src.read(1, window=win)
+        nodata = src.nodata
+
+    parcel_ids = parcels_r.index.tolist()
+    int_indices = range(1, len(parcel_ids) + 1)
+    idx_to_pid = dict(zip(int_indices, parcel_ids))
+
+    shapes = (
+        (geom, idx) for geom, idx in zip(parcels_r.geometry, int_indices, strict=True)
+    )
+    id_grid = rasterize(
+        shapes,
+        out_shape=raster_data.shape,
+        transform=win_transform,
+        fill=0,
+        dtype='int32',
+    )
+
+    raster_f = raster_data.astype('float32')
+    if nodata is not None:
+        raster_f[raster_data == nodata] = np.nan
+
+    flat_ids = id_grid.ravel()
+    flat_vals = raster_f.ravel()
+    mask = flat_ids > 0
+
+    df = pd.DataFrame({'idx': flat_ids[mask], 'val': flat_vals[mask]})
+    grouped = df.groupby('idx')['val'].agg(agg_fn)
+    result_vals = {idx_to_pid[i]: v for i, v in grouped.items() if i in idx_to_pid}
+    return pd.Series(result_vals, dtype='float64').reindex(parcel_ids)
 
 
 def clip(
