@@ -185,7 +185,16 @@ Public entrypoint:
 `Harmonizer` runs a composable step pipeline, executing steps declared in the recipe's
 `pipeline` list. Each step is a function registered via `@_register('step_name')` in one
 of the sub-modules:
-- `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`)
+- `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
+  and assign each row's containing polygon id from a space-partitioning
+  reference layer such as an admin level or a Census statistical geography
+  (`link_geographic_ids`; unlike `link_to_reference` below, every configured
+  reference is assumed to tile space without overlaps, so the relationship
+  is always exactly one containing polygon, not a many-to-many crosswalk).
+  An `inherit_from` option rolls up an already-linked recipe's own output
+  (e.g. a parcel spine inheriting from its footprint spine, which runs
+  first) wherever every row in the group agrees, so the direct spatial join
+  only runs on the residual.
 - `links.py` — join to reference datasets spatially or via crosswalks
   (`link_to_reference`)
 - `attributes.py` — attribute source columns to the spine as suffixed evidence
@@ -194,12 +203,20 @@ of the sub-modules:
   inference now run in the curation stage, not here; the harmonized spine
   (`US_footprint-spine-2026`) is an evidence-only table.
 - `addresses.py` — reconcile a canonical street address from any number of
-  source inputs (`reconcile_addresses`) and derive the USPS-preferred city
-  for a ZIP code (`impute_postal_city`).
+  source inputs (`reconcile_addresses`); coalesce ZIP-code evidence from
+  multiple columns by priority (`reconcile_postal_code` — e.g. an
+  address-parsed ZIP, then the spatially-derived `zcta5_id`, so a state with
+  no address-parsed coverage at all still gets a ZIP-like value); and derive
+  the USPS-preferred city for a ZIP code (`impute_postal_city`).
   - These are a deliberate exception to the "gap-filling belongs in curate" rule: the
     dividing line is whether there is dispute about how to derive its output. A ZIP code
     has exactly one USPS-preferred city — nothing parameter-sensitive to defer — so it's
     resolved once, in harmonize, where it's available early for downstream linking.
+- `diagnostics.py` — conflict-inspection reports (agreement rates, a
+  crosstab of disagreeing value-pairs, a bounded sample of conflicting rows)
+  written to the cache when `save_statistics` is set, mirroring
+  `io.curator.diagnostics`'s established convention. Never raises, never
+  changes the harmonized spine.
 - `filter.py` — subset rows (`filter_entities`)
 - `discover.py` — discover available data sources for an admin unit
 

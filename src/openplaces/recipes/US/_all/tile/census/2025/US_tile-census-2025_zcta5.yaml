@@ -1,0 +1,41 @@
+# Recipe to import ZIP Code Tabulation Areas (ZCTA5) for the United States (2025)
+description: >-
+  U.S. ZIP Code Tabulation Area (5-digit) boundaries (2025), ingested as tiles.
+
+admin_id: US
+
+# Entity: tiles from the 2025 US census
+entity:
+  entity_type: tile
+  source:
+    source_id: census
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/ZCTA520/tl_2025_us_zcta520.zip"
+  version: 2025
+
+# Single national file -- no per-state download_by, unlike tract/blockgroup/
+# block. ZCTAs don't nest cleanly within states or counties in the source
+# file (no native state-FIPS column), and nothing downstream needs that.
+compressed_file_name: "tl_2025_us_zcta520.zip"
+
+# Column mapping from the TIGER ZCTA520 shapefile. census_geo_id (GEOIDFQ20)
+# is globally unique across geography levels and used as the index;
+# zcta5_geoid (GEOID20) is the bare 5-digit ZCTA code linkage steps (e.g.
+# link_geographic_ids) read as the output value. Field names confirmed
+# against the live TIGER2025 ZCTA520 shapefile.
+columns:
+  census_geo_id: GEOIDFQ20
+  zcta5_geoid: GEOID20
+
+# Use census GEOID as index
+set_index: census_geo_id
+
+# Save to a single national zcta5 file (no scale concern: ~33k rows). No
+# `admin_level` here (unlike tract/blockgroup/block): this recipe has no
+# admin_id_crosswalk at all, so no per-row admin1_id column ever exists to
+# split by -- the whole download already covers exactly one admin unit
+# (US), the same reasoning US_admin-census-2025_admin2.yaml's single
+# national states file uses.
+save_to:
+  data_dir: cache
+  filename: zcta5

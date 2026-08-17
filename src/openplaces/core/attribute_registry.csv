@@ -187,9 +187,12 @@ population_mixed_race_share,Population share: mixed race,fraction (0-1),float,me
 population_native_american_share,Population share: American Indian/Alaska Native,fraction (0-1),float,mean,,,enrich
 population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
 population_gravity_index,"Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster",,float,mean,,,enrich
-census_tract_id,Census tract identifier,,string,first,,,enrich
-census_blockgroup_id,Census block group identifier,,string,first,,,enrich
-census_subdivision_id,Census county subdivision (town/township) identifier,,string,first,,,enrich
+census_tract_id,Census tract identifier,,string,first,,,harmonize
+census_blockgroup_id,Census block group identifier,,string,first,,,harmonize
+census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the containing admin4 unit,,string,first,,,harmonize
+census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize
+zcta5_id,"ZIP Code Tabulation Area (5-digit) identifier -- a Census statistical approximation of ZIP code service areas, not the authoritative ZIP code (see postal_zip5)",,string,first,,,harmonize
+postal_code_conflict,"ZIP-code evidence disagreement summary across sources feeding postal_zip5 (e.g. address-parsed vs. zcta5_id); null when sources agree",,string,first,,,harmonize
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
 land_value_per_ha_log_region_nb2,"Same; 'region-nb2' model (alternate neighborhood-region spec)",ln(USD/ha),float,mean,,parcel,enrich
 aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich

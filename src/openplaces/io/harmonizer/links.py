@@ -38,6 +38,7 @@ from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import (
     HarmonizeState,
     _register,
+    _rename_right_index,
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_entities
@@ -796,29 +797,6 @@ def _write_link_sidecar(
     )
     if verbose:
         print(f'  Link (overlay): wrote link sidecar {sidecar_path.name}')
-
-
-def _rename_right_index(
-    gdf: pd.DataFrame,
-    right_index_name: str | None,
-    target: str,
-) -> pd.DataFrame:
-    """Rename the right-index column added by ``gpd.sjoin`` to *target*.
-
-    geopandas names the right-index column ``'{name}_right'`` when there is a
-    column-name conflict, ``'{name}'`` when there is no conflict (geopandas
-    1.x), and ``'index_right'`` when the right index has no name.  This helper
-    handles all three conventions.
-    """
-    candidates = (
-        [f'{right_index_name}_right', right_index_name, 'index_right']
-        if right_index_name
-        else ['index_right']
-    )
-    for col in candidates:
-        if col in gdf.columns:
-            return gdf.rename(columns={col: target})
-    return gdf
 
 
 def _dedup_address_points(

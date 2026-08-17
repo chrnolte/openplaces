@@ -21,9 +21,13 @@ download_by:
 # Compressed file name to read
 compressed_file_name: "tl_2025_{admin2_id_admin1}_tract.zip"
 
-# Column mapping from TIGER tract shapefiles
+# Column mapping from TIGER tract shapefiles. census_geo_id (GEOIDFQ) is
+# globally unique across geography levels and used as the index;
+# census_tract_geoid (GEOID) is the bare 11-digit tract code linkage steps
+# (e.g. link_geographic_ids) read as the output value.
 columns:
   census_geo_id: GEOIDFQ
+  census_tract_geoid: GEOID
 
 # Extract county FIPS code (5-digit admin3_id used by country)
 transformations:

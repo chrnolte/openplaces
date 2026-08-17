@@ -77,6 +77,38 @@ pipeline:
 
   - step: resolve_overlaps
 
+  # Compute this entity's own centroid lat/long and area (ha) once, right
+  # after spine geometry is finalized (including infer_spine_additions's
+  # synthetic fallback rows and resolve_overlaps's cleanup), so downstream
+  # harmonize and curate steps reuse these columns instead of recomputing
+  # them.
+  - step: derive_geometry_attributes
+
+  # Assign admin4_id (town/county-subdivision) and Census statistical
+  # geography ids directly -- this recipe runs first in the DAG (see
+  # US_parcel-spine-2026's summarize_footprint_morphology, which consumes
+  # this recipe's output), so US_parcel-spine-2026 can inherit these values
+  # per parcel instead of repeating the spatial join.
+  - step: link_geographic_ids
+    links:
+      - admin_level: 4
+        output_column: admin4_id
+      - recipe_id: US_admin-census-2025_admin4
+        output_column: census_subdivision_id
+        id_column: admin4_id_admin1
+      - recipe_id: US_tile-census-2025_tract
+        output_column: census_tract_id
+        id_column: census_tract_geoid
+      - recipe_id: US_tile-census-2025_blockgroup
+        output_column: census_blockgroup_id
+        id_column: census_blockgroup_geoid
+      - recipe_id: US_tile-census-2025_block
+        output_column: census_block_id
+        id_column: census_block_geoid
+      - recipe_id: US_tile-census-2025_zcta5
+        output_column: zcta5_id
+        id_column: zcta5_geoid
+
   - step: link_to_reference
     recipe_id: US_building-nsi-2026
     source_geometry_type: single_building_point
@@ -159,12 +191,19 @@ pipeline:
     unit_output_col: address_unit
     city_output_col: city
 
+  # Coalesce ZIP-code evidence by priority: dwelling_overture's parsed ZIP,
+  # then the spatially-derived zcta5_id -- a state with no Overture address
+  # coverage at all (e.g. Wisconsin, South Carolina) still gets a ZIP-like
+  # value from the latter.
+  - step: reconcile_postal_code
+    sources: [postal_code_dwelling_overture, zcta5_id]
+    output_column: postal_code
+
   # A ZIP code has exactly one USPS-preferred city, so this is imputed here
-  # rather than in curate. Reads dwelling_overture's raw ZIP directly (not
-  # reconcile_addresses's own, agreement-gated postal_code) for the broadest
+  # rather than in curate. Reads the coalesced ZIP above for the broadest
   # coverage, and completes `city`/`address` wherever they're still missing.
   - step: impute_postal_city
-    column: postal_code_dwelling_overture
+    column: postal_code
 
   # Town-scoped address matching key, for id-free linking to sources with no
   # shared parcel id (e.g. the address-fallback pass below).
