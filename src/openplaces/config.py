@@ -494,6 +494,11 @@ class OpenPlacesConfig:
         return self.get_dir('external')
 
     @property
+    def rasters_dir(self) -> Path:
+        """Root for rasters that recipes reference by relative path."""
+        return self.get_dir('rasters')
+
+    @property
     def raw_dir(self) -> Path:
         """Raw downloaded data directory."""
         return self.get_dir('raw')

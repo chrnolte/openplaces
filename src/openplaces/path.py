@@ -210,6 +210,32 @@ def external_dir(*args, **kwargs):
     return external_path(*args, as_dir=True, **kwargs)
 
 
+def resolve_raster_path(raster_path) -> Path:
+    """Resolve a recipe's raster reference against the configured root.
+
+    Recipes name rasters by a path relative to the ``rasters`` directory, so
+    the same recipe runs on any machine: only the root differs, and it is set
+    once per user or project in the configuration. An absolute path is
+    returned unchanged, which keeps ad-hoc callers and one-off notebooks
+    working.
+
+    Parameters
+    ----------
+    raster_path : str or pathlib.Path
+        Relative path under the configured raster root, or an absolute path.
+
+    Returns
+    -------
+    pathlib.Path
+        The resolved location. It is not checked for existence; the caller
+        opens it and reports a missing file in its own terms.
+    """
+    candidate = Path(raster_path)
+    if candidate.is_absolute():
+        return candidate
+    return cfg.rasters_dir / candidate
+
+
 def raw_path(*args, root=cfg.raw_dir, use_prefix=False, **kwargs):
     return path(*args, root=root, use_prefix=use_prefix, **kwargs)
 

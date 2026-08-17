@@ -32,6 +32,12 @@ STANDARD_DIRS = {
         'shared': True,
         'retention': 'keep',
     },
+    'rasters': {
+        'default': 'data/external/rasters',
+        'description': 'Raster files referenced by relative path from recipes',
+        'shared': True,
+        'retention': 'keep',
+    },
     'raw': {
         'default': 'data/raw',
         'description': 'Raw data from own data collection efforts',
