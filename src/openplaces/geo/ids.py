@@ -576,6 +576,12 @@ def decode_ubids(ubids: pd.Series, outer: bool = True) -> gpd.GeoDataFrame:
 
 _PARCEL_ID_DIR = Path(__file__).parent
 
+# Excess conversion loss (over a plain 'simple' conversion) that only warns
+# rather than triggering the fallback in `compute_parcel_id_local`. Set below
+# the ~16% floor of the deliberate partial conversions seen in practice, so a
+# newly-misfitting instruction is visible well before it becomes total.
+_LOSS_WARN = 0.10
+
 
 @cache
 def _parcel_id_patterns() -> pd.DataFrame:
@@ -866,6 +872,40 @@ def _adds_duplicates(raw: pd.Series, candidate: pd.Series, tolerance: float) -> 
     return extra > tolerance * n
 
 
+def _conversion_loss(raw: pd.Series, candidate: pd.Series) -> float:
+    """Share of populated raw ids that *candidate* failed to convert.
+
+    Note that :func:`_adds_duplicates` cannot see this failure: it only
+    compares rows where both sides are non-null, so a conversion that
+    nulls *every* row leaves it an empty mask and a clean verdict.
+    """
+    has_raw = raw.notna() & raw.ne('')
+    n = int(has_raw.sum())
+    if n == 0:
+        return 0.0
+    return float((has_raw & candidate.isna()).sum()) / n
+
+
+def _warn_if_degenerate(raw, key, admin_unit_id, kind, threshold=0.5) -> None:
+    """Warn when a fallback key has far fewer distinct values than rows.
+
+    Signals a source column that is not a parcel-level identifier at all
+    (a block or neighborhood code), which no choice of conversion can
+    repair -- see :func:`compute_parcel_id_local`.
+    """
+    n_rows = int((raw.notna() & raw.ne('')).sum())
+    n_unique = int(key.nunique())
+    if n_rows and n_unique < threshold * n_rows:
+        warnings.warn(
+            f'parcel_id_local for admin {admin_unit_id} (kind={kind}) '
+            f'resolved to only {n_unique:,} distinct keys across '
+            f'{n_rows:,} rows -- the source column is not a parcel-level '
+            f'id. Point `source` at a different column in the '
+            f'id-overrides table rather than tuning the conversion.',
+            stacklevel=3,
+        )
+
+
 def _resolve_instruction(admin_unit_id, instruction, kind):
     """Resolve (pattern, conv_code, tolerance) for an admin unit and source kind.
 
@@ -902,6 +942,7 @@ def compute_parcel_id_local(
     instruction: dict | None = None,
     kind: str = 'parcel',
     tolerance: float = 0.005,
+    max_loss: float = 0.5,
 ) -> pd.Series:
     """Compute the standardized ``parcel_id_local`` key for a parcel id column.
 
@@ -920,6 +961,29 @@ def compute_parcel_id_local(
     zero-padded segment is expected to legitimately collapse repeat-sale
     filings of the same parcel beyond the default 0.5%) -- it overrides the
     *tolerance* parameter when present.
+
+    A second guard covers the opposite failure: a conversion whose pattern
+    simply does not fit the source matches nothing and returns an all-null
+    key.  The duplicate guard cannot see that (it compares only rows where
+    both sides are non-null, so an all-null candidate leaves it an empty
+    mask and a clean verdict), and the null key then drops the whole table
+    wherever it is joined by ``parcel_id_local`` -- silently, since nothing
+    raises.  So the conversion's failure rate is also compared against a
+    plain ``simple`` conversion of the same column: losing more than
+    *max_loss* beyond what ``simple`` loses means the instruction does not
+    fit this source, and the fallback ladder is used instead.  Measured
+    across every ingested parcel table, real conversions separate cleanly
+    from broken ones -- deliberate partial conversions (MassGIS) top out
+    around 26% excess loss, while misfitting ones sit at 99-100% -- so the
+    default leaves working conversions untouched.  Smaller excess losses
+    only warn.
+
+    Parameters
+    ----------
+    max_loss : float, default 0.5
+        Maximum share of populated raw ids the conversion may fail to
+        convert *beyond* what a plain ``simple`` conversion fails on,
+        before falling back.
     """
     raw = series.astype('string').str.strip().str.upper()
     pattern, conv_code, resolved_tolerance = _resolve_instruction(
@@ -929,16 +993,56 @@ def compute_parcel_id_local(
         tolerance = float(resolved_tolerance)
 
     candidate = convert_parcel_id(raw, pattern, conv_code)
-    if not _adds_duplicates(raw, candidate, tolerance):
+    simple = convert_parcel_id(raw, None, 'simple')
+    excess_loss = _conversion_loss(raw, candidate) - _conversion_loss(raw, simple)
+
+    if _adds_duplicates(raw, candidate, tolerance):
+        warnings.warn(
+            f'parcel_id_local conversion for admin {admin_unit_id} (kind={kind}, '
+            f'conv={conv_code!r}) added duplicates; falling back to pipe.',
+            stacklevel=2,
+        )
+    elif excess_loss > max_loss:
+        warnings.warn(
+            f'parcel_id_local conversion for admin {admin_unit_id} (kind={kind}, '
+            f'pattern={pattern!r}, conv={conv_code!r}) produced no key for '
+            f'{excess_loss:.1%} more rows than a plain "simple" conversion, so '
+            f'it does not fit this source; falling back to pipe. Left as-is '
+            f'this would silently drop the whole table wherever it is joined by '
+            f'parcel_id_local.',
+            stacklevel=2,
+        )
+    else:
+        if excess_loss > _LOSS_WARN:
+            warnings.warn(
+                f'parcel_id_local conversion for admin {admin_unit_id} '
+                f'(kind={kind}, conv={conv_code!r}) produced no key for '
+                f'{excess_loss:.1%} more rows than a plain "simple" conversion; '
+                f'those rows will not join by parcel_id_local.',
+                stacklevel=2,
+            )
         return candidate
 
-    warnings.warn(
-        f'parcel_id_local conversion for admin {admin_unit_id} (kind={kind}, '
-        f'conv={conv_code!r}) added duplicates; falling back to pipe.',
-        stacklevel=2,
-    )
+    # Whichever rung the ladder lands on, falling back cannot invent
+    # precision the source column never had: where the raw id is itself
+    # degenerate (a block code standing in for a parcel id, e.g. NC
+    # OneMap's ALTPARNO in Pamlico County, NC -- 140 distinct values across
+    # 17,109 parcels) the fallback reproduces that faithfully and the
+    # duplicate guard waves it through, because the duplicates come from
+    # the source rather than the conversion. A populated but degenerate key
+    # is worse than a null one: it looks healthy. Report the returned key's
+    # distinctness so the case is visible in the log; the fix is a
+    # `source:` override pointing at a different column, not a different
+    # conv. Checked on the returned key rather than on `simple` alone --
+    # `pipe` is strictly less lossy, so it almost always clears the
+    # duplicate guard first and would otherwise skip the check entirely.
     candidate = convert_parcel_id(raw, None, 'pipe')
     if not _adds_duplicates(raw, candidate, tolerance):
+        _warn_if_degenerate(raw, candidate, admin_unit_id, kind)
         return candidate
+
+    if not _adds_duplicates(raw, simple, tolerance):
+        _warn_if_degenerate(raw, simple, admin_unit_id, kind)
+        return simple
 
     return raw.where(raw.ne(''), pd.NA)

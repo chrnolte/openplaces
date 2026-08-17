@@ -6,6 +6,7 @@ distinct `parcel_id_assessor` values.
 """
 
 import pandas as pd
+import pytest
 
 from openplaces.geo.ids import (
     _adds_duplicates,
@@ -137,3 +138,95 @@ def test_instruction_tolerance_overrides_default_and_avoids_fallback():
     out = compute_parcel_id_local(raw, 'X', instruction=widened, kind='parcel')
     assert out.nunique() == 2
     assert out.iloc[0] == out.iloc[1] == '10|1044'
+
+
+def test_compute_falls_back_when_conversion_matches_nothing():
+    """A pattern that fits no row must not yield an all-null key.
+
+    This is the failure the duplicate guard cannot see: it compares only
+    rows where both raw and candidate are non-null, so an all-null
+    candidate leaves it an empty mask and a clean verdict. Downstream the
+    null key silently drops the whole table wherever it is joined by
+    parcel_id_local -- observed on four NC counties whose bundled pattern
+    expected dashes their PIN does not have.
+    """
+    raw = pd.Series(['6945835847', '5977190758', '5977298749'])
+    # Written for a dashed id; this source has no separators at all.
+    instruction = {'X': {'pattern': 'Sx-Sx-Sx', 'conv': 'skip_empty: 1'}}
+
+    with pytest.warns(UserWarning, match='falling back to pipe'):
+        out = compute_parcel_id_local(raw, 'X', instruction=instruction)
+
+    # No separators to keep, so pipe and simple agree here.
+    assert out.notna().all()
+    assert out.tolist() == ['6945835847', '5977190758', '5977298749']
+
+
+def test_compute_keeps_a_conversion_that_only_drops_a_few_rows():
+    """A deliberate partial conversion is left alone.
+
+    MassGIS-style instructions legitimately fail on a minority of rows; at
+    that scale the instruction still fits the source and must not be
+    replaced.
+    """
+    raw = pd.Series([f'{100 + i}-{200 + i}' for i in range(19)] + ['NOMATCHHERE'])
+    instruction = {'X': {'pattern': r'^(\d+)-(\d+)$', 'conv': 'skip_empty: 1'}}
+
+    out = compute_parcel_id_local(raw, 'X', instruction=instruction)
+
+    # One row of twenty (5%) fails to convert -- under the fallback bar.
+    assert out.isna().sum() == 1
+    assert out.iloc[0] == '100|200'
+
+
+def test_compute_warns_without_falling_back_on_moderate_loss():
+    """Between the warn floor and the fallback bar, warn but keep the key."""
+    raw = pd.Series(
+        [f'{100 + i}-{200 + i}' for i in range(15)] + [f'NOMATCH{i}' for i in range(5)]
+    )
+    instruction = {'X': {'pattern': r'^(\d+)-(\d+)$', 'conv': 'skip_empty: 1'}}
+
+    with pytest.warns(UserWarning, match='will not join'):
+        out = compute_parcel_id_local(raw, 'X', instruction=instruction)
+
+    # 25% lost: warned about, but the conversion is still the one used.
+    assert out.isna().sum() == 5
+    assert out.iloc[0] == '100|200'
+
+
+def test_max_loss_is_tunable():
+    """The fallback bar can be tightened by the caller.
+
+    The fallback lands on ``pipe`` rather than ``simple``: concatenating
+    segments can fuse two otherwise-distinct raw ids, so the separator is
+    kept whenever pipe clears the duplicate guard (see the fallback order
+    in ``geo/ids.py``). ``simple`` remains the last resort behind it.
+    """
+    raw = pd.Series(
+        [f'{100 + i}-{200 + i}' for i in range(15)] + [f'NOMATCH{i}' for i in range(5)]
+    )
+    instruction = {'X': {'pattern': r'^(\d+)-(\d+)$', 'conv': 'skip_empty: 1'}}
+
+    with pytest.warns(UserWarning, match='falling back to pipe'):
+        out = compute_parcel_id_local(raw, 'X', instruction=instruction, max_loss=0.1)
+
+    assert out.notna().all()
+    assert out.iloc[0] == '100|200'
+
+
+def test_degenerate_source_column_is_reported():
+    """A populated-but-useless key is worse than a null one, so say so.
+
+    Falling back cannot invent precision the source never had: NC OneMap's
+    ALTPARNO in Pamlico County is a block code, 140 distinct values across
+    17,109 parcels. Both pipe and simple reproduce that faithfully and the
+    duplicate guard passes, because the duplicates come from the source.
+    """
+    raw = pd.Series([f'{i % 3}' for i in range(60)])
+    instruction = {'X': {'pattern': 'Sx-Sx-Sx', 'conv': 'skip_empty: 1'}}
+
+    with pytest.warns(UserWarning, match='the source column is not a parcel-level id'):
+        out = compute_parcel_id_local(raw, 'X', instruction=instruction)
+
+    assert out.notna().all()
+    assert out.nunique() == 3
