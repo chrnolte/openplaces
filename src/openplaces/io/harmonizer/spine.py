@@ -2,6 +2,8 @@
 Pipeline steps for building and refining the primary entity spine:
   - resolve_spine: merge multiple source GeoDataFrames via IoU dedup
   - union_spine_sources: concatenate multiple source tables for a non-spatial entity
+  - link_geographic_ids: assign each row's containing polygon id from one or
+    more space-partitioning reference layers (admin units, Census geographies)
   - split_by_reference: split spine geometries at reference boundaries [stub]
 """
 
@@ -15,14 +17,14 @@ import pandas as pd
 from shapely.strtree import STRtree
 
 from openplaces.diagnostics import find_recipes
-from openplaces.geo.polygon import get_areas, overlay_polygons
+from openplaces.geo.polygon import get_areas, overlay_polygons, points_from_coords
 from openplaces.io.harmonizer import (
     HarmonizeState,
     _record_source,
     _register,
     restrict_to_admin_by_name,
 )
-from openplaces.io.readers import get_entities
+from openplaces.io.readers import get_admin, get_entities
 
 
 def get_oriented_dims(geom) -> tuple[float, float, float]:
@@ -632,6 +634,315 @@ def derive_geometry_attributes(
     state.spine = add_geometry_derivatives(
         spine, state.timer, area_unit=area_unit, area_mask=area_mask
     )
+    return state
+
+
+def _resolve_geographic_reference(state, link):
+    """Load the reference layer for one `link_geographic_ids` entry.
+
+    Returns a two-column GeoDataFrame (``geometry``, ``_ref_value``) or
+    ``None`` when the reference has no coverage for this admin unit.
+    """
+    admin_level = link.get('admin_level')
+    recipe_id = link.get('recipe_id')
+    if (admin_level is None) == (recipe_id is None):
+        raise ValueError(
+            "link_geographic_ids: each link needs exactly one of 'admin_level' "
+            "or 'recipe_id' "
+            f'(output_column={link.get("output_column")!r}).'
+        )
+    id_column = link.get('id_column')
+
+    if admin_level is not None:
+        ref = get_admin(state.admin_id, admin_level, geom=True)
+    else:
+        bbox = tuple(state.spine.total_bounds) if state.spine is not None else None
+        ref = get_entities(
+            recipe_id, state.admin_id, geom=True, bbox=bbox, missing='warn'
+        )
+    if ref is None or len(ref) == 0:
+        return None
+
+    values = ref[id_column] if id_column else pd.Series(ref.index, index=ref.index)
+    out = ref[['geometry']].copy()
+    out['_ref_value'] = values.to_numpy()
+    return out
+
+
+def _join_largest_overlap(
+    spine_subset: gpd.GeoDataFrame, ref: gpd.GeoDataFrame
+) -> pd.Series:
+    """Pass-2 fallback: the reference polygon with the largest intersection area.
+
+    Used only for rows whose centroid missed every reference polygon in Pass
+    1 (typically a boundary/rounding sliver) -- an identity overlay of the
+    row's *actual* geometry, keeping the dominant (largest-area) match.
+    """
+    if spine_subset.empty:
+        return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
+
+    spine_id_name = spine_subset.index.name or 'index'
+    overlay = overlay_polygons(
+        spine_subset[['geometry']],
+        ref[['geometry', '_ref_value']],
+        columns=['_ref_value'],
+        how='identity',
+        area_intersection=True,
+        suffixes=('_spine', '_ref'),
+    )
+    overlay = overlay[overlay['_ref_value'].notna()]
+    if overlay.empty:
+        return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
+
+    overlay = overlay.sort_values('area_intersection_m2', ascending=False)
+    overlay = overlay[~overlay.index.get_level_values(spine_id_name).duplicated()]
+    return pd.Series(
+        overlay['_ref_value'].to_numpy(),
+        index=overlay.index.get_level_values(spine_id_name),
+    ).reindex(spine_subset.index)
+
+
+def _join_containing_polygon(
+    spine_subset: gpd.GeoDataFrame, ref: gpd.GeoDataFrame
+) -> pd.Series:
+    """Two-pass containing-polygon join for *spine_subset* against *ref*.
+
+    Pass 1: point-in-polygon on each row's own centroid (``lat``/``long``).
+    Pass 2 (only for Pass-1 misses): dominant-overlap fallback, see
+    :func:`_join_largest_overlap`.
+    """
+    if spine_subset.empty:
+        return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
+
+    points = points_from_coords(spine_subset[['lat', 'long']].copy(), x='long', y='lat')
+    joined = gpd.sjoin(
+        points, ref[['geometry', '_ref_value']], how='left', predicate='within'
+    )
+    joined = joined[~joined.index.duplicated()]
+    result = joined['_ref_value'].reindex(spine_subset.index)
+
+    missing = result.index[result.isna()]
+    if len(missing):
+        result.update(_join_largest_overlap(spine_subset.loc[missing], ref))
+    return result
+
+
+def _pick_unanimous(series: pd.Series):
+    """Return the single distinct non-null value in *series*, else ``pd.NA``."""
+    values = pd.unique(series.dropna())
+    return values[0] if len(values) == 1 else pd.NA
+
+
+def _inherit_geographic_ids(
+    state: HarmonizeState,
+    output_columns: list[str],
+    inherit_from: dict,
+) -> tuple[dict[str, pd.Series], list[dict]]:
+    """Roll up already-computed geographic ids from a linked recipe's output.
+
+    Groups the linked recipe's rows by ``inherit_from['group_by']`` (default
+    ``'parcel_id'``) when that column is present on the linked output, and
+    joins the result onto this spine by value (the shared id's underlying
+    values, regardless of this spine's own current index *name* -- see
+    ``resolve_spine``'s ``parcel_id`` -> ``spine_id`` rename). Falls back to
+    spatial containment of the linked entity's centroid within this spine's
+    geometry when no shared column is present, mirroring
+    :func:`~openplaces.io.harmonizer.attributes.summarize_footprint_morphology`'s
+    identical id-or-spatial fallback for this same footprint/parcel
+    relationship.
+
+    A group's value is only inherited where every row in the group agrees
+    (or there is exactly one); disagreeing groups are left null so the
+    caller's own direct join resolves them instead.
+
+    Returns
+    -------
+    tuple of (dict[str, pandas.Series], list of dict)
+        Per-column inherited values (aligned to ``state.spine.index``, null
+        where not inherited), and a list of disagreement records
+        (``{'output_column', 'group_key', 'values'}``) for diagnostics.
+    """
+    recipe_id = inherit_from['recipe_id']
+    group_by = inherit_from.get('group_by', 'parcel_id')
+    spine = state.spine
+
+    linked = get_entities(recipe_id, state.admin_id, geom=True, missing='ignore')
+    empty = {
+        col: pd.Series(pd.NA, index=spine.index, dtype=object) for col in output_columns
+    }
+    if linked is None or len(linked) == 0:
+        return empty, []
+
+    available = [c for c in output_columns if c in linked.columns]
+    if not available:
+        return empty, []
+
+    if group_by in linked.columns:
+        grouped = linked.groupby(group_by)
+    elif {'lat', 'long'}.issubset(linked.columns):
+        points = points_from_coords(
+            linked[['lat', 'long'] + available].copy(), x='long', y='lat'
+        )
+        joined = gpd.sjoin(points, spine[['geometry']], how='inner', predicate='within')
+        spine_id_name = spine.index.name or 'index'
+        grouped = joined.groupby(spine_id_name)
+    else:
+        return empty, []
+
+    # `grouped` stays column-unselected so each `grouped[col]` below is a
+    # fresh sub-selection -- selecting a column from an *already*
+    # column-selected DataFrameGroupBy raises in pandas.
+    rollup = grouped[available].agg(_pick_unanimous)
+
+    conflicts: list[dict] = []
+    for col in available:
+        counts = grouped[col].nunique(dropna=True)
+        for key in counts.index[counts > 1]:
+            values = pd.unique(grouped.get_group(key)[col].dropna())
+            conflicts.append(
+                {'output_column': col, 'group_key': key, 'values': list(values)}
+            )
+
+    inherited = {
+        col: (
+            rollup[col].reindex(spine.index)
+            if col in rollup.columns
+            else pd.Series(pd.NA, index=spine.index, dtype=object)
+        )
+        for col in output_columns
+    }
+    return inherited, conflicts
+
+
+@_register('link_geographic_ids')
+def link_geographic_ids(
+    state: HarmonizeState,
+    links: list[dict] | None = None,
+    inherit_from: dict | None = None,
+) -> HarmonizeState:
+    """Assign each spine row the id of the reference polygon containing it.
+
+    For each entry in *links*, joins against a reference layer that
+    partitions space without overlaps (an admin level, or a tile-type
+    reference entity such as a Census statistical geography) and writes the
+    matching reference id as a new/overwritten spine column.
+
+    Pass 1 is a point-in-polygon join on each row's own centroid (``lat``/
+    ``long``, from :func:`derive_geometry_attributes`, which must run
+    first). Any row whose centroid misses every reference polygon falls
+    back to Pass 2: an identity overlay of the row's *actual* geometry
+    against the reference layer, keeping the reference polygon with the
+    largest intersection area. Rows unmatched by both passes are left null
+    -- a visible coverage gap, not a masked one.
+
+    Parameters
+    ----------
+    links : list of dict
+        Each entry configures one output column:
+
+        ``output_column`` (str, required)
+            Name for the new/overwritten spine column.
+        ``admin_level`` (int, optional)
+            Join against ``get_admin(state.admin_id, admin_level, geom=True)``;
+            the joined value is that reference's own index. Mutually
+            exclusive with ``recipe_id``.
+        ``recipe_id`` (str, optional)
+            Join against ``get_entities(recipe_id, state.admin_id, geom=True,
+            bbox=spine.total_bounds)``. Mutually exclusive with
+            ``admin_level``.
+        ``id_column`` (str, optional)
+            Reference column to copy as the output value; defaults to the
+            reference's own index.
+    inherit_from : dict, optional
+        ``{'recipe_id': str, 'group_by': str}`` (``group_by`` defaults to
+        ``'parcel_id'``). When set, every output column is first filled by
+        rolling up *recipe_id*'s already-harmonized output via
+        :func:`_inherit_geographic_ids`; only rows left null run the direct
+        two-pass join above. Avoids recomputing the same join twice for a
+        parcel spine whose footprint spine already resolved it (see
+        ``US_parcel-spine-2026``'s wiring).
+
+    If an output column already exists on the spine with non-null values
+    (e.g. a source-native ``admin4_id`` carried through ``resolve_spine``'s
+    ``keep_columns``), rows where the pre-existing value disagrees with the
+    freshly computed one are reported via ``warnings.warn`` (a bounded
+    sample) before the column is overwritten.
+    """
+    if state.spine is None or not links:
+        return state
+    spine = state.spine
+    if not {'lat', 'long'}.issubset(spine.columns):
+        warnings.warn(
+            'link_geographic_ids: spine has no lat/long columns -- run '
+            'derive_geometry_attributes first. Skipping.'
+        )
+        return state
+
+    output_columns = [link['output_column'] for link in links]
+    inherited: dict[str, pd.Series] = {}
+    inherit_conflicts: list[dict] = []
+    if inherit_from:
+        inherited, inherit_conflicts = _inherit_geographic_ids(
+            state, output_columns, inherit_from
+        )
+        if inherit_conflicts:
+            state.metadata.setdefault('geographic_id_inheritance_conflicts', []).extend(
+                inherit_conflicts
+            )
+
+    for link in links:
+        output_column = link['output_column']
+        inherited_col = inherited.get(output_column)
+        computed = (
+            inherited_col.copy()
+            if inherited_col is not None
+            else pd.Series(pd.NA, index=spine.index, dtype=object)
+        )
+
+        # Only resolves (loads) the reference layer if inheritance left a
+        # residual to fill -- the whole point of `inherit_from` is to avoid
+        # this load/join entirely when it isn't needed.
+        missing = computed.index[computed.isna()]
+        if len(missing):
+            ref = _resolve_geographic_reference(state, link)
+            if ref is None:
+                if state.verbose:
+                    print(
+                        f'  link_geographic_ids: no reference for '
+                        f"'{output_column}'; leaving {len(missing):,} row(s) null."
+                    )
+            else:
+                computed.update(_join_containing_polygon(spine.loc[missing], ref))
+
+        if output_column in spine.columns:
+            existing = spine[output_column]
+            disagree = existing.notna() & computed.notna() & existing.ne(computed)
+            if disagree.any():
+                sample = pd.DataFrame(
+                    {'existing': existing[disagree], 'computed': computed[disagree]}
+                ).head(10)
+                warnings.warn(
+                    f'link_geographic_ids: {int(disagree.sum()):,} row(s) disagree '
+                    f"on '{output_column}' between the existing value and the "
+                    f'freshly computed spatial join; overwriting with the '
+                    f'spatial join. Examples:\n{sample}'
+                )
+
+        spine[output_column] = computed
+        if state.verbose:
+            n = int(computed.notna().sum())
+            print(
+                f'  link_geographic_ids: {output_column} resolved '
+                f'{n:,} of {len(spine):,}.'
+            )
+
+    from openplaces.io.harmonizer.diagnostics import (
+        save_geographic_id_inheritance_conflicts,
+    )
+
+    save_geographic_id_inheritance_conflicts(state)
+
+    state.spine = spine
     return state
 
 

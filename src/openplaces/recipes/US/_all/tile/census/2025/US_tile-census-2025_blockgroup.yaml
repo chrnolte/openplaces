@@ -21,9 +21,13 @@ download_by:
 # Compressed file name to read
 compressed_file_name: "tl_2025_{admin2_id_admin1}_bg.zip"
 
-# Column mapping from TIGER BG shapefiles
+# Column mapping from TIGER BG shapefiles. census_geo_id (GEOIDFQ) is
+# globally unique across geography levels and used as the index;
+# census_blockgroup_geoid (GEOID) is the bare 12-digit block-group code
+# linkage steps (e.g. link_geographic_ids) read as the output value.
 columns:
   census_geo_id: GEOIDFQ
+  census_blockgroup_geoid: GEOID
 
 # Extract county FIPS code (5-digit admin3_id used by country)
 transformations:

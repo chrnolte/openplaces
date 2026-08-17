@@ -1,0 +1,65 @@
+# Recipe to import census blocks for the United States (2025)
+description: >-
+  U.S. census block boundaries (2025), ingested as tiles.
+
+admin_id: US
+
+# Entity: tiles from the 2025 US census
+entity:
+  entity_type: tile
+  source:
+    source_id: census
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/TABBLOCK20/tl_2025_{admin2_id_admin1}_tabblock20.zip"
+  version: 2025
+
+# Download is partitioned by state
+download_by:
+  admin_level: 2
+  admin_recipe_id: "US_admin-census-2021_admin2"
+
+# Compressed file name to read
+compressed_file_name: "tl_2025_{admin2_id_admin1}_tabblock20.zip"
+
+# Column mapping from TIGER block shapefiles. census_geo_id (GEOIDFQ20) is
+# globally unique across geography levels and used as the index;
+# census_block_geoid (GEOID20) is the bare 15-digit block code linkage steps
+# (e.g. link_geographic_ids) read as the output value. Field names confirmed
+# against the live TIGER2025 TABBLOCK20 shapefile.
+columns:
+  census_geo_id: GEOIDFQ20
+  census_block_geoid: GEOID20
+
+# Extract state FIPS code (2-digit admin2_id used by save_to.admin_level: 2
+# below) -- unlike tract/blockgroup, which crosswalk to the 5-digit county
+# FIPS (admin3) because they save at the country level (admin_level: 1,
+# auto-filled without any crosswalk at all -- see US_tile-census-2025_zcta5
+# for a recipe with no crosswalk whatsoever). save_to.admin_level: 2 needs
+# admin2_id specifically; it is not derived from a resolved admin3_id.
+transformations:
+  - output: admin2_id_admin1
+    type: string
+    operation: substring
+    input: census_geo_id
+    args:
+      start: 9
+      end: 11
+
+# Translate FIPS code to `admin2_id`
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "US_admin-census-2021_admin2"
+
+# Use census GEOID as index
+set_index: census_geo_id
+
+# Save one file per state (not aggregated to one national file like
+# tract/blockgroup/zcta5): at ~8M features nationally, a single aggregated
+# file would make both the ingest-time merge and every later harmonize-time
+# open/footer read expensive. get_entities already narrows a state-level
+# save to a requested county transparently.
+save_to:
+  data_dir: cache
+  filename: block
+  admin_level: 2

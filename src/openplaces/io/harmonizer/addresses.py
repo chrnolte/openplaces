@@ -504,6 +504,93 @@ def reconcile_addresses(state: HarmonizeState, **kwargs) -> HarmonizeState:
     return state
 
 
+@_register('reconcile_postal_code')
+def reconcile_postal_code(
+    state: HarmonizeState,
+    sources: list[str],
+    output_column: str = 'postal_code',
+    conflict_column: str = 'postal_code_conflict',
+) -> HarmonizeState:
+    """Coalesce ZIP-code evidence from multiple columns by priority.
+
+    Some states have essentially no address-parsed ZIP coverage (e.g. no
+    Overture address data at all), so a single-source column like
+    ``postal_code_dwelling_overture`` alone leaves ``postal_zip5`` empty
+    there even though a spatially-derived ``zcta5_id`` (see
+    :func:`~openplaces.io.harmonizer.spine.link_geographic_ids`) could fill
+    the gap. This coalesces any number of ZIP-like evidence columns, in
+    priority order, into one column for :func:`impute_postal_city` to read.
+
+    Extracts a 5-digit ZIP from each column in *sources* (via the same
+    ``\\d{5}`` pattern :func:`impute_postal_city` uses) and writes the
+    first (highest-priority) non-null value per row into *output_column*.
+    Where two sources both have a value and they disagree, the
+    higher-priority value still wins, but the disagreement is recorded in
+    *conflict_column* (same shape as ``address_conflict``) and reported in
+    aggregate to the cache (see
+    :func:`openplaces.io.harmonizer.diagnostics.save_postal_code_conflicts`)
+    -- always attempted, a no-op unless ``state.save_statistics`` is set.
+
+    A no-op if none of *sources* is present on the spine.
+
+    Parameters
+    ----------
+    sources : list of str
+        ZIP-evidence columns, highest priority first (e.g.
+        ``['postal_code_dwelling_overture', 'zcta5_id']``).
+    output_column : str, optional
+        Coalesced output column (default ``'postal_code'`` -- also
+        :func:`impute_postal_city`'s own default ``column``).
+    conflict_column : str, optional
+        Output column for the grouped disagreement summary (default
+        ``'postal_code_conflict'``).
+    """
+    if state.spine is None:
+        return state
+    spine = state.spine
+    available = [c for c in sources if c in spine.columns]
+    if not available:
+        if state.verbose:
+            print('  reconcile_postal_code: no source columns found.')
+        return state
+
+    zips = pd.DataFrame(
+        {
+            c: spine[c].astype('string').str.extract(r'(\d{5})', expand=False)
+            for c in available
+        },
+        index=spine.index,
+    )
+
+    result = pd.Series(pd.NA, index=spine.index, dtype=object)
+    winner = pd.Series(pd.NA, index=spine.index, dtype=object)
+    for c in available:
+        take = result.isna() & zips[c].notna()
+        result.loc[take] = zips.loc[take, c]
+        winner.loc[take] = c
+
+    spine[output_column] = result
+    spine[conflict_column] = _summarize_conflicts(
+        [(c, zips[c]) for c in available], spine.index
+    )
+    for token in winner.dropna().unique():
+        _record_source(spine, output_column, winner.eq(token), token)
+
+    from openplaces.io.harmonizer.diagnostics import save_postal_code_conflicts
+
+    save_postal_code_conflicts(state, zips, available)
+
+    state.spine = spine
+    if state.verbose:
+        n = int(result.notna().sum())
+        n_conflicts = int(spine[conflict_column].notna().sum())
+        print(
+            f'  reconcile_postal_code: {output_column} resolved {n:,} of '
+            f'{len(spine):,} rows (conflicts={n_conflicts:,}).'
+        )
+    return state
+
+
 @_register('impute_postal_city')
 def impute_postal_city(
     state: HarmonizeState,

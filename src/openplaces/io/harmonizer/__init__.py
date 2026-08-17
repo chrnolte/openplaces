@@ -183,6 +183,29 @@ def _record_source(df, column: str, mask, token: str) -> None:
     df.loc[mask, side] = token
 
 
+def _rename_right_index(
+    gdf: pd.DataFrame,
+    right_index_name: str | None,
+    target: str,
+) -> pd.DataFrame:
+    """Rename the right-index column added by ``gpd.sjoin`` to *target*.
+
+    geopandas names the right-index column ``'{name}_right'`` when there is a
+    column-name conflict, ``'{name}'`` when there is no conflict (geopandas
+    1.x), and ``'index_right'`` when the right index has no name.  This helper
+    handles all three conventions. Shared by :mod:`links` and :mod:`spine`.
+    """
+    candidates = (
+        [f'{right_index_name}_right', right_index_name, 'index_right']
+        if right_index_name
+        else ['index_right']
+    )
+    for col in candidates:
+        if col in gdf.columns:
+            return gdf.rename(columns={col: target})
+    return gdf
+
+
 #: Maps step name strings (as used in recipe ``pipeline`` sections) to the
 #: callable that implements that step.
 _STEP_REGISTRY: dict[str, Callable] = {}
@@ -499,4 +522,5 @@ __all__ = [
     '_register',
     '_record_source',
     '_ensure_object_source_column',
+    '_rename_right_index',
 ]

@@ -64,6 +64,35 @@ pipeline:
   # of recomputing them.
   - step: derive_geometry_attributes
 
+  # Assign admin4_id (town/county-subdivision) and Census statistical
+  # geography ids. US_footprint-spine-2026 already resolves these directly
+  # (it runs first in the DAG -- see summarize_footprint_morphology below,
+  # which consumes its output); inherit_from rolls those up per parcel
+  # wherever every footprint on it agrees, so only parcels with no
+  # footprint (or disagreeing ones) pay for a fresh spatial join here.
+  - step: link_geographic_ids
+    inherit_from:
+      recipe_id: US_footprint-spine-2026
+      group_by: parcel_id
+    links:
+      - admin_level: 4
+        output_column: admin4_id
+      - recipe_id: US_admin-census-2025_admin4
+        output_column: census_subdivision_id
+        id_column: admin4_id_admin1
+      - recipe_id: US_tile-census-2025_tract
+        output_column: census_tract_id
+        id_column: census_tract_geoid
+      - recipe_id: US_tile-census-2025_blockgroup
+        output_column: census_blockgroup_id
+        id_column: census_blockgroup_geoid
+      - recipe_id: US_tile-census-2025_block
+        output_column: census_block_id
+        id_column: census_block_geoid
+      - recipe_id: US_tile-census-2025_zcta5
+        output_column: zcta5_id
+        id_column: zcta5_geoid
+
   # Link discovered assessor tables to the spine, aggregating stacked
   # condominium/unit records (a bundled additional_layers property table,
   # e.g. MassGIS's L3_ASSESS, joins here too -- join_nonnull columns like
@@ -207,9 +236,18 @@ pipeline:
     unit_output_col: address_unit
     city_output_col: city
 
+  # Coalesce ZIP-code evidence by priority: the assessor's own raw ZIP
+  # (most authoritative when present), then dwelling_overture's parsed ZIP,
+  # then the spatially-derived zcta5_id -- a state with no assessor ZIP and
+  # no Overture address coverage still gets a ZIP-like value from the
+  # latter. Overwrites `postal_code` in place; impute_postal_city below
+  # reads it the same way it always has.
+  - step: reconcile_postal_code
+    sources: [postal_code, postal_code_dwelling_overture, zcta5_id]
+    output_column: postal_code
+
   # A ZIP code has exactly one USPS-preferred city, so this is imputed here
-  # rather than in curate. Reads the raw assessor ZIP directly (not
-  # reconcile_addresses's own, agreement-gated postal_code) for the broadest
+  # rather than in curate. Reads the coalesced ZIP above for the broadest
   # coverage, and completes `city`/`address` wherever they're still missing.
   - step: impute_postal_city
     column: postal_code
