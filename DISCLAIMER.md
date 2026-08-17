@@ -33,7 +33,7 @@ appear in code, tests, or docs are fabricated.
 This is a standing engineering rule for every human contributor and every AI
 coding agent working in this codebase (see `AGENTS.md`). If personal data is ever
 found to have been committed to this repository in error, please report it
-privately (see Section 8) rather than opening a public issue that repeats it; the
+privately (see Section 9) rather than opening a public issue that repeats it; the
 maintainers will remove it and purge it from git history.
 
 ## 3. Third-party and public-record data

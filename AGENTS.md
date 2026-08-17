@@ -44,6 +44,23 @@ repository.
   GitHub account, not an institutional one) — don't propose or perform an org
   transfer, mirror, or similar hosting change unprompted.
 
+## Third-party code: attribute it, check its license
+- Porting or adapting code from another project (a GitHub repo, a paper's
+  reference implementation): name the source (repo/paper URL), its original
+  author(s), and its license **in that file's own header** — not only in a
+  README or a sibling file in the same directory. A reader of one file
+  shouldn't have to find a different file to learn where its code came from.
+- Before merging a port, confirm the upstream license is compatible with this
+  repo's Apache-2.0 (permissive licenses — MIT, BSD, Apache-2.0 — are fine;
+  copyleft licenses — LGPL, GPL — are not automatically compatible and need a
+  NOTICE-file carve-out, not silence). A vendored copyleft subtree with no
+  license text or notice marking it as different from the rest of the repo
+  is a real gap, not a hypothetical one — check for this rather than
+  assuming every ported file already got it right.
+- This applies to source code specifically; adapting a data *source* into a
+  recipe is a separate, parallel concern — check the source's license and
+  redistribution terms the same way before writing the recipe.
+
 ## Code style
 - Line length:
   - 88 characters maximum for code. Use ``ruff format`` to enforce.
