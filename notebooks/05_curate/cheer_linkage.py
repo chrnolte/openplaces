@@ -99,6 +99,19 @@ SOURCE_COLUMNS = {
     'parcel': 'occupancy_type_parcel_inv',
 }
 
+# The curate recipe's `order_columns.drop` removes the derived
+# `occupancy_type_nsi_class` / `occupancy_type_fema_class` columns from
+# published output -- they are vote-scoring intermediates, not attributes.
+# They are reconstructible from the raw evidence through the same ruleset the
+# vote used, so scoring falls back to that rather than silently dropping the
+# nsi and fema blocks (which cost the baseline 8 of its 20 rows, unnoticed,
+# because `source_values` skipped absent columns without complaint).
+DERIVED_SOURCE_COLUMNS = {
+    'nsi': 'occupancy_type_building_nsi_inv',
+    'fema': 'group_footprint_fema_inv',
+}
+CLASS_MAP = 'occupancy-class-map.csv'
+
 # Overture carries a dwelling count, not a class. Two or more dwellings
 # means Multi-Family; anything else, including no count at all, reads as
 # Single-Family. That default is why Overture scores near-perfect recall
@@ -157,6 +170,51 @@ def collapse_bands(values: pd.Series) -> pd.Series:
     return values.astype(object).replace(COLLAPSE)
 
 
+def class_from_ruleset(terms: pd.Series) -> pd.Series | None:
+    """Reconstruct an occupancy class column from raw evidence.
+
+    Applies the same ordered ruleset the curate vote used, so a
+    reconstructed column scores identically to the dropped one.
+
+    Returns None when the ruleset cannot be located, leaving the caller to
+    omit that source rather than fail.
+    """
+    from types import SimpleNamespace
+
+    from openplaces.io.curator.occupancy import load_ruleset, match_ruleset
+    from openplaces.recipe import get_recipe_by_id
+
+    try:
+        # load_ruleset only reads `state.recipe`, so a stand-in carrying the
+        # recipe is enough; building a real CurateState here would mean
+        # loading an entity we do not need.
+        state = SimpleNamespace(recipe=get_recipe_by_id(RECIPE_ID))
+        rules = load_ruleset(state, CLASS_MAP)
+    except (FileNotFoundError, KeyError):
+        return None
+    proposal, _reviewed = match_ruleset(terms.astype(object), rules)
+    return proposal
+
+
+def check_baseline_coverage(table: pd.DataFrame, baseline: pd.DataFrame) -> None:
+    """Fail loudly when a baseline row finds no counterpart in *table*.
+
+    The gate merges on (source, class). A source missing from *table* drops
+    its baseline rows from the comparison silently, so the gate passes while
+    scoring fewer sources than it claims to. That is exactly what happened
+    when `order_columns` began dropping the nsi and fema class columns.
+    """
+    expected = set(map(tuple, baseline[['source', 'class']].to_numpy()))
+    actual = set(map(tuple, table[['source', 'class']].to_numpy()))
+    missing = sorted(expected - actual)
+    if missing:
+        raise SystemExit(
+            f'FAIL: {len(missing)} baseline row(s) had no counterpart to '
+            f'compare against, so the gate would have scored only '
+            f'{len(actual)} of {len(expected)} rows: {missing}'
+        )
+
+
 def source_values(linked: pd.DataFrame) -> dict[str, pd.Series]:
     """The vote and each input it arbitrates, on the survey's vocabulary.
 
@@ -175,6 +233,12 @@ def source_values(linked: pd.DataFrame) -> dict[str, pd.Series]:
         for label, column in SOURCE_COLUMNS.items()
         if column in linked.columns
     }
+    for label, raw_column in DERIVED_SOURCE_COLUMNS.items():
+        if label in values or raw_column not in linked.columns:
+            continue
+        derived = class_from_ruleset(linked[raw_column])
+        if derived is not None:
+            values[label] = collapse_bands(derived)
     if OVERTURE_COLUMN in linked.columns:
         dwellings = pd.to_numeric(linked[OVERTURE_COLUMN], errors='coerce')
         values['overture'] = pd.Series(
