@@ -4,7 +4,9 @@
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
-Copyright 2025-2026 Christoph Nolte
+Copyright ownership of this work is under institutional review and is not yet
+finally determined (see DISCLAIMER.md). This notice will be updated with the
+confirmed copyright holder(s) once that review concludes.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

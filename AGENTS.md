@@ -12,6 +12,38 @@ repository.
 - Verify claims against current code before writing them; this file should describe
   what the code does now, not a historical narrative of how it changed.
 
+## Privacy: no personal data, ever
+- Never commit real personal information into any tracked file: source code, recipe
+  YAML, tests, fixtures, notebooks (including cell outputs), or docs. This means no
+  real names, addresses tied to a named individual, phone numbers, personal emails,
+  government ID numbers, or similar identifiers of identifiable individuals — for any
+  dataset, in any jurisdiction, ever. This applies even to a single illustrative value
+  copied from a real record for a docstring, test, or commit message.
+- Recipes describe a source's *schema* (column names, field codes) — never its
+  *records*. Example values in docstrings, tests, or notebook markdown must be
+  fabricated, not sourced from real data.
+- Notebooks are committed with outputs stripped (`nbstripout`, wired via
+  `.gitattributes`/`dev.py`) specifically because raw pipeline output can carry
+  personal fields from upstream sources (e.g. an owner name column) — never disable
+  or bypass this for a notebook that touches entity data.
+- If you find real personal data already committed, stop, do not build on top of it,
+  and flag it to the user immediately. Do not "fix forward" quietly — purging it from
+  git history is a decision for a human, not an agent.
+- See `DISCLAIMER.md` for the project's broader privacy and liability posture.
+
+## Intellectual property: ownership is under review
+- Ownership of this repository's IP — Boston University vs. individual
+  contributors, and how any personal-time contributions are separated from
+  grant-funded or in-scope faculty work — is currently under institutional
+  review (see `DISCLAIMER.md`). Until that's resolved: never add a
+  "Copyright <name>" header to a new file, and never edit
+  copyright/ownership/hosting language in `LICENSE.md`, `README.md`, or
+  `DISCLAIMER.md` without asking the user first, even to "fix" or "simplify"
+  it — a wrong assertion here is a legal problem, not a style one.
+- This includes the repository's hosting arrangement (currently a personal
+  GitHub account, not an institutional one) — don't propose or perform an org
+  transfer, mirror, or similar hosting change unprompted.
+
 ## Code style
 - Line length:
   - 88 characters maximum for code. Use ``ruff format`` to enforce.
