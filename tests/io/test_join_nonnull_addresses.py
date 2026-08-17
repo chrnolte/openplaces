@@ -18,7 +18,11 @@ def test_unit_suffixed_variants_of_the_same_address_collapse_to_one():
 
 
 def test_unit_suffixed_variants_collapse_regardless_of_order_or_spacing():
-    values = ['11  PLACEHOLDER AVE  #1', '11 Placeholder Ave #2', '11 placeholder ave #3']
+    values = [
+        '11  PLACEHOLDER AVE  #1',
+        '11 Placeholder Ave #2',
+        '11 placeholder ave #3',
+    ]
     # First-seen base wins; later unit-suffixed duplicates of the same base
     # are dropped rather than concatenated.
     assert join_nonnull_addresses(values) == '11  PLACEHOLDER AVE  #1'
