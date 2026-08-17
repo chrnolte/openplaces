@@ -1,0 +1,52 @@
+openplaces
+Copyright ownership under institutional review -- see LICENSE.md and DISCLAIMER.md.
+
+This product includes software developed by third parties, listed below with
+the licence under which it is redistributed. Where a file carries its own
+licence header, that header governs and is reproduced verbatim in the file.
+
+--------------------------------------------------------------------------
+
+BRAILS++ (Building and Infrastructure Recognition using AI at Large Scale)
+NHERI SimCenter
+Copyright (c) 2024 The Regents of the University of California
+Licence: BSD 3-Clause
+Upstream: https://github.com/NHERI-SimCenter/BrailsPlusPlus
+
+Redistributed in this repository as:
+
+  src/openplaces/io/scrapers/google_satellite.py
+  src/openplaces/io/scrapers/google_streetview.py
+      Image scrapers adapted from BRAILS++. Both files carry the full
+      BSD 3-Clause notice in their headers.
+
+  src/openplaces/io/enricher/detectors/n_stories.py
+      The story-count post-processing pipeline (threshold tuning,
+      nested-box removal, stack grouping, middle-region selection) is
+      reproduced from the BRAILS++ floor detector. The surrounding
+      openplaces integration is original.
+
+The pretrained EfficientDet-D4 story-count weights this detector downloads
+are published separately at https://zenodo.org/record/4421613 and are not
+redistributed here.
+
+--------------------------------------------------------------------------
+
+Removed component, recorded so it is not reintroduced unknowingly:
+
+Yet-Another-EfficientDet-Pytorch
+Author: Zylo117
+Licence: LGPL-3.0
+Upstream: https://github.com/zylo117/Yet-Another-EfficientDet-Pytorch
+
+An EfficientDet inference engine from this project was previously vendored
+at src/openplaces/io/enricher/detectors/efficientdet_lib/ with no licence
+text, notice, or upstream reference. LGPL-3.0 is not compatible with this
+repository's Apache-2.0 licence without a carve-out, so the subtree was
+removed rather than carried unmarked. See the module docstring in
+detectors/n_stories.py for what supplying a replacement engine would
+require.
+
+Anything vendored in future must record its upstream URL, author and
+licence both in the file header and in this NOTICE, and a copyleft licence
+must be reviewed before it is added at all.

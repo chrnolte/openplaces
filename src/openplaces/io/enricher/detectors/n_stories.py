@@ -6,6 +6,11 @@ replacing cv2 with PIL and removing the ``brails`` package import.  All
 post-processing (threshold tuning, nested-box removal, stack grouping,
 middle-region selection) is reproduced verbatim from the BRAILS++ source.
 
+Source: BRAILS++ (NHERI SimCenter),
+https://github.com/NHERI-SimCenter/BrailsPlusPlus
+Copyright (c) 2024 The Regents of the University of California,
+licensed BSD 3-Clause. See the NOTICE file at the repository root.
+
 The EfficientDet inference engine is **not bundled**. It was previously
 vendored here from Yet-Another-EfficientDet-Pytorch (author: Zylo117), which
 is LGPL-3.0 and therefore incompatible with this repository's Apache-2.0
