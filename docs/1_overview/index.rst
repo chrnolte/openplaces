@@ -10,3 +10,4 @@ Overview
 
    why-openplaces
    concepts
+   references
