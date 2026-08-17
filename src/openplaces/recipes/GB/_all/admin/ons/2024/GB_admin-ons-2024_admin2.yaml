@@ -1,0 +1,68 @@
+# Recipe to import ONS Countries boundaries for the United Kingdom (2024)
+#
+# Replaces GADM as GB's admin level-2 source of record: GADM leaves
+# England's name blank (GB-NA). admin2_id is derived from the GSS code's
+# own country-letter prefix (E/S/W/N) via the shared
+# GB_admin-ons-2024_country-to-admin2.csv crosswalk -- the same file
+# GB_admin-ons-2024_admin3.yaml uses to parent admin3 rows, so the two
+# never drift apart.
+
+description: >-
+  ONS Countries (England/Scotland/Wales/Northern Ireland) boundaries, as
+  admin level 2 for the United Kingdom.
+
+# Administrative unit identifier: where does this data come from?
+admin_id: GB
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  entity_type: admin
+  source:
+    source_id: ons
+    portal_url: "https://geoportal.statistics.gov.uk/"
+    # Single unpaginated query: 4 features, well under the layer's
+    # maxRecordCount, so no scraper/pagination is needed.
+    download_url: "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/Countries_December_2024_Boundaries_UK_BGC/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+  version: 2024
+
+# Not actually compressed -- the ArcGIS REST API returns GeoJSON directly
+# -- but naming it here still lets the Ingester skip re-downloading, and
+# the non-archive suffix (.geojson) means no unzip step is attempted.
+compressed_file_name: "countries_dec2024_uk_bgc.geojson"
+
+# Columns from `openplaces` dictionary -> columns in imported table
+columns:
+  name: CTRY24NM
+  admin2_id_admin1: CTRY24CD
+
+transformations:
+  # Country letter from the GSS code prefix (E/S/W/N)
+  - output: _gss_letter
+    type: string
+    operation: substring
+    input: admin2_id_admin1
+    args:
+      start: 0
+      end: 1
+  # Country letter -> admin2_id, via the crosswalk shared with admin3.
+  # Scratch name (not the final index name): a `transformations` output
+  # later consumed by `set_index` would drop out of the frame before the
+  # Ingester's column-reorder step, which still expects it (the reorder
+  # step's `cols_added` bookkeeping is computed at transformation time,
+  # before `set_index` runs) -- `create_index.method: prefix` below reads
+  # this scratch column without removing it, sidestepping that.
+  - output: _admin2_id_raw
+    type: remap_file
+    input: _gss_letter
+    crosswalk_id: GB_admin-ons-2024_country-to-admin2
+
+# Set the index from the derived column above
+create_index:
+  method: prefix
+  column: _admin2_id_raw
+  prefix: ""
+  name: admin2_id
+
+save_to:
+  data_dir: cache
+  filename: admin2

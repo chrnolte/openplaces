@@ -9,6 +9,7 @@ Worldwide administrative referencing and mapping
 
 import re
 import unicodedata
+import warnings
 from itertools import combinations
 
 import numpy as np
@@ -26,10 +27,11 @@ from openplaces.core.constants import (
     REGEX_ADMIN_TYPE_EXTRACT,
     STRING_SEPARATOR_WITHIN_IDS,
 )
-from openplaces.io.readers import get_admin
+from openplaces.io.readers import get_admin, get_dataset
 from openplaces.path import recipe_path
 from openplaces.recipe import (  # noqa: F401
     find_admin_recipe_id,
+    get_output_path,
     get_recipe,
     get_recipe_by_id,
 )
@@ -625,6 +627,319 @@ def admin3_id_index_from_local(admin3_local, admin2_recipe_id):
         )
 
     return admin3_local.set_index('admin3_id')
+
+
+def admin4_id_index_from_gb_ons(gdf, admin3_recipe_id, lookup_recipe_id):
+    """Give dataframe `gdf` an `admin4_id` index for GB LADs.
+
+    Resolves each LAD's admin3 (County/UA) parent via the ONS
+    LAD-to-County/UA lookup (`lookup_recipe_id`), falling back to the
+    LAD's own code where the lookup has no row for it -- Scotland's
+    council areas and Northern Ireland's local government districts are
+    already single-tier, so their own LAD code IS their County/UA code,
+    and the lookup (England/Wales only) has no row for them. The
+    resolved County/UA code is then matched against `admin3_recipe_id`'s
+    own `admin3_id_admin1` attribute (the same ONS code, set when
+    GB_admin-ons-2024_admin3 was ingested) to find each LAD's admin3_id,
+    and `generate_admin_ids` mints the admin4_id under that parent.
+
+    Wired from a recipe via `create_index.function` with
+    `args: {admin3_recipe_id, lookup_recipe_id}` (the explicit recipe
+    references also declare these data dependencies to the flow DAG).
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        ONS LAD boundary layer with an `admin4_id_admin1` column (ONS
+        `LAD24CD`-style GSS code).
+    admin3_recipe_id : str
+        Recipe ID of the already-ingested GB admin3 (County/UA) layer,
+        e.g. `'GB_admin-ons-2024_admin3'`.
+    lookup_recipe_id : str
+        Recipe ID of the already-ingested LAD-to-County/UA lookup
+        dataset, e.g. `'GB_reference-ons-2024_lad-to-ctyua'`.
+    """
+    gdf = gdf.copy()
+
+    lookup = get_dataset(lookup_recipe_id, admin_id='GB')['admin3_id_admin1']
+    gdf['admin3_id_admin1'] = gdf['admin4_id_admin1'].map(lookup)
+    gdf['admin3_id_admin1'] = gdf['admin3_id_admin1'].fillna(gdf['admin4_id_admin1'])
+
+    # Read the admin3 recipe's own freshly-ingested output directly, not
+    # through `get_admin`'s default-spine merge: at this point in the
+    # pipeline the persisted spine CSV hasn't been updated with this
+    # recipe's new admin3_ids yet (that happens later, via
+    # `update_admin_spine`), and merging in the stale GADM-era admin3
+    # rows -- most of which have no `admin3_id_admin1` at all -- would
+    # collide as duplicated nulls below.
+    admin3_recipe = get_recipe_by_id(admin3_recipe_id)
+    admin3 = pd.read_parquet(
+        get_output_path(admin3_recipe, admin_id=admin3_recipe['admin_id']),
+        columns=['admin3_id_admin1'],
+    )
+    admin3_id_by_code = admin3.reset_index().set_index('admin3_id_admin1')['admin3_id']
+    if admin3_id_by_code.index.duplicated().any():
+        raise ValueError(
+            'Non-unique `admin3_id_admin1` in admin3 layer '
+            f"'{admin3_recipe_id}'; cannot resolve LAD parentage."
+        )
+
+    gdf['admin3_id'] = gdf['admin3_id_admin1'].map(admin3_id_by_code)
+    unmatched = gdf['admin3_id'].isnull()
+    if unmatched.any():
+        raise ValueError(
+            'Unmatched admin3 (County/UA) parent for LAD(s):\n'
+            + str(gdf.loc[unmatched, ['admin4_id_admin1', 'admin3_id_admin1']])
+        )
+
+    return generate_admin_ids(
+        gdf, new_admin_id_col='admin4_id', parent_admin_id_col='admin3_id'
+    )
+
+
+def admin4_id_index_from_gisco_lau(gdf, admin3_country_id, admin3_code_lengths):
+    """Give dataframe `gdf` an `admin4_id` index for a GISCO LAU country.
+
+    Resolves each LAU's admin3 parent by prefix-truncating its national
+    LAU code (`admin4_id_admin1`), rather than through a separate lookup
+    table or name-matching: many EU countries build municipal codes by
+    appending digits to their county/department code -- confirmed against
+    real data for both countries this is first used for (German AGS:
+    Barnim's municipalities' 8-digit codes, e.g. `12060020`, all share
+    Barnim's own 5-digit Kreis code `12060` as their prefix; French
+    INSEE: Paris's commune code `75056` shares Paris department's own
+    code `75` as its 2-digit prefix). `admin3_code_lengths` lists the
+    candidate prefix lengths to try, longest first, since a country's own
+    admin3 codes aren't always uniform length (e.g. France: 2 digits for
+    metropolitan departments, 3 for overseas ones).
+
+    Unlike `admin4_id_index_from_gb_ons`, this does not replace admin3 --
+    it matches against the *current, unmodified* default admin3 spine via
+    `get_admin`, so the ordinary (recipe-less) `get_admin` path is safe:
+    there are no freshly-minted, not-yet-in-spine admin3_ids to collide
+    against.
+
+    Wired from a recipe via `create_index.function` with
+    `args: {admin3_country_id, admin3_code_lengths}`.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        GISCO LAU boundary layer already filtered to one country, with an
+        `admin4_id_admin1` column (the national LAU code).
+    admin3_country_id : str
+        Country admin_id whose admin3 layer to resolve parentage against,
+        e.g. `'DE'`.
+    admin3_code_lengths : sequence of int
+        Candidate prefix lengths of `admin4_id_admin1` to try, longest
+        first, until one matches an existing `admin3_id_admin1`.
+    """
+    admin3 = get_admin(admin3_country_id, level=3, columns=['admin3_id_admin1'])
+    valid_codes = set(admin3['admin3_id_admin1'].dropna())
+
+    gdf = gdf.copy()
+    code = gdf['admin4_id_admin1'].astype(str)
+    admin3_id_admin1 = pd.Series(pd.NA, index=gdf.index, dtype=object)
+    for length in sorted(set(admin3_code_lengths), reverse=True):
+        candidate = code.str.slice(0, length)
+        fill = admin3_id_admin1.isna() & candidate.isin(valid_codes)
+        admin3_id_admin1[fill] = candidate[fill]
+    gdf['admin3_id_admin1'] = admin3_id_admin1
+
+    # An imperfect crosswalk (dropped, not raised) mirrors the top-level
+    # `admin_id_crosswalk` join's own handling elsewhere in the ingester:
+    # a boundary reform can retire/renumber a Kreis/department between
+    # GADM's admin3 vintage and GISCO's current LAU vintage faster than
+    # GADM's own re-ingest catches up (observed for Germany: ~40 of
+    # ~11,000 municipalities under a since-renumbered Kreis code, e.g. the
+    # pre-"Region Hannover" county reform), so this is expected drift, not
+    # a systemic mismatch -- but it is loud (a printed warning) rather
+    # than silent, since a large unmatched count would signal a real bug.
+    unmatched = gdf['admin3_id_admin1'].isnull()
+    if unmatched.any():
+        warnings.warn(
+            f'\n\n{unmatched.sum():,d} LAU(s) had no admin3 match (no prefix of '
+            f'{sorted(set(admin3_code_lengths), reverse=True)} characters '
+            'matched an existing admin3_id_admin1) and will be dropped:\n\n'
+            + str(gdf.loc[unmatched, ['name', 'admin4_id_admin1']])
+            + '\n',
+            stacklevel=2,
+        )
+        gdf = gdf.loc[~unmatched].copy()
+
+    admin3_id_by_code = admin3.reset_index().set_index('admin3_id_admin1')['admin3_id']
+    if admin3_id_by_code.index.duplicated().any():
+        raise ValueError(
+            f"Non-unique `admin3_id_admin1` in admin3 for '{admin3_country_id}'; "
+            'cannot resolve LAU parentage.'
+        )
+    gdf['admin3_id'] = gdf['admin3_id_admin1'].map(admin3_id_by_code)
+
+    return generate_admin_ids(
+        gdf, new_admin_id_col='admin4_id', parent_admin_id_col='admin3_id'
+    )
+
+
+def nuts_crosswalk_index_from_admin4(df, admin4_recipe_id):
+    """Index a NUTS crosswalk table by `admin4_id`.
+
+    Shared by every country's NUTS-crosswalk recipe (GB's ONS-sourced
+    LAD-to-ITL lookup and the GISCO-LAU-sourced ones used for the rest of
+    NUTS-Europe): translates each row's national admin4 code
+    (`admin4_id_admin1`) into the matching `admin4_id` from the
+    already-ingested admin4 layer, by reading that recipe's own output
+    directly rather than through `get_admin`'s default-spine merge (which
+    would collide freshly-minted, not-yet-in-spine admin_ids against
+    unrelated stale rows when the admin4 source itself was replaced, as
+    it was for GB and for GISCO-LAU countries -- see
+    `admin4_id_index_from_gb_ons` / `admin4_id_index_from_gisco_lau`).
+    Any NUTS-code normalization (e.g. GB's `TL`->`UK` prefix swap) must
+    already be done by the recipe's own `transformations` before this
+    function runs; it only resolves the join key.
+
+    Some source tables carry more than one row per admin4 unit (e.g. a
+    handful of large, sparsely-populated Scottish council areas split
+    across two ITL3/NUTS3 sub-regions despite being a single LAD). Since
+    the crosswalk is keyed one-row-per-`admin4_id`, such a unit keeps
+    only its first matching row (arbitrary tie-break) -- coarser NUTS
+    levels are unaffected, being truncations of NUTS3.
+
+    Wired from a recipe via `create_index.function` with
+    `args: {admin4_recipe_id}`.
+
+    Parameters
+    ----------
+    df : DataFrame
+        A NUTS/ITL lookup with an `admin4_id_admin1` column (the national
+        admin4 code used by both this table and the admin4 recipe below).
+    admin4_recipe_id : str
+        Recipe ID of the already-ingested admin4 layer for the same
+        country, e.g. `'GB_admin-ons-2024_admin4'` or
+        `'DE_admin-gisco-2024_admin4'`.
+    """
+    admin4_recipe = get_recipe_by_id(admin4_recipe_id)
+    admin4 = pd.read_parquet(
+        get_output_path(admin4_recipe, admin_id=admin4_recipe['admin_id']),
+        columns=['admin4_id_admin1'],
+    )
+    admin4_id_by_code = admin4.reset_index().set_index('admin4_id_admin1')['admin4_id']
+    if admin4_id_by_code.index.duplicated().any():
+        raise ValueError(
+            'Non-unique `admin4_id_admin1` in admin4 layer '
+            f"'{admin4_recipe_id}'; cannot resolve NUTS crosswalk keys."
+        )
+
+    df = df.copy()
+    df['admin4_id'] = df['admin4_id_admin1'].map(admin4_id_by_code)
+    # Dropped (with a warning), not raised, for the same reason as the
+    # admin3-parentage join in `admin4_id_index_from_gisco_lau`: some rows
+    # here can't match the admin4 layer at all -- either they were
+    # themselves dropped there (a Kreis/department renumbered between
+    # vintages), or they're a statistical aggregate/placeholder code
+    # (observed for Germany: codes ending `999`, e.g. `10042999`) that
+    # was never a real LAU boundary feature to begin with.
+    unmatched = df['admin4_id'].isnull()
+    if unmatched.any():
+        warnings.warn(
+            f'\n\n{unmatched.sum():,d} crosswalk row(s) had no matching '
+            f"admin4_id in '{admin4_recipe_id}' and will be dropped:\n\n"
+            + str(df.loc[unmatched, ['admin4_id_admin1']])
+            + '\n',
+            stacklevel=2,
+        )
+        df = df.loc[~unmatched]
+
+    df = df.drop_duplicates(subset='admin4_id', keep='first')
+    return df.set_index('admin4_id')
+
+
+def census_2021_to_2025_crosswalk_index(df, old_admin4_recipe_id, new_admin4_recipe_id):
+    """Index Connecticut's 2021-to-2025 admin3/4 crosswalk by old `admin4_id`.
+
+    Connecticut's admin3 (county-equivalent) and admin4 (town) IDs differ
+    between `US_admin-census-2021` and `US_admin-census-2025`: the Census
+    Bureau replaced Connecticut's eight legacy counties with nine
+    Councils-of-Government-based planning regions in 2022. Every
+    Connecticut town's parent admin3 changed as a result, even though the
+    towns themselves did not -- so both its `admin3_id` and `admin4_id`
+    differ between the two vintages. This is the only US state affected;
+    confirmed by diffing every county GEOID nationwide between the two
+    TIGER/Line vintages.
+
+    Resolves the Census Bureau's own official CT COU-to-COUSUB crosswalk
+    (raw `OLD_COUSUB_GEOID`/`NEW_COUSUB_GEOID` columns, one digit short
+    of the standard 10-digit GEOID) against each vintage's own
+    already-ingested admin4 output, then derives each side's `admin3_id`
+    as its `admin4_id`'s parent.
+
+    Wired from a recipe via `create_index.function` with
+    `args: {old_admin4_recipe_id, new_admin4_recipe_id}`.
+
+    Parameters
+    ----------
+    df : DataFrame
+        The Census Bureau's CT COU-to-COUSUB crosswalk
+        (`ct_cou_to_cousub_crosswalk.xlsx`), with `OLD_COUSUB_GEOID` and
+        `NEW_COUSUB_GEOID` columns.
+    old_admin4_recipe_id : str
+        Recipe ID of the already-ingested, superseded admin4 layer, e.g.
+        `'US_admin-census-2021_admin4'`.
+    new_admin4_recipe_id : str
+        Recipe ID of the already-ingested, current admin4 layer, e.g.
+        `'US_admin-census-2025_admin4'`.
+    """
+
+    def _admin4_id_by_geoid(admin4_recipe_id):
+        recipe = get_recipe_by_id(admin4_recipe_id)
+        admin4 = pd.read_parquet(
+            get_output_path(recipe, admin_id=recipe['admin_id']),
+            columns=['admin4_id_admin1'],
+        )
+        return admin4.reset_index().set_index('admin4_id_admin1')['admin4_id']
+
+    def _zero_padded_geoid(series):
+        # Some rows (e.g. a region with no matching old/new county at
+        # all) carry a blank GEOID on one side; leave those as NA rather
+        # than let `astype('int64')` raise, so they fall out below via
+        # the normal unmatched-row handling.
+        padded = pd.Series(pd.NA, index=series.index, dtype='object')
+        valid = series.notna()
+        padded[valid] = series[valid].astype('int64').astype(str).str.zfill(10)
+        return padded
+
+    old_id_by_geoid = _admin4_id_by_geoid(old_admin4_recipe_id)
+    new_id_by_geoid = _admin4_id_by_geoid(new_admin4_recipe_id)
+
+    df = df.copy()
+    df['old_admin4_id_admin1'] = _zero_padded_geoid(df['OLD_COUSUB_GEOID'])
+    df['new_admin4_id_admin1'] = _zero_padded_geoid(df['NEW_COUSUB_GEOID'])
+    df['old_admin4_id'] = df['old_admin4_id_admin1'].map(old_id_by_geoid)
+    df['new_admin4_id'] = df['new_admin4_id_admin1'].map(new_id_by_geoid)
+
+    # The source also lists one "not defined" placeholder row per new
+    # region (an empty COUSUB with no real town), which never matches a
+    # real admin4 unit on either side -- drop those along with any
+    # genuine mismatch, the same "imperfect crosswalk" convention used
+    # elsewhere in the ingester.
+    unmatched = df['old_admin4_id'].isnull() | df['new_admin4_id'].isnull()
+    if unmatched.any():
+        warnings.warn(
+            f'\n\n{unmatched.sum():,d} crosswalk row(s) had no matching '
+            f"admin4_id in '{old_admin4_recipe_id}' or "
+            f"'{new_admin4_recipe_id}' and will be dropped:\n\n"
+            + str(df.loc[unmatched, ['old_admin4_id_admin1', 'new_admin4_id_admin1']])
+            + '\n',
+            stacklevel=2,
+        )
+        df = df.loc[~unmatched]
+
+    df['old_admin3_id'] = df['old_admin4_id'].str.rsplit('-', n=1).str[0]
+    df['new_admin3_id'] = df['new_admin4_id'].str.rsplit('-', n=1).str[0]
+
+    df = df[
+        ['old_admin4_id', 'new_admin4_id', 'old_admin3_id', 'new_admin3_id']
+    ].drop_duplicates(subset='old_admin4_id', keep='first')
+    return df.set_index('old_admin4_id')
 
 
 # Letters without a Unicode decomposition: NFKD alone cannot fold these to ASCII
@@ -1360,12 +1675,44 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         If True, silences printouts when new admin IDs are added.
     """
 
+    admin_recipe = get_recipe_by_id(admin_recipe_id)
+    admin_id_prefix = str(admin_recipe['admin_id'])
+
     # Load admin spine
     admin_spine = get_admin(level=level, all_columns=True)
-    # Load admin recipe (silently: don't trigger warning from additions)
-    admin_local = get_admin(
-        level=level, recipe=admin_recipe_id, all_columns=True, silent=True
+    # Load the recipe's own output directly, not through `get_admin`:
+    # `get_admin` always outer-joins onto the (possibly stale) spine, so
+    # for a country/region-scoped recipe it returns the *whole world's*
+    # spine at this level with only the matching rows enriched -- never
+    # just the recipe's own rows -- which would make every check below
+    # against a stale, superseded admin_id a false negative.
+    admin_local = pd.read_parquet(
+        get_output_path(admin_recipe, admin_id=admin_recipe['admin_id'])
     )
+
+    if admin_id_prefix:
+        # A country/region-scoped recipe (e.g. GB_admin-ons-2024_adminN)
+        # is authoritative for every admin_id under its own prefix --
+        # replace the whole slice rather than only adding rows to it, so
+        # a source it supersedes (e.g. GADM) can't leave stale,
+        # geometry-less rows behind in the spine.
+        admin_spine = admin_spine[~admin_spine.index.str.startswith(admin_id_prefix)]
+    else:
+        # A global recipe (e.g. GADM) must not (re-)populate admin_ids
+        # under an admin1 unit that already has its own, more specific
+        # admin recipe registered for this level -- that recipe is
+        # authoritative there, whether or not it has been spine-updated
+        # yet, so a later GADM refresh can't resurrect what it replaced.
+        admin1_ids = {admin_id.split('-', 1)[0] for admin_id in admin_local.index}
+        superseded_admin1_ids = {
+            admin1_id
+            for admin1_id in admin1_ids
+            if find_admin_recipe_id(admin1_id, level, silent=True)
+            not in (None, admin_recipe_id)
+        }
+        if superseded_admin1_ids:
+            admin1_of = admin_local.index.to_series().str.split('-', n=1).str[0]
+            admin_local = admin_local[~admin1_of.isin(superseded_admin1_ids)]
 
     # Initiate new admin spine
     new_admin_spine = admin_spine.copy()

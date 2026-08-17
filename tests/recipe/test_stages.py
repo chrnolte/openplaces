@@ -35,4 +35,9 @@ def test_cheer_curation_recipe_declares_predecessors():
     assert {spec['recipe_id'] for spec in merge_step['recipes']} == {
         'US_footprint_built-roof-shape-brails-2026',
         'US_footprint_built-n-stories-brails-2026',
+        # Region-scoped: a precomputed statewide inventory standing
+        # in for the per-image classifications above wherever it has
+        # coverage. merge_enrichments skips a spec with no evidence
+        # for the admin unit, so a run outside NC is unaffected.
+        'US-NC_footprint_building-cheer-v0',
     }

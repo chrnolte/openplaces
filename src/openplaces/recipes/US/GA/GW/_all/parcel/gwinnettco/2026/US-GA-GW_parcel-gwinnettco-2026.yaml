@@ -1,0 +1,62 @@
+# Recipe: Gwinnett County, GA parcel roll.
+#
+# Source: the county's AGOL-hosted `Property_and_Tax` feature service,
+# pulled as a bulk GeoJSON export through the ArcGIS Hub download API
+# rather than ~155 pages of REST paging. The service is the one Greater
+# Atlanta source that also advertises `Extract` in its capabilities, so
+# createReplica is available as an alternative bulk route if the Hub
+# export ever stops being refreshed.
+#
+# NOTE: the Hub export for this layer is generated on demand and is the
+# slowest of the Georgia set (309,265 features). A first request returns
+# HTTP 202 with `status: Pending` instead of the file; the export
+# completes server-side and later requests return it. If the ingest
+# fails on an unexpectedly small or JSON-error file, that is the 202,
+# not a broken URL -- retry rather than changing the endpoint.
+#
+# NOTE: despite the service name, this is by far the thinnest schema of
+# the nine counties -- 19 fields, of which most are edit-tracking. There
+# is NO owner, NO value of any kind, NO year built and NO land-use code
+# here; `Property_and_Tax` layer 5 (`County-owned Property`) does carry
+# values but covers only 810 county-owned parcels, not the roll. This
+# recipe is therefore geometry, parcel id, street number and acreage
+# only, and every value- or use-driven indicator downstream is inert for
+# Gwinnett.
+#
+# NOTE: acreage comes from `CALCULATEDACREAGE` (GIS-computed, >0 on
+# 99.7% of parcels), NOT the more obvious `DEEDEDACREAGE`, which is >0
+# on only 10.6% -- it is populated for metes-and-bounds parcels and left
+# at zero for platted subdivision lots. Measured, not assumed.
+#
+# NOTE: `ADDRESS` holds only the street NUMBER, with no street name
+# anywhere in the layer, so it is not a usable street address and is
+# left unmapped rather than feeding a number-only string into `address`
+# and through address reconciliation.
+
+description: >-
+  Gwinnett County, GA parcel boundaries with assessor PIN and acreage
+  from the county bulk GeoJSON export. No owner, value, year built or
+  land use.
+
+admin_id: US-GA-GW
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: gwinnettco
+    portal_url: "https://gwinnettcounty-gwinnettcountygis.hub.arcgis.com/"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/b9cef33af4a946cd9eafb5f929184301/geojson?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "gwinnett_parcels.geojson"
+
+columns:
+  parcel_id_assessor: PIN
+  area_ac: CALCULATEDACREAGE
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

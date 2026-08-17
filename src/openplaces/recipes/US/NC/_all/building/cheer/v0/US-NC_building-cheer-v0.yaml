@@ -1,0 +1,84 @@
+# Recipe to import the CHEER Inventory v0 building inventory for North Carolina.
+#
+# The source file is not downloadable: it is a CHEER/SimCenter deliverable
+# placed by hand in the recipe's external directory. With no
+# `compressed_file_name`, the Ingester reads `uncompressed_file_name`
+# straight from there (io/ingester/__init__.py:1536).
+
+description: >-
+  CHEER Inventory v0 buildings for North Carolina with modeled roof shape,
+  foundation, construction, garage, and story count.
+
+admin_id: US-NC
+
+entity:
+  entity_type: building
+  source:
+    source_id: cheer
+    portal_url: "https://www.designsafe-ci.org/"
+  version: v0
+
+# Placed by hand; see the header note.
+uncompressed_file_name: "Inventory_v0_NC.parquet"
+
+# Processed as one statewide pass, then split into per-county outputs by
+# `save_to.admin_level` below. Chunking with `process_by.admin_id_column`
+# instead would need FID-based row selection, which the parquet reader
+# rejects outright (table_ingester.py:396); the whole file is 742 MB, so a
+# single read is affordable and keeps this on exercised code paths.
+process_by:
+  admin_level: 2
+
+# Columns: `openplaces` variable name -> variable name in imported table
+columns:
+  building_id_ubid: bid
+  admin3_id_admin1: county
+  year_built: yr_built
+  area_m2: fp_m2
+  foundation_type: foundation
+  construction_type: construction
+  n_stories: num_story
+  has_garage: garage
+  # roof_shape_1..3 are the classifier's ranked guesses, roof_sig_1..3 their
+  # confidences. All three ranks are kept: the top class is near-saturated
+  # (median confidence 0.999), so the runner-up is what carries information
+  # when the leader is weak.
+  roof_shape: roof_shape_1
+  roof_shape_2: roof_shape_2
+  roof_shape_3: roof_shape_3
+  roof_shape_confidence: roof_sig_1
+  roof_shape_confidence_2: roof_sig_2
+  roof_shape_confidence_3: roof_sig_3
+
+# The roof-shape columns are never null; they carry two non-classes instead
+# ('Unknown' on 896,645 rows, 'No Structure' on 317,329). Both mean "no roof
+# shape", so they must become null here or they travel downstream as if they
+# were roof shapes. Neither string appears in any other column.
+null_value_strings:
+  - "Unknown"
+  - "No Structure"
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - foundation_type
+  - construction_type
+  - roof_shape
+  - roof_shape_2
+  - roof_shape_3
+
+# Translate the source's raw county FIPS into `openplaces` admin_ids, so
+# `save_to.admin_level` below has an `admin3_id` column to split on. Also
+# acts as a data-quality filter: a row whose FIPS is not an NC county is
+# dropped by the inner join.
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-census-2021_admin3"
+
+# `bid` is an Open Location Code, verified unique across all 5,640,095 rows.
+set_index: building_id_ubid
+
+save_to:
+  data_dir: cache
+  # Split the statewide pass into one file per county.
+  admin_level: 3

@@ -10,10 +10,14 @@ being edited.
 Two things this module insists on that a naive accuracy check gets wrong:
 
 - **Identity beats proximity when linking.** The nearest footprint to a survey
-  pin is very often a shed or the neighbour's house, so an address match is
+  pin is very often a shed or the neighbor's house, so an address match is
   tried first and distance is only the fallback. Which route matched is
   recorded, because a distance-linked row is weaker evidence than an
   address-linked one and the difference should stay visible downstream.
+  Identity alone does not finish the job, though: a house and its garage
+  share one address, so several entities routinely match the same point.
+  Callers rank those ties with `prefer_column`; without it the pick falls to
+  row order, which is arbitrary.
 - **Precision and recall are reported separately, per class.** A rule that
   labels almost everything one class scores excellent recall for it, and an
   aggregate agreement figure hides the whole problem: it is entirely possible
@@ -61,6 +65,8 @@ def link_points_to_entities(
     street_threshold: float = 80.0,
     admin1_id: str | None = None,
     suffix: str = '_inv',
+    prefer_column: str | None = None,
+    prefer_values: tuple = (),
 ) -> pd.DataFrame:
     """Link labelled *points* to *entities*, by address first then distance.
 
@@ -85,6 +91,14 @@ def link_points_to_entities(
         routinely share column names -- the class being validated most of all
         -- and overwriting the ground-truth side would make every comparison
         trivially agree with itself.
+    prefer_column : str, optional
+        Entity column used to rank several entities matching one point's
+        address. Entities whose value is in *prefer_values* win; remaining
+        ties keep row order. Without this, an address shared by a house and
+        its outbuildings resolves to whichever happens to come first.
+    prefer_values : tuple, optional
+        Values of *prefer_column* that mark an entity as preferred. Named by
+        the caller, since this module knows no vocabulary of its own.
 
     Returns
     -------
@@ -113,11 +127,17 @@ def link_points_to_entities(
             if key:
                 by_number.setdefault(key, []).append(position)
 
+        preferred = None
+        if prefer_column and prefer_column in entities.columns:
+            wanted = set(prefer_values)
+            preferred = entities[prefer_column].isin(wanted).to_numpy()
+
         for index, row in points.iterrows():
             key = normalize_house_number(row.get(number_column))
             street = row.get(street_column)
             if key is None or pd.isna(street):
                 continue
+            candidates: list[int] = []
             for position in by_number.get(key, ()):
                 if match_streets(
                     street,
@@ -125,8 +145,18 @@ def link_points_to_entities(
                     threshold=street_threshold,
                     admin1_id=admin1_id,
                 ):
-                    matched[index] = position
-                    break
+                    candidates.append(position)
+                    if preferred is None:
+                        # Nothing to rank by, so the rest of the
+                        # bucket cannot change the answer.
+                        break
+            if not candidates:
+                continue
+            if len(candidates) > 1:
+                # Stable sort: preferred entities move ahead, and
+                # anything still tied keeps row order.
+                candidates.sort(key=lambda position: not preferred[position])
+            matched[index] = candidates[0]
 
     nearest: dict[int, int] = {}
     remaining = points.drop(index=list(matched))

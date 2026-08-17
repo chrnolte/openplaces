@@ -1,0 +1,912 @@
+pattern,code
+(A1)D3( A1)Dx,keep_length: 1 3  & merge_after: 0 0 0 & skip_empty: 1
+(D2(A))D2(S)D6S(.D2),merge_after: 0 & skip_empty: 1
+(D5_)Dx-Dx-Dx,skip_empty: 1
+(D5_)Dx.Dx-Dx-Dx.Dx,
+(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1
+(D5_)Dx.Dx-Dx-Dx.Dx,split_groups: 1|1 4|1 4_1|1 & drop_cols: 1_0 & keep_length: 1_1 2 3 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+A-D2_Dx_Dx_Sx,skip_empty: 1
+A1D2([A1 ])-   -D3([A1 ])-(Sx),keep_length: 1 3 & merge_after: 0 0 0 0 0 & skip_empty: 1
+A4 A-D2-D5(-S)(-Sx).,keep_length: 1 & merge_after: 0 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),drop_cols: 0 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),drop_cols: 2 3 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),drop_cols: 3
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),merge_after: 1 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 2|- 1|. & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & join_char:   & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- 1_1_0|& & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & drop_cols: 3 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & skip_empty: 1
+A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),switch: 1|2 & skip_empty: 1
+A4 A:Sx( A) A:Sx A:Sx( A),skip_empty: 1
+A4 A:[D.]x-Dx-[D.]x,split_groups: 0|. 2|. & skip_empty: 1
+A4 D6-D6((Sx)),skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),drop_cols: 1 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),join_char:   & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 & fill_zeros: 2
+A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),merge_after: 1 0
+A4 M:Sx B:(Sx)( L:(Sx)),skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & fill_zeros: 1 & join_char: - & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- & drop_cols: 0_0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- & keep_length: 0_1 1_1 & merge_after: 0_0 1_0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|-1 & drop_cols: 0_1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|3 2|. & drop_cols: 1_1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|3 2|. & drop_cols: 1_1 2_0 & merge_after: 0_0
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|. & keep_length: 0_1 2_1 & merge_after: 0_0 2_0
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|4 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- 2|- & merge_after: 2_0 1_1 1_0 0
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|. & drop_cols: 2 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|/ 3|4 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|4 & drop_cols: 1_1 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & drop_cols: 0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 1 0
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- 2_1|.
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|-3 & drop_cols: 2_0 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|1 & skip_empty: 1
+A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|4 & merge_after: 2_0
+A4 M:Sx B:Sx L:(Sx)( Sx),
+A4 M:Sx B:Sx L:(Sx)( Sx),drop_cols: 3
+A4 M:Sx B:Sx L:(Sx)( Sx),merge_after: 2 1 0
+A4 M:Sx B:Sx L:(Sx)( Sx),skip_empty: 1
+A4 M:Sx B:Sx L:(Sx)( Sx),split_groups: 2|- & skip_empty: 1
+A4 M:Sx B:Sx L:(Sx)( Sx),split_groups: 2|U & merge_after: 2_0 1 0 & skip_empty: 1
+A4 M:Sx B:Sx P:Sx( [EU]:Sx),drop_cols: 3
+A4 M:Sx B:Sx P:Sx( [EU]:Sx),skip_empty: 1
+A4 M:Sx B:Sx P:Sx( [EU]:Sx),split_groups: 0|. 2|. & skip_empty: 1
+A4 M:Sx B:Sx P:Sx( [EU]:Sx),split_groups: 2|- & drop_cols: 3
+A4 M:Sx L:Sx Sx,skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),
+A4 M:Sx L:Sx( S:(Sx)),drop_cols: 1 & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),join_char:   & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 0|. 2|. & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 1|- & join_char:   & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 1|3 & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 1|4
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
+A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|1 2_1|- & skip_empty: 1
+A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|- 2|- & skip_empty: 1
+A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|. & drop_cols: 0_1 3
+A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|. 1|. & drop_cols: 2 3
+A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & drop_cols: 2 3
+A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,drop_cols: 0 & keep_length: 2 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 0_1|- 2|- & merge_after: 2_0 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- & join_char:   & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- 2_1|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|. 1|. 2|. & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|. 2|. & keep_length: 0_1 2_1 & merge_after: 0_0 2_0
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- & drop_cols: 0_0 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- 2_1|- & merge_after: 0_0 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 0|3 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 1|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 1|- 2|- 2_1|- & join_char:   & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1 & fill_zeros: 2_1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1 2_1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 2_1 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & join_char:   & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & keep_length: 2_0 & merge_after: 0 0 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & merge_after: 2_0 1 0
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. & drop_cols: 1 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|2 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|2 2_1|. & drop_cols: 0 & merge_after: 2_1_0 & skip_empty: 1
+A4 M:Sx( B:Sx) L:Sx,split_groups: 2|3 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 1 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 1 3
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 2 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),join_char: - & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & drop_cols: 0_1 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 3|- & drop_cols: 2 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 2|- & drop_cols: 3 & merge_after: 2_0 0_0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 2|- & join_char:   & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|-2 1|- 1_1|- 2|- & merge_after: 0_0 0_0 0_0 0_0 0_0 0_0 0_0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 2|. & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 3|. & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 4|. & drop_cols: 1 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|[A-Z] & drop_cols: 3 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 1|- & drop_cols: 2 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 1|- 1_1|- 2|- & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & drop_cols: 0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- 2_1|- & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- 3|- & drop_cols: 0 & join_char:   & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|. & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & drop_cols: 0 1 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & drop_cols: 1 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & merge_after: 3_0 & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & skip_empty: 1
+A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx))2,skip_empty: 1
+A4 Sx S:Sx P:Sx L:Sx,skip_empty: 1
+A4 [S.]x,split_groups: 0|. & skip_empty: 1
+A4 [SM]:Sx [BR]:Sx( [LS:(Sx)),skip_empty: 1
+Aax Dx.(A1)-Dx-Dx(.Dx),drop_cols: 0 & skip_empty: 1
+BI Sx:Sx,split_groups: 1|- & skip_empty: 1
+D-D2(-_D)_[S&]x(_D)(_Dx)),skip_empty: 1
+D-S2-S2-S2-D4-S5-S4,
+D1-D2-D3.D2-D2-D2.D2-(D3),skip_empty: 1
+D1-D3(A1 )-D2-D3.D2,drop_cols: 0 & skip_empty: 1
+D1-D3-D2-D3-D3.D2,drop_cols: 0 & skip_empty: 1
+D10.D2(A1 D2),skip_empty: 1
+D12|ADx,split_groups: 0|4 0_1|3 0_1_1|2 & skip_empty: 1
+D2 D1.D1 D2.D1 D3.D1 D3 D3.D3,keep_length: 1 2 3 4 5 6 7 8 & merge_after: 0 0 0 0 0 0 0 0 & skip_empty: 1
+D2 D2 D2 D1 D3 D3.Dx,drop_cols: 0 & keep_length: 1 2 3 4 5 6 7 & merge_after: 1 1 1 1 1 1 & skip_empty: 1
+D2 D2 D2 D1 D3 D3.Dx,skip_empty: 1
+D2 D2 D2 D1 D3 D3.Dx,split_groups: 6|-1 & keep_length: 1 2 3 4 5 6_0 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+D2 D2 D2 D1 D3 D3.Dx,split_groups: 6|3 & skip_empty: 1
+D2 Sx Sx(-Sx),merge_after: 2 & skip_empty: 1
+"D2( A1),Sx-(-)D3-D2,D3",keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
+D2-0-D1-Dx-D1-Dx-Dx(-.Dx),skip_empty: 1
+D2-A1-D3-S1-D2-D3-S1,keep_length: 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+D2-Ax-D3(.[S-]x),keep_length: 3 & merge_after: 2 & skip_empty: 1
+D2-D-[D.]3-Sx.S,skip_empty: 1
+D2-D1.D1-D2.D1-D1-D3-D3.(Sx),merge_after: 0 & skip_empty: 1
+D2-D1.D1-Dx-(Dx-D2-Dx.D2),skip_empty: 1
+D2-D2-D1.D1-D2-D1-D3-D3.D2,drop_cols: 0 & skip_empty: 1
+D2-D2-D1.D1-D2-D3-D3-D3.D3,keep_length: 1 2 3 4 5 6 7 8 & merge_after: 0 0 0 0 0 0 0 0 & skip_empty: 1
+D2-D2-D2-D2-S5.S4( D2),drop_cols: 6 & keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
+D2-D2-D2-D4-D3.D1-D3.D1,keep_length: 4 5 6 7 & merge_after: 4 6 & skip_empty: 1
+D2-D2-S4-D4-D4-D4,skip_empty: 1
+D2-D2-S4-D4.D4(D3),drop_cols: 0 & skip_empty: 1
+D2-D2-S4-D4.D4(D3),skip_empty: 1
+D2-D2.D1-D1-D2-D3.D3.D3,keep_length: 1 2 3 4 5 6 7 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
+D2-D3-D2-D2-D3(-D3),skip_empty: 1
+D2-D3-D2-D2-D3.D2,
+D2-D3-D2-D2-D3.D2,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
+D2-D3.( A1)-D3.D2.,merge_after: 0 0 0 0 & skip_empty: 1
+D2-D3.( A1)-D3.D2.,skip_empty: 1
+D2-D3.( A1)-D3.S3,drop_cols: 1 2 3 4 & skip_empty: 1
+D2-D4[A1 ]-D3.D2.D2,skip_empty: 1
+D2.D2.D2.D6,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1
+D2.D2.D3.D3,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+D2.D4.D2.D2.D4.D4,skip_empty: 1
+D2/ D2(.A1)D2/ D3(.A1)/ (Sx)/D3,split_groups: 2|. 5|. & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+D2/ D2(.A1)D2/ D3(.A1)/ (Sx)/D3,split_groups: 2|. 5|. & merge_after: 4 & skip_empty: 1
+D2/ D2/ D3/ (Sx)/( D2),skip_empty: 1
+D2/D2/D3/D3,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+D2/D3-D1,skip_empty: 1
+D2/D3-D2,skip_empty: 1
+D2/D3-S3,skip_empty: 1
+D2[ D]2S2? [ D]4,skip_empty: 1
+D2[ G]D4-S2-(*)[S.]x(-[S.]x),split_groups: 2|2 5|. & merge_after: 0 & skip_empty: 1
+D2[ G]D4-S2-(*)[S.]x(-[S.]x),split_groups: 4|. 5|. & keep_length: 2 3  & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
+D2[ G]D4-S2-(*)[S.]x(-[S.]x),split_groups: 5|. & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+D3 D3 D3 000 00,skip_empty: 1
+D3 D3(A) (A) D5(A)(D3) D4,drop_cols: 0 6 & skip_empty: 1
+D3 D3(A) (A) D5(A)(D3) D4,drop_cols: 6 & skip_empty: 1
+D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
+D3(A1 )-D2-D2-D3.D2,skip_empty: 1
+D3(A1 )-D2-D3.D2,skip_empty: 1
+D3(A1) ( A1 ) D3.D2 D3,skip_empty: 1
+D3(Ax) (A1 )D3(.D2),skip_empty: 1
+D3-(S1)D3-D3.D2,skip_empty: 1
+D3-(Sx) -D2(A1 )-D4-  -D4.D2,keep_length: 6 & merge_after: 5 & skip_empty: 1
+D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
+D3-D2-D2-D3.,skip_empty: 1
+D3-D2-D2-D3.(D2),skip_empty: 1
+D3-D2-D2-D4.D2(-D5),skip_empty: 1
+D3-D3-(A) -D5,merge_after: 1 & skip_empty: 1
+D3-D7.D3,skip_empty: 1
+D3-Dx.D2-Dx.D2,skip_empty: 1
+D3-S2-S2-S2 -S3-Sx,merge_after: 5_0 0 0 & skip_empty: 1
+D3-_D_S4_-_[S-_]x,split_groups: 5|- 1|\s & skip_empty: 1
+D3.D1.D4.D3.D4,drop_cols: 1 & skip_empty: 1
+D3.D2-D1-Dx(.Dx D2),skip_empty: 1
+D3.D2-D1-Dx(.Dx D2),split_groups: 4|1 5|1 & skip_empty: 1
+D3.D2-D2-D2(.D2-0000),skip_empty: 1
+D3.D2-D2-D2(.D3 )-,split_groups: 0|2 0_1|14 & drop_cols: 0_0 0_1_1 & skip_empty: 1
+D3.D2.D2.D1.D2.D3.D3,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+D3.D3.D1( )Dx.(Sx),split_groups: 1|1 3|3 3_0|1 3_1|1 & merge_after: 3_0_0 & skip_empty: 1
+D3.D3.D11.D2,skip_empty: 1
+D3.D3.D4.D7.D3,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+D3.S-D4(.Sx)(_Dx),fill_zeros: 1 3 & switch: 2|3 3|4 & merge_after: 2 0 & skip_empty: 1
+D3.S=D3D=D4.S,drop_cols: 1 2 3
+D3.S=D3D=D4.S,drop_cols: 2
+D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 1 & merge_after: 0
+D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 1 & merge_after: 0 & skip_empty: 1
+D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 5 & merge_after: 0 4
+D3.S=D3D=D4.S,drop_cols: 2 & keep_length: 1 4 5 & merge_after: 0 3 3
+D3.S=D3D=D4.S,drop_cols: 2 & keep_length: 3 & fill_zeros: 1 5 & merge_after: 1 4
+D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1
+D3.S=D3D=D4.S,drop_cols: 2 3
+D3.S=D3D=D4.S,drop_cols: 2 5
+D3/D3.D1-D4-D4-S1,drop_cols: 0 & skip_empty: 1
+D3/D5-D3-D3,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+D3/Sx/Sx(-Sx),skip_empty: 1
+D3A1-D2(A1 )-D3(/D2.D2),skip_empty: 1
+D3SD4D40,skip_empty: 1
+D3_D3_S3_S3_S3,merge_after: 1 & skip_empty: 1
+D4( A1)Dx,skip_empty: 1
+D4(A1)[-  ]Sx,drop_cols: 0 & skip_empty: 1
+D4-D2-(A1 )-(A1 ) -D3.(Sx),skip_empty: 1
+D4-D2-D2-D3(. D2),skip_empty: 1
+D4-D2-S3-S3-S1-S3-D2,skip_empty: 1
+D4-D3.D2-D2.D2-D3.D3( -Dx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+D4.D2.D2.D4.D4,skip_empty: 1
+D4.D2.D2.S7,skip_empty: 1
+D4.S5.Sx-(-)S9,split_groups: 0|2 1|3 2|3 2_1|2 2_1_1|[0-9] & drop_cols: 0_0 & merge_after: 0_1 1_1 2_1_0 2_1_0 & skip_empty: 1
+D5.S3.S3.S2,skip_empty: 1
+D5_Sx(-Sx),drop_cols: 0 & skip_empty: 1
+D6 D4-D2-D6-D4( S2),skip_empty: 1
+D6 D6 D4( D2),skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),drop_cols: 0 & keep_length: 5 6 & merge_after: 3 3 3 & skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),drop_cols: 0 & merge_after: 1 1 1 & skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),drop_cols: 0 & merge_after: 1 1 1 1 & skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),drop_cols: 0 & skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),keep_length: 4 5 & merge_after: 3 3 3 & skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),keep_length: 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
+D6 Dx(.-Dx-Dx-Dx../-)Sx(./ -Sx),split_groups: 2|2 & skip_empty: 1
+D6 Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 0 & skip_empty: 1
+D6 Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 0 6 7 & skip_empty: 1
+D6 Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
+D6(A) (A) D5(A)(D3)( D2),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1
+D6(A) (A) D5(A)(D3)( D2),split_groups: 0|3 & skip_empty: 1
+D6+ D4( Sx)( Sx),drop_cols: 1 & skip_empty: 1
+D6+ D4( Sx)( Sx),skip_empty: 1
+D6-Dx.D1-Dx(.Dx),drop_cols: 0 & skip_empty: 1
+Dx,
+Dx,keep_length: 1 & skip_empty: 1
+Dx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
+Dx,split_groups: 0|1 0_1|1 0_1_1|1 0_1_1_1|1 & drop_cols: 0_0 0_1_1_0 & keep_length: 0_1_0 0_1_1_1_1 0_1_1_1_0 & switch: 0_1_0|0_1_1_1_0 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
+Dx,split_groups: 0|1 0_1|6 & drop_cols: 0_0 & skip_empty: 1
+Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
+Dx,split_groups: 0|16 & drop_cols: 0_1
+Dx,split_groups: 0|2 0_1|1 0_1_1|1 0_1_1_1|2 0_1_1_1_1|3 0_1_1_1_1_1|3 0_1_1_1_1_1_1|3 0_1_1_1_1_1_1_1|2 & skip_empty: 1
+Dx,split_groups: 0|2 0_1|2 & drop_cols: 0_0 & skip_empty: 1
+Dx,split_groups: 0|2 0_1|2 0_1_1|2 0_1_1_1|3 0_1_1_1_1|3 0_1_1_1_1|3 & skip_empty: 1
+Dx,split_groups: 0|3 0_1|15 & drop_cols: 0_0 0_1_1 & skip_empty: 1
+Dx,split_groups: 0|3 0_1|7 0_1_1|3 0_1_1_1|1 0_1_1_1_1|[0] & merge_after: 0_1_1_0 0_1_1_0 & skip_empty: 1
+Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
+Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1
+Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
+Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
+Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
+Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1
+Dx,split_groups: 0|8 & drop_cols: 0_0 & skip_empty: 1
+Dx,string_lengths: 1 3 2 & skip_empty: 1
+Dx,string_lengths: 1 4 4 3 3 1 & skip_empty: 1
+Dx,string_lengths: 10 2 & skip_empty: 1
+Dx,string_lengths: 2 1 1 2 1 3 3 3 & skip_empty: 1
+Dx,string_lengths: 2 1 1 2 3 2 4 2 & skip_empty: 1
+Dx,string_lengths: 2 1 1 2 3 3 3 3 & skip_empty: 1
+Dx,string_lengths: 2 1 1 2 3 3 3 5 & skip_empty: 1
+Dx,string_lengths: 2 1 2 1 3 3 3 & skip_empty: 1
+Dx,string_lengths: 2 2 2 1 3 3 3
+Dx,string_lengths: 2 2 2 1 3 3 3 & skip_empty: 1
+Dx,string_lengths: 2 2 2 1 3 3 3 0
+Dx,string_lengths: 2 2 2 3 3 3 3 & skip_empty: 1
+Dx,string_lengths: 2 2 2 3 3 5 1 4 & skip_empty: 1
+Dx,string_lengths: 2 2 2 4 2 3 & switch: 0|2 & skip_empty: 1
+Dx,string_lengths: 2 2 3 3 & skip_empty: 1
+Dx,string_lengths: 2 2 3 8 & drop_cols: 0 & skip_empty: 1
+Dx,string_lengths: 2 2 4 4 4 & skip_empty: 1
+Dx,string_lengths: 2 2 6 & drop_cols: 0 & skip_empty: 1
+Dx,string_lengths: 2 3 2 & skip_empty: 1
+Dx,string_lengths: 2 3 2 2 4 & skip_empty: 1
+Dx,string_lengths: 2 3 3 2 3 1 & skip_empty: 1
+Dx,string_lengths: 2 3 6 & skip_empty: 1
+Dx,string_lengths: 2 4 2 1 2 2 4 & skip_empty: 1
+Dx,string_lengths: 2 4 2 2 2 1 1 2 & drop_cols: 0 5 & skip_empty: 1
+Dx,string_lengths: 2 4 2 2 4 4 & skip_empty: 1
+Dx,string_lengths: 2 4 4 & drop_cols: 0 & skip_empty: 1
+Dx,string_lengths: 2 4 4 & skip_empty: 1
+Dx,string_lengths: 2 5 3 & skip_empty: 1
+Dx,string_lengths: 3 1 4 4 1 & skip_empty: 1
+Dx,string_lengths: 3 2 1 2 2 3 2 & skip_empty: 1
+Dx,string_lengths: 3 2 1 3 1 & drop_cols: 4 & skip_empty: 1
+Dx,string_lengths: 3 2 2 3 3 & skip_empty: 1
+Dx,string_lengths: 3 2 3 & skip_empty: 1
+Dx,string_lengths: 3 3 2 & skip_empty: 1
+Dx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1
+Dx,string_lengths: 3 3 3
+Dx,string_lengths: 3 3 3 3 & skip_empty: 1
+Dx,string_lengths: 3 3 4 2 2 & skip_empty: 1
+Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1
+Dx,string_lengths: 3 3 5 & skip_empty: 1
+Dx,string_lengths: 3 4 3 4 & skip_empty: 1
+Dx,string_lengths: 4 2 1 2 3 & skip_empty: 1
+Dx,string_lengths: 4 2 2 4 4 & skip_empty: 1
+Dx,string_lengths: 4 3 1 4 4 4 3 3 & skip_empty: 1
+Dx,string_lengths: 4 3 2 3 & skip_empty: 1
+Dx,string_lengths: 4 3 5 & skip_empty: 1
+Dx,string_lengths: 4 4 4 6 5 & drop_cols: 3 & skip_empty: 1
+Dx,string_lengths: 4 4 4 6 5 & skip_empty: 1
+Dx,string_lengths: 5 2 3 & skip_empty: 1
+Dx,string_lengths: 5 7 6 & skip_empty: 1
+Dx,string_lengths: 6 3 3 4 3 3 3 & skip_empty: 1
+Dx,string_lengths: 6 6 & skip_empty: 1
+Dx -Sx -Sx( |Sx)(S1)-Sx-,drop_cols: 2 & skip_empty: 1
+Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0
+Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0 & skip_empty: 1
+Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0 7
+Dx Dx Dx Dx Dx Dx.Dx,skip_empty: 1
+Dx Sx- Dx-Sx- Sx(-Sx)(-Sx),skip_empty: 1
+Dx( Dx),drop_cols: 1 & skip_empty: 1
+Dx( Dx),skip_empty: 1
+Dx( Dx),string_lengths: 1 4 4 3 3 1 & skip_empty: 1
+Dx( Dx),string_lengths: 2 2 2 1 3 3 3 1 & skip_empty: 1
+Dx( Dx),string_lengths: 2 2 6 & drop_cols: 0 & skip_empty: 1
+Dx( Dx),string_lengths: 2 3 2 3 & drop_cols: 0 & skip_empty: 1
+Dx(-Sx)(-Dx),join_char:   & skip_empty: 1
+Dx(-Sx)(-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Dx(-Sx)(-Dx),skip_empty: 1
+Dx(-Sx)(-Dx),split_groups: 0|1 0_1|1 & skip_empty: 1
+Dx(-Sx)(-Dx),split_groups: 0|2 0_1|- & skip_empty: 1
+Dx(-Sx)(-Dx),split_groups: 0|3 0_1|3 0_1_1|3 & skip_empty: 1
+Dx(-Sx)(-Dx),split_groups: 0|4 & skip_empty: 1
+Dx(-Sx)(-Dx),split_groups: 0|6 0_1|6 0_1_1|6 & skip_empty: 1
+Dx(-Sx)(-Dx),string_lengths: 3 3 3 3 & skip_empty: 1
+Dx(-Sx)(-Dx),string_lengths: 3 5 5 & skip_empty: 1
+Dx(-Sx)(-Dx),string_lengths: 4 4 4
+Dx(-Sx)(-Dx),string_lengths: 6 6 6 & skip_empty: 1
+Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1
+Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1
+Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1
+Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1
+Dx(.-Dx.-Dx),skip_empty: 1
+Dx(.D1)/Dx(.Sx),skip_empty: 1
+Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1
+Dx(_A)(_Dx)(_A)_Dx(_A),skip_empty: 1
+Dx- Sx- Sx- Sx- Sx(- Sx),skip_empty: 1
+Dx-(Sx)\(Dx\)(Sx)--Sx-(Sx),skip_empty: 1
+Dx-Dx-Dx-Dx(-Dx-Dx-Dx),drop_cols: 0 & skip_empty: 1
+Dx-Dx-Dx-Dx(-Dx-Dx-Dx),drop_cols: 3 4 & skip_empty: 1
+Dx-Dx-Dx-Dx(-Dx-Dx-Dx),drop_cols: 4 & keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx(-Dx-Dx-Dx),keep_length: 3 4 & fill_zeros: 1 2 & merge_after: 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1
+Dx-Dx-Dx-Dx-Dx,drop_cols: 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx,drop_cols: 0 1 2 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx,drop_cols: 3 4 & keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx,split_groups: 4|2 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx(-Dx),drop_cols: 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx(-Dx),skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),drop_cols: 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),split_groups: 7|-1 & drop_cols: 0 & keep_length: 2 3 4 5 6 7_0 & merge_after: 1 1 1 1 1 1 1 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),drop_cols: 0 & keep_length: 2 3 4 5 6 & merge_after: 1 1 1 1 1 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),drop_cols: 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),drop_cols: 0 7 & keep_length: 1 1 1 1 1 & merge_after: 1 2 3 3 4 5 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),drop_cols: 6 & keep_length: 1 2 3 4 & merge_after: 0 0 0 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),drop_cols: 7 & keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),keep_length: 1 2 3 4 5 6 7 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),keep_length: 1 3 4 5 7 & merge_after: 0 0 0 0 0 6 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 2|3 4|2 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),switch: 0|2 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx.Dx,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+Dx-Dx-Dx-Dx-Dx-Dx.Dx,skip_empty: 1
+Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
+Dx-Dx-Dx-Dx.Dx( Dx),drop_cols: 5 & skip_empty: 1
+Dx-Dx-Dx-Dx.Dx( Dx),skip_empty: 1
+Dx-Dx_Dx_(S)(-S3),skip_empty: 1
+Dx-Sx[ ]-Dx([- ]Dx),drop_cols: 3 & skip_empty: 1
+Dx-Sx[ ]-Dx([- ]Dx),split_groups: 2|2 & drop_cols: 2_1 & skip_empty: 1
+Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1
+Dx.(A1)-Dx-Dx(.Dx Dx),skip_empty: 1
+Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1
+Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
+Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1
+Dx.Dx,
+Dx.Dx,skip_empty: 1
+Dx.Dx,split_groups: 0|2 & drop_cols: 0_0 & skip_empty: 1
+Dx.Dx,split_groups: 0|4 & drop_cols: 0_0 & keep_length: 1 & merge_after: 0_1 & skip_empty: 1
+Dx.Dx,split_groups: 0|4 & drop_cols: 0_0 & skip_empty: 1
+Dx.Dx,split_groups: 1|5 & keep_length: 1_0 & merge_after: 0 & skip_empty: 1
+Dx.Dx.Dx( Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Dx.Dx.Dx( Dx),skip_empty: 1
+Dx.Dx.Dx.Dx.Dx,skip_empty: 1
+Dx.S1_Dx.Sx,skip_empty: 1
+Dx/Dx/Sx( -Sx),skip_empty: 1
+Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1
+Dx_Sx Ssx,drop_cols: 0 & join_char:   & skip_empty: 1
+Dx_Sx Ssx,split_groups: 2|- & drop_cols: 0 & skip_empty: 1
+Dx_Sx(-[S-]x)( D)_[S-]x,skip_empty: 1
+Dx_Sx[- ]Sx,drop_cols: 0 & join_char:   & skip_empty: 1
+Dx_Sx[- ]Sx,drop_cols: 0 & merge_after: 2_0 0_0 & skip_empty: 1
+Dx_Sx[- ]Sx,drop_cols: 0 & skip_empty: 1
+Dx_Sx[- ]Sx,drop_cols: 0 1 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 0|5 2|- & drop_cols: 0_0 & keep_length: 0 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 1|1 2|- & drop_cols: 0 1_0 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 1|3 1_1|3 & drop_cols: 0 & join_char:   & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|- & drop_cols: 0 & join_char:   & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|- & drop_cols: 0 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & keep_length: 2_0 2_1_0 2_1_0 2_1_1 & merge_after: 1 1 1 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & merge_after: 1 1 1 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|. & drop_cols: 0 & skip_empty: 1
+Dx_Sx[- ]Sx,split_groups: 2|\s 2_1|\s 2_1_1|\s 2_1_1_1|\s & drop_cols: 0 & skip_empty: 1
+HO Sx/Sx/Sx,skip_empty: 1
+M:(A1)Dx  B:Dx  L:Sx,skip_empty: 1
+M:Sx B:Sx( L:Sx)(X:[ ]Sx),skip_empty: 1
+M:Sx B:Sx( L:Sx)(X:[ ]Sx),split_groups: 0|1 & skip_empty: 1
+M:Sx( B:Sx) L:Sx-Sx,skip_empty: 1
+M:Sx( B:Sx)( L:(Sx)),skip_empty: 1
+R-D3-D4-D4.0,skip_empty: 1
+RI Sx/Sx,split_groups: 1|- & skip_empty: 1
+RSx Sx Sx( Sx),skip_empty: 1
+S1(-)Sx( )-S3-Sx,skip_empty: 1
+S1D4[S1 ]D3(S1),split_groups: 0|1 2|[A-Z] & merge_after: 0_1 2 3 & skip_empty: 1
+S2-D1.D1-D2-D3.D1-D2-D3.D2,skip_empty: 1
+S2-D2-(   )Sx-S4.S4( D2),skip_empty: 1
+S2-S2-S3:S3,skip_empty: 1
+S2-S2/S3-S3,skip_empty: 1
+S2-Sx-D2-S2-D2-S3-Sx,skip_empty: 1
+S3-D2-D2-D2-S2-D3-D2,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+S3-D3-D4-D2-D3.D3,keep_length: 3 4 5 & merge_after: 2 2 2 & skip_empty: 1
+S3-D4-D4.D1-D4.D2,skip_empty: 1
+S3-S3-S4(.Sx.Sx.S2.S1),skip_empty: 1
+S3-Sx( )-( S1)-(A1 )-D5(-A),split_groups: 4|- & keep_length: 1 3 & merge_after: 0 2 2 2 2 & skip_empty: 1
+S3.D2.D2.D3.D3,keep_length: 1 2 4 & merge_after: 0 0 0 0 & skip_empty: 1
+S3/D3-S3,skip_empty: 1
+S3/D3-S3,split_groups: 2|1 & skip_empty: 1
+S3/S3/D3/D.5,skip_empty: 1
+S3[A ](D3)(A),skip_empty: 1
+S4-D2-S3-S3-S1-S3-D2,skip_empty: 1
+S4=S4=S4,drop_cols: 1 & skip_empty: 1
+S4>D2>S4,drop_cols: 0 1 & skip_empty: 1
+S4E[ D]2[A]?0?[ D]5( D2),drop_cols: 3 & skip_empty: 1
+SK Sx:Sx,skip_empty: 1
+Sx,
+Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Sx,skip_empty: 1
+Sx,split_groups: 0|-5 0_0|4 0_0_0|2 & drop_cols: 0_0_1_1 & skip_empty: 1
+Sx,split_groups: 0|-5 0_0|[E] & keep_length: 0_0_1 & merge_after: 0_0_0 & skip_empty: 1
+Sx,split_groups: 0|1 & drop_cols: 0_0
+Sx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
+Sx,split_groups: 0|1 & skip_empty: 1
+Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1
+Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
+Sx,split_groups: 0|2 & skip_empty: 1
+Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1
+Sx,split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1
+Sx,split_groups: 0|3 0_1|15 & drop_cols: 0_0 0_1_1 & skip_empty: 1
+Sx,split_groups: 0|3 0_1|3 0_1_1|4 0_1_1_1|2 0_1_1_1_1|1 0_1_1_1_1_1|1 0_1_1_1_1_1_1|2 & merge_after: 0_0 0_0 0_0 0_0 0_0 0_0 & skip_empty: 1
+Sx,split_groups: 0|3 0_1|3 0_1_1|4 0_1_1_1|2 0_1_1_1_1|1 0_1_1_1_1_1|3 & merge_after: 0_0 0_0 0_0 & skip_empty: 1
+Sx,split_groups: 0|4 & skip_empty: 1
+Sx,split_groups: 0|4 0_1|1 0_1_1|5 0_1_1_1|4 & drop_cols: 0_1_1_1 & skip_empty: 1
+Sx,split_groups: 0|5 0_1|3 & skip_empty: 1
+Sx,split_groups: 0|6 0_1|15 & drop_cols: 0_0 0_1_1
+Sx,split_groups: 0|6 0_1|6 & skip_empty: 1
+Sx,split_groups: 0|6 0_1|8 0_1_1|8 0_1_1_0|5 0_1_1_0_1|[0] & drop_cols: 0_0 & merge_after: 0_1_0 0_1_0 0_1_0 & skip_empty: 1
+Sx,split_groups: 0|7 & drop_cols: 0_0
+Sx,split_groups: 0|7 & skip_empty: 1
+Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
+Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1
+Sx,string_lengths: 1 1 1 1 & skip_empty: 1
+Sx,string_lengths: 1 1 2 & skip_empty: 1
+Sx,string_lengths: 1 2 2 2 3 4 4 & skip_empty: 1
+Sx,string_lengths: 1 3 2 3 2 2 2 2 & skip_empty: 1
+Sx,string_lengths: 1 3 2 3 2 2 2 4 & skip_empty: 1
+Sx,string_lengths: 1 3 2 3 2 4 4 & skip_empty: 1
+Sx,string_lengths: 1 4 2 + & merge_after: 0 & skip_empty: 1
+Sx,string_lengths: 13 3 & skip_empty: 1
+Sx,string_lengths: 14 & skip_empty: 1
+Sx,string_lengths: 2 2 10 & drop_cols: 0 & skip_empty: 1
+Sx,string_lengths: 2 2 2 & skip_empty: 1
+Sx,string_lengths: 2 2 2 1 3 3 3 & skip_empty: 1
+Sx,string_lengths: 2 2 2 4 5 4 & skip_empty: 1
+Sx,string_lengths: 2 2 3 3 & skip_empty: 1
+Sx,string_lengths: 2 2 4 4 4 & skip_empty: 1
+Sx,string_lengths: 2 2 6 & drop_cols: 0 & skip_empty: 1
+Sx,string_lengths: 2 3 2 2 4 & skip_empty: 1
+Sx,string_lengths: 2 3 2 3 & skip_empty: 1
+Sx,string_lengths: 2 3 3 & skip_empty: 1
+Sx,string_lengths: 2 3 3 3 & skip_empty: 1
+Sx,string_lengths: 2 3 3 3 2 3 & skip_empty: 1
+Sx,string_lengths: 2 3 4 & skip_empty: 1
+Sx,string_lengths: 2 3 4 4 & skip_empty: 1
+Sx,string_lengths: 2 4 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1
+Sx,string_lengths: 2 4 4 & skip_empty: 1
+Sx,string_lengths: 3 1 4 4 1 & fill_zeros: 4 & merge_after: 3 & skip_empty: 1
+Sx,string_lengths: 3 1 4 4 1 & switch: 0|1 & merge_after: 1 & skip_empty: 1
+Sx,string_lengths: 3 2 1 2 2 3 2 & skip_empty: 1
+Sx,string_lengths: 3 2 2 2 4 1 & skip_empty: 1
+Sx,string_lengths: 3 2 2 3 3 & skip_empty: 1
+Sx,string_lengths: 3 2 3 1 & skip_empty: 1
+Sx,string_lengths: 3 3 & skip_empty: 1
+Sx,string_lengths: 3 3 1 2 3 & skip_empty: 1
+Sx,string_lengths: 3 3 2 & skip_empty: 1
+Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1
+Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & skip_empty: 1
+Sx,string_lengths: 3 3 2 3 2 3 2 1 & skip_empty: 1
+Sx,string_lengths: 3 3 3 & skip_empty: 1
+Sx,string_lengths: 3 3 3 3 & skip_empty: 1
+Sx,string_lengths: 3 4 & skip_empty: 1
+Sx,string_lengths: 3 4 3
+Sx,string_lengths: 3 4 4 1 4 2 & skip_empty: 1
+Sx,string_lengths: 3 5 4 & skip_empty: 1
+Sx,string_lengths: 4 2 1 2 3 & skip_empty: 1
+Sx,string_lengths: 4 2 2 7 & skip_empty: 1
+Sx,string_lengths: 4 3 4 4 1 & split_groups: 1|-1 & drop_cols: 0 & switch: 1_0|1_1 & merge_after: 1_1 & skip_empty: 1
+Sx,string_lengths: 4 4 4 & skip_empty: 1
+Sx,string_lengths: 4 4 5
+Sx,string_lengths: 4 4 5 & drop_cols: 2
+Sx,string_lengths: 5 1 4 * & drop_cols: 1 & skip_empty: 1
+Sx,string_lengths: 5 2 2 & drop_cols: 0 & skip_empty: 1
+Sx,string_lengths: 6 * 5 & skip_empty: 1
+Sx,string_lengths: 6 2 5 & skip_empty: 1
+Sx,string_lengths: 6 3 2 5 3 1 1 1 & merge_after: 5 5 & skip_empty: 1
+Sx,string_lengths: 6 3 3 1 3 3 3 & skip_empty: 1
+Sx,string_lengths: 6 4 1 & drop_cols: 2 & skip_empty: 1
+Sx,string_lengths: 6 6 & skip_empty: 1
+Sx,string_lengths: 6 6 6
+Sx  Sx,skip_empty: 1
+Sx (D1 S1 )Sx,keep_length: 2 3 & merge_after: 0 0 0 & skip_empty: 1
+Sx (Dx Sx) Sx,keep_length: 1 2 3 & merge_after: 0 0 0 0 & skip_empty: 1
+Sx (Dx Sx) Sx,merge_after: 0 0 0 & skip_empty: 1
+Sx (Dx Sx) Sx,skip_empty: 1
+Sx (Sx) Sx (A),skip_empty: 1
+Sx -D5,skip_empty: 1
+Sx D5( D2),drop_cols: 2 & skip_empty: 1
+Sx D5( D2),split_groups: 0|1 & drop_cols: 0_0 & keep_length: 1 & merge_after: 0_1 1 & skip_empty: 1
+Sx D5( D2),split_groups: 0|1 & drop_cols: 0_0 & merge_after: 0_1 & skip_empty: 1
+Sx D5( D2),string_lengths: 10 2 & drop_cols: 1 & skip_empty: 1
+Sx D5( D2),string_lengths: 2 2 2 1 2 3 2 & skip_empty: 1
+Sx Dx Dx Dx Sx Sx,skip_empty: 1
+Sx Dx Dx Dx Sx Sx,switch: 0|2 & skip_empty: 1
+Sx Sx,skip_empty: 1
+Sx Sx,split_groups: 0|2 & skip_empty: 1
+Sx Sx,split_groups: 1|7 & drop_cols: 1_1 & skip_empty: 1
+Sx Sx  Sx(  Sx),skip_empty: 1
+Sx Sx Sx,
+Sx Sx Sx,drop_cols: 0 & skip_empty: 1
+Sx Sx Sx,skip_empty: 1
+Sx Sx Sx,split_groups: 2|4 & keep_length: 2 & skip_empty: 1
+Sx Sx Sx,split_groups: 2|8 & drop_cols: 0 1 & skip_empty: 1
+Sx Sx Sx Sx,skip_empty: 1
+Sx Sx Sx Sx( Sx Sx Sx),keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
+Sx Sx Sx Sx( Sx Sx Sx),skip_empty: 1
+Sx Sx Sx Sx( Sx Sx Sx)|Sx-Sx-Sx-Sx,skip_empty: 1
+Sx Sx Sx Sx( Sx),drop_cols: 4 & skip_empty: 1
+Sx Sx Sx( A),skip_empty: 1
+Sx Sx Sx( Sx Sx),skip_empty: 1
+Sx Sx Sx( Sx),drop_cols: 2 & skip_empty: 1
+Sx Sx Sx( Sx),split_groups: 2|3 & keep_length: 3 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),
+Sx Sx Sx( Sx)( Sx),drop_cols: 0 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),drop_cols: 0 4 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),drop_cols: 2 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),merge_after: 0 0 0 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),skip_empty: 1
+Sx Sx Sx( Sx)( Sx),split_groups: 0|2 & drop_cols: 0_0 2 3 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),split_groups: 0|2 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),split_groups: 2|3 & keep_length: 3 & skip_empty: 1
+Sx Sx Sx( Sx)( Sx),split_groups: 2|6 & drop_cols: 3 4 & skip_empty: 1
+Sx Sx Sx([.-/]Sx),drop_cols: 0 & skip_empty: 1
+Sx Sx Sx([.-/]Sx),skip_empty: 1
+Sx Sx( Sx),drop_cols: 0 & keep_length: 2 & merge_after: 1 & skip_empty: 1
+Sx Sx( Sx),drop_cols: 2 & merge_after: 0 & skip_empty: 1
+Sx Sx( Sx),keep_length: 0 1 & skip_empty: 1
+Sx Sx( Sx),keep_length: 1 & skip_empty: 1
+Sx Sx( Sx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Sx Sx( Sx),merge_after: 0 0 & skip_empty: 1
+Sx Sx( Sx),skip_empty: 1
+Sx Sx( Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|2 1|3 1_1|3 1_1_1|3 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|3 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|3 0_1|3 0_1_1|2 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|3 0_1|3 1|3 2|3 & drop_cols: 0_0 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|3 1|3 2|3 & drop_cols: 0_0 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|3 1|3 2|3 & drop_cols: 2_1 & skip_empty: 1
+Sx Sx( Sx),split_groups: 0|5 & drop_cols: 2 & skip_empty: 1
+Sx Sx( Sx),split_groups: 1|1 1_1|3 1_1_1|3 & skip_empty: 1
+Sx Sx( Sx),split_groups: 1|1 1_1|4 1_1_1|4 & skip_empty: 1
+Sx Sx( Sx),split_groups: 1|2 1_1|4 1_1_1|4 & skip_empty: 1
+Sx Sx( Sx),split_groups: 1|3 1_1|4 1_1_1|4 & skip_empty: 1
+Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1
+Sx Sx( Sx),string_lengths: 3 3 3 3 & skip_empty: 1
+Sx Sx-Sx--Sx,split_groups: 3|- & merge_after: 0 & skip_empty: 1
+Sx [S-]x( [S-]x),drop_cols: 0 & skip_empty: 1
+Sx [S-]x( [S-]x),skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 1|- & skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & merge_after: 1_1_0 & skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- 1_1_1|- & drop_cols: 0 & skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- 1_1_1|- & skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- 2|- & drop_cols: 0 & join_char:   & skip_empty: 1
+Sx [S-]x( [S-]x),split_groups: 2|- & skip_empty: 1
+Sx [S.]x,skip_empty: 1
+Sx#Sx,split_groups: 1|& 1_0|- & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),drop_cols: 0 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),drop_cols: 3 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),merge_after: 0 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),merge_after: 0 0 0 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 0|2 0_1|2 1|1 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 0|3 0_0|1 0_0_1|1 0_1|1 & drop_cols: 0_1_0 0_0_1_0 & merge_after: 0_0_0 0_0_0 0_0_0 0_0_0 0_0_0 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 0|N 0_1|W 0_1_1|2 1|1 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- 1_1|- & drop_cols: 0 3 & skip_empty: 1
+Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|1 & drop_cols: 0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 0
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 0 1 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 1 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 1 0
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 1 0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|2 & drop_cols: 4 & keep_length: 1 & merge_after: 0_0 0_0 0_0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 3 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 4 & keep_length: 1 & merge_after: 0_0 0_0 0_0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_1|E & drop_cols: 2 & merge_after: 0_0 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|. & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|2 & drop_cols: 1_1 4 & skip_empty: 1
+Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|2 1_1|1 & drop_cols: 1_1_1 2 & switch: 0|1_1_0 1_1_0|1_0 & skip_empty: 1
+Sx( )-D2-D3.D3,skip_empty: 1
+Sx( )-Sx-Sx-Sx-Sx-( Sx),drop_cols: 0 & keep_length: 2 3 4 & merge_after: 1 1 1 1 & skip_empty: 1
+Sx( )-Sx-Sx-Sx-Sx-( Sx),drop_cols: 0 & skip_empty: 1
+Sx( )-Sx-Sx-Sx-Sx-( Sx),drop_cols: 0 1 2 & skip_empty: 1
+Sx( )-Sx-Sx-Sx-Sx-( Sx),keep_length: 2 3 4 & merge_after: 0 0 0 0 0 & skip_empty: 1
+Sx( )-Sx-Sx-Sx-Sx-( Sx),skip_empty: 1
+Sx( A)-Sx-Sx( A),skip_empty: 1
+Sx(*)Sx(*)Sx(*),skip_empty: 1
+Sx(-)Dx,drop_cols: 0 & skip_empty: 1
+Sx(-)Dx,keep_length: 0 & skip_empty: 1
+Sx(-)Dx,skip_empty: 1
+Sx(-)Dx,split_groups: 0|- 0_0|3 & skip_empty: 1
+Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1
+Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1
+Sx(-)Dx,split_groups: 0|8 & skip_empty: 1
+Sx(-)Dx,split_groups: 0|[A-Z] 0_1|[A-Z] & skip_empty: 1
+Sx(-)Dx,split_groups: 1|8 1_1|2 1_1_1|2 1_1_1_1|3 1_1_1_1_1|3 & drop_cols: 0 1_0 & skip_empty: 1
+Sx(-)Dx,string_lengths: 2 2 2 1 3 3 3 & skip_empty: 1
+Sx(-)Dx,string_lengths: 2 2 6 & drop_cols: 0 & skip_empty: 1
+Sx(-)Dx,string_lengths: 2 3 2 3 & skip_empty: 1
+Sx(-)Dx,string_lengths: 2 5 4 2 & skip_empty: 1
+Sx(-)Dx,string_lengths: 3 3 3 3 & skip_empty: 1
+Sx(-)Dx,string_lengths: 3 4 3 4 & skip_empty: 1
+Sx(-)Dx,string_lengths: 4 4 4 & skip_empty: 1
+Sx(-Sx-S1),skip_empty: 1
+Sx(-Sx-S1),string_lengths: 14 & skip_empty: 1
+Sx(_Sx)_Sx_Sx(-(Dx)_Sx),skip_empty: 1
+Sx(_Sx)_Sx_[S.-]x(_Sx),drop_cols: 1 4
+Sx(_Sx)_Sx_[S.-]x(_Sx),drop_cols: 4
+Sx(_Sx)_Sx_[S.-]x(_Sx),merge_after: 3 2 1 0 & skip_empty: 1
+Sx(_Sx)_Sx_[S.-]x(_Sx),skip_empty: 1
+Sx-( )(Sx) ( )(Sx)( )(Dx),split_groups: 0|2 2|- & drop_cols: 0_0 & merge_after: 2_0 & skip_empty: 1
+Sx-( )(Sx) ( )(Sx)( )(Dx),split_groups: 1|- 2|- & drop_cols: 0 1_0 & skip_empty: 1
+Sx-( )(Sx) ( )(Sx)( )(Dx),split_groups: 1|- 2|- & skip_empty: 1
+Sx-(S1 )( S1)-(S1 )( S1)-(S1 )( S1)-(  )Sx(-Sx),keep_length: 7 8 & merge_after: 0 0 0 0 0 0 0 0 & skip_empty: 1
+Sx--[S.]x,skip_empty: 1
+Sx-Sx,
+Sx-Sx,drop_cols: 0 & skip_empty: 1
+Sx-Sx,keep_length: 1 & merge_after: 0 & skip_empty: 1
+Sx-Sx,skip_empty: 1
+Sx-Sx,split_groups: 0|1 & skip_empty: 1
+Sx-Sx,split_groups: 0|4 & skip_empty: 1
+Sx-Sx,split_groups: 0|4 0_1|2 & drop_cols: 0_0 & skip_empty: 1
+Sx-Sx,split_groups: 1|-1 & drop_cols: 1_1 & skip_empty: 1
+Sx-Sx,split_groups: 1|2 1_1|10 & drop_cols: 0 1_0 & skip_empty: 1
+Sx-Sx,split_groups: 1|2 1_1|2 1_1_1|3 & drop_cols: 0 & skip_empty: 1
+Sx-Sx,split_groups: 1|2 1_1|2 1_1_1|3 1_1_1_1|3 & drop_cols: 0 & skip_empty: 1
+Sx-Sx,split_groups: 1|3 & skip_empty: 1
+Sx-Sx,split_groups: 1|5 1_1|2 1_1_1|2 1_1_1_1|3 1_1_1_1_1|3 & drop_cols: 0 & skip_empty: 1
+Sx-Sx,split_groups: 1|7 1_1|2 1_1_1|3 & drop_cols: 0 & skip_empty: 1
+Sx-Sx,split_groups: 1|A & skip_empty: 1
+Sx-Sx  ( )Dx,split_groups: 0|2 2|- 2_1|- 2_1_1|- & skip_empty: 1
+Sx-Sx  ( )Dx,split_groups: 1|. 2|- & skip_empty: 1
+Sx-Sx(-Sx),merge_after: 1 0 & skip_empty: 1
+Sx-Sx(-Sx),skip_empty: 1
+Sx-Sx(-Sx),split_groups: 0|1 & skip_empty: 1
+Sx-Sx(-Sx),split_groups: 1|4 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),drop_cols: 0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),merge_after: 0 0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),merge_after: 1 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),merge_after: 2 1 0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),skip_empty: 1
+Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),split_groups: 1|2 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),split_groups: 1|3 1_1|3 1_1_1|3 1_1_1_1|- 2|1 & drop_cols: 0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),split_groups: 1|3 1_1|3 1_1_1|4 & drop_cols: 0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),split_groups: 1|3 1_1|3 1_1_1|4 1_1_1_1|4 & drop_cols: 0 & skip_empty: 1
+Sx-Sx(-Sx)(-Sx),split_groups: 1|6 1_1|6 & drop_cols: 0
+Sx-Sx(-Sx)(-Sx),split_groups: 1|6 1_1|6 & drop_cols: 0 & skip_empty: 1
+Sx-Sx-(Sx),skip_empty: 1
+Sx-Sx--Sx,split_groups: 2|- 0|2 & merge_after: 0_0 & skip_empty: 1
+Sx-Sx-Sx,
+Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx,drop_cols: 1 & skip_empty: 1
+Sx-Sx-Sx,drop_cols: 2 & skip_empty: 1
+Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Sx-Sx-Sx,merge_after: 1 & skip_empty: 1
+Sx-Sx-Sx,skip_empty: 1
+Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
+Sx-Sx-Sx,split_groups: 1|1 & drop_cols: 0 1_0 & skip_empty: 1
+Sx-Sx-Sx,split_groups: 1|2 1_1|1 & drop_cols: 1_1_1 2 & skip_empty: 1
+Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1
+Sx-Sx-Sx( Sx),drop_cols: 3 & skip_empty: 1
+Sx-Sx-Sx( Sx),split_groups: 0|3 & drop_cols: 3 & skip_empty: 1
+Sx-Sx-Sx( Sx),split_groups: 2|3 & skip_empty: 1
+Sx-Sx-Sx(-Sx),
+Sx-Sx-Sx(-Sx),drop_cols: 0 & join_char:   & skip_empty: 1
+Sx-Sx-Sx(-Sx),drop_cols: 3
+Sx-Sx-Sx(-Sx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx(-Sx),merge_after: 2 1 0
+Sx-Sx-Sx(-Sx),no_conv: 1
+Sx-Sx-Sx(-Sx),skip_empty: 1
+Sx-Sx-Sx(-Sx),split_groups: 2|1 & drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx(-Sx)(-Sx),drop_cols: 0 & merge_after: 2 & join_char:   & skip_empty: 1
+Sx-Sx-Sx(-Sx)(-Sx),drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx(-Sx)(-Sx),drop_cols: 3 4 & skip_empty: 1
+Sx-Sx-Sx(-Sx)(-Sx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1
+Sx-Sx-Sx(-Sx)(-Sx),split_groups: 1|4 2|4 & drop_cols: 1_0 2_0 & skip_empty: 1
+Sx-Sx-Sx(.Sx),merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx(.Sx),merge_after: 2 & skip_empty: 1
+Sx-Sx-Sx(.Sx),skip_empty: 1
+Sx-Sx-Sx(.Sx),split_groups: 0|4 & drop_cols: 0_0 & skip_empty: 1
+Sx-Sx-Sx(.Sx),split_groups: 1|6 1_1|6 & drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx,drop_cols: 0
+Sx-Sx-Sx-Sx,drop_cols: 0 & keep_length: 2 3 & merge_after: 1 1 1 & skip_empty: 1
+Sx-Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx,drop_cols: 3 & keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1
+Sx-Sx-Sx-Sx,drop_cols: 9 & keep_length: 2 3 & merge_after: 1 1 & skip_empty: 1
+Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx,skip_empty: 1
+Sx-Sx-Sx-Sx,split_groups: 0|2 & drop_cols: 0_0 & skip_empty: 1
+Sx-Sx-Sx-Sx,split_groups: 0|4 1|4 3|[0] & merge_after: 0_0 0_0 0_0 0_0 0_0 & skip_empty: 1
+Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1
+Sx-Sx-Sx-Sx,split_groups: 2|1 3|1 & skip_empty: 1
+Sx-Sx-Sx-Sx,split_groups: 2|2 & drop_cols: 2_1 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx,split_groups: 3|2 & drop_cols: 3_1 & keep_length: 1 2 3_0 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx),drop_cols: 4 & keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx),drop_cols: 4 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx),keep_length: 0 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx),split_groups: 0|3 1|2 & merge_after: 0_0 2 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx),split_groups: 1|3 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx)|ADx,drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx)|ADx,drop_cols: 3 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx)|ADx,drop_cols: 4 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx)|ADx,split_groups: 1|2 & drop_cols: 1_1 4 & skip_empty: 1
+Sx-Sx-Sx-Sx( Sx)|ADx,switch: 0|2 & skip_empty: 1
+Sx-Sx-Sx-Sx(-Sx-Sx.Sx),drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx(-Sx-Sx.Sx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),drop_cols: 0 & keep_length: 2 3 4 & merge_after: 1 1 1 1 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),drop_cols: 0 1 2 5 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),drop_cols: 5 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),keep_length: 1 & merge_after: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),keep_length: 1 3 & merge_after: 0 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx( Sx),skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,drop_cols: 0 4 5 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,drop_cols: 0 5 & switch: 1|2 2|3 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 4 5 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,split_groups: 4|1 & drop_cols: 4_1 5 & keep_length: 2 3 4_0 & merge_after: 0 0 0 0 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx,switch: 0|2 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx( Sx),drop_cols: 6 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx( Sx),switch: 0|2 & skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx-Sx,skip_empty: 1
+Sx-Sx-Sx-Sx-Sx-Sx-Sx Sx-Sx-Sx,skip_empty: 1
+Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,drop_cols: 0 & skip_empty: 1
+Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,keep_length: 2 3 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
+Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1
+Sx-Sx_Sx-Sx,drop_cols: 2 3 & skip_empty: 1
+Sx-[S.]x,skip_empty: 1
+Sx-[S.]x,split_groups: 1|. & skip_empty: 1
+Sx-[S.]x,split_groups: 1|. 1_1|. & drop_cols: 0 & skip_empty: 1
+Sx-[S.]x,split_groups: 1|. 1_1|. 1_1_1|. 1_1_1_1|. & drop_cols: 0 & skip_empty: 1
+Sx-[S.]x,split_groups: 1|2 1_1|2 1_1_1|3 1_1_1_1|. & drop_cols: 0 & skip_empty: 1
+Sx-[S.]x( -D4)(-D3),skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-S.x),skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. & keep_length: 1_1 & merge_after: 1_0 & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),
+Sx-[S.]x(-Sx)(-Sx)(-Sx),drop_cols: 0 & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 1 & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 1 0 & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. 1_0|3 & merge_after: 0 0 0 0 & skip_empty: 1
+Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|6 1_1|6 & drop_cols: 0 & skip_empty: 1
+Sx-\(Dx\)(-Sx)-Sx(-Sx),split_groups: 2|\s & merge_after: 2_0 & skip_empty: 1
+Sx.,string_lengths: 2 2 3 3 & skip_empty: 1
+Sx.Sx.(Sx.)Sx,split_groups: 2|. & skip_empty: 1
+Sx/(S) (Sx)/(S) (Sx)/(S)( (Sx)/(S)),keep_length: 1 3 5 7 & merge_after: 6 4 2 0 & skip_empty: 1
+Sx/(S) (Sx)/(S) (Sx)/(S)( (Sx)/(S)),split_groups: 4|. & skip_empty: 1
+Sx/Dx,drop_cols: 1 & skip_empty: 1
+Sx/Dx,skip_empty: 1
+Sx/Sx/Sx,split_groups: 1|- & skip_empty: 1
+Sx:Sx:Sx,skip_empty: 1
+Sx\(S2\) Sx,skip_empty: 1
+Sx_Sx(_+_.Sx),skip_empty: 1
+Sx_Sx(_Sx),keep_length: 2 & merge_after: 1 & skip_empty: 1
+Sx_Sx(_Sx),merge_after: 1 & skip_empty: 1
+Sx_Sx(_Sx),skip_empty: 1
+Sx_Sx(_Sx),split_groups: 1|3 & drop_cols: 0 & skip_empty: 1
+Sx_Sx_Sx,skip_empty: 1
+"Sx_[S&;,-]x_0","split_groups: 1|- 1_0|& 1_0_0|, 1_0_0_0|; & skip_empty: 1"
+Sx_[S&]x(_Sx)(_Sx),merge_after: 2 1 0
+Sx_[S&]x(_Sx)(_Sx),skip_empty: 1
+Sx_[S.]x(_[S#.-]x),skip_empty: 1
+Sx_[S.]x_[S.]x,skip_empty: 1
+Sx_[S.]x_[S.]x(_[S.]x),skip_empty: 1
+Sx_[S.]x_[S.]x(_[S.]x),split_groups: 0|2 1|. 2|. & drop_cols: 0_0 & skip_empty: 1
+[DG]x-D2-D2-S2-S5.S-S4.S2,keep_length: 2 3 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
+[DG]x-D2-D2-S2-S5.S-S4.S2,skip_empty: 1
+[S&-]x [S.]x [S&+-]x,max_length: 0|3 & skip_empty: 1
+[S&-]x [S.]x [S&+-]x,split_groups: 0|- & drop_cols: 0_0 & skip_empty: 1
+[S-]6 [S-]6,split_groups: 0|- 1|- & skip_empty: 1
+[S.-]x_Sx_Sx,skip_empty: 1
+[S.]x-Sx,skip_empty: 1
+[S.]x-Sx(-Sx)(/Dx),skip_empty: 1
+[S.]x-Sx(-Sx)(/Dx),split_groups: 0|. & skip_empty: 1
+\(D3\) S.-x,drop_cols: 0 & skip_empty: 1
+\(D3\) S.-x,merge_after: 0 & skip_empty: 1
+\(D3\) S.-x,skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- & drop_cols: 0 & keep_length: 1_1 & merge_after: 1_0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- & drop_cols: 0 & keep_length: 1_1 & merge_after: 1_0 1_0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- & drop_cols: 0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- 1_0|. 1_1|- 1_1_0|. & merge_after: 0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- 1_0|. 1_1|- 1_1_0|. & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- 1_1|- 1_1_1|. & drop_cols: 0 & keep_length: 1_1_0 1_1_1_0 1_1_1_1 & merge_after: 1_0 1_0 1_0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- 1_1|. & drop_cols: 0 & keep_length: 1_1_0 & merge_after: 1_0 1_0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|- 1_1|. & drop_cols: 0 & keep_length: 1_1_0 1_1_1 & merge_after: 1_0 1_0 1_0 & skip_empty: 1
+\(D3\) S.-x,split_groups: 1|. & drop_cols: 0 & merge_after: 1_0 1_0 & skip_empty: 1
+\-D1- D2 S3 S-5,split_groups: 3|- 3_1|- & keep_length: 1 2 3_0 & merge_after: 0 0 0 & skip_empty: 1
+aD9,split_groups: 0|2 & drop_cols: 0_0 & skip_empty: 1
+sx-(s3_)D5,split_groups: 0|s 0_0|n & skip_empty: 1
+{Sx-Sx-Sx-Sx-Sx},skip_empty: 1

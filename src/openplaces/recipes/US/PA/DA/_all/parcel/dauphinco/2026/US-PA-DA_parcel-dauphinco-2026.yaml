@@ -1,0 +1,62 @@
+# Recipe to import Dauphin County, PA parcel boundaries
+
+description: >-
+  Dauphin County, PA parcel boundaries (2026).
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US-PA-DA
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: parcel
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: dauphinco
+    portal_url: "https://data-dauphinco.opendata.arcgis.com/datasets/dauphinco::parcel-boundaries"
+    download_url: "https://data-dauphinco.opendata.arcgis.com/api/download/v1/items/972c40628478453abd29addfc38888e9/shapefile?layers=0"
+  version: 2026
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "DC_Parcels_shapefile.zip"
+
+# Name of uncompressed file (set to skip re-extracting)
+uncompressed_file_name: "DC_Parcels.shp"
+
+# Kept lean (geometry + identifiers only): the county's Tax Roll Table
+# (US-PA-DA_property-dauphinco-2026) and Parcel Characteristics
+# (US-PA-DA_parcel-dauphinco-2026pc) recipes are the authoritative sources
+# for assessed values, owner, and use -- this layer duplicates most of that
+# on the same rows, but with truncated field names and no fresher update
+# cadence, so it isn't re-imported here.
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  parcel_id_assessor: PID
+  parcel_id_map: MAP
+  parcel_id_upi: UPI
+  parcel_id_cama: CAMA_PID
+  admin4_id_source: MUNICIPALI
+  # Kept under a working name; converted to lot_size (sqft) below.
+  lot_size_acres: acres
+
+# lot_size's canonical unit is sqft; the source gives acres.
+transformations:
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size_acres
+    output: lot_size
+
+# Standardized cross-comparable matching key derived from parcel_id_assessor
+# (auto per-county conversion). Needed for resolve_spine to expose
+# parcel_id_local on the spine, which is what lets the county's other two
+# recipes (parcel-dauphinco-2026pc, property-dauphinco-2026) auto-link onto
+# it as evidence during harmonize.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+# No process_by chunking: single-county source, one download = one admin
+# unit (matches US-NC-NE_parcel-nhcgov-2026).
+save_to:
+  data_dir: core

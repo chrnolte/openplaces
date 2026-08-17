@@ -1,0 +1,57 @@
+# Enrichment recipe: attach the CHEER Inventory v0 building attributes onto
+# the footprint spine by polygon overlap.
+#
+# `entity` names the footprint spine being enriched (source/version
+# unpinned); `dataset` names the building entity being attached (an
+# `Entity`, not a themed `DataSet` -- accepted because `dataset` casts to
+# whichever of the two validates, see `core.schema.cast_dataset_or_entity`),
+# matching `reference_building_recipe_id` below. Same shape as
+# `US_parcel_parcel-placeslab-fmv2026`.
+#
+# These attributes are model outputs, which is what the enrich stage is for:
+# Inventory v0's roof shapes come from the same BRAILS classifier as
+# `US_footprint_built-roof-shape-brails-2026`, already run statewide. Using
+# them costs no imagery fetch and no inference.
+
+description: >-
+  CHEER Inventory v0 roof shape, foundation, construction, garage, and story
+  evidence attached to North Carolina footprints.
+
+stage: enrich
+admin_id: US-NC
+
+entity:
+  entity_type: footprint
+
+dataset: building-cheer-v0
+
+# Matching is geometric, so the spine must be loaded with its geometry.
+spine_geom: true
+
+reference_building_recipe_id: US-NC_building-cheer-v0
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_footprints_from_reference_buildings
+    # Attached as `{column}_building_cheer`.
+    columns:
+      - roof_shape
+      - roof_shape_confidence
+      - roof_shape_2
+      - roof_shape_confidence_2
+      - roof_shape_3
+      - roof_shape_confidence_3
+      - foundation_type
+      - construction_type
+      - has_garage
+      - n_stories
+      - year_built
+    # The roof classifier still reports a confidence on the rows whose
+    # class was dropped as 'Unknown'/'No Structure' at ingest -- that
+    # number scores the dropped verdict, not the surviving roof shape.
+    null_with:
+      roof_shape_confidence: roof_shape
+      roof_shape_confidence_2: roof_shape_2
+      roof_shape_confidence_3: roof_shape_3

@@ -1,0 +1,73 @@
+# Recipe to import GISCO Local Administrative Unit (LAU) boundaries for
+# France (2024)
+#
+# Replaces GADM as FR's admin level-4 source of record: GADM's FR admin4
+# has only 349 rows against ~34,946 real French communes (LAU is the
+# whole point of this recipe -- a complete, ID-compatible source, not a
+# data-quality fix as it was for GB). Parentage into admin3 (department)
+# is resolved by prefix-truncating the French INSEE commune code
+# (confirmed against real data: Paris's commune code 75056 shares Paris
+# department's own code 75 as its 2-digit prefix) -- an ID-based join, no
+# name-matching or spatial overlay. Overseas departments use 3-digit
+# INSEE prefixes (e.g. Guadeloupe 971x), hence trying both lengths.
+# admin1/admin2 (country, 13 régions) are untouched: GADM already names
+# them correctly.
+#
+# Source file: one GeoJSON covering every NUTS/EFTA/candidate country at
+# once (https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units),
+# filtered here to CNTR_CODE == 'FR'.
+
+description: >-
+  GISCO Local Administrative Units boundaries, filtered to France, as
+  admin level 4.
+
+# Administrative unit identifier: where does this data come from?
+admin_id: FR
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  entity_type: admin
+  source:
+    source_id: gisco
+    portal_url: "https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units"
+    download_url: "https://gisco-services.ec.europa.eu/distribution/v2/lau/download/ref-lau-2024-01m.geojson.zip"
+  version: 2024
+
+compressed_file_name: "ref-lau-2024-01m.geojson.zip"
+uncompressed_file_name: "LAU_RG_01M_2024_4326.geojson"
+
+# Columns from `openplaces` dictionary -> columns in imported table
+columns:
+  name: LAU_NAME
+  _gisco_id: GISCO_ID
+  cntr_code: CNTR_CODE
+
+# Filter to France only (the source file covers the whole continent)
+query: "cntr_code == 'FR'"
+
+transformations:
+  # National LAU (INSEE) code, stripping the "FR_" country prefix
+  - output: admin4_id_admin1
+    type: string
+    operation: substring
+    input: _gisco_id
+    args:
+      start: 3
+
+# Keep the derived admin4_id_admin1 column (not a literal `columns:` key,
+# so dropped by the default reorder otherwise).
+keep_unnamed_columns: true
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (resolves each commune's admin3 parent by INSEE-code prefix
+# truncation, then mints admin4_ids the same way GADM's own admin4
+# recipe does)
+create_index:
+  function: "openplaces.io.admin.admin4_id_index_from_gisco_lau"
+  args:
+    admin3_country_id: FR
+    admin3_code_lengths: [3, 2]
+
+save_to:
+  data_dir: cache
+  filename: admin4

@@ -1,0 +1,85 @@
+# Recipe to import the UK's NUTS/ITL crosswalk (2024/2025)
+#
+# NUTS excluded the UK after Brexit; ITL (International Territorial
+# Levels) is the UK's own replacement -- structurally identical (same
+# boundaries/digits, only the `UK` code prefix became `TL`). This recipe
+# converts back to the internationally-recognized NUTS prefix so the
+# output is directly usable with NUTS-partitioned datasets (e.g. EUBUCCO,
+# which still labels UK regions with legacy `UK`-prefixed NUTS2 codes such
+# as `UKI3` for Inner London).
+#
+# Deliberately kept OUT of the admin spine (`admin-openplaces-2026`):
+# NUTS is a single-continent statistical grouping, not the kind of
+# near-universal cross-reference the spine should carry columns for. This
+# is a standalone crosswalk table, keyed by `admin4_id`, joined in by
+# consumers that need it (e.g. a EUBUCCO ingest recipe) rather than
+# appended to every admin unit's own attributes.
+
+description: >-
+  UK NUTS/ITL crosswalk (LAD to NUTS1/2/3), December 2024 to January 2025.
+
+admin_id: GB
+
+dataset:
+  theme: reference
+  source:
+    source_id: ons
+    portal_url: "https://geoportal.statistics.gov.uk/"
+    # Single unpaginated query: 362 rows, well under the layer's
+    # maxRecordCount.
+    download_url: "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/ITL125_ITL225_ITL325_LAU125_LAD24_UK_LU/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+  version: 2024
+
+compressed_file_name: "itl_lau_lad_lookup_dec2024.geojson"
+
+columns:
+  admin4_id_admin1: LAD24CD
+  _nuts1_id_itl: ITL125CD
+  nuts1_name: ITL125NM
+  _nuts2_id_itl: ITL225CD
+  nuts2_name: ITL225NM
+  _nuts3_id_itl: ITL325CD
+  nuts3_name: ITL325NM
+
+transformations:
+  - output: nuts1_id
+    type: string
+    operation: replace
+    input: _nuts1_id_itl
+    args:
+      old: "TL"
+      new: "UK"
+  - output: nuts2_id
+    type: string
+    operation: replace
+    input: _nuts2_id_itl
+    args:
+      old: "TL"
+      new: "UK"
+  - output: nuts3_id
+    type: string
+    operation: replace
+    input: _nuts3_id_itl
+    args:
+      old: "TL"
+      new: "UK"
+
+# Keep the derived nuts{1,2,3}_id/_name columns (not literal `columns:`
+# keys, so dropped by the default reorder otherwise).
+keep_unnamed_columns: true
+
+# Function that returns an indexed version of the input DataFrame
+# (translates each row's LAD code into the already-ingested GB admin4's
+# admin4_id)
+create_index:
+  function: "openplaces.io.admin.nuts_crosswalk_index_from_admin4"
+  args:
+    admin4_recipe_id: GB_admin-ons-2024_admin4
+
+save_to:
+  data_dir: cache
+  # Explicit filename: without one, this and
+  # GB_reference-ons-2024_lad-to-ctyua.yaml (same admin_id/theme/source/
+  # version, differing only in the recipe-id filename suffix) resolve to
+  # the same default output path and silently overwrite each other.
+  filename: lad-to-nuts

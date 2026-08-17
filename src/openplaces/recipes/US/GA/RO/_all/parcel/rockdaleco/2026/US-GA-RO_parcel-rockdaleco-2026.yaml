@@ -1,0 +1,70 @@
+# Recipe: Rockdale County, GA parcel roll.
+#
+# Source: the county's AGOL-hosted `Parcel_Polygons_working` feature
+# service, pulled as a bulk GeoJSON export through the ArcGIS Hub
+# download API rather than ~19 pages of REST paging.
+#
+# NOTE on the layer name: `_working` is accepted as the current
+# published product on the user's instruction. It is the only countywide
+# Rockdale parcel layer that verifies (36,853 features, 59/60 sampled
+# centroids inside the county; the one miss is a boundary parcel).
+# Treat it as provisional -- a layer a county calls "working" can be
+# re-cut without notice, so re-check the count before a release.
+#
+# NOTE: 92 columns but almost all are planning flags (foreclosure,
+# annexation, stormwater accounts, NSP status) rather than assessment
+# attributes. There is NO owner and NO usable value: `Fair_Marke`
+# exists but sampled empty across 150 records. Year built and zoning ARE
+# present, which is more than Gwinnett or Fayette offer.
+#
+# NOTE: the street address is split across `Address` (number),
+# `Road_name` and `St_Type`, with no pre-assembled full-address column,
+# so it is concatenated here.
+#
+# NOTE: `County_Zon` is the county zoning district and `City_Zonin` the
+# municipal one, populated for parcels inside Conyers. Only the county
+# code is mapped; the city code is left for a future overlay rather than
+# being coalesced into one ambiguous column.
+
+description: >-
+  Rockdale County, GA parcel roll (year built, zoning, land use class,
+  acreage, assembled situs address) from the county bulk GeoJSON export.
+  No owner or value.
+
+admin_id: US-GA-RO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: rockdaleco
+    portal_url: "https://www.rockdalecountyga.gov/geographic-information-systems/"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/a4240403ddab4bad8881910e06eae4ec/geojson?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "rockdale_parcels.geojson"
+
+columns:
+  parcel_id_assessor: PARCEL_NO
+  year_built: Yr_Built
+  zoning_code: County_Zon
+  land_use_group: County_Lan
+  area_ac: Acreage
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [Address, Road_name, St_Type]
+    args:
+      sep: " "
+    output: address
+
+columns_to_categorical:
+  - zoning_code
+  - land_use_group
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

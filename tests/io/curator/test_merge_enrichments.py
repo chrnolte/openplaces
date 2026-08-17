@@ -73,18 +73,27 @@ def test_missing_evidence_file_skipped_present_still_merges(data_root, capsys):
     assert 'skipping' in capsys.readouterr().out
 
 
-def test_present_evidence_missing_column_still_raises(data_root):
+def test_present_evidence_missing_column_is_skipped_not_fatal(data_root, capsys):
+    # A single requested column absent from evidence that does exist (e.g.
+    # a predictor never computed for this admin unit's geography) is
+    # skipped on its own; every other column in the same recipe_spec still
+    # merges normally.
     _write_roof_shape_evidence()
-    with pytest.raises(ValueError, match='missing from'):
-        merge_enrichments(
-            _state(),
-            recipes=[
-                {
-                    'recipe_id': ROOF_SHAPE,
-                    'columns': {'not_a_real_column': 'roof_shape'},
-                }
-            ],
-        )
+    state = merge_enrichments(
+        _state(verbose=True),
+        recipes=[
+            {
+                'recipe_id': ROOF_SHAPE,
+                'columns': {
+                    'not_a_real_column': 'n_stories_brails',
+                    'roof_shape_brails': 'roof_shape',
+                },
+            }
+        ],
+    )
+    assert list(state.curated['roof_shape']) == ['Gable', 'Hip']
+    assert state.curated['n_stories_brails'].isna().all()
+    assert 'skipping' in capsys.readouterr().out
 
 
 def test_default_does_not_create_source_column(data_root):

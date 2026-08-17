@@ -1,0 +1,72 @@
+# Recipe to import ONS Counties and Unitary Authorities boundaries for the
+# United Kingdom (2024)
+#
+# Replaces GADM as GB's admin level-3 source of record. GADM's GB admin3
+# is missing names on 69 of its 181 rows (e.g. Greater London, GB-NA-X28)
+# -- not just the isolated case it first looked like -- so name-matching
+# ONS's 218 Counties/UAs against the existing GADM rows
+# (`admin3_id_index_from_local`, as used for US counties) would leave most
+# of them unmatched anyway. Minting fresh admin3_ids directly from ONS's
+# own (complete, authoritative) names via `generate_admin_ids` -- the same
+# approach already used one level down for admin4 -- is simpler and more
+# reliable here than fighting the name-matching path with overrides for a
+# third of the country.
+#
+# Country parentage (admin2_id) is derived from the GSS code's own country
+# prefix (E=England, S=Scotland, W=Wales, N=Northern Ireland) via the
+# shared GB_admin-ons-2024_country-to-admin2.csv crosswalk -- the same
+# file GB_admin-ons-2024_admin2.yaml uses, so the two never drift apart.
+
+description: >-
+  ONS Counties and Unitary Authorities boundaries, as admin level 3 for
+  the United Kingdom.
+
+# Administrative unit identifier: where does this data come from?
+admin_id: GB
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  entity_type: admin
+  source:
+    source_id: ons
+    portal_url: "https://geoportal.statistics.gov.uk/"
+    # Single unpaginated query: 218 features, well under the layer's
+    # maxRecordCount, so no scraper/pagination is needed.
+    download_url: "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/Counties_and_Unitary_Authorities_December_2024_Boundaries_UK_BGC/FeatureServer/0/query?where=1%3D1&outFields=*&f=geojson"
+  version: 2024
+
+# Not actually compressed -- the ArcGIS REST API returns GeoJSON directly
+# -- but naming it here still lets the Ingester skip re-downloading, and
+# the non-archive suffix (.geojson) means no unzip step is attempted.
+compressed_file_name: "counties_and_uas_dec2024_uk_bgc.geojson"
+
+# Columns from `openplaces` dictionary -> columns in imported table
+columns:
+  name: CTYUA24NM
+  admin3_id_admin1: CTYUA24CD
+
+transformations:
+  # Country letter from the GSS code prefix (E/S/W/N)
+  - output: _country_letter
+    type: string
+    operation: substring
+    input: admin3_id_admin1
+    args:
+      start: 0
+      end: 1
+  # Country letter -> admin2_id, via the crosswalk shared with admin2
+  - output: admin2_id
+    type: remap_file
+    input: _country_letter
+    crosswalk_id: GB_admin-ons-2024_country-to-admin2
+
+# Function that returns an indexed version of the input GeoDataFrame
+create_index:
+  function: "openplaces.io.admin.generate_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+
+save_to:
+  data_dir: cache
+  filename: admin3

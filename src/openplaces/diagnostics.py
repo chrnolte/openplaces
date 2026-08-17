@@ -37,9 +37,15 @@ def find_recipes(
     -------
     pd.DataFrame
         Columns: ``admin_id``, ``stage``, ``entity_type``, ``source_id``,
-        ``version``, ``n_companion_files``, ``exclude_from_auto_discover``.
-        Sorted by admin_id then source_id. Global recipes have an empty
-        string for ``admin_id``.
+        ``version``, ``n_companion_files``, ``exclude_from_auto_discover``,
+        ``level``. Sorted by admin_id then source_id. Global recipes have
+        an empty string for ``admin_id``. ``level`` is the admin level the
+        recipe's own output targets (parsed from its filename, e.g. `4`
+        for ``..._admin4.yaml``) -- only meaningful for
+        ``entity_type='admin'``; ``None`` otherwise, since only admin
+        recipes are split one file per level. This is independent of how
+        specific the recipe's ``admin_id`` scope is: two recipes scoped to
+        the same country can each target a different level.
     """
     recipes_root = Path(__file__).parent / 'recipes'
 
@@ -71,6 +77,11 @@ def find_recipes(
 
         n_companion = sum(1 for p in yaml_path.parent.iterdir() if p != yaml_path)
 
+        level = None
+        if entity_type == 'admin':
+            suffix = yaml_path.stem.rsplit('admin', 1)[-1]
+            level = int(suffix) if suffix.isdigit() else None
+
         rows.append(
             {
                 'admin_id': admin_id_str,
@@ -82,6 +93,7 @@ def find_recipes(
                 'exclude_from_auto_discover': bool(
                     data.get('exclude_from_auto_discover', False)
                 ),
+                'level': level,
             }
         )
 
@@ -256,6 +268,82 @@ def map_recipe_coverage(
     ax.set_axis_off()
 
     return fig, ax
+
+
+def map_admin_recipe_source_coverage(
+    levels: tuple = (2, 3, 4),
+    figsize: tuple = (8, 12),
+    verbose: bool = False,
+) -> tuple:
+    """Map, per admin level, which countries have their own admin recipe.
+
+    One world map per requested level, stacked vertically, colored by
+    whether a country-specific admin recipe replaces GADM there (e.g.
+    `GB_admin-ons-2024_admin4`) or GADM is still the fallback. Useful for
+    spotting, at a glance, where GADM is likely incomplete or poorly
+    named and nothing better has been added yet.
+
+    Unlike :func:`map_recipe_coverage`, which colors by how specific a
+    recipe's own `admin_id` scope is (global/country/state/...), this
+    looks at each recipe's own output level (`level`, from
+    :func:`find_recipes`) -- so a country whose admin4 recipe replaces
+    GADM but whose admin2/3 don't (e.g. `DE`, `FR`) shows up correctly on
+    each level's own map, not lumped together.
+
+    Parameters
+    ----------
+    levels : tuple of int
+        Admin levels to map, one subplot per level.
+    figsize : tuple
+        Figure size (width, height) in inches, for the whole figure.
+    verbose : bool
+        Print timing for each stage.
+
+    Returns
+    -------
+    (fig, axes) : tuple[plt.Figure, list[plt.Axes]]
+    """
+    from openplaces.io.readers import get_admin
+
+    df = find_recipes('admin', stage='ingest')
+    if df.empty:
+        raise ValueError('No admin recipes found.')
+
+    # A country-specific recipe: `admin_id` scoped to exactly one
+    # country (e.g. 'GB'), not '' (global, e.g. GADM) or 'US-MA' (a
+    # state, out of scope for a country-level map).
+    country_recipes = df[(df['admin_id'] != '') & (~df['admin_id'].str.contains('-'))]
+
+    t0 = time.perf_counter()
+    world = get_admin(level=1, geom='simplified', recipe='admin-openplaces-2026_admin1')
+    if verbose:
+        print(f'Loaded {len(world):,} countries: {time.perf_counter() - t0:.2f}s')
+
+    fig, axes = plt.subplots(len(levels), 1, figsize=figsize)
+    axes = [axes] if len(levels) == 1 else list(axes)
+
+    _HAS_RECIPE = (0.13, 0.47, 0.71, 1.0)
+    _GADM_FALLBACK = (0.91, 0.91, 0.91, 1.0)
+
+    for ax, level in zip(axes, levels):
+        covered = set(
+            country_recipes.loc[country_recipes['level'] == level, 'admin_id']
+        )
+        colors = [
+            _HAS_RECIPE if idx in covered else _GADM_FALLBACK for idx in world.index
+        ]
+        world.plot(ax=ax, color=colors, edgecolor='#888888', linewidth=0.1)
+        ax.set_title(f'admin{level}: {len(covered)} countries')
+        ax.set_axis_off()
+
+    handles = [
+        mpatches.Patch(color=_HAS_RECIPE, label='country-specific recipe'),
+        mpatches.Patch(color=_GADM_FALLBACK, label='GADM fallback'),
+    ]
+    axes[-1].legend(handles=handles, loc='lower left', framealpha=0.9)
+    fig.tight_layout()
+
+    return fig, axes
 
 
 def profile_disk_usage(

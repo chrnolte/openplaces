@@ -237,6 +237,7 @@ def enrich_parcels_from_reference_crosswalk(
     sum_columns: list[str] | None = None,
     id_columns: list[str] | None = None,
     save_crosswalk: bool = False,
+    on_duplicate_geo_id: str = 'groupby',
 ) -> EnrichState:
     """Attach a reference parcel dataset's attributes as area-weighted evidence.
 
@@ -292,6 +293,13 @@ def enrich_parcels_from_reference_crosswalk(
         re-running this pipeline. When the sidecar already exists and
         `state.reprocess` is False, it is reloaded and reused instead of
         recomputing the crosswalk (the expensive part of this step).
+    on_duplicate_geo_id : str, default 'groupby'
+        Passed to `build_id_or_overlay_crosswalk` (whose own default is the
+        stricter `'raise'`). A handful of parcels sharing identical quantized
+        geometry -- e.g. several condo-unit records on one physical footprint
+        -- is an expected, unremarkable pattern for this step's current-
+        parcels side, so it defaults here to aggregating each duplicate
+        group via `aggregate_rows` rather than erroring.
     """
     reference_recipe_id = reference_parcel_recipe_id or state.recipe.get(
         'reference_parcel_recipe_id'
@@ -360,6 +368,7 @@ def enrich_parcels_from_reference_crosswalk(
         crosswalk = build_id_or_overlay_crosswalk(
             state.spine,
             old,
+            on_duplicate_geo_id=on_duplicate_geo_id,
             min_overlap_m2=min_overlap_m2,
             calibrate_group_col=calibrate_group_col,
             verbose=state.verbose,
