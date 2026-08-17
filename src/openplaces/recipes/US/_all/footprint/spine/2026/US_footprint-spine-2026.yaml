@@ -133,6 +133,11 @@ pipeline:
           - area_sqft
           - n_stories
           - n_dwellings
+          # NSI assigns foundation from regional/flood-zone rules, so it is
+          # a prior rather than a per-building observation -- but a stable
+          # one, which a per-building classifier is not guaranteed to be
+          # (see the foundation_type reconciliation in US_footprint-cheer-2026).
+          - foundation_type
 
   # Reconcile a canonical address and extract clean street names to support curation grouping.
   - step: reconcile_addresses

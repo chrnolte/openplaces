@@ -256,11 +256,62 @@ pipeline:
       - recipe_id: US_footprint_built-n-stories-brails-2026
         columns:
           n_stories_brails: n_stories_brails
+      # CHEER Inventory v0: the same BRAILS attributes, already computed
+      # statewide for North Carolina. Absent elsewhere, and merge_enrichments
+      # skips a recipe with no evidence for the admin unit, so this changes
+      # nothing outside NC. Kept as evidence rather than merged straight onto
+      # the canonical names: roof shape has a competing source reconciled
+      # below, and the rest are single-source (record_source would be
+      # bookkeeping with nothing to reconcile against).
+      - recipe_id: US-NC_footprint_building-cheer-v0
+        columns:
+          roof_shape_building_cheer: roof_shape_building_cheer
+          roof_shape_confidence_building_cheer: roof_shape_confidence
+          roof_shape_2_building_cheer: roof_shape_2
+          roof_shape_confidence_2_building_cheer: roof_shape_confidence_2
+          roof_shape_3_building_cheer: roof_shape_3
+          roof_shape_confidence_3_building_cheer: roof_shape_confidence_3
+          construction_type_building_cheer: construction_type
+          has_garage_building_cheer: has_garage
+          n_stories_building_cheer: n_stories_building_cheer
+          # Kept as evidence, not merged onto canonical foundation_type:
+          # it is reconciled behind NSI below.
+          foundation_type_building_cheer: foundation_type_building_cheer
 
-  # Reconcile canonical n_stories: direct floor detection first, then NSI's modeled count.
+  # Reconcile canonical n_stories: direct floor detection first, then NSI's
+  # modeled count, then CHEER's -- last because it is the same modeled
+  # lineage as NSI rather than an independent observation.
   - step: reconcile_values
     priority:
-      n_stories: [n_stories_brails, n_stories_building_nsi]
+      n_stories: [n_stories_brails, n_stories_building_nsi, n_stories_building_cheer]
+      # Roof shape: our own per-image classification first, then CHEER's
+      # statewide run of the same classifier. Both are BRAILS outputs, so
+      # this is a coverage cascade, not a quality ranking -- whichever
+      # actually ran for the admin unit wins.
+      roof_shape: [roof_shape, roof_shape_building_cheer]
+      # Foundation: NSI first, CHEER only where NSI is silent. The two
+      # agree 65% over 1.57M buildings in 45 NC counties, and CHEER's
+      # classes are all informative there (lift over the NSI marginal:
+      # Pile 25.5, Pier 18.7, Solid wall 10.2, Basement 2.45), so this is
+      # not a blanket judgement against it. It is a guard against a
+      # failure mode NSI does not share: CHEER's per-county class shares
+      # swing from 1.4% to 94% Basement, and in New Hanover 84% of
+      # buildings come back Basement with a lift of 1.07 -- statistically
+      # independent of NSI, i.e. the class collapsed and carries no
+      # information, on a coast where basements are near-absent. NSI's
+      # regional prior cannot collapse that way, so it leads.
+      #
+      # Residue to know about: ~2% of rows carry a joined value such as
+      # 'Slab; Crawl', where several NSI points land on one footprint with
+      # differing foundations. reconcile_attributes joins every string
+      # column it is not specifically handling, ignoring the registry's
+      # per-attribute aggregation (it honors it for numeric columns) --
+      # the same reason address_number_dwelling_overture and
+      # city_dwelling_overture carry joined values today. Not introduced
+      # here and not fixed here: honoring the registry would also move
+      # those address columns, and addresses feed the point linkage that
+      # the occupancy baseline is measured against.
+      foundation_type: [foundation_type_building_nsi, foundation_type_building_cheer]
 
   # Estimate manufactured home probability using morphology/assessor keywords for voting.
   - step: classify_manufactured_homes
