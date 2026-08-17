@@ -79,3 +79,58 @@ def test_noop_when_neither_present():
 def test_noop_when_spine_is_none():
     state = attrs.derive_use_classes(_state(None))
     assert state.spine is None
+
+
+def test_extra_column_extends_the_label():
+    """A third source column joins the label without displacing the first two.
+
+    Motivating case: a county whose land-use column is a land *segment*
+    type carrying no occupancy signal, while its structure description
+    names the building type.
+    """
+    spine = pd.DataFrame(
+        {
+            'use_group': ['HOMESITE', 'CROPLAND', 'LOT'],
+            'use_subgroup': [None, None, None],
+            'building_style': ['DOUBLE WIDE MOHO', None, 'RANCH'],
+        }
+    )
+    out = (
+        attrs.derive_use_classes(
+            _state(spine), columns=['use_group', 'use_subgroup', 'building_style']
+        )
+        .spine['use_group_combined']
+        .astype('string')
+    )
+
+    assert out.iloc[0] == 'HOMESITE | DOUBLE WIDE MOHO'
+    assert out.iloc[1] == 'CROPLAND'  # no style -> land use alone
+    assert out.iloc[2] == 'LOT | RANCH'
+
+
+def test_extra_column_alone_still_labels():
+    """A row with only the extra column populated is not dropped."""
+    spine = pd.DataFrame(
+        {
+            'use_group': [None],
+            'use_subgroup': [None],
+            'building_style': ['DOUBLE WIDE MOHO'],
+        }
+    )
+    out = (
+        attrs.derive_use_classes(
+            _state(spine), columns=['use_group', 'use_subgroup', 'building_style']
+        )
+        .spine['use_group_combined']
+        .astype('string')
+    )
+    assert out.iloc[0] == 'DOUBLE WIDE MOHO'
+
+
+def test_default_columns_unchanged_when_extra_absent():
+    """Omitting `columns` keeps the historical two-column behaviour."""
+    spine = pd.DataFrame(
+        {'use_group': ['residential'], 'use_subgroup': ['single family']}
+    )
+    out = attrs.derive_use_classes(_state(spine)).spine['use_group_combined']
+    assert out.astype('string').iloc[0] == 'residential | single family'

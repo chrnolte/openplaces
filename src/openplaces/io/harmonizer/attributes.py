@@ -1082,6 +1082,7 @@ def classify_footprint_priority(
 def derive_use_classes(
     state: HarmonizeState,
     combined_column: str = 'use_group_combined',
+    columns: list[str] | None = None,
 ) -> HarmonizeState:
     """Build the combined use_group_combined label from use_group / use_subgroup.
 
@@ -1104,34 +1105,48 @@ def derive_use_classes(
     ----------
     combined_column : str, optional
         Output combined-label column (default ``use_group_combined``).
+    columns : list of str, optional
+        Source columns to join, in order (default
+        ``['use_group', 'use_subgroup']``). Listing ``building_style``
+        alongside them lets counties whose land-use text carries no
+        occupancy signal contribute one from their structure description
+        -- Sampson County, NC is the motivating case: its land-use column
+        is a *land segment* type (homesite / cropland / woodland) that
+        matches no land-use keyword, while its style column names the
+        structure and identifies thousands of manufactured homes the
+        classifier would otherwise never see. Note that the combined
+        label is also the grouping key for cohort statistics such as
+        ``footprint_area_log_zscore``, so adding a high-cardinality
+        column fragments those cohorts; add one only where it earns its
+        place.
     """
     if state.spine is None:
         return state
     spine = state.spine
-    has_group = 'use_group' in spine.columns
-    has_subgroup = 'use_subgroup' in spine.columns
-    if not has_group and not has_subgroup:
+    columns = list(columns) if columns else ['use_group', 'use_subgroup']
+    present = [c for c in columns if c in spine.columns]
+    if not present:
         if state.verbose:
-            print('  derive_use_classes: no use_group/use_subgroup on spine; skipping.')
+            print(f'  derive_use_classes: none of {columns} on spine; skipping.')
         return state
 
     def _clean(column: str) -> pd.Series:
-        if column not in spine.columns:
-            return pd.Series(pd.NA, index=spine.index, dtype='string')
         cleaned = spine[column].astype('string').str.strip()
         return cleaned.mask(cleaned.eq(''))
 
-    group = _clean('use_group')
-    subgroup = _clean('use_subgroup')
-
-    both = group.notna() & subgroup.notna()
-    only_group = group.notna() & subgroup.isna()
-    only_subgroup = subgroup.notna() & group.isna()
-
-    label = pd.Series(pd.NA, index=spine.index, dtype='string')
-    label.loc[both] = group.loc[both] + ' | ' + subgroup.loc[both]
-    label.loc[only_group] = group.loc[only_group]
-    label.loc[only_subgroup] = subgroup.loc[only_subgroup]
+    # Join whichever parts a row actually has, so a row missing one field
+    # falls back to the others alone rather than producing a degenerate
+    # ' | ' label -- per row, not just per column.
+    label = None
+    for column in present:
+        part = _clean(column)
+        if label is None:
+            label = part
+            continue
+        both = label.notna() & part.notna()
+        only_part = label.isna() & part.notna()
+        label = label.mask(both, label.fillna('') + ' | ' + part.fillna(''))
+        label = label.mask(only_part, part)
 
     spine[combined_column] = pd.Categorical(label)
     state.spine = spine

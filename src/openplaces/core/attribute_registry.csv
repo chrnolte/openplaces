@@ -175,3 +175,12 @@ census_subdivision_id,Census county subdivision (town/township) identifier,,stri
 land_value_per_ha_log_region_nb,"Predicted land value per hectare (natural log, real USD, deflated to a reference date); 'region-nb' model",ln(USD/ha),float,mean,,parcel,enrich
 land_value_per_ha_log_region_nb2,"Same; 'region-nb2' model (alternate neighborhood-region spec)",ln(USD/ha),float,mean,,parcel,enrich
 aoa,"Area of Applicability: rescaled dissimilarity to a model's training feature space (<=0 within domain, >0 extrapolation)",unitless,float,mean,,,enrich
+effective_year_built,"Assessor's effective year built: the construction year implied by condition after improvements, not the actual one. Distinct from year_built and from renovation_year, and often the better-populated of the three",,float,mean,31,,,0
+renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,,0
+n_rooms,Number of rooms in the building,,float,mean,54,,,
+n_bedrooms,Number of bedrooms in the building,,float,mean,55,,,
+n_bathrooms,Number of full bathrooms in the building; half baths are counted separately by the source where available and are not folded in here,,float,mean,58,,,
+heating_type,Heating system type as described by the source,,categorical,first,59,,,
+has_basement,Whether the building has a basement,,bool,max,67,,,
+building_style,"Architectural or construction style of the building as described by the source (e.g. ranch, conventional, double-wide). A structure descriptor, not a land use: do not map it to use_group",,categorical,join_nonnull,68,,,
+conveyance_type,"What a recorded sale conveyed (e.g. land only vs land plus improvements). Distinct from doc_type, which is the instrument; the transaction-side counterpart of the parcel attribute last_sale_vacant",,categorical,first,,transaction,,
