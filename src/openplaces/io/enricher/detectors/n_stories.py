@@ -6,9 +6,20 @@ replacing cv2 with PIL and removing the ``brails`` package import.  All
 post-processing (threshold tuning, nested-box removal, stack grouping,
 middle-region selection) is reproduced verbatim from the BRAILS++ source.
 
-The EfficientDet inference engine is self-contained in
-`efficientdet_lib.infer.Infer`. Model weights are downloaded from Zenodo on
-first use and cached under `cfg.models_dir / 'external' / 'brails'`.
+The EfficientDet inference engine is **not bundled**. It was previously
+vendored here from Yet-Another-EfficientDet-Pytorch (author: Zylo117), which
+is LGPL-3.0 and therefore incompatible with this repository's Apache-2.0
+licence without a NOTICE carve-out. Rather than carry an unmarked copyleft
+subtree, it was removed; `_load_infer` raises with instructions if this
+detector is invoked.
+
+Everything else here -- the BRAILS++ post-processing pipeline (threshold
+tuning, nested-box removal, stack grouping, middle-region selection) and the
+Zenodo weight download -- is unchanged and still correct, so restoring the
+detector only requires supplying an inference engine.
+
+Story counts are available without this detector: the curated recipes
+reconcile `n_stories` from NSI and from the CHEER Inventory v0 evidence.
 """
 
 from __future__ import annotations
@@ -56,11 +67,20 @@ def _load_infer(model_path: str, use_gpu: bool):
     transfer) on every `NStoriesDetector.predict` call — the same engine
     is reused across every admin unit processed in one pipeline run.
     """
-    from openplaces.io.enricher.detectors.efficientdet_lib.infer import Infer
-
-    gtf_infer = Infer()
-    gtf_infer.load_model(model_path, ['floor'], use_gpu=use_gpu)
-    return gtf_infer
+    raise RuntimeError(
+        'The EfficientDet inference engine is not bundled with openplaces. '
+        'It was vendored from Yet-Another-EfficientDet-Pytorch (Zylo117), '
+        'which is LGPL-3.0 and incompatible with this Apache-2.0 repository '
+        'without a NOTICE carve-out, so it was removed.\n\n'
+        'The story-count detector therefore cannot run. Story counts are '
+        'still produced without it: the curated recipes reconcile n_stories '
+        'from NSI and from the CHEER Inventory v0 evidence.\n\n'
+        'To restore it, install an EfficientDet-D4 implementation exposing '
+        "an Infer class with load_model(path, ['floor'], use_gpu=...) and "
+        'predict, and construct it here. If you vendor one, record its '
+        'upstream URL, author and licence in this file and in a NOTICE at '
+        'the repository root.'
+    )
 
 
 class NStoriesDetector:
@@ -68,7 +88,8 @@ class NStoriesDetector:
 
     Uses the BRAILS++ EfficientDet-D4 model (downloaded from Zenodo on first
     use) plus the original BRAILS++ post-processing pipeline. The inference
-    engine is bundled with openplaces.
+    engine is not bundled -- see this module's docstring -- so constructing
+    and running this detector raises until one is supplied.
 
     Parameters
     ----------

@@ -1,10 +1,15 @@
 """Loaded detector models are cached per (model_path, device), not reloaded
-on every admin unit processed in a pipeline run."""
+on every admin unit processed in a pipeline run.
 
+The EfficientDet story-count engine is no longer bundled (LGPL-3.0, see
+`detectors/n_stories.py`), so its loader is covered by asserting that it
+fails loudly rather than by exercising a cache it no longer has.
+"""
+
+import pytest
 import torch
 
 from openplaces.io.enricher.detectors import classify, n_stories
-from openplaces.io.enricher.detectors.efficientdet_lib import infer as infer_module
 
 
 class _FakeModel:
@@ -36,32 +41,21 @@ def test_classifier_model_loaded_once_per_path_and_device(monkeypatch):
         classify._load_model.cache_clear()
 
 
-class _FakeInfer:
-    def __init__(self):
-        self.load_calls = 0
+def test_efficientdet_infer_reports_that_it_is_not_bundled():
+    """The removed engine must fail with an explanation, not an ImportError.
 
-    def load_model(self, path, classes, use_gpu=False):
-        self.load_calls += 1
-
-
-def test_efficientdet_infer_loaded_once_per_path_and_device(monkeypatch):
+    A bare ImportError would read as a broken install; the message has to
+    say why the engine is absent and what still supplies story counts.
+    """
     n_stories._load_infer.cache_clear()
-    created = []
-
-    def fake_infer():
-        instance = _FakeInfer()
-        created.append(instance)
-        return instance
-
-    monkeypatch.setattr(infer_module, 'Infer', fake_infer)
     try:
-        infer1 = n_stories._load_infer('model_a.pth', False)
-        infer2 = n_stories._load_infer('model_a.pth', False)
-        infer3 = n_stories._load_infer('model_a.pth', True)
-
-        assert infer1 is infer2
-        assert infer1 is not infer3
-        assert len(created) == 2
-        assert infer1.load_calls == 1
+        with pytest.raises(RuntimeError, match='not bundled'):
+            n_stories._load_infer('model_a.pth', False)
     finally:
         n_stories._load_infer.cache_clear()
+
+
+def test_efficientdet_removal_is_complete():
+    """The LGPL-3.0 subtree must not come back without a NOTICE carve-out."""
+    with pytest.raises(ImportError):
+        import openplaces.io.enricher.detectors.efficientdet_lib  # noqa: F401
