@@ -1,0 +1,16 @@
+{
+  "accuracy_m": 2.0,
+  "grid_files": [
+    "us_noaa_FL.tif",
+    "us_noaa_TN.tif",
+    "us_noaa_alhpgn.tif",
+    "us_noaa_gahpgn.tif",
+    "us_noaa_nchpgn.tif",
+    "us_noaa_schpgn.tif"
+  ],
+  "operation_definition": "proj=pipeline step proj=unitconvert xy_in=us-ft xy_out=m step inv proj=tmerc lat_0=30 lon_0=-84.1666666666667 k=0.9999 x_0=699999.9998984 y_0=0 ellps=GRS80 step proj=hgridshift grids=us_noaa_FL.tif,us_noaa_TN.tif,us_noaa_alhpgn.tif,us_noaa_gahpgn.tif,us_noaa_nchpgn.tif,us_noaa_schpgn.tif,@null step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of SPCS83 Georgia West zone (US survey foot) + NAD83 to WGS 84 (17) + axis order change (2D) (merged with 5 same-shaped region grid(s), with identity fallback outside their combined coverage)",
+  "registered": "2026-08-16",
+  "source_crs": "EPSG:2240",
+  "target_crs": "EPSG:4326"
+}
