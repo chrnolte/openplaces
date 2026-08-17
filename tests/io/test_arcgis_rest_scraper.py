@@ -258,3 +258,39 @@ def test_attribute_join_requires_key_and_fields(bulk_geojson, fake_service, tmp_
             bulk_url='http://svc/bulk',
             attribute_join={'fields': ['EXTRA']},
         )
+
+
+def test_count_request_forces_json_format(monkeypatch, tmp_path):
+    """The count query must not inherit the feature pages' `f=geojson`.
+
+    Most ArcGIS servers ignore `returnCountOnly` in GeoJSON mode and answer
+    with an ordinary FeatureCollection, so reading `count` off the response
+    raised KeyError and failed the whole download. The shared `fake_service`
+    fixture answers any count request regardless of `f`, which is more
+    forgiving than a real service and cannot catch this.
+    """
+    seen_formats = []
+
+    def _get_json(url, params, *, timeout, retries, verbose, label):
+        if not url.endswith('/query'):
+            return {'maxRecordCount': 2}
+        if params.get('returnCountOnly'):
+            seen_formats.append(params.get('f'))
+            if params.get('f') != 'json':
+                # What a real server sends back in GeoJSON mode.
+                return {'type': 'FeatureCollection', 'properties': {}, 'features': []}
+            return {'count': 1}
+        offset = int(params['resultOffset'])
+        end = min(offset + int(params['resultRecordCount']), 1)
+        return {
+            'type': 'FeatureCollection',
+            'features': [_feature(i) for i in range(offset, end)],
+        }
+
+    monkeypatch.setattr(scraper, '_get_json', _get_json)
+    out = tmp_path / 'layer.geojson'
+
+    scraper.fetch(target_path=out, layer_url='http://svc/0')
+
+    assert seen_formats == ['json']
+    assert len(_read(out)['features']) == 1

@@ -252,9 +252,19 @@ def _layer_count(
     verbose: bool,
     label: str,
 ) -> int:
+    # `f` must be forced back to 'json' here. The caller's params carry
+    # `f=geojson` for the feature pages, but most servers ignore
+    # `returnCountOnly` in GeoJSON mode and answer with a normal (here,
+    # unbounded) FeatureCollection instead of `{"count": N}` -- verified
+    # against Cumberland, Wilson and Gates counties, NC, all of which
+    # return `{'type', 'properties', 'features'}` for `f=geojson` and a
+    # real count for `f=json`. Reading `count` off that response raised
+    # KeyError and failed the whole download. A minority of older
+    # on-prem ArcGIS Server instances (e.g. Hertford County, NC) do
+    # honor it in either mode, which is why this went unnoticed.
     count_page = _get_json(
         query_url,
-        {**params, 'returnCountOnly': 'true'},
+        {**params, 'returnCountOnly': 'true', 'f': 'json'},
         timeout=timeout,
         retries=retries,
         verbose=verbose,
