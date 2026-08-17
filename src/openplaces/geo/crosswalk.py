@@ -26,7 +26,7 @@ import shapely
 from openplaces.geo.ids import _shape_signals, get_geo_ids
 from openplaces.geo.overlay import overlay_polygons_with_duckdb
 from openplaces.geo.polygon import get_areas, local_metric_crs, overlay_polygons
-from openplaces.io.aggregate import aggregate_rows
+from openplaces.table import aggregate_rows
 
 ON_DUPLICATE_GEO_ID_OPTIONS = ('raise', 'first', 'groupby')
 

@@ -23,7 +23,7 @@ import shapely
 from openlocationcode import openlocationcode as olc
 
 from openplaces.geo.polygon import reproject
-from openplaces.io.transform import add_unique_suffix
+from openplaces.table import add_unique_suffix
 
 # Default area/compactness quantization, expressed as the historical hardcoded
 # multipliers (area_q = round(log10(area*1e10+1) * 100), compact_q =

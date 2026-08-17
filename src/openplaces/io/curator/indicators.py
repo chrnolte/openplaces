@@ -249,9 +249,9 @@ def vote_dynamic_values(
     The counterpart to :func:`score_decisions` for the case where the
     candidate classes cannot be listed in the recipe because they are
     whatever values the evidence columns hold. Each label casts its weight
-    for its own value, or for *buckets*[label] when given -- letting two
-    differing values pool their weight at a coarser granularity while the
-    reported winner stays a concrete value.
+    for its own value, or for its entry in *buckets* when given --
+    letting two differing values pool their weight at a coarser
+    granularity while the reported winner stays a concrete value.
 
     Parameters
     ----------

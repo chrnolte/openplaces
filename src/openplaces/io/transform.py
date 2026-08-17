@@ -26,6 +26,10 @@ from openplaces.core.constants import AC_TO_SQFT
 from openplaces.io.readers import get_admin
 from openplaces.recipe import get_recipe_by_id
 
+# Re-exported: moved to openplaces.table so geo/ can use it without
+# importing a higher layer.
+from openplaces.table import add_unique_suffix  # noqa: F401
+
 # Operations
 
 
@@ -773,27 +777,6 @@ def remap(df, recipe_id):
             + f' overwritten by `{recipe_id}`.',
         )
     return df.drop(columns=shared_columns).join(crosswalk, on=crosswalk.index.names)
-
-
-def add_unique_suffix(s):
-    """Make string Series unique by appending unique integer suffices.
-
-    All duplicate occurrences are suffixed (``-1``, ``-2``, …), including the
-    first one.  Use `make_index_unique` when operating on a DataFrame index and
-    the first (or largest) occurrence should keep the unsuffixed value.
-
-    Parameters
-    ----------
-    s : pd.Series
-        String Series containing duplicate entries
-    """
-    # Avoid warnings about setting slices
-    s = s.copy()
-    duplicates = s.duplicated(keep=False)
-    # Handle collisions with suffix
-    counts = s[duplicates].groupby(s[duplicates], sort=False).cumcount() + 1
-    s.loc[duplicates] = s.loc[duplicates].astype(str) + '-' + counts.astype(str)
-    return s
 
 
 def rename_index(df: pd.DataFrame, name: str) -> pd.DataFrame:
