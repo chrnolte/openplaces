@@ -24,6 +24,7 @@ dependencies:
 
   # Core non-spatial dependencies
   - numpy>=1.24.0
+  - scipy>=1.10.0
   - pandas>=2.0.0
   - pyarrow>=10.0.0
   - requests>=2.28.0
