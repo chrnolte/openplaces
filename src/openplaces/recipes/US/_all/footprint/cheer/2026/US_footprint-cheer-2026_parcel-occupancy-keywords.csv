@@ -3,11 +3,15 @@ MANUFACTURED,contains,Manufactured Home,true
 SINGLE WIDE,contains,Manufactured Home,true
 DOUBLE WIDE,contains,Manufactured Home,true
 MOBILE HOME,contains,Manufactured Home,true
+MAN-HOU,contains,Manufactured Home,false
 MULTI[- ]?SECTION,regex,Manufactured Home,true
 TOWNHOME|TOWNHOUSE|DUPLEX|TRIPLEX|QUADPLEX|APARTMENT|CONDO|MULTI,regex,Multi-Family,true
+MULT-FAM,contains,Multi-Family,false
 SINGLE FAMILY,contains,Single-Family,true
 SFR,contains,Single-Family,true
 \bMH\b,regex,Manufactured Home,false
 MODULAR,contains,Single-Family,false
 COMMERCIAL,contains,Commercial,false
+BUSINESS,contains,Commercial,false
+\bCOM\b,regex,Commercial,false
 RETAIL,contains,Retail,false
