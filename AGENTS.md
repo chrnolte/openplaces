@@ -29,6 +29,9 @@ repository.
 - If you find real personal data already committed, stop, do not build on top of it,
   and flag it to the user immediately. Do not "fix forward" quietly — purging it from
   git history is a decision for a human, not an agent.
+- `docs/5_contribute/no-personal-data.rst` is the contributor-facing version of
+  this section: what counts as a record, how to fabricate a fixture that still
+  tests something, and the failure modes a history rewrite hits.
 - See `DISCLAIMER.md` for the project's broader privacy and liability posture.
 
 ## Intellectual property: ownership is under review
@@ -351,7 +354,7 @@ metadata). Each step receives state and returns the updated state.
 Public entrypoint: `harmonize(recipe, admin_ids, reprocess, verbose)`.
 
 When working on `src/openplaces/io/harmonizer/`, read
-`.claude/memory/harmonizer_reference.md` for a full pipeline reference before making
+`src/openplaces/io/harmonizer/README.md` for a full pipeline reference before making
 changes.
 
 
