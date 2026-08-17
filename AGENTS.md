@@ -44,6 +44,14 @@ Implement all complex plans (plans affecting the functionality of multiple src/ 
 When creating Jupyter notebooks under `notebooks/`, you must follow the guide in:
 notebooks/README.md
 
+## Recipes
+When creating or editing recipes under `src/openplaces/recipes/`, you must follow
+the guide in: src/openplaces/recipes/README.md
+
+It indexes stage-specific guides under `src/openplaces/recipes/_instructions/`,
+including how to find and validate a public parcel/assessor/sales source for a
+county or state the repository does not cover yet.
+
 ## Commits
 - Do not commit changes unless the user instructs you to (by using the
   exact word 'commit' in an imperative tense).
@@ -203,6 +211,7 @@ Public entrypoint: `harmonize(recipe, admin_ids, reprocess, verbose)`.
 When working on `src/openplaces/io/harmonizer/`, read
 `.claude/memory/harmonizer_reference.md` for a full pipeline reference before making
 changes.
+
 
 **Stage 3 — Enrich** (`io/enricher/`):
 
