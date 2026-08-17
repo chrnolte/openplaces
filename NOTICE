@@ -32,21 +32,6 @@ redistributed here.
 
 --------------------------------------------------------------------------
 
-Removed component, recorded so it is not reintroduced unknowingly:
-
-Yet-Another-EfficientDet-Pytorch
-Author: Zylo117
-Licence: LGPL-3.0
-Upstream: https://github.com/zylo117/Yet-Another-EfficientDet-Pytorch
-
-An EfficientDet inference engine from this project was previously vendored
-at src/openplaces/io/enricher/detectors/efficientdet_lib/ with no licence
-text, notice, or upstream reference. LGPL-3.0 is not compatible with this
-repository's Apache-2.0 licence without a carve-out, so the subtree was
-removed rather than carried unmarked. See the module docstring in
-detectors/n_stories.py for what supplying a replacement engine would
-require.
-
 Anything vendored in future must record its upstream URL, author and
 licence both in the file header and in this NOTICE, and a copyleft licence
 must be reviewed before it is added at all.
