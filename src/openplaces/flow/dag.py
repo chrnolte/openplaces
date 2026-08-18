@@ -28,7 +28,11 @@ from openplaces.recipe import (
     get_save_admin_level,
 )
 
-STAGES = ('ingest', 'harmonize', 'enrich', 'curate')
+# 'deliver' is not a recipe stage (recipes rank ingest < harmonize <
+# enrich < curate). It is a job this graph derives from the target
+# recipe's own `share: delivery:` block: pool the region's curated
+# files into the shareable bundle, once, after every county is built.
+STAGES = ('ingest', 'harmonize', 'enrich', 'curate', 'deliver')
 
 # Node fill colors per stage in to_mermaid() (pastel, dark text)
 _STAGE_COLORS = {
@@ -36,6 +40,7 @@ _STAGE_COLORS = {
     'harmonize': '#d9ead3',
     'enrich': '#fff2cc',
     'curate': '#f4cccc',
+    'deliver': '#e6d0f0',
 }
 
 
@@ -72,6 +77,11 @@ class RecipeDAG:
         upstream ingest recipe). Composes with 'reference_parcel_recipe_id'/
         'image_recipe'/etc. edges automatically -- nothing further needs to
         be excluded by name. See `openplaces.recipe.get_recipe_dependencies`.
+    deliver : bool, optional
+        Force the delivery job on or off. None (default) decides from scope:
+        the bundle is built when the run covers the region the target recipe
+        declares, and skipped when it does not, so a scoped debug run leaves
+        the shipped files alone. See `_delivery_in_scope`.
     """
 
     def __init__(
@@ -79,12 +89,22 @@ class RecipeDAG:
         target_recipe_id: str,
         admin_ids: list[str] | None = None,
         exclude_recipe_ids: set[str] | None = None,
+        deliver: bool | None = None,
     ):
         self.target_recipe_id = target_recipe_id
         self.exclude_recipe_ids = set(exclude_recipe_ids or ())
+        # Kept untruncated: the scope test below compares what was asked for,
+        # not what it was narrowed to.
+        self.requested_admin_ids = [str(a) for a in (admin_ids or [])]
         self._recipes: dict[str, dict] = {}
         target = self._recipe(target_recipe_id)
         target_level = get_save_admin_level(target)
+        if not admin_ids and deliver is not False:
+            # A recipe that declares a delivery region already says what
+            # "everything" means for it, so an unscoped run builds that
+            # region rather than a single admin-independent node it has no
+            # rule to produce.
+            admin_ids = self._delivery_members()
         self.admin_ids = [
             str(AdminId(*AdminId(str(a)).levels[:target_level]))
             for a in (admin_ids or [])
@@ -127,6 +147,54 @@ class RecipeDAG:
                 if edge not in edge_seen:
                     edge_seen.add(edge)
                     self._edges.append(edge)
+
+        # Appended after the walk, not through _add: the delivery job shares
+        # its recipe id with the curate jobs and is told apart only by its
+        # coarser admin unit, which _add's (recipe_id, admin) dedup would
+        # handle correctly but its admin expansion would not.
+        self.delivery_node = self._build_delivery_node(deliver)
+        if self.delivery_node is not None:
+            self._nodes.append(self.delivery_node)
+            consumer_key = (self.delivery_node.recipe_id, self.delivery_node.admin_id)
+            for member in self._delivery_members():
+                self._edges.append(((target_recipe_id, member), consumer_key))
+
+    def _delivery_members(self) -> list[str]:
+        """Process-level admin units the target recipe's bundle pools."""
+        from openplaces.io.delivery import delivery_members
+
+        return delivery_members(self._recipe(self.target_recipe_id))
+
+    def _delivery_in_scope(self, spec: dict) -> bool:
+        """Whether this run covers the region the target recipe delivers.
+
+        True when nothing was requested (the whole recipe), when something
+        was requested at or above the bundle's own admin level (e.g. the
+        state the bundle covers), or when the requested units include every
+        declared member. False for a narrower run -- rebuilding one county
+        must not overwrite a shipped regional file with a one-county one.
+        """
+        if not self.requested_admin_ids:
+            return True
+        level = spec.get('admin_level', 2)
+        if any(AdminId(a).get_level() <= level for a in self.requested_admin_ids):
+            return True
+        members = {str(a) for a in spec.get('admin_ids') or []}
+        return bool(members) and members <= set(self.admin_ids)
+
+    def _build_delivery_node(self, deliver: bool | None) -> StageNode | None:
+        """The bundle job, when the target recipe declares one and it applies."""
+        from openplaces.io.delivery import delivery_admin_id, delivery_spec
+
+        if deliver is False:
+            return None
+        spec = delivery_spec(self._recipe(self.target_recipe_id))
+        if not spec:
+            return None
+        if deliver is not True and not self._delivery_in_scope(spec):
+            return None
+        admin_id = delivery_admin_id(self._recipe(self.target_recipe_id))
+        return StageNode('deliver', self.target_recipe_id, str(admin_id))
 
     def _recipe(self, recipe_id: str) -> dict:
         if recipe_id not in self._recipes:
@@ -221,9 +289,21 @@ class RecipeDAG:
 
     def output_path(self, stage: str, recipe_id: str, admin_id=None) -> Path:
         """The primary output parquet of one job."""
+        if stage == 'deliver':
+            return self._delivery_paths(recipe_id)['canonical']
         return get_output_path(
             self._recipe(recipe_id), admin_id=self._node_admin(recipe_id, admin_id)
         )
+
+    def _delivery_paths(self, recipe_id: str) -> dict:
+        """The four bundle files, straight from the writer's own resolver.
+
+        Declaring the orchestrator's expected outputs and writing the actual
+        files from one function is what keeps the two from drifting apart.
+        """
+        from openplaces.io.delivery import delivery_paths
+
+        return delivery_paths(self._recipe(recipe_id))
 
     def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
         """Secondary declared outputs of one job.
@@ -232,6 +312,9 @@ class RecipeDAG:
         entries both persist an n:m link sidecar at the canonical
         get_entity_link_path location.
         """
+        if stage == 'deliver':
+            bundle = self._delivery_paths(recipe_id)
+            return [bundle[role] for role in ('point', 'geo', 'evidence')]
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
         node_admin = self._node_admin(recipe_id, admin_id)
@@ -254,6 +337,13 @@ class RecipeDAG:
     def input_paths(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
         """The input files of one job: upstream outputs plus link sidecars."""
         recipe = self._recipe(recipe_id)
+        if stage == 'deliver':
+            # Every member county's curated file, so the bundle rebuilds
+            # whenever any one of them does.
+            return [
+                get_output_path(recipe, admin_id=member)
+                for member in self._delivery_members()
+            ]
         node_admin = self._node_admin(recipe_id, admin_id)
         paths: list[Path] = []
         try:
@@ -286,12 +376,19 @@ class RecipeDAG:
         return get_recipe_retention(self._recipe(recipe_id))
 
     def bucket(self, recipe_id: str) -> str:
-        """The output bucket of a recipe ('share' outputs get protected())."""
+        """The output bucket a recipe writes into ('cache', 'share', ...)."""
         save_to = self._recipe(recipe_id).get('save_to') or {}
         return save_to.get('data_dir', 'cache')
 
     def target_paths(self) -> list[Path]:
-        """The terminal outputs the workflow must produce (rule all inputs)."""
+        """The terminal outputs the workflow must produce (rule all inputs).
+
+        The bundle when this run delivers one -- it depends on every member
+        county, so targeting it still builds them all -- otherwise the
+        per-unit curated files.
+        """
+        if self.delivery_node is not None:
+            return list(self._delivery_paths(self.target_recipe_id).values())
         return [
             self.output_path('curate', self.target_recipe_id, admin_id)
             for admin_id in self.admin_ids

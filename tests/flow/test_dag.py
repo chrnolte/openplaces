@@ -4,6 +4,7 @@ import pytest
 
 from openplaces.flow import RecipeDAG
 from openplaces.geo.link import get_entity_link_path
+from openplaces.io.delivery import delivery_members, delivery_paths
 from openplaces.recipe import get_output_path
 
 TARGET = 'US_footprint-cheer-2026'
@@ -13,6 +14,17 @@ COUNTY = 'US-NC-BS'
 @pytest.fixture(scope='module')
 def dag():
     return RecipeDAG(TARGET, admin_ids=[COUNTY])
+
+
+@pytest.fixture(scope='module')
+def shipping_dag():
+    """A run that covers the declared region, so the bundle is built.
+
+    Forced rather than requested region-wide: expanding a state request to
+    its 100 counties walks the whole recipe tree per county, which is far
+    too slow for a test. `deliver=True` exercises the same node.
+    """
+    return RecipeDAG(TARGET, admin_ids=[COUNTY], deliver=True)
 
 
 def test_nodes_cover_the_worked_example(dag):
@@ -74,6 +86,52 @@ def test_retention_classes(dag):
 
 def test_target_paths(dag):
     assert dag.target_paths() == [get_output_path(TARGET, admin_id=COUNTY)]
+
+
+def test_scoped_run_does_not_deliver(dag):
+    """A one-county run must leave the shipped regional bundle alone."""
+    assert dag.delivery_node is None
+    assert all(node.stage != 'deliver' for node in dag.nodes())
+
+
+def test_delivery_node_covers_the_region(shipping_dag):
+    node = shipping_dag.delivery_node
+    assert node is not None
+    assert (node.stage, node.recipe_id, node.admin_id) == ('deliver', TARGET, 'US-NC')
+    assert node in shipping_dag.nodes()
+
+
+def test_delivery_outputs_match_the_writer(shipping_dag):
+    bundle = delivery_paths(TARGET)
+    job = ('deliver', TARGET, 'US-NC')
+    assert shipping_dag.output_path(*job) == bundle['canonical']
+    assert shipping_dag.extra_outputs(*job) == [
+        bundle[role] for role in ('point', 'geo', 'evidence')
+    ]
+
+
+def test_delivery_inputs_are_every_member_county(shipping_dag):
+    members = delivery_members(TARGET)
+    assert len(members) == 45
+    assert shipping_dag.input_paths('deliver', TARGET, 'US-NC') == [
+        get_output_path(TARGET, admin_id=member) for member in members
+    ]
+
+
+def test_delivery_edges_let_plan_propagate(shipping_dag):
+    """Every member county must feed the bundle, or plan() misses re-ships."""
+    consumer = (TARGET, 'US-NC')
+    upstreams = {up for up, down in shipping_dag._edges if down == consumer}
+    assert upstreams == {(TARGET, member) for member in delivery_members(TARGET)}
+
+
+def test_target_paths_are_the_bundle_when_shipping(shipping_dag):
+    assert shipping_dag.target_paths() == list(delivery_paths(TARGET).values())
+
+
+def test_deliver_false_suppresses_the_bundle():
+    dag = RecipeDAG(TARGET, admin_ids=[COUNTY], deliver=False)
+    assert dag.delivery_node is None
 
 
 def test_admin_and_tile_link_nodes_and_edges(dag):

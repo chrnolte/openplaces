@@ -10,10 +10,29 @@
 # Retention maps onto Snakemake flags: until_consumed outputs are temp()
 # (deleted only after every consuming job has finished — the
 # reference-counted semantics of the lifecycle design, with zero
-# openplaces bookkeeping), share outputs are protected(), everything
-# else is a plain output. Snakemake never writes tombstone receipts;
-# run_stage sets OPENPLACES_ORCHESTRATED so receipt-based skips are
-# voided and the physical files Snakemake expects are always produced.
+# openplaces bookkeeping), everything else is a plain output.
+# Snakemake never writes tombstone receipts; run_stage sets
+# OPENPLACES_ORCHESTRATED so receipt-based skips are voided and the
+# physical files Snakemake expects are always produced.
+#
+# Nothing is protected(). Snakemake's protection is one-way: it strips
+# write permission and then refuses to ever regenerate the file,
+# aborting the run. Applied to the share bucket it meant re-curating an
+# already-shipped county failed outright. The shipped bundle is guarded
+# instead by io/delivery.py, which leaves its four files read-only.
+# That refusal is a filesystem check, not a record of Snakemake's own
+# flag, so the deliver rule clears the bit while planning (see below).
+#
+# The graph ends in a 'deliver' job when the target recipe declares a
+# `share: delivery:` block and the run covers the region it names: every
+# member county is pooled into the shareable bundle, so a full run ships
+# without anyone remembering to. A narrower run gets no delivery job;
+# --config deliver=true forces one, deliver=false suppresses it.
+#
+# An unscoped run seeds its admin units from the declared members, which
+# means walking the recipe tree once per member: measured at ~7 minutes
+# of graph construction for the 45-county CHEER region, before any job
+# is dispatched. It is planning, not a hang.
 #
 # Run with --rerun-triggers mtime (set in the profile): recipe-YAML
 # edits must not cascade re-runs (openplaces has no parameter hashing).
@@ -21,6 +40,7 @@
 # Usage:
 #   snakemake -n --config recipe=US_footprint-cheer-2026 \
 #       admin_ids=US-NC-BS,US-NC-CE
+#   snakemake -n --config recipe=US_footprint-cheer-2026   # region + ship
 #   python -m openplaces.flow.submit --config recipe=... admin_ids=...
 
 import csv
@@ -41,8 +61,16 @@ exclude_recipe_ids = config.get('exclude_recipe_ids', [])
 if isinstance(exclude_recipe_ids, str):
     exclude_recipe_ids = [r for r in exclude_recipe_ids.split(',') if r]
 
+# None lets the DAG decide from scope; true/false override it.
+deliver = config.get('deliver')
+if isinstance(deliver, str):
+    deliver = deliver.strip().lower() in ('1', 'true', 'yes')
+
 dag = RecipeDAG(
-    TARGET, admin_ids=ADMIN_IDS, exclude_recipe_ids=set(exclude_recipe_ids) or None
+    TARGET,
+    admin_ids=ADMIN_IDS,
+    exclude_recipe_ids=set(exclude_recipe_ids) or None,
+    deliver=deliver,
 )
 
 
@@ -60,7 +88,13 @@ def _load_mem_lookup():
 
 
 MEM_LOOKUP = _load_mem_lookup()
-STAGE_RUNTIME_MIN = {'ingest': 720, 'harmonize': 240, 'enrich': 720, 'curate': 240}
+STAGE_RUNTIME_MIN = {
+    'ingest': 720,
+    'harmonize': 240,
+    'enrich': 720,
+    'curate': 240,
+    'deliver': 60,
+}
 
 
 def mem_mb(stage, admin_id):
@@ -75,12 +109,16 @@ rule all:
 for node in dag.nodes():
     _out = str(dag.output_path(node.stage, node.recipe_id, node.admin_id))
     _retention = dag.retention(node.stage, node.recipe_id, node.admin_id)
-    if _retention == 'until_consumed':
-        _flagged = temp(_out)
-    elif dag.bucket(node.recipe_id) == 'share':
-        _flagged = protected(_out)
-    else:
-        _flagged = _out
+    _flagged = temp(_out) if _retention == 'until_consumed' else _out
+    if node.stage == 'deliver':
+        # io/delivery.py leaves the shipped bundle read-only between runs,
+        # and Snakemake refuses to run any rule whose output is read-only --
+        # whatever set the bit. Clear it while planning; the delivery step
+        # re-locks after writing. A dry run leaves the files unlocked until
+        # the next delivery, which is the price of the guard.
+        from openplaces.io.delivery import unlock_delivery
+
+        unlock_delivery(node.recipe_id)
     _job = (node.stage, node.recipe_id, node.admin_id)
     _extra = [str(p) for p in dag.extra_outputs(*_job)]
     _inputs = [str(p) for p in dag.input_paths(*_job)]

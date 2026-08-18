@@ -202,7 +202,7 @@ Layer 2  recipe
 Layer 3  io/__init__, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
-Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/transform, io/cleanup
+Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/delivery, io/transform, io/cleanup
 Layer 7  io/harmonizer
 Layer 8  io/enricher
 Layer 9  io/curator
@@ -476,7 +476,55 @@ op.harmonize(recipe, admin_ids, ...)
 op.enrich(recipe, admin_ids, ...)
 op.curate(recipe, admin_ids, ...)
 op.aggregate(recipe, admin_level, ...)
+op.export_delivery(recipe, admin_id, ...)     # split a curated region into a shareable bundle
 ```
+
+### Delivery bundles (`io/delivery.py`)
+
+`export_delivery` pools a curation recipe's per-process-unit files into a
+region-wide, shareable set of four files sharing one index: the canonical
+attributes as a plain table, the same attributes on centroid points, the
+boundary polygons alone, and an `_evidence` supplement holding every remaining
+column. Which columns are canonical is declared per recipe in a `share:` block
+(`columns`, plus `point_columns` for the point file only) -- not inferred, because
+the curated schema holds far more technically-canonical columns than belong in a
+compact delivery. Each canonical column's `{col}_source` sidecar is appended
+automatically and written into *both* the canonical and the evidence file, so
+either reads on its own.
+
+A `share: delivery:` block names the region: `admin_level` (the bundle's own
+level) and `admin_ids` (the units pooled into it). The declared member list wins
+over walking the admin hierarchy, because a region is rarely all of a state's
+children -- the CHEER region is 45 of North Carolina's 100 counties. With it
+declared, `export_delivery(recipe_id)` needs no other argument, and
+`delivery_paths(recipe)` is the single resolver both the writer and the
+orchestrator use, so their idea of the output files cannot drift.
+
+Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
+then evidence) so the wide evidence columns are never in memory alongside the
+polygons. It deduplicates the index: an entity on a county line is curated by
+both neighbors and the two copies share an Open Location Code, so the
+better-covered copy wins, ties broken on admin id. And it leaves its four
+outputs read-only, unlocking them itself on the next run -- deliberately not
+Snakemake's `protected()`, which additionally refuses to ever regenerate a file
+and would abort the workflow on every reship.
+
+The QGIS side is `qgis/load_joined_parquet.py`, which resolves the whole set from
+any one of its files.
+
+### Orchestration (`flow/dag.py`, `workflow/Snakefile`)
+
+`RecipeDAG` derives one job per (stage, recipe, admin unit) from the recipe tree,
+plus one terminal **`deliver`** job when the target recipe declares a delivery
+region. `deliver` is not a recipe stage -- recipe stages are ranked
+(`ingest < harmonize < enrich < curate`) and drive `find_entity_recipe_id`, so a
+fifth would ripple into recipe resolution for nothing. It is a node kind this
+graph derives, the way `extra_outputs` derives link sidecars from `save_link`.
+
+Scope decides whether it runs: an unscoped run builds and ships the declared
+region, a run naming the region (or covering every member) ships it, and a
+narrower debug run stops at curate so a one-county rebuild cannot overwrite a
+shipped regional file. `--config deliver=true|false` overrides either way.
 
 ### File layout on disk
 

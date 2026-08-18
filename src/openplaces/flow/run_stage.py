@@ -9,6 +9,12 @@ Dispatches to the stage entrypoint with reprocess=False, so a
 re-dispatched already-complete job no-ops in seconds. Sets
 OPENPLACES_ORCHESTRATED so receipt-based skips are voided and the
 physical output file the orchestrator expects is always produced.
+
+'deliver' is the exception. It is not a recipe stage but the terminal
+bundling job (openplaces.io.delivery), it takes the region as a single
+admin unit rather than a list, and it has no reprocess of its own: the
+bundle is always rewritten from whatever the member files currently
+hold.
 """
 
 from __future__ import annotations
@@ -24,15 +30,23 @@ STAGE_MODULES = {
     'curate': 'openplaces.io.curator',
 }
 
+# Handled by its own branch in main(), not the STAGE_MODULES dispatch.
+DELIVER = 'deliver'
+
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(
         prog='python -m openplaces.flow.run_stage',
         description='Run one (stage, recipe, admin unit) pipeline job.',
     )
-    parser.add_argument('stage', choices=sorted(STAGE_MODULES))
+    parser.add_argument('stage', choices=sorted([*STAGE_MODULES, DELIVER]))
     parser.add_argument('recipe_id')
-    parser.add_argument('admin_id', nargs='?', default=None)
+    parser.add_argument(
+        'admin_id',
+        nargs='?',
+        default=None,
+        help='Admin unit to process; for deliver, the region the bundle covers',
+    )
     parser.add_argument(
         '--entity-recipe-id',
         default=None,
@@ -48,6 +62,12 @@ def main(argv=None) -> None:
 
     if not args.no_orchestrated:
         os.environ['OPENPLACES_ORCHESTRATED'] = '1'
+
+    if args.stage == DELIVER:
+        from openplaces.io.delivery import export_delivery
+
+        export_delivery(args.recipe_id, args.admin_id, verbose=args.verbose)
+        return
 
     admin_ids = [args.admin_id] if args.admin_id else None
     module = import_module(STAGE_MODULES[args.stage])
