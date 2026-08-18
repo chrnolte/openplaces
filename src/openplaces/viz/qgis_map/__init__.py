@@ -24,6 +24,7 @@ def export_qgis_map(
     title: str | None = None,
     template_path=None,
     filter_existing: bool = True,
+    include_inputs: bool = True,
     verbose: bool = False,
 ):
     """Generate a standardized QGIS project (.qgz) for *recipe* at *admin_id*.
@@ -48,6 +49,10 @@ def export_qgis_map(
     filter_existing : bool, optional
         Drop layers whose parquet files do not exist on disk for this admin
         unit (default True).
+    include_inputs : bool, optional
+        Include the ingest-stage source layers (default True). Pass False
+        for a map of the delivered product alone: the curated output, admin
+        context, and the template's basemaps.
     verbose : bool, optional
         Warn about template gaps and resolver skips.
 
@@ -58,7 +63,11 @@ def export_qgis_map(
     """
     admin_id = admin_id if isinstance(admin_id, AdminId) else AdminId(admin_id)
     layer_specs = resolve_layers(
-        recipe, admin_id, filter_existing=filter_existing, verbose=verbose
+        recipe,
+        admin_id,
+        filter_existing=filter_existing,
+        include_inputs=include_inputs,
+        verbose=verbose,
     )
     return generate_qgz(
         recipe,

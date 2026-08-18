@@ -23,6 +23,18 @@ from openplaces.recipe import (
     get_save_admin_level,
 )
 
+# How a cloned template layer should be re-rendered for its data.
+# 'default' keeps the template's own symbology, which assumes polygons
+# carrying their own attributes.
+RENDER_DEFAULT = 'default'
+# Recolor the template's categorized fills as point markers: the delivery
+# bundle's `_point` file carries the canonical attributes on centroids, so
+# it drives every attribute-styled view without loading any polygon.
+RENDER_POINTS = 'points'
+# Strip symbology down to a plain outline. The bundle's `_geo` file has no
+# attributes at all, so it can only be shown, not classified.
+RENDER_OUTLINE = 'outline'
+
 
 @dataclass(frozen=True)
 class LayerSpec:
@@ -60,6 +72,11 @@ class LayerSpec:
         True when the recipe saves attributes and geometry together in one
         file (`save_to: combined: true`, e.g. terminal share-ready
         deliverables) rather than as a joinable attr/`_geo` pair.
+    render : str
+        How to re-render the cloned template layer: `RENDER_DEFAULT` keeps
+        the template's symbology, `RENDER_POINTS` converts its categorized
+        fills to point markers, `RENDER_OUTLINE` replaces it with a plain
+        boundary line and drops the attribute-driven style variants.
     """
 
     role: str
@@ -74,6 +91,7 @@ class LayerSpec:
     exists: bool
     depth: int
     combined: bool
+    render: str = RENDER_DEFAULT
 
 
 def _entity_parts(recipe: dict) -> tuple[str, str | None, str | None]:
@@ -195,12 +213,69 @@ def _discover_ingest_leaves(
     return ingest_seen
 
 
+def _build_delivery_specs(
+    recipe: dict, admin_id: AdminId, *, verbose: bool
+) -> list[LayerSpec]:
+    """Build the output layers for a recipe's region-wide delivery bundle.
+
+    The curated output is written per process unit, so its own save level
+    cannot resolve a path for the coarser unit the bundle covers --
+    `get_output_path` rejects it outright. When *admin_id* is that unit and
+    the recipe declares a `share: delivery:` block, the map is built from
+    the bundle instead, as two layers that each stand alone:
+
+    - the `_point` centroids, which carry the canonical attributes and so
+      drive every attribute-styled view;
+    - the `_geo` polygons, shown as plain outlines.
+
+    Neither is joined. The alternative -- joining the canonical table onto
+    the polygons -- would make QGIS read and index 2.5M polygons before it
+    could draw anything classified, for a view whose colors are legible
+    from the centroids alone.
+    """
+    from openplaces.io.delivery import delivery_admin_id, delivery_paths, delivery_spec
+
+    if not delivery_spec(recipe) or str(delivery_admin_id(recipe)) != str(admin_id):
+        return []
+    try:
+        paths = delivery_paths(recipe)
+    except Exception as exc:
+        if verbose:
+            warnings.warn(f'Could not resolve delivery paths: {exc}')
+        return []
+
+    entity_type, source, version = _entity_parts(recipe)
+
+    def _spec(path: Path, render: str) -> LayerSpec:
+        return LayerSpec(
+            role='output',
+            recipe_id=get_recipe_id(recipe),
+            entity_type=entity_type,
+            source=source,
+            version=version,
+            admin_id=admin_id,
+            display_name=path.stem,
+            attr_path=path,
+            geo_path=path,
+            exists=path.exists(),
+            depth=0,
+            combined=True,
+            render=render,
+        )
+
+    return [
+        _spec(paths['point'], RENDER_POINTS),
+        _spec(paths['geo'], RENDER_OUTLINE),
+    ]
+
+
 def resolve_layers(
     recipe: str | dict,
     admin_id: str | AdminId,
     *,
     admin_context_levels: tuple[int, ...] = (1,),
     filter_existing: bool = True,
+    include_inputs: bool = True,
     verbose: bool = False,
 ) -> list[LayerSpec]:
     """Resolve the map layers for a curate recipe at an admin unit.
@@ -223,6 +298,11 @@ def resolve_layers(
     filter_existing : bool, optional
         If True (default), drop layers whose parquet files do not exist on
         disk for this admin unit.
+    include_inputs : bool, optional
+        If False, omit the ingest-stage source layers and return only the
+        curated output plus administrative context -- the shape wanted for
+        a map of the delivered product rather than of how it was built.
+        Defaults to True.
     verbose : bool, optional
         If True, warn about unresolved dependencies and skipped layers.
 
@@ -242,11 +322,21 @@ def resolve_layers(
 
     specs: list[LayerSpec] = []
 
-    output_spec = _build_spec(recipe, admin_id, role='output', depth=0, verbose=verbose)
-    if output_spec is not None:
-        specs.append(output_spec)
+    delivery_specs = _build_delivery_specs(recipe, admin_id, verbose=verbose)
+    if delivery_specs:
+        specs.extend(delivery_specs)
+    else:
+        output_spec = _build_spec(
+            recipe, admin_id, role='output', depth=0, verbose=verbose
+        )
+        if output_spec is not None:
+            specs.append(output_spec)
 
-    ingest_seen = _discover_ingest_leaves(recipe, admin_id, verbose=verbose)
+    ingest_seen = (
+        _discover_ingest_leaves(recipe, admin_id, verbose=verbose)
+        if include_inputs
+        else {}
+    )
     for recipe_id, depth in ingest_seen.items():
         try:
             upstream = get_recipe_by_id(recipe_id)

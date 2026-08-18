@@ -30,7 +30,12 @@ from openplaces.core.schema import AdminId, sanitize
 from openplaces.io.readers import get_admin
 from openplaces.path import path as build_path
 from openplaces.recipe import get_recipe_by_id, get_recipe_id
-from openplaces.viz.qgis_map.resolver import LayerSpec, resolve_layers
+from openplaces.viz.qgis_map.resolver import (
+    RENDER_OUTLINE,
+    RENDER_POINTS,
+    LayerSpec,
+    resolve_layers,
+)
 from openplaces.viz.qgis_map.style_registry import (
     get_fallback_style,
     get_static_styles,
@@ -135,6 +140,143 @@ def _set_join_target(clone: ET.Element, *, new_attr_id: str) -> None:
         return
     for join in vectorjoins.findall('join'):
         join.set('joinLayerId', new_attr_id)
+
+
+_DDP = (
+    '<data_defined_properties><Option type="Map">'
+    '<Option type="QString" name="name" value=""/>'
+    '<Option name="properties"/>'
+    '<Option type="QString" name="type" value="collection"/>'
+    '</Option></data_defined_properties>'
+)
+
+# One circle marker of a given color. Sized for a 2.5M-point layer: big
+# enough to read a category color at county zoom, small enough that dense
+# subdivisions do not merge into a solid block.
+_MARKER_SYMBOL = (
+    '<symbol type="marker" frame_rate="10" clip_to_extent="1" force_rhr="0"'
+    ' alpha="{alpha}" name="{name}" is_animated="0">'
+    + _DDP
+    + '<layer locked="0" pass="0" enabled="1" class="SimpleMarker" id="">'
+    '<Option type="Map">'
+    '<Option type="QString" name="angle" value="0"/>'
+    '<Option type="QString" name="cap_style" value="square"/>'
+    '<Option type="QString" name="color" value="{color}"/>'
+    '<Option type="QString" name="horizontal_anchor_point" value="1"/>'
+    '<Option type="QString" name="joinstyle" value="bevel"/>'
+    '<Option type="QString" name="name" value="circle"/>'
+    '<Option type="QString" name="offset" value="0,0"/>'
+    '<Option type="QString" name="offset_map_unit_scale" value="3x:0,0,0,0,0,0"/>'
+    '<Option type="QString" name="offset_unit" value="MM"/>'
+    '<Option type="QString" name="outline_style" value="no"/>'
+    '<Option type="QString" name="outline_width" value="0"/>'
+    '<Option type="QString" name="outline_width_unit" value="MM"/>'
+    '<Option type="QString" name="scale_method" value="diameter"/>'
+    '<Option type="QString" name="size" value="0.9"/>'
+    '<Option type="QString" name="size_map_unit_scale" value="3x:0,0,0,0,0,0"/>'
+    '<Option type="QString" name="size_unit" value="MM"/>'
+    '<Option type="QString" name="vertical_anchor_point" value="1"/>'
+    '</Option>' + _DDP + '</layer></symbol>'
+)
+
+# Unfilled polygon with a visible edge: the delivery bundle's `_geo` file
+# carries no attributes, so an outline is all it can honestly show.
+_OUTLINE_RENDERER = (
+    '<renderer-v2 type="singleSymbol" forceraster="0" symbollevels="0"'
+    ' enableorderby="0" referencescale="-1">'
+    '<symbols><symbol type="fill" frame_rate="10" clip_to_extent="1"'
+    ' force_rhr="0" alpha="1" name="0" is_animated="0">'
+    + _DDP
+    + '<layer locked="0" pass="0" enabled="1" class="SimpleFill" id="">'
+    '<Option type="Map">'
+    '<Option type="QString" name="border_width_map_unit_scale"'
+    ' value="3x:0,0,0,0,0,0"/>'
+    '<Option type="QString" name="color" value="0,0,0,0,rgb:0,0,0,0"/>'
+    '<Option type="QString" name="joinstyle" value="bevel"/>'
+    '<Option type="QString" name="offset" value="0,0"/>'
+    '<Option type="QString" name="offset_map_unit_scale"'
+    ' value="3x:0,0,0,0,0,0"/>'
+    '<Option type="QString" name="offset_unit" value="MM"/>'
+    '<Option type="QString" name="outline_color"'
+    ' value="60,60,60,255,rgb:0.235,0.235,0.235,1"/>'
+    '<Option type="QString" name="outline_style" value="solid"/>'
+    '<Option type="QString" name="outline_width" value="0.1"/>'
+    '<Option type="QString" name="outline_width_unit" value="MM"/>'
+    '<Option type="QString" name="style" value="no"/>'
+    '</Option>' + _DDP + '</layer></symbol></symbols></renderer-v2>'
+)
+
+
+def _fill_color(symbol: ET.Element) -> str:
+    """Return the fill color of *symbol*'s first SimpleFill layer."""
+    for layer in symbol.findall('layer'):
+        if layer.get('class') != 'SimpleFill':
+            continue
+        for option in layer.iter('Option'):
+            if option.get('name') == 'color' and option.get('value'):
+                return option.get('value')
+    return '128,128,128,255,rgb:0.5,0.5,0.5,1'
+
+
+def _fills_to_markers(clone: ET.Element) -> None:
+    """Rewrite every fill symbol on *clone* as a same-colored point marker.
+
+    Keeps the template's categories, labels and colors -- only the symbol
+    geometry changes -- so a points view stays legible against the polygon
+    views authored beside it.
+    """
+    _set_geometry_type(clone, geometry='Point', wkb_type='Point')
+    for symbols in clone.iter('symbols'):
+        for symbol in list(symbols.findall('symbol')):
+            if symbol.get('type') != 'fill':
+                continue
+            marker = ET.fromstring(
+                _MARKER_SYMBOL.format(
+                    name=symbol.get('name', '0'),
+                    alpha=symbol.get('alpha', '1'),
+                    color=_fill_color(symbol),
+                )
+            )
+            symbols.remove(symbol)
+            symbols.append(marker)
+
+
+def _to_outline(clone: ET.Element) -> None:
+    """Replace *clone*'s renderer with a plain, unclassified outline."""
+    old = clone.find('renderer-v2')
+    if old is not None:
+        clone.remove(old)
+    clone.append(ET.fromstring(_OUTLINE_RENDERER))
+
+
+def _set_geometry_type(clone: ET.Element, *, geometry: str, wkb_type: str) -> None:
+    """Restate a cloned layer's geometry type for its new data source."""
+    clone.set('geometry', geometry)
+    clone.set('wkbType', wkb_type)
+
+
+def _classifying_attr(clone: ET.Element) -> str | None:
+    """Return the column a cloned layer's renderer classifies on, if any."""
+    renderer = clone.find('renderer-v2')
+    return renderer.get('attr') if renderer is not None else None
+
+
+def _data_columns(path: Path) -> set[str]:
+    """Column names available in a layer's data file, empty if unreadable."""
+    from openplaces.io import parquet_columns
+
+    try:
+        return set(parquet_columns(path))
+    except Exception:
+        return set()
+
+
+def _apply_render_mode(clone: ET.Element, render: str) -> None:
+    """Re-render *clone* for data shaped differently than the template's."""
+    if render == RENDER_POINTS:
+        _fills_to_markers(clone)
+    elif render == RENDER_OUTLINE:
+        _to_outline(clone)
 
 
 def _random_fill_symbol(*, name: str, seed: str) -> ET.Element:
@@ -666,6 +808,7 @@ def generate_qgz(
                 style.dynamic_categorize_attr,
                 verbose=verbose,
             )
+        _apply_render_mode(geo_clone, spec.render)
 
         # (layer_id, display_name, checked) for every clone inserted into the
         # tree/legend for this spec: the base clone plus any style variants.
@@ -708,7 +851,17 @@ def generate_qgz(
         # combined: a combined variant clone just shares the base's
         # datasource with no join (attributes are already on the geometry);
         # a non-combined variant clone joins the freshly-cloned attr layer.
-        for variant in get_style_variants(style.style_key):
+        # An outline layer has no attributes to classify by, so the
+        # attribute-driven variant views do not apply to it.
+        variants = (
+            [] if spec.render == RENDER_OUTLINE else get_style_variants(style.style_key)
+        )
+        # A variant view classifies on one column. The delivery bundle
+        # splits the schema across files, so a view keyed on an evidence
+        # column has nothing to read from the canonical points -- drop it
+        # rather than ship a layer that renders empty.
+        available = _data_columns(spec.attr_path) if variants else set()
+        for variant in variants:
             variant_geo_name = variant.template_layer_name
             if variant_geo_name not in original_index:
                 raise ValueError(
@@ -728,6 +881,14 @@ def generate_qgz(
                 new_layername=variant_display_name,
                 new_datasource=geo_datasource,
             )
+            variant_attr = _classifying_attr(variant_clone)
+            if available and variant_attr and variant_attr not in available:
+                if verbose:
+                    warnings.warn(
+                        f'Skipping variant {variant.style_key!r}: '
+                        f'{spec.attr_path.name} has no {variant_attr!r} column.'
+                    )
+                continue
             if variant.dynamic_categorize_attr:
                 _regenerate_categories(
                     variant_clone,
@@ -742,6 +903,7 @@ def generate_qgz(
                 if vectorjoins is not None:
                     for join in list(vectorjoins.findall('join')):
                         vectorjoins.remove(join)
+            _apply_render_mode(variant_clone, spec.render)
             new_maplayers.append(variant_clone)
             tree_entries.append(
                 (new_variant_id, variant_display_name, variant.default_visible)

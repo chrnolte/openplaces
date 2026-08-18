@@ -15,7 +15,12 @@ import pytest
 from openplaces.core.schema import AdminId, Entity
 from openplaces.io import to_parquet
 from openplaces.recipe import get_output_path, get_recipe_by_id
-from openplaces.viz.qgis_map.resolver import _build_spec, resolve_layers
+from openplaces.viz.qgis_map.resolver import (
+    RENDER_OUTLINE,
+    RENDER_POINTS,
+    _build_spec,
+    resolve_layers,
+)
 
 PARCEL_RECIPE = 'US_parcel-openplaces-2026'
 FOOTPRINT_RECIPE = 'US_footprint-cheer-2026'
@@ -127,3 +132,64 @@ class TestBuildSpecAdminTruncation:
         assert spec.admin_id == AdminId('US', 'NC')
         expected_path = get_output_path(recipe, admin_id=AdminId('US', 'NC'))
         assert spec.attr_path == expected_path
+
+
+class TestIncludeInputs:
+    def test_inputs_dropped_leaves_output_and_admin(self, mock_data_root):
+        specs = resolve_layers(
+            FOOTPRINT_RECIPE, COUNTY, filter_existing=False, include_inputs=False
+        )
+
+        assert {s.role for s in specs} == {'output', 'admin'}
+
+    def test_inputs_kept_by_default(self, mock_data_root):
+        specs = resolve_layers(FOOTPRINT_RECIPE, COUNTY, filter_existing=False)
+
+        assert any(s.role == 'input' for s in specs)
+
+
+class TestDeliveryBundleLayers:
+    """At the region the recipe delivers, the map is built from the bundle.
+
+    The curated output is written per county, so its own save level cannot
+    resolve a path for the region -- without this the output layer silently
+    vanished from the map.
+    """
+
+    REGION = 'US-NC'
+
+    def test_bundle_resolves_points_and_outline(self, mock_data_root):
+        specs = resolve_layers(
+            FOOTPRINT_RECIPE, self.REGION, filter_existing=False, include_inputs=False
+        )
+        outputs = [s for s in specs if s.role == 'output']
+
+        assert [s.render for s in outputs] == [RENDER_POINTS, RENDER_OUTLINE]
+        assert outputs[0].attr_path.name.endswith('_point.parquet')
+        assert outputs[1].attr_path.name.endswith('_geo.parquet')
+
+    def test_bundle_layers_stand_alone(self, mock_data_root):
+        """Neither layer joins: points carry attributes, polygons show shape."""
+        outputs = [
+            s
+            for s in resolve_layers(
+                FOOTPRINT_RECIPE,
+                self.REGION,
+                filter_existing=False,
+                include_inputs=False,
+            )
+            if s.role == 'output'
+        ]
+
+        assert all(s.combined for s in outputs)
+        assert all(s.attr_path == s.geo_path for s in outputs)
+
+    def test_county_scope_is_unchanged(self, mock_data_root):
+        outputs = [
+            s
+            for s in resolve_layers(FOOTPRINT_RECIPE, COUNTY, filter_existing=False)
+            if s.role == 'output'
+        ]
+
+        assert len(outputs) == 1
+        assert outputs[0].render == 'default'

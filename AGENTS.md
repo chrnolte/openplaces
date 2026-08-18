@@ -510,7 +510,21 @@ Snakemake's `protected()`, which additionally refuses to ever regenerate a file
 and would abort the workflow on every reship.
 
 The QGIS side is `qgis/load_joined_parquet.py`, which resolves the whole set from
-any one of its files.
+any one of its files. It picks the join key at load time (`_join_id`, then
+`geo_id`, then whichever entity id the two files share), so one algorithm reads
+both a core split-layout file and a delivery bundle -- the only difference
+between them is that key.
+
+`viz/qgis_map` renders a delivery as a project rather than a layer. Asked for
+the admin unit a recipe delivers, `resolve_layers` returns two standalone
+output layers instead of the per-unit curated file: the `_point` centroids
+carrying the canonical attributes (`RENDER_POINTS`, template fills rewritten as
+markers) and the `_geo` polygons as plain outlines (`RENDER_OUTLINE`). Neither
+joins -- classifying millions of polygons to color them costs far more than
+reading the centroids. `include_inputs=False` drops the ingest-stage layers for
+a map of the product rather than of how it was built, and a style variant whose
+classifying column is absent from the data is skipped rather than shipped
+empty.
 
 ### Orchestration (`flow/dag.py`, `workflow/Snakefile`)
 

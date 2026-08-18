@@ -811,3 +811,105 @@ class TestDynamicCategories:
             c.get('value') for c in renderer.find('categories').findall('category')
         }
         assert values_found == {'old_a', 'old_b'}
+
+
+class TestRenderModes:
+    """Re-rendering a cloned template layer for differently-shaped data.
+
+    The delivery bundle splits the schema: centroids carry the attributes,
+    polygons carry only shape. The template was authored for polygons that
+    carry both, so its symbology has to be rewritten for each.
+    """
+
+    FILL_LAYER = (
+        '<maplayer geometry="Polygon" wkbType="MultiPolygon">'
+        '<renderer-v2 type="categorizedSymbol" attr="occupancy_type">'
+        '<symbols>'
+        '<symbol type="fill" name="0" alpha="1">'
+        '<layer class="SimpleFill">'
+        '<Option type="Map">'
+        '<Option type="QString" name="color" value="48,191,226,126"/>'
+        '<Option type="QString" name="outline_color" value="0,0,0,255"/>'
+        '</Option></layer></symbol>'
+        '<symbol type="fill" name="1" alpha="1">'
+        '<layer class="SimpleFill">'
+        '<Option type="Map">'
+        '<Option type="QString" name="color" value="200,10,10,255"/>'
+        '</Option></layer></symbol>'
+        '</symbols></renderer-v2></maplayer>'
+    )
+
+    def _clone(self):
+        return ET.fromstring(self.FILL_LAYER)
+
+    def test_points_convert_fills_to_markers(self):
+        clone = self._clone()
+
+        generator_module._fills_to_markers(clone)
+
+        symbols = clone.findall('renderer-v2/symbols/symbol')
+        assert [sym.get('type') for sym in symbols] == ['marker', 'marker']
+        assert all(sym.find('layer').get('class') == 'SimpleMarker' for sym in symbols)
+
+    def test_points_keep_each_category_color(self):
+        """A points view must stay readable against the polygon views."""
+        clone = self._clone()
+
+        generator_module._fills_to_markers(clone)
+
+        colors = [
+            option.get('value')
+            for option in clone.iter('Option')
+            if option.get('name') == 'color'
+        ]
+        assert colors == ['48,191,226,126', '200,10,10,255']
+
+    def test_points_restate_the_geometry_type(self):
+        clone = self._clone()
+
+        generator_module._fills_to_markers(clone)
+
+        assert clone.get('geometry') == 'Point'
+        assert clone.get('wkbType') == 'Point'
+
+    def test_points_keep_the_classifying_attribute(self):
+        clone = self._clone()
+
+        generator_module._fills_to_markers(clone)
+
+        assert clone.find('renderer-v2').get('attr') == 'occupancy_type'
+
+    def test_outline_drops_the_classification(self):
+        """Geometry-only data cannot be classified, only shown."""
+        clone = self._clone()
+
+        generator_module._to_outline(clone)
+
+        renderer = clone.find('renderer-v2')
+        assert renderer.get('type') == 'singleSymbol'
+        assert renderer.get('attr') is None
+
+    def test_outline_is_unfilled(self):
+        clone = self._clone()
+
+        generator_module._to_outline(clone)
+
+        options = {
+            option.get('name'): option.get('value')
+            for option in clone.iter('Option')
+            if option.get('name')
+        }
+        assert options['style'] == 'no'
+        assert options['outline_style'] == 'solid'
+
+    def test_default_render_changes_nothing(self):
+        clone = self._clone()
+
+        generator_module._apply_render_mode(clone, 'default')
+
+        assert clone.find('renderer-v2/symbols/symbol').get('type') == 'fill'
+        assert clone.get('geometry') == 'Polygon'
+
+    def test_classifying_attr_reads_the_renderer(self):
+        assert generator_module._classifying_attr(self._clone()) == 'occupancy_type'
+        assert generator_module._classifying_attr(ET.fromstring('<maplayer/>')) is None
