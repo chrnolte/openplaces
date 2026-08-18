@@ -187,6 +187,94 @@ def _numeric_to_rgba(values: pd.Series, alpha: int) -> np.ndarray:
     return np.column_stack([r, g, b, np.full(len(values), alpha, dtype=np.uint8)])
 
 
+def set_camera_pitch(
+    map_widget: Map,
+    pitch: float | None = None,
+    max_pitch: float = 85.0,
+    min_pitch: float | None = None,
+):
+    """Raise a lonboard map's camera pitch ceiling, and keep it raised.
+
+    lonboard's `MapView` caps the camera at `max_pitch=60` out of the box
+    (deck.gl's convention: pitch 0 is straight down, larger tilts toward the
+    horizon) — too shallow to read topography or extruded height edge-on.
+    Raising it on the map's own `view_state` works, but only until the first
+    camera move, which is why doing it once is not enough:
+
+    deck.gl echoes the camera *pose* back to Python on every interaction —
+    longitude, latitude, zoom, pitch, bearing — but not the *constraints*,
+    which it treats as configuration rather than state. lonboard rebuilds
+    the view state from that echo with `MapViewState(**echoed)`, so every
+    field the frontend did not send falls back to its dataclass default, and
+    `max_pitch` silently returns to 60. The raised ceiling therefore
+    survives the initial render and vanishes the moment the user drags. It
+    is not visible in Python either — the widget reports whatever came back
+    last.
+
+    This sets the constraint once and installs a `view_state` observer that
+    re-applies it whenever a round-trip drops it. `pitch` (the starting
+    tilt) is deliberately applied only once: re-asserting it on every change
+    would fight the user's own dragging, whereas the ceiling is a constraint
+    they never set by hand.
+
+    Parameters
+    ----------
+    map_widget : lonboard.Map
+        Map to constrain. Modified in place; also returned for chaining.
+    pitch : float, optional
+        Starting tilt in degrees, applied once. `None` (default) leaves the
+        current tilt alone.
+    max_pitch : float
+        Pitch ceiling in degrees. Defaults to 85 rather than 90 because
+        deck.gl's Web-Mercator projection degrades as the camera approaches
+        true horizontal — the ground plane stretches to the horizon and
+        starts z-fighting — so 90 is unusable in practice.
+    min_pitch : float, optional
+        Pitch floor in degrees. `None` (default) leaves it unmanaged.
+
+    Returns
+    -------
+    lonboard.Map
+        The same widget.
+    """
+    # Imported here, not at module scope: this is the only function that
+    # needs the view-state types, and `interactive` is already lazily
+    # imported for the sake of installs without the `viz-fast` extra.
+    from dataclasses import replace
+
+    from lonboard.view_state import MapViewState
+
+    def _constrain(view_state, include_pitch: bool):
+        changes = {'max_pitch': max_pitch}
+        if min_pitch is not None:
+            changes['min_pitch'] = min_pitch
+        if include_pitch and pitch is not None:
+            changes['pitch'] = pitch
+        return replace(view_state, **changes)
+
+    current = map_widget.view_state
+    if not isinstance(current, MapViewState):
+        warnings.warn(
+            f'Cannot set camera pitch on a {type(current).__name__} view state; '
+            'only MapViewState carries pitch constraints. Leaving it unchanged.',
+            stacklevel=2,
+        )
+        return map_widget
+
+    map_widget.view_state = _constrain(current, include_pitch=True)
+
+    def _reassert(change):
+        new = change['new']
+        # Guard against recursing forever: assigning inside the observer
+        # fires it again, and the second pass must find nothing to do.
+        if not isinstance(new, MapViewState) or new.max_pitch == max_pitch:
+            return
+        map_widget.view_state = _constrain(new, include_pitch=False)
+
+    map_widget.observe(_reassert, names='view_state')
+    return map_widget
+
+
 def get_basemap_layer(
     provider: str = 'satellite', opacity: float = 1.0
 ) -> BitmapTileLayer:
