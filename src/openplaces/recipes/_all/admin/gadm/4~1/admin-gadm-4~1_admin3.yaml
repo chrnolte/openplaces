@@ -14,6 +14,13 @@ entity:
   source:
     source_id: gadm
     download_url: "https://geodata.ucdavis.edu/gadm/gadm4.1/gadm_410-levels.zip"
+    # Terms verified 2026-08-18 at the terms_url below: "The data are
+    # freely available for academic use and other non-commercial use.
+    # Redistribution or commercial use is not allowed without prior
+    # permission." (Austria's data is separately CC-BY-SA 2.0.)
+    license: "non-commercial; redistribution requires permission"
+    terms_url: "https://gadm.org/license.html"
+    redistribution_restricted: true
   version: 4.1
 
 # Name of compressed file (set to skip re-downloading)
