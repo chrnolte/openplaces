@@ -113,6 +113,7 @@ def show_value_terrain_layer(
     elevation_recipe: str | dict | None = None,
     elevation_mode: str = 'flat',
     terrain_exaggeration: float = 1.0,
+    elevation_datum: float = 0.0,
     stack_on: TerrainLayer | None = None,
     brightness: float = 1.0,
     outline_width: float = 0,
@@ -286,6 +287,30 @@ def show_value_terrain_layer(
         (true-to-scale, no exaggeration). Not reapplied to a `stack_on`
         layer's own inherited ground offset, which already reflects
         whatever exaggeration that base layer applied to itself.
+    elevation_datum : float
+        Ground elevation in meters to treat as z=0, subtracted before
+        `terrain_exaggeration` is applied. Defaults to 0 (sea level, the
+        original behavior).
+
+        Set this when a basemap is in the scene. Extruding from sea level
+        lifts everything as far above the flat basemap as the land is above
+        the ocean, and with the camera tilted to pitch `p` a feature `h`
+        meters up appears displaced from its own basemap position by
+        `h * tan(p)` — at pitch 75 over terrain 345 m up, roughly 1.3 km.
+        Referencing the scene to the ground under it removes that term,
+        leaving only the relief the terrain is meant to show.
+
+        Ground elevation is clamped at z=0 afterward, so nothing sinks
+        below a flat basemap and out of sight even if the datum is set
+        above part of the extent. Only the *ground* is clamped; value
+        height and `stack_on` offsets are added on top of the clamped
+        ground and are unaffected.
+
+        Compute it once with `viz.elevation.get_elevation_datum` and pass
+        the same value to every layer of the scene — parcels, buildings,
+        boundaries, basemap. A datum that differs between layers slides
+        them vertically against each other, exactly like a mismatched
+        `terrain_exaggeration`.
     stack_on : TerrainLayer, optional
         A previously built layer to stack this one on top of: each row here
         is matched to whichever `stack_on.gdf` row it overlaps with the
@@ -595,10 +620,19 @@ def show_value_terrain_layer(
         drape_geometry, mean_elevation = elevation.drape_parcel_elevation(
             gdf, elevation_recipe, silent=silent
         )
-        gdf['geometry'] = elevation.scale_z(
-            drape_geometry.to_numpy(), terrain_exaggeration
+        # Reference to the datum, clamp at the ground plane, then
+        # exaggerate -- in that order. Exaggerating first would scale
+        # the datum offset too, and clamping last would let a negative
+        # Z survive multiplied.
+        referenced = elevation.add_z_offset(
+            drape_geometry.to_numpy(), np.full(len(gdf), -float(elevation_datum))
         )
-        base_z = base_z + mean_elevation * terrain_exaggeration
+        gdf['geometry'] = elevation.scale_z(
+            elevation.clamp_z(referenced, lower=0.0), terrain_exaggeration
+        )
+        base_z = base_z + (
+            np.maximum(mean_elevation - elevation_datum, 0.0) * terrain_exaggeration
+        )
         draped = True
     elif elevation_recipe is not None:
         building_elev = elevation.get_building_elevation(
@@ -608,10 +642,20 @@ def show_value_terrain_layer(
         if n_missing_building_elev and not silent:
             warnings.warn(
                 f'Setting {n_missing_building_elev} row(s) with missing DEM elevation '
-                "(from 'elevation_recipe') to 0 (sea level).",
+                "(from 'elevation_recipe') to the elevation_datum.",
                 stacklevel=2,
             )
-        contribution = np.nan_to_num(building_elev, nan=0.0) * terrain_exaggeration
+        # nan fills to the datum, not to 0: with a datum set, "no DEM
+        # here" should put the row on the reference plane, not drop it
+        # to sea level far below the rest of the scene.
+        contribution = (
+            np.maximum(
+                np.nan_to_num(building_elev, nan=float(elevation_datum))
+                - elevation_datum,
+                0.0,
+            )
+            * terrain_exaggeration
+        )
         base_z = base_z + contribution
         extra_z = extra_z + contribution
 

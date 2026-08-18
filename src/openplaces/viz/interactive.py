@@ -334,55 +334,11 @@ def _elevation_module():
     return elevation_module
 
 
-def _dem_admin_ids(gdf: gpd.GeoDataFrame, elevation_recipe) -> pd.Series:
-    """Each row's admin id truncated to the DEM recipe's own save level.
-
-    `elevation.drape_parcel_elevation` groups by an admin-id column matching
-    the DEM's per-admin-unit tiling, because that is how it resolves which
-    raster covers a row. An admin-boundary frame from `get_admin` is keyed
-    by its own admin id at whatever level was requested, so the mapping is a
-    truncation: a level-4 town boundary is covered by its level-3 county's
-    DEM. Read the level off the recipe rather than assuming 3, so this keeps
-    working if the DEM is ever re-tiled at a different granularity.
-    """
-    from openplaces.core.schema import AdminId
-    from openplaces.recipe import get_recipe_by_id, get_save_admin_level
-
-    dem_recipe = (
-        get_recipe_by_id(elevation_recipe)
-        if isinstance(elevation_recipe, str)
-        else elevation_recipe
-    )
-    dem_level = get_save_admin_level(dem_recipe)
-
-    try:
-        ids = [AdminId(*str(v).split('-')) for v in gdf.index]
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "Cannot drape these boundaries: elevation_recipe needs each row's "
-            'admin id to find the DEM covering it, and this frame is not '
-            'indexed by admin id. Pass a `gdf` from `get_admin`, or omit '
-            'elevation_recipe.',
-        ) from exc
-
-    truncated = []
-    for admin, original in zip(ids, gdf.index, strict=True):
-        parent = admin.truncate_to_level(dem_level)
-        if parent is None:
-            raise ValueError(
-                f'Admin unit {original!r} is coarser than the level-{dem_level} '
-                'tiling the DEM recipe is saved at, so no single DEM covers '
-                'it. Drape a '
-                'finer admin level, or omit elevation_recipe.',
-            )
-        truncated.append(str(parent))
-    return pd.Series(truncated, index=gdf.index)
-
-
 def _drape_boundary(
     gdf: gpd.GeoDataFrame,
     elevation_recipe,
     terrain_exaggeration: float,
+    elevation_datum: float = 0.0,
 ) -> gpd.GeoDataFrame:
     """Set each boundary vertex's Z from the DEM, exaggerated to match."""
     if elevation_recipe is None:
@@ -391,7 +347,7 @@ def _drape_boundary(
     elevation_module = _elevation_module()
     draping = gdf.copy()
     column = '_dem_admin_id'
-    draping[column] = _dem_admin_ids(draping, elevation_recipe)
+    draping[column] = elevation_module.resolve_dem_admin_ids(draping, elevation_recipe)
 
     # cache=False is required, not an optimization. The elevation cache
     # is
@@ -410,8 +366,16 @@ def _drape_boundary(
         draping, elevation_recipe, admin_id_column=column, cache=False
     )
     draping = draping.drop(columns=column)
+    # Reference, clamp, then exaggerate -- the same order
+    # `viz.terrain.show_value_terrain_layer` uses, so a boundary and the
+    # terrain it outlines land on the same surface.
+    referenced = elevation_module.add_z_offset(
+        draped_geometry.to_numpy(), np.full(len(draping), -float(elevation_datum))
+    )
     draping.geometry = gpd.GeoSeries(
-        elevation_module.scale_z(draped_geometry.to_numpy(), terrain_exaggeration),
+        elevation_module.scale_z(
+            elevation_module.clamp_z(referenced, lower=0.0), terrain_exaggeration
+        ),
         index=draping.index,
         crs=gdf.crs,
     )
@@ -428,6 +392,7 @@ def get_terrain_basemap_layer(
     provider: str = 'satellite',
     resolution: float = 20.0,
     terrain_exaggeration: float = 1.0,
+    elevation_datum: float = 0.0,
     opacity: float = 1.0,
     max_cells: int = 600_000,
     clip: bool = True,
@@ -486,6 +451,12 @@ def get_terrain_basemap_layer(
         `viz.terrain.show_value_terrain_layer` and
         `get_admin_boundary_layer`, or the basemap will sit at a different
         vertical scale than the scene it is meant to align.
+    elevation_datum : float
+        Ground elevation in meters to treat as z=0, subtracted before
+        `terrain_exaggeration`. Defaults to 0 (sea level). Must match the
+        value passed to every other layer in the scene -- compute it once
+        with `viz.elevation.get_elevation_datum`. Ground is clamped at z=0
+        afterward so nothing sinks under a flat basemap.
     opacity : float
         Fill opacity in [0, 1].
     max_cells : int
@@ -546,7 +517,10 @@ def get_terrain_basemap_layer(
     corner_z = _sample_corner_elevation(
         grid_x, grid_y, metric_crs, elevation_recipe, gdf, sample_raster_at_points
     )
-    corner_z = _fill_missing_elevation(corner_z) * terrain_exaggeration
+    corner_z = (
+        np.maximum(_fill_missing_elevation(corner_z) - elevation_datum, 0.0)
+        * terrain_exaggeration
+    )
 
     center_x = (edge_x[:-1] + edge_x[1:]) / 2
     center_y = (edge_y[:-1] + edge_y[1:]) / 2
@@ -604,7 +578,7 @@ def _sample_corner_elevation(
     corners = gpd.GeoSeries(
         gpd.points_from_xy(grid_x.ravel(), grid_y.ravel()), crs=metric_crs
     )
-    dem_ids = _dem_admin_ids(gdf, elevation_recipe).unique()
+    dem_ids = _elevation_module().resolve_dem_admin_ids(gdf, elevation_recipe).unique()
 
     z = np.full(corners.shape[0], np.nan)
     for dem_id in dem_ids:
@@ -735,6 +709,7 @@ def get_admin_boundary_layer(
     mode: str = 'floating_line',
     elevation_recipe: str | dict | None = None,
     terrain_exaggeration: float = 1.0,
+    elevation_datum: float = 0.0,
 ) -> PathLayer | PolygonLayer:
     """Get a lonboard layer representing administrative boundary outlines.
 
@@ -797,6 +772,12 @@ def get_admin_boundary_layer(
         the value used there, or the boundary will sit at a different
         vertical scale than the terrain it outlines. Ignored without
         `elevation_recipe`. Defaults to 1 (true-to-scale).
+    elevation_datum : float
+        Ground elevation in meters to treat as z=0, subtracted before
+        `terrain_exaggeration`. Defaults to 0 (sea level). Must match the
+        value passed to every other layer in the scene -- compute it once
+        with `viz.elevation.get_elevation_datum`. Ground is clamped at z=0
+        afterward so nothing sinks under a flat basemap.
 
     Returns
     -------
@@ -822,7 +803,7 @@ def get_admin_boundary_layer(
         # raises a constant-height wall from wherever the ground is, so
         # the fence follows the terrain instead of being sliced by it.
         boundary_gdf = _drape_boundary(
-            boundary_gdf, elevation_recipe, terrain_exaggeration
+            boundary_gdf, elevation_recipe, terrain_exaggeration, elevation_datum
         )
 
         return PolygonLayer.from_geopandas(
