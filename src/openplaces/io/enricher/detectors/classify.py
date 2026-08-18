@@ -21,7 +21,6 @@ from openplaces.io.enricher.detectors.checkpoint import PredictionCheckpoint
 from openplaces.io.enricher.detectors.device import get_device
 from openplaces.io.scrapers.types import ImageSet
 
-_IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff')
 _IMAGE_SIZE = 384
 _IMAGE_MEAN = (0.485, 0.456, 0.406)
 _IMAGE_STD = (0.229, 0.224, 0.225)
@@ -123,17 +122,14 @@ def predict_classes(
             checkpoint.add(key, value)
 
     def _load(item):
-        """Read and prepare one image off the inference thread."""
+        """Decode and prepare one in-memory image off the inference thread."""
         key, image = item
-        image_path = Path(images.dir_path) / image.filename
-        if (
-            not image_path.is_file()
-            or image_path.suffix.lower() not in _IMAGE_EXTENSIONS
-        ):
-            return key, None, False
         try:
-            with Image.open(image_path) as image_file:
+            with image.open() as image_file:
                 return key, _prepare_image(image_file.convert('RGB'), torch), False
+        except ValueError:
+            # No payload for this asset (the fetch failed); not a decode error.
+            return key, None, False
         except Exception:
             return key, None, True
 

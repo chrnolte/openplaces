@@ -48,12 +48,11 @@ This module defines GoogleSatellite class downloading Google satellite imagery.
 import math
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
-from pathlib import Path
 
 import numpy as np
-import rasterio
 import requests
 from PIL import Image
+from rasterio.io import MemoryFile
 from rasterio.transform import from_bounds
 from requests.adapters import HTTPAdapter, Retry
 from tqdm import tqdm
@@ -90,34 +89,31 @@ class GoogleSatellite:
     def get_images(
         self,
         inventory: AssetInventory,
-        save_directory: str,
         entity_type: str = 'entity',
         download_year: int | None = None,
-        redownload: bool = False,
     ) -> ImageSet:
         """
-        Get satellite images of buildings given footprints in AssetInventory.
+        Fetch satellite images for the assets in an inventory, in memory.
+
+        Nothing is written to disk. Google's Static API policy prohibits
+        "pre-fetching, indexing, storing, or caching" of content, so each
+        image is held as encoded bytes only until the caller has run
+        inference over it.
 
         Parameters
         ----------
         inventory
             AssetInventory for which the images will be retrieved.
-        save_directory
-            Path to the folder where the retrieved images will be saved.
         entity_type
             Type of entity being photographed (e.g. 'footprint', 'parcel').
-            Used as a filename prefix.
+            Used only to label images for logging.
         download_year
-            Year the images are fetched; appended as a filename suffix.
-        redownload
-            Missing images are always downloaded. When True, images that
-            already exist on disk are re-downloaded (overwritten) rather than
-            reused.
+            Year the images are fetched; recorded as image metadata.
 
         Returns
         -------
         ImageSet
-            An ImageSet for the assets in the inventory.
+            An ImageSet whose images carry in-memory payloads.
 
         Raises
         ------
@@ -127,134 +123,68 @@ class GoogleSatellite:
         if not isinstance(inventory, AssetInventory):
             raise ValueError('Invalid AssetInventory provided.')
 
-        dir_path = Path(save_directory)
-        dir_path.mkdir(parents=True, exist_ok=True)
-
         image_set = ImageSet()
-        image_set.dir_path = str(dir_path)
-
-        asset_footprints = []
-        asset_keys = []
-        for key, asset in inventory.inventory.items():
-            asset_footprints.append(asset.coordinates)
-            asset_keys.append(key)
-
-        satellite_images, image_set.counts = self._download_images(
-            asset_footprints,
-            asset_keys,
-            dir_path,
-            entity_type=entity_type,
-            download_year=download_year,
-            redownload=redownload,
-        )
-
-        for index, image_path in enumerate(satellite_images):
-            if image_path.exists():
-                img = ScrapedImage(image_path.name)
-                image_set.add_image(asset_keys[index], img)
-            # Missing images are recorded in the image metadata by the caller.
-
-        return image_set
-
-    def _download_images(
-        self,
-        footprints: list[list[tuple[float, float]]],
-        keys: list,
-        save_dir: Path,
-        entity_type: str = 'entity',
-        download_year: int | None = None,
-        redownload: bool = False,
-    ) -> list[Path]:
-        """
-        Download satellite images for a list of footprints.
-
-        Parameters
-        ----------
-        footprints
-            List of asset footprints.
-        keys
-            Entity IDs corresponding to each footprint; used as filenames.
-        save_dir
-            Directory to save images.
-        entity_type
-            Entity type prefix for filenames (e.g. 'footprint').
-        download_year
-            Year suffix for filenames.
-
-        Returns
-        -------
-        tuple[list[Path], dict]
-            Paths to the images (cached and downloaded alike) and a tally of
-            how they were obtained (``cached``/``downloaded``/``failed``).
-        """
-        satellite_image_paths = []
-        inps = []
+        asset_keys = list(inventory.inventory)
+        footprints = [inventory.inventory[key].coordinates for key in asset_keys]
+        counts = {'fetched': 0, 'failed': 0}
 
         year_suffix = f'_{download_year}' if download_year else ''
-        for footprint, key in zip(footprints, keys):
-            entity_id_safe = str(key).replace('+', '_')
-            image_path = save_dir / f'{entity_type}_{entity_id_safe}{year_suffix}.tif'
-            satellite_image_paths.append(image_path)
-            inps.append((footprint, image_path))
-
-        # Only images actually missing (or force-redownloaded) hit the network;
-        # a fully cached inventory produces no progress bar at all.
-        pending = [
-            (footprint, path)
-            for footprint, path in inps
-            if redownload or not path.exists()
-        ]
-        counts = {'cached': len(inps) - len(pending), 'downloaded': 0, 'failed': 0}
-        if not pending:
-            return satellite_image_paths, counts
-
-        with tqdm(total=len(pending), desc='Obtaining satellite imagery') as pbar:
+        with tqdm(total=len(asset_keys), desc='Obtaining satellite imagery') as pbar:
             with ThreadPoolExecutor() as executor:
                 futures = {
-                    executor.submit(
-                        self._download_satellite_image, footprint, path, redownload
-                    ): footprint
-                    for footprint, path in pending
+                    executor.submit(self.fetch_image_bytes, footprint): key
+                    for footprint, key in zip(footprints, asset_keys)
                 }
-
                 for future in as_completed(futures):
-                    footprint = futures[future]
+                    key = futures[future]
                     pbar.update(n=1)
                     try:
-                        future.result()
+                        payload = future.result()
                     except Exception as exc:
                         counts['failed'] += 1
-                        tqdm.write(
-                            f'Error downloading image for footprint {footprint}: {exc}'
-                        )
-                    else:
-                        counts['downloaded'] += 1
+                        tqdm.write(f'Error fetching image for {key}: {exc}')
+                        continue
+                    counts['fetched'] += 1
+                    entity_id_safe = str(key).replace('+', '_')
+                    image_set.add_image(
+                        key,
+                        ScrapedImage(
+                            f'{entity_type}_{entity_id_safe}{year_suffix}.tif',
+                            payload=payload,
+                            metadata={'download_year': download_year},
+                        ),
+                    )
 
-        return satellite_image_paths, counts
+        image_set.counts = counts
+        return image_set
 
-    def _download_satellite_image(
-        self,
-        footprint: list[tuple[float, float]],
-        impath: Path,
-        redownload: bool = False,
-    ):
+    def fetch_image_bytes(self, footprint: list[tuple[float, float]]) -> bytes:
+        """Fetch one footprint's satellite image as encoded bytes.
+
+        The encoded GeoTIFF is built in a memory buffer and returned; it is
+        never written to a durable location.
         """
-        Download and process the satellite image for a single footprint.
+        arr, transform = self._render_footprint(footprint)
+        with MemoryFile() as memfile:
+            with memfile.open(
+                driver='GTiff',
+                height=RESIZED_IMAGE_SIZE[1],
+                width=RESIZED_IMAGE_SIZE[0],
+                count=3,
+                dtype='uint8',
+                crs='EPSG:4326',
+                transform=transform,
+                compress='deflate',
+            ) as dst:
+                dst.write(arr.transpose(2, 0, 1))
+            return memfile.read()
 
-        Parameters
-        ----------
-        footprint
-            Asset footprint coordinates.
-        impath
-            Path to save the processed image.
-        redownload
-            Missing images are always fetched. When True, an image that
-            already exists on disk is re-fetched and overwritten instead of
-            being reused.
+    def _render_footprint(self, footprint: list[tuple[float, float]]):
+        """Fetch, mosaic, crop and resize tiles for one footprint.
+
+        Returns the RGB array and its affine transform without touching the
+        filesystem.
         """
-        if impath.exists() and not redownload:
-            return
-
         bbox_buffered = self._buffer_footprint(footprint)
         x_list, y_list = self._determine_tile_coords(bbox_buffered)
         tiles, offsets, imbnds = self._fetch_tiles(x_list, y_list)
@@ -280,7 +210,6 @@ class GoogleSatellite:
         cropped_image = combined_image.crop((left, top, right, bottom))
 
         resized_image = cropped_image.resize(RESIZED_IMAGE_SIZE)
-
         arr = np.array(resized_image)
         transform = from_bounds(
             bbox_west,
@@ -290,19 +219,7 @@ class GoogleSatellite:
             RESIZED_IMAGE_SIZE[0],
             RESIZED_IMAGE_SIZE[1],
         )
-        with rasterio.open(
-            impath,
-            'w',
-            driver='GTiff',
-            height=RESIZED_IMAGE_SIZE[1],
-            width=RESIZED_IMAGE_SIZE[0],
-            count=3,
-            dtype='uint8',
-            crs='EPSG:4326',
-            transform=transform,
-            compress='deflate',
-        ) as dst:
-            dst.write(arr.transpose(2, 0, 1))
+        return arr, transform
 
     def _buffer_footprint(
         self, footprint: list[tuple[float, float]]

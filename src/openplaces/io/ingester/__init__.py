@@ -358,40 +358,17 @@ class Ingester:
 
         try:
             if self.recipe.get('image_scraper'):
-                from .image_ingester import fetch_images_by_admin
-
-                # Expand requested admin IDs to the recipe's save level and
-                # skip admin units whose metadata parquet already exists
-                # (unless reprocess), mirroring `_resolve_admin_ids`.
-                save_level = get_save_admin_level(self.recipe)
-                admin_ids_at_save_level = list(
-                    dict.fromkeys(
-                        str(save_admin_id)
-                        for requested in self.admin_ids
-                        for save_admin_id in (
-                            [AdminId(*requested.levels[:save_level])]
-                            if requested.get_level() >= save_level
-                            else get_admin(requested, save_level).index
-                        )
+                # Imagery has no ingest stage. Google's Static API policy
+                # prohibits storing or caching content, so images are fetched
+                # in memory by the enrichment step that consumes them (see
+                # io.ingester.image_ingester.fetch_images_in_memory) and are
+                # never written to disk. An image recipe therefore carries
+                # camera configuration only and produces no output.
+                if self.verbose:
+                    print(
+                        f'{self.recipe_id}: imagery is fetched on the fly '
+                        'during enrichment; nothing to ingest.'
                     )
-                )
-                self.admin_ids_to_process = [
-                    admin_id
-                    for admin_id in admin_ids_at_save_level
-                    if reprocess or not get_output_path(self.recipe, admin_id).exists()
-                ]
-                if not self.admin_ids_to_process:
-                    if self.verbose:
-                        print('All output files found. Processing skipped.\n')
-                    return
-                fetch_images_by_admin(
-                    self,
-                    n_sample=self.recipe.get('n_sample'),
-                    target_recipe_id=(
-                        target_recipe_id or self.recipe.get('entity_recipe')
-                    ),
-                    redownload=redownload,
-                )
                 return
 
             self._resolve_admin_ids(reprocess)

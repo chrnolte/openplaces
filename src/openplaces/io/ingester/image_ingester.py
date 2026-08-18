@@ -10,17 +10,14 @@ is set.  Images are saved to the external data directory; a metadata parquet
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 from types import SimpleNamespace
 
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import MultiPolygon, Point, Polygon
 
-from openplaces.core.schema import AdminId
-from openplaces.io.readers import get_admin, get_admin_ids, get_entities
 from openplaces.io.scrapers.types import AssetInventory, ImageSet
-from openplaces.recipe import get_output_path, get_recipe_by_id, get_save_admin_level
+from openplaces.recipe import get_recipe_by_id
 
 # Substrings marking a credential field as secret; such fields are never printed.
 _SECRET_MARKERS = ('key', 'secret', 'token', 'password', 'signing')
@@ -61,189 +58,64 @@ def _safe_credential_summary(credentials: dict) -> str:
     return ', '.join(f'{key}={value}' for key, value in shown.items())
 
 
-def fetch_images_by_admin(
-    ingester,
-    n_sample: int | None = None,
-    target_recipe_id: str | None = None,
-    redownload: bool = False,
-) -> None:
-    """Fetch Google images per building and write metadata parquets per admin unit.
+def fetch_images_in_memory(
+    image_recipe_id: str,
+    entities,
+    verbose: bool = False,
+) -> ImageSet:
+    """Fetch imagery for *entities* and return it in memory.
 
-    Called by `Ingester._ingest_download_partition` when
-    ``recipe['image_scraper']`` is set.  For each admin unit in
-    ``ingester.admin_ids_to_process``:
+    Nothing is written to disk. Google's Static API policy prohibits
+    "pre-fetching, indexing, storing, or caching" of content, so openplaces
+    has no image ingest stage and keeps no image cache: enrichment calls this
+    for each run, consumes the pixels, and lets them go.
 
-    1. Load buildings from *target_recipe_id* (falls back to
-       ``recipe['entity_recipe']``).
-    2. Convert to `AssetInventory`.
-    3. Run the appropriate scraper (``google_streetview`` or
-       ``google_satellite``).
-    4. Save images to the external directory under
-       ``{admin_path}/{entity_path}/images/``.
-    5. Write a metadata parquet (entity_id, image_path, camera fields) to
-       the standard external path.
+    Panorama and place ids are the one thing the policy permits storing
+    indefinitely; they travel on each image's ``metadata`` so a
+    classification stays explainable after the pixels are gone.
 
     Parameters
     ----------
-    ingester
-        `openplaces.io.ingester.Ingester` instance with resolved
-        ``admin_ids_to_process`` and ``recipe``.
-    n_sample
-        If set, cap the number of buildings processed per admin unit.
-        Useful for test runs.
-    target_recipe_id
-        Recipe ID of the harmonized entity to photograph (e.g.
-        ``'US_building-nsi-2022'`` for NSI point buildings,
-        ``'US_footprint-spine-2026'`` for polygon footprints).  When
-        ``None``, falls back to ``recipe['entity_recipe']``.
-    redownload
-        Missing images are always fetched (first ingest downloads imagery).
-        When ``True``, images that already exist on disk are re-downloaded
-        and overwritten rather than reused.
-    """
-    recipe = ingester.recipe
-    scraper_name = recipe['image_scraper']
-    scraper = _build_scraper(scraper_name, recipe, verbose=ingester.verbose)
-
-    if not target_recipe_id:
-        raise ValueError(
-            f"Image recipe {recipe.get('entity')} is missing 'entity_recipe' "
-            f'and no target_recipe_id was passed.'
-        )
-    entity_recipe = get_recipe_by_id(target_recipe_id)
-    entity_obj = entity_recipe.get('entity')
-    entity_type = entity_obj.entity_type if entity_obj else 'entity'
-    fp_save_level = get_save_admin_level(entity_recipe)
-
-    for admin_id_raw in ingester.admin_ids_to_process:
-        admin_id = (
-            AdminId(admin_id_raw) if isinstance(admin_id_raw, str) else admin_id_raw
-        )
-        if ingester.verbose:
-            print(f'Checking {scraper_name} images for {admin_id}...')
-
-        # Load footprints at the footprint recipe's save level, then clip
-        fp_admin_id = AdminId(*admin_id.levels[:fp_save_level])
-        footprints_all = get_entities(entity_recipe, fp_admin_id, geom=True)
-        if footprints_all is None or footprints_all.empty:
-            if ingester.verbose:
-                print(f'  No footprints found for {fp_admin_id}, skipping.')
-            continue
-
-        if fp_admin_id != admin_id:
-            boundary = get_admin(admin_id, geom=True).to_crs(footprints_all.crs)
-            footprints = footprints_all[
-                footprints_all.geometry.within(boundary.union_all())
-            ].copy()
-        else:
-            footprints = footprints_all
-
-        if footprints is None or footprints.empty:
-            if ingester.verbose:
-                print(f'  No footprints found for {admin_id}, skipping.')
-            continue
-
-        n_before = len(footprints)
-        footprints = footprints[~footprints.geometry.to_wkt().duplicated(keep='first')]
-        if ingester.verbose and len(footprints) < n_before:
-            print(f'  Removed {n_before - len(footprints):,d} duplicate geometries.')
-
-        if n_sample is not None:
-            n_total = len(footprints)
-            footprints = footprints.head(n_sample)
-            if ingester.verbose:
-                print(f'  Sampling {n_sample} of {n_total:,} footprints.')
-
-        if (
-            ingester.verbose
-            and scraper_name == 'google_streetview'
-            and 'n_stories' in footprints.columns
-        ):
-            n_with = footprints['n_stories'].notna().sum()
-            print(f'  n_stories: {n_with:,d} of {len(footprints):,d} buildings')
-
-        inventory = _gdf_to_asset_inventory(footprints)
-
-        output_path = get_output_path(ingester.recipe, admin_id)
-        image_dir = output_path.parent
-        image_dir.mkdir(parents=True, exist_ok=True)
-
-        today = date.today()
-        image_set = scraper.get_images(
-            inventory,
-            str(image_dir),
-            entity_type=entity_type,
-            download_year=today.year,
-            redownload=redownload,
-        )
-
-        zoom_level = recipe.get('zoom_level')
-        download_date = today.isoformat()
-        meta_df = _image_set_to_df(
-            image_set, footprints, scraper_name, zoom_level, download_date
-        )
-        meta_df.to_parquet(output_path)
-
-        if ingester.verbose:
-            if image_set.counts:
-                tally = ', '.join(
-                    f'{count:,d} {label}'
-                    for label, count in image_set.counts.items()
-                    if count
-                )
-                print(f'  Images: {tally or "none"}')
-            n_missing = int(meta_df['image_path'].isna().sum())
-            if n_missing:
-                print(
-                    f'  No imagery found for {n_missing:,d} of '
-                    f'{len(meta_df):,d} buildings.'
-                )
-            print(f'  Saved metadata → {output_path}')
-
-
-def load_image_metadata(image_recipe_id: str, admin_id) -> pd.DataFrame | None:
-    """Load persisted image metadata for an admin unit, indexed by entity id.
-
-    Reads the metadata parquet(s) written by `fetch_images_by_admin` for the
-    image recipe `image_recipe_id`. When the image recipe saves at a finer admin
-    level than `admin_id` (e.g. images saved per town but `admin_id` is a
-    county), the per-child frames are concatenated. Tolerant of missing files:
-    children without imagery are skipped and ``None`` is returned when no
-    metadata exists at all (e.g. a scraper whose ingest was skipped).
-
-    Parameters
-    ----------
-    image_recipe_id : str
-        Recipe ID of the image entity (e.g. ``'image-googlesatellite-z20'``).
-    admin_id : str or AdminId
-        Admin unit to load metadata for.
+    image_recipe_id
+        Recipe describing the imagery source and its camera parameters.
+    entities
+        GeoDataFrame of spine entities to photograph. Point geometries are
+        converted to a small proxy polygon so a heading can be derived.
+    verbose
+        Report the fetch tally.
 
     Returns
     -------
-    pandas.DataFrame or None
-        Metadata indexed by entity (footprint) id with an ``image_path`` column
-        (plus ``image_found`` and camera fields), or ``None`` if no metadata
-        files are found.
+    ImageSet
+        Images carrying in-memory payloads, keyed by entity id.
+
+    Raises
+    ------
+    ImageScraperError
+        If the scraper cannot be initialized (e.g. missing credentials).
     """
-    admin_id = AdminId(admin_id) if isinstance(admin_id, str) else admin_id
-    image_recipe = get_recipe_by_id(image_recipe_id)
-    save_level = get_save_admin_level(image_recipe)
+    recipe = get_recipe_by_id(image_recipe_id)
+    scraper_name = recipe['image_scraper']
+    scraper = _build_scraper(scraper_name, recipe, verbose=verbose)
 
-    if save_level > admin_id.get_level():
-        child_admin_ids = get_admin_ids(save_level, admin_id)
-    else:
-        child_admin_ids = [admin_id]
+    if entities is None or len(entities) == 0:
+        return ImageSet()
 
-    frames = []
-    for child_admin_id in child_admin_ids:
-        try:
-            frames.append(get_entities(image_recipe, child_admin_id))
-        except FileNotFoundError:
-            continue
+    entity_type = recipe.get('entity_type', 'entity')
+    inventory = _gdf_to_asset_inventory(entities)
+    image_set = scraper.get_images(
+        inventory,
+        entity_type=entity_type,
+        download_year=date.today().year,
+    )
 
-    if not frames:
-        return None
-    return pd.concat(frames)
+    if verbose and image_set.counts:
+        tally = ', '.join(
+            f'{count:,d} {label}' for label, count in image_set.counts.items() if count
+        )
+        print(f'  Images fetched in memory: {tally or "none"}')
+
+    return image_set
 
 
 def _build_scraper(scraper_name: str, recipe: dict, verbose: bool = False):
@@ -398,70 +270,3 @@ def _gdf_to_asset_inventory(gdf: gpd.GeoDataFrame) -> AssetInventory:
         inventory[idx] = SimpleNamespace(coordinates=coords, n_stories=n_stories)
 
     return AssetInventory(inventory=inventory)
-
-
-def _image_set_to_df(
-    image_set: ImageSet,
-    footprints: gpd.GeoDataFrame,
-    scraper_name: str,
-    zoom_level: int | None = None,
-    download_date: str | None = None,
-) -> pd.DataFrame:
-    """Flatten an ImageSet into a metadata DataFrame.
-
-    Parameters
-    ----------
-    image_set
-        Result from ``scraper.get_images()``.
-    footprints
-        Original footprints GeoDataFrame (used to align index).
-    scraper_name
-        Scraper identifier; determines which metadata columns to expand.
-    zoom_level
-        Tile zoom level used during download (satellite only).
-    download_date
-        ISO-format date string (YYYY-MM-DD) when the images were fetched.
-
-    Returns
-    -------
-    DataFrame
-        One row per queried entity (index matches the entity IDs).  Columns
-        include ``image_path`` (null where no imagery was found),
-        ``image_found``, ``download_date``, optionally ``zoom_level``, and
-        for street view, camera metadata (``cam_lat``, ``cam_lon``,
-        ``cam_elev``, ``cam_heading``, ``pano_tilt``, ``pano_fov``,
-        ``pano_roll``).
-    """
-    rows = {}
-    image_dir = Path(image_set.dir_path)
-
-    for key, image in image_set.images.items():
-        image_path = str(image_dir / image.filename)
-        row: dict = {'image_path': image_path}
-        if zoom_level is not None:
-            row['zoom_level'] = zoom_level
-        if download_date is not None:
-            row['download_date'] = download_date
-
-        if scraper_name == 'google_streetview' and image.metadata:
-            meta = image.metadata
-            cam_latlon = meta.get('camLatLon') or (None, None)
-            row['cam_lat'] = cam_latlon[0] if cam_latlon else None
-            row['cam_lon'] = cam_latlon[1] if cam_latlon else None
-            row['cam_elev'] = meta.get('camElev')
-            row['cam_heading'] = meta.get('camHeading')
-            row['cam_pitch'] = meta.get('camPitch')
-            row['pano_tilt'] = meta.get('panoTilt')
-            row['pano_fov'] = meta.get('panoFOV')
-            row['pano_roll'] = meta.get('panoRoll')
-
-        rows[key] = row
-
-    # Keep a row for every queried entity so misses are tracked in the
-    # metadata parquet (null image_path); the enricher skips those rows.
-    df = pd.DataFrame.from_dict(rows, orient='index').reindex(footprints.index)
-    if 'image_path' not in df.columns:
-        df['image_path'] = None
-    df['image_found'] = df['image_path'].notna()
-    df.index.name = footprints.index.name
-    return df

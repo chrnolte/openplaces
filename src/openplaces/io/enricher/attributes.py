@@ -4,8 +4,6 @@ Registered enrichment steps for entity attribute evidence.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 
 from openplaces.core.schema import AdminId
@@ -15,12 +13,10 @@ from openplaces.io.enricher.detectors.checkpoint import (
     local_checkpoint_path,
     prune_local_checkpoints,
 )
-from openplaces.io.readers import get_admin_ids, get_entities
-from openplaces.io.scrapers.types import Image, ImageSet
+from openplaces.io.readers import get_admin_ids
+from openplaces.io.scrapers.types import ImageSet
 from openplaces.recipe import (
     get_output_path,
-    get_recipe_by_id,
-    get_save_admin_level,
 )
 
 
@@ -44,43 +40,29 @@ def _image_admin_ids(state: EnrichState, image_save_level: int) -> list[str]:
 
 
 def _build_image_set(state: EnrichState, image_recipe: str | None) -> ImageSet:
-    """Build an ImageSet from persisted image metadata for the admin unit."""
+    """Fetch imagery for this admin unit's spine entities, in memory.
+
+    Imagery is fetched live for each enrichment run and never persisted.
+    Google's Static API policy prohibits "pre-fetching, indexing, storing, or
+    caching" of content, so there is no image ingest stage and no cache to
+    reuse: the pixels exist only inside this call and the inference that
+    follows it. Panorama and place ids, which the policy does permit storing,
+    travel with each image as metadata so provenance survives.
+
+    The cost of that is real: every enrichment pass re-fetches and re-pays
+    for imagery, so iterating on a classifier is billed per iteration.
+    """
     image_recipe_id = image_recipe or state.recipe.get('image_recipe')
     if not image_recipe_id:
         raise ValueError("Image enrichment steps require 'image_recipe'.")
 
-    image_recipe_dict = get_recipe_by_id(image_recipe_id)
-    image_save_level = get_save_admin_level(image_recipe_dict)
-    if image_save_level > state.admin_id.get_level():
-        meta_frames = []
-        for child_admin_id in _image_admin_ids(state, image_save_level):
-            try:
-                meta_frame = get_entities(image_recipe_dict, child_admin_id)
-            except FileNotFoundError:
-                continue
-            if state.verbose:
-                print(f'  {child_admin_id}: {len(meta_frame):,} image records')
-            meta_frames.append(meta_frame)
-        meta_df = pd.concat(meta_frames) if meta_frames else None
-    else:
-        try:
-            meta_df = get_entities(image_recipe_dict, state.admin_id)
-        except FileNotFoundError:
-            meta_df = None
-    image_set = ImageSet()
-    image_set.dir_path = ''
+    from openplaces.io.ingester.image_ingester import fetch_images_in_memory
 
-    if meta_df is None or 'image_path' not in meta_df.columns:
-        return image_set
-
-    for idx, row in meta_df.iterrows():
-        image_path = row['image_path']
-        if pd.isna(image_path):
-            continue
-        # Keep the persisted path intact; ingestion owns image filename format.
-        image_set.add_image(idx, Image(str(Path(image_path))))
-
-    return image_set
+    return fetch_images_in_memory(
+        image_recipe_id,
+        state.spine,
+        verbose=state.verbose,
+    )
 
 
 def _step_checkpoint(

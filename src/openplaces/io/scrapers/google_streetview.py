@@ -55,6 +55,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import matplotlib as mpl
@@ -244,34 +245,40 @@ class GoogleStreetview:
     def get_images(
         self,
         inventory: AssetInventory,
-        save_directory: str,
         entity_type: str = 'entity',
         download_year: int | None = None,
-        redownload: bool = False,
     ) -> ImageSet:
         """
         Get street-level images of buildings from footprints in AssetInventory.
+
+        Nothing is persisted. Google's Street View Static API policy prohibits
+        "pre-fetching, indexing, storing, or caching" of content, so the
+        images are returned as in-memory payloads and no durable copy is kept.
+
+        Unlike the satellite scraper, which renders straight to a memory
+        buffer, this path writes through a scratch directory: the BRAILS++
+        pipeline it derives from produces several intermediate artifacts
+        (depth maps, masks, crops, composites) as files. The directory is
+        created per call and destroyed before this function returns, so
+        nothing survives it -- but it is a temporary file, not pure
+        in-memory, and should be described that way.
 
         Parameters
         ----------
         inventory
             AssetInventory for which the images will be retrieved.
-        save_directory
-            Path to the folder where the retrieved images will be saved.
         entity_type
             Type of entity being photographed (e.g. 'footprint', 'parcel').
-            Used as a filename prefix.
+            Used only to label images.
         download_year
-            Year the images are fetched; appended as a filename suffix.
-        redownload
-            Missing images are always fetched. When True, buildings whose
-            image already exists on disk are re-fetched (overwritten) rather
-            than reused.
+            Year the images are fetched; recorded as image metadata.
 
         Returns
         -------
         ImageSet
-            An ImageSet for the assets in the inventory.
+            An ImageSet whose images carry in-memory payloads. Camera
+            metadata, including the panorama id -- the one field the policy
+            permits storing indefinitely -- travels with each image.
 
         Raises
         ------
@@ -281,11 +288,7 @@ class GoogleStreetview:
         if not isinstance(inventory, AssetInventory):
             raise ValueError('Invalid AssetInventory provided.')
 
-        base_dir_path = Path(save_directory)
-        base_dir_path.mkdir(parents=True, exist_ok=True)
-
         image_set = ImageSet()
-        image_set.dir_path = str(base_dir_path)
 
         asset_footprints = []
         asset_keys = []
@@ -295,23 +298,28 @@ class GoogleStreetview:
             asset_keys.append(key)
             asset_n_stories.append(getattr(asset, 'n_stories', None))
 
-        street_images, metadata, image_set.counts = self._download_images(
-            asset_footprints,
-            asset_keys,
-            base_dir_path,
-            False,
-            True,
-            entity_type=entity_type,
-            download_year=download_year,
-            n_stories_list=asset_n_stories,
-            redownload=redownload,
-        )
+        with TemporaryDirectory(prefix='openplaces-streetview-') as scratch:
+            scratch_path = Path(scratch)
+            street_images, metadata, image_set.counts = self._download_images(
+                asset_footprints,
+                asset_keys,
+                scratch_path,
+                False,
+                True,
+                entity_type=entity_type,
+                download_year=download_year,
+                n_stories_list=asset_n_stories,
+                redownload=True,
+            )
 
-        image_set.dir_path = str(base_dir_path / FILE_SUBDIRECTORIES['images'])
-
-        for index, image_path in enumerate(street_images):
-            if image_path.exists():
-                img = ScrapedImage(image_path.name, metadata[image_path])
+            for index, image_path in enumerate(street_images):
+                if not image_path.exists():
+                    continue
+                img = ScrapedImage(
+                    image_path.name,
+                    payload=image_path.read_bytes(),
+                    metadata=metadata[image_path],
+                )
                 image_set.add_image(asset_keys[index], img)
 
         return image_set
