@@ -10,4 +10,5 @@ Overview
 
    why-openplaces
    concepts
+   package-state
    references

@@ -9,129 +9,34 @@ geographies appear in the theme's section navigation. Each page runs the
 that geography: its id, scope, stage, source portal link, and the prose
 ``description:`` field (parsed as reStructuredText). Recipes without a
 description get a one-line stub entry.
+
+Reading the recipe tree lives in ``catalog_data``, shared with the
+``recipe_state`` extension.
 """
 
-import ast
-import csv
 import re
-from functools import cache
 from pathlib import Path
 
-import yaml
+from catalog_data import (
+    CATEGORIES,
+    REPO_ROOT,
+    category,
+    display_name,
+    entity_label,
+    load_recipes,
+    source_block,
+)
 from docutils import nodes
 from docutils.parsers.rst import Directive
 from docutils.statemachine import StringList
 from gh_file import GITHUB_BASE
 from sphinx.application import Sphinx
-from sphinx.util import logging
 from sphinx.util.nodes import nested_parse_with_titles
 from sphinx.util.typing import ExtensionMetadata
 
-logger = logging.getLogger(__name__)
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RECIPES_DIR = REPO_ROOT / 'src' / 'openplaces' / 'recipes'
-
-
-@cache
-def _schema_constants() -> tuple[frozenset[str], frozenset[str]]:
-    """Extract ENTITY_TYPES and TOP_LEVEL_THEMES from core/schema.py.
-
-    Parsed statically with ast so the docs build does not need the
-    openplaces package installed (it is not, e.g., on ReadTheDocs).
-    """
-    schema_path = REPO_ROOT / 'src' / 'openplaces' / 'core' / 'schema.py'
-    constants: dict[str, frozenset[str]] = {}
-    for node in ast.parse(schema_path.read_text(encoding='utf-8')).body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target = node.targets[0]
-            if isinstance(target, ast.Name) and target.id in (
-                'ENTITY_TYPES',
-                'TOP_LEVEL_THEMES',
-            ):
-                constants[target.id] = frozenset(ast.literal_eval(node.value))
-    for name in ('ENTITY_TYPES', 'TOP_LEVEL_THEMES'):
-        if name not in constants:
-            logger.warning('recipe-catalog: %s not found in %s', name, schema_path)
-            constants[name] = frozenset()
-    return constants['ENTITY_TYPES'], constants['TOP_LEVEL_THEMES']
-
-
-def _category(label: str) -> str:
-    """Classify a group label as Entities, Datasets, or Other."""
-    entity_types, top_level_themes = _schema_constants()
-    if label in entity_types:
-        return 'Entities'
-    if label.split('-')[0] in top_level_themes:
-        return 'Datasets'
-    return 'Other'
-
-
-@cache
-def _admin_names(level: int) -> dict[str, str]:
-    """Map admin IDs of one level to names from the latest admin spine CSV."""
-    pattern = f'_all/admin/spine/*/admin-spine-*_admin{level}.csv'
-    spines = sorted(RECIPES_DIR.glob(pattern))
-    if not spines:
-        logger.warning('recipe-catalog: no admin%d spine CSV found', level)
-        return {}
-    with spines[-1].open(encoding='utf-8-sig', newline='') as f:
-        return {row[f'admin{level}_id']: row['name'] for row in csv.DictReader(f)}
-
-
-def _display_name(admin_id: str) -> str:
-    """Return the spine name of a geography ('Global' for global recipes)."""
-    if admin_id == 'Global':
-        return 'Global'
-    level = admin_id.count('-') + 1
-    return _admin_names(level).get(admin_id, admin_id)
-
-
-def _load_recipes() -> list[tuple[str, str, Path, dict]]:
-    """Return (admin_id, recipe_id, path, recipe) for every recipe YAML.
-
-    The admin id is derived from the path components before the first
-    '_all' escape directory ('Global' for global recipes, else e.g. 'US'
-    or 'US-MA').
-    """
-    entries = []
-    for path in sorted(RECIPES_DIR.rglob('*.yaml')):
-        try:
-            recipe = yaml.safe_load(path.read_text(encoding='utf-8'))
-        except yaml.YAMLError as exc:
-            logger.warning('recipe-catalog: cannot parse %s (%s)', path, exc)
-            continue
-        if not isinstance(recipe, dict):
-            continue
-        rel = path.relative_to(RECIPES_DIR)
-        admin_parts = []
-        for part in rel.parts[:-1]:
-            if part == '_all':
-                break
-            admin_parts.append(part)
-        admin_id = '-'.join(admin_parts) or 'Global'
-        entries.append((admin_id, path.stem, path, recipe))
-    return entries
-
-
-def _entity_label(recipe: dict) -> str:
-    entity = recipe.get('entity')
-    if isinstance(entity, dict) and entity.get('entity_type'):
-        return str(entity['entity_type'])
-    dataset = recipe.get('dataset')
-    if isinstance(dataset, dict) and dataset.get('theme'):
-        return str(dataset['theme'])
-    return ''
-
 
 def _portal_url(recipe: dict) -> str | None:
-    container = recipe.get('entity') or recipe.get('dataset')
-    if not isinstance(container, dict):
-        return None
-    source = container.get('source')
-    if isinstance(source, dict):
-        return source.get('portal_url')
-    return None
+    return source_block(recipe).get('portal_url')
 
 
 def _entry_lines(recipe_id: str, path: Path, recipe: dict) -> list[str]:
@@ -175,11 +80,11 @@ class RecipeCatalog(Directive):
     def run(self) -> list[nodes.Node]:
         code = self.arguments[0]
         grouped: dict[str, dict[str, list]] = {}
-        for entry_admin_id, recipe_id, path, recipe in _load_recipes():
+        for entry_admin_id, recipe_id, path, recipe in load_recipes():
             if entry_admin_id != code:
                 continue
-            label = _entity_label(recipe) or 'other'
-            grouped.setdefault(_category(label), {}).setdefault(label, []).append(
+            label = entity_label(recipe) or 'other'
+            grouped.setdefault(category(label), {}).setdefault(label, []).append(
                 (recipe_id, path, recipe)
             )
 
@@ -189,12 +94,12 @@ class RecipeCatalog(Directive):
             '   :depth: 2',
             '',
         ]
-        for category in ('Entities', 'Datasets', 'Other'):
-            labels = grouped.get(category)
+        for label_category in CATEGORIES:
+            labels = grouped.get(label_category)
             if not labels:
                 continue
-            lines.append(category)
-            lines.append('~' * len(category))
+            lines.append(label_category)
+            lines.append('~' * len(label_category))
             lines.append('')
             for label in sorted(labels):
                 lines.append(label)
@@ -223,7 +128,7 @@ def _doc_path(admin_id: str) -> Path:
     if admin_id == 'Global':
         return Path('global')
     parts = admin_id.split('-')
-    slugs = [_slug(_display_name('-'.join(parts[: i + 1]))) for i in range(len(parts))]
+    slugs = [_slug(display_name('-'.join(parts[: i + 1]))) for i in range(len(parts))]
     return Path(*slugs)
 
 
@@ -237,7 +142,7 @@ def _generate_geography_pages(app: Sphinx) -> None:
     toctree on the parent page. Files are only rewritten when their
     content changes, and stale pages of removed geographies are pruned.
     """
-    admin_ids = {admin_id for admin_id, *_ in _load_recipes()}
+    admin_ids = {admin_id for admin_id, *_ in load_recipes()}
     for admin_id in list(admin_ids):
         if admin_id == 'Global':
             continue
@@ -255,7 +160,7 @@ def _generate_geography_pages(app: Sphinx) -> None:
 
     keep = set()
     for admin_id in sorted(admin_ids):
-        name = _display_name(admin_id)
+        name = display_name(admin_id)
         rel = _doc_path(admin_id).with_suffix('.rst')
         keep.add(rel.as_posix())
         lines = [

@@ -714,6 +714,18 @@ def build():
     print('\n✓ Package built! Check dist/ directory')
 
 
+def catalog_state():
+    """Print an overview of the committed recipe catalog."""
+    # The summary lives with the docs extensions that render it, and
+    # deliberately reads recipes as plain YAML, so it runs without the
+    # openplaces package (or its dependencies) being importable.
+    sys.path.insert(0, str(Path(__file__).parent / 'docs' / '_ext'))
+    import catalog_data
+
+    print()
+    print(catalog_data.format_overview())
+
+
 def list_envs():
     """List all conda environments."""
     print(f'\nListing all {PKG_MGR} environments:')
@@ -732,6 +744,7 @@ def main():
         'lint': ('Check code with ruff', lint),
         'build': ('Build package for distribution', build),
         'list': ('List all conda/mamba environments', list_envs),
+        'state': ('Show the state of the recipe catalog', catalog_state),
         'qgis': ('Install QGIS processing scripts', install_qgis),
         'launcher': (
             'Install command to launch openplaces from the terminal',

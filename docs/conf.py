@@ -26,6 +26,7 @@ extensions = [
     'sphinx_design',
     'gh_file',
     'recipe_catalog',
+    'recipe_state',
     'autoapi.extension',
     'sphinx.ext.napoleon',
     'sphinxcontrib.mermaid',
