@@ -21,6 +21,7 @@ _SOURCES = {
     'curate': 'openplaces.io.curator:curate',
     'aggregate_files': 'openplaces.io.aggregate:aggregate_files',
     'aggregate_partitions': 'openplaces.io.aggregate:aggregate_partitions',
+    'export_delivery': 'openplaces.io.delivery:export_delivery',
     'cleanup': 'openplaces.io.cleanup:cleanup',
     'compact': 'openplaces.io.cleanup:compact',
     'inspect_table': 'openplaces.utils:inspect_table',

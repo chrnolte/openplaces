@@ -16,6 +16,7 @@ from openplaces.geo.ids import get_geo_ids
 from openplaces.io import (
     coerce_mixed_object_columns,
     delete_data,
+    parquet_columns,
     read_parquet,
     save_parquet,
 )
@@ -268,7 +269,13 @@ def _aggregate_to_file(
         Print a one-line summary.
     """
     input_paths = [p for _, p in inputs]
-    has_geo = input_paths[0].with_stem(input_paths[0].stem + '_geo').exists()
+    # Geometry lives either in a `_geo` sidecar (split layout) or in
+    # the file itself (combined layout, `save_to: combined: true`).
+    # Checking only for the sidecar silently read combined inputs
+    # without their geometry, writing a geometry-less aggregate.
+    has_geo = input_paths[0].with_stem(input_paths[0].stem + '_geo').exists() or (
+        'geometry' in parquet_columns(input_paths[0])
+    )
 
     try:
         dfs = []

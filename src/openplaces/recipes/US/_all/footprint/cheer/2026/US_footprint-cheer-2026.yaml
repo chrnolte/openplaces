@@ -29,6 +29,53 @@ save_to:
   # optimized for external sharing and direct GIS client consumption.
   combined: true
 
+# Region-wide delivery bundle (io/delivery.py: export_delivery). Names the
+# canonical attributes the shared file carries; every other curated column
+# ships in the `_evidence` supplement, so the bundle still holds the complete
+# curated schema. Deliberately far shorter than the full set of canonical
+# columns -- this is the compact inventory a modeller works from, not
+# everything the curate stage can produce. Each listed column's
+# `{column}_source` sidecar is appended automatically, plus geometry_source.
+share:
+  columns:
+    - admin3_id
+    - address
+    - census_tract_id
+    - census_blockgroup_id
+    - lat
+    - long
+    # Denominator of the structure_value_per_area column delivered on the
+    # points below; without it that ratio cannot be reproduced or rescaled.
+    - area_m2
+    - occupancy_type
+    - year_built
+    - n_stories
+    - structure_value
+    - construction_type
+    - foundation_type
+    - roof_shape
+    - has_garage
+  # Added to the `_point` file only, where lat/long become the point geometry
+  # and a ready-to-symbolize ratio is what the file is for.
+  point_columns:
+    - structure_value_per_area
+  # Which admin unit the region-wide bundle covers, and which units feed it.
+  # Named here rather than passed at run time so `snakemake` with no admin_ids
+  # builds and ships the whole region unattended -- and so a scoped debug run
+  # can be recognized as not covering it, and skip shipping. The 45 CHEER
+  # Eastern NC counties; NC has 100, so this cannot be derived from the
+  # admin hierarchy.
+  delivery:
+    admin_level: 2
+    admin_ids:
+      [US-NC-BA, US-NC-BT, US-NC-BL, US-NC-BS, US-NC-CD, US-NC-CE, US-NC-CW,
+       US-NC-CM, US-NC-CN, US-NC-CU, US-NC-CI, US-NC-DE, US-NC-DP, US-NC-ED,
+       US-NC-FR, US-NC-GT, US-NC-GE, US-NC-HL, US-NC-HT, US-NC-HD, US-NC-HO,
+       US-NC-HE, US-NC-JH, US-NC-JN, US-NC-LE, US-NC-LN, US-NC-MR, US-NC-NA,
+       US-NC-NE, US-NC-NO, US-NC-ON, US-NC-PM, US-NC-PU, US-NC-PD, US-NC-PQ,
+       US-NC-PI, US-NC-RB, US-NC-SP, US-NC-SC, US-NC-TY, US-NC-WK, US-NC-WR,
+       US-NC-WI, US-NC-WY, US-NC-WO]
+
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:
   class_map: occupancy-class-map.csv          # recipe-relative; pattern,match_type,occupancy_type

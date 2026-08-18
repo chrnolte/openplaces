@@ -28,9 +28,35 @@ This work is supported by NSF's Coastal Hazards, Economic Prosperity & Resilienc
 Regional release: Eastern North Carolina
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The companion notebook pools the curated per-county outputs of the 45 Eastern North Carolina counties into one shareable file, :file:`US-NC_footprint-cheer-2026.parquet`, carrying the canonical attributes and their provenance sidecars plus a matching geometry sidecar.
+The companion notebook pools the curated per-county outputs of the 45 Eastern North Carolina counties into one shareable delivery. The delivery is four files rather than one, so a consumer downloads only the part they need:
 
-The pooled export holds 2,581,592 rows. The canonical attribute and geometry pair is slightly smaller, at 2,581,559, because footprints captured by two neighboring counties' pipelines near a shared county line are deduplicated - 33 rows - keeping whichever copy has the fuller attribute coverage.
+.. list-table::
+   :header-rows: 1
+   :widths: 45 15 40
+
+   * - File
+     - Size
+     - Holds
+   * - :file:`US-NC_footprint-cheer-2026.parquet`
+     - 115 MB
+     - The canonical attributes and their provenance sidecars, as a plain table. The file to hand to a modeller.
+   * - :file:`US-NC_footprint-cheer-2026_point.parquet`
+     - 210 MB
+     - The same attributes on centroid points, plus ``structure_value_per_area``. Small enough to map directly.
+   * - :file:`US-NC_footprint-cheer-2026_geo.parquet`
+     - 372 MB
+     - The footprint polygons, nothing else. Needed only when the outline itself matters.
+   * - :file:`US-NC_footprint-cheer-2026_evidence.parquet`
+     - 317 MB
+     - Every remaining curated column: the source-attributed evidence the canonical values were reconciled from.
+
+All four carry the same ``footprint_id`` index in the same row order, so any two of them rejoin one-to-one. Which columns count as canonical is declared in the recipe's ``share:`` block; each one's ``{column}_source`` sidecar is appended automatically, and the sidecars are written into both the canonical and the evidence file so either reads on its own.
+
+The delivery holds 2,581,559 rows, against 2,581,592 across the per-county files: footprints captured by two neighboring counties' pipelines near a shared county line are deduplicated - 33 rows - keeping whichever copy has the fuller attribute coverage.
+
+The delivery is the pipeline's terminal step, not a manual one. The orchestrated workflow ends in a ``deliver`` job that pools the region and writes the four files, so a full run ships without anyone remembering to; a run scoped to a single county stops at curation instead, leaving the shipped files untouched. The region's 45 counties and the canonical column list are both declared in the recipe's ``share:`` block, so the notebook and the pipeline deliver the same thing. The written files are left read-only, and the delivery step unlocks them itself when it reships.
+
+In QGIS, open the delivery with the :guilabel:`Load joined openplaces parquet files` processing algorithm. Pick any one of the four files, choose boundary polygons or centroid points, and tick :guilabel:`Join evidence columns` when the supplement is wanted too.
 
 Coverage of the :ref:`containing-area identifiers <containing_area_ids>`, as a minimum across the 45 counties:
 
@@ -64,6 +90,8 @@ Output columns
 This recipe produces one :file:`.parquet` file per county.
 
 Each row represents a deduplicated footprint (or parcel fallback).
+
+The columns below are the full per-county schema. The regional delivery above splits them across its four files: the compact set named in the recipe's ``share:`` block goes to the canonical file and to the centroid points, the geometry to :file:`_geo`, and everything else - including the canonical attributes not on that short list, such as ``land_value``, ``n_dwellings`` and the address components - to :file:`_evidence`. Nothing is dropped; the four files together still carry every column documented here.
 
 Canonical attributes
 --------------------

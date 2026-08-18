@@ -474,6 +474,23 @@ def _categoricals_to_string(
     return df
 
 
+def parquet_columns(parquet_path: str | Path) -> list[str]:
+    """Return a parquet file's column names, reading the schema only.
+
+    Cheap enough to call per file in a loop: no row group is touched. Use it
+    to decide what to request from `read_parquet`, which errors on a column
+    the file does not have.
+
+    Parameters
+    ----------
+    parquet_path : str or Path
+        Filepath of the Parquet file.
+    """
+    import pyarrow.parquet as pq
+
+    return list(pq.ParquetFile(parquet_path).schema_arrow.names)
+
+
 def to_parquet(
     df: pd.DataFrame | gpd.GeoDataFrame,
     filepath: str | Path,
