@@ -6,14 +6,12 @@ defaults and automatic performance optimization.
 
 import textwrap
 import warnings
-from pathlib import Path
 
 import contextily as cx
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
 import requests
-from PIL import Image
 from pyproj import Transformer
 from shapely.geometry import (
     LineString,
@@ -26,7 +24,6 @@ from shapely.geometry import (
 
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import get_areas
-from openplaces.io.ingester.image_ingester import load_image_metadata
 from openplaces.io.readers import get_admin, get_entities
 from openplaces.recipe import find_admin_recipe_id, get_output_path
 
@@ -667,17 +664,18 @@ def show_building(
         return fig, ax
 
 
-def _show_building_image(ax, image_path, label):
-    """Render one downloaded image into `ax`, or a placeholder if unavailable.
+def _show_building_image(ax, image, label):
+    """Render one in-memory image into `ax`, or a placeholder if unavailable.
 
-    Reads the image with PIL (handles both the GeoTIFF satellite tiles and the
-    JPEG street-view frames). On a missing path or a path that is not a file on
-    disk, a centered "not available" placeholder is drawn instead.
+    Takes an `openplaces.io.scrapers.types.Image` fetched for this call rather
+    than a stored file: imagery is never persisted, so there is nothing on
+    disk to read. When the fetch produced nothing, a centered "not available"
+    placeholder is drawn instead.
     """
     ax.set_xticks([])
     ax.set_yticks([])
 
-    if not image_path or pd.isna(image_path) or not Path(image_path).is_file():
+    if image is None:
         ax.text(
             0.5,
             0.5,
@@ -691,7 +689,7 @@ def _show_building_image(ax, image_path, label):
             spine.set_edgecolor('#cccccc')
         return
 
-    with Image.open(image_path) as image_file:
+    with image.open() as image_file:
         ax.imshow(image_file.convert('RGB'))
     ax.set_title(label)
 
@@ -762,18 +760,25 @@ def show_building_imagery(
         **show_building_kwargs,
     )
 
+    # Imagery is fetched for this one building, for this one figure, and
+    # dropped: nothing is stored, so there is no cache to read from. This is a
+    # live API call per panel, which is billed.
+    from openplaces.io.ingester.image_ingester import (
+        ImageScraperError,
+        fetch_images_in_memory,
+    )
+
     for ax, (label, image_recipe_id) in zip(axes[1:], image_recipes.items()):
-        meta_df = load_image_metadata(image_recipe_id, admin_id)
-        if meta_df is None or entity_id not in meta_df.index:
-            image_path = None
-        else:
-            image_path = meta_df.loc[entity_id, 'image_path']
-            if isinstance(image_path, pd.Series):
-                # Defensive: duplicate index across concatenated child frames.
-                image_path = (
-                    image_path.dropna().iloc[0] if image_path.notna().any() else None
-                )
-        _show_building_image(ax, image_path, label)
+        try:
+            image_set = fetch_images_in_memory(
+                image_recipe_id, location, verbose=verbose
+            )
+        except ImageScraperError as exception:
+            if verbose:
+                print(f'{image_recipe_id}: {exception}')
+            image_set = None
+        image = None if image_set is None else image_set.images.get(entity_id)
+        _show_building_image(ax, image, label)
 
     if return_fig_axes:
         return fig, axes

@@ -238,7 +238,7 @@ Processing pipeline
   :alt: Illustration of pipeline
   :align: right
 
-The creation of the CHEER dataset proceeds through the core stages of the ``openplaces`` pipeline: **Ingest** (precursors, then entities, then images), **Harmonize**, **Enrich**, and **Curate**.
+The creation of the CHEER dataset proceeds through the core stages of the ``openplaces`` pipeline: **Ingest** (precursors, then entities), **Harmonize**, **Enrich**, and **Curate**. Imagery has no ingest stage of its own: Google's Static API policy prohibits storing or caching content, so the enrichment steps that need imagery fetch it in memory and discard it.
 
 Stage 1: ingest
 ---------------
@@ -308,24 +308,16 @@ Creates the parcel-level matching baseline by compiling land boundaries, merging
 * **Assessor records merge**: Joins county and local assessment tables by matching local ID keys and standardizing property use codes. The combined use label is built from an ordered list of source columns, ending with the structure description (``building_style``): some counties record a *land segment* type (homesite, cropland, woodland) that matches no land-use keyword at all, while their style column names the building and identifies thousands of manufactured homes the classifier would otherwise never see. Listed last, it only ever extends the assessor's own use label.
 * **Reference data enrichment**: Joins building structures (NSI), dominant building groups, and FEMA occupancy, and counts footprint morphology features (such as primary and small elongated footprints) on each parcel. It resolves colocated duplicate NSI points using the same rules (flagging low-rank twins) to exclude them from parcel aggregates.
 
-Stage 3: ingest images
-----------------------
-
-This stage fetches external imagery required for deep-learning visual classification, querying the Google API using footprint geometries from the harmonized spine:
-
-1. **Satellite imagery**: Scrapes per-building Google Satellite images at Zoom level 20 (``image-googlesatellite-z20``) via the BRAILS++ scraper.
-2. **Street View imagery**: Downloads street-level Google Street View photos (``image-googlestreetview-2026``).
-
-Stage 4: enrich
+Stage 3: enrich
 ---------------
 
 This stage produces entity-keyed evidence without selecting any canonical value. Two routes lead to the same attributes: running the models here, or reading them off an inventory that already ran them.
 
-1. **Roof shape prediction**: Runs neural network classifiers (BRAILS++) on the scraped satellite imagery to predict ``roof_shape`` (`Cetiner et al. 2025`_).
-2. **Story count detection**: Runs detectors on the Street View photos to infer ``n_stories`` (`Cetiner et al. 2025`_).
+1. **Roof shape prediction**: Fetches a Google Satellite image per building at zoom level 20 (``image-googlesatellite-z20``) and runs a BRAILS++ classifier over it to predict ``roof_shape`` (`Cetiner et al. 2025`_). The image is held in memory for the inference call and never written to disk.
+2. **Story count detection**: Fetches street-level Google Street View photos (``image-googlestreetview-2026``) to infer ``n_stories`` (`Cetiner et al. 2025`_). The EfficientDet inference engine this step needs is not bundled with ``openplaces`` (its upstream is LGPL-3.0, incompatible with this repository's licence), so the step raises unless a replacement engine is supplied. ``n_stories`` is still produced without it, from NSI and from a modeled inventory.
 3. **Modeled inventory attributes**: Matches each footprint to the reference building it overlaps most and copies that building's attributes across as ``*_building_cheer`` evidence. Matching is by intersection-over-union, not raw overlap area: the two sides are independent renderings of the same buildings, and a large reference building clipping a small footprint's corner shares more area with it than the correct small building does. Counties the reference does not cover are skipped, so this changes nothing outside North Carolina.
 
-Stage 5: curate
+Stage 4: curate
 ---------------
 
 This stage curates the spines into clean, canonical datasets.

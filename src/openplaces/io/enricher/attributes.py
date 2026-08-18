@@ -4,6 +4,8 @@ Registered enrichment steps for entity attribute evidence.
 
 from __future__ import annotations
 
+import warnings
+
 import pandas as pd
 
 from openplaces.core.schema import AdminId
@@ -56,13 +58,28 @@ def _build_image_set(state: EnrichState, image_recipe: str | None) -> ImageSet:
     if not image_recipe_id:
         raise ValueError("Image enrichment steps require 'image_recipe'.")
 
-    from openplaces.io.ingester.image_ingester import fetch_images_in_memory
-
-    return fetch_images_in_memory(
-        image_recipe_id,
-        state.spine,
-        verbose=state.verbose,
+    from openplaces.io.ingester.image_ingester import (
+        ImageScraperError,
+        fetch_images_in_memory,
     )
+
+    try:
+        return fetch_images_in_memory(
+            image_recipe_id,
+            state.spine,
+            verbose=state.verbose,
+        )
+    except ImageScraperError as exception:
+        # A scraper that cannot be initialized (e.g. Street View when its
+        # Google Cloud project lacks billing) should skip its own step, not
+        # abort a whole batch. Previously this was caught around the image
+        # ingest call; the fetch now happens here, so the guard lives here.
+        warnings.warn(
+            f'{image_recipe_id}: {exception}. Skipping this image step; '
+            'its evidence columns will be empty for this admin unit.',
+            stacklevel=2,
+        )
+        return ImageSet()
 
 
 def _step_checkpoint(

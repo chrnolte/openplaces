@@ -228,35 +228,24 @@ Recipe: ``US_parcel-spine-2026``
    *Function*: :func:`openplaces.io.harmonizer.attributes.summarize_footprint_morphology`
 
 
-Stage 3: ingest images
-----------------------
-
-This stage fetches imagery required for deep-learning visual classification:
-
-* **Satellite imagery** (``image-googlesatellite-z20.yaml``): Scrapes zoom-level 20 Google Satellite tiles using footprint geometries via BRAILS++.
-* **Street View imagery** (``image-googlestreetview-2026.yaml``): Downloads street-level Google Street View photos and depth maps.
-
-*Dependency*: Requires the completed footprint geometries from Stage 2 to calculate image scrape bounds.
-
-
-Stage 4: enrich
+Stage 3: enrich
 ---------------
 
 This stage produces entity-keyed evidence without selecting any canonical value. Two routes reach the same attributes: running the visual models here (Steps 1-2), or reading them off an inventory that already ran them (Step 3).
 
 1. **Infer roof shape**
 
-   Runs BRAILS++ deep learning classifiers on satellite imagery to predict roof shape, using visual models on the footprint spine (:ref:`Cetiner et al. 2025 <Cetiner et al. 2025>`).
+   Fetches a zoom-level 20 Google Satellite image per building (``image-googlesatellite-z20.yaml``) and runs a BRAILS++ classifier over it to predict roof shape (:ref:`Cetiner et al. 2025 <Cetiner et al. 2025>`). The image is held in memory for the inference call and never written to disk: Google's Static API policy prohibits storing or caching content.
 
-   *Dependency*: Requires satellite imagery from Stage 3.
+   *Dependency*: Requires the completed footprint geometries from Stage 2, which define the area photographed.
 
    *Function*: :func:`openplaces.io.enricher.attributes.classify_roof_shape`
 
 2. **Detect story counts**
 
-   Uses computer vision detectors on street-level photos to estimate floors of living area, predicting story height (:ref:`Cetiner et al. 2025 <Cetiner et al. 2025>`).
+   Fetches street-level Google Street View photos (``image-googlestreetview-2026.yaml``) and runs detectors over them to estimate floors of living area (:ref:`Cetiner et al. 2025 <Cetiner et al. 2025>`). The EfficientDet inference engine is not bundled (its upstream is LGPL-3.0, incompatible with this repository's licence), so this step raises unless a replacement is supplied; ``n_stories`` is still produced from NSI and from a modeled inventory.
 
-   *Dependency*: Requires Street View photos from Stage 3.
+   *Dependency*: Requires the completed footprint geometries from Stage 2.
 
    *Function*: :func:`openplaces.io.enricher.attributes.detect_n_stories`
 
@@ -275,7 +264,7 @@ This stage produces entity-keyed evidence without selecting any canonical value.
    *Function*: :func:`openplaces.io.enricher.buildings.enrich_footprints_from_reference_buildings`
 
 
-Stage 5: curate
+Stage 4: curate
 ---------------
 
 This stage curates the spines into clean, canonical datasets.
