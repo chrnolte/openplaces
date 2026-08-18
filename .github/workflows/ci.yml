@@ -16,25 +16,31 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Single version on purpose: pyproject sets requires-python >=3.12 and
-    # environment.yml pins <3.13, so a matrix would only test versions the
-    # project does not support.
+    defaults:
+      run:
+        shell: bash -el {0}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # environment.yml, not pip. The test suite needs torch, which this
+      # project installs from conda-forge only: a pip build links against a
+      # different ABI and the `ml` extra is deliberately empty. Several other
+      # test dependencies (exactextract, rio-cogeo, lonboard, scikit-learn,
+      # zipcodes, gdown) live in optional extras too, so the conda
+      # environment is simply the supported install and the one CI should
+      # reproduce.
+      - uses: conda-incubator/setup-miniconda@v3
         with:
-          python-version: '3.12'
-          cache: pip
+          environment-file: environment.yml
+          activate-environment: openplaces
+          miniforge-version: latest
+          use-mamba: true
+          auto-activate-base: false
 
-      - name: Install
-        # Installed from wheels rather than the conda environment: every core
-        # dependency publishes manylinux wheels, and this keeps CI to a couple
-        # of minutes. environment.yml remains the supported developer install.
-        # `viz` is included because tests/viz imports openplaces.viz.
+      - name: Environment
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,viz]"
+          conda info
+          python -c "import openplaces; print('openplaces imports cleanly')"
 
       - name: Format
         run: ruff format --check src/ tests/
@@ -44,10 +50,10 @@ jobs:
 
       - name: Test
         # Agg because the suite imports matplotlib-backed modules and no
-        # display is available on the runner.
+        # display is available on the runner. -n auto: one worker per runner
+        # core; measured locally, parallelism cuts the suite from ~192s to
+        # ~70s, and past about 8 workers the gain reverses because much of
+        # the suite is disk-bound rather than CPU-bound.
         env:
           MPLBACKEND: Agg
-        # -n auto: one worker per runner core. Measured locally, parallelism
-        # cuts the suite from ~192s to ~70s; past about 8 workers the gain
-        # reverses, as much of the suite is disk-bound rather than CPU-bound.
         run: pytest -n auto

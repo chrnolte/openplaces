@@ -133,6 +133,9 @@ dependencies:
     # Optional: postal (not on conda-forge)
     # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.postal]
     - zipcodes>=1.2.0
+    # Optional: scrape
+    # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.scrape]
+    - gdown>=5.2.0
     - -e .
 
 variables:
