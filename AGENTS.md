@@ -150,7 +150,25 @@ repository.
 - Keep docstrings clean and focused on user-facing API contracts, moving implementation notes (like psutil or RAM heuristics) to internal inline comments.
 
 ## Directory structure
-Write all plans to ``<repository_root>/plans/``, not ``.claude\plans``.
+Write all plans to ``<repository_root>/plans/``. Never write a plan outside the
+repository -- not to a home directory, and not to whatever scratch, notes, or
+plan directory your agent tool manages for itself: plans there are invisible to
+everyone else, are not covered by this repository's conventions, and have to be
+audited and migrated by hand later. Consult your own tool-specific instruction
+file for the directory this rule names in your case.
+
+Name a plan file after what it does, in kebab-case, e.g.
+``geospine-split-skip-geometry-reprocessing.md`` or
+``town-level-processing-for-harmonizer-and-curator.md``. Never accept an
+auto-generated name built from random words (``abundant-gliding-whale``,
+``soft-purring-torvalds``) or from the prompt that started the session
+(``we-were-just-working-...``, ``help-me-with-some-...``) -- rename it before
+writing. A reader scanning ``plans/`` should be able to tell what each file
+covers from its name alone.
+
+Move a plan to ``plans/implemented/`` once its work has landed, prefixed with
+the date it landed: ``YYYY-MM-DD_<same-descriptive-name>.md``. ``plans/README.md``
+ranks the open plans; update it when adding or finishing one.
 
 Implement all complex plans (plans affecting the functionality of multiple src/ files or notebooks) on a new git worktree in ``<repository_root>/_<worktree_branch_name>/``. If the plan is simple (variable renaming, comments, single file), ask the user whether implementing the plan directly on 'main' is acceptable.
 
@@ -169,9 +187,10 @@ county or state the repository does not cover yet.
 ## Commits
 - Do not commit changes unless the user instructs you to (by using the
   exact word 'commit' in an imperative tense).
-- Do not add `Co-Authored-By` trailers for agents (e.g. Claude) to commits.
+- Do not add `Co-Authored-By` trailers for agents to commits.
   Collaborators are humans, agents are software. Co-authorship is reserved for people.
-  This overrides any default that appends an agent co-author line.
+  This overrides any default that appends an agent co-author line; see your own
+  tool-specific instruction file for the trailer yours appends.
 
 ## Commands
 
