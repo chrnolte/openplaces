@@ -32,7 +32,10 @@ from openplaces.io.readers import get_dataset
 __all__ = [
     'drape_parcel_elevation',
     'get_building_elevation',
+    'get_elevation_datum',
+    'resolve_dem_admin_ids',
     'add_z_offset',
+    'clamp_z',
     'scale_z',
 ]
 
@@ -169,6 +172,144 @@ def get_building_elevation(
     return combined['elevation'].to_numpy(dtype=float)
 
 
+def resolve_dem_admin_ids(
+    gdf: gpd.GeoDataFrame,
+    elevation_recipe,
+    admin_id_column: str | None = None,
+) -> pd.Series:
+    """Each row's admin id truncated to the DEM recipe's own save level.
+
+    A DEM is tiled per admin unit, and `io.readers.get_dataset` refuses an
+    id at any other level, so a frame keyed by a finer unit has to be mapped
+    up: a level-4 town is covered by its level-3 county's DEM. The level is
+    read off the recipe rather than assumed, so this keeps working if the
+    DEM is ever re-tiled at a different granularity.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Frame whose rows carry admin ids, in `admin_id_column` or the index.
+    elevation_recipe : str or dict
+        DEM dataset recipe.
+    admin_id_column : str, optional
+        Column holding each row's admin id. When None (default), the ids are
+        read from `gdf`'s index.
+
+    Returns
+    -------
+    pandas.Series of str
+        Admin ids at the DEM's own level, indexed like `gdf`.
+    """
+    from openplaces.recipe import get_recipe_by_id, get_save_admin_level
+
+    dem_recipe = (
+        get_recipe_by_id(elevation_recipe)
+        if isinstance(elevation_recipe, str)
+        else elevation_recipe
+    )
+    dem_level = get_save_admin_level(dem_recipe)
+
+    raw = gdf[admin_id_column] if admin_id_column is not None else gdf.index
+    try:
+        parsed = [AdminId(*str(value).split('-')) for value in raw]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            'Cannot resolve a DEM for these rows: each needs an admin id to '
+            'find the raster covering it, and this frame is not indexed by '
+            'admin id. Pass a frame from `get_admin`, or name the column '
+            'holding the ids.',
+        ) from exc
+
+    resolved = []
+    for admin, original in zip(parsed, raw, strict=True):
+        parent = admin.truncate_to_level(dem_level)
+        if parent is None:
+            raise ValueError(
+                f'Admin unit {original!r} is coarser than the level-{dem_level} '
+                'tiling the DEM recipe is saved at, so no single DEM covers '
+                'it. Use a finer admin level.',
+            )
+        resolved.append(str(parent))
+    return pd.Series(resolved, index=gdf.index)
+
+
+def get_elevation_datum(
+    gdf: gpd.GeoDataFrame,
+    elevation_recipe,
+    quantile: float = 0.0,
+    admin_id_column: str | None = None,
+):
+    """Ground elevation to treat as z=0 for a scene, in meters.
+
+    The 3D viz extrudes from sea level by default, which puts the whole
+    scene as far above the flat basemap as the land happens to be above the
+    ocean — a few hundred meters here, more once `terrain_exaggeration`
+    multiplies it. That offset is not harmless: with the camera tilted to
+    pitch `p`, anything `h` meters up appears shifted from its own
+    basemap position by `h * tan(p)`, so at pitch 75 a scene 345 m up
+    (Lancaster at 3x) reads about 1.3 km away from the streets it sits on.
+
+    Referencing the scene to the ground beneath it removes that whole term.
+    What is left is only the relief *within* the extent, which is what the
+    terrain is actually meant to show.
+
+    Defaults to the **minimum** rather than the mean deliberately. Using a
+    mean would put half the terrain below z=0, i.e. underneath a flat
+    basemap, hiding it. A minimum guarantees every sampled elevation lands
+    at or above the ground plane. `quantile` can trade that guarantee for a
+    tighter reference; callers that do should clamp (see
+    `viz.terrain.show_value_terrain_layer`'s `elevation_datum`, which
+    clamps regardless).
+
+    Compute this **once per scene** and pass the same value to every layer
+    — parcels, buildings, boundaries, the draped basemap. A datum that
+    differs between layers slides them vertically relative to each other,
+    the same failure mode as a mismatched `terrain_exaggeration`.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Geometries defining the scene's extent. Only their bounds and admin
+        ids are used, so any layer of the scene gives the same answer as
+        long as they cover the same extent.
+    elevation_recipe : str or dict
+        DEM dataset recipe, passed to `io.readers.get_dataset`.
+    quantile : float
+        Quantile of the sampled elevations to use, in [0, 1]. Defaults to 0
+        (the minimum). Raise it to reference a scene whose extent dips into
+        a valley or offshore that would otherwise drag the datum down.
+    admin_id_column : str, optional
+        Column naming each row's admin unit at the DEM's own tiling. When
+        None (default), the ids are read from `gdf`'s index.
+
+    Returns
+    -------
+    float
+        The reference elevation in meters. 0.0 if the DEM has no data over
+        the extent, which keeps the sea-level behavior rather than raising.
+    """
+    if not 0.0 <= quantile <= 1.0:
+        raise ValueError(f'quantile must be in [0, 1], got {quantile!r}.')
+
+    ids = resolve_dem_admin_ids(gdf, elevation_recipe, admin_id_column).unique()
+
+    values = []
+    for admin_id in ids:
+        dem_path = Path(get_dataset(elevation_recipe, admin_id=admin_id))
+        if not dem_path.exists():
+            _ingest_missing_dem(elevation_recipe, admin_id, dem_path, silent=True)
+        with rasterio.open(dem_path) as src:
+            bounds = gdf.to_crs(src.crs).total_bounds
+            window = rasterio.windows.from_bounds(*bounds, transform=src.transform)
+            band = src.read(1, window=window, masked=True, boundless=True)
+        finite = np.asarray(band.compressed(), dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size:
+            values.append(np.quantile(finite, quantile))
+
+    return float(min(values)) if values else 0.0
+
+
 def add_z_offset(geometry, offset_per_row):
     """Add a per-row scalar Z offset to every vertex of each geometry.
 
@@ -195,6 +336,33 @@ def add_z_offset(geometry, offset_per_row):
     geom3d = shapely.force_3d(np.asarray(geometry), z=0.0)
     xyz, row_index = shapely.get_coordinates(geom3d, include_z=True, return_index=True)
     xyz[:, 2] = xyz[:, 2] + np.asarray(offset_per_row, dtype=float)[row_index]
+    return shapely.set_coordinates(geom3d, xyz)
+
+
+def clamp_z(geometry, lower: float = 0.0):
+    """Raise every vertex Z below `lower` up to it, leaving x/y alone.
+
+    Used by `viz.terrain`'s `elevation_datum` to guarantee that referenced
+    ground never sinks below the basemap plane, where a flat basemap would
+    simply hide it. Clamping (rather than shifting the whole scene down to
+    fit) keeps the datum meaning what it says for the rest of the extent;
+    only the part that would have gone under is flattened onto the plane.
+
+    Parameters
+    ----------
+    geometry : array-like of shapely geometries
+        2D or 3D geometries. A still-2D geometry has an implicit Z of 0 and
+        is unaffected by the default `lower`.
+    lower : float
+        Floor applied to every vertex's Z. Defaults to 0.
+
+    Returns
+    -------
+    numpy.ndarray of shapely geometries
+    """
+    geom3d = shapely.force_3d(np.asarray(geometry), z=0.0)
+    xyz = np.asarray(shapely.get_coordinates(geom3d, include_z=True))
+    xyz[:, 2] = np.maximum(xyz[:, 2], lower)
     return shapely.set_coordinates(geom3d, xyz)
 
 

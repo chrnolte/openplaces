@@ -145,6 +145,37 @@ class TestDrapedAdminBoundary:
         with pytest.raises(ValueError, match='not indexed by admin id'):
             self._capture(renamed, elevation=0, elevation_recipe=DEM)
 
+    def test_datum_references_and_clamps(self, town):
+        ground = _z(
+            self._capture(town, elevation=0, mode='fence', elevation_recipe=DEM)
+        )
+        referenced = _z(
+            self._capture(
+                town,
+                elevation=0,
+                mode='fence',
+                elevation_recipe=DEM,
+                elevation_datum=ground.max() / 2,
+            )
+        )
+        # Referenced down by the datum, and never below the basemap plane.
+        assert referenced.max() < ground.max()
+        assert referenced.min() >= 0
+
+    def test_datum_above_the_extent_clamps_flat(self, town):
+        referenced = _z(
+            self._capture(
+                town,
+                elevation=0,
+                mode='fence',
+                elevation_recipe=DEM,
+                elevation_datum=1e6,
+            )
+        )
+        # A datum above everything flattens onto the plane rather than
+        # sinking the whole scene under the basemap.
+        assert np.allclose(referenced, 0)
+
 
 class TestTerrainBasemapLayer:
     """Mesh geometry and color assembly, with the DEM and tile fetch faked."""
@@ -232,6 +263,23 @@ class TestTerrainBasemapLayer:
         # intermediate values, and that is what keeps roads continuous
         # instead of breaking them into dots.
         assert ((brightness > 45) & (brightness < 215)).any()
+
+    def test_datum_references_and_clamps_the_mesh(self, town):
+        base, _ = self._build(town, resolution=100.0, clip=False)
+        peak = _z(base).max()
+        referenced, _ = self._build(
+            town, resolution=100.0, clip=False, elevation_datum=peak / 2
+        )
+        assert _z(referenced).max() < peak
+        # The mesh is the ground plane itself; it must never go under the
+        # basemap it replaces.
+        assert _z(referenced).min() >= 0
+
+    def test_datum_above_the_extent_flattens_the_mesh(self, town):
+        referenced, _ = self._build(
+            town, resolution=100.0, clip=False, elevation_datum=1e6
+        )
+        assert np.allclose(_z(referenced), 0)
 
     def test_rejects_unknown_provider(self, town):
         with pytest.raises(ValueError, match='Unknown basemap provider'):
