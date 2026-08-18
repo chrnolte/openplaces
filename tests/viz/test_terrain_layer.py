@@ -5,6 +5,7 @@ import geopandas as gpd
 import numpy as np
 import pytest
 import shapely
+from lonboard import PolygonLayer
 from shapely.geometry import LineString, Polygon
 
 from openplaces.viz.terrain import show_value_terrain_layer
@@ -399,3 +400,225 @@ def test_show_value_terrain_layer_stack_on_avoids_double_counting_ground():
     np.testing.assert_allclose(
         top_layer.total_elevation, [35.0]
     )  # 15 + 20 (own height)
+
+
+def _missing_value_gdf():
+    """Two valued polygons, one zero-valued and one null-valued."""
+    polys = [
+        Polygon([(x, x), (x + 1, x), (x + 1, x + 1), (x, x + 1)]) for x in range(4)
+    ]
+    return gpd.GeoDataFrame(
+        {
+            'land_value_imputed': [100.0, 200.0, 0.0, None],
+            'area_m2': [10.0, 10.0, 10.0, 10.0],
+        },
+        geometry=polys,
+        crs='EPSG:4326',
+    )
+
+
+def test_missing_value_render_keeps_every_row():
+    gdf = _missing_value_gdf()
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        layer = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            silent=True,
+        )
+    # Default mode is unchanged: valueless rows stay in the fill layer and
+    # no ghost layer is built at all.
+    assert len(layer.layer.table) == 4
+    assert layer.ghost_layer is None
+
+
+def test_missing_value_drop_removes_null_and_zero():
+    gdf = _missing_value_gdf()
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        layer = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            missing_value='drop',
+            silent=True,
+        )
+    assert len(layer.layer.table) == 2
+    assert layer.ghost_layer is None
+    assert layer.gdf['land_value_imputed'].tolist() == [100.0, 200.0]
+
+
+def test_missing_value_ghost_splits_rows_between_layers():
+    gdf = _missing_value_gdf()
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        layer = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            missing_value='ghost',
+            ghost_rgba=(255, 255, 255, 140),
+            silent=True,
+        )
+    # Each row is drawn exactly once: valued rows in the fill layer, the
+    # zero/null pair in the ghost layer, never both.
+    assert len(layer.layer.table) == 2
+    assert len(layer.ghost_layer.table) == 2
+    # `gdf` still carries every row, so a `stack_on` caller can find the
+    # ghosted ones underneath whatever it stacks.
+    assert len(layer.gdf) == 4
+    assert list(layer.ghost_layer.get_line_color) == [255, 255, 255, 140]
+    # A ghost is a ring, not a box: no fill, and no extrusion of its own.
+    assert layer.ghost_layer.get_elevation == 0
+
+
+def test_missing_value_ghost_floats_above_its_base():
+    gdf = _missing_value_gdf()
+    gdf['ground_m'] = [5.0, 5.0, 5.0, 5.0]
+
+    # Capture the geometry actually handed to the ghost layer -- reading it
+    # back off the built layer means an arrow round-trip, and the offset is
+    # applied on the way in.
+    captured = []
+    real_from_geopandas = PolygonLayer.from_geopandas
+
+    def spy(frame, **kwargs):
+        captured.append(frame.copy())
+        return real_from_geopandas(frame, **kwargs)
+
+    with (
+        patch('openplaces.viz.terrain.get_entities', return_value=gdf),
+        patch.object(PolygonLayer, 'from_geopandas', staticmethod(spy)),
+    ):
+        layer = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            elevation_column='ground_m',
+            missing_value='ghost',
+            ghost_offset=2.0,
+            silent=True,
+        )
+
+    # Every row's base sits at its 5 m ground elevation ...
+    ghosted = layer.gdf[layer.gdf['land_value_imputed'].fillna(0) == 0]
+    assert _base_z(ghosted.geometry.to_numpy()) == 5.0
+    # ... and the ring uploaded for the ghosts sits ghost_offset above it.
+    assert _base_z(captured[-1].geometry.to_numpy()) == 7.0
+
+
+def test_missing_value_ghost_excludes_ghosts_from_value_range():
+    gdf = _missing_value_gdf()
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        ghosted = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            missing_value='ghost',
+            silent=True,
+        )
+        rendered = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            silent=True,
+        )
+    # Ghosts are never colored, so they must not drag the colorbar bounds
+    # down to zero the way the rendered-as-gray mode does.
+    assert rendered.value_range[0] == 0.0
+    assert ghosted.value_range[0] > 0.0
+
+
+def test_missing_value_invalid_mode_raises():
+    gdf = _missing_value_gdf()
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        with pytest.raises(ValueError, match='missing_value'):
+            show_value_terrain_layer(
+                recipe='dummy_recipe',
+                admin_id='US-MA-SU',
+                value_column='land_value_imputed',
+                area_m2_column='area_m2',
+                missing_value='hide',
+                silent=True,
+            )
+
+
+def test_drop_corridors_removes_road_shaped_polygons():
+    lat = 42.0
+    deg_y = 1 / 111_320
+    deg_x = deg_y / np.cos(np.radians(lat))
+
+    def strip(length_m, width_m, offset=0.0):
+        dx, dy = length_m * deg_x, width_m * deg_y
+        y = lat + offset
+        return Polygon([(0, y), (dx, y), (dx, y + dy), (0, y + dy)])
+
+    gdf = gpd.GeoDataFrame(
+        {
+            'land_value_imputed': [100.0, 200.0],
+            'area_m2': [50_000.0, 40_000.0],
+        },
+        geometry=[strip(200, 200), strip(5000, 10, offset=0.05)],
+        crs='EPSG:4326',
+    )
+
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        kept = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            silent=True,
+        )
+        dropped = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            drop_corridors=True,
+            silent=True,
+        )
+    # The corridor is removed on shape alone -- both rows carry a value, so
+    # no missing_value mode would have caught it.
+    assert len(kept.layer.table) == 2
+    assert len(dropped.layer.table) == 1
+    assert dropped.gdf['land_value_imputed'].tolist() == [100.0]
+
+
+def test_drop_corridors_accepts_threshold_overrides():
+    lat = 42.0
+    deg_y = 1 / 111_320
+    deg_x = deg_y / np.cos(np.radians(lat))
+    dx, dy = 2000 * deg_x, 40 * deg_y  # elongation ~50: under the default
+    gdf = gpd.GeoDataFrame(
+        {'land_value_imputed': [100.0], 'area_m2': [80_000.0]},
+        geometry=[Polygon([(0, lat), (dx, lat), (dx, lat + dy), (0, lat + dy)])],
+        crs='EPSG:4326',
+    )
+
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        default = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            drop_corridors=True,
+            silent=True,
+        )
+        # Tightening the threshold removes the only row; deck.gl cannot
+        # draw an empty layer, so that is an explicit error, not a
+        # silently blank map.
+        with pytest.raises(ValueError, match='No rows left to render'):
+            show_value_terrain_layer(
+                recipe='dummy_recipe',
+                admin_id='US-MA-SU',
+                value_column='land_value_imputed',
+                area_m2_column='area_m2',
+                drop_corridors={'max_elongation': 25},
+                silent=True,
+            )
+    assert len(default.layer.table) == 1

@@ -660,6 +660,100 @@ def add_geometry_derivatives(gdf, timer=None, area_unit='ha', area_mask=None):
     return gdf
 
 
+def find_corridors(
+    gdf,
+    max_elongation: float = 200.0,
+    min_length: float = 250.0,
+    crs=None,
+):
+    """Flag road/rail/water corridor polygons by shape alone.
+
+    Cadastral layers routinely carry the public right-of-way as polygons:
+    the street network, rail corridors, and river channels. They are not
+    assessable land, they usually carry no value, and a whole
+    municipality's streets are often a *single* branching polygon. Rendered
+    on a map they collapse into hairlines criss-crossing the extent; joined
+    to, they behave like one enormous parcel adjacent to everything.
+
+    This identifies them from geometry only — no land-use code, no value
+    column, no source-specific `polygon_type` field — so it works on any
+    parcel source, including ones that publish no attribute distinguishing
+    a right-of-way from a lot.
+
+    Two conditions must both hold:
+
+    - **Elongation** — `perimeter**2 / (4 * area)`, roughly a shape's
+      length-to-width ratio and equal to `pi / polsby_popper`. It is
+      dimensionless and rotation-invariant, so it does not care how a road
+      happens to run. Reference values: circle `pi`, square `4`, a 1:10
+      rectangle `~12`. A branching street network scores in the thousands,
+      because every branch adds perimeter but almost no area.
+    - **Length** — the bounding-box diagonal, in meters. Elongation alone
+      also fires on degenerate slivers (a near-zero-area fragment scores
+      arbitrarily high), which are a different problem with a different
+      fix; requiring real extent restricts this to things that actually
+      span distance.
+
+    The `max_elongation` default was calibrated against MassGIS L3's own
+    `POLY_TYPE` labels over three Massachusetts municipalities (~58,000
+    parcels, urban and rural): ordinary FEE/TAX lots topped out at an
+    elongation of 179, while every ROW, RAIL_ROW, and long WATER polygon
+    that read as a hairline scored above 259. 200 sits in that gap. It held
+    up unlabelled elsewhere — it flags the barrier-island road network in
+    coastal North Carolina, and almost nothing in a Pennsylvania county
+    whose parcel layer simply omits rights-of-way.
+
+    Note this is deliberately a *shape* test and nothing more. Short road
+    stubs and small ponds are compact and will not be flagged; they also do
+    not produce the artifact this exists to remove.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame or geopandas.GeoSeries
+        Polygon geometries to test. Not modified.
+    max_elongation : float
+        Flag polygons whose `perimeter**2 / (4 * area)` exceeds this.
+        Defaults to 200 (see above). Lower it to catch more; values below
+        roughly 100 start reaching ordinary irregular lots.
+    min_length : float
+        Minimum bounding-box diagonal in meters for a polygon to be
+        eligible at all. Defaults to 250.
+    crs : pyproj.CRS or str, optional
+        Meter-based CRS to measure in. Defaults to `local_metric_crs(gdf)`,
+        an AEQD projection centered on the data.
+
+    Returns
+    -------
+    pandas.Series of bool
+        True where the polygon looks like a corridor, indexed like `gdf`.
+
+    See Also
+    --------
+    openplaces.viz.terrain.show_value_terrain_layer : `drop_corridors`.
+    """
+    geometry = gdf.geometry if isinstance(gdf, gpd.GeoDataFrame) else gdf
+    if len(geometry) == 0:
+        return pd.Series([], dtype=bool, index=geometry.index)
+
+    metric = geometry.to_crs(crs if crs is not None else local_metric_crs(geometry))
+    area = metric.area.to_numpy(dtype=float)
+    perimeter = metric.length.to_numpy(dtype=float)
+    bounds = metric.bounds
+    diagonal = np.hypot(
+        (bounds['maxx'] - bounds['minx']).to_numpy(),
+        (bounds['maxy'] - bounds['miny']).to_numpy(),
+    )
+
+    # A zero-area polygon has no meaningful ratio; leave it unflagged
+    # rather than dividing by zero -- it is degenerate geometry, not a
+    # corridor, and callers drop those on their own terms.
+    with np.errstate(divide='ignore', invalid='ignore'):
+        elongation = np.where(area > 0, perimeter**2 / (4 * area), 0.0)
+
+    flagged = (elongation > max_elongation) & (diagonal >= min_length)
+    return pd.Series(flagged, index=geometry.index)
+
+
 def points_from_coords(
     df: pd.DataFrame,
     x: str = 'long',

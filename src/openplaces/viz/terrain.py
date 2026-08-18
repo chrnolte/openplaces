@@ -16,7 +16,7 @@ import shapely
 from lonboard import PolygonLayer, SolidPolygonLayer
 
 from openplaces.core.constants import M2_PER_AREA_UNIT
-from openplaces.geo.polygon import resolve_area
+from openplaces.geo.polygon import find_corridors, resolve_area
 from openplaces.io.readers import get_entities
 from openplaces.io.transform import convert_area_unit
 from openplaces.viz import elevation
@@ -68,6 +68,13 @@ class TerrainLayer(NamedTuple):
         A companion wireframe-only layer outlining each polygon in a darker
         shade of its own fill color, or `None` when `outline_width=0`. Add
         it to the `Map` alongside `layer` if present.
+    ghost_layer : lonboard.PolygonLayer or None
+        A companion outline-only layer holding the rows with no value, drawn
+        as a flat ring floating `ghost_offset` meters above whatever they
+        sit on — `None` unless `missing_value='ghost'` and at least one row
+        actually lacks a value. These rows are excluded from `layer` and
+        `outline_layer`, so they are drawn exactly once. Add it to the `Map`
+        alongside `layer` if present.
     clipped_layer : lonboard.SolidPolygonLayer or None
         A companion wireframe-only layer marking rows whose *height* was
         capped by `height_clip_percentile` (in `clipped_color`, regardless
@@ -85,6 +92,7 @@ class TerrainLayer(NamedTuple):
     total_elevation: np.ndarray
     outline_layer: PolygonLayer | None
     clipped_layer: SolidPolygonLayer | None
+    ghost_layer: PolygonLayer | None
 
 
 def show_value_terrain_layer(
@@ -109,6 +117,11 @@ def show_value_terrain_layer(
     brightness: float = 1.0,
     outline_width: float = 0,
     outline_darken: float = 0.6,
+    missing_value: str = 'render',
+    ghost_offset: float = 2.0,
+    ghost_rgba: tuple[int, int, int, int] = (255, 255, 255, 140),
+    ghost_width: float = 1.0,
+    drop_corridors: bool | dict = False,
     mark_clipped: bool = False,
     clipped_color: str = '#00ffff',
     clipped_fill_rgba: tuple[int, int, int, int] | None = (255, 0, 255, 63),
@@ -315,6 +328,46 @@ def show_value_terrain_layer(
     outline_darken : float
         `brightness` factor (see `adjust_brightness`) applied to each row's
         *fill* color to derive its outline color, when `outline_width > 0`.
+    missing_value : {'render', 'drop', 'ghost'}
+        What to do with rows whose `value_column` is null or zero. Note this
+        is about missing *values*; `missing` (below) is about missing output
+        *files*.
+
+        - `'render'` (default) — keep them in `layer` as flat, zero-height
+          gray polygons.
+        - `'drop'` — remove them entirely, leaving the basemap visible. Most
+          useful for parcels, where the unvalued polygons are typically
+          rights-of-way whose geometry traces a whole road network as one
+          feature: at town zoom such a corridor is narrower than a pixel and
+          collapses to a hairline criss-crossing the map.
+        - `'ghost'` — move them to `ghost_layer`, an outline-only ring
+          floating `ghost_offset` meters above whatever they sit on. Most
+          useful for buildings, where a missing value usually means a real
+          structure nobody assessed separately (a secondary footprint, say)
+          rather than nothing being there — visible as present, without
+          claiming a value it does not have.
+
+        Null and zero are treated alike: they are indistinguishable
+        downstream (both land in the `is_zero` gray branch), and a source
+        holding no record for a polygon is the case these modes exist for.
+    ghost_offset : float
+        Meters to float `ghost_layer` above each row's own base elevation.
+        Defaults to 2 — enough to read as hovering rather than as a ground
+        marking, without detaching from the feature it belongs to. Applies
+        only when `missing_value='ghost'`.
+    ghost_rgba : tuple of int
+        RGBA line color for `ghost_layer`. Defaults to translucent white.
+    ghost_width : float
+        `ghost_layer` line width in pixels. Defaults to 1.
+    drop_corridors : bool or dict
+        Drop road, rail, and water right-of-way polygons identified by shape
+        alone, via `geo.polygon.find_corridors` — no value column, land-use
+        code, or source-specific field involved, so it works on any parcel
+        source including ones publishing nothing that marks a right-of-way.
+        Defaults to False. Pass True for the calibrated defaults, or a dict
+        of keyword arguments to override them (e.g.
+        `{'max_elongation': 100}`). Complements `missing_value='drop'`,
+        which only reaches corridors that happen to carry no value.
     mark_clipped : bool
         Add a companion wireframe layer (see `clipped_layer` under Returns)
         marking, in `clipped_color`, exactly which rows had their *height*
@@ -379,6 +432,11 @@ def show_value_terrain_layer(
             f"elevation_mode must be 'flat' or 'drape', got {elevation_mode!r}."
         )
 
+    if missing_value not in ('render', 'drop', 'ghost'):
+        raise ValueError(
+            f"missing_value must be 'render', 'drop' or 'ghost', got {missing_value!r}."
+        )
+
     is_polygonal = gdf.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
     if not is_polygonal.all():
         if not silent:
@@ -388,6 +446,18 @@ def show_value_terrain_layer(
                 stacklevel=2,
             )
         gdf = gdf[is_polygonal]
+
+    if drop_corridors is not False:
+        corridor_kwargs = drop_corridors if isinstance(drop_corridors, dict) else {}
+        is_corridor = find_corridors(gdf, **corridor_kwargs)
+        if is_corridor.any():
+            if not silent:
+                warnings.warn(
+                    f'Dropping {is_corridor.sum()} row(s) whose shape reads as a '
+                    'road/rail/water corridor (drop_corridors).',
+                    stacklevel=2,
+                )
+            gdf = gdf[~is_corridor]
 
     area_m2 = _area_m2(gdf, area_m2_column)
     has_area = area_m2 > 0
@@ -400,15 +470,45 @@ def show_value_terrain_layer(
         gdf = gdf[has_area]
         area_m2 = area_m2[has_area]
 
-    n_missing_value = gdf[value_column].isna().sum()
-    if n_missing_value:
-        if not silent:
+    # Zero counts as missing, not as a real "worth nothing" reading: the
+    # two are indistinguishable downstream (both land in the `is_zero`
+    # gray branch below), and a source with no record for a polygon at
+    # all is exactly the case `missing_value` exists for.
+    has_value = gdf[value_column].notna() & (gdf[value_column] != 0)
+    if missing_value == 'drop':
+        if not has_value.all():
+            if not silent:
+                warnings.warn(
+                    f'Dropping {(~has_value).sum()} row(s) with missing/zero '
+                    f"{value_column!r} (missing_value='drop').",
+                    stacklevel=2,
+                )
+            gdf = gdf[has_value]
+            area_m2 = area_m2[has_value]
+            has_value = has_value[has_value]
+    elif missing_value == 'render':
+        n_missing_value = gdf[value_column].isna().sum()
+        if n_missing_value and not silent:
             warnings.warn(
-                f'Setting {n_missing_value} row(s) with missing {value_column!r} to '
-                '0 (e.g. accessory structures with no assessed value) so they still '
-                'render, at the bottom of the color/height scale.',
+                f'Setting {n_missing_value} row(s) with missing {value_column!r} '
+                'to 0 (e.g. accessory structures with no assessed value) so they '
+                'still render, at the bottom of the color/height scale.',
                 stacklevel=2,
             )
+    # 'ghost' keeps its rows all the way through the elevation and
+    # `stack_on` math below -- a ghost still has to know what it floats
+    # above -- and is split out of the fill layers at the very end.
+    is_ghost = (~has_value).to_numpy() if missing_value == 'ghost' else None
+
+    # deck.gl cannot build a layer from zero features, so a filter that
+    # empties the selection has to say so, rather than failing later
+    # inside lonboard's geometry encoding.
+    if gdf.empty:
+        raise ValueError(
+            f'No rows left to render for {recipe!r} after filtering '
+            f'(missing_value={missing_value!r}, drop_corridors='
+            f'{drop_corridors!r}); nothing would be drawn.'
+        )
 
     value = gdf[value_column].fillna(0).to_numpy(dtype=float)
     area_m2 = np.asarray(area_m2, dtype=float)
@@ -534,14 +634,50 @@ def show_value_terrain_layer(
     ):
         gdf['geometry'] = shapely.force_3d(gdf.geometry.to_numpy(), z=extra_z)
 
+    # Ghost rows are drawn once, by `ghost_layer` alone -- `solid` masks
+    # them out of the fill and outline layers so they don't also show up
+    # as zero-height gray polygons under their own floating outline.
+    solid = slice(None) if is_ghost is None else ~is_ghost
+    if is_ghost is not None and is_ghost.all():
+        raise ValueError(
+            f'Every row of {recipe!r} has a missing/zero {value_column!r}, so '
+            "missing_value='ghost' would leave the fill layer empty. Use "
+            "missing_value='render' to draw them, or 'drop' to skip them."
+        )
+
     layer = SolidPolygonLayer.from_geopandas(
-        gdf,
+        gdf[solid],
         extruded=True,
         filled=True,
         wireframe=False,
-        get_elevation=rendered_elevation,
-        get_fill_color=fill_color,
+        get_elevation=rendered_elevation[solid],
+        get_fill_color=fill_color[solid],
     )
+
+    ghost_layer = None
+    if is_ghost is not None and is_ghost.any():
+        # Floats the ring `ghost_offset` above the row's own base:
+        # `extra_z` is already in the geometry's Z (set by the elevation
+        # block above), so only the offset is added here.
+        # `extruded=True` with a flat `get_elevation=0` is what makes
+        # deck.gl honor that Z -- the same configuration `outline_layer`
+        # uses -- while drawing no walls.
+        ghost_gdf = gdf[is_ghost].copy()
+        ghost_gdf['geometry'] = elevation.add_z_offset(
+            ghost_gdf.geometry.to_numpy(),
+            np.full(int(is_ghost.sum()), float(ghost_offset)),
+        )
+        ghost_layer = PolygonLayer.from_geopandas(
+            ghost_gdf,
+            extruded=True,
+            filled=False,
+            stroked=True,
+            wireframe=True,
+            get_elevation=0,
+            get_line_color=list(ghost_rgba),
+            get_line_width=ghost_width,
+            line_width_units='pixels',
+        )
 
     outline_layer = None
     if outline_width > 0:
@@ -551,13 +687,13 @@ def show_value_terrain_layer(
         # this opt-in companion layer, not the main fill layer where its
         # extra draw pass would cost more at large scale (see module docs).
         outline_layer = PolygonLayer.from_geopandas(
-            gdf,
+            gdf[solid],
             extruded=True,
             filled=False,
             stroked=True,
             wireframe=True,
-            get_elevation=rendered_elevation,
-            get_line_color=adjust_brightness(fill_color, outline_darken),
+            get_elevation=rendered_elevation[solid],
+            get_line_color=adjust_brightness(fill_color[solid], outline_darken),
             get_line_width=outline_width,
             line_width_units='pixels',
         )
@@ -579,7 +715,10 @@ def show_value_terrain_layer(
             get_line_color=clipped_color,
         )
 
-    value_range = (per_area_display.min(), per_area_display.max())
+    # Ghost rows carry no value and are never colored, so they must not
+    # widen the range a caller builds its colorbar from.
+    colored = per_area_display[solid]
+    value_range = (colored.min(), colored.max())
     total_elevation = base_z + rendered_elevation
     return TerrainLayer(
         layer,
@@ -590,6 +729,7 @@ def show_value_terrain_layer(
         total_elevation,
         outline_layer,
         clipped_layer,
+        ghost_layer,
     )
 
 
@@ -611,7 +751,11 @@ def _height_value(
     elif height_clip_value_m2 is not None:
         is_clipped = per_area_m2 > height_clip_value_m2
         height_value = np.clip(per_area_m2, a_min=None, a_max=height_clip_value_m2)
-    elif height_clip_percentile is not None:
+    elif height_clip_percentile is not None and len(per_area_m2):
+        # `len` guard: a filter (`missing_value='drop'` or
+        # `drop_corridors`) can legitimately empty an admin unit, and
+        # np.percentile raises on an empty array rather than returning
+        # a no-op cap.
         cap = np.percentile(per_area_m2, height_clip_percentile)
         is_clipped = per_area_m2 > cap
         height_value = np.clip(per_area_m2, a_min=None, a_max=cap)
