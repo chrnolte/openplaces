@@ -20,7 +20,7 @@ jobs:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # environment.yml, not pip. The test suite needs torch, which this
       # project installs from conda-forge only: a pip build links against a
@@ -29,13 +29,17 @@ jobs:
       # zipcodes, gdown) live in optional extras too, so the conda
       # environment is simply the supported install and the one CI should
       # reproduce.
-      - uses: conda-incubator/setup-miniconda@v3
+      - uses: conda-incubator/setup-miniconda@v4
         with:
           environment-file: environment.yml
           activate-environment: openplaces
           miniforge-version: latest
           use-mamba: true
-          auto-activate-base: false
+          auto-activate: false
+          # environment.yml already lists `nodefaults`; saying it here
+          # too is what setup-miniconda wants going forward, since it
+          # is dropping support for the channel-list spelling.
+          conda-remove-defaults: true
 
       - name: Environment
         run: |
