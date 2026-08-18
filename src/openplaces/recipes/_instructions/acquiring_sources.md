@@ -101,7 +101,7 @@ Franklin VA for Franklin NC (its schema had `TaxsifterLink` and `DFLAcres`,
 both Washington-State assessor artifacts), Cumberland PA, Forsyth NC for
 Forsyth GA.
 
-Apply all three gates:
+Apply all four gates:
 
 1. **Geography.** Reproject the layer's `extent` to EPSG:4326 and intersect it
    with the real admin polygon. Require >50% of the county polygon covered.
@@ -114,6 +114,15 @@ Apply all three gates:
    and measure the share that is non-null, non-empty, and non-zero. Schemas are
    full of declared-but-empty columns (DeKalb GA has `LNDVALUE`, `RESYRBLT`,
    `USECD`, `BLDGAREA` all at 0%).
+4. **License / terms of use.** Look for an explicit terms-of-use or license
+   page on the source's own site — footer links, an "about this data" page,
+   the API documentation. Government open-data portals often have one at a
+   predictable path (`/terms`, `/open-data-license`). Record what you find,
+   or its absence, in the recipe's `source:` block (see `../README.md`). A
+   source that restricts commercial use or redistribution (GADM:
+   non-commercial, redistribution requires permission) is not
+   disqualifying — it means the recipe says so, the same way a source with a
+   degenerate join key gets documented rather than silently used.
 
 ---
 
@@ -355,13 +364,16 @@ before including it.
   distinct PINs per 4,000 rows) — dedupe before per-parcel counts.
 - Placeholder rows (`UPDATE IN PROGRESS`, all-null shells) — keep them, they
   get a null key and never join, but expect them in row counts.
+- Assuming a source's data is unrestricted because it is publicly
+  downloadable (it may not be — check for a terms page before assuming).
 
 ---
 
 ## Definition of done
 
 1. Recipe validates: loads, every column in the registry, description ≤25
-   words, comments ≤72 chars.
+   words, comments ≤72 chars, and the source's terms recorded (`license`
+   at minimum — `'unknown'` if a search found no terms page).
 2. Ingested output reconciles exactly against the live server on rows and on
    the headline attribute.
 3. `parcel_id_local` populated, non-degenerate, and overlapping the county roll

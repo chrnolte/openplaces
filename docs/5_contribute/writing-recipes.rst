@@ -109,6 +109,31 @@ Dataset description and source
          Name of a scraper module that produces the source file when no
          plain :attr:`download_url` exists (see :ref:`scraped_downloads`).
 
+      .. attribute:: license
+
+         Terms under which the source publishes the data, as a short label or
+         free text: :input:`public-domain`, :input:`CC-BY-4.0`, :input:`ODbL`,
+         :input:`non-commercial`, :input:`unknown`.
+
+         Set it once you have looked. :input:`unknown` records that a search
+         found no explicit terms page, which many U.S. government open-data
+         portals genuinely lack; leaving the field unset records only that
+         nobody checked.
+
+      .. attribute:: terms_url
+
+         URL of the source's terms-of-use or license page, so the terms can be
+         re-checked later without rediscovering where they live.
+
+      .. attribute:: redistribution_restricted
+
+         Whether the terms restrict redistributing the data or its derivatives.
+
+         Unset means not yet checked, which is not the same as ``false``. This
+         is the one licensing fact stored as a boolean rather than free text,
+         so recipes carrying restricted sources can be listed without parsing
+         :attr:`license`.
+
    .. attribute:: version
 
       Version of the dataset (year, date, or version number).

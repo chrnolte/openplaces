@@ -102,6 +102,37 @@ format, which is the only thing the example is for:
 The population figure is the informative part and is an aggregate; the id is
 only there to show the shape.
 
+## Check the source's terms before you write the recipe
+
+Every recipe's `source:` block should set `license`, `terms_url`, and
+`redistribution_restricted` once you have looked. "I didn't check" is not the
+same as "no restriction exists" — if a reasonable search turns up no explicit
+terms or license page, set `license: 'unknown'` and
+`redistribution_restricted: null`, not `false`. Most U.S. government
+open-data portals genuinely have no formal terms page, and recording that is
+a real answer, not an empty field.
+
+A source with unusually restrictive terms (non-commercial only, no
+redistribution without permission, no bulk caching) is not a reason to skip
+the recipe. It is a reason to write the restriction down, so the next person
+or agent does not have to rediscover it and does not build something
+downstream that assumes the data is unrestricted.
+
+```yaml
+# bad — silently assumes the data is free to use however
+source:
+  source_id: gadm
+  portal_url: "https://gadm.org/"
+
+# good — same source, restriction recorded
+source:
+  source_id: gadm
+  portal_url: "https://gadm.org/"
+  license: "non-commercial, no redistribution without permission"
+  terms_url: "https://gadm.org/license.html"
+  redistribution_restricted: true
+```
+
 ## Style
 
 - `description:` — 25 words maximum. It is a label, not documentation.
@@ -134,7 +165,8 @@ computed from (see *Schema, never records* above).
 1. The recipe loads: `get_recipe_by_id(rid)`.
 2. Every mapped column is in the registry.
 3. `description` ≤ 25 words; comments ≤ 72 chars.
-4. The ingested output reconciles against the source (see
+4. The source's terms were checked and recorded (`license` at minimum).
+5. The ingested output reconciles against the source (see
    `_instructions/ingest_recipes.md`).
-5. Downstream stages that consume it have been re-run — a new parcel source
+6. Downstream stages that consume it have been re-run — a new parcel source
    invalidates both spines and both curated outputs.

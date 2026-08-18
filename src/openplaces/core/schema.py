@@ -309,6 +309,18 @@ class Source:
     doi: str | None = None
     # Set to False for sources with SSL certificates not trusted by Python
     verify_ssl: bool = True
+    # Terms of use, recorded once someone has looked them up.
+    # Deliberately free text rather than an enum: sources describe
+    # their terms in wildly inconsistent ways, and a closed vocabulary
+    # would force bad-fit mappings more often than it would produce
+    # useful structure.
+    license: str | None = None
+    # Direct link to the terms/license page, so it can be re-checked
+    # later without re-discovering it
+    terms_url: str | None = None
+    # The one fact worth querying on directly, without parsing free
+    # text. None = not yet checked; True/False = checked, either way.
+    redistribution_restricted: bool | None = None
 
     def __init__(
         self,
@@ -320,6 +332,9 @@ class Source:
         download_url_scraper: str = None,
         doi: str = None,
         verify_ssl: bool = True,
+        license: str = None,
+        terms_url: str = None,
+        redistribution_restricted: bool = None,
     ):
         """Initialize Source with metadata and download configurations.
 
@@ -341,6 +356,17 @@ class Source:
             Digital Object Identifier for the dataset.
         verify_ssl : bool, default True
             Verify SSL certificates during download.
+        license : str, optional
+            Terms under which the source publishes the data, as a short
+            label or free text ('public-domain', 'CC-BY-4.0', 'ODbL',
+            'non-commercial', 'unknown'). 'unknown' records that a search
+            found no explicit terms; None records that nobody looked.
+        terms_url : str, optional
+            URL of the source's terms-of-use or license page.
+        redistribution_restricted : bool, optional
+            Whether the terms restrict redistributing the data or its
+            derivatives. None means not yet checked, which is not the same
+            as False.
         """
 
         n_download_modes = sum(
@@ -366,6 +392,9 @@ class Source:
         self.download_url_scraper = download_url_scraper
         self.doi = doi
         self.verify_ssl = verify_ssl
+        self.license = license
+        self.terms_url = terms_url
+        self.redistribution_restricted = redistribution_restricted
 
     def __str__(self) -> str:
         return self.source_id if self.source_id is not None else ''
