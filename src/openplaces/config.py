@@ -98,8 +98,16 @@ class OpenPlacesConfig:
         self.user_config_path = self._get_user_config_path()
         self.project_config_path = project_config_path or self._find_project_config()
 
-        # Handle first-use setup
-        if interactive and not self.user_config_path.exists():
+        # Handle first-use setup. Skipped without an interactive terminal:
+        # importing openplaces must never block on a prompt, or a headless
+        # run (CI, a container, a cluster job, a first `pytest`) hangs or
+        # dies reading stdin. Those environments get the defaults instead.
+        if (
+            interactive
+            and not self.user_config_path.exists()
+            and sys.stdin is not None
+            and sys.stdin.isatty()
+        ):
             self._interactive_setup()
 
         self.config = self._load_hierarchical_config()
@@ -600,7 +608,7 @@ class OpenPlacesConfig:
 _cfg = None
 
 
-def get_config(interactive: bool = True) -> OpenPlacesConfig:
+def get_config(interactive: bool = False) -> OpenPlacesConfig:
     """
     Get or create the global configuration instance.
 
