@@ -39,9 +39,9 @@ def reconcile_values(
 ) -> CurateState:
     """Select each canonical value from competing source columns by priority.
 
-    For every target feature, the first non-null value across the listed source
-    columns wins (Lochhead et al. 2026, Step C). Source columns are given by
-    their explicit, already-suffixed names so the selection is unambiguous.
+    For every target feature, the first non-null value across the listed
+    source columns wins. Source columns are given by their explicit,
+    already-suffixed names so the selection is unambiguous.
 
     Parameters
     ----------

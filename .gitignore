@@ -157,3 +157,5 @@ notebooks/sandbox.ipynb
 
 # Snakemake metadata cache (workflow/Snakefile runs)
 .snakemake/
+# Sphinx autoapi output, regenerated on every docs build
+docs/4_api/

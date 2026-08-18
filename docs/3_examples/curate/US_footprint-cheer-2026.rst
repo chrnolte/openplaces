@@ -427,3 +427,15 @@ Lochhead M, Zsarnoczay A, Deierlein G (2026) Exposure matters: a synthesis frame
 .. _Cetiner et al. 2025:
 
 Cetiner, B., McKenna, F., Yi, S.-ri, Wang, B., & Manousakis, I. V. (2025). BRAILS++ (v4.2.0). Zenodo. `doi:10.5281/zenodo.17797364 <https://doi.org/10.5281/zenodo.17797364>`_
+
+.. _Khanal et al. 2025:
+
+Khanal K, Kaza N, Hino M, Sebastian A (2025) Characterizing manufactured home parks in North Carolina: a computer vision based approach. EPB: Urban Analytics and City Science. `doi:10.1177/23998083251395471 <https://doi.org/10.1177/23998083251395471>`_
+
+Independently supports two thresholds used above. Their imagery-based detector filters candidate units to a length of 40--80 ft and a width of 12--18 ft, an envelope implying an aspect ratio of roughly 2.2--6.7 and an area of roughly 45--134 m², which brackets the ``aspect_ratio >= 2.5`` / ``area <= 185 m²`` rule scored by the Manufactured Home decision. They then keep parcels holding at least three units, "based on the observation that many parcels with three or fewer detections were primarily used for agricultural and industrial purposes, and not as a manufactured housing park" --- the same cutoff as ``flag_manufactured_home_communities``. They also cite Durst et al. (2021), where footprint-derived metrics classified mobile homes at 91% accuracy and 99% once parcel information was added, which is the footprint-plus-assessor pairing this recipe votes on.
+
+.. _Tackie-Otoo et al. 2026:
+
+Tackie-Otoo N O, Askari M, Hadinata P, Davidson R A, Taciroglu E, Hardy G (2026) Hurricane wind loss modeling using insurance claims data. Natural Hazards 122: 300. `doi:10.1007/s11069-026-08059-z <https://doi.org/10.1007/s11069-026-08059-z>`_
+
+Indicates why these attributes are curated and why manufactured homes are separated. Their wind-loss model is fitted on square footage, building age, occupancy, construction type, units in structure, number of stories and building value --- matching ``area_m2``, ``year_built``, ``occupancy_type``, ``construction_type``, ``n_dwellings``, ``n_stories`` and ``structure_value`` here. "Mobile home" is one of six construction-type levels in that model, covering some 11,000 insured buildings per hurricane, so a manufactured home classified as single-family enters the loss calculation in the wrong vulnerability class.

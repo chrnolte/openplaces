@@ -53,10 +53,37 @@ home parks in North Carolina: a computer vision based approach. *EPB: Urban
 Analytics and City Science*.
 `doi:10.1177/23998083251395471 <https://doi.org/10.1177/23998083251395471>`_
 
-  Identifies manufactured home parks across North Carolina from aerial
-  imagery, building footprints and parcel records. Addresses the same problem
-  as the curate-stage ``classify_manufactured_homes`` and
-  ``flag_manufactured_home_communities`` steps, by a different method.
+  Independent support for how ``openplaces`` identifies manufactured housing.
+  Khanal et al. detect individual units from aerial imagery with an object
+  detector, then filter and group them using building footprints and parcel
+  records; ``openplaces`` reaches the same classes from footprint morphology
+  and assessor records, without imagery. Three of their findings bear
+  directly on choices made here:
+
+  - **Footprint dimensions identify manufactured units.** They filter
+    candidates to a length of 40--80 ft and a width of 12--18 ft, and screen
+    on the diagonal of the minimum-rotated bounding box (37--96 ft
+    single-wide, 41--82 ft double-wide). That size envelope implies an aspect
+    ratio of roughly 2.2--6.7 and a footprint area of roughly 45--134 m²,
+    which brackets the ``aspect_ratio >= 2.5`` and ``area <= 185 m²`` rule
+    used by ``classify_manufactured_homes``.
+  - **Three units is the threshold for a park.** They validated parcels
+    holding at least three units, "based on the observation that many parcels
+    with three or fewer detections were primarily used for agricultural and
+    industrial purposes, and not as a manufactured housing park".
+    ``flag_manufactured_home_communities`` arrives at the same cutoff.
+  - **Parcel records materially improve footprint-based classification.**
+    They cite Durst et al. (2021), where landscape metrics derived from
+    footprints classified mobile homes at 91% accuracy, rising to 99% once
+    parcel information was added --- the pairing ``openplaces`` relies on
+    when it votes footprint geometry together with assessor land-use.
+
+  They also report that cadastral datasets "are neither comprehensive nor
+  current and are often inconsistent across counties", and find roughly three
+  times as many parks in North Carolina as the largest public registry lists.
+  Both are reasons this pipeline infers the class rather than trusting a
+  single source, and are consistent with manufactured homes being the class
+  for which ``openplaces`` finds the least corroborating evidence.
 
 .. _tackie_otoo_et_al_2026:
 
@@ -65,10 +92,19 @@ Analytics and City Science*.
 Hazards* 122: 300.
 `doi:10.1007/s11069-026-08059-z <https://doi.org/10.1007/s11069-026-08059-z>`_
 
-  Predicts hurricane wind building loss from insurance policy and claims data
-  for eastern North Carolina, the region the CHEER footprint inventory
-  covers. Building attributes of the kind this pipeline curates are inputs to
-  loss models of this type.
+  Shows what a wind-loss model consumes, and why these particular attributes
+  are curated. Its exposure and vulnerability features are square footage,
+  building age, occupancy, construction type, units in structure, number of
+  stories and building value --- which correspond to ``area_m2``,
+  ``year_built``, ``occupancy_type``, ``construction_type``, ``n_dwellings``,
+  ``n_stories`` and ``structure_value`` in the curated output.
+
+  Manufactured housing is not incidental to such a model: "Mobile home" is
+  one of six construction-type levels, covering some 11,000 insured buildings
+  per hurricane in their data. Misclassifying a manufactured home therefore
+  moves it into the wrong vulnerability class, which is the practical reason
+  the occupancy vote treats it as a distinct decision rather than a variant
+  of single-family.
 
 Models
 ------
