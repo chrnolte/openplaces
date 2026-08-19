@@ -50,7 +50,7 @@ fixed_width:
   - [use_subgroup_code, 4]
   - [filler, 2]
   - [exemption_code, 1]
-  - [value, 8]
+  - [total_value, 8]
   - [personal_property_value, 8]
   - [filed_late_flag, 1]
   - [filler, 2]

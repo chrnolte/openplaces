@@ -22,19 +22,20 @@ def _state(n_rows=1, **columns):
     )
 
 
-def test_derive_metrics_builds_value_per_area():
-    state = _state(value=[500.0])
+def test_derive_metrics_builds_total_value_per_area():
+    state = _state(total_value=[500.0])
     state = derive_metrics(state)
     assert state.curated['area_m2'].iloc[0] == 100.0
-    assert state.curated['value_per_area'].iloc[0] == 5.0
+    assert state.curated['total_value_per_area'].iloc[0] == 5.0
 
 
-def test_derive_metrics_does_not_touch_value_source():
-    # 'value_source' is a provenance sidecar reconcile_values writes; it must
-    # not be mistaken for the 'value' column via a prefix match.
-    state = _state(value=[500.0], value_source=['improvement_value_parcel'])
+def test_derive_metrics_does_not_touch_total_value_source():
+    # 'total_value_source' is a provenance sidecar reconcile_values writes;
+    # it must not be mistaken for the 'total_value' column via a prefix
+    # match.
+    state = _state(total_value=[500.0], total_value_source=['improvement_value_parcel'])
     state = derive_metrics(state)
-    assert 'value_source_per_area' not in state.curated.columns
+    assert 'total_value_source_per_area' not in state.curated.columns
 
 
 def test_derive_metrics_does_not_touch_improvement_value_source():
@@ -86,7 +87,7 @@ def test_m2_missing_on_synthetic_reference_derived_rows():
 def test_m2_kept_when_geometry_source_absent():
     # Entities without a geometry_source column (e.g. a parcel curate lane)
     # keep their computed area everywhere.
-    state = _state(value=[500.0])
+    state = _state(total_value=[500.0])
     state = derive_metrics(state)
     assert state.curated['area_m2'].iloc[0] == 100.0
 
