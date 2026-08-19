@@ -318,3 +318,49 @@ def test_land_value_imputed_unaffected_by_equal_area_ref_ids():
     )
     assert pd.isna(out.loc['F1', 'land_value_imputed'])
     assert out.loc['F2', 'land_value_imputed'] == 50000.0
+
+
+def test_total_value_is_carried_whole_not_split():
+    # The reason total_value rides land_value's rule rather than
+    # improvement_value's: it is the parcel's land+structure sum, so
+    # splitting it by building area would divide the land half by building
+    # geometry, and repeating it would make a regional sum a multiple of
+    # the region's assessed value.
+    pairs = _pairs([('F1', 'P1', 300.0)])
+    ref = pd.DataFrame({'total_value': [250000.0]}, index=pd.Index(['P1']))
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid')
+    assert out.loc['F1', 'total_value'] == 250000.0
+    assert out['total_value'].sum() == ref['total_value'].sum()
+
+
+def test_total_value_is_withheld_rather_than_duplicated():
+    # Two footprints on one parcel and nothing saying which is principal:
+    # the value is dropped, not repeated. Losing a parcel is recoverable
+    # arithmetic; double-counting one is not.
+    pairs = _pairs([('F1', 'P1', 300.0), ('F2', 'P1', 100.0)])
+    ref = pd.DataFrame({'total_value': [250000.0]}, index=pd.Index(['P1']))
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid')
+    assert out['total_value'].notna().sum() == 0
+    assert out['total_value'].sum() <= ref['total_value'].sum()
+
+
+def test_total_value_goes_to_the_principal_entity_when_priority_is_given():
+    pairs = _pairs([('F1', 'P1', 100.0), ('F2', 'P1', 300.0)])
+    ref = pd.DataFrame({'total_value': [180000.0]}, index=pd.Index(['P1']))
+    priority = pd.Series({'F1': 'primary', 'F2': 'secondary'})
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid', priority=priority)
+    # F2 overlaps more, but a shed is not where a parcel's value belongs.
+    assert out.loc['F1', 'total_value'] == 180000.0
+    assert pd.isna(out.loc['F2', 'total_value'])
+    assert out['total_value'].sum() == ref['total_value'].sum()
+
+
+def test_total_value_never_exceeds_the_parcels_it_came_from():
+    # The invariant to assert on real data: apportionment may drop a parcel
+    # (no footprint, or no principal one), but must never manufacture value.
+    pairs = _pairs([('F1', 'P1', 100.0), ('F2', 'P1', 50.0), ('F3', 'P2', 200.0)])
+    ref = pd.DataFrame(
+        {'total_value': [100000.0, 300000.0]}, index=pd.Index(['P1', 'P2'])
+    )
+    out = apportion_reference_values(pairs, ref, spine_id_col='fid')
+    assert out['total_value'].sum() <= ref['total_value'].sum()
