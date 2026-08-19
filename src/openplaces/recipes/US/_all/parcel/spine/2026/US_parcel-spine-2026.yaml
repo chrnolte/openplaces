@@ -39,6 +39,13 @@ pipeline:
       - admin4_id
       - use_group
       - use_subgroup
+      # The raw code columns ride along with their crosswalked twins so
+      # they survive a degenerate parcel_id_local join too -- otherwise a
+      # county whose land use lives only in the code (and whose id join
+      # fails) loses it entirely, which is the combination the fallback
+      # in derive_use_classes below exists to cover.
+      - use_group_code
+      - use_subgroup_code
       - improvement_value
       - land_value
       - year_built
@@ -261,6 +268,16 @@ pipeline:
   # use_subgroup the link step above attached (via an auto-discovered
   # crosswalk); no-ops when none reached the spine.
   #
+  # Each nested pair is coalesced per row, not appended: the raw source
+  # code is used only where the crosswalked vocabulary column is empty.
+  # 20 recipes map a use_*_code but only 5 ship a crosswalk for it, so
+  # without the fallback that code's signal is simply discarded --
+  # Galveston County, TX is the measured case (no state category code at
+  # all, no crosswalk for its local codes, but 98% coverage of
+  # use_subgroup_code). Where the crosswalk did fire the code adds no new
+  # label values, so this cannot fragment the cohort statistics keyed on
+  # use_group_combined.
+  #
   # building_style joins them because in some counties the occupancy
   # signal is only in the structure description, not the land use.
   # Sampson County, NC is the measured case: its use_group is a land
@@ -271,8 +288,8 @@ pipeline:
   # ever extends the assessor's own use label, never displaces it.
   - step: derive_use_classes
     columns:
-      - use_group
-      - use_subgroup
+      - [use_group, use_group_code]
+      - [use_subgroup, use_subgroup_code]
       - building_style
 
   # Attach the modal NSI building group per parcel (group_building_nsi), the
