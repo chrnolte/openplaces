@@ -149,11 +149,17 @@ class TestIncludeInputs:
 
 
 class TestDeliveryBundleLayers:
-    """At the region the recipe delivers, the map is built from the bundle.
+    """At the region a recipe delivers, the map is built from the bundle.
 
     The curated output is written per county, so its own save level cannot
     resolve a path for the region -- without this the output layer silently
     vanished from the map.
+
+    The CHEER footprint recipe declares two regions (Eastern NC and coastal
+    Texas), so scope is decided by containment, the same test
+    `RecipeDAG._delivery_in_scope` applies: a request at a bundle's own unit
+    or an ancestor of it carries that bundle, so `US` carries both, `US-NC`
+    carries only Carolina, and a county carries neither.
     """
 
     REGION = 'US-NC'
@@ -193,3 +199,42 @@ class TestDeliveryBundleLayers:
 
         assert len(outputs) == 1
         assert outputs[0].render == 'default'
+
+    def test_country_scope_carries_every_region(self, mock_data_root):
+        """A US map of a two-region recipe shows both bundles."""
+        outputs = [
+            s
+            for s in resolve_layers(
+                FOOTPRINT_RECIPE, 'US', filter_existing=False, include_inputs=False
+            )
+            if s.role == 'output'
+        ]
+
+        assert [s.render for s in outputs] == [
+            RENDER_POINTS,
+            RENDER_OUTLINE,
+            RENDER_POINTS,
+            RENDER_OUTLINE,
+        ]
+        assert {str(s.admin_id) for s in outputs} == {'US-NC', 'US-TX'}
+        # Each bundle's layers resolve to its own region's files, never the
+        # sibling's -- shipping one region's rows under the other's filename
+        # is exactly what the region selector exists to prevent.
+        for spec in outputs:
+            assert spec.attr_path.name.startswith(str(spec.admin_id))
+
+    def test_sibling_region_is_not_carried(self, mock_data_root):
+        """US-NC must not ship Texas: containment, not level, decides."""
+        outputs = [
+            s
+            for s in resolve_layers(
+                FOOTPRINT_RECIPE,
+                self.REGION,
+                filter_existing=False,
+                include_inputs=False,
+            )
+            if s.role == 'output'
+        ]
+
+        assert len(outputs) == 2
+        assert {str(s.admin_id) for s in outputs} == {'US-NC'}

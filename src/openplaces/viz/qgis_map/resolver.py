@@ -216,13 +216,12 @@ def _discover_ingest_leaves(
 def _build_delivery_specs(
     recipe: dict, admin_id: AdminId, *, verbose: bool
 ) -> list[LayerSpec]:
-    """Build the output layers for a recipe's region-wide delivery bundle.
+    """Build the output layers for a recipe's region-wide delivery bundles.
 
     The curated output is written per process unit, so its own save level
-    cannot resolve a path for the coarser unit the bundle covers --
-    `get_output_path` rejects it outright. When *admin_id* is that unit and
-    the recipe declares a `share: delivery:` block, the map is built from
-    the bundle instead, as two layers that each stand alone:
+    cannot resolve a path for the coarser unit a bundle covers --
+    `get_output_path` rejects it outright. At that scope the map is built
+    from the bundle instead, as two layers that each stand alone:
 
     - the `_point` centroids, which carry the canonical attributes and so
       drive every attribute-styled view;
@@ -232,28 +231,35 @@ def _build_delivery_specs(
     the polygons -- would make QGIS read and index 2.5M polygons before it
     could draw anything classified, for a view whose colors are legible
     from the centroids alone.
-    """
-    from openplaces.io.delivery import delivery_admin_id, delivery_paths, delivery_spec
 
-    if not delivery_spec(recipe) or str(delivery_admin_id(recipe)) != str(admin_id):
-        return []
-    try:
-        paths = delivery_paths(recipe)
-    except Exception as exc:
-        if verbose:
-            warnings.warn(f'Could not resolve delivery paths: {exc}')
-        return []
+    A recipe ships as many regions as it declares, so this emits the pair
+    for every region whose own unit is *admin_id* or a descendant of it --
+    the same containment test `RecipeDAG._delivery_in_scope` applies, so
+    the map and the orchestrator agree on scope. A `US` map of the CHEER
+    recipe carries both the Carolina and the Texas bundle, `US-TX` carries
+    Texas alone, and a county map carries neither (its per-county curated
+    file is the right layer, and the caller falls back to it when this
+    returns nothing). Containment rather than a bare level comparison is
+    what keeps sibling regions apart: both CHEER bundles sit at level 2,
+    but asking for `US-NC` must not ship Texas.
+    """
+    from openplaces.io.delivery import (
+        delivery_admin_id,
+        delivery_paths,
+        delivery_regions,
+    )
 
     entity_type, source, version = _entity_parts(recipe)
+    requested_levels = tuple(admin_id.levels)
 
-    def _spec(path: Path, render: str) -> LayerSpec:
+    def _spec(path: Path, render: str, bundle_admin: AdminId) -> LayerSpec:
         return LayerSpec(
             role='output',
             recipe_id=get_recipe_id(recipe),
             entity_type=entity_type,
             source=source,
             version=version,
-            admin_id=admin_id,
+            admin_id=bundle_admin,
             display_name=path.stem,
             attr_path=path,
             geo_path=path,
@@ -263,10 +269,22 @@ def _build_delivery_specs(
             render=render,
         )
 
-    return [
-        _spec(paths['point'], RENDER_POINTS),
-        _spec(paths['geo'], RENDER_OUTLINE),
-    ]
+    specs: list[LayerSpec] = []
+    for region in delivery_regions(recipe):
+        region_id = region.get('region_id')
+        bundle_admin = delivery_admin_id(recipe, region=region_id)
+        bundle_levels = tuple(bundle_admin.levels)
+        if requested_levels != bundle_levels[: len(requested_levels)]:
+            continue
+        try:
+            paths = delivery_paths(recipe, region=region_id)
+        except Exception as exc:
+            if verbose:
+                warnings.warn(f'Could not resolve delivery paths: {exc}')
+            continue
+        specs.append(_spec(paths['point'], RENDER_POINTS, bundle_admin))
+        specs.append(_spec(paths['geo'], RENDER_OUTLINE, bundle_admin))
+    return specs
 
 
 def resolve_layers(
