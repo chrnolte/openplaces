@@ -315,7 +315,13 @@ pipeline:
       # disjoint, and no observed string carries both.
       - output: section_keyword_class
         type: ruleset_class
-        column: use_group_combined_parcel
+        # The crosswalked vocabulary only, for the same reason as
+        # occupancy_keyword_class above: a raw land-use code must not
+        # reach a text rule, and this ruleset's short codebook patterns
+        # ((DW), D/W, S/W) are especially cheap to false-match. The
+        # counties whose codebook wording these patterns encode all
+        # publish that wording as text, so the labeled column carries it.
+        column: use_group_combined_labeled_parcel
         ruleset: section-count-keywords.csv
         class_column: n_sections
         reviewed_only: true

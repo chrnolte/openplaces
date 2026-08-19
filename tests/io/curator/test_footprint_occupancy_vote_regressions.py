@@ -33,6 +33,7 @@ VOTE_TARGETS = ('dwelling_multiplicity', 'occupancy_type', 'n_sections')
 DEFAULTS = {
     'occupancy_type': None,
     'use_group_combined_parcel': None,
+    'use_group_combined_labeled_parcel': None,
     'group_parcel': None,
     'group_footprint_fema': None,
     'occupancy_type_building_nsi': None,
@@ -75,6 +76,19 @@ def _box(lon, lat, length_m, width_m):
 
 def _run(recipe, rows: list[dict]) -> pd.DataFrame:
     """Run derive_indicators plus both occupancy votes, in pipeline order."""
+    # Mirror the production invariant between the two land-use columns:
+    # wherever the parcel's land use is real vocabulary (every plain-English
+    # string these fixtures use), the labeled column carries the same text,
+    # and both keyword rulesets read the labeled one. Only a code-only
+    # county diverges -- a test modelling one sets the labeled column to
+    # None itself (see test_raw_code_does_not_fire_a_text_rule).
+    rows = [
+        {
+            'use_group_combined_labeled_parcel': row.get('use_group_combined_parcel'),
+            **row,
+        }
+        for row in rows
+    ]
     merged = [{**DEFAULTS, **row} for row in rows]
     geometry = [
         _box(-78.0 + 0.01 * i, 35.0, r.pop('length_m'), r.pop('width_m'))
@@ -612,6 +626,33 @@ def test_site_built_house_gets_no_section_count(recipe):
     )
     assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
     assert pd.isna(out['n_sections'].astype(object).iloc[0])
+
+
+def test_raw_code_does_not_fire_a_text_rule(recipe):
+    """A code-only county's land use must not match keyword patterns.
+
+    Both keyword rulesets read use_group_combined_labeled_parcel, which
+    withholds the raw-code fallback, precisely so a county whose land use
+    arrives only as an uncrosswalked assessor code cannot false-match an
+    English pattern -- here a fabricated code whose '(DW)' fragment would
+    read as double-wide if the coalesced column fed the ruleset.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': '0475-MH(DW)-R',
+                'use_group_combined_labeled_parcel': None,
+                'group_footprint_fema': 'Manufactured Home',
+                'occupancy_type_building_nsi': 'Manufactured Home',
+                'p_manufactured_home': 0.99,
+                'length_m': 16.0,
+                'width_m': 4.5,
+            }
+        ],
+    )
+    assert pd.isna(out['section_keyword_class'].astype(object).iloc[0])
+    assert pd.isna(out['occupancy_keyword_class'].astype(object).iloc[0])
 
 
 def test_section_count_survives_the_integer_cast(recipe):
