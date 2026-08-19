@@ -203,7 +203,9 @@ quote-style = "single"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --strict-markers"
+# -n auto: distribute across cores via pytest-xdist. A single worker run
+# when wanted: pytest -n 0 (or -p no:xdist).
+addopts = "-ra -q --strict-markers -n auto"
 testpaths = ["tests"]
 python_files = [
     "test_*.py",
