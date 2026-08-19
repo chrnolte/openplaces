@@ -1105,41 +1105,82 @@ def derive_use_classes(
     ----------
     combined_column : str, optional
         Output combined-label column (default ``use_group_combined``).
-    columns : list of str, optional
-        Source columns to join, in order (default
-        ``['use_group', 'use_subgroup']``). Listing ``building_style``
-        alongside them lets counties whose land-use text carries no
-        occupancy signal contribute one from their structure description
-        -- Sampson County, NC is the motivating case: its land-use column
-        is a *land segment* type (homesite / cropland / woodland) that
-        matches no land-use keyword, while its style column names the
-        structure and identifies thousands of manufactured homes the
-        classifier would otherwise never see. Note that the combined
-        label is also the grouping key for cohort statistics such as
-        ``footprint_area_log_zscore``, so adding a high-cardinality
-        column fragments those cohorts; add one only where it earns its
-        place.
+    columns : list, optional
+        The label's parts, joined in order. Each entry is either a column
+        name, or a list of alternative column names coalesced per row --
+        the first of them that has a value wins, and the rest are ignored
+        for that row. Defaults to
+        ``[['use_group', 'use_group_code'], ['use_subgroup', 'use_subgroup_code']]``.
+
+        The alternative groups exist because land use arrives in whichever
+        column the source happens to populate. A source that ships a raw
+        code has it crosswalked into the ``use_group`` / ``use_subgroup``
+        vocabulary upstream, so the code contributes nothing extra and is
+        skipped; but a source whose code has *no* crosswalk (or whose
+        crosswalk does not cover that code) would otherwise contribute
+        nothing at all, even though the code is perfectly good grouping
+        and voting evidence. Galveston County, TX is the measured case:
+        no state category code and no crosswalk for its local codes, but
+        98% coverage of ``use_subgroup_code``. Coalescing rather than
+        appending is what keeps this from fragmenting cohorts -- where the
+        crosswalk did fire, the code adds no new label values.
+
+        Listing ``building_style`` alongside them lets counties whose
+        land-use text carries no occupancy signal contribute one from
+        their structure description -- Sampson County, NC is the
+        motivating case: its land-use column is a *land segment* type
+        (homesite / cropland / woodland) that matches no land-use keyword,
+        while its style column names the structure and identifies
+        thousands of manufactured homes the classifier would otherwise
+        never see. Note that the combined label is also the grouping key
+        for cohort statistics such as ``footprint_area_log_zscore``, so
+        adding a high-cardinality column fragments those cohorts; add one
+        only where it earns its place.
     """
     if state.spine is None:
         return state
     spine = state.spine
-    columns = list(columns) if columns else ['use_group', 'use_subgroup']
-    present = [c for c in columns if c in spine.columns]
+    groups = [
+        [entry] if isinstance(entry, str) else list(entry)
+        for entry in (
+            columns
+            or [
+                ['use_group', 'use_group_code'],
+                ['use_subgroup', 'use_subgroup_code'],
+            ]
+        )
+    ]
+    present = [[c for c in group if c in spine.columns] for group in groups]
+    present = [group for group in present if group]
     if not present:
         if state.verbose:
-            print(f'  derive_use_classes: none of {columns} on spine; skipping.')
+            flat = [c for group in groups for c in group]
+            print(f'  derive_use_classes: none of {flat} on spine; skipping.')
         return state
 
     def _clean(column: str) -> pd.Series:
         cleaned = spine[column].astype('string').str.strip()
         return cleaned.mask(cleaned.eq(''))
 
+    filled: dict[str, int] = {}
+
+    def _coalesce(group: list[str]) -> pd.Series:
+        """First column of *group* with a value, per row."""
+        part = _clean(group[0])
+        for column in group[1:]:
+            alternative = _clean(column)
+            gap = part.isna() & alternative.notna()
+            if gap.any():
+                filled[column] = int(gap.sum())
+            part = part.mask(gap, alternative)
+        return part
+
     # Join whichever parts a row actually has, so a row missing one field
     # falls back to the others alone rather than producing a degenerate
     # ' | ' label -- per row, not just per column.
     label = None
-    for column in present:
-        part = _clean(column)
+    for group in present:
+        part = _coalesce(group)
         if label is None:
             label = part
             continue
@@ -1153,6 +1194,11 @@ def derive_use_classes(
     if state.verbose:
         mapped = int(label.notna().sum())
         print(f'  derive_use_classes: combined {mapped:,d}/{len(spine):,d} parcels')
+        for column, count in filled.items():
+            print(
+                f'    fell back to {column} for {count:,d} row(s) with no '
+                f'crosswalked value'
+            )
     return state
 
 

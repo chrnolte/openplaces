@@ -134,3 +134,46 @@ def test_default_columns_unchanged_when_extra_absent():
     )
     out = attrs.derive_use_classes(_state(spine)).spine['use_group_combined']
     assert out.astype('string').iloc[0] == 'residential | single family'
+
+
+def test_code_column_fills_only_where_the_crosswalk_did_not():
+    """The raw code is a fallback, never an addition.
+
+    20 recipes map a use_*_code but only 5 ship a crosswalk for it, so the
+    code has to reach the label where nothing crosswalked it -- without
+    adding a second label value where something did, which would fragment
+    the cohorts keyed on use_group_combined.
+    """
+    spine = pd.DataFrame(
+        {
+            'use_group': ['residential', None, '', None],
+            'use_group_code': ['A1', 'B2', 'C1', None],
+            'use_subgroup': ['single family', None, None, None],
+            'use_subgroup_code': ['RS', 'RMH', None, 'RL'],
+        }
+    )
+    combined = attrs.derive_use_classes(_state(spine)).spine['use_group_combined']
+    # Crosswalk fired: the codes contribute nothing.
+    assert combined[0] == 'residential | single family'
+    # No crosswalked value at all: both codes carry the label.
+    assert combined[1] == 'B2 | RMH'
+    # Group code alone (empty string counts as missing).
+    assert combined[2] == 'C1'
+    # Subgroup code alone -- the Galveston County, TX case.
+    assert combined[3] == 'RL'
+
+
+def test_flat_column_list_still_ignores_code_columns():
+    """A recipe naming plain columns must not pick up codes implicitly."""
+    spine = pd.DataFrame(
+        {
+            'use_group': [None],
+            'use_group_code': ['A1'],
+            'use_subgroup': [None],
+            'use_subgroup_code': ['RS'],
+        }
+    )
+    combined = attrs.derive_use_classes(
+        _state(spine), columns=['use_group', 'use_subgroup']
+    ).spine['use_group_combined']
+    assert pd.isna(combined[0])
