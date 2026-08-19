@@ -392,7 +392,13 @@ class TableIngester:
         layer = self.recipe.get('layer')
         data_path = data_path_override or self.download_partition['data_path']
 
-        if data_path.suffix == '.parquet':
+        # Match the extension case-insensitively: the *_EXTENSIONS sets are
+        # lowercase, but agency exports routinely ship uppercase names --
+        # the PACS appraisal roll members are all `.TXT`, which otherwise
+        # falls through every branch to "suffix not yet interpreted".
+        suffix = data_path.suffix.lower()
+
+        if suffix == '.parquet':
             if 'fids' in kwargs:
                 raise ValueError('`fid`-based selection might not work with `parquet`.')
             try:
@@ -405,7 +411,7 @@ class TableIngester:
                     raise
                 gdf = pd.read_parquet(data_path, columns=columns)
             self.timer.mark('Read parquet file' + timer_suffix, path=data_path)
-        elif data_path.suffix == '.gdb':
+        elif suffix == '.gdb':
             try:
                 gdf = read_gdb_with_domains(
                     data_path, columns=columns, layer=layer, **kwargs
@@ -431,7 +437,7 @@ class TableIngester:
                     raise RuntimeError('Remove the folder manually and re-run.')
                 raise
             self.timer.mark('Read GDB file' + timer_suffix, path=data_path)
-        elif data_path.suffix in GEOPANDAS_EXTENSIONS:
+        elif suffix in GEOPANDAS_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
             except DataSourceError:
@@ -444,7 +450,7 @@ class TableIngester:
                 f'Read vector file ({data_path.suffix})' + timer_suffix,
                 path=data_path,
             )
-        elif data_path.suffix in PANDAS_EXTENSIONS:
+        elif suffix in PANDAS_EXTENSIONS:
             # `csv_dtype: str` reads every column as text — the robust choice
             # for messy flat dumps where a column mixes ints and strings.
             # A dict maps specific columns to dtypes.
@@ -457,8 +463,10 @@ class TableIngester:
                 dtype = None
 
             if self.recipe.get('fixed_width'):
-                gdf = self._read_fixed_width(data_path, dtype)
-            elif data_path.suffix in {'.xlsx', '.xls'}:
+                gdf = self._read_fixed_width(
+                    data_path, dtype, encoding=kwargs.get('encoding')
+                )
+            elif suffix in {'.xlsx', '.xls'}:
                 header = self.recipe.get('header', 'infer')
                 gdf = pd.read_excel(
                     data_path,
@@ -481,7 +489,7 @@ class TableIngester:
                 'Read data table' + timer_suffix,
                 path=data_path,
             )
-        elif data_path.suffix in ZIP_EXTENSIONS:
+        elif suffix in ZIP_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
                 self.timer.mark('Read compressed file' + timer_suffix, path=data_path)
@@ -506,12 +514,16 @@ class TableIngester:
         )
         return gdf
 
-    def _read_fixed_width(self, data_path, dtype):
+    def _read_fixed_width(self, data_path, dtype, encoding=None):
         """Read a fixed-width flat file using the recipe's ``fixed_width`` layout.
 
         ``fixed_width`` is an ordered list of ``[field_name, width]`` covering the
         whole record. Fields named ``filler`` are padding and are dropped after
         reading. Field values are stripped of their fixed-width padding.
+
+        The layout need not cover the whole record: reading stops after the
+        last declared field, so a recipe that wants six columns out of a
+        9,714-character PACS appraisal row declares only as far as it needs.
 
         Parameters
         ----------
@@ -520,6 +532,10 @@ class TableIngester:
         dtype : type, dict, or None
             Passed to :func:`pandas.read_fwf` (defaults to ``str`` so zero-padded
             identifiers keep their leading zeros).
+        encoding : str, optional
+            From the recipe's ``encoding`` key. Legacy mainframe-style exports
+            are rarely UTF-8 -- the Texas PACS appraisal roll is latin-1, and
+            without this it dies on the first accented owner name.
         """
         spec = self.recipe['fixed_width']
         names, widths = [], []
@@ -528,7 +544,13 @@ class TableIngester:
             names.append(f'filler_{i}' if name == 'filler' else name)
             widths.append(width)
 
-        df = pd.read_fwf(data_path, widths=widths, names=names, dtype=dtype or str)
+        df = pd.read_fwf(
+            data_path,
+            widths=widths,
+            names=names,
+            dtype=dtype or str,
+            encoding=encoding,
+        )
         df = df.drop(columns=[c for c in df.columns if c.startswith('filler_')])
         for col in df.columns:
             if df[col].dtype == object:
