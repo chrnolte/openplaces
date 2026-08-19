@@ -2,6 +2,7 @@ pattern,match_type,occupancy_type,reviewed
 MANUFACTURED,contains,Manufactured Home,true
 SINGLE WIDE,contains,Manufactured Home,true
 DOUBLE WIDE,contains,Manufactured Home,true
+TRIPLE WIDE,contains,Manufactured Home,true
 MOBILE HOME,contains,Manufactured Home,true
 MAN-HOU,contains,Manufactured Home,false
 MULTI[- ]?SECTION,regex,Manufactured Home,true

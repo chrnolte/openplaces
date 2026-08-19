@@ -50,6 +50,10 @@ share:
     - occupancy_type
     - year_built
     - n_stories
+    # Populated for manufactured homes only, and missing wherever the two
+    # shape tests disagree -- so a null here means "not asked" or "not
+    # resolved", never "one section".
+    - n_sections
     - structure_value
     - construction_type
     - foundation_type
@@ -238,6 +242,18 @@ pipeline:
         type: shape_metric
         metric: aspect_ratio
 
+      # The short side of the same bounding rectangle, in meters. Elongation
+      # answers "is this a manufactured home"; the width answers "how many
+      # boxes did it ship in", because a section is a road-legal load and its
+      # width is therefore near-constant while its length is not. Measured
+      # across the 45 delivered counties, multi-section homes sit at a median
+      # width of 8.85 m -- two ~14.5 ft boxes -- against 5.39 m for
+      # single-wides, and that multi-section median is 8.7-9.2 m in every one
+      # of the nine counties whose assessor states a section count.
+      - output: width_m
+        type: shape_metric
+        metric: width
+
       # Each occupancy source coerced to the canonical class vocabulary, kept
       # as its own column rather than pooled: per-class reliability differs
       # sharply between sources (parcel is the strongest evidence for
@@ -259,6 +275,31 @@ pipeline:
         type: ruleset_class
         column: use_group_combined_parcel
         ruleset: parcel-occupancy-keywords.csv
+        reviewed_only: true
+
+      # The section count the assessor already stated, read out of the same
+      # land-use string. parcel-occupancy-keywords.csv matches SINGLE WIDE,
+      # DOUBLE WIDE and MULTI-SECTION too, but collapses all three onto
+      # Manufactured Home; this ruleset keeps the distinction they draw.
+      #
+      # Coverage is 70,174 of the region's 360,852 manufactured-home
+      # footprints (19.4%), concentrated in ten counties. The two plain-English
+      # patterns are the transferable half of the vocabulary: DOUBLE WIDE
+      # fires in 6 counties and SINGLE WIDE in 8, and a leave-one-county-out
+      # test -- allowing only patterns that also fire somewhere else, so a
+      # rule cannot be scored on the county it was read from -- agrees with
+      # the withheld county's own labels 100% of the time. The remaining
+      # patterns are each used by exactly one county ((DW) Harnett,
+      # MULTI-SECT Onslow, D/W and S/W Pitt), so they are codebook
+      # knowledge rather than vocabulary and cannot be validated that way;
+      # they are listed after the transferable pair for that reason, not
+      # because of any match-order requirement -- the two families are
+      # disjoint, and no observed string carries both.
+      - output: section_keyword_class
+        type: ruleset_class
+        column: use_group_combined_parcel
+        ruleset: section-count-keywords.csv
+        class_column: n_sections
         reviewed_only: true
 
       # Size relative to "somebody's home rather than a shed", judged against
@@ -649,6 +690,124 @@ pipeline:
           # this decision is 8+ by elimination.
           - {type: not_null, column: n_stories}
 
+  # Split manufactured homes by how many factory-built sections they shipped
+  # in. Same weighted vote as every other classification here, gated on the
+  # class it refines exactly as the height bands above gate on Multi-Family.
+  #
+  # This is a genuinely separate question from "is this a manufactured home",
+  # and it is worth asking because the two kinds are not a niche split: across
+  # the 45 delivered counties, of the 70,174 manufactured-home footprints whose
+  # assessor states a section count, 81.3% are multi-section (70.8% in Harnett,
+  # the county with the most complete labelling). The Manufactured Home
+  # decision's weight-2 geometry indicator is an aspect-ratio test, and a
+  # double-wide is not elongated -- so the majority kind is the one that
+  # indicator sees least. Recording the section count makes that visible in the
+  # product rather than only in the decision that produced it.
+  #
+  # Two lanes, and they cover disjoint parts of the region:
+  #
+  #   assessor keyword -- exact, and 100% agreeing with a withheld county's
+  #   own labels under leave-one-county-out (see section_keyword_class above),
+  #   but silent in 35 of the 45 counties.
+  #
+  #   geometry -- available everywhere. A section is a road-legal load, so its
+  #   width is near-constant while its length is not: multi-section homes sit
+  #   at a median width of 8.85 m against 5.39 m for single-wides. The
+  #   region-wide width histogram is bimodal at 4.0-5.0 m and 8.5-9.0 m with a
+  #   trough at 6.5-7.0 m, and has the same shape in the 35 counties that state
+  #   no section at all -- which is why the cutoff is expected to transfer
+  #   rather than merely fit.
+  #
+  # Measured on the 70,174 labelled footprints, geometry alone (the keyword
+  # indicator excluded, so the test is not circular): coverage 77.4%, accuracy
+  # 86.8%; multi-section precision 0.922 / recall 0.706, single-wide precision
+  # 0.626 / recall 0.509.
+  #
+  # Do not read that 86.8% as strong. Multi-section is 82.2% of the covered
+  # rows, so always answering "multi-section" would score 82.2% -- the shape
+  # lane is worth only about +4.6 points of accuracy over saying nothing
+  # interesting. Its actual value is that it finds single-wides at all, which
+  # the majority baseline never does, and there it is 0.626 precise at 0.509
+  # recall. Treat a single-wide from this lane as a useful flag, not a fact:
+  # single-wides are the minority class, so a shipped single-wide count runs
+  # high. section_keyword_class is kept in the evidence file precisely so a
+  # consumer wanting only the exact lane can take the rows the assessor
+  # itself labelled. Accuracy is 85-87% for every width
+  # cutoff in 6.5-7.5 m and every aspect cutoff in 2.2-2.8, so neither number
+  # is a knife-edge; aspect 2.8 would buy +4pp coverage and +0.6pp accuracy,
+  # not taken because reusing mh_aspect_min keeps that cutoff stated once.
+  #
+  # Weights encode that ranking: the keyword is 3 and so decides alone and
+  # beats the shape pair outright, while the two shape indicators are 1 each
+  # and must agree with one another to reach min_score. A footprint whose
+  # width and elongation contradict each other therefore records no section
+  # count at all.
+  - step: resolve_by_vote
+    target: n_sections
+    # This vote *is* the classification, not a correction to one: a footprint
+    # whose two shape tests contradict each other should carry no section
+    # count rather than a coin flip.
+    preserve_base: false
+    default_source: section_vote
+    decisions:
+      # Listed first only to settle the exact-cutoff tie: the predicate
+      # vocabulary has inclusive bounds either way, so a footprint sitting
+      # exactly on the width or the aspect boundary satisfies two decisions
+      # at once, and earliest-listed-wins resolves it the same way it turns
+      # the height bands above into a cascade.
+      #
+      # Order deliberately does *not* settle a keyword-versus-shape
+      # disagreement -- the keyword weight does, at 3 against the shape
+      # pair's 2. Position would be the wrong instrument: it would make the
+      # answer depend on which class happens to be written first rather than
+      # on which evidence is better, and here the keyword plainly is (100%
+      # leave-one-county-out agreement against geometry's 86.8% accuracy).
+      # Left to order, an assessor writing TRIPLE WIDE lost to a merely
+      # wide silhouette, which is what test_triple_wide_is_not_rounded_
+      # down_to_a_double now pins.
+      - class: 2
+        source: multi_section
+        min_score: 2
+        require:
+          - {type: equals, column: occupancy_type, value: Manufactured Home}
+        indicators:
+          - type: equals
+            column: section_keyword_class
+            value: '2'
+            weight: 3
+          - {type: numeric_at_least, column: width_m, min: &mh_section_width_m 7.0}
+          - {type: numeric_at_most, column: aspect_ratio, max: *mh_aspect_min}
+
+      - class: 1
+        source: single_wide
+        min_score: 2
+        require:
+          - {type: equals, column: occupancy_type, value: Manufactured Home}
+        indicators:
+          - type: equals
+            column: section_keyword_class
+            value: '1'
+            weight: 3
+          - {type: numeric_at_most, column: width_m, max: *mh_section_width_m}
+          - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min}
+
+      # Triple-wides are 0.4% of the Texas title registry and, at a median
+      # aspect of 1.48 and 238 m2, geometrically indistinguishable from an
+      # ordinary house -- so no shape indicator here, and none is wanted. The
+      # decision exists only so a county that writes the word is recorded
+      # correctly instead of being rounded down to a double-wide. No footprint
+      # in the North Carolina region reaches it today.
+      - class: 3
+        source: triple_wide
+        min_score: 2
+        require:
+          - {type: equals, column: occupancy_type, value: Manufactured Home}
+        indicators:
+          - type: equals
+            column: section_keyword_class
+            value: '3'
+            weight: 3
+
   # Recompute the manufactured home community flag using final footprint classifications.
   - step: flag_manufactured_home_communities
     min_homes: 3
@@ -664,8 +823,11 @@ pipeline:
   # fallback (_OCC_UNITS) assigns to a size range with no exact count
   # evidence; both flow into these canonical columns via reconcile_values
   # above, so they need the same integer cast year_built already got.
+  # n_sections joins them because resolve_by_vote writes a Categorical
+  # whatever its class values look like, so the section count arrives here as
+  # a category of '1'/'2'/'3' rather than as a number.
   - step: cast_integers
-    columns: [year_built, n_stories, n_dwellings]
+    columns: [year_built, n_stories, n_dwellings, n_sections]
 
   # Drop transient intermediate/evidence columns and enforce canonical schema order.
   - step: order_columns
@@ -693,6 +855,7 @@ pipeline:
       # analyze_occupancy_stages.py or export_cheer_nsi_conflicts.py.
       - p_manufactured_home
       - aspect_ratio
+      - width_m
       - occupancy_type_nsi_class
       - occupancy_type_fema_class
       - occupancy_keyword_class

@@ -23,6 +23,10 @@ from openplaces.recipe import get_recipe_by_id
 
 RECIPE_ID = 'US_footprint-cheer-2026'
 
+# The recipe's votes, in pipeline order. n_sections gates on the occupancy
+# class, so it has to run after the vote that decides it.
+VOTE_TARGETS = ('dwelling_multiplicity', 'occupancy_type', 'n_sections')
+
 # Every column the votes may read. A column absent from the frame makes
 # evaluate_indicator return all-False, so an indicator referencing it would
 # silently never fire -- see test_every_vote_input_is_available.
@@ -90,7 +94,7 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
     derive = next(s for s in recipe['pipeline'] if s['step'] == 'derive_indicators')
     state = derive_indicators(state, derive['indicators'])
 
-    for target in ('dwelling_multiplicity', 'occupancy_type'):
+    for target in VOTE_TARGETS:
         for vote in _votes(recipe, target):
             state = resolve_by_vote(
                 state,
@@ -143,7 +147,7 @@ def test_every_vote_input_is_available(recipe):
     own derived outputs cover every column both votes read.
     """
     referenced: set[str] = set()
-    for target in ('dwelling_multiplicity', 'occupancy_type'):
+    for target in VOTE_TARGETS:
         for vote in _votes(recipe, target):
             for decision in vote['decisions']:
                 _referenced_columns(decision.get('indicators', []), referenced)
@@ -153,7 +157,7 @@ def test_every_vote_input_is_available(recipe):
     # A vote also provides its own target and any base_output snapshot, which
     # later decisions in the same or a following vote may require.
     written = {'area_m2', 'geometry'}
-    for target in ('dwelling_multiplicity', 'occupancy_type'):
+    for target in VOTE_TARGETS:
         for vote in _votes(recipe, target):
             written.add(vote['target'])
             if vote.get('base_output'):
@@ -354,7 +358,7 @@ def test_condominium_parcel_class_is_never_read(recipe):
     accident.
     """
     values: list = []
-    for target in ('dwelling_multiplicity', 'occupancy_type'):
+    for target in VOTE_TARGETS:
         for vote in _votes(recipe, target):
             for decision in vote['decisions']:
                 for group in (
@@ -472,3 +476,173 @@ def test_restricted_shovels_columns_are_never_published(recipe):
     ).curated
     leaked = [c for c in out.columns if 'shovels' in c or 'permit' in c]
     assert not leaked, f'restricted permit columns survive order_columns: {leaked}'
+
+
+# Manufactured-home section count (n_sections).
+#
+# The assessor keyword is exact but silent in 35 of the 45 delivered
+# counties; the shape lane covers all of them. These pin the four outcomes
+# that matter: keyword wins over a contradicting shape, shape decides alone
+# where the keyword is silent, contradictory shape decides nothing, and the
+# whole question is never asked of a non-manufactured footprint.
+
+# Reviewed keyword in parcel-occupancy-keywords.csv that classifies the
+# footprint as a manufactured home while saying nothing about sections, so
+# the shape lane is the only section evidence.
+_MH_NO_SECTION = 'MOBILE HOME'
+
+
+def _sections(recipe, rows: list[dict]) -> pd.Series:
+    return _run(recipe, rows)['n_sections'].astype(object)
+
+
+def test_section_keyword_outranks_a_contradicting_shape(recipe):
+    """An assessor saying DOUBLE WIDE beats a single-wide silhouette.
+
+    The keyword carries weight 2 and reaches min_score alone; both shape
+    indicators point the other way and together reach only 2 for the
+    single-wide decision, which loses the tie to the earlier-listed one.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': 'DOUBLE WIDE MOHO',
+                'length_m': 20.0,
+                'width_m': 4.5,
+            }
+        ],
+    )
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+    assert out['n_sections'].astype(object).iloc[0] == 2
+
+
+def test_wide_unelongated_manufactured_home_is_multi_section(recipe):
+    """Two ~14.5 ft boxes side by side: wide, and not elongated."""
+    assert (
+        _sections(
+            recipe,
+            [
+                {
+                    'use_group_combined_parcel': _MH_NO_SECTION,
+                    'length_m': 18.0,
+                    'width_m': 9.0,
+                }
+            ],
+        ).iloc[0]
+        == 2
+    )
+
+
+def test_narrow_elongated_manufactured_home_is_single_wide(recipe):
+    """One road-legal box: narrow, and elongated."""
+    assert (
+        _sections(
+            recipe,
+            [
+                {
+                    'use_group_combined_parcel': _MH_NO_SECTION,
+                    'length_m': 20.0,
+                    'width_m': 4.5,
+                }
+            ],
+        ).iloc[0]
+        == 1
+    )
+
+
+def test_contradictory_shape_records_no_section_count(recipe):
+    """Narrow but not elongated: each decision scores 1, neither reaches 2.
+
+    `preserve_base: false` leaves the count missing rather than letting one
+    of the two shape tests decide on its own -- a null here means the shape
+    is ambiguous, never that the home has one section.
+    """
+    assert pd.isna(
+        _sections(
+            recipe,
+            [
+                {
+                    'use_group_combined_parcel': _MH_NO_SECTION,
+                    'length_m': 12.0,
+                    'width_m': 6.0,
+                }
+            ],
+        ).iloc[0]
+    )
+
+
+def test_triple_wide_is_not_rounded_down_to_a_double(recipe):
+    """Also pins that TRIPLE WIDE reaches the class at all.
+
+    parcel-occupancy-keywords.csv listed SINGLE WIDE and DOUBLE WIDE but not
+    TRIPLE WIDE, so before this the word alone did not even make the footprint
+    a manufactured home, and the section decision could never be reached.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': 'TRIPLE WIDE',
+                'length_m': 20.0,
+                'width_m': 12.0,
+            }
+        ],
+    )
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+    assert out['n_sections'].astype(object).iloc[0] == 3
+
+
+def test_site_built_house_gets_no_section_count(recipe):
+    """The question is only asked of manufactured homes.
+
+    A wide, unelongated site-built house satisfies both of the multi-section
+    shape indicators; only the `require` on occupancy_type keeps it out.
+    """
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': 'SINGLE FAMILY',
+                'n_dwellings_overture': 1,
+                'length_m': 18.0,
+                'width_m': 9.0,
+            }
+        ],
+    )
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+    assert pd.isna(out['n_sections'].astype(object).iloc[0])
+
+
+def test_section_count_survives_the_integer_cast(recipe):
+    """resolve_by_vote writes a Categorical, so the recipe casts it back.
+
+    Without n_sections in cast_integers the delivered column would be a
+    category of '1'/'2'/'3' strings rather than a number.
+    """
+    from openplaces.io.curator.formatters import cast_integers
+
+    step = next(s for s in recipe['pipeline'] if s['step'] == 'cast_integers')
+    assert 'n_sections' in step['columns']
+
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': 'DOUBLE WIDE',
+                'length_m': 18.0,
+                'width_m': 9.0,
+            }
+        ],
+    )
+    state = CurateState(
+        recipe=recipe,
+        entity_recipe={},
+        admin_id=None,
+        verbose=False,
+        timer=None,
+        curated=out,
+    )
+    cast = cast_integers(state, step['columns']).curated
+    assert cast['n_sections'].dtype == 'Int64'
+    assert cast['n_sections'].iloc[0] == 2

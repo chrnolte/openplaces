@@ -114,6 +114,12 @@ Canonical attributes
     Canonical occupancy class.
 
     Multi-Family structures are split into HAZUS height bands (Low-Rise: 1-3 stories, Mid-Rise: 4-7 stories, High-Rise: 8+ stories) based on ``n_stories``. Multi-Family rows with no story count keep the plain ``Multi-Family`` label.
+``n_sections``
+    Number of factory-built sections a manufactured home shipped in: 1 for a single-wide, 2 for a multi-section (double-wide), 3 for a triple-wide.
+
+    Decided by the same weighted vote as every other classification here, gated on ``occupancy_type == 'Manufactured Home'`` - so it is missing for every other class. Two lanes of evidence: the section count the assessor states in its own land-use text (exact, but present in only ten of the 45 delivered counties), and footprint shape, which is available everywhere. A section is a road-legal load, so its width is near-constant while its length is not; multi-section homes sit at a median footprint width of 8.85 m against 5.39 m for single-wides.
+
+    Two nulls to tell apart, both of which mean "no claim", never "one section": the footprint is not a manufactured home, or its width and its elongation contradict each other, in which case neither decision reaches its threshold. Shape alone resolves 77.4% of manufactured homes at 86.8% accuracy, but multi-section is 82.2% of those rows, so the shape lane is worth only about +4.6 points over always answering "multi-section". Its value is that it finds single-wides at all - at 0.626 precision and 0.509 recall. Treat a single-wide from the shape lane as a useful flag rather than a fact, and take ``section_keyword_class`` from the ``_evidence`` file to restrict yourself to the rows the assessor labelled itself.
 ``structure_value``
     Reconciled structure value in USD. Prioritizes the parcel's improvement value (apportioned across its primary footprints by floor-area share), falling back to the NSI structure replacement value.
 ``year_built``
@@ -427,12 +433,13 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
    a. **Score manufactured home probability**: Computes a probability score for manufactured home classification based on assessor keywords and footprint morphology.
    b. **Resolve occupancy by weighted vote**: Resolves final occupancy class (specifically Manufactured Home vs. Multi-Family conflicts) to the :input:`target` column (``occupancy_type``).
    c. **Split height bands**: Splits ``Multi-Family`` occupancy into Low-Rise, Mid-Rise, and High-Rise height bands based on the reconciled number of stories.
-   d. **Flag manufactured home communities**: Flags parcels containing more than 3 final Manufactured Home footprints.
+   d. **Split manufactured home sections**: Splits ``Manufactured Home`` occupancy into a section count (``n_sections``) from the assessor's own wording and from footprint width and elongation.
+   e. **Flag manufactured home communities**: Flags parcels containing more than 3 final Manufactured Home footprints.
 
 7. Schema standardization and formatting
 
    a. **Standardize data categories**: Converts string columns to pandas Categorical types.
-   b. **Cast year built to integer**: Rounds and casts the Construction Year column to a nullable integer.
+   b. **Cast counts to integer**: Rounds and casts the construction year, story, dwelling and section counts to a nullable integer.
    c. **Clean up and order columns**: Enforces standard column order and drops transient helper columns.
 
 Technical Annex
