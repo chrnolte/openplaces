@@ -21,6 +21,7 @@ import pandas as pd
 import pyproj
 import shapely
 from openlocationcode import openlocationcode as olc
+from pandas.api.types import is_float_dtype
 
 from openplaces.geo.polygon import reproject
 from openplaces.table import add_unique_suffix
@@ -708,7 +709,22 @@ def convert_parcel_id(series: pd.Series, pattern=None, conv_code: str = 'simple'
         Standardized matching key (``parcel_id_local``); NA where extraction
         failed or the result is empty.
     """
+    # A whole-number id column that arrived as float -- which happens
+    # whenever the source has a single null in it, since that forces
+    # float64 -- stringifies as '6724.0'. The trailing '.0' is not part of
+    # the identifier and defeats every digit pattern, so the whole column
+    # converts to NA and the source silently joins to nothing (observed on
+    # Hyde County, NC: 7,698 rows, every one of them stranded). Render
+    # integral floats as integers before matching.
+    if is_float_dtype(series):
+        finite = series.dropna()
+        if len(finite) and (finite % 1 == 0).all():
+            series = series.astype('Int64')
     s = series.astype('string').str.strip().str.upper()
+    # The same damage, already stringified upstream. Anchored on the whole
+    # value and restricted to bare digits, so a structured PIN keeps every
+    # part of itself: '1116.00-26-5641.000' does not match, '6724.0' does.
+    s = s.str.replace(r'^(\d+)\.0+$', r'\1', regex=True)
     if conv_code == 'simple':
         out = s.str.replace(r'[^0-9A-Z]', '', regex=True)
         return out.where(out.ne(''), pd.NA)
