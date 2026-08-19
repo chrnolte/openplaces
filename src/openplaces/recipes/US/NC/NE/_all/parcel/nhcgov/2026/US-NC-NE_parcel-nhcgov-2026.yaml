@@ -189,7 +189,7 @@ transformation_patterns:
     apply_to_columns:
       - land_value
       - improvement_value
-      - value
+      - total_value
       - special_feature_value
       - personal_property_value
       - classified_market_value

@@ -51,7 +51,7 @@ def derive_metrics(state: CurateState) -> CurateState:
         if col.endswith('_per_area') or col.endswith(SOURCE_SUFFIX):
             continue
         if (
-            col == 'value'
+            col == 'total_value'
             or col.startswith('improvement_value')
             or col.startswith('structure_value')
         ):

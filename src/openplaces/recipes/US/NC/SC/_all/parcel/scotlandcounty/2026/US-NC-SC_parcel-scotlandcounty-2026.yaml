@@ -48,7 +48,7 @@ columns:
   last_sale_doc_type: SaleInstru
   land_value: MarketLand
   improvement_value: BuildingVa
-  value: AssessedVa
+  total_value: AssessedVa
 
 transformations:
   - type: string

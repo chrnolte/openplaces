@@ -150,6 +150,14 @@ pipeline:
     columns:
       improvement_value: improvement_value_parcel
       land_value: land_value_parcel
+      # Whole on the principal footprint, like land_value: this is the
+      # parcel's land+structure total, so it must never be repeated across
+      # a parcel's footprints -- summing the column region-wide has to
+      # return the region's assessed value, not a multiple of it. It is
+      # the only value six of these counties publish at all, their rolls
+      # carrying no land/building split, so without it those counties
+      # reach the footprints with no value evidence whatsoever.
+      total_value: total_value_parcel
       year_built: year_built_parcel
       land_value_imputed: land_value
       improvement_value_imputed: structure_value

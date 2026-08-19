@@ -45,7 +45,7 @@ columns:
   land_value: LAND_VALUE
   improvement_value: BUILDING_VALUE
   special_feature_value: MISC_IMPROV_VALUE
-  value: TOTAL_ASSESSED
+  total_value: TOTAL_ASSESSED
 
 transformations:
   - type: string

@@ -46,7 +46,7 @@ columns:
   last_sale_book_page: bk_pg
   land_value: landval
   improvement_value: bldgval
-  value: netval
+  total_value: netval
   subdivision: subdivisio
   zoning_code: zone
 

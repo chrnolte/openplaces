@@ -60,7 +60,7 @@ columns:
   last_sale_date: Date_Recorded
   last_sale_price: Sale_Price
   subdivision: Subdivision
-  value: Tax_Value
+  total_value: Tax_Value
 
 # Billing_City_ST is a single "CITY, ST" field; split into the canonical
 # owner_city / owner_admin2_id_admin1 pair.

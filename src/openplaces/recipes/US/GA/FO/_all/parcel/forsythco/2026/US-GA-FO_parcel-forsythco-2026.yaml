@@ -49,7 +49,7 @@ columns:
   owner_admin2_id_admin1: PSTLSTATE
   owner_postal_code: PSTLZIP5
   land_value: LNDVALUE
-  value: CNTASSDVAL
+  total_value: CNTASSDVAL
   year_built: RESYRBLT
   area_sqft: RESFLRAREA
   use_group: USEDSCRP

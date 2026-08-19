@@ -35,6 +35,7 @@ APPORTIONED_VALUE_COLUMNS = (
     'n_dwellings',
     'year_built',
     'land_value',
+    'total_value',
     'address',
     'land_value_imputed',
     'improvement_value_imputed',
@@ -56,7 +57,13 @@ PROPORTIONAL_SPLIT_COLUMNS = ('improvement_value', 'improvement_value_imputed')
 # estimate substituted only where it was genuinely missing -- so it gets the
 # identical apportionment treatment, not the area-proportional one meant for
 # improvement/structure values.
-WHOLE_VALUE_COLUMNS = ('land_value', 'land_value_imputed')
+# total_value joins them rather than the proportional split: it is
+# land + structures, so splitting it by footprint area would divide the
+# land half by building geometry, and a parcel's total is in any case a
+# single figure the assessor wrote once. Whole-on-principal keeps the
+# regional sum exact while never printing the same dollar twice across a
+# parcel's footprints.
+WHOLE_VALUE_COLUMNS = ('land_value', 'land_value_imputed', 'total_value')
 
 
 def apportion_reference_values(

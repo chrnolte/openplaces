@@ -65,7 +65,7 @@ columns:
   year_built: structyear
   has_multi_structure: multistruc
   value_type: parvaltype
-  value: parval
+  total_value: parval
   improvement_value: improvval
   land_value: landval
   last_sale_date: saledate

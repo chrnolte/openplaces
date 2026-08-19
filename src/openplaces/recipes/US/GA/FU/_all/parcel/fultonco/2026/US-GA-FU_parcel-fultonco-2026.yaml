@@ -52,7 +52,7 @@ columns:
   owner_address: OwnerAddr1
   land_value: LandAppr
   improvement_value: ImprAppr
-  value: TotAppr
+  total_value: TotAppr
   use_group_code: LUCode
   n_dwellings: LivUnits
   area_ac: LandAcres

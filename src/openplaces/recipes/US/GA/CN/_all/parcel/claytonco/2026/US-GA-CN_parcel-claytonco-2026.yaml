@@ -59,7 +59,7 @@ columns:
   owner_postal_code: PSTLZIP5
   land_value: LANDFMV
   improvement_value: IMPROVEMNT
-  value: APPRVAL
+  total_value: APPRVAL
   year_built: YEARBUILT
   area_sqft: SQRFT
   area_ac: ACERAGE

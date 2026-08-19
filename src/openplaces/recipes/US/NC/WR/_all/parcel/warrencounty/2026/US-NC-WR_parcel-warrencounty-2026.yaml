@@ -56,7 +56,7 @@ columns:
   last_sale_price: SALE_PRICE
   land_value: LAND_VAL
   improvement_value: BLDG_VAL
-  value: ASSESSED_VAL
+  total_value: ASSESSED_VAL
   area_sqft: HEATED_AREA
 
 transformations:

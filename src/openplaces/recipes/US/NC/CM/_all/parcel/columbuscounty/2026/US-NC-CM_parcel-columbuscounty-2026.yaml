@@ -80,7 +80,7 @@ columns:
   area_sqft: sqft
   last_sale_price: saleamt
   last_sale_book_page: deed
-  value: taxvalue
+  total_value: taxvalue
 
 columns_to_categorical:
   - use_group

@@ -93,7 +93,7 @@ columns:
   last_sale_qualification_code: SALE_QUAL
   land_value: LAND_VAL
   improvement_value: BLDG_VAL
-  value: TOT_VAL
+  total_value: TOT_VAL
   current_use_value: DEFER_VAL
 
 transformations:

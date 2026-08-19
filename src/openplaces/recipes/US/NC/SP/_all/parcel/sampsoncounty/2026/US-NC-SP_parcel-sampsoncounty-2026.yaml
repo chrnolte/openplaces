@@ -63,7 +63,7 @@ columns:
   n_bathrooms: FULL_BATH
   n_stories: STORY_HEIG
   last_sale_date: DATE_RECOR
-  value: ASSESSED_V
+  total_value: ASSESSED_V
   year_built: YEAR_BUILT
   area_sqft: LIVING_ARE
 

@@ -38,7 +38,7 @@ columns:
   owner_name: NAME
   use_group_code: LAND_USE_V
   last_sale_date: DATE_SOLD
-  value: TAX_VAL
+  total_value: TAX_VAL
 
 transformations:
   - type: string

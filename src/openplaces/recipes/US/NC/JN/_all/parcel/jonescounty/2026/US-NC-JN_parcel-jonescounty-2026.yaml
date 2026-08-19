@@ -39,7 +39,7 @@ columns:
   land_value: assessedlandvalue
   improvement_value: totalbuildingvalue
   special_feature_value: obxfvalue
-  value: assessedvalue
+  total_value: assessedvalue
   last_sale_date: deeddate
   last_sale_price: saleprice
 

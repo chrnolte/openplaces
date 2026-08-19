@@ -46,7 +46,7 @@ columns:
   last_sale_date: DEED_DATE
   land_value: CURRENT_LAND_VALUE
   improvement_value: CURRENT_BLDG_VALUE
-  value: TOTAL_ASSESSED
+  total_value: TOTAL_ASSESSED
   subdivision: SUBDIVISION
 
 transformations:

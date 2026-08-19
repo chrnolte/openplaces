@@ -59,7 +59,7 @@ columns:
   use_group: CAT
   use_subgroup: PROPTYPE
   resident_type: RESCODE
-  value: REAL_FLV
+  total_value: REAL_FLV
   land_value: LAND_LV
   improvement_value: IMPRV_LV
   homestead_declared: HSDECL

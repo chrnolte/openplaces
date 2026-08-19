@@ -66,7 +66,7 @@ columns:
   last_sale_price: SALE_PRICE
   land_value: LAND_VALUE
   improvement_value: BUILDING_VALUE
-  value: TOTAL_VALUE
+  total_value: TOTAL_VALUE
   subdivision: SUBDIVISION
   zoning_code: ZONE
   area_sqft: HEAT_SQ_FT

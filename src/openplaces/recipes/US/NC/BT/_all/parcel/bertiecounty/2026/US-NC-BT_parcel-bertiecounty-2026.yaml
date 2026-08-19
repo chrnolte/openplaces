@@ -49,7 +49,7 @@ columns:
   owner_postal_code: OWNZIP
   land_value: LANDVAL
   improvement_value: BLDGVAL
-  value: TAXVAL
+  total_value: TAXVAL
   last_sale_book_page: DEEDBKPG
   n_buildings: NUMBLDG
 

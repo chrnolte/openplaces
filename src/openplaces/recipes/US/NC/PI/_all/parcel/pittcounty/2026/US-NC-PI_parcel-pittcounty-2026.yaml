@@ -91,7 +91,7 @@ columns:
   last_sale_book_page: DeedBkPg
   land_value: CurLandValue
   improvement_value: CurBuildValue
-  value: CurTaxValue
+  total_value: CurTaxValue
 
 transformations:
   # SalesMonthYear carries its own "date not recorded" sentinels, the

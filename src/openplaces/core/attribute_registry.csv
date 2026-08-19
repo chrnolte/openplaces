@@ -118,7 +118,7 @@ deed_reference,Recorder of Deeds reference number for the parcel's governing dee
 use_group_code,Source land-use code paired with use_group,,categorical,first,,,
 use_subgroup_code,Source land-use code paired with use_subgroup,,categorical,first,,,
 land_use_group,Source land-use group classification,,categorical,first,,parcel,
-value,Total assessed value,USD,float,sum,23,,
+total_value,"Total assessed value: land plus structures. Named in full because a bare `value` reads as ambiguous on an entity that also carries land_value, improvement_value and structure_value",USD,float,sum,23,,
 market_value,Market (just) value,USD,float,sum,,parcel,
 special_feature_value,Assessed value of special features,USD,float,sum,,parcel,
 current_use_value,Current-use (present-use) assessed value,USD,float,sum,,parcel,

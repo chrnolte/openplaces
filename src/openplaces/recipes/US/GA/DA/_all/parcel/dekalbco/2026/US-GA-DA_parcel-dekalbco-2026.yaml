@@ -83,7 +83,7 @@ columns:
   owner_postal_code: PSTLZIP5
   land_value: LAND_VALUE
   improvement_value: BUILD_VALUE
-  value: TOTAPR1
+  total_value: TOTAPR1
   use_group_code: LANDUSECODE
   land_use_group: PROP_CLASS
   zoning_code: ZONING

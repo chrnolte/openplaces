@@ -36,7 +36,7 @@ columns:
   owner_admin2_id_admin1: STATE
   owner_postal_code: ZIP_CODE
   address: PROPERTY_L
-  value: CURRENT_TO
+  total_value: CURRENT_TO
   last_sale_date: SALE_DATE_
   last_sale_price: SALE_PRICE
 
