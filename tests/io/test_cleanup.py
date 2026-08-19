@@ -16,7 +16,13 @@ from openplaces.recipe import get_output_path, get_recipe_by_id
 NSI = 'US_building-nsi-2026'
 FOOTPRINT_SPINE = 'US_footprint-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
+FOOTPRINT_GEOSPINE = 'US_footprint-geospine-2026'
+PARCEL_GEOSPINE = 'US_parcel-geospine-2026'
 COUNTY = 'US-NC-BS'
+# Every recipe in the cheer tree that consumes NSI directly: under the
+# geometry/attribute split, the geospine halves link it and the attribute
+# halves attribute it, so a valid NSI receipt must record all four.
+NSI_CONSUMERS = [FOOTPRINT_SPINE, PARCEL_SPINE, FOOTPRINT_GEOSPINE, PARCEL_GEOSPINE]
 
 
 @pytest.fixture
@@ -54,6 +60,8 @@ def _spine_paths(admin=COUNTY):
     return (
         get_output_path(get_recipe_by_id(FOOTPRINT_SPINE), admin_id=admin),
         get_output_path(get_recipe_by_id(PARCEL_SPINE), admin_id=admin),
+        get_output_path(get_recipe_by_id(FOOTPRINT_GEOSPINE), admin_id=admin),
+        get_output_path(get_recipe_by_id(PARCEL_GEOSPINE), admin_id=admin),
     )
 
 
@@ -140,10 +148,10 @@ def _receipt_for_nsi(consumers):
 
 
 def test_receipt_skip_requires_all_recorded_consumers(data_root):
-    fp_path, pc_path = _spine_paths()
-    _write_parquet(fp_path)
-    _write_parquet(pc_path)
-    cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE, PARCEL_SPINE]))
+    fp_path = _spine_paths()[0]
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
     assert cl.receipt_justifies_skip(NSI, COUNTY)
 
     # A recorded consumer disappearing voids the skip
@@ -154,8 +162,10 @@ def test_receipt_skip_requires_all_recorded_consumers(data_root):
 def test_receipt_skip_consumer_cascade(data_root):
     # A consumer replaced by its own receipt still counts (conceptual
     # existence), so upstream receipts stay valid
-    fp_path, pc_path = _spine_paths()
+    fp_path, pc_path, fp_geo_path, pc_geo_path = _spine_paths()
     _write_parquet(pc_path)
+    _write_parquet(fp_geo_path)
+    _write_parquet(pc_geo_path)
     cl.write_receipt(
         fp_path,
         {
@@ -166,33 +176,30 @@ def test_receipt_skip_consumer_cascade(data_root):
             ],
         },
     )
-    cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE, PARCEL_SPINE]))
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
     assert cl.receipt_justifies_skip(NSI, COUNTY)
 
 
 def test_receipt_skip_voided_by_unrecorded_consumer(data_root):
     # Receipt recording only ONE of the two tree consumers must not skip
-    fp_path, pc_path = _spine_paths()
-    _write_parquet(fp_path)
-    _write_parquet(pc_path)
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
     cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE]))
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
 
 
 def test_receipt_skip_voided_when_orchestrated(data_root, monkeypatch):
-    fp_path, pc_path = _spine_paths()
-    _write_parquet(fp_path)
-    _write_parquet(pc_path)
-    cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE, PARCEL_SPINE]))
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
     monkeypatch.setenv('OPENPLACES_ORCHESTRATED', '1')
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
 
 
 def test_receipt_skip_disabled_by_config(data_root, monkeypatch):
-    fp_path, pc_path = _spine_paths()
-    _write_parquet(fp_path)
-    _write_parquet(pc_path)
-    cl.write_receipt(_nsi_path(), _receipt_for_nsi([FOOTPRINT_SPINE, PARCEL_SPINE]))
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
     retention = {'cleanup': {'honor_receipts': False}, 'recipes': {}}
     monkeypatch.setitem(cfg.config, 'retention', retention)
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
@@ -226,9 +233,8 @@ def test_cleanup_dry_run_defaults_and_blocked(data_root):
 
 def test_cleanup_deletes_consumed_input(data_root):
     _write_parquet(_nsi_path())
-    fp_path, pc_path = _spine_paths()
-    _write_parquet(fp_path)
-    _write_parquet(pc_path)
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
 
     report = cl.cleanup('US_footprint-cheer-2026', admin_ids=[COUNTY], verbose=False)
     nsi_rows = report[report['recipe_id'] == NSI]
@@ -252,9 +258,8 @@ def test_cleanup_deletes_consumed_input(data_root):
 
 def test_cleanup_stage_filter(data_root):
     _write_parquet(_nsi_path())
-    fp_path, pc_path = _spine_paths()
-    _write_parquet(fp_path)
-    _write_parquet(pc_path)
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
     report = cl.cleanup(
         'US_footprint-cheer-2026',
         admin_ids=[COUNTY],
@@ -333,6 +338,44 @@ def test_delete_image_caches_handles_empty_inventory(monkeypatch, capsys):
 
 
 # compact()
+
+
+def test_aggressive_keeps_explicit_retention(data_root):
+    """Aggressive mode must not demote a recipe declaring its own retention.
+
+    The geospine outputs (and their link sidecars) are exactly what
+    `--reprocess attributes` reuses: an aggressive sweep deleting them
+    would silently turn the next attribute-only rerun into a full
+    geometry rerun. Their `save_to: retention: keep` wins over the
+    aggressive core-bucket demotion; the plain spines (no explicit
+    retention) are still demoted to until_consumed as before.
+    """
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    # The curated consumer exists, so an until_consumed spine is deletable.
+    curated = get_output_path(
+        get_recipe_by_id('US_footprint-cheer-2026'), admin_id=COUNTY
+    )
+    _write_parquet(curated)
+    parcel_curated = get_output_path(
+        get_recipe_by_id('US_parcel-openplaces-2026'), admin_id=COUNTY
+    )
+    _write_parquet(parcel_curated)
+
+    report = cl.cleanup(
+        'US_footprint-cheer-2026',
+        admin_ids=[COUNTY],
+        aggressive=True,
+        verbose=False,
+    )
+    geospine_rows = report[
+        report['recipe_id'].isin([FOOTPRINT_GEOSPINE, PARCEL_GEOSPINE])
+    ]
+    assert not geospine_rows.empty
+    assert (geospine_rows['class'] == 'keep').all()
+    assert (geospine_rows['action'] == 'kept').all()
+    for path in _spine_paths()[2:]:
+        assert path.exists()
 
 
 def test_compact_classification(data_root):

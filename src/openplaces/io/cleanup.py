@@ -803,7 +803,19 @@ def _cleanup_node(
 
     data_dir, _ = _get_save_to(node_recipe)
     retention = get_recipe_retention(node_recipe)
-    if aggressive and data_dir == 'core' and node_recipe.get('stage') != 'enrich':
+    # Aggressive mode demotes core outputs to until_consumed -- but only
+    # those with no retention of their own. A recipe that declares
+    # save_to: retention: keep (the geospine recipes: their outputs and
+    # link sidecars are exactly what `--reprocess attributes` reuses, so
+    # deleting them turns the next attribute-only rerun into a full
+    # geometry rerun) keeps its declared class even under aggressive.
+    explicit_retention = (node_recipe.get('save_to') or {}).get('retention')
+    if (
+        aggressive
+        and data_dir == 'core'
+        and node_recipe.get('stage') != 'enrich'
+        and explicit_retention is None
+    ):
         retention = 'until_consumed'
     if data_dir in NEVER_DELETE:
         retention = 'keep'

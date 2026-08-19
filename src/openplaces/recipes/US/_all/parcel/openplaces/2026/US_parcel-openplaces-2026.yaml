@@ -25,7 +25,10 @@ process_by:
   admin_level: 3
 
 save_to:
-  data_dir: core
+  # Canonical curated output: shipped self-contained (attributes +
+  # geometry) in the share bucket, like US_footprint-cheer-2026. The
+  # core bucket is the normalized store for intermediates.
+  data_dir: share
 
 pipeline:
   # These parcel_id_assessor values are non-taxable placeholders, not real
