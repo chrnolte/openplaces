@@ -44,7 +44,7 @@ def _run_pipeline(monkeypatch, pipeline, skip_steps=None, save_to=None):
         saved['df'] = gdf
         save_kwargs.update(kwargs)
 
-    monkeypatch.setattr(cur, 'read_parquet', lambda *a, **k: pd.DataFrame({'x': [1]}))
+    monkeypatch.setattr(cur, 'get_entities', lambda *a, **k: pd.DataFrame({'x': [1]}))
     monkeypatch.setattr(cur, 'save_parquet', _fake_save_parquet)
     monkeypatch.setattr(cur, 'get_output_path', lambda *a, **k: 'dummy')
 

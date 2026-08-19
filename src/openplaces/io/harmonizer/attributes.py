@@ -1235,7 +1235,7 @@ def derive_use_classes(
     return state
 
 
-@_register('summarize_footprint_morphology')
+@_register('summarize_footprint_morphology', phase='geometry')
 def summarize_footprint_morphology(
     state: HarmonizeState,
     footprint_recipe_id: str,
@@ -1610,7 +1610,7 @@ def summarize_footprint_morphology(
     return state
 
 
-@_register('detect_shared_land_groups')
+@_register('detect_shared_land_groups', phase='geometry')
 def detect_shared_land_groups(
     state: HarmonizeState,
     land_value_column: str = 'land_value',
@@ -1814,7 +1814,7 @@ def detect_shared_land_groups(
     return state
 
 
-@_register('detect_condo_building_clusters')
+@_register('detect_condo_building_clusters', phase='geometry')
 def detect_condo_building_clusters(
     state: HarmonizeState,
     land_value_column: str = 'land_value',

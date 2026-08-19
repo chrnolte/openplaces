@@ -732,7 +732,9 @@ def save_parquet(
         split two-file layout.
     file_metadata : dict of str to str, optional
         Key-value pairs written into the attribute parquet's footer (file-level)
-        metadata. Only applied to plain (non-geo) frames; see `to_parquet`.
+        metadata. Applied to plain frames and to the attribute half of the
+        split two-file layout (never to the `_geo` sidecar, whose geoparquet
+        writer manages its own footer); see `to_parquet`.
     """
     if isinstance(parquet_path, str):
         parquet_path = Path(parquet_path)
@@ -760,6 +762,7 @@ def save_parquet(
         to_parquet(
             gdf[[v for v in gdf if v != 'geometry']],
             parquet_path,
+            file_metadata=file_metadata,
         )
 
         # Save non-duplicate geometries separately

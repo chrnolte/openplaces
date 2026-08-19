@@ -8,7 +8,40 @@ from openplaces.core.schema import ENTITY_LINK_ORDER, AdminId
 from openplaces.geo.overlay import overlay_polygons_with_duckdb
 from openplaces.geo.polygon import overlay_polygons
 from openplaces.io import save_parquet
-from openplaces.recipe import get_output_path, get_recipe_by_id, get_save_admin_level
+from openplaces.recipe import (
+    get_output_path,
+    get_recipe_by_id,
+    get_recipe_id,
+    get_save_admin_level,
+)
+
+
+def get_link_owner_recipe_id(recipe) -> str:
+    """Resolve a recipe to the recipe id whose pipeline ran the link steps.
+
+    Under the geometry/attribute recipe split, link sidecars are keyed by
+    the geospine recipe that computed them -- not by the attribute recipe
+    downstream consumers name. Follow `entity_recipe` from *recipe* until
+    a recipe whose pipeline contains a `link_to_reference` step; an
+    unsplit recipe (its own pipeline links) resolves to itself, so
+    callers need not know whether a spine was split.
+    """
+    seen: set[str] = set()
+    current = recipe
+    while True:
+        if isinstance(current, str):
+            current = get_recipe_by_id(current)
+        pipeline = current.get('pipeline') or []
+        if any(
+            isinstance(step, dict) and step.get('step') == 'link_to_reference'
+            for step in pipeline
+        ):
+            return get_recipe_id(current)
+        predecessor = current.get('entity_recipe')
+        if not predecessor or predecessor in seen:
+            return get_recipe_id(current)
+        seen.add(predecessor)
+        current = predecessor
 
 
 def _entity_link_rank(recipe_id: str) -> int | None:

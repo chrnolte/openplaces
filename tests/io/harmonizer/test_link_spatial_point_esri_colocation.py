@@ -34,7 +34,11 @@ def _state():
 def _run(monkeypatch, points_df):
     monkeypatch.setattr(links, 'get_entities', lambda *a, **k: points_df)
     state = _state()
-    state = links._link_spatial_point(state, 'nsi_ref', 'building', None, {})
+    # save_link=False: persistence needs a real spine recipe for the
+    # sidecar path and fingerprint; these tests exercise the flag logic.
+    state = links._link_spatial_point(
+        state, 'nsi_ref', 'building', None, {}, save_link=False
+    )
     return state.crosswalks['nsi_ref']
 
 

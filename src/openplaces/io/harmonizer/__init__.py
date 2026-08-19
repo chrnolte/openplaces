@@ -7,6 +7,7 @@ parameters, making the process composable and entity-type-agnostic.
 
 from __future__ import annotations
 
+import json
 import pkgutil as _pkgutil
 import warnings
 from collections.abc import Callable
@@ -31,8 +32,14 @@ from openplaces.io.cleanup import (
     receipt_justifies_skip,
 )
 from openplaces.io.readers import get_admin, get_admin_ids
-from openplaces.recipe import get_output_path, get_recipe_by_id
+from openplaces.recipe import get_output_path, get_recipe_by_id, saves_geometry
 from openplaces.timing import get_timer
+
+#: Footer key on a harmonized output's attribute parquet carrying the
+#: pipeline metadata an attribute-only successor recipe needs to restore
+#: (spine_index_name, spine_source_recipe_ids, spine_keep_columns) --
+#: in-memory HarmonizeState.metadata does not survive the recipe split.
+HARMONIZE_METADATA_KEY = 'openplaces:harmonize'
 
 
 @dataclass
@@ -80,6 +87,13 @@ class HarmonizeState:
         True when the run was invoked with ``reprocess=True``; steps with
         persisted artifacts (e.g. ``link_to_reference`` with
         ``save_link``) must ignore and rewrite them.
+    step_index : int or None
+        Position of the currently executing entry in the recipe's
+        ``pipeline`` list, set by the dispatch loop before each step runs.
+        Lets a step reason about what ran before it -- the link-sidecar
+        fingerprint includes the configs of every *prior* geometry-phase
+        step (see ``_STEP_PHASES``), so a changed spine threshold
+        invalidates a persisted overlay downstream of it.
     """
 
     recipe: dict
@@ -96,6 +110,7 @@ class HarmonizeState:
     metadata: dict = field(default_factory=dict)
     save_statistics: bool = False
     reprocess: bool = False
+    step_index: int | None = None
 
     def get_crosswalks_by_type(self, entity_type: str) -> dict[str, gpd.GeoDataFrame]:
         """Return all crosswalks whose reference matches ``entity_type``."""
@@ -210,13 +225,32 @@ def _rename_right_index(
 #: callable that implements that step.
 _STEP_REGISTRY: dict[str, Callable] = {}
 
+#: Maps step name -> 'geometry' | 'attributes'. Geometry-phase steps mutate
+#: spine rows/geometry or run spatial joins; their configs are part of the
+#: link-sidecar fingerprint (a changed spine threshold must invalidate the
+#: persisted overlay), and they are the steps a geospine recipe hosts under
+#: the geometry/attribute recipe split. Attribute-phase steps only read or
+#: annotate -- changing them never requires geometry rework.
+_STEP_PHASES: dict[str, str] = {}
 
-def _register(*names: str):
-    """Decorator: register a step function under one or more names."""
+
+def _register(*names: str, phase: str = 'attributes'):
+    """Decorator: register a step function under one or more names.
+
+    Parameters
+    ----------
+    phase : str
+        ``'geometry'`` for steps that mutate spine rows/geometry or run
+        spatial joins (fingerprinted, geospine-hosted); ``'attributes'``
+        (default) for steps that only read or annotate.
+    """
+    if phase not in ('geometry', 'attributes'):
+        raise ValueError(f"phase must be 'geometry' or 'attributes', got {phase!r}")
 
     def decorator(fn: Callable) -> Callable:
         for name in names:
             _STEP_REGISTRY[name] = fn
+            _STEP_PHASES[name] = phase
         return fn
 
     return decorator
@@ -423,7 +457,8 @@ class Harmonizer:
             reprocess=reprocess,
         )
 
-        for step_cfg in pipeline:
+        for step_index, step_cfg in enumerate(pipeline):
+            state.step_index = step_index
             step_name = step_cfg.get('step')
             if not step_name:
                 raise ValueError(
@@ -458,10 +493,33 @@ class Harmonizer:
         # object column pyarrow cannot serialize. Same defensive cast used
         # at ingest save and partition aggregation.
         state.spine = coerce_mixed_object_columns(state.spine)
+
+        # Persist the pipeline metadata a successor attribute-only recipe
+        # needs (see load_geospine): in-memory state.metadata does not
+        # survive the geometry/attribute recipe split, so the small,
+        # JSON-able keys ride in the attribute parquet's footer.
+        handoff = {}
+        if state.metadata.get('spine_index_name') is not None:
+            handoff['spine_index_name'] = state.metadata['spine_index_name']
+        for key in ('spine_source_recipe_ids', 'spine_keep_columns'):
+            if state.metadata.get(key):
+                handoff[key] = sorted(state.metadata[key])
+        file_metadata = (
+            {HARMONIZE_METADATA_KEY: json.dumps(handoff)} if handoff else None
+        )
+
+        # An attribute-only recipe (save_to: geometry: false) writes a plain
+        # table; its geometry lives with the entity_recipe predecessor and
+        # is resolved by readers through that chain -- never duplicated.
+        if not saves_geometry(self.recipe):
+            state.spine = pd.DataFrame(
+                state.spine.drop(columns='geometry', errors='ignore')
+            )
         save_parquet(
             state.spine,
             out_path,
             simplified_geometry=state.simplified_geometry,
+            file_metadata=file_metadata,
         )
 
     def show_random_entity(self):
@@ -514,11 +572,13 @@ def harmonize(
 
 
 __all__ = [
+    'HARMONIZE_METADATA_KEY',
     'Harmonizer',
     'HarmonizeState',
     'SourceGeometryType',
     'harmonize',
     '_STEP_REGISTRY',
+    '_STEP_PHASES',
     '_register',
     '_record_source',
     '_ensure_object_source_column',

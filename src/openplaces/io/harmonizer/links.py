@@ -36,6 +36,7 @@ from openplaces.io import to_parquet
 from openplaces.io.aggregate import _agg_func_for, aggregate_rows, read_file_metadata
 from openplaces.io.cleanup import read_receipt
 from openplaces.io.harmonizer import (
+    _STEP_PHASES,
     HarmonizeState,
     _register,
     _rename_right_index,
@@ -63,6 +64,7 @@ _CROSSWALK_COLS = [
 
 # Parquet footer key holding a link sidecar's validity fingerprint.
 _LINK_METADATA_KEY = 'openplaces:link'
+_LINK_INDEX_KEY = 'openplaces:link_index'
 
 # Buffer applied to a condo cluster's own parcel footprint before testing
 # whether a real footprint fragment touches it, to tolerate the usual
@@ -78,7 +80,7 @@ _REAL_FOOTPRINT_TOUCH_TOLERANCE_M = 2.0
 _COVERAGE_SCORE_EPS = 1e-12
 
 
-@_register('link_to_reference')
+@_register('link_to_reference', phase='geometry')
 def link_to_reference(
     state: HarmonizeState,
     join: str = 'spatial_overlay',
@@ -90,7 +92,7 @@ def link_to_reference(
     aggregation_function=None,
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
-    save_link: bool = False,
+    save_link: bool = True,
 ) -> HarmonizeState:
     """Load a reference dataset and build a spine ↔ reference crosswalk.
 
@@ -154,17 +156,23 @@ def link_to_reference(
         Normal scalar aggregation for each column still applies alongside.
         Only used for ``spatial_overlay`` joins.
     save_link : bool, optional
-        Persist the full many-to-many identity overlay (geometry-free,
-        every spine-reference pair including sub-threshold slivers, with
-        the crosswalk's link label joined on) as a sidecar parquet at the
-        canonical entity-link path. On later runs the sidecar is reloaded
-        instead of recomputing the overlay — the single most expensive
-        harmonize step — iff its footer fingerprint (step config plus
-        size/mtime of the ingest inputs) still matches; a deleted input
-        with a tombstone receipt stays verifiable. After a reload,
-        ``state.overlays[recipe_id]`` carries no geometry column (only the
-        area/IoU columns are consumed downstream). Only used for
-        ``spatial_overlay`` joins.
+        Persist the join product as a sidecar parquet at the canonical
+        entity-link path (default True; every link product is a
+        first-class table of the normalized store, so a recipe opts
+        *out*, not in). For ``spatial_overlay``: the full many-to-many
+        identity overlay (geometry-free, every spine-reference pair
+        including sub-threshold slivers, with the crosswalk's link label
+        joined on). For ``spatial_point``: the final flat crosswalk (all
+        reference columns plus the matched spine id, pass provenance,
+        and duplicate flags), geometry-free. On later runs the sidecar
+        is reloaded instead of recomputing the join — the overlay is the
+        single most expensive harmonize step — iff its footer
+        fingerprint (step config, the configs of every prior
+        geometry-phase pipeline step, plus size/mtime of the ingest
+        inputs) still matches; a deleted input with a tombstone receipt
+        stays verifiable. After an overlay reload,
+        ``state.overlays[recipe_id]`` carries no geometry column (only
+        the area/IoU columns are consumed downstream).
     """
     if state.spine is None:
         warnings.warn('link_to_reference: spine is None; skipping.')
@@ -205,6 +213,7 @@ def link_to_reference(
             resolved_entity_type,
             remap_id,
             thresholds or {},
+            save_link,
         )
     else:
         raise ValueError(
@@ -277,42 +286,34 @@ def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
     return best_candidate[2]
 
 
-def _link_spatial_overlay(
-    state: HarmonizeState,
+def _prepare_reference(
+    ref_raw,
     recipe_id: str,
     entity_type: str | None,
-    thresholds: dict,
+    state: HarmonizeState,
     aggregation_function=None,
     sort_by: str | None = None,
     list_columns: list[str] | None = None,
-    save_link: bool = False,
-) -> HarmonizeState:
-    """Polygon-on-polygon identity overlay; builds spine-reference crosswalk."""
-    min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
-    area_min_m2 = thresholds.get('area_intersection_m2_min', 10)
-    spine_id_col = state.spine.index.name
+):
+    """Prepare a raw polygon reference for overlaying or attribution.
 
-    # missing='warn': a reference recipe can genuinely have zero coverage for
-    # this admin unit (see _link_spatial_point's identical handling) -- an
-    # expected admin-scoped gap, not an error.
-    ref_raw = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
-    if ref_raw is None or len(ref_raw) == 0:
-        if state.verbose:
-            print(f'  Link (overlay): no {recipe_id} for {state.admin_id}; skipping.')
-        return state
-    if state.verbose:
-        print(
-            f'  Link (overlay): {len(ref_raw):,d} {entity_type or "ref"} ({recipe_id})'
-        )
+    Shared by :func:`_link_spatial_overlay` and the geospine loader step,
+    so an attribute-only recipe reloading a persisted overlay reproduces
+    exactly the reference table the overlay was computed against: geo_id
+    deduplication, numeric coercion, combined land-use labels, areas,
+    per-geo_id aggregation with collision renames, and the derived
+    improvement_value_per_ha.
 
+    Returns the aggregated reference indexed by ``parcel_id`` (the geo_id
+    under the crosswalk's reference-level name).
+    """
     ref = ref_raw.copy()
 
     # A source can carry a handful of degenerate non-polygon geometries
     # (digitizing artifacts, e.g. a 2-point LineString parcel boundary, or a
     # null geometry) that would otherwise crash geopandas.overlay's
-    # mixed-geometry-type check for the entire admin unit. This function is
-    # a polygon-on-polygon identity overlay (see docstring), so drop them
-    # here instead.
+    # mixed-geometry-type check for the entire admin unit. The consumer
+    # is a polygon-on-polygon identity overlay, so drop them here instead.
     valid_polygon = ref.geometry.notna() & ref.geometry.geom_type.isin(
         ('Polygon', 'MultiPolygon')
     )
@@ -405,6 +406,46 @@ def _link_spatial_overlay(
         ref_polys['improvement_value_per_ha'] = (
             ref_polys['improvement_value'] / ref_polys[area_ha_col]
         )
+    return ref_polys
+
+
+def _link_spatial_overlay(
+    state: HarmonizeState,
+    recipe_id: str,
+    entity_type: str | None,
+    thresholds: dict,
+    aggregation_function=None,
+    sort_by: str | None = None,
+    list_columns: list[str] | None = None,
+    save_link: bool = False,
+) -> HarmonizeState:
+    """Polygon-on-polygon identity overlay; builds spine-reference crosswalk."""
+    min_fraction = thresholds.get('min_fraction_of_largest', 1 / 6)
+    area_min_m2 = thresholds.get('area_intersection_m2_min', 10)
+    spine_id_col = state.spine.index.name
+
+    # missing='warn': a reference recipe can genuinely have zero coverage for
+    # this admin unit (see _link_spatial_point's identical handling) -- an
+    # expected admin-scoped gap, not an error.
+    ref_raw = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
+    if ref_raw is None or len(ref_raw) == 0:
+        if state.verbose:
+            print(f'  Link (overlay): no {recipe_id} for {state.admin_id}; skipping.')
+        return state
+    if state.verbose:
+        print(
+            f'  Link (overlay): {len(ref_raw):,d} {entity_type or "ref"} ({recipe_id})'
+        )
+
+    ref_polys = _prepare_reference(
+        ref_raw,
+        recipe_id,
+        entity_type,
+        state,
+        aggregation_function=aggregation_function,
+        sort_by=sort_by,
+        list_columns=list_columns,
+    )
 
     sidecar_path = None
     fingerprint = None
@@ -668,20 +709,58 @@ def snap_chained_links(
     return out, snapped
 
 
+def _fingerprint_safe_step(step_cfg: dict) -> dict:
+    """A pipeline entry reduced to its fingerprint-relevant config.
+
+    Drops ``save_link`` (toggling persistence must never force a
+    recompute) and the chain-snapping thresholds (``snap_chains`` /
+    ``chain_fraction_max`` are geometry-free relabeling applied after the
+    overlay, deliberately excluded since format 1).
+    """
+    entry = {k: v for k, v in step_cfg.items() if k != 'save_link'}
+    thresholds = entry.get('thresholds')
+    if isinstance(thresholds, dict):
+        entry['thresholds'] = {
+            k: v
+            for k, v in thresholds.items()
+            if k not in ('snap_chains', 'chain_fraction_max')
+        }
+    return entry
+
+
 def _link_fingerprint(
     state: HarmonizeState, ref_recipe_id: str, step_config: dict
 ) -> dict:
     """Validity fingerprint stored in (and checked against) a link sidecar.
 
-    Records the step configuration and the size/mtime of every resolvable
-    ingest-stage input of the harmonize recipe for this admin unit (the
-    reference parquet among them). The mid-pipeline spine itself is
-    deliberately not fingerprinted. A source that was deliberately deleted
-    stays verifiable through its tombstone receipt's recorded size/mtime;
-    a missing source with no receipt yields nulls, which no longer match
-    once the file reappears (fail safe: recompute).
+    Records the step configuration, the ordered configs of every
+    geometry-phase pipeline entry that ran before this step (format 2 --
+    the spine reaching the join is shaped by those steps, so a changed
+    spine threshold invalidates the sidecar even though the mid-pipeline
+    spine itself is deliberately not fingerprinted), and the size/mtime
+    of every resolvable ingest-stage input of the harmonize recipe for
+    this admin unit (the reference parquet among them). A source that
+    was deliberately deleted stays verifiable through its tombstone
+    receipt's recorded size/mtime; a missing source with no receipt
+    yields nulls, which no longer match once the file reappears (fail
+    safe: recompute).
     """
     from openplaces.io.cleanup import _relative_posix
+    from openplaces.io.harmonizer import _load_steps
+
+    # Phase tags live on the @_register decorators, so every step module
+    # must be imported before _STEP_PHASES is consulted -- a caller that
+    # reached this function without going through the dispatch loop (the
+    # geospine loader, a test) may not have triggered the module imports.
+    _load_steps()
+
+    prior_geometry_steps = []
+    if state.step_index is not None:
+        for prior in (state.recipe.get('pipeline') or [])[: state.step_index]:
+            if not isinstance(prior, dict):
+                continue
+            if _STEP_PHASES.get(prior.get('step')) == 'geometry':
+                prior_geometry_steps.append(_fingerprint_safe_step(prior))
 
     upstream_ids = {ref_recipe_id}
     try:
@@ -718,11 +797,12 @@ def _link_fingerprint(
         sources.append(entry)
 
     return {
-        'format': 1,
+        'format': 2,
         'spine_recipe_id': get_recipe_id(state.recipe),
         'ref_recipe_id': ref_recipe_id,
         'admin_id': str(state.admin_id) if state.admin_id is not None else None,
         'step_config': step_config,
+        'prior_geometry_steps': prior_geometry_steps,
         'sources': sources,
     }
 
@@ -797,6 +877,66 @@ def _write_link_sidecar(
     )
     if verbose:
         print(f'  Link (overlay): wrote link sidecar {sidecar_path.name}')
+
+
+def _load_point_link_sidecar(sidecar_path, fingerprint: dict, verbose: bool = False):
+    """Reload a persisted point crosswalk iff its fingerprint matches.
+
+    Returns the geometry-free flat crosswalk with the reference's native
+    index restored (its name is stored beside the fingerprint, since a
+    reference index may be unnamed), or None when the sidecar is absent
+    or invalid (recompute, fail safe). Only the footer is read for the
+    validity check.
+    """
+    if sidecar_path is None or not sidecar_path.exists():
+        return None
+    metadata = read_file_metadata(sidecar_path)
+    stored_raw = metadata.get(_LINK_METADATA_KEY)
+    if stored_raw is None:
+        return None
+    try:
+        stored = json.loads(stored_raw)
+    except json.JSONDecodeError:
+        return None
+    if stored != fingerprint:
+        if verbose:
+            print('  Link (point): sidecar fingerprint mismatch; recomputing links.')
+        return None
+    linked = pd.read_parquet(sidecar_path)
+    index_name = metadata.get(_LINK_INDEX_KEY) or 'index'
+    if index_name in linked.columns:
+        linked = linked.set_index(index_name)
+        if index_name == 'index':
+            linked.index.name = None
+    if verbose:
+        print(f'  Link (point): reloaded link sidecar {sidecar_path.name}')
+    return linked
+
+
+def _write_point_link_sidecar(
+    sidecar_path, linked: pd.DataFrame, fingerprint: dict, verbose: bool = False
+) -> None:
+    """Persist the flat point crosswalk, geometry-free.
+
+    Unlike the overlay sidecar this is the *final* crosswalk (after every
+    pass, filter, and aggregation), so nothing is recomputed on the
+    reload path and the sidecar is only written when computed fresh.
+    Proximity-pass rows can still carry the reference geometry; it is
+    dropped here (no downstream consumer reads crosswalk geometry), so
+    fresh and reloaded crosswalks differ only in that column.
+    """
+    flat = pd.DataFrame(linked.drop(columns='geometry', errors='ignore'))
+    index_name = flat.index.name or 'index'
+    to_parquet(
+        flat.reset_index(),
+        sidecar_path,
+        file_metadata={
+            _LINK_METADATA_KEY: json.dumps(fingerprint),
+            _LINK_INDEX_KEY: index_name,
+        },
+    )
+    if verbose:
+        print(f'  Link (point): wrote link sidecar {sidecar_path.name}')
 
 
 def _dedup_address_points(
@@ -1039,6 +1179,7 @@ def _link_spatial_point(
     entity_type: str | None,
     remap_id: str | None,
     thresholds: dict,
+    save_link: bool = True,
 ) -> HarmonizeState:
     """Point-in-polygon join: reference points → spine entities.
 
@@ -1079,6 +1220,11 @@ def _link_spatial_point(
 
     After linking, joins all points to the first polygon reference in
     ``state.overlays`` to attach a polygon reference ID (e.g. parcel_id).
+
+    With *save_link* (default True) the final flat crosswalk is persisted
+    geometry-free at the canonical entity-link path and reloaded on later
+    runs while its footer fingerprint still matches, skipping every
+    linking pass (see :func:`_write_point_link_sidecar`).
     """
     _EA_CRS = 'EPSG:6933'
     proximity_m: float = thresholds.get('proximity_m', 10.0)
@@ -1160,248 +1306,286 @@ def _link_spatial_point(
 
     spine_id_col = state.spine.index.name
 
-    # Pass 1 — within (Lochhead Step 2)
-    within = gpd.sjoin(ref, state.spine[['geometry']]).drop(columns='geometry')
-    within = _rename_right_index(within, spine_id_col, spine_id_col)
-    attributed_idx: set = set(within.index)
-    n_pass1 = len(attributed_idx)
-
-    # Parcel-derived footprints (geometry_source like 'parcel.<source>', set by
-    # infer_spine_additions) are parcel-shaped fallbacks, not true building
-    # outlines, so they link points by strict containment only (Pass 1). Exclude
-    # them from the proximity passes below so a parcel-shaped polygon never grabs
-    # a nearby point — the only valid criterion for them is 'within'.
-    if 'geometry_source' in state.spine.columns:
-        parcel_derived = (
-            state.spine['geometry_source']
-            .astype('string')
-            .str.startswith('parcel')
-            .fillna(False)
+    sidecar_path = None
+    fingerprint = None
+    linked = None
+    if save_link:
+        sidecar_path = get_entity_link_path(
+            get_recipe_id(state.recipe), recipe_id, state.admin_id
         )
-        proximity_spine = state.spine.loc[~parcel_derived, ['geometry']]
-    else:
-        proximity_spine = state.spine[['geometry']]
-
-    # Build per-class size limits from Pass 1 for use in Passes 2–3
-    size_limit_dict: dict[str, tuple[float, float]] = {}
-    if use_size_limit:
-        size_limit_dict = _build_size_limit_dict(within, state.spine, spine_id_col)
-
-    # Pass 2 — inner proximity, default 10 m (Step 5)
-    if proximity_m > 0:
-        unlinked = ref[~ref.index.isin(attributed_idx)]
-        if not unlinked.empty:
-            spine_proj = proximity_spine.to_crs(_EA_CRS)
-            unlinked_proj = unlinked.to_crs(_EA_CRS)
-            near = gpd.sjoin_nearest(
-                unlinked_proj,
-                spine_proj,
-                how='left',
-                max_distance=proximity_m,
-                distance_col='_dist',
+        fingerprint = _link_fingerprint(
+            state,
+            recipe_id,
+            {
+                'join': 'spatial_point',
+                'thresholds': thresholds,
+                'remap_id': remap_id,
+            },
+        )
+        if not state.reprocess:
+            linked = _load_point_link_sidecar(
+                sidecar_path, fingerprint, verbose=state.verbose
             )
-            near = _rename_right_index(near, spine_id_col, spine_id_col)
-            near = near[near[spine_id_col].notna()].drop(columns='_dist')
-            near = near.set_crs(ref.crs, allow_override=True)
-            if size_limit_dict:
-                near = _filter_by_size_limit(
-                    near, size_limit_dict, state.spine, spine_id_col
-                )
-            within = pd.concat([within, near])
-            attributed_idx |= set(near.index)
+    computed_fresh = linked is None
 
-    # Pass 3 — outer proximity, default 100 m, same-parcel constraint (Step 6)
-    overlay_ids = list(state.overlays.keys())
-    poly_ref: gpd.GeoDataFrame | None = None
-    if far_proximity_m > 0 and overlay_ids:
-        poly_ref = state.references.get(overlay_ids[0])
-        unlinked = ref[~ref.index.isin(attributed_idx)]
-        if not unlinked.empty and poly_ref is not None:
-            poly_ref_id_col = poly_ref.index.name
-            pts_parcel = gpd.sjoin(
-                unlinked[['geometry']], poly_ref[['geometry']], how='left'
+    if computed_fresh:
+        # Pass 1 — within (Lochhead Step 2)
+        within = gpd.sjoin(ref, state.spine[['geometry']]).drop(columns='geometry')
+        within = _rename_right_index(within, spine_id_col, spine_id_col)
+        attributed_idx: set = set(within.index)
+        n_pass1 = len(attributed_idx)
+
+        # Parcel-derived footprints (geometry_source like 'parcel.<source>', set by
+        # infer_spine_additions) are parcel-shaped fallbacks, not true building
+        # outlines, so they link points by strict containment only (Pass 1). Exclude
+        # them from the proximity passes below so a parcel-shaped polygon never grabs
+        # a nearby point — the only valid criterion for them is 'within'.
+        if 'geometry_source' in state.spine.columns:
+            parcel_derived = (
+                state.spine['geometry_source']
+                .astype('string')
+                .str.startswith('parcel')
+                .fillna(False)
+            )
+            proximity_spine = state.spine.loc[~parcel_derived, ['geometry']]
+        else:
+            proximity_spine = state.spine[['geometry']]
+
+        # Build per-class size limits from Pass 1 for use in Passes 2–3
+        size_limit_dict: dict[str, tuple[float, float]] = {}
+        if use_size_limit:
+            size_limit_dict = _build_size_limit_dict(within, state.spine, spine_id_col)
+
+        # Pass 2 — inner proximity, default 10 m (Step 5)
+        if proximity_m > 0:
+            unlinked = ref[~ref.index.isin(attributed_idx)]
+            if not unlinked.empty:
+                spine_proj = proximity_spine.to_crs(_EA_CRS)
+                unlinked_proj = unlinked.to_crs(_EA_CRS)
+                near = gpd.sjoin_nearest(
+                    unlinked_proj,
+                    spine_proj,
+                    how='left',
+                    max_distance=proximity_m,
+                    distance_col='_dist',
+                )
+                near = _rename_right_index(near, spine_id_col, spine_id_col)
+                near = near[near[spine_id_col].notna()].drop(columns='_dist')
+                near = near.set_crs(ref.crs, allow_override=True)
+                if size_limit_dict:
+                    near = _filter_by_size_limit(
+                        near, size_limit_dict, state.spine, spine_id_col
+                    )
+                within = pd.concat([within, near])
+                attributed_idx |= set(near.index)
+
+        # Pass 3 — outer proximity, default 100 m, same-parcel constraint (Step 6)
+        overlay_ids = list(state.overlays.keys())
+        poly_ref: gpd.GeoDataFrame | None = None
+        if far_proximity_m > 0 and overlay_ids:
+            poly_ref = state.references.get(overlay_ids[0])
+            unlinked = ref[~ref.index.isin(attributed_idx)]
+            if not unlinked.empty and poly_ref is not None:
+                poly_ref_id_col = poly_ref.index.name
+                pts_parcel = gpd.sjoin(
+                    unlinked[['geometry']], poly_ref[['geometry']], how='left'
+                ).drop(columns='geometry')
+                pts_parcel = _rename_right_index(
+                    pts_parcel, poly_ref_id_col, '_pt_parcel'
+                )
+
+                fp_parcel = (
+                    state.crosswalks[overlay_ids[0]]
+                    .reset_index()[[spine_id_col, poly_ref_id_col]]
+                    .drop_duplicates(spine_id_col)
+                    .set_index(spine_id_col)[poly_ref_id_col]
+                    .rename('_fp_parcel')
+                )
+
+                spine_proj = proximity_spine.to_crs(_EA_CRS)
+                unlinked_proj = unlinked.to_crs(_EA_CRS)
+                far = gpd.sjoin_nearest(
+                    unlinked_proj,
+                    spine_proj,
+                    how='left',
+                    max_distance=far_proximity_m,
+                    distance_col='_dist',
+                )
+                far = _rename_right_index(far, spine_id_col, spine_id_col)
+                far = far[far[spine_id_col].notna()].drop(columns='_dist')
+                far = far.set_crs(ref.crs, allow_override=True)
+                far = far.join(pts_parcel[['_pt_parcel']])
+                far = far.join(fp_parcel, on=spine_id_col)
+                far = far[
+                    far['_pt_parcel'].notna() & (far['_pt_parcel'] == far['_fp_parcel'])
+                ].drop(columns=['_pt_parcel', '_fp_parcel'])
+                if size_limit_dict:
+                    far = _filter_by_size_limit(
+                        far, size_limit_dict, state.spine, spine_id_col
+                    )
+                within = pd.concat([within, far])
+                attributed_idx |= set(far.index)
+
+        # Pass 4 — unbounded nearest-footprint fallback, no parcel constraint (Step 7)
+        if unbounded_m > 0:
+            unlinked = ref[~ref.index.isin(attributed_idx)]
+            if not unlinked.empty:
+                spine_proj_p4 = proximity_spine.to_crs(_EA_CRS)
+                unlinked_proj_p4 = unlinked.to_crs(_EA_CRS)
+                far2 = gpd.sjoin_nearest(
+                    unlinked_proj_p4,
+                    spine_proj_p4,
+                    how='left',
+                    max_distance=unbounded_m,
+                    distance_col='_dist',
+                )
+                far2 = _rename_right_index(far2, spine_id_col, spine_id_col)
+                far2 = far2[far2[spine_id_col].notna()].drop(columns='_dist')
+                far2 = far2.set_crs(ref.crs, allow_override=True)
+                within = pd.concat([within, far2])
+                attributed_idx |= set(far2.index)
+
+        linked = within
+
+        # Deduplicate: one spine entity per point (keep highest-quality source first)
+        sort_cols = [c for c in ['source', 'structure_value'] if c in linked.columns]
+        if sort_cols:
+            linked = linked.sort_values(
+                sort_cols,
+                ascending=[True, False][: len(sort_cols)],
+            )
+        if linked.index.duplicated().any():
+            linked = linked[~linked.index.duplicated()].copy()
+
+        # Filter: for footprints that already have a same-parcel dwelling point,
+        # drop dwelling points that are on a different parcel.
+        _poly_ref_filter = poly_ref
+        if _poly_ref_filter is None and overlay_ids:
+            _poly_ref_filter = state.references.get(overlay_ids[0])
+        if _poly_ref_filter is not None and not linked.empty:
+            _prf_id = _poly_ref_filter.index.name
+            _ref_sub = ref.loc[ref.index.isin(linked.index), ['geometry']]
+            _pts_poly = gpd.sjoin(
+                _ref_sub, _poly_ref_filter[['geometry']], how='left'
             ).drop(columns='geometry')
-            pts_parcel = _rename_right_index(pts_parcel, poly_ref_id_col, '_pt_parcel')
-
-            fp_parcel = (
+            _pts_poly = _rename_right_index(_pts_poly, _prf_id, '_pt_parcel')
+            if _pts_poly.index.duplicated().any():
+                _pts_poly = _pts_poly[~_pts_poly.index.duplicated()].copy()
+            _fp_parcel_sets = (
                 state.crosswalks[overlay_ids[0]]
-                .reset_index()[[spine_id_col, poly_ref_id_col]]
-                .drop_duplicates(spine_id_col)
-                .set_index(spine_id_col)[poly_ref_id_col]
-                .rename('_fp_parcel')
+                .reset_index()[[spine_id_col, _prf_id]]
+                .groupby(spine_id_col)[_prf_id]
+                .agg(set)
+            )
+            _pt_parcel = linked.join(_pts_poly[['_pt_parcel']])['_pt_parcel']
+            _fp_parcel_set = linked[spine_id_col].map(_fp_parcel_sets)
+            _is_same_parcel = pd.Series(
+                [
+                    (pd.notna(pt) and isinstance(fps, set) and pt in fps)
+                    for pt, fps in zip(_pt_parcel, _fp_parcel_set)
+                ],
+                index=linked.index,
+                dtype=bool,
+            )
+            _is_cross_parcel = pd.Series(
+                [
+                    (pd.notna(pt) and isinstance(fps, set) and pt not in fps)
+                    for pt, fps in zip(_pt_parcel, _fp_parcel_set)
+                ],
+                index=linked.index,
+                dtype=bool,
+            )
+            _fp_has_same = _is_same_parcel.groupby(linked[spine_id_col]).transform(
+                'any'
+            )
+            _mask_drop = _fp_has_same & _is_cross_parcel
+            if _mask_drop.any():
+                n_cross = int(_mask_drop.sum())
+                linked = linked[~_mask_drop].copy()
+                if state.verbose:
+                    print(
+                        f'  Filter (cross-parcel): {n_cross:,d} cross-parcel link(s) '
+                        f'dropped ({len(linked):,d} remain)'
+                    )
+
+        # Aggregate multiple points per footprint (Lochhead merge_into_group)
+        if aggregate_mp:
+            sgt = state.source_geometry_types.get(recipe_id)
+            linked = _aggregate_multipoint(
+                linked, spine_id_col, sgt, verbose=state.verbose
             )
 
-            spine_proj = proximity_spine.to_crs(_EA_CRS)
-            unlinked_proj = unlinked.to_crs(_EA_CRS)
-            far = gpd.sjoin_nearest(
-                unlinked_proj,
-                spine_proj,
-                how='left',
-                max_distance=far_proximity_m,
-                distance_col='_dist',
+        # Attach polygon reference ID (e.g. parcel_id) to each linked point
+        if poly_ref is None and overlay_ids:
+            poly_ref = state.references.get(overlay_ids[0])
+        if poly_ref is not None:
+            poly_ref_id_col = poly_ref.index.name
+            ref_on_poly = gpd.sjoin(ref, poly_ref[['geometry']], how='left').drop(
+                columns='geometry'
             )
-            far = _rename_right_index(far, spine_id_col, spine_id_col)
-            far = far[far[spine_id_col].notna()].drop(columns='_dist')
-            far = far.set_crs(ref.crs, allow_override=True)
-            far = far.join(pts_parcel[['_pt_parcel']])
-            far = far.join(fp_parcel, on=spine_id_col)
-            far = far[
-                far['_pt_parcel'].notna() & (far['_pt_parcel'] == far['_fp_parcel'])
-            ].drop(columns=['_pt_parcel', '_fp_parcel'])
-            if size_limit_dict:
-                far = _filter_by_size_limit(
-                    far, size_limit_dict, state.spine, spine_id_col
+            ref_on_poly = _rename_right_index(
+                ref_on_poly, poly_ref_id_col, poly_ref_id_col
+            )
+            if ref_on_poly.index.duplicated().any():
+                ref_on_poly = ref_on_poly[~ref_on_poly.index.duplicated()].copy()
+            if poly_ref_id_col in ref_on_poly.columns:
+                linked = linked.join(ref_on_poly[[poly_ref_id_col]])
+
+        # Drop low-quality NSI duplicates when a higher-quality source
+        # covers the same entity
+        if 'source' in linked.columns and overlay_ids:
+            poly_ref_id_col = (
+                state.references[overlay_ids[0]].index.name if overlay_ids else None
+            )
+            group_cols = [
+                c for c in [spine_id_col, poly_ref_id_col] if c and c in linked.columns
+            ]
+            if group_cols:
+                low_quality = {'ESRI', 'HAZUS/NSI-2015'}
+                mask_dup = linked[group_cols].duplicated(keep=False)
+                first_source = linked.groupby(group_cols, sort=False)[
+                    'source'
+                ].transform('first')
+                mask_to_drop = (
+                    mask_dup
+                    & linked['source'].isin(low_quality)
+                    & first_source.eq('Parcel')
                 )
-            within = pd.concat([within, far])
-            attributed_idx |= set(far.index)
+                linked = linked[~mask_to_drop]
 
-    # Pass 4 — unbounded nearest-footprint fallback, no parcel constraint (Step 7)
-    if unbounded_m > 0:
-        unlinked = ref[~ref.index.isin(attributed_idx)]
-        if not unlinked.empty:
-            spine_proj_p4 = proximity_spine.to_crs(_EA_CRS)
-            unlinked_proj_p4 = unlinked.to_crs(_EA_CRS)
-            far2 = gpd.sjoin_nearest(
-                unlinked_proj_p4,
-                spine_proj_p4,
-                how='left',
-                max_distance=unbounded_m,
-                distance_col='_dist',
+        # Flag ESRI points that share a location with a differently-sourced point
+        # (e.g. a home-office duplicate of a Parcel-sourced record at the same
+        # address) -- broader and more targeted than the entity-membership drop
+        # above: it fires purely on coordinates, regardless of whether the two
+        # points happen to link to the same footprint/parcel, and regardless of
+        # what the other source is (not just 'Parcel'). Consumers that sum/count
+        # NSI evidence into an upward Single->Multi-Family correction (e.g.
+        # n_dwellings in _attribute_point_reference) should exclude flagged rows;
+        # other uses of `linked` are unaffected -- rows are flagged, not dropped.
+        if 'source' in linked.columns and '_olc' in linked.columns:
+            colocated_sources = (
+                linked.groupby('_olc')['source'].transform('nunique') > 1
             )
-            far2 = _rename_right_index(far2, spine_id_col, spine_id_col)
-            far2 = far2[far2[spine_id_col].notna()].drop(columns='_dist')
-            far2 = far2.set_crs(ref.crs, allow_override=True)
-            within = pd.concat([within, far2])
-            attributed_idx |= set(far2.index)
+            linked['exclude_from_upward_correction'] = colocated_sources & linked[
+                'source'
+            ].eq('ESRI')
 
-    linked = within
-
-    # Deduplicate: one spine entity per point (keep highest-quality source first)
-    sort_cols = [c for c in ['source', 'structure_value'] if c in linked.columns]
-    if sort_cols:
-        linked = linked.sort_values(
-            sort_cols,
-            ascending=[True, False][: len(sort_cols)],
-        )
-    if linked.index.duplicated().any():
-        linked = linked[~linked.index.duplicated()].copy()
-
-    # Filter: for footprints that already have a same-parcel dwelling point,
-    # drop dwelling points that are on a different parcel.
-    _poly_ref_filter = poly_ref
-    if _poly_ref_filter is None and overlay_ids:
-        _poly_ref_filter = state.references.get(overlay_ids[0])
-    if _poly_ref_filter is not None and not linked.empty:
-        _prf_id = _poly_ref_filter.index.name
-        _ref_sub = ref.loc[ref.index.isin(linked.index), ['geometry']]
-        _pts_poly = gpd.sjoin(
-            _ref_sub, _poly_ref_filter[['geometry']], how='left'
-        ).drop(columns='geometry')
-        _pts_poly = _rename_right_index(_pts_poly, _prf_id, '_pt_parcel')
-        if _pts_poly.index.duplicated().any():
-            _pts_poly = _pts_poly[~_pts_poly.index.duplicated()].copy()
-        _fp_parcel_sets = (
-            state.crosswalks[overlay_ids[0]]
-            .reset_index()[[spine_id_col, _prf_id]]
-            .groupby(spine_id_col)[_prf_id]
-            .agg(set)
-        )
-        _pt_parcel = linked.join(_pts_poly[['_pt_parcel']])['_pt_parcel']
-        _fp_parcel_set = linked[spine_id_col].map(_fp_parcel_sets)
-        _is_same_parcel = pd.Series(
-            [
-                (pd.notna(pt) and isinstance(fps, set) and pt in fps)
-                for pt, fps in zip(_pt_parcel, _fp_parcel_set)
-            ],
-            index=linked.index,
-            dtype=bool,
-        )
-        _is_cross_parcel = pd.Series(
-            [
-                (pd.notna(pt) and isinstance(fps, set) and pt not in fps)
-                for pt, fps in zip(_pt_parcel, _fp_parcel_set)
-            ],
-            index=linked.index,
-            dtype=bool,
-        )
-        _fp_has_same = _is_same_parcel.groupby(linked[spine_id_col]).transform('any')
-        _mask_drop = _fp_has_same & _is_cross_parcel
-        if _mask_drop.any():
-            n_cross = int(_mask_drop.sum())
-            linked = linked[~_mask_drop].copy()
-            if state.verbose:
-                print(
-                    f'  Filter (cross-parcel): {n_cross:,d} cross-parcel link(s) '
-                    f'dropped ({len(linked):,d} remain)'
-                )
-
-    # Aggregate multiple points per footprint (Lochhead merge_into_group)
-    if aggregate_mp:
-        sgt = state.source_geometry_types.get(recipe_id)
-        linked = _aggregate_multipoint(linked, spine_id_col, sgt, verbose=state.verbose)
-
-    # Attach polygon reference ID (e.g. parcel_id) to each linked point
-    if poly_ref is None and overlay_ids:
-        poly_ref = state.references.get(overlay_ids[0])
-    if poly_ref is not None:
-        poly_ref_id_col = poly_ref.index.name
-        ref_on_poly = gpd.sjoin(ref, poly_ref[['geometry']], how='left').drop(
-            columns='geometry'
-        )
-        ref_on_poly = _rename_right_index(ref_on_poly, poly_ref_id_col, poly_ref_id_col)
-        if ref_on_poly.index.duplicated().any():
-            ref_on_poly = ref_on_poly[~ref_on_poly.index.duplicated()].copy()
-        if poly_ref_id_col in ref_on_poly.columns:
-            linked = linked.join(ref_on_poly[[poly_ref_id_col]])
-
-    # Drop low-quality NSI duplicates when a higher-quality source
-    # covers the same entity
-    if 'source' in linked.columns and overlay_ids:
-        poly_ref_id_col = (
-            state.references[overlay_ids[0]].index.name if overlay_ids else None
-        )
-        group_cols = [
-            c for c in [spine_id_col, poly_ref_id_col] if c and c in linked.columns
-        ]
-        if group_cols:
-            low_quality = {'ESRI', 'HAZUS/NSI-2015'}
-            mask_dup = linked[group_cols].duplicated(keep=False)
-            first_source = linked.groupby(group_cols, sort=False)['source'].transform(
-                'first'
+        if state.verbose:
+            n_linked = (
+                linked[spine_id_col].notna().sum()
+                if spine_id_col in linked.columns
+                else len(linked)
             )
-            mask_to_drop = (
-                mask_dup
-                & linked['source'].isin(low_quality)
-                & first_source.eq('Parcel')
+            n_proximity = len(attributed_idx) - n_pass1
+            print(
+                f'  Link (point): {n_linked:,d} points linked'
+                + (f' ({n_proximity:,d} via proximity)' if n_proximity > 0 else '')
             )
-            linked = linked[~mask_to_drop]
-
-    # Flag ESRI points that share a location with a differently-sourced point
-    # (e.g. a home-office duplicate of a Parcel-sourced record at the same
-    # address) -- broader and more targeted than the entity-membership drop
-    # above: it fires purely on coordinates, regardless of whether the two
-    # points happen to link to the same footprint/parcel, and regardless of
-    # what the other source is (not just 'Parcel'). Consumers that sum/count
-    # NSI evidence into an upward Single->Multi-Family correction (e.g.
-    # n_dwellings in _attribute_point_reference) should exclude flagged rows;
-    # other uses of `linked` are unaffected -- rows are flagged, not dropped.
-    if 'source' in linked.columns and '_olc' in linked.columns:
-        colocated_sources = linked.groupby('_olc')['source'].transform('nunique') > 1
-        linked['exclude_from_upward_correction'] = colocated_sources & linked[
-            'source'
-        ].eq('ESRI')
-
-    if state.verbose:
-        n_linked = (
-            linked[spine_id_col].notna().sum()
-            if spine_id_col in linked.columns
-            else len(linked)
+    if save_link and computed_fresh:
+        _write_point_link_sidecar(
+            sidecar_path, linked, fingerprint, verbose=state.verbose
         )
-        n_proximity = len(attributed_idx) - n_pass1
-        print(
-            f'  Link (point): {n_linked:,d} points linked'
-            + (f' ({n_proximity:,d} via proximity)' if n_proximity > 0 else '')
-        )
+
     if state.timer:
         state.timer.mark('Link (point)')
 
@@ -2247,7 +2431,7 @@ def _positive_value_density(values: pd.Series) -> pd.Series:
     return numeric.where(numeric > 0)
 
 
-@_register('infer_spine_additions')
+@_register('infer_spine_additions', phase='geometry')
 def infer_spine_additions(
     state: HarmonizeState,
     entity_type: str | None = None,
@@ -2508,9 +2692,18 @@ def infer_spine_additions(
     _source_id = source_id_from_recipe_id(recipe_id)
     _et = entity_type or recipe_id.rsplit('_', 1)[-1].split('-', 1)[0]
     footprints_from_ref['geometry_source'] = f'{_et}.{_source_id}'
+    # Record which reference entity seeded each inferred row. Provenance a
+    # reader can use directly, and what lets an attribute-only successor
+    # recipe rebuild metadata['inferred_from_{recipe_id}'] from the saved
+    # spine alone (see load_geospine) -- the in-memory frame below does
+    # not survive the geometry/attribute recipe split.
+    footprints_from_ref['geometry_source_id'] = footprints_from_ref['parcel_id']
 
     state.spine = pd.concat(
-        [state.spine, footprints_from_ref[['geometry', 'geometry_source']]]
+        [
+            state.spine,
+            footprints_from_ref[['geometry', 'geometry_source', 'geometry_source_id']],
+        ]
     ).sort_index()
 
     if state.spine.index.duplicated().any():
@@ -2529,7 +2722,7 @@ def infer_spine_additions(
     return state
 
 
-@_register('consolidate_condo_cluster_footprints')
+@_register('consolidate_condo_cluster_footprints', phase='geometry')
 def consolidate_condo_cluster_footprints(
     state: HarmonizeState,
     entity_type: str | None = 'parcel',
@@ -2912,7 +3105,7 @@ def consolidate_condo_cluster_footprints(
     return state
 
 
-@_register('resolve_overlaps')
+@_register('resolve_overlaps', phase='geometry')
 def resolve_overlaps(
     state: HarmonizeState,
     **_params,

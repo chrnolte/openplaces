@@ -138,6 +138,7 @@ n_buildings,Number of buildings on the parcel,,float,sum,,parcel,
 n_land_units,Number of land units,,float,sum,,parcel,
 has_structure,Whether the parcel has a structure,,bool,first,,parcel,
 geometry_source,Dataset the footprint or parcel geometry came from,,categorical,first,,,
+geometry_source_id,Identifier of the reference entity whose geometry seeded this row (e.g. the parcel a parcel-inferred footprint copies); missing for rows from the entity's own sources,,string,first,,,
 source_date,Source last-update date,,datetime,first,,,
 priority_on_parcel,Footprint priority on its parcel (primary secondary or unknown),,categorical,first,,footprint,harmonize
 area_m2,Footprint area,m2,float,sum,,,curate

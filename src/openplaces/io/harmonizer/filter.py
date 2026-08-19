@@ -8,7 +8,7 @@ from __future__ import annotations
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 
-@_register('filter_entities')
+@_register('filter_entities', phase='geometry')
 def filter_entities(
     state: HarmonizeState,
     criteria: list[dict] | None = None,

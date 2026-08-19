@@ -213,7 +213,7 @@ def _buffer_reject_ids(
     return pd.Index(near.index.unique())
 
 
-@_register('resolve_spine')
+@_register('resolve_spine', phase='geometry')
 def resolve_spine(
     state: HarmonizeState,
     sources: list[dict] | None = None,
@@ -444,7 +444,7 @@ def resolve_spine(
     return state
 
 
-@_register('union_spine_sources')
+@_register('union_spine_sources', phase='geometry')
 def union_spine_sources(
     state: HarmonizeState,
     sources: list[dict] | None = None,
@@ -605,7 +605,7 @@ def _expand_auto_discover(
     return sources + discovered
 
 
-@_register('derive_geometry_attributes')
+@_register('derive_geometry_attributes', phase='geometry')
 def derive_geometry_attributes(
     state: HarmonizeState, area_unit: str = 'ha'
 ) -> HarmonizeState:
@@ -814,7 +814,7 @@ def _inherit_geographic_ids(
     return inherited, conflicts
 
 
-@_register('link_geographic_ids')
+@_register('link_geographic_ids', phase='geometry')
 def link_geographic_ids(
     state: HarmonizeState,
     links: list[dict] | None = None,
@@ -946,7 +946,7 @@ def link_geographic_ids(
     return state
 
 
-@_register('split_by_reference')
+@_register('split_by_reference', phase='geometry')
 def split_by_reference(
     state: HarmonizeState,
     entity_type: str | None = None,

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pandas as pd
 
-from openplaces.geo.link import get_entity_link_path
+from openplaces.geo.link import get_entity_link_path, get_link_owner_recipe_id
 from openplaces.io import read_parquet
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.harmonizer.apportion import (
     APPORTIONED_VALUE_COLUMNS,
     apportion_reference_values,
 )
-from openplaces.recipe import get_output_path, get_recipe_by_id, get_recipe_id
+from openplaces.recipe import get_output_path, get_recipe_by_id
 
 
 def _field(obj, name):
@@ -246,12 +246,14 @@ def apportion_curated_values(
             f'apportion_curated_values: no reference recipe found for '
             f'entity_type={entity_type!r} and {state.admin_id}.'
         )
-    entity_recipe_id = get_recipe_id(state.entity_recipe)
+    # The sidecar is keyed by the recipe that ran the link steps -- the
+    # geospine when the spine is split into geometry and attribute recipes.
+    entity_recipe_id = get_link_owner_recipe_id(state.entity_recipe)
     sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
     if not sidecar_path.exists():
         raise FileNotFoundError(
             f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
-            f'{entity_recipe_id} with save_link: true on the overlay step '
+            f'{entity_recipe_id} with save_link enabled on the overlay step '
             'so curation can apportion the curated values.'
         )
 
@@ -384,12 +386,12 @@ def collect_link_ids(
             )
         return state
 
-    entity_recipe_id = get_recipe_id(state.entity_recipe)
+    entity_recipe_id = get_link_owner_recipe_id(state.entity_recipe)
     sidecar_path = get_entity_link_path(entity_recipe_id, resolved_id, state.admin_id)
     if not sidecar_path.exists():
         raise FileNotFoundError(
             f'Link sidecar not found: {sidecar_path}. Re-run harmonize for '
-            f'{entity_recipe_id} with save_link: true on the overlay step '
+            f'{entity_recipe_id} with save_link enabled on the overlay step '
             'so curation can collect the n:m link ids.'
         )
 

@@ -1107,6 +1107,21 @@ def get_output_path(
     return p
 
 
+def saves_geometry(recipe) -> bool:
+    """Whether a recipe's output carries its own geometry.
+
+    A recipe may declare `save_to: geometry: false` to write an
+    attribute-only table whose geometry lives with its `entity_recipe`
+    predecessor (the geospine under the geometry/attribute recipe split).
+    Readers resolve geometry through that chain by declaration -- never by
+    probing for a `_geo` sidecar, so a stale sidecar from a pre-split run
+    is ignored.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    return (recipe.get('save_to') or {}).get('geometry', True) is not False
+
+
 def get_save_admin_level(
     recipe, operation_keys=('download_by', 'process_by', 'save_to')
 ):

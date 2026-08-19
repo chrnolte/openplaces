@@ -380,9 +380,12 @@ class RecipeDAG:
     def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
         """Secondary declared outputs of one job.
 
-        Harmonize steps with `save_link` and ingest-level `entity_links`
-        entries both persist an n:m link sidecar at the canonical
-        get_entity_link_path location.
+        Every harmonize `link_to_reference` step persists an n:m link
+        sidecar at the canonical get_entity_link_path location unless it
+        opts out with `save_link: false` (persistence is default-on: link
+        products are first-class tables of the normalized store). Other
+        steps declaring a truthy `save_link`, and ingest-level
+        `entity_links` entries, persist one the same way.
         """
         if stage == 'deliver':
             bundle = self._delivery_paths(recipe_id, admin_id)
@@ -391,7 +394,12 @@ class RecipeDAG:
         paths: list[Path] = []
         node_admin = self._node_admin(recipe_id, admin_id)
         for step in recipe.get('pipeline') or []:
-            if not (isinstance(step, dict) and step.get('save_link')):
+            if not isinstance(step, dict):
+                continue
+            if step.get('step') == 'link_to_reference':
+                if step.get('save_link') is False:
+                    continue
+            elif not step.get('save_link'):
                 continue
             from openplaces.io.harmonizer.links import _resolve_reference_recipe
 
@@ -444,6 +452,23 @@ class RecipeDAG:
                     paths.extend(
                         self.extra_outputs(upstream_stage, upstream_id, node_admin)
                     )
+                    # Under the geometry/attribute split, the link sidecars
+                    # this job actually opens are keyed by the *geospine*
+                    # (the upstream spine's own entity_recipe), which is not
+                    # a direct edge of this node -- resolve the owner the
+                    # same way the curate readers do, so the declared inputs
+                    # match the files read.
+                    from openplaces.geo.link import get_link_owner_recipe_id
+
+                    owner_id = get_link_owner_recipe_id(upstream)
+                    if owner_id != upstream_id and owner_id not in seen:
+                        seen.add(owner_id)
+                        owner = self._recipe(owner_id)
+                        paths.extend(
+                            self.extra_outputs(
+                                owner.get('stage', 'harmonize'), owner_id, node_admin
+                            )
+                        )
             except Exception:
                 continue
         return paths

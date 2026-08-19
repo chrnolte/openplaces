@@ -19,7 +19,7 @@ from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_admin_ids, get_entities
 
 
-@_register('discover_sources')
+@_register('discover_sources', phase='geometry')
 def discover_sources(state: HarmonizeState) -> HarmonizeState:
     """Scan all ingest admin recipes at the recipe's ``admin_level``.
 
@@ -141,7 +141,7 @@ def _best_recipe_for(admin_id_str: str, sources: list[dict]) -> str | None:
     return None
 
 
-@_register('merge_global')
+@_register('merge_global', phase='geometry')
 def merge_global(state: HarmonizeState) -> HarmonizeState:
     """Load and concatenate admin geometries from discovered sources.
 
@@ -191,7 +191,7 @@ def merge_global(state: HarmonizeState) -> HarmonizeState:
     return state
 
 
-@_register('simplify_geometries')
+@_register('simplify_geometries', phase='geometry')
 def simplify_geometries(
     state: HarmonizeState,
     thresholds: dict | None = None,

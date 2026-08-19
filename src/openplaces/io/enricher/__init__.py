@@ -19,7 +19,7 @@ import pandas as pd
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, release_unused_memory, save_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
-from openplaces.io.readers import get_admin_ids
+from openplaces.io.readers import get_admin_ids, get_entities
 from openplaces.recipe import (
     find_entity_recipe_id,
     get_output_path,
@@ -332,8 +332,15 @@ class Enricher:
             )
             return
 
-        spine_path = get_output_path(self.entity_recipe, admin_id)
-        spine = read_parquet(spine_path, geom=bool(self.recipe.get('spine_geom')))
+        # Through get_entities, not a raw read_parquet of the output path:
+        # a split (attribute-only) spine declares save_to: geometry: false
+        # and its geometry is resolved via the entity_recipe chain -- a raw
+        # read would find no `_geo` sidecar (or a stale pre-split one).
+        spine = get_entities(
+            self.entity_recipe,
+            admin_id,
+            geom=bool(self.recipe.get('spine_geom')),
+        )
         evidence = pd.DataFrame(index=spine.index)
 
         state = EnrichState(

@@ -17,8 +17,8 @@ from importlib import import_module as _import_module
 import pandas as pd
 
 from openplaces.core.schema import AdminId
-from openplaces.io import read_parquet, release_unused_memory, save_parquet
-from openplaces.io.readers import get_admin_ids
+from openplaces.io import release_unused_memory, save_parquet
+from openplaces.io.readers import get_admin_ids, get_entities
 from openplaces.recipe import (
     get_output_path,
     get_recipe_by_id,
@@ -204,8 +204,11 @@ class Curator:
             )
             return
 
-        entity_path = get_output_path(self.entity_recipe, admin_id)
-        curated = read_parquet(entity_path, geom=True)
+        # Through get_entities, not a raw read_parquet of the output path:
+        # a split (attribute-only) spine declares save_to: geometry: false
+        # and its geometry is resolved via the entity_recipe chain -- a raw
+        # read would find no `_geo` sidecar (or a stale pre-split one).
+        curated = get_entities(self.entity_recipe, admin_id, geom=True)
         state = CurateState(
             recipe=self.recipe,
             entity_recipe=self.entity_recipe,

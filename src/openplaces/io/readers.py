@@ -15,8 +15,10 @@ from openplaces.recipe import (
     find_admin_recipe_id,
     get_output_path,
     get_recipe_by_id,
+    get_recipe_id,
     get_save_admin_level,
     get_table_recipe,
+    saves_geometry,
 )
 from openplaces.utils import format_list
 
@@ -452,6 +454,28 @@ def get_entities(
     if partition_id is None and (recipe.get('aggregate_by') or {}).get('single_file'):
         partition_id = 'all'
 
+    # An attribute-only recipe (save_to: geometry: false) has no geometry
+    # of its own: read its files plain and resolve geometry through the
+    # entity_recipe chain afterwards. Driven by the declaration, never by
+    # probing for a `_geo` sidecar, so a stale sidecar from a pre-split
+    # run beside the attribute output is ignored.
+    geometry_recipe = None
+    requested_geom = geom
+    if geom and not saves_geometry(recipe):
+        geometry_recipe = recipe
+        seen_ids = set()
+        while not saves_geometry(geometry_recipe):
+            predecessor = geometry_recipe.get('entity_recipe')
+            if not predecessor or predecessor in seen_ids:
+                raise ValueError(
+                    f'{get_recipe_id(recipe)} declares save_to: geometry: '
+                    'false but its entity_recipe chain reaches no recipe '
+                    'that saves geometry.'
+                )
+            seen_ids.add(predecessor)
+            geometry_recipe = get_recipe_by_id(predecessor)
+        geom = False
+
     save_level = get_save_admin_level(recipe)
     admin_col = f'admin{save_level}_id' if save_level > 0 else None
     read_columns = columns
@@ -511,6 +535,20 @@ def get_entities(
 
     if admin_col is not None and admin_col in data.columns:
         data[admin_col] = data[admin_col].astype('category')
+
+    if geometry_recipe is not None and not data.empty:
+        predecessor = get_entities(
+            geometry_recipe,
+            admin_id=admin_id,
+            geom=requested_geom,
+            missing=missing,
+            bbox=bbox,
+        )
+        geometry = predecessor['geometry']
+        if geometry.index.duplicated().any():
+            geometry = geometry[~geometry.index.duplicated()]
+        data = gpd.GeoDataFrame(data.join(geometry, how='left'), crs=predecessor.crs)
+        geom = requested_geom
 
     # A requested admin_id finer than the recipe's save level (e.g. a town
     # when the recipe saves one file per county) gets truncated to its
