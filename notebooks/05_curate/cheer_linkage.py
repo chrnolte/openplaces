@@ -19,6 +19,8 @@ The survey CSV it reads is produced by
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import geopandas as gpd
 import pandas as pd
 
@@ -93,6 +95,25 @@ BASELINE_PATH = cache_path(
     default_extension='csv',
 )
 LINKED_PATH = cache_path('US', entity=_RECIPE_ENTITY, filename='validation-footprints')
+
+# The accepted run's per-point predictions, which is what makes the gate a
+# paired test rather than a comparison of two independent point estimates.
+# Deliberately narrow: the survey row's own coordinates, the hand label and
+# the predicted class, and nothing else. The linked frame it comes from
+# carries addresses, and this file exists to be read by whoever is judging a
+# change, so it must not.
+BASELINE_PREDICTIONS_PATH = cache_path(
+    'US',
+    entity=_RECIPE_ENTITY,
+    filename='occupancy-baseline-predictions',
+    default_extension='csv',
+)
+
+# Identifies a surveyed building by where it sits in the source workbook,
+# which no pipeline change can move. Footprint ids cannot serve: several
+# survey points legitimately land on one footprint (1,370 points on 1,231
+# footprints), so they are not a key.
+PREDICTION_KEY = ['source_sheet', 'source_row']
 
 # Rulesets stored beside the curate recipe, used to rebuild the class
 # columns `order_columns.drop` removes from published output.
@@ -502,6 +523,88 @@ def link_ground_truth(
         if verbose:
             print(f'wrote {len(linked)} linked points to {LINKED_PATH}')
     return linked
+
+
+def save_baseline_predictions(linked: pd.DataFrame, path=None) -> Path:
+    """Write the accepted run's per-point predictions for the paired gate.
+
+    Parameters
+    ----------
+    linked : pandas.DataFrame
+        Output of :func:`link_ground_truth`.
+    path : path-like, optional
+        Destination. Defaults to :data:`BASELINE_PREDICTIONS_PATH`.
+
+    Returns
+    -------
+    pathlib.Path
+        Where it was written.
+    """
+    path = Path(path or BASELINE_PREDICTIONS_PATH)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    columns = [*PREDICTION_KEY, 'occupancy_type_canonical', 'predicted']
+    linked[columns].to_csv(path, index=False)
+    return path
+
+
+def load_baseline_predictions(path=None) -> pd.DataFrame:
+    """Read the baseline predictions written by :func:`save_baseline_predictions`."""
+    path = Path(path or BASELINE_PREDICTIONS_PATH)
+    if not path.exists():
+        raise FileNotFoundError(
+            f'No baseline predictions at {path}. Run this notebook once with '
+            '--write_baseline to record the accepted run before gating '
+            'against it.'
+        )
+    return pd.read_csv(path)
+
+
+def align_to_baseline(linked: pd.DataFrame, baseline: pd.DataFrame):
+    """Line the current run's predictions up with the baseline's, per point.
+
+    Returns the points both runs share. Points only one of them has are
+    reported rather than silently dropped: the survey and the linkage both
+    move over time, and a gate that quietly scored a different set of
+    buildings than the baseline did would be comparing two things.
+
+    Parameters
+    ----------
+    linked : pandas.DataFrame
+        Output of :func:`link_ground_truth`.
+    baseline : pandas.DataFrame
+        Output of :func:`load_baseline_predictions`.
+
+    Returns
+    -------
+    tuple
+        ``(truth, baseline_predicted, current_predicted, report)`` -- three
+        aligned Series and a dict of ``n_shared``/``n_baseline_only``/
+        ``n_current_only``.
+    """
+    key = PREDICTION_KEY
+    current = linked[[*key, 'occupancy_type_canonical', 'predicted']].copy()
+    merged = current.merge(
+        baseline, on=key, how='inner', suffixes=('', '_base'), validate='1:1'
+    )
+    report = {
+        'n_shared': len(merged),
+        'n_baseline_only': len(baseline) - len(merged),
+        'n_current_only': len(current) - len(merged),
+    }
+    # The hand label is the survey's, so it should not move; if it has, the
+    # current run's label wins and the count says how often that happened.
+    report['n_truth_changed'] = int(
+        merged['occupancy_type_canonical']
+        .astype(object)
+        .ne(merged['occupancy_type_canonical_base'].astype(object))
+        .sum()
+    )
+    return (
+        merged['occupancy_type_canonical'],
+        merged['predicted_base'],
+        merged['predicted'],
+        report,
+    )
 
 
 def score_sources(linked: pd.DataFrame) -> pd.DataFrame:
