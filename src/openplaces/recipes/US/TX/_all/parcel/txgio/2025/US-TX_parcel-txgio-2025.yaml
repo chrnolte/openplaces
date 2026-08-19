@@ -47,8 +47,15 @@ columns:
   city: SITUS_CITY
   legal_area: LEGAL_AREA
   legal_area_unit: LGL_AREA_UNIT
-  use_group: STAT_LAND_USE     # State: coarser, seems more complete
-  use_subgroup: LOC_LAND_USE   # Local: no 1-1 mapping to use_group
+  # Both land-use fields are codes, not text, so they land in the *_code
+  # slots and the textual use_group/use_subgroup are produced by the
+  # sidecar crosswalk below. Mapping them straight to use_group/use_subgroup
+  # (as this recipe used to) silently disabled every downstream classifier
+  # that matches land-use words: measured on Jefferson, the curate-stage
+  # parcel occupancy keywords hit 27 of 122,202 rows (0.0%), against 44.1%
+  # for a state whose source ships English (NC nconemap).
+  use_group_code: STAT_LAND_USE     # State category; see remap sidecar
+  use_subgroup_code: LOC_LAND_USE   # Appraisal-district local code
   year_built: YEAR_BUILT
   owner_name: OWNER_NAME
   owner_name_co: NAME_CARE
@@ -67,6 +74,26 @@ columns:
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - legal_area_unit
+  - use_group_code
+  - use_subgroup_code
+
+notes: >-
+  STAT_LAND_USE carries the Texas Comptroller state property category. Only
+  its first character is statewide-standard (A single-family, B multifamily,
+  C vacant, D agricultural, E rural improved, F commercial/industrial,
+  G minerals, J utilities, M mobile home, O residential inventory,
+  X exempt); the second character is set by the appraisal district and
+  varies -- Jefferson alone uses 88 distinct two-character codes, of which
+  only A1, A2, B1-B4, C1-C2, D1, D3-D9, E1-E7, F1-F6, J2 and M1 are the
+  published sub-codes. The crosswalk is therefore keyed on one character,
+  which _apply_remap_csvs truncates to automatically. Validated against the
+  independent FEMA structure classification on Jefferson: A is 98.0% Single
+  Family (n=74,964), B is 89.7% Multi Family (n=1,193), E is 89.1% Single
+  Family, D is 68.4% Agricultural. Known cost of the one-character key:
+  A2 (mobile homes) is folded into A (single-family) -- 395 of 78,393 A rows
+  in Jefferson, 0.5%. The manufactured-home signal survives in
+  use_subgroup_code (Jefferson's local RMH covers 5,819 rows), which a
+  per-county crosswalk can recover later.
 
 # Standardized matching key (auto conversion; processed per admin3).
 parcel_id_local:
