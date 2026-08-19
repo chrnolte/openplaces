@@ -21,6 +21,7 @@ from openplaces.recipe import (
 from openplaces.utils import format_list
 
 ADMIN_SOURCE_DEFAULT = 'admin-spine-2026'
+REGION_SOURCE_DEFAULT = 'admin-regions-2026'
 ADMIN_GEO_SOURCE_DEFAULT = 'admin-gadm-4~1'
 ADMIN_PRIMARY_COLUMNS = {
     1: ['name', 'admin1_id_a3'],
@@ -301,6 +302,47 @@ def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
         recipe=get_recipe_by_id(admin_recipe) if admin_recipe is not None else None,
     ).index.tolist()
     return sorted(admin_ids)
+
+
+def get_regions(region_id=None):
+    """Get the named-region registry: a 1:n mapping of region to admin unit.
+
+    A region is any named group of admin units that the admin hierarchy
+    cannot express -- a study area, a delivery footprint, a funder's
+    geography. The CHEER regions are the motivating case: 45 of North
+    Carolina's 100 counties and 42 of Texas's 254, neither of them a
+    complete state.
+
+    Kept in one registry rather than beside whichever recipe first needed
+    it, because the same grouping is wanted by delivery, by mapping, and by
+    ad-hoc analysis, and three copies of a county list drift.
+
+    Parameters
+    ----------
+    region_id : str, optional
+        Return only this region's rows. Raises `KeyError` when it is not
+        registered, listing what is.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns `region_id`, `name`, `region_admin_id` (the admin unit the
+        region rolls up to, which may be blank) and `admin_id`, one row per
+        member unit.
+    """
+    regions = get_recipe_by_id(REGION_SOURCE_DEFAULT, dtype=str, keep_default_na=False)
+    if region_id is None:
+        return regions
+    rows = regions[regions['region_id'] == str(region_id)]
+    if rows.empty:
+        known = format_list(sorted(regions['region_id'].unique()))
+        raise KeyError(f'Unknown region {region_id!r}; registered: {known}.')
+    return rows
+
+
+def get_region_admin_ids(region_id):
+    """Get the admin unit IDs a named region groups, in registry order."""
+    return list(dict.fromkeys(get_regions(region_id)['admin_id'].dropna()))
 
 
 def _as_admin_id(value):

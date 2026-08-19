@@ -13,6 +13,8 @@ from importlib import import_module
 _SOURCES = {
     'get_admin': 'openplaces.io.readers:get_admin',
     'get_admin_ids': 'openplaces.io.readers:get_admin_ids',
+    'get_regions': 'openplaces.io.readers:get_regions',
+    'get_region_admin_ids': 'openplaces.io.readers:get_region_admin_ids',
     'get_entities': 'openplaces.io.readers:get_entities',
     'get_dataset': 'openplaces.io.readers:get_dataset',
     'ingest': 'openplaces.io.ingester:ingest',
