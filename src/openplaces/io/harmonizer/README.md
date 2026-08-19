@@ -7,7 +7,19 @@ contributors and coding agents here before changes to this package. -->
 
 Recipe-driven composable pipeline: each step is a registered function
 `(state: HarmonizeState, **params) -> HarmonizeState`.  Steps are listed in
-the recipe's `pipeline:` key and dispatched via `_STEP_REGISTRY`.
+the recipe's `pipeline:` key and dispatched via `_STEP_REGISTRY`. Each
+registration carries a `phase` tag (`_STEP_PHASES`): `'geometry'` for steps
+that mutate spine rows/geometry or run spatial joins, `'attributes'`
+(default) for steps that only read or annotate. The tag feeds the
+link-sidecar fingerprint (a changed prior geometry step invalidates a
+persisted overlay) and defines which recipe hosts a step under the
+geospine split: a *geospine* recipe runs the geometry phase and persists
+every link product (`save_link` default-on), and an *attribute* recipe
+(`entity_recipe:` the geospine, `save_to: geometry: false`) starts with
+`load_geospine` (load.py) to restore the spine, crosswalks, overlays, and
+prepared references from those persisted tables -- never from a new
+spatial computation. A stale or missing sidecar raises with instructions
+to rerun the geospine (fail closed).
 
 Entry points: `harmonize(recipe, admin_ids, ...)` in `__init__.py`.
 
@@ -105,12 +117,14 @@ Load a reference dataset and build a spine ↔ reference crosswalk.
 
 **`spatial_overlay`** (polygon-on-polygon):
 1. Load reference, aggregate by `geo_id` using attribute registry functions
-2. Run `overlay_polygons(how='identity', iou=True)` — or, with `save_link: true`,
-   reload the persisted link sidecar instead when its footer fingerprint
-   (step config + size/mtime of the recipe's ingest inputs; tombstone
-   receipts stand in for deliberately deleted inputs) still matches and
-   `state.reprocess` is False. A reloaded overlay is geometry-free (only
-   area/IoU columns are consumed downstream).
+2. Run `overlay_polygons(how='identity', iou=True)` — or, with `save_link`
+   (default **on**; opt out with `save_link: false`), reload the persisted
+   link sidecar instead when its footer fingerprint (format 2: step config
+   + the ordered configs of every prior geometry-phase pipeline step +
+   size/mtime of the recipe's ingest inputs; tombstone receipts stand in
+   for deliberately deleted inputs) still matches and `state.reprocess` is
+   False. A reloaded overlay is geometry-free (only area/IoU columns are
+   consumed downstream).
 3. Build the trimmed crosswalk via `_build_crosswalk` (shared by fresh and
    reload paths); thresholds:
    - `min_fraction_of_largest` (default 1/6): drop secondary links below this fraction
@@ -124,7 +138,7 @@ Load a reference dataset and build a spine ↔ reference crosswalk.
      and each minor `fraction_of_largest <= chain_fraction_max`. Geometry-free,
      so it runs identically on the reload path; deliberately NOT part of the
      sidecar fingerprint (toggling it never forces an overlay recompute).
-4. With `save_link: true`: write the geometry-free FULL n:m overlay (every
+4. With `save_link` (default on): write the geometry-free FULL n:m overlay (every
    pair incl. sub-threshold slivers, crosswalk `link` label left-joined,
    null = trimmed-out) to the canonical entity-link path
    (`get_entity_link_path`, beside the finer entity's output). Consumed by
@@ -137,7 +151,10 @@ Load a reference dataset and build a spine ↔ reference crosswalk.
    promoted 1-1 link.
 5. Writes: `references`, `crosswalks` (MultiIndex), `overlays`, `reference_types`, `source_geometry_types`
 
-**`spatial_point`** (point-in-polygon, Lochhead Table 3 four-pass):
+**`spatial_point`** (point-in-polygon, Lochhead Table 3 four-pass; with
+`save_link`, default on, the final flat crosswalk is persisted
+geometry-free at the entity-link path and reloaded on later runs while
+its fingerprint matches, skipping every pass below):
 0. Optional pre-link duplicate resolution: `thresholds.resolve_duplicates`
    (`key`: any ref column, default `building_id_ubid`; `'olc'` = the computed
    ~3 m `_olc` location cell; `ignore_sources`: e.g. `[ESRI, HAZUS/NSI-2015]`)

@@ -5,8 +5,10 @@ The thin CLI behind each Snakemake rule::
 
     python -m openplaces.flow.run_stage <stage> <recipe_id> [<admin_id>]
 
-Dispatches to the stage entrypoint with reprocess=False, so a
-re-dispatched already-complete job no-ops in seconds. Sets
+Dispatches to the stage entrypoint with reprocess=False by default, so
+a re-dispatched already-complete job no-ops in seconds; pass
+--reprocess to force a rebuild of exactly this job (the orchestrator
+decides which jobs to re-dispatch, so the flag stays per-job). Sets
 OPENPLACES_ORCHESTRATED so receipt-based skips are voided and the
 physical output file the orchestrator expects is always produced.
 
@@ -52,6 +54,11 @@ def main(argv=None) -> None:
         default=None,
         help='Explicit harmonized entity recipe for enrich jobs',
     )
+    parser.add_argument(
+        '--reprocess',
+        action='store_true',
+        help='Re-run this job even if its output already exists',
+    )
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument(
         '--no-orchestrated',
@@ -73,7 +80,11 @@ def main(argv=None) -> None:
     module = import_module(STAGE_MODULES[args.stage])
     stage_fn = getattr(module, args.stage)
 
-    kwargs = {'admin_ids': admin_ids, 'reprocess': False, 'verbose': args.verbose}
+    kwargs = {
+        'admin_ids': admin_ids,
+        'reprocess': args.reprocess,
+        'verbose': args.verbose,
+    }
     if args.stage == 'enrich' and args.entity_recipe_id:
         kwargs['entity_recipe_id'] = args.entity_recipe_id
     stage_fn(args.recipe_id, **kwargs)

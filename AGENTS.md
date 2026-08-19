@@ -326,7 +326,37 @@ Public entrypoint:
 
 `Harmonizer` runs a composable step pipeline, executing steps declared in the recipe's
 `pipeline` list. Each step is a function registered via `@_register('step_name')` in one
-of the sub-modules:
+of the sub-modules. Registrations carry a `phase` tag (`'geometry'` for steps that
+mutate spine rows/geometry or run spatial joins; `'attributes'`, the default, for
+steps that only read or annotate) — the tag drives the link-sidecar fingerprint and
+defines the geometry/attribute recipe split below.
+
+**The geospine split.** Each expensive spine is two recipes. A *geospine* recipe
+(`US_footprint-geospine-2026`, `US_parcel-geospine-2026`) runs the geometry phase —
+spine resolution, spatial overlays and point joins, group detections, morphology —
+and persists its spine plus one n:m link sidecar per `link_to_reference` join
+(`save_link` is default-on; a step opts *out* with `save_link: false`). The
+*attribute* recipe keeps the established id (`US_footprint-spine-2026`,
+`US_parcel-spine-2026`), declares the geospine as its `entity_recipe`, starts with
+`load_geospine`, and writes an attribute-only table (`save_to: geometry: false`);
+its geometry lives with the geospine and is resolved by `get_entities` through the
+`entity_recipe` chain — by declaration, never by probing for a `_geo` sidecar, so a
+stale pre-split sidecar is ignored. Enricher and curator load their entity spine
+through `get_entities` for the same reason. Rerunning an attribute recipe involves
+no spatial computation (`--reprocess attributes` in the driver). Each sidecar's
+footer fingerprint (format 2) covers the step config, the configs of every *prior
+geometry-phase* pipeline step, and size/mtime of the ingest inputs; `load_geospine`
+recomputes it exactly and fails closed — a stale sidecar raises with instructions
+to rerun the geospine, never silently recomputing geometry. Curate readers resolve
+the sidecar's owner through `geo/link.get_link_owner_recipe_id` (the geospine when
+split, the recipe itself when not). Geospine recipes declare
+`save_to: retention: keep`: their outputs and link tables are the normalized
+geometry store, exempt even from aggressive cleanup (an explicit retention wins
+over the aggressive core-bucket demotion). Bucket policy: `core` holds the
+normalized store and intermediate evidence; terminal curate outputs ship
+self-contained (attributes + geometry) in `share`.
+
+The step sub-modules:
 - `spine.py` — build/merge the primary entity GeoDataFrame (`resolve_spine`),
   and assign each row's containing polygon id from a space-partitioning
   reference layer such as an admin level or a Census statistical geography
@@ -339,6 +369,10 @@ of the sub-modules:
   only runs on the residual.
 - `links.py` — join to reference datasets spatially or via crosswalks
   (`link_to_reference`)
+- `load.py` — restore a geospine recipe's spine, crosswalks, overlays, and
+  prepared references from its persisted output and link sidecars
+  (`load_geospine`); which links to restore is read from the geospine
+  recipe's own pipeline, so the two YAMLs cannot drift
 - `attributes.py` — attribute source columns to the spine as suffixed evidence
   columns (`reconcile_attributes`), assign each footprint's parcel priority
   (`classify_footprint_priority`), and build the combined land-use label the
