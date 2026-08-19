@@ -71,6 +71,18 @@ entity:
 
 uncompressed_file_name: "currituck_parcels.geojson"
 
+# NOTE: LUC is a real land-use code table -- 50 distinct values over 27,895
+# parcels, led by 510 (17,431), 500 (5,868), 535 (1,225), 881 (800) and 400
+# (515) -- but the layer publishes no description column to crosswalk it
+# with, and this is the only county in the Eastern NC region whose land use
+# arrives solely as a code. Until the county's own LUC list is obtained and
+# added as a `*-remap.csv` sidecar beside this recipe, these codes group
+# parcels (cohort statistics use them) but assert no land-use vocabulary:
+# `derive_use_classes` withholds the raw-code fallback from
+# `use_group_combined_labeled`, which is what the occupancy keyword ruleset
+# reads. Do not infer the mapping from correlated evidence -- a crosswalk
+# has to be what the county published, not what the data suggests.
+
 columns:
   parcel_id_assessor: PARCEL_ID
   parcel_id_admin3: PIN_1

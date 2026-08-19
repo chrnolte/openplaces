@@ -8,7 +8,8 @@
 # NOTE: the layer carries only a single combined value field (`TAX_VAL`) --
 # no land/building split, so no `improvement_value` is available from this
 # source (verified populated: 997/1000 sampled records). `LAND_USE_V` is a
-# land-use code, not a land value, despite the name.
+# value, not a land-use code, despite the name -- see the note above
+# `columns:` below. An earlier version of this comment said the reverse.
 
 description: >-
   Perquimans County, NC parcel roll (total assessed value, owner, situs,
@@ -32,11 +33,23 @@ scraper_options:
   where: "1=1"
   out_fields: "*"
 
+# NOTE: LAND_USE_V is not a land-use code despite the name -- it is the
+# present-use-value assessment (NC's deferred agricultural valuation). It is
+# 12.8% populated, every non-blank value parses as a number from $100 to
+# $2,992,500 with a median of $38,400, it correlates 0.850 with TAX_VAL, and
+# its median ratio to TAX_VAL is 0.31. It was previously mapped to
+# `use_group_code`, which fed dollar amounts into the land-use lane; the
+# apparent 98.7% coverage that made it look real was whitespace. There is no
+# registry attribute for present-use-value, so it is left unmapped rather
+# than renamed into an invented one.
+#
+# This layer publishes no land-use column at all: DESCR and desc_ are free
+# text (949 distinct over 15,044 rows), not a category.
+
 columns:
   parcel_id_assessor: pin
   address: ADDRESS_1
   owner_name: NAME
-  use_group_code: LAND_USE_V
   last_sale_date: DATE_SOLD
   total_value: TAX_VAL
 
@@ -89,9 +102,6 @@ drop_columns:
   - _date_sold_padded
   - _date_sold_month
   - _date_sold_year
-
-columns_to_categorical:
-  - use_group_code
 
 parcel_id_local:
   source: parcel_id_assessor
