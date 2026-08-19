@@ -53,8 +53,101 @@ INTERNAL_COLUMNS = ('_join_id', 'bbox')
 COORDINATE_COLUMNS = ('long', 'lat')
 
 
-def delivery_spec(recipe) -> dict:
-    """Return the recipe's `share: delivery:` block, or an empty dict.
+def delivery_regions(recipe) -> list[dict]:
+    """Return one delivery spec per region the recipe ships, in declared order.
+
+    A curation recipe is written once and shipped to more than one region:
+    the CHEER footprint recipe covers both 45 Eastern NC counties and 42
+    coastal Texas ones, from identical curation logic. The regions are
+    therefore data, not recipe structure -- named in
+    ``share: delivery: regions:`` and defined once in the shared registry
+    that :func:`~openplaces.io.readers.get_regions` reads, so mapping and
+    ad-hoc analysis group by the same county lists the bundle ships.
+
+    A recipe that instead lists ``admin_ids`` inline still works and yields
+    a single unnamed region, so a grouping used in exactly one place need
+    not be registered.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+
+    Returns
+    -------
+    list of dict
+        Each with ``region_id`` (None when declared inline), ``admin_level``,
+        ``admin_ids``, and ``admin_id`` (the bundle's own unit, None when it
+        should be derived from the members).
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    block = dict((recipe.get('share') or {}).get('delivery') or {})
+    if not block:
+        return []
+
+    default_level = block.get('admin_level', 2)
+    names = block.get('regions')
+    if not names:
+        if not block.get('admin_ids'):
+            return []
+        return [
+            {
+                'region_id': None,
+                'admin_level': default_level,
+                'admin_ids': [str(a) for a in block['admin_ids']],
+                'admin_id': block.get('admin_id'),
+            }
+        ]
+
+    from openplaces.io.readers import get_regions
+
+    if isinstance(names, str):
+        names = [names]
+    regions = []
+    for name in names:
+        rows = get_regions(name)
+        anchor = rows.get('region_admin_id', pd.Series(dtype=str))
+        anchor = anchor[anchor.astype(str).str.strip().ne('')]
+        regions.append(
+            {
+                'region_id': str(name),
+                'admin_level': default_level,
+                'admin_ids': list(dict.fromkeys(rows['admin_id'].dropna())),
+                'admin_id': str(anchor.iat[0]) if len(anchor) else None,
+            }
+        )
+    return regions
+
+
+def _select_region(recipe, region=None) -> dict:
+    """Return one region's spec, by ``region_id`` or the only one there is.
+
+    Raises when *region* is unknown, and when a multi-region recipe is
+    asked for "the" region without naming which -- guessing there would
+    silently ship the wrong region's file under the other's name.
+    """
+    regions = delivery_regions(recipe)
+    if not regions:
+        return {}
+    if region is None:
+        if len(regions) > 1:
+            names = ', '.join(str(r['region_id']) for r in regions)
+            raise ValueError(
+                f'Recipe {recipe.get("recipe_id", recipe)!r} declares '
+                f'{len(regions)} delivery regions ({names}); name one via '
+                f'region=.'
+            )
+        return regions[0]
+    for spec in regions:
+        if spec['region_id'] == str(region):
+            return spec
+    names = ', '.join(str(r['region_id']) for r in regions)
+    raise KeyError(f'Unknown delivery region {region!r}; declared: {names}.')
+
+
+def delivery_spec(recipe, region=None) -> dict:
+    """Return the recipe's `share: delivery:` block for one region.
 
     Declares which admin unit the region-wide bundle covers
     (``admin_level``) and which units feed it (``admin_ids``). Named in the
@@ -65,20 +158,24 @@ def delivery_spec(recipe) -> dict:
     ----------
     recipe : str or dict
         Recipe ID or loaded recipe dictionary.
+    region : str, optional
+        Which declared region to return. Required when the recipe ships
+        more than one; see :func:`delivery_regions`.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
-    return dict((recipe.get('share') or {}).get('delivery') or {})
+    return _select_region(recipe, region)
 
 
-def delivery_admin_id(recipe, admin_level=None) -> AdminId:
+def delivery_admin_id(recipe, admin_level=None, region=None) -> AdminId:
     """Return the admin unit a recipe's bundle covers.
 
     Derived from the declared members rather than the recipe's own admin ID:
     a recipe is filed at the scope it can process (``US`` for the CHEER
     footprint recipe) while its bundle covers only the region actually
     delivered (``US-NC``). Falls back to the recipe's admin ID when no
-    members are declared.
+    members are declared, and to an explicit ``bundle_admin_id`` when the
+    region's members do not all sit under one unit at *admin_level*.
 
     Parameters
     ----------
@@ -86,12 +183,16 @@ def delivery_admin_id(recipe, admin_level=None) -> AdminId:
         Recipe ID or loaded recipe dictionary.
     admin_level : int, optional
         Level to truncate to. Defaults to the declared value, then 2.
+    region : str, optional
+        Which declared region to resolve; see :func:`delivery_regions`.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
-    spec = delivery_spec(recipe)
+    spec = delivery_spec(recipe, region)
     if admin_level is None:
         admin_level = spec.get('admin_level', 2)
+    if spec.get('admin_id'):
+        return AdminId(str(spec['admin_id']))
     members = spec.get('admin_ids') or []
     anchor = AdminId(str(members[0])) if members else AdminId(str(recipe['admin_id']))
     return AdminId(*anchor.levels[:admin_level])
@@ -169,7 +270,7 @@ def _source_columns(columns, available):
     return sidecars
 
 
-def delivery_members(recipe, admin_id=None, admin_ids=None) -> list[str]:
+def delivery_members(recipe, admin_id=None, admin_ids=None, region=None) -> list[str]:
     """Return the process-level admin IDs whose output the bundle pools.
 
     Resolution order: an explicit *admin_ids* argument, then the recipe's
@@ -187,12 +288,14 @@ def delivery_members(recipe, admin_id=None, admin_ids=None) -> list[str]:
         Admin unit the bundle covers, used only for the hierarchy fallback.
     admin_ids : list of str, optional
         Explicit member list, overriding the recipe.
+    region : str, optional
+        Which declared region to resolve; see :func:`delivery_regions`.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
 
     if admin_ids is None:
-        admin_ids = delivery_spec(recipe).get('admin_ids')
+        admin_ids = delivery_spec(recipe, region).get('admin_ids')
     if admin_ids is None:
         if admin_id is None:
             return []
@@ -204,17 +307,19 @@ def delivery_members(recipe, admin_id=None, admin_ids=None) -> list[str]:
     return list(dict.fromkeys(str(aid) for aid in admin_ids))
 
 
-def _resolve_inputs(recipe, admin_id, admin_ids):
+def _resolve_inputs(recipe, admin_id, admin_ids, region=None):
     """Return the process admin level and the [(admin_id, path)] files to pool."""
     inputs = []
-    for process_id in delivery_members(recipe, admin_id, admin_ids):
+    for process_id in delivery_members(recipe, admin_id, admin_ids, region):
         path = get_output_path(recipe, process_id)
         if path.exists():
             inputs.append((process_id, path))
     return get_process_admin_level(recipe), inputs
 
 
-def delivery_paths(recipe, admin_id=None, admin_level=None, output_dir=None) -> dict:
+def delivery_paths(
+    recipe, admin_id=None, admin_level=None, output_dir=None, region=None
+) -> dict:
     """Return the four bundle paths, keyed by their role.
 
     The single source of truth for where a delivery lands: `export_delivery`
@@ -238,6 +343,8 @@ def delivery_paths(recipe, admin_id=None, admin_level=None, output_dir=None) -> 
     output_dir : str, optional
         Directory to write into, as named in STANDARD_DIRS. Defaults to the
         recipe's declared value, then the recipe's own `save_to: data_dir:`.
+    region : str, optional
+        Which declared region to resolve; see :func:`delivery_regions`.
 
     Returns
     -------
@@ -246,14 +353,14 @@ def delivery_paths(recipe, admin_id=None, admin_level=None, output_dir=None) -> 
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
-    spec = delivery_spec(recipe)
+    spec = delivery_spec(recipe, region)
 
     if admin_level is None:
         admin_level = spec.get('admin_level', 2)
     if output_dir is None:
         output_dir = spec.get('output_dir')
     if admin_id is None:
-        admin_id = delivery_admin_id(recipe, admin_level)
+        admin_id = delivery_admin_id(recipe, admin_level, region)
 
     output_recipe = dict(recipe)
     output_recipe['save_to'] = {
@@ -298,6 +405,7 @@ def export_delivery(
     admin_ids=None,
     admin_level=None,
     output_dir=None,
+    region=None,
     verbose=False,
 ):
     """Write a curated entity's region-wide output as a four-file bundle.
@@ -333,6 +441,9 @@ def export_delivery(
     output_dir : str, optional
         Directory the bundle is written to, as named in ``STANDARD_DIRS``.
         Defaults to the recipe's declared value, then its own output bucket.
+    region : str, optional
+        Which declared region to ship, by ``region_id``. Required when the
+        recipe declares more than one; see :func:`delivery_regions`.
     verbose : bool, optional
         Print a line per written file.
 
@@ -346,11 +457,11 @@ def export_delivery(
         recipe = get_recipe_by_id(recipe)
 
     canonical_columns, point_columns = _share_spec(recipe)
-    paths = delivery_paths(recipe, admin_id, admin_level, output_dir)
+    paths = delivery_paths(recipe, admin_id, admin_level, output_dir, region)
     if admin_id is None:
-        admin_id = delivery_admin_id(recipe, admin_level)
+        admin_id = delivery_admin_id(recipe, admin_level, region)
 
-    process_level, inputs = _resolve_inputs(recipe, admin_id, admin_ids)
+    process_level, inputs = _resolve_inputs(recipe, admin_id, admin_ids, region)
     if not inputs:
         raise FileNotFoundError(
             f'No curated output found under {admin_id} for '
