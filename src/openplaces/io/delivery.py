@@ -137,17 +137,45 @@ def _lock(path: Path) -> None:
         path.chmod(path.stat().st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
 
 
+def share_columns(recipe) -> tuple[list[str], list[str]]:
+    """Return the canonical and point-only columns a recipe declares as shared.
+
+    The `share: columns:` block is the recipe's own statement of which of
+    its columns are canonical -- the compact set a reader of the delivery
+    is meant to work from, as opposed to the far larger set of columns
+    that merely resolve to a registry attribute. Diagnostics that want to
+    report on "the canonical columns" should read it here rather than
+    re-deriving a set from the registry, which cannot tell an attribute
+    from the evidence column feeding it.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe.
+
+    Returns
+    -------
+    tuple of (list of str, list of str)
+        Canonical columns, then the extra columns carried by the point
+        file alone. Both empty when the recipe declares no `share` block:
+        not every recipe is delivered, so absence is a normal state here
+        and callers that require the list raise on their own behalf (see
+        :func:`_share_spec`).
+    """
+    share = recipe.get('share') or {}
+    return list(share.get('columns') or []), list(share.get('point_columns') or [])
+
+
 def _share_spec(recipe):
     """Return the recipe's `share` block, erroring when it declares no columns."""
-    share = recipe.get('share') or {}
-    columns = list(share.get('columns') or [])
+    columns, point_columns = share_columns(recipe)
     if not columns:
         raise ValueError(
             f'Recipe {recipe.get("recipe_id", recipe)!r} has no `share: columns:` '
             'block, so there is no canonical column list to deliver. Add one to '
             'the recipe naming the attributes the shared file should carry.'
         )
-    return columns, list(share.get('point_columns') or [])
+    return columns, point_columns
 
 
 def _source_columns(columns, available):
@@ -270,6 +298,37 @@ def delivery_paths(recipe, admin_id=None, admin_level=None, output_dir=None) -> 
         'geo': canonical.with_stem(f'{canonical.stem}_geo'),
         'evidence': canonical.with_stem(f'{canonical.stem}_evidence'),
     }
+
+
+ACCURACY_DIR_NAME = 'accuracies'
+
+
+def delivery_accuracy_dir(recipe, **kwargs) -> Path:
+    """Return the directory holding a delivery's own accuracy reporting.
+
+    A sibling of the four bundle files rather than a cache location, because
+    how well the inventory scores is part of what is delivered: someone who
+    receives the bundle and not this repository still needs to know what its
+    columns are worth. It travels with the data or it is not really published.
+
+    Only aggregate tables and figures belong here. Row-level validation
+    artifacts stay in the cache -- linking survey points to entities carries
+    their addresses through, and the bundle is shared.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe ID or loaded recipe dictionary.
+    **kwargs
+        Passed to :func:`delivery_paths` (``admin_id``, ``admin_level``,
+        ``output_dir``) so the directory follows the bundle it describes.
+
+    Returns
+    -------
+    pathlib.Path
+        The ``accuracies`` directory. Not created; the writer does that.
+    """
+    return delivery_paths(recipe, **kwargs)['canonical'].parent / ACCURACY_DIR_NAME
 
 
 def _deduplicate(frame, coverage_columns, admin_id_column):
