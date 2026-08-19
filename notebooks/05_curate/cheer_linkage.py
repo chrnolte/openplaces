@@ -47,6 +47,12 @@ COLLAPSE = {
     'High-Rise Multi-Family': 'Multi-Family',
 }
 
+# Stands in for "no class" when two class columns are compared, so a
+# missing value on either side compares equal to itself and unequal to
+# every real class. Any string no ruleset can emit works; this one is
+# obviously not a class name.
+_NO_CLASS = '<none>'
+
 # Classes that describe exactly one dwelling. Manufactured Home counts
 # as single here: a double or triple wide is one home, not one per
 # section.
@@ -88,6 +94,11 @@ BASELINE_PATH = cache_path(
 )
 LINKED_PATH = cache_path('US', entity=_RECIPE_ENTITY, filename='validation-footprints')
 
+# Rulesets stored beside the curate recipe, used to rebuild the class
+# columns `order_columns.drop` removes from published output.
+CLASS_MAP = 'occupancy-class-map.csv'
+KEYWORD_RULESET = 'parcel-occupancy-keywords.csv'
+
 # Evidence columns on the linked frame, labelled as the baseline's
 # `source` column reports them. Each is scored on its own so a change
 # that improves the vote by discarding a good input stays visible.
@@ -96,21 +107,38 @@ SOURCE_COLUMNS = {
     'final_vote': 'predicted',
     'nsi': 'occupancy_type_nsi_class_inv',
     'fema': 'occupancy_type_fema_class_inv',
+    'keyword': 'occupancy_keyword_class_inv',
     'parcel': 'occupancy_type_parcel_inv',
 }
 
+# Suffix `link_ground_truth` puts on every curated column, to keep them
+# apart from the survey's own. The specs below name the curated columns
+# without it, so the permit notebook -- which joins curated output under
+# its own names -- can read the same specs.
+INVENTORY_SUFFIX = '_inv'
+
 # The curate recipe's `order_columns.drop` removes the derived
-# `occupancy_type_nsi_class` / `occupancy_type_fema_class` columns from
-# published output -- they are vote-scoring intermediates, not attributes.
-# They are reconstructible from the raw evidence through the same ruleset the
-# vote used, so scoring falls back to that rather than silently dropping the
-# nsi and fema blocks (which cost the baseline 8 of its 20 rows, unnoticed,
-# because `source_values` skipped absent columns without complaint).
+# `occupancy_type_nsi_class`, `occupancy_type_fema_class` and
+# `occupancy_keyword_class` columns from published output -- they are
+# vote-scoring intermediates, not attributes. They are reconstructible from
+# the raw evidence through the same ruleset the vote used, so scoring falls
+# back to that rather than silently dropping those blocks (which cost the
+# baseline 8 of its 20 rows, unnoticed, because `source_values` skipped
+# absent columns without complaint).
 DERIVED_SOURCE_COLUMNS = {
-    'nsi': 'occupancy_type_building_nsi_inv',
-    'fema': 'group_footprint_fema_inv',
+    'nsi': {'column': 'occupancy_type_building_nsi'},
+    'fema': {'column': 'group_footprint_fema'},
+    'keyword': {
+        'column': 'use_group_combined_parcel',
+        'ruleset': KEYWORD_RULESET,
+        # The curate step sets `reviewed_only`, so the reconstruction must
+        # too: without it the unreviewed rules (MODULAR, bare MH, COMMERCIAL,
+        # RETAIL) would put classes on rows the vote never saw a keyword
+        # claim for, and the reconstructed column would score a column that
+        # never existed.
+        'reviewed_only': True,
+    },
 }
-CLASS_MAP = 'occupancy-class-map.csv'
 
 # Overture carries a dwelling count, not a class. Two or more dwellings
 # means Multi-Family; anything else, including no count at all, reads as
@@ -118,6 +146,79 @@ CLASS_MAP = 'occupancy-class-map.csv'
 # on Single-Family and cannot score Manufactured Home at all -- it never
 # declines to answer, so its Single-Family precision is what to read.
 OVERTURE_COLUMN = 'n_dwellings_overture_inv'
+
+
+# The Shovels permit validation parquets, one footprint/parcel pair per
+# county, written by the shovels worktree. Permits are the second
+# out-of-band reference after the survey: not NSI-derived, not
+# parcel-derived, and not baked into the curated output.
+PERMIT_DIR = (
+    external_dir('US-NC', entity=Entity('property', 'shovels', '2026')) / 'validation'
+)
+
+# Confidence tiers for permit occupancy evidence, strongest first. The
+# strong three are what the accuracy tables score on; `4_addr_weak` is a
+# single uncorroborated address match and is reported but not scored.
+PERMIT_STRONG_TIERS = ('1_id_strong', '2_id_weak', '3_addr_strong')
+
+
+def permit_counties() -> list[str]:
+    """Counties with a complete footprint+parcel permit pair on disk.
+
+    An incomplete pair means a mid-write county, not a county without
+    permits, so it is skipped rather than read.
+    """
+    import re
+
+    kinds: dict[str, set[str]] = {}
+    for path in sorted(PERMIT_DIR.glob('US-NC-*_occupancy_validation.parquet')):
+        match = re.match(
+            r'(US-NC-\w\w)_(footprint|parcel)_occupancy_validation', path.stem
+        )
+        if match:
+            kinds.setdefault(match.group(1), set()).add(match.group(2))
+    return sorted(c for c, k in kinds.items() if k == {'footprint', 'parcel'})
+
+
+def load_permits(admin_id: str) -> pd.DataFrame | None:
+    """Load one county's footprint-level permit evidence, or None."""
+    path = PERMIT_DIR / f'{admin_id}_footprint_occupancy_validation.parquet'
+    if not path.exists():
+        return None
+    frame = pd.read_parquet(path)
+    frame.index.name = 'footprint_id'
+    return frame
+
+
+def permit_tier(frame: pd.DataFrame) -> pd.Series:
+    """Confidence tier for permit occupancy evidence, high to low.
+
+    Two things separate a strong claim from a weak one: how the permits
+    reached the footprint (``parcel_id_local`` beats an address match) and
+    whether they agree (a unanimous mode over at least two occupancy-bearing
+    permits beats a single uncorroborated one).
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        One county's permit evidence, as returned by :func:`load_permits`.
+
+    Returns
+    -------
+    pandas.Series
+        One of ``1_id_strong``, ``2_id_weak``, ``3_addr_strong``,
+        ``4_addr_weak``, or ``none`` where no permit names an occupancy.
+    """
+    n_occupancy = pd.to_numeric(frame['n_permits_with_occupancy_type'], errors='coerce')
+    unanimous = frame['occupancy_type_mode_pct'].ge(0.999) & n_occupancy.ge(2)
+    by_id = frame['matched_via'].eq('parcel_id_local')
+    spoke = frame['occupancy_type_mode'].notna()
+    tier = pd.Series('none', index=frame.index)
+    tier[spoke & ~by_id & ~unanimous] = '4_addr_weak'
+    tier[spoke & ~by_id & unanimous] = '3_addr_strong'
+    tier[spoke & by_id & ~unanimous] = '2_id_weak'
+    tier[spoke & by_id & unanimous] = '1_id_strong'
+    return tier
 
 
 def _survey_counties() -> tuple[str, ...]:
@@ -170,14 +271,36 @@ def collapse_bands(values: pd.Series) -> pd.Series:
     return values.astype(object).replace(COLLAPSE)
 
 
-def class_from_ruleset(terms: pd.Series) -> pd.Series | None:
+def class_from_ruleset(
+    terms: pd.Series,
+    ruleset: str = CLASS_MAP,
+    *,
+    reviewed_only: bool = False,
+) -> pd.Series | None:
     """Reconstruct an occupancy class column from raw evidence.
 
     Applies the same ordered ruleset the curate vote used, so a
     reconstructed column scores identically to the dropped one.
 
-    Returns None when the ruleset cannot be located, leaving the caller to
-    omit that source rather than fail.
+    Parameters
+    ----------
+    terms : pandas.Series
+        Raw label text the class column was derived from.
+    ruleset : str, optional
+        Filename of the ruleset CSV beside the curate recipe. Defaults to
+        :data:`CLASS_MAP`, the occupancy vocabulary nsi and fema use.
+    reviewed_only : bool, optional
+        Keep only matches whose winning rule is marked reviewed, mirroring
+        the recipe's own ``reviewed_only`` flag. Nulling unreviewed matches
+        after the fact -- rather than dropping those rules up front -- is
+        deliberate: pre-filtering would let a term fall through to a later
+        reviewed rule and assert a class the vote never saw.
+
+    Returns
+    -------
+    pandas.Series or None
+        The reconstructed class column, or None when the ruleset cannot be
+        located, leaving the caller to omit that source rather than fail.
     """
     from types import SimpleNamespace
 
@@ -189,10 +312,12 @@ def class_from_ruleset(terms: pd.Series) -> pd.Series | None:
         # recipe is enough; building a real CurateState here would mean
         # loading an entity we do not need.
         state = SimpleNamespace(recipe=get_recipe_by_id(RECIPE_ID))
-        rules = load_ruleset(state, CLASS_MAP)
+        rules = load_ruleset(state, ruleset)
     except (FileNotFoundError, KeyError):
         return None
-    proposal, _reviewed = match_ruleset(terms.astype(object), rules)
+    proposal, reviewed = match_ruleset(terms.astype(object), rules)
+    if reviewed_only:
+        proposal = proposal.where(reviewed)
     return proposal
 
 
@@ -233,10 +358,15 @@ def source_values(linked: pd.DataFrame) -> dict[str, pd.Series]:
         for label, column in SOURCE_COLUMNS.items()
         if column in linked.columns
     }
-    for label, raw_column in DERIVED_SOURCE_COLUMNS.items():
-        if label in values or raw_column not in linked.columns:
+    for label, spec in DERIVED_SOURCE_COLUMNS.items():
+        column = spec['column'] + INVENTORY_SUFFIX
+        if label in values or column not in linked.columns:
             continue
-        derived = class_from_ruleset(linked[raw_column])
+        derived = class_from_ruleset(
+            linked[column],
+            spec.get('ruleset', CLASS_MAP),
+            reviewed_only=spec.get('reviewed_only', False),
+        )
         if derived is not None:
             values[label] = collapse_bands(derived)
     if OVERTURE_COLUMN in linked.columns:
@@ -340,11 +470,20 @@ def link_ground_truth(
     )
     # Flag the rows worth reading by hand: any input that spoke and was
     # overruled. Rows where every source agrees need no adjudication.
+    # Both sides are compared through a sentinel rather than directly:
+    # `occupancy_type` is a nullable string column, so a row the vote
+    # declined to classify makes `ne` return pd.NA instead of a bool, and
+    # `|=` on that raises. Reading a missing vote as a disagreement is the
+    # intended answer, not a convenience -- an input that spoke while the
+    # vote stayed silent was still discarded, which is exactly the case
+    # this flag exists to surface.
+    predicted = linked['predicted'].astype(object).fillna(_NO_CLASS)
     disagree = pd.Series(False, index=linked.index)
     for label, values in sources.items():
         if label == 'final_vote':
             continue
-        disagree |= values.notna() & values.ne(linked['predicted'])
+        values = values.astype(object)
+        disagree |= values.notna() & values.fillna(_NO_CLASS).ne(predicted)
     linked['sources_disagree'] = disagree
 
     # link_points_to_entities returns a plain DataFrame, so the matched
