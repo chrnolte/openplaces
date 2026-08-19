@@ -1179,7 +1179,7 @@ def _link_spatial_point(
     entity_type: str | None,
     remap_id: str | None,
     thresholds: dict,
-    save_link: bool = True,
+    save_link: bool = False,
 ) -> HarmonizeState:
     """Point-in-polygon join: reference points → spine entities.
 

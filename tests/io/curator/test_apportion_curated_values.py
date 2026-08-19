@@ -89,7 +89,11 @@ def _patch(monkeypatch, tmp_path, sidecar: pd.DataFrame, ref: pd.DataFrame):
     )
     monkeypatch.setattr(evidence_mod, 'get_output_path', lambda *a, **k: 'fake/path')
     monkeypatch.setattr(evidence_mod, 'read_parquet', lambda path: ref)
-    monkeypatch.setattr(evidence_mod, 'get_recipe_id', lambda recipe: 'entity-recipe')
+    # The readers resolve the sidecar's owner through the entity_recipe
+    # chain (the geospine under the split); stub the resolution outright.
+    monkeypatch.setattr(
+        evidence_mod, 'get_link_owner_recipe_id', lambda recipe: 'entity-recipe'
+    )
     monkeypatch.setattr(
         evidence_mod, 'get_entity_link_path', lambda *a, **k: sidecar_path
     )
