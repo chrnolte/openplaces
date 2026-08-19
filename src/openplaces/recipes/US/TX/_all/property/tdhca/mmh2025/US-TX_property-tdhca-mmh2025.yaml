@@ -1,0 +1,118 @@
+# Recipe to import the Texas manufactured-housing title registry (TDHCA)
+
+description: >-
+  Texas statewide manufactured-housing title records from TDHCA, used to
+  validate and calibrate manufactured-home classification rules.
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US-TX
+
+# Entity: what is the unit of analysis of the imported data?
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: property
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: tdhca
+    portal_url: "https://www.tdhca.texas.gov/texas-manufactured-housing-inventory"
+    # No download_url: the export is produced from the agency's inventory
+    # search rather than served at a stable versioned URL. Place the CSV in
+    # this recipe's external-file cache manually (see
+    # uncompressed_file_name below).
+  version: mmh2025
+
+# Name of the (already flat, uncompressed) source file. Deliberately not
+# also declaring compressed_file_name: that combination would make the
+# ingester expect a heap-directory copy produced by unzipping an archive.
+uncompressed_file_name: "mobile_home_master_dataset_20250915_152833.csv"
+
+# One row per title certificate, read whole-state in a single pass; the
+# per-county split happens post-hoc at save time from the admin3_id column
+# the transformation below derives.
+process_by:
+  admin_level: 2
+
+save_to:
+  data_dir: core
+  admin_level: 3
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+#
+# PRIVACY: this source carries owner, buyer, seller and lien-holder names
+# and addresses (OwnerName, OwnerAddr1/2, OwnerCity/State/Zip, BuyerID,
+# SellerName, SellerAddr1/2, LienName*/LienAddr*, and the per-section
+# Serial*/Label* numbers that identify an individual unit and its holder).
+# None of them are mapped here, deliberately and permanently: the purpose of
+# this recipe is to calibrate a geometry rule, which needs dimensions and a
+# county, and nothing about who owns the home. Do not add them "for
+# completeness" -- see the no-personal-data section of AGENTS.md.
+#
+# Loc_Addr1/Loc_Addr2 (the installation street address) are also skipped:
+# they are ~99.9% blank in this export, so they would add a residence-level
+# address column with no analytical benefit.
+columns:
+  certificate_id_local: CertNum
+  county_name: InstallCounty
+  city: Loc_City
+  postal_code: Loc_Zipcode
+  # Physical dimensions, per shipped section, in feet. A multi-section home
+  # is delivered as 2-3 boxes set side by side, so its installed footprint
+  # is the sum of the section widths by the longest section -- which is why
+  # the sections are kept separate rather than pre-summed here.
+  n_sections: Sections
+  section_width_ft_1: Width1
+  section_length_ft_1: Length1
+  section_width_ft_2: Width2
+  section_length_ft_2: Length2
+  section_width_ft_3: Width3
+  section_length_ft_3: Length3
+  # Floor area as certified. Genuinely floor area here, not lot area -- see
+  # the area_sqft note in the attribute registry.
+  area_sqft: SqrFeet
+  # HUD wind zone (1-3); zone 2/3 units are built to higher wind standards
+  # and the coast is where they concentrate.
+  wind_zone: WindZone
+  manufacturer_name: ManufName
+  model: Model
+  manufacture_date: ManufDate
+  certificate_date: CertDate
+  certificate_status: Cert_Status
+  condition_new_used: NewUsed
+
+# Columns to be cast to categorical (saves space)
+columns_to_categorical:
+  - county_name
+  - certificate_status
+  - condition_new_used
+  - manufacturer_name
+  - wind_zone
+
+# Resolve openplaces's admin3_id from the installation county name. The
+# source has no coordinates and no usable installation address, so the
+# county is the finest geography available: this table supports
+# distributional validation per county, not per-building linkage.
+transformations:
+  - output: admin3_id
+    type: remap_file
+    input: county_name
+    # All 254 TX counties, generated from the admin spine's own name list.
+    # 99.77% of rows resolve; the remainder are 'OUT OF STATE', 'UNKNOWN'
+    # and 'RETAILER LOT' placeholders plus genuinely out-of-state counties,
+    # all of which correctly drop out.
+    crosswalk_id: US-TX_property-tdhca-mmh2025_county-name-remap
+
+notes: >-
+  Ground truth for the manufactured-home geometry rule in
+  US_footprint-cheer-2026 (aspect_min 2.5, area_max_m2 185). Measured over
+  1,064,697 title records with usable dimensions: that rule matches 67.3%
+  of real Texas manufactured homes, and the miss is structural rather than
+  noisy. Single-section homes (702,798; median aspect 4.75) are matched
+  99.8% of the time, but two-section homes (357,198) have a median aspect
+  of exactly 2.00 -- two 14 ft boxes against a 56 ft length -- so the 2.5
+  cutoff excludes them almost entirely (4.3% matched), and three-section
+  homes (4,644, median aspect 1.48) entirely (0.0%). Relaxing to aspect
+  2.0 with the same 185 m2 raises coverage to 79.6%. Note this bounds
+  recall only: the registry contains manufactured homes exclusively, so it
+  cannot say how many ordinary buildings a looser cutoff would wrongly
+  sweep in. Setting the cutoff needs the false-positive side from the
+  footprint population as well.
