@@ -494,7 +494,37 @@ pipeline:
           - {type: numeric_at_least, column: p_manufactured_home, min: 0.75}
           - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
           - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
-          - {type: equals, column: occupancy_keyword_class, value: Manufactured Home}
+          # Sufficient alone. This is redundancy insurance, not a scoring
+          # change: it moves no rows today, and that was measured, not
+          # assumed -- re-curating Robeson (2,792 reviewed keyword-MH rows,
+          # the heaviest such county) at weight 1 and at weight 2 produces
+          # identical class counts, 14,858 Manufactured Home either way.
+          #
+          # The reason is that keyword-MH already reaches this decision's
+          # min_score of 2 on its own. `classify_manufactured_homes` builds
+          # p_manufactured_home from THIS ruleset over THIS column, so a
+          # keyword hit scores once here and again through that indicator.
+          # Reviewed keyword-MH rows come out Manufactured Home 97.8-99.2%
+          # of the time already (Robeson 99.2%, New Hanover 98.5%, Onslow
+          # 97.8%); the residual is almost entirely Secondary, which the
+          # priority rule demotes and no weight here can reclaim.
+          #
+          # Weight 2 is still worth carrying: it makes the keyword decisive
+          # on its own terms rather than by coincidence with a second step
+          # that happens to read the same CSV, so retuning
+          # classify_manufactured_homes cannot silently drop the assessor's
+          # own statement out of this decision.
+          #
+          # Keyword accuracy for the record (CHEER labels, n=522 scored):
+          # Manufactured Home F1 0.852 against the vote's 0.828, 0.858
+          # across all three classes against 0.755, with permits agreeing
+          # 0.966 and backing keyword over NSI 1576/530 and FEMA 1044/470.
+          # Coverage, not precision, is its limit -- it speaks for 44% of
+          # footprints.
+          - type: equals
+            column: occupancy_keyword_class
+            value: Manufactured Home
+            weight: 2
           - type: value_share_below
             value: improvement_value_parcel
             total: [improvement_value_parcel, land_value_parcel]
