@@ -33,13 +33,23 @@
 # ones, neither carrying a date.
 #
 # NOTE: the layer publishes a single combined `taxvalue` with no
-# land/building split, so no improvement_value is available here.
+# land/building split, so no improvement_value is available *from this
+# layer*. It reaches the spine from NC OneMap instead, via the join key
+# described below.
 #
-# Join key: pin ('9999.99-99-9999.000'), 98.1% populated, under the
-# bundled US-NC-CM conversion. NC OneMap's own parcel_id_local is empty
-# for this county (its ALTPARNO is not published), so the two sources
-# cannot share a key; that is tolerable because this layer supplies its
-# own geometry and therefore the parcel spine.
+# Join key: pin ('9999.99-99-9999.000'), 98.1% populated. NC OneMap's
+# ALTPARNO -- the field it maps parcel_id_local from by default -- carries
+# a short account number here, not this PIN, so the two sources shared no
+# key and NC OneMap's assessed values could not reach the spine. Its PARNO
+# field does carry the same PIN, so a US_parcel_id-overrides.csv pair
+# (`simple` on both sides, NC OneMap redirected to parcel_id_admin3, the
+# same shape as the US-NC-CU and US-NC-PM rows) joins 49,084 parcels --
+# 98.5% of this roll -- and is what supplies improvement_value and
+# land_value for Columbus. Without it the spine carried 323 of them.
+#
+# An earlier version of this note claimed NC OneMap's key was simply empty
+# for this county and that no shared key existed. That was wrong: the
+# column was populated, just with a different identifier.
 
 description: >-
   Columbus County, NC parcel roll (total assessed value, year built, floor
