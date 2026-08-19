@@ -1083,6 +1083,7 @@ def derive_use_classes(
     state: HarmonizeState,
     combined_column: str = 'use_group_combined',
     columns: list[str] | None = None,
+    labeled_column: str | None = 'use_group_combined_labeled',
 ) -> HarmonizeState:
     """Build the combined use_group_combined label from use_group / use_subgroup.
 
@@ -1105,6 +1106,17 @@ def derive_use_classes(
     ----------
     combined_column : str, optional
         Output combined-label column (default ``use_group_combined``).
+    labeled_column : str or None, optional
+        Second output carrying the same label built from the crosswalked
+        columns alone -- the first name in each group -- and left missing
+        where only a raw code was available. Pass None to skip it.
+
+        This is what a keyword ruleset should read. Such rulesets match
+        English text, so a raw source code reaching one is inert at best
+        and a false match at worst; the coalesced column keeps the codes
+        because a code is a sound grouping key for cohort statistics even
+        when it is meaningless to a text rule.
+
     columns : list, optional
         The label's parts, joined in order. Each entry is either a column
         name, or a list of alternative column names coalesced per row --
@@ -1164,32 +1176,53 @@ def derive_use_classes(
 
     filled: dict[str, int] = {}
 
-    def _coalesce(group: list[str]) -> pd.Series:
-        """First column of *group* with a value, per row."""
-        part = _clean(group[0])
+    def _coalesce(group: list[str]) -> tuple[pd.Series, pd.Series]:
+        """First column of *group* with a value, per row.
+
+        Returns the coalesced part and the part restricted to the group's
+        first column -- the crosswalked vocabulary, before any fallback.
+        """
+        primary = _clean(group[0])
+        part = primary
         for column in group[1:]:
             alternative = _clean(column)
             gap = part.isna() & alternative.notna()
             if gap.any():
                 filled[column] = int(gap.sum())
             part = part.mask(gap, alternative)
-        return part
+        return part, primary
 
     # Join whichever parts a row actually has, so a row missing one field
     # falls back to the others alone rather than producing a degenerate
     # ' | ' label -- per row, not just per column.
-    label = None
-    for group in present:
-        part = _coalesce(group)
+    def _join(label, part):
         if label is None:
-            label = part
-            continue
+            return part
         both = label.notna() & part.notna()
         only_part = label.isna() & part.notna()
         label = label.mask(both, label.fillna('') + ' | ' + part.fillna(''))
-        label = label.mask(only_part, part)
+        return label.mask(only_part, part)
+
+    label = None
+    labeled = None
+    for group in present:
+        part, primary = _coalesce(group)
+        label = _join(label, part)
+        labeled = _join(labeled, primary)
 
     spine[combined_column] = pd.Categorical(label)
+    if labeled_column:
+        # The same label with the raw-code fallback withheld. Keyword
+        # rulesets match English text ('SINGLE WIDE', 'DUPLEX'), so a raw
+        # code reaching them is at best inert and at worst a false match:
+        # measured across 45 Eastern NC counties, 17 of 1,941 distinct
+        # codes hit a rule, and `03-MFR-CONST(04-COND/TWN/DUP-SFR)` -- a
+        # *multi-family* code -- matched the Single-Family rule on its
+        # trailing '-SFR', on 9,221 parcels. None fire today only because
+        # every county carrying such codes also has a populated crosswalk.
+        # Cohort statistics keep the coalesced column: there a code is a
+        # perfectly good grouping key, which is what it is good for.
+        spine[labeled_column] = pd.Categorical(labeled)
     state.spine = spine
     if state.verbose:
         mapped = int(label.notna().sum())

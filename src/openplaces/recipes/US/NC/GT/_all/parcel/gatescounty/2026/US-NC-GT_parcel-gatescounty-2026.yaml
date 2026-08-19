@@ -42,7 +42,7 @@ columns:
   last_sale_book_page: bookpage
   land_value: assessedlandvalue
   improvement_value: totalbuildingvalue
-  value: marketvalue
+  total_value: marketvalue
   zoning_code: zoning
 
 columns_to_categorical:

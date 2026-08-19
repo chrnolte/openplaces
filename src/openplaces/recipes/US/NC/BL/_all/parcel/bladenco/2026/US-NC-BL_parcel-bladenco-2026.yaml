@@ -55,7 +55,7 @@ columns:
   tax_neighborhood_code: NeighbCode
   land_value: LandASVCur
   improvement_value: ImproveASV
-  value: TotalASVCu
+  total_value: TotalASVCu
   last_sale_price: SalesAmoun
   last_sale_doc_type: SalesInstr
   last_sale_year: DeedYear

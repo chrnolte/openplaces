@@ -37,7 +37,7 @@ columns:
   owner_name: OWNER_NAME
   owner_name_2: OWNER_NA_1
   owner_address: MAILING_AD
-  value: COST_TOTAL
+  total_value: COST_TOTAL
   last_sale_date: DEED_DATE
 
 transformations:

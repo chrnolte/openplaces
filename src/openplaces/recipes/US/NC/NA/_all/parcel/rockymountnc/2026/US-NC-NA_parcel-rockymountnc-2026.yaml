@@ -96,7 +96,7 @@ columns:
   last_sale_qualification_code: SALECODE
   land_value: LANDVALUE
   improvement_value: TOT_B_VAL
-  value: APR_VAL
+  total_value: APR_VAL
 
 transformations:
   - type: string

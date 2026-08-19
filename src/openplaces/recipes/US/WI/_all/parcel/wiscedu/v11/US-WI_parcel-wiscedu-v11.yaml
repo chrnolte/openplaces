@@ -62,7 +62,7 @@ columns:
   postal_code: ZIPCODE
   school_district_name: SCHOOLDIST
   school_district_id: SCHOOLDISTNO
-  value: CNTASSDVALUE
+  total_value: CNTASSDVALUE
   land_value: LNDVALUE
   improvement_value: IMPVALUE
   current_use_value: MFLVALUE

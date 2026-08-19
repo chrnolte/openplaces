@@ -44,7 +44,7 @@ columns:
   last_sale_date: DEEDDATE
   land_value: CURLAND
   improvement_value: CURBLDG
-  value: CURTOTAL
+  total_value: CURTOTAL
 
 transformations:
   - type: string

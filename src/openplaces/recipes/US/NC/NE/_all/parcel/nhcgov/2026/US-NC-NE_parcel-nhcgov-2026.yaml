@@ -50,7 +50,7 @@ fixed_width:
   - [use_subgroup_code, 4]
   - [filler, 2]
   - [exemption_code, 1]
-  - [value, 8]
+  - [total_value, 8]
   - [personal_property_value, 8]
   - [filed_late_flag, 1]
   - [filler, 2]
@@ -189,7 +189,7 @@ transformation_patterns:
     apply_to_columns:
       - land_value
       - improvement_value
-      - value
+      - total_value
       - special_feature_value
       - personal_property_value
       - classified_market_value
