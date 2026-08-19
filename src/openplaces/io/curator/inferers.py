@@ -927,6 +927,12 @@ def classify_manufactured_homes(
     # so the candidate gate and the morphology model can both use them) ---
     assessor_labels = pd.Series(pd.NA, index=curated.index, dtype=object)
     parcel_use_cols = [
+        # Crosswalked-vocabulary variants first: this ruleset is matched
+        # with coerce_to_class, which honours no `reviewed` flag, so an
+        # unreviewed rule such as `MH` would otherwise fire on a raw
+        # land-use code that merely contains those letters.
+        'use_group_combined_labeled_parcel',
+        'use_group_combined_labeled',
         'use_subgroup_parcel',
         'use_group_combined_parcel',
         'use_group_parcel',

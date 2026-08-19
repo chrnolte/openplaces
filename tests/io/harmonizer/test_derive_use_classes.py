@@ -177,3 +177,56 @@ def test_flat_column_list_still_ignores_code_columns():
         _state(spine), columns=['use_group', 'use_subgroup']
     ).spine['use_group_combined']
     assert pd.isna(combined[0])
+
+
+def test_labeled_column_withholds_the_raw_code_fallback():
+    # The coalesced label may fall back to a code; the labeled one may not.
+    # A keyword ruleset reads the second, because it matches English text
+    # and a code reaching it is inert at best and a false match at worst.
+    spine = pd.DataFrame(
+        {
+            'use_group': ['Residential', None, None],
+            'use_group_code': ['R1', '03-MFR-CONST(04-COND/TWN/DUP-SFR)', None],
+        }
+    )
+    state = attrs.derive_use_classes(
+        _state(spine), columns=[['use_group', 'use_group_code']]
+    )
+    combined = state.spine['use_group_combined'].astype(object)
+    labeled = state.spine['use_group_combined_labeled'].astype(object)
+
+    # Row 0 has the crosswalked vocabulary: both columns carry it.
+    assert combined[0] == 'Residential'
+    assert labeled[0] == 'Residential'
+    # Row 1 only has a code: it groups, but it must not reach a text rule.
+    assert combined[1] == '03-MFR-CONST(04-COND/TWN/DUP-SFR)'
+    assert pd.isna(labeled[1])
+    # Row 2 has neither.
+    assert pd.isna(combined[2]) and pd.isna(labeled[2])
+
+
+def test_labeled_column_can_be_switched_off():
+    spine = pd.DataFrame({'use_group': ['Residential'], 'use_group_code': ['R1']})
+    state = attrs.derive_use_classes(
+        _state(spine),
+        columns=[['use_group', 'use_group_code']],
+        labeled_column=None,
+    )
+    assert 'use_group_combined_labeled' not in state.spine.columns
+
+
+def test_a_single_column_group_appears_in_both_labels():
+    # building_style is listed as a bare column, not a code fallback, so
+    # withholding fallbacks must not drop it.
+    spine = pd.DataFrame(
+        {'use_group': ['Residential'], 'building_style': ['Single Wide MH']}
+    )
+    state = attrs.derive_use_classes(
+        _state(spine), columns=['use_group', 'building_style']
+    )
+    assert state.spine['use_group_combined'].astype(object)[0] == (
+        'Residential | Single Wide MH'
+    )
+    assert state.spine['use_group_combined_labeled'].astype(object)[0] == (
+        'Residential | Single Wide MH'
+    )

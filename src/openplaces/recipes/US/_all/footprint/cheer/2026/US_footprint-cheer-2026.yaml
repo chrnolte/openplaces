@@ -128,6 +128,10 @@ pipeline:
     recipe_id: US_parcel-openplaces-2026
     columns:
       use_group_combined: use_group_combined_parcel
+      # The same label with the raw-code fallback withheld, which is what
+      # the keyword ruleset below reads. Codes stay in the coalesced column
+      # for cohort grouping; they must not reach a text rule.
+      use_group_combined_labeled: use_group_combined_labeled_parcel
       group_parcel: group_parcel
       manufactured_home_community: manufactured_home_community
       group_footprint_fema: group_footprint_fema
@@ -265,7 +269,12 @@ pipeline:
       # resolve_occupancy's keyword override already applied.
       - output: occupancy_keyword_class
         type: ruleset_class
-        column: use_group_combined_parcel
+        # The crosswalked vocabulary only. Reading the coalesced column
+        # here would let a county with no crosswalk match a land-use code
+        # against English keyword patterns: measured across the region, 17
+        # of 1,941 distinct codes hit a rule, including a multi-family code
+        # matching Single-Family on a trailing '-SFR' across 9,221 parcels.
+        column: use_group_combined_labeled_parcel
         ruleset: parcel-occupancy-keywords.csv
         reviewed_only: true
 
