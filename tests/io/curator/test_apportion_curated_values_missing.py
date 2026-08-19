@@ -12,6 +12,10 @@ from openplaces.io.curator.evidence import apportion_curated_values
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 SPINE = 'US_footprint-spine-2026'
+# The sidecar is keyed by the recipe that ran the link steps -- the
+# geospine under the split (get_link_owner_recipe_id resolves it from the
+# spine's entity_recipe chain).
+GEOSPINE = 'US_footprint-geospine-2026'
 PARCEL_CURATE = 'US_parcel-openplaces-2026'
 COUNTY = 'US-FL-LK'
 
@@ -37,7 +41,7 @@ def _write_sidecar():
             'link': ['unique parcel', 'unique parcel'],
         }
     )
-    path = get_entity_link_path(SPINE, PARCEL_CURATE, admin_id=COUNTY)
+    path = get_entity_link_path(GEOSPINE, PARCEL_CURATE, admin_id=COUNTY)
     to_parquet(links, path)
 
 

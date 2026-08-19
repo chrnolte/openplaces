@@ -65,19 +65,27 @@ def test_output_path_matches_recipe_layer(dag):
 
 
 def test_extra_outputs_include_link_sidecar(dag):
-    extras = dag.extra_outputs('harmonize', 'US_footprint-spine-2026', COUNTY)
-    assert extras == [
-        get_entity_link_path(
-            'US_footprint-spine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
-        )
-    ]
+    # Persistence is default-on: every link_to_reference step that does not
+    # opt out with save_link: false declares its sidecar, the spatial_point
+    # joins (NSI, Overture) alongside the parcel overlay.
+    extras = dag.extra_outputs('harmonize', 'US_footprint-geospine-2026', COUNTY)
+    parcel_sidecar = get_entity_link_path(
+        'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
+    )
+    assert parcel_sidecar in extras
+    assert len(extras) == 3
+    assert len(set(extras)) == 3
+    # The attribute recipe runs no link steps of its own.
+    assert dag.extra_outputs('harmonize', 'US_footprint-spine-2026', COUNTY) == []
 
 
 def test_input_paths_of_curate_include_spine_and_sidecar(dag):
     inputs = dag.input_paths('curate', TARGET, COUNTY)
     spine_path = get_output_path('US_footprint-spine-2026', admin_id=COUNTY)
+    # The sidecar curate actually opens is keyed by the geospine (the
+    # spine's link owner), reached through the spine edge.
     sidecar = get_entity_link_path(
-        'US_footprint-spine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
+        'US_footprint-geospine-2026', 'US-NC_parcel-nconemap-2025', COUNTY
     )
     assert spine_path in inputs
     assert sidecar in inputs

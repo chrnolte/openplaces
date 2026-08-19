@@ -13,6 +13,10 @@ from openplaces.io.curator.evidence import collect_link_ids
 from openplaces.recipe import get_recipe_by_id
 
 SPINE = 'US_footprint-spine-2026'
+# The sidecar is keyed by the recipe that ran the link steps -- the
+# geospine under the split (get_link_owner_recipe_id resolves it from the
+# spine's entity_recipe chain).
+GEOSPINE = 'US_footprint-geospine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
 COUNTY = 'US-NC-BS'
 
@@ -47,7 +51,7 @@ def _write_sidecar():
             ],
         }
     )
-    path = get_entity_link_path(SPINE, PARCEL, admin_id=COUNTY)
+    path = get_entity_link_path(GEOSPINE, PARCEL, admin_id=COUNTY)
     to_parquet(links, path)
     return path
 

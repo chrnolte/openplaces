@@ -1,10 +1,19 @@
-# Recipe: footprint spine harmonization
+# Recipe: footprint spine harmonization (attribute phase)
 #
-# Merges multiple footprint sources using a priority-based IoU overlap threshold.
+# The attribute half of the split footprint spine: consumes the geometry
+# phase's persisted output (US_footprint-geospine-2026, declared as
+# entity_recipe and restored by load_geospine, link tables included) and
+# attaches evidence columns, addresses, and id-based joins. Keeps the
+# established recipe id so downstream YAML (enrich/curate entity_recipe
+# references) is untouched. Writes an attribute-only table
+# (save_to: geometry: false): its geometry lives with the geospine and is
+# resolved by readers through the entity_recipe chain, never duplicated.
+# Rerunning this recipe involves no spatial computation at all -- that is
+# the point of the split (`--reprocess attributes`).
 
 description: >-
-  Harmonized U.S. footprint spine merging OBM, Microsoft, and state footprints
-  with parcel, NSI, and dwelling attributes.
+  Harmonized U.S. footprint spine attaching parcel, NSI, and dwelling
+  evidence to the footprint geospine.
 
 stage: harmonize
 admin_id: US
@@ -15,122 +24,23 @@ entity:
     source_id: spine
   version: 2026
 
+entity_recipe: US_footprint-geospine-2026
+
 process_by:
   admin_level: 3
 
 save_to:
   data_dir: core
+  geometry: false
 
 pipeline:
 
-  - step: resolve_spine
-    sources:
-      - recipe_id: footprint-obm-2025
-        label: obm
-      - recipe_id: US_footprint-microsoft-v2
-        label: microsoft
-      - auto_discover: true
-        entity_type: footprint
-    thresholds:
-      min_area_m2: 10.0
-      overlap_iou_max: 0.02
-      elongated_aspect_min: 2.5
-      elongated_angle_tol: 15.0
-      elongated_long_overlap_min: 0.5
-      elongated_lateral_sep_ratio: 2.0
-      # Apply a size-scaled keep-out buffer to prevent small sliver overlaps
-      # from generating duplicate footprints next to large buildings.
-      buffer_min_area_m2: 250.0
-      buffer_base_m: 2.0
-      buffer_area_scale: 0.5
-
-  - step: link_to_reference
-    entity_type: parcel
-    source_geometry_type: mixed_type_footprint
-    join: spatial_overlay
-    thresholds:
-      min_fraction_of_largest: 0.1667
-      area_intersection_m2_min: 10
-      # Snap displaced footprints back to their dominant parcel to prevent chain-link inflation.
-      snap_chains: true
-      chain_fraction_max: 0.75
-    sort_by: area_intersection_m2
-    # Save the n:m footprint-parcel spatial overlay mapping as a sidecar.
-    save_link: true
-
-  # A stacked-condo building's real footprint(s) can end up dominant-linked
-  # only to the units' shared common-area parcel (the min_fraction_of_largest
-  # trim above drops each individual unit's much smaller overlap share),
-  # leaving most of the building's own units with no real footprint credit.
-  # Recognize the parcel-side cluster and consolidate before
-  # infer_spine_additions runs, so it doesn't also generate a redundant
-  # per-unit synthetic fallback for whichever units the trimmed real
-  # footprint(s) didn't happen to dominate.
-  - step: consolidate_condo_cluster_footprints
-    entity_type: parcel
-
-  - step: infer_spine_additions
-    entity_type: parcel
-    thresholds:
-      n_per_group_min: 0.2
-      value_per_ha_quantile: 0.05
-
-  - step: resolve_overlaps
-
-  # Compute this entity's own centroid lat/long and area (ha) once, right
-  # after spine geometry is finalized (including infer_spine_additions's
-  # synthetic fallback rows and resolve_overlaps's cleanup), so downstream
-  # harmonize and curate steps reuse these columns instead of recomputing
-  # them.
-  - step: derive_geometry_attributes
-
-  # Assign admin4_id (town/county-subdivision) and Census statistical
-  # geography ids directly -- this recipe runs first in the DAG (see
-  # US_parcel-spine-2026's summarize_footprint_morphology, which consumes
-  # this recipe's output), so US_parcel-spine-2026 can inherit these values
-  # per parcel instead of repeating the spatial join.
-  - step: link_geographic_ids
-    links:
-      - admin_level: 4
-        output_column: admin4_id
-      - recipe_id: US_admin-census-2025_admin4
-        output_column: census_subdivision_id
-        id_column: admin4_id_admin1
-      - recipe_id: US_tile-census-2025_tract
-        output_column: census_tract_id
-        id_column: census_tract_geoid
-      - recipe_id: US_tile-census-2025_blockgroup
-        output_column: census_blockgroup_id
-        id_column: census_blockgroup_geoid
-      - recipe_id: US_tile-census-2025_block
-        output_column: census_block_id
-        id_column: census_block_geoid
-      - recipe_id: US_tile-census-2025_zcta5
-        output_column: zcta5_id
-        id_column: zcta5_geoid
-
-  - step: link_to_reference
-    recipe_id: US_building-nsi-2026
-    source_geometry_type: single_building_point
-    join: spatial_point
-    remap_id: US_building-nsi-2026_occupancy-type-remap
-    thresholds:
-      proximity_m: 10
-      far_proximity_m: 100
-      # Resolve NSI duplicate points at the same location by ignoring low-rank duplicates.
-      resolve_duplicates:
-        key: building_id_ubid
-        ignore_sources: [ESRI, HAZUS/NSI-2015]
-
-  - step: link_to_reference
-    recipe_id: dwelling-overture-2025
-    source_geometry_type: single_dwelling_point
-    join: spatial_point
-    thresholds:
-      proximity_m: 10
-      far_proximity_m: 50
-      aggregate_multipoint: true
-      dedup_addresses: true
+  # Restore the geospine's spine, crosswalks, overlays, and prepared
+  # references from its persisted output and link sidecars. Which links to
+  # restore is read from the geospine recipe's own pipeline, so the two
+  # YAMLs cannot drift; a missing or stale sidecar raises with instructions
+  # to rerun the geospine rather than silently recomputing geometry here.
+  - step: load_geospine
 
   - step: classify_footprint_priority
     entity_type: parcel

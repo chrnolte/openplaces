@@ -19,7 +19,9 @@ def test_curate_recipe_edges():
 
 
 def test_footprint_spine_literal_edges():
-    edges = get_recipe_dependencies('US_footprint-spine-2026')
+    # The geometry phase (geospine) hosts resolve_spine and the spatial
+    # links, so the raw footprint sources are its literal edges now.
+    edges = get_recipe_dependencies('US_footprint-geospine-2026')
     upstream = _upstream_ids(edges)
     assert 'footprint-obm-2025' in upstream
     assert 'US_footprint-microsoft-v2' in upstream
@@ -27,6 +29,14 @@ def test_footprint_spine_literal_edges():
     assert 'dwelling-overture-2025' in upstream
     # Value crosswalks are not data dependencies
     assert 'US_building-nsi-2026_occupancy-type-remap' not in upstream
+
+    # The attribute recipe's own edges: the geospine plus the sources its
+    # reconcile/link_by_id steps still name directly.
+    edges = get_recipe_dependencies('US_footprint-spine-2026')
+    upstream = _upstream_ids(edges)
+    assert 'US_footprint-geospine-2026' in upstream
+    assert 'US_building-nsi-2026' in upstream
+    assert 'dwelling-overture-2025' in upstream
 
 
 def test_footprint_spine_auto_discover_unresolved_without_admin():
@@ -37,12 +47,17 @@ def test_footprint_spine_auto_discover_unresolved_without_admin():
 
 
 def test_footprint_spine_auto_discover_resolves_for_admin():
-    edges = get_recipe_dependencies('US_footprint-spine-2026', admin_id='US-MA-MI')
+    # The geometry phase (geospine) hosts resolve_spine and the parcel
+    # overlay, so the auto-discovered sources are its edges now.
+    edges = get_recipe_dependencies('US_footprint-geospine-2026', admin_id='US-MA-MI')
     upstream = _upstream_ids(edges)
     # State footprint source discovered by the resolve_spine sentinel
     assert 'US-MA_footprint-massgis-2026' in upstream
     # Parcel reference discovered by link_to_reference (entity_type: parcel)
     assert 'US-MA_parcel-massgis-2025' in upstream
+    # The attribute recipe reaches those sources through the geospine.
+    edges = get_recipe_dependencies('US_footprint-spine-2026', admin_id='US-MA-MI')
+    assert 'US_footprint-geospine-2026' in _upstream_ids(edges)
 
 
 def test_enrich_recipe_edges():
