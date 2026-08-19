@@ -1,12 +1,19 @@
-# Recipe: harmonized U.S. parcel spine.
+# Recipe: harmonized U.S. parcel spine (attribute phase).
 #
-# Auto-discovers and joins local/state tax rolls onto the parcel spine geometry.
-# Standalone rolls or statewide GIS tables join by standardized local keys.
-# Also merges NSI building groups and footprint morphology summaries.
+# The attribute half of the split parcel spine: consumes the geometry
+# phase's persisted output (US_parcel-geospine-2026, declared as
+# entity_recipe and restored by load_geospine, link tables included) and
+# attaches transaction evidence, dwelling/NSI/FEMA attributions, addresses,
+# and the derived land-use label. Keeps the established recipe id so
+# downstream YAML (curate entity_recipe references) is untouched. Writes an
+# attribute-only table (save_to: geometry: false): its geometry lives with
+# the geospine and is resolved by readers through the entity_recipe chain.
+# Rerunning this recipe involves no spatial computation at all
+# (`--reprocess attributes`).
 
 description: >-
-  Harmonized U.S. parcel spine: statewide parcel geometry linked to local tax rolls,
-  the NSI building group, and per-parcel footprint morphology.
+  Harmonized U.S. parcel spine attaching tax rolls, transactions, NSI, FEMA,
+  and address evidence to the parcel geospine.
 
 stage: harmonize
 admin_id: US
@@ -17,145 +24,22 @@ entity:
     source_id: spine
   version: 2026
 
-# Keep geometry for the footprint-morphology spatial assignment and the sidecar.
-spine_geom: true
+entity_recipe: US_parcel-geospine-2026
 
 process_by:
   admin_level: 3
 
 save_to:
   data_dir: core
+  geometry: false
 
 pipeline:
-  # Resolve spine geometry and retain primary attributes directly to prevent self-join key collisions.
-  - step: resolve_spine
-    sources:
-      - auto_discover: true
-        entity_type: parcel
-    keep_columns:
-      - parcel_id_local
-      - parcel_id_assessor
-      - parcel_id_admin2
-      - admin4_id
-      - use_group
-      - use_subgroup
-      # The raw code columns ride along with their crosswalked twins so
-      # they survive a degenerate parcel_id_local join too -- otherwise a
-      # county whose land use lives only in the code (and whose id join
-      # fails) loses it entirely, which is the combination the fallback
-      # in derive_use_classes below exists to cover.
-      - use_group_code
-      - use_subgroup_code
-      - improvement_value
-      - land_value
-      - year_built
-      - n_dwellings
-      - address
-      # Carried on the geometry row, so it survives even where the
-      # parcel_id_local join is degenerate (e.g. Pender's all-'0' PINs).
-      # Zoning states what may be built, not what is -- kept as evidence
-      # for validating whether it *predicts* occupancy, not as a vote input.
-      - zoning_code
-    # Which ingest source (its own geometry row, or a later null-aware
-    # fallback join) supplied each of these key fields -- see the
-    # resolve_spine/link_by_id docs for track_provenance.
-    track_provenance:
-      - use_group
-      - improvement_value
-      - land_value
-      - year_built
-
-  # Compute this entity's own centroid lat/long and area (ha) once, right
-  # after spine geometry is finalized (including synthetic fallback rows),
-  # so downstream harmonize and curate steps reuse these columns instead
-  # of recomputing them.
-  - step: derive_geometry_attributes
-
-  # Assign admin4_id (town/county-subdivision) and Census statistical
-  # geography ids. US_footprint-spine-2026 already resolves these directly
-  # (it runs first in the DAG -- see summarize_footprint_morphology below,
-  # which consumes its output); inherit_from rolls those up per parcel
-  # wherever every footprint on it agrees, so only parcels with no
-  # footprint (or disagreeing ones) pay for a fresh spatial join here.
-  - step: link_geographic_ids
-    inherit_from:
-      recipe_id: US_footprint-spine-2026
-      group_by: parcel_id
-    links:
-      - admin_level: 4
-        output_column: admin4_id
-      - recipe_id: US_admin-census-2025_admin4
-        output_column: census_subdivision_id
-        id_column: admin4_id_admin1
-      - recipe_id: US_tile-census-2025_tract
-        output_column: census_tract_id
-        id_column: census_tract_geoid
-      - recipe_id: US_tile-census-2025_blockgroup
-        output_column: census_blockgroup_id
-        id_column: census_blockgroup_geoid
-      - recipe_id: US_tile-census-2025_block
-        output_column: census_block_id
-        id_column: census_block_geoid
-      - recipe_id: US_tile-census-2025_zcta5
-        output_column: zcta5_id
-        id_column: zcta5_geoid
-
-  # Link discovered assessor tables to the spine, aggregating stacked
-  # condominium/unit records (a bundled additional_layers property table,
-  # e.g. MassGIS's L3_ASSESS, joins here too -- join_nonnull columns like
-  # address/use_group now properly concatenate every unit's value instead of
-  # picking one arbitrarily; see link_by_id's aggregate-mode docs).
-  - step: link_by_id
-    auto_discover: true
-    entity_type: parcel
-    track_provenance:
-      - use_group
-      - improvement_value
-      - land_value
-      - year_built
-
-  # Attach every auto-discovered standalone `property`-entity source (e.g. a
-  # county tax roll keyed by parcel_id_local, genuinely 1:n against parcels
-  # -- multiple owner/unit rows per parcel) as aggregated evidence: sum for
-  # value-like columns, mean/first per the attribute registry's own
-  # aggregation for everything else (see link_by_id's aggregate-mode docs).
-  # Distinct from the count-only US_property-spine-2026 join below, which
-  # only covers additional_layers-bundled property tables (parcel_id_admin2
-  # keyed) and never carries these sources' own value columns.
-  - step: link_by_id
-    auto_discover: true
-    entity_type: property
-    mode: aggregate
-
-  # Exact per-parcel property/unit count from the harmonized property spine
-  # (the authoritative per-unit source, built directly from the same
-  # additional_layers tables above without the aggregate-join's lossy
-  # single-value collapse -- see US_property-spine-2026). count_as always
-  # fills 0 for an unmatched parcel, not NaN; estimate_property_counts below
-  # (which needs this run first) treats a 0/missing count alike.
-  - step: link_by_id
-    recipe_id: US_property-spine-2026
-    mode: count
-    spine_key: parcel_id_admin2
-    ref_key: parcel_id_admin2
-    count_as: n_properties_per_parcel
-
-  # Horizontally-separated townhome pattern (observed in Carteret County,
-  # NC): >=2 separately-parceled units entirely surrounded by a different,
-  # real "land" parcel carrying near-zero land value. Must run before
-  # estimate_property_counts below, which never overwrites a property_source
-  # this step already set.
-  - step: detect_shared_land_groups
-
-  # Vertically-stacked condo buildings platted as many tiny per-unit
-  # parcels (observed on the same 4400 Sample Dr complex in Carteret County
-  # that motivated the footprint-side consolidation in
-  # US_footprint-spine-2026 -- see consolidate_condo_cluster_footprints
-  # there). A distinct signal from detect_shared_land_groups above (unit
-  # parcel size, not just a near-zero-value hub): reusing that step's own
-  # max_group_size would re-admit the WATER/ROW placeholder-parcel false
-  # positives it excludes by design.
-  - step: detect_condo_building_clusters
+  # Restore the geospine's spine, crosswalks, overlays, and prepared
+  # references from its persisted output and link sidecars. Which links to
+  # restore is read from the geospine recipe's own pipeline, so the two
+  # YAMLs cannot drift; a missing or stale sidecar raises with instructions
+  # to rerun the geospine rather than silently recomputing geometry here.
+  - step: load_geospine
 
   # Attach per-parcel transaction diagnostics from every auto-discovered
   # transaction source scoped to this admin unit: a count, and the most
@@ -186,20 +70,6 @@ pipeline:
     columns:
       address: address_original
       city: city_original
-
-  # Direct parcel<->dwelling link: dwelling-overture-2025 points are usually
-  # only linked to footprints (below), so this alone catches a dwelling
-  # whose footprint was never detected. Same config as the footprint
-  # spine's own dwelling link.
-  - step: link_to_reference
-    recipe_id: dwelling-overture-2025
-    source_geometry_type: single_dwelling_point
-    join: spatial_point
-    thresholds:
-      proximity_m: 10
-      far_proximity_m: 50
-      aggregate_multipoint: true
-      dedup_addresses: true
 
   - step: reconcile_attributes
     sources:
@@ -265,8 +135,8 @@ pipeline:
   - step: derive_address_id_local
 
   # Build the combined use_group_combined label from whatever use_group /
-  # use_subgroup the link step above attached (via an auto-discovered
-  # crosswalk); no-ops when none reached the spine.
+  # use_subgroup the geospine's tax-roll joins attached (via an
+  # auto-discovered crosswalk); no-ops when none reached the spine.
   #
   # Each nested pair is coalesced per row, not appended: the raw source
   # code is used only where the crosswalked vocabulary column is empty.
@@ -293,22 +163,8 @@ pipeline:
       - building_style
 
   # Attach the modal NSI building group per parcel (group_building_nsi), the
-  # linked-data signal the parcel land-use classifier votes on.
-  - step: link_to_reference
-    recipe_id: US_building-nsi-2026
-    source_geometry_type: single_building_point
-    join: spatial_point
-    remap_id: US_building-nsi-2026_occupancy-type-remap
-    thresholds:
-      proximity_m: 10
-      far_proximity_m: 100
-      # Same colocated-duplicate resolution as the footprint spine's NSI
-      # link: ignore the outdated ESRI/HAZUS twin of a Parcel-sourced point
-      # (same UBID) when merging NSI evidence onto the parcels.
-      resolve_duplicates:
-        key: building_id_ubid
-        ignore_sources: [ESRI, HAZUS/NSI-2015]
-
+  # linked-data signal the parcel land-use classifier votes on -- from the
+  # point crosswalk the geospine persisted.
   - step: reconcile_attributes
     sources:
       - recipe_id: US_building-nsi-2026
@@ -318,14 +174,8 @@ pipeline:
           - group
           - structure_value
 
-  # Link FEMA footprints to parcels and assign the dominant FEMA occupancy class by overlap area.
-  - step: link_to_reference
-    recipe_id: US_footprint-fema-2023
-    source_geometry_type: mixed_type_footprint
-    join: spatial_overlay
-    thresholds:
-      area_intersection_m2_min: 10
-
+  # Assign the dominant FEMA occupancy class by overlap area, from the
+  # overlay crosswalk the geospine persisted.
   - step: reconcile_attributes
     sources:
       - recipe_id: US_footprint-fema-2023
@@ -334,26 +184,9 @@ pipeline:
           - group
           - height
 
-  # Attach per-parcel footprint morphology (counts of small elongated /
-  # manufactured-home-shaped footprints) for the land-use classifier. Joins by
-  # the globally-unique parcel_id (see the step's `on` docs for why).
-  # min_overlap_m2 excludes a sliver footprint whose only detected parcel
-  # candidate happens to be this one.
-  # Known, deliberate-until-measured divergence: elongated_aspect_min is 2.0
-  # here (a *count* of candidate shapes per parcel, where a looser net is
-  # tolerable) while the footprint occupancy vote's per-building geometry
-  # indicator uses 2.5 (US_footprint-cheer-2026, mh_aspect_min anchor).
-  # Aligning them changes park detection, so it awaits out-of-band evidence.
-  - step: summarize_footprint_morphology
-    footprint_recipe_id: US_footprint-spine-2026
-    small_area_max_m2: 185
-    elongated_aspect_min: 2.0
-    'on': parcel_id
-    min_overlap_m2: 10
-
   # Classify property_source and, where no property-spine source exists (see
-  # the count-only link_by_id step above), estimate a property/unit count
-  # from evidence that already implies internal multiplicity
+  # the count-only link_by_id in the geospine), estimate a property/unit
+  # count from evidence that already implies internal multiplicity
   # (n_dwellings/max_dwellings_per_footprint) rather than leaving a
   # multi-unit parcel looking like a single, unverified property.
   - step: estimate_property_counts
