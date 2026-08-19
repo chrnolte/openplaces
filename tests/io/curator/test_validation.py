@@ -9,6 +9,7 @@ from shapely.geometry import Polygon
 
 from openplaces.io.curator.validation import (
     classify_validation_result,
+    compare_classifications_paired,
     link_points_to_entities,
     normalize_house_number,
     score_classification,
@@ -206,3 +207,51 @@ def test_score_classification_ignores_unpredicted_rows_in_recall():
     assert table.loc['Single-Family', 'n_truth'] == 2
     assert table.loc['Single-Family', 'n_scored'] == 1
     assert table.loc['Single-Family', 'recall'] == 1.0
+
+
+def test_paired_comparison_of_an_unchanged_run_is_exactly_zero():
+    # The property the whole gate rests on. Comparing two independent point
+    # estimates on a sample this size leaves several F1 points of spread, so
+    # a neutral change looks like a regression; drawing the same indices for
+    # both predictions cancels it exactly.
+    truth = pd.Series(['A'] * 60 + ['B'] * 40)
+    result = compare_classifications_paired(
+        truth, truth.copy(), truth.copy(), ['A', 'B'], n_draws=50
+    )
+    assert (result['d_f1'] == 0).all()
+    assert (result['d_low'] == 0).all()
+    assert (result['d_high'] == 0).all()
+
+
+def test_paired_comparison_resolves_a_regression_below_the_old_tolerance():
+    # Ten wrong calls out of 400 move ALL F1 by well under the 0.01 the
+    # superseded gate needed to see, and the paired interval still separates
+    # it from zero.
+    truth = pd.Series(['A'] * 200 + ['B'] * 200)
+    baseline = truth.copy()
+    proposed = truth.copy()
+    proposed.iloc[:10] = 'B'
+    result = compare_classifications_paired(
+        truth, baseline, proposed, ['A', 'B'], n_draws=200
+    ).set_index('class')
+    assert abs(result.loc['ALL', 'd_f1']) < 0.03
+    assert result.loc['A', 'd_high'] < 0
+    assert result.loc['A', 'p_worse'] == 1.0
+
+
+def test_paired_comparison_rejects_misaligned_inputs():
+    truth = pd.Series(['A', 'B', 'A'])
+    with pytest.raises(ValueError, match='aligned'):
+        compare_classifications_paired(
+            truth, truth, pd.Series(['A', 'B']), ['A', 'B'], n_draws=5
+        )
+
+
+def test_paired_comparison_is_reproducible_for_a_seed():
+    truth = pd.Series(['A'] * 30 + ['B'] * 30)
+    proposed = truth.copy()
+    proposed.iloc[:5] = 'B'
+    kwargs = dict(classes=['A', 'B'], n_draws=40, seed=7)
+    first = compare_classifications_paired(truth, truth.copy(), proposed, **kwargs)
+    second = compare_classifications_paired(truth, truth.copy(), proposed, **kwargs)
+    pd.testing.assert_frame_equal(first, second)

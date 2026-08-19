@@ -26,6 +26,7 @@ Two things this module insists on that a naive accuracy check gets wrong:
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 # Per-row validation outcomes. A misclassified row is, strictly, both an
@@ -236,6 +237,107 @@ def summarize_sources(
         ),
         axis=1,
     )
+
+
+def compare_classifications_paired(
+    truth: pd.Series,
+    baseline: pd.Series,
+    proposed: pd.Series,
+    classes: list[str],
+    n_draws: int = 400,
+    seed: int = 0,
+    alpha: float = 0.05,
+) -> pd.DataFrame:
+    """Paired bootstrap of the per-class F1 change from *baseline* to *proposed*.
+
+    Comparing two independent point estimates cannot resolve a change
+    smaller than the sample's own spread -- on a survey of a thousand-odd
+    labelled points that spread is several F1 points, far wider than the
+    change a careful edit produces. Resampling the *same* point indices for
+    both predictions cancels the variation the two runs share, because most
+    points are classified identically either way, so the interval reflects
+    only the rows that actually moved.
+
+    Parameters
+    ----------
+    truth : pandas.Series
+        Hand-assigned class per point.
+    baseline : pandas.Series
+        The accepted run's prediction for the same points, already aligned
+        to *truth* (same index, same order).
+    proposed : pandas.Series
+        The candidate run's prediction for those points.
+    classes : list of str
+        Classes to score, in report order. An ``ALL`` row is appended.
+    n_draws : int, optional
+        Bootstrap draws (default 400).
+    seed : int, optional
+        Seed for the resampler, so a gate decision is reproducible.
+    alpha : float, optional
+        Two-sided interval width (default 0.05, i.e. a 95% interval).
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per class plus ``ALL``, with ``f1_base``, ``f1_new``,
+        ``d_f1`` (the point estimate of new minus base), ``d_low``/``d_high``
+        (the paired interval), and ``p_worse`` (share of draws in which the
+        class lost F1). A class the proposed run never predicts and the
+        baseline never predicted scores NaN, as in
+        :func:`score_classification`.
+    """
+    truth = truth.reset_index(drop=True)
+    baseline = baseline.reset_index(drop=True)
+    proposed = proposed.reset_index(drop=True)
+    if not (len(truth) == len(baseline) == len(proposed)):
+        raise ValueError(
+            f'paired comparison needs aligned inputs; got {len(truth)} truth, '
+            f'{len(baseline)} baseline and {len(proposed)} proposed rows.'
+        )
+
+    def _f1(idx, predicted):
+        table = score_classification(
+            truth.iloc[idx].reset_index(drop=True),
+            predicted.iloc[idx].reset_index(drop=True),
+            classes,
+        )
+        return table.set_index('class')['f1']
+
+    rng = np.random.default_rng(seed)
+    deltas: dict[str, list[float]] = {}
+    for _ in range(n_draws):
+        idx = rng.integers(0, len(truth), len(truth))
+        base_f1 = _f1(idx, baseline)
+        new_f1 = _f1(idx, proposed)
+        for label in base_f1.index:
+            deltas.setdefault(label, []).append(new_f1[label] - base_f1[label])
+
+    whole = np.arange(len(truth))
+    base_point = _f1(whole, baseline)
+    new_point = _f1(whole, proposed)
+
+    rows = []
+    for label in base_point.index:
+        draws = np.array(deltas.get(label, []), dtype=float)
+        finite = draws[np.isfinite(draws)]
+        low, high = (
+            np.percentile(finite, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+            if len(finite)
+            else (np.nan, np.nan)
+        )
+        rows.append(
+            {
+                'class': label,
+                'f1_base': base_point[label],
+                'f1_new': new_point[label],
+                'd_f1': new_point[label] - base_point[label],
+                'd_low': low,
+                'd_high': high,
+                'p_worse': float((finite < 0).mean()) if len(finite) else np.nan,
+                'n_draws': int(len(finite)),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def score_classification(

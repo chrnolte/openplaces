@@ -342,10 +342,18 @@ of the sub-modules:
 - `attributes.py` — attribute source columns to the spine as suffixed evidence
   columns (`reconcile_attributes`), assign each footprint's parcel priority
   (`classify_footprint_priority`), and build the combined land-use label the
-  parcel classifier votes on (`derive_use_classes`, which joins an ordered
-  `columns` list, default `use_group` + `use_subgroup`; the parcel spine
-  appends `building_style` last so a county whose land-use text carries no
-  occupancy signal can contribute one from its structure description).
+  parcel classifier votes on (`derive_use_classes`). Its `columns` list is
+  ordered, and each entry is either a column or a list of alternatives
+  **coalesced per row** — the default is `[use_group, use_group_code]` then
+  `[use_subgroup, use_subgroup_code]`, so a source whose raw code has no
+  crosswalk still contributes that code as grouping and voting evidence,
+  while a source whose crosswalk did fire contributes only the vocabulary
+  and adds no new label values (so cohort statistics keyed on
+  `use_group_combined` are not fragmented). This matters more than it
+  looks: 20 recipes map a `use_*_code` but only 5 ship a crosswalk for it.
+  The parcel spine appends `building_style` last so a county whose
+  land-use text carries no occupancy signal can contribute one from its
+  structure description.
   Value selection, gap-filling, and occupancy inference now run in the
   curation stage, not here; the harmonized spine (`US_footprint-spine-2026`)
   is an evidence-only table.
@@ -498,6 +506,21 @@ op.aggregate(recipe, admin_level, ...)
 op.export_delivery(recipe, admin_id, ...)     # split a curated region into a shareable bundle
 ```
 
+### Named regions (`_all/admin/regions/2026/admin-regions-2026.csv`)
+
+A **region** is any named group of admin units the hierarchy cannot express: a
+study area, a delivery footprint, a funder's geography. The registry is a flat
+1:n CSV (`region_id`, `name`, `region_admin_id`, `admin_id`, one row per member)
+read by `op.get_regions()` and `op.get_region_admin_ids(region_id)`, loaded
+through `get_recipe_by_id` exactly like the admin spine CSVs beside it.
+
+It exists because the same county list is wanted by delivery, by mapping, and
+by ad-hoc analysis, and three copies drift. Anything needing "the CHEER Texas
+counties" asks the registry rather than restating 42 ids. A grouping used in
+exactly one place need not be registered -- `share: delivery: admin_ids:` still
+takes an inline list. `region_admin_id` is the unit a region rolls up to
+(`US-TX`); blank means callers derive it, which is what delivery does.
+
 ### Delivery bundles (`io/delivery.py`)
 
 `export_delivery` pools a curation recipe's per-process-unit files into a
@@ -511,13 +534,28 @@ compact delivery. Each canonical column's `{col}_source` sidecar is appended
 automatically and written into *both* the canonical and the evidence file, so
 either reads on its own.
 
-A `share: delivery:` block names the region: `admin_level` (the bundle's own
-level) and `admin_ids` (the units pooled into it). The declared member list wins
-over walking the admin hierarchy, because a region is rarely all of a state's
-children -- the CHEER region is 45 of North Carolina's 100 counties. With it
-declared, `export_delivery(recipe_id)` needs no other argument, and
-`delivery_paths(recipe)` is the single resolver both the writer and the
-orchestrator use, so their idea of the output files cannot drift.
+A `share: delivery:` block names the regions: `admin_level` (a bundle's own
+level) plus either `admin_ids` (one grouping, listed inline) or `regions` (a
+list of ids from the shared region registry, below). The declared member list
+wins over walking the admin hierarchy, because a region is rarely all of a
+state's children -- the CHEER regions are 45 of North Carolina's 100 counties
+and 42 of Texas's 254.
+
+One recipe ships as many regions as it declares: `US_footprint-cheer-2026`
+produces a Carolina bundle and a Texas bundle from identical curation logic, so
+the membership is data in the registry rather than structure in the YAML.
+`delivery_regions(recipe)` is the resolver; `delivery_spec`, `delivery_members`,
+`delivery_paths`, `delivery_admin_id` and `export_delivery` all take a `region=`
+selector, and **raise rather than guess** when a multi-region recipe is asked
+for "the" region -- silently picking one would ship a region's rows under
+another's filename. A single-region recipe needs no selector, so
+`export_delivery(recipe_id)` still works unchanged.
+
+Sibling regions are told apart by containment, not by level: both CHEER bundles
+sit at admin level 2, so `RecipeDAG._delivery_in_scope` asks whether a requested
+unit is the bundle's own unit or an ancestor of it (`US`, `US-TX`), not merely
+whether it is coarse enough. `--config deliver=true` likewise only forces the
+regions the run actually touches.
 
 Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
 then evidence) so the wide evidence columns are never in memory alongside the
@@ -548,16 +586,19 @@ empty.
 ### Orchestration (`flow/dag.py`, `workflow/Snakefile`)
 
 `RecipeDAG` derives one job per (stage, recipe, admin unit) from the recipe tree,
-plus one terminal **`deliver`** job when the target recipe declares a delivery
-region. `deliver` is not a recipe stage -- recipe stages are ranked
+plus one terminal **`deliver`** job per delivery region the target recipe
+declares (`dag.delivery_nodes`; the older `dag.delivery_node` still returns the
+single node when there is exactly one, and raises when there are several).
+`deliver` is not a recipe stage -- recipe stages are ranked
 (`ingest < harmonize < enrich < curate`) and drive `find_entity_recipe_id`, so a
 fifth would ripple into recipe resolution for nothing. It is a node kind this
 graph derives, the way `extra_outputs` derives link sidecars from `save_link`.
 
-Scope decides whether it runs: an unscoped run builds and ships the declared
-region, a run naming the region (or covering every member) ships it, and a
-narrower debug run stops at curate so a one-county rebuild cannot overwrite a
-shipped regional file. `--config deliver=true|false` overrides either way.
+Scope decides whether each runs: an unscoped run builds and ships every declared
+region, a run naming a region (or covering every member of it) ships that one,
+and a narrower debug run stops at curate so a one-county rebuild cannot
+overwrite a shipped regional file. `--config deliver=true|false` overrides
+either way, `true` still limited to the regions the run touches.
 
 ### File layout on disk
 

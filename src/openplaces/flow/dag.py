@@ -152,49 +152,98 @@ class RecipeDAG:
         # its recipe id with the curate jobs and is told apart only by its
         # coarser admin unit, which _add's (recipe_id, admin) dedup would
         # handle correctly but its admin expansion would not.
-        self.delivery_node = self._build_delivery_node(deliver)
-        if self.delivery_node is not None:
-            self._nodes.append(self.delivery_node)
-            consumer_key = (self.delivery_node.recipe_id, self.delivery_node.admin_id)
-            for member in self._delivery_members():
+        self.delivery_nodes = self._build_delivery_nodes(deliver)
+        for node, spec in self.delivery_nodes:
+            self._nodes.append(node)
+            consumer_key = (node.recipe_id, node.admin_id)
+            for member in spec['admin_ids']:
                 self._edges.append(((target_recipe_id, member), consumer_key))
 
+    @property
+    def delivery_node(self):
+        """The single delivery job, for recipes that ship exactly one region.
+
+        Kept so callers written against the one-region model still work;
+        a recipe shipping several regions has no single node, and reading
+        this raises rather than silently returning one of them.
+        """
+        if len(self.delivery_nodes) > 1:
+            raise ValueError(
+                f'{self.target_recipe_id!r} builds {len(self.delivery_nodes)} '
+                f'delivery nodes; use .delivery_nodes.'
+            )
+        return self.delivery_nodes[0][0] if self.delivery_nodes else None
+
     def _delivery_members(self) -> list[str]:
-        """Process-level admin units the target recipe's bundle pools."""
-        from openplaces.io.delivery import delivery_members
+        """Process-level admin units the target recipe's bundles pool.
 
-        return delivery_members(self._recipe(self.target_recipe_id))
+        Pooled across every declared region: an unscoped run builds all of
+        them, so "everything this recipe means" is the union, not one
+        region's members.
+        """
+        from openplaces.io.delivery import delivery_regions
 
-    def _delivery_in_scope(self, spec: dict) -> bool:
-        """Whether this run covers the region the target recipe delivers.
+        members: list[str] = []
+        for spec in delivery_regions(self._recipe(self.target_recipe_id)):
+            members.extend(spec['admin_ids'])
+        return list(dict.fromkeys(members))
+
+    def _delivery_in_scope(self, spec: dict, bundle_admin_id) -> bool:
+        """Whether this run covers one region the target recipe delivers.
 
         True when nothing was requested (the whole recipe), when something
-        was requested at or above the bundle's own admin level (e.g. the
-        state the bundle covers), or when the requested units include every
-        declared member. False for a narrower run -- rebuilding one county
-        must not overwrite a shipped regional file with a one-county one.
+        was requested at or above *bundle_admin_id* on its own branch of the
+        hierarchy (``US`` or ``US-TX`` for a Texas bundle), or when the
+        requested units include every declared member. False for a narrower
+        run -- rebuilding one county must not overwrite a shipped regional
+        file with a one-county one.
+
+        The containment test is what keeps sibling regions apart: a recipe
+        shipping both a Carolina and a Texas bundle must not ship Texas
+        because someone asked for ``US-NC``, which a bare level comparison
+        (both bundles sit at level 2) would do.
         """
         if not self.requested_admin_ids:
             return True
-        level = spec.get('admin_level', 2)
-        if any(AdminId(a).get_level() <= level for a in self.requested_admin_ids):
-            return True
+        bundle_levels = tuple(AdminId(str(bundle_admin_id)).levels)
+        for requested in self.requested_admin_ids:
+            levels = tuple(AdminId(requested).levels)
+            if levels == bundle_levels[: len(levels)]:
+                return True
         members = {str(a) for a in spec.get('admin_ids') or []}
         return bool(members) and members <= set(self.admin_ids)
 
-    def _build_delivery_node(self, deliver: bool | None) -> StageNode | None:
-        """The bundle job, when the target recipe declares one and it applies."""
-        from openplaces.io.delivery import delivery_admin_id, delivery_spec
+    def _build_delivery_nodes(
+        self, deliver: bool | None
+    ) -> list[tuple[StageNode, dict]]:
+        """One (node, region spec) per declared region this run covers.
+
+        A curation recipe ships as many regions as it declares -- the CHEER
+        footprint recipe ships Eastern NC and coastal Texas from identical
+        curation logic -- so this is a list, not a single node.
+        """
+        from openplaces.io.delivery import delivery_admin_id, delivery_regions
 
         if deliver is False:
-            return None
-        spec = delivery_spec(self._recipe(self.target_recipe_id))
-        if not spec:
-            return None
-        if deliver is not True and not self._delivery_in_scope(spec):
-            return None
-        admin_id = delivery_admin_id(self._recipe(self.target_recipe_id))
-        return StageNode('deliver', self.target_recipe_id, str(admin_id))
+            return []
+        recipe = self._recipe(self.target_recipe_id)
+        nodes = []
+        for spec in delivery_regions(recipe):
+            admin_id = delivery_admin_id(recipe, region=spec['region_id'])
+            ship = self._delivery_in_scope(spec, admin_id)
+            # deliver=True overrides the narrow-run veto, but only for a
+            # region this run actually touches: forcing a ship from a
+            # handful of Texas counties must not also rebuild the
+            # Carolina bundle, which those counties contribute nothing to.
+            if not ship and deliver is True:
+                ship = not self.requested_admin_ids or bool(
+                    set(self.admin_ids) & {str(a) for a in spec['admin_ids']}
+                )
+            if ship:
+                nodes.append(
+                    (StageNode('deliver', self.target_recipe_id, str(admin_id)), spec)
+                )
+        return nodes
 
     def _recipe(self, recipe_id: str) -> dict:
         if recipe_id not in self._recipes:
@@ -290,12 +339,32 @@ class RecipeDAG:
     def output_path(self, stage: str, recipe_id: str, admin_id=None) -> Path:
         """The primary output parquet of one job."""
         if stage == 'deliver':
-            return self._delivery_paths(recipe_id)['canonical']
+            return self._delivery_paths(recipe_id, admin_id)['canonical']
         return get_output_path(
             self._recipe(recipe_id), admin_id=self._node_admin(recipe_id, admin_id)
         )
 
-    def _delivery_paths(self, recipe_id: str) -> dict:
+    def _delivery_region(self, recipe_id: str, admin_id=None) -> str | None:
+        """The declared region whose bundle lands on *admin_id*.
+
+        A deliver node is told apart from its siblings by the admin unit it
+        covers, so that unit is what names the region here -- the reverse of
+        `delivery_admin_id`.
+        """
+        from openplaces.io.delivery import delivery_admin_id, delivery_regions
+
+        recipe = self._recipe(recipe_id)
+        regions = delivery_regions(recipe)
+        if len(regions) <= 1:
+            return regions[0]['region_id'] if regions else None
+        for spec in regions:
+            if str(delivery_admin_id(recipe, region=spec['region_id'])) == str(
+                admin_id
+            ):
+                return spec['region_id']
+        raise KeyError(f'No delivery region of {recipe_id!r} covers {admin_id!r}.')
+
+    def _delivery_paths(self, recipe_id: str, admin_id=None) -> dict:
         """The four bundle files, straight from the writer's own resolver.
 
         Declaring the orchestrator's expected outputs and writing the actual
@@ -303,7 +372,10 @@ class RecipeDAG:
         """
         from openplaces.io.delivery import delivery_paths
 
-        return delivery_paths(self._recipe(recipe_id))
+        return delivery_paths(
+            self._recipe(recipe_id),
+            region=self._delivery_region(recipe_id, admin_id),
+        )
 
     def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
         """Secondary declared outputs of one job.
@@ -313,7 +385,7 @@ class RecipeDAG:
         get_entity_link_path location.
         """
         if stage == 'deliver':
-            bundle = self._delivery_paths(recipe_id)
+            bundle = self._delivery_paths(recipe_id, admin_id)
             return [bundle[role] for role in ('point', 'geo', 'evidence')]
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
@@ -339,10 +411,15 @@ class RecipeDAG:
         recipe = self._recipe(recipe_id)
         if stage == 'deliver':
             # Every member county's curated file, so the bundle rebuilds
-            # whenever any one of them does.
+            # whenever any one of them does. Scoped to this bundle's own
+            # region: a Texas bundle must not wait on Carolina counties.
+            from openplaces.io.delivery import delivery_members
+
             return [
                 get_output_path(recipe, admin_id=member)
-                for member in self._delivery_members()
+                for member in delivery_members(
+                    recipe, region=self._delivery_region(recipe_id, admin_id)
+                )
             ]
         node_admin = self._node_admin(recipe_id, admin_id)
         paths: list[Path] = []
@@ -383,12 +460,17 @@ class RecipeDAG:
     def target_paths(self) -> list[Path]:
         """The terminal outputs the workflow must produce (rule all inputs).
 
-        The bundle when this run delivers one -- it depends on every member
-        county, so targeting it still builds them all -- otherwise the
+        Every bundle this run delivers -- each depends on its own member
+        counties, so targeting them still builds those -- otherwise the
         per-unit curated files.
         """
-        if self.delivery_node is not None:
-            return list(self._delivery_paths(self.target_recipe_id).values())
+        if self.delivery_nodes:
+            paths: list[Path] = []
+            for node, _ in self.delivery_nodes:
+                paths.extend(
+                    self._delivery_paths(node.recipe_id, node.admin_id).values()
+                )
+            return paths
         return [
             self.output_path('curate', self.target_recipe_id, admin_id)
             for admin_id in self.admin_ids

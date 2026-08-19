@@ -4,11 +4,18 @@ import pytest
 
 from openplaces.flow import RecipeDAG
 from openplaces.geo.link import get_entity_link_path
-from openplaces.io.delivery import delivery_members, delivery_paths
+from openplaces.io.delivery import (
+    delivery_members,
+    delivery_paths,
+    delivery_regions,
+)
 from openplaces.recipe import get_output_path
 
 TARGET = 'US_footprint-cheer-2026'
 COUNTY = 'US-NC-BS'
+# The recipe ships several regions; these tests exercise the Carolina one,
+# which COUNTY belongs to.
+REGION = 'cheer-eastern-nc'
 
 
 @pytest.fixture(scope='module')
@@ -102,7 +109,7 @@ def test_delivery_node_covers_the_region(shipping_dag):
 
 
 def test_delivery_outputs_match_the_writer(shipping_dag):
-    bundle = delivery_paths(TARGET)
+    bundle = delivery_paths(TARGET, region=REGION)
     job = ('deliver', TARGET, 'US-NC')
     assert shipping_dag.output_path(*job) == bundle['canonical']
     assert shipping_dag.extra_outputs(*job) == [
@@ -111,7 +118,7 @@ def test_delivery_outputs_match_the_writer(shipping_dag):
 
 
 def test_delivery_inputs_are_every_member_county(shipping_dag):
-    members = delivery_members(TARGET)
+    members = delivery_members(TARGET, region=REGION)
     assert len(members) == 45
     assert shipping_dag.input_paths('deliver', TARGET, 'US-NC') == [
         get_output_path(TARGET, admin_id=member) for member in members
@@ -122,11 +129,15 @@ def test_delivery_edges_let_plan_propagate(shipping_dag):
     """Every member county must feed the bundle, or plan() misses re-ships."""
     consumer = (TARGET, 'US-NC')
     upstreams = {up for up, down in shipping_dag._edges if down == consumer}
-    assert upstreams == {(TARGET, member) for member in delivery_members(TARGET)}
+    assert upstreams == {
+        (TARGET, member) for member in delivery_members(TARGET, region=REGION)
+    }
 
 
 def test_target_paths_are_the_bundle_when_shipping(shipping_dag):
-    assert shipping_dag.target_paths() == list(delivery_paths(TARGET).values())
+    assert shipping_dag.target_paths() == list(
+        delivery_paths(TARGET, region=REGION).values()
+    )
 
 
 def test_deliver_false_suppresses_the_bundle():
@@ -214,3 +225,50 @@ def test_to_mermaid_supports_vertical_direction(dag):
 def test_to_mermaid_rejects_invalid_direction(dag):
     with pytest.raises(ValueError, match='direction'):
         dag.to_mermaid(direction='sideways')
+
+
+def test_regions_are_declared_and_disjoint():
+    """The recipe ships two named regions, and no county feeds both.
+
+    Membership comes from the shared region registry, not from the recipe,
+    so this also asserts the two stay wired together.
+    """
+    from openplaces.io.readers import get_region_admin_ids
+
+    regions = {spec['region_id']: spec for spec in delivery_regions(TARGET)}
+    for region_id, spec in regions.items():
+        assert spec['admin_ids'] == get_region_admin_ids(region_id)
+    assert set(regions) == {'cheer-eastern-nc', 'cheer-coastal-tx'}
+    assert len(regions['cheer-eastern-nc']['admin_ids']) == 45
+    assert len(regions['cheer-coastal-tx']['admin_ids']) == 42
+    assert not set(regions['cheer-eastern-nc']['admin_ids']) & set(
+        regions['cheer-coastal-tx']['admin_ids']
+    )
+
+
+def test_forced_delivery_ships_only_the_region_the_run_touches(shipping_dag):
+    """A Carolina-scoped run must not rebuild the Texas bundle.
+
+    Both bundles sit at admin level 2, so a bare level comparison would put
+    both in scope; only the containment test tells them apart.
+    """
+    assert [node.admin_id for node, _ in shipping_dag.delivery_nodes] == ['US-NC']
+
+
+def test_state_scope_ships_that_state_alone():
+    dag = RecipeDAG(TARGET, admin_ids=['US-TX'], deliver=True)
+    assert [node.admin_id for node, _ in dag.delivery_nodes] == ['US-TX']
+
+
+def test_ambiguous_region_is_refused_rather_than_guessed():
+    """Asking a multi-region recipe for "the" bundle must not pick one."""
+    with pytest.raises(ValueError, match='delivery regions'):
+        delivery_paths(TARGET)
+
+
+def test_unknown_region_is_named_in_the_error():
+    """A typo'd region id must say what is registered, not fail obscurely."""
+    from openplaces.io.readers import get_regions
+
+    with pytest.raises(KeyError, match='cheer-coastal-tx'):
+        get_regions('cheer-coastal-texas')

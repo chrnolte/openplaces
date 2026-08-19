@@ -63,22 +63,23 @@ share:
   # and a ready-to-symbolize ratio is what the file is for.
   point_columns:
     - structure_value_per_area
-  # Which admin unit the region-wide bundle covers, and which units feed it.
-  # Named here rather than passed at run time so `snakemake` with no admin_ids
-  # builds and ships the whole region unattended -- and so a scoped debug run
-  # can be recognized as not covering it, and skip shipping. The 45 CHEER
-  # Eastern NC counties; NC has 100, so this cannot be derived from the
-  # admin hierarchy.
+  # Which admin units the region-wide bundles cover, and which units feed
+  # them. Named in the recipe rather than passed at run time so `snakemake`
+  # with no admin_ids builds and ships every region unattended -- and so a
+  # scoped debug run can be recognized as not covering one, and skip
+  # shipping it.
+  #
+  # This recipe ships more than one region from identical curation logic
+  # (45 of North Carolina's 100 counties, 42 of Texas's 254). Named here,
+  # defined once in the shared region registry
+  # (_all/admin/regions/2026/admin-regions-2026.csv, read by
+  # `op.get_regions`) rather than inline: neither region is derivable from
+  # the admin hierarchy, and the same county lists are wanted by mapping
+  # and ad-hoc analysis, where three copies would drift. A grouping used
+  # in exactly one place may still be listed inline as `admin_ids:`.
   delivery:
     admin_level: 2
-    admin_ids:
-      [US-NC-BA, US-NC-BT, US-NC-BL, US-NC-BS, US-NC-CD, US-NC-CE, US-NC-CW,
-       US-NC-CM, US-NC-CN, US-NC-CU, US-NC-CI, US-NC-DE, US-NC-DP, US-NC-ED,
-       US-NC-FR, US-NC-GT, US-NC-GE, US-NC-HL, US-NC-HT, US-NC-HD, US-NC-HO,
-       US-NC-HE, US-NC-JH, US-NC-JN, US-NC-LE, US-NC-LN, US-NC-MR, US-NC-NA,
-       US-NC-NE, US-NC-NO, US-NC-ON, US-NC-PM, US-NC-PU, US-NC-PD, US-NC-PQ,
-       US-NC-PI, US-NC-RB, US-NC-SP, US-NC-SC, US-NC-TY, US-NC-WK, US-NC-WR,
-       US-NC-WI, US-NC-WY, US-NC-WO]
+    regions: [cheer-eastern-nc, cheer-coastal-tx]
 
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:
