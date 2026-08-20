@@ -1,0 +1,112 @@
+# Recipe: Washington, DC "Tax Lots" -- the complementary Assessment
+# & Taxation (A&T) parcel layer.
+#
+# Source: same ArcGIS Server as the sibling `dcgovrecordlots`
+# recipe, `DCGIS_DATA/Property_and_Land_WebMercator` MapServer
+# layer 39 (`maps2.dcgis.dc.gov`), owned by the Department of
+# Buildings, Office of the Surveyor / OTR Real Property Tax
+# Administration.
+#
+# READ THE SIBLING `US-DC_parcel-dcgovrecordlots-2026.yaml`
+# HEADER FIRST -- it documents why DC needs two parcel recipes
+# (Record Lots and Tax Lots are complementary, non-redundant
+# geometry layers with no single unified "parcel" table; measured
+# ~97% combined SSL coverage of the OTR CAMA roll from a 100-SSL
+# sample: 53% Record-Lot-only overlap, 44% Tax-Lot-only overlap),
+# why the two recipes use different source_ids rather than a
+# shared one with a filename suffix (an `Entity`'s identity, and
+# its output path, is `(entity_type, source_id, version)` only --
+# a recipe-id filename suffix does not disambiguate the output;
+# confirmed the hard way, ingesting both under one shared
+# 'dcgov' source_id silently overwrote the first recipe's output
+# with the second's), the rejected Hub bulk-export route (its
+# field schema does not match the live REST service -- same
+# finding applies to this layer's own Hub item,
+# 14d9f44e81914b0cb9a7c622fe237a94), and why every date field is
+# left unmapped (Esri epoch-ms dates, `io.transform.to_datetime`
+# has no unit-aware handling yet).
+#
+# Tax Lots are administrative combines (several purchased Record
+# Lots consolidated for one tax bill) or splits (part of a Record
+# Lot sold before a new Record Lot is platted). They are not
+# surveyed and are "not normally acceptable when applying for
+# building permits" per the layer's own metadata -- i.e. they
+# exist purely so OTR has something to send a tax bill against,
+# which is exactly the parcel-fabric role this entity needs.
+#
+# `LOT_TYPE` on this layer is Tax_Lot (domain code 2) for
+# 30,859/30,861 rows; the remaining 2 rows are tagged Record_Lot
+# (code 1) as a data artifact from the source system. Filtered
+# out via `query` so they are not double-counted against the
+# sibling Record Lots recipe (immaterial at 2 rows, but cheap and
+# correct to exclude).
+#
+# Measured (live REST, `maps2.dcgis.dc.gov`, current as of
+# ingest): 30,867 features. SSL populated 30,867/30,867 (100%).
+# STATEDAREAUNIT is uniformly code 109405 ("Square Foot") across
+# all 30,867 rows. STATEDAREA > 0 for 30,821/30,867 (99.9%).
+# STATUS (Current/Dead) is Current for every live row (0 Dead).
+#
+# Verified end-to-end: `op.ingest` run against the live service
+# wrote exactly 30,867 rows (matches server `returnCountOnly`
+# exactly), `parcel_id_local` populated to match SSL population,
+# geometry present for every row, CRS EPSG:4326.
+#
+# License: same as the sibling recipe -- the ArcGIS item's own
+# metadata states CC BY 4.0 for this dataset; DC's general
+# data-policy page separately states a broader CC0/public-domain
+# policy.
+
+description: >-
+  Washington, DC Tax Lots: OTR's assessment-and-taxation parcel layer,
+  covering combine/split situations the Record Lots layer does not.
+  Geometry and Square-Suffix-Lot identifier only.
+
+admin_id: US-DC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dcgovtaxlots
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::tax-lots/about"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "dc_tax_lots.geojson"
+
+scraper_options:
+  layer_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/39"
+  where: "1=1"
+  out_fields: "*"
+
+# Drop the 2 rows tagged LOT_TYPE=1 (Record_Lot) on this layer -- a
+# source-side artifact, not a real Tax Lot, that would otherwise overlap
+# the sibling recordlots recipe.
+query: "LOT_TYPE == 2"
+
+columns:
+  parcel_id_admin2: SSL
+  lot_size: STATEDAREA
+
+# Expose the raw SSL under the canonical name parcel_id_assessor (a copy
+# of parcel_id_admin2), so it is the raw key parcel_id_local derives
+# from -- consistent with the sibling recipe and the MassGIS/Wisconsin
+# statewide recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+# No bundled US_parcel_id-overrides.csv row exists for US-DC; falls back
+# to the default 'simple' conversion (see sibling recipe for why that is
+# safe for this SSL key).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

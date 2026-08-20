@@ -1,0 +1,179 @@
+# Recipe: Washington, DC "Record Lots" -- the base cadastral parcel
+# layer.
+#
+# Source: DC's own ArcGIS Server, layer 35 of the
+# `DCGIS_DATA/Property_and_Land_WebMercator` MapServer
+# (`maps2.dcgis.dc.gov`), owned by the Department of Buildings,
+# Office of the Surveyor. Geometry and lot identifiers
+# (Square/Suffix/Lot, "SSL") come from this service; the Office of
+# Tax and Revenue's separate CAMA tables (assessment values, year
+# built, etc., same MapServer, layers 23-25) are NOT bundled here --
+# see "left unmapped" below.
+#
+# NOTE on why DC needs two parcel recipes, not one, and why they use
+# two different source_ids rather than one shared 'dcgov' with a
+# `_recordlots`/`_taxlots` recipe-id filename suffix (tried first,
+# and wrong): `Entity` identity -- and hence the output parquet
+# path via `get_output_path` -- is `(entity_type, source_id,
+# version)` only. The `_{filename}` suffix in a recipe id only
+# disambiguates the YAML's own path on disk; it plays no part in
+# the *entity's* identity. Two recipes sharing (parcel, dcgov,
+# 2026) both resolve to the exact same output file
+# (`US-DC_parcel-dcgov-2026.parquet`), and ingesting the second
+# silently overwrites the first with no error -- confirmed by
+# running both: the file after both ingests held only the second
+# recipe's 30,867 Tax Lots rows where 144,741 Record Lots rows
+# were expected. Distinct source_ids (`dcgovrecordlots` /
+# `dcgovtaxlots`) give each its own path.
+#
+# DC's real property is split across two complementary geometry
+# layers with no single "parcel" table: "Record Lots" (this
+# recipe, layer 35 -- the official, surveyed subdivision lots
+# recorded in Plat/Subdivision Books; a lot must be a Record Lot
+# before a building permit issues) and "Tax Lots" (sibling recipe,
+# source_id `dcgovtaxlots`, layer 39 -- administrative
+# combines/splits done purely for tax billing, not surveyed,
+# numbered 800-1999 within a square). Measured overlap: sampling
+# 100 SSLs from the OTR Residential CAMA roll, 53 matched a Record
+# Lot, 44 matched a Tax Lot, and 97 matched at least one of the two
+# -- i.e. neither layer alone covers DC's property base; the union
+# of both does (~97%). This mirrors the "bulk export is not the
+# whole picture" trap in `_instructions/acquiring_sources.md`
+# Phase 3, just with two REST layers instead of a REST-vs-bulk
+# mismatch. The two recipes are expected to be unioned by the
+# harmonizer's normal multi-source spine resolution, the same way
+# NC's per-county parcel recipes union into one state spine.
+# Overlap between the two (a Tax Lot combine whose superseded
+# Record Lot was not `KILL_DT`-retired) is possible but rare: only
+# 220/144,741 Record Lots and 13/30,867 Tax Lots carry a `KILL_DT`
+# at all.
+#
+# NOTE on bulk vs REST (Phase 3 equivalence test, and the one that
+# actually mattered here). This layer's ArcGIS Hub item
+# (5b0b6b13ef894b8da62e6bd458d907b3_35) offers a ready-made bulk
+# GeoJSON export, which resolved immediately (no 202/404
+# job-status wait) and looked complete: 144,679 features, valid
+# FeatureCollection. It was REJECTED anyway: its field schema does
+# not match the live service. The bulk export carries
+# `COMPUTED_AREA_SF`/`SURVEYED_AREA_SF`/`RECORDLOTSPLYID`/
+# `MAR_ID` and lacks `STATEDAREA`/`CALCULATEDAREA`; querying the
+# live MapServer *and* FeatureServer endpoints directly (both back
+# the same service) returns the old field names on every feature,
+# with `LAST_EDITED_DATE` clustering right around the service's
+# documented March-2026 migration date. The live REST service is
+# being kept current; the Hub bulk cache is a stale, pre-migration
+# snapshot with a different schema -- exactly the divergence
+# Phase 3 warns about, just caught by a field-name diff instead of
+# a row-count diff. Uses `arcgis_rest_scraper` (REST paging)
+# instead, at ~145k features well within normal paging cost.
+#
+# NOTE on dates: every date field on this layer (`RECORDATION_DT`,
+# `LAST_EDITED_DATE`, `KILL_DT`, `COMMENCE_DT`, `CREATED_DATE`,
+# `EXPIRATION_DT`) is `esriFieldTypeDate`, which the scraper's
+# `f=geojson` output serializes as raw epoch-milliseconds, not ISO
+# strings (see "Dates are the most common silent corruption" in
+# `_instructions/acquiring_sources.md`). `io.transform`'s
+# `to_datetime` op calls plain `pd.to_datetime` with no `unit=`
+# argument, which misinterprets a raw epoch-ms number as
+# nanoseconds and silently collapses every row to on/around
+# 1970-01-01. Left every date field unmapped rather than ship that
+# corruption; map them once a unit-aware datetime transformation
+# exists.
+#
+# NOTE on fields left unmapped for want of a registry attribute,
+# or because the source's own data model has no place for them:
+#   - `SQUARE`, `SUFFIX`, `LOT` (the three components SSL is
+#     assembled from) and `QUADRANT` (DC's NW/NE/SW/SE quadrant, a
+#     real geographic concept the registry has no field for) --
+#     SSL itself is mapped and carries the same information.
+#   - `BOOK_NUM`/`PAGE_NUM` are the *subdivision plat's own*
+#     recordation book/page at the Surveyor's Office, not a deed
+#     reference; the registry's `book`/`page` are scoped to
+#     `transaction` (a recorded sale's deed), a different
+#     real-world thing, so mapping them here would mis-home a plat
+#     citation as a deed citation.
+#   - `CONDO_REGIME_NUM`, `CONDOLOT`, `UNDERLIES_CONDO`,
+#     `CONDO_BOOK_NUM`/`CONDO_PAGE_NUM`, `OF_LOT_SEQ`, `COL`
+#     (common-ownership-lot flag), `RECORD`/`RETIRINGRECORD`,
+#     `CREATEDBYRECORD`/`RETIREDBYRECORD` -- lineage/condo-regime
+#     bookkeeping with no registry equivalent.
+#   - `CALCULATEDAREA` (a second, GIS-computed area figure) --
+#     redundant with the geometry-derived area the pipeline already
+#     computes from the polygon itself; `STATEDAREA` (the
+#     recorded/deeded area) is mapped as `lot_size` instead, since
+#     it is the one number the registry has a slot for.
+#
+# Measured (live REST, `maps2.dcgis.dc.gov`, current as of
+# ingest): 144,741 features. SSL populated 144,740/144,741
+# (>99.9%). STATEDAREAUNIT is uniformly code 109405 ("Square
+# Foot") across all 144,741 rows, so STATEDAREA needs no per-row
+# unit conversion. STATEDAREA > 0 for 120,325/144,741 (83.1%).
+# STATUS (Current/Dead) is Current for every live row (0 Dead) --
+# the service already excludes retired lots, so no status filter
+# is needed.
+#
+# Verified end-to-end: `op.ingest` run against the live service
+# wrote exactly 144,741 rows (matches server `returnCountOnly`
+# exactly), `parcel_id_local` populated 144,740/144,741 (>99.9%,
+# matches SSL population) with 144,561 distinct values (179
+# repeats -- source-side SSL duplicates, e.g. condo-regime
+# sub-lots sharing a base SSL, not a conversion artifact), geometry
+# 144,710 Polygon + 31 MultiPolygon, CRS EPSG:4326, 0 null
+# geometries.
+#
+# License: the ArcGIS item's own metadata states "Creative
+# Commons Attribution 4.0 International License" for this
+# specific dataset; DC's general district-data terms page
+# separately states a broader CC0/public-domain policy with
+# commercial use and redistribution both explicitly permitted
+# (attribution requested, not required). Recorded as CC BY 4.0
+# here since that is the more specific, item-level statement.
+
+description: >-
+  Washington, DC Record Lots: the surveyed, platted subdivision parcel
+  fabric from DC's Office of the Surveyor. Geometry and Square-Suffix-Lot
+  identifier only; no assessment attributes.
+
+admin_id: US-DC
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: dcgovrecordlots
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::record-lots/about"
+    download_url_scraper: arcgis_rest_scraper
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "dc_record_lots.geojson"
+
+scraper_options:
+  layer_url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/35"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_admin2: SSL
+  lot_size: STATEDAREA
+
+# Expose the raw SSL under the canonical name parcel_id_assessor (a copy
+# of parcel_id_admin2), so it is the raw key parcel_id_local derives
+# from -- consistent with the MassGIS/Wisconsin statewide recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+# No bundled US_parcel_id-overrides.csv row exists for US-DC; falls back
+# to the default 'simple' conversion, which is safe here since SSL is a
+# fixed-width (12-character), DC-wide unique key with no delimiters that
+# a 'simple' strip-and-uppercase could collapse.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
