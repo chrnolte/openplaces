@@ -9,6 +9,15 @@ entity:
     source_id: overture
     portal_url: "https://overturemaps.org"
     download_url: "s3://overturemaps-us-west-2/release/latest/theme=addresses/type=address/"
+    # Terms verified 2026-08-19 at the terms_url below. This recipe reads
+    # the *addresses* theme, which is not ODbL: it draws on many national
+    # open-data sources under CC-BY-4.0, CC0 and equivalents, varying by
+    # region, all permissive and all requiring attribution. Overture's
+    # *buildings* theme is ODbL -- do not carry this entry across to a
+    # buildings recipe without re-checking.
+    license: "mixed-permissive (CC-BY-4.0, CC0, national open data); attribution required"
+    terms_url: "https://docs.overturemaps.org/attribution/"
+    redistribution_restricted: false
   version: 2025
 
 download_by:
