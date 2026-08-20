@@ -49,9 +49,6 @@ class EnrichState:
         Harmonized entity spine.
     evidence
         Entity-keyed evidence table being built.
-    image_admin_ids
-        When set, restrict image-based steps to these admin units
-        (deeper than the process level) instead of all children.
     metadata
         Step-specific intermediate data.
     reprocess
@@ -68,7 +65,6 @@ class EnrichState:
     timer: object | None
     spine: pd.DataFrame
     evidence: pd.DataFrame
-    image_admin_ids: list[str] | None = None
     metadata: dict = field(default_factory=dict)
     reprocess: bool = False
 
@@ -186,8 +182,8 @@ class Enricher:
 
         Admin IDs deeper than the process level (e.g. a town within a
         county-level recipe) are grouped under their process-level
-        ancestor in `self.sub_admin_ids`, which restricts image input
-        and coverage-aware skip checks to those units.
+        ancestor in `self.sub_admin_ids`, which restricts both the spine
+        rows processed and the coverage-aware skip checks to those units.
         """
         process_level = self._process_level
         recipe_admin_id = self.entity_recipe['admin_id']
@@ -319,6 +315,32 @@ class Enricher:
             return True
         return sub_admin_ids is not None and set(sub_admin_ids) <= coverage
 
+    @staticmethod
+    def _restrict_to_sub_admins(spine, sub_admin_ids: list[str] | None):
+        """Subset a process-level spine to the requested sub-admin units.
+
+        A run naming units deeper than the process level (e.g. two towns of
+        a county-level recipe) writes a coverage footer listing exactly
+        those units, so the evidence it writes has to match: enriching the
+        whole county but recording two towns would overstate what a later
+        skip check may rely on.
+
+        The restriction is by the spine's own containing-unit column
+        (`admin{level}_id`, assigned by the harmonize step
+        `link_geographic_ids`). A spine that carries no such column cannot
+        be split, so the full unit is processed and the caller's coverage
+        footer stays honest by covering it.
+        """
+        if not sub_admin_ids:
+            return spine
+        levels = {AdminId(aid).get_level() for aid in sub_admin_ids}
+        if len(levels) != 1:
+            return spine
+        column = f'admin{levels.pop()}_id'
+        if column not in spine.columns:
+            return spine
+        return spine[spine[column].isin(set(sub_admin_ids))]
+
     def _enrich_one(
         self,
         admin_id: AdminId,
@@ -341,6 +363,17 @@ class Enricher:
             admin_id,
             geom=bool(self.recipe.get('spine_geom')),
         )
+        spine = self._restrict_to_sub_admins(spine, sub_admin_ids)
+        if spine.empty:
+            # Either the sub-units really hold no entities, or their ids do
+            # not match the spine's column. Both produce no evidence, so say
+            # so rather than letting a silent no-op read as a finished run.
+            warnings.warn(
+                f'No {admin_id} entities matched '
+                f'{", ".join(sub_admin_ids or [])}; nothing to enrich.',
+                stacklevel=2,
+            )
+            return
         evidence = pd.DataFrame(index=spine.index)
 
         state = EnrichState(
@@ -351,7 +384,6 @@ class Enricher:
             timer=self._timer,
             spine=spine,
             evidence=evidence,
-            image_admin_ids=sub_admin_ids,
             reprocess=reprocess,
         )
 

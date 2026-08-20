@@ -1,3 +1,12 @@
+# PACKAGE VERSION
+
+# Kept here, at the bottom of the layer hierarchy, so config.py can put it
+# in the User-Agent without importing the top-level package. Bump alongside
+# the version in pyproject.toml.
+
+VERSION = '0.1.0'
+
+
 # DIRECTORY STRUCTURE
 
 # Escape directory (to signal end of administrative folder depth)

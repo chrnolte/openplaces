@@ -8,7 +8,8 @@ gate at https://tap.revenue.wi.gov/mta/. The portal generates each month's CSV
 on the fly (the download URL is a one-off token), so the file cannot be fetched
 with a static URL. This module drives a real browser (via Playwright) to:
 
-1. open the portal and accept the terms of use if prompted,
+1. open the portal and pass its terms-of-use gate (only after a human has
+   accepted the terms -- see `openplaces.io.consent`),
 2. navigate to the requested year,
 3. switch the report format to CSV ("CSV Report" button),
 4. click the requested month to trigger generation of the CSV, and
@@ -36,6 +37,8 @@ import sys
 import threading
 import warnings
 from pathlib import Path
+
+from openplaces.io.consent import require_terms_consent
 
 # Direct URL of the public RETR historical-data tool (no login required).
 # Navigating here lands straight on the year/month download interface, so the
@@ -84,7 +87,7 @@ def fetch(
     timeout_s: int = 120,
     label: str | None = None,
     entry_link_text: str = '',
-    accept_terms: bool = True,
+    accept_terms: bool | None = None,
     terms_texts: tuple[str, ...] = DEFAULT_TERMS_TEXTS,
     csv_report_text: str = DEFAULT_CSV_REPORT_TEXT,
     month_style: str = 'name',
@@ -123,8 +126,11 @@ def fetch(
         Empty by default because the default portal_url lands directly on the
         RETR tool. Set to a link label (e.g. 'Download Historical RETR Data')
         only when starting from the TAP home page rather than the tool URL.
-    accept_terms : bool, default True
-        Click the terms-of-use button if the gate is shown.
+    accept_terms : bool or None, default None
+        None asks the person running the download (or honors a standing
+        decision they recorded earlier). False, from the recipe, declares
+        that this gate must never be accepted. True raises: a committed
+        recipe cannot consent for its users. See `io.consent`.
     terms_texts : tuple of str
         Candidate labels for the terms-of-use button, tried in order.
     csv_report_text : str, default 'CSV Report'
@@ -153,20 +159,34 @@ def fetch(
     Returns
     -------
     pathlib.Path or None
-        Path to the downloaded CSV (equal to *target_path*), or ``None`` when
-        the requested year/month is not published yet (the portal shows a
-        "file has not yet been generated" modal, or the year is not listed).
-        ``None`` signals the caller to skip the partition.
+        Path to the downloaded CSV (equal to *target_path*), or ``None``
+        when the partition is to be skipped: the requested year/month is
+        not published yet (the portal shows a "file has not yet been
+        generated" modal, or the year is not listed), or the operator
+        declined the portal's terms of use.
 
     Raises
     ------
     RuntimeError
         If Playwright is not installed, or a step fails (e.g. the terms gate,
         CSV-format button, year, or month could not be located).
+    openplaces.io.consent.TermsNotAcceptedError
+        If the run cannot ask anyone to accept the portal's terms and this
+        user has recorded no standing decision.
+    openplaces.io.consent.ConsentNotDelegableError
+        If the recipe sets `accept_terms: true`.
     """
     global _LABEL
     if label:
         _LABEL = label
+
+    if not require_terms_consent(
+        label or 'The Wisconsin DOR Tax Account Portal',
+        terms_url=portal_url or DEFAULT_PORTAL_URL,
+        accept_terms=accept_terms,
+        verbose=verbose,
+    ):
+        return None
 
     target_path = Path(target_path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,7 +209,6 @@ def fetch(
                 headless=headless,
                 timeout_s=timeout_s,
                 entry_link_text=entry_link_text,
-                accept_terms=accept_terms,
                 terms_texts=terms_texts,
                 csv_report_text=csv_report_text,
                 month_style=month_style,
@@ -218,7 +237,6 @@ def _fetch_in_browser(
     headless: bool,
     timeout_s: int,
     entry_link_text: str,
-    accept_terms: bool,
     terms_texts: tuple[str, ...],
     csv_report_text: str,
     month_style: str,
@@ -260,8 +278,7 @@ def _fetch_in_browser(
             if entry_link_text:
                 _open_entry(page, entry_link_text, verbose=verbose)
 
-            if accept_terms:
-                _accept_terms(page, terms_texts, timeout_ms, verbose=verbose)
+            _accept_terms(page, terms_texts, timeout_ms, verbose=verbose)
 
             _click_csv_report(page, csv_report_text, verbose=verbose)
 
@@ -400,6 +417,10 @@ def _accept_terms(
     page, terms_texts: tuple[str, ...], timeout_ms: int, verbose: bool = False
 ) -> None:
     """Click the terms-of-use button if the gate is present.
+
+    Only ever reached once `require_terms_consent` has confirmed a human
+    accepted the terms; this function performs that decision, it does not
+    make it.
 
     Tries each candidate label as a button role first, then as any clickable
     element with matching text. Absence of the gate is not an error: the

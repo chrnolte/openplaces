@@ -30,11 +30,30 @@ from openplaces.core.constants import (
     NEVER_DELETE,
     RETENTION_CLASSES,
     STANDARD_DIRS,
+    VERSION,
 )
 
 # Application name and author to locate user configuration files
 APPNAME = 'openplaces'
 APPAUTHOR = 'placeslab'
+
+# Project page named in the User-Agent, so a data provider reading its
+# logs can find out what openplaces is without contacting anyone.
+PROJECT_URL = 'https://openplaces.io'
+
+# Environment variables meaning "an AI coding agent is driving this
+# run", mapped to the name reported in the User-Agent. Checked in
+# order; the first match wins. OPENPLACES_AGENT is the explicit escape
+# hatch for an agent this list does not know.
+AGENT_ENV_VARS = {
+    'OPENPLACES_AGENT': None,  # value is the agent name itself
+    'CLAUDECODE': 'claude-code',
+    'CLAUDE_CODE': 'claude-code',
+    'CURSOR_AGENT': 'cursor',
+    'AIDER_MODEL': 'aider',
+    'CODEX_SANDBOX': 'codex',
+    'GITHUB_ACTIONS': 'github-actions',
+}
 
 __all__ = [
     'cfg',
@@ -44,8 +63,222 @@ __all__ = [
     'reset_config',
     'edit_config',
     'reload_config',
+    'set_identity',
+    'get_terms_consent',
+    'set_terms_consent',
+    'merge_user_config',
+    'detect_agent',
     'OpenPlacesConfig',
 ]
+
+
+IDENTITY_NOTICE = f"""\
+How should openplaces identify itself?
+
+openplaces downloads from public servers run by other people -- county GIS
+portals, state agencies, national statistical offices. Every request it
+makes carries a User-Agent naming the project, so an operator seeing
+unexpected load knows what the traffic is and has someone to ask.
+
+You are not registering anything and nothing is sent to this project. Pick
+any nickname and place you are willing to have appear in a server log; a
+work handle and an institution or city is the usual choice. Leave it blank
+to stay unidentified.
+
+  openplaces/{VERSION} (+{PROJECT_URL}; ada@some-university)\
+"""
+
+
+def build_user_agent(
+    nickname: str | None,
+    place: str | None,
+    agent: str | None = None,
+) -> str:
+    """Assemble the User-Agent string for a given identity.
+
+    Shaped like a conventional crawler identity -- product token, then a
+    parenthesized comment holding the project URL and a contact handle --
+    because that is the form a server operator's log tooling already knows
+    how to read.
+
+    Parameters
+    ----------
+    nickname : str or None
+        Self-chosen handle. Never verified and never an email address.
+    place : str or None
+        Institution, city, or organization the nickname belongs to.
+    agent : str or None
+        Name of the AI coding agent driving the run, appended so a
+        provider can tell autonomous traffic from a person at a keyboard.
+
+    Returns
+    -------
+    str
+        e.g. ``openplaces/0.1.0 (+https://openplaces.io; ada@some-university)``
+    """
+    nickname = (nickname or '').strip()
+    place = (place or '').strip()
+    if nickname and place:
+        who = f'{nickname}@{place}'
+    else:
+        # An installation that set neither reports 'unidentified',
+        # honest and still better than impersonating a browser.
+        who = nickname or place or 'unidentified'
+
+    parts = [f'+{PROJECT_URL}', who]
+    if agent:
+        parts.append(f'agent: {agent}')
+    return f'openplaces/{VERSION} ({"; ".join(parts)})'
+
+
+def prompt_identity() -> tuple[str, str]:
+    """Show the identity notice and ask for a nickname and place.
+
+    Returns
+    -------
+    tuple of str
+        (nickname, place), either possibly empty. An empty nickname skips
+        the place question: half an identity is not worth a second prompt.
+    """
+    print('\n' + '-' * 70)
+    print(IDENTITY_NOTICE)
+    print()
+
+    nickname = input('Nickname (Enter to stay unidentified): ').strip()
+    place = input('Place (university, city, or org): ').strip() if nickname else ''
+    print(f'\nRequests will be sent as:\n  {build_user_agent(nickname, place)}')
+    return nickname, place
+
+
+def merge_user_config(config_path, key: str, value) -> None:
+    """Set one top-level key in a user config file, creating it if needed.
+
+    Reads and rewrites the whole file rather than appending, so a key can
+    be recorded before the directory setup has run (dev.py) or changed
+    long afterwards without disturbing anything else in it.
+
+    Parameters
+    ----------
+    config_path : str or pathlib.Path
+        User config file to update.
+    key : str
+        Top-level key to set.
+    value : Any
+        Value to store under *key*, replacing whatever is there.
+    """
+    config_path = Path(config_path)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = {}
+    if config_path.exists():
+        try:
+            with open(config_path, encoding='utf-8') as f:
+                existing = yaml.safe_load(f) or {}
+        except (OSError, yaml.YAMLError):
+            existing = {}
+
+    existing[key] = value
+    with open(config_path, 'w', encoding='utf-8') as f:
+        yaml.dump(
+            existing, f, default_flow_style=False, sort_keys=False, allow_unicode=True
+        )
+
+
+def write_identity(config_path, nickname: str | None, place: str | None) -> None:
+    """Merge an identity into a user config file, creating it if needed."""
+    merge_user_config(
+        config_path,
+        'identity',
+        {
+            'nickname': (nickname or '').strip() or None,
+            'place': (place or '').strip() or None,
+        },
+    )
+
+
+def get_terms_consent(source: str) -> bool | None:
+    """Return the standing decision for *source*, or None if never asked.
+
+    Parameters
+    ----------
+    source : str
+        Key the decision was recorded under (a recipe id or portal name).
+
+    Returns
+    -------
+    bool or None
+        True when this user chose to always accept that source's terms,
+        False when they chose to always decline, None when no standing
+        decision exists and they should be asked.
+    """
+    recorded = (cfg.get('consent') or {}).get('terms') or {}
+    entry = recorded.get(source)
+    if isinstance(entry, dict):
+        return entry.get('accepted')
+    return entry if isinstance(entry, bool) else None
+
+
+def set_terms_consent(source: str, accepted: bool) -> None:
+    """Record a standing decision about one source's terms of use.
+
+    Stored in this user's own config, never in a recipe: accepting terms
+    is a commitment by the person running the download, and a committed
+    recipe would extend it to everyone who ever runs that recipe.
+
+    Parameters
+    ----------
+    source : str
+        Key to record the decision under (a recipe id or portal name).
+    accepted : bool
+        True to accept that source's terms from now on, False to decline
+        from now on.
+    """
+    from datetime import date
+
+    recorded = dict((cfg.get('consent') or {}).get('terms') or {})
+    recorded[source] = {
+        'accepted': bool(accepted),
+        'recorded': date.today().isoformat(),
+    }
+    merge_user_config(cfg.user_config_path, 'consent', {'terms': recorded})
+    reload_config()
+
+
+def set_identity(nickname: str | None, place: str | None) -> str:
+    """Set the nickname and place openplaces identifies itself by.
+
+    Parameters
+    ----------
+    nickname : str or None
+        Self-chosen handle; None or empty clears the identity.
+    place : str or None
+        Institution, city, or organization.
+
+    Returns
+    -------
+    str
+        The User-Agent that will now be sent.
+    """
+    write_identity(cfg.user_config_path, nickname, place)
+    reload_config()
+    return cfg.user_agent
+
+
+def detect_agent() -> str | None:
+    """Return the name of the agent driving this run, or None.
+
+    openplaces downloads from other people's servers, and a provider
+    reading its logs is entitled to know whether a person or a piece of
+    autonomous software is on the other end. Set ``OPENPLACES_AGENT`` to
+    name an agent this function does not recognize.
+    """
+    for var, name in AGENT_ENV_VARS.items():
+        value = os.environ.get(var)
+        if not value:
+            continue
+        if name is None:
+            return str(value).strip() or None
+        return name
+    return None
 
 
 def _merge_nested(base: dict, override: dict) -> dict:
@@ -64,6 +297,14 @@ class OpenPlacesConfig:
     DEFAULTS = {
         'crs': CRS,
         'geo_min_area_m2': GEO_MIN_AREA_M2,
+        # Who to say you are when downloading from someone else's
+        # server. Both unset means the User-Agent says 'unidentified'
+        # rather than guessing: a wrong identity is worse than none.
+        'identity': {'nickname': None, 'place': None},
+        # Standing decisions about third-party terms of use, by source.
+        # Empty by default: consent is something a person gives, so it
+        # can only ever arrive from this user's own config.
+        'consent': {'terms': {}},
         # Data lifecycle policy. Bucket-level overrides live directly under
         # 'retention' (e.g. retention: {cache: keep}); per-recipe overrides
         # under 'recipes'; cleanup behavior switches under 'cleanup'.
@@ -102,9 +343,13 @@ class OpenPlacesConfig:
         # importing openplaces must never block on a prompt, or a headless
         # run (CI, a container, a cluster job, a first `pytest`) hangs or
         # dies reading stdin. Those environments get the defaults instead.
+        #
+        # The trigger is a missing 'directories' block rather than a
+        # missing file, because `dev.py setup` may already have written
+        # the file to record an identity before anyone chose directories.
         if (
             interactive
-            and not self.user_config_path.exists()
+            and not self._user_config_has('directories')
             and sys.stdin is not None
             and sys.stdin.isatty()
         ):
@@ -143,6 +388,12 @@ class OpenPlacesConfig:
             if config_file.exists():
                 return config_file
         return None
+
+    def _user_config_has(self, key: str) -> bool:
+        """True when the user config file exists and defines *key*."""
+        if not self.user_config_path.exists():
+            return False
+        return key in self._load_yaml_config(self.user_config_path)
 
     def _interactive_setup(self):
         """Interactive first-use configuration setup."""
@@ -223,6 +474,7 @@ class OpenPlacesConfig:
 
         if customize == 'b':
             self._custom_directory_setup()
+            self._interactive_identity()
             return  # _custom_directory_setup already creates the config
 
         # Show final directory structure
@@ -250,10 +502,16 @@ class OpenPlacesConfig:
             sys.exit(0)
 
         self._create_user_config(self.default_dirs)
+        self._interactive_identity()
         print(f'\nConfiguration saved to:\n\n  {self.user_config_path}\n')
         print('You can edit this file anytime to change your settings.')
 
         print('\n' + '=' * 70 + '\n')
+
+    def _interactive_identity(self):
+        """Ask how this installation should identify itself to providers."""
+        nickname, place = prompt_identity()
+        write_identity(self.user_config_path, nickname, place)
 
     def _custom_directory_setup(self):
         """Allow user to customize directory paths."""
@@ -555,6 +813,25 @@ class OpenPlacesConfig:
         raise AttributeError(f"No configuration attribute '{name}'")
 
     @property
+    def identity(self) -> dict:
+        """Nickname and place this installation identifies itself by."""
+        return dict(self.config.get('identity') or {})
+
+    @property
+    def user_agent(self) -> str:
+        """User-Agent string sent with every request openplaces makes.
+
+        Built from the configured nickname and place (see
+        :func:`build_user_agent`), with the driving AI agent appended when
+        one is detected. Recomputed per access rather than cached, because
+        the agent is read from the environment.
+        """
+        identity = self.identity
+        return build_user_agent(
+            identity.get('nickname'), identity.get('place'), detect_agent()
+        )
+
+    @property
     def credentials_path(self) -> Path:
         """Path to the credentials file."""
         return Path(user_config_dir(APPNAME, APPAUTHOR)) / 'credentials.yaml'
@@ -761,10 +1038,29 @@ def main():
         action='store_true',
         help='Run interactive setup again (deletes existing config first)',
     )
+    parser.add_argument(
+        '--set-identity',
+        nargs=2,
+        metavar=('NICKNAME', 'PLACE'),
+        help=(
+            'Set the nickname and place sent in the User-Agent. Pass empty '
+            'strings to stay unidentified. Used by dev.py setup, which asks '
+            'for both before this environment exists to be imported from.'
+        ),
+    )
+    parser.add_argument(
+        '--user-agent',
+        action='store_true',
+        help='Print the User-Agent this installation sends, and exit',
+    )
 
     args = parser.parse_args()
 
-    if args.reset:
+    if args.set_identity is not None:
+        print(set_identity(*args.set_identity))
+    elif args.user_agent:
+        print(cfg.user_agent)
+    elif args.reset:
         reset_config()
     elif args.edit:
         edit_config()

@@ -37,6 +37,7 @@ __all__ = [
     'download',
     'read_parquet',
     'release_unused_memory',
+    'request_headers',
     'save',
     'save_parquet',
     'share',
@@ -77,6 +78,31 @@ def _content_type_to_ext(content_type: str) -> str | None:
     return _CONTENT_TYPE_EXT.get(mime)
 
 
+def request_headers(extra: dict | None = None) -> dict:
+    """Headers for every outbound request openplaces makes.
+
+    Carries `cfg.user_agent`, which names the project, links its page, and
+    reports the operator's chosen nickname and place. Use this rather than
+    letting a request go out under the bare `python-requests` agent: some
+    servers reject that outright, and a named agent gives an operator
+    seeing unexpected load someone to contact.
+
+    Parameters
+    ----------
+    extra : dict, optional
+        Additional headers, merged over the defaults.
+
+    Returns
+    -------
+    dict
+        Header mapping to pass to requests or urllib.
+    """
+    headers = {'User-Agent': cfg.user_agent}
+    if extra:
+        headers.update(extra)
+    return headers
+
+
 def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
     """Download file from URL with progress bar.
 
@@ -114,9 +140,7 @@ def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
 
     timeout = timeout or cfg.download_timeout
 
-    # Some servers reject the default python-requests User-Agent (404/403);
-    # present a browser UA, as the page-scraping path already does.
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = request_headers()
 
     # Get file size for progress bar
     try:

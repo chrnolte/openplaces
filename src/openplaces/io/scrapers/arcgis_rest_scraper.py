@@ -43,9 +43,35 @@ from pathlib import Path
 
 import requests
 
+from openplaces.io import request_headers
+
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_RETRIES = 3
 DEFAULT_PAGE_SIZE = 2000
+
+# Minimum gap between two successful requests to the same service. Paging a
+# county parcel layer is hundreds of queries against one server that is
+# usually a single machine in a county IT room, and backing off only after
+# a failure means the load that caused the failure was already applied.
+# 0.2s costs about 20 seconds over a 100-page scrape and keeps openplaces
+# below the rate at which these services start shedding requests.
+DEFAULT_REQUEST_INTERVAL_S = 0.2
+
+_last_request_at = 0.0
+
+
+def _pace(interval_s: float) -> None:
+    """Sleep until *interval_s* has passed since the last request.
+
+    Module-level rather than per-call state: the point is to bound the rate
+    openplaces hits one server across a whole paging loop, not within a
+    single function.
+    """
+    global _last_request_at
+    wait = interval_s - (time.monotonic() - _last_request_at)
+    if wait > 0:
+        time.sleep(wait)
+    _last_request_at = time.monotonic()
 
 
 def _log(message: str) -> None:
@@ -62,7 +88,10 @@ def _download_bulk(
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
-            with requests.get(url, stream=True, timeout=timeout) as response:
+            _pace(DEFAULT_REQUEST_INTERVAL_S)
+            with requests.get(
+                url, stream=True, timeout=timeout, headers=request_headers()
+            ) as response:
                 response.raise_for_status()
                 n_bytes = 0
                 with target.open('wb') as handle:
@@ -140,7 +169,10 @@ def _get_json(
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
-            response = requests.get(url, params=params, timeout=timeout)
+            _pace(DEFAULT_REQUEST_INTERVAL_S)
+            response = requests.get(
+                url, params=params, timeout=timeout, headers=request_headers()
+            )
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict) and data.get('error'):

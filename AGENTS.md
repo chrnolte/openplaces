@@ -92,7 +92,19 @@ repository.
      deterministic rule set with no learned parameters).
   3. Detecting records *internally inconsistent* with their own source's
      mapping/address data, grouping them, and normalizing the group.
-  A new feature that does one of these three things, in this domain,
+  4. A **cascading match that falls through to fuzzy matching**, scores the
+     resulting link with a strength indicator, *calibrates that scorer from
+     the links it just made*, and then detects and removes an incorrect
+     earlier link (Black Knight US10606854B2, in force to 2038; method and
+     CRM claims, so no hardware recitation saves a library). This is the
+     shape closest to what `openplaces` already does — it normalizes to a
+     comparable form, matches in tiers, and uses `rapidfuzz`. What keeps it
+     clear is the back half: no per-link strength score, nothing that
+     re-tunes a scorer after linking, nothing that unlinks. **Do not add
+     link-confidence scoring that learns from its own past links**, and do
+     not add an unlink-on-reconsideration step, without a specific check
+     against that patent.
+  A new feature that does one of these four things, in this domain,
   deserves a specific check against that sub-area before merging — not a
   general "we checked patents once" assumption. `openplaces`'s existing
   `parcel_id_local`/`geo_id` matching is deterministic string/geometry
@@ -100,7 +112,12 @@ repository.
   address-imputation step, which is why it reads as a different mechanism
   from all three shapes above — that reasoning doesn't automatically carry
   over to a new ML-based imputation or inference feature, which may
-  resemble shape 2 much more closely by design.
+  resemble shape 2 much more closely by design. If ML matching is ever
+  added, note that every independent claim of the shape-2 patent
+  (US11372900B1) needs *two* trained models — one scoring record-pair
+  matches, a second identifying a "context" that then selects the cleansing
+  rules. A single match-scoring model does not read on it; adding the
+  context model and context-selected rules is what would.
 - **Process for a new imputation/inference/matching/valuation feature
   touching parcel, property, or transaction data**: (1) identify the
   specific technique, not just the goal, and check whether it resembles
@@ -218,7 +235,7 @@ pytest -k "test_name"                 # single test by name
 Layer 0  core
 Layer 1  config, path, diagnostics
 Layer 2  recipe
-Layer 3  io/__init__, geo/address
+Layer 3  io/__init__, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
 Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/delivery, io/transform, io/cleanup
@@ -426,11 +443,15 @@ tables. Enrichment adds observations or model outputs without selecting a
 canonical value, reconciling disagreements, or filling unrelated gaps.
 
 - `attributes.py` — registered evidence-producing steps (`classify_roof_shape`,
-  `classify_occupancy`, `detect_n_stories`); image-based steps build their
-  input from the metadata of the recipe's `image_recipe` (per-building imagery
-  ingested at admin level 4; admin units without imagery are skipped). Missing
-  imagery is fetched automatically on first ingest; `redownload` only re-fetches
-  images that already exist on disk (cached images are otherwise reused).
+  `classify_occupancy`, `detect_n_stories`); image-based steps fetch the
+  recipe's `image_recipe` imagery **in memory, per run**
+  (`io.ingester.image_ingester.fetch_images_in_memory`) and keep only the
+  predictions. There is no image ingest stage and no image cache: Google's
+  Static API policy prohibits pre-fetching, indexing, storing, or caching
+  its content, so an image recipe declares no `save_to` and carries camera
+  configuration only. The cost is that every enrichment pass re-fetches, and
+  for Street View re-pays; a step whose scraper cannot initialize warns and
+  leaves its evidence columns empty rather than aborting the batch.
 - `buildings.py` — `enrich_footprints_from_reference_buildings`: attach an
   already-built reference *building* entity's attributes onto footprints,
   each footprint taking the single reference building it overlaps most by
@@ -669,4 +690,42 @@ interchangeable). Relational counts use `n_{counted}s_per_{grouping}`
 ### Configuration (`config.py`)
 
 `cfg` (singleton `OpenPlacesConfig`) holds directory paths (`data_root`, `dir_core`,
-`dir_external`, `dir_heap`, etc.) and CRS.
+`dir_external`, `dir_heap`, etc.), CRS, and the installation's `identity`.
+
+### Talking to other people's servers
+
+Two rules govern every outbound request, both of them about openplaces not
+speaking for its user.
+
+**Identify yourself.** `cfg.user_agent` builds
+`openplaces/{version} (+https://openplaces.io; {nickname}@{place})` from the
+per-user `identity` block, appending `; agent: claude-code` when
+`detect_agent()` finds an AI agent driving the run. Unset reports
+`unidentified`. `io.request_headers()` is the single accessor; use it rather
+than passing headers by hand, and **never** send a browser User-Agent -- a
+test (`tests/core/test_request_identity.py`) fails the build on any
+`Mozilla/` string in `src/`. The identity is asked for at first use
+(`_interactive_setup`) and during `dev.py setup`, which cannot import the
+package it is installing and so shells out to
+`python -m openplaces.config --set-identity`. That is also why the first-use
+prompt triggers on a missing `directories` key rather than a missing file.
+
+**Never agree to terms on the user's behalf.** A source behind a
+click-through gate goes through `io.consent.require_terms_consent`, which
+asks the operator and raises `TermsNotAcceptedError` when it cannot ask.
+A person accepts or nothing is accepted: **`accept_terms: true` in a recipe
+raises `ConsentNotDelegableError`**, because a committed public recipe would
+bind everyone who runs it to terms they never read -- refused outright, not
+downgraded to a prompt, so a recipe that reads as though consent were handled
+cannot ship. `accept_terms: false` *is* honored -- declining only costs a
+download, so a recipe author may do it.
+A standing "always accept this source" exists but only as an answer given
+at the prompt (`[a]`), stored per user in `consent.terms` in their own
+config (`config.get_terms_consent` / `set_terms_consent`). An answer is also
+remembered per source for the process, so a year-partitioned recipe asks
+once. Apply the same asymmetry to any future decision with legal
+consequences: a recipe may refuse for a user, never consent for them.
+
+`arcgis_rest_scraper` additionally paces itself (`DEFAULT_REQUEST_INTERVAL_S`,
+module-level so the whole paging loop is bounded), because backing off only
+after a failure means the load that caused it was already applied.

@@ -16,6 +16,25 @@ DEFAULT_ENV_NAME = 'openplaces'
 GPU_ENV_NAME = 'openplaces-amd'
 GPU_MIN_DRIVER = '26.2.2'  # Adrenalin release required by the AMD GPU wheels
 
+# Shown before asking for the identity that goes in openplaces' User-Agent.
+# Duplicated from openplaces.config.IDENTITY_NOTICE rather than imported:
+# dev.py runs before the environment exists, so it cannot import the
+# package it is about to install. openplaces.config is the authority; keep
+# the two in step when either changes.
+IDENTITY_NOTICE = """\
+openplaces downloads from public servers run by other people -- county GIS
+portals, state agencies, national statistical offices. Every request it
+makes carries a User-Agent naming the project, so an operator seeing
+unexpected load knows what the traffic is and has someone to ask.
+
+You are not registering anything and nothing is sent to this project. Pick
+any nickname and place you are willing to have appear in a server log; a
+work handle and an institution or city is the usual choice. Leave it blank
+to stay unidentified.
+
+  openplaces/0.1.0 (+https://openplaces.io; ada@some-university)\
+"""
+
 _SITECUSTOMIZE = """\
 import ctypes
 import os
@@ -366,6 +385,50 @@ def install_sitecustomize_hook(env_name):
     print(f'✓ sitecustomize.py → {dest}')
 
 
+def ask_identity():
+    """Ask how this installation should identify itself to data providers.
+
+    Returns
+    -------
+    tuple of str
+        (nickname, place), either possibly empty. An empty nickname skips
+        the place question: half an identity is not worth a second prompt.
+    """
+    print('\n' + '-' * 70)
+    print('How should openplaces identify itself when downloading data?\n')
+    print(IDENTITY_NOTICE)
+    print()
+
+    nickname = input('Nickname (Enter to stay unidentified): ').strip()
+    place = input('Place (university, city, or org): ').strip() if nickname else ''
+    return nickname, place
+
+
+def save_identity(env_name, nickname, place):
+    """Write the identity into the installed package's user config.
+
+    Delegated to the package rather than written here, so dev.py never has
+    to know where openplaces keeps its config or how the file is shaped.
+    """
+    print('\nRecording how openplaces identifies itself...')
+    # -W silences runpy's "found in sys.modules" note: openplaces/__init__
+    # imports config eagerly (to trigger first-use setup), which makes
+    # `-m openplaces.config` warn. Scoped to that one warning from that
+    # one module, so nothing else is hidden.
+    # check=False: failing to record a nickname must not abort an otherwise
+    # finished install, and the message below says how to set it later.
+    if not run(
+        f'{PKG_MGR} run -n {env_name} python -W ignore::RuntimeWarning:runpy '
+        f'-m openplaces.config --set-identity "{nickname}" "{place}"',
+        check=False,
+    ):
+        print('✗ Could not record the identity; set it later with:')
+        print('    python -m openplaces.config --set-identity NICKNAME PLACE')
+    elif not nickname:
+        print('Staying unidentified. Set one later with:')
+        print('    python -m openplaces.config --set-identity NICKNAME PLACE')
+
+
 def setup():
     """Create conda environment and install package in editable mode."""
 
@@ -401,6 +464,10 @@ def setup():
         .lower()
     )
 
+    # Asked here, with the other setup questions, but written after the
+    # environment exists (the package owns where its config lives).
+    nickname, place = ask_identity()
+
     print(f'\nUsing package manager: {pkg_mgr}')
     print(f'Creating environment: {env_name}')
 
@@ -428,6 +495,8 @@ def setup():
 
     print('\nInstalling pre-commit hooks...')
     run(f'{PKG_MGR} run -n {env_name} pre-commit install')
+
+    save_identity(env_name, nickname, place)
 
     if qgis_response == 'y':
         install_qgis()
@@ -745,6 +814,10 @@ def main():
         'build': ('Build package for distribution', build),
         'list': ('List all conda/mamba environments', list_envs),
         'state': ('Show the state of the recipe catalog', catalog_state),
+        'identity': (
+            'Set how openplaces identifies itself to data providers',
+            lambda: save_identity(get_env_name(), *ask_identity()),
+        ),
         'qgis': ('Install QGIS processing scripts', install_qgis),
         'launcher': (
             'Install command to launch openplaces from the terminal',

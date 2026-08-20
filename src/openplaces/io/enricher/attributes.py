@@ -8,37 +8,16 @@ import warnings
 
 import pandas as pd
 
-from openplaces.core.schema import AdminId
 from openplaces.io.enricher import EnrichState, _register
 from openplaces.io.enricher.detectors.checkpoint import (
     PredictionCheckpoint,
     local_checkpoint_path,
     prune_local_checkpoints,
 )
-from openplaces.io.readers import get_admin_ids
 from openplaces.io.scrapers.types import ImageSet
 from openplaces.recipe import (
     get_output_path,
 )
-
-
-def _image_admin_ids(state: EnrichState, image_save_level: int) -> list[str]:
-    """List the admin units whose image metadata should be read.
-
-    Defaults to all children of the processed admin unit at the image
-    save level; restricted to `state.image_admin_ids` when a sub-level
-    enrichment run was requested.
-    """
-    if not state.image_admin_ids:
-        return get_admin_ids(image_save_level, state.admin_id)
-    child_ids: list[str] = []
-    for admin_id in state.image_admin_ids:
-        admin_id = AdminId(admin_id)
-        if admin_id.get_level() < image_save_level:
-            child_ids += get_admin_ids(image_save_level, admin_id)
-        else:
-            child_ids.append(str(admin_id))
-    return child_ids
 
 
 def _build_image_set(state: EnrichState, image_recipe: str | None) -> ImageSet:

@@ -6,8 +6,10 @@ import openplaces.api as _api
 # import. Public API names (get_entities, curate, ...) resolve lazily via
 # __getattr__ below so importing openplaces does not pull the whole pipeline.
 from .config import cfg as cfg
+from .core.constants import VERSION
 
-__version__ = '0.1.0'
+__version__ = VERSION
+
 __author__ = 'Christoph Nolte'
 __email__ = 'chrnolte@bu.edu'
 
