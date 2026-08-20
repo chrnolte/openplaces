@@ -1,0 +1,375 @@
+# Recipe: "Property Assessment Data from Local Assessment Rolls" --
+# ORPTS's (the Dept. of Taxation and Finance's Office of Real
+# Property Tax Services) statewide assessment-roll extract, published
+# on the Open-NY portal (data.ny.gov, Socrata dataset id
+# `7vem-aaz7`).
+#
+# NOTE on county coverage vs. the companion parcel-geometry recipe --
+# this is the OPPOSITE asymmetry from US-NY_parcel-nysgis-2026.
+# Verified via a live SODA groupby query (`$select=county_name,
+# count(*)&$group=county_name`, filtered to the current roll_year):
+# exactly 57 distinct county_name values, i.e. every NY county
+# EXCEPT the five NYC counties (Bronx, Kings, New York, Queens,
+# Richmond), which are absent from this dataset entirely. The
+# dataset's own metadata states this explicitly: "The dataset
+# includes assessment rolls for all cities and towns, except New
+# York City. (For New York City assessment roll data, see NYC Open
+# Data.)" It further states, in its "Disclaimers" field, that
+# "Village and New York City Assessment Rolls are not included" --
+# i.e. a village that assesses separately from its containing
+# town/city is also excluded, though that only affects sub-town
+# (admin4) coverage, not this admin3 (county) recipe's scope.
+# Meanwhile the geometry recipe DOES include NYC (its 5 counties
+# substituted from NYC MapPluto, not ORPTS). So the two NY sources'
+# coverage differs on NYC in opposite directions: property/assessment
+# data here for 57 non-NYC counties, parcel geometry there for 38
+# counties including all 5 NYC boroughs. Neither recipe alone
+# reaches all 62 counties, and no single NY source does.
+#
+# Row/year mechanics: this Socrata dataset is NOT resnapshotted in
+# place -- it accumulates one roll_year's rows on top of the last
+# (Socrata `$select=roll_year,count(*)&$group=roll_year` shows
+# 2021-2025 all present simultaneously, 23,580,051 rows total, plus
+# a single stray malformed roll_year="23" row -- a one-row data-entry
+# artifact in the source, not filtered here since it is excluded by
+# the roll_year=2025 filter anyway). download_url below filters to
+# roll_year=2025 (4,727,130 rows, verified via
+# `$select=count(*)&$where=roll_year=2025`), the newest complete
+# year as of this session ("Posting Frequency: Annually" per the
+# dataset's own custom metadata). A future refresh must bump both
+# this filter and `version:` together, or ingest will silently keep
+# re-reading a stale year.
+#
+# Bulk vs REST (Phase 3): confirmed the SODA `/resource/{id}.csv`
+# endpoint honors both `$where` and a large `$limit` (tested a
+# `$where=roll_year=2025&$limit=5000000` request; it streamed real,
+# roll_year=2025-only rows -- not the unfiltered `/api/views/{id}/
+# rows.csv` bulk export, which would ship all 23.58M rows across
+# every roll_year with no way to select just one). No separate
+# "live" service exists to diverge from here -- this SODA endpoint
+# *is* the source, so no equivalence test applies (same reasoning as
+# US-NY_parcel-nysgis-2026's bulk-vs-REST note).
+#
+# Schema (this session, live SODA queries against roll_year=2025
+# unless noted): 4,727,130 rows across 57 counties.
+#   Field meanings below are ORPTS's own published Data Dictionary
+#   PDF (attached to the dataset), not guessed from field names.
+#   swis_code + print_key_code (-> parcel_id_assessor, concatenated
+#     with no separator) -- format and population verified directly
+#     against a sample of the companion parcel-geometry recipe's
+#     SWIS_PRINT_KEY_ID field for the same municipality (both
+#     "999999##.##-#-#", fabricated) -- see that recipe's join-key
+#     note for why SWIS_PRINT_KEY_ID's format, not the geometry
+#     layer's better-populated SWIS_SBL_ID, is the one this recipe
+#     needs to match.
+#   property_class (-> use_group_code) is the same NYS ORPTS 3-digit
+#     Property Type Classification the geometry recipe's PROP_CLASS
+#     uses (210 = one-family year-round residence, etc.);
+#     property_class_description (-> use_group) is its literal text
+#     label, mapped alongside the code per the harmonizer's
+#     [use_group, use_group_code] coalescing convention.
+#   deed_book + page (-> last_sale_book_page, concatenated) --
+#     ORPTS's Data Dictionary describes these plainly as "when deeds
+#     are recorded, they are assigned a book/page number... used...
+#     to locate the deed," i.e. the current deed of record, not
+#     explicitly labeled as the *most recent sale's* deed, though
+#     that is the conventional RPS meaning; mapped with that caveat.
+#   No sale price or sale date field exists anywhere in this
+#     dataset -- it is an assessment/valuation roll, not a sales
+#     roll (NY's actual sales data lives in a different, non-bulk
+#     tool; see the "transaction recipe" note below).
+#   No explicit numeric sentinel (e.g. "0 = no value") is documented
+#     for full_market_value/assessment_land/assessment_total/*_taxable
+#     -- unlike the MN metrogis recipe's EMV_LAND/EMV_BLDG, a genuine
+#     $0 is possible here (ORPTS's own Roll Section 8, "Wholly Exempt
+#     Property," legitimately carries $0 taxable values), so no
+#     null_if_equal transformation is applied to these fields.
+#
+# Fields left unmapped for want of a registry attribute, or because
+# no single existing field can hold them without mis-homing:
+#   - municipality_code, municipality_name, school_district_code,
+#     school_district_name -- no admin4-name or school-district
+#     registry field exists yet (same gap already documented on the
+#     companion geometry recipe and on US-MN_parcel-metrogis-2026).
+#   - tax_class -- a "Homestead"/"Non-Homestead" classing code used
+#     only in municipalities that class-assess; no registry field.
+#   - roll_section -- ORPTS's own dictionary gives its full code
+#     vocabulary (1 ordinary taxable, 3 state land, 5 special
+#     franchise, 6 utilities/non-ceiling railroad, 7 ceiling
+#     railroad, 8 wholly exempt; sections 2/4 unused); no registry
+#     field for this roll-section concept (mirrors the geometry
+#     recipe's ROLL_SECTION gap).
+#   - front, depth, bank, grid_coordinates_east, grid_coordinates_north
+#     -- no registry field (same gap as the geometry recipe's FRONT/
+#     DEPTH/GRID_EAST/GRID_NORTH).
+#   - additional_owner_2_*, additional_owner_3_* -- the registry has
+#     owner_name/owner_name_2 (primary + one additional owner) but no
+#     slot for a 3rd or 4th owner.
+#   - mailing_address_country -- no registry field for an owner
+#     mailing country (nearly always "US" in practice; low value).
+#   - exemption_code_1..10, exemption_application_number_1..10,
+#     exemption_amount_county/city/school_1..10 (50 columns in
+#     total, 10 repeating exemption-program slots x {code,
+#     application-purpose, county amount, city amount, school
+#     amount}) -- a real, sizeable gap, called out explicitly rather
+#     than silently dropped: the registry's land_value_exempt/
+#     improvement_value_exempt are single aggregate dollar figures
+#     that don't decompose into per-program codes or per-taxing-
+#     jurisdiction (county/city/school) amounts the way this source
+#     does. No safe partial mapping exists without inventing a
+#     registry shape this recipe shouldn't decide unilaterally.
+#   - county_taxable_value, town_taxable_value, school_taxable --
+#     each a single post-exemption taxable total for one taxing
+#     jurisdiction; distinct from the registry's land_value_taxable/
+#     improvement_value_taxable (which split land vs. improvement,
+#     not jurisdiction) -- no matching registry shape, same reasoning
+#     as the exemption columns above.
+#
+# Personal data note (Schema, never records -- see AGENTS.md and
+# ../../../README.md): this source's primary_owner_*/
+# additional_owner_*_*/mailing_address_* columns are real per-parcel
+# owner names and mailing addresses -- New York publishes them as
+# public record. Only the column *names* and aggregate population
+# counts appear above; no sampled owner name, address, or parcel id
+# value from this source was copied into this file.
+#
+# On a NY transaction/sales recipe -- deliberately NOT written.
+# ORPTS's own "Municipal Data Portal" (www.tax.ny.gov/pit/property/
+# munidataportal.htm) names a "Sales Web" tool covering "10 years of
+# property sales and transfers for all of New York State, except New
+# York City," which sounded promising, but its own published FAQ
+# text states plainly: "To download the results of a search as an
+# Excel file, scroll to the bottom of the screen and select Download
+# Search Results." That is a per-search, session-based Excel export
+# from an interactive ColdFusion search form (hosted on
+# orpts.tax.ny.gov, whose TLS endpoint would not complete a plain
+# HTTPS handshake from this session's network at all -- a separate
+# reachability problem on top of the access-pattern one), not a
+# stable bulk file or REST API `download_url`/`download_url_scraper`
+# could target. This is exactly the "search-only web UI with
+# per-search Excel export" case the task instructions warned would
+# not work as an automated source, so it is skipped rather than
+# forced into a recipe that could never actually be ingested
+# unattended. If ORPTS ever publishes SalesWeb as a bulk extract or a
+# stable query API, revisit.
+#
+# License: this dataset carries no dataset-level license in its own
+# Socrata metadata (`license`/`licenseId` both null), so the
+# site-wide Open-NY Terms of Use governs (fetched and read this
+# session, PDF dated 2013-03-08, still the current terms as of this
+# writing): a State-granted "non-exclusive, revocable license" to
+# freely use Content, explicitly with no attribution requirement, no
+# share-alike, no re-posting of license terms, and no pre-approval
+# needed for reuse -- described in the terms' own preamble as "among
+# the least restrictive of any terms of service." Standard
+# as-is/no-warranty disclaimer otherwise.
+
+description: >-
+  New York State's local assessment rolls (57 of 62 counties, all
+  except New York City) from ORPTS: assessed/market values, owner
+  and mailing info, property class, and deed reference.
+
+admin_id: US-NY
+
+entity:
+  entity_type: property
+  source:
+    source_id: orpts
+    portal_url: "https://data.ny.gov/Government-Finance/Property-Assessment-Data-from-Local-Assessment-Ro/7vem-aaz7"
+    download_url: "https://data.ny.gov/resource/7vem-aaz7.csv?$where=roll_year=2025&$limit=6000000"
+    license: "OPEN-NY Terms of Use (revocable; no attribution/share-alike/pre-approval)"
+    terms_url: "https://data.ny.gov/download/77gx-ii52/application%2Fpdf"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "ny_property_assessment_roll_2025.csv"
+
+csv_dtype:
+  swis_code: str
+  print_key_code: str
+  municipality_code: str
+  school_district_code: str
+  deed_book: str
+  page: str
+  mailing_address_zip: str
+  mailing_address_number: str
+  mailing_address_po_box: str
+  parcel_address_number: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: county_name
+  admin_id_crosswalk:
+    # Scoped to the 57 non-NYC counties only (see header) --
+    # requesting one of the 5 NYC admin3 ids raises a clear KeyError
+    # rather than writing a silent empty file (same posture as
+    # US-NY_parcel-nysgis-2026's 38-county scope, and
+    # US-MN_parcel-metrogis-2026's 7-county scope).
+    recipe_id: "US-NY_property-orpts-2026_admin3-crosswalk"
+
+columns:
+  tax_year: roll_year
+  parcel_id_admin4: print_key_code
+  use_group_code: property_class
+  use_group: property_class_description
+  address_number: parcel_address_number
+  address_street_name: parcel_address_street
+  address_street_type: parcel_address_suff
+  owner_city: mailing_address_city
+  owner_admin2_id_admin1: mailing_address_state
+  owner_postal_code: mailing_address_zip
+  market_value: full_market_value
+  land_value: assessment_land
+  total_value: assessment_total
+
+columns_to_categorical:
+  - use_group_code
+  - use_group
+  - owner_admin2_id_admin1
+
+transformations:
+  # Raw join key: SWIS + print key, no separator (see header note on
+  # matching the companion geometry recipe's SWIS_PRINT_KEY_ID
+  # format).
+  - type: string
+    operation: concat
+    inputs: [swis_code, print_key_code]
+    output: parcel_id_assessor
+
+  # Owner name assembled from its four separately-filed parts.
+  # concat fills a missing part with '' before joining, so a blank
+  # MI/suffix leaves a double space rather than "None"; collapsed
+  # with two replace passes plus a final strip (handles up to the
+  # worst case of two adjacent empty parts).
+  - type: string
+    operation: concat
+    inputs:
+      [
+        primary_owner_first_name,
+        primary_owner_mi,
+        primary_owner_last_name,
+        primary_owner_suffix,
+      ]
+    args: {sep: " "}
+    output: owner_name
+  - type: unary
+    operation: replace
+    input: owner_name
+    args: {old: "  ", new: " "}
+    output: owner_name
+  - type: unary
+    operation: replace
+    input: owner_name
+    args: {old: "  ", new: " "}
+    output: owner_name
+  - type: unary
+    operation: strip
+    input: owner_name
+    output: owner_name
+  # concat/strip leave a row with all four parts empty as '', not a
+  # null -- restore a real null (verified pattern, see
+  # last_sale_book_page's "-" note below).
+  - type: unary
+    operation: null_if_equal
+    input: owner_name
+    args: {value: ""}
+    output: owner_name
+
+  # Second owner, same assembly.
+  - type: string
+    operation: concat
+    inputs:
+      [
+        additional_owner_1_first,
+        additional_owner_1_mi,
+        additional_owner_1_last_name,
+        additional_owner_1_suffix,
+      ]
+    args: {sep: " "}
+    output: owner_name_2
+  - type: unary
+    operation: replace
+    input: owner_name_2
+    args: {old: "  ", new: " "}
+    output: owner_name_2
+  - type: unary
+    operation: replace
+    input: owner_name_2
+    args: {old: "  ", new: " "}
+    output: owner_name_2
+  - type: unary
+    operation: strip
+    input: owner_name_2
+    output: owner_name_2
+  - type: unary
+    operation: null_if_equal
+    input: owner_name_2
+    args: {value: ""}
+    output: owner_name_2
+
+  # Owner mailing street line only (city/state/zip are separately
+  # mapped registry fields, see columns: above); a PO-box-only
+  # mailing address (no street) leaves this blank -- see
+  # mailing_address_po_box below.
+  - type: string
+    operation: concat
+    inputs:
+      [
+        mailing_address_prefix,
+        mailing_address_number,
+        mailing_address_street,
+        mailing_address_suff,
+      ]
+    args: {sep: " "}
+    output: owner_address
+  - type: unary
+    operation: replace
+    input: owner_address
+    args: {old: "  ", new: " "}
+    output: owner_address
+  - type: unary
+    operation: strip
+    input: owner_address
+    output: owner_address
+  - type: unary
+    operation: null_if_equal
+    input: owner_address
+    args: {value: ""}
+    output: owner_address
+
+  # PO box as the owner_address continuation line, for the mailing
+  # addresses that have no street (box-only). A single-input concat
+  # still turns a missing value into '' rather than a null.
+  - type: string
+    operation: concat
+    inputs: [mailing_address_po_box]
+    output: owner_address_2
+  - type: unary
+    operation: null_if_equal
+    input: owner_address_2
+    args: {value: ""}
+    output: owner_address_2
+
+  # Deed book/page of the current deed of record. Neither book nor
+  # page recorded becomes the literal "-", not a null (verified on
+  # Hamilton, matching the same artifact on the companion geometry
+  # recipe's BOOK/PAGE concat) -- null_if_equal restores a real null.
+  - type: string
+    operation: concat
+    inputs: [deed_book, page]
+    args: {sep: "-"}
+    output: last_sale_book_page
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_book_page
+    args: {value: "-"}
+    output: last_sale_book_page
+
+# Standardized matching key -- see the companion geometry recipe's
+# note for why `kind: parcel` (not `tax`) is used here.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
