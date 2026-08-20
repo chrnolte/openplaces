@@ -13,6 +13,19 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: nhgis
+    # Terms verified 2026-08-20 at the terms_url below, and they are a
+    # "legally binding agreement", not an open licence: "You will not
+    # redistribute the data without permission." A subset may be
+    # published to meet a journal requirement; anything else, free or
+    # commercial, needs NHGIS approval. Citation required:
+    # IPUMS NHGIS, University of Minnesota, www.nhgis.org
+    #
+    # Third source found with terms narrower than the Apache-2.0 grant,
+    # after GADM and GISCO. Matters most where NHGIS feeds a published
+    # admin spine rather than a local build.
+    license: "no redistribution without permission; citation required"
+    terms_url: "https://www.nhgis.org/citation-and-use-nhgis-data"
+    redistribution_restricted: true
     portal_url: "https://data2.nhgis.org/main"
   version: 2020
 

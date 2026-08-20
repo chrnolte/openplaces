@@ -19,6 +19,15 @@ entity:
   entity_type: admin
   source:
     source_id: ons
+    # Terms verified 2026-08-20: everything on the Open Geography Portal
+    # is Open Government Licence v3.0 except where stated. Re-use is free
+    # including commercially, but source accreditation is required:
+    # "Source: Office for National Statistics licensed under the Open
+    # Government Licence v.3.0", plus "Contains OS data (c) Crown
+    # copyright and database right [year]" for boundary products.
+    license: "OGL-UK-3.0"
+    terms_url: "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+    redistribution_restricted: false
     portal_url: "https://geoportal.statistics.gov.uk/"
     # Single unpaginated query: 4 features, well under the layer's
     # maxRecordCount, so no scraper/pagination is needed.

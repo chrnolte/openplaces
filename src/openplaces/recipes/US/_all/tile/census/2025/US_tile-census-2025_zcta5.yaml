@@ -9,6 +9,13 @@ entity:
   entity_type: tile
   source:
     source_id: census
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    # Checked 2026-08-20: the agency publishes no terms page because it
+    # does not need one.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
     portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
     download_url: "https://www2.census.gov/geo/tiger/TIGER2025/ZCTA520/tl_2025_us_zcta520.zip"
   version: 2025

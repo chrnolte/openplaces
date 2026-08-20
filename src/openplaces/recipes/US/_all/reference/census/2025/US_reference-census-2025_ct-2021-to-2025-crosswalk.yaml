@@ -22,6 +22,13 @@ dataset:
   theme: reference
   source:
     source_id: census
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    # Checked 2026-08-20: the agency publishes no terms page because it
+    # does not need one.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
     portal_url: "https://www.census.gov/programs-surveys/geography/technical-documentation/county-changes/2020.html"
     download_url: "https://www2.census.gov/geo/docs/reference/ct_change/ct_cou_to_cousub_crosswalk.xlsx"
   version: 2025

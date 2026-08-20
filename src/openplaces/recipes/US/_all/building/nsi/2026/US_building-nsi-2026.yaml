@@ -15,6 +15,13 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: nsi
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    # Checked 2026-08-20: the agency publishes no terms page because it
+    # does not need one.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
     # Link to portal with metadata
     portal_url: "https://www.hec.usace.army.mil/confluence/nsi"
     # The bulk Download Tool (nsi.sec.usace.army.mil/downloads/) does not yet

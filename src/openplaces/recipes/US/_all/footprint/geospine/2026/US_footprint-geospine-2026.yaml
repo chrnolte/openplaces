@@ -21,6 +21,14 @@ entity:
   entity_type: footprint
   source:
     source_id: geospine
+    # Not an external source: this is an openplaces pipeline product, so
+    # it carries whatever its inputs carry and nothing of its own. The
+    # applicable terms are derived per output by io.bundle_terms, which
+    # walks the dependency graph rather than reading a licence here.
+    # Left unrestricted-unknown deliberately: "depends on the inputs" is
+    # not "unrestricted".
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
   version: 2026
 
 process_by:

@@ -7,6 +7,13 @@ dataset:
   theme: population
   source:
     source_id: acs
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    # Checked 2026-08-20: the agency publishes no terms page because it
+    # does not need one.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
     portal_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/"
     # The {table} placeholder is dynamically replaced by values in 'download_by'
     download_url: "https://www2.census.gov/programs-surveys/acs/summary_file/2024/table-based-SF/data/5YRData/acsdt5y2024-{table}.dat"

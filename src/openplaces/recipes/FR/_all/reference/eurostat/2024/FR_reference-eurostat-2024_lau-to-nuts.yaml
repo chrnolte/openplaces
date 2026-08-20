@@ -19,6 +19,20 @@ dataset:
   theme: reference
   source:
     source_id: eurostat
+    # Terms verified 2026-08-20 at the terms_url below, and they are
+    # NOT open: using GISCO administrative-unit boundaries requires
+    # accepting that "the data will not be used for commercial purposes"
+    # and that "(c) EuroGeographics for the administrative boundaries"
+    # is visible on any publication. Commercial use needs a separate
+    # agreement with EuroGeographics.
+    #
+    # This is the same conflict shape as GADM: openplaces is Apache-2.0,
+    # which grants commercial use, so any output carrying this geometry
+    # offers rights the project does not hold. See
+    # plans/legal-compliance-open-items-and-counsel-brief.md.
+    license: "non-commercial; attribution to EuroGeographics required"
+    terms_url: "https://ec.europa.eu/eurostat/web/gisco/geodata/administrative-units"
+    redistribution_restricted: true
     portal_url: "https://ec.europa.eu/eurostat/web/nuts/local-administrative-units"
     # One workbook covers every NUTS/EFTA/candidate country at once, one
     # sheet per country (selected via `sheet_name` below).
