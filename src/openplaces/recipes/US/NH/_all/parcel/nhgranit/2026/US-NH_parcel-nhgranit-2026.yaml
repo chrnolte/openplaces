@@ -1,0 +1,247 @@
+# Recipe: New Hampshire statewide parcel mosaic ("NH Parcel Mosaic
+# - Polygons"), compiled and managed by the NH Department of Revenue
+# Administration (DRA) for property-tax equalization, hosted by NH
+# GRANIT (UNH).
+#
+# Source discovery (Phase 1): granit.unh.edu and nhgeodata.unh.edu
+# are both ArcGIS Hub sites whose page content is rendered
+# client-side (confirmed: fetching either host's raw HTML returns
+# only the Hub JS shell -- no data links visible). The dataset was
+# found instead via the ArcGIS Online item-search API
+# (`https://www.arcgis.com/sharing/rest/search?q=NH+Parcel+Mosaic`),
+# which surfaced "NH Parcel Mosaic - Polygons" (item
+# 46ef5d95fd1848498d8bfb95b1010a34, owner `NHGRANIT`), backing a
+# hosted FeatureServer at `nhgeodata.unh.edu`. The item is marked
+# `listed: false` in its own AGOL metadata, so it does not surface
+# through the Hub site's own "browse datasets" UI even though it is
+# publicly queryable -- worth knowing if a future search only tries
+# the rendered site and concludes nothing exists.
+#
+# NOTE on the "subset of ~50 attributes" warning in the item's own
+# description ("The full project data set includes the GIS parcel
+# mosaic layer and a linked CAMA database with approximately 50
+# attributes per parcel. A subset of those attributes is included
+# here."): CONFIRMED by inspecting both this FeatureServer's
+# "Parcels" layer (id 1, 17 fields) and its related "Cama" table (id
+# 3, 709,366 rows, 1:many via `parceloid` because a multi-structure
+# parcel gets one Cama row per structure "card") directly. Neither
+# carries land value, improvement value, total value, last sale
+# price or date, year built, zoning code, story count, dwelling
+# count, or lot size/acreage -- this source has NONE of the
+# assessment-roll fields the prior (unverified) research flagged as
+# unconfirmed. What remains: an owner name, a single combined site
+# address string, and a land-use code pair, plus parcel/town/county
+# identifiers. This is a materially thinner attribute set than
+# Wisconsin's or Maryland's statewide parcel recipes.
+#
+# NOTE on bulk vs REST (Phase 3, the equivalence test): this item's
+# ArcGIS Hub bulk export
+# (`.../api/v3/datasets/46ef5d95fd1848498d8bfb95b1010a34_0/downloads/
+# data?format=geojson&spatialRefId=4326`) resolved immediately (an
+# 888MB GeoJSON, no 202/404 async wait) but was REJECTED: (a) it
+# holds 610,653 features against the live layer's own
+# `returnCountOnly` of 617,124 (1.05% short -- more than the "tens of
+# rows" snapshot-lag the acquiring-sources guide treats as
+# negligible); (b) its per-feature property set is missing
+# `StreetAddress`, `U_ID`, `DisplayId`, `LocalNBC` and `NBC`, all
+# present on the live layer's own field metadata
+# (`FeatureServer/1?f=json`); (c) `CountyID` is zero-padded ("04") in
+# the bulk file against the live layer's plain, unpadded value ("4")
+# -- a third, independent format mismatch. Field-population rates
+# for the fields the bulk file does carry were otherwise comparable
+# to the live layer (~97-98% for SLU/NH_GIS_ID/Name in both), so this
+# is not the "CAMA fields all null" trap seen elsewhere in this
+# repo -- just a stale, differently-formatted snapshot missing the
+# one field (site address) this recipe most wants. Uses
+# `arcgis_rest_scraper` against the live `FeatureServer/1` instead.
+#
+# NOTE on the related "Cama" table (layer id 3): inspected and NOT
+# joined in. Every one of its 34 fields either duplicates a field
+# already on the Parcels layer (`slu`/`sluc`/`slum`/`streetaddress`/
+# `name`/`townid`/`countyid`) or has no registry equivalent
+# (`map`/`mapcut`/`block`/`blockcut`/`lot`/`lotcut`/`unit`/`unitcut`/
+# `sub` -- Map-Lot-Sub broken into components already captured by
+# `displayid`; `camavendorid`, `cardcount`, `camacount` -- CAMA
+# system bookkeeping) -- except `sluc_desc` (a 29-category land-use
+# text label, 707,648/709,366 rows populated, 99.76%), which WOULD be
+# new information. Resolving it requires picking a winning Cama row
+# per parcel for the multi-structure (`cardcount` > 1) case, which
+# this ingest recipe does not attempt; `use_group_code` is mapped
+# from the Parcels layer's own `sluc` without a matching text label
+# as a result. The 29-category `sluc_desc` vocabulary (schema, not
+# records) is, for reference: Apt Bldg 5+ Units, Boatslip Only,
+# Commercial Condo, Commercial L&B, Commercial Land, Condominiumized
+# Land Site, Garage/Storage Unit, Industrial Condo, Industrial L&B,
+# Industrial Land, Mfg Housing With Land, Mfg Housing Without Land,
+# Mixed Use Cmcl/Ind L&B, Mixed Use Cmcl/Ind Land, Mixed Use Res/Cmcl
+# L&B, Mixed Use Res/Cmcl Land, Multi Family 2-4 Units, Non Res Bldg
+# Only, Res Bldg Only, Res Condo 2-4 Unit Bldg, Residential Land,
+# Single Family Home, Single Res Condo Unit, and five Unclass/Unk
+# variants.
+#
+# NOTE on `camayear` (Cama table): its only non-null distinct value
+# across the whole table is 16614 -- not a plausible year, so this
+# field is corrupted or mis-encoded upstream. Not that it matters
+# here (the Parcels layer has no tax-year field at all), but flagged
+# in case a future recipe joins the Cama table directly.
+#
+# NOTE on county crosswalk: `countyid` ("1".."10") is DRA's own
+# alphabetical county numbering, not a Census FIPS code (confirmed
+# live via the sibling Cama table's `countyname` field: 1=Belknap,
+# 2=Carroll, 3=Cheshire, 4=Coos, 5=Grafton, 6=Hillsborough,
+# 7=Merrimack, 8=Rockingham, 9=Strafford, 10=Sullivan -- this
+# happens to be the same alphabetical order NH's FIPS codes use
+# (33001, 33003, ... 33019) but is not numerically derivable from it
+# by a simple prefix or zero-pad the way Wisconsin's `PARCELFIPS`
+# is). A sidecar crosswalk CSV maps `countyid` directly to
+# `admin3_id`, mirroring Maryland's `JURSCODE` crosswalk, rather than
+# deriving a FIPS code by formula.
+#
+# NOTE on the join key (Phase 5): `NH_GIS_ID` is used as
+# `parcel_id_assessor` -- populated 616,920/617,124 (99.97%), the
+# best of the id-like candidates on this layer (`OID_1` is 0%
+# populated, a dead/legacy field; `PID` 616,859/617,124, 99.96%;
+# `DisplayId` 594,151/617,124, 96.3%; `U_ID` 601,416/617,124, 97.5%).
+# Schema note, not a real value: `NH_GIS_ID` is structured as
+# `{2-digit countyid}{4-digit townid}-{18-digit PID}` (e.g., in the
+# fabricated shape `04XXXX-999999999999999999`), so it is DRA's own
+# statewide-unique concatenation of the town-scoped `PID`. `PID`
+# alone is mapped separately to `parcel_id_admin4` (town-scoped,
+# matching the registry's own "unique within its admin-4 unit"
+# definition -- NH's local government and tax-billing unit is the
+# town, not the county). `DisplayId` is a dash-separated
+# Map-Lot-Sub rendering of the same `PID` (fabricated shape
+# `999-999-000`) and is mapped to `parcel_id_map`.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they are redundant or unreliable:
+#   - `OID_1` -- 0% populated (dead/legacy field, verified above).
+#   - `U_ID` -- an internal per-town sequence key (`{townid}-{seq}`),
+#     not a public-facing parcel identifier; no registry equivalent.
+#   - `LocalNBC`/`NBC` -- a local-code/statewide-code "neighborhood
+#     code" pair; no registry attribute for a neighborhood
+#     classification.
+#   - `SLUM` -- a further land-use modifier field alongside
+#     SLU/SLUC; its own distinct-value vocabulary was not sampled in
+#     this pass (out of scope given no registry slot exists for a
+#     third-level land-use modifier), and it was null in every
+#     hand-inspected sample row.
+#   - `admin3_name`/town name as a plain-text attribute: no
+#     `adminN_name`-shaped attribute exists in
+#     `core/attribute_registry.csv` (checked; `US-WI_parcel-wiscedu-
+#     v11`'s `admin3_name: CONAME` mapping is not actually backed by
+#     a registry row either -- flagged here as a pre-existing
+#     registry gap, not repeated in this recipe). The town/county
+#     assignment is still available through the admin-id crosswalk
+#     itself.
+#
+# Coverage: `countyid` is null for 15,708/617,124 rows (2.55%); these
+# same 15,708 rows are exactly the rows where `SLU`/`streetaddress`/
+# `Name` are also null (601,416 = 617,124 - 15,708 populated for all
+# three) -- i.e., about 2.5% of parcels statewide carry geometry only,
+# with no CAMA-derived attribution at all, consistent with the
+# item's own warning that "attributes may not be available for all
+# parcel polygons... particularly for multi-structure parcels." All
+# 10 NH counties are present (`countyid` 1-10, confirmed via a live
+# distinct-values query). 236 distinct `town` values were found
+# statewide (NH has 234 incorporated cities/towns plus a handful of
+# unincorporated northern-NH "grants"/"locations"/"purchases");
+# `town` capitalization is inconsistent across towns in the raw data
+# (e.g., proper case for some, all-caps for others) and is not
+# cleaned here -- harmonize-stage town assignment comes from the
+# admin-id crosswalk, not this field.
+#
+# Rejected sibling layers: "Parcel Points" (layer id 0, 617,065
+# point features, the same field set as Parcels -- appears to be a
+# representative-point rendering of the same parcel roll, for towns
+# where full polygon topology is thin) and "Additional Lines" (layer
+# id 2, 45,325 polyline features, geometry only, no CAMA-linked
+# attributes -- linework for areas without parcel polygons). Neither
+# adds attribute coverage beyond the polygon "Parcels" layer used
+# here.
+#
+# License: recorded from the item's own AGOL `licenseInfo` field
+# (fetched directly via the sharing REST API; the Hub's rendered
+# page is a client-side app and showed no policy text in this
+# research pass): "These data are for estimation/planning purposes
+# only and are not intended for legal use." No separate terms-of-use
+# page addressing redistribution was found; this is a
+# fitness-for-use disclaimer, not a redistribution statement, so
+# `redistribution_restricted` is left null rather than guessed.
+#
+# Validation performed: recipe loads via `get_recipe_by_id`; every
+# mapped column exists in `core/attribute_registry.csv` (checked
+# directly against the CSV). See the ingest-verification note added
+# after a real `op.ingest()` run (or, if that proved too slow, a
+# direct-API spot check) -- follow-up appended below once run.
+
+description: >-
+  New Hampshire statewide tax parcel mosaic (617k parcels, all 10 counties)
+  from NH GRANIT / NH DRA: geometry, owner name, address, and land-use code.
+
+admin_id: US-NH
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: nhgranit
+    portal_url: "https://www.arcgis.com/home/item.html?id=46ef5d95fd1848498d8bfb95b1010a34"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      "These data are for estimation/planning purposes only and are not
+      intended for legal use." (item licenseInfo; no separate terms page
+      found addressing redistribution)
+    terms_url: "https://www.arcgis.com/home/item.html?id=46ef5d95fd1848498d8bfb95b1010a34"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "nh_parcel_mosaic.geojson"
+
+scraper_options:
+  layer_url: "https://nhgeodata.unh.edu/hosting/rest/services/Hosted/CAD_ParcelMosaic/FeatureServer/1"
+  where: "1=1"
+  out_fields: "*"
+
+# One statewide REST download, chunked into per-county (admin3)
+# processing units via DRA's own countyid field. countyid is not a
+# FIPS code (see header), so it is crosswalked directly to admin3_id
+# via the sidecar CSV below rather than derived by formula.
+process_by:
+  admin_level: 3
+  admin_id_column: countyid
+  admin_id_crosswalk:
+    recipe_id: "US-NH_parcel-nhgranit-2026_admin3-crosswalk"
+    dtype: str
+
+columns:
+  parcel_id_admin2: nh_gis_id
+  parcel_id_admin4: pid
+  parcel_id_map: displayid
+  owner_name: name
+  address: streetaddress
+  use_group_code: sluc
+  use_subgroup_code: slu
+
+columns_to_categorical:
+  - use_group_code
+  - use_subgroup_code
+
+# Expose the statewide-unique NH_GIS_ID under the canonical name
+# parcel_id_assessor, so it is the raw key parcel_id_local derives
+# from (consistent with the WI/DC/MD/IN statewide recipes).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+# No bundled US_parcel_id-overrides.csv row exists for US-NH; falls
+# back to the default 'simple' conversion, which is safe here since
+# NH_GIS_ID is a fixed-shape, statewide-unique key with a single
+# internal dash and no other delimiters for 'simple' to collapse.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
