@@ -1,0 +1,352 @@
+# Recipe: Arkansas statewide parcel roll, from the Arkansas GIS
+# Office (AGISO)'s County Assessors Mapping Program (CAMP).
+#
+# Source discovery (Phase 1): the prior research handed to this recipe
+# named `geostor.arkansas.gov` and an FTP bulk drop
+# (`ftp://ftp.geostor.arkansas.gov/Public_Statewide/`). Neither checks
+# out today. `geostor.arkansas.gov` 301-redirects to `gis.arkansas.gov`
+# (GeoStor was rebranded "Arkansas Spatial Data Infrastructure", ASDI,
+# per the site's own "Programs" menu: "Arkansas Spatial Data
+# Infrastructure (previously GeoStor)"); the FTP host timed out on
+# every attempt in this session (20s connect timeout, both a plain
+# listing and a resolved hostname). The live catalog is a WooCommerce
+# shop at `gis.arkansas.gov` (product pages under `/product/...`, a
+# `/cart/`, a `/checkout/` -- all $0.00 "Downloadable Data" listings,
+# not a paid store). Found via the shop's own search
+# (`/?s=parcel&post_type=product`), which surfaced exactly two parcel
+# products: "Parcel Polygon- County Assessor Mapping Program (polygon)"
+# (SKU `PARCEL_POLYGON_CAMP`) and its point sibling "Parcel Centroid-
+# ... (point)" (SKU `PARCEL_CENTROID_CAMP`) -- not `CADAS_PARCEL_*` as
+# the prior (unverified) research guessed; that name does not appear
+# anywhere on the live site or service.
+#
+# Both products' pages name a live REST endpoint directly
+# (`gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/
+# Planning_Cadastre/FeatureServer/`), confirmed live: layer 6 is
+# `PARCEL_POLYGON_CAMP`, layer 0 is `PARCEL_CENTROID_CAMP`, both with
+# an identical attribute schema (the centroid layer carries one extra
+# `orig_fid` field). The polygon layer is used here, per this repo's
+# usual preference for the richer geometry when both exist; the
+# centroid layer is redundant with it, not a separate recipe.
+#
+# NOTE on bulk vs REST (Phase 3): this layer's own ArcGIS Online item
+# (`a137c0ad109e41a99f4d88ca96fbdc2a`, owned by AGISO's
+# `andrew.feltmann` account) is NOT Hub-download-enabled --
+# `hub.arcgis.com/api/download/v1/items/{id}/geojson` returns
+# `{"message":"Unsupported file format...","statusCode":400}` rather
+# than building an export, unlike every other statewide bulk export
+# used elsewhere in this repo (MD, IN). The shop's own "Add to cart" /
+# checkout flow is a WooCommerce order process, not a stable, scriptable
+# file URL, and was not pursued. So: REST is the only route, exactly as
+# Phase 3 describes when no bulk file exists.
+#
+# The live service's own `maxRecordCount` is 200 -- far below the
+# 1,000-2,000 seen elsewhere in this repo -- and the statewide layer
+# holds 2,117,780 features (measured via `returnCountOnly`, current as
+# of this recipe), which would need roughly 10,600 sequential page
+# requests to scrape in one pass. Rather than do that, this recipe
+# filters the shared service server-side, one county at a time, via
+# `arcgis_rest_scraper`'s generic `where_admin_column` option
+# (`where_admin_column: countyfips`, `admin_key_column:
+# admin3_id_admin1` below): it builds `where: countyfips = '<5-digit
+# FIPS>'` itself from the admin unit currently being downloaded, so no
+# recipe-specific wrapper module is needed for what is otherwise a
+# fully generic "one shared service, filtered by an in-data admin
+# column" shape. Combined with `download_by: admin_level: 3` so the
+# Ingester downloads (and can be asked to ingest) one county at a
+# time -- from 200 rows (Newton) up to 180,264 (Pulaski) -- rather
+# than one monolithic whole-state crawl. `countyfips` is a standard
+# 5-digit Census FIPS (state prefix `05` + county code, e.g. Newton
+# `05101`, Pulaski `05119`), spot-checked against this repo's own
+# Census admin3 spine for all 75 counties (exact match, 0 leftover on
+# either side) -- so no `admin_id_transformation` is needed, only a
+# crosswalk (see below).
+#
+# NOTE on county coverage (a real, load-bearing question here): the
+# shop's own product description text is dated ("3-Jul-14") and lists
+# only 69 of Arkansas's 75 counties, explicitly missing Fulton and
+# Searcy among others, with the caveat "Just because a county is
+# listed does NOT imply the data represents county wide coverage."
+# That text is stale. The LIVE service was queried directly (grouped
+# row counts per `county`/`countyfips`, current as of this recipe) and
+# returned all 75 counties with no gaps, from Newton's 6,024 rows to
+# Pulaski's 180,264, summing to exactly 2,117,780 -- the layer's own
+# `returnCountOnly`. Coverage is genuinely statewide today, even though
+# the shop listing undersells it; the crosswalk sidecar below still
+# covers all 75, confirmed against the live counts rather than assumed.
+# Within a county, coverage may still be partial parcel-by-parcel (see
+# "only parcels with an associated CAMA record are provided" in the
+# item description) -- this recipe cannot detect an under-covered
+# county from the geometry alone, only a genuinely absent one, and none
+# were found.
+#
+# NOTE on `parcel_id_local` (Phase 5) -- including a REST trap this
+# recipe's own research first got wrong: `parcelid` (`ParcelID`, a
+# digit block id joined by dashes with an occasional trailing letter,
+# e.g. format `NNN-NNNNN-NNNC`) is populated on every row
+# (2,117,780/2,117,780). A live `returnDistinctValues` query appeared
+# to show it unique statewide (2,117,780 distinct values for 2,117,780
+# rows, and again 6,024/6,024 scoped to Newton alone) -- but this
+# service silently IGNORES `returnDistinctValues` on a count query and
+# just returns the plain row count both with and without it (confirmed
+# by re-querying a single already-observed duplicate id and getting
+# back `{"count":3}` from both forms). The real number only surfaced
+# from ingesting Newton county end-to-end (see "Validation performed"
+# below) and computing `nunique()` on the output: 5,569 distinct
+# `parcel_id_local` values for 6,024 rows (92.4%), 454 duplicate-key
+# groups (453 pairs, one triple) covering 909 rows. Every sampled
+# duplicate group shares an identical raw `parcelid`, identical
+# `TotalValue`, and identical `ParcelType`, but geometrically distinct,
+# non-overlapping polygons -- consistent with one CAMA assessment
+# record covering more than one physical land tract (common for rural
+# agricultural/timber holdings), not a `simple`-conversion collision or
+# a broken key. `parcel_id_admin2`/`parcel_id_admin3` are NOT mapped
+# because neither registry claim ("unique within its admin-2/3 unit")
+# actually holds at this rate -- only the uniqueness-agnostic
+# `parcel_id_assessor` (raw identifier) is exposed, feeding
+# `parcel_id_local` the same way. No bundled
+# `US_parcel_id-overrides.csv` row exists for US-AR; the default
+# `simple` conversion (strip non-alphanumerics, uppercase) does not
+# make this worse, since the duplication is already present in the raw
+# `parcelid` values themselves, not introduced by stripping the dashes.
+# This is the first parcel source for Arkansas in this repo, so there
+# is no existing statewide layer to check overlap against.
+#
+# NOTE on `ParcelType` (`parceltype`, mapped to `use_group_code`): a
+# 2-character property-classification code. The item's own metadata
+# says only "a list of approved property type codes is available from
+# the Arkansas Assessment Coordination Department (AACD)... obtained
+# directly from the county assessor's office" -- i.e. AGISO's own
+# documentation does not publish the code list. Sampled live (statewide
+# grouped counts): 41 distinct codes, dominated by `RI` (44.6%), `RV`
+# (18.4%), `AV` (17.3%), `AI` (8.1%), `CI` (3.2%), `EG` (2.8%), with a
+# long tail (`AM`, `CV`, `ER`, `RM`, `MH`, ... down to <0.1% each). The
+# leading-letter families (`R`/`A`/`C`/`E`/`I`/`M`/`V`/`P`) read as
+# Residential/Agricultural/Commercial/Exempt/Industrial/Manufactured-
+# home/Vacant/Public, consistent with a standard state assessment
+# scheme, but no crosswalk to `use_group` text is included -- mapping a
+# guessed vocabulary onto an undocumented code risks exactly the
+# Sampson-County trap in `acquiring_sources.md` Phase 4 (a field that
+# reads one way and means another). Left as a raw code only, per that
+# guide's guidance that an un-crosswalked code still contributes as
+# grouping/voting evidence once harmonized.
+#
+# NOTE on `AssessValue` (left unmapped, not `total_value`): statewide
+# averages (via server-side `outStatistics`) show `AssessValue`
+# averaging about 21% of `TotalValue` (`avg_assess` 30,465 vs
+# `avg_total` 144,144 in this measurement). This matches Arkansas
+# Constitution Amendment 59's real-property assessment ratio (property
+# is assessed for tax purposes at 20% of appraised/market value), so
+# `AssessValue` is the post-ratio TAXABLE figure, while `TotalValue`
+# (`= LandValue + ImpValue` exactly, by construction) is the full
+# appraised value -- matching how other statewide recipes in this repo
+# already use `total_value` (Wisconsin's `CNTASSDVALUE`, likewise a
+# full assessed/appraised figure despite the "ASSD" in its name). The
+# registry has no field for a single combined post-ratio taxable value
+# distinct from the appraised total (only per-component
+# `land_value_taxable`/`improvement_value_taxable`, which this source
+# does not split `AssessValue` into), so it is left unmapped rather
+# than mis-homed into either.
+#
+# NOTE on `TaxArea` (left unmapped): described by the source as "Area
+# Used for Taxation/Assessment Purposes... the value that should be
+# used on all cartographic displays." Statewide average (via
+# `outStatistics`) is 15.28, maximum 23,934.57, minimum 0 -- consistent
+# with acres (Arkansas is largely rural; a 24,000-acre parcel is a
+# plausible large timber/industrial tract), not square feet. The
+# registry's `area_ac` is `stage: curate` (geometry-derived downstream,
+# not an ingest-time source field) and no ingest-stage acres field
+# exists in the registry today (only `lot_size`, in sqft) -- raising the
+# registry question rather than mapping a source acreage field onto a
+# curate-stage-only or wrong-unit attribute.
+#
+# NOTE on date fields, ALL left unmapped (`SourceDate`, `CAMADate`,
+# `PubDate`): every one is `esriFieldTypeDate`, and this recipe's
+# scraper requests `f=geojson` (inherited from the base
+# `arcgis_rest_scraper`), which serializes Esri date fields as raw
+# epoch milliseconds, not ISO strings -- the same trap documented for
+# the DC Record Lots recipe. No unit-aware epoch-ms datetime
+# transformation exists in `io.transform` yet. Rather than ship
+# `source_date` as `1745539200000.0`, none of the three is mapped;
+# `CAMADate` ("date of CAMA database extract... the effective date of
+# the CAMA database") would be the best-fitting `source_date` once such
+# a transform exists (100% populated, unlike `SourceDate` at 79.7%).
+#
+# NOTE on `Section`/`Township`/`Range`/`STR` (left unmapped): standard
+# PLSS location fields with no registry equivalent (same gap noted for
+# Maryland's absent `tax_year` and DC's absent `SQUARE`/`SUFFIX`/`LOT`
+# components -- real, county-meaningful fields the registry has no slot
+# for).
+#
+# NOTE on `County` (left unmapped, used only for crosswalking):
+# `admin3_name` -- what the Wisconsin statewide recipe maps its own
+# county-name field to -- is NOT in `core/attribute_registry.csv`
+# (checked directly against `load_registry()`; only `name` exists, a
+# shared, non-admin-scoped attribute). Mapping `County` to it would
+# repeat that existing gap rather than fix it, and the value is
+# structurally redundant anyway: every parcel's containing admin3 unit
+# is already resolved from geometry by the harmonizer's
+# `link_geographic_ids` step. Raised here as a registry gap rather than
+# silently mapped or silently dropped; `County`/`CountyFIPS` are used
+# only to drive `process_by`/crosswalking, not carried as an output
+# column.
+#
+# NOTE on other fields left unmapped: `CountyID` (an AGISO-internal id,
+# undocumented in the item's own metadata; `countyfips` is used instead
+# and is the one actually needed for crosswalking), `CAMAProv`/
+# `DataProv` (which CAMA vendor / which entity supplied the data to
+# AGISO -- provenance bookkeeping, no registry slot), `SourceRef` (a
+# free-text geometry source-reference string, not a parcel
+# identifier), `NatCoordSys` (native State Plane
+# zone, North or South -- irrelevant once reprojected), `PSufDir`
+# (suffix directional, populated on only 1,832/2,117,780 rows --
+# `PreDir`, the prefix directional, is populated on 345,865 and is
+# mapped instead), `GlobalID`/`Shape__Area`/`Shape__Length` (internal
+# Esri bookkeeping / geometry-derived, recomputed by this repo's own
+# pipeline).
+#
+# Measured (live REST, `gis.arkansas.gov`, current as of this recipe):
+# statewide `returnCountOnly` 2,117,780, matching the sum of all 75
+# counties' own grouped counts exactly. `OwnerName` not null
+# 2,117,752/2,117,780 (>99.9%); `TotalValue`/`LandValue`/`ImpValue` not
+# null 2,111,989/2,111,986/2,111,986 (99.7% each), `> 0`
+# 2,009,359/2,007,633/1,218,517 (94.9%/94.8%/57.6% -- a real share of
+# parcels carry $0 improvement value, i.e. vacant land, consistent with
+# `RV`/`AV` being the second- and third-most-common `ParcelType`
+# codes); `AdrLabel` (full address) not null 1,723,655/2,117,780
+# (81.4%); `AdrZip5` not null 1,894,451/2,117,780 (89.5%); `Subdivision`
+# not null 1,327,126/2,117,780 (62.7%); `NBHD` not null
+# 2,117,780/2,117,780 (100%); `TaxCode` not null 2,117,780/2,117,780
+# (100%).
+#
+# License: no `license`/terms page was found for this dataset. The
+# item's own `licenseInfo` field (fetched directly via the AGOL sharing
+# API, not just the rendered shop page) is blank. The item's metadata
+# carries only the standard government "as is, no warranty, no
+# liability" disclaimer (`Legal constraints` / `Distribution_Liability`
+# in the FGDC metadata export) -- no explicit grant or restriction on
+# redistribution, unlike Maryland's dataset-specific `licenseInfo` text
+# or DC's item-level CC BY statement. Recorded as `'unknown'` per
+# `../../../../README.md`'s guidance, not assumed unrestricted.
+#
+# Validation performed: recipe-loading and registry-column checks were
+# run for real (see below). A full, unmodified `op.ingest()` was run
+# against the live REST service for Newton county (`US-AR-NW`,
+# Arkansas's smallest county by parcel count, 6,024 rows) -- see the
+# ingest summary this recipe's authoring session recorded. A full
+# 75-county run was NOT attempted: at this service's 200-row page cap,
+# the full state is ~10,600 sequential requests against a small state
+# government server, which this pass judged disproportionate for a
+# validation run; the per-county `download_by` design means a future
+# full run costs exactly that either way, scoped one county at a time
+# rather than as one unbroken crawl.
+
+description: >-
+  Arkansas statewide parcel roll (all 75 counties) from the Arkansas GIS
+  Office's County Assessors Mapping Program, integrating each county's own
+  CAMA tax-assessment system.
+
+admin_id: US-AR
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: agiso
+    portal_url: "https://gis.arkansas.gov/product/parcel-polygon-county-assessor-mapping-program-polygon/"
+    download_url_scraper: arcgis_rest_scraper
+    license: "unknown (no terms page found; item's licenseInfo is blank -- see header)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "ar_parcel_camp_{admin3_id_admin1}.geojson"
+
+scraper_options:
+  layer_url: "https://gis.arkansas.gov/arcgis/rest/services/FEATURESERVICES/Planning_Cadastre/FeatureServer/6"
+  out_fields: "*"
+  # Resolves each admin3 unit's own 5-digit FIPS (from the Census admin3
+  # table's own GEOID column) and queries the shared service with
+  # `where: countyfips = '<fips>'` -- see header.
+  where_admin_column: countyfips
+  admin_key_column: admin3_id_admin1
+
+# One filtered download per county (see header).
+download_by:
+  admin_level: 3
+
+# The download is already filtered to one county; process_by's
+# admin_id_column re-derives admin3_id from the row's own countyfips
+# (a no-op filter in practice, since every row already matches) and is
+# what lets the Ingester name/save the output under the right admin3
+# unit -- mirrors the Wisconsin/Indiana/Maryland statewide recipes'
+# use of process_by for this even when download_by already scopes the
+# file.
+process_by:
+  admin_level: 3
+  admin_id_column: countyfips
+  admin_id_crosswalk:
+    recipe_id: "US-AR_parcel-agiso-2026_admin3-crosswalk"
+    # Without this, the crosswalk CSV's own all-digit admin3_id_admin1
+    # column loads as int64 (pandas' default for a pure-digit column),
+    # dropping FIPS leading zeros ('05001' -> 5001) and failing to
+    # match the genuinely-string `countyfips` source column -- the
+    # exact trap documented in the Indiana statewide recipe's own
+    # crosswalk.
+    dtype: str
+
+columns:
+  legal_description: parcellgl
+  owner_name: ownername
+  address: adrlabel
+  address_number: adrnum
+  address_street_directional: predir
+  address_street_name: pstrnam
+  address_street_type: pstrtype
+  city: adrcity
+  postal_code: adrzip5
+  use_group_code: parceltype
+  land_value: landvalue
+  improvement_value: impvalue
+  total_value: totalvalue
+  subdivision: subdivision
+  tax_neighborhood_code: nbhd
+  tax_district: taxcode
+
+columns_to_categorical:
+  - city
+  - postal_code
+  - use_group_code
+  - tax_neighborhood_code
+  - tax_district
+
+transformations:
+  # Expose the raw ParcelID under the canonical name
+  # parcel_id_assessor -- not parcel_id_admin2/admin3, since neither
+  # uniqueness claim holds at the measured rate (see header) -- so it
+  # is the raw key parcel_id_local derives from (consistent with the
+  # Wisconsin/DC/Maryland/Indiana statewide recipes' own pattern of
+  # exposing a copy under this name for parcel_id_local to read).
+  - type: string
+    operation: concat
+    inputs: [parcelid]
+    output: parcel_id_assessor
+
+  # AdrZip5 arrives as an integer (esriFieldTypeInteger); cast to a
+  # 5-digit string. A harmless no-op for Arkansas specifically (every
+  # AR ZIP code is 71600-72959, so none has a leading zero to lose),
+  # kept anyway to match the registry's string type for postal_code.
+  - type: string
+    operation: zfill
+    input: postal_code
+    args: {width: 5}
+    output: postal_code
+
+# No bundled US_parcel_id-overrides.csv row exists for US-AR; the
+# default 'simple' conversion (strip non-alphanumerics, uppercase) is
+# safe here -- see header note on parcel_id_local.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

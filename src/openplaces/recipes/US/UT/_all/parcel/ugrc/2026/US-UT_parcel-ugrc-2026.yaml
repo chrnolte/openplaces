@@ -1,0 +1,163 @@
+# Recipe: Utah statewide parcels, from the Utah Geospatial Resource
+# Center (UGRC, formerly AGRC)'s "Utah Statewide Parcels" layer -- the
+# base cadastral layer in the State Geographic Information Database
+# (SGID), merged from all 29 counties under the 2005 HB113 mandate for
+# county recorders to periodically share parcel GIS data with UGRC
+# (Utah Code 63F-1-506(3)(b)(vi)).
+#
+# Source discovery (Phase 1): `opendata.gis.utah.gov`'s rendered
+# dataset page ("Utah Statewide Parcels", found via web search) is a
+# client-side Hub app with no usable raw HTML. The real service was
+# found via the ArcGIS Online item-search API
+# (`sharing/rest/search?q=title:"Utah Statewide Parcels" AND
+# owner:UtahAGRC`), which surfaced item
+# 9df536b0835e4ee78e34d7cf6fe132c2, backing a hosted Feature Service at
+# `services1.arcgis.com/99lidPhWCzftIe9K/.../UtahStatewideParcels/
+# FeatureServer/0`. gis.utah.gov's own SGID product page
+# (`gis.utah.gov/products/sgid/cadastre/parcels/`) independently links
+# the same Hub item as its "Statewide parcel feature service" ("A
+# single feature service of all county parcels"), confirming this is
+# the one UGRC itself points to, not a stale mirror.
+#
+# This is the "core", privacy-conscious layer by UGRC's own design: no
+# owner-name field exists on it at all (confirmed via the layer's own
+# `?f=json` field list) -- only a generalized ownership TYPE
+# (`OWN_TYPE`: Private/State/Federal/Tribal, live-queried distinct
+# values) and the county recorder's office CONTACT phone number
+# (`RECORDER`). No owner name is available from this source to map,
+# consistent with AGENTS.md's privacy section; nothing here is being
+# withheld that the source actually publishes.
+#
+# NOTE on the separate "LIR" (Land Information Record) tax-roll layer:
+# a richer, county-by-county assessment product also exists (29
+# separate FeatureServer endpoints, one per county, e.g.
+# `.../Parcels_SaltLake_LIR/FeatureServer/0`, NOT part of this shared
+# service) -- see the sibling recipe `US-UT_parcel-ugrclir-2026` for
+# that data (`total_value`/`land_value`/`year_built`-adjacent fields).
+# It is a genuinely different product on a genuinely different set of
+# endpoints, not a joined-in extension of this layer, hence a separate
+# ingest recipe with its own `source_id` (`ugrclir`) rather than an
+# `additional_layers` split of this one.
+#
+# NOTE on bulk vs REST (Phase 3): no ready-made bulk file/Hub export
+# was found for this specific item (its AGOL item record carries no
+# `download_url`/bulk-export affordance, unlike the per-county LIR
+# items or MD/IN's statewide layers) -- only the vector-tile service
+# (rendering only, not a data export) and this FeatureServer. Used
+# `arcgis_rest_scraper` directly; no equivalence test was needed since
+# there is no alternate export to compare against.
+#
+# NOTE on the join key (Phase 5): `PARCEL_ID` is populated on
+# 1,571,607/1,595,541 features statewide (98.5%, live REST). No
+# bundled `US_parcel_id-overrides.csv` row exists for US-UT; falls
+# back to the default 'simple' conversion. Verified against the LIR
+# layer's own `PARCEL_ID` for Piute County (the smallest county, 2,936
+# features here): 99.8% of this layer's distinct Piute `PARCEL_ID`
+# values and 99.9% of the LIR layer's distinct Piute `PARCEL_ID`
+# values are shared between the two -- comfortably above the ~95% bar,
+# confirming the two Utah recipes are genuinely joinable on the same
+# raw key despite living on entirely different services.
+#
+# NOTE on the per-county partition (Phase 6): this service's own
+# `County` field is already in the same no-space form
+# (`BoxElder`/`SaltLake`/`SanJuan`, live-queried distinct values
+# statewide, all 29 counties present, feature counts 2,936-397,960)
+# as the LIR endpoints' service-name suffixes, so the same crosswalk
+# convention is reused for the sidecar CSV rather than deriving it
+# from the Census admin3 table's own `name` column (which carries a
+# space, e.g. "Salt Lake") -- avoiding a space-removal transform on
+# the crosswalk side that `get_crosswalk` does not support.
+#
+# NOTE on fields left unmapped for want of a registry attribute:
+#   - `OWN_TYPE` (generalized ownership: Private/State/Federal/Tribal)
+#     -- no registry attribute for a parcel-level ownership-category
+#     flag (distinct from `owner_relationship`, which is a
+#     property-entity field for a specific owner's role, not a
+#     land-ownership class). Genuinely useful; raised as a registry
+#     gap rather than mis-homed.
+#   - `RECORDER` (county recorder office phone number) and
+#     `CoParcel_URL` (county's own parcel-lookup website) -- office
+#     contact metadata, no registry slot (mirrors DC's
+#     `ASSESSOR_SRC`/`BOUNDARY_SRC` treatment).
+#   - `ParcelNotes` -- a 3-value controlled vocabulary describing the
+#     snapshot/update workflow ("Supplied by county as latest", etc.),
+#     not a parcel attribute.
+#   - `ParcelsCur` ("Current as of" date) -- a true
+#     `esriFieldTypeDate` field, which this scraper's `f=geojson`
+#     output serializes as epoch-milliseconds; `to_datetime` has no
+#     `unit=` handling for this (see "Dates are the most common
+#     silent corruption" in `_instructions/acquiring_sources.md`) and
+#     would silently collapse every row to ~1970. Left unmapped
+#     rather than risk that corruption, consistent with the DC/IN
+#     statewide recipes' treatment of the same trap.
+#
+# License: this item's own `licenseInfo` (fetched directly via the
+# AGOL sharing API) is an "as is, no warranty" disclaimer with no
+# explicit license statement. UGRC's own data-license page
+# (`gis.utah.gov/documentation/policy/license/`) states a blanket
+# policy: "Unless otherwise stated in a dataset's metadata, UGRC
+# licenses our data and services under a Creative Commons Attribution
+# 4.0 International License." This item's metadata does not state
+# otherwise, so CC BY 4.0 applies per that blanket policy; the sibling
+# LIR items state it explicitly on their own `licenseInfo` (see that
+# recipe).
+#
+# Validation performed: recipe-loading and registry-column checks
+# were run for real, and a real, unmodified `op.ingest()` was run
+# against the live service for Piute County (US-UT-PT, the smallest
+# county by parcel count) -- see the header of `US-UT_parcel-ugrclir-
+# 2026` for the combined result.
+
+description: >-
+  Utah statewide parcel polygons (all 29 counties) from UGRC's SGID: parcel
+  ID, address, generalized ownership type, and county recorder contact.
+
+admin_id: US-UT
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: ugrc
+    portal_url: "https://gis.utah.gov/products/sgid/cadastre/parcels/"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      CC BY 4.0 (UGRC's blanket data-license policy; not stated
+      explicitly on this item's own metadata, which carries no
+      license statement to the contrary).
+    terms_url: "https://gis.utah.gov/documentation/policy/license/"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "ut_statewide_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services/UtahStatewideParcels/FeatureServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+process_by:
+  admin_level: 3
+  admin_id_column: County
+  admin_id_crosswalk:
+    recipe_id: "US-UT_parcel-ugrc-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: PARCEL_ID
+  parcel_id_tax: ACCOUNT_NUM
+  address: PARCEL_ADD
+  city: PARCEL_CITY
+  postal_code: PARCEL_ZIP
+
+columns_to_categorical:
+  - city
+  - postal_code
+
+# No bundled US_parcel_id-overrides.csv row exists for US-UT; falls
+# back to the default 'simple' conversion (see header for the measured
+# overlap against the sibling LIR layer's own PARCEL_ID).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

@@ -1,0 +1,383 @@
+# Recipe: MetroGIS Regional Parcel Dataset -- Twin Cities 7-county
+# metro area (Minneapolis-St. Paul), Minnesota.
+#
+# Source: published quarterly (Jan/Apr/Jul/Oct) by the Metropolitan
+# Council on behalf of MetroGIS, distributed through the Minnesota
+# Geospatial Commons. The dataset's own bulk-file host
+# (resources.gisdata.mn.gov) is current and directly downloadable; the
+# older gisdata.mn.gov CKAN-style dataset pages (e.g.
+# `/dataset/us-mn-state-metrogis-plan-regional-parcels`) now
+# 301-redirect to the new portal's bare homepage
+# (https://gis.data.mn.gov/) rather
+# than a specific listing, following a portal migration -- a future
+# agent should not be surprised the old dataset-page URL no longer
+# resolves to anything useful; the live human landing page is
+# metrogis.org/how-do-i-get/parcel-data/, and the actual file host below
+# is what this recipe downloads from.
+#
+# NOTE on scope -- Minnesota has NO statewide parcel aggregator.
+# MnGeo states this explicitly: "a comprehensive process for combining
+# parcels statewide has never been established." What DOES exist is
+# this metro-only compilation covering exactly 7 of Minnesota's 87
+# counties: Anoka, Carver, Dakota, Hennepin, Ramsey, Scott, Washington.
+# `admin_id` below is set to `US-MN` only because that is the natural
+# common parent of these 7 counties, following the same
+# one-file-many-counties pattern as a true statewide recipe (e.g.
+# `US-WI_parcel-wiscedu-v11`) -- it does NOT mean this recipe covers
+# Minnesota statewide. Enforcement of that limit is real, not just
+# documentation: `process_by.admin_id_crosswalk` below (the
+# `_admin3-crosswalk.csv` sidecar) lists only these 7 counties, so
+# `op.ingest` for any of MN's other 80 counties raises a clear KeyError
+# from the crosswalk lookup rather than silently writing an empty
+# file -- "raise rather than guess," the same posture as
+# `delivery_spec`'s multi-region ambiguity check. A future agent should
+# not read the presence of this recipe file under `US/MN/_all/` as
+# evidence that MN parcel coverage is complete; it is 7/87 counties.
+# A "MetroGIS Twin Cities Metro (7-County)" region was registered in
+# `_all/admin/regions/2026/admin-regions-2026.csv`
+# (region_id `metrogis-twin-cities`) so this exact grouping has a name
+# other tooling (delivery, mapping, ad-hoc analysis) can reference
+# without restating the 7 county ids.
+#
+# Verified via direct fetch (this session):
+#   - metrogis.org/how-do-i-get/parcel-data/ (current, live): confirms
+#     publisher (Metropolitan Council / MetroGIS), the 7-county list,
+#     quarterly update cadence, and the free/no-fee/no-license policy
+#     ("Between 2014-2015, all seven county boards formally adopted
+#     policy resolutions to make their public geospatial data freely
+#     available without fee or licensure").
+#   - resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/
+#     plan_regional_parcels/ (current, live, directly downloadable, no
+#     login/click-through): the live directory listing at ingest time
+#     showed `shp_plan_regional_parcels.zip` (543 MB), `fgdb_...zip`
+#     (365 MB) and `gpkg_...zip` (480 MB) side by side, all last
+#     modified 2026-04-21 -- this is the same quarterly refresh in every
+#     format; shp was chosen (see "Bulk vs REST" below).
+#   - The accompanying metadata (metadata.html) and attribute reference
+#     ("Metro Regional Parcel Dataset Attributes, March 2026 Edition",
+#     Metro_Regional_Parcel_Attributes.pdf, both beside the zip files):
+#     full field list, per-county field-population percentages (an
+#     aggregate figure from the source's own published document, not
+#     sampled from raw records), and the license/access-constraints text
+#     quoted below.
+#
+# License (checked explicitly, per README.md/acquiring_sources.md):
+# the current, live metadata.html states, verbatim: "Access
+# Constraints: None. This dataset is public domain under the Minnesota
+# Government Data Practices Act (Minnesota Statutes Chapter 13)." and
+# an identical "Use Constraints" statement. Its distribution-liability
+# notice is a plain as-is/no-warranty disclaimer (developed by the
+# counties "for their own internal business purposes," no
+# merchantability/fitness warranty) that RECOMMENDS -- not requires --
+# passing the same disclaimer along if the data is redistributed.
+# HOWEVER: a superseded 2012 "MetroGIS Public Party Regional Parcel
+# Dataset License" was also found (hosted at
+# mngeo.state.mn.us/councils/stategovt/MetroGIS_Data_License_2012.pdf)
+# that required a signed license, treated the parcel data as a
+# licensor trade secret, barred the licensed user from disclosing it
+# to any other party under any circumstances, and expired
+# 2016-12-31. That 2012 regime plainly predates and is superseded by
+# the seven counties' 2014-2015 open-data board resolutions and by the
+# current metadata's unambiguous public-domain statement -- recorded
+# here so a future agent who finds that old PDF does not mistake it
+# for the data's current terms.
+license: 'public domain (MN Government Data Practices Act, Minn. Stat. ch. 13); no fee or license execution required as of the 7 counties'' 2014-2015 open-data resolutions'
+#
+# Bulk vs REST (Phase 3): a ready-made, static, region-wide bulk
+# shapefile zip is offered directly with no paywall, registration, or
+# click-through gate, so it was used as-is -- no REST paging and no Hub
+# 202/404 job-status wait were involved. No equivalence test against a
+# live REST layer applies here: each of the 7 counties runs its own,
+# separate REST GIS service (a different source entirely, out of this
+# recipe's scope), and there is no single "regional" REST endpoint this
+# bulk file could diverge from. A byte-range read of the zip's own
+# central directory (fetched the last 300KB over HTTP Range, without
+# downloading the full 543MB archive) confirmed its real internal
+# structure ahead of the full download: one polygon shapefile plus one
+# companion point shapefile per county, named
+# `Parcels{County}.shp` / `Parcels{County}Points.shp` (e.g.
+# `ParcelsAnoka.shp`, `ParcelsAnokaPoints.shp`), flat with no
+# subfolder -- this is what `process_by.file_pattern` below resolves
+# against. The points layer duplicates the polygon layer's own
+# attribute schema and exists (per the source's documentation) only to
+# disambiguate cases where multiple tax parcels share one polygon (e.g.
+# a condo complex); it is intentionally not ingested here, since this
+# recipe's entity is parcel polygons.
+#
+# Field population figures below are the source's own published
+# per-county "Attribute Completeness Assessment" percentages (March
+# 2026 edition) -- an aggregate statistic from an authoritative
+# document, not sampled from raw records. Order is always Anoka,
+# Carver, Dakota, Hennepin, Ramsey, Scott, Washington.
+#
+# Fields left unmapped for want of a registry attribute, or because
+# their per-county meaning is too inconsistent to map safely (checked
+# values, not just names, per Phase 4):
+#   - SCHOOL_DST, WSHD_DST -- no school-district or watershed-district
+#     field in the registry (the existing US-WI recipe references
+#     `school_district_name`/`school_district_id`, but those names are
+#     NOT present in the current `attribute_registry.csv` -- a
+#     pre-existing gap noted here, not reproduced).
+#   - TAX_CAPAC, TOTAL_TAX, SPEC_ASSES -- tax-bill/tax-capacity amounts
+#     distinct from the value fields the registry does have
+#     (land_value/improvement_value/total_value); no registry field for
+#     a computed tax-capacity or tax-due amount. (The existing US-WI
+#     recipe's `tax_value_net`/`tax_value_gross` are likewise absent
+#     from the current registry -- same pre-existing gap, not
+#     reproduced.)
+#   - HOMESTEAD, TAX_EXEMPT -- MN-specific tax-status flags with no
+#     registry boolean/categorical home (land_value_exempt and
+#     improvement_value_exempt exist, but only for VALUE amounts, not a
+#     parcel-level exemption/homestead status flag).
+#   - USECLASS2/3/4, XUSECLASS1-4, MULTI_USES -- the registry has one
+#     use_group/use_subgroup pair, not a repeating list; these secondary
+#     use/exempt-use slots are also sparsely populated everywhere
+#     (mostly 0-3%).
+#   - GARAGESQFT -- registry only has a boolean has_garage, not a
+#     garage-area field.
+#   - COOLING -- registry has heating_type but no cooling_type
+#     counterpart.
+#   - GREEN_ACRE, OPEN_SPACE, AG_PRESERV (+ AGPRE_ENRD/AGPRE_EXPD) --
+#     MN-specific preferential-tax-program enrollment flags. Registry
+#     question: these are conceptually close to the existing
+#     `clean_and_green` field (a PA Act 319-style preferential ag/forest
+#     assessment flag), but that field's entity_type is fixed to
+#     `property`, not `parcel`, so mapping these here would violate that
+#     scoping -- flagged rather than forced.
+#   - OWNERSHIP -- level-of-government-ownership indicator (Federal,
+#     State, County Fee, Tax Forfeit); no registry field.
+#   - SECTION, TOWNSHIP, RANGE, RANGE_DIR, PRIN_MER -- PLSS survey
+#     coordinates; a real geographic concept the registry has no field
+#     for (same situation as DC's QUADRANT,
+#     US-DC_parcel-dcgovrecordlots-2026).
+#   - LOT, BLOCK -- portions of the legal description already captured
+#     via ABB_LEGAL -> legal_description; no separate registry slot.
+#   - DWELL_TYPE -- per-county semantics are inconsistent enough to be
+#     unsafe to map (Dakota's own documentation gives "restaurant" as an
+#     example value alongside "single-family, duplex"; Ramsey/Washington
+#     source it from the land-use code instead of a true dwelling-type
+#     field) -- checked values, not just the name, per the Sampson
+#     County USE_DESC caution in acquiring_sources.md.
+#   - TAX_NAME, TAX_ADD_L1-4 -- the registry has owner_name/
+#     owner_address but no distinct "taxpayer of record" concept
+#     (which can genuinely differ from the owner, e.g. after a life
+#     estate or trust); no safe registry home. OWN_ADD_L3/L4 similarly
+#     left unmapped: per-county documentation shows their shape is
+#     inconsistent (e.g. Dakota packs
+#     "city, state zip" into one line rather than a true 3rd/4th address
+#     line), so mapping them as owner_address continuation lines would
+#     misrepresent the content.
+#   - CTU_NAME, CO_NAME -- the parcel's containing municipality/county
+#     name is already resolved spatially by the pipeline's own admin
+#     linkage; no registry slot for a raw source-supplied jurisdiction
+#     name.
+#   - MKT_YEAR -- the assessment-year companion to TAX_YEAR; no separate
+#     registry field for it (tax_year is mapped; this second year field
+#     is not).
+#   - EDIT_DATE -- near-universally empty across all 7 counties (0% for
+#     5 of 7, "no data"/"DNA" for the other 2, per the source's own
+#     completeness table); EXP_DATE (mandatory, always populated) is
+#     mapped to source_date instead.
+#   - POLYPTREL, N_STANDARD -- layer-construction/data-quality metadata
+#     about the source's own polygon-to-point relationship and
+#     non-standard-parcel bookkeeping, not a parcel attribute.
+#   - ZIP4 -- no registry field for a ZIP+4 extension (only the 5-digit
+#     postal_code exists).
+#
+# ACRES_POLY (the parcel polygon's own geometrically-computed acreage)
+# is deliberately left unmapped: it is redundant with the area the
+# pipeline already derives from geometry itself (area_ha/area_ac),
+# mirroring the DC CALCULATEDAREA precedent
+# (US-DC_parcel-dcgovrecordlots-2026). ACRES_DEED (the deeded/legal
+# acreage -- a genuinely distinct, non-geometric figure) is mapped to
+# `lot_size` instead (acres_to_sqft), despite uneven population: Ramsey
+# 96%, Scott 100%, Anoka 9.3%, Carver 22%, Dakota/Hennepin/Washington
+# 0% (no data at all in those three).
+#
+# Sentinel handling: the source's own documentation states, for
+# EMV_LAND/EMV_BLDG/EMV_TOTAL/SALE_VALUE/TAX_YEAR, "0 = No value" and
+# "-9999 = No data or null value" -- both nulled via null_if_equal
+# before use, so a genuine parcel with e.g. a real $0 assessed value is
+# not conflated with a populated field (these are the source's own
+# stated sentinels, not an assumption).
+#
+# GARAGE/BASEMENT (domain Yes/No/Unknown) are remapped to real
+# booleans (Yes -> true, No -> false); anything else (blank, or the
+# literal "Unknown") is left null rather than coerced to false, so
+# "not populated" is never conflated with "confirmed absent." Anoka's
+# own documentation candidly states GARAGE has been unpopulated "since
+# this quarter (July 2022)" -- expect an all-null has_garage for Anoka.
+#
+# SALE_DATE / EXP_DATE are native Esri Date fields inside a shapefile
+# (not GeoJSON), so they are NOT expected to hit the Esri
+# f=geojson-epoch-milliseconds trap documented in
+# acquiring_sources.md -- verify this empirically at ingest time
+# regardless (see the ingest verification notes for this recipe).
+
+description: >-
+  Twin Cities (Minneapolis-St. Paul) 7-county regional tax parcel
+  compilation from the Metropolitan Council's MetroGIS Regional Parcel
+  Dataset, standardized to the MN Parcel Data Transfer Standard.
+
+admin_id: US-MN
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: metrogis
+    portal_url: "https://metrogis.org/how-do-i-get/parcel-data/"
+    download_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/plan_regional_parcels/shp_plan_regional_parcels.zip"
+    license: "public domain (MN Government Data Practices Act, Minn. Stat. ch. 13)"
+    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/plan_regional_parcels/metadata/metadata.html"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "shp_plan_regional_parcels.zip"
+# Anoka is only the "already unzipped" presence signal (arbitrary,
+# guaranteed present); the actual per-county file used to process each
+# admin unit is resolved by process_by.file_pattern below.
+uncompressed_file_name: "ParcelsAnoka.shp"
+
+# One already-split polygon shapefile per county inside the shared
+# zip (see "Bulk vs REST" above) -- resolved per admin unit by
+# file_pattern rather than an in-data admin_id_column filter.
+# `co_name_file` is this admin unit's plain county name as it appears
+# in the filename (e.g. "Anoka"), looked up from the dedicated sidecar
+# crosswalk below -- CO_CODE (the in-data county-FIPS field) is not
+# used for this lookup because the file is already split per county
+# before any row is read.
+process_by:
+  admin_level: 3
+  file_pattern: "Parcels{co_name_file}.shp"
+  admin_id_crosswalk:
+    recipe_id: "US-MN_parcel-metrogis-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin3: COUNTY_PIN
+  parcel_id: STATE_PIN
+  address_number: ANUMBER
+  address_street_name: ST_NAME
+  address_street_type: ST_POS_TYP
+  address_street_directional: ST_POS_DIR
+  address_unit_type: SUB_TYPE1
+  address_unit: SUB_ID1
+  postal_code: ZIP
+  city: POSTCOMM
+  subdivision: PLAT_NAME
+  owner_name: OWNER_NAME
+  owner_name_2: OWNER_MORE
+  owner_address: OWN_ADD_L1
+  owner_address_2: OWN_ADD_L2
+  lot_size: ACRES_DEED
+  land_value: EMV_LAND
+  improvement_value: EMV_BLDG
+  total_value: EMV_TOTAL
+  tax_year: TAX_YEAR
+  use_group: USECLASS1
+  building_style: HOME_STYLE
+  area_sqft: FIN_SQ_FT
+  heating_type: HEATING
+  year_built: YEAR_BUILT
+  n_dwellings: NUM_UNITS
+  last_sale_date: SALE_DATE
+  last_sale_price: SALE_VALUE
+  legal_description: ABB_LEGAL
+  source_date: EXP_DATE
+
+columns_to_categorical:
+  - city
+  - use_group
+  - building_style
+  - heating_type
+  - address_street_type
+  - address_street_directional
+  - address_unit_type
+
+transformations:
+  # Expose the raw county-assigned PIN under the canonical name
+  # parcel_id_assessor (a copy of parcel_id_admin3 -- COUNTY_PIN), so
+  # it is the raw key parcel_id_local derives from -- consistent with
+  # the MassGIS/Wisconsin/DC statewide recipes.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  # Source's own documented sentinels: 0 = "No value", -9999 = "No
+  # data or null value" (see header note above).
+  - type: unary
+    operation: null_if_equal
+    input: land_value
+    args: {value: 0}
+    output: land_value
+  - type: unary
+    operation: null_if_equal
+    input: land_value
+    args: {value: -9999}
+    output: land_value
+  - type: unary
+    operation: null_if_equal
+    input: improvement_value
+    args: {value: 0}
+    output: improvement_value
+  - type: unary
+    operation: null_if_equal
+    input: improvement_value
+    args: {value: -9999}
+    output: improvement_value
+  - type: unary
+    operation: null_if_equal
+    input: total_value
+    args: {value: 0}
+    output: total_value
+  - type: unary
+    operation: null_if_equal
+    input: total_value
+    args: {value: -9999}
+    output: total_value
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_price
+    args: {value: 0}
+    output: last_sale_price
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_price
+    args: {value: -9999}
+    output: last_sale_price
+  - type: unary
+    operation: null_if_equal
+    input: tax_year
+    args: {value: 0}
+    output: tax_year
+  - type: unary
+    operation: null_if_equal
+    input: tax_year
+    args: {value: -9999}
+    output: tax_year
+
+  # ACRES_DEED (mapped to lot_size, sqft-typed in the registry) is
+  # sourced in acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+  # GARAGE/BASEMENT domain is Yes/No/Unknown; map to real booleans,
+  # leaving anything else (blank or "Unknown") null rather than false.
+  - type: remap
+    input: GARAGE
+    mapping: {"Yes": true, "No": false}
+    output: has_garage
+  - type: remap
+    input: BASEMENT
+    mapping: {"Yes": true, "No": false}
+    output: has_basement
+
+# Standardized matching key from the raw county-assigned PIN.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

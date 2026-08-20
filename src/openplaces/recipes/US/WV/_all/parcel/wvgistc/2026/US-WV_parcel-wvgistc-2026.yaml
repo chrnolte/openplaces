@@ -1,0 +1,221 @@
+# Recipe: West Virginia statewide surface tax parcel database, from the
+# WV GIS Technical Center (WVGISTC) at WVU.
+#
+# Source: WVGISTC's clearinghouse dataset "Tax Maps - Surface Parcels
+# (Statewide)" (https://wvgis.wvu.edu/data/dataset.php?ID=371), which
+# bundles the county-assessor-sourced, state-aggregated GIS parcel
+# roll into one statewide Esri File Geodatabase, refreshed each
+# summer/fall (this recipe uses the Tax Year 2026 vintage, created
+# July 2026). Verified directly: fetched the clearinghouse's own
+# search API (`searchEngine.php`) rather than trusting an unverified
+# prior claim, confirming the dataset name, publisher (County
+# Assessors / WV Dept. of Tax and Revenue), and its three published
+# download links (per-county PDF tax maps, per-county GIS splits, and
+# the single statewide GIS file used here).
+#
+# NOTE on "surface AND mineral parcels" (prior research claim, NOT
+# confirmed): a keyword search of the clearinghouse for "mineral",
+# "severed", and "tax maps" turned up no statewide mineral/severed-
+# estate parcel dataset at all -- only this surface dataset (ID 371,
+# literally named "...Surface Parcels...", never "Surface and
+# Mineral"). West Virginia's severed mineral estates are real (WV has
+# extensive split surface/mineral ownership from historical coal and
+# gas leases), but there is no public statewide GIS layer for them
+# from WVGISTC to ingest. No mineral-parcel recipe is written here;
+# if one is ever justified, mineral rights are a non-spatial property
+# interest layered on an EXISTING surface parcel, not a second
+# independent geometry the way DC's Record Lots/Tax Lots pair is (see
+# `US-DC_parcel-dcgovrecordlots-2026.yaml`), so it would more likely
+# fit `entity_type: property` (an ownership-interest attribute of a
+# parcel) than a second `parcel` recipe with its own geometry -- but
+# this is moot without a source to ingest.
+#
+# NOTE on the source file: the dataset's own page links three
+# downloads: (1) 23,262 per-district PDF tax map images (not GIS
+# data, skipped); (2) `CountySplits/`, one already-split
+# ESRI-shapefile-pair zip per county (55 files, 40 MB - 706 MB each);
+# (3) the single statewide File Geodatabase used here,
+# `WV_WVGISTC_Tax_2026.gdb.zip` (537 MB compressed). The statewide
+# GDB was chosen over the 55 county files to avoid a per-county
+# download-URL crosswalk (WVGISTC's per-county filenames embed both
+# the county's proper name and an internal sequential number -- see
+# below -- neither derivable from a standard admin recipe without a
+# separate ingest step just to serve URL construction), mirroring the
+# existing Wisconsin statewide recipe's single-big-file pattern
+# (`US-WI_parcel-wiscedu-v11.yaml`).
+#
+# NOTE on the layer and its sibling table (both DOWNLOADED, only the
+# first INGESTED here): `pyogrio.list_layers` on the statewide GDB
+# lists exactly two members: `MasterSurfWV_2026` (MultiPolygon Z,
+# 1,394,081 features -- the parcel geometry layer used here) and
+# `ParcelSummary` (a non-spatial table, 1,503,439 rows). The row-count
+# excess (1,503,439 vs 1,394,081, ratio matching a 6637-parcel/
+# 7172-row sample checked on Pleasants County) comes from `Card`/
+# `Cards` columns on `ParcelSummary`: it is a per-improvement-card
+# assessment roll (year built, land use, appraised value, deed
+# book/page, parsed address components), i.e. genuinely
+# `property`-shaped, not 1:1 with parcel geometry. It is NOT ingested
+# by this recipe -- left as a documented, clearly valuable future
+# `additional_layers`/sibling `property` recipe, joinable back to
+# this parcel layer via `CleanParcelID`, consistent with this
+# project's `parcel` vs `property` entity distinction. This mirrors
+# Pitt County NC's parcel+sales-history split
+# (`_instructions/acquiring_sources.md` Phase 1.4).
+#
+# NOTE on `CALC_ACRE` (left unmapped, mirroring a DC precedent): this
+# field name (and its `ParcelSummary` sibling column, `Calculated`,
+# vs. that table's separately-populated `DeededAcre`) reads as a
+# GIS-computed polygon area, not an independently-sourced legal/deed
+# acreage -- the same shape as DC's `CALCULATEDAREA`, which
+# `US-DC_parcel-dcgovrecordlots-2026.yaml` explicitly left unmapped
+# as "redundant with the geometry-derived area the pipeline already
+# computes from the polygon itself." The genuinely distinct DEEDED
+# acreage (`DeededAcre`, 91.0% populated on the Pleasants sample) is
+# on `ParcelSummary`, out of scope here for the reason above.
+#
+# NOTE on `COUNTY` (the process-time county split key) and the
+# crosswalk sidecar: `MasterSurfWV_2026.COUNTY` is NOT a FIPS code --
+# sampling confirmed all 55 distinct values are WVGISTC's own internal
+# county sequence number (2-digit, zero-padded, assigned by
+# alphabetical order of county name: Barbour=01, Berkeley=02, ...,
+# Wyoming=55 -- independently reproduced here from
+# `op.get_admin('US-WV', level=3)`'s own `name` column, and it matches
+# the `CountySplits/` per-county filenames exactly, e.g.
+# `Pleasants_37_...zip`). No existing crosswalk in this repo encodes
+# that numbering, so
+# `US-WV_parcel-wvgistc-2026_county-index.csv` (admin_id,
+# admin3_id_wvgistc) is a purpose-built sidecar for it, read directly
+# via `get_crosswalk`'s `recipe_id` path (a bare CSV, no separate
+# ingest needed) rather than the `admin_level`/`admin_recipe_id` path
+# used elsewhere in this repo (e.g. Wisconsin's own
+# `admin_id_crosswalk`) -- that path requires the crosswalk source to
+# already be an ingested parquet recipe, which would be disproportionate
+# machinery for a 55-row static lookup table.
+#
+# NOTE on the join key, `CleanParcelID` (verified, not the bundled
+# default): `MasterSurfWV_2026.CleanParcelID` is a 20-character,
+# delimiter-free, alphanumeric county-district-map-parcelPrefix-
+# parcelSuffix-specialID composite (format
+# 'DDDDDDDDDDDDDDDDDDDD' for 94.7% of the Pleasants sample, with an
+# embedded letter elsewhere), 100% populated and globally unique
+# (1,394,081 distinct values across 1,394,081 statewide rows --
+# verified directly, not sampled). `GISPID` is the same identifier
+# with dashes re-inserted for display (format
+# 'DD-DD-DDDD-DDDD-DDDD') and is mapped separately as
+# `parcel_id_map`, not used as the join key. This repo's bundled
+# `geo/parcel_id_links.csv` already carries a `kind: parcel`
+# conversion (`string_lengths: 2 2 4 4 4 & skip_empty: 1`) for 49 of
+# WV's 55 counties, shaped to re-split exactly this delimiter-free
+# 20-character format (consuming its first 16 characters; the
+# trailing 4-character SpecialID group is dropped, which is
+# acceptable since it is typically a placeholder). The 6 counties
+# absent from that table (Wayne, Webster, Wetzel, Wirt, Wood,
+# Wyoming) fall back to `compute_parcel_id_local`'s automatic `simple`
+# conversion, which is safe here regardless, since `CleanParcelID`
+# already contains no delimiters for `simple` to strip.
+#
+# NOTE on geometry: the GDB layer is `MultiPolygon Z` (a "Measured 3D
+# MultiPolygon" per pyogrio, i.e. it carries M/Z values openplaces has
+# no use for); `force_2d: true` drops the Z dimension at ingest.
+#
+# NOTE on license/terms (checked, not assumed): no formal license or
+# data-use-license page was found on wvgis.wvu.edu or mapwv.gov. The
+# only usage-relevant text found is a liability/accuracy disclaimer
+# on mapwv.gov/assessment/ ("the assessors and the WV Property Tax
+# Division shall have no liability... parcels do not represent legal
+# boundaries of property... for property tax assessment purposes
+# only"), plus a reference (in the clearinghouse dataset's own
+# supplemental links) to 2017's Senate Bill 588, which directs that
+# digital surface tax maps be made available "at no charge" through
+# this State Data Clearinghouse. Neither is a redistribution license
+# for third parties, so `redistribution_restricted` is recorded as
+# `null` (unknown), not `false`, per this repo's convention for "no
+# terms page found" rather than "no restriction exists".
+#
+# NOTE on privacy: 68 of 1,394,081 statewide rows (0.005%) are flagged
+# `Sensitive: Y`; `OWNER1` remains populated for all 68 in the source
+# (verified directly), so the flag does not correspond to redacted
+# owner data in this particular GIS export -- its exact meaning is
+# undocumented by the source and not interpreted further here.
+#
+# Verified end-to-end on Pleasants County (WV's smallest county file,
+# chosen for a fast first run): `op.ingest` against the live
+# statewide download wrote 6,637 rows for US-WV-PL, matching the
+# source's own per-county `MasterSurfWV_2026.COUNTY == '37'` row count
+# exactly (verified by filtering the downloaded statewide layer
+# directly, not merely by row count coincidence). `parcel_id_local`
+# populated 6,637/6,637 (100%) with 6,637 distinct values (no
+# collisions). CRS EPSG:26917 (NAD83 UTM Zone 17N), reprojected by the
+# ingester; 0 null geometries.
+
+description: >-
+  West Virginia statewide surface tax parcel roll from the WV GIS
+  Technical Center: county-assessor-sourced, state-aggregated parcel
+  geometry, ownership, and legal-description attributes.
+
+admin_id: US-WV
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: wvgistc
+    portal_url: "https://wvgis.wvu.edu/data/dataset.php?ID=371"
+    download_url: "https://data.wvgis.wvu.edu/pub/Clearinghouse/planningLanduseCadastres/Parcels/WVGISTC_2026/WV_WVGISTC_Tax_2026.gdb.zip"
+    license: >-
+      unknown -- no formal data-use license page found on wvgis.wvu.edu
+      or mapwv.gov; only a liability/accuracy disclaimer
+      (mapwv.gov/assessment/) and a reference to WV Senate Bill 588
+      (2017), which directs free public distribution of digital
+      surface tax maps through this Clearinghouse.
+    terms_url: "https://www.mapwv.gov/assessment/"
+    redistribution_restricted: null
+  version: "2026"
+
+compressed_file_name: "WV_WVGISTC_Tax_2026.gdb.zip"
+uncompressed_file_name: "WV_WVGISTC_Tax_2026.gdb"
+
+layer: MasterSurfWV_2026
+
+force_2d: true
+
+# COUNTY is WVGISTC's own alphabetical county sequence number, not a
+# FIPS code -- see header. admin_id_transformation prefixes it to
+# match the crosswalk sidecar's own admin3_id_wvgistc codes.
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY
+  admin_id_transformation:
+    output: admin3_id_wvgistc
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "WV"
+  admin_id_crosswalk:
+    recipe_id: US-WV_parcel-wvgistc-2026_county-index
+
+columns:
+  parcel_id_admin3: CleanParcelID
+  parcel_id_map: GISPID
+  owner_name: OWNER1
+  owner_name_2: OWNER2
+  owner_address: FullOwnerAddress
+  address: FullPhysicalAddress
+  legal_description: FullLegalDescription
+  tax_district: CODIST
+
+# Expose the raw assessor-original parcel id under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin3 -- CleanParcelID), so
+# it is the raw key parcel_id_local derives from -- consistent with
+# the Wisconsin/DC statewide parcel recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

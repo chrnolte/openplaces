@@ -8,6 +8,7 @@ record.
 
 import json
 
+import pandas as pd
 import pytest
 
 from openplaces.io.scrapers import arcgis_rest_scraper as scraper
@@ -294,3 +295,195 @@ def test_count_request_forces_json_format(monkeypatch, tmp_path):
 
     assert seen_formats == ['json']
     assert len(_read(out)['features']) == 1
+
+
+def test_resolve_layer_url_substitutes_admin_key(monkeypatch):
+    """`{admin_key}` in `layer_url` resolves via `get_admin`.
+
+    Covers the case a shared-service `admin_id_column` filter cannot: a
+    statewide source published as one genuinely separate FeatureServer
+    per admin unit (e.g. Utah's per-county LIR parcel services), named
+    after the admin unit.
+    """
+    seen = {}
+
+    def fake_get_admin(admin_id, level, columns=None):
+        seen['admin_id'] = str(admin_id)
+        seen['level'] = level
+        seen['columns'] = columns
+        return pd.DataFrame({columns: ['Salt Lake']})
+
+    monkeypatch.setattr(scraper, 'get_admin', fake_get_admin)
+
+    resolved = scraper._resolve_layer_url(
+        'https://svc/Parcels_{admin_key}_LIR/FeatureServer/0',
+        admin_id_to_download='US-UT-SL',
+        admin_key_column='name',
+        admin_key_transform='remove_spaces',
+    )
+
+    assert resolved == 'https://svc/Parcels_SaltLake_LIR/FeatureServer/0'
+    assert seen == {'admin_id': 'US-UT-SL', 'level': 3, 'columns': 'name'}
+
+
+def test_resolve_layer_url_without_placeholder_is_a_no_op():
+    url = 'https://svc/Parcels/FeatureServer/0'
+    assert (
+        scraper._resolve_layer_url(
+            url,
+            admin_id_to_download=None,
+            admin_key_column=None,
+            admin_key_transform=None,
+        )
+        == url
+    )
+
+
+def test_resolve_layer_url_requires_admin_key_column():
+    with pytest.raises(ValueError, match='admin_key_column'):
+        scraper._resolve_layer_url(
+            'https://svc/Parcels_{admin_key}_LIR/FeatureServer/0',
+            admin_id_to_download='US-UT-SL',
+            admin_key_column=None,
+            admin_key_transform=None,
+        )
+
+
+def test_resolve_layer_url_rejects_unknown_transform(monkeypatch):
+    monkeypatch.setattr(
+        scraper, 'get_admin', lambda *a, **k: pd.DataFrame({'name': ['Salt Lake']})
+    )
+    with pytest.raises(NotImplementedError, match='uppercase'):
+        scraper._resolve_layer_url(
+            'https://svc/Parcels_{admin_key}_LIR/FeatureServer/0',
+            admin_id_to_download='US-UT-SL',
+            admin_key_column='name',
+            admin_key_transform='uppercase',
+        )
+
+
+def test_fetch_resolves_admin_key_layer_url(fake_service, tmp_path, monkeypatch):
+    """`fetch()` itself wires `admin_key_column`/`admin_key_transform`
+    through to the layer it pages, not just `_resolve_layer_url` alone."""
+    fake_service['total'] = 2
+    seen_urls = []
+    real_get_json = scraper._get_json
+
+    def spying_get_json(url, params, **kwargs):
+        seen_urls.append(url)
+        return real_get_json(url, params, **kwargs)
+
+    monkeypatch.setattr(scraper, '_get_json', spying_get_json)
+    monkeypatch.setattr(
+        scraper, 'get_admin', lambda *a, **k: pd.DataFrame({'name': ['Salt Lake']})
+    )
+    out = tmp_path / 'layer.geojson'
+
+    scraper.fetch(
+        target_path=out,
+        layer_url='http://svc/Parcels_{admin_key}_LIR/FeatureServer/0',
+        admin_id_to_download='US-UT-SL',
+        admin_key_column='name',
+        admin_key_transform='remove_spaces',
+    )
+
+    assert all('Parcels_SaltLake_LIR' in url for url in seen_urls)
+
+
+def test_resolve_where_builds_admin_clause(monkeypatch):
+    """`where_admin_column` filters a *shared* service by an in-data
+
+    admin column -- the complementary case to `{admin_key}`, which is
+    for N genuinely different services (e.g. Arkansas's single CAMP
+    layer for all 75 counties, filtered by its own `countyfips`).
+    """
+    monkeypatch.setattr(
+        scraper,
+        'get_admin',
+        lambda *a, **k: pd.DataFrame({'admin3_id_admin1': ['05101']}),
+    )
+
+    resolved = scraper._resolve_where(
+        '1=1',
+        admin_id_to_download='US-AR-NW',
+        admin_key_column='admin3_id_admin1',
+        admin_key_transform=None,
+        where_admin_column='countyfips',
+    )
+
+    assert resolved == "countyfips = '05101'"
+
+
+def test_resolve_where_ands_onto_an_existing_clause(monkeypatch):
+    monkeypatch.setattr(
+        scraper,
+        'get_admin',
+        lambda *a, **k: pd.DataFrame({'admin3_id_admin1': ['05101']}),
+    )
+
+    resolved = scraper._resolve_where(
+        'LOT_TYPE = 2',
+        admin_id_to_download='US-AR-NW',
+        admin_key_column='admin3_id_admin1',
+        admin_key_transform=None,
+        where_admin_column='countyfips',
+    )
+
+    assert resolved == "(LOT_TYPE = 2) AND (countyfips = '05101')"
+
+
+def test_resolve_where_without_column_is_a_no_op():
+    assert (
+        scraper._resolve_where(
+            '1=1',
+            admin_id_to_download=None,
+            admin_key_column=None,
+            admin_key_transform=None,
+            where_admin_column=None,
+        )
+        == '1=1'
+    )
+
+
+def test_resolve_where_requires_admin_key_column():
+    with pytest.raises(ValueError, match='admin_key_column'):
+        scraper._resolve_where(
+            '1=1',
+            admin_id_to_download='US-AR-NW',
+            admin_key_column=None,
+            admin_key_transform=None,
+            where_admin_column='countyfips',
+        )
+
+
+def test_fetch_resolves_where_admin_column(fake_service, tmp_path, monkeypatch):
+    """`fetch()` itself wires `where_admin_column` into the query params,
+
+    not just `_resolve_where` alone."""
+    fake_service['total'] = 2
+    seen_params = []
+    real_get_json = scraper._get_json
+
+    def spying_get_json(url, params, **kwargs):
+        seen_params.append(params)
+        return real_get_json(url, params, **kwargs)
+
+    monkeypatch.setattr(scraper, '_get_json', spying_get_json)
+    monkeypatch.setattr(
+        scraper,
+        'get_admin',
+        lambda *a, **k: pd.DataFrame({'admin3_id_admin1': ['05101']}),
+    )
+    out = tmp_path / 'layer.geojson'
+
+    scraper.fetch(
+        target_path=out,
+        layer_url='http://svc/Planning_Cadastre/FeatureServer/6',
+        admin_id_to_download='US-AR-NW',
+        admin_key_column='admin3_id_admin1',
+        where_admin_column='countyfips',
+    )
+
+    wheres = [p['where'] for p in seen_params if 'where' in p]
+    assert wheres
+    assert all(w == "countyfips = '05101'" for w in wheres)

@@ -1,0 +1,295 @@
+# Recipe: Washington statewide "Current Parcels" tax-parcel roll --
+# the "Washington State Parcels Project," a statewide compilation
+# published on the WA Geospatial Open Data Portal
+# (https://geo.wa.gov/datasets/current-parcels) by the ArcGIS
+# organization account "WAGeoservices". Live service:
+# https://services.arcgis.com/jsIt88o09Q0r1j8h/arcgis/rest/services/
+# Current_Parcels/FeatureServer, layer 0 ("Parcels_2026").
+#
+# COVERAGE (verified, not assumed): the layer holds all 39 Washington
+# counties, not a subset -- there is no Tennessee-style carve-out here.
+# Grouping the live service by COUNTY_NM returns exactly 39 distinct
+# values summing to the service's own returnCountOnly total
+# (3,321,859), including the state's three smallest counties
+# (Garfield 4,159; Wahkiakum 4,441; Columbia 5,477) and its largest
+# (King 635,192). The item description's "those counties that
+# currently have digital tax parcels" phrasing is a historical
+# hedge, not a present-day gap: every county participates as of this
+# ingest.
+#
+# BULK VS REST (Phase 3 equivalence test): a ready-made bulk File
+# Geodatabase ("Current Parcels (GDB)", ArcGIS item
+# 0f4c2ca4b589499c8df7779a01bef002, 527 MB) is offered directly from
+# the item description ("Direct download available here"). Downloaded
+# and compared field-by-field and count-by-count against the live
+# FeatureServer before trusting it, per the Wilson-NC/DC-Record-Lots
+# trap of a Hub export silently diverging from the live service:
+#   - feature count: GDB 3,321,859 == live returnCountOnly 3,321,859
+#   - schema: GDB's 13 attribute fields are byte-identical in name,
+#     order and type to the live layer's field list (no dropped or
+#     renamed CAMA-style join column)
+#   - VALUE_LAND > 0: GDB 3,116,987 == live 3,116,987
+#   - VALUE_BLDG > 0: GDB 2,536,771 == live 2,536,771
+#   - PARCEL_ID_NR populated: GDB 3,292,519 == live 3,292,519
+#   - ORIG_PARCEL_ID populated: GDB 3,292,189 == live 3,292,189
+#   - SITUS_ADDRESS populated: GDB 2,823,731 == live 2,823,731
+# Every check matched exactly -- no schema or attribute drift, unlike
+# the DC Record Lots and Wilson NC cases this pattern is modeled on.
+# Uses the bulk GDB; REST paging 3.3M rows at maxRecordCount=2000
+# would need ~1,660 sequential requests for no measured benefit.
+#
+# FIELD POPULATION (measured against the live service, current as of
+# ingest): PARCEL_ID_NR and ORIG_PARCEL_ID both 3,292,519/3,321,859
+# (99.1%); SITUS_ADDRESS 2,823,731 (85.0%); SITUS_CITY_NM 2,395,917
+# (72.1%); SITUS_ZIP_NR 2,047,653 (61.6%); LANDUSE_CD (DOR statewide
+# land-use code) non-zero for 3,248,316 (97.8%); ORIG_LANDUSE_CD
+# (county-specific code) 1,939,618 (58.4%); VALUE_LAND > 0 3,116,987
+# (93.8%); VALUE_BLDG > 0 2,536,771 (76.4% -- the remainder is
+# plausibly vacant/unimproved land); DATA_LINK (a link to the
+# county assessor's own parcel page) populated for 3,276,958 (98.7%).
+# LANDUSE_CD also carries its own coded-value domain (83 entries, e.g.
+# '11' -> '11 - Household, single family units') but it does NOT
+# resolve in practice: `read_gdb_with_domains` decodes by
+# `col.astype(str).map(domain)`, and a numeric field read with any
+# nulls present comes back as float64, so 11 stringifies to '11.0'
+# and never matches the domain's '11' key -- confirmed directly
+# (`LANDUSE_CD.dropna().unique()` returns raw floats like 83.0, 11.0,
+# not text). `use_group_code` therefore receives the bare DOR numeric
+# code as a float, exactly as expected before accounting for the
+# domain, and the domain never actually fires for this field. Noted
+# here since it is a real gap in the shared `.gdb` reader (affects any
+# numeric domain-coded field with nulls, not just this recipe), not
+# something this recipe works around.
+#
+# COUNTY_NM HIDES A GDB CODED-VALUE DOMAIN (real schema quirk,
+# verified, and the one that actually broke the first version of this
+# recipe -- see below). Reading the raw GDB table directly (fiona, or
+# the live REST service, which serializes the *stored* value) shows
+# COUNTY_NM holding Washington's own official county number as a
+# string ('1', '3', '5', ... '77') for 35 of 39 counties, and the
+# county's name typed directly into the field for four --
+# 'GraysHarbor', 'PendOreille', 'SanJuan' (no internal space) and
+# 'Walla Walla' (with a space). But the field also carries an Esri
+# coded-value domain mapping every one of those 35 numbers to its full
+# county name ('1' -> 'Adams', ... '77' -> 'Yakima', including
+# '27' -> 'Grays Harbor', WITH a space this time). openplaces' own GDB
+# reader (`io.read_gdb_with_domains`, used by every `.gdb` ingest)
+# resolves that domain automatically, so the value this recipe's
+# `admin_id_transformation` actually sees is *already* a proper county
+# name for 35 counties, and the four raw free-text exceptions
+# untouched (since a non-domain value has nothing to resolve): 'King',
+# 'Pierce', ... 'Garfield', but 'GraysHarbor'/'PendOreille'/'SanJuan'
+# (no space) and 'Walla Walla' (already correct). Confirmed by reading
+# the layer through `io.read_gdb_with_domains` directly: exactly this
+# 39-value set, matching row-for-row against
+# `op.get_admin(admin_id='US-WA', level=3, geom=False)`.
+#   This is also why the first version of this recipe (a `remap` keyed
+# on the *raw*, pre-domain codes '1'/'3'/.../'77') silently matched
+# zero rows in every county: nothing in the real, domain-resolved
+# COUNTY_NM value ever equals a bare number. The failure did not show
+# up as an empty-output warning -- it surfaced as an unrelated-looking
+# pandas crash several steps later in `parcel_id_local` (a 0-row
+# DataFrame reaching `.apply(axis=1)`, `geo/ids.py` line ~795),
+# because a fully-filtered-to-nothing chunk has no rows left by the
+# time the parcel-id conversion runs. Confirmed by ingesting Garfield
+# (`US-WA-GF`) and King (`US-WA-KN`) and finding the incoming
+# `parcel_id_assessor` series length was exactly 0 in both, despite
+# both counties holding thousands of rows in the source. No separate
+# crosswalk sidecar CSV -- 39 rows inline, next to the note explaining
+# why, is clearer than an opaque external file for a mapping this
+# small.
+#   FIPS_NR, a separate dedicated 3-digit FIPS field with no domain of
+# its own, is consistent for every county except Asotin, where it is
+# NULL for 100% of its 13,629 rows -- not used here since COUNTY_NM
+# (post domain-decode) needs no such exception.
+#
+# PARCEL_ID_LOCAL: PARCEL_ID_NR ("FIPS Parcel ID Number", the state's
+# own FIPS-prefixed statewide-unique id, mapped as parcel_id_admin2)
+# and ORIG_PARCEL_ID ("Original Parcel ID Number", the county's raw
+# native assessor id, mapped as parcel_id_admin3) have IDENTICAL
+# per-county duplicate rates end to end -- confirming they are two
+# representations of the same underlying id, one FIPS-prefixed, one
+# not, and that choosing between them does not change join quality.
+# Following the WI/DC precedent of feeding parcel_id_local from the
+# county-native id, parcel_id_assessor is a copy of parcel_id_admin3
+# (ORIG_PARCEL_ID).
+#   Statewide weighted duplicate rate is a modest 3.9%, but it is
+# highly uneven by county and this is a real, source-side data-quality
+# issue rather than a conversion artifact (both id fields show the
+# identical rate per county): Lincoln County 53.6% duplicated,
+# Pacific County 42.0%, Kitsap 16.3%, Okanogan 14.3%, Skagit 12.2%,
+# Mason 9.0%; every other county is under 6%. Anyone joining
+# county-level data to Lincoln or Pacific parcels via parcel_id_local
+# should expect substantial collision.
+#   `geo/parcel_id_links.csv` already has a bundled entry for every
+# single WA county (e.g. US-WA-GF: 'string_lengths: 13 3 &
+# skip_empty: 1') -- almost certainly fitted to a different national
+# parcel-id source at some earlier point, not this Geoportal source,
+# since this is the first WA recipe in the repo. One of those
+# (US-WA-GF) was checked directly against real data: it passes
+# `compute_parcel_id_local`'s guards silently (no warning) and
+# produces a clean, fully-distinct 13-character key for Garfield --
+# but "passes silently" is not the same as "verified correct" for the
+# other 38 counties' patterns, which have not been individually
+# checked. Rather than inherit 39 unverified, possibly-mis-fitted
+# patterns that merely happen not to trip a duplicate-rate or
+# excess-loss warning, `instruction` below pins every WA county to
+# 'simple' explicitly. This is a safe no-op on this source: with no
+# delimiters to strip, 'simple' returns ORIG_PARCEL_ID unchanged
+# (confirmed against Lincoln County directly: reproduces the same
+# 53.6% duplicate rate measured on the raw field, i.e. an honest
+# reflection of the source's own duplication, not a conversion
+# artifact hidden by truncation). No `US_parcel_id-overrides.csv` row
+# exists for US-WA yet (new state); this repo's shared override table
+# is left untouched, and the pin lives in this recipe only.
+#
+# LEFT UNMAPPED (no registry field, or meaning too ambiguous to map):
+#   - SUB_ADDRESS ("Situs Address Msc.") -- only 1.3% populated
+#     (43,326/3,321,859) and its own alias reads as a miscellaneous
+#     note rather than a clean unit/suite number; too sparse and too
+#     ambiguous to risk mis-homing as `address_unit`.
+#   - DATA_LINK -- a URL to the county assessor's own parcel lookup
+#     page (98.7% populated). Genuinely useful, but the registry has
+#     no external-link attribute for a parcel entity.
+#   - ORIG_LANDUSE_CD -- the county's own land-use vocabulary (58.4%
+#     populated), distinct per county with no bundled crosswalk to a
+#     shared vocabulary. LANDUSE_CD (the statewide, DOR-normalized
+#     code, 97.8% populated) is mapped as `use_group_code` instead;
+#     mapping ORIG_LANDUSE_CD too, unmapped, would mix 39 different
+#     per-county vocabularies into one column. A sibling table,
+#     `County_Unique_Land_Use_Codes` (layer 2 of the service), holds
+#     the description for each county's own codes if a crosswalk is
+#     ever built.
+#   - GlobalID, Shape_Length, Shape_Area -- GlobalID has no domain
+#     meaning here; Shape_Length/Shape_Area are redundant with the
+#     geometry-derived area the pipeline computes itself.
+#   - The `File_Date` table (layer 1, one row per county with its own
+#     last-update date) and `County_Unique_Land_Use_Codes` (layer 2)
+#     are small reference/lookup tables, not additional per-parcel
+#     entities, so they are not ingested via `additional_layers`.
+#
+# LICENSE (ArcGIS item metadata for both the FeatureServer and the
+# GDB item, quoted verbatim from `licenseInfo`, current as of
+# ingest): "The Washington State Geoportal provides this
+# product/service for informational purposes only. ... In no event
+# shall the Geoportal be liable for any incorrect results or
+# analysis ... Some of the counties restrict the use of parcels for
+# State of Washington business only. Refer any requests for the data
+# to the appropriate county." No portal-wide terms-of-use page beyond
+# this item-level statement was found (geo.wa.gov's pages are a
+# JavaScript SPA whose static HTML carries no terms text). Recorded
+# as a partial, county-dependent redistribution restriction rather
+# than an outright block, since most counties impose no such limit
+# and the portal does not identify which ones do.
+
+description: >-
+  Washington statewide tax parcel roll (Washington State Parcels
+  Project): parcel ids, situs address, DOR land-use code, and
+  land/building values across all 39 counties.
+
+admin_id: US-WA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: wageoservices
+    portal_url: "https://geo.wa.gov/datasets/current-parcels"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/0f4c2ca4b589499c8df7779a01bef002/data"
+    license: >-
+      informational use only (Geoportal disclaimer); some counties
+      restrict use to WA State business (see header)
+    terms_url: "https://www.arcgis.com/home/item.html?id=0f4c2ca4b589499c8df7779a01bef002"
+    redistribution_restricted: true
+  version: "2026"
+
+compressed_file_name: "Current_Parcels.gdb.zip"
+uncompressed_file_name: "Current_Parcels.gdb"
+layer: Parcels_2026
+
+# COUNTY_NM splits processing per county. Its raw stored value is a
+# county-number code, but `io.read_gdb_with_domains` (used to read
+# every .gdb ingest) resolves its coded-value domain first, so the
+# value below is the domain-resolved county name for 35 counties, and
+# the source's own free-text exception spelling for the other 4 (see
+# header) -- NOT the raw code.
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY_NM
+  admin_id_transformation:
+    type: remap
+    output: admin3_id_admin1
+    mapping:
+      "Adams": "53001"
+      "Asotin": "53003"
+      "Benton": "53005"
+      "Chelan": "53007"
+      "Clallam": "53009"
+      "Clark": "53011"
+      "Columbia": "53013"
+      "Cowlitz": "53015"
+      "Douglas": "53017"
+      "Ferry": "53019"
+      "Franklin": "53021"
+      "Garfield": "53023"
+      "Grant": "53025"
+      "GraysHarbor": "53027"   # source's own spelling, no space
+      "Island": "53029"
+      "Jefferson": "53031"
+      "King": "53033"
+      "Kitsap": "53035"
+      "Kittitas": "53037"
+      "Klickitat": "53039"
+      "Lewis": "53041"
+      "Lincoln": "53043"
+      "Mason": "53045"
+      "Okanogan": "53047"
+      "Pacific": "53049"
+      "PendOreille": "53051"   # source's own spelling, no space
+      "Pierce": "53053"
+      "SanJuan": "53055"   # source's own spelling, no space
+      "Skagit": "53057"
+      "Skamania": "53059"
+      "Snohomish": "53061"
+      "Spokane": "53063"
+      "Stevens": "53065"
+      "Thurston": "53067"
+      "Wahkiakum": "53069"
+      "Walla Walla": "53071"
+      "Whatcom": "53073"
+      "Whitman": "53075"
+      "Yakima": "53077"
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+columns:
+  parcel_id_admin2: PARCEL_ID_NR
+  parcel_id_admin3: ORIG_PARCEL_ID
+  address: SITUS_ADDRESS
+  city: SITUS_CITY_NM
+  postal_code: SITUS_ZIP_NR
+  use_group_code: LANDUSE_CD
+  land_value: VALUE_LAND
+  improvement_value: VALUE_BLDG
+
+# Expose the raw county-native id under parcel_id_assessor (a copy of
+# parcel_id_admin3 -- ORIG_PARCEL_ID), the key parcel_id_local derives
+# from, matching the WI/DC statewide-recipe convention.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Pin every WA county to 'simple', bypassing the bundled per-county
+  # patterns in geo/parcel_id_links.csv -- see header.
+  instruction:
+    US-WA:
+      conv: simple
+
+save_to:
+  data_dir: core

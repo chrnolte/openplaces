@@ -1,0 +1,317 @@
+# Recipe: Indiana statewide real-property assessment (CAMA) tables,
+# published by the Department of Local Government Finance (DLGF)
+# through the same IGIO "GIS Data Harvest" program as
+# `US-IN_parcel-indianamap-2023`.
+#
+# Source discovery: the county-level "6 real property tables (LAND,
+# PARCEL, DWELLING, BUILDING, BUILDINGDETAIL, IMPROVE)" mentioned in
+# prior web research were NOT found published per-county; instead,
+# the ArcGIS Online item search API surfaced a single item, "Download
+# DLGF Real Property Assessment Tables 2022 - Geodatabase Format"
+# (item 4e0b94a421404f3ea5be65058bd85edd, owner `IndianaMap`), whose
+# `download_url_scraper`-free `url` field is a direct, statewide
+# single-file-geodatabase zip:
+# `https://countydataharvest.in.gov/realproperty/real_property_{year}.gdb.zip`.
+# Probing that URL pattern directly (HEAD requests) found working
+# files for years 2020-2023 (2019 and 2024+ both 403); 2023 is the
+# latest available and is the version used here (matches the
+# `US-IN_parcel-indianamap-2023` geometry vintage). Opened directly
+# with `ogrinfo`/`fiona` (`/vsizip/` streaming, no full extraction
+# needed for schema inspection): it holds exactly six non-spatial
+# tables, PARCEL (3,563,904 rows), LAND (7,729,931), DWELLING
+# (2,371,157), BUILDING (210,881), BUILDINGDETAIL (425,848), IMPROVE
+# (7,564,081) -- confirming the "6 real property tables" description,
+# just bundled as one statewide zip (864,733,814 bytes / ~825 MiB)
+# rather than per-county files. This recipe ingests PARCEL, DWELLING
+# and BUILDING; LAND, BUILDINGDETAIL and IMPROVE are deliberately left
+# out (see below).
+#
+# NOTE on why LAND, BUILDINGDETAIL and IMPROVE are not ingested here:
+# all three are genuinely 1-to-many-per-parcel detail tables with no
+# natural "one row per parcel" reduction, unlike PARCEL (one row per
+# parcel), DWELLING (one row per dwelling unit on a parcel -- usually
+# exactly one for a single-family home) and BUILDING (one row per
+# non-dwelling structure). Specifically:
+#   - LAND holds one row per land segment (a parcel can have several,
+#     e.g. a homesite acre plus tillable acreage priced differently);
+#     its APPRAISED_VALUE rolls up into PARCEL's own
+#     CURRENT_AV_TOTAL_LAND, which is mapped below, so nothing land-
+#     value-related is actually lost by omitting it.
+#   - BUILDINGDETAIL is a floor-by-floor/section-by-section
+#     sub-division of a single BUILDING row; no registry attribute
+#     needs that granularity.
+#   - IMPROVE is the table that actually carries `YEAR_CONSTRUCTED`,
+#     `GRADE` and `CONDITION_CODE` -- genuinely valuable fields -- but
+#     it is keyed by `DWELLING_OR_BUILDING_NUMBER` +
+#     `IMPROVEMENT_INSTANCE_NUMBER`, ambiguously covering *either* a
+#     dwelling *or* a building, with potentially several improvement
+#     rows per parcel (a house, a garage and a shed can each be their
+#     own IMPROVE row with a different year built). Picking "the"
+#     improvement year for a parcel is a selection/priority decision,
+#     which belongs in harmonize/curate, not in an ingest recipe. This
+#     means `year_built` is NOT available from this recipe for
+#     Indiana -- flagged explicitly per this task's instructions
+#     rather than force-mapped from an ambiguous source.
+#
+# NOTE on the join key (Phase 5): `PARCEL_NUMBER` (18 raw digits) is
+# the same "State Parcel Number" as `state_parcel_id` on
+# `US-IN_parcel-indianamap-2023`'s geometry layer -- verified via a
+# 19,532-row Adams-County overlap check documented on that recipe
+# (99.65%/99.22% match).
+#
+# NOTE on the county crosswalk: `COUNTY_NUMBER` on every one of the
+# six tables is a plain, UNPADDED numeric string ("1".."92", not
+# zero-padded "01"), confirmed by scanning the full PARCEL table
+# (exactly 92 distinct values, 1-92, no gaps). It follows the DLGF's
+# own alphabetical county numbering (confirmed against the DLGF's
+# published "List of Indiana Townships" reference document: 01
+# Adams, 02 Allen, 03 Bartholomew, ... an exact match to this repo's
+# own alphabetically-ordered `admin3` spine for US-IN). The sidecar
+# crosswalk below is therefore just this repo's 92-county admin3
+# list zipped against its 1-based alphabetical rank, unpadded to
+# match the source's own string format. STATS Indiana's Sales
+# Disclosure data uses the SAME DLGF numbering but zero-padded
+# ("01".."92") -- see the separate crosswalk file on
+# `US-IN_transaction-statsindiana-2026`; the two are not
+# interchangeable because the crosswalk join is a plain string match
+# with no zero-stripping.
+#
+# NOTE on fields left unmapped for want of a registry attribute:
+#   - PARCEL: `GIS_PARCEL_NUMBER` (redundant with PARCEL_NUMBER),
+#     `STATE_TOWNSHIP_NUMBER`/`SECTION_AND_PLAT`/`ROUTING_NUMBER`
+#     (survey-description bookkeeping, no registry slot),
+#     `OWNER_COUNTRY`, `LEVEL_LAND`/`HIGH`/`LOW`/`ROLLING`/`SWAMPY`/
+#     `WATER`/`SEWER`/`GAS`/`ELECTRICITY`/`STREET_OR_ROAD_CODE`/
+#     `SIDEWALK`/`ALLEY`/`NEIGHBORHOOD_TYPE`/`WATERFRONT_PROPERTY_TYPE`/
+#     `FLOOD_HAZARD` (site-characteristic flags used by the DLGF's own
+#     land-pricing model, no registry equivalent), `AV_CLASSIFIED_LAND`
+#     /`PRIOR_AV_TOTAL_LAND`/`PRIOR_AV_TOTAL_IMPROVEMENTS`/
+#     `ADJUSTMENT_FACTOR_APPLIED`/`ANNUAL_ADJUSTMENT_FACTOR_*`
+#     (trending/appeal bookkeeping), `APPRAISAL_DATE` (a free-text
+#     50-character field, not a clean date -- left unmapped rather
+#     than risk silent corruption), `REASON_FOR_CHANGE_CODE`.
+#     `STATE_ASSIGNED_DISTRICT_NUMBER` exists alongside
+#     `DISTRICT_NUMBER` as a second tax-district code; the latter is
+#     mapped as `tax_district`; the state-assigned variant is left
+#     unmapped rather than mapping two sources to the one registry
+#     slot.
+#   - DWELLING: `OCCUPANCY_CODE`, `STORY_CONFIGURATION_CODE`,
+#     `PREDOMINANT_ROOFING_MATERIAL`, `CENTRAL_AIR_CONDITIONING`,
+#     `ATTIC_CODE`/`BASEMENT_CODE`/`CRAWL_SPACE_CODE` and
+#     `ATTACHED_GARAGE`/`INTEGRAL_GARAGE`/`ATTACHED_CARPORT`/
+#     `BASEMENT_GARAGE` -- all real, well-populated fields (sampled
+#     below) but each is a source-specific *code*, not the *boolean*
+#     the registry's `has_basement`/`has_garage` expect; correctly
+#     deriving a boolean from these codes (a garage can be integral,
+#     attached or in the basement; a basement can be full or partial)
+#     needs a verified code-to-boolean mapping this pass did not
+#     confirm, so they are left unmapped rather than risk a wrong
+#     cast. The many `*_VALUE_ADJ` pricing-model line items (garage,
+#     fireplace, plumbing, electrical, air conditioning, etc.) and
+#     fixture/fireplace counts have no registry equivalent either.
+#   - BUILDING: `PRICING_KEY_PREDOMINANT_USE`, `PLUMBING_FIXTURES_VALUE`
+#     /`SPECIAL_FEATURES_VALUE`/`EXTERIOR_FEATURES_VALUE`,
+#     `COLLECTION_ID`, `UpdateDate`/`UpdateUser` -- no registry
+#     equivalent for a building-level sub-value or DLGF bookkeeping
+#     field.
+#
+# Measured (from the 2023 GDB, `/vsizip/` streaming): PARCEL --
+# 500,000-row cross-county sample (15 of 92 counties): PROPERTY_CLASS_
+# CODE and OWNER_NAME and PROPERTY_ADDRESS all populated 100%;
+# CURRENT_AV_TOTAL_LAND > 0 in 94.0%, CURRENT_AV_TOTAL_IMPROVEMENTS > 0
+# in 73.1%, AV_TOTAL_LAND_AND_IMPROVEMENTS > 0 in 94.5%,
+# LEGALLY_DEEDED_ACREAGE > 0 in 50.6%. DATE_TRANSFERRED_TO_OWNER is a
+# clean `MM/DD/YYYY` string (spot-checked), populated 100% in the
+# sample. DWELLING -- 300,000-row sample: STORY_HEIGHT > 0 in 99.3%,
+# TOTAL_BEDROOMS > 0 in 93.0%, NUMBER_OF_FULL_BATHS > 0 in 98.9%,
+# NUMBER_OF_FINISHED_ROOMS > 0 in 89.4%; HEATING_SYSTEM_CODE takes 9
+# distinct code values (0-8), all populated, no nulls in the sample.
+#
+# License: no separate terms-of-use or license page was found for
+# this dataset in this research pass (the AGOL item page carries no
+# `licenseInfo` distinct from the standard ArcGIS "as is" boilerplate
+# seen on the sibling parcel item). Recorded as 'unknown'.
+#
+# Validation performed: a real, unmodified `op.ingest()` run was
+# completed end-to-end against this recipe for Adams County
+# (`US-IN-AD`), reusing the 825 MiB GDB already downloaded once
+# during this research pass. All three entities were written and
+# reconciled exactly against direct GDB counts for `COUNTY_NUMBER=1`:
+# property/PARCEL 19,532 rows (== the CAMA overlap count on the
+# sibling parcel recipe), dwelling/DWELLING 11,537 rows,
+# building/BUILDING 1,337 rows. `parcel_id_local` populated 100% on
+# all three (19,532/11,537/1,337 rows respectively, no nulls, no
+# warnings), and is fully distinct on `property` (19,532 unique for
+# 19,532 rows -- exactly 1:1, as expected for a parcel-keyed table).
+# `land_value`/`total_value` populated (>0) in 94.2%/94.2%,
+# `owner_name` in 100%, matching the header's earlier bulk-sample
+# figures. A full 92-county ingest was not run in this pass.
+#
+# This pass also surfaced and fixed three real, pre-existing
+# `openplaces` bugs, none specific to Indiana's data, encountered
+# only because this was actually run end-to-end rather than just
+# schema-checked:
+#   1. `TableIngester._read_recipe_data`'s plain-CSV branch read the
+#      recipe's `encoding` key into a local `kwargs` dict but never
+#      forwarded it to `pandas.read_csv`, so a UTF-16 (or any
+#      non-UTF-8) flat file failed to decode regardless of a declared
+#      `encoding:` -- fixed in `io/ingester/table_ingester.py` (the
+#      fixed-width branch already did this correctly; the plain-CSV
+#      branch did not).
+#   2. `get_crosswalk` (`io/transform.py`) defaults to `dtype=None`
+#      when loading a `recipe_id`-based crosswalk CSV, so an
+#      all-digit crosswalk value column (e.g. `admin3_id_admin2`:
+#      "1".."92") loads as `int64` unless the recipe's
+#      `admin_id_crosswalk:` block sets `dtype: str` explicitly. This
+#      recipe's own `COUNTY_NUMBER` source column is a genuine GDB
+#      String field, so the join failed outright ("You are trying to
+#      merge on str and int64 columns") until `dtype: str` was added
+#      below -- not a bug fix, but worth flagging since every existing
+#      recipe using this crosswalow form happens to have an
+#      integer-typed source column, so this interaction had not
+#      previously been exercised.
+#   3. `TableIngester._save_recipe_data` requires an `admin{level}_id`
+#      column to already exist on the DataFrame whenever
+#      `save_to.admin_level` is set, but `process_by`'s
+#      `admin_id_column`/`admin_id_crosswalk` machinery (used here to
+#      chunk reading by county) only ever attaches that crosswalk to
+#      an internal FID filter, never to the DataFrame itself. Setting
+#      `save_to: {admin_level: 3}` (matching `process_by.admin_level`)
+#      therefore raised "column 'admin3_id' does not exist" on every
+#      save. Fixed by removing `admin_level` from every `save_to:`
+#      block in this recipe (primary and both additional layers): the
+#      per-admin-unit output path is already determined by the
+#      `admin_ids`/`process_by` scoping during ingestion (confirmed:
+#      files still land at `.../US-IN-AD/_all/property/dlgf/2023/...`
+#      per admin unit), matching the working, no-`save_to.admin_level`
+#      pattern already used by `US-WI_parcel-wiscedu-v11`. This may be
+#      a genuine gap for any recipe wanting `save_to.admin_level` equal
+#      to (not coarser than) `process_by.admin_level` with an in-data
+#      `admin_id_column` -- flagged for the user's attention rather
+#      than worked around silently.
+
+description: >-
+  Indiana statewide real-property assessment roll (2023 harvest) from the
+  DLGF's parcel-level CAMA table, published through IGIO's GIS Data Harvest.
+
+admin_id: US-IN
+
+entity:
+  entity_type: property
+  source:
+    source_id: dlgf
+    portal_url: "https://www.arcgis.com/home/item.html?id=4e0b94a421404f3ea5be65058bd85edd"
+    download_url: "https://countydataharvest.in.gov/realproperty/real_property_2023.gdb.zip"
+    license: "unknown (no separate terms/license page found; see header)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2023"
+
+compressed_file_name: "real_property_2023.gdb.zip"
+uncompressed_file_name: "Real_Property_2023.gdb"
+
+layer: PARCEL
+
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY_NUMBER
+  admin_id_crosswalk:
+    recipe_id: "US-IN_property-dlgf-2023_admin3-crosswalk"
+    # COUNTY_NUMBER is a GDB String field carrying all-digit values
+    # ("1".."92"); without an explicit dtype, the crosswalk CSV's own
+    # all-digit admin3_id_admin2 column loads as int64 (get_crosswalk's
+    # default), and the join against the genuinely-string source
+    # column then fails outright ("You are trying to merge on str and
+    # int64 columns") -- caught for real during this recipe's
+    # `op.ingest()` validation pass (see header).
+    dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL_NUMBER
+  tax_year: ASSESSMENT_YEAR
+  address: PROPERTY_ADDRESS
+  city: PROPERTY_ADDRESS_CITY
+  postal_code: PROPERTY_ADDRESS_ZIP_CODE
+  use_group_code: PROPERTY_CLASS_CODE
+  legal_description: LEGAL_DESCRIPTION
+  tax_neighborhood_code: NEIGHBORHOOD_IDENTIFIER
+  tax_district: DISTRICT_NUMBER
+  owner_name: OWNER_NAME
+  owner_address: OWNER_STREET_ADDRESS_OR_PO_BOX
+  owner_city: OWNER_ADDRESS_CITY
+  owner_state: OWNER_ADDRESS_STATE
+  owner_postal_code: OWNER_ADDRESS_ZIP_CODE
+  zoning_code: ZONING
+  land_value: CURRENT_AV_TOTAL_LAND
+  improvement_value: CURRENT_AV_TOTAL_IMPROVEMENTS
+  total_value: AV_TOTAL_LAND_AND_IMPROVEMENTS
+  last_sale_date: DATE_TRANSFERRED_TO_OWNER
+
+columns_to_categorical:
+  - city
+  - postal_code
+  - use_group_code
+  - tax_neighborhood_code
+  - tax_district
+  - owner_state
+  - owner_postal_code
+  - zoning_code
+
+transformations:
+  - type: unary
+    operation: acres_to_sqft
+    input: LEGALLY_DEEDED_ACREAGE
+    output: lot_size
+
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+    data_dir: core
+
+# Additional layers from the same statewide geodatabase: DWELLING
+# (residential structure characteristics, one row per dwelling unit)
+# and BUILDING (non-dwelling structures, one row per building). Both
+# map their own PARCEL_NUMBER to parcel_id_assessor so the top-level
+# parcel_id_local directive (not a per-table key -- see
+# `recipe.build_table_recipe`) computes correctly for each.
+additional_layers:
+  - layer: DWELLING
+    entity:
+      entity_type: dwelling
+      source:
+        source_id: dlgf
+      version: 2023
+    columns:
+      parcel_id_assessor: PARCEL_NUMBER
+      tax_year: ASSESSMENT_YEAR
+      n_rooms: NUMBER_OF_FINISHED_ROOMS
+      n_bedrooms: TOTAL_BEDROOMS
+      n_bathrooms: NUMBER_OF_FULL_BATHS
+      n_stories: STORY_HEIGHT
+      heating_type: HEATING_SYSTEM_CODE
+    columns_to_categorical:
+      - heating_type
+    save_to:
+      data_dir: core
+
+  - layer: BUILDING
+    entity:
+      entity_type: building
+      source:
+        source_id: dlgf
+      version: 2023
+    columns:
+      parcel_id_assessor: PARCEL_NUMBER
+      tax_year: ASSESSMENT_YEAR
+      n_stories: NUMBER_OF_FLOORS
+      area_sqft: TOTAL_SQUARE_FOOT_AREA
+      total_value: TOTAL_BASE_VALUE
+    save_to:
+      data_dir: core

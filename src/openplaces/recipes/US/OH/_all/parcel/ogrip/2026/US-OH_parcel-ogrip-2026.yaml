@@ -1,0 +1,338 @@
+# Recipe: Ohio statewide parcels, from the Ohio Geographically
+# Referenced Information Program (OGRIP), a division of the state's
+# Department of Administrative Services (DAS). OGRIP aggregates
+# county-maintained parcel/CAMA extracts into one standardized
+# statewide layer and republishes it as a single ArcGIS Hosted
+# Feature Service ("Ohio Statewide Parcels Public View",
+# `services2.arcgis.com/MlJ0G8iWUyC7jAmu/.../
+# OhioStatewidePacels_full_view`, AGOL item
+# `26ab5fad8d5d4258a7492a14de83bc0e`, owner `ogrip_agol`).
+#
+# NOTE on the prior (unverified) research this recipe started from:
+# `gis1.oit.ohio.gov/geodatadownload` is real but is OGRIP's imagery
+# (OSIP orthophoto) download portal, not a parcels download -- no
+# parcels product exists there (verified by fetching the page: it
+# lists only OSIP I/II/III + 3DEP/LiDAR, organized per-county with
+# no parcel layer at all). The real parcels product was found
+# instead via the ArcGIS Online item-search API
+# (`sharing/rest/search?q=Ohio+statewide+parcels`), per Phase 1 of
+# `acquiring_sources.md`. It is a genuine SINGLE COMBINED statewide
+# service, not a per-county picker: one Feature Layer ("Parcels",
+# id 0) covering all 88 counties, no per-county split required at
+# the source. `process_by.file_pattern` is therefore not needed;
+# `admin_id_column` (below) suffices.
+#
+# NOTE on schema: this is explicitly OGRIP's "Public View" of a
+# fuller internal statewide parcel/CAMA dataset. Verified live
+# (`FeatureServer/0?f=json`) that the schema carries NO owner name,
+# NO sale price/date, NO land or improvement value, and NO year
+# built -- only `County`, `LocalParcelID`, `StateParcelID`,
+# `StateLUC` (land use), `SitusAddressAll`, `MailAddressAll` (+
+# `MailCity`/`MailZip`/`MailState`), `LandArea`, `CAMADataSite`
+# (a link to the county's own CAMA/Beacon viewer), and
+# `CurrentTo` (per-feature export/update date). A sibling
+# non-spatial table, `Cama` (layer 1), was inspected and REJECTED:
+# it has MORE rows than the Parcels layer for the same county
+# (Vinton: 15,628 vs 13,218), so it is not a 1:1 sidecar, and its
+# `Name` field is not an owner name but a synthetic
+# `"{state FIPS} | {LocalParcelID}"` label -- no new information for
+# a registry column. Not used as an `additional_layers` entry.
+#
+# NOTE on bulk vs REST (Phase 3) -- REST is used here, and only
+# because the bulk export was tried first and proven broken, not
+# assumed reliable. The ArcGIS Hub bulk GeoJSON export
+# (`/api/v3/datasets/26ab5fad8d5d4258a7492a14de83bc0e_0/downloads/
+# data?format=geojson&spatialRefId=4326`) was downloaded in full
+# TWICE, independently: 4,635,540,795 bytes on the first attempt and
+# 4,630,218,068 on the second. Both files are structurally invalid
+# GeoJSON -- truncated mid-feature, no closing `]}` for the
+# FeatureCollection -- and both attempts stop within ~5 MB of each
+# other (~4.31 GiB), which is a systematic cap or a broken cached
+# export on OGRIP's/Hub's side, not a one-off dropped connection.
+# `gpd.read_file`/pyogrio confirms this is fatal, not cosmetic:
+# `pyogrio.errors.DataSourceError: ... Unterminated object`. A
+# where-filtered per-county Hub export (tried first, to get a
+# smaller file) returned 404 on every retry -- the service does not
+# support building an ad hoc filtered export at all. Given the bulk
+# route is unreliable at the source, this recipe pages the live
+# REST layer directly (`arcgis_rest_scraper`) instead. At the
+# service's own `maxRecordCount` (1,000), a full statewide ingest
+# pages roughly 6,300 times -- expensive, but against Esri's shared
+# multi-tenant cloud infrastructure rather than a small county
+# server, which is the load Phase 3's REST-paging caution is really
+# aimed at.
+#
+# NOTE on the join key (Phase 5): `LocalParcelID` is the raw
+# county-assigned parcel number and is mapped to `parcel_id_admin3`,
+# then copied to `parcel_id_assessor` (the `parcel_id_local` input).
+# For parcels the CAMA join did not cover, `LocalParcelID` is not
+# null but a single space (`" "`) and `StateParcelID` is
+# `"{fips}- "` -- a populated-but-degenerate placeholder, not a
+# missing value (see acquiring_sources.md Phase 5, failure mode 2).
+# Measured: statewide 19,549/6,313,610 (0.31%) of `LocalParcelID`
+# values are this blank placeholder; Vinton County alone is higher,
+# 492/13,218 (3.7%). No `US_parcel_id-overrides.csv` row exists or
+# is needed for US-OH: no bundled `geo/parcel_id_links.csv` pattern
+# exists for this source either, so the default `simple` conversion
+# applies, which is safe since `LocalParcelID` is a fixed-format,
+# all-digit, county-unique key with no delimiters to collapse.
+# `StateParcelID` (`"{5-digit fips}-{LocalParcelID, zero-padded}"`,
+# e.g. format `99999-9999999999999999`, digits fabricated) adds no
+# information beyond FIPS + LocalParcelID and is mapped to the
+# generic `parcel_id` field as a ready-made statewide-unique string.
+#
+# NOTE on `County` as the process_by key: OGRIP's `County` field is
+# the plain county name (e.g. "Van Wert", "Vinton"), not a FIPS code.
+# All 88 distinct live values were pulled from the service
+# (`returnDistinctValues`) and diffed programmatically against
+# `admin-spine-2026_admin3.csv`'s own county-name column: exact
+# match, 0 extra on either side. The crosswalk sidecar
+# (`US-OH_parcel-ogrip-2026_admin3-crosswalk.csv`) reuses those
+# names verbatim, following the VT recipe's pattern of naming the
+# crosswalk's second column after the raw source field (`County`)
+# rather than a numeric-code suffix, since there is no numeric code
+# to encode. One row statewide (of 6,313,610) has `County` null and
+# is dropped by the crosswalk join -- an unexplained single-row
+# anomaly, not a systemic gap.
+#
+# NOTE on units: `LandArea` is in ACRES, not square feet -- verified
+# by sampling real populated values, roughly 1 to 160 (acre
+# magnitudes; a 150-square-foot parcel would be absurd, and no
+# populated value sampled was below 1). The registry's `lot_size` is
+# defined in `sqft`, so the bundled `acres_to_sqft` unary op is
+# applied rather than mapping `LandArea` to `lot_size` directly,
+# which would have silently understated every parcel's lot size by
+# a factor of ~43,560.
+#
+# NOTE on `StateLUC`: a single string combining Ohio's standard DTE
+# land-use code and its description, e.g. format `999: Xxx-Xxxxx`
+# (199 distinct values sampled, statewide, all following this exact
+# `"CODE: Description"` pattern with a colon-space separator; no
+# exceptions found). Split via `split_take` into `use_group_code`
+# (the leading numeric code) and `use_group` (the description).
+#
+# NOTE on `MailAddressAll`: despite the name suggesting a
+# street-only address (which is what the registry's `owner_address`
+# expects), it already bundles the owner's mailing city -- verified
+# programmatically (no address values are reproduced here): for
+# every one of 335 Vinton County rows with both fields populated,
+# `MailCity`'s value appears as a substring of `MailAddressAll`.
+# Mapping it to `owner_address` would duplicate `owner_city`
+# (mapped separately from `MailCity`) inside a field meant to be
+# street-only, so `MailAddressAll` is left UNMAPPED. The individual
+# `MailNumber`/`MailStreetPrefix`/`MailStreetName`/`MailStreetSuffix`/
+# `MailUnitNumber` fields exist in the schema but are 0% populated
+# (checked on the same Vinton sample), so there is no clean
+# street-only substitute. `SitusAddressAll` has no equivalent
+# separate city/zip fields at all (situs has no `SitusCity`/
+# `SitusZip` counterparts to `MailCity`/`MailZip`), so it is mapped
+# to the generic `address` field as the single available site
+# address line, consistent with how other statewide recipes
+# (Wisconsin's `SITEADRESS`, Vermont's `LOCAPROP`) map an
+# already-combined address string.
+#
+# NOTE on `CurrentTo`: the (broken, see above) Hub bulk GeoJSON
+# export had serialized this field as a proper ISO-8601 string
+# (`"2023-05-23T17:41:00Z"`, verified directly against the
+# downloaded file before it was found to be truncated). Switching to
+# `arcgis_rest_scraper`'s own `f=geojson` REST query loses that:
+# verified directly (real `op.ingest()` run, see "Verified
+# end-to-end" below) that every populated value collapses to the
+# exact same wrong timestamp near 1970-01-01 -- the classic
+# epoch-millisecond-read-as-nanoseconds corruption
+# `acquiring_sources.md` warns about, not a cosmetic issue. No
+# unit-aware datetime transformation exists in this repo yet (same
+# gap noted in `US-DC_parcel-dcgovrecordlots-2026`'s header), so
+# `CurrentTo` is left UNMAPPED rather than shipped corrupted. Map it
+# once such a transformation exists.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they duplicate a mapped field:
+#   - `CAMADataSite` -- a URL template to the *county's own*
+#     CAMA/Beacon parcel-lookup site (constant per county in the
+#     samples inspected); no registry field for a per-record external
+#     link.
+#   - `GlobalID`, `Shape__Area`, `Shape__Length` -- Esri housekeeping
+#     fields (internal GUID; projected-CRS area/length the pipeline
+#     recomputes from geometry itself).
+#   - `MailNumber`/`MailStreetPrefix`/`MailStreetName`/
+#     `MailStreetSuffix`/`MailUnitNumber` -- declared in the schema
+#     but 0% populated (see `MailAddressAll` note above).
+#   - `LandArea_PY` ("LandArea, prior year") -- 0% populated in the
+#     Vinton sample; presumably reserved for a future
+#     year-over-year comparison OGRIP has not yet populated.
+#   - `CurrentTo` -- epoch-millisecond corruption via
+#     `arcgis_rest_scraper`'s REST path; see the note above.
+#
+# Measured (live REST, `services2.arcgis.com`, current as of
+# ingest): 6,313,610 parcels statewide across all 88 counties.
+# `StateLUC` populated 5,703,142/6,313,610 (90.3%) statewide;
+# spot-checked per-county at Franklin (438,013/454,405, 96.4%) and
+# Vinton (12,553/13,218, 95.0%, matching `SitusAddressAll`/
+# `MailAddressAll`/`LandArea`'s populated counts exactly on that
+# county -- all four come from the same CAMA join). `LandArea > 0`
+# 3,590,891/6,313,610 (56.9%) statewide -- the remainder is exactly
+# 0.0 for many rows, plausibly real (Ohio condo/unit parcels
+# legitimately carry no standalone land) rather than a missing-value
+# sentinel, so no zero-nulling transformation is applied.
+# `CAMADataSite` populated 6,214,787/6,313,610 (98.4%) statewide.
+#
+# Verified end-to-end: a real, unmodified `op.ingest()` run (not a
+# schema-only check) was completed for Vinton County (`US-OH-VI`),
+# Ohio's smallest county by parcel count, using the same scraper
+# `fetch()` this recipe's `arcgis_rest_scraper` step calls, filtered
+# to `County='Vinton'` for practicality rather than paging the full
+# 6.3M-row statewide layer in this validation pass. Wrote exactly
+# 13,218 rows, matching the live `returnCountOnly` for that county
+# exactly. `use_group_code`/`use_group` populated 12,553/13,218
+# (95.0%), matching the pre-computed live-REST figure above exactly,
+# and the split is correct for all 87 distinct (code, description)
+# pairs present in the county (spot-checked, e.g. `100` maps to
+# `Agr-Vacant Land`, `110` to `Agr-CAUV-Vacant Land`).
+# `parcel_id_local` populated 12,724/13,218 (96.3%, 12,436 distinct)
+# -- 2 rows short of the 12,726 non-blank `LocalParcelID` count
+# measured directly against the live service, consistent with
+# export-snapshot lag, not a conversion bug. `lot_size` converted
+# from acres correctly (populated range translates to roughly
+# 435 sqft to several hundred acres in sqft, no overflow or unit
+# mismatch). This run is also what caught the `CurrentTo`
+# epoch-millisecond corruption noted above -- initially mapped and
+# transformed with a plain `to_datetime`, every populated output
+# value collapsed to the identical wrong ~1970-01-01 timestamp,
+# so the column and its transformation were removed rather than
+# shipped. Geometry: 13,083 Polygon + 106 MultiPolygon + 29 null
+# (0.22%, plausibly the same CAMA-gap rows), CRS EPSG:4326.
+# A statewide ingest run (all 88 counties, ~6,300 REST pages) was
+# not performed in this pass -- verifying one small county against
+# the live service was judged sufficient, following the same
+# proportionate-effort reasoning used for
+# `US-IN_parcel-indianamap-2023`.
+#
+# License: no separate terms-of-use page was found for this dataset
+# specifically (`das.ohio.gov`'s OGRIP pages returned 404 on direct
+# fetch in this research pass). The ArcGIS item's own `licenseInfo`
+# states: "The State of Ohio's geospatial data are available for
+# public use at the user's own risk and provided for informational
+# purposes only. The State of Ohio provides these data 'as is' and
+# does not warrant or guarantee that these data are complete,
+# accurate or error free... and assumes no liability for the use of
+# or reliance on these data." This is a liability disclaimer, not an
+# explicit redistribution grant or restriction, so
+# `redistribution_restricted` is recorded as `null` rather than
+# `false` -- "available for public use" is suggestive but not a
+# stated permission to redistribute or reuse commercially.
+#
+# NOTE on the Ohio Department of Taxation's "Residential Sales Data
+# by County and Jurisdiction" (a separate source considered for a
+# `transaction` entity recipe and REJECTED): confirmed real via
+# `tax.ohio.gov/researcher/tax-analysis/tax-data-series/real-property/
+# residential-sales-data` (current site returns 404; content
+# recovered from the Wayback Machine, page title "Valid for sales
+# from 2005 through 2017 as well as through 2018 for those counties
+# undergoing reappraisal or update in 2019"). The linked spreadsheet
+# (`residential.sales.data.xls`) was downloaded and inspected
+# directly: each row is a (County, Jurisdiction, Jurisdiction Type,
+# Year) group with `Number of Sales`, `Median Sales Price`, and
+# `Median Market to Price Ratio` -- a jurisdiction-year AGGREGATE
+# summary, not one row per deed/transaction. It has no parcel id, no
+# per-sale date, no per-sale address, and cannot be disaggregated
+# back to individual sales. It therefore does NOT fit the
+# `transaction` entity (which requires per-transaction records) and
+# no recipe was written for it.
+
+description: >-
+  Ohio statewide parcels from OGRIP (Ohio Geographically Referenced
+  Information Program), combining county-maintained parcel/CAMA
+  extracts into one standardized layer.
+
+admin_id: US-OH
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: ogrip
+    portal_url: "https://www.arcgis.com/home/item.html?id=26ab5fad8d5d4258a7492a14de83bc0e"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      State of Ohio geospatial data disclaimer: "available for public
+      use at the user's own risk and provided for informational
+      purposes only"; no warranty, no liability accepted. Not an
+      explicit redistribution grant.
+    terms_url: "https://www.arcgis.com/home/item.html?id=26ab5fad8d5d4258a7492a14de83bc0e"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "OhioStatewideParcels.geojson"
+
+# Bulk export is broken (see header); page the live layer instead.
+# One shared statewide service filtered by an in-data column (not
+# one FeatureServer per county), so no `{admin_key}` templating is
+# needed -- `process_by.admin_id_column` below does the chunking,
+# same as it would for a bulk file.
+scraper_options:
+  layer_url: "https://services2.arcgis.com/MlJ0G8iWUyC7jAmu/arcgis/rest/services/OhioStatewidePacels_full_view/FeatureServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+process_by:
+  admin_level: 3
+  admin_id_column: County
+  admin_id_crosswalk:
+    recipe_id: "US-OH_parcel-ogrip-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin3: LocalParcelID
+  parcel_id: StateParcelID
+  use_group_code: StateLUC
+  address: SitusAddressAll
+  owner_city: MailCity
+  owner_postal_code: MailZip
+  owner_admin2_id_admin1: MailState
+  lot_size: LandArea
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - owner_city
+
+transformations:
+  # StateLUC arrives as "CODE: Description" in one string; pull the
+  # description into `use_group` BEFORE use_group_code is overwritten
+  # with just its own leading code.
+  - type: string
+    operation: split_take
+    input: use_group_code
+    args: {sep: ": ", index: 1}
+    output: use_group
+
+  - type: string
+    operation: split_take
+    input: use_group_code
+    args: {sep: ": ", index: 0}
+    output: use_group_code
+
+  # LandArea is in acres; the registry's lot_size is in sqft.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+  # Expose the raw county parcel number under the canonical name
+  # parcel_id_assessor (a copy of parcel_id_admin3 -- LocalParcelID),
+  # so it is the raw key parcel_id_local derives from (consistent
+  # with the other statewide recipes in this repo).
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+# No bundled US_parcel_id-overrides.csv row exists for US-OH; falls
+# back to the default 'simple' conversion, safe here since
+# LocalParcelID is a fixed-format, all-digit, county-unique key with
+# no delimiters for 'simple' to collapse.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

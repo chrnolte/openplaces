@@ -1,0 +1,238 @@
+# Recipe: Pennsylvania statewide parcel boundaries -- the "Pennsylvania
+# Parcels" dataset (PASDA dataset id 1696), published by Penn State
+# University through Pennsylvania Spatial Data Access (pasda.psu.edu).
+#
+# WHY THIS RECIPE EXISTS. Pennsylvania has no statewide tax-roll/
+# assessment aggregator (STEB, the State Tax Equalization Board, only
+# publishes county-level aggregate ratios, not parcel-level records --
+# confirmed in prior research, not re-litigated here). This PASDA
+# layer is the one genuine, actively-updated, merged-geometry
+# statewide parcel dataset that does exist for PA: one real ArcGIS
+# Server feature layer covering many counties at once, not a page of
+# per-county links. It was fetched and inspected directly in this
+# session (REST service JSON, the DataSummary page, and the dataset's
+# own FGDC-style metadata XML -- not assumed from prior research).
+#
+# CONFIRMED GENUINE (Phase 1-2, this session): the service root
+# (`apps.pasda.psu.edu/.../PA_Parcels/MapServer?f=json`) lists
+# exactly two layers: id 0 "Pa County" (county boundaries, a
+# different, unrelated layer -- not used here) and id 1 "PA Parcels"
+# (this recipe's layer, `esriGeometryPolygon`). It is one real,
+# queryable FeatureLayer -- `returnCountOnly` on layer 1 returns
+# 4,398,548 features live, and a `returnDistinctValues` query on its
+# own `Source` field returns exactly 39 distinct county names, so the
+# many-county merge is real and verifiable server-side, not a links
+# page pretending to be one file.
+#
+# THIN BY DESIGN, NOT BY ACCIDENT -- weighed explicitly against
+# building this recipe at all. Layer 1's own field list (fetched
+# directly, `MapServer/1?f=json`) is exactly: OBJECTID, Shape, PIN
+# (string, 254), Source (string, 50), Date (double), plus the usual
+# Shape_Length/Shape_Area. No owner, value, sale, land-use, year-built,
+# or address field exists on this layer at all -- confirmed by the
+# field list itself, not sampled absence. This is thinner than any
+# other parcel recipe in the repo, including the geometry-only DC
+# Record Lots precedent (`US-DC_parcel-dcgovrecordlots-2026`), which at
+# least carries a deeded-area field (`STATEDAREA`). Built anyway
+# because: (1) it is the ONLY statewide parcel geometry source for PA,
+# where the incumbent-baseline question in
+# `_instructions/acquiring_sources.md` Phase 0 ("does a statewide
+# layer already cover this?") has no other candidate to point to; (2)
+# bare parcel geometry with a stable per-county join key still has
+# real downstream value -- footprint-to-parcel linking
+# (`classify_footprint_priority`), geometry-derived area, and admin
+# linkage all work from geometry alone, independent of assessment
+# attributes; (3) the DC precedent already established that a
+# geometry-plus-id-only parcel recipe is acceptable in this repo.
+#
+# COVERAGE IS PARTIAL AND EXPLICITLY DECLARED "GROWING", NOT A FIXED
+# GAP -- unlike the TN (9 counties permanently self-maintain their own
+# systems) or MN MetroGIS (7-county region, structurally fixed)
+# precedents, PASDA's own abstract states verbatim: "This dataset is
+# incomplete and county parcels will be added as available." The 39
+# counties measured as covered THIS SESSION (live `returnDistinctValues`
+# on `Source`) are: Adams, Allegheny, Bedford, Berks, Blair, Bradford,
+# Bucks, Butler, Cambria, Centre, Chester, Columbia, Crawford,
+# Cumberland, Dauphin, Erie, Fayette, Forest, Franklin, Fulton, Indiana,
+# Juniata, Lancaster, Lehigh, Lycoming, Mercer, Mifflin, Monroe,
+# Montgomery, Montour, Perry, Philadelphia, Snyder, Union, Venango,
+# Warren, Washington, Wyoming, York -- 39 of PA's 67 counties (58%),
+# but including several of the state's largest by population
+# (Allegheny, Philadelphia, Montgomery, Bucks, Chester, Lancaster,
+# York). The crosswalk sidecar below deliberately lists only these
+# counties (minus Dauphin, see below) rather than all 67, following the
+# TN/MN "raise rather than guess" pattern: ingesting any of PA's other
+# 28+1 counties against this recipe raises a KeyError from the
+# crosswalk lookup instead of silently writing an empty file. UNLIKE
+# TN/MN, this coverage list is expected to grow over time as PASDA adds
+# counties -- a future agent re-running this recipe should re-check the
+# live `Source` distinct-value list and extend the crosswalk sidecar
+# rather than assume the 39 counties above are still the complete set.
+#
+# DAUPHIN COUNTY DELIBERATELY EXCLUDED from the crosswalk despite
+# appearing in PASDA's own 39-county list. Dauphin already has its own,
+# far richer, dedicated recipe set in this repo
+# (`US-PA-DA_parcel-dauphinco-2026` + `...-2026pc` +
+# `US-PA-DA_property-dauphinco-2026`), sourced directly from the
+# county's own ArcGIS Server with full parcel characteristics and tax
+# roll data. PASDA's entry for Dauphin carries strictly less
+# information (PIN/Source/Date only) than the existing county-specific
+# recipes already provide, and ingesting both would risk duplicate
+# parcel geometry entering the harmonizer's spine for the same county
+# with no complementary information to justify it (contrast DC's
+# Record Lots + Tax Lots, which are deliberately non-overlapping
+# layers). Excluding Dauphin here is a one-line omission from the
+# crosswalk csv, not a structural limitation of this recipe.
+#
+# NOTE: the task that produced this recipe described the existing
+# `US/PA/DA/` recipe set as "Delaware County" -- verified in this
+# session to actually be Dauphin County (`US-PA-DA` in the admin spine
+# is Dauphin; Delaware County is `US-PA-DE`). Recorded here since it
+# affects the exclusion reasoning above; no changes were made to the
+# existing `US/PA/DA/` recipes.
+#
+# BULK VS REST (Phase 3). The DataSummary page's own "Download" link
+# (`pasda.psu.edu/download/orser/PA_Parcels202604.zip`, ~1.02 GB,
+# `Content-Length` confirmed via a live HEAD request this session) is a
+# ready-made bulk export -- a File Geodatabase
+# (`PA_Parcels202604.gdb`), confirmed by fetching only the zip's own
+# central directory via an HTTP Range request on the last ~130 KB (not
+# the full archive) and listing its internal file names: one large
+# feature table (`a0000000b.gdbtable`, ~1.47 GB uncompressed, consistent
+# with ~4.4M polygon features) plus the usual small system/catalog
+# tables. No REST-vs-bulk equivalence test was needed beyond this: the
+# bulk file is the same File Geodatabase format PASDA publishes as its
+# only download option (no separate, potentially-stale Hub cache is
+# involved, unlike the Wilson NC / DC Record Lots traps), and the
+# service's own field list matches exactly what the live REST layer
+# reports (verified directly, not assumed).
+#
+# SCHEMA MAPPING (Phase 4).
+#   - `PIN` -> `parcel_id_admin3`: the raw, per-county assessor parcel
+#     number, format unstandardized across counties by design (sampled
+#     directly, not assumed): Fulton is dashed alphanumeric block-lot
+#     (e.g. format `99-99-999`), Allegheny is a fixed-width 16-digit
+#     block number, Philadelphia is a 10-digit number with no
+#     delimiters. This mirrors the WI/TN/MN pattern of one raw PIN
+#     column whose per-county shape is handled by
+#     `compute_parcel_id_local`'s conversion table, not standardized
+#     here.
+#   - `Source` -- left unmapped. It is the plain county name string used
+#     only as this recipe's own `process_by.admin_id_column` /
+#     crosswalk join key; the admin unit it identifies is already
+#     resolved via the crosswalk, so keeping it as a canonical column
+#     would be redundant (same reasoning as TN's `COUNTY_NAME` and MN's
+#     `CO_NAME`/`CTU_NAME`).
+#   - `Date` -- left unmapped, deliberately, despite `source_date`
+#     existing in the registry (`datetime` typed). Sampled directly
+#     across three counties: Fulton `202110`, Allegheny `202604`
+#     (current month), Philadelphia `202207` -- confirming this is a
+#     YYYYMM integer (a per-county last-refresh vintage), NOT epoch
+#     milliseconds despite the field being declared
+#     `esriFieldTypeDouble`. `io.transform`'s only date operation,
+#     `to_datetime`, is plain `pd.to_datetime` with no `unit=`/`format=`
+#     argument, so feeding it a bare integer like `202110` would
+#     misinterpret it as nanoseconds since epoch and collapse every row
+#     to ~1970-01-01 -- the exact silent-corruption trap documented in
+#     `acquiring_sources.md`'s "Dates are the most common silent
+#     corruption" section, just with a YYYYMM integer standing in for
+#     epoch-ms. No format-aware date-parsing transformation exists in
+#     this repo yet (checked `UNARY_OPS` in `io/transform.py` directly);
+#     mapping this safely would need one added first. Left unmapped
+#     rather than ship the corruption, mirroring DC Record Lots' choice
+#     to leave its own date fields unmapped for the same kind of reason.
+#   - `Shape_Area`/`Shape_Length` -- not mapped; redundant with the
+#     geometry-derived area/length the pipeline already computes from
+#     the polygon itself (same reasoning as DC's `CALCULATEDAREA` and
+#     MN's `ACRES_POLY`).
+#
+# DATA QUALITY NOTE: a 5-row live sample of Fulton County contained one
+# repeated `PIN` value (a duplicate polygon sharing the same parcel
+# number) -- consistent with the kind of source-side duplication this
+# repo's duplicate guard (`compute_parcel_id_local`) is built to detect
+# and pass through rather than silently drop; not treated as
+# disqualifying, but worth re-checking distinct-vs-row counts per county
+# at ingest time.
+#
+# JOIN KEY (Phase 5). `PIN` is exposed under `parcel_id_assessor` (a
+# copy of `parcel_id_admin3`) and used as `parcel_id_local`'s
+# source, per the WI/TN/MN/DC convention. No override row was added to
+# `US_parcel_id-overrides.csv` ahead of time -- unlike TN's GISLINK,
+# there is no reason to expect the bundled per-county
+# `geo/parcel_id_links.csv` table to systematically misfit `PIN` across
+# all 38 counties (each county's own PIN format is exactly what that
+# table is meant to already handle for other PA sources, where they
+# exist); `compute_parcel_id_local`'s own loss-guard will fall back to
+# `simple` per county with a warning if a bundled pattern does not fit,
+# the same safety net TN relied on.
+#
+# LICENSE (checked explicitly). PASDA's own FGDC-style metadata for
+# this dataset (`FullMetadataDisplay.aspx?file=PA_Parcels.xml`) states
+# "Access Constraints: None" and a "Use Constraints"/"Distribution
+# Liability" section that is a plain as-is/no-warranty disclaimer
+# (assumption of risk, no merchantability/fitness warranty, no
+# liability for damages) with no explicit statement permitting or
+# restricting redistribution or commercial use, the same shape as TN's
+# disclaimer-only case. Recorded as `license: 'unknown'`-equivalent per
+# `recipes/README.md` guidance, rather than assuming "no restriction
+# found" means "redistribution permitted."
+#
+# Verification performed: recipe loads via `get_recipe_by_id`; every
+# mapped column exists in `core/attribute_registry.csv` (checked
+# directly). `op.ingest()` was run for real against Montour County
+# (`US-PA-MO`, the smallest of the 38 covered counties by feature count,
+# 8,983 rows per live `returnCountOnly` -- see this recipe's own ingest
+# verification notes for the resulting row count, `parcel_id_local`
+# population/distinct count, and geometry check).
+
+description: >-
+  Pennsylvania statewide parcel boundaries (PASDA "PA Parcels"): PIN and
+  geometry only, no assessment data, 38 of 67 counties currently covered.
+
+admin_id: US-PA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: pasda
+    portal_url: "https://www.pasda.psu.edu/uci/DataSummary.aspx?dataset=1696"
+    download_url: "https://www.pasda.psu.edu/download/orser/PA_Parcels202604.zip"
+    license: >-
+      unknown -- PASDA's own metadata states "Access Constraints: None"
+      but its Use Constraints/Distribution Liability text is a plain
+      as-is/no-warranty disclaimer only, silent on redistribution (see
+      header).
+    terms_url: "https://www.pasda.psu.edu/uci/FullMetadataDisplay.aspx?file=PA_Parcels.xml"
+    redistribution_restricted: null
+  version: "2026"
+
+compressed_file_name: "PA_Parcels202604.zip"
+uncompressed_file_name: "PA_Parcels202604.gdb"
+
+process_by:
+  admin_level: 3
+  admin_id_column: Source
+  admin_id_crosswalk:
+    recipe_id: "US-PA_parcel-pasda-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin3: PIN
+
+# Expose the raw PIN under the canonical name parcel_id_assessor (a
+# copy of parcel_id_admin3), so it is the raw key parcel_id_local
+# derives from -- consistent with the WI/TN/MN/DC statewide recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+# No override row in US_parcel_id-overrides.csv is added preemptively;
+# the bundled per-county table's own loss-guard falls back to `simple`
+# per county if it does not fit (see header, Phase 5).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

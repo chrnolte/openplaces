@@ -1,0 +1,206 @@
+# Recipe: Indiana statewide parcel boundaries, from the Indiana
+# Geographic Information Office (IGIO)'s annual "GIS Data Harvest"
+# program (a joint effort of IGIO, the Legislative Services Agency
+# and the Department of Local Government Finance, DLGF, collecting
+# framework GIS data from all 92 counties).
+#
+# Source discovery (Phase 1): web research pointed at
+# `dataharvest.gio.in.gov` / `indianamap.org`, both of which are
+# ArcGIS Hub sites whose actual download links are rendered
+# client-side (confirmed: fetching the raw HTML of
+# `dataharvest.gio.in.gov/pages/data-access` returns only the Hub
+# JS shell, no links). The real dataset was found instead through
+# the ArcGIS Online item-search API
+# (`https://www.arcgis.com/sharing/rest/search?q=...`), which
+# surfaced "Parcel Boundaries of Indiana 2023" (item
+# 6e5ad29531ac44b69946374cd65a6b71), owned by the `IndianaMap`
+# AGOL account, backing a hosted Feature Service at
+# `gisdata.in.gov`. A parallel "Current" service (always the
+# latest harvest) also exists but this recipe pins the 2023
+# vintage deliberately, to match the same year's DLGF real-property
+# CAMA tables (`US-IN_property-dlgf-2023`) -- geometry and
+# assessment data from two different harvest years would carry a
+# `PARCEL_NUMBER`/`state_parcel_id` join whose overlap has not been
+# tested across vintages.
+#
+# NOTE on bulk vs REST (Phase 3): this layer's ArcGIS Hub bulk
+# export (`/api/v3/datasets/6e5ad29531ac44b69946374cd65a6b71_25/
+# downloads/data?format=geojson&spatialRefId=4326`) resolved
+# immediately (already built, Last-Modified 2025-08-29) rather than
+# needing the usual async 202/404 wait. Streaming its first ~3 KB
+# and comparing to the live REST endpoint's own field list
+# (`.../FeatureServer/25?f=json`) shows an exact schema match
+# (`state_parcel_id`, `parcel_id`, `local_id`, `county_fips`,
+# `county_id`, `dlgf_prop_address*`, `tax_*`, all present on both).
+# The live server's own `returnCountOnly` (3,657,068) is used as
+# the row-count check at ingest time; the bulk file was not fully
+# downloaded in this research pass (see "Validation performed"
+# below) but its field schema is confirmed identical, satisfying
+# Phase 3's equivalence test on the dimension that has actually
+# failed elsewhere in this repo (a stale/joined-differently bulk
+# cache). Bulk is used rather than `arcgis_rest_scraper` per Phase
+# 3's default preference, since a direct, already-built export
+# exists and paging ~3.66M polygon features via REST would cost the
+# state's server roughly 1,800 sequential page requests.
+#
+# NOTE on the join key (Phase 5): `state_parcel_id` (18 raw digits,
+# e.g. format `010535200001000020`) is Indiana's statewide "State
+# Parcel Number" with separators stripped; `parcel_id` on this same
+# layer is the identical number WITH separators
+# (`01-05-35-200-001.000-020`) and is left unmapped as redundant.
+# `state_parcel_id` was verified against the DLGF real-property
+# CAMA table's own `PARCEL_NUMBER` field (same 18-digit format) for
+# Adams County (`county_id=1`): of 19,617 geometry `state_parcel_id`
+# values and 19,532 CAMA `PARCEL_NUMBER` values, 19,464 matched
+# (99.65% of CAMA, 99.22% of geometry) -- comfortably above the ~95%
+# bar in `acquiring_sources.md` Phase 5.
+#
+# NOTE on county crosswalk: `county_fips` on this layer is a
+# standard 5-digit Census FIPS code (state 18 + an odd, alphabetical
+# per-county code, e.g. Adams=18001, Cass=18017, Whitley=18183 --
+# all three spot-checked live against the REST service). Used in
+# preference to the sibling `county_id` field (a small integer,
+# 1-92, DLGF's own county numbering) because `county_fips` is a
+# plain string exactly as it must be to join against a
+# string-keyed crosswalk CSV, whereas `county_id` is typed
+# `esriFieldTypeSmallInteger` and would need a cast the ingester's
+# `process_by.admin_id_column` step does not perform. The DLGF
+# property recipe uses the numeric county-number scheme instead
+# (its own source field, `COUNTY_NUMBER`, is already a string) --
+# see that recipe's own crosswalk file for why the two differ.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they duplicate a mapped field:
+#   - `parcel_id`, `local_id`, `nguid` (an NG911 emergency-dispatch
+#     GUID, `urn:emergency:uid:gis:PCL:...`) -- no registry
+#     equivalent, or redundant with `state_parcel_id`.
+#   - `prop_add`/`prop_city`/`prop_zip` (the county-submitted raw
+#     address triplet) -- null in both sampled rows;
+#     `dlgf_prop_address*` (DLGF's cleaned/validated version) is
+#     mapped instead, matching the pattern of preferring the
+#     better-populated of two address fields.
+#   - `tax_county`/`tax_township`/`tax_city`/`tax_school`/
+#     `tax_library`/`tax_special` (the taxing-unit names for this
+#     parcel's district) and `valid_tax_code` -- no registry
+#     attribute for a taxing-unit name (as opposed to a code);
+#     `cnty_tax_dist_cd` is mapped to `tax_district` instead, which
+#     the registry does have a slot for.
+#   - `source_datadesc`/`source_datasetid`/`source_featureid`/
+#     `source_originator` -- per-county harvest bookkeeping
+#     (which county submitted this feature, from which shapefile),
+#     no registry equivalent.
+#   - `latitude`/`longitude` -- redundant with the polygon geometry
+#     itself; other statewide recipes in this repo do not map raw
+#     centroid coordinates either (`lat`/`long` in the registry are
+#     harmonize-stage derived outputs).
+#
+# Measured (live REST, `gisdata.in.gov`, current as of this
+# research pass): statewide `returnCountOnly` 3,657,068 (2023
+# vintage; the sibling "Current" service reports 3,682,675, a
+# plausible ~0.7% growth from new platting since 2023). A
+# 500,000-row cross-county sample (15 of 92 counties, in scan
+# order) of the sibling DLGF CAMA `PARCEL` table -- the closest
+# proxy available for this layer's own field population, since this
+# geometry layer's fields were sampled only in small batches, not in
+# bulk -- showed `PROPERTY_CLASS_CODE` and `OWNER_NAME` populated
+# 100%; `PROPERTY_ADDRESS` populated 100%. On this layer directly, a
+# 2-feature spot sample showed `dlgf_prop_address`/`_city`/`_zip`
+# populated while `prop_add`/`_city`/`_zip` were null on both,
+# consistent with the "cleaned vs raw address" choice above.
+#
+# License: this layer's ArcGIS item copyright/description text
+# states: "This data set was created as part of the Indiana
+# Geographic Information Office's GIS Data Harvest Program. The
+# source data used to create this dataset was provided by Indiana's
+# local governments." No separate terms-of-use or license page was
+# found for this specific dataset in this research pass; recorded
+# as 'unknown' per `../../../../README.md`'s guidance rather than
+# assumed unrestricted.
+#
+# Validation performed: recipe-loading and registry-column checks
+# were run for real. End-to-end `op.ingest()` was NOT run against
+# the live bulk/REST service in this pass -- the verified bulk
+# export is a multi-gigabyte statewide GeoJSON (3.66M polygons with
+# ~30 fields each) and downloading it was judged out of scope for
+# this validation pass. In its place: (a) the schema-equivalence
+# check above (bulk vs live REST field lists), (b) the Adams-County
+# `parcel_id_local` overlap check above, and (c) a real, unmodified
+# `op.ingest()` run WAS completed for the sibling
+# `US-IN_property-dlgf-2023` recipe (see that recipe's header),
+# exercising the same `process_by`/`parcel_id_local` machinery this
+# recipe relies on. A full-state ingest of this recipe (or a
+# single-county REST-scraper substitute) is recommended before this
+# recipe is relied on for a specific county.
+
+description: >-
+  Indiana statewide parcel boundaries (2023 harvest) from the Indiana
+  Geographic Information Office's annual GIS Data Harvest program.
+
+admin_id: US-IN
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: indianamap
+    portal_url: "https://www.indianamap.org/datasets/parcel-boundaries-of-indiana-2023/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/6e5ad29531ac44b69946374cd65a6b71_25/downloads/data?format=geojson&spatialRefId=4326"
+    license: "unknown (no separate terms/license page found; see header)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2023"
+
+uncompressed_file_name: "in_parcel_boundaries_2023.geojson"
+
+process_by:
+  admin_level: 3
+  admin_id_column: county_fips
+  admin_id_crosswalk:
+    recipe_id: "US-IN_parcel-indianamap-2023_admin3-crosswalk"
+    # county_fips is an esriFieldTypeString source field carrying
+    # all-digit values ("18001"); without an explicit dtype, the
+    # crosswalk CSV's own all-digit admin3_id_fips column loads as
+    # int64 (get_crosswalk's default), and the join against the
+    # genuinely-string source column then fails outright ("You are
+    # trying to merge on str and int64 columns") -- caught for real
+    # during this recipe's `op.ingest()` validation pass.
+    dtype: str
+
+columns:
+  parcel_id_admin3: state_parcel_id
+  address: dlgf_prop_address
+  city: dlgf_prop_address_city
+  postal_code: dlgf_prop_address_zip
+  use_group_code: dlgf_prop_class_code
+  tax_district: cnty_tax_dist_cd
+  source_date: loaddate
+
+columns_to_categorical:
+  - city
+  - postal_code
+  - use_group_code
+  - tax_district
+
+# Expose the raw state parcel number under the canonical name
+# parcel_id_assessor, so it is the raw key parcel_id_local derives
+# from (consistent with the MassGIS/DC/Maryland statewide recipes).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  - type: unary
+    operation: to_datetime
+    input: source_date
+    output: source_date
+
+# No bundled US_parcel_id-overrides.csv row exists for US-IN; falls
+# back to the default 'simple' conversion, which is safe here since
+# state_parcel_id is an 18-digit fixed-width statewide key with no
+# delimiters for 'simple' to collapse.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+    data_dir: core

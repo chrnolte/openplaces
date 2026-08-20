@@ -1,0 +1,333 @@
+# Recipe: North Dakota statewide tax-roll (assessment/ownership)
+# table, from the "State Parcel Program" hosted on the North Dakota
+# GIS Hub (item ac6da1176038457db16e8debe3f1abaf, owner NDGISHub),
+# table 1 "Parcels_TaxRoll" of the same FeatureServer whose layer 0
+# ("Parcels", geometry only) is `US-ND_parcel-ndgishub-2026`. See that
+# recipe's header for the full reasoning on why this is a separate
+# recipe rather than an `additional_layers` entry (a one-to-many
+# relationship, and the same-download-file limitation of
+# `additional_layers`/`attribute_join`) and for the bulk-vs-REST
+# equivalence test, which was run once for the whole item and applies
+# to both layers.
+#
+# NOTE on this layer's own bulk-export equivalence check (Phase 3):
+# the ArcGIS Hub v3 bulk CSV export
+# (`hub.arcgis.com/api/v3/datasets/{itemId}_1/downloads/data
+# ?format=csv&spatialRefId=4326`, cached 2026-08-17, three days old at
+# verification time) was fetched in full (289 MB, 748,930 rows) and
+# checked field-by-field against the same day's live REST counts
+# rather than assumed complete:
+#   - Row count: 748,930 (bulk) == 748,930 (live `returnCountOnly`) --
+#     exact.
+#   - `OwnerName` not null: 740,130 (bulk) == 740,130 (live) -- exact.
+#   - `PrimaryParcelUse` not null: 531,957 (bulk) == 531,957 (live) --
+#     exact.
+#   - `TotalValue` > 0: 679,156 (bulk) == 679,156 (live) -- exact.
+#   - `SchoolDistrict` not null: 281,794 (bulk) == 281,794 (live) --
+#     exact.
+#   - `ExemptLandValue` > 0: 1,933 (bulk) == 1,933 (live) -- exact.
+#   - `PropertyAddress` not null: 421,916 (bulk) vs 425,389 (live,
+#     checked a few minutes apart) -- a 0.8% drift, the only field
+#     that did not match exactly, consistent with ordinary snapshot
+#     lag rather than a stripped join given every other field matched
+#     to the row.
+# This is the reverse of the Wilson NC trap this repo's guide warns
+# about (a bulk export that looks complete but silently drops the
+# joined attribute columns): every value column checked here matches
+# the live service exactly. Bulk was used; `arcgis_rest_scraper` was
+# not needed.
+#
+# NOTE on the join key back to `US-ND_parcel-ndgishub-2026`:
+# `UniqueGISID` (this table's own relationship key, per both layers'
+# `?f=json` `relationships` metadata: cardinality
+# esriRelCardinalityOneToMany, origin Parcels -> destination
+# Parcels_TaxRoll) is mapped here to `parcel_id_admin2`, identically
+# to the geometry recipe, so `parcel_id_local` (derived from it the
+# same way on both recipes) computes to the same value for the same
+# underlying parcel on both sides, letting the harmonizer's normal
+# `link_by_id` join connect them -- the same pattern
+# `US-IN_property-dlgf-2023` uses against its own sibling parcel
+# recipe (verified there by a real overlap check).
+#
+# NOTE on `ParcelID`/`UniqueParcelID` vs `GISID`/`UniqueGISID`: this
+# table carries its own nominally-independent identifier pair
+# (`ParcelID`, `UniqueParcelID`) alongside the geometry-linking pair.
+# Sampled (100 rows, one county): `ParcelID` equalled `GISID` and
+# `UniqueParcelID` equalled `UniqueGISID` on every row in that sample
+# -- i.e. these read as duplicated/aliased fields for an ordinary
+# one-parcel-one-account row, not a genuinely distinct account number;
+# whether they ever diverge on the ~1% of parcels with more than one
+# tax-roll row was not confirmed. Mapped anyway as
+# `property_id_assessor`/`property_id_admin2` (the table's own
+# identifier, per the registry's intended meaning for those two
+# fields), NOT as the join key (which is `UniqueGISID`/
+# `parcel_id_admin2`, always) -- so no fabricated-example format is
+# given, since the values are schema-identical to the ones already
+# documented on the geometry recipe.
+#
+# NOTE on `PrimaryParcelUse` (Phase 4's "check what a field means, not
+# what it is called"): the field's own domain metadata (`dParcelUse`)
+# declares a clean six-value vocabulary (Agricultural / Residential /
+# Commercial / Exempt / Other / Unknown), but the values actually
+# observed are messier: some rows carry the plain category, others
+# append a county-specific numeric sub-code (e.g. a residential
+# category with a "-201" suffix, a commercial category with a "-233"
+# suffix), and at least one county-side misspelling of "Commercial"
+# was observed alongside a truncated value ending in a trailing
+# comma-space, consistent with a source field width cutting off longer
+# text. Mapped as-is to `use_group` (a raw evidence column the
+# harmonizer's land-use crosswalk is expected to clean up, per this
+# repo's normal use_group_code/use_group handling) rather than trying
+# to split a code from the label here, since the code suffix's format
+# is not consistent across rows. No `use_group_code` is mapped as a
+# result -- there is no separate, reliably-populated numeric code
+# field on this table distinct from the messy compound text above.
+#
+# NOTE on the land/structure value split (Phase 4 -- a genuine derived
+# quantity, not a mis-homed field). This table splits both land and
+# structure value by use category (Agricultural / Residential /
+# Commercial land value; Residential / Commercial structure value --
+# no Agricultural structure value field exists) plus a separate
+# Exempt land and Exempt structure value, with no single "total land
+# value" or "total structure value" field of its own. Verified
+# empirically (4,000 rows sampled across one rural and one urban
+# county): `TotalValue` equals the sum of all seven category value
+# fields exactly in 3,997/4,000 rows (99.925%; the 3 mismatches read as
+# ordinary data-entry noise, not a formula error). This licenses the
+# derived mapping below: the three non-exempt land categories summed
+# make `land_value_taxable` (matching the registry's own definition,
+# "assessed land value actually subject to taxation"); `ExemptLandValue`
+# is mapped directly to `land_value_exempt`; their sum is the
+# registry's generic `land_value`. Structure value mirrors this
+# exactly one level down (no agricultural structure category to sum in).
+# `total_value` is mapped directly from the source's own `TotalValue`
+# rather than re-derived, since it is already the authoritative sum.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they duplicate a concept already mapped, or (for dates)
+# because of the epoch-millisecond risk documented in
+# `_instructions/acquiring_sources.md`:
+#   - `OwnerZip4`, `PropertyZip4`: ZIP+4 extensions with no registry
+#     slot beyond the base 5-digit `owner_postal_code`/`postal_code`.
+#   - `Owner2MailingAddress`, `Owner2City`, `Owner2State`,
+#     `Owner2Country`, `Owner2Zip`, `Owner2Zip4`: the registry's
+#     `owner_address_2` is a second ADDRESS LINE for the same owner
+#     (a continuation line), not a second owner's own address --
+#     mapping these here would mis-home a distinct concept onto that
+#     field, so only `Owner2Name` (a real match for `owner_name_2`) is
+#     mapped; the rest of owner 2's contact details have no home.
+#   - `OwnerCountry`, `Owner2Country`: no registry slot (every
+#     `owner_*` field is scoped to a US-style mailing address).
+#   - `Lot`, `Block`, `SubdivisionPlat` (also on the geometry
+#     recipe -- mapped there instead, since it is a plat/geometry
+#     concept and is present on both tables), `Section`, `Township`,
+#     `Range`, `SectionNumber`, `TownshipNumber`, `RangeNumber`,
+#     `TownshipName`: legal-description/PLSS components, no registry
+#     slot, mirroring the geometry recipe's treatment.
+#   - `FireDistrict`, `WaterDistrict`, `AmbulanceDistrict`,
+#     `ParkDistrict`: four distinct, meaningfully-populated
+#     special-purpose tax-district fields (statewide: 21.9%, 10.5%,
+#     2.8%, 13.0% populated respectively) with no registry attribute
+#     for any of them -- only the generic `tax_district` (mapped from
+#     `TaxingDistrict`) has a home. Flagged as a real registry gap.
+#   - `SchoolDistrict`: populated 281,794/748,930 (37.6%) statewide --
+#     genuinely useful, but neither `school_district_name` nor
+#     `school_district_id` exists in the current
+#     `core/attribute_registry.csv`, despite
+#     `US-WI_parcel-wiscedu-v11` mapping to those names already. Left
+#     unmapped here rather than inventing/reusing an unregistered
+#     name; flagged for the user alongside the district-field gap
+#     above, since a registry fix would likely want to cover both at
+#     once.
+#   - `PropertyRecordURL`: a per-parcel link to the county's own
+#     record page (populated 34,074/748,930, 4.5%, statewide) -- no
+#     registry slot for a record URL.
+#   - `NumberStructures`: mapped below as `n_buildings` (see columns:),
+#     not left unmapped -- included here only to note the name
+#     mismatch was checked deliberately (a "structure" on this source
+#     is a building in the registry's sense, not a legal-description
+#     component).
+#   - `DateImported`: `esriFieldTypeDate`, but this recipe reads a Hub
+#     bulk CSV export, and unlike the GeoJSON case (see the geometry
+#     recipe's header), a CSV `esriFieldTypeDate` column comes through
+#     as an ISO-formatted date string, not a raw epoch value at all --
+#     so there is no corruption risk here specifically. Left unmapped
+#     anyway because it is ETL bookkeeping (when this row was loaded
+#     into the Hub, not the county's data vintage), the same
+#     `source_date` reasoning as the geometry recipe's `DateImported`.
+#
+# No `last_sale_price`/`last_sale_date`/deed-reference field of any
+# kind exists on this table (confirmed against the full field list) --
+# this is a pure assessment/tax roll, with no recorded-sale history.
+# North Dakota's Register of Deeds sales data, if it exists as a
+# public bulk source, was out of scope for this task and was not
+# investigated.
+#
+# Verified end-to-end: a real, unmodified `op.ingest()` run was
+# completed for Slope County (`US-ND-SL`, ND's smallest by parcel
+# count). Output wrote exactly 3,567 rows, matching the live
+# service's `returnCountOnly` for `CountyName='Slope'` exactly (and
+# matching every field-population count recorded above for this same
+# county). `parcel_id_local` populated 3,567/3,567 (100%), fully
+# distinct (3,567 unique values, no degenerate collapsing).
+# `land_value + improvement_value` reconstructed `total_value` exactly
+# on all 3,567 rows (0 mismatches), a stronger confirmation than the
+# 4,000-row cross-county sample in the header above. Cross-checked
+# against the sibling `US-ND_parcel-ndgishub-2026` recipe's own
+# Slope-county output: 3,090/3,567 (86.6%) of this recipe's raw
+# `UniqueGISID`/`parcel_id_local` values match a row on the parcel
+# side; the remaining 477 (13.4%) are tax-roll rows with no
+# corresponding digitized parcel boundary in Slope County -- confirmed
+# at the raw `UniqueGISID` level (not a `parcel_id_local` conversion
+# artifact) and consistent with the source's own documented caveats
+# (state/federal land and invalid-geometry exclusions can leave a
+# tax-roll entry without a matching parcel polygon). From the parcel
+# side, 99.45% of parcel keys have at least one matching property row
+# (see that recipe's header) -- the asymmetry is expected for a
+# one-to-many join and is not a join-key problem.
+#
+# This run also surfaced a real, pre-existing `openplaces` bug in the
+# CSV/flat-file read path of `TableIngester._read_recipe_data`, fixed
+# in `io/ingester/table_ingester.py` during this task -- see
+# `US-ND_parcel-ndgishub-2026`'s header for the full description (a
+# chunked flat-file recipe silently wrote the entire source file under
+# every admin unit's output before the fix; this recipe's first ingest
+# attempt hit it directly, writing all 748,930 statewide rows under
+# `US-ND-SL` instead of Slope County's own 3,567).
+#
+# License: same as `US-ND_parcel-ndgishub-2026` (same ArcGIS item);
+# see that recipe's header for the full finding.
+
+description: >-
+  North Dakota statewide tax-roll/assessment table (State Parcel Program):
+  ownership, situs address, land use, and land/structure/exempt values.
+
+admin_id: US-ND
+
+entity:
+  entity_type: property
+  source:
+    source_id: ndgishub
+    portal_url: "https://gishubdata-ndgov.hub.arcgis.com/datasets/parcels-taxroll"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/ac6da1176038457db16e8debe3f1abaf_1/downloads/data?format=csv&spatialRefId=4326"
+    license: >-
+      unknown (ArcGIS item licenseInfo and ND's general state-site
+      disclaimer both disclaim accuracy but state no explicit
+      redistribution terms either way; see US-ND_parcel-ndgishub-2026
+      header)
+    terms_url: "https://www.nd.gov/content.htm?id=Disclaimer"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "nd_parcels_taxroll.csv"
+
+# All-digit identifier columns need an explicit str dtype or pandas
+# infers an integer and (for GISID/ParcelID, which are fixed-width)
+# risks losing leading-zero information; ZIP codes are kept string
+# for the same reason even though ND's own 58xxx prefix has no
+# leading zero to lose today.
+csv_dtype:
+  GISID: str
+  UniqueGISID: str
+  ParcelID: str
+  UniqueParcelID: str
+  CountyFIPS: str
+  OwnerZip: str
+  PropertyZip: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: CountyFIPS
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+columns:
+  parcel_id_admin2: UniqueGISID
+  parcel_id_admin3: GISID
+  property_id_assessor: ParcelID
+  property_id_admin2: UniqueParcelID
+  admin3_name: CountyName
+  subdivision: SubdivisionPlat
+  owner_name: OwnerName
+  owner_name_2: Owner2Name
+  owner_address: OwnerMailingAddress
+  owner_city: OwnerCity
+  owner_admin2_id_admin1: OwnerState
+  owner_postal_code: OwnerZip
+  address: PropertyAddress
+  city: PropertyCity
+  postal_code: PropertyZip
+  legal_description: LegalDescription
+  use_group: PrimaryParcelUse
+  n_buildings: NumberStructures
+  tax_year: TaxRollYear
+  tax_district: TaxingDistrict
+  total_value: TotalValue
+  land_value_exempt: ExemptLandValue
+  improvement_value_exempt: ExemptStructureValue
+
+columns_to_categorical:
+  - admin3_name
+  - owner_admin2_id_admin1
+  - owner_postal_code
+  - owner_city
+  - city
+  - postal_code
+  - use_group
+  - tax_district
+
+# Expose the raw statewide-unique id under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin2 -- UniqueGISID),
+# identically to US-ND_parcel-ndgishub-2026, so parcel_id_local
+# computes to the same value on both recipes for the same parcel.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+  - type: unary
+    operation: acres_to_sqft
+    input: DeededAcres
+    output: lot_size
+
+  # Taxable land value: the three non-exempt use-category land values
+  # summed (see header for the empirical justification and the
+  # registry-definition match to land_value_taxable).
+  - type: aggregate
+    operation: sum
+    inputs: [AgriculturalLandValue, ResidentialLandValue, CommercialLandValue]
+    args: {fill_na: 0}
+    output: land_value_taxable
+
+  # Taxable structure value: no agricultural structure category exists
+  # on this source, so only the residential/commercial pair is summed.
+  - type: aggregate
+    operation: sum
+    inputs: [ResidentialStructureValue, CommercialStructureValue]
+    args: {fill_na: 0}
+    output: improvement_value_taxable
+
+  # Generic land_value/improvement_value: taxable plus exempt, matching
+  # the registry's "generic assessed value" definition and verified
+  # (see header) to reconstruct the source's own TotalValue.
+  - type: aggregate
+    operation: sum
+    inputs: [land_value_taxable, land_value_exempt]
+    args: {fill_na: 0}
+    output: land_value
+
+  - type: aggregate
+    operation: sum
+    inputs: [improvement_value_taxable, improvement_value_exempt]
+    args: {fill_na: 0}
+    output: improvement_value
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

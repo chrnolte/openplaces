@@ -32,6 +32,23 @@ bulk export that is cheaper to fetch but poorer than its live service:
 
 Together they let a recipe take geometry from the sanctioned bulk file and
 top it up with the handful of fields that exist only on the live service.
+
+A third, independent mode (`layer_url`'s `{admin_key}` placeholder,
+with `admin_key_column`/`admin_key_transform`) is for a statewide
+source published as one genuinely separate FeatureServer per admin
+unit -- not one shared service filtered by an in-data column --
+e.g. one service per county, named after the county.
+`download_by: {admin_level: N}` then drives one `fetch()` call per
+admin unit, each resolving its own URL.
+
+A fourth mode (`where_admin_column`, paired with the same
+`admin_key_column`/`admin_key_transform`) is the complementary case:
+one *shared* service for every admin unit, distinguished only by an
+in-data filter column (e.g. a statewide parcel layer with its own
+`countyfips` field, and a `maxRecordCount` too low to page the whole
+state in one pass). `fetch` builds the `where` clause itself from the
+current admin unit rather than a recipe needing a dedicated wrapper
+module per source.
 """
 
 from __future__ import annotations
@@ -44,6 +61,7 @@ from pathlib import Path
 import requests
 
 from openplaces.io import request_headers
+from openplaces.io.readers import get_admin
 
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_RETRIES = 3
@@ -76,6 +94,97 @@ def _pace(interval_s: float) -> None:
 
 def _log(message: str) -> None:
     print(f'  {message}')
+
+
+def _resolve_admin_key(
+    admin_id_to_download: str,
+    admin_key_column: str,
+    admin_key_transform: str | None,
+):
+    """Look up one admin unit's own value of `admin_key_column`.
+
+    Shared by `{admin_key}` URL substitution (`_resolve_layer_url`) and
+    `where_admin_column` filter-building (`fetch`) -- both need the same
+    "what is this admin unit called/coded in the source" lookup, just to
+    plug the result into a different place (a URL segment vs. a SQL
+    `where` clause). Mirrors `Ingester._get_admin_partition_key`'s own
+    `{adminN_name}`-style resolution rather than reimplementing it.
+    """
+    from openplaces.core.schema import AdminId
+
+    admin_id = AdminId(admin_id_to_download)
+    key = get_admin(admin_id, admin_id.get_level(), columns=admin_key_column).iloc[0, 0]
+    if admin_key_transform == 'remove_spaces':
+        return key.replace(' ', '')
+    if admin_key_transform:
+        raise NotImplementedError(
+            f'admin_key_transform == {admin_key_transform!r} not supported.'
+        )
+    return key
+
+
+def _resolve_layer_url(
+    layer_url: str,
+    *,
+    admin_id_to_download: str | None,
+    admin_key_column: str | None,
+    admin_key_transform: str | None,
+) -> str:
+    """Substitute an optional `{admin_key}` placeholder in `layer_url`.
+
+    Lets one recipe fan out over N admin units that each live on a
+    genuinely different REST service (not a shared service filtered
+    by an in-data column) -- e.g. one FeatureServer per county,
+    named after the county.
+    """
+    if '{admin_key}' not in layer_url:
+        return layer_url
+    if not (admin_id_to_download and admin_key_column):
+        raise ValueError(
+            "'{admin_key}' in layer_url requires both admin_id_to_download "
+            'and scraper_options.admin_key_column.'
+        )
+    key = _resolve_admin_key(
+        admin_id_to_download, admin_key_column, admin_key_transform
+    )
+    return layer_url.format(admin_key=key)
+
+
+def _resolve_where(
+    where: str,
+    *,
+    admin_id_to_download: str | None,
+    admin_key_column: str | None,
+    admin_key_transform: str | None,
+    where_admin_column: str | None,
+) -> str:
+    """Fold an admin unit's own filter value into `where`, if configured.
+
+    Lets one recipe fan out over N admin units that all live on the
+    *same* shared REST service, distinguished only by an in-data column
+    (e.g. a statewide parcel layer with a `countyfips` field) -- the
+    complementary shape to `{admin_key}` in `_resolve_layer_url`, which
+    is for N genuinely different services instead. `where_admin_column`
+    names that in-data column; the value to filter on is looked up the
+    same way `{admin_key}` is. Any recipe-supplied `where` is combined
+    with `AND` rather than replaced, so a source-side row filter (e.g.
+    excluding a bad `LOT_TYPE`) still applies alongside the admin-unit
+    filter.
+    """
+    if not where_admin_column:
+        return where
+    if not (admin_id_to_download and admin_key_column):
+        raise ValueError(
+            "'where_admin_column' requires both admin_id_to_download and "
+            'scraper_options.admin_key_column.'
+        )
+    key = _resolve_admin_key(
+        admin_id_to_download, admin_key_column, admin_key_transform
+    )
+    admin_clause = f"{where_admin_column} = '{key}'"
+    if where and where != '1=1':
+        return f'({where}) AND ({admin_clause})'
+    return admin_clause
 
 
 def _download_bulk(
@@ -401,25 +510,37 @@ def fetch(
     bulk_url=None,
     attribute_join=None,
     join_min_match=0.9,
+    admin_key_column=None,
+    admin_key_transform=None,
+    where_admin_column=None,
 ) -> Path:
     """Download every feature of one ArcGIS REST layer to a GeoJSON file.
 
     Parameters
     ----------
     partition_id : optional
-        Unused (this scraper is for single-file, unpartitioned recipes).
-        Accepted for interface compatibility with
+        Unused (this scraper is for single-file, unpartitioned recipes, or
+        recipes partitioned by admin unit -- see `admin_id_to_download`
+        below). Accepted for interface compatibility with
         `Ingester._run_download_scraper`'s shared `fetch` contract.
     target_path : str or pathlib.Path
         Where to write the combined GeoJSON `FeatureCollection`.
     portal_url : str, optional
         Unused; the layer's own query endpoint is `layer_url`. Accepted for
         interface compatibility with the shared `fetch` contract.
-    admin_id_to_download : optional
-        Unused (this scraper is for single-file, unpartitioned recipes).
+    admin_id_to_download : str, optional
+        The current admin unit (e.g. `'US-UT-SL'`), supplied by the
+        Ingester when the recipe's `download_by` is `admin_level` rather
+        than a partition key. Used only to resolve an `{admin_key}`
+        placeholder in `layer_url` -- see `admin_key_column` below.
+        Unused for a single-file, unpartitioned recipe.
     layer_url : str
         Base URL of the FeatureServer/MapServer layer, without a trailing
-        `/query` (e.g. `'.../FeatureServer/0'`).
+        `/query` (e.g. `'.../FeatureServer/0'`). May contain a single
+        `{admin_key}` placeholder for the case where each admin unit is a
+        genuinely different service rather than a shared one filtered by
+        an in-data column (e.g. one FeatureServer per county, named after
+        the county) -- see `admin_key_column`.
     where : str, default '1=1'
         SQL `WHERE` clause passed to every query (the default selects every
         feature).
@@ -466,6 +587,24 @@ def fetch(
         Minimum share of features the join must match. Below this the
         fetch raises rather than returning mostly-null columns, since a
         wrong key silently produces exactly that.
+    admin_key_column : str, optional
+        Column name looked up on `admin_id_to_download`'s own admin table
+        (via `get_admin`) to resolve `{admin_key}` in `layer_url`, e.g.
+        `'name'` on a Census admin3 table (`'Salt Lake'`). Required only
+        when `layer_url` uses the placeholder.
+    admin_key_transform : str, optional
+        Transform applied to the looked-up key before substitution. Only
+        `'remove_spaces'` is supported (matches the name and behavior of
+        `Ingester`'s own `download_by.admin_key_transform`), e.g. turning
+        `'Salt Lake'` into `'SaltLake'` for a service name with no spaces.
+    where_admin_column : str, optional
+        Complementary to `{admin_key}` in `layer_url`: for a *shared*
+        service filtered by an in-data admin column (e.g. a statewide
+        parcel layer with a `countyfips` field), names that column so
+        `fetch` builds `f"{where_admin_column} = '{key}'"` from the
+        current `admin_id_to_download` (via `admin_key_column`) and
+        ANDs it onto `where`, rather than requiring one recipe per
+        admin unit to hand-write its own `where` string.
 
     Raises
     ------
@@ -483,6 +622,20 @@ def fetch(
             "arcgis_rest_scraper requires 'layer_url' or 'bulk_url' "
             '(recipe scraper_options).'
         )
+    if layer_url:
+        layer_url = _resolve_layer_url(
+            layer_url,
+            admin_id_to_download=admin_id_to_download,
+            admin_key_column=admin_key_column,
+            admin_key_transform=admin_key_transform,
+        )
+    where = _resolve_where(
+        where,
+        admin_id_to_download=admin_id_to_download,
+        admin_key_column=admin_key_column,
+        admin_key_transform=admin_key_transform,
+        where_admin_column=where_admin_column,
+    )
     target_path = Path(target_path)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     prefix = label or 'arcgis_rest_scraper'

@@ -1,0 +1,301 @@
+# Recipe: Nebraska statewide parcel roll ("Statewide Parcels"),
+# published on NebraskaMap (nebraskamap.gov), the state's ArcGIS
+# Hub open-data site.
+#
+# Source: ArcGIS item ba7dda0642cd4c0c9660a35081fee517, layer 0,
+# owner "Nebraska Office of the Chief Information Officer" (item
+# `source` field), publicly served from
+# gis.ne.gov/Enterprise/rest/services/StatewideParcelsExternal/
+# FeatureServer/0. Item description: "compiled from data provided
+# by each County... Each county provides a copy of their Computer
+# Aided Mass Appraisal (CAMA) and geospatial (polygon GIS features),
+# and the Office of the Chief Information Officer (OCIO) processes
+# them together into a statewide coverage annually." County_ID
+# (a 3-digit code, verified 001-185 odd, 93 distinct values -- an
+# exact match to Nebraska's 93 counties) is the county-FIPS suffix
+# used below for admin3 partitioning.
+#
+# NOTE on the Dept. of Revenue's statutory "Sales File" (Neb. Rev.
+# Stat. 77-1327), checked and NOT used here. 77-1327 authorizes the
+# Property Tax Administrator to compile a statewide sales file from
+# every Form 521 real-estate transfer statement (76-214) filed
+# statewide, "made accessible to the taxing officials and property
+# owners" -- language aimed at officials/owners, not the public at
+# large, and with no mention of bulk distribution, subscription, or
+# download. 76-214 itself only grants in-person access to individual
+# transfer statements "at the office of the Tax Commissioner, county
+# assessor, or register of deeds" -- not a bulk-download right. No
+# download page, dataset listing, or file for a compiled sales file
+# was found anywhere on revenue.nebraska.gov (checked the PAD
+# landing page, its Research & Statistical Reports page, its Forms
+# page, and the Statewide Equalization page). Concluded: the DOR
+# Sales File is a real, statutorily-defined compilation, but there
+# is no evidence it is a public bulk-downloadable dataset as opposed
+# to an internal/in-person-access resource -- no `transaction`
+# recipe is written for it. This is not a dead end for sale-price
+# coverage, though: this same statewide parcel layer already carries
+# `Sales_Date`/`Sales_Value`/`Sale_Useability`/`Source_Document`,
+# sourced from the identical county CAMA/sales pipeline, mapped
+# below as `last_sale_date`/`last_sale_price`/`deed_reference`. If a
+# future agent finds an actual DOR sales-file download endpoint,
+# reopen this question rather than assuming this note still holds.
+#
+# NOTE on bulk vs REST (Phase 3 equivalence test). Live REST
+# `returnCountOnly` on the FeatureServer layer: 1,154,898 features
+# (verified, current as of ingest). The layer's ArcGIS Hub bulk
+# GeoJSON export resolved on the first request (no 202/404
+# job-status wait) and was downloaded in full (2.4 GB, streamed and
+# counted rather than loaded whole): also exactly 1,154,898 Feature
+# entries, 93 distinct `County_ID` values, and every statewide
+# `where FIELD > 0` / `IS NOT NULL` count taken directly against the
+# live REST layer matched the same count computed from the
+# downloaded bulk file exactly: `ImpSF>0` 456,679/456,679,
+# `Ag_Land_Value>0` 79,954/79,954, `Sales_Value>0` 559,414/559,414,
+# `Sales_Date` populated 824,607/824,607, `Source_Document`
+# populated 942,015/942,015, `School_District` populated
+# 1,148,244/1,148,244, the `Total_Assessed_Value` additive identity
+# 984,705/984,705, and Arthur County's own row count 1,118/1,118.
+# No Wilson-NC-style stripped join: the bulk export carries the
+# identical CAMA attributes as the live service. Bulk chosen over
+# REST paging (one large request vs. ~580 pages of 2,000 rows each).
+#
+# NOTE on dates: unlike the raw MapServer/FeatureServer `f=geojson`
+# trap (epoch-millisecond date serialization), this Hub bulk-export
+# endpoint serializes `Sales_Date`/`CAMAUpdate` as ISO 8601 strings
+# (e.g. `2021-06-15T00:00:00Z`, format only -- fabricated), which
+# `to_datetime` parses correctly with no `unit=` handling needed.
+# `Sales_Date` has 195/1,154,898 (0.017%) values before 1950; given
+# the negligible count (unlike Pitt NC's 1-3% sentinel spikes) these
+# are left unconverted rather than guessed at as a specific sentinel
+# value.
+#
+# NOTE on `Classification_Code` (12-digit) -- verified to be the
+# exact concatenation of `Property_Parcel_Status` +
+# `Property_Parcel_Type` + `Zoning` + `Location` + `City_Size` +
+# `Parcel_Size` (each a 2-digit segment), e.g. the Arthur County
+# sample's most common value `020505030910` decomposes to
+# `02`+`05`+`05`+`03`+`09`+`10`, matching those same six fields'
+# values on the same rows exactly. Left unmapped as redundant with
+# its own components, which are documented individually below.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they were measured and found empty or redundant:
+#   - `School_District`/`School_District_Name` -- real,
+#     well-populated fields (1,148,244/1,154,898 = 99.4%) with NO
+#     registry attribute. The existing `US-WI_parcel-wiscedu-v11`
+#     recipe already maps a `school_district_name`/
+#     `school_district_id` pair that is likewise absent from
+#     `core/attribute_registry.csv` -- flagging both as the same
+#     open registry gap rather than repeating the omission
+#     silently. Left unmapped here pending a registry decision.
+#   - `Property_Parcel_Status`, `Property_Parcel_Type` (mapped
+#     to `use_group_code` below, not left unmapped -- see below),
+#     `Zoning` (mapped to `zoning_code`), `Location`, `City_Size`,
+#     `Parcel_Size` -- Nebraska DOR's six-part classification
+#     stratification code (see `Classification_Code` note above).
+#     `Location`/`City_Size`/`Parcel_Size` have no registry
+#     equivalent (sales-ratio-study strata, not a land-use or
+#     zoning concept); left unmapped, 99.0% populated in the Arthur
+#     County sample (1,107/1,118).
+#   - `Property_SubClass` -- 0% populated in Arthur (rural sample)
+#     but 216,510/1,154,898 (18.8%) statewide; no registry
+#     equivalent.
+#   - `Irrigation_Type` -- 35,190/1,154,898 (3.0%) statewide; a
+#     real, ag-specific field with no registry home.
+#   - `Ownership_Type` -- 602,137/1,154,898 (52.1%) statewide; a
+#     public/private/exempt ownership classification, not the same
+#     concept as `owner_name`; no registry field.
+#   - `QualImp` -- declared but 0/1,154,898 (0%) populated
+#     statewide (verified); a genuinely empty field, not merely
+#     unmapped.
+#   - `Sale_Useability` -- likewise declared but 0/1,154,898 (0%)
+#     populated statewide (verified); would have mapped to
+#     `last_sale_qualification_code` if populated anywhere.
+#   - `CondImp` -- 99.0% "populated" in the Arthur sample but almost
+#     entirely the sentinel `0.0` (no improvement present); a
+#     numeric condition-grade code with no registry field.
+#   - `RCN` (replacement cost new) -- 395,912/1,154,898 (34.3%)
+#     statewide; no registry field for an assessor's own replacement
+#     -cost estimate (distinct from `structure_value`, which is a
+#     `building`-entity, curate-stage derived attribute).
+#   - `Parcel_URL` -- 0% populated statewide; no registry field for
+#     an external record link regardless.
+#   - `ShapeUpdate` -- a second, geometry-only update date; only one
+#     `source_date` slot exists and `CAMAUpdate` (the attribute-data
+#     update date) is mapped to it instead.
+#   - `GIS_Acres` -- a GIS-computed polygon acreage, redundant with
+#     the geometry-derived area the pipeline already computes from
+#     this same polygon (the DC `CALCULATEDAREA` precedent,
+#     `US-DC_parcel-dcgovrecordlots-2026`). `Acres_Deeded` (the
+#     legally deeded acreage, a genuinely distinct non-geometric
+#     figure) is mapped to `lot_size` instead, the MN `ACRES_DEED`
+#     precedent (`US-MN_parcel-metrogis-2026`).
+#   - `Ph_Full_Address`/`Ph_Suf_Dir` -- `Ph_Full_Address` is a
+#     redundant composite (same population as `Situs_Address`,
+#     ~2-3x longer per sampled row -- clearly `Situs_Address` plus
+#     city/state/zip already captured separately via `Ph_City`/
+#     `Ph_Zip5`); `Ph_Suf_Dir` is 0% populated in every county
+#     sampled (`Ph_Pre_Dir` is the only populated directional field,
+#     38.4%/500 in a Douglas County sample).
+#
+# Measured (Arthur County, US-NE-AR, the state's smallest by parcel
+# count -- 1,118/1,154,898 statewide, used as the ingest test case):
+# `State_PID`/`Parcel_ID` populated 1,107/1,118 (99.0%), both fully
+# distinct among populated rows (1,107/1,107, no duplicates).
+# `Legal_Description` 98.9%. `Acres_Deeded`/`GIS_Acres`/
+# `Total_Assessed_Value`/`Land_Value`/`Improvements_Value`/
+# `Other_Impr_Value`/`Ag_Land_Value`/`Sales_Value` all 100%
+# "populated" (Double fields default to 0.0, not null) but
+# `Ag_Land_Value` is 0.0 on every one of these 1,118 rows -- a
+# Sandhills ranching county where all ag land value evidently
+# lands in `Land_Value` instead. Statewide, `Ag_Land_Value > 0` for
+# 79,954/1,154,898 (6.9%), and `Total_Assessed_Value = Land_Value +
+# Improvements_Value + Other_Impr_Value + Ag_Land_Value` holds
+# exactly for 984,705/1,154,898 (85.3%) of all rows -- confirming
+# `Ag_Land_Value` is a genuine, additive land-value component
+# (mapped to `current_use_value`, matching Nebraska's ag/
+# horticultural current-use valuation system), not a duplicate of
+# `Land_Value`. `ImpSF` is 0.0 for every Arthur County row despite
+# `Improvements_Value > 0` for 253/1,118 -- looked like a
+# declared-but-empty field until checked statewide:
+# `ImpSF > 0` is 456,679/1,154,898 (39.6%), a real, useful field
+# this county's sample happened not to exercise. `BuildingYear`
+# 221/1,118 (19.8%, plausible for a mostly-unimproved ranching
+# county), no literal `'0'` sentinel found (statewide count of
+# `BuildingYear = '0'` is 0 -- only the empty string means "no
+# value"). `Neighborhood` 99.0% populated, 6 distinct codes.
+# `Source_Document` 603/1,118 (54.0%; 942,015/1,154,898 = 81.6%
+# statewide); format is not uniformly "book,page" across the state
+# (only 374,748/942,015 populated values statewide contain a comma)
+# so it is mapped whole, unmapped-and-unsplit, to `deed_reference`.
+#
+# License: the ArcGIS item's own `licenseInfo` states "This
+# information is a snapshot of parcel data for the state of
+# Nebraska... This information is for general use and analysis
+# within the state, but the authority of this information lies with
+# the counties." No explicit redistribution permission or
+# prohibition; the "within the state" phrasing is flagged here for
+# the user's judgment rather than resolved as either
+# `redistribution_restricted: true` or `false`. The Hub site's own
+# metadata separately describes NebraskaMap as "a site for public
+# data."
+
+description: >-
+  Nebraska statewide parcel roll (CAMA values, most recent sale,
+  situs address, legal description) compiled annually by each
+  county, from NebraskaMap, Nebraska's ArcGIS Hub open-data site.
+
+admin_id: US-NE
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: nebraskamap
+    portal_url: "https://www.nebraskamap.gov/datasets/nebraska::statewide-parcels/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/ba7dda0642cd4c0c9660a35081fee517_0/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+    license: >-
+      Item licenseInfo: "for general use and analysis within the
+      state, but the authority of this information lies with the
+      counties." No explicit redistribution clause either way.
+    terms_url: "https://www.nebraskamap.gov/datasets/nebraska::statewide-parcels/about"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "ne_statewide_parcels.geojson"
+
+# Column that splits the data into chunks for processing (avoids
+# reading the ~2-3 GB statewide file into memory at once)
+process_by:
+  admin_level: 3
+  admin_id_column: County_ID
+  admin_id_transformation:
+    # County_ID is Nebraska's 3-digit county-FIPS suffix (verified:
+    # 001-185, all odd, 93 distinct values); prefix with the state
+    # FIPS code to get the standard 5-digit county FIPS.
+    output: admin3_id_admin1
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "31"
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+# Columns from `openplaces` dictionary for entity -> columns in
+# imported table
+columns:
+  parcel_id_admin2: State_PID
+  parcel_id_admin3: Parcel_ID
+  address: Situs_Address
+  address_number: Ph_Rd_Num
+  address_street_directional: Ph_Pre_Dir
+  address_street_name: Ph_Rd_Name
+  address_street_type: Ph_Rd_Type
+  city: Ph_City
+  postal_code: Ph_Zip5
+  legal_description: Legal_Description
+  lot_size: Acres_Deeded
+  total_value: Total_Assessed_Value
+  land_value: Land_Value
+  improvement_value: Improvements_Value
+  special_feature_value: Other_Impr_Value
+  current_use_value: Ag_Land_Value
+  use_group_code: Property_Parcel_Type
+  zoning_code: Zoning
+  tax_district: TAXDIST
+  deed_reference: Source_Document
+  last_sale_date: Sales_Date
+  last_sale_price: Sales_Value
+  source_date: CAMAUpdate
+  year_built: BuildingYear
+  area_sqft: ImpSF
+  tax_neighborhood_code: Neighborhood
+
+transformations:
+  # Expose the raw county parcel number under the canonical name
+  # parcel_id_assessor (a copy of parcel_id_admin3 -- Parcel_ID), so
+  # it is the raw key parcel_id_local derives from -- consistent
+  # with the Wisconsin/DC/Hawaii statewide recipes.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  # Acres_Deeded (mapped to lot_size, sqft-typed in the registry) is
+  # sourced in acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+  # BuildingYear is a string field; empty string (not '0') is the
+  # source's own "no value" placeholder, and to_numeric's
+  # errors='coerce' turns that into a null automatically.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+  - type: unary
+    operation: to_datetime
+    input: source_date
+    output: source_date
+
+# No bundled US_parcel_id-overrides.csv row exists for US-NE; falls
+# back to the default 'simple' conversion, which is safe here since
+# Parcel_ID was verified fully distinct within Arthur County
+# (1,107/1,107 populated rows, no duplicates) and is a plain numeric
+# string with no delimiters a 'simple' strip-and-uppercase could
+# collapse.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

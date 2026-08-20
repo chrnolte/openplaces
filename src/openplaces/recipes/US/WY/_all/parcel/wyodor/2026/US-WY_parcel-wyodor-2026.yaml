@@ -1,0 +1,195 @@
+# Recipe: Wyoming statewide parcels, from the Wyoming Department of
+# Revenue's "Wyoming Statewide Parcel Viewer" (all 23 county assessors
+# contribute; the viewer is hosted at wyo-prop-div.wyo.gov and
+# wyo-prop-div.maps.arcgis.com).
+#
+# Source discovery (Phase 1): the viewer's landing page itself only
+# links to the AGOL web-mapping application
+# (wyo-prop-div.maps.arcgis.com/apps/webappviewer, item
+# 4bb9a66f7287402b8f650aa9f21d3fa5). Its underlying Web Map item
+# (982879668f2847c79211d6d91de9418a) was fetched directly
+# (`.../sharing/rest/content/items/{id}/data?f=json`); its
+# `operationalLayers` list a genuine hosted FeatureServer, "Wyoming
+# Parcels for 2026"
+# (services3.arcgis.com/r0iJ85SKZ4zAzz3P/arcgis/rest/services/
+# Wyoming_Parcels_for_2026/FeatureServer/0), alongside PLSS
+# section/township reference layers and various special-district
+# boundaries (not parcels, not ingested here).
+#
+# This is a real, queryable data service, not a viewer-only/tiles-only
+# trap (unlike Oklahoma's and Arizona's parcel viewers elsewhere in
+# this project): the layer's own `?f=json` metadata reports
+# `"capabilities": "Query"`, `"type": "Feature Layer"`, and supports
+# `returnCountOnly`, `groupByFieldsForStatistics`, and standard
+# pagination (`maxRecordCount: 2000`).
+#
+# NOTE on bulk vs REST (Phase 3): the same dataset is indexed on
+# ArcGIS Hub (`hub.arcgis.com/api/v3/datasets`, id
+# `9ab04f655f5b4e398d9f2f070d2d29bb_0`, `recordCount: 373666` --
+# matching the live server's own `returnCountOnly` exactly), but its
+# `downloads` block is empty: no bulk export has ever been generated
+# for it. Uses `arcgis_rest_scraper` (REST paging) instead, ~187
+# pages at the service's own 2,000-row page size -- no equivalence
+# test against a bulk file was needed since none exists.
+#
+# Measured (live REST, current as of ingest): 373,666 features total.
+# Grouped by `jurisdicti` (the raw county-name field, upper-case, no
+# spaces): all 23 Wyoming counties present, feature counts ranging
+# 3,806 (Niobrara) to 46,853 (Laramie) -- a sensible statewide spread,
+# not a subset or a multi-state mix. The service's own `extent`
+# reprojects to roughly 41.0-45.7N, 111.0-104.1W, matching Wyoming's
+# real bounding box.
+#
+# Field population (live REST, `returnCountOnly` against the full
+# 373,666-row table): actualvalu>0 332,990 (89.1%); assessedva>0
+# 332,938 (89.1%); landgrossa>0 325,419 (87.1%); ownername1 populated
+# 333,159 (89.2%); locationad (site address) populated 308,739
+# (82.6%); legal populated 333,162 (89.2%); parcelnb populated
+# 372,452 (99.7%); accountno populated 333,179 (89.2%); taxyear
+# populated 373,666 (100%). The ~11% gap shared by owner/value/legal/
+# account fields is consistent with placeholder/shell rows (e.g.
+# right-of-way or pending-ownership parcels carrying only geometry
+# and a parcel number), not a degenerate or empty layer -- a
+# genuinely different situation from the Wilson NC Hub-export trap in
+# `acquiring_sources.md` Phase 3 (bulk cache silently dropping the
+# joined CAMA fields): this recipe reads the live REST service
+# directly, so no bulk/REST join-drop risk applies here.
+#
+# NOTE on the per-county partition (Phase 6): `jurisdicti` values
+# (e.g. `ALBANY`, `BIGHORN`, `HOTSPRINGS`) are the county name with
+# spaces stripped and upper-cased. The sidecar crosswalk
+# (`US-WY_parcel-wyodor-2026_admin3-crosswalk.csv`) was built
+# directly against `op.get_admin(admin_id='US-WY', level=3)`'s own
+# official county names, not guessed from abbreviations -- Wyoming's
+# admin3 codes do not follow simple first-two-letters-of-name rules
+# (e.g. `US-WY-CM` is Campbell, `US-WY-CB` is Carbon, `US-WY-CE` is
+# Converse).
+#
+# NOTE on the join key (Phase 5): `parcelnb` is a PLSS
+# (township-range-section based) parcel number, unique within its
+# county but not statewide -- the same township-range-section
+# combination recurs across counties -- so it is mapped as
+# `parcel_id_admin3`, not `parcel_id_admin2`. `geo/parcel_id_links.csv`
+# already carries a bundled per-county conversion pattern for every
+# `US-WY-*` county (pre-existing, ZTRAX-derived), so no
+# `US_parcel_id-overrides.csv` row was needed; verify the resulting
+# overlap empirically after ingest per Phase 5's guidance, the same
+# as any other county.
+#
+# NOTE on fields left unmapped:
+#   - `ID` -- an internal auto-incrementing OID, not a parcel
+#     attribute.
+#   - `landgrosss` -- land area in square feet, exactly
+#     `landgrossa` (mapped as `area_ac`) times 43,560; redundant with
+#     the mapped acreage and not distinct from it.
+#   - `Shape__Area`/`Shape__Length` -- Esri-computed geometry
+#     properties, superseded by the pipeline's own geometry-derived
+#     measurements.
+#   - `DEFAULTTAX` is Wyoming's tax-district code (e.g. `0101`),
+#     mapped to `tax_district`.
+#
+# License: no explicit terms-of-use or license page was found on
+# wyo-prop-div.wyo.gov (checked the homepage; `/terms` 404s) or in the
+# FeatureServer item's own AGOL metadata (`licenseInfo: null`; its
+# Hub listing separately reports `"license": "none"`). The sibling
+# Web Mapping Application item's `licenseInfo` is a standard state
+# liability disclaimer only ("makes no express or implied
+# warranties... retain sovereign immunity"), not a redistribution
+# restriction, so it is not treated as a formal license statement.
+# Recorded as `license: 'unknown'` per README guidance.
+#
+# Validation performed: recipe-loading and registry-column checks run
+# for real; a real, unmodified `op.ingest()` was run against the live
+# service for Niobrara County (US-WY-NI, the smallest county by
+# parcel count, 3,806 features). Output row count matched the
+# server's own `returnCountOnly` for that county exactly (3,806);
+# `parcel_id_local` populated 3,806/3,806 (100%); geometry 3,730
+# Polygon + 76 MultiPolygon, CRS EPSG:4326, 0 null geometries.
+#
+# `parcel_id_local` is only 2,850/3,806 distinct (74.9%) in this
+# county -- verified this is a source phenomenon, not a conversion
+# artifact: the raw `parcelnb` column itself is already only
+# 2,850/3,806 distinct before any conversion runs, and every
+# duplicate-parcelnb group shares an identical `area_ac` across its
+# rows (e.g. several rows all reading 0.0 acres under one PLSS
+# number), consistent with multiple assessment interests (surface,
+# mineral, or split-ownership shares) recorded under one PLSS-based
+# parcel number -- the same shape as DC's condo-regime SSL sharing,
+# not a degenerate/too-coarse key like Pamlico NC's ALTPARNO. Revisit
+# if a future county shows a much lower ratio.
+
+description: >-
+  Wyoming statewide parcels (all 23 counties) from the Wyoming Department of
+  Revenue's Statewide Parcel Viewer: parcel number, owner, value, legal
+  description, and acreage.
+
+admin_id: US-WY
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: wyodor
+    portal_url: "https://wyo-prop-div.wyo.gov/"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      unknown (no explicit terms/license page found; the AGOL item's own
+      licenseInfo is a standard state liability disclaimer, not a
+      redistribution restriction).
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "wy_statewide_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/r0iJ85SKZ4zAzz3P/arcgis/rest/services/Wyoming_Parcels_for_2026/FeatureServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+process_by:
+  admin_level: 3
+  admin_id_column: jurisdicti
+  admin_id_crosswalk:
+    recipe_id: "US-WY_parcel-wyodor-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin3: parcelnb
+  parcel_id_tax: accountno
+  admin3_name: jurisdicti
+  owner_name: ownername1
+  owner_name_2: ownername2
+  owner_address: mailaddres
+  owner_city: mailcity
+  owner_state: mailstate
+  owner_postal_code: mailzipcod
+  address: locationad
+  legal_description: legal
+  market_value: actualvalu
+  total_value: assessedva
+  area_ac: landgrossa
+  tax_district: DEFAULTTAX
+  tax_year: taxyear
+
+columns_to_categorical:
+  - admin3_name
+  - owner_state
+  - tax_district
+
+# Expose the raw assessor-original parcel id under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin3 -- parcelnb), so it
+# is the raw key parcel_id_local derives from -- consistent with the
+# Wisconsin/DC statewide recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+# Standardized matching key from the county parcel number (auto
+# conversion, processed per admin3; bundled per-county patterns
+# already exist for every US-WY-* county in geo/parcel_id_links.csv).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

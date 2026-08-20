@@ -1,0 +1,24 @@
+{
+  "accuracy_m": 1.5,
+  "grid_files": [
+    "ca_nrc_NA83SCRS.tif",
+    "us_noaa_FL.tif",
+    "us_noaa_MD.tif",
+    "us_noaa_TN.tif",
+    "us_noaa_gahpgn.tif",
+    "us_noaa_kyhpgn.tif",
+    "us_noaa_mihpgn.tif",
+    "us_noaa_nchpgn.tif",
+    "us_noaa_nyhpgn.tif",
+    "us_noaa_ohhpgn.tif",
+    "us_noaa_pahpgn.tif",
+    "us_noaa_schpgn.tif",
+    "us_noaa_vahpgn.tif",
+    "us_noaa_wvhpgn.tif"
+  ],
+  "operation_definition": "proj=pipeline step inv proj=utm zone=17 ellps=GRS80 step proj=hgridshift grids=ca_nrc_NA83SCRS.tif,us_noaa_FL.tif,us_noaa_MD.tif,us_noaa_TN.tif,us_noaa_gahpgn.tif,us_noaa_kyhpgn.tif,us_noaa_mihpgn.tif,us_noaa_nchpgn.tif,us_noaa_nyhpgn.tif,us_noaa_ohhpgn.tif,us_noaa_pahpgn.tif,us_noaa_schpgn.tif,us_noaa_vahpgn.tif,us_noaa_wvhpgn.tif,@null step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of UTM zone 17N + NAD83 to WGS 84 (6) + axis order change (2D) (merged with 13 same-shaped region grid(s), with identity fallback outside their combined coverage)",
+  "registered": "2026-08-20",
+  "source_crs": "EPSG:26917",
+  "target_crs": "EPSG:4326"
+}

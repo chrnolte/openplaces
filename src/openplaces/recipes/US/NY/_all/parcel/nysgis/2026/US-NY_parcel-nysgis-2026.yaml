@@ -1,0 +1,304 @@
+# Recipe: NYS GIS Tax Parcels Public -- the state's own compiled
+# parcel geometry layer, published by NYS ITS Geospatial Services
+# (the "Statewide Parcel Map Program", formerly the GIS Program
+# Office) in partnership with the Dept. of Taxation and Finance's
+# Office of Real Property Tax Services (ORPTS), which supplies the
+# joined assessment attributes.
+#
+# Source: https://gis.ny.gov/parcels (human landing page). Bulk
+# download at https://gisdata.ny.gov/GISData/State/Parcels/
+# NYS-Tax-Parcels.zip (verified live, 200 OK, no login/click-through
+# gate, Content-Length 801,888,224 bytes as of this session). A live
+# REST FeatureServer also exists at https://nysgeohub.ny.gov/arcgis/
+# rest/services/Parcels/NYS_Tax_Parcels_Public/FeatureServer with two
+# layers: layer 0 "NYS_Tax_Parcels_Public_Footprint" (one polygon per
+# participating county, a low-zoom placeholder) and layer 1
+# "NYS_Tax_Parcels_Public" (the actual parcels, used here). The bulk
+# zip is a single File Geodatabase covering the whole state (not
+# split per county) -- confirmed by parsing the zip's own central
+# directory via an HTTP Range request on the last 300KB without
+# downloading the full 802MB archive: all 66 entries are internal
+# `.gdb` housekeeping files (`a0000001X.gdbtable` etc.) under one
+# folder, `NYS_2025_Tax_Parcels_Public_2605.gdb/`. That folder name
+# (and its numeric suffix) may change on the next annual refresh; if
+# ingest fails to find `uncompressed_file_name` below, check the
+# live zip's actual top-level folder name again.
+#
+# NOTE on county coverage -- THIS IS NOT STATEWIDE. Verified two
+# ways, in agreement: (1) the live gis.ny.gov/parcels page text
+# ("Currently 38 counties' parcel data is available for download in
+# a single file under a common data schema") with the county list
+# quoted below, and (2) a live, machine-readable query of the
+# FeatureServer's own footprint layer (layer 0), which returned
+# exactly 38 features with a NAME/COUNTY_FIPS/NYC attribute each --
+# both sources agree exactly. Do not assume this list without
+# re-verifying against the live footprint layer; ITS adds counties
+# as they opt in.
+#
+# Participating counties (38, county-equivalents; the crosswalk
+# sidecar below scopes ingestion to exactly these and raises for any
+# other US-NY-* admin3 id, rather than writing a silent empty file):
+# Albany, Bronx, Broome, Cayuga, Chautauqua, Cortland, Erie, Genesee,
+# Greene, Hamilton, Kings, Lewis, Livingston, Montgomery, New York,
+# Oneida, Onondaga, Ontario, Orange, Oswego, Otsego, Putnam, Queens,
+# Rensselaer, Richmond, Rockland, Schuyler, St. Lawrence, Steuben,
+# Suffolk, Sullivan, Tioga, Tompkins, Ulster, Warren, Wayne,
+# Westchester, Wyoming.
+#
+# IMPORTANT, and a correction to an earlier unverified assumption:
+# New York City is NOT excluded from this dataset -- all five NYC
+# counties (Bronx, Kings/Brooklyn, New York/Manhattan, Queens,
+# Richmond/Staten Island) are among the 38 and are flagged NYC='Y' on
+# the live footprint layer. The service description states this
+# explicitly: "New York City data comes from NYC MapPluto," i.e. for
+# the 5 NYC counties the geometry and attributes are NOT sourced from
+# a county GIS department + ORPTS join the way the other 33 counties
+# are, but substituted wholesale from NYC's own MapPluto product. This
+# is the opposite of what the ORPTS *property/assessment-roll* source
+# does (see the companion US-NY_property-orpts-2026 recipe): that
+# dataset excludes NYC entirely, so the two NY recipes' coverage
+# differs specifically on NYC, in opposite directions -- this
+# recipe includes it (via MapPluto), the property recipe does not.
+# The remaining 24 of NY's 62 counties (e.g. Allegany, Nassau, Monroe,
+# Suffolk's own upstate peers) have not opted in to public sharing;
+# per the source page, "we respect each county's right as the data
+# owner to control the distribution [of] their GIS data."
+#
+# Bulk vs REST (Phase 3): used the bulk gdb -- no equivalence test
+# against the REST layer was run because there is no separate
+# "live" service the bulk export could have drifted from here; the
+# FeatureServer and the gdb are both republished from the same
+# single ORPTS-ITS annual production cycle ("Publication Date: May
+# 2026. Updated annually," per the service description), unlike the
+# Hub-export-vs-live-service traps documented in
+# `_instructions/acquiring_sources.md` Phase 3, which involve two
+# genuinely different refresh cadences.
+#
+# Schema (live FeatureServer layer 1, verified this session; row
+# count via server returnCountOnly): 3,827,530 features total across
+# the 38 counties.
+#   COUNTY_NAME populated 3,827,530/3,827,530 (100%), exactly 38
+#     distinct values matching the county list above one-for-one
+#     (concatenated, no spaces: "NewYork", "StLawrence") -- used
+#     as process_by.admin_id_column below.
+#   PROP_CLASS (-> use_group_code) populated 3,807,758/3,827,530
+#     (99.5%); confirmed via a live groupby query to be NYS ORPTS's
+#     standard 3-digit Property Type Classification (210 dominant at
+#     1,826,530 rows -- one-family residence -- consistent with a
+#     residential-majority parcel base; also 311, 220, 411, etc.),
+#     the same vocabulary the property/assessment roll uses.
+#   LAND_AV (-> land_value) populated 3,779,681 (98.75%); TOTAL_AV
+#     (-> total_value) 3,800,802 (99.3%); FULL_MARKET_VAL (->
+#     market_value) 2,539,519 (66.3%).
+#   YR_BLT (-> year_built) > 0 for 2,644,332 (69.1%).
+#   ACRES > 0 for 1,991,046 (52.0%); SQ_FT > 0 for only 1,095,189
+#     (28.6%) -- ACRES is the better-populated of the two competing
+#     lot-size fields and is used (via acres_to_sqft) for lot_size;
+#     SQ_FT is left unmapped as the redundant, sparser alternative.
+#   SQFT_LIVING (-> area_sqft) > 0 for 2,468,274 (64.5%). GFA (a
+#     second, "gross floor area" figure) > 0 for only 238,236 (6.2%)
+#     -- left unmapped as too sparse to be worth a second area field.
+#   BLDG_STYLE_DESC (-> building_style; mapped instead of the raw
+#     2-char BLDG_STYLE code, matching the MN metrogis recipe's
+#     precedent of preferring a decoded text field when the source
+#     ships one) populated 2,563,439 (67.0%). HEAT_TYPE_DESC (->
+#     heating_type) populated 1,708,073 (44.6%). FUEL_TYPE/DESC (a
+#     separate heating-fuel field) is left unmapped: the registry has
+#     no heating_fuel_type counterpart to heating_type.
+#   NBR_BEDROOMS (-> n_bedrooms) > 0 for 1,676,573 (43.8%);
+#     NBR_FULL_BATHS (-> n_bathrooms) > 0 for 1,687,757 (44.1%).
+#     NBR_KITCHENS has no registry home and is left unmapped.
+#   USED_AS_CODE/DESC (a secondary-use field) populated only 131,798
+#     (3.4%) -- too sparse to be worth mapping; left unmapped.
+#   BOOK/PAGE (-> last_sale_book_page, concatenated) populated
+#     1,877,552 (49.05%).
+#   PRIMARY_OWNER populated 3,810,143 (99.6%); MAIL_ADDR populated
+#     2,820,569 (73.7%).
+#   OWNER_TYPE is overwhelmingly code "8" (3,688,700/3,827,530,
+#     96.4%, presumably "individual/private" in ORPTS's vocabulary)
+#     with a "-999" sentinel on 21,881 rows and small remainders (1,
+#     2, 3, ...); no registry field for a parcel-level owner-type
+#     code, left unmapped.
+#   ROLL_SECTION: 1 (ordinary taxable) 2,806,548 (73.3%); 8 (wholly
+#     exempt) 124,720 (3.3%); 3/5/6/7 (state land, special franchise,
+#     utility, ceiling railroad) small remainders; null 873,844
+#     (22.8%). No registry field for this roll-section concept;
+#     left unmapped (same value vocabulary the ORPTS property recipe
+#     documents in more detail, since ORPTS's own data dictionary
+#     spells out each code).
+#
+# Fields left unmapped for want of a registry attribute, or because
+# they duplicate a field that is mapped:
+#   - MUNI_NAME, CITYTOWN_NAME, CITYTOWN_SWIS, SWIS, SCHOOL_CODE,
+#     SCHOOL_NAME -- town/city and school-district jurisdiction
+#     names/codes; no admin4-name or school-district registry field
+#     exists yet (the same gap the MN metrogis recipe already
+#     documented for SCHOOL_DST/WSHD_DST).
+#   - SBL -- the fixed-width, zero-padded encoding of the same
+#     section-block-lot number PRINT_KEY already carries in
+#     human-readable form (mapped to parcel_id_admin4); redundant.
+#   - FRONT, DEPTH, GRID_EAST, GRID_NORTH -- no registry field (FRONT/
+#     DEPTH mirror the same gap noted for DC's SQUARE/SUFFIX/LOT-style
+#     tax-map metadata; GRID_EAST/NORTH mirror MN's SECTION/TOWNSHIP/
+#     RANGE gap: real geographic concepts, no registry slot).
+#   - SEWER_TYPE/DESC, WATER_SUPPLY/DESC, UTILITIES/DESC -- no
+#     registry field for parcel-level utility service flags.
+#   - AG_DIST_CODE/NAME -- agricultural-district enrollment; no
+#     registry field (same situation as MN's GREEN_ACRE/AG_PRESERV,
+#     which is entity_type-scoped to `property` via clean_and_green,
+#     not `parcel`).
+#   - ADD_MAIL_ADDR/PO_BOX/CITY/STATE/ZIP -- a second owner's own
+#     separate mailing address; the registry's owner_address_2 is a
+#     continuation line of the *same* owner's address, not a second
+#     owner's address, so this would mis-home the data (same
+#     reasoning MN documented for its own OWN_ADD_L3/L4 gap).
+#   - MUNI_PARCEL_ID -- a further alternate parcel id distinct from
+#     PRINT_KEY/SBL; no additional registry id slot to carry a third
+#     parcel identifier for the same parcel.
+#   - NYS_NAME, NYS_NAME_SOURCE -- an ITS-normalized version of the
+#     owner name plus its normalization provenance; PRIMARY_OWNER (->
+#     owner_name) is the source-as-recorded field the registry wants.
+#   - DUP_GEO, CALC_ACRES -- data-quality/lineage metadata (a
+#     duplicate-geometry flag, and a geometrically-recomputed acreage
+#     redundant with the pipeline's own polygon-area computation) --
+#     same precedent as DC's CALCULATEDAREA / MN's ACRES_POLY.
+#
+# Join key (Phase 5): mapped parcel_id_assessor directly from
+# SWIS_PRINT_KEY_ID (SWIS + PRINT_KEY concatenated with no separator,
+# e.g. format "999999##.##-#-#", fabricated) -- NOT from the
+# better-populated SWIS_SBL_ID (99.86% vs. SWIS_PRINT_KEY_ID's 77.4%),
+# a deliberate tradeoff. The ORPTS property/assessment-roll recipe
+# (US-NY_property-orpts-2026) only ever offers swis_code +
+# print_key_code as raw columns -- it has no fixed-width SBL
+# equivalent to derive SWIS_SBL_ID's format from. Using
+# SWIS_PRINT_KEY_ID's format here, even at a lower population rate,
+# is what lets the two NY recipes' parcel_id_local values actually
+# line up post-conversion; using SWIS_SBL_ID here would silently
+# produce two NY parcel sources that never join to each other.
+# `kind: parcel` (not `tax`, despite this attribute data being
+# assessment-roll-derived) follows the same reasoning
+# US-FL_property-fldor-2026 already established: `kind` selects a
+# raw-id conversion pattern, not an entity-type label, and both
+# columns here are the *same* unreformatted ORPTS SWIS+print-key
+# identifier system, so they want the same conversion.
+#
+# License: no license/terms statement was found specific to this
+# geometry dataset beyond a plain "Use Limitations" disclaimer on the
+# source page: "GIS parcel data is for planning and general use
+# purposes only and is not a substitute for a legal parcel survey...
+# provided 'as is' with no guarantees... assumes all risks." This is
+# a liability disclaimer, not a redistribution restriction, and the
+# page frames the 38-county file as the counties' own already-public
+# opt-in ("we encourage counties to open their parcel data
+# publicly... [these] have provided Geospatial Services permission to
+# share their parcel data with the public"). Recorded as license
+# 'unknown' (no formal grant found) with the disclaimer quoted,
+# rather than assumed permissive or assumed restricted.
+
+description: >-
+  NYS ITS Geospatial Services' statewide compiled tax parcel layer
+  (38 of 62 counties, including all five NYC boroughs via NYC
+  MapPluto), with ORPTS assessment attributes pre-joined.
+
+admin_id: US-NY
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: nysgis
+    portal_url: "https://gis.ny.gov/parcels"
+    download_url: "https://gisdata.ny.gov/GISData/State/Parcels/NYS-Tax-Parcels.zip"
+    license: "unknown (disclaimer only: 'planning/general use only, provided as is')"
+    terms_url: "https://gis.ny.gov/parcels"
+    redistribution_restricted: null
+  version: "2026"
+
+compressed_file_name: "NYS-Tax-Parcels.zip"
+# The zip's single top-level folder as of this session (see header
+# note above -- the numeric suffix may change on the next annual
+# refresh; verify against the live zip's central directory if ingest
+# cannot find this path).
+uncompressed_file_name: "NYS_2025_Tax_Parcels_Public_2605.gdb"
+
+# The parcels layer within the gdb (layer 1 of the FeatureServer);
+# layer 0 there is a county-footprint placeholder used only for
+# low-zoom map display and is not ingested.
+layer: NYS_Tax_Parcels_Public
+
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY_NAME
+  admin_id_crosswalk:
+    # Scoped to the 38 participating counties only (see header) --
+    # requesting any other US-NY-* admin3 id raises a clear KeyError
+    # rather than writing a silent empty file (same posture as
+    # US-MN_parcel-metrogis-2026's 7-county scope).
+    recipe_id: "US-NY_parcel-nysgis-2026_admin3-crosswalk"
+
+columns:
+  address: PARCEL_ADDR
+  parcel_id_admin4: PRINT_KEY
+  parcel_id_assessor: SWIS_PRINT_KEY_ID
+  address_number: LOC_ST_NBR
+  address_street_name: LOC_STREET
+  address_unit: LOC_UNIT
+  postal_code: LOC_ZIP
+  use_group_code: PROP_CLASS
+  land_value: LAND_AV
+  total_value: TOTAL_AV
+  market_value: FULL_MARKET_VAL
+  year_built: YR_BLT
+  lot_size: ACRES
+  building_style: BLDG_STYLE_DESC
+  heating_type: HEAT_TYPE_DESC
+  area_sqft: SQFT_LIVING
+  n_bathrooms: NBR_FULL_BATHS
+  n_bedrooms: NBR_BEDROOMS
+  owner_name: PRIMARY_OWNER
+  owner_name_2: ADD_OWNER
+  owner_address: MAIL_ADDR
+  owner_address_2: PO_BOX
+  owner_city: MAIL_CITY
+  owner_admin2_id_admin1: MAIL_STATE
+  owner_postal_code: MAIL_ZIP
+
+columns_to_categorical:
+  - use_group_code
+  - building_style
+  - heating_type
+  - owner_admin2_id_admin1
+
+transformations:
+  # Deed book/page for the current recorded deed of record. concat
+  # fills a missing BOOK/PAGE with '' before joining, so a row with
+  # neither becomes the literal string "-", not a null -- verified on
+  # Hamilton, where 6,418/12,947 rows (49.6%, matching the statewide
+  # BOOK/PAGE population rate) would otherwise read as "populated"
+  # while carrying no real book/page. null_if_equal restores a real
+  # null for that placeholder.
+  - type: string
+    operation: concat
+    inputs: [BOOK, PAGE]
+    args: {sep: "-"}
+    output: last_sale_book_page
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_book_page
+    args: {value: "-"}
+    output: last_sale_book_page
+
+  # ACRES (mapped to lot_size, sqft-typed in the registry) is
+  # sourced in acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+# Standardized matching key -- see header note on SWIS_PRINT_KEY_ID
+# vs. SWIS_SBL_ID for why this specific raw column was chosen.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
