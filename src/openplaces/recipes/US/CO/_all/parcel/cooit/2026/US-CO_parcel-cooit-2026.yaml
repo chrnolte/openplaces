@@ -1,0 +1,322 @@
+# Recipe: Colorado statewide parcel composite ("Colorado Public
+# Parcels"), aggregated annually from county/municipal assessor
+# submissions by the State of Colorado Governor's Office of
+# Information Technology (OIT) Geospatial Information Systems (GIS)
+# team.
+#
+# Source discovery (verified live, ArcGIS Online + ArcGIS Hub item
+# search, per acquiring_sources.md Phase 1): owner account
+# `oit_gis_COOIT`. Two items share the title "Colorado Public
+# Parcels":
+#   - A Feature Service (item 55234e0..., layer
+#     Address_and_Parcel/Colorado_Public_Parcels/FeatureServer/0 on
+#     gis.colorado.gov) -- the item's own description says
+#     "DO NOT ATTEMPT TO DOWNLOAD THIS DATASET ... this is a FEATURE
+#     SERVICE layer meant for viewing at large scales", i.e. the
+#     publisher itself steers bulk consumers away from REST paging.
+#   - A File Geodatabase item (id
+#     3245c94414124882b331e35c14bb23a4, name
+#     "Master_Parcel_Public.zip", 1,073,553,656 bytes) -- the
+#     "working download link" the Feature Service item points to.
+#     Used here.
+# The older catalog listing referenced in prior (unverified)
+# research, "Statewide Aggregate Parcels in Colorado 2023 (Public)"
+# on data.colorado.gov, no longer appears in that portal's own
+# catalog search; data.colorado.gov's federated listing for this
+# dataset (resource id 5y5i-vg25, "Colorado Public Parcels") now
+# points at the same ArcGIS Feature Service item above, confirming
+# this is the current form of the same OIT GIS composite, not a
+# different dataset.
+#
+# NOTE on bulk vs REST (Phase 3 equivalence test). The Feature
+# Service reports `returnCountOnly` = 2,599,760 (queried live,
+# gis.colorado.gov). Reading the File Geodatabase's own composite
+# layer (`Colorado_Public_Parcel_Composite`, via GDAL vsizip against
+# the downloaded zip) reports exactly 2,599,760 features -- an exact
+# row-count match, and its 34-field schema matches the REST layer's
+# 35 fields (OBJECTID plus the same attribute set; the GDB uses
+# Shape_Length/Shape_Area where the service reports
+# Shape__Length/Shape__Area, a naming convention difference only).
+# The zip additionally bundles 45 more per-county layers (one of
+# them, KitCarson, 9,788 rows, is a county the composite layer does
+# NOT include -- see coverage note below); those per-county layers
+# are not used by this recipe. Bulk accepted; no bulk-vs-REST
+# divergence found, unlike the Wilson NC / DC Record Lots cases in
+# acquiring_sources.md.
+#
+# NOT statewide despite the name: 44 of Colorado's 64 counties are
+# present (verified: both the live Feature Service's own
+# countyName-grouped counts and the bulk composite layer sum to
+# exactly 2,599,760 across the same 44 county names). The 20 missing
+# counties (mostly rural Eastern Plains / San Luis Valley / Western
+# Slope): Alamosa, Baca, Bent, Chaffee, Cheyenne, Conejos, Costilla,
+# Crowley, Delta, Fremont, Jackson, Kiowa, Kit Carson, Las Animas,
+# Lincoln, Mineral, Montrose, Otero, Phillips, Prowers. A county
+# absent here returns zero rows on ingest, not an error -- this is a
+# real coverage gap, not a query bug. Kit Carson has a per-county
+# layer bundled in the same zip (see above) but is not merged into
+# the composite the live service (and this recipe) reads, so it
+# still ingests to zero rows here.
+#
+# NOTE on `sharing` field: uniformly "Public" across all 2,599,760
+# rows (verified via a live groupBy-statistics query). The composite
+# already excludes any parcel a contributing county marked
+# non-public before OIT published it; there is no per-row filtering
+# left for this recipe to do.
+#
+# Fields mapped, with statewide population (live REST query,
+# `> 0`/non-empty count over 2,599,760 rows unless noted):
+#   parcel_id      2,594,450 (99.8%) -> parcel_id_admin3 (raw key;
+#                  parcel_id_local's join-key source, see below)
+#   account          1,432,854 (55.1%) -> parcel_id_tax (a distinct,
+#                  county tax-account number, alias "Account";
+#                  format-sampled in Hinsdale County as a fixed
+#                  <letter><6 digits> pattern, ~97% distinct there,
+#                  but far less complete statewide than parcel_id,
+#                  so not used as the join key)
+#   situsAdd       1,903,546 (73.2%) -> address
+#   sitAddCty      -> city;  sitAddZip -> postal_code
+#   owner          2,221,738 (85.5%) -> owner_name
+#   owner2           355,438 (13.7%) -> owner_name_2
+#   ownerAdd       -> owner_address; ownAddCty -> owner_city;
+#   ownAddStt      -> owner_state;  ownAddZip -> owner_postal_code
+#   legalDesc      1,820,625 (70.0%) -> legal_description
+#   landAcres      1,314,431 (50.6%) -> area_ac
+#   landSqft         113,579 (4.4%) -> lot_size (mapped despite low
+#                  population -- it is the sqft-unit counterpart of
+#                  landAcres and some counties report only this one)
+#   subCode        1,126,929 (43.3%) -> subdivision_code
+#   subName        -> subdivision
+#   zoningCode       402,338 (15.5%) -> zoning_code
+#   landUseCde       363,204 (14.0%) -> use_group_code
+#   landUseDsc     1,841,669 (70.8%) -> use_group (values sampled in
+#                  Hinsdale County read as genuine land-use text --
+#                  e.g. residential-improved vs. residential-land
+#                  vs. vacant vs. exempt categories -- not building
+#                  style; landUseDsc's much higher population than
+#                  landUseCde statewide means many counties supply
+#                  the text label without the paired numeric code,
+#                  which is exactly what the harmonizer's
+#                  [use_group, use_group_code] coalesce order is
+#                  for)
+#   saleDate       1,414,188 (54.4%) -> last_sale_date (a plain
+#                  string field, "MM/DD/YYYY HH:MM:SS" -- NOT an Esri
+#                  date field, so no epoch-ms risk; no sentinel-date
+#                  spike found sampling Hinsdale County, max repeat
+#                  37/2,331 populated rows)
+#   salePrice      1,438,468 (55.3%, before nulling the sentinel
+#                  below) -> last_sale_price (plain digit string, no
+#                  currency symbol/commas; sampling Hinsdale County,
+#                  483/1,485 (32.5%) of populated values are the
+#                  literal string "0" despite a populated saleDate --
+#                  a sale occurred but no price was disclosed. Nulled
+#                  via null_if_equal before to_numeric, the same
+#                  pattern acquiring_sources.md uses for sentinel
+#                  dates)
+#   apprValTot     1,895,307 (72.9%) -> market_value
+#   asedValTot     1,907,037 (73.4%) -> total_value
+#   dateReceived   2,590,271 (99.6%) -> source_date (uniform per
+#                  county in the Hinsdale sample -- this is each
+#                  county's data-call submission date, not a
+#                  per-parcel fact)
+#   countyName, countyFips -> admin3_name / used for admin_id_column
+#                  (see process_by below), 100% populated
+#
+# NOTE on apprValTot vs. asedValTot (why they map to different
+# registry fields, not both to total_value): sampling Hinsdale
+# County, asedValTot / apprValTot clusters tightly around 0.068 for
+# most rows and around 0.26-0.29 for the rest (2,596/2,598 rows with
+# both > 0 have the ratio below 1). This matches Colorado's two-tier
+# statutory assessment system -- the residential assessment rate
+# (about 6.8% for the relevant tax year) and the considerably higher
+# non-residential/commercial rate (about 27-29%) applied to an
+# appraised "actual value" to produce the taxable "assessed value".
+# apprValTot ("Parcel Total Value") is therefore the appraised/
+# actual, market-comparable figure -> market_value; asedValTot
+# ("Taxable Value") is the statutory assessed total actually used to
+# calculate tax owed -> total_value. Neither carries a land/
+# improvement split in this composite (some counties' landUseCde/
+# landUseDsc vocabulary encodes land vs. improvement as separate
+# class codes for what may be the same parcel -- see parcel_id
+# below -- but the value fields themselves are not split).
+#
+# NOTE on parcel_id duplication: sampling Hinsdale County, parcel_id
+# is 2,521 distinct over 2,717 rows (92.8%), i.e. a modest duplicate
+# rate. Plausible cause: Colorado assessor land-use coding
+# (landUseCde/landUseDsc, see above) carries separate "-LAND" and
+# "-IMPROVEMTS" class codes, and some counties may submit those as
+# two rows sharing one parcel_id rather than one row. Not confirmed
+# across the full state; flagged for whoever next investigates
+# parcel_id_local overlap statewide.
+#
+# Fields left unmapped (no registry equivalent, or duplicative):
+#   - ownAddCou (owner mailing country) -- no registry field for an
+#     owner's country, unlike owner_state/owner_postal_code.
+#   - block, lot -- no registry field, as with DC's SQUARE/SUFFIX/
+#     LOT (see US-DC_parcel-dcgovrecordlots-2026.yaml); block 37.1%
+#     / lot 30.7% populated statewide.
+#   - zoningDesc -- a free-text description paired with zoningCode;
+#     no registry field distinct from zoning_code itself. 0/2,717
+#     populated in the Hinsdale sample (rural county, no municipal
+#     zoning); statewide population not separately queried.
+#   - URL 398,325 (15.3%) -- a per-parcel assessor detail-page link,
+#     populated only for counties with an online portal; no registry
+#     field for a source record URL.
+#
+# License: the ArcGIS item's own `licenseInfo` is a liability
+# disclaimer ("data made available here has been modified... State
+# of Colorado makes no representations or warranty as to the
+# completeness, accuracy, timeliness, or content... used at one's
+# own risk"), not an explicit statement on redistribution or
+# commercial use either way. No separate Colorado open-data terms
+# page was found stating otherwise. Recorded as `license: 'unknown'`
+# / `redistribution_restricted: null` per README guidance for a
+# reasonable search that found a disclaimer but no explicit
+# permission or prohibition.
+#
+# DOLA Division of Property Taxation (DPT) "Abstract of
+# Assessment" / Annual Report data (checked per task request, no
+# recipe written from it): dpt.colorado.gov/annual-reports states
+# the Annual Report to the Governor and General Assembly "contains
+# listings of assessed values by county in addition to property tax
+# revenues of the local taxing jurisdictions" -- i.e. aggregate
+# totals by county and taxing jurisdiction only, published as PDF
+# documents (linked from that page via Google Drive, not a
+# structured dataset or API). No parcel-level or property-level
+# component exists. Not suitable for a `property` or `parcel`
+# recipe; genuinely aggregate-only, confirming the task's suspicion.
+
+description: >-
+  Colorado statewide parcel composite from the Governor's Office of
+  Information Technology GIS team, aggregated annually from county and
+  municipal assessors. Covers 44 of 64 counties.
+
+admin_id: US-CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: cooit
+    portal_url: "https://www.arcgis.com/home/item.html?id=3245c94414124882b331e35c14bb23a4"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/3245c94414124882b331e35c14bb23a4/data"
+    license: "unknown"
+    terms_url: "https://www.arcgis.com/home/item.html?id=3245c94414124882b331e35c14bb23a4"
+    redistribution_restricted: null
+  version: "2026"
+
+compressed_file_name: "Master_Parcel_Public.zip"
+uncompressed_file_name: "Master_Parcel_Public.gdb"
+
+layer: Colorado_Public_Parcel_Composite
+
+# Chunk processing by county. countyFips is a raw per-county FIPS
+# code with inconsistent zero-padding in the source (verified live:
+# Archuleta '007' but Custer '27', Eagle '37' -- not uniformly
+# 3-digit), so it is zero-padded before the state-prefix is added,
+# unlike the Wisconsin recipe's PARCELFIPS which is already clean.
+process_by:
+  admin_level: 3
+  admin_id_column: countyFips
+  admin_id_transformation:
+    - type: string
+      operation: zfill
+      args:
+        width: 3
+      output: admin3_id_padded
+    - type: string
+      operation: add_prefix
+      input: admin3_id_padded
+      args:
+        prefix: "08"
+      output: admin3_id_admin1
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+columns:
+  parcel_id_admin3: parcel_id
+  parcel_id_tax: account
+  address: situsAdd
+  city: sitAddCty
+  postal_code: sitAddZip
+  owner_name: owner
+  owner_name_2: owner2
+  owner_address: ownerAdd
+  owner_city: ownAddCty
+  owner_state: ownAddStt
+  owner_postal_code: ownAddZip
+  legal_description: legalDesc
+  area_ac: landAcres
+  lot_size: landSqft
+  subdivision_code: subCode
+  subdivision: subName
+  zoning_code: zoningCode
+  use_group_code: landUseCde
+  use_group: landUseDsc
+  last_sale_date: saleDate
+  last_sale_price: salePrice
+  market_value: apprValTot
+  total_value: asedValTot
+  source_date: dateReceived
+  admin3_name: countyName
+
+columns_to_categorical:
+  - city
+  - admin3_name
+  - subdivision
+  - zoning_code
+
+transformations:
+  # Expose the raw per-county PIN under the canonical name
+  # parcel_id_assessor, consistent with the Wisconsin/DC statewide
+  # recipes, so it is the raw key parcel_id_local derives from.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  # salePrice's literal "0" is a "no price disclosed" sentinel, not
+  # a real $0 sale (see header note); null it before casting.
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_price
+    args: {value: "0"}
+    output: last_sale_price
+
+  - type: unary
+    operation: to_numeric
+    input: last_sale_price
+    output: last_sale_price
+
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+  - type: unary
+    operation: to_numeric
+    input: market_value
+    output: market_value
+
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+
+  - type: unary
+    operation: to_datetime
+    input: source_date
+    output: source_date
+
+# Per-county conversion patterns already exist in
+# geo/parcel_id_links.csv for most Colorado counties (a national
+# reference table, not specific to this recipe); no US-CO override
+# row was added here. Verify parcel_id_local overlap per county
+# after ingest -- see acquiring_sources.md Phase 5/7.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
