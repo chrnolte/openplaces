@@ -606,8 +606,13 @@ class TableIngester:
 
         # Apply variable transformations
         # (Before categorical casting and crosswalks, so that derived columns
-        # can be cast to categorical and used in overlap resolution)
-        if 'transformations' in self.recipe:
+        # can be cast to categorical and used in overlap resolution).
+        # Either key alone must trigger the call: apply_transformations
+        # handles both, but a recipe declaring only transformation_patterns
+        # (e.g. a bare to_numeric cast) was silently skipped by the
+        # single-key guard -- the txgio value columns stayed text through
+        # an entire re-ingest before anyone noticed.
+        if 'transformations' in self.recipe or 'transformation_patterns' in self.recipe:
             cols_before = list(df)
             df = apply_transformations(df, self.recipe)
             cols_added = [v for v in df if v not in cols_before]
