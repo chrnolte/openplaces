@@ -438,10 +438,19 @@ def resolve_spine(
     # semantics infer_spine_additions already applies to its own additions.
     if spine.index.duplicated().any():
         n_dup = int(spine.index.duplicated().sum())
-        warnings.warn(
-            f'{n_dup} duplicate spine IDs for {state.admin_id}; making unique.'
-        )
-        spine = make_index_unique(spine, sort_duplicates_by_area=True)
+        if all(isinstance(value, str) for value in spine.index):
+            warnings.warn(
+                f'{n_dup} duplicate spine IDs for {state.admin_id}; making unique.'
+            )
+            spine = make_index_unique(spine, sort_duplicates_by_area=True)
+        else:
+            # make_index_unique suffixes string ids only. A non-string
+            # index never occurs on a real spine (ids are geo_id/OLC
+            # strings); leave it, with the warning, rather than failing.
+            warnings.warn(
+                f'{n_dup} duplicate spine IDs for {state.admin_id}; index is '
+                'not string-typed, leaving duplicates in place.'
+            )
 
     state.spine = spine
 
