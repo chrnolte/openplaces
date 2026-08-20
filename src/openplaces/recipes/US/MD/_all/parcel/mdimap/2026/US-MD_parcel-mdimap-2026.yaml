@@ -1,0 +1,369 @@
+# Recipe: Maryland statewide parcel + assessment roll, from MD iMAP's
+# "MD_ParcelBoundaries" service.
+#
+# Source: the Maryland Department of Planning (MDP) hosts a single
+# ArcGIS MapServer layer ("Parcel Boundaries", layer 0) that already
+# carries the State Department of Assessments and Taxation (SDAT)
+# assessment/ownership attributes joined onto each parcel polygon --
+# there is no separate GIS-layer/CAMA-table split to bridge (unlike
+# MassGIS's L3_TAXPAR_POLY/L3_ASSESS pair), so this is one entity
+# (parcel), following the flat-schema pattern of the Wisconsin
+# statewide recipe rather than MassGIS's additional_layers split.
+# A visually near-identical "MD_PropertyData" service also exists
+# (same fields, point geometry, one point per account) but the
+# polygon service is the better geometry and was used instead; the
+# point service's own layer description explicitly recommends the
+# REST endpoint over any bulk download "due to the extensive size of
+# the parcel points file" -- not used here.
+#
+# Two hostnames serve identical content per MD's own documentation
+# (`geodata.md.gov` and `mdgeodata.md.gov`); `geodata.md.gov`
+# returned HTTP 503 on every one of ~8 attempts across this session
+# while `mdgeodata.md.gov` answered normally every time, so the
+# recipe points at `mdgeodata.md.gov`.
+#
+# NOTE on bulk vs REST (Phase 3), revisited with direct verification
+# (a prior pass on this recipe rejected the bulk export on schema
+# grounds alone and inferred it was stale without checking; that
+# inference is now confirmed, and refined, below):
+#
+# MD iMAP's ArcGIS Hub item for this layer
+# (b33e5f03d50844b8819a4046ecfe0d97_0, owned by the state's own
+# `mdimapdatacatalog` account) offers a bulk GeoJSON export whose
+# per-feature properties carry `OWNNAME1`/`OWNNAME2`/`NAMEKEY`
+# (owner name) and `GRNTNAM1` (grantor/seller name at last
+# transfer) -- real owner-name PII -- plus `DR1CLERK`, `TRANSNO1`,
+# `GR1CLRK1`, `MORTGAG1`, `AGFNDLUOM`, `EXISTING`, and a block of
+# dwelling-count fields. None of these appear anywhere in the live
+# MapServer layer's current 117-field schema (`.../MapServer/0?
+# f=json`), and querying any one of them directly by name (e.g.
+# `outFields=OWNNAME1`) returns a hard `{"error":{"code":400,...}}`,
+# not a null value -- confirming they are absent from the query
+# engine's schema entirely, not merely hidden from field metadata.
+#
+# Vintage of the bulk export was checked directly, not inferred,
+# via Esri Hub's own downloads bookkeeping API
+# (`opendata.arcgis.com/api/v3/datasets/{item}_0/downloads`), which
+# reports each export format's own build-job history. The GeoJSON
+# download's `contentLastModified` is 2025-06-24, and its rebuild
+# job (id 292518061, created 2025-01-16) is still `status: failed`
+# as of its own last-attempted timestamp 2026-05-19 -- every logged
+# attempt in that job's error history, spanning Jan 2025 through
+# May 2026, failed by querying `geodata.md.gov`, the exact hostname
+# already documented above as returning HTTP 503 on every attempt
+# in this session (Esri's Hub builder was never repointed at the
+# working `mdgeodata.md.gov` host this recipe uses). So the served
+# bulk export is a frozen snapshot roughly 14 months old as of this
+# revision, not a live mirror of the same data this recipe scrapes.
+#
+# The live REST layer, by contrast, was confirmed still current:
+# a Kent County sample of `POLYDATE`/`MDPVDATE`/`SDATDATE` (the
+# layer's own documented freshness fields, per the Hub item's own
+# service metadata) read `2026JAN`/`2026JAN`/`2026MAY`, and sampled
+# `NFMTTLVL`/`LASTASSD`/`TRADATE` values for several Kent County
+# ACCTIDs matched, field for field, the same ACCTIDs' values on
+# Maryland's own Socrata Open Data Portal dataset (below) -- so the
+# two genuinely-live sources agree with each other, while the Hub
+# GeoJSON snapshot is over a year behind both.
+#
+# Separately, Maryland's Open Data Portal (opendata.maryland.gov,
+# dataset `ed4q-f8tm`, "Maryland Real Property Assessments_Hidden
+# Property Owner Names", Public Domain license, attributed to
+# SDAT/MDP) exposes the same SDAT field-numbered extract layout
+# through a live, queryable Socrata (SODA) API, updated as recently
+# as days before this revision (`date_of_most_recent_open_data_
+# portal_record_update` on freshly-touched rows). Its 222-column
+# schema, like the live MapServer's, carries no `OWNNAME1`/
+# `OWNNAME2`/`NAMEKEY` column at all -- current owner name is
+# structurally absent, not merely blanked per row -- confirming the
+# absence is a deliberate, currently-enforced MD policy applied
+# consistently across every channel the state keeps live, not an
+# artifact of one broken caching pipeline. Given that, `owner_name`/
+# `owner_name_2`/`owner_name_january_1` stay unmapped: no currently
+# live MD source (REST or otherwise) publishes them, and the one
+# source that ever carried them is confirmed stale.
+#
+# One adjacent, verified finding worth recording for future work:
+# that same Socrata dataset DOES carry a still-live, still-updated
+# Grantor Name field (`GRNTNAM1`, "SALES SEGMENT 1: Grantor Name",
+# SDAT Field #80, plus SEGMENT 2/3 equivalents for later transfers)
+# -- the seller of record at the parcel's last recorded transfer,
+# distinct from current owner name -- and it is populated with real
+# values in a spot check against the same Kent County ACCTIDs whose
+# other fields matched the live REST layer exactly. It is not used
+# here for two independent reasons, either one sufficient alone:
+# (1) `openplaces`'s attribute registry scopes `grantor` to
+# `entity_type: transaction` -- its only two existing usages
+# (US-MA, US-WI) are both dedicated transaction recipes -- and
+# Maryland has no transaction recipe to home it in (the residential-
+# sales investigation below already closed that door for unrelated
+# reasons); mapping it onto this parcel recipe would mis-home
+# transaction-shaped data onto a parcel entity rather than fill a
+# genuine gap. (2) The Socrata endpoint speaks SODA, not Esri's
+# `/query` protocol; `arcgis_rest_scraper`'s `attribute_join` mode
+# (read in full for this revision) only understands Esri's
+# `outFields`/`returnGeometry=false`/`f=json` shape against
+# `features[].attributes`, so joining a Socrata source in would
+# need new scraper code regardless of the registry question. Given
+# neither obstacle is specific to this one field, a future MD
+# transaction recipe sourced from `ed4q-f8tm` is the right place to
+# pick this up, not a patch onto the parcel recipe here.
+#
+# Net effect: this recipe still scrapes the live REST layer via
+# `arcgis_rest_scraper` rather than the Hub bulk export, and still
+# maps no owner or grantor NAME field -- but that is now because
+# every live channel checked (REST and Socrata alike) structurally
+# excludes current owner name, and the one channel that has ever
+# carried it is a verified ~14-month-stale snapshot, not because
+# the live REST service was merely assumed to be the safer or more
+# "current" choice. Owner mailing ADDRESS fields are schema (not
+# identifying on their own the way a name is) and are mapped
+# normally, consistent with existing MA/WI statewide parcel
+# recipes.
+#
+# NOTE on Baltimore City (independent city, not a county -- the
+# classic crosswalk trap named in this task): the source's own
+# `JURSCODE` field already distinguishes `BACI` (Baltimore city) from
+# `BACO` (Baltimore county) as two of the 24 distinct values sampled
+# live from the service -- confirmed by an explicit
+# `returnDistinctValues` query. No trap here: MD's own schema never
+# conflates the two. `US_admin-census-2021_admin3` likewise carries
+# Baltimore city as its own unit, `US-MD-BC` (FIPS 24510, the
+# independent-city code, distinct from Baltimore county's `US-MD-BA`
+# / FIPS 24005) -- confirmed via `op.get_admin('US-MD', 3)`. The
+# crosswalk CSV below maps `JURSCODE` directly to the existing
+# `admin3_id`; all 24 JURSCODE values matched exactly one of the 24
+# admin3 units with no leftover on either side.
+#
+# NOTE on the residential sales / transaction data (Maryland
+# Department of Planning, compiled from SDAT transfer records) --
+# investigated and NOT included, a deliberate negative finding:
+#   - The dedicated statewide "Maryland Property Sales" ArcGIS item
+#     (1de3b1a6cffb4d168920e5beee884435, also owned by
+#     `mdimapdatacatalog`) points at
+#     `https://mdpgis.mdp.state.md.us/arcgis/rest/services/
+#     PlanningCadastre/Property_Sales/MapServer/0`. That MapServer's
+#     own folder listing (`.../PlanningCadastre?f=json`) is live and
+#     enumerates 18 other services, but `Property_Sales` is not
+#     among them -- the service was removed or renamed and the
+#     catalog item was never updated. Confirmed with a direct
+#     request returning `{"error":{"code":404,"message":"Service ...
+#     not found"}}`.
+#   - The item's own `description` field is a verbatim copy-paste of
+#     the *Parcel Points* layer's description ("Due to the extensive
+#     size of the parcel points file...''), a second signal that
+#     this catalog entry is stale bookkeeping, not an actively
+#     maintained listing.
+#   - The dataset itself, per MDP's own "Residential Sales Data
+#     Methodology" documentation (`planning.maryland.gov/MSDC/
+#     Documents/Sale_Data/SalesMethodology_CY2024.pdf`, fetched and
+#     read in full), is a heavily filtered, hand-reviewed derivative
+#     (14 processing steps: arms-length-only, residential-only,
+#     de-duplicated, business/trustee sales removed by manual
+#     research including "Google Street View" in ambiguous cases)
+#     delivered as a per-jurisdiction shapefile (e.g.
+#     `talb_sale10.shp`) "available for use with MdProperty View and
+#     FINDER" -- MDP's licensed/registered desktop GIS product, not
+#     a standalone open bulk file. The product's own download page
+#     (`planning.maryland.gov/Pages/OurProducts/DownloadFiles.aspx`
+#     and its apparent successor,
+#     `.../Pages/OurWork/PDM/Property-Maps/Property-Map-Products.aspx`)
+#     both returned a genuine SharePoint 404 in this session (checked
+#     with raw headers, not just a rendered page), so its current
+#     free-vs-registration terms could not be confirmed either.
+#   - Given a dead REST endpoint, a stale/copy-pasted catalog
+#     listing, and no live download page to confirm terms, this does
+#     not clear Phase 2's "prove it before you invest" bar. No
+#     transaction recipe is included. `last_sale_price`/
+#     `last_sale_date` for Maryland come only from the parcel roll's
+#     own last-transfer fields (`CONSIDR1`/`TRADATE`) below.
+#
+# NOTE on fields left unmapped:
+#   - Owner/grantor NAME (see above -- not present on the source
+#     actually used).
+#   - `ACRES` vs `LANDAREA`: identical population in a 13,781-parcel
+#     Kent County sample (13,273 each, i.e. 96.3%), and `LUOM` ("Land
+#     Unit Area") takes null/`A`/`S` across a statewide distinct-value
+#     sample. `ACRES`'s own field alias is unambiguously "Acres" for
+#     every row regardless of `LUOM`, so it is mapped as `lot_size`
+#     (registry unit `sqft`, via the `acres_to_sqft` transform)
+#     without trying to interpret what `LUOM`/`S` rows mean --
+#     MD's documentation does not say whether `LUOM` describes the
+#     original plat measurement or overrides `ACRES` itself, and
+#     guessing wrongly would silently corrupt lot size for an
+#     unknown subset of parcels.
+#   - `LASTASSD`/`LASTINSP`/`SDATDATE`/`MDPVDATE`/`POLYDATE`: date-ish
+#     fields but in non-standard `YYYYMM` or `YYYYMon` (4-digit year
+#     + 3-letter month abbreviation, no day, no separator) forms that
+#     the pipeline's plain `pd.to_datetime` is not guaranteed to
+#     parse correctly (unlike `TRADATE`, verified below to be a clean
+#     `YYYYMMDD` string). Left unmapped (including `source_date`)
+#     rather than risk silent date corruption; `TRADATE` is the one
+#     genuinely clean date field on this layer.
+#   - `STRUCNST`/`DESCCNST` (construction material code), `STRUGRAD`/
+#     `DESCGRAD` (construction quality grade), `STRUBLDG`/`DESCBLDG`
+#     (building type, distinct from `building_style`), `WIDTH`/
+#     `DEPTH` (parcel frontage/depth), `PFUW`/`PFUS`/`PFLW`/`PFSP`/
+#     `PFSU`/`PFIC`/`PFIH`/`RECIND` (utility/influence factor flags),
+#     `CRTARCOD`/`FCMACODE`/`AGFNDAREA`/`ENTZNDAT`/`ENTZNASSM`/
+#     `PLNDEVDAT`/`NPRCTSTDAT`/`NPRCAREA`/`NPRCLUOM`/`HOMQLCOD`/
+#     `HOMQLDAT` (special assessment/tax-program flags and dates) --
+#     no registry attribute for any of these.
+#   - Assessment/tax year: no clean single tax-year field exists on
+#     this layer (`LASTASSD` is a `YYYYMM` last-assessed-date, not a
+#     roll year); `tax_year` is left unmapped rather than
+#     mis-deriving it.
+#   - `DR1CLERK`/`GR1CLRK1` (recording clerk) -- bookkeeping with no
+#     registry equivalent.
+#
+# Measured (live REST, `mdgeodata.md.gov`, current as of ingest;
+# statewide `returnCountOnly` 2,288,725, matching the Hub item's own
+# `recordCount` exactly). A 13,781-parcel sample of Kent County
+# (JURSCODE='KENT', MD's second-smallest jurisdiction by parcel
+# count) was used for field-population sampling rather than the
+# full state, per Phase 2:
+#   NFMLNDVL > 0: 13,310/13,781 (96.6%)
+#   NFMIMPVL > 0: 9,970/13,781 (72.3%)
+#   CONSIDR1 (last sale price) > 0: 8,123/13,781 (58.9%)
+#   TRADATE not null: 12,561/13,781 (91.1%); 0/13,781 hold the
+#     placeholder '00000000' -- absent sales are genuinely null, not
+#     sentinel-coded, and TRADATE parses cleanly as YYYYMMDD (spot
+#     checked in-process: pd.to_datetime('19811013') -> 1981-10-13,
+#     no epoch-ms or nanosecond corruption, unlike Esri's own
+#     esriFieldTypeDate fields elsewhere in this repo -- TRADATE is
+#     esriFieldTypeString here, not a true Esri date type).
+#   YEARBLT not null: 9,598/13,781 (69.6%); no '0' or '0000' zero-
+#     placeholder values were found in this sample at all (both
+#     counted 0/13,781) -- missing year_built is a genuine null on
+#     this layer, not sentinel-coded, so the registry's
+#     null_placeholder=0 for year_built is a harmless no-op here.
+#   SQFTSTRC > 0: 9,574/13,781 (69.5%); STRUSTYL not null:
+#     9,635/13,781 (69.9%) -- internally consistent with the
+#     improvement-value and year-built rates above.
+#   ADDRESS not null: 10,840/13,781 (78.6%); OWNADD1 not null:
+#     13,373/13,781 (97.0%); ZIPCODE not null: 13,413/13,781 (97.3%);
+#     ZONING not null: 12,341/13,781 (89.6%); LU not null:
+#     13,404/13,781 (97.3%).
+#
+# License: the ArcGIS item's own `licenseInfo` (fetched directly via
+# the AGOL sharing API, not just its rendered Hub page) states: "The
+# Data can be freely distributed as long as the metadata entry is
+# not modified or deleted. Any data derived from the Data must
+# acknowledge the State of Maryland in the metadata." -- alongside a
+# standard "as is, no warranty" disclaimer. No separate terms-of-use
+# page exists; this licenseInfo text is the terms. Recorded verbatim
+# in `source:` below since it names specific redistribution
+# conditions, not a blanket permission.
+
+description: >-
+  Maryland statewide parcel polygons (all 23 counties + Baltimore City) with
+  SDAT/MDP assessment, ownership-address, valuation and last-sale attributes
+  already joined per parcel.
+
+admin_id: US-MD
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: mdimap
+    portal_url: "https://data.imap.maryland.gov/datasets/maryland::maryland-parcel-boundaries/about"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      Freely redistributable if the metadata entry is not modified or
+      deleted; derived data must acknowledge the State of Maryland in the
+      metadata (ArcGIS item licenseInfo, no separate terms page).
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "md_parcel_boundaries.geojson"
+
+scraper_options:
+  layer_url: "https://mdgeodata.md.gov/imap/rest/services/PlanningCadastre/MD_ParcelBoundaries/MapServer/0"
+  where: "1=1"
+  out_fields: "*"
+
+# One statewide download, chunked into per-jurisdiction (admin3)
+# processing units via the source's own JURSCODE field. No
+# admin_id_transformation is needed -- JURSCODE (ALLE, ANNE, BACI,
+# BACO, ...) is not a FIPS code, so it is crosswalked directly to
+# admin3_id via the sidecar CSV below rather than derived by a
+# formula (contrast Wisconsin's PARCELFIPS, a 3-digit code needing
+# only a state-FIPS prefix).
+process_by:
+  admin_level: 3
+  admin_id_column: JURSCODE
+  admin_id_crosswalk:
+    recipe_id: "US-MD_parcel-mdimap-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: ACCTID
+  address: ADDRESS
+  city: CITY
+  postal_code: ZIPCODE
+  owner_address: OWNADD1
+  owner_city: OWNCITY
+  owner_admin2_id_admin1: OWNSTATE
+  owner_postal_code: OWNERZIP
+  use_group_code: LU
+  use_group: DESCLU
+  zoning_code: ZONING
+  year_built: YEARBLT
+  n_stories: BLDG_STORY
+  n_dwellings: BLDG_UNITS
+  building_style: DESCSTYL
+  land_value: NFMLNDVL
+  improvement_value: NFMIMPVL
+  total_value: NFMTTLVL
+  last_sale_price: CONSIDR1
+  last_sale_date: TRADATE
+
+columns_to_categorical:
+  - city
+  - postal_code
+  - owner_city
+  - owner_admin2_id_admin1
+  - owner_postal_code
+  - use_group_code
+  - zoning_code
+
+transformations:
+  # YEARBLT's '0'/'0000' placeholder is handled generically by the
+  # registry's null_placeholder for year_built (see
+  # attribute_registry.csv) -- no explicit null_if_equal needed here.
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+  # Deed liber/folio (MD's terms for a deed's recording book/page)
+  # assembled into the registry's book-page pair, mirroring the
+  # DEED_BOOK/DEED_PAGE pattern in ingest_recipes.md.
+  - type: string
+    operation: concat
+    inputs: [DR1LIBER, DR1FOLIO]
+    args: {sep: "-"}
+    output: last_sale_book_page
+
+  # ACRES is unambiguously acres (see header); registry lot_size is
+  # in sqft.
+  - type: unary
+    operation: acres_to_sqft
+    input: ACRES
+    output: lot_size
+
+# No bundled US_parcel_id-overrides.csv row exists for US-MD; falls
+# back to the default 'simple' conversion. ACCTID is SDAT's own
+# account number (this layer's `displayField`), a stable per-parcel
+# key already unique within its jurisdiction.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+# No save_to.admin_level: process_by already chunks at admin3, the
+# same granularity we want to save at (unlike MassGIS, which
+# processes at admin4 and aggregates up to admin3), so each
+# processing chunk is saved directly under its own admin3 unit --
+# mirroring the Wisconsin statewide recipe, which is process==save
+# level for the same reason and likewise carries no save_to block.
+save_to:
+  data_dir: core
