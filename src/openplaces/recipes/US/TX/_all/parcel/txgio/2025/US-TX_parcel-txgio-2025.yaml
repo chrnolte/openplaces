@@ -71,6 +71,23 @@ columns:
   market_value: MKT_VALUE
   source_date: DATE_ACQ
 
+# The source ships every attribute as text, numbers included. Cast the
+# registry-numeric columns at ingest, where the dtype contract belongs --
+# left as strings, improvement_value crashed every coastal-Texas county's
+# curate until the curate-boundary coercion (see io/curator) papered over
+# it; this is the owed root fix.
+transformation_patterns:
+  - type: unary
+    operation: to_numeric
+    pattern: "{column}"
+    apply_to_columns:
+      - land_value
+      - improvement_value
+      - market_value
+      - tax_year
+      - legal_area
+      - year_built
+
 # Columns to be cast to categorical (saves space)
 columns_to_categorical:
   - legal_area_unit
