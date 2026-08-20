@@ -1,0 +1,230 @@
+# Recipe: Utah statewide "Land Information Record" (LIR) parcels --
+# UGRC's county-by-county tax-roll/assessment product, distinct from
+# the base "Utah Statewide Parcels" layer (sibling recipe
+# `US-UT_parcel-ugrc-2026`). Both trace to the same 2016 LIR work
+# group recommendations (per this item's own AGOL description: county
+# assessors, recorders, AGRC and regional planning bodies agreeing on
+# a shared tax-year parcel GIS schema), but LIR is voluntary and
+# assembled per county rather than joined onto the base layer.
+#
+# NOTE on why this is NOT one shared service (the central engineering
+# fact this recipe works around): unlike the base statewide layer,
+# LIR is published as 29 SEPARATE FeatureServer endpoints, one per
+# county, each named `Parcels_{County}_LIR` (e.g.
+# `.../Parcels_SaltLake_LIR/FeatureServer/0`) -- found by grepping
+# `gis.utah.gov/products/sgid/cadastre/parcels/`'s raw HTML for every
+# `rest/services` href, which listed all 29 counties' base AND LIR
+# service URLs (no client-side rendering trap here, unlike the Hub
+# dataset pages). There is no bulk export and no county column to
+# filter a shared service by. `arcgis_rest_scraper.layer_url` has no
+# built-in way to vary per admin unit, so this recipe relies on a new,
+# general (not Utah-specific) capability added to that scraper: an
+# `{admin_key}` placeholder in `layer_url`, resolved via
+# `admin_key_column`/`admin_key_transform` through `get_admin` --
+# mirroring `google_drive_scraper`'s existing `{admin_key}` handling
+# for a per-admin-unit `file_path`. See
+# `src/openplaces/io/scrapers/arcgis_rest_scraper.py`. `download_by:
+# {admin_level: 3}` then drives one scraper call per county, each
+# resolving its own county's URL -- the same mechanism (no code
+# change) already used by `US-NC_footprint-ncdps-2023` and
+# `US_footprint-microsoft-v2` for a per-county/per-state download
+# from a shared server via a filename placeholder; here the
+# placeholder lands in the layer's URL instead of a filename, which
+# is what needed the scraper-side addition.
+#
+# Verified all 29 counties' LIR endpoints answer live (not merely
+# listed): a lightweight `returnCountOnly` probe against every one of
+# the 29 succeeded, current statewide LIR total 1,845,811 features
+# (larger than the base layer's 1,595,541 -- see below for why).
+#
+# NOTE on schema consistency: fields were sampled directly (not
+# assumed) on 5 counties spanning the size range (Piute 4,712
+# features; Davis, Utah, Uintah, Wayne) plus SaltLake (394,610); the
+# field LIST is identical across all 6 except SaltLake, which alone
+# also carries `PROP_TYPE` (not otherwise seen, and left unmapped for
+# want of a registry attribute and because it is not documented in
+# the item's own field-definition table below).
+#
+# NOTE on this layer being per-BUILDING, not per-parcel (Phase 2's
+# field-population gate, applied here to row *shape* rather than a
+# single field) -- the trap that actually mattered in this recipe.
+# LIR's statewide row count (1,845,811) exceeds the base layer's
+# (1,595,541) specifically because a meaningful share of parcels have
+# more than one LIR row sharing the same `PARCEL_ID`: sampled on
+# Piute County directly (2,936 base-layer parcels vs 4,712 LIR rows,
+# 2,873 distinct LIR `PARCEL_ID`s), 776/2,873 distinct parcels
+# (27%) have 2-64 LIR rows apiece. Comparing rows within five sampled
+# duplicate groups shows `BLDG_SQFT`/`BUILT_YR` differ row-to-row
+# (one row per building on the parcel) while `TOTAL_MKT_VALUE` and
+# `PROP_CLASS` are IDENTICAL across every row in a group -- confirmed
+# systematically across all 776 duplicate groups for `HOUSE_CNT`,
+# `PRIMARY_RES`, `TAX_DISTRICT`, `SUBDIV_NAME`, `PARCEL_ACRES`, and
+# `LAND_MKT_VALUE` as well (100% internally consistent within a
+# group in every case). This recipe therefore maps ONLY the fields
+# confirmed parcel-level, and uses `drop_duplicates: [parcel_id_
+# assessor]` to collapse the per-building repeats losslessly for
+# those columns -- mapping any per-building field here would silently
+# pick an arbitrary building's value as if it were the parcel's own.
+# `BLDG_SQFT`/`BLDG_SQFT_INFO`/`FLOORS_CNT`/`FLOORS_INFO`/`BUILT_YR`/
+# `EFFBUILT_YR` are left unmapped for this reason -- they belong on a
+# `property`/`building`-entity companion recipe (parcel_id_assessor
+# as the foreign key), not forced into this parcel table. Not
+# attempted here; flagged for the user rather than built silently.
+#
+# NOTE on `CONST_MATERIAL` -- NOT mapped to `construction_type`
+# despite the name. Sampled distinct values on SaltLake County are
+# two-letter codes (e.g. exterior-siding-style abbreviations) that do
+# not correspond to the registry's structural-material vocabulary (B
+# basement; C concrete; H manufactured; M masonry; S steel; W wood).
+# The item's own field-definition table confirms this is expected:
+# "Construction Material Types, Values for this field are expected to
+# vary greatly by county" -- i.e. an intentionally uncontrolled,
+# per-county vocabulary, not a shared code list. Also 0% populated on
+# Davis County (a declared-but-empty field there) despite being
+# well-populated elsewhere (SaltLake 348,728/394,610 = 88.4%). Left
+# unmapped rather than mis-home a freeform per-county exterior
+# material description as a structural type.
+#
+# NOTE on `PROP_CLASS` -- mapped to `use_group`. Distinct values
+# sampled on 4 counties (Davis, Piute, Iron, Cache) show a genuinely
+# shared statewide vocabulary (Residential, Commercial and its
+# Apartment&Condo/Office/Retail/Industrial subtypes, Agricultural,
+# Greenbelt, Vacant, Mixed Use, Personal Property, several "Tax
+# Exempt - ..." subtypes, Unknown), matching the item's own
+# field-definition table ("Residential, Commercial, Industrial,
+# Mixed, Agricultural, Vacant, Open Space, Other").
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they are not parcel-level (see above):
+#   - `PRIMARY_RES` (Y/N/U primary-residence flag) -- no registry
+#     attribute for this; `occupancy_type` is a curate-stage derived
+#     classification from multiple evidence sources, not a direct
+#     ingest-time Y/N field.
+#   - `TAXEXEMPT_TYPE` (categorical: None, Religious, Government,
+#     Agriculture, Conservation Easement, Other Open Space, Other,
+#     per the item's own documentation) -- no registry attribute for
+#     an exemption-category code (distinct from `land_value_exempt`/
+#     `improvement_value_exempt`, which are dollar amounts). Also
+#     0% populated on 3 of 7 sampled counties (Utah, Piute,
+#     Washington), a declared-but-empty field in those counties.
+#   - `COUNTY_ID`, `ASSESSOR_SRC`, `BOUNDARY_SRC`, `DISCLAIMER` --
+#     county numbering and office-URL bookkeeping, no registry slot
+#     (the same treatment as the base layer's `RECORDER`/
+#     `CoParcel_URL`).
+#   - `CURRENT_ASOF` -- a true `esriFieldTypeDate` field serialized as
+#     epoch-milliseconds by this scraper's `f=geojson` output; left
+#     unmapped rather than risk silent corruption (same trap as the
+#     base layer's `ParcelsCur`; see that recipe's header).
+#
+# Measured field population (live REST; percentages, never record
+# values, per AGENTS.md): statewide row counts per county range
+# 2,936 (Piute) to 394,610 (SaltLake), 1,845,811 total across all 29.
+# `TOTAL_MKT_VALUE > 0` ranges from 26% (Sanpete) to 99% (SaltLake)
+# across counties; `BUILT_YR` (unmapped, see above) is 0% in Juab
+# despite being otherwise well-populated statewide -- a
+# declared-but-empty field in that one county specifically.
+#
+# NOTE on the join key (Phase 5): `PARCEL_ID` on this layer overlaps
+# 99.8-99.9% with the sibling base layer's own `PARCEL_ID` for Piute
+# County (see that recipe's header for the full measurement); no
+# bundled override row exists or is needed, so this falls back to the
+# default 'simple' conversion, same as the base recipe.
+#
+# License: this item's own `licenseInfo` (fetched via the AGOL sharing
+# API) states explicitly: "This work is licensed under a Creative
+# Commons Attribution 4.0 International License" (with a link to
+# creativecommons.org/licenses/by/4.0/), alongside the standard "as
+# is" disclaimer -- unlike the base layer's item, this one states its
+# license outright rather than relying on UGRC's blanket policy.
+#
+# Validation performed: recipe-loading and registry-column checks run
+# for real. A real, unmodified `op.ingest()` was run end-to-end
+# against the live service for Piute County (US-UT-PT, the smallest
+# county by parcel count, 2,936 base-layer / 2,873 distinct LIR
+# parcels) exercising the new `{admin_key}` scraper machinery this
+# recipe depends on.
+
+description: >-
+  Utah county-by-county Land Information Record (LIR) parcels: assessed
+  value, acreage, land-use class, tax district, and subdivision, per county.
+
+admin_id: US-UT
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: ugrclir
+    portal_url: "https://gis.utah.gov/products/sgid/cadastre/parcels/"
+    download_url_scraper: arcgis_rest_scraper
+    license: >-
+      CC BY 4.0 (stated explicitly in this item's own ArcGIS
+      licenseInfo).
+    terms_url: "https://gis.utah.gov/documentation/policy/license/"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "ut_lir_parcels_{admin3_name}.geojson"
+
+download_by:
+  admin_level: 3
+  admin_key_transform:
+    admin3_name: "remove_spaces"
+
+# `{admin_key}` is resolved by arcgis_rest_scraper itself (not the
+# generic Ingester placeholder mechanism, which only resolves
+# `download_url`/filenames, not `scraper_options`) via
+# `admin_key_column`/`admin_key_transform` below -- one FeatureServer
+# per county, named after the county with spaces removed.
+scraper_options:
+  layer_url: "https://services1.arcgis.com/99lidPhWCzftIe9K/arcgis/rest/services/Parcels_{admin_key}_LIR/FeatureServer/0"
+  admin_key_column: name
+  admin_key_transform: remove_spaces
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PARCEL_ID
+  admin3_name: COUNTY_NAME
+  tax_district: TAX_DISTRICT
+  market_value: TOTAL_MKT_VALUE
+  land_value: LAND_MKT_VALUE
+  use_group: PROP_CLASS
+  n_dwellings: HOUSE_CNT
+  subdivision: SUBDIV_NAME
+
+columns_to_categorical:
+  - admin3_name
+  - tax_district
+  - use_group
+
+# LIR rows are per-BUILDING for a parcel with more than one structure
+# (see header); every field mapped above was verified to repeat
+# identically across a parcel's duplicate rows, so collapsing to one
+# row per parcel_id_assessor is lossless for them.
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # PARCEL_ACRES is unambiguously acres (item's own field definition);
+  # registry lot_size is in sqft.
+  - type: unary
+    operation: acres_to_sqft
+    input: PARCEL_ACRES
+    output: lot_size
+
+  # HOUSE_CNT is a digit string on every county sampled, but the
+  # item's own documentation allows a range like '5-10'; coerce
+  # rather than let a rare range value fail the whole file.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+
+# No bundled US_parcel_id-overrides.csv row exists for US-UT; falls
+# back to the default 'simple' conversion (see header for the measured
+# overlap against the sibling base layer's own PARCEL_ID).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
