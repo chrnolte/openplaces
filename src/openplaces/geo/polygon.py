@@ -202,7 +202,8 @@ def get_areas(gdf, unit='ha', crs='epsg:6933', mask=None):
 
     full_index = gdf.index
     if mask is not None:
-        gdf = gdf.loc[np.asarray(mask, dtype=bool)]
+        mask = np.asarray(mask, dtype=bool)
+        gdf = gdf.loc[mask]
 
     gdf = gdf[['geometry']].copy()
 
@@ -224,7 +225,14 @@ def get_areas(gdf, unit='ha', crs='epsg:6933', mask=None):
     else:
         raise Exception('Unit not yet interpreted:' + str(unit))
 
-    return areas.reindex(full_index) if mask is not None else areas
+    if mask is None:
+        return areas
+    # Place the masked results positionally, never by reindexing: a spine
+    # index can carry duplicate labels (identical source geometries share
+    # a geo_id), and reindex raises on duplicates.
+    out = np.full(len(full_index), np.nan)
+    out[mask] = areas.to_numpy()
+    return pd.Series(out, index=full_index, name=areas.name)
 
 
 _AREA_UNITS = ('km2', 'ha', 'm2', 'ac', 'sqft', 'sqmi')
@@ -647,8 +655,15 @@ def add_geometry_derivatives(gdf, timer=None, area_unit='ha', area_mask=None):
         row -- position stays meaningful even where area doesn't.
     """
 
-    # Get latitude and longitude of centroids (for fast plotting)
-    gdf = gdf.join(get_lat_long_centroids(gdf))
+    # Get latitude and longitude of centroids (for fast plotting).
+    # Assigned positionally, never joined on index: a spine index can
+    # legitimately carry duplicate ids (identical source geometries share
+    # a geo_id), and an index join would then multiply rows -- seen in
+    # Fort Bend, TX, where 6 duplicated ids inflated the frame past its
+    # own area mask and crashed the county's harmonize.
+    centroids = get_lat_long_centroids(gdf)
+    for column in centroids.columns:
+        gdf[column] = centroids[column].to_numpy()
     if timer:
         timer.mark('Get latitude and longitude at WGS84 centroid')
 
