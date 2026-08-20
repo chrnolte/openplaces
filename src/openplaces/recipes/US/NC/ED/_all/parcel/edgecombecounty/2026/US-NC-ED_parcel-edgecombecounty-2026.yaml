@@ -22,6 +22,18 @@ entity:
   entity_type: parcel
   source:
     source_id: edgecombecounty
+    # Checked 2026-08-20 at the terms_url below. The county sells GIS
+    # shapefiles ($25 each with a signed waiver "agreeing not to resale
+    # our data", or $200 each for commercial use) -- so its published
+    # data product carries a real no-resale condition.
+    #
+    # This recipe does not use that product: it pages the county's
+    # public ArcGIS REST service. Recorded as restricted anyway, because
+    # a user should meet the county's stated position before
+    # redistributing anything derived from its parcels.
+    license: "no resale; signed agreement and fee for the shapefile product"
+    terms_url: "https://www.edgecombecountync.gov/businesses/tax_assessor/map_downloads.php"
+    redistribution_restricted: true
     portal_url: "https://www.edgecombecountync.gov/businesses/tax_assessor/map_downloads.php"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"

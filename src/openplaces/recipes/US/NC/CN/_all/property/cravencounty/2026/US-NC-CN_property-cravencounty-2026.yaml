@@ -34,6 +34,14 @@ entity:
   entity_type: property
   source:
     source_id: cravencounty
+    # Checked 2026-08-20 at the download page: it carries a warranty
+    # disclaimer only ("does not warrant the accuracy, timeliness or
+    # completeness"), with no licence, no attribution requirement and
+    # nothing about redistribution. Disclaiming liability is not granting
+    # a licence, so this stays unknown rather than becoming false.
+    license: "unknown (warranty disclaimer only; no licence stated)"
+    terms_url: "https://gis.cravencountync.gov/downloads-zip-files.aspx"
+    redistribution_restricted: null
     portal_url: "https://gis.cravencountync.gov/downloads-zip-files.aspx"
     download_url: "https://gis.cravencountync.gov/Downloads/Shape_files/parcels_with_bldgs_info_shape.zip"
   version: "2026"

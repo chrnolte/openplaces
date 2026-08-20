@@ -20,6 +20,14 @@ entity:
   entity_type: parcel
   source:
     source_id: martincounty
+    # Checked 2026-08-20 at the terms_url below: "Martin County provides
+    # this data as a public service, as is, as available and without
+    # warranties", no fee, and redistribution is permitted -- the county
+    # only asks that people prefer its official site for the current
+    # version. Users hold the county harmless.
+    license: "public data; redistribution permitted, no warranty"
+    terms_url: "https://www.martincountync.gov/departments/tax_assessor/gis_downloads.php"
+    redistribution_restricted: false
     portal_url: "https://www.martincountync.gov/departments/tax_assessor/gis_downloads.php"
     download_url: "https://gis.martincountyncgov.com/DataDownloads/Parcels.zip"
   version: "2026"

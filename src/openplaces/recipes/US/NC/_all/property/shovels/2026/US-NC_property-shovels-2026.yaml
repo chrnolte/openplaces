@@ -14,6 +14,24 @@ entity:
   # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: shovels
+    # Terms verified 2026-08-20 at the terms_url below. The most
+    # restrictive source in the catalog: a customer may not "resell,
+    # transfer, distribute, publish, sublicense, or otherwise make
+    # available ... the Data", nor "create derivative works of ... the
+    # Data (including any datasets, models, data products, or other
+    # works that are based on or trained on the Data)". Use is licensed
+    # "solely for its internal business purposes", and on termination
+    # all copies must be removed.
+    #
+    # openplaces is not a party to that agreement -- whoever runs this
+    # recipe brings their own Shovels account and contracts directly,
+    # which is exactly why recipes never embed credentials. But anyone
+    # using this data to validate or tune a published classification
+    # should read the derivative-works clause first: it is broader than
+    # a redistribution ban.
+    license: "proprietary; internal use only, no redistribution, no derivative works"
+    terms_url: "https://www.shovels.ai/terms"
+    redistribution_restricted: true
     portal_url: "https://www.shovels.ai"
     # No download_url: obtained via a data-sharing agreement, not a stable
     # public URL. Place `Permit.parquet` into this recipe's external-file

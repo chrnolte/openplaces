@@ -13,6 +13,14 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: nconemap
+    # Searched 2026-08-20: the portal is an ArcGIS Hub site whose pages
+    # render client-side, so no terms document was reachable, and none
+    # surfaced by search either. Same result as the ncdps footprints.
+    # North Carolina government records are public records (N.C.G.S.
+    # ch. 132), which likely explains the absence -- but "none found" is
+    # not "none exists".
+    license: "unknown"
+    redistribution_restricted: null
     portal_url: "https://www.nconemap.gov/pages/parcels"
     # URL to download (takes a while: this is a 2.32G file)
     download_url: "https://dit-cgia-gis-data.s3.amazonaws.com/NCOM-data/parcels/nc-parcels-gdb-most-recent.zip"
