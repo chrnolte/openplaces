@@ -51,13 +51,14 @@ entity:
   entity_type: parcel
   source:
     source_id: pamlicocounty
-    # Checked 2026-08-20 against the ArcGIS REST service this recipe
-    # reads: neither copyrightText nor licenseInfo is set on the service
-    # or its layer, so the endpoint openplaces actually uses states no
-    # terms. Checked and absent, not unexamined -- but this speaks only
-    # for that endpoint, not for anything the county may publish
-    # elsewhere.
-    license: "unknown (service declares no copyright or licence)"
+    # Checked 2026-08-20 twice over: the ArcGIS service this recipe reads
+    # sets neither copyrightText nor licenseInfo, and the county's own GIS
+    # pages were fetched and scanned for licence, resale, redistribution
+    # and data-agreement language, which found none either. So this is
+    # absence confirmed on both the endpoint and the site, not merely an
+    # empty metadata field -- the weaker claim that applies to the
+    # counties whose sites could not be reached.
+    license: "unknown (no terms on the service or the county site)"
     redistribution_restricted: null
     portal_url: "https://pamlicocounty.org/online_services/gis_mapping_service.php"
     download_url_scraper: arcgis_rest_scraper
