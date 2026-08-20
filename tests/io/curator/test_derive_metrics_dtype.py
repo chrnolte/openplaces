@@ -51,3 +51,23 @@ def test_numeric_value_column_stays_silent():
         warnings.simplefilter('error')
         state = derive_metrics(state)
     assert state.curated['improvement_value_per_area'].tolist() == [100.0, 0.0]
+
+
+def test_curate_boundary_coerces_registry_numerics():
+    """The curate loader coerces a registry-numeric column arriving as str."""
+    import pytest
+
+    from openplaces.io.curator import _coerce_registry_numerics
+
+    frame = pd.DataFrame(
+        {
+            'improvement_value': pd.array(['100', 'x'], dtype='str'),
+            'address': ['1 MAIN ST', '2 MAIN ST'],
+        }
+    )
+    with pytest.warns(UserWarning, match='registry-declared'):
+        out = _coerce_registry_numerics(frame)
+    assert out['improvement_value'].tolist()[0] == 100.0
+    assert pd.isna(out['improvement_value'].iloc[1])
+    # Non-numeric registry columns stay untouched.
+    assert out['address'].tolist() == ['1 MAIN ST', '2 MAIN ST']

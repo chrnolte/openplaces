@@ -74,6 +74,34 @@ def _load_steps() -> None:
     _steps_loaded = True
 
 
+def _coerce_registry_numerics(curated):
+    """Coerce registry-declared numeric columns that arrived non-numeric.
+
+    The attribute registry is the dtype contract and the ingester is meant
+    to enforce it, but a source can still slip a text-typed number through
+    (seen: TX txgio ships improvement_value as '0' strings), and a single
+    such column poisons every downstream arithmetic step -- ratios, value
+    apportionment, vote thresholds -- with str/float TypeErrors mid-county.
+    Coerce once at the curate boundary and warn, naming the ingest recipe
+    as the owing fix. Exact registry names only, matching the harmonizer's
+    reference-side coercion in links._prepare_reference.
+    """
+    from openplaces.core.attribute_registry import load_registry
+
+    registry = load_registry()
+    numeric = registry.index[registry['data_type'].isin(['float', 'int'])]
+    for column in numeric.intersection(curated.columns):
+        if pd.api.types.is_numeric_dtype(curated[column]):
+            continue
+        warnings.warn(
+            f'curate: {column!r} is {curated[column].dtype}, not the '
+            'registry-declared numeric dtype; coercing. Fix the ingest '
+            "recipe's cast."
+        )
+        curated[column] = pd.to_numeric(curated[column], errors='coerce')
+    return curated
+
+
 class Curator:
     """Create a canonical entity dataset from harmonized and enriched inputs."""
 
@@ -209,6 +237,7 @@ class Curator:
         # and its geometry is resolved via the entity_recipe chain -- a raw
         # read would find no `_geo` sidecar (or a stale pre-split one).
         curated = get_entities(self.entity_recipe, admin_id, geom=True)
+        curated = _coerce_registry_numerics(curated)
         state = CurateState(
             recipe=self.recipe,
             entity_recipe=self.entity_recipe,
