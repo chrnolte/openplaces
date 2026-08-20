@@ -3001,13 +3001,40 @@ def consolidate_condo_cluster_footprints(
                 if parcel_geom_m.area > 0:
                     areas_m = unit_polys_m.area
                     weights = areas_m / areas_m.sum()
-                    fracs = (
-                        unit_polys_m.intersection(real_union_m).area / areas_m
-                    ).clip(lower=_COVERAGE_SCORE_EPS)
-                    coverage_score = float(
-                        (weights * fracs**coverage_power).sum()
-                        ** (1.0 / coverage_power)
-                    )
+                    # GEOS can fail to node an intersection whose operands
+                    # were built from individually valid inputs (seen in
+                    # Webb County, TX: one cluster's ring collapse crashed
+                    # the whole county's harmonize). Repair and retry; if
+                    # the repair fails too, this cluster simply does not
+                    # consolidate (coverage_score stays 0.0), which is the
+                    # conservative fallback, not an error.
+                    from shapely.errors import GEOSException
+
+                    fracs = None
+                    try:
+                        fracs = (
+                            unit_polys_m.intersection(real_union_m).area / areas_m
+                        ).clip(lower=_COVERAGE_SCORE_EPS)
+                    except GEOSException:
+                        try:
+                            real_union_m = shapely.make_valid(real_union_m)
+                            fracs = (
+                                unit_polys_m.make_valid()
+                                .intersection(real_union_m)
+                                .area
+                                / areas_m
+                            ).clip(lower=_COVERAGE_SCORE_EPS)
+                        except GEOSException:
+                            warnings.warn(
+                                'consolidate_condo_cluster_footprints: GEOS '
+                                'failed on one cluster even after repair; '
+                                'leaving it unconsolidated.'
+                            )
+                    if fracs is not None:
+                        coverage_score = float(
+                            (weights * fracs**coverage_power).sum()
+                            ** (1.0 / coverage_power)
+                        )
         return {
             'cluster_pids': cluster_pids,
             'linked_spine_ids': linked_spine_ids,

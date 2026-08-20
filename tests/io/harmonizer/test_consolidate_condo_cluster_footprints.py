@@ -279,6 +279,41 @@ def test_real_footprint_covering_cluster_is_chosen_over_parcel_union(
     assert not consolidated.equals(box(0, 0, 0.0002, 0.0001))
 
 
+def test_geos_failure_leaves_cluster_unconsolidated(data_root, monkeypatch):
+    """A GEOS noding failure in one cluster's coverage score must not crash.
+
+    Seen in Webb County, TX: an intersection built from individually valid
+    inputs raised TopologyException and killed the whole county's
+    harmonize. The step repairs and retries; when even the repair fails
+    (forced here), the cluster simply does not consolidate to the real
+    footprint -- the conservative fallback.
+    """
+    import geopandas as gpd
+    from shapely.errors import GEOSException
+
+    real_geom = box(0.00001, 0.00001, 0.00019, 0.00009)
+    state = _state_with_real_footprint(data_root, monkeypatch, real_geom)
+    state = links_mod._link_spatial_overlay(
+        state,
+        PARCEL,
+        'parcel',
+        {'min_fraction_of_largest': 0.1667, 'area_intersection_m2_min': 10},
+        save_link=True,
+    )
+
+    def _boom(self, other, align=None):
+        raise GEOSException('TopologyException: forced by test')
+
+    monkeypatch.setattr(gpd.GeoSeries, 'intersection', _boom)
+    with pytest.warns(UserWarning, match='after repair'):
+        state = links_mod.consolidate_condo_cluster_footprints(state)
+
+    # Without a coverage score the real footprint is never chosen; the
+    # cluster falls back to the parcel union instead of crashing.
+    consolidated = _new_cluster_geometry(state)
+    assert not consolidated.equals(real_geom)
+
+
 def test_real_footprint_missing_one_unit_falls_back_to_parcel_union(
     data_root, monkeypatch
 ):
