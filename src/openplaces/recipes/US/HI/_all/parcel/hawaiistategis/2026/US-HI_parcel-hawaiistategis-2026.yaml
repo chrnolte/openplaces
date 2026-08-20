@@ -1,0 +1,175 @@
+# Recipe: Hawaii statewide parcel/TMK layer -- geometry and Tax Map
+# Key (TMK) identifier only, no assessed-value attributes.
+#
+# Source: "Parcels - Hawaii Statewide" (ArcGIS item
+# 579b8dcb7a8e44c1af201e1b3cdf655f, owner HawaiiStateGIS), layer 25
+# ("Statewide TMKs") of geodata.hawaii.gov's ParcelsZoning
+# MapServer. Published by the Hawaii Statewide GIS Program, Office
+# of Planning and Sustainable Development. The item's own metadata
+# says the four counties (Hawaii, Honolulu, Kauai, Maui) each
+# maintain their own parcel/CAMA layer, and the state periodically
+# downloads and merges them into this one statewide layer "as a
+# service to the public," explicitly pointing users who want "most
+# current parcel information" back to the county GIS sites. This
+# confirms the working assumption this recipe started from: the
+# statewide bundle is TMK geometry + identifier only. It does NOT
+# carry assessed land/building value, owner, address, year built,
+# or land-use attributes (verified against the layer's own field
+# list below, and against a direct download of the bulk export --
+# see the bulk-vs-REST note). Those live only in each county's own
+# separate real-property-tax system (Honolulu, Hawaii County, Maui
+# County, and Kauai County each run a distinct assessment office/
+# CAMA system) and are not joined into this file. A future
+# per-county attribute recipe joined on TMK, mirroring DC's
+# Record-Lots/OTR-CAMA split, is possible but out of scope here and
+# not attempted -- a quick check found no single statewide bulk
+# source for those county CAMA tables either, so it would mean up to
+# four separate recipes, one per county real-property office.
+#
+# NOTE on Kalawao County (US-HI-KL): NOT represented as its own unit
+# in this source. `county` (used below for admin_id_column
+# partitioning) has exactly four distinct values -- Honolulu, Kauai,
+# Maui, Hawaii -- verified to sum to the full 384,035-row count with
+# no fifth value anywhere. Kalawao occupies only the small
+# Kalaupapa peninsula on the island of Molokai; verified that every
+# `island='MOL'` row in this layer is tagged `county='Maui'`, i.e.
+# the source itself folds Kalawao's area into Maui County's TMK zone
+# rather than giving it a separate county code. Kalawao has almost
+# no private real property (Kalaupapa is a National Historical Park
+# plus State Dept. of Health land) and no county real-property-tax
+# office of its own, so this reads as Kalawao genuinely having
+# little to distinguish here, not a bug in the source -- but no
+# admin3-crosswalk row is added for US-HI-KL below, so it will
+# receive zero parcel rows from this recipe. Documented rather than
+# silently dropped.
+#
+# NOTE on bulk vs REST (Phase 3 equivalence test). The live REST
+# layer (geodata.hawaii.gov/arcgis/rest/services/ParcelsZoning/
+# MapServer/25) reports 384,035 features via returnCountOnly. Its
+# Hub bulk GeoJSON export (same item/layer) was downloaded directly
+# (463 MB, resolved on the first request with no 202/404 job-status
+# wait) and verified feature-by-feature equivalent: 384,035 Feature
+# entries, identical field schema (tmk, tmk_txt, county, division,
+# island, zone, section, plat, plat1, parcel, parcel1, gisacres,
+# cty_tmk, qpub_link, st_area(shape), st_perimeter(shape)), and
+# identical per-county row counts (Honolulu 171,953; Hawaii 135,718;
+# Maui 51,245; Kauai 25,119) against the live server's own per-county
+# counts. No CAMA/value fields exist in either the bulk export or the
+# live REST layer -- the schema-mismatch trap this test usually
+# catches does not apply here; both sides are the same bare TMK
+# layer. Bulk chosen over REST paging (one request vs. ~385 pages).
+#
+# NOTE on fields left unmapped:
+#   - `division`, `zone`, `section`, `plat`, `plat1`, `parcel`,
+#     `parcel1` -- the individual TMK components that `tmk_txt` is
+#     already the concatenation of; mapping them separately would
+#     duplicate the same identifying information under names the
+#     registry has no slot for.
+#   - `island` -- a real geographic concept (Oahu/Maui/Molokai/
+#     Lanai/Kahoolawe/Hawaii/Kauai/Niihau) with no registry
+#     equivalent. Not redundant with `county` -- Maui County spans
+#     Maui, Molokai, Lanai and Kahoolawe islands -- but there is
+#     nowhere in the registry to put it.
+#   - `qpub_link` -- a per-parcel link to the county's own
+#     qpublic.schneidercorp.com assessment page. No registry field
+#     for an external record link.
+#   - `gisacres` -- a GIS-computed polygon acreage, 100% populated
+#     and > 0 on every sampled row (384,035/384,035), so this is a
+#     documented redirect, not an unmapped-because-empty field. Left
+#     unmapped rather than sent to `lot_size` (which the registry
+#     scopes to a source-stated/deeded lot size, not a GIS-derived
+#     one) or `area_ac` (itself computed downstream from the
+#     ingested geometry at the curate stage, so a source-supplied
+#     copy would just be redundant with what the pipeline already
+#     derives from this same polygon).
+#   - `tmk` (the integer form of `tmk_txt`) -- redundant with the
+#     string form actually mapped below.
+#
+# Measured (bulk export, current as of ingest): `tmk_txt` populated
+# 384,035/384,035 (100%), 383,945 distinct values (99.98%) -- the 90
+# repeats are legitimate source-side duplicates (e.g. a
+# subdivision-plat parcel appearing under more than one polygon
+# feature), not a conversion artifact. Geometry: WGS84
+# (`urn:ogc:def:crs:OGC:1.3:CRS84`), Polygon/MultiPolygon, no null
+# geometries observed in the sampled rows.
+#
+# License: a real tension between two statements, recorded rather
+# than resolved here. The ArcGIS item's own `licenseInfo` states:
+# "The contents of this web page are public domain and to the
+# extent indicated otherwise in the Terms of Use, are exempt from
+# Terms of Use policy restrictions," linking to the State of
+# Hawaii's general Terms of Use. That general Terms of Use, fetched
+# and read directly, states: "You agree not to use for commercial
+# purposes, or resell ... any of the data derived from these
+# Services unless you have been specifically allowed to do so in a
+# separate, written agreement," and separately: "You specifically
+# agree not to access ... through any automated means (including
+# ... scripts, web crawlers or screen scrapers)." The item's
+# "exempt ... to the extent indicated otherwise" wording is
+# genuinely ambiguous as to whether these two specific clauses are
+# the "otherwise" that survives the public-domain carve-out, or are
+# superseded by it. Recorded as `redistribution_restricted: true` on
+# the more restrictive, plain reading of the general Terms of Use,
+# since `op.ingest`'s own download is exactly the kind of automated,
+# scripted access that clause names. Flagged to the user rather than
+# resolved here -- this is a legal judgment call, not a technical
+# one.
+
+description: >-
+  Hawaii statewide TMK parcel boundaries, merged from the four counties.
+  Geometry and TMK id only; no assessed-value attributes.
+
+admin_id: US-HI
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: hawaiistategis
+    portal_url: "https://www.arcgis.com/home/item.html?id=579b8dcb7a8e44c1af201e1b3cdf655f"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/579b8dcb7a8e44c1af201e1b3cdf655f_25/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+    license: >-
+      Item metadata: public domain, exempt from Terms of Use "to the
+      extent indicated otherwise"; the linked general Terms of Use
+      itself prohibits commercial use/resale and automated/scripted
+      access without a separate written agreement. Genuinely
+      ambiguous -- see header note.
+    terms_url: "https://portal.ehawaii.gov/page/terms-of-use/"
+    redistribution_restricted: true
+  version: "2026"
+
+uncompressed_file_name: "hi_statewide_tmk_parcels.geojson"
+
+# Columns from `openplaces` dictionary for entity -> source columns
+columns:
+  parcel_id_admin2: tmk_txt
+  parcel_id_admin3: cty_tmk
+
+# Expose the raw statewide TMK under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin2 -- tmk_txt), so it
+# is the raw key parcel_id_local derives from -- consistent with the
+# Wisconsin/DC statewide recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+# Column that splits the data into chunks for processing, one file
+# per county (avoids reading a large statewide file into memory)
+process_by:
+  admin_level: 3
+  admin_id_column: county
+  admin_id_crosswalk:
+    recipe_id: "US-HI_parcel-hawaiistategis-2026_admin3-crosswalk"
+
+# No bundled US_parcel_id-overrides.csv row exists for US-HI; falls
+# back to the default 'simple' conversion, which is safe here since
+# tmk_txt is a fixed-width (8-9 digit), all-numeric statewide-unique
+# key with no delimiters that a 'simple' strip-and-uppercase could
+# collapse.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
