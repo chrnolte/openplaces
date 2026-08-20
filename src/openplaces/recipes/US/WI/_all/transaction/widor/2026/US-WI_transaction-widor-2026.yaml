@@ -40,7 +40,11 @@ scraper_options:
   headless: false        # TAP bot detection rejects headless; runs headed but
                          # off-screen (no visible window). Set true to attempt
                          # true headless (may be blocked by bot detection).
-  accept_terms: true     # click the terms-of-use button if the gate appears
+  # accept_terms is deliberately unset, and `true` raises here:
+  # the portal's terms are a contract between its operator and whoever
+  # runs this download, so no recipe can accept them for you. The first
+  # run prompts, and answering [a] records your own standing decision in
+  # your openplaces config. An unattended run stops and says as much.
   timeout_s: 120
   month_style: name      # months labelled by full name ('January'); use
                          # 'abbr' ('Jan') or 'number' ('01') if needed

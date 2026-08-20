@@ -403,6 +403,47 @@ names a scraper module instead of a URL.
    Dictionary of keyword arguments passed through to the scraper's
    ``fetch()``. The accepted keys are the scraper's own.
 
+Sources behind a terms-of-use gate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Some portals publish behind a click-through agreement rather than a static
+URL. Clicking "I Agree" forms a contract, and the party to it is whoever runs
+the download - not ``openplaces``, and not you as the recipe's author.
+
+So no scraper and **no recipe** accepts terms.
+:func:`openplaces.io.consent.require_terms_consent` asks the person running
+the download, and a run that cannot ask (a cluster job, CI, a Snakemake rule)
+stops with :class:`~openplaces.io.consent.TermsNotAcceptedError` rather than
+agreeing by default.
+
+At the prompt they can answer ``y`` for that run alone, or ``a`` to record a
+standing decision in **their own** config, which unattended runs then honor.
+Either way the answer comes from a person. An answer given at the prompt also
+holds for the rest of the process, so a recipe partitioned by month asks once
+rather than twelve times.
+
+.. important::
+
+   :input:`accept_terms: true` in a recipe raises
+   :class:`~openplaces.io.consent.ConsentNotDelegableError`. A committed,
+   public recipe would otherwise bind everyone who ever runs it to terms
+   they never read, so it is refused outright rather than downgraded to a
+   prompt - a recipe that reads as though consent were handled must not
+   ship. There is no recipe setting that accepts on a user's behalf.
+
+What a recipe *may* do is decline, which is honored - its worst outcome is a
+skipped download:
+
+.. code-block:: yaml
+
+   scraper_options:
+     # This source's terms rule out the use openplaces would make of it;
+     # never pass its gate, even if the operator would say yes.
+     accept_terms: false
+
+Whichever way it goes, record what the terms actually say in the ``source:``
+block's :attr:`license` and :attr:`terms_url` while you are reading them.
+
 ArcGIS REST layers
 ^^^^^^^^^^^^^^^^^^
 

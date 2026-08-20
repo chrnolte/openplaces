@@ -218,7 +218,7 @@ pytest -k "test_name"                 # single test by name
 Layer 0  core
 Layer 1  config, path, diagnostics
 Layer 2  recipe
-Layer 3  io/__init__, geo/address
+Layer 3  io/__init__, io/consent, geo/address
 Layer 4  io/readers, table
 Layer 5  geo/* (except geo/address, above)
 Layer 6  io/ingester/* (ingester, table_ingester, image_ingester, registry_ingester, cloud_geoparquet_ingester, raster_ingester), io/scrapers/*, io/aggregate, io/admin, io/delivery, io/transform, io/cleanup
@@ -692,6 +692,22 @@ test (`tests/core/test_request_identity.py`) fails the build on any
 package it is installing and so shells out to
 `python -m openplaces.config --set-identity`. That is also why the first-use
 prompt triggers on a missing `directories` key rather than a missing file.
+
+**Never agree to terms on the user's behalf.** A source behind a
+click-through gate goes through `io.consent.require_terms_consent`, which
+asks the operator and raises `TermsNotAcceptedError` when it cannot ask.
+A person accepts or nothing is accepted: **`accept_terms: true` in a recipe
+raises `ConsentNotDelegableError`**, because a committed public recipe would
+bind everyone who runs it to terms they never read -- refused outright, not
+downgraded to a prompt, so a recipe that reads as though consent were handled
+cannot ship. `accept_terms: false` *is* honored -- declining only costs a
+download, so a recipe author may do it.
+A standing "always accept this source" exists but only as an answer given
+at the prompt (`[a]`), stored per user in `consent.terms` in their own
+config (`config.get_terms_consent` / `set_terms_consent`). An answer is also
+remembered per source for the process, so a year-partitioned recipe asks
+once. Apply the same asymmetry to any future decision with legal
+consequences: a recipe may refuse for a user, never consent for them.
 
 `arcgis_rest_scraper` additionally paces itself (`DEFAULT_REQUEST_INTERVAL_S`,
 module-level so the whole paging loop is bounded), because backing off only
