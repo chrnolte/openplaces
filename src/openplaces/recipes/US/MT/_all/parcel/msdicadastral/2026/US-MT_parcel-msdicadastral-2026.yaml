@@ -1,0 +1,241 @@
+# Recipe: Montana statewide parcel/tax-roll data (MSDI Cadastral
+# Framework).
+#
+# Source: Montana State Library (MSL), Montana Spatial Data
+# Infrastructure (MSDI) Cadastral Framework program. The parcel
+# geometry is maintained per-county by the Dept. of Revenue (DOR)
+# and, for 5 counties (Ravalli, Silver Bow, Missoula, Flathead,
+# Yellowstone), by the county's own GIS office; MSL mosaics all 56
+# counties into one continually-updated statewide file geodatabase,
+# published monthly. Confirmed directly (not just from prior
+# unverified research): the FTP root
+# ftpgeoinfo.msl.mt.gov/Data/Spatial/MSDI/Cadastral/Parcels/Statewide/
+# (note: no dot between "ftp" and "geoinfo" -- the originally-supplied
+# ftp.geoinfo.msl.mt.gov hostname does not match its own TLS
+# certificate and fails) holds a single ready-made statewide
+# MTParcels_GDB.zip (247 MB) plus MTParcels_SHP.zip, refreshed on the
+# same monthly cadence as the individual counties. Peeking at the zip's
+# central directory over HTTP Range requests (no full download needed)
+# and then opening the remote GDB directly via GDAL's
+# /vsizip/vsicurl/ confirmed it holds exactly one feature class,
+# OwnerParcel, 921,024 features statewide -- i.e. already mosaicked,
+# not 56 separate per-county feature classes -- so this is a normal
+# single-download statewide recipe (`admin_id_column` filtering, not
+# `file_pattern`), the same shape as the Wisconsin V11 recipe.
+# Attribute values (owner name/address, parcel-level assessed value,
+# tax district, agricultural-use acreage) come from DOR's Orion CAMA
+# system, joined onto the geometry by MSL as part of the monthly
+# publication -- this is genuinely a combined geometry+assessment
+# layer, not geometry-only.
+#
+# A companion StatewideCama.zip (non-spatial gdb, table
+# DORMonthlyCamaUpdate) was also inspected and is NOT a richer CAMA
+# extract: same ~40 attribute columns as OwnerParcel minus
+# COUNTYCD/CountyName/CountyAbbr/GISAcres/PropAccess, 964,219 rows (43k
+# more than OwnerParcel -- plausibly CAMA records not yet linked to a
+# mapped parcel). No separate ingest is added for it since it adds
+# nothing OwnerParcel doesn't already carry. The Orion CAMA
+# Documentation directory's own data dictionary
+# (OrionCAMADataDictionary.xlsx) implies a much larger building-level
+# schema exists inside DOR's internal SQL Server database; only this
+# flat summary extract is published to the public FTP.
+#
+# NOTE on parcel_id_local / PARCELID (Phase 5 check, done empirically):
+# PARCELID is a 17-character, undelimited statewide geocode (e.g.
+# format "99999999999999999" -- county+township+range+section+tract
+# digits concatenated, no dashes) and is already unique across the
+# whole state: 887,000 distinct values across 887,000 non-blank rows,
+# 0 duplicates (verified locally, full statewide scan). Mapped to
+# parcel_id_admin2 (unique within the admin-2 state unit), not
+# parcel_id_admin3, because it is not merely county-scoped. Every
+# US-MT-* county already has a bundled row in
+# `geo/parcel_id_links.csv` (pattern `Dx`, several counties using
+# `string_lengths: 2 4 2 1 2 2 4` -- 2+4+2+1+2+2+4 = 17, matching this
+# exact undelimited geocode width) or a bare `simple`/`Ignored`
+# fallback; both resolve correctly against the real, undelimited
+# PARCELID observed here (`convert_parcel_id` ignores `pattern` when
+# `conv_code == 'simple'`), so no override row was added to
+# `US_parcel_id-overrides.csv`. Verified end-to-end on Treasure County
+# (below).
+#
+# NOTE on process_by: no FIPS-style county code exists in the data
+# (COUNTYCD is DOR's own 1-56 numbering, unrelated to FIPS order or to
+# openplaces's own admin3_id letter codes -- e.g. DOR's own
+# `CountyAbbr` for Petroleum County is "PE", not the "PO" openplaces
+# assigns it). CountyName is a plain-text county name column, though,
+# and its 56 distinct values match openplaces's own admin3 `name`
+# column exactly (verified via `op.get_admin('US-MT', level=3)`), so
+# `process_by.admin_id_column: CountyName` is crosswalked through the
+# sidecar `_admin3-crosswalk.csv` beside this recipe instead of
+# constructing a fake FIPS code.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they were measured and found to add nothing:
+#   - `PropAccess` (declared "10 access codes" 0-9 in the metadata's
+#     domain) is 0% populated in the live data (verified: every
+#     feature holds an empty string or null) -- a declared-but-empty
+#     schema field, so it is not mapped at all, not even for its
+#     dictionary novelty.
+#   - `Township`, `Range`, `Section` (PLSS grid references) and
+#     `CertificateOfSurvey` have no registry equivalent (there is no
+#     generic PLSS or plat-survey field).
+#   - `AssessmentCode` ("code linking to assessment notice" per MSL's
+#     own metadata) is not a parcel-level id: 465,880 distinct values
+#     across 883,994 populated rows (~1.9 rows per code on average),
+#     confirming it groups multiple parcels under one tax notice
+#     rather than identifying one. Left unmapped rather than mis-homed
+#     as `parcel_id_tax`.
+#   - `AddressLine2` is 1.4% populated (12,730/921,024) and its content
+#     is ambiguous from format alone (short, often digit-leading
+#     fragments -- could be a unit/suite designator, a PO box, or a
+#     building name); left unmapped rather than guessed into
+#     `address_unit`.
+#   - `OwnerAddress3`, `DbaName`, `CareOfTaxpayer` have no registry
+#     home (a third mailing-address line; a "doing business as" name;
+#     an alternate correspondence recipient distinct from a co-owner)
+#     and are each under 8% populated in any case.
+#   - `GISAcres`, `TotalAcres`, and the seven agricultural-use acreage
+#     breakdowns (`ContinuousCropAcres`, `FallowAcres`,
+#     `FarmsiteAcres`, `ForestAcres`, `GrazingAcres`, `WildHayAcres`,
+#     `IrrigatedAcres`, `NonQualAcres`) have no ingest-stage registry
+#     column: `area_ac`/`area_ha` are curate-/harmonize-stage derived
+#     attributes computed from geometry, not source-mappable fields,
+#     and there is no registry slot at all for a land-use-specific
+#     acreage breakdown. Left unmapped; raised as a gap since this is
+#     real, well-populated (82-100%) agricultural-use evidence with
+#     nowhere to go.
+#
+# Measured (live GDB, full statewide scan, 921,024 features): COUNTYCD
+# 100% populated (56 distinct); PARCELID 96.3% (887,000/921,024);
+# PropertyID/TaxYear/OwnerName/LevyDistrict/PropType/TotalValue etc.
+# all 96.0% (883,994-883,957/921,024) -- these move together because
+# they are the DOR/Orion CAMA join columns, so ~37,030 rows (4.0%) are
+# mapped geometry with no linked CAMA record at all. AddressLine1
+# 56.5%, CityStateZip 55.3% (both site-address fields, populated only
+# for developed/addressed parcels). CityStateZip matches the pattern
+# "<city>, MT <5-digit zip>[-4]" on 99.99% of its populated rows (all
+# 509,725 rows carry state "MT"; 42 non-matching rows still contain
+# the ", XX " state marker, just not 5-digit-zip-terminated) -- reliable
+# enough to extract `city`/`postal_code` from it. Owner mailing fields
+# 95.7-96.0% populated; OwnerAddress2/OwnerAddress3/CareOfTaxpayer/
+# DbaName all under 8%. TaxYear carries a single value (2026) for this
+# snapshot -- a reappraisal-cycle tag, not a per-row date. PropType
+# holds 23 distinct values in the live data, a mix of expanded labels
+# ("Vacant Land", "Condominium") and a few still-coded ones ("IR -
+# Industrial Rural") rather than the clean 27-code domain in the
+# metadata -- mapped as-is to `use_group` since both forms are usable
+# grouping labels.
+#
+# End-to-end verified for Treasure County (US-MT-TR, the smallest
+# county by parcel count: 2,169 rows) via `op.ingest`: row count
+# matched the source scan exactly (2,169), `parcel_id_local` populated
+# and fully distinct (no duplicates beyond the source's own), and
+# `total_value`/`owner_name`/`tax_district` populated at the same rate
+# measured statewide above.
+#
+# License: no dataset-specific license grant (CC0/CC-BY/etc.) was
+# found on the MSL cadastral page or in the FTP tree. The parcel
+# metadata XML does carry an explicit statutory restriction, quoted
+# here because it is unusually specific: Montana Code Annotated
+# 2-6-1017 "prohibits public agencies from distributing or selling a
+# distribution list without first securing the permission of those on
+# the list; and prohibits a list of persons prepared by a public
+# agency from being used as a distribution list ... except by that
+# agency." Since this recipe's `owner_name`/`owner_address` columns are
+# exactly the kind of per-person list that statute addresses,
+# `redistribution_restricted: true` is set here -- this is a narrower,
+# MT-specific restriction on using the owner roll as a mailing list,
+# not a general ban on redistributing the parcel/assessment data
+# itself. The metadata also carries the standard liability disclaimer
+# ("data ... for informational purposes only," "does not constitute a
+# legal survey," no warranty of accuracy).
+
+description: >-
+  Montana statewide parcel geometry and tax-roll data (MSDI Cadastral
+  Framework): owner name/address, land/building value, tax district,
+  and agricultural-use classification, via the Montana State Library.
+
+admin_id: US-MT
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: msdicadastral
+    portal_url: "https://msl.mt.gov/geoinfo/msdi/cadastral/"
+    download_url: "https://ftpgeoinfo.msl.mt.gov/Data/Spatial/MSDI/Cadastral/Parcels/Statewide/MTParcels_GDB.zip"
+    terms_url: "https://ftpgeoinfo.msl.mt.gov/Data/Spatial/MSDI/Cadastral/Parcels/Statewide/MontanaCadastral_ParcelMetadata.xml"
+    license: "public record; no explicit open-data license found"
+    redistribution_restricted: true
+  version: "2026"
+
+compressed_file_name: "MTParcels_GDB.zip"
+uncompressed_file_name: "Montana_Parcels.gdb"
+
+layer: OwnerParcel
+
+# Read and process data in per-county chunks (avoids reading the
+# 921k-row statewide geodatabase into memory at once).
+process_by:
+  admin_level: 3
+  admin_id_column: CountyName
+  admin_id_crosswalk:
+    recipe_id: "US-MT_parcel-msdicadastral-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin2: PARCELID
+  parcel_id_cama: PropertyID
+  owner_name: OwnerName
+  owner_address: OwnerAddress1
+  owner_address_2: OwnerAddress2
+  owner_city: OwnerCity
+  owner_state: OwnerState
+  owner_postal_code: OwnerZipCode
+  address: AddressLine1
+  legal_description: LegalDescriptionShort
+  subdivision: Subdivision
+  tax_district: LevyDistrict
+  use_group: PropType
+  total_value: TotalValue
+  land_value: TotalLandValue
+  improvement_value: TotalBuildingValue
+  tax_year: TaxYear
+
+columns_to_categorical:
+  - tax_district
+  - use_group
+
+# Expose the raw statewide geocode under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin2), so it is the raw
+# key parcel_id_local derives from -- consistent with the
+# Wisconsin/DC/MassGIS statewide recipes.
+#
+# city/postal_code are parsed from the combined CityStateZip field
+# ("<city>, MT <zip>[-4]", matched on 99.99% of its populated rows --
+# see header note); state is not extracted since it is uniformly "MT"
+# statewide and is already implied by admin_id.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+  - type: string
+    operation: extract_named
+    input: CityStateZip
+    args:
+      pattern: '^(?P<city>.+), [A-Z]{2} \d{5}(?:-\d{4})?$'
+    output: city
+
+  - type: string
+    operation: extract_named
+    input: CityStateZip
+    args:
+      pattern: ', [A-Z]{2} (?P<postal_code>\d{5})(?:-\d{4})?$'
+    output: postal_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
