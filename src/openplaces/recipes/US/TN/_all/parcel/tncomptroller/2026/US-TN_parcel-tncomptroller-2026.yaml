@@ -1,0 +1,296 @@
+# Recipe: Tennessee statewide parcel boundaries, from the Tennessee
+# Comptroller of the Treasury, Division of Property Assessments,
+# Geographic Services -- the "Tennessee Property Boundaries Public
+# Use" layer (ArcGIS Online item e356f1a241844d6f9025f2fa4e977df3,
+# owned by the `tnmap_oir` account, `services1.arcgis.com`).
+#
+# COVERAGE CARVE-OUT -- read this before adding a TN county recipe.
+# This source aggregates parcels for 86 of Tennessee's 95 counties.
+# NINE counties self-maintain their own GIS/CAMA systems and are
+# excluded from this statewide aggregation entirely: Chester,
+# Davidson, Hamilton, Hickman, Knox, Montgomery, Rutherford, Shelby,
+# and Williamson. This is not a research guess -- it was verified
+# directly against the source in three independent, mutually
+# confirming ways in this session:
+#   1. The ArcGIS item's own `description` field states verbatim:
+#      "Statewide parcel boundaries containing real property
+#      information for 86 counties in the state. ... Chester,
+#      Davidson, Hamilton, Hickman, Knox, Montgomery, Rutherford,
+#      Shelby, and Williamson not included." (fetched fresh via the
+#      AGOL sharing API, not a cached/rendered page.)
+#   2. The public FeatureServer/0 layer's own `viewDefinitionQuery`
+#      (it is an ArcGIS "View Service" over a fuller internal layer)
+#      reads literally `COUNTY_ID NOT IN
+#      (12,19,33,41,47,63,75,79,94)` -- i.e. the exclusion is
+#      enforced server-side, not just documented. Cross-referencing
+#      those 9 `COUNTY_ID` codes against a `returnDistinctValues`
+#      query of `COUNTY_ID`/`COUNTY_NAME` on the live layer confirms
+#      they correspond exactly to Chester(12), Davidson(19),
+#      Hamilton(33), Hickman(41), Knox(47), Montgomery(63),
+#      Rutherford(75), Shelby(79), Williamson(94) -- the same 9 names
+#      as (1).
+#   3. A live `returnCountOnly` query returning 86 distinct
+#      `COUNTY_NAME` values (not 95) confirms the exclusion is
+#      real at query time, not just a stale item description.
+# A separate internal layer (referenced in this same service's
+# field-domain "templates", e.g. `LANDMKTVAL`, `IMPVAL`,
+# `SALEDATE`, `PRICE`, `ZONING`, `TAXYR`) exists for "all 95
+# counties" per the layer's own `description` field, but is scoped
+# to "state agencies with approved access" -- this recipe uses only
+# the public, unauthenticated "Public Use" view, which is the one a
+# public research tool can actually reach, and which is missing
+# nearly all of those value/sale/zoning fields (see "Left unmapped"
+# below). A FUTURE AGENT building county-level parcel recipes for
+# Chester, Davidson, Hamilton, Hickman, Knox, Montgomery,
+# Rutherford, Shelby, or Williamson County is filling a REAL,
+# documented coverage gap here -- not duplicating this recipe. The
+# crosswalk sidecar below deliberately lists only the 86 included
+# counties; ingesting any of the 9 excluded counties against this
+# recipe raises a clear `KeyError` from the crosswalk lookup rather
+# than silently writing an empty file, mirroring the MetroGIS
+# Twin-Cities pattern (`US-MN_parcel-metrogis-2026`).
+#
+# NO STATEWIDE ASSESSMENT/PROPERTY RECIPE IS INCLUDED, DELIBERATELY.
+# The item's description says parcels "contain links to the
+# Comptroller's Tennessee Property Assessment Data site"
+# (`assessment.cot.tn.gov/TPAD`) for value/sale/ownership detail.
+# TPAD was investigated directly in this session and found to be a
+# per-parcel SEARCH WEB APPLICATION ONLY (owner-name / address /
+# parcel-number / sale-date-range search forms rendering one result
+# page at a time), with no bulk export, REST/JSON API, or documented
+# data-dictionary download found anywhere on its homepage or linked
+# scripts. It also returns HTTP 403 to a non-browser User-Agent
+# (confirmed: `openplaces`'s own identifying UA is refused, while a
+# browser UA succeeds) -- a live signal that the site does not want
+# programmatic access, on top of there being no bulk mechanism to
+# use even if it did. Building a `property` recipe here would mean
+# scraping ~2.1M individual search-result pages one parcel at a
+# time against a site that appears to actively block non-browser
+# clients -- exactly the REST-hammering this repo's acquiring-
+# sources guidance says to avoid, with no bulk alternative to fall
+# back to. This is a deliberate, investigated non-inclusion, not an
+# oversight: a future agent should not assume TN property/assessment
+# data is simply unaddressed and re-attempt a naive scrape without
+# first re-checking whether TPAD has since added a bulk/API route.
+#
+# Source discovery (Phase 1): found via the ArcGIS Online item-
+# search API (`arcgis.com/sharing/rest/search?q=Tennessee parcels
+# Comptroller`), which surfaced this item directly as the top hit.
+# `geodata.tn.gov` ("State of Tennessee Downloadable GIS Data") is
+# this same organization's ArcGIS Hub/Open Data site
+# (`tnmap_oir`'s own hub-site item, confirmed via the AGOL sharing
+# API), so it is used as the human-facing `portal_url` even though
+# the parcel item's `listed` flag is false (not surfaced in the
+# Hub's own search/gallery -- confirmed only reachable by direct
+# item id or the AGOL search API, not by browsing geodata.tn.gov's
+# UI).
+#
+# NOTE on bulk vs REST (Phase 3, equivalence test performed for
+# real): the live REST layer's `returnCountOnly` is 2,140,056
+# statewide. The ArcGIS Hub bulk-export endpoint
+# (`hub.arcgis.com/api/v3/datasets/{itemId}_0/downloads/data?
+# format=geojson&spatialRefId=4326`) was fetched directly in this
+# session (not merely nudged) and returned a genuine, complete
+# FeatureCollection -- its first features' property keys were
+# compared field-by-field against the live layer's own
+# `FeatureServer/0?f=json` metadata and matched exactly (`OBJECTID`,
+# `COUNTY_ID`, `PARCEL_TYPE`, `GISLINK`, `PARCELID`, `CMAP`, `GP`,
+# `PARCEL`, `ADDRESS`, `DEEDAC`, `OWNER`, `OWNER2`, `SUBDIV`, `LOT`,
+# `LINK_TPAD`, `LINK_TPV`, `COUNTY_NAME`) -- no bulk-vs-REST schema
+# divergence, unlike the Wilson NC / DC Record-Lots traps this repo
+# has hit before. This is expected here because the "Public Use"
+# service is itself a restricted ArcGIS *view* (`isView: true`) with
+# its own `viewDefinitionQuery`, so any bulk export of it is
+# generated from the same view definition as the live query path,
+# not from a separately-maintained cache. Bulk is used
+# (`download_url`) rather than `arcgis_rest_scraper`, since paging
+# 2.14M features via REST would cost the state's server on the order
+# of 1,000+ sequential page requests for no schema benefit. The full
+# bulk file was inspected directly to confirm this (then deleted
+# immediately -- it necessarily contains real owner names and
+# addresses, which must never be persisted in this repository or any
+# tracked location; see "Schema, never records" in
+# `recipes/README.md`).
+#
+# NOTE on `PARCEL_TYPE` (left unmapped, not filtered): this field
+# takes 7 distinct values statewide, counted via `returnCountOnly`
+# per value: `1`=2,135,660, `2`=3,237, `6`=141, `7`=30, `8`=34 (all
+# five rendered/labeled "Parcel" in the service's own symbology),
+# `4`=385 ("Railroad ROW"), `5`=569 ("Parcel Conflict") -- summing to
+# the full 2,140,056. Railroad ROW and Parcel Conflict rows are a
+# tiny fraction (0.045% combined) and are not ordinary tax parcels,
+# but removing rows is this repo's curate-stage responsibility
+# (`io/curator/filters.py`), not ingest's -- left in place and
+# unmapped rather than filtered here.
+#
+# NOTE on the join key (Phase 5, tested empirically, not assumed):
+# `GISLINK` (a fixed-width, `esriFieldTypeString` field of length 15
+# with no delimiters -- confirmed via the layer's own field
+# metadata) is TN's own stable per-parcel join key: `LINK_TPAD` and
+# `LINK_TPV` are both URL templates of the literal form
+# `.../TPAD/Parcel/GIS?gislink={GISLINK-value}` and
+# `.../assessment/#/parcel/{GISLINK-value}` respectively (field
+# shape confirmed directly on real rows, no specific value quoted
+# here per this repo's records-vs-schema rule) -- i.e. GISLINK is
+# the assessor's own canonical key, not an incidental GIS id.
+# `PARCELID` (length 28) was considered instead but rejected: it is
+# a formatted concatenation of `CMAP`+`GP`+`PARCEL` plus the
+# *current tax roll year*, so its string value changes every year
+# for the same physical parcel -- unsuitable as a stable id. `CMAP`
+# (Control Map, 5 chars), `GP` (Group, 2 chars) and `PARCEL` (6
+# chars) are the raw components GISLINK/PARCELID are assembled from
+# (mirroring DC's SQUARE/SUFFIX/LOT -> SSL precedent) and are left
+# unmapped as redundant with GISLINK.
+#   Tested for real (Moore County, `US-TN-MO`, a 2,000-row live
+#   sample, aggregate counts only): the bundled per-county pattern
+#   in `geo/parcel_id_links.csv` for `US-TN-MO` (built for a
+#   different, pre-existing raw parcel-id format, not GISLINK)
+#   produces a 100% excess-loss warning against GISLINK and the
+#   pipeline's own duplicate/loss guard (`compute_parcel_id_local`)
+#   correctly falls back rather than emitting an all-null key -- but
+#   to avoid that (harmless but noisy) fallback warning firing on
+#   every county on every ingest, an explicit override row was added
+#   to `US_parcel_id-overrides.csv`
+#   (`US-TN,tncomptroller,parcel,,simple,,`), scoped to this
+#   source_id at the state level so it applies uniformly across all
+#   86 admin3 units via the existing hierarchy walk-up in
+#   `_resolve_instruction`. `simple` and `pipe` conversions of raw
+#   GISLINK produced IDENTICAL results in the same 2,000-row sample
+#   (1,999/2,000 populated and distinct, matching the raw column's
+#   own 1,999 distinct count exactly -- the one repeat is source-
+#   side, not conversion-induced), confirming `simple` loses nothing
+#   `pipe` would have preserved, since GISLINK's internal spaces are
+#   fixed-width padding, not meaningful field delimiters.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they are redundant with a mapped field:
+#   - `PARCELID`, `CMAP`, `GP`, `PARCEL` -- see join-key note above.
+#   - `LOT` (the plat/subdivision lot number, distinct from
+#     `lot_size` which is an area) -- no registry field for a lot
+#     *number*, and this layer has no legal-description field to
+#     fold it into (contrast MetroGIS's `ABB_LEGAL` ->
+#     `legal_description`, `US-MN_parcel-metrogis-2026`).
+#   - `COUNTY_ID` / `COUNTY_NAME` -- both redundant with the admin3
+#     unit already resolved via the crosswalk below.
+#     `COUNTY_NAME` is used only as the crosswalk's own join column,
+#     not mapped as a canonical attribute: `admin3_name` (used by
+#     the existing `US-WI_parcel-wiscedu-v11` recipe) is NOT present
+#     in the current `core/attribute_registry.csv` (checked
+#     directly) -- a pre-existing gap, not reproduced here, mirroring
+#     how `US-MN_parcel-metrogis-2026`'s header already flags
+#     `school_district_name`/`_id` as absent despite the same WI
+#     recipe using them.
+#   - `PARCEL_TYPE` -- see note above.
+#   - `LINK_TPAD` / `LINK_TPV` -- per-parcel URLs into the TPAD
+#     search app and the TN Property Viewer map app respectively; no
+#     registry field for a source-supplied deep link, and TPAD
+#     itself is not bulk-accessible (see above).
+#   - No value, sale, year-built, zoning, or land-use fields exist on
+#     this PUBLIC view at all (confirmed against the live layer's
+#     own field list, not merely assumed absent) -- they live only
+#     on the restricted, "approved access" internal layer this
+#     recipe does not use. `last_sale_price`, `last_sale_date`,
+#     `land_value`, `improvement_value`, `year_built`, `use_group`,
+#     `zoning_code` are therefore not available from this source at
+#     all, for any of the 86 counties.
+#
+# Measured field population (Moore County, `US-TN-MO`, smallest
+# covered county by parcel count -- 4,260 statewide; a live
+# 2,000-row sample, aggregate counts only, no record values
+# retained or quoted): `ADDRESS` 2,000/2,000 (100%); `OWNER`
+# 1,998/2,000 (99.9%); `OWNER2` 1,163/2,000 (58.2%, i.e. joint
+# ownership -- expected to be well under 100%); `SUBDIV` 227/2,000
+# (11.4%); `LOT` 239/2,000 (12.0%, consistent with SUBDIV -- a lot
+# number without a subdivision context is rare); `DEEDAC` > 0 for
+# 1,572/2,000 (78.6%); `PARCELID`/`GISLINK` both 2,000/2,000 (100%).
+#
+# License: no dedicated terms-of-use page was found for this
+# specific dataset or for `geodata.tn.gov` generally (the Hub site
+# renders client-side; static fetches of its `/terms`-style paths
+# return only the SPA shell, so no distinct terms content could be
+# confirmed either way). The ArcGIS item's own `licenseInfo` field
+# (fetched via the AGOL sharing API) is a plain public-service,
+# as-is/no-warranty liability disclaimer ("THE INFORMATION IS
+# PRESENTED FOR GRAPHICAL REFERENCE ONLY ... MAKES NO WARRANTY,
+# EXPRESSED OR IMPLIED ... NOR DOES THE FACT OF DISTRIBUTION
+# CONSTITUTE SUCH A WARRANTY") with no explicit statement either
+# permitting or restricting redistribution or commercial use.
+# Recorded as `license: 'unknown'`-equivalent per
+# `recipes/README.md`'s guidance (a liability disclaimer is not the
+# same thing as a redistribution term), with the disclaimer text
+# itself preserved here since it is the only concrete statement
+# found.
+#
+# Validation performed: recipe loads via `get_recipe_by_id`; every
+# mapped column is in `core/attribute_registry.csv` (checked
+# directly against the registry, not assumed). `op.ingest()` was
+# run for real against the live bulk source for Moore County
+# (`US-TN-MO`, the smallest covered county) -- see this recipe's own
+# ingest-verification notes for the resulting row count,
+# `parcel_id_local` population/distinct count, and geometry check
+# against the live server's own `returnCountOnly`.
+
+description: >-
+  Tennessee statewide parcel boundaries (86 of 95 counties; 9 self-maintained
+  counties excluded -- see header) from the Comptroller of the Treasury's
+  Division of Property Assessments, Geographic Services.
+
+admin_id: US-TN
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: tncomptroller
+    portal_url: "https://geodata.tn.gov"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/e356f1a241844d6f9025f2fa4e977df3_0/downloads/data?format=geojson&spatialRefId=4326"
+    license: >-
+      unknown -- no dedicated terms-of-use page found; the ArcGIS item's own
+      licenseInfo is a public-service, as-is/no-warranty liability disclaimer
+      only, silent on redistribution (see header).
+    terms_url: "https://www.arcgis.com/home/item.html?id=e356f1a241844d6f9025f2fa4e977df3"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "tn_property_boundaries_public_use.geojson"
+
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY_NAME
+  admin_id_crosswalk:
+    recipe_id: "US-TN_parcel-tncomptroller-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin3: GISLINK
+  address: ADDRESS
+  owner_name: OWNER
+  owner_name_2: OWNER2
+  subdivision: SUBDIV
+  lot_size: DEEDAC
+
+# Expose the raw GISLINK key under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin3), so it is the raw
+# key parcel_id_local derives from -- consistent with the
+# WI/DC/MN/MD/IN statewide recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  # DEEDAC (mapped to lot_size, sqft-typed in the registry) is
+  # sourced in acres (deed acreage).
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+# See "NOTE on the join key" above: a state-level override row in
+# US_parcel_id-overrides.csv (US-TN, tncomptroller, parcel -> simple)
+# takes precedence over the bundled per-county table, which was
+# built for a different raw id format and does not fit GISLINK.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
