@@ -55,7 +55,20 @@ def derive_metrics(state: CurateState) -> CurateState:
             or col.startswith('improvement_value')
             or col.startswith('structure_value')
         ):
-            curated[f'{col}_per_area'] = curated[col] / curated[area_col]
+            values = curated[col]
+            if not pd.api.types.is_numeric_dtype(values):
+                # A value column can arrive str-typed from an ingest whose
+                # source shipped numbers as text (seen: TX txgio
+                # improvement_value), and one such column must not crash
+                # the whole county's curate. Coerce and warn -- the ingest
+                # recipe still owes the registry-declared cast.
+                warnings.warn(
+                    f'derive_metrics: {col!r} is {values.dtype}, not numeric; '
+                    'coercing for the _per_area ratio. Fix the ingest '
+                    "recipe's dtype (attribute registry declares float)."
+                )
+                values = pd.to_numeric(values, errors='coerce')
+            curated[f'{col}_per_area'] = values / curated[area_col]
 
     state.curated = curated
     return state
