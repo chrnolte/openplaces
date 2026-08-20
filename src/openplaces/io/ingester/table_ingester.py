@@ -148,6 +148,22 @@ class TableIngester:
                 read_kwargs['bbox'] = bbox
             else:
                 self._ensure_table_fid_filter()
+                scope = self.download_partition.get('admin_id_crosswalk_scope')
+                if scope is not None and admin_id_to_process not in scope:
+                    # process_by.admin_id_crosswalk named a scoped sidecar
+                    # table (recipe_id form) rather than a universal
+                    # census-style crosswalk -- e.g. a source that only
+                    # covers a subset of a state's counties. A requested
+                    # admin unit outside that scope has no rows to match
+                    # by construction, so filtering would silently write
+                    # an empty output; raise instead so a caller learns
+                    # this admin unit is out of scope, not that the
+                    # source happened to have nothing for it.
+                    raise KeyError(
+                        f'{admin_id_to_process} is not covered by this '
+                        "recipe's process_by.admin_id_crosswalk scope. "
+                        f'Covered admin units: {sorted(scope)}'
+                    )
                 fids_series = self.download_partition['table_fids'][self.table_name]
                 read_kwargs['fids'] = list(
                     fids_series[fids_series.eq(admin_id_to_process)].index
@@ -207,6 +223,16 @@ class TableIngester:
         self.download_partition['admin_id_crosswalk'] = get_crosswalk(
             admin_id_crosswalk_dict, flip=True
         )
+        if 'recipe_id' in process_by['admin_id_crosswalk']:
+            # A recipe_id-form crosswalk is a scoped sidecar table (e.g.
+            # the 7-county MetroGIS list, or a state parcel source that
+            # only some counties have opted into), not a universal
+            # census-style admin lookup. Record the admin units it
+            # actually covers so process() can raise on a request outside
+            # that scope instead of silently matching zero rows.
+            self.download_partition['admin_id_crosswalk_scope'] = set(
+                self.download_partition['admin_id_crosswalk'].iloc[:, 0]
+            )
 
     def _prepare_reverse_admin_id_crosswalk(self):
         """Build crosswalk from AdminIds to source admin column values.
@@ -484,7 +510,28 @@ class TableIngester:
                 }
                 if dtype is not None:
                     read_kwargs['dtype'] = dtype
+                # The recipe's `encoding` key is read into `kwargs` above
+                # (used directly by the `.gdb`/geopandas/fixed_width
+                # branches) but was not previously forwarded here, so a
+                # plain non-UTF-8 flat file (e.g. a UTF-16 export) failed
+                # to decode regardless of a declared `encoding:`.
+                if kwargs.get('encoding'):
+                    read_kwargs['encoding'] = kwargs['encoding']
                 gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
+
+            # `fids` (built by `_prepare_table_fid_filter` from a plain read
+            # of this same file, so its index is this file's own 0-based
+            # row order) was silently ignored here: none of the three
+            # sub-branches above ever look at `kwargs`, so a chunked
+            # `process_by.admin_id_column` recipe backed by a flat file
+            # (csv/xlsx/fixed-width) wrote the *entire* file under every
+            # single admin unit's output instead of that unit's rows only.
+            # Row order is unchanged by `usecols`/dtype selection, so a
+            # positional `.iloc` on the freshly-read frame is exactly the
+            # same row set the crosswalk built the FID filter from.
+            if 'fids' in kwargs:
+                gdf = gdf.iloc[kwargs['fids']]
+
             self.timer.mark(
                 'Read data table' + timer_suffix,
                 path=data_path,
