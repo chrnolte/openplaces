@@ -27,6 +27,14 @@ entity:
   entity_type: parcel
   source:
     source_id: bladenco
+    # Checked 2026-08-20 against the ArcGIS REST service this recipe
+    # reads: neither copyrightText nor licenseInfo is set on the service
+    # or its layer, so the endpoint openplaces actually uses states no
+    # terms. Checked and absent, not unexamined -- but this speaks only
+    # for that endpoint, not for anything the county may publish
+    # elsewhere.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
     portal_url: "https://gis.bladenco.org/"
     # Browser-free REST pagination (peer of download_url_source, but for a
     # paginated ArcGIS layer rather than a single static URL). Loaded by path

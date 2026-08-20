@@ -61,6 +61,12 @@ entity:
   entity_type: parcel
   source:
     source_id: columbuscounty
+    # Checked 2026-08-20 through the ArcGIS Hub API for the dataset this
+    # recipe downloads: the item explicitly declares license "none" and
+    # carries no access-information text. So the county publishes the
+    # data without stating terms -- checked and absent, not unexamined.
+    license: "unknown (ArcGIS Hub item declares no licence)"
+    redistribution_restricted: null
     portal_url: "https://www.columbusco.org/departments/tax-administration"
     download_url: "https://hub.arcgis.com/api/v3/datasets/99f93b8dd155429aba26f6473256e876_24/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"

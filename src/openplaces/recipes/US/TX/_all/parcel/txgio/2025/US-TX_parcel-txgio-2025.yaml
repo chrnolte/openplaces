@@ -13,6 +13,14 @@ entity:
    # What is the source and URL of a dataset that identifies each unit?
   source:
     source_id: txgio
+    # Checked 2026-08-20: the TxGIO site asserts "Content of this site
+    # copyright Texas Geographic Information Office and Texas Water
+    # Development Board unless otherwise noted" -- a claim over the site,
+    # not a licence for the StratMap parcel data this recipe downloads,
+    # for which no separate terms were found.
+    license: "unknown (site content copyright asserted; no data licence found)"
+    terms_url: "https://geographic.texas.gov/"
+    redistribution_restricted: null
     portal_url: "https://tnris.org/stratmap/land-parcels.html"
     # URL to download
     download_url: "https://tnris-data-warehouse.s3.us-east-1.amazonaws.com/LCD/collection/stratmap-2025-land-parcels/stratmap25-landparcels_48_lp.zip"

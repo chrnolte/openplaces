@@ -32,6 +32,12 @@ entity:
   entity_type: property
   source:
     source_id: lavacacad
+    # Checked 2026-08-20 by fetching the certified-roll page: it carries
+    # no licence, copyright, disclaimer or redistribution language at
+    # all. Texas appraisal records are public information under the
+    # Property Tax Code; silence is still not a grant.
+    license: "unknown"
+    redistribution_restricted: null
     portal_url: "https://lavacacad.com/certified-appraisal-rolls/"
     download_url: "https://lavacacad.com/wp-content/uploads/2026/07/2026-certified-roll-1-1.zip"
   version: 2026

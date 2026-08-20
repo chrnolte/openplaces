@@ -49,11 +49,20 @@ def test_a_dotted_geometry_source_resolves_to_its_source(terms):
     assert 'parcel.bladenco' not in ids
 
 
-def test_an_unchecked_source_is_named_not_omitted(terms):
-    """Silence about a source would read as a clearance. It is not one."""
+def test_an_unchecked_source_is_named_not_omitted():
+    """Silence about a source would read as a clearance. It is not one.
+
+    Uses a fabricated source id rather than a real county: which counties
+    have been checked changes as the backfill proceeds, and this contract
+    is about sources nobody has recorded, not about any particular one.
+    """
+    composition = _COMPOSITION + ['parcel.no-such-county'] * 40
+    terms = bundle_terms(RECIPE, pd.Series(composition))
     unrecorded = {entry['source_id'] for entry in terms['unrecorded']}
 
-    assert 'bladenco' in unrecorded
+    # Reported under the value as it appeared, since no token resolved:
+    # an unmatched source is surfaced verbatim rather than dropped.
+    assert 'parcel.no-such-county' in unrecorded
     # 'unknown' is a recorded answer -- somebody looked and found no terms.
     assert 'ncdps' not in unrecorded
 
@@ -65,6 +74,19 @@ def test_sources_contributing_no_geometry_are_left_out(terms):
     assert ids == {'obm', 'ncdps', 'microsoft', 'bladenco'}
 
 
+def test_two_share_alike_licences_are_both_reported():
+    """Pitt County parcels are CC-BY-SA-4.0 and the footprints are ODbL.
+
+    Both are share-alike, both are in the cheer-eastern-nc region, and no
+    single release satisfies the two at once. The notice has to surface
+    that rather than name whichever it happened to see first.
+    """
+    composition = _COMPOSITION + ['parcel.pittcounty'] * 40
+    terms = bundle_terms(RECIPE, pd.Series(composition))
+
+    assert set(terms['share_alike']) == {'ODbL-1.0', 'CC-BY-SA-4.0'}
+
+
 def test_notice_states_the_obligation_and_who_decides(terms):
     notice = format_notice(RECIPE, terms, 'US-NC')
 
@@ -74,8 +96,11 @@ def test_notice_states_the_obligation_and_who_decides(terms):
     assert 'obm' in notice and 'microsoft' in notice
     # Says the sharing decision is the distributor's, not the software's.
     assert 'decision for you as the distributor' in notice
-    # Does not pretend an unchecked source is clear.
-    assert 'not the same as' in notice
+    # An unchecked source is named as unchecked rather than omitted.
+    unchecked = bundle_terms(
+        RECIPE, pd.Series(_COMPOSITION + ['parcel.no-such-county'] * 40)
+    )
+    assert 'not the same as' in format_notice(RECIPE, unchecked, 'US-NC')
 
 
 def test_notice_without_geometry_shares_still_lists_sources():

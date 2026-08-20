@@ -29,6 +29,12 @@ entity:
   entity_type: parcel
   source:
     source_id: sampsoncounty
+    # Checked 2026-08-20 on the ArcGIS service this recipe reads: its
+    # copyrightText names Sampson County GIS and Sampson County Tax
+    # Administration as the parties to credit, but declares no licence
+    # and says nothing about redistribution.
+    license: "unknown (attribution to Sampson County GIS / Tax Administration; no licence stated)"
+    redistribution_restricted: null
     portal_url: "https://www.sampsoncountync.gov/My-Property/GIS-Maps-Property-Records"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"

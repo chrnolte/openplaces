@@ -54,6 +54,12 @@ entity:
   entity_type: parcel
   source:
     source_id: rockymountnc
+    # Checked 2026-08-20 through the ArcGIS Hub API for the dataset this
+    # recipe downloads: the item explicitly declares license "none" and
+    # carries no access-information text. So the county publishes the
+    # data without stating terms -- checked and absent, not unexamined.
+    license: "unknown (ArcGIS Hub item declares no licence)"
+    redistribution_restricted: null
     portal_url: "https://www.rockymountnc.gov/departments/information-technology/geographic-information-systems"
     download_url: "https://hub.arcgis.com/api/v3/datasets/a6969e35769a489085c3fc503d57705f_16/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"

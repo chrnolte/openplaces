@@ -56,6 +56,12 @@ entity:
   entity_type: parcel
   source:
     source_id: lenoircounty
+    # Checked 2026-08-20 through the ArcGIS Hub API for the dataset this
+    # recipe downloads: the item explicitly declares license "none" and
+    # carries no access-information text. So the county publishes the
+    # data without stating terms -- checked and absent, not unexamined.
+    license: "unknown (ArcGIS Hub item declares no licence)"
+    redistribution_restricted: null
     portal_url: "https://www.co.lenoir.nc.us/departments/gis/"
     download_url: "https://hub.arcgis.com/api/v3/datasets/aaec5d13228741b5950cb50fbce252ad_6/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"

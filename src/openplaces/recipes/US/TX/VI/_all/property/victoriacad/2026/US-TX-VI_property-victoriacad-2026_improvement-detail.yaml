@@ -43,6 +43,14 @@ entity:
   entity_type: property
   source:
     source_id: victoriacad
+    # Checked 2026-08-20 by fetching the download page: it carries only a
+    # site-footer copyright over the website itself and states no terms
+    # for the appraisal roll it publishes -- no licence, no attribution
+    # requirement, nothing about redistribution. Texas appraisal records
+    # are public information under the Property Tax Code, which likely
+    # explains the silence, but silence is not a grant.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
     portal_url: "https://victoriacad.org/downloads/"
     download_url: "https://victoriacad.org/wp-content/uploads/2026/07/VCAD-2026-CERTIFIED-ROLL-1.zip"
   version: 2026

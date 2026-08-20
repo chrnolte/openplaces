@@ -60,6 +60,19 @@ entity:
   entity_type: parcel
   source:
     source_id: pittcounty
+    # Terms verified 2026-08-20 by querying the ArcGIS Hub item this
+    # recipe reads: license "CC-BY-SA-4.0", licenseInfo "CC BY-SA",
+    # source "Pitt County Government". A deliberate declaration, not an
+    # empty field.
+    #
+    # CC-BY-SA-4.0 is SHARE-ALIKE, and Pitt is one of the 45 counties in
+    # the cheer-eastern-nc delivery region. A bundle mixing this geometry
+    # with ODbL-1.0 footprints inherits two share-alike licences that
+    # cannot both be satisfied by one release. See
+    # plans/legal-compliance-open-items-and-counsel-brief.md section 1.1.
+    license: "CC-BY-SA-4.0"
+    terms_url: "https://creativecommons.org/licenses/by-sa/4.0/"
+    redistribution_restricted: false
     portal_url: "https://www.pittcountync.gov/168/Geographic-Information-Systems"
     download_url: "https://hub.arcgis.com/api/v3/datasets/4b978f79c0124c7f899768d3eb459cd0_0/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"

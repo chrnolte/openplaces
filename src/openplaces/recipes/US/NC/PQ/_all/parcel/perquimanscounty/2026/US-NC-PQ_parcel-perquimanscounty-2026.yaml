@@ -22,6 +22,14 @@ entity:
   entity_type: parcel
   source:
     source_id: perquimanscounty
+    # Checked 2026-08-20 against the ArcGIS REST service this recipe
+    # reads: neither copyrightText nor licenseInfo is set on the service
+    # or its layer, so the endpoint openplaces actually uses states no
+    # terms. Checked and absent, not unexamined -- but this speaks only
+    # for that endpoint, not for anything the county may publish
+    # elsewhere.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
     portal_url: "https://agdonline.maps.arcgis.com/apps/webappviewer/index.html?id=559506e85ee046a194333eb12e80710f"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"
