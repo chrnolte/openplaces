@@ -511,10 +511,17 @@ class Harmonizer:
         # An attribute-only recipe (save_to: geometry: false) writes a plain
         # table; its geometry lives with the entity_recipe predecessor and
         # is resolved by readers through that chain -- never duplicated.
+        # Stale sidecars from a pre-split run are deleted, not just ignored:
+        # a direct-parquet reader (e.g. qgis/load_joined_parquet) would
+        # otherwise join the fresh attribute file's _join_id against the
+        # stale sidecar's unrelated ids and get silently wrong geometry.
         if not saves_geometry(self.recipe):
             state.spine = pd.DataFrame(
                 state.spine.drop(columns='geometry', errors='ignore')
             )
+            for suffix in ('_geo', '_geo_simplified'):
+                stale = out_path.with_stem(out_path.stem + suffix)
+                stale.unlink(missing_ok=True)
         save_parquet(
             state.spine,
             out_path,

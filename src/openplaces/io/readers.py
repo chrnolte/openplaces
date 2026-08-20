@@ -548,6 +548,12 @@ def get_entities(
         if geometry.index.duplicated().any():
             geometry = geometry[~geometry.index.duplicated()]
         data = gpd.GeoDataFrame(data.join(geometry, how='left'), crs=predecessor.crs)
+        # A bbox read of a geometry-bearing recipe returns only the rows
+        # inside the box (the attributes join onto the filtered geometry);
+        # match that here rather than keeping out-of-box rows with null
+        # geometry.
+        if bbox is not None:
+            data = data[data.geometry.notna()]
         geom = requested_geom
 
     # A requested admin_id finer than the recipe's save level (e.g. a town

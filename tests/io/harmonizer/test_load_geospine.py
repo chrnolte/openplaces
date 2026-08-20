@@ -408,6 +408,70 @@ class TestReaderGeometryIndirection:
         assert 'geometry' not in out.columns
 
 
+class TestReaderBboxParity:
+    def test_bbox_drops_rows_outside_the_box(self, data_root):
+        """A bbox read through the indirection matches direct semantics.
+
+        Reading a geometry-bearing recipe with bbox returns only rows
+        inside the box; the indirection must not instead keep out-of-box
+        rows with null geometry (the predecessor's geometry read is
+        bbox-filtered, the attribute read is not).
+        """
+        from openplaces.core.schema import Entity
+
+        geo_recipe = dict(get_recipe_by_id(GEOSPINE))
+        spine = _spine_gdf()
+        save_parquet(spine, get_output_path(geo_recipe, AdminId(COUNTY)))
+
+        attr_recipe = dict(geo_recipe)
+        attr_recipe['entity'] = Entity('footprint', 'spineattrs', '2026')
+        attr_recipe['save_to'] = {'data_dir': 'core', 'geometry': False}
+        attr_recipe['entity_recipe'] = GEOSPINE
+        attrs = pd.DataFrame({'n_stories': [1, 2, 3]}, index=spine.index)
+        save_parquet(attrs, get_output_path(attr_recipe, AdminId(COUNTY)))
+
+        # Covers f1 (box(1,1,3,3)) only; f2/f3 lie outside.
+        out = get_entities(attr_recipe, COUNTY, geom=True, bbox=(0, 0, 4, 4))
+        assert set(out.index) == {'f1'}
+        assert out.geometry.notna().all()
+
+
+class TestStaleSidecarRemoval:
+    def test_geometry_free_save_deletes_stale_geo(self, data_root, monkeypatch):
+        """The attribute save removes a pre-split `_geo` beside its output.
+
+        Ignoring the stale file is not enough: a direct-parquet reader
+        (qgis/load_joined_parquet) would join the fresh attribute file's
+        _join_id against the stale sidecar's unrelated ids and get
+        silently wrong geometry.
+        """
+        from openplaces.core.schema import Entity
+        from openplaces.io.harmonizer import _STEP_REGISTRY, Harmonizer
+
+        recipe = dict(get_recipe_by_id(SPINE))
+        recipe['entity'] = Entity('footprint', 'spineattrs', '2026')
+        recipe['save_to'] = {'data_dir': 'core', 'geometry': False}
+        recipe['pipeline'] = [{'step': '_seed_test_spine'}]
+
+        def _seed(state):
+            state.spine = _spine_gdf()
+            return state
+
+        monkeypatch.setitem(_STEP_REGISTRY, '_seed_test_spine', _seed)
+
+        out_path = get_output_path(recipe, AdminId(COUNTY))
+        stale = out_path.with_stem(out_path.stem + '_geo')
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        _spine_gdf().to_parquet(stale)
+
+        harmonizer = Harmonizer(recipe, admin_ids=[COUNTY])
+        harmonizer._harmonize_one(AdminId(COUNTY))
+
+        assert out_path.exists()
+        assert not stale.exists(), 'stale _geo sidecar must be deleted'
+        assert 'geometry' not in pd.read_parquet(out_path).columns
+
+
 class TestLinkOwnerResolution:
     def test_link_running_recipe_owns_its_links(self):
         # The geospine's own pipeline runs link_to_reference, so it is its
