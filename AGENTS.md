@@ -693,3 +693,6 @@ package it is installing and so shells out to
 `python -m openplaces.config --set-identity`. That is also why the first-use
 prompt triggers on a missing `directories` key rather than a missing file.
 
+`arcgis_rest_scraper` additionally paces itself (`DEFAULT_REQUEST_INTERVAL_S`,
+module-level so the whole paging loop is bounded), because backing off only
+after a failure means the load that caused it was already applied.
