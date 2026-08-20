@@ -1,0 +1,369 @@
+# Recipe: Maine Parcels -- Organized Towns Feature, plus its
+# "ADB" (assessor database) attribute table, from the Maine
+# GeoLibrary Parcel Project.
+#
+# Publisher: Maine Office of GIS (MEGIS) / Maine GeoLibrary,
+# State of Maine (org contact MaineIT GIS, megissupport@maine.gov).
+# ArcGIS item 346131b710a645ffb624f448a9cba6d4, "Maine Parcels
+# Organized Towns Feature". Hosted FeatureServer:
+# services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/
+# Maine_Parcels_Organized_Towns/FeatureServer -- layer 10 (polygon
+# parcels, 708,382 features, verified live via returnCountOnly) and
+# table 9 (the "ADB" ownership/assessment table, 522,253 rows).
+# `source_id: megis` names the publisher (Maine Office of GIS),
+# per README.md's convention, not the geography.
+#
+# COVERAGE -- organized towns only (verified, not assumed):
+# this layer is explicitly scoped to Maine's "organized towns and
+# townships," which "maintain authoritative data for their
+# communities and may voluntarily submit these data to the Maine
+# GeoLibrary Parcel Project" (item description, quoted verbatim).
+# Unorganized Territory (UT) -- "those regions of the state
+# without a local government that assesses real property and
+# collects property tax" -- is explicitly OUT OF SCOPE here; the
+# item's own description names a separate authoritative layer,
+# "Maine Parcels Unorganized Territory Feature," maintained by
+# Maine Revenue Services, which this recipe does not ingest. UT is
+# a genuine structural gap, not a data-quality problem: there is no
+# municipal assessor to submit parcel data for it in the first
+# place. Maine's Unorganized Territory is independently documented
+# (Maine Revenue Services / the Unorganized Territory tax
+# district) as roughly half the state's land area (~10.3M of
+# Maine's ~19.86M acres) while holding well under 1% of its
+# population -- cited as a well-established public fact, not
+# something computed from this pipeline's own geometry.
+#
+# Verified against this repo's own admin4 data
+# (`op.get_admin(admin_id='US-ME', level=4)`, from
+# `US_admin-census-2021_admin4`): Maine has 530 admin4 (Census
+# county-subdivision) units -- 430 with `type` "Town" and 23 with
+# `type` "City" (453 organized municipalities total) plus 77 with a
+# BLANK `type` (e.g. Bancroft, Northwest Piscataquis, Passamaquoddy
+# Indian Township, Monhegan) that are unorganized townships,
+# plantations, and tribal lands. The existing census admin4 recipe
+# already represents this split correctly with no changes needed;
+# this recipe does not process at admin4, so nothing new had to be
+# built for it.
+#
+# Maine's admin3 units are its 16 counties exactly
+# (`op.get_admin_ids(3, admin_id='US-ME')` returns AN, AR, CU, FR,
+# HA, KE, KN, LI, OX, PE, PI, SA, SO, WL, WS, YO) -- there is no
+# separate "unorganized" admin3 unit; every county contains a mix
+# of organized towns and unorganized territory below it, at admin4.
+# This CORRECTS an initial assumption (going in) that Maine's
+# admin3 units would need MN/TN-style special handling: verified
+# false. Every one of the 16 counties has at least some organized-
+# town parcel data, so `process_by` below uses a plain per-county
+# crosswalk with no scoped sidecar that raises outside coverage --
+# unlike `US-MN_parcel-metrogis-2026` (an entire 80 of 87 counties
+# have zero data) Maine has no admin3-level gap to guard against.
+# The real gap is entirely sub-county: within every county, only
+# some towns submitted data, which shows up as incomplete row
+# coverage, not a missing admin unit. The source's own snippet
+# states this directly: "There is no complete statewide parcel data
+# layer for Maine. Communities submit updates on an unscheduled
+# basis; data for many towns is more than fifteen years old."
+# Measured: the `TOWN` field carries 325 distinct town names with
+# at least some parcel geometry, against 453 organized
+# municipalities statewide -- so roughly 30% of organized towns
+# have submitted no geometry to this layer at all, on top of
+# whatever fraction of each submitting town's own roll is stale.
+#
+# Bulk vs REST (Phase 3): a ready-made Hub bulk GeoJSON export for
+# layer 10 does exist and does resolve (verified live: the nudge
+# endpoint returned a 302 to a ~476MB cached file), but it carries
+# only layer 10's own minimal fields (TOWN, COUNTY, GEOCODE,
+# STATE_ID, MAP_BK_LOT, PROP_LOC, PROPLOCNUM, TYPE, FMUPDORG,
+# FMUPDAT, FMSRCORG, CNTYCODE) -- no ownership, sale, or value data,
+# which lives entirely in the separate "ADB" table (table 9). No
+# equivalent bulk export was found or tested for table 9. Rather
+# than ship a geometry-only recipe and a second, separately-joined
+# ADB recipe, this recipe uses `arcgis_rest_scraper` with
+# `attribute_join` so the ADB's owner/value/sale columns attach in
+# one step. 708,382 parcels is the same order of magnitude as the
+# already-ingested `US-WI_parcel-wiscedu-v11` (2M+), so plain REST
+# paging of the polygon layer is not itself a concern.
+#
+# Join key (verified empirically, not assumed): `attribute_join`
+# requires one literal shared field. Population/distinct counts
+# (live REST, both layers): GEOCODE is populated 708,368/708,382 on
+# layer 10 and 522,253/522,253 on table 9, but only 319 distinct
+# values -- it is a per-TOWN code, not a per-parcel key (confirmed:
+# 325 distinct `TOWN` names is the same order of magnitude). Sampled
+# features show `STATE_ID` is itself GEOCODE + "_" + `MAP_BK_LOT`
+# already concatenated by the source (fabricated example preserving
+# the real format: GEOCODE "99999" + MAP_BK_LOT "999-999-999" ->
+# STATE_ID "99999_999-999-999") -- so STATE_ID is already the
+# fully-qualified statewide key and needs no further concatenation
+# here. STATE_ID is 667,072/708,382 distinct on layer 10 (94.2%) and
+# 493,679/522,253 distinct on table 9 (94.5%); the ~5.5% repeat rate
+# on each side is a real, if modest, source-side duplication (retired/
+# resubmitted rows), not a key-construction flaw.
+# `attribute_join.key: STATE_ID` row-level match rate was measured
+# directly (paginated attribute-only fetch of every STATE_ID value
+# from both layer 10 and table 9, then compared exactly as
+# `_apply_attribute_join` itself compares them): 440,899/708,382
+# (62.2%). Case/whitespace normalization recovered only 0.2 points
+# (62.4%), and sampled ADB-only ("orphan") STATE_IDs show genuine
+# cross-source formatting divergence within the same town rather
+# than a fixable case bug -- e.g. one town's ADB submission uses
+# asterisk-delimited map-lot codes (fabricated example preserving
+# format: "99999*0000*999*") where that same town's own geometry
+# submission uses dash-delimited codes ("999-999-999"). Left
+# unnormalized rather than guess at a per-town remapping.
+# `join_min_match` is set to 0.55 (below the observed 62.2% floor,
+# comfortably above a value that would indicate real breakage) --
+# the default 0.9 would make every ingest raise. The ~38% of
+# parcels without an ADB match get all-null owner/value/sale
+# columns, not a failed ingest; this is a real, load-bearing
+# limitation of the source, not a bug in this recipe.
+#
+# Fields left unmapped, and why (checked values, not just names,
+# per acquiring_sources.md Phase 4):
+#   - YEAR_CREAT: NOT year_built despite the name -- verified via
+#     outStatistics (min=0, max=45916, avg=839.5 across 510,944
+#     populated rows), values are structurally impossible as
+#     calendar years. Likely an internal record-sequence field.
+#   - LS_DATE: an Esri `esriFieldTypeDate` field, confirmed via a
+#     raw `f=json` attribute fetch to arrive as epoch milliseconds
+#     (not an ISO string). `io.transform.UNARY_OPS['to_datetime']`
+#     is a bare `pd.to_datetime(x, errors='coerce')` with no
+#     `unit=` handling (confirmed in transform.py), which silently
+#     collapses an epoch-ms value to ~1970 -- the same gap already
+#     documented in `US-DC_parcel-dcgovrecordlots-2026`. Left
+#     unmapped rather than ship that corruption.
+#   - LAND_USE / LAND_USE_D: no statewide-standardized vocabulary
+#     like WI's PROPCLASS. Sampled LAND_USE codes vary in digit
+#     width and format across towns (single digits, "0101"-style
+#     4-digit codes, and non-numeric values, all in the same
+#     field); LAND_USE_D is often not a land-use description at all
+#     but a literal unit-count string (e.g. "10-UNIT", "4-7 UNITS
+#     MDL-01") for multi-family buildings -- the same "check
+#     values, not names" trap as Sampson County NC's USE_DESC.
+#   - PLAN_ID: nominally 427,194/522,253 populated, but every
+#     sampled value was the literal placeholder "0" -- not a real
+#     subdivision-plan reference in practice.
+#   - SOURCE: data-preparer provenance ("CAI Inc", "JEODonnell",
+#     "solon", "Town", vs. "0" for most rows), not a parcel
+#     attribute.
+#   - RES_AREA / CI_AREA: a residential/commercial-industrial area
+#     split; the registry has one `area_sqft`, not a per-use split.
+#   - PARENT (35,305/708,382 populated): a parcel-split/lineage
+#     reference, mirroring DC's condo-lineage fields
+#     (CONDO_REGIME_NUM etc.) -- no registry slot.
+#   - TYPE: flags non-parcel polygons inconsistently across towns
+#     (values include "Cemetery", "Road", "Water", "Wetland", "ROW",
+#     "Duplicate", "Disputed", alongside blank and "Parcel").
+#     Verified counts: 304,379 blank (43.0%), 392,195 "Parcel"
+#     (55.4%), and 11,808 rows (1.7%) carrying one of the other
+#     labels. No registry slot for it, and no single vocabulary to
+#     normalize across ~319 independently-submitting towns; a
+#     future curate-stage filter could use it to drop the 1.7% of
+#     rows the source itself flags as non-parcel (roads, water,
+#     cemeteries), but that is out of scope for an ingest recipe.
+#   - OWN_CNTRY: inconsistent free text (ZIP codes, abbreviations,
+#     full country names all present); no `owner_country` registry
+#     field regardless.
+#   - GEOCODE, CNTYCODE: GEOCODE is consumed only as the prefix
+#     already embedded in STATE_ID (see above); CNTYCODE duplicates
+#     COUNTY as a numeric code (with at least one unpadded value,
+#     "3" instead of "03", observed) and is not needed since
+#     `process_by` below matches on the COUNTY name directly.
+#
+# Sentinel handling (checked values, not source documentation --
+# no published Maine GeoLibrary field dictionary was found for the
+# ADB table beyond the ArcGIS field list itself, so these are
+# inferred, flagged as such rather than presented as source-stated):
+#   - PROPLOCNUM (mapped to address_number): treated a literal 0 as
+#     "no house number assigned" and nulled before mapping. Plausible
+#     for rural road-frontage lots with only a street name, but this
+#     is an inference, not a documented sentinel (unlike MN's
+#     source-stated 0/-9999).
+#   - LS_PRICE (mapped to last_sale_price): of 491,114 populated
+#     rows, only 66,078 (13.5%) are greater than 0 -- an 88% zero
+#     rate is a much stronger signal than LAND_VAL/BLDG_VAL's ~12.8%
+#     zero-rate (431,254/494,712 rows are LAND_VAL > 0), which is
+#     plausible as genuine $0 assessments for exempt property and
+#     was left unmodified. LS_PRICE's 0 was nulled as a "no sale
+#     recorded" placeholder.
+#   - LOT_UNITS (a unit-of-measure companion field for LOT_SIZE) is
+#     essentially unpopulated (only None or the literal "0" appear
+#     across the whole table) -- LOT_SIZE's own magnitude (min
+#     1.999e-05, max 328,000, avg 17.7 across populated rows) is
+#     consistent with acres, not sqft, so `acres_to_sqft` is applied
+#     unconditionally. BLDG_SIZE's magnitude (min 3, max 222,062,
+#     avg 2,150) is already consistent with square feet -- no
+#     conversion applied, and its own zero-rate was not separately
+#     checked.
+#
+# License (checked explicitly, per README.md/acquiring_sources.md):
+# the ArcGIS item's own `licenseInfo` (State of Maine org), quoted
+# verbatim: "Access: Public. Use: User assumes risk. Disclaimer:
+# This information has been produced using a number of disparate
+# data sources to support assessing and planning activities. It is
+# for assessing and planning purposes only. It is not meant to
+# replace or represent survey-grade boundary data nor to be used
+# for conveyances. Neither the Maine Office of GIS (MEGIS) nor the
+# Maine GeoLibrary are responsible for map errors, omissions,
+# misuse, misinterpretation, or currency of the data." No explicit
+# commercial-use or redistribution restriction was found anywhere
+# (the old Maine GeoLibrary policy site, maine.gov/geolib, is now a
+# deprecated redirect stub with no separate terms page of its own).
+# `accessInformation`: "Maine GeoLibrary; MaineIT GIS".
+#
+# parcel_id_local: no bundled row exists yet for US-ME in
+# `US/_all/parcel/_all/US_parcel_id-overrides.csv`, so this falls
+# back to the default 'simple' conversion. Safe here since STATE_ID
+# is a stable, GEOCODE-prefixed compound string (a different prefix
+# per town), so a plain strip/uppercase carries essentially no risk
+# of collapsing two different towns' parcels onto the same key --
+# the same reasoning as `US-DC_parcel-dcgovrecordlots-2026`'s SSL.
+
+description: >-
+  Maine tax parcels for Organized Towns (Maine GeoLibrary Parcel Project),
+  with owner, land/building value, sale price, and dwelling-unit data joined
+  from the source's ADB assessor table. Excludes Unorganized Territory.
+
+admin_id: US-ME
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: megis
+    portal_url: "https://maine.hub.arcgis.com/datasets/maine::maine-parcels-organized-towns-feature/about"
+    download_url_scraper: arcgis_rest_scraper
+    license: "Access: Public. Use: User assumes risk. For assessing/planning purposes only; not survey-grade; not for conveyances (State of Maine / Maine GeoLibrary, MEGIS)."
+    terms_url: "https://maine.hub.arcgis.com/datasets/maine::maine-parcels-organized-towns-feature/about"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "maine_parcels_organized_towns.geojson"
+
+# Layer 10 (polygon parcels) topped up with table 9 (the ADB
+# ownership/assessment table) via attribute_join -- see header for
+# the join-key derivation and the measured 62.2% match rate.
+scraper_options:
+  layer_url: "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer/10"
+  where: "1=1"
+  out_fields: "*"
+  attribute_join:
+    layer_url: "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer/9"
+    key: STATE_ID
+    where: "1=1"
+    fields:
+      - OWNER1
+      - OWNER2
+      - OWN_ADDR1
+      - OWN_ADDR2
+      - OWN_CITY
+      - OWN_STATE
+      - OWN_ZIP
+      - LS_PRICE
+      - LS_BOOK
+      - LS_PAGE
+      - LAND_VAL
+      - BLDG_VAL
+      - LIV_UNITS
+      - LOT_SIZE
+      - BLDG_SIZE
+  # Below the default 0.9: only ~62% of parcels have a matching ADB
+  # row at all (see header). Well above a value that would still
+  # catch a genuinely broken key.
+  join_min_match: 0.55
+
+# COUNTY (plain county name, e.g. "Sagadahoc") matches the census
+# admin3 recipe's own `name` column exactly (verified), so no
+# transformation or bespoke sidecar crosswalk is needed -- see
+# header for why this differs from the MN/TN scoped-crosswalk
+# pattern.
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: name
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+columns:
+  parcel_id_admin2: STATE_ID
+  parcel_id_admin4: MAP_BK_LOT
+  address_number: PROPLOCNUM
+  address_street_name: PROP_LOC
+  owner_name: OWNER1
+  owner_name_2: OWNER2
+  owner_address: OWN_ADDR1
+  owner_address_2: OWN_ADDR2
+  owner_city: OWN_CITY
+  owner_state: OWN_STATE
+  owner_postal_code: OWN_ZIP
+  last_sale_price: LS_PRICE
+  land_value: LAND_VAL
+  improvement_value: BLDG_VAL
+  n_dwellings: LIV_UNITS
+  lot_size: LOT_SIZE
+  area_sqft: BLDG_SIZE
+  source_date: FMUPDAT
+
+columns_to_categorical:
+  - owner_state
+  - owner_city
+
+transformations:
+  # Expose the raw state-assigned STATE_ID under the canonical name
+  # parcel_id_assessor (a copy of parcel_id_admin2), so it is the
+  # raw key parcel_id_local derives from -- consistent with the
+  # WI/DC/MN statewide recipes.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+  # LS_BOOK/LS_PAGE are raw (unmapped) ADB fields -- book/page are
+  # transaction-scoped in the registry, not parcel-scoped, so they
+  # combine into the parcel-scoped last_sale_book_page instead.
+  - type: string
+    operation: concat
+    inputs: [LS_BOOK, LS_PAGE]
+    args: {sep: "-"}
+    output: last_sale_book_page
+
+  # Inferred sentinel, not source-documented -- see header.
+  - type: unary
+    operation: null_if_equal
+    input: address_number
+    args: {value: 0}
+    output: address_number
+
+  # 88% of populated LS_PRICE rows are exactly 0 -- treated as
+  # "no sale recorded" (see header); LAND_VAL/BLDG_VAL are left
+  # unmodified since their own zero-rate is plausible as real
+  # exempt-property values.
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_price
+    args: {value: 0}
+    output: last_sale_price
+
+  # LOT_SIZE arrives in acres (see header for the magnitude check);
+  # the registry's lot_size is sqft.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+  # FMUPDAT is a plain 4-digit year string (e.g. "2010"), not an
+  # Esri date field -- verified via a raw attribute sample, so it
+  # is not subject to the epoch-ms trap that ruled out LS_DATE.
+  - type: unary
+    operation: to_datetime
+    input: source_date
+    output: source_date
+
+# Standardized matching key from the source's own compound
+# GEOCODE_MAP-BK-LOT id.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
