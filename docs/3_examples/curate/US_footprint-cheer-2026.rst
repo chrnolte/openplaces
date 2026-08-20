@@ -300,12 +300,12 @@ Core assets
 Stage 2: harmonize
 ------------------
 
-This stage merges geometries and links datasets to build the core footprint spine (``US_footprint-spine-2026``) and parcel spine (``US_parcel-spine-2026``).
+This stage merges geometries and links datasets to build the core footprint spine and parcel spine. Each spine is a pair of recipes: a *geospine* recipe (``US_footprint-geospine-2026``, ``US_parcel-geospine-2026``) runs the expensive geometry phase — spine resolution, spatial overlays and point joins, group detections — and persists its results (spine plus one link table per join), and an *attribute* recipe (``US_footprint-spine-2026``, ``US_parcel-spine-2026``) restores those persisted results and attaches evidence, addresses, and id-based joins without any spatial computation. Rerunning attribute logic therefore never repeats geometry work (``--reprocess attributes`` in the driver). The steps below are described in pipeline order across each pair; the split does not change what any step computes.
 
 Footprint spine harmonization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Recipe: ``US_footprint-spine-2026``
+Recipes: ``US_footprint-geospine-2026`` (geometry phase) and ``US_footprint-spine-2026`` (attribute phase)
 
 Creates the spatial exposure units by merging and deduplicating footprint boundaries, linking them to parcels, and attaching point reference data:
 
@@ -339,7 +339,7 @@ Creates the spatial exposure units by merging and deduplicating footprint bounda
 Parcel spine harmonization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Recipe: ``US_parcel-spine-2026``
+Recipes: ``US_parcel-geospine-2026`` (geometry phase) and ``US_parcel-spine-2026`` (attribute phase)
 
 Creates the parcel-level matching baseline by compiling land boundaries, merging tax assessor records, and linking point evidence:
 
