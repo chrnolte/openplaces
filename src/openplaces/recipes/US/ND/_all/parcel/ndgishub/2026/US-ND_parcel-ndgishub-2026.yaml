@@ -1,0 +1,261 @@
+# Recipe: North Dakota statewide parcel boundaries, from the "State
+# Parcel Program" hosted on the North Dakota GIS Hub (item
+# ac6da1176038457db16e8debe3f1abaf, owner NDGISHub). County-sourced
+# (each county/vendor submits, aggregated by AppGeo/NDIT), state-
+# aggregated on a single ArcGIS FeatureServer
+# (services1.arcgis.com/GOcSXpzwBHyk2nog/.../NDGISHUB_Parcels): layer
+# 0 "Parcels" (this recipe, polygon geometry) and table 1
+# "Parcels_TaxRoll" (sibling recipe US-ND_property-ndgishub-2026,
+# assessment/ownership attributes -- NOT bundled here, see below).
+# The prior (unverified) web research handed to this task named this
+# correctly as "Statewide GIS Parcel Dataset and Taxrolls"; verified
+# directly against the live service and the item's own metadata
+# rather than trusted as given.
+#
+# NOTE on why this is two recipes, not one with additional_layers
+# (Phase 5/6 of acquiring_sources.md, and the DC Record-Lots-vs-Tax-
+# Lots precedent for "two recipes, not one"): the ArcGIS item's own
+# description states outright "There is a one-to-many relationship
+# between the parcels feature class and the tax roll table, based on
+# the UniqueGISID attribute in each dataset" -- confirmed empirically
+# (statewide: 741,995 Parcels rows vs 748,930 Parcels_TaxRoll rows;
+# formally a relationship of cardinality esriRelCardinalityOneToMany,
+# origin Parcels -> destination Parcels_TaxRoll, key UniqueGISID, per
+# both layers' own `?f=json` metadata). This repo's
+# `recipe.build_table_recipe`/`additional_layers` mechanism only
+# supports a second layer read from the SAME already-downloaded file
+# (`io/ingester/__init__.py`'s "Process additional tables from the
+# same source file" -- it reuses `self.download_partition`, it does
+# not re-download); Parcels and Parcels_TaxRoll are two independently
+# downloadable resources of one FeatureServer, not two layers inside
+# one archive, so `additional_layers` does not apply. The scraper-
+# level `attribute_join` option in `arcgis_rest_scraper.py` was also
+# considered and REJECTED: `_fetch_attribute_table` builds a plain
+# `dict` keyed by the join field
+# (`table[key_value] = {...}`), so a genuine one-to-many join key
+# silently keeps only the LAST matching row per key and drops the
+# rest with no warning -- exactly the kind of silent join-collapse
+# this task's instructions warn against, and wrong for the ~1% of
+# parcels here that carry more than one tax-roll row. The correct,
+# safe pattern -- two independent ingest recipes joined at harmonize
+# time via the standard `parcel_id_local` key -- mirrors
+# `US-IN_property-dlgf-2023`, an existing standalone (non-
+# additional_layers) property recipe verified against its own sibling
+# parcel recipe by real overlap testing.
+#
+# NOTE on bulk vs REST (Phase 3, and the equivalence test). The
+# item's own description recommends bulk download explicitly:
+# "If you wish to download this entire dataset rather than stream the
+# data as a web service, we suggest you use the 'Download Zipped
+# fGDB' link. The other download options may take several minutes to
+# generate." Given the scale (741,995 parcels; REST paging at the
+# service's 2,000-feature page cap would need ~370+ sequential
+# requests for geometry alone), the ArcGIS Hub v3 bulk GeoJSON export
+# (`hub.arcgis.com/api/v3/datasets/{itemId}_0/downloads/data
+# ?format=geojson&spatialRefId=4326`) was fetched in full (973 MB,
+# 742,100 features) and checked against the equivalence test rather
+# than assumed safe:
+#   - Feature count: 742,100 (bulk) vs 741,995 (live `returnCountOnly`
+#     at verification time) -- a 105-row (0.014%) drift, consistent
+#     with the bulk cache being a five-week-old snapshot (cached
+#     2026-07-15) against a live count checked 2026-08-20; well within
+#     the "tens of rows is export-snapshot lag" tolerance this repo's
+#     own guide names.
+#   - Field schema: identical field list to the live layer's own
+#     `?f=json` metadata (`ogrinfo -so -al`), no missing or added
+#     fields -- unlike Wilson NC's Hub export, nothing here reads as a
+#     joined/computed field silently dropped from the cache.
+#   - Field population: `CalculatedAcres` populated 742,100/742,100
+#     (100%, matches expectation for a geometry-derived field) and
+#     `SubdivisionPlat` 225,615/742,100 (30.4%), close to the live
+#     REST figure sampled the same day (31.8% statewide) -- the small
+#     gap is consistent with the cache-vs-live time lag, not a
+#     stripped join.
+# Bulk was used; `arcgis_rest_scraper` was not needed.
+#
+# NOTE on `Ownership` (Phase 4's "check what a field means, not what
+# it is called" -- but for a privacy trap, not a classification one).
+# The field's own domain metadata (`dOwnership`) declares an
+# ownership-TYPE vocabulary (Private, Municipal, State, County,
+# Federal, International, Tribal, Railroad, Unknown). The values
+# actually observed live in the field are NOT that vocabulary: they
+# are free-text, 15-character-truncated names (business names,
+# township/city government names, and what read as private
+# individual owner names) -- i.e. this field appears to have been
+# repopulated by (at least some) counties with owner name instead of
+# the declared ownership-type code. NOT mapped anywhere, and no
+# example value is reproduced here even in fabricated form, per this
+# repo's no-personal-data policy: a name-shaped field, however
+# labeled, is treated as carrying real names until proven otherwise,
+# and this one clearly does for at least some rows. Ownership TYPE
+# (if ever wanted) has no clean source on this layer as a result --
+# the taxroll's own `OwnerName` (mapped as `owner_name` on the sibling
+# `US-ND_property-ndgishub-2026` recipe) is the correct, unambiguous
+# owner-name field and should be used instead of this one for any
+# purpose.
+#
+# NOTE on identifiers (schema, not records -- format only, values
+# fabricated below): `GISID` is a fixed 10-character code, unique only
+# within a county. `UniqueGISID` is exactly
+# `{CountyFIPS}-{GISID}` (verified: 100/100 sampled rows), 16
+# characters, unique statewide -- confirmed against the item's own
+# stated join key. Fabricated-format example:
+# GISID '9999999999', UniqueGISID '38999-9999999999'.
+# `UniqueGISID` is therefore the correct within-source key linking
+# this recipe to `US-ND_property-ndgishub-2026` (mapped there too),
+# and is used as this recipe's `parcel_id_local` source. No row in
+# `US/_all/parcel/_all/US_parcel_id-overrides.csv` or
+# `geo/parcel_id_links.csv` exists yet for US-ND, so `parcel_id_local`
+# falls back to the default `simple` conversion (strip + uppercase),
+# which is safe here: the format above has no delimiter `simple` would
+# collapse and no case-only distinction to lose.
+#
+# NOTE on fields left unmapped for want of a registry attribute, or
+# because they are declared-but-sparse/redundant:
+#   - `CalculatedAcres`: a second, geometry-derived area figure --
+#     deliberately NOT mapped to `lot_size`, matching the
+#     `US-MD_parcel-mdimap-2026` precedent for the analogous
+#     `CALCULATEDAREA` field: redundant with the area the pipeline
+#     already computes from the polygon itself. The sibling property
+#     recipe's `DeededAcres` (the recorded/legal acreage, independent
+#     of geometry) is mapped to `lot_size` instead.
+#   - `Lot`, `Block`, `Section`, `Township`, `Range`, `SectionNumber`,
+#     `TownshipNumber`, `RangeNumber`, `TownshipName`: legal-
+#     description / PLSS (Public Land Survey System) components with
+#     no registry slot, mirroring the DC recipe's treatment of
+#     `SQUARE`/`SUFFIX`/`LOT`/`QUADRANT`.
+#   - `FeatureType`: a genuinely useful domain (Parcel / Paper Street /
+#     County-Municipal-State-Railroad-Unknown ROW / Median / Water /
+#     Island / Unknown) that would let a consumer exclude right-of-way
+#     and water slivers from parcel counts, but populated only
+#     33,920/741,995 (4.6%) statewide -- too sparse to build a filter
+#     on, and no registry attribute exists for it regardless. Left
+#     unmapped; flagged in case a future pass wants to add such a
+#     field once coverage improves.
+#   - `SourceID`, `SourceType`, `AutomationMethod`, `AutomationType`,
+#     `AutomationComment`, `Editor`: county/vendor ETL bookkeeping, no
+#     registry equivalent.
+#   - `SourceDate`, `LastUpdateDate`, `DateImported`: all
+#     `esriFieldTypeDate`. Not applicable here since this recipe uses
+#     the Hub bulk GeoJSON export rather than `arcgis_rest_scraper`'s
+#     raw `f=geojson` REST query, and GDAL's GeoJSON reader parses
+#     them as proper `DateTime` (verified via `ogrinfo -so`, unlike the
+#     epoch-millisecond corruption documented for the raw-REST path in
+#     `_instructions/acquiring_sources.md`) -- but left unmapped anyway
+#     because no registry attribute needs a parcel-record ETL
+#     timestamp (`source_date` is reserved for the source's own
+#     last-update date, which none of these three cleanly represent:
+#     they are import/edit bookkeeping, not the county's data vintage).
+#   - `Shape__Area`, `Shape__Length`: Esri-computed shape metrics,
+#     redundant with geometry the pipeline derives itself.
+#
+# No transaction/sales data of any kind exists in either ND layer
+# (confirmed against both layers' full field lists) -- this source
+# supplies geometry and assessment/tax-roll data only, not sales
+# history, consistent with the task's own framing ("parcel geometry
+# and tax-roll data").
+#
+# Verified end-to-end: a real, unmodified `op.ingest()` run (not a
+# schema-only check) was completed for Slope County (`US-ND-SL`,
+# ND's smallest county by parcel count, 3,108 parcels). Output wrote
+# exactly 3,108 rows, matching the live service's own
+# `returnCountOnly` for `CountyName='Slope'` exactly. `parcel_id_local`
+# populated 3,107/3,108 (99.97%, the one gap a genuinely null
+# `UniqueGISID` row) with 3,107 distinct values (fully non-degenerate:
+# no duplicate collapsing beyond the one source-side null). Geometry:
+# 3,084 Polygon + 24 MultiPolygon, 0 null geometries, reprojected to
+# the pipeline's own CRS. Cross-checked against the sibling
+# `US-ND_property-ndgishub-2026` recipe's own Slope-county output:
+# 3,090/3,107 (99.45%) of this recipe's `parcel_id_local` values have
+# at least one matching row on the property side -- see that recipe's
+# header for the reverse direction and why it is lower.
+#
+# This validation pass also found and fixed a real, pre-existing
+# `openplaces` bug, unrelated to North Dakota specifically:
+# `TableIngester._read_recipe_data`'s CSV/xlsx/fixed-width branch
+# (`suffix in PANDAS_EXTENSIONS`) never looked at the `fids` keyword
+# argument that `process()` builds from
+# `process_by.admin_id_column` -- unlike the `.gdb`/geopandas/parquet
+# branches, which do. The practical effect: any recipe chunking a flat
+# (non-GIS) file by `process_by.admin_id_column` silently wrote the
+# ENTIRE source file under every single admin unit's output, rather
+# than that unit's rows only -- caught here because the sibling
+# `US-ND_property-ndgishub-2026` recipe (a CSV) does exactly this, and
+# its first ingest run wrote all 748,930 statewide rows under
+# `US-ND-SL`'s file instead of Slope County's own 3,567. Fixed in
+# `io/ingester/table_ingester.py` by applying `.iloc[fids]` to the
+# already-read frame before returning it, since row order is
+# unaffected by `usecols`/dtype selection and so lines up exactly with
+# the FID filter built from an earlier plain read of the same file.
+#
+# License: the ArcGIS item's own `licenseInfo` is a standard
+# cartographic-accuracy disclaimer ("Not for navigation... makes no
+# guarantee... no warranty, expressed or implied...") with no explicit
+# statement on redistribution or commercial use either way. North
+# Dakota's general state-site disclaimer
+# (nd.gov/content.htm?id=Disclaimer) likewise disclaims accuracy but
+# does not address redistribution. Recorded as 'unknown' per this
+# repo's convention for "no explicit terms found either way" rather
+# than guessed as permissive or restricted.
+
+description: >-
+  North Dakota statewide parcel boundaries (State Parcel Program, county-
+  sourced, state-aggregated) from the North Dakota GIS Hub's Parcels layer.
+
+admin_id: US-ND
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: ndgishub
+    portal_url: "https://gishubdata-ndgov.hub.arcgis.com/datasets/NDGOV::parcels/explore"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/ac6da1176038457db16e8debe3f1abaf_0/downloads/data?format=geojson&spatialRefId=4326"
+    license: >-
+      unknown (ArcGIS item licenseInfo and ND's general state-site
+      disclaimer both disclaim accuracy but state no explicit
+      redistribution terms either way; see header)
+    terms_url: "https://www.nd.gov/content.htm?id=Disclaimer"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "nd_parcels.geojson"
+
+# CountyFIPS is already a plain 5-digit FIPS code (e.g. '38087'), so
+# (unlike Wisconsin's PARCELFIPS, a 3-digit code needing a state-FIPS
+# prefix) it needs no admin_id_transformation before crosswalking
+# directly against the Census admin3 spine's own admin3_id_admin1.
+process_by:
+  admin_level: 3
+  admin_id_column: CountyFIPS
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+columns:
+  parcel_id_admin2: UniqueGISID
+  parcel_id_admin3: GISID
+  admin3_name: CountyName
+  subdivision: SubdivisionPlat
+
+columns_to_categorical:
+  - admin3_name
+
+# Expose the raw statewide-unique id under the canonical name
+# parcel_id_assessor (a copy of parcel_id_admin2 -- UniqueGISID), so
+# it is the raw key parcel_id_local derives from, and so it is the
+# SAME underlying value the sibling property recipe derives its own
+# parcel_id_local from (both map UniqueGISID to parcel_id_admin2
+# identically).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
