@@ -58,27 +58,28 @@ def test_discover_link_sources_no_roll_for_uncovered_county():
     assert all(m['recipe_id'] == 'US-NC_parcel-nconemap-2025' for m in matches)
 
 
+def _recipe_row(admin_id, source_id, version, filename_suffix='', **kwargs):
+    """Build one find_recipes() row for the _find_admin_scoped_recipe_ids tests."""
+    recipe_id = f'{admin_id}_parcel-{source_id}-{version}'
+    if filename_suffix:
+        recipe_id += f'_{filename_suffix}'
+    return {
+        'admin_id': admin_id,
+        'source_id': source_id,
+        'version': version,
+        'exclude_from_auto_discover': False,
+        'recipe_id': recipe_id,
+        'filename_suffix': filename_suffix,
+        **kwargs,
+    }
+
+
 def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
     rows = pd.DataFrame(
         [
-            {
-                'admin_id': 'US-MA',
-                'source_id': 'massgis',
-                'version': '2024',
-                'exclude_from_auto_discover': False,
-            },
-            {
-                'admin_id': 'US-MA',
-                'source_id': 'massgis',
-                'version': '2025',
-                'exclude_from_auto_discover': False,
-            },
-            {
-                'admin_id': 'US-CA',
-                'source_id': 'other',
-                'version': '2020',
-                'exclude_from_auto_discover': False,
-            },
+            _recipe_row('US-MA', 'massgis', '2024'),
+            _recipe_row('US-MA', 'massgis', '2025'),
+            _recipe_row('US-CA', 'other', '2020'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -89,21 +90,33 @@ def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
     assert ids == ['US-MA_parcel-massgis-2025']  # newest version only, US-CA excluded
 
 
+def test_find_admin_scoped_recipe_ids_keeps_distinct_filename_suffixes(monkeypatch):
+    # Two recipes sharing admin_id/source_id/version but distinguished by a
+    # filename suffix (e.g. a PACS roll's own APPRAISAL_INFO recipe and its
+    # _improvement-detail sibling) must both survive the dedup -- they are
+    # not competing versions of the same source.
+    rows = pd.DataFrame(
+        [
+            _recipe_row('US-TX-VI', 'victoriacad', '2026'),
+            _recipe_row('US-TX-VI', 'victoriacad', '2026', 'improvement-detail'),
+        ]
+    )
+    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+
+    state = _state('US-TX-VI')
+    ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
+
+    assert ids == [
+        'US-TX-VI_parcel-victoriacad-2026',
+        'US-TX-VI_parcel-victoriacad-2026_improvement-detail',
+    ]
+
+
 def test_find_admin_scoped_recipe_ids_orders_by_specificity_then_version(monkeypatch):
     rows = pd.DataFrame(
         [
-            {
-                'admin_id': 'US-NC-NE',
-                'source_id': 'nhcgov',
-                'version': '2026',
-                'exclude_from_auto_discover': False,
-            },
-            {
-                'admin_id': 'US-NC',
-                'source_id': 'nconemap',
-                'version': '2025',
-                'exclude_from_auto_discover': False,
-            },
+            _recipe_row('US-NC-NE', 'nhcgov', '2026'),
+            _recipe_row('US-NC', 'nconemap', '2025'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -124,18 +137,8 @@ def test_find_admin_scoped_recipe_ids_specificity_beats_newer_version(monkeypatc
     # primary sort key, version only breaks ties within the same tier.
     rows = pd.DataFrame(
         [
-            {
-                'admin_id': 'US-NC',
-                'source_id': 'nconemap',
-                'version': '2026',
-                'exclude_from_auto_discover': False,
-            },
-            {
-                'admin_id': 'US-NC-BL',
-                'source_id': 'bladenco',
-                'version': '2020',
-                'exclude_from_auto_discover': False,
-            },
+            _recipe_row('US-NC', 'nconemap', '2026'),
+            _recipe_row('US-NC-BL', 'bladenco', '2020'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -150,18 +153,8 @@ def test_find_admin_scoped_recipe_ids_version_tiebreaks_same_specificity(monkeyp
     # At the same admin specificity, version remains the tiebreaker.
     rows = pd.DataFrame(
         [
-            {
-                'admin_id': 'US-NC-BL',
-                'source_id': 'old_source',
-                'version': '2019',
-                'exclude_from_auto_discover': False,
-            },
-            {
-                'admin_id': 'US-NC-BL',
-                'source_id': 'bladenco',
-                'version': '2026',
-                'exclude_from_auto_discover': False,
-            },
+            _recipe_row('US-NC-BL', 'old_source', '2019'),
+            _recipe_row('US-NC-BL', 'bladenco', '2026'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -175,18 +168,10 @@ def test_find_admin_scoped_recipe_ids_version_tiebreaks_same_specificity(monkeyp
 def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
     rows = pd.DataFrame(
         [
-            {
-                'admin_id': 'US-MA',
-                'source_id': 'massgis',
-                'version': '2025',
-                'exclude_from_auto_discover': False,
-            },
-            {
-                'admin_id': 'US-MA',
-                'source_id': 'placeslab',
-                'version': 'fmv2026',
-                'exclude_from_auto_discover': True,
-            },
+            _recipe_row('US-MA', 'massgis', '2025'),
+            _recipe_row(
+                'US-MA', 'placeslab', 'fmv2026', exclude_from_auto_discover=True
+            ),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
@@ -230,8 +215,18 @@ def test_link_by_id_auto_discover_recent_majority_source_wins_use_subgroup(
     # a value column with full coverage that should win as the more recent
     # source.
     matches = [
-        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
-        {'recipe_id': 'nhcgov', 'layer': None, 'key': 'parcel_id_local'},
+        {
+            'recipe_id': 'nconemap',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
+        {
+            'recipe_id': 'nhcgov',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -277,8 +272,18 @@ def test_link_by_id_auto_discover_track_provenance_records_winning_source(
     # requested for 'value': every cell it wrote is stamped with the source
     # that actually supplied it.
     matches = [
-        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
-        {'recipe_id': 'nhcgov', 'layer': None, 'key': 'parcel_id_local'},
+        {
+            'recipe_id': 'nconemap',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
+        {
+            'recipe_id': 'nhcgov',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -325,7 +330,12 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
     # geometry_source is 'nconemap' (this same source), so the row-level
     # mask path is exercised, not the no-geometry_source fallback.
     matches = [
-        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
+        {
+            'recipe_id': 'nconemap',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -378,7 +388,12 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
     # already is. geometry_source is 'nconemap' (this same source), so the
     # row-level mask path is exercised, not the no-geometry_source fallback.
     matches = [
-        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
+        {
+            'recipe_id': 'nconemap',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -429,7 +444,12 @@ def test_link_by_id_auto_discover_keep_column_fallback_fills_gap_from_other_sour
     # row B's gap from its own reference data for that same key, since
     # row B isn't one of bladenco's own winning-geometry rows.
     matches = [
-        {'recipe_id': 'bladenco', 'layer': None, 'key': 'parcel_id_local'},
+        {
+            'recipe_id': 'bladenco',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -469,7 +489,12 @@ def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
     # from this match entirely, the original coarser guard, rather than
     # risk the pooled-duplicate-key corruption the guard exists to prevent.
     matches = [
-        {'recipe_id': 'nconemap', 'layer': None, 'key': 'parcel_id_local'},
+        {
+            'recipe_id': 'nconemap',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -508,8 +533,18 @@ def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
 
 def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
     matches = [
-        {'recipe_id': 'source-a', 'layer': None, 'key': 'parcel_id_local'},
-        {'recipe_id': 'source-b', 'layer': 'property', 'key': 'parcel_id_admin2'},
+        {
+            'recipe_id': 'source-a',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
+        {
+            'recipe_id': 'source-b',
+            'layer': 'property',
+            'key': 'parcel_id_admin2',
+            'aggregation_function': None,
+        },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
     monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
@@ -538,6 +573,68 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
     # B's parcel_id_admin2 is 'C', which doesn't match source-b's 'A' rows.
     assert state.spine['improvement_value'].iloc[0] == 3.0  # 1.0 + 2.0 summed
     assert pd.isna(state.spine['improvement_value'].iloc[1])
+
+
+def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
+    monkeypatch,
+):
+    # A match's own declared aggregation_function (e.g. the improvement-
+    # detail sibling's area_sqft: sum, year_built: min) must apply to that
+    # match's columns only -- a sibling match with no such declaration keeps
+    # the registry default ('mean' for both here) even though both matches
+    # attach the same two column names.
+    matches = [
+        {
+            'recipe_id': 'source-a',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': None,
+        },
+        {
+            'recipe_id': 'source-b',
+            'layer': None,
+            'key': 'parcel_id_local',
+            'aggregation_function': {'area_sqft': 'sum', 'year_built': 'min'},
+        },
+    ]
+    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
+    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+
+    refs = {
+        # Registry default for both columns is 'mean': (10+20)/2 = 15.
+        'source-a': pd.DataFrame(
+            {
+                'parcel_id_local': ['A', 'A'],
+                'area_sqft': [10.0, 20.0],
+                'year_built': [2000.0, 2010.0],
+            }
+        ),
+        # Own override: area_sqft sums to 30, year_built takes the min 2000.
+        'source-b': pd.DataFrame(
+            {
+                'parcel_id_local': ['B', 'B'],
+                'area_sqft': [10.0, 20.0],
+                'year_built': [2000.0, 2010.0],
+            }
+        ),
+    }
+    monkeypatch.setattr(
+        links, 'get_entities', lambda recipe_id, admin_id, layer=None: refs[recipe_id]
+    )
+
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
+    state = _state('US-TX-VI', spine=spine)
+    state = links.link_by_id(
+        state,
+        auto_discover=True,
+        entity_type='property',
+        columns=['area_sqft', 'year_built'],
+    )
+
+    assert state.spine.set_index('parcel_id_local').loc['A', 'area_sqft'] == 15.0
+    assert state.spine.set_index('parcel_id_local').loc['A', 'year_built'] == 2005.0
+    assert state.spine.set_index('parcel_id_local').loc['B', 'area_sqft'] == 30.0
+    assert state.spine.set_index('parcel_id_local').loc['B', 'year_built'] == 2000.0
 
 
 def test_apply_remap_csvs_applies_matching_crosswalk_and_infers_key_length():

@@ -38,14 +38,22 @@ def find_recipes(
     pd.DataFrame
         Columns: ``admin_id``, ``stage``, ``entity_type``, ``source_id``,
         ``version``, ``n_companion_files``, ``exclude_from_auto_discover``,
-        ``level``. Sorted by admin_id then source_id. Global recipes have
-        an empty string for ``admin_id``. ``level`` is the admin level the
-        recipe's own output targets (parsed from its filename, e.g. `4`
-        for ``..._admin4.yaml``) -- only meaningful for
-        ``entity_type='admin'``; ``None`` otherwise, since only admin
-        recipes are split one file per level. This is independent of how
-        specific the recipe's ``admin_id`` scope is: two recipes scoped to
-        the same country can each target a different level.
+        ``level``, ``recipe_id``, ``filename_suffix``. Sorted by admin_id
+        then source_id. Global recipes have an empty string for
+        ``admin_id``. ``level`` is the admin level the recipe's own output
+        targets (parsed from its filename, e.g. `4` for ``..._admin4.yaml``)
+        -- only meaningful for ``entity_type='admin'``; ``None`` otherwise,
+        since only admin recipes are split one file per level. This is
+        independent of how specific the recipe's ``admin_id`` scope is: two
+        recipes scoped to the same country can each target a different
+        level. ``recipe_id`` is the file's own stem (the recipe path
+        convention guarantees this equals the true recipe id, filename
+        suffix included, so it is read rather than reconstructed).
+        ``filename_suffix`` is the trailing ``[_{filename}]`` part of
+        ``recipe_id`` distinguishing a sibling recipe that otherwise shares
+        the same admin_id/entity_type/source_id/version (e.g. two flat
+        files bundled in the same source ZIP) -- empty string for a
+        recipe with no such suffix.
     """
     recipes_root = Path(__file__).parent / 'recipes'
 
@@ -82,6 +90,18 @@ def find_recipes(
             suffix = yaml_path.stem.rsplit('admin', 1)[-1]
             level = int(suffix) if suffix.isdigit() else None
 
+        recipe_id = yaml_path.stem
+        base_id = (
+            f'{admin_id_str}_{entity_type}-{source_id}-{version}'
+            if admin_id_str
+            else f'{entity_type}-{source_id}-{version}'
+        )
+        filename_suffix = (
+            recipe_id[len(base_id) :].lstrip('_')
+            if recipe_id.startswith(base_id)
+            else ''
+        )
+
         rows.append(
             {
                 'admin_id': admin_id_str,
@@ -94,6 +114,8 @@ def find_recipes(
                     data.get('exclude_from_auto_discover', False)
                 ),
                 'level': level,
+                'recipe_id': recipe_id,
+                'filename_suffix': filename_suffix,
             }
         )
 

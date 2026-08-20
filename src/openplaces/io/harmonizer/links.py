@@ -1599,9 +1599,18 @@ def _link_spatial_point(
 def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> list[str]:
     """Ingest recipes of *entity_type* whose admin scope covers ``state.admin_id``.
 
-    One recipe id per (admin_id, source_id), keeping the newest version when
-    several exist for the same source (mirrors the specificity/version
-    precedence ``find_entity_recipe_id`` uses, ``recipe.py:444-463``).
+    One recipe id per (admin_id, source_id, filename_suffix), keeping the
+    newest version when several exist for the same source (mirrors the
+    specificity/version precedence ``find_entity_recipe_id`` uses,
+    ``recipe.py:444-463``). ``filename_suffix`` keeps this a *competing-
+    alternative* dedup, not a same-source-can-only-mean-one-recipe dedup:
+    two recipe files sharing admin_id/source_id/version but distinguished
+    by a filename suffix (e.g. a PACS roll's own APPRAISAL_INFO recipe
+    alongside its ``_improvement-detail`` sibling, both ``source_id:
+    victoriacad``) are genuinely different tables meant to coexist, not
+    two versions of the same one competing to be "the" victoriacad
+    recipe -- see :func:`_discover_link_sources`, which joins every one
+    of them.
 
     Returned least-specific-admin-id-first, version ascending within a tier:
     :func:`link_by_id`'s auto-discover mode joins sources in this order, so
@@ -1617,7 +1626,7 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
     """
     if state.admin_id is None:
         return []
-    best: dict[tuple[str, str], tuple[str, str, int]] = {}
+    best: dict[tuple[str, str, str], tuple[str, str, int]] = {}
     for _, row in find_recipes(entity_type, stage='ingest').iterrows():
         if row['exclude_from_auto_discover']:
             continue
@@ -1626,8 +1635,8 @@ def _find_admin_scoped_recipe_ids(state: HarmonizeState, entity_type: str) -> li
             state.admin_id
         ):
             continue
-        key = (admin_id_str, row['source_id'])
-        recipe_id = f'{admin_id_str}_{entity_type}-{row["source_id"]}-{row["version"]}'
+        key = (admin_id_str, row['source_id'], row['filename_suffix'])
+        recipe_id = row['recipe_id']
         specificity = admin_id_str.count('-') + 1
         if key not in best or row['version'] > best[key][0]:
             best[key] = (row['version'], recipe_id, specificity)
@@ -1656,6 +1665,17 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     majority of parcels — so the most admin-specific source's attributes
     win by default, falling back to version only among equally-specific
     sources.
+
+    Each match also carries its own ``aggregation_function`` (a recipe's or
+    ``additional_layers`` entry's own top-level ``aggregation_function``
+    key, or ``None``), letting one specific ingest recipe declare that its
+    rows are structurally 1:many for a reason the attribute registry's
+    global default does not anticipate -- e.g. a PACS
+    ``APPRAISAL_IMPROVEMENT_DETAIL`` roll, one row per building component,
+    where ``area_sqft`` needs summing per property rather than the
+    registry's ``mean``. Scoped to the recipe that declares it: unlike a
+    caller-supplied override on the :func:`link_by_id` step itself, it
+    never reaches a sibling match's columns.
     """
     from openplaces.recipe import get_recipe_by_id
 
@@ -1663,7 +1683,12 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     for recipe_id in _find_admin_scoped_recipe_ids(state, entity_type):
         recipe = get_recipe_by_id(recipe_id)
         matches.append(
-            {'recipe_id': recipe_id, 'layer': None, 'key': 'parcel_id_local'}
+            {
+                'recipe_id': recipe_id,
+                'layer': None,
+                'key': 'parcel_id_local',
+                'aggregation_function': recipe.get('aggregation_function'),
+            }
         )
         for layer_spec in recipe.get('additional_layers') or []:
             if 'entity' not in layer_spec:
@@ -1673,6 +1698,7 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                     'recipe_id': recipe_id,
                     'layer': str(layer_spec['entity'].entity_type),
                     'key': layer_spec.get('layer_key', 'parcel_id_local'),
+                    'aggregation_function': layer_spec.get('aggregation_function'),
                 }
             )
     return matches
@@ -1838,6 +1864,7 @@ def link_by_id(
     spine_key: str = 'parcel_id_local',
     ref_key: str = 'parcel_id_local',
     columns: list[str] | dict[str, str] | None = None,
+    aggregation_function: dict[str, str] | None = None,
     suffix: str | None = None,
     count_as: str | None = None,
     flag_as: str | None = 'is_transacted',
@@ -1912,8 +1939,9 @@ def link_by_id(
         been transacted. ``'aggregate'`` reduces a 1:many reference onto the
         spine by grouping on the key and applying each column's attribute-
         registry aggregation (e.g. sum land_value/n_dwellings, max year_built),
-        falling back to the first non-null value for columns without a registry
-        rule; it also emits a per-key record count. Use it when several
+        or *aggregation_function*'s override where one is given for that
+        column, falling back to the first non-null value for columns without
+        a usable rule; it also emits a per-key record count. Use it when several
         reference rows share one spine key, such as MassGIS L3_ASSESS condominium
         records stacked on one parcel polygon.
     spine_key, ref_key : str
@@ -1929,6 +1957,31 @@ def link_by_id(
         so the registry aggregation lookup and ``_write_prioritized`` gap-fill
         apply to the actual canonical output name rather than the reference's
         own column name.
+    aggregation_function : dict of {str: str}, optional
+        ``'aggregate'`` mode only. Per-output-column override of the
+        attribute-registry aggregation, keyed by the same post-rename
+        canonical output name as *columns*'s dict form (e.g.
+        ``{'area_sqft': 'sum'}``). Exists because the registry default is a
+        property-level default (``area_sqft`` is ``'mean'``, i.e. one value
+        per property in most sources), while a reference where several rows
+        share a key for a structural reason -- e.g. one row per building
+        component in a PACS ``APPRAISAL_IMPROVEMENT_DETAIL`` roll -- needs
+        that key's *sum* instead. Changing the registry default would
+        corrupt every other recipe's one-row-per-property case, so the
+        override lives here, per recipe, instead. A column absent from the
+        dict keeps the registry default. Resolved through the same
+        :func:`~openplaces.table._agg_func_for` alias lookup as the
+        registry path, so ``'join_nonnull'`` works here too, not only the
+        plain pandas reducer names.
+
+        In ``auto_discover`` mode this explicit override still applies to
+        every discovered match, so prefer letting the *reference recipe*
+        declare its own top-level ``aggregation_function`` key instead
+        (:func:`_discover_link_sources` reads it): that scopes the
+        override to just that one recipe's columns, leaving every sibling
+        match's registry default untouched. Pass this parameter in
+        ``auto_discover`` mode only when the override genuinely belongs to
+        the caller, not to one specific source.
     suffix : str, optional
         Suffix appended to attached column names (``'attributes'``/
         ``'aggregate'`` mode).
@@ -2005,6 +2058,14 @@ def link_by_id(
                         ]
                         if not match_columns:
                             continue
+            # A match's own declared override (e.g. the improvement-detail
+            # sibling's area_sqft: sum) wins over the caller's for the
+            # columns it names, but never reaches a sibling match with no
+            # such declaration -- see _discover_link_sources.
+            match_aggregation_function = {
+                **(aggregation_function or {}),
+                **(match['aggregation_function'] or {}),
+            }
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
@@ -2012,6 +2073,7 @@ def link_by_id(
                 spine_key=match['key'],
                 ref_key=match['key'],
                 columns=match_columns,
+                aggregation_function=match_aggregation_function or None,
                 suffix=suffix,
                 count_as=count_as,
                 layer=match['layer'],
@@ -2160,19 +2222,29 @@ def link_by_id(
         token = source_id_from_recipe_id(recipe_id) if provenance_cols else None
         for col, out_name in pairs:
             canonical_name = resolve_attribute_name(out_name)
-            fname = get_agg_func(canonical_name)
+            fname = (aggregation_function or {}).get(out_name) or get_agg_func(
+                canonical_name
+            )
             func = (
                 _agg_func_for(canonical_name, fname) if fname in reducible else 'first'
             )
             name = f'{out_name}{suffix}' if suffix else out_name
             col_series = ref_valid[col]
             # A registry-numeric column can still arrive here as pandas
-            # 'string'/object dtype (e.g. cast by coerce_mixed_object_columns
-            # at an earlier ingest); a numeric reducer then crashes outright
-            # rather than silently mis-aggregating, so coerce first.
-            if fname in ('sum', 'mean', 'median') and not pd.api.types.is_numeric_dtype(
-                col_series
-            ):
+            # 'string'/object dtype (e.g. a fixed-width ingest, which never
+            # casts a mapped column's dtype -- see the PACS improvement-
+            # detail recipe). 'sum'/'mean'/'median' on a string column
+            # crashes outright; 'min'/'max' does not, but silently compares
+            # lexicographically instead of numerically (e.g. '12' < '5'),
+            # which is worse -- no crash to notice it by. Coerce first for
+            # either failure mode.
+            if fname in (
+                'sum',
+                'mean',
+                'median',
+                'min',
+                'max',
+            ) and not pd.api.types.is_numeric_dtype(col_series):
                 grouped_col = pd.to_numeric(col_series, errors='coerce').groupby(
                     ref_valid[ref_key], sort=False
                 )

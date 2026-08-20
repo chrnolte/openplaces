@@ -1,0 +1,86 @@
+# Recipe: Lavaca County, TX certified appraisal roll -- improvement detail
+# (LCAD). Sibling of US-TX-LA_property-lavacacad-2026; see that recipe's
+# header and US-TX-VI_property-victoriacad-2026_improvement-detail's header
+# for the general shape and mechanism (per-recipe aggregation_function
+# override, consumed automatically wherever harmonize auto-discovers this
+# recipe as an entity_type='property' source).
+#
+# NOTE on the main-area filter. Unlike Hardin, Lavaca's own vocabulary
+# keeps every main-area variant under a genuine "MA" code prefix (MA,
+# MA2..MA5, MAA, MAAA), so Victoria's code-prefix rule transfers here
+# unchanged -- the description-based rule Hardin needed would NOT: MA3,
+# MA4 and MA5 (929 rows combined) carry an empty imprv_det_type_desc in
+# this export, so filtering on the description text would silently drop
+# them. Confirmed no non-main code shares the "MA" prefix (checked the
+# full imprv_det_type_cd -> desc table). Do not assume this transfers to
+# the next county either -- see the Hardin sibling's header.
+#
+# NOTE on row shape (2026 export): 81,802 raw rows; 15,431 after the
+# main-area filter, over 11,573 properties, 77.1% with exactly one row.
+# area sum differs from mean for 22.9% of properties (OP/SHD/PC -- open
+# porch, shed, patio cover -- are the top non-main codes). year_built is
+# 100.0% populated on main-area rows; min differs from mean for 12.0% of
+# multi-row properties.
+
+description: >-
+  Lavaca County, TX certified appraisal roll, improvement detail member:
+  year built and floor area per building component, aggregated to property.
+
+admin_id: US-TX-LA
+
+entity:
+  entity_type: property
+  source:
+    source_id: lavacacad
+    portal_url: "https://lavacacad.com/certified-appraisal-rolls/"
+    download_url: "https://lavacacad.com/wp-content/uploads/2026/07/2026-certified-roll-1-1.zip"
+  version: 2026
+
+compressed_file_name: "2026-certified-roll-1-1.zip"
+uncompressed_file_name: "2026-07-23_002730_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # imprv_det_type_desc -- not needed, see header NOTE
+  - [filler, 10] # imprv_det_class_cd -- deliberately unmapped
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+query: "imprv_det_type_cd.str.startswith('MA')"
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  year_built: yr_built
+  area_sqft: imprv_det_area
+
+drop_columns:
+  - imprv_det_type_cd
+
+aggregation_function:
+  area_sqft: sum
+  year_built: min
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail
