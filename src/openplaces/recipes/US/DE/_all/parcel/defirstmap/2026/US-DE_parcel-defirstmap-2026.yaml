@@ -1,0 +1,176 @@
+# Recipe: Delaware statewide cadastral parcel fabric, "State Parcels"
+# (layer 0 of the `DE_StateParcels` service, folder `PlanningCadastre`),
+# from FirstMap, Delaware's official state GIS clearinghouse
+# (`enterprise.firstmap.delaware.gov`). ArcGIS item id
+# 35154346e73748ef915d863651839ccc, owned by the `FirstMap@De` org
+# account, publicly indexed as "Delaware State Parcels 2.0".
+#
+# NOTE on what this layer actually contains -- the one fact that most
+# needed verifying (unverified prior research flagged exactly this).
+# The service root's own `serviceDescription` misleadingly reads
+# "State of Delaware Parcels with Ownership Information"; the ArcGIS
+# item's own (separately maintained, and correct) `description` reads
+# "State of Delaware Parcels without Ownership Information". The
+# second is the accurate one: layer 0's full field list, fetched
+# directly (`.../DE_StateParcels/FeatureServer/0?f=json`), is exactly
+# seven fields -- OBJECTID, PIN, ACRES, COUNTY, UPDATED, Shape__Area,
+# Shape__Length. No owner, no assessed/market value, no year built,
+# no land use, no address, no sale history of any kind. This is a
+# cadastral fabric only. Per-county assessment/CAMA systems exist
+# separately (New Castle: `gis.nccde.org`; Kent:
+# `gis.kentcountyde.gov` "Parcels 2.0", ~83,005 features; Sussex:
+# `map.sussexcountyde.gov` "Parcels With Assessment Unit") and are
+# out of scope here -- a future per-county recipe could add them the
+# way NC/GA county recipes complement their state layers, following
+# `_instructions/acquiring_sources.md`.
+#
+# NOTE on the sibling "Parcel Centroids" layer (layer 1 of the same
+# service) -- investigated, not included. It carries 22 fields keyed
+# by the same PIN: SENATE_DISTRICT/REPRESENTATIVE_DISTRICT (99.99%
+# populated, 450,910/450,915), SCHOOL_DISTRICT (99.98%,
+# 450,832/450,915), ZIP_CODE (99.99%, 450,863/450,915), TOWN (28.9%,
+# 130,142/450,915 -- genuinely low: most Delaware parcels are
+# unincorporated, not a data-quality gap), plus CENSUSBLOCK, HUC_12,
+# WASTEWATERCPCN, WATERCPCN, ERPA, COMMUNITYNAME and point coordinate
+# fields. None of it is CAMA/ownership data either, but ZIP_CODE and
+# SCHOOL_DISTRICT would be useful address/reconciliation evidence.
+# Not merged into this recipe: `additional_layers` writes a separate
+# entity output, not a row-level join by PIN, and the ingest stage
+# has no cross-layer join primitive -- attaching these by PIN belongs
+# in a harmonize-stage `link_to_reference` step against a future
+# `dataset` recipe for this layer, not here. Its own row count
+# (450,915) is also not identical to the polygon layer's (451,320,
+# a 0.09% gap), consistent with point-derivation lag rather than a
+# join failure.
+#
+# NOTE on bulk vs REST (Phase 3 equivalence test). This service's Hub
+# item offers a ready bulk GeoJSON export
+# (`hub.arcgis.com/api/v3/datasets/{item}_0/downloads/data`), which
+# resolved immediately (HTTP 200, no async 202/404 wait). Compared
+# directly against the live REST layer's own `returnCountOnly`:
+#   live REST total:        451,320 (New Castle 203,809; Kent 83,007;
+#                            Sussex 164,504)
+#   Hub bulk export total:  451,043-451,045 (streamed-count method
+#                            dependent; New Castle ~203,761; Kent
+#                            ~83,005; Sussex ~164,279)
+# A ~0.06% deficit spread proportionally across all three counties --
+# export-snapshot lag against the monthly-refreshed live service, not
+# a missing join or a subset (the field list is identical on both:
+# no CAMA fields exist on either side to lose). Cleared Phase 3; used
+# the bulk export.
+#
+# A genuine bonus of the bulk path found in the process: the Hub
+# export serializes UPDATED (`esriFieldTypeDate`) as a clean ISO-8601
+# string (e.g. "2026-08-13T00:00:00Z"), confirmed by inspecting the
+# raw downloaded content directly -- not Esri's usual epoch-
+# millisecond integer, so none of the corruption in
+# "Dates are the most common silent corruption"
+# (`_instructions/acquiring_sources.md`) applies here. This would NOT
+# hold if a future edit switched this recipe to `arcgis_rest_scraper`
+# against the live MapServer/FeatureServer instead -- re-check the
+# date serialization before making that change.
+#
+# NOTE on `parcel_id_local`: PIN's format differs by county (New
+# Castle: 10 plain digits, e.g. "9999999999"; Kent: six dash-
+# separated groups, e.g. "9-99-99999-99-9999-99999"; Sussex: dashes
+# plus decimal sub-groups, e.g. "999-99.99-99.99"). The repository's
+# bundled `geo/parcel_id_links.csv` already carries a `parcel`-kind
+# conversion for each of US-DE-NE/KE/SU (evidently added in
+# anticipation of a Delaware recipe before this one existed).
+# Verified empirically against 800 real PINs sampled per county
+# (transiently, never written to a tracked file): every county
+# converted 800/800 rows to 800/800 distinct, non-null keys, with no
+# fallback-to-`simple` warning from `compute_parcel_id_local`. No
+# override row was needed in `US_parcel_id-overrides.csv`.
+#
+# Measured (live REST, `enterprise.firstmap.delaware.gov`, current as
+# of ingest): PIN populated 451,318/451,320 (>99.99%) and distinct on
+# all 451,320 (state-unique, not merely county-unique -- mapped to
+# `parcel_id_admin2` accordingly, not `parcel_id_admin3`); ACRES
+# populated and >0 on 451,319/451,320 (>99.99%); COUNTY and UPDATED
+# both 100% populated (451,320/451,320).
+#
+# License: the ArcGIS item's own `licenseInfo` (fetched via the AGOL
+# sharing API, not the rendered Hub page) is an "as is, no warranty"
+# liability disclaimer that names "downloading, modifying, sharing,
+# distributing, or using" the data without prohibiting any of it, but
+# also without an affirmative redistribution grant (contrast
+# Maryland iMAP's explicit "freely distributable if metadata is
+# preserved" clause). No separate terms-of-use page was found:
+# `firstmap.delaware.gov/pages/termsofuse.aspx` 404'd, and the site's
+# own homepage and Hub portal are JavaScript SPAs that yielded no
+# discoverable terms link in this session. Recorded as `unknown`
+# per the README's guidance for a search that found something but no
+# explicit permission or restriction statement.
+
+description: >-
+  Delaware statewide parcel boundaries (all 3 counties) from FirstMap's
+  State Parcels layer: geometry, PIN and acreage only, no assessment or
+  ownership data.
+
+admin_id: US-DE
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: defirstmap
+    portal_url: "https://de-firstmap-delaware.hub.arcgis.com/datasets/delaware::state-parcels/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/35154346e73748ef915d863651839ccc_0/downloads/data?format=geojson&spatialRefId=4326"
+    license: "unknown"
+    terms_url: "https://www.arcgis.com/home/item.html?id=35154346e73748ef915d863651839ccc"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "de_state_parcels.geojson"
+
+# One statewide download, chunked into per-county (admin3) processing
+# units via the source's own COUNTY field (a plain county name, not a
+# FIPS code -- mapped to the 5-digit state+county FIPS the shared
+# census crosswalk expects via an inline `remap`, rather than a
+# formula prefix like Wisconsin's 3-digit PARCELFIPS).
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY
+  admin_id_transformation:
+    output: admin3_id_admin1
+    type: remap
+    mapping:
+      "New Castle": "10003"
+      "Kent": "10001"
+      "Sussex": "10005"
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "US_admin-census-2021_admin3"
+
+columns:
+  parcel_id_admin2: PIN
+  source_date: UPDATED
+
+transformations:
+  - type: unary
+    operation: to_datetime
+    input: source_date
+    output: source_date
+
+  # ACRES is unambiguously acres (field alias "Acres"); registry
+  # lot_size is sqft.
+  - type: unary
+    operation: acres_to_sqft
+    input: ACRES
+    output: lot_size
+
+  # Expose PIN under the canonical raw-id name parcel_id_assessor (a
+  # copy of parcel_id_admin2), so it is the raw key parcel_id_local
+  # derives from -- consistent with the WI/DC statewide recipes.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
