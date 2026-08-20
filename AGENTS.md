@@ -92,7 +92,19 @@ repository.
      deterministic rule set with no learned parameters).
   3. Detecting records *internally inconsistent* with their own source's
      mapping/address data, grouping them, and normalizing the group.
-  A new feature that does one of these three things, in this domain,
+  4. A **cascading match that falls through to fuzzy matching**, scores the
+     resulting link with a strength indicator, *calibrates that scorer from
+     the links it just made*, and then detects and removes an incorrect
+     earlier link (Black Knight US10606854B2, in force to 2038; method and
+     CRM claims, so no hardware recitation saves a library). This is the
+     shape closest to what `openplaces` already does — it normalizes to a
+     comparable form, matches in tiers, and uses `rapidfuzz`. What keeps it
+     clear is the back half: no per-link strength score, nothing that
+     re-tunes a scorer after linking, nothing that unlinks. **Do not add
+     link-confidence scoring that learns from its own past links**, and do
+     not add an unlink-on-reconsideration step, without a specific check
+     against that patent.
+  A new feature that does one of these four things, in this domain,
   deserves a specific check against that sub-area before merging — not a
   general "we checked patents once" assumption. `openplaces`'s existing
   `parcel_id_local`/`geo_id` matching is deterministic string/geometry
@@ -100,7 +112,12 @@ repository.
   address-imputation step, which is why it reads as a different mechanism
   from all three shapes above — that reasoning doesn't automatically carry
   over to a new ML-based imputation or inference feature, which may
-  resemble shape 2 much more closely by design.
+  resemble shape 2 much more closely by design. If ML matching is ever
+  added, note that every independent claim of the shape-2 patent
+  (US11372900B1) needs *two* trained models — one scoring record-pair
+  matches, a second identifying a "context" that then selects the cleansing
+  rules. A single match-scoring model does not read on it; adding the
+  context model and context-selected rules is what would.
 - **Process for a new imputation/inference/matching/valuation feature
   touching parcel, property, or transaction data**: (1) identify the
   specific technique, not just the goal, and check whether it resembles
