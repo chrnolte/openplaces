@@ -49,9 +49,6 @@ class EnrichState:
         Harmonized entity spine.
     evidence
         Entity-keyed evidence table being built.
-    image_admin_ids
-        When set, restrict image-based steps to these admin units
-        (deeper than the process level) instead of all children.
     metadata
         Step-specific intermediate data.
     reprocess
@@ -68,7 +65,6 @@ class EnrichState:
     timer: object | None
     spine: pd.DataFrame
     evidence: pd.DataFrame
-    image_admin_ids: list[str] | None = None
     metadata: dict = field(default_factory=dict)
     reprocess: bool = False
 
@@ -351,7 +347,6 @@ class Enricher:
             timer=self._timer,
             spine=spine,
             evidence=evidence,
-            image_admin_ids=sub_admin_ids,
             reprocess=reprocess,
         )
 

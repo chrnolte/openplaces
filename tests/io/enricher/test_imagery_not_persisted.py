@@ -95,3 +95,71 @@ def test_inventory_round_trip_is_unchanged():
 
     assert list(inventory.inventory) == ['F1']
     assert inventory.inventory['F1'].coordinates == _FOOTPRINT
+
+
+def test_no_pipeline_step_rebuilds_an_image_set_from_stored_files():
+    """No step may reconstruct an ImageSet out of a stored metadata table.
+
+    The harmonize stage carried duplicates of `classify_occupancy` and
+    `classify_roof_shape` that read an `image_path` column from a parquet
+    and loaded the pixels it pointed at. They were dead -- nothing writes
+    that parquet now -- but they were the clearest surviving description
+    of the pattern the policy forbids, and a copy-paste from being live.
+
+    The scrapers themselves are exempt: Street View writes its BRAILS++
+    intermediates (depth maps, masks, crops) through a per-call scratch
+    directory that is destroyed before the call returns, which is a
+    temporary file rather than a cache.
+    """
+    src = Path(__file__).resolve().parents[3] / 'src' / 'openplaces'
+    scrapers = src / 'io' / 'scrapers'
+    offenders = [
+        path.relative_to(src).as_posix()
+        for path in src.rglob('*.py')
+        if scrapers not in path.parents
+        and 'image_path' in path.read_text(encoding='utf-8')
+    ]
+
+    assert offenders == [], f'image pixels still read from disk in: {offenders}'
+
+
+def test_the_harmonize_stage_registers_no_image_steps():
+    """Image inference is an enrich-stage concern, and only that."""
+    from openplaces.io.harmonizer import _STEP_REGISTRY, _load_steps
+
+    _load_steps()
+    image_steps = {
+        name
+        for name in _STEP_REGISTRY
+        if name in {'classify_occupancy', 'classify_roof_shape', 'detect_n_stories'}
+    }
+
+    assert image_steps == set(), f'harmonize still registers: {sorted(image_steps)}'
+
+
+def test_image_recipes_declare_no_output_location():
+    """An image recipe carries camera configuration, and writes nothing."""
+    import yaml
+
+    recipes = (
+        Path(__file__).resolve().parents[3] / 'src' / 'openplaces' / 'recipes' / '_all'
+    ).glob('image/*/*/*.yaml')
+
+    checked = 0
+    for path in recipes:
+        recipe = yaml.safe_load(path.read_text(encoding='utf-8'))
+        assert 'save_to' not in recipe, f'{path.name} declares an output location'
+        assert recipe.get('image_scraper'), f'{path.name} is not an image recipe'
+        checked += 1
+
+    assert checked >= 2, 'expected the satellite and street-view recipes'
+
+
+def test_ingesting_an_image_recipe_is_a_no_op():
+    """There is no image ingest stage at all, not merely a disabled one."""
+    from openplaces.io.ingester import Ingester
+
+    ingester = Ingester('image-googlesatellite-z20')
+
+    # Returns without resolving admin ids, downloading, or writing.
+    assert ingester.ingest() is None

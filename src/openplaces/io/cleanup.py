@@ -825,8 +825,6 @@ def _cleanup_node(
             node_id,
             node_recipe,
             node_admin,
-            index,
-            retention,
             include_images,
             dry_run,
         )
@@ -868,12 +866,20 @@ def _cleanup_image_node(
     node_id,
     node_recipe,
     node_admin,
-    index,
-    retention,
     include_images,
     dry_run,
 ) -> list[dict]:
-    """Handle image-cache nodes: per-cache refcounting via coverage footers."""
+    """Reclaim leftover image caches, which nothing produces any more.
+
+    Imagery has no ingest stage: Google's Static API policy prohibits
+    storing or caching its content, so enrichment fetches pixels in memory
+    per run and drops them. Any cache directory still on disk predates that
+    and has no consumer to refcount against, so this neither reads the
+    recipe's retention class (an image recipe declares no `save_to`) nor
+    waits for a coverage footer -- both would only keep a stale artifact
+    alive. Deleting is still opt-in through *include_images*, because
+    removing files a user already has is their call, not a side effect.
+    """
     from openplaces.diagnostics import list_image_caches
 
     entity = node_recipe['entity']
@@ -899,32 +905,24 @@ def _cleanup_image_node(
         row = {
             'path': _relative_posix(cache_path),
             'bucket': 'external',
-            'class': retention,
+            'class': 'leftover',
             'size_mb': image_cache.size_mb,
             'recipe_id': node_id,
             'admin_id': image_cache.admin_id,
             'blocked_by': None,
             'action': 'kept',
         }
-        if retention != 'until_consumed':
-            rows.append(row)
-            continue
         if not include_images:
             row['action'] = 'kept'
-            row['blocked_by'] = 'include_images not set (paid re-fetch)'
+            row['blocked_by'] = 'include_images not set (leftover image cache)'
             rows.append(row)
             continue
-        deletable, blocked_by, verified = _consumers_complete(
-            node_id, image_cache.admin_id, index
-        )
-        if not deletable:
-            row['action'] = 'blocked'
-            row['blocked_by'] = ', '.join(blocked_by)
-        elif dry_run:
+        if dry_run:
             row['action'] = 'would_delete'
         else:
+            # No consumers to record: nothing reads an image cache now.
             action, _ = _delete_output_with_receipt(
-                cache_path, node_id, image_cache.admin_id, verified
+                cache_path, node_id, image_cache.admin_id, []
             )
             row['action'] = action
         rows.append(row)

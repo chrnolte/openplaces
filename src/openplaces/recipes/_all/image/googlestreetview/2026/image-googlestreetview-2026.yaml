@@ -33,9 +33,9 @@ source:
 process_by:
   admin_level: 4
 
-save_to:
-  data_dir: external
-  admin_level: 4
-  # Reclaimable after all enrich recipes referencing this image_recipe have
-  # full-coverage evidence. NOTE: re-fetching is a billed Google API call.
-  retention: until_consumed
+# No `save_to`: this recipe writes nothing. Google's Static API policy
+# prohibits pre-fetching, indexing, storing, or caching its content, so
+# imagery has no ingest stage -- `enrich` fetches it in memory per run and
+# drops the pixels (io.ingester.image_ingester.fetch_images_in_memory).
+# The recipe carries camera configuration only. Note that this makes every
+# enrichment pass a billed Google API call.

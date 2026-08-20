@@ -1,10 +1,14 @@
 """
-Image ingestion from Google Street View and Google Satellite for building
-footprints.
+In-memory imagery fetching from Google Street View and Google Satellite for
+building footprints.
 
-Called by `Ingester._ingest_download_partition` when ``recipe['image_scraper']``
-is set.  Images are saved to the external data directory; a metadata parquet
-(entity_id → image_path + camera fields) is written alongside them.
+There is no image ingest stage, and this module writes nothing: Google's
+Static API policy prohibits pre-fetching, indexing, storing, or caching its
+content. `Ingester.ingest` returns early for any recipe setting
+``image_scraper``, and the enrichment steps that consume imagery call
+`fetch_images_in_memory` per run instead, keeping the pixels only for the
+inference that follows. Panorama and place ids, the one thing the policy
+permits storing, travel on each image's metadata.
 """
 
 from __future__ import annotations

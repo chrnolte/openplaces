@@ -426,11 +426,15 @@ tables. Enrichment adds observations or model outputs without selecting a
 canonical value, reconciling disagreements, or filling unrelated gaps.
 
 - `attributes.py` — registered evidence-producing steps (`classify_roof_shape`,
-  `classify_occupancy`, `detect_n_stories`); image-based steps build their
-  input from the metadata of the recipe's `image_recipe` (per-building imagery
-  ingested at admin level 4; admin units without imagery are skipped). Missing
-  imagery is fetched automatically on first ingest; `redownload` only re-fetches
-  images that already exist on disk (cached images are otherwise reused).
+  `classify_occupancy`, `detect_n_stories`); image-based steps fetch the
+  recipe's `image_recipe` imagery **in memory, per run**
+  (`io.ingester.image_ingester.fetch_images_in_memory`) and keep only the
+  predictions. There is no image ingest stage and no image cache: Google's
+  Static API policy prohibits pre-fetching, indexing, storing, or caching
+  its content, so an image recipe declares no `save_to` and carries camera
+  configuration only. The cost is that every enrichment pass re-fetches, and
+  for Street View re-pays; a step whose scraper cannot initialize warns and
+  leaves its evidence columns empty rather than aborting the batch.
 - `buildings.py` — `enrich_footprints_from_reference_buildings`: attach an
   already-built reference *building* entity's attributes onto footprints,
   each footprint taking the single reference building it overlaps most by
