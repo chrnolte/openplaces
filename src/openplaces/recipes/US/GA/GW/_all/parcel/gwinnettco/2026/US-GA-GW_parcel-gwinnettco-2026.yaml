@@ -44,6 +44,12 @@ entity:
   entity_type: parcel
   source:
     source_id: gwinnettco
+    # Checked 2026-08-20 through the ArcGIS item or service this recipe
+    # reads: neither licenseInfo nor copyrightText is set, so the endpoint
+    # openplaces uses states no terms. Speaks for that endpoint only, not
+    # for anything the county may publish on its website.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
     portal_url: "https://gwinnettcounty-gwinnettcountygis.hub.arcgis.com/"
     download_url: "https://hub.arcgis.com/api/download/v1/items/b9cef33af4a946cd9eafb5f929184301/geojson?layers=0"
   version: "2026"

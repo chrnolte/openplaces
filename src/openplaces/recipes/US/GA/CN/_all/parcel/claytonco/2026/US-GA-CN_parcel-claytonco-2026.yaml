@@ -43,6 +43,12 @@ entity:
   entity_type: parcel
   source:
     source_id: claytonco
+    # Checked 2026-08-20 through the ArcGIS item or service this recipe
+    # reads: neither licenseInfo nor copyrightText is set, so the endpoint
+    # openplaces uses states no terms. Speaks for that endpoint only, not
+    # for anything the county may publish on its website.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
     portal_url: "https://publicaccess.claytoncountyga.gov/"
     download_url: "https://hub.arcgis.com/api/download/v1/items/3e57523a1ba64c809635a160700c7c13/geojson?layers=5"
   version: "2026"

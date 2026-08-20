@@ -34,6 +34,12 @@ entity:
   entity_type: parcel
   source:
     source_id: forsythco
+    # Checked 2026-08-20 through the ArcGIS Online item this recipe
+    # downloads. Its licenseInfo is a compilation-and-accuracy notice, not
+    # a licence, and accessInformation names the parties to credit: GIS
+    # Department and Tax Assessment Department, Forsyth County Georgia.
+    license: "unknown (attribution to Forsyth County GIS / Tax Assessment; no licence stated)"
+    redistribution_restricted: null
     portal_url: "https://geo-forsythcoga.opendata.arcgis.com/datasets/tax-parcel"
     download_url: "https://geo-forsythcoga.opendata.arcgis.com/api/download/v1/items/a57125fcac534eb58c1d63325894e6e8/geojson?layers=0"
   version: "2026"

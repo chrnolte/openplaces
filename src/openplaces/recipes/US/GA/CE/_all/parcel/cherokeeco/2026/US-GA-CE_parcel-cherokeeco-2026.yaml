@@ -37,6 +37,11 @@ entity:
   entity_type: parcel
   source:
     source_id: cherokeeco
+    # Checked 2026-08-20 on the ArcGIS service this recipe reads: its
+    # copyrightText names "Cherokee County GIS" as the party to credit,
+    # but declares no licence and says nothing about redistribution.
+    license: "unknown (attribution to Cherokee County GIS; no licence stated)"
+    redistribution_restricted: null
     portal_url: "https://www.cherokeecountyga.gov/departments/information-technology/gis/"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"

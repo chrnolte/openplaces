@@ -60,15 +60,14 @@ entity:
   entity_type: parcel
   source:
     source_id: cumberlandcounty
-    # Checked 2026-08-20 against the ArcGIS REST service this recipe
-    # reads: neither copyrightText nor licenseInfo is set on the service
-    # or its layer, so the endpoint openplaces actually uses states no
-    # terms. Checked and absent, not unexamined -- but this speaks only
-    # for that endpoint, not for anything the county may publish
-    # elsewhere.
-    license: "unknown (service declares no copyright or licence)"
+    # Checked 2026-08-20 on both routes. The ArcGIS service sets neither
+    # copyrightText nor licenseInfo, and the county's own GIS Disclaimer
+    # page disclaims warranty only -- data "provided (as is) and with no
+    # warranties", accuracy and liability -- with no licence, no resale
+    # restriction and nothing about redistribution.
+    license: "unknown (warranty disclaimer only; no licence stated)"
     redistribution_restricted: null
-    portal_url: "https://www.cumberlandcountync.gov/departments/information-services-group/gis"
+    portal_url: "https://www.cumberlandcountync.gov/top-navigation-groups/how-do-i/find/geographic-information-systems-(gis)-data-files"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"
 

@@ -312,6 +312,21 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
                 f'derived from it that is still a database, requires '
                 f'releasing it under {license_text} as well.'
             )
+        if len(terms['share_alike']) > 1:
+            names = ', '.join(sorted(terms['share_alike']))
+            lines += [
+                '',
+                'THESE CANNOT ALL BE SATISFIED AT ONCE. A share-alike licence',
+                'requires the whole release to carry that licence, so a bundle',
+                f'inheriting more than one ({names}) cannot be published under',
+                'any single one of them. Dual licensing does not resolve it.',
+                '',
+                'Options: leave out the sources carrying the minority licence,',
+                'ask them for permission to relicense, or publish a Produced',
+                'Work -- a figure, a map, aggregate statistics -- rather than',
+                'the database itself, since both licences let a Produced Work',
+                'carry its own licence, subject to attribution.',
+            ]
         lines += [
             '',
             'Sharing it privately with named collaborators is a smaller act than',

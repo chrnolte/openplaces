@@ -126,3 +126,29 @@ def test_the_bundle_declares_a_terms_file_among_its_outputs():
     assert 'terms' in paths
     assert paths['terms'].suffix == '.txt'
     assert paths['terms'].parent == paths['canonical'].parent
+
+
+def test_conflicting_share_alike_licences_say_so_in_words():
+    """Two share-alike licences read as "dual-license it" unless told.
+
+    The first real run of this notice reported ODbL and CC-BY-SA as two
+    independent obligations, which invites exactly the wrong conclusion:
+    a share-alike licence governs the whole release, so two of them
+    cannot both be honoured and dual licensing does not help. Surfacing
+    that is the point of the file.
+    """
+    composition = _COMPOSITION + ['parcel.pittcounty'] * 40
+    notice = format_notice(RECIPE, bundle_terms(RECIPE, pd.Series(composition)))
+
+    assert 'CANNOT ALL BE SATISFIED AT ONCE' in notice
+    assert 'Dual licensing does not resolve it' in notice
+    # And it names a way forward rather than only the problem.
+    assert 'Produced' in notice
+
+
+def test_a_single_share_alike_licence_raises_no_conflict():
+    """The warning must not fire when there is nothing to conflict with."""
+    notice = format_notice(RECIPE, bundle_terms(RECIPE, pd.Series(_COMPOSITION)))
+
+    assert 'ODbL-1.0' in notice
+    assert 'CANNOT ALL BE SATISFIED' not in notice

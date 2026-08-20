@@ -78,7 +78,7 @@ entity:
     # elsewhere.
     license: "unknown (service declares no copyright or licence)"
     redistribution_restricted: null
-    portal_url: "https://www.wilson-co.com/166/Geographic-Information-Systems"
+    portal_url: "https://gis.wilson-co.com/"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"
 

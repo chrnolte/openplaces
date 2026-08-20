@@ -60,7 +60,7 @@ entity:
     # data without stating terms -- checked and absent, not unexamined.
     license: "unknown (ArcGIS Hub item declares no licence)"
     redistribution_restricted: null
-    portal_url: "https://www.rockymountnc.gov/departments/information-technology/geographic-information-systems"
+    portal_url: "https://www.rockymountnc.gov/"
     download_url: "https://hub.arcgis.com/api/v3/datasets/a6969e35769a489085c3fc503d57705f_16/downloads/data?format=geojson&spatialRefId=4326"
   version: "2026"
 

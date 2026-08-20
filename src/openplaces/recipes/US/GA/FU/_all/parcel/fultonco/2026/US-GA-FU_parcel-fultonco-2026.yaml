@@ -39,6 +39,12 @@ entity:
   entity_type: parcel
   source:
     source_id: fultonco
+    # Checked 2026-08-20 through the ArcGIS Online item this recipe
+    # downloads: its licenseInfo is a warranty disclaimer -- "Fulton County
+    # provides the data within these pages as is", not guaranteed accurate
+    # -- with no licence and nothing about redistribution.
+    license: "unknown (warranty disclaimer only; no licence stated)"
+    redistribution_restricted: null
     portal_url: "https://gisdata.fultoncountyga.gov/datasets/fulcogis::tax-parcels-2025"
     download_url: "https://gisdata.fultoncountyga.gov/api/download/v1/items/c805da9aa51d4c508440358c00498fcf/geojson?layers=0"
   version: "2026"

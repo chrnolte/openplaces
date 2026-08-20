@@ -37,6 +37,12 @@ entity:
   entity_type: parcel
   source:
     source_id: fayetteco
+    # Checked 2026-08-20 through the ArcGIS item or service this recipe
+    # reads: neither licenseInfo nor copyrightText is set, so the endpoint
+    # openplaces uses states no terms. Speaks for that endpoint only, not
+    # for anything the county may publish on its website.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
     portal_url: "https://gis.fayettecountyga.gov/"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"
