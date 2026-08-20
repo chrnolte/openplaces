@@ -117,7 +117,7 @@ openplaces
 
       📖 Reference
       ^^^^^^^^^^^^^^
-      Auto-generated API docs for all modules, plus the catalog of data recipes.
+      The catalog of data recipes, plus auto-generated API docs for all modules.
 
       +++
 

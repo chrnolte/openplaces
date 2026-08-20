@@ -13,9 +13,21 @@ Recipes are dictionaries of arguments, saved as a :input:`.yaml` file.
 
 For an explanation of the arguments you can find in a recipe, see :ref:`writing recipes <writing_recipes>`.
 
-The recipe catalog is auto-generated from :gh-file:`src/openplaces/recipes`:
+The whole catalog is auto-generated from :gh-file:`src/openplaces/recipes`.
+
+.. recipe-coverage::
+
+Geographies
+-----------
+
+Pick a country to see its own recipes and, where available, drill down into
+its states/regions and counties. A blank cell means no recipe of that kind
+exists yet for that geography -- not that the underlying data doesn't exist.
+
+.. recipe-children::
 
 .. toctree::
+   :hidden:
    :titlesonly:
    :glob:
 
