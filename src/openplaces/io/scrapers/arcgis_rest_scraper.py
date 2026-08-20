@@ -43,6 +43,8 @@ from pathlib import Path
 
 import requests
 
+from openplaces.io import request_headers
+
 DEFAULT_TIMEOUT = 60.0
 DEFAULT_RETRIES = 3
 DEFAULT_PAGE_SIZE = 2000
@@ -62,7 +64,9 @@ def _download_bulk(
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
-            with requests.get(url, stream=True, timeout=timeout) as response:
+            with requests.get(
+                url, stream=True, timeout=timeout, headers=request_headers()
+            ) as response:
                 response.raise_for_status()
                 n_bytes = 0
                 with target.open('wb') as handle:
@@ -140,7 +144,9 @@ def _get_json(
     last_exc = None
     for attempt in range(1, retries + 1):
         try:
-            response = requests.get(url, params=params, timeout=timeout)
+            response = requests.get(
+                url, params=params, timeout=timeout, headers=request_headers()
+            )
             response.raise_for_status()
             data = response.json()
             if isinstance(data, dict) and data.get('error'):

@@ -13,6 +13,7 @@ import pyarrow.fs as pafs
 import requests
 import shapely
 
+from openplaces.io import request_headers
 from openplaces.io.readers import get_admin
 
 # Base digit widths (sign excluded) for tile_size_deg=1: the exact minimum
@@ -184,7 +185,10 @@ def _resolve_s3_latest_release(url: str, region: str | None = None) -> str:
     region = region or 'us-east-1'
     base = f'https://{bucket}.s3.{region}.amazonaws.com'
 
-    resp = requests.get(f'{base}/?list-type=2&prefix={prefix}&delimiter=/')
+    resp = requests.get(
+        f'{base}/?list-type=2&prefix={prefix}&delimiter=/',
+        headers=request_headers(),
+    )
     resp.raise_for_status()
     _ns = {'s3': 'http://s3.amazonaws.com/doc/2006-03-01/'}
     root = ET.fromstring(resp.content)
@@ -302,6 +306,8 @@ def _get_shared_s3_session() -> requests.Session:
     global _shared_s3_session
     if _shared_s3_session is None:
         _shared_s3_session = requests.Session()
+        # Session-level, so every ranged read inherits the identity too.
+        _shared_s3_session.headers.update(request_headers())
     return _shared_s3_session
 
 
@@ -319,7 +325,7 @@ def _list_s3_parquet_files(base: str, prefix: str) -> list[tuple[str, int]]:
     from urllib.parse import quote
 
     list_url = f'{base}/?list-type=2&prefix={quote(prefix, safe="/")}'
-    resp = requests.get(list_url)
+    resp = requests.get(list_url, headers=request_headers())
     resp.raise_for_status()
     _ns = 'http://s3.amazonaws.com/doc/2006-03-01/'
     root = ET.fromstring(resp.content)

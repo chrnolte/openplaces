@@ -22,6 +22,43 @@ Open and run it after :ref:`installing <install>` and activating your environmen
    cd notebooks
    jupyter notebook
 
+.. _identity:
+
+How openplaces identifies itself
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Setup also asks for a **nickname** and a **place**. They go into the
+``User-Agent`` header of every request ``openplaces`` makes:
+
+.. code-block:: text
+
+   openplaces/0.1.0 (+https://openplaces.io; ada@some-university)
+
+``openplaces`` downloads from public servers run by other people — county
+GIS portals, state agencies, national statistical offices. Naming the
+project and linking its page tells an operator what the traffic is; the
+handle gives them someone to ask if a run causes unexpected load. Some
+servers also reject requests carrying no recognizable agent at all.
+
+You are **not registering anything**, and nothing is sent to this project.
+Pick any handle you are willing to see in a server log — a work handle and
+an institution or city is the usual choice. Leave it blank and requests go
+out as ``unidentified``, which is a worse neighbor but an honest one.
+
+When an AI coding agent drives a run, it is disclosed too
+(``; agent: claude-code``), so a provider can tell autonomous traffic from
+a person at a keyboard. Set ``OPENPLACES_AGENT`` to name an agent
+``openplaces`` does not recognize.
+
+Change it at any time:
+
+.. code-block:: bash
+
+   python -m openplaces.config --set-identity ada some-university
+   python -m openplaces.config --user-agent      # show what will be sent
+
+   python dev.py identity                        # or, interactively
+
 .. _directory_structure:
 
 Directory structure

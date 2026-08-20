@@ -106,15 +106,20 @@ def test_list_s3_parquet_files_caches_across_calls(monkeypatch):
             pass
 
     calls = []
+    sent_headers = []
 
-    def fake_get(url):
+    def fake_get(url, headers=None):
         calls.append(url)
+        sent_headers.append(headers or {})
         return FakeResponse()
 
     monkeypatch.setattr(cgi.requests, 'get', fake_get)
 
     first = cgi._list_s3_parquet_files('https://bucket.s3.amazonaws.com', 'prefix/')
     second = cgi._list_s3_parquet_files('https://bucket.s3.amazonaws.com', 'prefix/')
+
+    # Even a bucket listing says who is asking.
+    assert sent_headers[0]['User-Agent'].startswith('openplaces/')
 
     assert first == [('prefix/a.parquet', 111), ('prefix/b.parquet', 222)]
     assert second == first

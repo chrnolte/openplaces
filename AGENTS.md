@@ -673,4 +673,23 @@ interchangeable). Relational counts use `n_{counted}s_per_{grouping}`
 ### Configuration (`config.py`)
 
 `cfg` (singleton `OpenPlacesConfig`) holds directory paths (`data_root`, `dir_core`,
-`dir_external`, `dir_heap`, etc.) and CRS.
+`dir_external`, `dir_heap`, etc.), CRS, and the installation's `identity`.
+
+### Talking to other people's servers
+
+Two rules govern every outbound request, both of them about openplaces not
+speaking for its user.
+
+**Identify yourself.** `cfg.user_agent` builds
+`openplaces/{version} (+https://openplaces.io; {nickname}@{place})` from the
+per-user `identity` block, appending `; agent: claude-code` when
+`detect_agent()` finds an AI agent driving the run. Unset reports
+`unidentified`. `io.request_headers()` is the single accessor; use it rather
+than passing headers by hand, and **never** send a browser User-Agent -- a
+test (`tests/core/test_request_identity.py`) fails the build on any
+`Mozilla/` string in `src/`. The identity is asked for at first use
+(`_interactive_setup`) and during `dev.py setup`, which cannot import the
+package it is installing and so shells out to
+`python -m openplaces.config --set-identity`. That is also why the first-use
+prompt triggers on a missing `directories` key rather than a missing file.
+

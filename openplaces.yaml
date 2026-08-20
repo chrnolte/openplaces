@@ -19,6 +19,28 @@ directories:
   models: models            # Trained and serialized models
   reports: reports          # Reports, publications, figures 
 
+# How this installation identifies itself to the servers it downloads from.
+# Per-user, so it belongs in ~/.config/openplaces/config.yaml rather than
+# here; set it with `python -m openplaces.config --set-identity NICK PLACE`
+# or `python dev.py identity`. Both unset means the User-Agent reports
+# 'unidentified'.
+#
+#   identity:
+#     nickname: ada
+#     place: some-university
+#
+#   -> openplaces/0.1.0 (+https://openplaces.io; ada@some-university)
+
+# Standing decisions about third-party terms of use, recorded per user
+# when they answer [a] at a terms-of-use prompt. Never set here: this file
+# is committed and shared, and consent belongs to the person downloading.
+#
+#   consent:
+#     terms:
+#       US-WI_transaction-widor-2026:
+#         accepted: true
+#         recorded: '2026-08-19'
+
 # Smallest area of imported polygons
 geo_min_area_m2: 1
 

@@ -30,6 +30,7 @@ from openplaces.io import (
     find_latest_file_or_gdb,
     read_parquet,
     release_unused_memory,
+    request_headers,
     save_parquet,
     unzip,
 )
@@ -1407,7 +1408,7 @@ class Ingester:
                 )
             # Scrape website providing download URLs
             req = urllib.request.Request(
-                source.download_url_source, headers={'User-Agent': 'Mozilla/5.0'}
+                source.download_url_source, headers=request_headers()
             )
             ssl_context = (
                 None if source.verify_ssl else ssl._create_unverified_context()
