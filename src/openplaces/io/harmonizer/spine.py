@@ -25,6 +25,7 @@ from openplaces.io.harmonizer import (
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.transform import make_index_unique
 
 
 def get_oriented_dims(geom) -> tuple[float, float, float]:
@@ -429,6 +430,18 @@ def resolve_spine(
     # still need that join, self-join or not.
     state.metadata['spine_source_recipe_ids'] = {s['recipe_id'] for s in resolved}
     state.metadata['spine_keep_columns'] = set(keep_columns)
+
+    # A source can ship rows whose geometries hash to the same geo_id
+    # (seen: 6 duplicated parcel ids in Fort Bend, TX), and a duplicated
+    # spine index breaks every downstream index-aligned operation in turn.
+    # Uniquify here, at the spine's birth, with the same helper and
+    # semantics infer_spine_additions already applies to its own additions.
+    if spine.index.duplicated().any():
+        n_dup = int(spine.index.duplicated().sum())
+        warnings.warn(
+            f'{n_dup} duplicate spine IDs for {state.admin_id}; making unique.'
+        )
+        spine = make_index_unique(spine, sort_duplicates_by_area=True)
 
     state.spine = spine
 
