@@ -1,0 +1,422 @@
+# Recipe: RLIS Taxlots (Public) -- Metro's (Portland's regional
+# government, oregonmetro.gov) 3-county tax-lot compilation for the
+# Oregon portions of Multnomah, Washington and Clackamas counties.
+#
+# NOTE on scope -- this is a metro-area recipe, NOT a statewide one.
+# `admin_id` below is set to `US-OR` only because that is the natural
+# common parent of these 3 counties (same one-file-many-counties
+# pattern as `US-WI_parcel-wiscedu-v11`), following the precedent set
+# by `US-MN_parcel-metrogis-2026` -- it does NOT mean this recipe
+# covers Oregon statewide. Oregon's own statewide effort (ORMAP) is
+# being validated separately by another agent; this recipe does not
+# depend on or supersede that work. Enforcement of the 3-county scope
+# is real, not just documentation: `process_by.admin_id_crosswalk`
+# below (the `_admin3-crosswalk.csv` sidecar) lists only Clackamas
+# (US-OR-CC), Multnomah (US-OR-MU) and Washington (US-OR-WI), so
+# `op.ingest` for any other Oregon county raises a clear KeyError from
+# `TableIngester`'s scope check rather than silently writing an empty
+# file.
+# A "RLIS Portland Metro (3-County)" region was registered in
+# `_all/admin/regions/2026/admin-regions-2026.csv`
+# (region_id `rlis-portland-metro`), mirroring the
+# `metrogis-twin-cities` precedent, so this exact grouping has a name
+# other tooling can reference without restating the 3 county ids.
+#
+# Source, verified via direct fetch (this session, live endpoints):
+#   - rlisdiscovery.oregonmetro.gov is Metro's "RLIS Discovery"
+#     ArcGIS Hub site (org key `drcMetro`, i.e. Metro's Data Resource
+#     Center), hosting Metro's Regional Land Information System (RLIS)
+#     -- Metro's own description calls it "the modernized RLIS
+#     Discovery application where users can find and download Metro's
+#     RLIS data." RLIS is a compilation of 200+ layers; this recipe
+#     uses exactly one of them.
+#   - Dataset used: "Taxlots (Public)" (ArcGIS item
+#     b3cabe5845ec47eab61c54e0c631313c, FeatureServer layer 3 of
+#     `services2.arcgis.com/McQ0OlIABe29rJJy/arcgis/rest/services/
+#     Taxlots_(Public)/FeatureServer`), NOT the sibling item "Taxlots
+#     with Right of Way (Public)" (a16aafabb9e840418d97e47fcd1a5128),
+#     which is the same roll with right-of-way polygons folded in --
+#     this recipe wants tax lots only. Per the item's own description:
+#     "County tax assessors tax lots ... with associated property
+#     data, excluding ownership information. Selected items from each
+#     county assessor's file are included and standardized for all
+#     three counties." Last data update at ingest time: 2026-07-17.
+#   - Bulk download used: "Taxlots (Public) - Download" (item
+#     9d3c396ffad44649bc7451465aa300f0), `taxlots_public.zip`, a
+#     direct, un-gated file (`HEAD` returns 200, `Content-Type:
+#     application/zip`, `Accept-Ranges: bytes`, no login/click-through)
+#     served from AWS CloudFront. Confirmed real via a byte-range read
+#     of the zip's own central directory (last 200KB over HTTP Range,
+#     without downloading the full ~210MB archive first): it contains
+#     one flat shapefile (`taxlots_public.shp/.dbf/.shx/.prj/.sbn/
+#     .sbx/.cpg`, no ROW variant, no per-county split), a `.shp.xml`
+#     metadata sidecar, `.lyrx` style files for both the with- and
+#     without-ROW views, and -- notably -- the license PDF itself
+#     bundled inside the zip
+#     (`RLIS_Open_Database_End_User_License_Agreement.pdf`).
+#   - The FeatureServer's and the download zip's own `modified`
+#     timestamps are effectively simultaneous (within the same publish
+#     cycle), and Metro's item metadata explicitly cross-links the
+#     FeatureServer, its ROW sibling and this download zip as three
+#     forms of the same compiled dataset.
+#
+# Verified county coverage and row counts (live `returnCountOnly`,
+# this session): COUNTY='M' (Multnomah) 283,139; COUNTY='W'
+# (Washington) 200,117; COUNTY='C' (Clackamas) 163,936; total 647,192.
+# County identity confirmed by cross-checking each COUNTY code's
+# distinct JURIS_CITY values against known cities (e.g. 'W' lists
+# BEAVERTON/HILLSBORO/TIGARD -- Washington County; 'M' would list
+# PORTLAND/GRESHAM -- Multnomah; 'C' the remainder -- Clackamas).
+#
+# Phase 3 equivalence test (bulk vs REST), run for real, not assumed:
+# the downloaded `taxlots_public.zip` was actually extracted and its
+# DBF read directly. Its own COUNTY distribution is HIGHER than the
+# live server's in every county: M 286,524 vs 283,139 (+3,385), W
+# 202,601 vs 200,117 (+2,484), C 167,258 vs 163,936 (+3,322) -- a
+# genuine, material divergence, exactly the kind Phase 3 warns about.
+# Root-caused, not just noted: in every county, the excess matches
+# EXACTLY the count of extra PRIMACCNUM-null rows in the bulk file
+# (bulk null PRIMACCNUM per county: M 4,224, W 2,546, C 3,546; live
+# server's own null count, back-computed from the population figures
+# above: M 839, W 62, C 224; the differences -- 3,385, 2,484, 3,322 --
+# match the row-count excesses precisely). In other words: every row
+# that carries a real assessor account number is IDENTICAL between
+# the bulk file and the live service (confirmed directly: this
+# recipe's own ingested output for US-OR-CC has exactly 163,712 rows
+# with a non-null, non-degenerate parcel_id_local, matching the live
+# server's PRIMACCNUM-populated count for COUNTY='C' exactly); the
+# extra rows in the bulk export are placeholder/no-account-number
+# features (right-of-way remnants or similar) that the live
+# FeatureServer appears to filter out but the static export does not.
+# Kept bulk rather than switching to REST: the divergence is fully
+# explained, confined to keyless rows that would never carry
+# assessor data or join via parcel_id_local either way, and switching
+# to REST paging for 647k+ rows across 3 counties would cost the
+# county's servers far more than this bulk file already avoids.
+# A future re-ingest will show total row counts a few percent above
+# the live `returnCountOnly` figures quoted throughout this header for
+# exactly this reason -- not a regression.
+#
+# Field list and definitions below are Metro's own, from the item's
+# published ISO metadata (`info/metadata/metadata.xml`), not
+# reverse-engineered from sampled values.
+#
+# License (checked explicitly, per README.md/acquiring_sources.md,
+# and read verbatim from the live page's own CMS content, not
+# assumed): both the "Taxlots (Public)" and "Taxlots (Public) -
+# Download" items state, verbatim, in their own `licenseInfo`: "This
+# database and GIS data are made available under the RLIS Open
+# Database End User License Agreement. See
+# https://rlisdiscovery.oregonmetro.gov/pages/open-database-license."
+# That page's actual text (revised February 2023) grants "a limited,
+# worldwide, royalty-free, non-exclusive, revocable license to: Copy,
+# publish, distribute, and share the Data; Extract, modify, and adapt
+# the Data; and Combine it with other data, or include it in your own
+# product or application," conditioned on attribution (a specific
+# suggested attribution sentence is provided) and on passing the same
+# license terms on to further recipients ("Each time you communicate
+# the Data ... Metro offers the recipient a license to the Data on
+# the same terms and conditions as this License"). Sublicensing is
+# explicitly prohibited, but plain redistribution is not sublicensing.
+# It is a plain as-is/no-warranty license (Oregon governing law,
+# Multnomah County venue) and states it is "compatible with the
+# Creative Commons Attribution License 4.0 and the Open Data Commons
+# Attribution License." The short form of this is recorded in
+# `entity.source.license` below.
+#
+# IMPORTANT judgment call, recorded rather than silently resolved: a
+# SEPARATE page on the same site, `pages/terms-of-use` (linked from
+# the site's general navigation, not from either taxlot item's own
+# metadata), carries a far more restrictive "RLIS Limited Use
+# License" -- it forbids the user from disclosing, leasing, selling
+# or otherwise transferring "the Product," requires the Product be
+# "acquired directly from Metro," and explicitly states "User must
+# not use the Product in any way that will reveal to any third party
+# the names of individuals who are referenced in the Product,
+# including, without limitation, tax lot owner names." That last
+# clause is the key to reading this correctly: it is written for
+# RLIS's *full, owner-name-bearing* taxlot product (the non-"Public"
+# roll, or a licensed subscription bundle), a genuinely different
+# dataset from "Taxlots (Public)" used here, which excludes ownership
+# information by design and cites the Open Database EULA on its own
+# item page -- not two documents describing the same data over time
+# (the MN MetroGIS pattern), but two documents for two different
+# datasets on the same portal. Recorded here so a future agent who
+# finds `pages/terms-of-use` does not mistake it for this recipe's
+# governing terms.
+#
+# Fields (Metro's own metadata definitions, `attrLabl`/`attrDef` in
+# `info/metadata/metadata.xml`), and how each was handled:
+#   - TLID: "Tax lot account number, also known as state ID or map
+#     tax lot number." Metro's own internal feature id, always
+#     populated; not used as the join key (see parcel_id_local below).
+#   - PRIMACCNUM: "Account number used by the county assessor, which
+#     is unique within each county" (the county's own account/parcel
+#     number). -> parcel_id_admin3, and via a `concat` transformation
+#     -> parcel_id_assessor, the source for parcel_id_local.
+#   - ALTACCNUM: a secondary account number, populated only in
+#     Multnomah (43.6% overall: 282,300/647,192, all Multnomah's own
+#     ALTACCNUM population) -- left unmapped, no registry slot for a
+#     county-specific secondary account id.
+#   - SITEADDR -> address (a single combined address string; no
+#     separate number/street/type fields exist in this schema).
+#   - SITECITY: "the site city as defined by the U.S. Postal
+#     Service ... This does not reflect jurisdiction or city boundary
+#     city." -> city (99.9997% populated, 647,190/647,192).
+#   - SITEZIP -> postal_code (same population as SITECITY).
+#   - BLDGSQFT: "Square footage of building(s)." -> area_sqft (floor
+#     area; 538,368/647,192, 83.2%, > 0).
+#   - A_T_ACRES: "Acreage of tax lot as shown in the County Assessor's
+#     database" -> lot_size via `acres_to_sqft` (453,834/647,192,
+#     70.1%, > 0).
+#   - YEARBUILT -> year_built (555,792/647,192, 85.9%, > 0; 0 nulled
+#     as the standard "never recorded" sentinel).
+#   - PROP_CODE: "Oregon Department of Revenue property classification
+#     for assessment codes. Populated from attributes LANDCLASS
+#     (Clackamas County), PROPCLASS (Multnomah County) and PCA3
+#     (Washington County)." -> use_group_code: this is the actual
+#     per-county source code LANDUSE (below) was derived from, per
+#     Metro's own field definition, so it is the code that belongs
+#     paired with use_group. 115 distinct values (644,052/647,192,
+#     99.5%, populated); codes are inconsistently zero-padded across
+#     the 3 source counties (lengths 1-3), a Metro compilation
+#     artifact, not a conversion error here.
+#   - LANDUSE: "Land use category, derived from PROP_CODE." ->
+#     use_group. A clean, already-English 9-value vocabulary (AGR,
+#     COM, FOR, IND, MFR, PUB, RUR, SFR, VAC), verified via a live
+#     distinct-values query; 634,980/647,192 (98.1%) populated.
+#   - TAXCODE: "County tax code (levy code in Multnomah County)" --
+#     left unmapped, no registry slot for a taxing/levy code distinct
+#     from the value fields (644,098/647,192, 99.5%, populated).
+#   - SALEDATE: "Date of the most recent sale of the property
+#     (recording)." A 6-character numeric string, verified (2,000-row
+#     sample) to be CCYYMM -- e.g. century-year-month with NO day --
+#     not an Esri epoch-millisecond date, since the field is a plain
+#     string, not `esriFieldTypeDate`. -> last_sale_date via
+#     `add_suffix: "01"` (day is a fabricated placeholder, documented
+#     here, never sourced from the record) then `to_datetime`.
+#     501,425/647,192 (77.5%) populated. NOTE: the live server's own
+#     aggregate max value at ingest time was in a month after this
+#     ingest's own run date -- a genuine data-quality oddity in the
+#     source (verified as an aggregate MIN/MAX statistic, not a
+#     sampled record), worth a sanity check downstream if exact
+#     recency matters; not corrected here.
+#   - SALEPRICE: "Price of the most recent sale of the property." ->
+#     last_sale_price (433,079/647,192, 66.9%, > 0; 0 nulled as "no
+#     sale price recorded," consistent with year_built/value-field
+#     handling).
+#   - COUNTY: "County abbreviation" -- single character (C/M/W); the
+#     `process_by.admin_id_column` this recipe splits on.
+#   - X_COORD / Y_COORD -- raw State Plane coordinates, redundant
+#     with the polygon geometry itself; left unmapped.
+#   - JURIS_CITY: "Jurisdiction corresponding to city boundaries.
+#     Doesn't reflect postal or mailing city ... given UNINCORPORATED
+#     value" outside any city -- left unmapped; the parcel's
+#     containing jurisdiction is resolved spatially by the pipeline's
+#     own admin linkage, the same reasoning as MN's CTU_NAME/CO_NAME.
+#   - GIS_ACRES: "area of the taxlot in acres calculated from the
+#     feature polygon" and AREA: "Square footage of lot as calculated
+#     from the feature polygon" -- both left unmapped, redundant with
+#     the geometry-derived area the pipeline already computes,
+#     mirroring the DC CALCULATEDAREA / MN ACRES_POLY precedent.
+#     GIS_ACRES is 100% populated (647,192/647,192) but is exactly
+#     this redundant figure, not a gap.
+#   - STATECLASS: "State General Property Class" -- a real, separate
+#     Oregon DOR statewide classification (31 distinct values,
+#     643,146/647,192, 99.4%, populated), but NOT the code LANDUSE was
+#     derived from (that is PROP_CODE, above) and Metro provides no
+#     decoded label for it here -- left unmapped rather than mis-paired
+#     with use_group_code; a future crosswalk-based harmonize step
+#     could use it.
+#   - ORTAXLOT: "Statewide standard map and tax lot number. The
+#     attribute is defined in the Oregon Cadastral Data Exchange
+#     Standard" (the standard ORMAP-style township-range-section
+#     format, 26-29 characters sampled). Left UNMAPPED and NOT used
+#     as the join key -- see parcel_id_local below for why; this is
+#     the one finding in this recipe that most resembles the
+#     acquiring_sources.md Phase 5 "degenerate id" trap.
+#   - ASSESSVAL: "Assessed value. The value used to calculate tax" --
+#     Oregon's Measure 50 assessed value (growth-capped, distinct from
+#     Real Market Value) has no registry slot separate from
+#     land_value/improvement_value/total_value (which map LANDVAL/
+#     BLDGVAL/TOTALVAL, all Real Market Value per Metro's own
+#     definitions) -- left unmapped, flagged as a registry gap
+#     (612,386/647,192, 94.6%, > 0).
+#   - HAS_MANY: "Indicates presence of additional records in the
+#     Taxlots Additional Records layer (tl_many)" -- a pointer to a
+#     sibling table this recipe does not ingest; left unmapped.
+#   - PUBLIC_OWN: "Indicates publicly-owned taxlots" and OWNERTYPE:
+#     "Type of owner" (CITY/COUNTY/FEDERAL/OTHER/PRIVATE/SCHOOL/STATE,
+#     verified via distinct-values query, 647,192/647,192, 100%,
+#     populated) -- both left unmapped, no registry field for an
+#     ownership-sector category (this is not owner *name*; the layer
+#     excludes that by design, per its own item description).
+#   - tax_year, source_date, subdivision, legal_description,
+#     n_dwellings, building_style, owner_name, owner_address: NO
+#     equivalent field exists anywhere in this 32-field schema
+#     (verified against the full field list above), not merely
+#     unmapped from a fuller one. owner_name/owner_address in
+#     particular are absent by design -- the entire point of the
+#     "Public" layer, per its own description, is excluding ownership
+#     information.
+#
+# parcel_id_local (Phase 5): chose PRIMACCNUM over ORTAXLOT, and this
+# is the one real trap this recipe hit. ORTAXLOT is marginally better
+# populated overall (646,512/647,192, 99.9%, vs PRIMACCNUM's
+# 646,067/647,192, 99.8%) and is literally the state-standard tax lot
+# id -- the obvious first choice. But a `groupByFieldsForStatistics`
+# distinct-count check per county (live server, this session) found
+# ORTAXLOT returns exactly ONE distinct value for the entire
+# Washington County subset (200,117/200,117 rows populated, all
+# sharing one value that itself looks like a right-of-way placeholder
+# string) -- a textbook "populated but degenerate" key per
+# acquiring_sources.md Phase 5, and it looks completely healthy from
+# population alone. The same check on PRIMACCNUM for Washington
+# County (and independently for Multnomah and Clackamas) hit the
+# server's 2,000-group transfer limit every time, i.e. genuinely
+# non-degenerate everywhere. PRIMACCNUM was used uniformly across all
+# 3 counties for consistency, at the cost of ~0.1pp lower population.
+# There is no incumbent Oregon statewide parcel layer to test overlap
+# against (see the scope note at the top of this file), so, as with
+# `US-MN_parcel-metrogis-2026`, only population and non-degeneracy
+# were verified, not cross-source overlap.
+#
+# Verified end-to-end, all 3 counties actually ingested this session
+# (not spot-checked): US-OR-CC 167,258 rows, parcel_id_local 163,712
+# populated == 163,712 distinct (0 duplicates); US-OR-MU 286,524
+# rows, 282,300 populated == 282,300 distinct; US-OR-WI 202,601 rows,
+# 200,055 populated == 200,055 distinct. Every figure matches the
+# corresponding live-server PRIMACCNUM population count exactly (see
+# the Phase 3 note above for why row counts exceed the live totals).
+# US-OR-WI triggered `compute_parcel_id_local`'s automatic
+# duplicate-guard: the bundled `geo/parcel_id_links.csv` row for
+# `US-OR-WI` (`conv='split_groups: 0|7 & skip_empty: 1'`) was built
+# for the ORTAXLOT-style format, not a plain PRIMACCNUM account
+# number, so it produced duplicates and the loader fell back to
+# `pipe` with a warning -- exactly the guarded failure mode
+# `acquiring_sources.md` Phase 5 describes, and it resolved cleanly
+# (0 duplicates in the final key, confirmed above). US-OR-MU and
+# US-OR-CC have no bundled row and used the default `simple`
+# conversion with no warning.
+
+description: >-
+  Portland-metro (Multnomah, Washington, Clackamas counties, OR) tax lot
+  compilation from Metro's Regional Land Information System (RLIS),
+  excluding ownership information.
+
+admin_id: US-OR
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: metrorlis
+    portal_url: "https://rlisdiscovery.oregonmetro.gov/datasets/b3cabe5845ec47eab61c54e0c631313c/about"
+    download_url: "https://drcmetro.maps.arcgis.com/sharing/rest/content/items/9d3c396ffad44649bc7451465aa300f0/data"
+    license: "RLIS Open Database EULA (attribution, share-alike; see CC BY 4.0)"
+    terms_url: "https://rlisdiscovery.oregonmetro.gov/pages/open-database-license"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "taxlots_public.zip"
+uncompressed_file_name: "taxlots_public.shp"
+
+# One shared shapefile for all 3 counties, split by the in-data
+# COUNTY column (single-character C/M/W) via the sidecar crosswalk
+# below -- not one already-split file per county, so admin_id_column
+# rather than file_pattern.
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY
+  admin_id_crosswalk:
+    recipe_id: "US-OR_parcel-metrorlis-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_admin3: PRIMACCNUM
+  address: SITEADDR
+  city: SITECITY
+  postal_code: SITEZIP
+  land_value: LANDVAL
+  improvement_value: BLDGVAL
+  total_value: TOTALVAL
+  year_built: YEARBUILT
+  use_group: LANDUSE
+  use_group_code: PROP_CODE
+  area_sqft: BLDGSQFT
+  lot_size: A_T_ACRES
+  last_sale_date: SALEDATE
+  last_sale_price: SALEPRICE
+
+columns_to_categorical:
+  - city
+  - use_group
+  - use_group_code
+
+# Expose the raw county-assessor account number under the canonical
+# name parcel_id_assessor (a copy of parcel_id_admin3 -- PRIMACCNUM),
+# so it is the raw key parcel_id_local derives from -- consistent
+# with the MassGIS/Wisconsin/DC/MetroGIS statewide and metro recipes.
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  # 0 = "no value" sentinel for the Real Market Value fields (verified
+  # via a live MIN aggregate query: all four value fields' true
+  # minimum is exactly 0, no negative sentinel like MN's -9999 here).
+  - type: unary
+    operation: null_if_equal
+    input: land_value
+    args: {value: 0}
+    output: land_value
+  - type: unary
+    operation: null_if_equal
+    input: improvement_value
+    args: {value: 0}
+    output: improvement_value
+  - type: unary
+    operation: null_if_equal
+    input: total_value
+    args: {value: 0}
+    output: total_value
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_price
+    args: {value: 0}
+    output: last_sale_price
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    args: {value: 0}
+    output: year_built
+
+  # A_T_ACRES (mapped to lot_size, sqft-typed in the registry) is
+  # sourced in acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+  # SALEDATE is a 6-digit CCYYMM string with no day-of-month (verified
+  # via a live sample: first two digits 19/20, next two 0-99, last two
+  # 1-12). Append a fabricated day so the registry's datetime type can
+  # parse it -- see the header note on SALEDATE for the caveat.
+  - type: string
+    operation: add_suffix
+    input: last_sale_date
+    args: {suffix: "01"}
+    output: last_sale_date
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+# Standardized matching key from the county assessor's own account
+# number (see the Phase 5 header note above for why PRIMACCNUM was
+# chosen over the state-standard ORTAXLOT).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
