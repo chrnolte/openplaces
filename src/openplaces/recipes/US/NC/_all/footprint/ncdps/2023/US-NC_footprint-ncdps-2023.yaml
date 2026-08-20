@@ -21,6 +21,15 @@ entity:
     # Regex to extract download URL from `download_url_source`
     # Data partition placeholders {...} will be replaced before use.
     download_url_source_regex: 'HREF="(/downloads/public/BuildingFootprintsbyCounty/2020-2022/{admin3_name}_202._Buildings.zip)'
+    # Searched 2026-08-19: no terms-of-use or licence page found on the
+    # download site, the story-map portal, or NC OneMap. State government
+    # records in North Carolina are public records (N.C.G.S. ch. 132),
+    # which is probably why no licence is published -- but "no page
+    # found" is not "no restriction", so this stays unknown and the
+    # restriction flag stays unset rather than false.
+    license: "unknown"
+    terms_url: null
+    redistribution_restricted: null
   version: 2023
 
 # Name of compressed file (set to skip re-downloading)

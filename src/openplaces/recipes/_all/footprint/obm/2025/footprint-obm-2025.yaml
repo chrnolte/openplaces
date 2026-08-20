@@ -17,6 +17,17 @@ entity:
     portal_url: "https://gee-community-catalog.org/projects/obm/"
     # Link to direct download
     download_url: "https://datapub.gfz.de/download/10.5880.GFZ.LKUT.2025.002-Caweb/2025-002_Oostwegel-et-al_data/building.{tile_id}.gpkg.bz2"
+    # Terms verified 2026-08-19 at the portal below. OBM conflates
+    # OpenStreetMap (23%), Google Open Buildings (59%) and Microsoft
+    # Global ML Footprints (18%), and inherits OSM's licence. ODbL is
+    # share-alike: a derivative database must itself be ODbL, and must
+    # attribute OSM contributors plus Oostwegel, Schorlemmer, Lingner &
+    # Evaz Zadeh (2025), DOI 10.5880/GFZ.LKUT.2025.002.
+    license: "ODbL-1.0"
+    terms_url: "https://opendatacommons.org/licenses/odbl/1-0/"
+    # Redistribution is permitted -- conditioned on share-alike and
+    # attribution, not forbidden. Contrast GADM, which forbids it.
+    redistribution_restricted: false
   version: 2025
 
 # Name of compressed file (set to skip re-downloading)

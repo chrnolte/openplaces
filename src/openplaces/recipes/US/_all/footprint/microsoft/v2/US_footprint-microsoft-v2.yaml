@@ -17,6 +17,12 @@ entity:
     portal_url: "https://github.com/microsoft/USBuildingFootprints"
     # Link to direct download
     download_url: "https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{admin2_name}.geojson.zip"
+    # Terms verified 2026-08-19 in the portal README: "This data is
+    # licensed by Microsoft under the Open Data Commons Open Database
+    # License (ODbL)." Share-alike and attribution, as for OBM above.
+    license: "ODbL-1.0"
+    terms_url: "https://opendatacommons.org/licenses/odbl/1-0/"
+    redistribution_restricted: false
   version: v2
 
 # Name of compressed file (set to skip re-downloading)
