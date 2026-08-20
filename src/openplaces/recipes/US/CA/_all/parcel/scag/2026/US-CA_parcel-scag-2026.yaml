@@ -1,0 +1,377 @@
+# Recipe: SCAG Annual Land Use Dataset (ALU) -- parcel-level land-use
+# and zoning classification for the 6-county Southern California
+# Association of Governments (SCAG) region: Los Angeles, Orange,
+# San Bernardino, Riverside, Ventura, Imperial.
+#
+# NOTE on scope -- California has NO statewide parcel/tax-roll
+# aggregator (confirmed by prior repo research: only private vendors
+# such as Regrid/ParcelQuest cover CA statewide). What DOES exist is
+# this SCAG regional compilation covering exactly 6 of California's
+# 58 counties. `admin_id` below is set to `US-CA` only as the natural
+# common parent of these 6 counties, following the same
+# one-file-many-counties pattern as a true statewide recipe (e.g.
+# `US-WI_parcel-wiscedu-v11`) -- it does NOT mean this recipe covers
+# California statewide. Enforcement is real: `process_by.
+# admin_id_crosswalk` below uses the `recipe_id` (sidecar-table) form
+# pointed at `US-CA_parcel-scag-2026_admin3-crosswalk`, which lists
+# only these 6 counties. `TableIngester.process()` records that
+# sidecar's covered admin units as `admin_id_crosswalk_scope` and
+# raises `KeyError` for any admin unit outside it *before* attempting
+# to filter rows -- verified directly against the current ingester
+# code (`_prepare_admin_id_crosswalk` / the scope check in
+# `process()`), not assumed from the MN MetroGIS precedent's
+# docstring. A synthetic join test (COUNTY_ID '025'/'037' in-scope,
+# '075' San Francisco out-of-scope) confirmed the low-level filter
+# join alone produces a silent NaN/empty match for the out-of-scope
+# code -- it is the scope-gate check in `process()`, not the join,
+# that turns that into a raised error. So `op.ingest` for any of CA's
+# other 52 counties raises a clear KeyError rather than silently
+# writing an empty file. A future agent should not read the presence
+# of this recipe under `US/CA/` as evidence of statewide CA parcel
+# coverage; it is 6/58 counties. A "SCAG Southern California Region
+# (6-County)" region was registered in
+# `_all/admin/regions/2026/admin-regions-2026.csv` (region_id
+# `scag-socal`), following the MetroGIS Twin Cities precedent, so
+# this exact grouping has a name other tooling (delivery, mapping,
+# ad-hoc analysis) can reference without restating the 6 county ids.
+#
+# THIS IS A LAND-USE/ZONING RECIPE, NOT A TAX-ROLL RECIPE (important
+# correction to prior, unverified research this recipe was requested
+# against). That research described SCAG as collecting "parcel
+# boundary GIS files + tax-roll property data directly from all 6
+# county assessors." Verified directly against the live schema
+# (`maps.scag.ca.gov/scaggis/rest/services/HousingElements/
+# AnnualLandUse19_HousingApp2_NAD83/MapServer/0`, 74 fields, fetched
+# this session): there is NO owner name, NO sale price or date, NO
+# assessed/land/improvement value, and NO year-built field anywhere in
+# this dataset. It is a parcel-level planning/zoning classification
+# layer (existing land use code, city and SCAG-standardized zoning
+# and general-plan codes, plus hazard/environmental/housing-element
+# overlay indicators), built by SCAG for its Housing Element Parcel
+# Tool (HELPR) -- not an aggregated county-assessor tax roll. No
+# separate `property` recipe is written: there is no per-unit/
+# tax-roll data of any kind to justify one.
+#
+# Verified via direct fetch (this session), all against SCAG's own
+# accounts/domains (not a third-party mirror):
+#   - AGOL item `3b27b21e9aa64e4a8200d0385ccfe3ac` ("2019 Annual Land
+#     Use Dataset (ALU v.2019.2) - Download in file-GDB format only"),
+#     owner `scaggisadmin` in org `YzWImMY4GtDcMxOx` (SCAG's own org,
+#     not a third-party account -- other search hits for "SCAG Master
+#     Parcel Layer" etc. under a `pitzer.edu_claremont` owner were a
+#     third party's own republish and were NOT used as the source
+#     here). Item created 2021-06-15, modified 2023-06-24; its own
+#     snippet: "This is SCAG's 2019 Annual Land Use (ALU v.2019.2) at
+#     the parcel-level, updated as of February 2021." Despite the
+#     unverified research's "2024/2025 Annual Land Use" claim, the
+#     most current SCAG parcel-level ALU release found is this 2019
+#     vintage (updated through Feb 2021) -- no evidence of a newer
+#     SCAG-published parcel-level ALU refresh was found this session.
+#   - The item's own `url` field resolves to
+#     `https://maps.scag.ca.gov/scaggis/rest/services/HousingElements/
+#     AnnualLandUse19_HousingApp2_NAD83/MapServer` -- a live MapServer
+#     on SCAG's own domain, confirmed responsive this session
+#     (`returnCountOnly` => 5,131,098 features total, matching the
+#     ~5.1M figure in the prior unverified research).
+#   - Six distinct (COUNTY, COUNTY_ID) pairs confirmed via
+#     `returnDistinctValues`: Los Angeles/037, Orange/059, San
+#     Bernardino/071, Riverside/065, Ventura/111, Imperial/025 --
+#     standard CA county FIPS suffixes, summing exactly to the total
+#     row count (87,060 + 262,254 + 690,287 + 870,190 + 814,934 +
+#     2,406,373 = 5,131,098), so COUNTY fully partitions the file with
+#     no overlap or stray county. Per-county counts confirm Imperial
+#     is by far the smallest (87,060) -- used for this session's spot
+#     checks below.
+#   - `San Bernardino`'s admin3 code in this repo's census crosswalk
+#     is `US-CA-SA`, *not* `US-CA-SB` (`US-CA-SB` is Santa Barbara) --
+#     confirmed via `op.get_admin(admin_id='US-CA', level=3)` before
+#     writing the crosswalk sidecar, the same abbreviation-collision
+#     trap as the same-named-county trap in acquiring_sources.md, just
+#     within one state instead of across states.
+#
+# License (checked explicitly, per README.md/acquiring_sources.md) --
+# this is a genuine, non-trivial restriction, flagged here rather than
+# silently resolved:
+#   1. The dataset's own AGOL `licenseInfo` (dataset-specific): "This
+#      dataset is intended for planning purposes only, and SCAG shall
+#      incur no responsibility or liability as to the completeness,
+#      currentness, or accuracy of this information," plus a standard
+#      as-is/no-warranty disclaimer recommending users verify with the
+#      local jurisdiction. This alone is a liability/fitness
+#      disclaimer, not a redistribution bar.
+#   2. SCAG's own site-wide Terms of Use (scag.ca.gov/terms-use,
+#      fetched directly this session, distinct from and in addition to
+#      (1)): "Materials generated at public expense are freely
+#      available [per the CA Public Records Act,] provided you credit
+#      SCAG" for use -- BUT "Use or modification of these materials or
+#      information for commercial or profit making purposes is
+#      prohibited." This is a real, explicit non-commercial-use
+#      restriction with a mandatory-attribution condition, parallel to
+#      the GADM precedent already accepted (with documentation, not a
+#      block) elsewhere in this repo -- recorded here on the same
+#      footing, not silently assumed away. A person deciding whether
+#      openplaces's own use (research, non-commercial) and any future
+#      redistribution of a curated product incorporating this source
+#      clears that bar should treat this as a real judgment call, not
+#      a formality.
+license: >-
+  non-commercial use only; attribution to SCAG required (SCAG
+  site-wide Terms of Use, https://scag.ca.gov/terms-use); the dataset
+  item itself separately disclaims warranty/liability and states it is
+  "for planning purposes only"
+#
+# Bulk vs REST (Phase 3): SCAG's own AGOL item page recommends "File
+# Geodatabase format... due to dataset size limitations with Shapefile
+# and Spreadsheet formats" -- but the actual Hub v1 download API
+# (`/api/download/v1/items/{id}/{fmt}?layers=0`) tested this session
+# returned an explicit 400 for `fmt=filegdb`: "Unsupported file format.
+# Supported file formats are csv, shapefile, geojson, kml." This is a
+# real discrepancy between the item page's displayed recommendation
+# and what the download API actually serves -- worth knowing before
+# assuming filegdb is fetchable. Of the four actually-supported
+# formats, csv/kml are unsuitable (csv has no geometry; kml is a poor
+# fit for 5.1M attributed polygons) and shapefile carries the size risk
+# SCAG's own page warns about (dbf/shp 2GB caps), so geojson is used
+# despite being the most verbose encoding -- there is no Esri
+# epoch-millisecond date risk here since this schema has no true date
+# field (see below). No REST-vs-bulk *equivalence* test in the usual
+# sense applies: the AGOL item's own `url` field IS the same
+# `maps.scag.ca.gov` MapServer queried live above, and the Hub bulk
+# export pages that identical service to build its file -- there is no
+# separate CAMA-style join the bulk path could omit (unlike Wilson
+# County NC's Hub export, which drew from an unjoined view). The
+# region-wide bulk geojson export is asynchronous and, at the time of
+# writing, was **not** waited out to completion in this session: a
+# nudge request returned `{"status":"PagingData",
+# "recordCount":42000,"progressInPercent":1}` for the full 5,131,098-
+# feature file, i.e. genuinely many minutes of generation for a
+# multi-GB output -- impractical to wait for inside this working
+# session. An actual `op.ingest(..., admin_ids=['US-CA-IM'])` run was
+# attempted this session and hit exactly the "202 stub saved as data"
+# trap acquiring_sources.md documents for Wilson County NC: the
+# download step wrote the job-pending JSON (`{"status":"PagingData",
+# ...}`, 229 bytes) to the `.geojson` path, and processing then failed
+# with `pyogrio...DataSourceError: not recognized as being in a
+# supported file format`. The stub was deleted afterward, per the
+# guide's own remedy; the underlying bulk file was still not ready. A
+# future agent running this recipe for the first time should expect
+# the same on a cold cache, and should retry (deleting any stub
+# first) after giving the Hub job several more minutes, rather than
+# assume the recipe is broken. Verification below was therefore done
+# via direct REST API spot checks (per-field `returnCountOnly` queries
+# against the live MapServer) and by reading
+# `TableIngester._prepare_admin_id_crosswalk`/`process` directly to
+# confirm the `admin_id_crosswalk_scope` KeyError guard applies to
+# this `admin_id_column`-based recipe the same way it does to MN
+# MetroGIS's `file_pattern`-based one -- not a full successful
+# `op.ingest`, and not a live demonstration of the scope guard itself
+# (which only runs after a successful per-partition file read, so it
+# could not be exercised without a readable data file this session).
+# State this explicitly rather than claim more than was verified.
+#
+# Field population (region-wide unless noted; counts against the
+# live MapServer's own `returnCountOnly`, all fetched this session):
+#   COUNTY 5,131,098/5,131,098 (100%), APN19 5,131,098/5,131,098
+#   (100%), ACRES>0 5,131,098/5,131,098 (100%), LU19
+#   5,120,659/5,131,098 (99.8%), SCAG_ZN_CO 5,113,634/5,131,098
+#   (99.65%), SCAG_GP_CO 5,118,982/5,131,098 (99.78%), CITY
+#   5,131,098/5,131,098 (100%), SCAGUID16 5,130,369/5,131,098 (99.99%,
+#   left unmapped -- see below). Imperial County alone (the smallest,
+#   used for this session's spot check): 87,060 rows; APN19 100%,
+#   ACRES>0 100%, LU19 99.98%, SCAG_ZN_CO 99.83%.
+#
+# Sentinel handling: `SCAG_ZN_CO` and `LU19` both use the string
+# `"9999"` as a "no code assigned" sentinel (confirmed via sampling --
+# rows with `SCAG_ZN_CO='9999'` carry real `LU19_CLASS` values like
+# "Agriculture"/"Vacant"/"Water", i.e. undeveloped land with no
+# applicable zoning ordinance, not a genuine zoning code). Counts:
+# `SCAG_ZN_CO='9999'` 40,761/5,131,098 (0.79%); `LU19='9999'`
+# 2,573/5,131,098 (0.05%; every one of these rows carries
+# `LU19_CLASS='Unknown'`, itself a legitimate category value, left
+# as-is); `SCAG_GP_CO='9999'` 29,440/5,131,098 (0.57%, unmapped field,
+# noted for completeness). Both `LU19` and `SCAG_ZN_CO` are nulled at
+# `"9999"` before use so a genuine future 4-digit code never collides
+# with the "unassigned" sentinel.
+#
+# parcel_id_local: `APN` (dashed, e.g. 3 groups of digits) is the
+# assessor's native per-county parcel number; `APN19` is SCAG's own
+# digits-only normalization of the same value (confirmed via sampling
+# that APN19 is APN with dashes stripped, nothing else). `APN` is
+# mapped as `parcel_id_admin3`/`parcel_id_assessor` -- the least-
+# processed form -- rather than SCAG's own `APN19`, on the same
+# reasoning as Nash NC's TAX_PIN-over-GIS_PIN preference: the standard
+# `parcel_id_local` conversion pipeline already strips punctuation, so
+# reusing SCAG's redundant pre-stripped copy would just be trusting a
+# second party's normalization instead of the pipeline's own. `APN19`
+# is therefore left unmapped (redundant with APN once converted).
+# `SCAGUID16` (a SCAG-internal synthetic id, 99.99% populated) is also
+# left unmapped: it is not the assessor's own number and no county
+# tax-roll or transaction source would key on it. This is the first
+# CA parcel recipe in this repo, so there is no incumbent CA parcel or
+# tax-roll layer to check `parcel_id_local` overlap against yet --
+# note this explicitly rather than silently skip that usual check.
+#
+# Fields left unmapped for want of a registry attribute, or because
+# their meaning does not safely fit an existing one (checked values,
+# not just names, per Phase 4):
+#   - CITY_ZN_CO, CITY_GP_CO, SCAG_SP_CO, CITY_SP_CO -- each city's own
+#     raw zoning/general-plan/specific-plan code, before SCAG's own
+#     region-wide standardization. `SCAG_ZN_CO` (SCAG's normalized
+#     zoning code) is mapped to `zoning_code` instead of the raw
+#     per-city version, since a 6-county vocabulary of city-specific
+#     codes is not usable as one categorical column; the raw versions
+#     are left unmapped rather than mis-homed. No registry field
+#     exists for a general-plan or specific-plan code at all.
+#   - APN19, SCAGUID16, GEOID20 -- redundant ids (see above);
+#     `GEOID20` (a Census geography id) duplicates linkage this
+#     pipeline's own admin/census join already produces.
+#   - MULTIPART, STACK, APN_DUP -- SCAG's own layer-construction flags
+#     (multi-part polygon; polygon shared by several taxlots; a
+#     duplicate-APN marker). Relevant context for `parcel_id_local`
+#     duplicate handling but no registry column of their own.
+#   - IL_RATIO -- undocumented in what was fetched this session
+#     (possibly an impervious/lot ratio, not a value ratio -- there is
+#     no land/improvement value in this dataset at all); left unmapped
+#     rather than guess its meaning.
+#   - YEAR -- a constant `2019` (the ALU vintage year) across every
+#     row sampled, an int, not a true date; not `year_built` (no
+#     structure-level attribute exists here at all) and not a fit for
+#     `source_date` (datetime-typed). Left unmapped.
+#   - PUB_OWN, PUB_NAME, PUB_TYPE, PUB_SRC -- public-ownership flag
+#     (true for 187,051/5,131,098 rows, 3.6%), the owning public
+#     entity's name/type/source. `PUB_NAME` was considered for
+#     `owner_name` and rejected: it only names the owner for the 3.6%
+#     of parcels that are publicly held, so mapping it there would
+#     silently misrepresent the other 96.4% as having no
+#     `owner_name` evidence at all rather than none collected -- the
+#     same category of mis-homing caution as Sampson County NC's
+#     USE_DESC/SEG_TYPE_D trap in acquiring_sources.md, applied to an
+#     ownership field instead of a land-use one.
+#   - BF_SQFT, BSF_NAME, BSF_TYPE -- a big-box/superstore-facility
+#     footprint area, name and type, evidently tracked for retail
+#     land-use classification purposes. No registry field for this
+#     narrow, retail-specific concept; `area_sqft` is a structure
+#     floor-area field on `property`/`footprint` entities, not this
+#     one.
+#   - FIRE, FLOOD, EQUAKE, LIQUAFA, LANDSLIDE, SEARISE36, SEARISE72,
+#     CPAD, RIPARIAN, WILDLIFE, CNDDB, HCPRA, WETLAND, UAZ -- boolean
+#     (0/1) hazard/habitat/conservation overlay flags. The registry
+#     has no parcel-level hazard-zone boolean fields (only
+#     `flood_depth_fluvial`/`flood_depth_pluvial`, which are inundation
+#     *depths*, not zone-membership flags, and enrich-stage rather than
+#     ingest-stage besides).
+#   - GRCRY_1MI, HEALTH_1MI, OPENSP_1MI -- "within 1 mile of a
+#     grocery/health facility/open space" accessibility flags computed
+#     by SCAG for HELPR. Conceptually adjacent to this repo's own
+#     `vicinity.py` enrichment step, but computed by SCAG's own
+#     undocumented methodology rather than this pipeline's, and no
+#     registry field exists regardless.
+#   - TCAC_2021 -- the CA Tax Credit Allocation Committee/HCD
+#     "Opportunity Area" designation (a state housing-policy program);
+#     no registry field.
+#   - HQTA45, JOB_CTR, NMA, ABS_CONSTR, VAR_CONSTR, EJA, SB35, COC,
+#     STATE, SB, SM, PK, SB_SM, SB_PK, SM_PK, SB_SM_PK -- further
+#     HELPR-specific housing-element overlay indicators (High Quality
+#     Transit Areas, job centers, Neighborhood Mobility Areas,
+#     absolute/variable development-constraint areas, Environmental
+#     Justice Areas, SB 35 streamlining eligibility, Communities of
+#     Concern, and several undocumented combination flags). None have
+#     a clear, safe registry home; left unmapped rather than guessed.
+#   - JURISDICTION_LABEL -- a display-formatted duplicate of CITY.
+#   - LU19_SRC -- per-row provenance of how LU19 was derived (e.g.
+#     assessor vs. aerial vs. city-supplied, per the item's own
+#     description); genuinely useful context for how much to trust a
+#     given row's `use_group_code`, but no registry field for a
+#     per-row classification-provenance string exists.
+#   - UNBUILT_SF -- an estimated unbuilt/developable square footage;
+#     no registry field for a development-capacity estimate.
+#   - Shape_Length, Shape_Area -- Esri's own geometry-derived fields,
+#     redundant with this pipeline's own geometry-derived area/length.
+
+description: >-
+  SCAG (Southern California Association of Governments) parcel-level
+  Annual Land Use dataset for the 6-county LA/Southern California
+  metro region: land use, zoning, and general-plan classification.
+
+admin_id: US-CA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: scag
+    portal_url: "https://gisdata-scag.opendata.arcgis.com/datasets/SCAG::2019-annual-land-use-dataset-alu-v-2019-2-download-in-file-gdb-format-only"
+    download_url: "https://gisdata-scag.opendata.arcgis.com/api/download/v1/items/3b27b21e9aa64e4a8200d0385ccfe3ac/geojson?layers=0&spatialRefId=4326"
+    license: "non-commercial use only; attribution to SCAG required"
+    terms_url: "https://scag.ca.gov/terms-use"
+    redistribution_restricted: true
+  version: "2026"
+
+uncompressed_file_name: "scag_alu2019.geojson"
+
+process_by:
+  admin_level: 3
+  admin_id_column: COUNTY_ID
+  admin_id_transformation:
+    output: admin3_id_admin1
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "06"
+  admin_id_crosswalk:
+    recipe_id: "US-CA_parcel-scag-2026_admin3-crosswalk"
+    dtype: str
+
+columns:
+  parcel_id_admin3: APN
+  city: CITY
+  lot_size: ACRES
+  use_group_code: LU19
+  use_group: LU19_CLASS
+  zoning_code: SCAG_ZN_CO
+
+columns_to_categorical:
+  - city
+  - use_group
+  - use_group_code
+  - zoning_code
+
+# Expose the raw assessor-original parcel number under the canonical
+# name parcel_id_assessor (a copy of parcel_id_admin3 -- APN), so it
+# is the raw key parcel_id_local derives from (consistent across
+# parcel recipes).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin3]
+    output: parcel_id_assessor
+
+  # "9999" is SCAG's own "no code assigned" sentinel for LU19 and
+  # SCAG_ZN_CO (see header note above) -- null it before use so it
+  # never collides with a genuine 4-digit code.
+  - type: unary
+    operation: null_if_equal
+    input: use_group_code
+    args: {value: "9999"}
+    output: use_group_code
+  - type: unary
+    operation: null_if_equal
+    input: zoning_code
+    args: {value: "9999"}
+    output: zoning_code
+
+  # ACRES (mapped to lot_size, sqft-typed in the registry) is sourced
+  # in acres; confirmed 100% populated and >0 region-wide, so no
+  # zero/sentinel nulling is needed first.
+  - type: unary
+    operation: acres_to_sqft
+    input: lot_size
+    output: lot_size
+
+# Standardized matching key from the raw county assessor's parcel
+# number (APN).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
