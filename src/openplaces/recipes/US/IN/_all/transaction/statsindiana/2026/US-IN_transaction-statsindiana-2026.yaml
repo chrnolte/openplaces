@@ -1,0 +1,197 @@
+# Recipe: Indiana statewide Sales Disclosure Form (SDF) header data,
+# published by STATS Indiana (Indiana Business Research Center, IU
+# Kelley School of Business) in partnership with the Department of
+# Local Government Finance (DLGF). Every real-property sale in
+# Indiana requires an SDF filing (IC 6-1.1-5.5) before the deed can
+# record.
+#
+# Source discovery/validation: confirmed genuinely free/public bulk
+# download, NOT registration-gated -- `www.stats.indiana.edu/topic/
+# sdf.asp` lists direct zip links with no login wall
+# (`/sdfdata/SDF_{year}.zip`, HTTP 200, fetched directly in this
+# research pass for 2025: 44,346,755 bytes). Format: for 2021-forward,
+# a zip of 5 UTF-16, tab-delimited, double-quoted files plus an Excel
+# metadata sheet; 2008-2020 used a different pipe-delimited legacy
+# schema (`SDF_View_CSV_{year}.zip`, not covered by this recipe).
+#
+# Indiana's own SDF schema splits one sale disclosure across THREE
+# related files, keyed by `SDF_ID`: SALEDISC.txt (this recipe -- the
+# disclosure header: price, conveyance date, sale-type flags, no
+# parcel identifier at all), SALEPARCEL.txt (the parcel(s) named on
+# the disclosure, WITH the parcel number -- ingested separately as
+# `US-IN_transaction-statsindianaparcel-2026`, since this recipe's own
+# file cannot carry `parcel_id_local`), and SALECONTAC.txt (buyer/
+# seller name, mailing address, phone, email -- NOT ingested by either
+# recipe: it is real personal-contact data, out of scope for a public
+# recipe per this repo's privacy policy, and Indiana's own IC
+# 6-1.1-5.5-3(d) separately restricts phone-number release in a public
+# search application). This SALEDISC/SALEPARCEL split, and why they
+# are two independent recipes rather than one `additional_layers`
+# pairing, is explained in the sibling recipe's header (the
+# `TableIngester`'s `layer:` mechanism only selects among GDB/GPKG
+# layers of one already-resolved file; it cannot pick between two
+# differently-named flat files unzipped from the same archive).
+#
+# NOTE on why this recipe has no `parcel_id_local`: SALEDISC.txt
+# genuinely has no parcel-identifying column (verified against its
+# full 111-column header). Its price/date data can only reach the
+# parcel spine by first joining to `US-IN_transaction-
+# statsindianaparcel-2026` on `SDF_ID`/`Unique_Sales_ID` (a
+# within-source key, not `parcel_id_local`) -- flagged here as
+# something a harmonizer step would need to do; no such step exists
+# yet.
+#
+# NOTE -- discovered ingester limitation (not a recipe error): a
+# straight `pandas.read_csv(delimiter='\t', encoding='utf-16')` call
+# on the real 2025 SALEDISC.txt -- the exact call
+# `TableIngester._read_recipe_data` makes for a `.txt` source -- FAILS
+# with `ParserError: Error tokenizing data. C error: Expected 111
+# fields in line 3323, saw 112`. The file contains an unescaped
+# literal `"` inside at least one free-text field (a candidate is
+# `B6_Partial_Description`, a free-text easement/partial-interest
+# description) that breaks RFC4180 quote parsing; Indiana does not
+# double up embedded quotes the way the format requires. Reading with
+# `engine='python', on_bad_lines='skip', quoting=csv.QUOTE_NONE`
+# recovers 198,843 of 200,969 lines (99.94%2,126 lines skipped,
+# 1.06%), so this is a small-magnitude but real problem: the current
+# `TableIngester` has no recipe-level `quoting`/`on_bad_lines` option,
+# so `op.ingest()` on this recipe as written will currently raise
+# partway through the file. This needs either an ingester enhancement
+# (a `quoting`/`on_bad_lines` passthrough for CSV reads) or a
+# preprocessing step before this recipe can be run end-to-end; flagged
+# here rather than silently worked around. The sibling
+# `US-IN_transaction-statsindianaparcel-2026` recipe (SALEPARCEL.txt)
+# does NOT have this problem -- it read cleanly with the identical
+# call in this research pass -- so it was the one actually ingested
+# for validation (see its own header).
+#
+# NOTE on the county crosswalk: `County_ID` in SALEDISC.txt is the
+# DLGF's own alphabetical county numbering (same scheme as
+# `US-IN_property-dlgf-2023`'s `COUNTY_NUMBER`), but zero-padded to 2
+# digits ("01".."92"), unlike the CAMA table's unpadded ("1".."92")
+# form -- confirmed by cross-checking `County_Name` against this
+# repo's own alphabetical admin3 list for the first 10 counties
+# (Adams=01 through Clark=10, exact match). A separate,
+# zero-padded-specific crosswalk CSV is used because the join is a
+# plain string match with no zero-stripping.
+#
+# NOTE on fields left unmapped: the many boolean sale-characteristic
+# flags (`B1_Valuable_Consider` through `G13_IntangiblePersProp`,
+# `J1_Primary_Residence` through `J7_Geothermal`) and the auditor/
+# assessor processing-workflow fields (`P2_*`/`P3_*`) have no registry
+# equivalent; `C10_Residential_Property`/`_Agricultural_Property`/
+# `_Commercial_Property`/`_Industrial_Property` (checkbox land-use
+# flags on the form itself) likewise have no registry slot distinct
+# from `use_group`/`use_group_code` (which belong on the parcel/
+# property side, not the transaction side, for this source).
+# `C9_Num_Parcels` (how many parcels this one sale touches) is also
+# left unmapped for the same reason.
+#
+# NOTE on a pre-existing registry gap (not introduced by this
+# recipe): `conveyance_date` is NOT in `core/attribute_registry.csv`.
+# The registry's only transaction-scoped date is `recorded_date`
+# ("date the deed was recorded"), which is a different real-world
+# event from Indiana's SDF conveyance date (the date the parties
+# agreed to the sale). Mapping this field to `recorded_date` would
+# misrepresent what it measures; `conveyance_date` is used instead,
+# matching the name already used (also unregistered) by the existing,
+# merged `US-WI_transaction-widor-2026` recipe for the same real-world
+# concept -- reusing that name rather than inventing a third variant.
+# Flagged for the registry-gap discussion this repo's recipe README
+# asks for, rather than silently worked around.
+#
+# Measured (2025 vintage, the full statewide annual file --
+# confirmed complete/statewide by county coverage, not the partial-
+# county-coverage "current year" file the source's own documentation
+# warns about): 198,843 rows recovered (of 200,969 raw lines; 2,126
+# skipped for the quoting reason above), spanning all 92 counties.
+# `E1_Sales_Price` > 0: 183,822/198,843 (92.5%). `C7_Conveyance_Date`
+# populated 198,843/198,843 (100%), a clean ISO `YYYY-MM-DD` string
+# (not an epoch-ms or sentinel value in this sample). Neither `SDF_ID`
+# nor `Unique_Sales_ID` is a unique key on this table (163,971
+# distinct values for 198,843 rows) -- duplicate rows share identical
+# SDF_ID/Unique_Sales_ID/county/date, a source-side data-quality trait
+# (not investigated further in this pass), not a join-key problem
+# since this recipe has no join key.
+#
+# License: `stats.indiana.edu`'s own SDF pages state no explicit
+# license or redistribution terms; the data is described as a
+# DLGF/Indiana Business Research Center partnership product "for
+# research purposes." Recorded as 'unknown'.
+#
+# Validation performed: recipe-loading and registry-column checks
+# were run for real; `op.ingest()` was NOT run for this recipe (see
+# the quoting bug above) -- see the sibling
+# `US-IN_transaction-statsindianaparcel-2026` recipe for the real,
+# successful `op.ingest()` run against the same year's data.
+
+description: >-
+  Indiana statewide Sales Disclosure Form headers (price, conveyance date,
+  sale-type flags) from STATS Indiana / DLGF, 2021 onward.
+
+admin_id: US-IN
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: statsindiana
+    portal_url: "https://www.stats.indiana.edu/topic/sdf.asp"
+    download_url: "https://www.stats.indiana.edu/sdfdata/SDF_{year}.zip"
+    license: "unknown (no separate terms/license page found; see header)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2026"
+
+# Tab-delimited 2021+ schema only; 2008-2020 used a different
+# pipe-delimited legacy layout (SDF_View_CSV_{year}.zip), not
+# covered here. 2026 (the in-progress current year) is only
+# partial-county coverage per the source's own documentation; still
+# included since a year without a usable file is simply skipped.
+download_by:
+  partition: year
+  first: 2021
+  last: 2026
+
+compressed_file_name: "SDF_{year}.zip"
+uncompressed_file_name: "SALEDISC.txt"
+
+encoding: "utf-16"
+delimiter: "\t"
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: County_ID
+  admin_id_crosswalk:
+    recipe_id: "US-IN_transaction-statsindiana-2026_admin3-crosswalk"
+    # County_ID is read as csv_dtype: str above, but the crosswalk
+    # CSV's own all-digit admin3_id_admin2 column would otherwise load
+    # as int64 by get_crosswalk's default, breaking the join the same
+    # way documented (and fixed) on the sibling parcel/property
+    # recipes' crosswalks.
+    dtype: str
+
+columns:
+  instrument_number: SDF_ID
+  price: E1_Sales_Price
+  conveyance_date: C7_Conveyance_Date
+
+columns_to_categorical: []
+
+transformations:
+  - type: unary
+    operation: to_datetime
+    input: conveyance_date
+    output: conveyance_date
+
+# No parcel_id_local: this table has no parcel-identifying column
+# (see header). Its rows cannot reach the parcel spine directly.
+
+save_to:
+  data_dir: cache
+
+# Integrate the per-year files into one dataset-wide _all.parquet,
+# matching US-FL_transaction-fldor-2026/US-WI_transaction-widor-2026's
+# convention.
+aggregate_by:
+  single_file: true

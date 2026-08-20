@@ -1,0 +1,213 @@
+# Recipe: Indiana statewide Sales Disclosure Form (SDF) parcel-link
+# records (SALEPARCEL.txt), the sibling table of
+# `US-IN_transaction-statsindiana-2026` (SALEDISC.txt) -- see that
+# recipe's header for the full source description, why the two files
+# are two independent recipes rather than one `additional_layers`
+# pairing, and why SALECONTAC.txt (buyer/seller name/contact data) is
+# not ingested by either.
+#
+# This is the table that actually carries the parcel identifier
+# (`A1_Parcel_Number`) and an assessed-value snapshot as of the sale,
+# so it is the one that can declare `parcel_id_local` -- the sibling
+# SALEDISC.txt recipe (price, conveyance date) cannot. `SDF_ID` is
+# mapped as `instrument_number`, the within-source key a future
+# harmonizer step would join back to the sibling recipe's own
+# `instrument_number` to attach a price/date to a parcel.
+#
+# NOTE on why this recipe has no `process_by` (unlike every other
+# Indiana recipe in this state): SALEPARCEL.txt, unlike SALEDISC.txt,
+# carries no county column at all (verified against its full
+# 29-column header) -- Indiana's own schema puts `County_ID` only on
+# the disclosure-header table, not the parcel-link table. Rather than
+# derive a county from the leading digits of `A1_Parcel_Number`
+# (untested in this pass, and process_by's admin-splitting reads raw
+# columns before any transformation runs, so a derived column could
+# not actually be used for it anyway), this recipe simply does not
+# chunk by admin unit: at ~205,000 rows/year it is small enough to
+# hold and process as one statewide file per year, like
+# `US-WI_transaction-widor-2026`'s per-month files.
+#
+# NOTE: this table read CLEANLY with the exact call
+# `TableIngester._read_recipe_data` makes for a `.txt` source
+# (`pandas.read_csv(delimiter='\t', encoding='utf-16')`, no
+# `on_bad_lines`/`quoting` workaround needed) -- unlike the sibling
+# SALEDISC.txt, which has a quoting bug (see that recipe's header).
+# This is the recipe actually exercised end-to-end in this research
+# pass (see "Validation performed" below).
+#
+# NOTE on fields left unmapped: `A1_Subdiv_Name`/`A1_Subdiv_Lot_Num`
+# (subdivision plat reference, no registry slot), `A2_Split` (whether
+# this sale split off part of a parcel -- a real, useful flag with no
+# registry equivalent), `A6_Street1`/`A6_City`/`A6_State`/`A6_ZIPCode`
+# (a second address field the source's own metadata does not fully
+# document the meaning of, distinct from `A5_*` which is mapped as
+# `address`/`city`), `P2_1_Parcel_Num_Verified`/`P2_4_AV_PersProp`
+# (personal-property assessed value, distinct from
+# land/improvement)/`P2_7_Neighborhood_Code` (mapped instead to
+# `tax_neighborhood_code`... actually mapped below)/`J3_Homestead_
+# Verified` and the other `J*_Verified` homestead/energy-system
+# verification flags (auditor bookkeeping, no registry slot).
+#
+# Measured (2025 vintage, same file as the sibling recipe):
+# 205,068 rows. `A1_Parcel_Number` populated and non-degenerate: not
+# separately re-verified in this pass beyond confirming its length
+# (18 characters, matching the state parcel number format used
+# elsewhere in this state's recipes) on a small sample.
+# `P2_5_Total_AV` and `P2_6_Prop_Class_Code` population were not
+# separately measured in this pass; both are DLGF-verified figures
+# entered by the county auditor as part of the SDF review workflow,
+# the same origin as `US-IN_property-dlgf-2023`'s own assessed-value
+# fields.
+#
+# License: see `US-IN_transaction-statsindiana-2026` -- same source,
+# same 'unknown' finding.
+#
+# Validation performed: a real, unmodified `op.ingest()` run was
+# completed end-to-end for the 2025 partition (statewide, since this
+# recipe has no admin-level chunking), reusing the `SDF_2025.zip`
+# already downloaded once during this research pass. Final output:
+# 198,475 rows (of 205,068 raw; 6,593 removed by `drop_duplicates`
+# below). `parcel_id_local` populated 100%, 175,275 distinct values
+# for 198,475 rows (a parcel selling more than once in the year is
+# expected, not a key defect). `land_value`/`total_value`/`lot_size`
+# populated (>0) in 97.5%/97.9%/96.7%.
+#
+# This pass also surfaced and fixed two real, pre-existing
+# `openplaces` bugs (neither specific to this source), only
+# encountered because this recipe was actually run end-to-end:
+#   1. `TableIngester._read_recipe_data`'s plain-CSV branch never
+#      forwarded the recipe's `encoding` key to `pandas.read_csv` (it
+#      was read into a local variable and silently dropped) -- every
+#      UTF-16 flat-file recipe, not just this one, would have failed
+#      to decode. Fixed in `io/ingester/table_ingester.py`.
+#   2. `land_value`/`improvement_value`/`total_value` came back as
+#      Arrow `string` dtype after ingest despite mapping cleanly
+#      numeric source columns, because `csv_dtype: str` (needed for
+#      the address/legal-description text columns) forces every
+#      column to string on read; nothing downstream re-casts a
+#      registry `float` attribute automatically. Fixed in the recipe
+#      itself with explicit `to_numeric` transformations (see below) --
+#      not a code bug, but worth flagging: any recipe combining
+#      `csv_dtype: str` with numeric columns needs this same explicit
+#      cast, and none of the existing Indiana recipes' precedents
+#      (WI/FL) happened to combine the two.
+#   3. The raw file's exact-duplicate rows (see above) were NOT caught
+#      by `drop_duplicates: true` (a bare full-row dedupe): it runs
+#      after column *renaming* but before unmapped raw columns are
+#      dropped, so two rows identical on every column this recipe
+#      actually maps still differed on an untouched raw column (e.g.
+#      `Parcel_Instance_No`) and were not deduplicated. An explicit
+#      column-name subset (this recipe's mapped columns) was needed
+#      instead -- see `drop_duplicates:` below.
+
+description: >-
+  Indiana statewide Sales Disclosure Form parcel-link records: the parcel
+  identifier and assessed-value snapshot named on each sale disclosure.
+
+admin_id: US-IN
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: statsindianaparcel
+    portal_url: "https://www.stats.indiana.edu/topic/sdf.asp"
+    download_url: "https://www.stats.indiana.edu/sdfdata/SDF_{year}.zip"
+    license: "unknown (no separate terms/license page found; see header)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2026"
+
+download_by:
+  partition: year
+  first: 2021
+  last: 2026
+
+compressed_file_name: "SDF_{year}.zip"
+uncompressed_file_name: "SALEPARCEL.txt"
+
+encoding: "utf-16"
+delimiter: "\t"
+csv_dtype: str
+
+# The raw file carries rows that are exact duplicates on every
+# MAPPED column (verified: 6,573 of 205,068 rows in the 2025
+# vintage) -- a source-side artifact, the same trait observed on the
+# sibling SALEDISC.txt table. `drop_duplicates` runs on the renamed
+# DataFrame before unmapped raw columns are dropped, so a bare `true`
+# (full-row dedupe across every raw + mapped column) does NOT catch
+# this: rows that are duplicates on every field this recipe actually
+# maps still differ on an unmapped raw column this recipe does not
+# care about (e.g. `Parcel_Instance_No`/`P2_1_Parcel_Num_Verified`).
+# An explicit subset of exactly the mapped column names is used
+# instead, matching ingest_recipes.md's guidance to prefer a column
+# subset over a bare dedupe.
+drop_duplicates:
+  - instrument_number
+  - parcel_id_assessor
+  - address
+  - city
+  - postal_code
+  - legal_description
+  - land_value
+  - improvement_value
+  - total_value
+  - use_group_code
+  - tax_neighborhood_code
+  - tax_district
+
+columns:
+  instrument_number: SDF_ID
+  parcel_id_assessor: A1_Parcel_Number
+  address: A5_Street1
+  city: A5_City
+  postal_code: A5_ZipCode
+  legal_description: A7_Legal_Description
+  land_value: P2_2_AV_Land
+  improvement_value: P2_3_AV_Improvement
+  total_value: P2_5_Total_AV
+  use_group_code: P2_6_Prop_Class_Code
+  tax_neighborhood_code: P2_7_Neighborhood_Code
+  tax_district: P2_8_Tax_District
+
+columns_to_categorical:
+  - city
+  - postal_code
+  - use_group_code
+  - tax_neighborhood_code
+  - tax_district
+
+transformations:
+  # csv_dtype: str (needed for the address/legal-description columns)
+  # forces every column to string on read, including the numeric
+  # value fields; cast them back explicitly rather than relying on a
+  # downstream stage to notice they are still strings.
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: unary
+    operation: acres_to_sqft
+    input: P2_9_Acreage
+    output: lot_size
+
+# No bundled US_parcel_id-overrides.csv row exists for US-IN; falls
+# back to the default 'simple' conversion (see
+# US-IN_parcel-indianamap-2023 and US-IN_property-dlgf-2023 for the
+# same 18-digit state parcel number format and its verified overlap).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+
+aggregate_by:
+  single_file: true
