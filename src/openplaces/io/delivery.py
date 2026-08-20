@@ -32,6 +32,7 @@ import pandas as pd
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
 from openplaces.io import parquet_columns, read_parquet, to_parquet
+from openplaces.io.bundle_terms import bundle_terms, format_notice
 from openplaces.io.readers import get_admin
 from openplaces.recipe import (
     get_output_path,
@@ -377,7 +378,7 @@ def delivery_paths(
     Returns
     -------
     dict of str to pathlib.Path
-        Keyed 'canonical', 'point', 'geo', 'evidence'.
+        Keyed 'canonical', 'point', 'geo', 'evidence', 'terms'.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -404,6 +405,9 @@ def delivery_paths(
         'point': canonical.with_stem(f'{canonical.stem}_point'),
         'geo': canonical.with_stem(f'{canonical.stem}_geo'),
         'evidence': canonical.with_stem(f'{canonical.stem}_evidence'),
+        # Ships with the data because the obligations do: whoever receives
+        # the bundle needs to know what its sources require of them.
+        'terms': canonical.with_stem(f'{canonical.stem}_LICENSE').with_suffix('.txt'),
     }
 
 
@@ -588,6 +592,13 @@ def export_delivery(
     # keeps the matching evidence row rather than an arbitrary one.
     kept = pooled[admin_id_column]
     n_entities = len(pooled)
+    # Copied out before `pooled` is released: the licence notice reports
+    # each source's share of the geometry actually delivered.
+    geometry_source = (
+        pooled['geometry_source'].copy()
+        if 'geometry_source' in pooled.columns
+        else None
+    )
     del pooled, canonical, point
 
     delivered = {*declared, *source_columns, *INTERNAL_COLUMNS, 'geometry'}
@@ -605,6 +616,9 @@ def export_delivery(
     evidence_frames.clear()
     to_parquet(evidence, paths['evidence'])
 
+    terms = bundle_terms(recipe, geometry_source)
+    paths['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
+
     for path in paths.values():
         _lock(path)
 
@@ -613,5 +627,16 @@ def export_delivery(
             size_mb = paths[role].stat().st_size / 1024**2
             print(f'{role:>9}: {paths[role].name} ({size_mb:,.0f} MB)')
         print(f'{n_entities:,} entities from {len(inputs)} {admin_id_column} unit(s)')
+        for license_text, share in sorted(
+            terms['share_alike'].items(), key=lambda item: -item[1]
+        ):
+            print(
+                f'{share:.1%} of the geometry is {license_text}: publishing '
+                f'this bundle requires {license_text} and attribution. '
+                f'See {paths["terms"].name}.'
+            )
+        if terms['unrecorded']:
+            unchecked = ', '.join(e['source_id'] for e in terms['unrecorded'])
+            print(f'Terms not recorded for: {unchecked}')
 
     return paths

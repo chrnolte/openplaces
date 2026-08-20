@@ -1,8 +1,9 @@
-"""Tests for `export_delivery`, the four-file shareable split of a curated entity.
+"""Tests for `export_delivery`, the shareable split of a curated entity.
 
-The bundle's contract is that all four files carry the same index and that
-between them they still hold every curated column, so a consumer can load one
-part and rejoin the rest.
+The bundle's contract is that its four data files carry the same index and
+that between them they still hold every curated column, so a consumer can
+load one part and rejoin the rest. A fifth output, the licence notice, is
+text: it travels with the data because the obligations do.
 """
 
 from __future__ import annotations
@@ -79,12 +80,18 @@ def _bundle(admin_ids):
     return export_delivery(_recipe(), 'US-NC', admin_ids=admin_ids)
 
 
+DATA_ROLES = ('canonical', 'point', 'geo', 'evidence')
+
+
 def test_writes_four_files_sharing_one_index(two_counties):
     paths = _bundle(two_counties)
 
-    assert set(paths) == {'canonical', 'point', 'geo', 'evidence'}
+    # Five outputs, but only four of them are data: the fifth is the
+    # licence notice, which is text and shares no index with anything.
+    assert set(paths) == {*DATA_ROLES, 'terms'}
     indexes = {}
-    for role, path in paths.items():
+    for role in DATA_ROLES:
+        path = paths[role]
         assert path.exists(), role
         indexes[role] = list(read_parquet(path, geom=role in ('point', 'geo')).index)
     # Identical order, not merely identical membership: a consumer should be
@@ -230,3 +237,14 @@ def test_a_second_export_unlocks_its_own_outputs(two_counties):
     paths = export_delivery(_recipe())
 
     assert list(read_parquet(paths['canonical']).index) == ['a', 'b', 'c', 'd']
+
+
+def test_ships_a_licence_notice_beside_the_data(two_counties):
+    """The obligations travel with the bundle, not in someone's memory."""
+    notice = _bundle(two_counties)['terms']
+
+    assert notice.exists()
+    text = notice.read_text(encoding='utf-8')
+    # Names the recipe it describes and says who decides about sharing.
+    assert 'openplaces' in text
+    assert 'Sources' in text
