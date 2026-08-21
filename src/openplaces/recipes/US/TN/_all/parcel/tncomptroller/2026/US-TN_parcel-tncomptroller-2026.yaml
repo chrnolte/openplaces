@@ -98,19 +98,39 @@
 # `PARCEL`, `ADDRESS`, `DEEDAC`, `OWNER`, `OWNER2`, `SUBDIV`, `LOT`,
 # `LINK_TPAD`, `LINK_TPV`, `COUNTY_NAME`) -- no bulk-vs-REST schema
 # divergence, unlike the Wilson NC / DC Record-Lots traps this repo
-# has hit before. This is expected here because the "Public Use"
-# service is itself a restricted ArcGIS *view* (`isView: true`) with
-# its own `viewDefinitionQuery`, so any bulk export of it is
-# generated from the same view definition as the live query path,
-# not from a separately-maintained cache. Bulk is used
-# (`download_url`) rather than `arcgis_rest_scraper`, since paging
-# 2.14M features via REST would cost the state's server on the order
-# of 1,000+ sequential page requests for no schema benefit. The full
-# bulk file was inspected directly to confirm this (then deleted
-# immediately -- it necessarily contains real owner names and
-# addresses, which must never be persisted in this repository or any
-# tracked location; see "Schema, never records" in
-# `recipes/README.md`).
+# has hit before. Bulk is used (`download_url`) rather than
+# `arcgis_rest_scraper`, since paging 2.14M features via REST would
+# cost the state's server on the order of 1,000+ sequential page
+# requests. The full bulk file was inspected directly to confirm the
+# schema match (then deleted immediately -- it necessarily contains
+# real owner names and addresses, which must never be persisted in
+# this repository or any tracked location; see "Schema, never
+# records" in `recipes/README.md`).
+#
+# CORRECTION, made after a full 86-county ingest measured it directly
+# (see "Validation performed" below): this recipe's header previously
+# reasoned that because the "Public Use" service is an ArcGIS *view*
+# (`isView: true`), its bulk export "is generated from the same view
+# definition as the live query path, not from a separately-maintained
+# cache" -- and therefore assumed row-count equivalence, not just
+# schema equivalence. That reasoning was wrong. A view's
+# `viewDefinitionQuery` guarantees the export and the live service
+# filter rows the same way; it says nothing about whether the Hub's
+# export *snapshot* is regenerated as often as the live service is
+# updated. Measured: the bulk file holds 2,129,686 features
+# (confirmed independently via `pyogrio.read_info`'s own feature
+# count, not derived from any read path in this codebase) against
+# the live service's `returnCountOnly` of 2,140,056 -- a 10,370-row
+# (0.48%) undercount, present consistently across all 86 counties
+# (0.06%-2.32% per county). This is the same "stale Hub cache" shape
+# already documented for DC/NH/Maryland elsewhere in this repo, not
+# a new failure mode -- just one this recipe's own Phase-3 check
+# didn't catch, because it verified fields, not counts. Accepted as
+# a known, quantified limitation rather than switched to
+# `arcgis_rest_scraper`: 0.48% missing rows is a real but small gap
+# against the cost of ~1,070 sequential page requests against a
+# state government server. Revisit if a future need requires
+# complete coverage.
 #
 # NOTE on `PARCEL_TYPE` (left unmapped, not filtered): this field
 # takes 7 distinct values statewide, counted via `returnCountOnly`
@@ -223,12 +243,24 @@
 #
 # Validation performed: recipe loads via `get_recipe_by_id`; every
 # mapped column is in `core/attribute_registry.csv` (checked
-# directly against the registry, not assumed). `op.ingest()` was
-# run for real against the live bulk source for Moore County
-# (`US-TN-MO`, the smallest covered county) -- see this recipe's own
-# ingest-verification notes for the resulting row count,
-# `parcel_id_local` population/distinct count, and geometry check
-# against the live server's own `returnCountOnly`.
+# directly against the registry, not assumed). `op.ingest()` was run
+# for real for all 86 covered counties (2,129,686 rows total, 38.9
+# min wall clock). `parcel_id_local` (`GISLINK`) is 100% populated
+# and non-degenerate in every sampled county; geometry is present
+# with only 1 unexpected null across ~156k sampled rows. The one real
+# gap, measured not assumed: every county's row count is short of
+# the live server's own `returnCountOnly` by 0.06%-2.32%
+# (statewide 2,129,686 ingested vs. 2,140,056 live, -0.48%) --
+# entirely explained by the bulk export's own snapshot lag (see the
+# CORRECTION note above), confirmed via `pyogrio.read_info` on the
+# raw downloaded file itself, independent of anything this repo's
+# reading code does. This is a data-completeness limitation of the
+# chosen source, not a bug in this recipe's `columns`/`process_by`/
+# `parcel_id_local` configuration, and not a bug in the shared
+# ingester's FID-based per-county filtering (an initial hypothesis
+# that the two-pass FID filter was misaligning rows was tested and
+# ruled out: the undercount is already present in a single,
+# unfiltered read of the raw file, before any FID logic runs).
 
 description: >-
   Tennessee statewide parcel boundaries (86 of 95 counties; 9 self-maintained
