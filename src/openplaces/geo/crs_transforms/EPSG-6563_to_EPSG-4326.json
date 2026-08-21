@@ -1,0 +1,9 @@
+{
+  "accuracy_m": 2.0,
+  "grid_files": [],
+  "operation_definition": "proj=pipeline step proj=unitconvert xy_in=us-ft xy_out=m step inv proj=lcc lat_0=40.1666666666667 lon_0=-77.75 lat_1=41.95 lat_2=40.8833333333333 x_0=600000 y_0=0 ellps=GRS80 step proj=unitconvert xy_in=rad xy_out=deg",
+  "operation_name": "Inverse of SPCS83 Pennsylvania North zone (US survey foot) + NAD83(2011) to WGS 84 (1) + axis order change (2D)",
+  "registered": "2026-08-20",
+  "source_crs": "EPSG:6563",
+  "target_crs": "EPSG:4326"
+}

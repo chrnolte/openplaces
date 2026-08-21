@@ -179,11 +179,25 @@
 #
 # Verification performed: recipe loads via `get_recipe_by_id`; every
 # mapped column exists in `core/attribute_registry.csv` (checked
-# directly). `op.ingest()` was run for real against Montour County
-# (`US-PA-MO`, the smallest of the 38 covered counties by feature count,
-# 8,983 rows per live `returnCountOnly` -- see this recipe's own ingest
-# verification notes for the resulting row count, `parcel_id_local`
-# population/distinct count, and geometry check).
+# directly). The bulk download (~1.02 GB) was fetched clean in a single
+# attempt (~11 min on this run) and the GDB confirmed to hold exactly
+# one feature class (`PA_Parcels202604`, `MultiPolygon Z` -- the M
+# component GDAL cannot carry is dropped with a warning, not an error),
+# so no `layer:` key is needed. `op.ingest()` was then run for real
+# against Montour County (`US-PA-MO`, the smallest of the 38 covered
+# counties by feature count): 8,983 rows, an exact match against the
+# live `returnCountOnly` figure above. `parcel_id_local` populates
+# 8,903/8,983 rows (99.1%) at 8,265 distinct values -- non-degenerate;
+# the ~80 nulls and the gap to `parcel_id_assessor`'s own 8,295 distinct
+# raw values both trace to a handful of outlier `PIN` shapes (a few
+# 1-character and 11-character-all-alpha values, sampled directly, that
+# read as source-side placeholders rather than real assessor numbers).
+# Geometry is present for every distinct parcel: the `_geo` sidecar
+# holds 8,970 rows (one per distinct `geo_id`) against 8,983 attribute
+# rows, because 7 `geo_id` values repeat across 2-6 attribute rows each
+# (13 rows total) -- genuine duplicate source polygons sharing one
+# parcel outline, the same duplication pattern already sampled for
+# Fulton County above, not a dropped or null geometry.
 
 description: >-
   Pennsylvania statewide parcel boundaries (PASDA "PA Parcels"): PIN and

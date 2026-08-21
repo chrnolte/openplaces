@@ -1,17 +1,23 @@
 """Reader and summary statistics for the committed recipe catalog.
 
 Two Sphinx extensions build on this module: 'recipe_catalog' renders one
-page per geography, 'recipe_state' renders the catalog-wide overview. The
-docs build does not have openplaces installed (it is not, e.g., on
-ReadTheDocs), so recipes are read as plain YAML and schema constants are
-parsed statically with ast. That also makes the module runnable on its
-own, printing the same overview the docs page shows:
+page per geography plus the catalog landing page's coverage overview and
+clickable geography tables, 'recipe_state' renders the package-wide
+stage/label breakdown. Both share this module's rst-fragment helpers
+(`headline_lines`, `table_lines`) so the two pages render the same kind
+of figure the same way. The docs build does not have openplaces
+installed (it is not, e.g., on ReadTheDocs), so recipes are read as
+plain YAML and schema constants are parsed statically with ast. That
+also makes the module runnable on its own, printing the same overview
+the docs page shows:
 
     python docs/_ext/catalog_data.py
 """
 
 import ast
 import csv
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -42,6 +48,19 @@ CATEGORIES = ('Entities', 'Datasets', 'Other')
 
 #: Admin level labels used when describing coverage in prose.
 LEVEL_LABELS = {2: 'states / regions', 3: 'counties / districts', 4: 'municipalities'}
+
+#: Mini-summary columns for the clickable geography tables (landing page
+#: and every generated country/state page): a display label paired with
+#: the entity type(s) it counts. 'Buildings' covers both the polygon
+#: footprint entity and the point building entity, since either answers
+#: "is there building coverage here".
+SUMMARY_COLUMNS = (
+    ('Admin', frozenset({'admin'})),
+    ('Parcels', frozenset({'parcel'})),
+    ('Properties', frozenset({'property'})),
+    ('Buildings', frozenset({'footprint', 'building'})),
+    ('Sales', frozenset({'transaction'})),
+)
 
 
 @cache
@@ -134,6 +153,35 @@ def display_name(admin_id: str) -> str:
         return 'Global'
     level = admin_id.count('-') + 1
     return admin_names(level).get(admin_id, admin_id)
+
+
+def _slug(name: str) -> str:
+    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+
+
+def doc_path(admin_id: str) -> Path:
+    """Relative document path of a geography page (without extension).
+
+    'Global' -> global; 'US' -> united-states; 'US-MA' ->
+    united-states/massachusetts. Shared by the page generator
+    ('recipe_catalog') and every directive that links to a generated
+    page, so the two can never compute a different path for the same id.
+
+    Parameters
+    ----------
+    admin_id : str
+        Admin ID, or 'Global'.
+
+    Returns
+    -------
+    Path
+        Document path relative to the ``recipes/`` directory.
+    """
+    if admin_id == 'Global':
+        return Path('global')
+    parts = admin_id.split('-')
+    slugs = [_slug(display_name('-'.join(parts[: i + 1]))) for i in range(len(parts))]
+    return Path(*slugs)
 
 
 def load_recipes() -> list[tuple[str, str, Path, dict]]:
@@ -380,6 +428,158 @@ def summarize(entries: list[tuple[str, str, Path, dict]] | None = None) -> Catal
     )
 
 
+def _ancestors_inclusive(admin_id: str) -> list[str]:
+    """Return an admin id and every one of its ancestors, coarsest first.
+
+    Parameters
+    ----------
+    admin_id : str
+        Admin ID, or 'Global'.
+
+    Returns
+    -------
+    list of str
+        E.g. ``'US-NC-WO'`` -> ``['US', 'US-NC', 'US-NC-WO']``;
+        ``'Global'`` -> ``['Global']``.
+    """
+    if admin_id == 'Global':
+        return ['Global']
+    parts = admin_id.split('-')
+    return ['-'.join(parts[: i + 1]) for i in range(len(parts))]
+
+
+@cache
+def all_admin_ids() -> frozenset[str]:
+    """Every admin id with its own generated catalog page.
+
+    This is every admin id carrying a recipe of its own, plus every
+    ancestor implied by it (e.g. a recipe scoped to 'US-NC-WO' also
+    implies pages for 'US' and 'US-NC'). 'Global' is excluded -- it is
+    handled as a page of its own everywhere this is used, the way
+    `summarize` treats it as a `Coverage` row outside the country list.
+
+    Returns
+    -------
+    frozenset of str
+        Every non-Global admin id that has (or will have) a page under
+        ``recipes/``.
+    """
+    ids: set[str] = set()
+    for admin_id, *_ in load_recipes():
+        if admin_id != 'Global':
+            ids.update(_ancestors_inclusive(admin_id))
+    return frozenset(ids)
+
+
+def children_of(admin_id: str | None) -> list[str]:
+    """Direct children of a geography, or the top-level countries.
+
+    Parameters
+    ----------
+    admin_id : str or None
+        Parent admin id, or ``None`` for the top-level (country) list.
+
+    Returns
+    -------
+    list of str
+        Sorted admin ids exactly one level below `admin_id`.
+    """
+    ids = all_admin_ids()
+    if admin_id is None:
+        return sorted(i for i in ids if '-' not in i)
+    depth = admin_id.count('-') + 2
+    prefix = f'{admin_id}-'
+    return sorted(i for i in ids if i.startswith(prefix) and i.count('-') + 1 == depth)
+
+
+@dataclass(frozen=True)
+class ChildSummary:
+    """One row of a clickable geography table: a child and its subtree.
+
+    Attributes
+    ----------
+    admin_id : str
+        The child's admin id, or 'Global'.
+    name : str
+        Display name from the admin spine.
+    n_recipes : int
+        Recipes scoped to this geography or nested under it.
+    by_column : dict
+        Recipe count per `SUMMARY_COLUMNS` label, same rollup as
+        `n_recipes`.
+    has_children : bool
+        Whether this geography itself has a further level to drill into.
+    """
+
+    admin_id: str
+    name: str
+    n_recipes: int
+    by_column: dict[str, int]
+    has_children: bool
+
+
+def children_summary(
+    admin_id: str | None, entries: list[tuple[str, str, Path, dict]] | None = None
+) -> list[ChildSummary]:
+    """Summarize the direct children of a geography for a catalog table.
+
+    Each child's counts are rolled up over its whole subtree (a state's
+    row counts its counties too), computed in one pass over every recipe
+    rather than one filter pass per child, so this stays cheap even with
+    thousands of leaf geographies.
+
+    Parameters
+    ----------
+    admin_id : str or None
+        Parent admin id, or ``None`` for the top-level (country + Global)
+        list shown on the catalog landing page.
+    entries : list of tuple, optional
+        Output of `load_recipes`. Loaded when not supplied.
+
+    Returns
+    -------
+    list of ChildSummary
+        Most recipes first; 'Global' last when it appears (top level
+        only), matching `summarize`'s `coverage` ordering.
+    """
+    entries = load_recipes() if entries is None else entries
+
+    total: Counter[str] = Counter()
+    by_col: dict[str, Counter[str]] = {label: Counter() for label, _ in SUMMARY_COLUMNS}
+    for entry_admin_id, _recipe_id, _path, recipe in entries:
+        label = entity_label(recipe)
+        for ancestor in _ancestors_inclusive(entry_admin_id):
+            total[ancestor] += 1
+            for col_label, types in SUMMARY_COLUMNS:
+                if label in types:
+                    by_col[col_label][ancestor] += 1
+
+    results = [
+        ChildSummary(
+            admin_id=child,
+            name=display_name(child),
+            n_recipes=total[child],
+            by_column={label: by_col[label][child] for label, _ in SUMMARY_COLUMNS},
+            has_children=bool(children_of(child)),
+        )
+        for child in children_of(admin_id)
+    ]
+    if admin_id is None and total['Global']:
+        results.append(
+            ChildSummary(
+                admin_id='Global',
+                name='Global',
+                n_recipes=total['Global'],
+                by_column={
+                    label: by_col[label]['Global'] for label, _ in SUMMARY_COLUMNS
+                },
+                has_children=False,
+            )
+        )
+    results.sort(key=lambda c: (c.admin_id == 'Global', -c.n_recipes, c.name))
+    return results
+
+
 def coverage_detail(item: Coverage) -> str:
     """Describe a country's sub-unit coverage as one short phrase.
 
@@ -399,6 +599,78 @@ def coverage_detail(item: Coverage) -> str:
         for level, n in item.n_by_level.items()
     ]
     return ', '.join(parts) if parts else '—'
+
+
+#: Card headline / caption for each figure in a headline row.
+_HEADLINE_CAPTIONS = {
+    'n_recipes': 'recipes',
+    'n_sources': 'data sources',
+    'n_countries': 'countries',
+    'n_geographies': 'geographies',
+}
+
+
+def headline_lines(state: CatalogState) -> list[str]:
+    """Rst lines for a row of catalog-wide headline figures.
+
+    Shared by the 'recipe_state' and 'recipe_catalog' Sphinx extensions,
+    so the package-state page and the catalog landing page show the same
+    figures without duplicating the sphinx-design markup.
+
+    Parameters
+    ----------
+    state : CatalogState
+        Computed catalog counts.
+
+    Returns
+    -------
+    list of str
+        A sphinx-design grid of one card per figure.
+    """
+    lines = ['.. grid:: 2 2 4 4', '   :gutter: 2', '']
+    for attribute, caption in _HEADLINE_CAPTIONS.items():
+        lines += [
+            '   .. grid-item-card::',
+            '      :text-align: center',
+            '',
+            f'      **{getattr(state, attribute)}**',
+            '',
+            f'      {caption}',
+            '',
+        ]
+    return lines
+
+
+def table_lines(title: str, headers: list[str], rows: list[list[str]]) -> list[str]:
+    """Rst lines for one list-table.
+
+    Parameters
+    ----------
+    title : str
+        Table caption.
+    headers : list of str
+        Column headers.
+    rows : list of list of str
+        Cell values, already rendered as strings.
+
+    Returns
+    -------
+    list of str
+        Lines of a list-table directive, empty when there are no rows.
+    """
+    if not rows:
+        return []
+    lines = [
+        f'.. list-table:: {title}',
+        '   :header-rows: 1',
+        '   :widths: auto',
+        '',
+    ]
+    for row in [headers, *rows]:
+        lines.append(f'   * - {row[0]}')
+        lines += [f'     - {cell}' for cell in row[1:]]
+    lines.append('')
+    return lines
 
 
 def format_overview(state: CatalogState | None = None) -> str:

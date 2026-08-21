@@ -93,27 +93,37 @@
 # (`urn:ogc:def:crs:OGC:1.3:CRS84`), Polygon/MultiPolygon, no null
 # geometries observed in the sampled rows.
 #
-# License: a real tension between two statements, recorded rather
-# than resolved here. The ArcGIS item's own `licenseInfo` states:
-# "The contents of this web page are public domain and to the
-# extent indicated otherwise in the Terms of Use, are exempt from
-# Terms of Use policy restrictions," linking to the State of
-# Hawaii's general Terms of Use. That general Terms of Use, fetched
-# and read directly, states: "You agree not to use for commercial
-# purposes, or resell ... any of the data derived from these
-# Services unless you have been specifically allowed to do so in a
-# separate, written agreement," and separately: "You specifically
-# agree not to access ... through any automated means (including
-# ... scripts, web crawlers or screen scrapers)." The item's
-# "exempt ... to the extent indicated otherwise" wording is
+# License: a real tension between two statements. The ArcGIS item's
+# own `licenseInfo` states: "The contents of this web page are
+# public domain and to the extent indicated otherwise in the Terms
+# of Use, are exempt from Terms of Use policy restrictions," linking
+# to the State of Hawaii's general Terms of Use. That general Terms
+# of Use, fetched and read directly, states: "You agree not to use
+# for commercial purposes, or resell ... any of the data derived
+# from these Services unless you have been specifically allowed to
+# do so in a separate, written agreement," and separately: "You
+# specifically agree not to access ... through any automated means
+# (including ... scripts, web crawlers or screen scrapers)." The
+# item's "exempt ... to the extent indicated otherwise" wording is
 # genuinely ambiguous as to whether these two specific clauses are
 # the "otherwise" that survives the public-domain carve-out, or are
 # superseded by it. Recorded as `redistribution_restricted: true` on
-# the more restrictive, plain reading of the general Terms of Use,
-# since `op.ingest`'s own download is exactly the kind of automated,
-# scripted access that clause names. Flagged to the user rather than
-# resolved here -- this is a legal judgment call, not a technical
-# one.
+# the more restrictive, plain reading of the general Terms of Use.
+#
+# NOT AUTOMATED, DELIBERATELY: on the same restrictive reading, the
+# no-automated-access clause covers exactly what `op.ingest` does
+# (an unattended `requests.get`, no less "automated" for using a
+# stable URL instead of a REST-paging scraper), so this recipe sets
+# no `download_url`/`download_url_scraper` at all -- see
+# `US-TX_property-tdhca-mmh2025.yaml` for the same pattern. A person
+# who wants this data should visit `portal_url` above, download the
+# GeoJSON export by hand (the direct file link the item exposes is
+# `https://hub.arcgis.com/api/v3/datasets/
+# 579b8dcb7a8e44c1af201e1b3cdf655f_25/downloads/
+# data?format=geojson&spatialRefId=4326&where=1%3D1`, kept here as a
+# pointer, not as something this recipe fetches on its own), and
+# place it at this recipe's expected `uncompressed_file_name` path in
+# the external-file cache before running `op.ingest`.
 
 description: >-
   Hawaii statewide TMK parcel boundaries, merged from the four counties.
@@ -126,7 +136,8 @@ entity:
   source:
     source_id: hawaiistategis
     portal_url: "https://www.arcgis.com/home/item.html?id=579b8dcb7a8e44c1af201e1b3cdf655f"
-    download_url: "https://hub.arcgis.com/api/v3/datasets/579b8dcb7a8e44c1af201e1b3cdf655f_25/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+    # No download_url: Hawaii's general Terms of Use prohibits automated/
+    # scripted access. Place the file manually -- see header note.
     license: >-
       Item metadata: public domain, exempt from Terms of Use "to the
       extent indicated otherwise"; the linked general Terms of Use

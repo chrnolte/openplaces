@@ -50,6 +50,33 @@
 # *is* the source, so no equivalence test applies (same reasoning as
 # US-NY_parcel-nysgis-2026's bulk-vs-REST note).
 #
+# Full ingest completed this session (Hamilton, US-NY-HA): the single
+# ~4.7M-row/103-column CSV downloaded in ~33 min at noisy but
+# non-degrading throughput (no fallback/pagination needed -- the
+# prior session's kill at ~6.5 min was simply premature, not a sign
+# the download could never finish). Reconciled against a live SODA
+# count for Hamilton and cross-joined against
+# US-NY_parcel-nysgis-2026's own Hamilton output; see that
+# reconciliation for numbers, not repeated here since this header
+# only records schema facts.
+# Two real bugs surfaced by this being the first actual op.ingest()
+# run of this recipe (both now fixed, neither caught by the prior
+# session's schema-only SODA-query validation, which never exercised
+# TableIngester's column-rename/transformation pipeline):
+#   (1) parcel_id_assessor's concat referenced the raw print_key_code
+#       column, but columns: above already renames that column to
+#       parcel_id_admin4 before transformations run -- the raw name
+#       no longer exists by then. Fixed to concat
+#       [swis_code, parcel_id_admin4] instead (see that
+#       transformation's own comment).
+#   (2) owner_name/owner_name_2/owner_address's whitespace-collapsing
+#       replace/strip steps were declared `type: unary`, but replace
+#       and strip are string operations (transform.py's STRING_OPS),
+#       not unary ones (UNARY_OPS has no replace/strip entry) --
+#       `type: unary` raised "Unknown unary operation". Fixed to
+#       `type: string` throughout (null_if_equal steps were already
+#       correctly `type: unary` and are untouched).
+#
 # Schema (this session, live SODA queries against roll_year=2025
 # unless noted): 4,727,130 rows across 57 counties.
 #   Field meanings below are ORPTS's own published Data Dictionary
@@ -230,10 +257,15 @@ columns_to_categorical:
 transformations:
   # Raw join key: SWIS + print key, no separator (see header note on
   # matching the companion geometry recipe's SWIS_PRINT_KEY_ID
-  # format).
+  # format). Input is parcel_id_admin4, not the raw print_key_code --
+  # the columns: block above already renames print_key_code to
+  # parcel_id_admin4, so by the time transformations run that raw
+  # name no longer exists in the frame (verified: a real op.ingest()
+  # run raised "Missing columns for concat: ['print_key_code']").
+  # swis_code is untouched by columns: and keeps its raw name.
   - type: string
     operation: concat
-    inputs: [swis_code, print_key_code]
+    inputs: [swis_code, parcel_id_admin4]
     output: parcel_id_assessor
 
   # Owner name assembled from its four separately-filed parts.
@@ -252,17 +284,17 @@ transformations:
       ]
     args: {sep: " "}
     output: owner_name
-  - type: unary
+  - type: string
     operation: replace
     input: owner_name
     args: {old: "  ", new: " "}
     output: owner_name
-  - type: unary
+  - type: string
     operation: replace
     input: owner_name
     args: {old: "  ", new: " "}
     output: owner_name
-  - type: unary
+  - type: string
     operation: strip
     input: owner_name
     output: owner_name
@@ -287,17 +319,17 @@ transformations:
       ]
     args: {sep: " "}
     output: owner_name_2
-  - type: unary
+  - type: string
     operation: replace
     input: owner_name_2
     args: {old: "  ", new: " "}
     output: owner_name_2
-  - type: unary
+  - type: string
     operation: replace
     input: owner_name_2
     args: {old: "  ", new: " "}
     output: owner_name_2
-  - type: unary
+  - type: string
     operation: strip
     input: owner_name_2
     output: owner_name_2
@@ -322,12 +354,12 @@ transformations:
       ]
     args: {sep: " "}
     output: owner_address
-  - type: unary
+  - type: string
     operation: replace
     input: owner_address
     args: {old: "  ", new: " "}
     output: owner_address
-  - type: unary
+  - type: string
     operation: strip
     input: owner_address
     output: owner_address

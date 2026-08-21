@@ -10,21 +10,35 @@ that geography: its id, scope, stage, source portal link, and the prose
 ``description:`` field (parsed as reStructuredText). Recipes without a
 description get a one-line stub entry.
 
+The landing page (``docs/recipes.rst``) additionally uses two directives
+defined here: ``recipe-coverage`` (headline figures plus the three
+coverage maps) and ``recipe-children`` (a compact per-geography summary
+table). The latter also replaces the plain title list every generated
+geography page used to show for its own subdivisions -- a table with a
+handful of counts per row stays readable at any scale, where a bare list
+of titles does not once a country has more than a few dozen of them.
+
 Reading the recipe tree lives in ``catalog_data``, shared with the
 ``recipe_state`` extension.
 """
 
-import re
 from pathlib import Path
 
 from catalog_data import (
     CATEGORIES,
     REPO_ROOT,
+    SUMMARY_COLUMNS,
+    all_admin_ids,
     category,
+    children_summary,
     display_name,
+    doc_path,
     entity_label,
+    headline_lines,
     load_recipes,
     source_block,
+    summarize,
+    table_lines,
 )
 from docutils import nodes
 from docutils.parsers.rst import Directive
@@ -115,21 +129,118 @@ class RecipeCatalog(Directive):
         return node.children
 
 
-def _slug(name: str) -> str:
-    return re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+#: (image stem, alt text, caption), stacked in this order. Kept beside
+#: the directive that renders them, not in `generate_coverage_maps.py`,
+#: since that script's own `MAPS` list already carries the matching
+#: title baked into each PNG -- duplicating it here would drift.
+_INGEST_MAPS = (
+    ('recipe_coverage_admin', 'Map of admin boundary recipe coverage', 'Admin'),
+    (
+        'recipe_coverage_footprint',
+        'Map of building footprint recipe coverage',
+        'Buildings',
+    ),
+    ('recipe_coverage_parcel', 'Map of parcel recipe coverage', 'Parcels'),
+)
 
 
-def _doc_path(admin_id: str) -> Path:
-    """Relative document path of a geography page (without extension).
+class RecipeCoverage(Directive):
+    """Render the catalog-wide headline figures and coverage maps.
 
-    'Global' → global; 'US' → united-states; 'US-MA' →
-    united-states/massachusetts.
+    Takes no arguments: the whole committed recipe tree is summarized.
+    The headline figures are computed at build time from the recipe
+    tree, same as `RecipeChildren` below. The maps are not: the docs
+    build has neither openplaces nor ingested boundary data available
+    (`catalog_data`'s own module docstring explains why), so they're
+    pre-rendered snapshots committed as static images, refreshed by
+    rerunning ``docs/_ext/generate_coverage_maps.py`` in a real
+    environment -- a standalone script, not tied to any notebook, so the
+    docs don't depend on notebook conventions or a notebook staying in
+    sync with what the catalog needs shown.
     """
-    if admin_id == 'Global':
-        return Path('global')
-    parts = admin_id.split('-')
-    slugs = [_slug(display_name('-'.join(parts[: i + 1]))) for i in range(len(parts))]
-    return Path(*slugs)
+
+    has_content = False
+    required_arguments = 0
+
+    def run(self) -> list[nodes.Node]:
+        lines = headline_lines(summarize())
+        lines += [
+            'The three maps below cover **data ingestion** recipes -- the',
+            "recipes that download and structure each entity type's raw",
+            'source data, one entity type at a time. Maps are stacked full',
+            'width, cropped to the covered area, so coverage stays legible',
+            'even where it is a single county.',
+            '',
+        ]
+        for stem, alt, caption in _INGEST_MAPS:
+            lines += [
+                f'.. figure:: /_static/images/{stem}.png',
+                '   :width: 100%',
+                f'   :alt: {alt}',
+                '',
+                f'   {caption}',
+                '',
+            ]
+
+        lines += [
+            'Ingested footprints and parcels are then linked together in',
+            '``harmonize`` and ``curate``. The map below is that linked',
+            "entity's recipe coverage -- US only for now -- rather than",
+            'ingestion; note that a country-scoped recipe colors the whole',
+            'country, which is coarser than the counties actually curated.',
+            '',
+            '.. figure:: /_static/images/recipe_coverage_footprint_parcel_linked.png',
+            '   :width: 100%',
+            '   :alt: Map of footprints linked to parcels, harmonize/curate',
+            '',
+            '   Footprints linked to parcels (harmonize / curate, US only)',
+            '',
+        ]
+
+        node = nodes.section()
+        node.document = self.state.document
+        content = StringList(lines, source='recipe-coverage')
+        nested_parse_with_titles(self.state, content, node)
+        return node.children
+
+
+class RecipeChildren(Directive):
+    """Render one geography's children as a compact summary table.
+
+    Takes an optional admin id argument; omitted renders the top-level
+    countries (plus 'Global', when it carries recipes of its own). Each
+    row's geography name links to that child's own generated page, so
+    the tree is browsed one level at a time -- the only way a table this
+    compact stays readable once a country's subdivisions run into the
+    thousands, which is already true of admin4 municipalities and will
+    become true of admin3 counties as coverage grows.
+    """
+
+    has_content = False
+    required_arguments = 0
+    optional_arguments = 1
+
+    def run(self) -> list[nodes.Node]:
+        parent = self.arguments[0] if self.arguments else None
+        headers = ['Geography', 'Recipes', *(label for label, _ in SUMMARY_COLUMNS)]
+        rows = [
+            [
+                f':doc:`{child.name} </recipes/{doc_path(child.admin_id).as_posix()}>`',
+                str(child.n_recipes),
+                *(
+                    str(child.by_column[label]) if child.by_column[label] else ''
+                    for label, _ in SUMMARY_COLUMNS
+                ),
+            ]
+            for child in children_summary(parent)
+        ]
+        lines = table_lines('Recipes by geography', headers, rows)
+
+        node = nodes.section()
+        node.document = self.state.document
+        content = StringList(lines, source='recipe-children')
+        nested_parse_with_titles(self.state, content, node)
+        return node.children
 
 
 def _generate_geography_pages(app: Sphinx) -> None:
@@ -138,21 +249,19 @@ def _generate_geography_pages(app: Sphinx) -> None:
     Real documents (rather than sections of one page) are required for the
     geographies to appear in the theme's section navigation, whose toctree
     shows document titles only. Subdivisions nest below their parent
-    (united-states/massachusetts.rst) and are referenced from a glob
-    toctree on the parent page. Files are only rewritten when their
-    content changes, and stale pages of removed geographies are pruned.
+    (united-states/massachusetts.rst); a page with subdivisions shows them
+    as a ``recipe-children`` summary table, backed by a hidden glob toctree
+    that still builds the page tree and populates the sidebar. Files are
+    only rewritten when their content changes, and stale pages of removed
+    geographies are pruned.
     """
-    admin_ids = {admin_id for admin_id, *_ in load_recipes()}
-    for admin_id in list(admin_ids):
-        if admin_id == 'Global':
-            continue
-        parts = admin_id.split('-')
-        admin_ids.update('-'.join(parts[:i]) for i in range(1, len(parts)))
+    recipe_admin_ids = {admin_id for admin_id, *_ in load_recipes()}
+    admin_ids = set(all_admin_ids())
+    if 'Global' in recipe_admin_ids:
+        admin_ids.add('Global')
 
     has_children = {
-        '-'.join(admin_id.split('-')[:-1])
-        for admin_id in admin_ids
-        if admin_id != 'Global' and '-' in admin_id
+        '-'.join(admin_id.split('-')[:-1]) for admin_id in admin_ids if '-' in admin_id
     }
 
     out_dir = Path(app.srcdir) / 'recipes'
@@ -161,7 +270,7 @@ def _generate_geography_pages(app: Sphinx) -> None:
     keep = set()
     for admin_id in sorted(admin_ids):
         name = display_name(admin_id)
-        rel = _doc_path(admin_id).with_suffix('.rst')
+        rel = doc_path(admin_id).with_suffix('.rst')
         keep.add(rel.as_posix())
         lines = [
             '.. generated by recipe_catalog.py - do not edit',
@@ -177,7 +286,10 @@ def _generate_geography_pages(app: Sphinx) -> None:
                 'Subdivisions',
                 '------------',
                 '',
+                f'.. recipe-children:: {admin_id}',
+                '',
                 '.. toctree::',
+                '   :hidden:',
                 '   :titlesonly:',
                 '   :glob:',
                 '',
@@ -201,6 +313,8 @@ def _generate_geography_pages(app: Sphinx) -> None:
 
 def setup(app: Sphinx) -> ExtensionMetadata:
     app.add_directive('recipe-catalog', RecipeCatalog)
+    app.add_directive('recipe-coverage', RecipeCoverage)
+    app.add_directive('recipe-children', RecipeChildren)
     app.connect('builder-inited', _generate_geography_pages)
     return {
         'version': '0.1',
