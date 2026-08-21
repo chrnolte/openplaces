@@ -39,6 +39,7 @@ from openplaces.io.cleanup import discard_receipt, receipt_justifies_skip
 from openplaces.io.ingester.raster_ingester import fetch_rasters_by_admin
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.usage_profile import require_usage_compatible
 from openplaces.path import (
     external_dir,
     heap_dir,
@@ -1603,13 +1604,36 @@ class Ingester:
                 print('Data file found. Download and unzipping skipped.')
             return
 
+        # Usage gate: a source whose terms condition access on who is
+        # asking (non-commercial only, a restricted environment, a
+        # jurisdictional interest) is checked against the declared usage
+        # profile before any download mechanism runs. Placed here, once,
+        # rather than per-mechanism, because every mechanism below passes
+        # this point. A resolved decline reuses the unavailable-partition
+        # soft skip, so a batch run moves on instead of dying; only the
+        # unresolvable unattended case raises (inside the gate itself).
+        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
+        source = entity_or_dataset.source if entity_or_dataset else None
+        if (
+            source is not None
+            and getattr(source, 'usage_requirement', None) is not None
+            and not source.usage_requirement.is_empty()
+        ):
+            compatible = require_usage_compatible(
+                source,
+                recipe_id=get_recipe_id(self.recipe),
+                admin_id=str(self.recipe['admin_id']),
+                verbose=self.verbose,
+            )
+            if not compatible:
+                self.download_partition['unavailable'] = True
+                return
+
         # Browser-driven acquisition: when the source names a download scraper,
         # drive a real browser to produce the per-partition file. This is the
         # dynamic-portal analog of download_url_source (which extracts a link
         # from static HTML); the scraper writes the final file directly, so no
         # HTTP download or unzip step follows.
-        entity_or_dataset = self.recipe.get('entity') or self.recipe.get('dataset')
-        source = entity_or_dataset.source if entity_or_dataset else None
         if source is not None and getattr(source, 'download_url_scraper', None):
             self._run_download_scraper(
                 source.download_url_scraper, redownload=redownload
