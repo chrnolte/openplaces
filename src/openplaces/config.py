@@ -66,6 +66,10 @@ __all__ = [
     'set_identity',
     'get_terms_consent',
     'set_terms_consent',
+    'get_usage_profile',
+    'set_usage_profile',
+    'get_usage_override',
+    'set_usage_override',
     'merge_user_config',
     'detect_agent',
     'OpenPlacesConfig',
@@ -263,6 +267,184 @@ def set_identity(nickname: str | None, place: str | None) -> str:
     return cfg.user_agent
 
 
+# Sentinel for set_usage_profile: distinguishes "not passed" from an
+# explicit None, so a partial CLI call never clobbers the other fields.
+_UNSET = object()
+
+# Environment axes a usage profile can declare. Mirrored by
+# `core.schema.UsageRequirement.ENV_FLAGS`; kept as a literal here so
+# config stays importable without the schema module.
+USAGE_ENV_FLAGS = ('licensed', 'restricted', 'encrypted_at_rest', 'offline_only')
+
+USAGE_PROFILE_NOTICE = """\
+What is this installation's usage context?
+
+Some sources place conditions on who may download their data (for
+example, non-commercial use only, or a restricted computing
+environment). Declaring your context once lets openplaces check those
+conditions before an automatic download, instead of asking every time.
+
+Nothing is verified or sent anywhere; this is a self-declaration stored
+in your own config, and every answer can be changed later with
+`python -m openplaces.config --set-usage-profile`. Leave anything blank
+to keep it undeclared.\
+"""
+
+
+def prompt_usage_profile() -> dict:
+    """Show the usage-context notice and ask for a profile interactively.
+
+    Returns
+    -------
+    dict
+        A profile shaped like the `usage_profile` config default. Blank
+        answers leave `commercial` undeclared (None) and the other axes
+        at their defaults.
+    """
+    print('\n' + '-' * 70)
+    print(USAGE_PROFILE_NOTICE)
+    print()
+
+    answer = input('Used commercially? [y/n, Enter to leave undeclared]: ')
+    answer = answer.strip().lower()
+    commercial = {'y': True, 'yes': True, 'n': False, 'no': False}.get(answer)
+
+    print(
+        '\nEnvironment properties, if any apply (used by sources whose '
+        'terms\nrequire one): [l]icensed  [r]estricted  [e]ncrypted-at-rest  '
+        '[o]ffline-only'
+    )
+    letters = input('Letters that apply (e.g. "re", Enter for none): ')
+    letters = letters.strip().lower()
+    environment = {
+        'licensed': 'l' in letters,
+        'restricted': 'r' in letters,
+        'encrypted_at_rest': 'e' in letters,
+        'offline_only': 'o' in letters,
+    }
+
+    interests = input(
+        'Admin ids you declare an interest in (comma-separated, e.g. '
+        'US-MA, Enter for none): '
+    ).strip()
+    admin_interests = [part.strip() for part in interests.split(',') if part.strip()]
+
+    return {
+        'commercial': commercial,
+        'environment': environment,
+        'admin_interests': admin_interests,
+    }
+
+
+def write_usage_profile(config_path, profile: dict) -> None:
+    """Merge a usage profile into a user config file, creating it if needed."""
+    merge_user_config(config_path, 'usage_profile', profile)
+
+
+def get_usage_profile() -> dict:
+    """Return the declared usage profile, complete over the defaults."""
+    return cfg.usage_profile
+
+
+def set_usage_profile(
+    commercial=_UNSET,
+    licensed=_UNSET,
+    restricted=_UNSET,
+    encrypted_at_rest=_UNSET,
+    offline_only=_UNSET,
+    admin_interests=_UNSET,
+) -> dict:
+    """Update the declared usage profile, leaving unpassed fields alone.
+
+    Partial-update semantics, a deliberate departure from
+    `set_identity`'s full replace: the profile has six independent axes,
+    and incremental setup across separate calls (e.g. cluster job
+    scripts) must not reset the axes it does not mention.
+
+    Parameters
+    ----------
+    commercial : bool or None, optional
+        Whether this installation is used commercially. None returns it
+        to undeclared. Not passing it leaves the current value.
+    licensed, restricted, encrypted_at_rest, offline_only : bool, optional
+        Environment axes. Not passing one leaves its current value.
+    admin_interests : list of str, optional
+        Replaces the whole declared-interest list; an empty list clears
+        it. Not passing it leaves the current list.
+
+    Returns
+    -------
+    dict
+        The resulting complete profile.
+    """
+    profile = cfg.usage_profile
+    if commercial is not _UNSET:
+        profile['commercial'] = commercial
+    env_updates = {
+        'licensed': licensed,
+        'restricted': restricted,
+        'encrypted_at_rest': encrypted_at_rest,
+        'offline_only': offline_only,
+    }
+    for flag, value in env_updates.items():
+        if value is not _UNSET:
+            profile['environment'][flag] = bool(value)
+    if admin_interests is not _UNSET:
+        profile['admin_interests'] = list(admin_interests or [])
+    write_usage_profile(cfg.user_config_path, profile)
+    reload_config()
+    return cfg.usage_profile
+
+
+def get_usage_override(source_id: str) -> bool | None:
+    """Return the standing usage decision for *source_id*, or None.
+
+    Returns
+    -------
+    bool or None
+        True when this user chose to proceed with that source despite a
+        profile mismatch, False when they chose to always skip it, None
+        when no standing decision exists and they should be asked.
+    """
+    recorded = cfg.get('usage_overrides') or {}
+    entry = recorded.get(source_id)
+    if isinstance(entry, dict):
+        return entry.get('compatible')
+    return entry if isinstance(entry, bool) else None
+
+
+def set_usage_override(source_id: str, compatible: bool, reason: str | None = None):
+    """Record a standing decision about one source's usage requirement.
+
+    Stored in this user's own config, never in a recipe: overriding a
+    usage condition is a judgment by the person running the download,
+    and a committed recipe would extend it to everyone who runs it.
+
+    Parameters
+    ----------
+    source_id : str
+        Key to record the decision under (a source id or recipe id).
+    compatible : bool
+        True to proceed with this source from now on, False to always
+        skip it.
+    reason : str, optional
+        Optional note stored alongside, e.g. which unmet condition the
+        person judged inapplicable.
+    """
+    from datetime import date
+
+    recorded = dict(cfg.get('usage_overrides') or {})
+    entry = {
+        'compatible': bool(compatible),
+        'recorded': date.today().isoformat(),
+    }
+    if reason:
+        entry['reason'] = reason
+    recorded[source_id] = entry
+    merge_user_config(cfg.user_config_path, 'usage_overrides', recorded)
+    reload_config()
+
+
 def detect_agent() -> str | None:
     """Return the name of the agent driving this run, or None.
 
@@ -305,6 +487,28 @@ class OpenPlacesConfig:
         # Empty by default: consent is something a person gives, so it
         # can only ever arrive from this user's own config.
         'consent': {'terms': {}},
+        # Self-declared usage context, checked against a source's own
+        # recorded `usage_requirement` before an automatic download.
+        # `commercial` is tri-state: None means undeclared, which is not
+        # the same as False -- a non-commercial-only source stays gated
+        # until someone actually declares.
+        'usage_profile': {
+            'commercial': None,
+            'environment': {
+                'licensed': False,
+                'restricted': False,
+                'encrypted_at_rest': False,
+                'offline_only': False,
+            },
+            # Admin ids this installation declares an interest in
+            # (e.g. ['US-MA']) -- self-declared, not verified.
+            'admin_interests': [],
+        },
+        # Per-source standing overrides of a usage mismatch, set only by
+        # a person answering [a] at the prompt -- never by a recipe. A
+        # separate key from usage_profile itself, the same separation
+        # identity/consent already draw.
+        'usage_overrides': {},
         # Data lifecycle policy. Bucket-level overrides live directly under
         # 'retention' (e.g. retention: {cache: keep}); per-recipe overrides
         # under 'recipes'; cleanup behavior switches under 'cleanup'.
@@ -475,6 +679,7 @@ class OpenPlacesConfig:
         if customize == 'b':
             self._custom_directory_setup()
             self._interactive_identity()
+            self._interactive_usage_profile()
             return  # _custom_directory_setup already creates the config
 
         # Show final directory structure
@@ -503,6 +708,7 @@ class OpenPlacesConfig:
 
         self._create_user_config(self.default_dirs)
         self._interactive_identity()
+        self._interactive_usage_profile()
         print(f'\nConfiguration saved to:\n\n  {self.user_config_path}\n')
         print('You can edit this file anytime to change your settings.')
 
@@ -512,6 +718,10 @@ class OpenPlacesConfig:
         """Ask how this installation should identify itself to providers."""
         nickname, place = prompt_identity()
         write_identity(self.user_config_path, nickname, place)
+
+    def _interactive_usage_profile(self):
+        """Ask for the usage context sources with conditions are checked against."""
+        write_usage_profile(self.user_config_path, prompt_usage_profile())
 
     def _custom_directory_setup(self):
         """Allow user to customize directory paths."""
@@ -813,6 +1023,18 @@ class OpenPlacesConfig:
         raise AttributeError(f"No configuration attribute '{name}'")
 
     @property
+    def usage_profile(self) -> dict:
+        """The declared usage profile, deep-merged over the defaults.
+
+        The hierarchical loader only deep-merges 'directories' and
+        'retention'; every other key is replaced wholesale, so a user
+        config declaring just `commercial` would otherwise lose the
+        `environment` and `admin_interests` keys callers rely on.
+        """
+        merged = copy.deepcopy(self.DEFAULTS['usage_profile'])
+        return _merge_nested(merged, self.config.get('usage_profile') or {})
+
+    @property
     def identity(self) -> dict:
         """Nickname and place this installation identifies itself by."""
         return dict(self.config.get('identity') or {})
@@ -1053,10 +1275,50 @@ def main():
         action='store_true',
         help='Print the User-Agent this installation sends, and exit',
     )
+    profile_group = parser.add_argument_group(
+        'usage profile',
+        'Declare the usage context that sources with access conditions '
+        'are checked against. Pass --set-usage-profile with any subset '
+        'of the axis flags; unmentioned axes keep their current value.',
+    )
+    profile_group.add_argument(
+        '--set-usage-profile',
+        action='store_true',
+        help='Apply the usage-profile flags below and print the result',
+    )
+    # choices=['true','false'] uniformly rather than store_true, so a
+    # value can be corrected back off, not just set.
+    for flag in ('commercial', *USAGE_ENV_FLAGS):
+        profile_group.add_argument(
+            f'--{flag.replace("_", "-")}',
+            choices=['true', 'false'],
+            default=None,
+            help=f"Declare the '{flag}' axis",
+        )
+    profile_group.add_argument(
+        '--admin-interest',
+        action='append',
+        metavar='ADMIN_ID',
+        help=(
+            'Declare an admin unit of interest (repeatable; the given '
+            'list replaces the stored one, and a single empty string '
+            'clears it)'
+        ),
+    )
 
     args = parser.parse_args()
 
-    if args.set_identity is not None:
+    if args.set_usage_profile:
+        updates = {}
+        for flag in ('commercial', *USAGE_ENV_FLAGS):
+            value = getattr(args, flag)
+            if value is not None:
+                updates[flag] = value == 'true'
+        if args.admin_interest is not None:
+            updates['admin_interests'] = [a for a in args.admin_interest if a]
+        profile = set_usage_profile(**updates)
+        print(yaml.dump({'usage_profile': profile}, sort_keys=False), end='')
+    elif args.set_identity is not None:
         print(set_identity(*args.set_identity))
     elif args.user_agent:
         print(cfg.user_agent)
