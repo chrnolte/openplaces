@@ -289,6 +289,145 @@ class SourceGeometryType(StrEnum):
 
 
 @dataclass
+class UsageRequirement:
+    """Access-eligibility conditions a source's terms place on its users.
+
+    Recorded on a `Source` only when a person has actually determined a
+    condition from the source's terms of use -- never inferred from the
+    free-text `license` field. Evaluation is pure: `unmet` compares the
+    requirement against a self-declared usage profile
+    (`config.get_usage_profile`) and returns reasons, and the prompt or
+    override handling lives in `io.usage_profile`, not here.
+
+    This models restrictions that depend on *who is asking* (commercial
+    use, computing environment, jurisdiction of interest). Blanket bans
+    -- terms that forbid automated access for everyone -- do not belong
+    here; those sources simply carry no `download_url`.
+    """
+
+    ENV_FLAGS = ('licensed', 'restricted', 'encrypted_at_rest', 'offline_only')
+
+    non_commercial: bool = False
+    environment: list = field(default_factory=list)
+    admin_interest: bool = False
+
+    def __init__(
+        self,
+        non_commercial: bool = False,
+        environment: list | None = None,
+        admin_interest: bool = False,
+    ):
+        """Initialize UsageRequirement with validated conditions.
+
+        Parameters
+        ----------
+        non_commercial : bool, default False
+            True when the source's terms limit it to non-commercial use.
+            Satisfied only by a profile that has declared
+            `commercial: false`; an undeclared profile does not satisfy
+            it, because undeclared is not the same as non-commercial.
+        environment : list, optional
+            Environment flags the profile must declare, combined with
+            AND across items. An item is either one flag name from
+            `ENV_FLAGS`, or a nested list of flag names combined with OR,
+            so `['restricted', ['encrypted_at_rest', 'offline_only']]`
+            reads "restricted AND (encrypted-at-rest OR offline-only)".
+            Unknown flag names raise `ValueError` at construction, so a
+            recipe typo fails at load rather than silently never gating.
+        admin_interest : bool, default False
+            True when the source's terms limit access to parties with an
+            interest in its jurisdiction. Checked against the recipe's
+            own `admin_id`: satisfied when any declared interest is the
+            recipe's admin unit, an ancestor of it, or a descendant of it.
+        """
+        environment = list(environment or [])
+        for item in environment:
+            flags = item if isinstance(item, list) else [item]
+            if not flags:
+                raise ValueError('An empty OR-group in `environment` can never be met.')
+            for flag in flags:
+                if flag not in self.ENV_FLAGS:
+                    raise ValueError(
+                        f"Unknown environment flag '{flag}'. "
+                        f'Known flags: {self.ENV_FLAGS}.'
+                    )
+        self.non_commercial = bool(non_commercial)
+        self.environment = environment
+        self.admin_interest = bool(admin_interest)
+
+    def is_empty(self) -> bool:
+        """Return True when no condition is set, making the gate a no-op."""
+        return not (self.non_commercial or self.environment or self.admin_interest)
+
+    def unmet(self, profile: dict, admin_id: str | None = None) -> list[str]:
+        """Evaluate this requirement against a declared usage profile.
+
+        Pure evaluation: never prompts, never reads config, never raises
+        for a mismatch.
+
+        Parameters
+        ----------
+        profile : dict
+            A usage profile shaped like `config` `usage_profile`: keys
+            `commercial` (tri-state bool), `environment` (dict of flag ->
+            bool), `admin_interests` (list of admin id strings).
+        admin_id : str, optional
+            The recipe's own admin unit, for the `admin_interest` check.
+
+        Returns
+        -------
+        list of str
+            Human-readable reasons the profile does not meet this
+            requirement. Empty when every condition is met.
+        """
+        reasons = []
+        if self.non_commercial:
+            commercial = (profile or {}).get('commercial')
+            if commercial is None:
+                reasons.append(
+                    'the source is limited to non-commercial use, and this '
+                    'installation has not declared commercial or '
+                    'non-commercial use'
+                )
+            elif commercial:
+                reasons.append(
+                    'the source is limited to non-commercial use, and this '
+                    'installation is declared as commercial'
+                )
+        declared_env = (profile or {}).get('environment') or {}
+        for item in self.environment:
+            flags = item if isinstance(item, list) else [item]
+            if not any(declared_env.get(flag) for flag in flags):
+                wanted = ' or '.join(flags)
+                reasons.append(f'the source requires a declared {wanted} environment')
+        if self.admin_interest:
+            interests = (profile or {}).get('admin_interests') or []
+            if not any(
+                admin_id is not None and _admin_ids_related(interest, admin_id)
+                for interest in interests
+            ):
+                reasons.append(
+                    'the source is limited to parties with an interest in '
+                    f'its jurisdiction ({admin_id}), and this installation '
+                    'declares no matching admin interest'
+                )
+        return reasons
+
+
+def _admin_ids_related(interest: str, admin_id: str) -> bool:
+    """True when one admin id is the other, an ancestor, or a descendant.
+
+    A declared interest in 'US-MA' covers a 'US-MA-MI' recipe (the county
+    sits inside the interest), and an interest in 'US-MA-MI' covers a
+    'US-MA' recipe (the statewide file is how that county is obtained).
+    """
+    a = str(interest).split('-')
+    b = str(admin_id).split('-')
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return longer[: len(shorter)] == shorter
+
+
+@dataclass
 class Source:
     """Data source with metadata."""
 
@@ -321,6 +460,9 @@ class Source:
     # The one fact worth querying on directly, without parsing free
     # text. None = not yet checked; True/False = checked, either way.
     redistribution_restricted: bool | None = None
+    # Access-eligibility conditions from the terms, set deliberately by
+    # a person who read them -- never inferred from `license` text.
+    usage_requirement: UsageRequirement | None = None
 
     def __init__(
         self,
@@ -335,6 +477,7 @@ class Source:
         license: str = None,
         terms_url: str = None,
         redistribution_restricted: bool = None,
+        usage_requirement: dict | UsageRequirement | None = None,
     ):
         """Initialize Source with metadata and download configurations.
 
@@ -367,6 +510,13 @@ class Source:
             Whether the terms restrict redistributing the data or its
             derivatives. None means not yet checked, which is not the same
             as False.
+        usage_requirement : dict or UsageRequirement, optional
+            Access-eligibility conditions the terms place on who may
+            download this source (see `UsageRequirement`). A plain dict,
+            as loaded from a recipe YAML, is converted. Set only when a
+            person has determined a condition from the terms; None means
+            no such determination was recorded, and the ingest gate is a
+            no-op.
         """
 
         n_download_modes = sum(
@@ -395,6 +545,9 @@ class Source:
         self.license = license
         self.terms_url = terms_url
         self.redistribution_restricted = redistribution_restricted
+        if isinstance(usage_requirement, dict):
+            usage_requirement = UsageRequirement(**usage_requirement)
+        self.usage_requirement = usage_requirement
 
     def __str__(self) -> str:
         return self.source_id if self.source_id is not None else ''
