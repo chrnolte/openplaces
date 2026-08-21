@@ -43,6 +43,12 @@ entity:
     license: "non-commercial; attribution to EuroGeographics required"
     terms_url: "https://ec.europa.eu/eurostat/web/gisco/geodata/administrative-units"
     redistribution_restricted: true
+    # Determined from the terms noted above, not inferred from
+    # `license`: EuroGeographics limits these boundaries to
+    # non-commercial use, so the ingest gate checks the declared
+    # usage profile before downloading.
+    usage_requirement:
+      non_commercial: true
     portal_url: "https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/local-administrative-units"
     download_url: "https://gisco-services.ec.europa.eu/distribution/v2/lau/download/ref-lau-2024-01m.geojson.zip"
   version: 2024

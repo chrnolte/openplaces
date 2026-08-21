@@ -304,6 +304,11 @@ entity:
     license: "non-commercial use only; attribution to SCAG required"
     terms_url: "https://scag.ca.gov/terms-use"
     redistribution_restricted: true
+    # Determined from the terms_url above, not inferred from `license`:
+    # the SCAG terms limit use to non-commercial purposes, so the
+    # ingest gate checks the declared usage profile before downloading.
+    usage_requirement:
+      non_commercial: true
   version: "2026"
 
 uncompressed_file_name: "scag_alu2019.geojson"
