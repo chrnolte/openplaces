@@ -726,6 +726,25 @@ remembered per source for the process, so a year-partitioned recipe asks
 once. Apply the same asymmetry to any future decision with legal
 consequences: a recipe may refuse for a user, never consent for them.
 
+**Respect who a source says it is for.** A source whose terms condition
+access on the user (non-commercial only, a restricted environment, a
+jurisdictional interest) records that as `usage_requirement` on its
+`Source` -- set only when a person determined it from the terms, never
+inferred from the free-text `license` field. At download time,
+`io.usage_profile.require_usage_compatible` checks it against the user's
+self-declared profile (`python -m openplaces.config
+--set-usage-profile`): a match proceeds silently, a mismatch prompts the
+operator (with a rememberable `[a]`, mirroring the consent prompt), and
+an unattended unresolved mismatch raises `UsageProfileMismatchError`. A
+resolved decline soft-skips the partition like a missing download URL.
+Unlike consent there is no forbidden recipe-side lever, because
+recording a requirement states a fact about the source rather than
+deciding anything for the user. Restrictions on the redistribution/fee
+axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
+`redistribution_restricted` and `io/bundle_terms.py` cover those -- and
+a blanket ban on automated access is expressed by having no
+`download_url` at all, not by a requirement.
+
 `arcgis_rest_scraper` additionally paces itself (`DEFAULT_REQUEST_INTERVAL_S`,
 module-level so the whole paging loop is bounded), because backing off only
 after a failure means the load that caused it was already applied.
