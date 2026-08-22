@@ -1194,3 +1194,100 @@ def derive_group_class_share(
             f'{described.get("mean", float("nan")):.3f}'
         )
     return state
+
+
+@_register('derive_admin_attribute')
+def derive_admin_attribute(
+    state: CurateState,
+    attribute: str,
+    output: str,
+    admin_id_column: str = 'admin3_id',
+    admin_level: int | None = None,
+) -> CurateState:
+    """Copy a column from the admin spine onto every entity in its unit.
+
+    The admin spine already knows things about a unit that an entity in it
+    cannot state for itself -- its name, its type, the code some other
+    authority assigns it. This joins one such column on, keyed by the
+    admin id the entity already carries.
+
+    The motivating use is a **stable external identifier**. openplaces'
+    own ``admin3_id`` is internal and can be re-minted: a re-mint may hand
+    ``US-NC-CD`` to a different county than it named before, so an id
+    written into a shipped file is only as durable as the mint behind it.
+    A federal county FIPS code is not openplaces' to change, so an
+    inventory that carries one stays joinable to Census, FEMA and every
+    other federal product across a re-mint that renames everything else.
+
+    Reads the spine through :func:`~openplaces.io.readers.get_admin`
+    rather than any hard-coded table, so which attribute is surfaced is a
+    recipe's decision and no geography lives in this function.
+
+    Parameters
+    ----------
+    attribute : str
+        Column on the admin spine to copy (e.g. ``admin3_id_admin1``,
+        which for US counties holds the 5-digit FIPS code).
+    output : str
+        Column to write onto the entity.
+    admin_id_column : str, optional
+        Entity column holding the admin id to look up (default
+        ``admin3_id``).
+    admin_level : int, optional
+        Spine level to read. Inferred from *admin_id_column* when it is
+        named ``admin{N}_id``; required otherwise.
+    """
+    from openplaces.io.readers import get_admin
+
+    curated = state.curated
+    if admin_id_column not in curated.columns:
+        if state.verbose:
+            print(
+                f'  derive_admin_attribute: {admin_id_column} absent, '
+                f'{output} not derived.'
+            )
+        return state
+
+    if admin_level is None:
+        import re
+
+        match = re.fullmatch(r'admin(\d+)_id', admin_id_column)
+        if match is None:
+            raise ValueError(
+                f'derive_admin_attribute: cannot infer admin_level from '
+                f'{admin_id_column!r}; pass admin_level explicitly.'
+            )
+        admin_level = int(match.group(1))
+
+    try:
+        spine = get_admin(state.admin_id, level=admin_level)
+    except Exception as exc:  # noqa: BLE001 - a missing spine is not fatal
+        if state.verbose:
+            print(f'  derive_admin_attribute: no admin level {admin_level}: {exc}')
+        return state
+    if spine is None or not len(spine):
+        return state
+
+    spine = spine.reset_index()
+    if admin_id_column not in spine.columns or attribute not in spine.columns:
+        if state.verbose:
+            print(
+                f'  derive_admin_attribute: spine has no '
+                f'{attribute!r}/{admin_id_column!r}; {output} not derived.'
+            )
+        return state
+
+    lookup = (
+        spine.dropna(subset=[admin_id_column])
+        .drop_duplicates(admin_id_column)
+        .set_index(admin_id_column)[attribute]
+    )
+    curated[output] = (
+        curated[admin_id_column].astype(object).map(lookup).astype('string')
+    )
+    state.curated = curated
+
+    if state.verbose:
+        n = int(curated[output].notna().sum())
+        print(f'  derive_admin_attribute: {output} set for {n:,} rows.')
+    return state
