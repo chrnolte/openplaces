@@ -7,6 +7,7 @@ generic gap-fillers in :mod:`imputers`.
 
 from __future__ import annotations
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 
@@ -25,11 +26,102 @@ _DEFAULT_RESIDENTIAL_CLASSES = [
 _RATE_STATISTICS = ('mean', 'median', 'min', 'max')
 
 
+def _incoming_source(curated, column: str) -> pd.Series:
+    """Return *column*'s per-row provenance token, or a constant fallback.
+
+    Falls back to the column's own name where no ``{column}_source``
+    sidecar exists yet -- honest ("this came from the land_value column")
+    and, more importantly, non-null, so a passthrough row is never left
+    looking like a row nothing decided.
+    """
+    from openplaces.io.curator.provenance import source_column
+
+    side = source_column(column)
+    if side in curated.columns:
+        return curated[side].astype(object)
+    return pd.Series(column, index=curated.index, dtype=object)
+
+
+def _share_of_lot(curated, lot_value, improvement_value) -> pd.Series:
+    """Split each lot's estimated land value among the records on that lot.
+
+    A condominium development is one lot carrying one land value, and the
+    assessor writes one record per unit -- every record repeating the
+    development's whole area. Multiplying the local rate by that area
+    therefore charges each unit for the entire lot: measured in Beaufort
+    NC, 169 of 360 condo records share a geometry with another, in groups
+    of up to 44, one of them spanning 212.9 ha. This divides the lot's
+    value instead of repeating it, which is the same conservation rule
+    :data:`~openplaces.io.harmonizer.apportion.WHOLE_VALUE_COLUMNS`
+    applies when a parcel's value reaches several buildings.
+
+    **Lots are identified by identical geometry, never by identical
+    area.** A platted subdivision sells many lots cut to the same size, so
+    an area key would split their land values between unrelated
+    neighbours: in the same county 635 Single-Family parcels share an area
+    with another (groups up to 7) while only 18 share a *geometry* (groups
+    of 2, which are true duplicates). Area identity would have introduced
+    a worse bug than the one being fixed.
+
+    Each record's share is proportional to its own improvement value,
+    which mirrors how a condominium declaration assigns percentage
+    interest in the common area -- a penthouse holds more of the land than
+    a studio. Where a group's improvement values are all missing or zero
+    there is nothing to weight by, and the lot is split evenly.
+
+    Returns
+    -------
+    pandas.Series
+        Per-record land value, aligned to *curated*. Identical to
+        *lot_value* for any record that does not share its geometry, so a
+        pipeline whose parcels are all distinct is unaffected.
+    """
+    if 'geometry' not in curated.columns:
+        return lot_value
+    try:
+        key = gpd.GeoSeries(curated['geometry'], index=curated.index).to_wkb()
+    except Exception:
+        return lot_value
+
+    shared = key.notna() & key.duplicated(keep=False)
+    if not shared.any():
+        return lot_value
+
+    result = lot_value.copy()
+    # Force plain float64 rather than a nullable dtype before any numpy
+    # call: a source whose improvement value arrives as pandas `Float64`
+    # propagates `pd.NA` through the groupby, and `np.where` raises
+    # "boolean value of NA is ambiguous" on the mask instead of treating
+    # it as False. New Hanover NC hit exactly that.
+    weight = pd.Series(
+        pd.to_numeric(improvement_value, errors='coerce').to_numpy(
+            dtype='float64', na_value=np.nan
+        ),
+        index=curated.index,
+    )
+    weight = weight.where(weight > 0).fillna(0.0)
+    group = key.where(shared)
+    total = weight.groupby(group).transform('sum').to_numpy(dtype='float64')
+    size = group.groupby(group).transform('size').to_numpy(dtype='float64')
+    # Fall back to an even split only where no record on the lot carries a
+    # usable improvement value; a partly-populated group still weights by
+    # what it has. np.where evaluates both branches, so both divisions are
+    # guarded rather than relying on the mask to skip them.
+    safe_total = np.where(total > 0, total, 1.0)
+    safe_size = np.where(size > 0, size, 1.0)
+    fraction = np.where(total > 0, weight.to_numpy() / safe_total, 1.0 / safe_size)
+    result.loc[shared] = (lot_value * pd.Series(fraction, index=curated.index)).loc[
+        shared
+    ]
+    return result
+
+
 @_register('impute_land_value')
 def impute_land_value(
     state: CurateState,
     land_value_column: str = 'land_value',
     improvement_value_column: str = 'improvement_value',
+    total_value_column: str = 'total_value',
     footprint_area_column: str = 'footprint_area_m2_in_parcel',
     parcel_area_column: str = 'area_ha',
     land_use_column: str = 'land_use_class',
@@ -40,7 +132,8 @@ def impute_land_value(
     city_column: str = 'city',
     group_tiers: list[list[str]] | None = None,
     fallback_group_column: str = '_is_residential',
-    statistic: str = 'mean',
+    statistic: str = 'median',
+    min_donor_area_ha: float = 0.004,
     min_group_size: int = 5,
     output_land_value: str = 'land_value_imputed',
     output_improvement_value: str = 'improvement_value_imputed',
@@ -66,12 +159,18 @@ def impute_land_value(
     there a disproportionately large structure here"); the per-area rate and
     the final dollar estimate below always use *parcel_area_column* instead.
 
-    No bare "total assessed value" column exists on the curated parcel entity
-    (only *land_value_column*/*improvement_value_column* survive harmonize).
-    Under the standard assessor identity ``total = land + improvement``, "land
-    missing and improvement equals the total" reduces algebraically to "land
-    missing" whenever improvement is itself present -- this step relies on that
-    simplification rather than any separate total-value plumbing.
+    Under the standard assessor identity ``total = land + improvement``,
+    a *total_value_column* worth having changes what this step should do,
+    and since 2026-08 enough sources map one that both cases are live.
+    Where a recorded total **exceeds** the improvement figure, the land
+    component was recorded all along and is exactly ``total -
+    improvement``: that is used directly, no rate involved, and the
+    improvement figure is left alone because it already excludes land.
+    Where the total **equals** the improvement figure, the source folded
+    land into it -- the premise this step exists for -- so the learned
+    rate is used and then capped at the total, because no parcel holds
+    more land value than its whole assessed value. A parcel with no
+    recorded total falls back to the uncapped rate, as before.
 
     The per-area estimate is a *local* ``land_value / parcel_area`` rate --
     never ``improvement_value``, and never divided by footprint area -- learned
@@ -173,7 +272,35 @@ def impute_land_value(
         synthetic residential-vs-non-residential split -- see above for why
         not a finer category).
     statistic : {'mean', 'median', 'min', 'max'}, optional
-        Cohort statistic for the per-area rate (default ``'mean'``).
+        Cohort statistic for the per-area rate (default ``'median'``).
+
+        **Not the mean**, and the difference is not academic. A per-area
+        rate is a ratio whose denominator can be near zero, so its
+        distribution has a long right tail that no amount of donor
+        cleaning removes: across the ten surveyed North Carolina counties
+        the mean donor rate is **1,017x the median** ($273,028,985/ha
+        against $268,485/ha). Using the mean inflated the region's imputed
+        land value to **$64.96bn**, with a single 82 ha parcel imputed at
+        $2.95bn; the median puts the same total at **$548m** and the worst
+        row at $26m. Because an over-imputed land value is subtracted from
+        the parcel's improvement value, that inflation also erased the
+        structure value of 755 parcels ($94.0m); the median leaves 402
+        ($33.7m). Prefer a rank statistic for any ratio a cohort is
+        pooled over.
+    total_value_column : str, optional
+        Column holding the parcel's whole assessed value (default
+        ``total_value``). Drives both the direct land recovery and the
+        conservation cap described above; absent or non-positive, neither
+        applies and the step behaves as it did before.
+    min_donor_area_ha : float, optional
+        Smallest lot area, in hectares, that may teach a per-area rate
+        (default 0.004 ha, about 40 m2 -- smaller than a parking space,
+        so not a lot anyone assessed). Guards the rate against parcels
+        whose recorded area is a rounding artifact. With *statistic* left
+        at its default this is belt-and-braces (the median is already
+        robust to them, and the guard changes the region total by 0.01%);
+        it earns its place for a small cohort, where a handful of
+        degenerate donors can move the median itself.
     min_group_size : int, optional
         Minimum donor count for a group's rate to be used (default 5).
     output_land_value, output_improvement_value : str, optional
@@ -234,7 +361,21 @@ def impute_land_value(
         land_missing & improvement_ok & has_area & (is_residential | footprint_heavy)
     )
 
-    is_donor = land_value.notna() & (land_value > 0) & has_area
+    # A donor teaches a per-area rate by division, so a parcel whose
+    # recorded area is a rounding artifact rather than a lot teaches an
+    # arbitrarily large one. Measured in Beaufort NC: the three donors
+    # under 0.0001 ha carry a median rate of $39bn/ha, and the county's
+    # single worst donor reaches $291bn/ha. Excluding them costs almost
+    # nothing (they are a few hundred rows in ~675,000 donors) and is the
+    # same shape of guard as the degenerate-join-key blanking in
+    # io.harmonizer.links -- a value too extreme to be real is dropped
+    # before it can teach anything, not after.
+    is_donor = (
+        land_value.notna()
+        & (land_value > 0)
+        & has_area
+        & (parcel_area >= min_donor_area_ha)
+    )
     per_area = (land_value / parcel_area).where(is_donor)
 
     def _tier_frame(cols: list[str]) -> pd.DataFrame | None:
@@ -289,13 +430,49 @@ def impute_land_value(
     # derived an estimate for. Subtraction (below) must never apply to a
     # passthrough row: a normally, separately-assessed parcel's
     # improvement_value was never conflated with land in the first place.
-    has_estimate = candidate & estimate.notna()
+    # A recorded total is better evidence than any neighbour's rate, and
+    # it splits the candidates into two genuinely different populations
+    # (measured over 10,268 imputed rows in 76 rebuilt CHEER counties):
+    #
+    #  - total == improvement (65.2%): the source folded land into the
+    #    improvement figure, which is the premise this whole step rests
+    #    on. Nothing to recover, so the rate estimate stands -- but it is
+    #    now capped, because land cannot exceed the parcel's whole value.
+    #  - total > improvement (33.5%): a real land component was recorded
+    #    all along and is exactly total - improvement. No estimate needed,
+    #    and the improvement figure is already land-free, so it must NOT
+    #    be reduced afterwards.
+    #
+    # On the second group the estimate was not merely unnecessary but
+    # wrong in both directions: median $35,438 against a recorded
+    # $119,698, and a worst case of $486,079,430 against $37,053,906.
+    total_value = (
+        pd.to_numeric(curated[total_value_column], errors='coerce')
+        if total_value_column in curated.columns
+        else pd.Series(np.nan, index=curated.index)
+    )
+    recorded_total = total_value.notna() & (total_value > 0)
+    has_recorded_land = (
+        candidate
+        & recorded_total
+        & improvement_value.notna()
+        & (total_value > improvement_value)
+    )
+    has_estimate = candidate & estimate.notna() & ~has_recorded_land
 
     land_value_imputed = pd.Series(np.nan, index=curated.index)
     has_real_land = land_value.notna() & (land_value > 0)
     land_value_imputed.loc[has_real_land] = land_value.loc[has_real_land]
-    land_value_imputed.loc[has_estimate] = (
-        estimate.loc[has_estimate] * parcel_area.loc[has_estimate]
+    # rate * area is the value of the LOT, which is not the same thing as
+    # the value of the parcel record when several records share one lot.
+    lot_value = estimate * parcel_area
+    shared = _share_of_lot(curated, lot_value, improvement_value)
+    # Conservation: a parcel cannot hold more land value than its own
+    # recorded total. Only bites where a total was actually recorded.
+    shared = shared.where(~recorded_total, np.minimum(shared, total_value))
+    land_value_imputed.loc[has_estimate] = shared.loc[has_estimate]
+    land_value_imputed.loc[has_recorded_land] = (
+        total_value.loc[has_recorded_land] - improvement_value.loc[has_recorded_land]
     )
 
     improvement_value_imputed = pd.Series(np.nan, index=curated.index)
@@ -303,6 +480,9 @@ def impute_land_value(
     improvement_value_imputed.loc[has_real_improvement] = improvement_value.loc[
         has_real_improvement
     ]
+    # Subtract only where the land estimate was carved out of this same
+    # improvement figure. A recorded-total row's improvement value already
+    # excludes land, so subtracting again would charge it twice.
     improvement_value_imputed.loc[has_estimate] = (
         improvement_value.loc[has_estimate] - land_value_imputed.loc[has_estimate]
     ).clip(lower=0)
@@ -310,10 +490,59 @@ def impute_land_value(
     curated[output_land_value] = land_value_imputed
     curated[output_improvement_value] = improvement_value_imputed
 
-    from openplaces.io.curator.provenance import record_source
+    from openplaces.io.curator.provenance import record_sources
 
-    for token in tier_used.dropna().unique():
-        record_source(curated, output_land_value, tier_used == token, token)
+    # Provenance for both outputs. Each is a passthrough of a real
+    # assessed value on most rows and this step's own estimate on the
+    # rest, and only this step knows which is which per row -- what
+    # reaches a downstream step is two columns of dollars with nothing
+    # to tell them apart. So record both sides: the incoming token
+    # carried forward for a passthrough, and the peer-group tier that
+    # produced the estimate, marked imputed, for the rest. The two
+    # masks are disjoint by construction (has_estimate only ever holds
+    # where the source left the value missing), so the write order
+    # between them does not matter.
+    record_sources(
+        curated,
+        output_land_value,
+        _incoming_source(curated, land_value_column),
+        mask=has_real_land & ~has_estimate,
+    )
+    record_sources(
+        curated, output_land_value, tier_used, mask=has_estimate, imputed=True
+    )
+    # Its own token: this land value is arithmetic on the parcel's own
+    # recorded figures, not a neighbour's rate, and a reader deciding how
+    # far to trust a number needs to be able to tell those apart. Still
+    # marked imputed -- openplaces filled the cell either way.
+    record_sources(
+        curated,
+        output_land_value,
+        pd.Series('total_minus_improvement', index=curated.index),
+        mask=has_recorded_land,
+        imputed=True,
+    )
+
+    # improvement_value_imputed is the parcel's own improvement figure
+    # minus the land value imputed above, so on an estimated row it is
+    # derived twice over and inherits that row's tier. It carried no
+    # provenance at all before, and it is the column that reaches a
+    # footprint as structure_value -- which is how the delivered
+    # structure_value_source came to read `parcel` for a number no
+    # assessor ever wrote.
+    record_sources(
+        curated,
+        output_improvement_value,
+        _incoming_source(curated, improvement_value_column),
+        mask=has_real_improvement & ~has_estimate,
+    )
+    record_sources(
+        curated,
+        output_improvement_value,
+        tier_used,
+        mask=has_estimate,
+        imputed=True,
+    )
 
     state.curated = curated
     if state.verbose:
