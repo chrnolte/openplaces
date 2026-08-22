@@ -1068,3 +1068,129 @@ def classify_manufactured_homes(
         )
 
     return state
+
+
+@_register('derive_group_class_share')
+def derive_group_class_share(
+    state: CurateState,
+    group_column: str,
+    output: str,
+    evidence_columns: list[str],
+    match_values: list[str],
+    count_output: str | None = None,
+    exclude_self: bool = True,
+    min_group_size: int = 2,
+) -> CurateState:
+    """Share of an entity's group whose evidence carries one of *match_values*.
+
+    Context an entity cannot supply about itself: how much of the group it
+    belongs to looks like a given class, according to evidence that was
+    already there. A subdivided manufactured-home community is the motivating
+    case -- each home sits on its own lot, so a per-parcel count sees one home
+    per parcel and the community is invisible, while the group it shares (a
+    census block) is three-quarters manufactured homes.
+
+    Emits a *share*, not a flag: per the curate stage's two-layer split, an
+    indicator column holds a measurement and every cutoff lives in the vote
+    that reads it.
+
+    Method note, and why this shape rather than a more obvious one
+    -------------------------------------------------------------
+    The grouping is a **groupby on an identifier the entity already carries**
+    -- a census block, a parcel, any space-partitioning id assigned upstream
+    by ``link_geographic_ids``. It performs no geometric operation of its own:
+    no buffering, no unioning or dissolving of boundaries, no distance or
+    nearest-neighbor search, and no interpolation between neighbors. That is a
+    deliberate choice, not an incidental one. Identifying "communities" by
+    enlarging and merging parcel boundaries, then reading a value off the
+    neighbors, is a technique shape with active patents in the property-data
+    space (see the patent-risk section of ``AGENTS.md``); aggregating a
+    statistic within a published administrative unit is both mechanistically
+    different and far older practice. Where a radius-based neighborhood and a
+    block-level groupby answer the question about equally well -- measured on
+    Harris County, TX, they agree closely -- the groupby is preferred.
+
+    It is also the same mechanism
+    :func:`flag_manufactured_home_communities` already uses, one column over,
+    which keeps two related signals on one code path.
+
+    Feedback loops
+    --------------
+    *evidence_columns* must hold evidence that exists **before** the vote this
+    share feeds. Computing the share from a vote's own output and then scoring
+    it in that same vote would let a class reinforce itself; the recipe makes
+    the same point about ``manufactured_home_community``.
+
+    Parameters
+    ----------
+    group_column : str
+        Column holding the group id (e.g. ``census_block_id``). Rows with no
+        group id get a missing share.
+    output : str
+        Column to write the share (0-1) into.
+    evidence_columns : list of str
+        Columns to read the class from. A row counts toward the group's
+        matches when **any** of them holds one of *match_values*; absent
+        columns are ignored.
+    match_values : list of str
+        Values that count as the class.
+    count_output : str, optional
+        Column to also write the raw match count per group into.
+    exclude_self : bool, default True
+        Compute each row's share over its group *excluding that row*, so the
+        signal is genuinely about the neighbors rather than partly restating
+        the row's own evidence.
+    min_group_size : int, default 2
+        Groups smaller than this get a missing share rather than a value
+        computed from too little to mean anything. With *exclude_self* the
+        effective minimum is one neighbor.
+    """
+    curated = state.curated
+    if group_column not in curated.columns:
+        if state.verbose:
+            print(
+                f'  derive_group_class_share: {group_column} absent, '
+                f'{output} not derived.'
+            )
+        return state
+
+    present = [c for c in evidence_columns if c in curated.columns]
+    if not present:
+        if state.verbose:
+            print(
+                '  derive_group_class_share: none of '
+                f'{evidence_columns} present, {output} not derived.'
+            )
+        return state
+
+    wanted = set(match_values)
+    is_match = pd.Series(False, index=curated.index)
+    for column in present:
+        is_match = is_match | curated[column].astype(object).isin(wanted)
+    is_match = is_match.fillna(False)
+
+    groups = curated[group_column]
+    matches = is_match.astype(float).groupby(groups).transform('sum')
+    sizes = groups.groupby(groups).transform('size').astype(float)
+
+    if exclude_self:
+        matches = matches - is_match.astype(float)
+        sizes = sizes - 1.0
+
+    share = matches / sizes.where(sizes > 0)
+    share = share.where(sizes >= max(min_group_size - (1 if exclude_self else 0), 1))
+    share = share.where(groups.notna())
+
+    curated[output] = share.astype('Float64')
+    if count_output:
+        curated[count_output] = matches.where(groups.notna()).astype('Int64')
+    state.curated = curated
+
+    if state.verbose:
+        described = share.describe()
+        print(
+            f'  derive_group_class_share: {output} over {group_column} -- '
+            f'{int(share.notna().sum()):,} rows, mean '
+            f'{described.get("mean", float("nan")):.3f}'
+        )
+    return state
