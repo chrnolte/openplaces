@@ -11,4 +11,5 @@ Overview
    why-openplaces
    concepts
    package-state
+   privacy
    references

@@ -110,7 +110,7 @@ Privacy-enabling
 
 While the code of ``openplaces``, including contributed recipes, is open-source, the underlying data doesn't have to be.
 
-``openplaces`` allows the privacy-conscious analysts to create a dataset from restricted data for their home location in a secure computing environment, analyze it with publicly shared methods, and share replicable results for feedback and publication - all without ever providing access to the underlying data.
+``openplaces`` allows privacy-conscious analysts to create a dataset from restricted data for their home location in a secure computing environment, analyze it with publicly shared methods, and share replicable results for feedback and publication. This workflow avoids providing access to the underlying data. See the :ref:`privacy` note for more details.
 
 
 Extensible

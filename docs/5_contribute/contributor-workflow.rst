@@ -43,7 +43,9 @@ If you wish to make a contribution to ``openplaces``, follow these steps:
 
 4. :ref:`Format your code <format_your_code>`.
 
-5. Commit your changes to your branch:
+5. :ref:`Sanitize your changes <sanitize_personal_data>` to check for personal data.
+
+6. Commit your changes to your branch:
 
    .. code-block:: bash
 
@@ -52,7 +54,7 @@ If you wish to make a contribution to ``openplaces``, follow these steps:
 
    This will trigger :ref:`automatic code style checks <pre_commit_hooks>`.
 
-6. Push your changes to create a pull request.
+7. Push your changes to create a pull request.
 
    Before pushing, pull the latest changes from the remote repository. This ensures your commits reflect the most recent version of the repository.
 
@@ -72,7 +74,7 @@ If you wish to make a contribution to ``openplaces``, follow these steps:
 
       git push
 
-7. If your contributions pass review, they become part of the ``main`` branch. Your GitHub badge will appear on the public list of collaborators.
+8. If your contributions pass review, they become part of the ``main`` branch. Your GitHub badge will appear on the public list of collaborators.
 
 
 Activate your environment
@@ -168,6 +170,16 @@ This will occur automatically: it is set in ``.gitattributes`` in the repository
 .. note::
 
    Users switching between machines or operating systems can lose their connection to ``nbstripout``. If you encounter errors related to ``nbstripout`` while your ``openplaces`` environment is active, re-running ``nbstripout --install`` frequently resolves the issue.
+
+
+.. _sanitize_personal_data:
+
+Sanitize code and data
+~~~~~~~~~~~~~~~~~~~~~~
+
+Before staging and committing your changes, you must ensure that no personally identifiable information (PII) is included in your files. This includes check files, test fixtures, recipe comments, and docstrings.
+
+To do this, inspect your cached git diff for pattern matches such as street addresses, phone numbers, and email addresses. Refer to the :ref:`no_personal_data` guide for the specific commands to scan your diff.
 
 
 .. _pre_commit_hooks:
