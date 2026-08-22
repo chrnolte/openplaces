@@ -442,6 +442,151 @@ Integrates curated parcels, corrected address counts, reconciled attribute prior
    b. **Cast counts to integer**: Rounds and casts the construction year, story, dwelling and section counts to a nullable integer.
    c. **Clean up and order columns**: Enforces standard column order and drops transient helper columns.
 
+Validation against hand-labelled points
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The CHEER summer-scholars survey is 1,370 buildings across ten eastern North Carolina counties, each visited and classified by hand from imagery and street view. Survey points are linked to footprints by address first and distance only as a fallback, with ties broken toward the parcel's primary structure --- a house and its shed share one address, and the nearest polygon to a dropped pin is often the shed. The inventory's Multi-Family height bands are collapsed to plain ``Multi-Family`` so the two vocabularies are comparable.
+
+These numbers describe the residential three-class problem only. The survey never labels a warehouse or a church, so nothing here says how well the inventory does on non-residential structures.
+
+**Overall: accuracy 0.765, macro-F1 0.788**, with a class assigned to 1,294 of the 1,370 points.
+
+.. list-table:: Per-class accuracy (measured 2026-08-22)
+   :header-rows: 1
+
+   * - class
+     - support
+     - precision
+     - recall
+     - F1
+   * - Single-Family
+     - 420
+     - 0.701
+     - 0.793
+     - 0.744
+   * - Multi-Family
+     - 586
+     - 0.893
+     - 0.727
+     - 0.802
+   * - Manufactured Home
+     - 364
+     - 0.845
+     - 0.794
+     - 0.819
+
+.. list-table:: Confusion matrix --- rows are the hand label, columns the inventory
+   :header-rows: 1
+
+   * - hand label (row)
+     - Single-Family
+     - Multi-Family
+     - Manufactured Home
+     - unassigned
+   * - Single-Family
+     - **333**
+     - 27
+     - 46
+     - 14
+   * - Multi-Family
+     - 111
+     - **426**
+     - 7
+     - 42
+   * - Manufactured Home
+     - 31
+     - 24
+     - **289**
+     - 20
+
+One cell dominates the error: **111 hand-labelled Multi-Family buildings the inventory calls Single-Family**, more than every other confusion combined. That is the shape of the residual --- the inventory under-detects multiplicity rather than confusing residential with anything else. It was 130 before the 2026-08-22 rebuild recovered assessor land use for seven counties whose statewide-layer join had been failing, which is where most of that release's gain came from.
+
+Multi-Family and Manufactured Home barely compete in either direction (7 and 24 of 1,370): the two classes are separated by different evidence.
+
+Accuracy varies more by county than by class, from 0.487 in Carteret to 0.978 in New Hanover. Read a county figure as a statement about that county's assessor data rather than about the method: New Hanover is the one county where permit records match parcels by APN at scale, and Carteret publishes no licence terms and little land-use text.
+
+.. list-table:: Per-county accuracy
+   :header-rows: 1
+
+   * - county
+     - points
+     - accuracy
+     - Manufactured Home recall
+   * - Carteret (CE)
+     - 154
+     - 0.558
+     - 0.889
+   * - Pender (PD)
+     - 38
+     - 0.605
+     - 0.286
+   * - Beaufort (BA)
+     - 215
+     - 0.665
+     - 0.795
+   * - Duplin (DE)
+     - 24
+     - 0.750
+     - 0.000
+   * - Robeson (RB)
+     - 232
+     - 0.797
+     - 0.773
+   * - Brunswick (BS)
+     - 205
+     - 0.810
+     - 0.684
+   * - Halifax (HL)
+     - 376
+     - 0.822
+     - 0.806
+   * - Johnston (JH)
+     - 79
+     - 0.911
+     - 0.938
+   * - New Hanover (NE)
+     - 46
+     - 0.978
+     - 0.978
+
+Manufactured homes, stratified
+------------------------------
+
+A pooled accuracy figure hides the case that matters for manufactured housing. A manufactured-home community is not homogeneous --- site-built houses do get built on lots inside one --- and every neighbourhood-based signal fails on exactly those blocks. The table below therefore splits the 706 Single-Family/Manufactured-Home points by the manufactured share of each building's census block, self excluded.
+
+.. list-table:: Manufactured Home class by block composition
+   :header-rows: 1
+
+   * - stratum
+     - points
+     - inventory F1
+     - NSI alone F1
+   * - pure manufactured (>=80%)
+     - 19
+     - **0.973**
+     - 0.690
+   * - mixed (20--80%)
+     - 218
+     - **0.823**
+     - 0.482
+   * - pure site-built (<=20%)
+     - 461
+     - **0.787**
+     - 0.244
+   * - all
+     - 706
+     - **0.814**
+     - 0.390
+
+The inventory holds up in the mixed stratum (F1 0.823) where the National Structure Inventory alone collapses to 0.482, and it more than triples NSI's F1 on predominantly site-built blocks. That gap is the value the assessor keyword, footprint morphology and value-pattern evidence add on top of the point sources.
+
+Reproducing these tables
+------------------------
+
+``notebooks/05_curate/cheer_linkage.py`` holds the linkage configuration and ``notebooks/05_curate/mmh_separability.py`` the stratified scoring. The survey CSV is derived from the source workbook by ``notebooks/02_ingest/footprints/prepare_cheer_ground_truth.ipynb`` and is not redistributed with the inventory.
+
+Two cautions when reading a change against these numbers. The same 1,370 labels have now scored several successive changes, so a difference of a point or two on a sub-population of a dozen points is not evidence. And the survey covers ten of the region's forty-five counties, so a change whose effect falls outside them scores exactly zero here while still being real --- the keyword-vocabulary expansion of 2026-08 is precisely that case.
+
 Technical Annex
 ~~~~~~~~~~~~~~~
 

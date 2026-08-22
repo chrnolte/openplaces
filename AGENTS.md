@@ -47,6 +47,30 @@ repository.
   GitHub account, not an institutional one) — don't propose or perform an org
   transfer, mirror, or similar hosting change unprompted.
 
+## Private-licence connectors: do not commit them yet
+
+- **A recipe that reads a source under a private, non-redistributable
+  licence stays out of git until Boston University clears it.** That
+  covers the recipe YAML, its sidecar crosswalks, and any pipeline step
+  that names it -- a `link_by_id` pointing at such a recipe is part of the
+  connector, not separate from it. Leave the files in the working tree and
+  say so; do not commit and do not delete.
+- The test is the source's terms, not the data: a source marked
+  `redistribution_restricted: true`, or whose licence forbids
+  redistribution or derivative works, is in scope even though a recipe
+  contains no data itself. Shovels is the current example -- its terms
+  forbid creating "derivative works of ... the Data (including any
+  datasets, models, data products, or other works that are based on or
+  trained on the Data)" -- and a committed connector is a public,
+  attributable statement that this project integrates that source.
+- This is the same posture as the IP section below: the question is
+  institutional, the answer is not an agent's to assume, and the cost of
+  waiting is a file that sits uncommitted for a while.
+- **`US-NC_property-shovels-2026` predates this rule and is already
+  committed and pushed** (2026-08-15). Removing it from history is a
+  decision for a human, exactly like the personal-data rule above --
+  flag it, do not quietly rewrite.
+
 ## Third-party code: attribute it, check its license
 - Porting or adapting code from another project (a GitHub repo, a paper's
   reference implementation): name the source (repo/paper URL), its original
@@ -533,6 +557,34 @@ classification against hand-labelled points. `validation.py`'s
 fallback; because a house and its shed share one address, callers break the
 resulting ties with `prefer_column`/`prefer_values` (e.g. rank
 `priority_on_parcel == 'primary'` first) rather than letting row order decide.
+
+`provenance.py` carries one invariant worth knowing before writing any step
+that produces a value: **a cell openplaces itself filled must say so**, by
+carrying the `imputed` marker in its `{col}_source`. Tokens are therefore
+composite, joined by `+` (`parcel+imputed`, and the harmonize stage's
+`parcel+usaddress`) — never assume a token equals a bare source name.
+`mark_imputed` is the only place the marker is written and `is_imputed` the
+only place it is read (it matches whole `+`-separated parts, so a source named
+`imputed_rates` is not swept up); `record_sources` writes a per-row token
+series, which is what a step carrying an upstream sidecar forward needs rather
+than `record_source`'s one-token-per-mask.
+
+**The marker means openplaces filled the cell, not that the number is
+modeled.** A value read from a dataset keeps that dataset's name even when the
+dataset is a model: `nsi` is a FEMA-modeled structure value and stays plain
+`nsi`, because the token already names what produced it. So classification
+votes are not marked (`nsi`/`keyword`/`classifier` each name the winning
+evidence), and neither is apportioning a reference's value across the entities
+on it — the parcel's total is a real assessed figure being divided, not a value
+invented where none existed. Only estimation of a genuinely missing value
+counts.
+
+The hard part is propagation, not the decision: `impute_land_value` knows which
+rows it estimated, and the marker has to survive `apportion_curated_values`
+(which crosses parcel → footprint) and `select_value_source_by_admin_unit`
+(whose `output` and `parcel_column` are commonly the *same* column, so they
+share one sidecar) to reach the delivered `structure_value_source`. All three
+dropped or flattened it before 2026-08-21.
 
 These concern-based modules mirror the processor categories used by related
 inventory systems, while remaining native to the openplaces recipe and state
