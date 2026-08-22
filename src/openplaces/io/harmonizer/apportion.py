@@ -24,6 +24,7 @@ __all__ = [
     'APPORTIONED_VALUE_COLUMNS',
     'PROPORTIONAL_SPLIT_COLUMNS',
     'WHOLE_VALUE_COLUMNS',
+    'ValueOverAllocationError',
     'apportion_reference_values',
 ]
 
@@ -58,11 +59,16 @@ PROPORTIONAL_SPLIT_COLUMNS = ('improvement_value', 'improvement_value_imputed')
 # identical apportionment treatment, not the area-proportional one meant for
 # improvement/structure values.
 # total_value joins them rather than the proportional split: it is
-# land + structures, so splitting it by footprint area would divide the
+# land + structures, so spreading it across every footprint would divide the
 # land half by building geometry, and a parcel's total is in any case a
-# single figure the assessor wrote once. Whole-on-principal keeps the
-# regional sum exact while never printing the same dollar twice across a
-# parcel's footprints.
+# single figure the assessor wrote once.
+# "Whole" here means whole *per parcel*, not whole per building: the value
+# goes to the principal entities only, and where a parcel has several of
+# them it is divided among them rather than repeated on each. Repeating it
+# was the original reading, and it inflated regional sums by 1.23x-1.69x on
+# the two shipped CHEER bundles, because multi-building parcels are
+# disproportionately the high-value commercial tail.
+# `_assert_not_over_allocated` enforces the distinction on every call.
 WHOLE_VALUE_COLUMNS = ('land_value', 'land_value_imputed', 'total_value')
 
 
@@ -94,12 +100,17 @@ def apportion_reference_values(
       Unaffected by *equal_area_ref_ids*.
     - ``year_built``: 0 treated as missing, mean over the entity's linked
       references (unweighted).
-    - ``land_value``, ``land_value_imputed`` (:data:`WHOLE_VALUE_COLUMNS`):
-      the dominant (largest-overlap) reference's whole value, kept only on
-      principal entities — ``priority == 'primary'`` when *priority* is
-      given, else entities that are the sole spine entity on their dominant
-      reference — and suppressed for entities affected by the dwelling-linked
-      rule below. Unaffected by *equal_area_ref_ids*.
+    - ``land_value``, ``land_value_imputed``, ``total_value``
+      (:data:`WHOLE_VALUE_COLUMNS`): the dominant (largest-overlap)
+      reference's value, kept only on principal entities —
+      ``priority == 'primary'`` when *priority* is given, else entities that
+      are the sole spine entity on their dominant reference — and suppressed
+      for entities affected by the dwelling-linked rule below. A reference
+      with one qualifying entity gives it the whole value; a reference with
+      several **divides** the value among them by overlap area (equally, if
+      none has a recorded area), because a parcel's assessed value is one
+      figure and must never be repeated per building. Unaffected by
+      *equal_area_ref_ids*.
     - ``address``: the dominant reference's value, unrestricted.
 
     Parameters
@@ -235,6 +246,7 @@ def apportion_reference_values(
             attrs['year_built'].replace(0, np.nan).groupby(spine_ids).mean()
         )
 
+    dominant = None
     whole_value_cols = [c for c in WHOLE_VALUE_COLUMNS if c in value_cols]
     if whole_value_cols or 'address' in value_cols:
         dominant = (
@@ -256,12 +268,139 @@ def apportion_reference_values(
                     .eq(1)
                     .set_axis(dominant.index)
                 )
+            if suppressed_ids:
+                is_principal = is_principal & ~dominant.index.isin(suppressed_ids)
+            # A parcel may carry several principal structures (an apartment
+            # complex, a school, a refinery), so "the value goes whole to the
+            # principal entity" cannot mean "to each of them" -- that prints
+            # the same dollar once per building and inflates every regional
+            # sum. Where more than one entity qualifies, the parcel's value is
+            # divided among them by overlap area, the same weight the
+            # proportional columns use; where exactly one qualifies it still
+            # receives the whole value, so the single-building case (the
+            # overwhelming majority) is unchanged.
+            share_weight = (
+                pd.to_numeric(dominant[area_col], errors='coerce')
+                .astype(float)
+                .where(is_principal, 0.0)
+                .clip(lower=0.0)
+            )
+            weight_per_ref = share_weight.groupby(dominant[ref_id_col]).transform('sum')
+            share = share_weight / weight_per_ref.replace(0.0, np.nan)
+            # Equal division is the fallback when a reference's qualifying
+            # entities all have zero recorded overlap area, which a degenerate
+            # or point-derived geometry can produce.
+            n_principal = (
+                is_principal.astype(float)
+                .groupby(dominant[ref_id_col])
+                .transform('sum')
+            )
+            share = share.where(
+                weight_per_ref > 0, is_principal.astype(float) / n_principal
+            )
             for col in whole_value_cols:
-                whole_value = dominant[col].where(is_principal)
-                if suppressed_ids:
-                    whole_value[whole_value.index.isin(suppressed_ids)] = np.nan
-                out[col] = whole_value
+                out[col] = (dominant[col] * share).where(is_principal)
 
     result = pd.DataFrame(out)
     result.index.name = spine_id_col
+    _assert_not_over_allocated(
+        result,
+        pairs=pairs,
+        ref_values=ref_values,
+        value_cols=value_cols,
+        spine_id_col=spine_id_col,
+        ref_id_col=ref_id_col,
+        dominant_ref=(
+            dominant[ref_id_col] if whole_value_cols and dominant is not None else None
+        ),
+    )
     return result
+
+
+class ValueOverAllocationError(AssertionError):
+    """More value was handed to spine entities than the reference holds.
+
+    Raised by :func:`apportion_reference_values` when a reference's value
+    reaches its overlapping entities more than once -- the failure mode where
+    a parcel with several principal buildings pays its assessed value to each
+    of them, so the column looks right per building and over-counts in every
+    sum. An `AssertionError` subclass because it reports a broken invariant
+    in this module, not a bad argument from the caller.
+    """
+
+
+def _assert_not_over_allocated(
+    result: pd.DataFrame,
+    *,
+    pairs: pd.DataFrame,
+    ref_values: pd.DataFrame,
+    value_cols: list[str],
+    spine_id_col: str,
+    ref_id_col: str,
+    dominant_ref: pd.Series | None,
+) -> None:
+    """Fail if any reference's value was allocated more than once.
+
+    The invariant every apportioned money column must satisfy: what the
+    entities receive from a reference never exceeds what that reference
+    holds. Under-allocation is legitimate and unchecked -- a parcel with no
+    buildings, a suppressed accessory structure, or a secondary-masked
+    column all leave value unassigned on purpose.
+
+    Checked here, in the one function both the harmonize and the curate
+    stage apportion through, so the guarantee covers every recipe and every
+    dataset rather than one pipeline's configuration.
+
+    Whole-value columns are checked per reference, which is exact: each
+    entity draws them from exactly one dominant reference. Proportional
+    columns are checked on the total instead, because an entity sums shares
+    from several references and no per-reference attribution survives into
+    *result*; duplication still shows up there as a total above the sum of
+    the references actually linked.
+
+    Raises
+    ------
+    ValueOverAllocationError
+        Naming the column, the worst-offending reference, and both amounts.
+    """
+    if result.empty:
+        return
+
+    linked_refs = pairs[ref_id_col].dropna().unique()
+    available = ref_values.reindex(linked_refs)
+
+    for col in value_cols:
+        if col not in result.columns or col not in available.columns:
+            continue
+        if col == 'address' or col == 'year_built':
+            continue  # not money, and not divided
+        allocated = pd.to_numeric(result[col], errors='coerce')
+        source = pd.to_numeric(available[col], errors='coerce')
+        if col in WHOLE_VALUE_COLUMNS and dominant_ref is not None:
+            per_ref = allocated.groupby(dominant_ref.reindex(allocated.index)).sum()
+            source_per_ref = source.reindex(per_ref.index)
+            # Per-pair rounding can add at most half a cent per entity.
+            tolerance = (
+                0.005 * allocated.groupby(dominant_ref.reindex(allocated.index)).size()
+                + source_per_ref.abs() * 1e-9
+            )
+            excess = per_ref - source_per_ref - tolerance
+            if (excess > 0).any():
+                worst = excess.idxmax()
+                raise ValueOverAllocationError(
+                    f"'{col}' was over-allocated: reference {worst!r} holds "
+                    f'{source_per_ref[worst]:,.2f} but {per_ref[worst]:,.2f} '
+                    "was distributed to its entities. A reference's value "
+                    'must be split among the entities that share it, never '
+                    'repeated on each of them.'
+                )
+        else:
+            total_allocated = allocated.sum()
+            total_source = source.sum()
+            tolerance = 0.005 * len(allocated) + abs(total_source) * 1e-9
+            if total_allocated - total_source > tolerance:
+                raise ValueOverAllocationError(
+                    f"'{col}' was over-allocated: the linked references hold "
+                    f'{total_source:,.2f} in total but {total_allocated:,.2f} '
+                    'was distributed to spine entities.'
+                )
