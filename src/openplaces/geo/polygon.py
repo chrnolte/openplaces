@@ -106,17 +106,43 @@ def reproject(gdf, crs, pinned=True):
 def fix_polygons(gdf):
     """Fix invalid geometries in a GeoDataFrame using make_valid.
 
+    A geometry carrying a non-finite coordinate is blanked rather than
+    repaired. `shapely.make_valid` raises `GEOSException` on one instead
+    of returning a usable shape, so a single such row would otherwise
+    abort a whole ingest -- and it is not a hypothetical: a source that
+    has one of a point's two coordinates but not the other emits
+    `POINT (31.995378 NaN)` (measured: 9 rows in the first 400,000 of the
+    Texas Shovels permit export, none at all in the North Carolina one,
+    which is why this only surfaces on some sources). A vertex at an
+    unknown coordinate carries the same information as no geometry at
+    all, and :func:`has_geometry` already filters missing geometries, so
+    blanking loses nothing a caller could have used.
+
     Parameters
     ----------
     gdf : GeoDataFrame
         GeoDataFrame that may have invalid geometries.
     """
     gdf = gdf.copy()
-    invalid = ~gdf.geometry.is_valid
-    if invalid.any():
-        gdf.loc[invalid, 'geometry'] = shapely.make_valid(
-            gdf.loc[invalid, 'geometry'].values
-        )
+    geometry = gdf.geometry
+    invalid = (~geometry.is_valid) & geometry.notna()
+    if not invalid.any():
+        return gdf
+
+    values = geometry[invalid].values
+    # Only the already-invalid subset is scanned, so the coordinate pull
+    # stays proportional to the damage rather than to the dataset.
+    coords, index = shapely.get_coordinates(values, return_index=True)
+    broken = np.zeros(len(values), dtype=bool)
+    nonfinite = ~np.isfinite(coords).all(axis=1)
+    if nonfinite.any():
+        broken[np.unique(index[nonfinite])] = True
+
+    repaired = np.empty(len(values), dtype=object)
+    repaired[broken] = None
+    if (~broken).any():
+        repaired[~broken] = shapely.make_valid(values[~broken])
+    gdf.loc[invalid, 'geometry'] = repaired
     return gdf
 
 
