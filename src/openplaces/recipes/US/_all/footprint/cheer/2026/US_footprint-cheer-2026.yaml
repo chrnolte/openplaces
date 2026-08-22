@@ -175,6 +175,35 @@ pipeline:
       [Commercial, Retail, Office, Industrial, Institutional, Recreation,
        Agricultural, RV Park]
 
+  # The denominator of the manufactured-home value test: the parcel's own
+  # value, undivided.
+  #
+  # It has to be pulled AFTER apportion_curated_values, under names that
+  # step does not write. The `link_curated_entity` above already maps the
+  # parcel's undivided improvement_value/land_value, but onto
+  # `improvement_value_parcel`/`land_value_parcel` -- the very names
+  # apportionment then overwrites with each building's apportioned share.
+  # Reading those for a parcel-level denominator therefore silently gets
+  # the apportioned value instead.
+  #
+  # Why the test needs both bases: the numerator asks about the STRUCTURE
+  # ("does this building carry improvement value?") and the denominator
+  # about the PARCEL ("out of how much value in total?"). Using apportioned
+  # values for both put the ratio on an inconsistent base -- improvement
+  # divided by area share, land whole -- so it drifted with the number of
+  # buildings on the parcel (measured: 0.22% of decisions differ on
+  # single-footprint parcels, 0.70% on multi-footprint ones). Using
+  # parcel-level values for both was tried and lost manufactured homes
+  # sharing a parcel with a site-built house, because the parcel then
+  # plainly does carry improvement value (Manufactured Home F1 -0.0112).
+  # This split keeps the structure-level numerator that works and gives it
+  # a consistent, parcel-level base.
+  - step: link_curated_entity
+    recipe_id: US_parcel-openplaces-2026
+    columns:
+      improvement_value: improvement_value_parcel_whole
+      land_value: land_value_parcel_whole
+
   # Decide, per admin unit (town), whether the local parcel data has usable
   # improvement values for most of its buildings. A well-covered town keeps
   # its apportioned parcel value everywhere (even for its few individually
@@ -553,12 +582,16 @@ pipeline:
           # evidence for this class by a wide margin, hence sufficient alone.
           - type: all_of
             weight: 2
+            label: morphology
             indicators:
               - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min}
               - {type: numeric_at_most, column: area_m2, max: *mh_area_max_m2}
-          - {type: numeric_at_least, column: p_manufactured_home, min: 0.75}
-          - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
-          - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
+          - {type: numeric_at_least, column: p_manufactured_home, min: 0.75,
+             label: keyword_probability}
+          - {type: equals, column: occupancy_type_nsi_class,
+             value: Manufactured Home, label: nsi}
+          - {type: equals, column: occupancy_type_fema_class,
+             value: Manufactured Home, label: fema}
           # Sufficient alone. This is redundancy insurance, not a scoring
           # change: it moves no rows today, and that was measured, not
           # assumed -- re-curating Robeson (2,792 reviewed keyword-MH rows,
@@ -590,11 +623,32 @@ pipeline:
             column: occupancy_keyword_class
             value: Manufactured Home
             weight: 2
+            label: keyword
+          # NOTE: these two columns are apportioned by *different* rules --
+          # improvement by overlap-area share, land whole-to-principal (split
+          # among primaries since the over-allocation fix) -- so this ratio is
+          # not on a consistent base and is not the parcel-level share it
+          # reads like. Measured on Brunswick it disagrees with the true
+          # parcel-level share on 337 buildings (0.22% of single-footprint
+          # parcels, 0.70% of multi-footprint ones).
+          #
+          # Switching it to the parcel's own totals was tried and **reverted**:
+          # it is architecturally cleaner but a measured regression
+          # (Manufactured Home F1 -0.0112, 95% CI [-0.0205, -0.0027]). The
+          # reason is substantive rather than incidental -- a manufactured
+          # home sharing a parcel with a site-built house sits on a parcel
+          # that *does* carry improvement value, so the parcel-level test
+          # stops firing for it, while the apportioned numerator still
+          # reports that THIS structure has none. Ten surveyed manufactured
+          # homes lost the evidence that way, eight of them correctly
+          # classified before.
+          # See plans/manufactured-home-neighborhood-signal-and-vote-provenance.md.
           - type: value_share_below
             value: improvement_value_parcel
-            total: [improvement_value_parcel, land_value_parcel]
+            total: [improvement_value_parcel_whole, land_value_parcel_whole]
             max_ratio: *mh_value_share_max
             include_zero: true
+            label: no_improvement_value
           # The parcel lane's park classification, restricted to its rule
           # route. That route carries a hard require on
           # n_small_elongated_footprints_per_parcel >= 4 -- footprint
@@ -605,6 +659,7 @@ pipeline:
           # flag_manufactured_home_communities later overwrites from THIS
           # vote's own output -- scoring that would be a feedback loop.
           - type: all_of
+            label: parcel_park
             indicators:
               - type: equals
                 column: land_use_class_parcel
@@ -618,15 +673,15 @@ pipeline:
           # below while a shed on the same parcel does not.
           - type: all_of
             weight: 2
+            label: parcel_community
             indicators:
               - {type: equals, column: manufactured_home_community, value: true}
               - {type: numeric_at_least, column: habitable_size_ratio, min: 1.0}
-
       - class: Multi-Family
         source: multi_family
         min_score: 1
         require:
-          - {type: equals, column: dwelling_multiplicity, value: multi}
+          - {type: equals, column: dwelling_multiplicity, value: multi, label: dwellings}
           # A positively non-residential base class stands; the carry-through
           # only writes where the base is residential, Secondary, or unknown.
           # Allow-list plus is_null because the vocabulary has no negation.
@@ -639,7 +694,7 @@ pipeline:
         indicators:
           # Question 1 already decided this; the indicator simply carries that
           # decision through so the class is written.
-          - {type: equals, column: dwelling_multiplicity, value: multi}
+          - {type: equals, column: dwelling_multiplicity, value: multi, label: dwellings}
 
       # Single-family is the residual of the single-dwelling group: one
       # dwelling and no manufactured-home evidence is a site-built house.
@@ -649,7 +704,7 @@ pipeline:
         source: single_family
         min_score: 1
         require:
-          - {type: equals, column: dwelling_multiplicity, value: single}
+          - {type: equals, column: dwelling_multiplicity, value: single, label: dwellings}
           # An accessory structure is not a house, so the residual must not
           # claim it -- the Secondary decision below does. Expressed as an
           # allow-list because the predicate vocabulary has no negation.
@@ -667,7 +722,7 @@ pipeline:
                 values: [Single-Family, Multi-Family, Manufactured Home, Secondary]
               - {type: is_null, column: occupancy_type_prevote}
         indicators:
-          - {type: equals, column: dwelling_multiplicity, value: single}
+          - {type: equals, column: dwelling_multiplicity, value: single, label: dwellings}
 
       # Accessory structures -- sheds, detached garages -- on a parcel whose
       # principal building is elsewhere. Listed last as the true residual and
@@ -679,9 +734,9 @@ pipeline:
         source: secondary
         min_score: 1
         require:
-          - {type: equals, column: priority_on_parcel, value: secondary}
+          - {type: equals, column: priority_on_parcel, value: secondary, label: priority}
         indicators:
-          - {type: equals, column: priority_on_parcel, value: secondary}
+          - {type: equals, column: priority_on_parcel, value: secondary, label: priority}
 
   # Split Multi-Family into height bands. This is the same weighted vote as
   # every other classification here, not a bespoke cascade: each band
