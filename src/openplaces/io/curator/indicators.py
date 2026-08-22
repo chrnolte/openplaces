@@ -19,6 +19,7 @@ candidate wins a tie and recipe order is precedence.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 
@@ -185,8 +186,13 @@ def score_decisions(
     winner : pandas.Series
         Winning class per row, missing where no decision was eligible.
     token : pandas.Series
-        Each winning decision's ``source``, missing where it set none --
-        callers apply their own default.
+        How the winning decision was carried: the ``label`` of every one of
+        its indicators that actually fired for that row, joined with ``+``
+        in recipe order. Falls back to the decision's declared ``source``
+        where it labeled no indicators (or none of them matched), and is
+        missing where it set neither -- callers apply their own default.
+        Labeling indicators is therefore opt-in per recipe, and an
+        unannotated recipe keeps its previous behavior.
     best_score, second_score : pandas.Series
         Winning and runner-up scores among decisions that individually
         reached their own ``min_score``. ``second_score`` is missing where
@@ -206,12 +212,21 @@ def score_decisions(
 
     for decision in decisions:
         score = pd.Series(0.0, index=curated.index)
+        # Which labeled indicators actually fired, per row. A decision's
+        # declared `source` names the decision; this names the evidence that
+        # carried it, which is what a reader of a `{col}_source` sidecar is
+        # asking for.
+        fired = pd.Series('', index=curated.index, dtype=object)
         for indicator in decision.get('indicators', []):
             weight = float(indicator.get('weight', 1.0))
-            matched = evaluate_indicator(curated, indicator).astype(float)
-            score = score + matched * weight
+            matched = evaluate_indicator(curated, indicator)
+            score = score + matched.astype(float) * weight
+            label = indicator.get('label')
+            if label:
+                fired = fired + np.where(matched.to_numpy(), f'{label}+', '')
         if score_classes and decision['class'] in score_classes:
             scores[decision['class']] = score
+        fired = fired.str.rstrip('+')
 
         eligible = score >= float(decision.get('min_score', 1))
         for req in decision.get('require', []):
@@ -231,7 +246,14 @@ def score_decisions(
 
         winner.loc[take] = decision['class']
         source = decision.get('source')
-        token.loc[take] = source if source is not None else pd.NA
+        # Prefer the evidence that fired; fall back to the decision's own
+        # name only where it labeled no indicators, so a recipe that has
+        # not been annotated keeps its previous provenance rather than
+        # losing it.
+        decided = fired.loc[take].replace('', pd.NA)
+        if source is not None:
+            decided = decided.fillna(source)
+        token.loc[take] = decided
         best_score.loc[take] = score.loc[take]
 
     return winner, token, best_score, second_score.where(has_second), scores

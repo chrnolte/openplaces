@@ -47,6 +47,17 @@ DEFAULTS = {
     'n_dwellings_overture': 0,
     'improvement_value_parcel': 150_000.0,
     'land_value_parcel': 50_000.0,
+    # The parcel's own undivided values -- the denominator of the
+    # manufactured-home value test, whose numerator stays the apportioned
+    # `improvement_value_parcel` above. Defaulted equal to the apportioned
+    # pair, i.e. a parcel carrying exactly one building, so a case that does
+    # not care about the distinction behaves as it always did.
+    'improvement_value_parcel_whole': 150_000.0,
+    'land_value_parcel_whole': 50_000.0,
+    # The parcel's own undivided values, which the manufactured-home value
+    # test reads -- distinct from the apportioned pair above.
+    'improvement_value_parcel_total': 150_000.0,
+    'land_value_parcel_total': 50_000.0,
     'n_stories': None,
     # A plainly non-manufactured shape unless a case overrides it.
     'length_m': 20.0,
@@ -171,6 +182,22 @@ def test_every_vote_input_is_available(recipe):
     # A vote also provides its own target and any base_output snapshot, which
     # later decisions in the same or a following vote may require.
     written = {'area_m2', 'geometry'}
+    # Any step that declares an output column provides it too (e.g.
+    # derive_group_class_share). Collected generically so a new
+    # column-producing step does not have to be added here by hand.
+    for step in recipe['pipeline']:
+        for key in ('output', 'count_output'):
+            value = step.get(key)
+            if isinstance(value, str):
+                written.add(value)
+        # A step that maps reference columns onto the spine provides its
+        # output names (the mapping's values), e.g. link_curated_entity and
+        # apportion_curated_values.
+        columns = step.get('columns')
+        if isinstance(columns, dict):
+            written.update(str(v) for v in columns.values())
+        elif isinstance(columns, list):
+            written.update(str(c) for c in columns if isinstance(c, str))
     for target in VOTE_TARGETS:
         for vote in _votes(recipe, target):
             written.add(vote['target'])
@@ -687,3 +714,160 @@ def test_section_count_survives_the_integer_cast(recipe):
     cast = cast_integers(state, step['columns']).curated
     assert cast['n_sections'].dtype == 'Int64'
     assert cast['n_sections'].iloc[0] == 2
+
+
+class TestManufacturedHomeValueTestBasis:
+    """The value test asks a structure-level question against a parcel-level
+    base, and both halves matter.
+
+    Numerator: does *this building* carry improvement value? Denominator: out
+    of how much value does the parcel hold in total? Two earlier formulations
+    each got one half wrong -- apportioned values for both put the ratio on an
+    inconsistent base (improvement divided by area share, land whole), and
+    parcel values for both lost manufactured homes sharing a parcel with a
+    site-built house, because such a parcel plainly does carry improvement
+    value (measured: Manufactured Home F1 -0.0112).
+    """
+
+    # A keyword the parcel land-use ruleset resolves to Manufactured Home,
+    # supplying the second point this decision's min_score of 2 needs. The
+    # value indicator alone can never win, which is the point of testing it
+    # alongside a corroborator rather than by itself.
+    MH_KEYWORD = {'use_group_combined_parcel': 'DOUBLE WIDE MOHO'}
+
+    def test_a_manufactured_home_beside_a_house_keeps_its_evidence(self, recipe):
+        """The case parcel-level values got wrong: the parcel carries real
+        improvement value (the house), but this structure's share of the
+        parcel's total is negligible."""
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.MH_KEYWORD,
+                    'n_dwellings_overture': 1,
+                    # this building's apportioned share: almost nothing
+                    'improvement_value_parcel': 500.0,
+                    # the parcel as a whole: a house plus land
+                    'improvement_value_parcel_whole': 120_000.0,
+                    'land_value_parcel_whole': 60_000.0,
+                    'land_value_parcel': 60_000.0,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+        assert 'no_improvement_value' in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_a_normally_valued_building_does_not_fire_the_test(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.MH_KEYWORD,
+                    'n_dwellings_overture': 1,
+                    'improvement_value_parcel': 150_000.0,
+                    'improvement_value_parcel_whole': 150_000.0,
+                    'land_value_parcel_whole': 50_000.0,
+                }
+            ],
+        )
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_the_denominator_is_the_parcel_not_this_building(self, recipe):
+        """Identical structure-level numerator, two different parcel totals:
+        the ratio has to follow the parcel's total. That is what makes the
+        base consistent, and it is exactly what reading the apportioned
+        `land_value_parcel` could not guarantee."""
+        shared = {
+            **self.MH_KEYWORD,
+            'n_dwellings_overture': 1,
+            'improvement_value_parcel': 3_000.0,
+            'land_value_parcel': 50_000.0,
+            'improvement_value_parcel_whole': 3_000.0,
+        }
+        # 3,000 / 53,000 = 5.7%, above the 2.5% cutoff
+        small = _run(recipe, [{**shared, 'land_value_parcel_whole': 50_000.0}])
+        # 3,000 / 5,003,000 = 0.06%, below it
+        big = _run(recipe, [{**shared, 'land_value_parcel_whole': 5_000_000.0}])
+
+        assert 'no_improvement_value' not in str(
+            small['occupancy_type_source'].astype(object).iloc[0]
+        )
+        assert 'no_improvement_value' in str(
+            big['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+
+class TestSecondaryFootprintsAreNotManufacturedByValueAlone:
+    """An accessory building must never be called a manufactured home just
+    because it was allocated no improvement value.
+
+    Apportionment *masks* `improvement_value_parcel` on secondary entities
+    (a shed is not credited with a share of the house's assessed value), so
+    a secondary footprint's value indicator reads missing rather than zero.
+    Were it ever to read zero -- a zero-fill added upstream, or a source
+    that genuinely records 0 -- `include_zero` would fire it, and the only
+    thing standing between that and a misclassification is that the
+    indicator carries weight 1 against a `min_score` of 2.
+
+    Measured on the ten surveyed counties: of 24,881 secondary footprints
+    classified Manufactured Home, the value test contributed to 957 and was
+    the sole evidence for **none**. These tests keep it that way.
+    """
+
+    def test_a_secondary_footprint_with_zero_value_is_not_manufactured(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'priority_on_parcel': 'secondary',
+                    # the shape the mask would otherwise leave behind
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': 120_000.0,
+                    'land_value_parcel_whole': 60_000.0,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Secondary'
+
+    def test_a_missing_value_does_not_fire_the_indicator(self, recipe):
+        """The production shape: apportionment masks the column outright."""
+        out = _run(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'priority_on_parcel': 'secondary',
+                    'improvement_value_parcel': None,
+                    'improvement_value_parcel_whole': 120_000.0,
+                    'land_value_parcel_whole': 60_000.0,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Secondary'
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_the_value_indicator_can_never_win_on_its_own(self, recipe):
+        """Structural, not incidental: weight 1 against min_score 2. A future
+        edit raising that weight, or lowering the threshold, breaks the
+        guarantee -- which is what this asserts against."""
+        vote = next(
+            v
+            for v in _votes(recipe, 'occupancy_type')
+            if any(d['class'] == 'Manufactured Home' for d in v['decisions'])
+        )
+        mh = next(d for d in vote['decisions'] if d['class'] == 'Manufactured Home')
+        value_ind = next(
+            i for i in mh['indicators'] if i.get('label') == 'no_improvement_value'
+        )
+        assert float(value_ind.get('weight', 1)) < float(mh['min_score']), (
+            'the no-improvement-value indicator can now satisfy the '
+            'manufactured-home decision by itself; a secondary footprint '
+            'allocated no value would be reclassified on that alone'
+        )
