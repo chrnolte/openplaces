@@ -139,7 +139,7 @@
 #
 # Validation performed: recipe-loading and registry-column checks run
 # for real. A real, unmodified `op.ingest()` was run end-to-end
-# against the live service for Piute County (US-UT-PT, the smallest
+# against the live service for Piute County (US-UT-PI, the smallest
 # county by parcel count, 2,936 base-layer / 2,873 distinct LIR
 # parcels) exercising the new `{admin_key}` scraper machinery this
 # recipe depends on.

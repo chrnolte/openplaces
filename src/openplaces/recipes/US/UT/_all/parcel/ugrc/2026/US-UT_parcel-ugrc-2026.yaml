@@ -104,7 +104,7 @@
 #
 # Validation performed: recipe-loading and registry-column checks
 # were run for real, and a real, unmodified `op.ingest()` was run
-# against the live service for Piute County (US-UT-PT, the smallest
+# against the live service for Piute County (US-UT-PI, the smallest
 # county by parcel count) -- see the header of `US-UT_parcel-ugrclir-
 # 2026` for the combined result.
 

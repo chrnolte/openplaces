@@ -31,13 +31,13 @@ layer: FS_VCGI_OPENDATA_Cadastral_VTPARCELS_poly_standardized_parcels_SP_v1
 # (avoids reading very large geodatabases into memory)
 process_by:
   # Administrative level at which processing is chunked
-  admin_level: 4
+  admin_level: 3
   # Column in original data used to identify the administrative level
   admin_id_column: TOWN
   # Crosswalk from administrative identifiers in the original data
   # (e.g. county FIPS) to `openplaces` AdminIDs.
   admin_id_crosswalk:
-    recipe_id: "US-VT_parcel-vtgov-2025_admin4-crosswalk"
+    recipe_id: "US-VT_parcel-vtgov-2025_admin3-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:

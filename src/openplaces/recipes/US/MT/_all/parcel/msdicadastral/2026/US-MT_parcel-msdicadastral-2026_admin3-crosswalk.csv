@@ -1,57 +1,57 @@
 admin3_id,CountyName
 US-MT-BE,Beaverhead
-US-MT-BI,Big Horn
+US-MT-BH,Big Horn
 US-MT-BL,Blaine
 US-MT-BR,Broadwater
-US-MT-CB,Carbon
+US-MT-CA,Carbon
 US-MT-CH,Chouteau
-US-MT-CS,Cascade
-US-MT-CT,Carter
+US-MT-CA,Cascade
+US-MT-CR,Carter
 US-MT-CU,Custer
-US-MT-DE,Deer Lodge
+US-MT-DL,Deer Lodge
 US-MT-DN,Daniels
-US-MT-DW,Dawson
+US-MT-DA,Dawson
 US-MT-FA,Fallon
 US-MT-FE,Fergus
 US-MT-FL,Flathead
-US-MT-GC,Glacier
+US-MT-GA,Glacier
 US-MT-GF,Garfield
-US-MT-GL,Gallatin
-US-MT-GN,Granite
-US-MT-GO,Golden Valley
+US-MT-GA,Gallatin
+US-MT-GR,Granite
+US-MT-GV,Golden Valley
 US-MT-HI,Hill
 US-MT-JE,Jefferson
-US-MT-JU,Judith Basin
+US-MT-JB,Judith Basin
 US-MT-LA,Lake
 US-MT-LB,Liberty
-US-MT-LE,Lewis and Clark
-US-MT-LN,Lincoln
+US-MT-LC,Lewis and Clark
+US-MT-LI,Lincoln
 US-MT-MA,Madison
 US-MT-MC,McCone
 US-MT-ME,Meagher
 US-MT-MN,Mineral
-US-MT-MS,Missoula
+US-MT-MI,Missoula
 US-MT-MU,Musselshell
 US-MT-PA,Park
-US-MT-PD,Powder River
+US-MT-PI,Powder River
 US-MT-PH,Phillips
-US-MT-PL,Powell
+US-MT-PE,Powell
 US-MT-PN,Pondera
-US-MT-PO,Petroleum
-US-MT-PR,Prairie
+US-MT-PE,Petroleum
+US-MT-PI,Prairie
 US-MT-RA,Ravalli
 US-MT-RI,Richland
 US-MT-RO,Roosevelt
 US-MT-RS,Rosebud
 US-MT-SA,Sanders
 US-MT-SH,Sheridan
-US-MT-SI,Silver Bow
+US-MT-SB,Silver Bow
 US-MT-ST,Stillwater
-US-MT-SW,Sweet Grass
+US-MT-SG,Sweet Grass
 US-MT-TE,Teton
 US-MT-TO,Toole
 US-MT-TR,Treasure
 US-MT-VA,Valley
 US-MT-WH,Wheatland
 US-MT-WI,Wibaux
-US-MT-YS,Yellowstone
+US-MT-YE,Yellowstone

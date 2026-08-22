@@ -208,7 +208,7 @@ scraper_options:
 # via the sidecar CSV below rather than derived by formula.
 process_by:
   admin_level: 3
-  admin_id_column: countyid
+  admin_id_column: townid
   admin_id_crosswalk:
     recipe_id: "US-NH_parcel-nhgranit-2026_admin3-crosswalk"
     dtype: str

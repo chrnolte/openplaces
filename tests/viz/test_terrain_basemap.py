@@ -26,7 +26,7 @@ def town():
     gdf = gpd.GeoDataFrame(
         {'name': ['Testville']},
         geometry=[box(-71.70, 42.40, -71.68, 42.42)],
-        index=['US-MA-WO-LA'],
+        index=['US-MA-LAN'],
         crs='EPSG:4326',
     )
     gdf.index.name = 'admin4_id'
@@ -141,7 +141,7 @@ class TestDrapedAdminBoundary:
         assert np.allclose(lifted - ground, 50)
 
     def test_non_admin_index_raises(self, town):
-        renamed = town.rename(index={'US-MA-WO-LA': 'not-an-admin-id'})
+        renamed = town.rename(index={'US-MA-LAN': 'not-an-admin-id'})
         with pytest.raises(ValueError, match='not indexed by admin id'):
             self._capture(renamed, elevation=0, elevation_recipe=DEM)
 

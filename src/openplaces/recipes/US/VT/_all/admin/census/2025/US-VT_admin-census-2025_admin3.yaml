@@ -1,0 +1,41 @@
+# Recipe to import towns for Vermont (2025)
+#
+# New England has no county government in the spine: these states' towns
+# are admin level 3, not level 4. A Census county subdivision *is* the
+# town here, so COUSUB carries the boundaries that PLACE and COUNTY do
+# not. This recipe exists to beat US_admin-census-2025_admin3 (counties)
+# for this state alone, by carrying a more specific admin_id.
+
+description: >-
+  Vermont town boundaries from Census TIGER/Line 2025 county subdivisions
+  (admin level 3).
+
+admin_id: US-VT
+
+entity:
+  entity_type: admin
+  source:
+    source_id: census
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2025/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2025/COUSUB/tl_2025_50_cousub.zip"
+  version: 2025
+
+compressed_file_name: "tl_2025_50_cousub.zip"
+uncompressed_file_name: "tl_2025_50_cousub.shp"
+
+# GEOID is state(2) + county(3) + subdivision(5) and joins straight to the
+# spine's own admin3_id_admin1.
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin3_id_admin1: GEOID
+  admin3_id_ansi: COUSUBNS
+
+save_to:
+  data_dir: core
+  filename: admin3

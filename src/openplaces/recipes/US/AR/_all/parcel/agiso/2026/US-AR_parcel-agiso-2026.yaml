@@ -231,7 +231,7 @@
 #
 # Validation performed: recipe-loading and registry-column checks were
 # run for real (see below). A full, unmodified `op.ingest()` was run
-# against the live REST service for Newton county (`US-AR-NW`,
+# against the live REST service for Newton county (`US-AR-NE`,
 # Arkansas's smallest county by parcel count, 6,024 rows) -- see the
 # ingest summary this recipe's authoring session recorded. A full
 # 75-county run was NOT attempted: at this service's 200-row page cap,

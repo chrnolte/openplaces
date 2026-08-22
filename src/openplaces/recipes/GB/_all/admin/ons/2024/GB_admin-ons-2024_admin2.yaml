@@ -1,7 +1,7 @@
 # Recipe to import ONS Countries boundaries for the United Kingdom (2024)
 #
 # Replaces GADM as GB's admin level-2 source of record: GADM leaves
-# England's name blank (GB-NA). admin2_id is derived from the GSS code's
+# England's name blank. admin2_id is derived from the GSS code's
 # own country-letter prefix (E/S/W/N) via the shared
 # GB_admin-ons-2024_country-to-admin2.csv crosswalk -- the same file
 # GB_admin-ons-2024_admin3.yaml uses to parent admin3 rows, so the two

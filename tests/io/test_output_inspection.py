@@ -49,19 +49,19 @@ def test_get_entities_expands_parent_and_warns_for_missing(
         'save_to': {'admin_level': 4},
         'aggregate_by': {'single_file': True},
     }
-    existing = tmp_path / 'US-MA-MI-SO_transaction_all.parquet'
+    existing = tmp_path / 'US-MA-SOE_transaction_all.parquet'
     missing = tmp_path / 'US-MA-SU-CA_transaction_all.parquet'
     existing.touch()
 
     monkeypatch.setattr(
         readers,
         'get_admin',
-        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-MI-SO', 'US-MA-SU-CA']),
+        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-SOE', 'US-MA-SU-CA']),
     )
 
     def get_output_path(recipe, admin_id, partition_id=None):
         assert partition_id == 'all'
-        return existing if str(admin_id) == 'US-MA-MI-SO' else missing
+        return existing if str(admin_id) == 'US-MA-SOE' else missing
 
     monkeypatch.setattr(readers, 'get_output_path', get_output_path)
     monkeypatch.setattr(

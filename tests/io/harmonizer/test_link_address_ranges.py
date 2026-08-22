@@ -16,7 +16,7 @@ import openplaces.io.harmonizer.links as links
 from openplaces.io.harmonizer import HarmonizeState
 
 
-def _state(spine, admin_id='US-MA-MI-SO'):
+def _state(spine, admin_id='US-MA-SOE'):
     return HarmonizeState(
         recipe={}, admin_id=admin_id, verbose=False, timer=None, spine=spine
     )
@@ -28,7 +28,7 @@ def _spine(numbers, streets=None):
         {
             'address_street': streets or ['Broadway'] * n,
             'address_number': numbers,
-            'admin4_id': ['US-MA-MI-SO'] * n,
+            'admin4_id': ['US-MA-SOE'] * n,
         }
     )
 
@@ -39,7 +39,7 @@ def test_single_match_links_the_range(monkeypatch):
         {
             'address_street': ['Broadway'],
             'address_number': ['704'],
-            'admin4_id': ['US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE'],
             'use_group': ['Residential'],
         }
     )
@@ -58,7 +58,7 @@ def test_ambiguous_match_left_unmatched_and_warns(monkeypatch):
         {
             'address_street': ['Main St', 'Main St'],
             'address_number': ['20', '22'],
-            'admin4_id': ['US-MA-MI-SO', 'US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE', 'US-MA-SOE'],
             'use_group': ['Residential', 'Commercial'],
         }
     )
@@ -81,7 +81,7 @@ def test_zero_match_is_silent(monkeypatch):
         {
             'address_street': ['Broadway'],
             'address_number': ['704'],
-            'admin4_id': ['US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE'],
             'use_group': ['Residential'],
         }
     )
@@ -110,7 +110,7 @@ def test_does_not_overwrite_an_already_linked_row(monkeypatch):
         {
             'address_street': ['Broadway'],
             'address_number': ['704'],
-            'admin4_id': ['US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE'],
             'use_group': ['Residential'],
         }
     )
@@ -134,7 +134,7 @@ def test_plain_unmatched_number_still_gets_a_direct_shot(monkeypatch):
         {
             'address_street': ['Broadway'],
             'address_number': ['704'],
-            'admin4_id': ['US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE'],
             'use_group': ['Residential'],
         }
     )
@@ -154,7 +154,7 @@ def test_already_matched_plain_row_is_not_reconsidered(monkeypatch):
         {
             'address_street': ['Broadway'],
             'address_number': ['704'],
-            'admin4_id': ['US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE'],
             'use_group': ['Residential'],
         }
     )
@@ -176,7 +176,7 @@ def test_plain_number_matches_a_reference_range_half(monkeypatch):
         {
             'address_street': ['Main St'],
             'address_number': ['20-22'],
-            'admin4_id': ['US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE'],
             'use_group': ['Residential'],
         }
     )
@@ -197,7 +197,7 @@ def test_plain_number_ambiguous_between_range_half_and_distinct_parcel(monkeypat
         {
             'address_street': ['Main St', 'Main St'],
             'address_number': ['20-22', '22'],
-            'admin4_id': ['US-MA-MI-SO', 'US-MA-MI-SO'],
+            'admin4_id': ['US-MA-SOE', 'US-MA-SOE'],
             'use_group': ['Residential', 'Commercial'],
         }
     )

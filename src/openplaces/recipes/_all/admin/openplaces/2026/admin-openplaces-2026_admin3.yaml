@@ -24,9 +24,19 @@ entity:
 
 admin_level: 3
 
+# Processed one level-2 unit at a time. This is what
+# scopes the run: `Harmonizer` sizes its unit list from
+# `process_by.admin_level`, and without it the recipe's null
+# admin_id makes every run global regardless of the caller.
+process_by:
+  admin_level: 2
+
 save_to:
   data_dir: core
   filename: admin3
+  # One file per level-2 unit, not one global file: drawing a
+  # single town should read its own neighbourhood, not the world.
+  admin_level: 2
 
 pipeline:
   - step: discover_sources

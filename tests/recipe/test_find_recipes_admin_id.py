@@ -35,5 +35,5 @@ def test_explicit_admin_id_recipes_resolve():
     nhcgov = df[df['source_id'] == 'nhcgov']
     widor = df[df['source_id'] == 'widor']
     assert masslandrecords['admin_id'].iloc[0] == 'US-MA'
-    assert nhcgov['admin_id'].iloc[0] == 'US-NC-NE'
+    assert nhcgov['admin_id'].iloc[0] == 'US-NC-NH'
     assert widor['admin_id'].iloc[0] == 'US-WI'

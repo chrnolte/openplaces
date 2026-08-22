@@ -4,6 +4,7 @@ into an openplaces entity output file.
 """
 
 import importlib
+import json
 import shutil
 import warnings
 from itertools import product
@@ -492,6 +493,20 @@ class TableIngester:
                 gdf = self._read_fixed_width(
                     data_path, dtype, encoding=kwargs.get('encoding')
                 )
+            elif suffix == '.json':
+                # Flattened rather than read directly, because these APIs
+                # nest: IBGE returns a municipality's state four levels
+                # down at `microrregiao.mesorregiao.UF.sigla`.
+                # `json_normalize` turns that into a dotted column name a
+                # recipe can map like any other. `record_path` selects the
+                # list of records when it is not the top-level object.
+                with open(data_path, encoding='utf-8') as handle:
+                    payload = json.load(handle)
+                gdf = pd.json_normalize(
+                    payload, record_path=self.recipe.get('record_path')
+                )
+                if dtype is not None:
+                    gdf = gdf.astype(dtype)
             elif suffix in {'.xlsx', '.xls'}:
                 header = self.recipe.get('header', 'infer')
                 gdf = pd.read_excel(
@@ -787,13 +802,30 @@ class TableIngester:
                 mask_unmatched = df[admin_id_crosswalk.index.name].isin(
                     missing_crosswalk_ids
                 )
-                if self.verbose:
-                    warnings.warn(
-                        f'\n\nImperfect crosswalk: {mask_unmatched.sum():,d} '
-                        'admin IDs were not linked and will be dropped:\n\n'
-                        + str(df[mask_unmatched][[v for v in df if 'name' in v]])
-                        + '\n'
-                    )
+                # The join below drops these rows unconditionally, so the
+                # warning has to be unconditional too. It was previously
+                # gated behind `verbose`, which hid a total loss: every
+                # Connecticut tract vanished from the census tile data
+                # because the recipe crosswalked 2025 TIGER GEOIDs (which
+                # carry the nine planning-region codes) against the 2021
+                # admin recipe (which still had the eight legacy
+                # counties). Nothing surfaced it. Keep the message short
+                # so it stays usable at this volume; the full row dump it
+                # used to build is what made gating tempting.
+                n_dropped = int(mask_unmatched.sum())
+                share = n_dropped / len(df) if len(df) else 0.0
+                sample = sorted(str(v) for v in missing_crosswalk_ids)[:5]
+                severity = 'ALL rows' if share == 1.0 else f'{share:.1%} of rows'
+                recipe_id = self.recipe.get('recipe_id') or self.table_name
+                warnings.warn(
+                    f'Imperfect crosswalk in {recipe_id}: {n_dropped:,d} '
+                    f'row(s) ({severity}) have an unmatched '
+                    f'{admin_id_crosswalk.index.name} and will be dropped. '
+                    f'Unmatched ids include: {", ".join(sample)}. '
+                    'A large share usually means the recipe points at the '
+                    'wrong vintage of the admin recipe.',
+                    stacklevel=2,
+                )
             df = df.join(
                 admin_id_crosswalk, on=admin_id_crosswalk.index.name, how='inner'
             )
@@ -1154,7 +1186,17 @@ class TableIngester:
         admin_level = save_to.get('admin_level') or (
             self.recipe.get('cache_by') or {}
         ).get('admin_level')
-        split_dataset_by_admin = admin_level is not None
+        # Saving at the level the chunk is processed at is not a split.
+        # The chunk already *is* that unit, so which unit a row belongs to
+        # is carried by the output path and filename, not by a column --
+        # which is why the splitting branch below drops the admin id
+        # columns before writing. Only a coarser save is a real split,
+        # where one file gathers rows from several units and the column is
+        # needed to tell them apart.
+        processing_level = (self.recipe.get('process_by') or {}).get('admin_level')
+        split_dataset_by_admin = (
+            admin_level is not None and admin_level != processing_level
+        )
 
         if split_dataset_by_admin:
             admin_id_col = f'admin{admin_level}_id'

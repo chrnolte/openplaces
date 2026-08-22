@@ -32,7 +32,7 @@ scraper:
     backoff_seconds: [2, 10]
 
 process_by:
-  admin_level: 4
+  admin_level: 3
 
 columns:
   recorded_date: recorded_date
@@ -60,7 +60,7 @@ transformations:
   # info the raw record has no dedicated field for, e.g. "UNIT 208 W/PS 18"
   # or "UNIT 1115" -- needed to join transactions down to a specific condo
   # unit rather than just the containing parcel/lot. Validated against the
-  # full US-MA-MI-SO sample (3,290 UNIT-bearing descriptions): 99.97%
+  # full US-MA-SOE sample (3,290 UNIT-bearing descriptions): 99.97%
   # extract cleanly; the one miss ("POST UNIT", no number) and a rare
   # non-unit false positive ("UNIT PHASE II PARKING" -> "PHASE") are accepted
   # residual noise from free-text extraction, not corrected here.
@@ -76,7 +76,7 @@ legacy_columns:
 
 save_to:
   data_dir: external
-  admin_level: 4
+  admin_level: 3
 
 # Integrate each town's retained monthly scrape files into one non-redundant
 # {town}_..._all.parquet. See the aggregate_by section in the "Writing

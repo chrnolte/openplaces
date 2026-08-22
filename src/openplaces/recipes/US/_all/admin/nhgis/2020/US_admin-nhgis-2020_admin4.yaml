@@ -73,7 +73,7 @@ admin_id_crosswalk:
 # (usually a custom function designed for a specific indexing case)
 # Function to give the GeoDataFrame an index
 create_index:
-  function: "openplaces.io.admin.generate_admin_ids"
+  function: "openplaces.io.admin_codes.assign_admin_ids"
   args:
     new_admin_id_col: admin4_id
     parent_admin_id_col: admin3_id

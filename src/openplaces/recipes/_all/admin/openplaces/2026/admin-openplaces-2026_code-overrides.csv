@@ -1,0 +1,51 @@
+admin_id,code,name,previous_admin_id,rule,note
+CO-AMA,AM,Amazonas,CO-AMA,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-ANT,AN,Antioquia,CO-ANT,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-ARA,AR,Arauca,CO-ARA,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-ARS,AS,"Archipiélago de San Andrés, Providencia y Santa Catalina",CO-ARS,conjunction,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-ATL,AT,Atlántico,CO-ATL,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-BDC,BD,"Bogotá, D.C.",CO-BDC,compound.alt,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-BOL,BO,Bolívar,CO-BOL,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-BOY,BY,Boyacá,CO-BOY,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CAL,CL,Caldas,CO-CAL,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CAQ,CQ,Caquetá,CO-CAQ,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CAS,CS,Casanare,CO-CAS,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CAU,CA,Cauca,CO-CAU,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CES,CE,Cesar,CO-CES,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CHO,CH,Chocó,CO-CHO,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-CUN,CU,Cundinamarca,CO-CUN,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-COR,CO,Córdoba,CO-COR,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-GUI,GU,Guainía,CO-GUA,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-GUA,GV,Guaviare,CO-GUV,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-HUI,HU,Huila,CO-HUI,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-GJR,GJ,La Guajira,CO-LAG,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-MAG,MA,Magdalena,CO-MAG,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-MET,ME,Meta,CO-MET,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-NAR,NA,Nariño,CO-NAR,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-NDS,NS,Norte de Santander,CO-NSA,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-PUT,PU,Putumayo,CO-PUT,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-QUI,QU,Quindío,CO-QUI,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-RIS,RI,Risaralda,CO-RIS,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-SAN,SA,Santander,CO-SAN,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-SUC,SU,Sucre,CO-SUC,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-TOL,TO,Tolima,CO-TOL,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-VDC,VA,Valle del Cauca,CO-VAC,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-VAU,VP,Vaupés,CO-VAU,skeleton,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+CO-VIC,VI,Vichada,CO-VID,iso3-agrees,Colombia: 3-letter ISO to 2 letters; approved 2026-08-19
+KR-GG,GG,Gyeonggi-do,,customary-contraction,South Korea: Gyeonggi 경기; not derivable from romanisation
+KR-GW,GW,Gangwon-do,,customary-contraction,South Korea: Gangwon 강원; not derivable from romanisation
+KR-CB,CB,Chungcheongbuk-do,,customary-contraction,South Korea: Chungbuk 충북; not derivable from romanisation
+KR-CN,CN,Chungcheongnam-do,,customary-contraction,South Korea: Chungnam 충남; not derivable from romanisation
+KR-JB,JB,Jeollabuk-do,,customary-contraction,South Korea: Jeonbuk 전북; not derivable from romanisation
+KR-JN,JN,Jeollanam-do,,customary-contraction,South Korea: Jeonnam 전남; not derivable from romanisation
+KR-GB,GB,Gyeongsangbuk-do,,customary-contraction,South Korea: Gyeongbuk 경북; not derivable from romanisation
+KR-GN,GN,Gyeongsangnam-do,,customary-contraction,South Korea: Gyeongnam 경남; not derivable from romanisation
+KR-JJ,JJ,Jeju,,customary-contraction,South Korea: Jeju 제주; not derivable from romanisation
+KR-SU,SU,Seoul,,customary-contraction,South Korea: Seoul 서울; not derivable from romanisation
+KR-BS,BS,Busan,,customary-contraction,South Korea: Busan 부산; not derivable from romanisation
+KR-DG,DG,Daegu,,customary-contraction,South Korea: Daegu 대구; not derivable from romanisation
+KR-IC,IC,Incheon,,customary-contraction,South Korea: Incheon 인천; not derivable from romanisation
+KR-GJ,GJ,Gwangju,,customary-contraction,South Korea: Gwangju 광주; not derivable from romanisation
+KR-DJ,DJ,Daejeon,,customary-contraction,South Korea: Daejeon 대전; not derivable from romanisation
+KR-UL,UL,Ulsan,,customary-contraction,South Korea: Ulsan 울산; not derivable from romanisation
+KR-SJ,SJ,Sejong,,customary-contraction,South Korea: Sejong 세종; not derivable from romanisation

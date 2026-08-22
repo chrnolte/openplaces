@@ -1,0 +1,123 @@
+# Recipe: Lavaca County, TX certified appraisal roll (LCAD). Same PACS
+# 8.0.34 layout, offsets and join-key trap as
+# US-TX-VIC_property-victoriacad-2026 -- see that recipe's header for the
+# general shape of this source family. This header covers only what
+# differs for Lavaca.
+#
+# NOTE: unlike Victoria/Hardin, this ZIP's members sit at the archive root
+# (no "YYYY Certified Roll/" subfolder), and the district also publishes
+# per-property-type splits (REAL-PROPERTY-ONLY, MOBILE-HOME, PERSONAL-
+# PROPERTY, mineral open-records) alongside the combined roll used here --
+# the combined file is simpler to keep in step with the Victoria/Hardin
+# pattern (one download, filtered by land_state_cd presence) rather than
+# unioning four separate exports.
+#
+# NOTE on row count. 74,975 rows against TxGIO's 19,767 real parcels
+# (3.79x) fails the 0.6-1.5x gate on the raw count alone, because -- same
+# shape as Hardin -- the export bundles personal-property and mineral
+# accounts with no land_state_cd. Restricted to rows that carry one
+# (20,558, a real-property count), the ratio is 1.04x, inside the gate.
+# prop_id match rate on that same restricted set is 92.1%; geo_id is
+# 92.0% -- both close to Victoria's (94.5%/96.0%).
+#
+# NOTE on coverage, measured on the 2026 export, restricted to real-
+# property rows only (a land_state_cd-carrying subset is the correct
+# denominator; the overall-file coverage is diluted by the same non-real
+# accounts the row-count note above describes):
+#   land_state_cd  100.0% (20,558/20,558, by construction of the subset)
+#   imprv_state_cd  73.1% (15,031/20,558)
+#   market_value    99.9%
+
+description: >-
+  Lavaca County, TX certified appraisal roll (PACS 8.0.34 export): state
+  land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-LAV
+
+entity:
+  entity_type: property
+  source:
+    source_id: lavacacad
+    # Checked 2026-08-20 by fetching the certified-roll page: it carries
+    # no licence, copyright, disclaimer or redistribution language at
+    # all. Texas appraisal records are public information under the
+    # Property Tax Code; silence is still not a grant.
+    license: "unknown"
+    redistribution_restricted: null
+    portal_url: "https://lavacacad.com/certified-appraisal-rolls/"
+    download_url: "https://lavacacad.com/wp-content/uploads/2026/07/2026-certified-roll-1-1.zip"
+  version: 2026
+
+compressed_file_name: "2026-certified-roll-1-1.zip"
+uncompressed_file_name: "2026-07-23_002730_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  # PACS `market_value` is the appraisal district's land-plus-structure
+  # total (Texas appraises at market value by statute, Tax Code 23.01),
+  # and this roll publishes no land/improvement split at all -- so it is
+  # `total_value`, the column the curated parcel product and the CHEER
+  # apportionment read. Mapped to `market_value` before, which nothing
+  # downstream consumes, leaving this county with no value evidence.
+  # Deliberately not `appraised_val`, the homestead-capped figure.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

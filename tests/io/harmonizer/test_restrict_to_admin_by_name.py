@@ -42,11 +42,11 @@ def test_no_op_when_source_already_scoped_at_or_finer(monkeypatch):
     monkeypatch.setattr(
         harmonizer_module,
         'get_recipe_by_id',
-        lambda recipe_id: {'admin_id': AdminId('US-NC-NE')},  # already county-scoped
+        lambda recipe_id: {'admin_id': AdminId('US-NC-NH')},  # already county-scoped
     )
 
     result = harmonizer_module.restrict_to_admin_by_name(
-        df, 'US-NC-NE_transaction-nhcgov-2026', AdminId('US-NC-NE')
+        df, 'US-NC-NH_transaction-nhcgov-2026', AdminId('US-NC-NH')
     )
 
     assert len(result) == 1

@@ -1,0 +1,129 @@
+# Recipe: Victoria County, TX certified appraisal roll -- improvement detail
+# (VCAD). Sibling of US-TX-VIC_property-victoriacad-2026, which carries land
+# use and value from APPRAISAL_INFO; this one is the higher-value half for
+# CHEER since year_built is 0.0% region-wide across the twelve TxGIO
+# coastal-Texas counties with no district roll (see the parent recipe's
+# header for that gap). Same ZIP, same PACS 8.0.34 layout, different member:
+# APPRAISAL_IMPROVEMENT_DETAIL.TXT, where yr_built and floor area actually
+# live (99.9% each, against 0.0% in TxGIO and in the parent recipe's own
+# APPRAISAL_INFO member).
+#
+# NOTE on the row shape, which is why this recipe exists apart from just
+# adding two columns to the parent. APPRAISAL_IMPROVEMENT_DETAIL is one row
+# per *building component*, not per property: 46,707 rows over 32,041
+# properties in the 2026 export, and the raw file is dominated by open
+# porches, garages, carports, paving and sheds -- summing every row would
+# wildly overstate floor area. `query` restricts to main-area components
+# (Imprv_det_type_cd starting "MA"), which yields 46,707 -> a properly
+# filtered set, still 1:many: only 72.1% of properties have exactly one MA
+# row. So the sibling still needs collapsing to one row per property, done
+# in harmonize's link_by_id(mode='aggregate') via this recipe's own
+# aggregation_function key below -- see that key's comment for the values.
+#
+# NOTE: Imprv_det_type_cd only partly encodes stories (MA_1, MA_1.5, MA_2
+# do; MASF, MA2MF, MAEG, MATD1 need the district's own code table) and is
+# therefore not mapped to a canonical column -- raw material for a future
+# n_stories source, not a ready one. Left in the parsed frame under its raw
+# PACS name so it stays available without a second re-download; not carried
+# through to the saved output (see drop_columns).
+#
+# NOTE: Imprv_det_class_cd (construction/quality class) and imprv_det_val
+# (this component's own share of value) are not read at all -- same
+# reasoning as the parent recipe's deliberately-unmapped value columns and
+# Fort Bend's Building_Class: no registry column they belong in without
+# corrupting a curate-stage vote that reads it.
+
+description: >-
+  Victoria County, TX certified appraisal roll, improvement detail member:
+  year built and floor area per building component, aggregated to property.
+
+admin_id: US-TX-VIC
+
+entity:
+  entity_type: property
+  source:
+    source_id: victoriacad
+    # Checked 2026-08-20 by fetching the download page: it carries only a
+    # site-footer copyright over the website itself and states no terms
+    # for the appraisal roll it publishes -- no licence, no attribution
+    # requirement, nothing about redistribution. Texas appraisal records
+    # are public information under the Property Tax Code, which likely
+    # explains the silence, but silence is not a grant.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://victoriacad.org/downloads/"
+    download_url: "https://victoriacad.org/wp-content/uploads/2026/07/VCAD-2026-CERTIFIED-ROLL-1.zip"
+  version: 2026
+
+compressed_file_name: "VCAD-2026-CERTIFIED-ROLL-1.zip"
+uncompressed_file_name: "VCAD 2026 CERTIFIED ROLL/2026-07-28_001892_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #8 (Improvement Detail), offsets from the same "Appraisal
+# Export Layout - 8.0.34.xlsx" the parent recipe cites. Coverage stops at
+# imprv_det_area -- imprv_det_val and sketch_cmds (the rest of the 622-char
+# record) are not mapped, same convention as the parent recipe stopping at
+# situs_num.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr -- already on the parent recipe as tax_year
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [filler, 10] # Imprv_det_class_cd -- deliberately unmapped, see header
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+# Main-area components only -- see header NOTE on row shape. A garage or
+# open porch sharing this prop_id would otherwise inflate area_sqft and
+# potentially override a genuine main-area yr_built with an addition's.
+query: "imprv_det_type_cd.str.startswith('MA')"
+
+transformations:
+  # Same zero-padding trap as the parent recipe: PACS pads prop_id to 12
+  # characters, TxGIO ships it bare.
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  year_built: yr_built
+  area_sqft: imprv_det_area
+
+drop_columns:
+  - imprv_det_type_cd
+
+# Collapses the remaining 1:many (72.1% of properties still have more than
+# one MA row -- an addition, a second main structure) when harmonize's
+# link_by_id(auto_discover=True, entity_type='property', mode='aggregate')
+# picks this recipe up: area_sqft sums (total main-area floor area is the
+# sum of its components, not their mean -- the registry's global 'mean'
+# default is right for every *other* property source, where one row already
+# is one property, so it stays put there and is overridden only here).
+# year_built takes the earliest component's year, i.e. the original
+# structure's construction date, not a component-count-weighted average
+# that lands between two real years and belongs to neither (mean differs
+# from min for 8.6% of multi-row properties). Read only by this recipe's
+# own auto-discover match -- see link_by_id's aggregation_function
+# docstring for why a caller-level override would leak into every sibling
+# match instead.
+aggregation_function:
+  area_sqft: sum
+  year_built: min
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail

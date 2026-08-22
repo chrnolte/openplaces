@@ -1,0 +1,49 @@
+# GHS-POP: global gridded resident population, JRC Global Human Settlement Layer.
+#
+# Ingested to give every admin unit a population weight, which is what decides
+# which of two siblings wanting the same identifier code gets it
+# (`io.admin_codes.assign_codes` maximises weighted satisfaction). Without a
+# weight every unit counts equally and ties fall to sort order, which is
+# deterministic but arbitrary: Carteret County NC (67k) took the plain `CA`
+# while Cabarrus (226k) was pushed to a consonant skeleton.
+#
+# 1 km Mollweide is deliberate. The grid is equal-area, so a cell count is
+# proportional to area without reprojection, and 1 km is far below the size of
+# any admin unit being weighted while keeping the global raster to ~307 MB.
+# The 100 m products are ~30x larger and buy nothing here: the weights only
+# have to establish a size ordering between siblings.
+#
+# E2020 is the last epoch anchored on observed censuses; R2023A's E2025 and
+# E2030 layers are projections, which is a poor basis for a durable identifier.
+
+description: >-
+  GHS-POP global gridded resident population, 1 km equal-area grid, 2020 epoch.
+
+# Global coverage, so no administrative scope.
+admin_id: NULL
+
+dataset:
+  theme: 'population'
+  source:
+    source_id: ghsl
+    portal_url: "https://human-settlement.emergency.copernicus.eu/download.php?ds=pop"
+    doi: "10.2905/2FF68A52-5B5B-4A22-8F40-C41DA8332CFE"
+    download_url: "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/GHS_POP_GLOBE_R2023A/GHS_POP_E2020_GLOBE_R2023A_54009_1000/V1-0/GHS_POP_E2020_GLOBE_R2023A_54009_1000_V1_0.zip"
+    # CC BY 4.0: redistribution and commercial use permitted with attribution.
+    license: "CC-BY-4.0"
+    terms_url: "https://human-settlement.emergency.copernicus.eu/GHSLhowToCite.php"
+    redistribution_restricted: false
+  version: r2023a
+  is_raster: True
+  # GHS-POP uses a negative fill for cells outside the modelled surface.
+  nodata: -200
+
+compressed_file_name: "GHS_POP_E2020_GLOBE_R2023A_54009_1000_V1_0.zip"
+uncompressed_file_name: "GHS_POP_E2020_GLOBE_R2023A_54009_1000_V1_0.tif"
+
+# No `download_by`: one global file, so there is nothing to partition by.
+# Declaring admin level 0 would instead require callers to name the unit to
+# download, which for a global raster is a unit that does not exist.
+
+save_to:
+  data_dir: rasters

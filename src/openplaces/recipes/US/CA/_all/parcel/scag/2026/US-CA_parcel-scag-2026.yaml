@@ -83,7 +83,7 @@
 #     is by far the smallest (87,060) -- used for this session's spot
 #     checks below.
 #   - `San Bernardino`'s admin3 code in this repo's census crosswalk
-#     is `US-CA-SA`, *not* `US-CA-SB` (`US-CA-SB` is Santa Barbara) --
+#     is `US-CA-AT`, *not* `US-CA-AT` (`US-CA-AT` is Santa Barbara) --
 #     confirmed via `op.get_admin(admin_id='US-CA', level=3)` before
 #     writing the crosswalk sidecar, the same abbreviation-collision
 #     trap as the same-named-county trap in acquiring_sources.md, just

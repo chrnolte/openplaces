@@ -1,0 +1,103 @@
+# Recipe: Hardin County, TX certified appraisal roll -- improvement detail
+# (HCAD). Sibling of US-TX-HAN_property-hardincad-2026; see that recipe's
+# header and US-TX-VIC_property-victoriacad-2026_improvement-detail's header
+# for the general shape and mechanism (per-recipe aggregation_function
+# override, consumed automatically wherever harmonize auto-discovers this
+# recipe as an entity_type='property' source).
+#
+# NOTE on the main-area filter, which is NOT portable from the Victoria
+# sibling recipe and is the reason this file exists rather than just
+# copying that one's query verbatim. Victoria's type codes are all "MA*"
+# (MA_1, MA_1.5, MA_2, ...) with a district-specific description ("1
+# STORY", "1.5 STORY"). Hardin's own PACS configuration uses a materially
+# different vocabulary: "MA", "MA1.5", "MA2", "MA-A", "MA-F", "MA-G",
+# "MA-L" AND a separate "MN" code (676 of 29,900 main-area rows, 2.3%) --
+# all of which self-describe as "Main Area"/"MAIN AREA ..." in
+# imprv_det_type_desc, but "MN" would be silently dropped by a
+# startswith('MA') filter on the *code*. Filtering on the *description*
+# instead (case-insensitive "MAIN AREA" substring) catches all of them
+# and produces zero false positives against Hardin's other ~140 type
+# codes (checked by inspecting the full imprv_det_type_cd -> desc table).
+# Each new county in this family needs this same check -- do not assume
+# either Victoria's code-prefix rule or this description rule transfers
+# to the next one without inspecting its own vocabulary first.
+#
+# NOTE on row shape (2026 export): 136,148 raw rows; 29,900 after the
+# main-area filter, over 24,815 properties, 84.1% with exactly one row.
+# area sum differs from mean for 15.9% of properties (a garage- and
+# porch-dominated file the same way Victoria's is -- S1/MP/FP/RD are the
+# top four raw type codes here, all non-main). year_built is 100.0%
+# populated on main-area rows; min differs from mean for 3.8% of
+# multi-row properties (smaller than Victoria's 8.6%, but the same
+# addition-vs-original-structure reasoning applies).
+
+description: >-
+  Hardin County, TX certified appraisal roll, improvement detail member:
+  year built and floor area per building component, aggregated to property.
+
+admin_id: US-TX-HAN
+
+entity:
+  entity_type: property
+  source:
+    source_id: hardincad
+    # Checked 2026-08-20 by fetching the download page: it carries only a
+    # site-footer copyright over the website itself and states no terms
+    # for the appraisal roll it publishes -- no licence, no attribution
+    # requirement, nothing about redistribution. Texas appraisal records
+    # are public information under the Property Tax Code, which likely
+    # explains the silence, but silence is not a grant.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hardin-cad.org/data-downloads/"
+    download_url: "https://hardin-cad.org/wp-content/uploads/2026/08/2026-Certified-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Roll.zip"
+uncompressed_file_name: "2026 Certified Roll/2026-08-14_000305_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [filler, 10] # imprv_det_type_cd -- see header NOTE, desc used instead
+  - [imprv_det_type_desc, 25]
+  - [filler, 10] # imprv_det_class_cd -- deliberately unmapped
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+query: "imprv_det_type_desc.str.upper().str.contains('MAIN AREA')"
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  year_built: yr_built
+  area_sqft: imprv_det_area
+
+drop_columns:
+  - imprv_det_type_desc
+
+aggregation_function:
+  area_sqft: sum
+  year_built: min
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail

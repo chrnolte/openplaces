@@ -1,0 +1,75 @@
+# Recipe to import Brazil's municipalities from IBGE (admin level 3).
+#
+# Uses IBGE's own code registry rather than a boundary file. The registry is
+# tabular, carries the official seven-digit municipality code, and needs no
+# geometry to establish which units exist and what they are called.
+#
+# The code is what makes this worth doing. The spine already stores it in
+# `admin3_id_admin1` for every Brazilian municipality, so this joins on an
+# official identifier instead of on a name: 5,570 of 5,572 units match
+# exactly, against 77% when matching Wikidata labels by name. Transliteration,
+# spelling variance and morphology stop mattering entirely.
+#
+# Two spine rows do not match, and should not: codes 4300001 and 4300002 are
+# Lagoa Mirim and Lagoa dos Patos, lagoons that IBGE carries in the municipal
+# code space but which are not municipalities.
+
+description: >-
+  Brazilian municipality names and official codes from IBGE (admin level 3).
+
+admin_id: BR
+
+entity:
+  entity_type: admin
+  source:
+    source_id: ibge
+    portal_url: "https://servicodados.ibge.gov.br/api/docs/localidades"
+    download_url: "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
+    # IBGE states that reproduction is free provided the source is cited
+    # ("a reproducao e gratuita desde que citada a fonte"). That is
+    # attribution-only, so it is compatible with a CC BY spine, but IBGE
+    # does not itself name a Creative Commons licence and this should not
+    # be recorded as though it did.
+    license: "free reproduction with attribution (source must be cited)"
+    terms_url: "https://www.ibge.gov.br/acesso-informacao/acoes-e-programas/termos-de-uso.html"
+    redistribution_restricted: false
+  version: 2026
+
+uncompressed_file_name: "municipios.json"
+
+# The API returns one nested record per municipality: the seven-digit code
+# and name at the top level, with the state reachable through a hierarchy.
+#
+# Two hierarchies are present and only one is complete. The legacy
+# `microrregiao` chain is missing for municipalities created since IBGE
+# moved to the 2017 regional divisions -- Boa Esperanca do Norte in Mato
+# Grosso has no microregion at all -- while `regiao-imediata` covers every
+# one of the 5,571. Reading the legacy path leaves a null that then fails
+# the prefix transformation, so the newer chain is the right source.
+columns:
+  admin3_id_admin1: id
+  name: nome
+  admin2_id: regiao-imediata.regiao-intermediaria.UF.sigla
+
+keep_unnamed_columns: False
+
+# No crosswalk is needed: the spine's own admin2 segment is the IBGE state
+# sigla, so BR-AC is simply "BR-" prefixed to "AC". The spine's
+# `admin2_id_admin1` column is empty for Brazil, so a crosswalk lookup
+# would have nothing to match against.
+transformations:
+  - output: admin2_id
+    input: admin2_id
+    type: string
+    operation: add_prefix
+    args:
+      prefix: "BR-"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True

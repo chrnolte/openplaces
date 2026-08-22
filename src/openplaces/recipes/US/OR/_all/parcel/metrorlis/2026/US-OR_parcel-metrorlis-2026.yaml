@@ -12,7 +12,7 @@
 # depend on or supersede that work. Enforcement of the 3-county scope
 # is real, not just documentation: `process_by.admin_id_crosswalk`
 # below (the `_admin3-crosswalk.csv` sidecar) lists only Clackamas
-# (US-OR-CC), Multnomah (US-OR-MU) and Washington (US-OR-WI), so
+# (US-OR-CO), Multnomah (US-OR-MU) and Washington (US-OR-WA), so
 # `op.ingest` for any other Oregon county raises a clear KeyError from
 # `TableIngester`'s scope check rather than silently writing an empty
 # file.
@@ -82,7 +82,7 @@
 # match the row-count excesses precisely). In other words: every row
 # that carries a real assessor account number is IDENTICAL between
 # the bulk file and the live service (confirmed directly: this
-# recipe's own ingested output for US-OR-CC has exactly 163,712 rows
+# recipe's own ingested output for US-OR-CO has exactly 163,712 rows
 # with a non-null, non-degenerate parcel_id_local, matching the live
 # server's PRIMACCNUM-populated count for COUNTY='C' exactly); the
 # extra rows in the bulk export are placeholder/no-account-number
@@ -282,21 +282,21 @@
 # were verified, not cross-source overlap.
 #
 # Verified end-to-end, all 3 counties actually ingested this session
-# (not spot-checked): US-OR-CC 167,258 rows, parcel_id_local 163,712
+# (not spot-checked): US-OR-CO 167,258 rows, parcel_id_local 163,712
 # populated == 163,712 distinct (0 duplicates); US-OR-MU 286,524
-# rows, 282,300 populated == 282,300 distinct; US-OR-WI 202,601 rows,
+# rows, 282,300 populated == 282,300 distinct; US-OR-WA 202,601 rows,
 # 200,055 populated == 200,055 distinct. Every figure matches the
 # corresponding live-server PRIMACCNUM population count exactly (see
 # the Phase 3 note above for why row counts exceed the live totals).
-# US-OR-WI triggered `compute_parcel_id_local`'s automatic
+# US-OR-WA triggered `compute_parcel_id_local`'s automatic
 # duplicate-guard: the bundled `geo/parcel_id_links.csv` row for
-# `US-OR-WI` (`conv='split_groups: 0|7 & skip_empty: 1'`) was built
+# `US-OR-WA` (`conv='split_groups: 0|7 & skip_empty: 1'`) was built
 # for the ORTAXLOT-style format, not a plain PRIMACCNUM account
 # number, so it produced duplicates and the loader fell back to
 # `pipe` with a warning -- exactly the guarded failure mode
 # `acquiring_sources.md` Phase 5 describes, and it resolved cleanly
 # (0 duplicates in the final key, confirmed above). US-OR-MU and
-# US-OR-CC have no bundled row and used the default `simple`
+# US-OR-CO have no bundled row and used the default `simple`
 # conversion with no warning.
 
 description: >-

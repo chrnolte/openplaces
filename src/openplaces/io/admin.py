@@ -27,6 +27,7 @@ from openplaces.core.constants import (
     REGEX_ADMIN_TYPE_EXTRACT,
     STRING_SEPARATOR_WITHIN_IDS,
 )
+from openplaces.io.admin_codes import assign_admin_ids
 from openplaces.io.readers import get_admin, get_dataset
 from openplaces.path import recipe_path
 from openplaces.recipe import (  # noqa: F401
@@ -641,7 +642,7 @@ def admin4_id_index_from_gb_ons(gdf, admin3_recipe_id, lookup_recipe_id):
     resolved County/UA code is then matched against `admin3_recipe_id`'s
     own `admin3_id_admin1` attribute (the same ONS code, set when
     GB_admin-ons-2024_admin3 was ingested) to find each LAD's admin3_id,
-    and `generate_admin_ids` mints the admin4_id under that parent.
+    and `assign_admin_ids` mints the admin4_id under that parent.
 
     Wired from a recipe via `create_index.function` with
     `args: {admin3_recipe_id, lookup_recipe_id}` (the explicit recipe
@@ -692,7 +693,7 @@ def admin4_id_index_from_gb_ons(gdf, admin3_recipe_id, lookup_recipe_id):
             + str(gdf.loc[unmatched, ['admin4_id_admin1', 'admin3_id_admin1']])
         )
 
-    return generate_admin_ids(
+    return assign_admin_ids(
         gdf, new_admin_id_col='admin4_id', parent_admin_id_col='admin3_id'
     )
 
@@ -775,7 +776,7 @@ def admin4_id_index_from_gisco_lau(gdf, admin3_country_id, admin3_code_lengths):
         )
     gdf['admin3_id'] = gdf['admin3_id_admin1'].map(admin3_id_by_code)
 
-    return generate_admin_ids(
+    return assign_admin_ids(
         gdf, new_admin_id_col='admin4_id', parent_admin_id_col='admin3_id'
     )
 
@@ -1221,6 +1222,25 @@ def generate_admin_ids(
     ------
     ValueError
         If unable to generate unique IDs for all rows
+
+    See Also
+    --------
+    openplaces.io.admin_codes.assign_admin_ids : the successor, wired into
+        every recipe that used to call this function.
+
+    Notes
+    -----
+    Superseded by
+    :func:`openplaces.io.admin_codes.assign_admin_ids`. The waterfall below
+    assigns whichever code is free when a unit's turn comes, so its output
+    depends on row order and a later sibling can be left with an
+    unrecognizable code that an earlier one did not need. The successor
+    solves the whole sibling group as an assignment problem instead, which
+    is order-independent, and keeps one code width per parent. Measured on
+    the 2026 spine, it cuts codes carrying no signal from the name from
+    48.8% to 11.5% of US counties. Kept for reference and for reproducing
+    identifiers generated before the switch; do not wire it into new
+    recipes.
     """
 
     admin = df.copy()
@@ -1798,3 +1818,66 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         filename=f'admin{level}' + ('_test' if test else '') + '.csv',
     )
     new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8-sig')
+
+
+def context_layers(admin_id):
+    """Return the admin layers needed to draw one unit in its context.
+
+    A reader looking at a single town wants that town among its
+    neighbours, that neighbourhood inside its region, and the region
+    inside its country -- not a global layer per level. Each layer is
+    therefore scoped to the ancestor it sits inside, so drawing one town
+    reads a handful of small files rather than several worldwide ones.
+
+    For ``US-MA-SOM`` the layers are the outline of ``US``, the level-2
+    units of ``US``, and the level-3 units of ``US-MA`` -- the last of
+    which contains the requested town. A level-4 identifier adds the
+    level-4 units of its level-3 parent.
+
+    Parameters
+    ----------
+    admin_id : AdminId or str
+        The unit to be drawn.
+
+    Returns
+    -------
+    list of dict
+        One entry per layer, outermost first, each with:
+
+        ``admin_level``
+            Level of the units in the layer.
+        ``scope``
+            Identifier of the ancestor the layer is scoped to. The layer
+            holds exactly that unit's children, except the outline,
+            which holds the country itself.
+        ``role``
+            ``'outline'`` for the country boundary, ``'focus'`` for the
+            layer containing the requested unit, ``'context'`` otherwise.
+
+    Examples
+    --------
+    >>> [(d['admin_level'], d['scope']) for d in context_layers('US-MA-SOM')]
+    [(1, 'US'), (2, 'US'), (3, 'US-MA')]
+    """
+    parts = [
+        part.strip()
+        for part in str(admin_id).strip().split(STRING_SEPARATOR_WITHIN_IDS)
+    ]
+    if not all(parts):
+        raise ValueError(f'Not an admin identifier: {admin_id!r}')
+    depth = len(parts)
+    country = parts[0]
+
+    layers = [{'admin_level': 1, 'scope': country, 'role': 'outline'}]
+    for level in range(2, depth + 1):
+        # The layer at `level` holds the children of the ancestor one
+        # level up, which is the identifier truncated to `level - 1`.
+        scope = STRING_SEPARATOR_WITHIN_IDS.join(parts[: level - 1])
+        layers.append(
+            {
+                'admin_level': level,
+                'scope': scope,
+                'role': 'focus' if level == depth else 'context',
+            }
+        )
+    return layers

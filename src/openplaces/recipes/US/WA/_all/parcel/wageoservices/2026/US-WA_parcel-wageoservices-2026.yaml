@@ -92,7 +92,7 @@
 # DataFrame reaching `.apply(axis=1)`, `geo/ids.py` line ~795),
 # because a fully-filtered-to-nothing chunk has no rows left by the
 # time the parcel-id conversion runs. Confirmed by ingesting Garfield
-# (`US-WA-GF`) and King (`US-WA-KN`) and finding the incoming
+# (`US-WA-GA`) and King (`US-WA-KN`) and finding the incoming
 # `parcel_id_assessor` series length was exactly 0 in both, despite
 # both counties holding thousands of rows in the source. No separate
 # crosswalk sidecar CSV -- 39 rows inline, next to the note explaining
@@ -122,11 +122,11 @@
 # county-level data to Lincoln or Pacific parcels via parcel_id_local
 # should expect substantial collision.
 #   `geo/parcel_id_links.csv` already has a bundled entry for every
-# single WA county (e.g. US-WA-GF: 'string_lengths: 13 3 &
+# single WA county (e.g. US-WA-GA: 'string_lengths: 13 3 &
 # skip_empty: 1') -- almost certainly fitted to a different national
 # parcel-id source at some earlier point, not this Geoportal source,
 # since this is the first WA recipe in the repo. One of those
-# (US-WA-GF) was checked directly against real data: it passes
+# (US-WA-GA) was checked directly against real data: it passes
 # `compute_parcel_id_local`'s guards silently (no warning) and
 # produces a clean, fully-distinct 13-character key for Garfield --
 # but "passes silently" is not the same as "verified correct" for the

@@ -143,6 +143,11 @@ PANDAS_EXTENSIONS = {
     '.xls',
     '.dat',
     '.txt',
+    # Statistical offices increasingly publish their code registries as a
+    # JSON API rather than a file (IBGE's municipality list, the PSGC).
+    # Read through `json_normalize` so nested records flatten to dotted
+    # column names a recipe can map directly.
+    '.json',
 }
 
 # Extensions of companion files for shapefiles

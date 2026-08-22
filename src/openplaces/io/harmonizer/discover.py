@@ -23,9 +23,11 @@ from openplaces.io.readers import get_admin_ids, get_entities
 def discover_sources(state: HarmonizeState) -> HarmonizeState:
     """Scan all ingest admin recipes at the recipe's ``admin_level``.
 
-    Assigns each admin_id in the global spine to the highest-priority
-    ingest recipe that covers it (most-specific admin_id wins; newest
-    version wins within the same specificity tier).
+    Assigns each admin_id within ``state.admin_id`` to the
+    highest-priority ingest recipe that covers it (most-specific admin_id
+    wins; newest version wins within the same specificity tier). With no
+    ``state.admin_id`` the scope is the whole spine, which is a
+    deliberate bulk run rather than the default.
 
     Stores results in ``state.metadata``:
     - ``'discovered_sources'`` — priority-sorted list of source dicts
@@ -45,12 +47,17 @@ def discover_sources(state: HarmonizeState) -> HarmonizeState:
         return state
 
     if state.verbose:
+        scope = state.admin_id or 'the whole spine'
         print(
             f'  Discover: {len(sources)} source(s) at admin level '
-            f'{admin_level}: ' + ', '.join(s['recipe_id'] for s in sources)
+            f'{admin_level} within {scope}: '
+            + ', '.join(s['recipe_id'] for s in sources)
         )
 
-    all_admin_ids = get_admin_ids(admin_level)
+    # Scoped to the unit being processed rather than the whole world:
+    # a reader who wants one town should not pay for a global layer.
+    # `state.admin_id` is None only for a deliberately global run.
+    all_admin_ids = get_admin_ids(admin_level, state.admin_id)
     assignment: dict[str, list[str]] = {}
     unassigned: list[str] = []
     for aid in all_admin_ids:

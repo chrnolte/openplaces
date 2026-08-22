@@ -1,0 +1,8 @@
+admin_id,population,source,note
+CO-BD,7743955,dane-2020,"Bogota D.C.; no polygon in the admin geometry, value from DANE via citypopulation.de"
+GB-EN,56489800,ons-census-2021,"England; no polygon in the admin geometry, ONS Census 2021"
+CO-AS,61000,dane-2018-approx,"Archipielago de San Andres, Providencia y Santa Catalina; approximate departmental total"
+IE-XA,0,nameless-placeholder,"Unnamed placeholder unit; takes a placeholder code regardless of weight"
+MH-XAA,0,nameless-placeholder,"Unnamed placeholder unit; takes a placeholder code regardless of weight"
+NL-XA,0,nameless-placeholder,"Unnamed placeholder unit; takes a placeholder code regardless of weight"
+UA-XA,0,nameless-placeholder,"Unnamed placeholder unit; takes a placeholder code regardless of weight"

@@ -101,8 +101,8 @@ columns_to_categorical:
 # submissions, which leaves their parcels unjoinable to any local roll.
 # Those counties are redirected to another id column by an admin-scoped
 # row in US_parcel_id-overrides.csv rather than by changing the default
-# here -- see the US-NC-CN and US-NC-CE rows, and the note in
-# US-NC-CN_parcel-cravencounty-2026.yaml.
+# here -- see the US-NC-CT and US-NC-CA rows, and the note in
+# US-NC-CT_parcel-cravencounty-2026.yaml.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

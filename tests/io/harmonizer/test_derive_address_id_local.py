@@ -30,7 +30,7 @@ def test_same_street_different_village_same_town_does_not_collide():
             'address_street': ['Boylston St', 'Boylston St'],
             'address_number': ['528', '662'],
             'city': ['Newton Centre', 'Newton Centre'],
-            'admin4_id': ['US-MA-MI-NE', 'US-MA-MI-NE'],
+            'admin4_id': ['US-MA-NEW', 'US-MA-NEW'],
         }
     )
     state = derive_address_id_local(_state(spine))
@@ -45,7 +45,7 @@ def test_city_omitted_from_plain_key_but_included_in_city_key():
             'address_street': ['Hawthorn St'],
             'address_number': ['10'],
             'city': ['Waban'],
-            'admin4_id': ['US-MA-MI-NE'],
+            'admin4_id': ['US-MA-NEW'],
         }
     )
     state = derive_address_id_local(_state(spine))
@@ -60,7 +60,7 @@ def test_missing_city_leaves_city_key_null():
             'address_street': ['Main St'],
             'address_number': ['5'],
             'city': [None],
-            'admin4_id': ['US-MA-MI-NE'],
+            'admin4_id': ['US-MA-NEW'],
         }
     )
     state = derive_address_id_local(_state(spine))
@@ -75,7 +75,7 @@ def test_missing_street_or_number_yields_null_key():
             'address_street': [None, 'Main St'],
             'address_number': ['5', None],
             'city': ['Newton', 'Newton'],
-            'admin4_id': ['US-MA-MI-NE', 'US-MA-MI-NE'],
+            'admin4_id': ['US-MA-NEW', 'US-MA-NEW'],
         }
     )
     state = derive_address_id_local(_state(spine))
@@ -89,7 +89,7 @@ def test_different_towns_with_same_street_and_number_do_not_collide():
             'address_street': ['Main St', 'Main St'],
             'address_number': ['5', '5'],
             'city': ['Newton', 'Newton'],
-            'admin4_id': ['US-MA-MI-NE', 'US-MA-MI-WA'],
+            'admin4_id': ['US-MA-NEW', 'US-MA-WAK'],
         }
     )
     state = derive_address_id_local(_state(spine))

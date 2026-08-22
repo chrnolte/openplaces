@@ -184,7 +184,7 @@
 # one feature class (`PA_Parcels202604`, `MultiPolygon Z` -- the M
 # component GDAL cannot carry is dropped with a warning, not an error),
 # so no `layer:` key is needed. `op.ingest()` was then run for real
-# against Montour County (`US-PA-MO`, the smallest of the 38 covered
+# against Montour County (`US-PA-MT`, the smallest of the 38 covered
 # counties by feature count): 8,983 rows, an exact match against the
 # live `returnCountOnly` figure above. `parcel_id_local` populates
 # 8,903/8,983 rows (99.1%) at 8,265 distinct values -- non-degenerate;

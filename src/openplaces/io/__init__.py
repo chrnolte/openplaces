@@ -103,7 +103,14 @@ def request_headers(extra: dict | None = None) -> dict:
     return headers
 
 
-def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
+def download(
+    from_url,
+    to_path,
+    chunk_size=8192,
+    timeout=None,
+    verify_ssl=True,
+    headers=None,
+):
     """Download file from URL with progress bar.
 
     Parameters
@@ -118,6 +125,11 @@ def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
         Download chunk size in bytes
     timeout : int, optional
         Request timeout in seconds (uses cfg.download_timeout if None)
+    headers : dict, optional
+        Extra request headers, merged over the defaults. Needed for APIs
+        that content-negotiate rather than taking a format in the query
+        string: Wikidata's SPARQL endpoint ignores `format=csv` outright
+        and serves XML unless asked for CSV in an `Accept` header.
 
     Returns
     -------
@@ -140,7 +152,9 @@ def download(from_url, to_path, chunk_size=8192, timeout=None, verify_ssl=True):
 
     timeout = timeout or cfg.download_timeout
 
-    headers = request_headers()
+    # A recipe may add or override headers via `download_headers`, for
+    # sources that reject anything but a specific agent.
+    headers = request_headers(headers)
 
     # Get file size for progress bar
     try:

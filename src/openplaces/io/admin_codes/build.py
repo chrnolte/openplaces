@@ -1,0 +1,608 @@
+"""Rebuild the admin spine's population weights and re-mint its identifiers.
+
+The spine ships as committed CSVs, so nothing here has to run for the
+package to work. It exists so the committed files can be *reproduced*:
+every function below was derived from the one-off scripts that produced
+the current spine, and running them in the documented order regenerates
+it.
+
+Order matters, and the reasons are not obvious:
+
+1. :func:`build_population` -- zonal-sum a population raster over each
+   unit's own polygon, coarsest level first.
+2. :func:`build_population_from_entity` -- override a country's units from
+   a better layer where the global admin geometry lacks them (New England
+   towns, Colombian municipalities, French communes).
+3. :func:`fill_population_gaps` -- apportion each parent's shortfall
+   across children with no polygon. Run parents before children: level 4
+   apportions from level 3, so level 3 has to be complete first.
+4. :func:`repair_zero_weights` -- replace any zero, which is why this runs
+   after the fill rather than inside it.
+5. :func:`remint_spine` -- re-derive every identifier against the weights.
+6. :func:`resolve_stale_references` -- move committed sidecars onto the
+   identifiers the re-mint produced.
+
+Repeat 4-6 until :func:`remint_spine` reports no change; the mint is a
+fixed point and converges in two or three passes.
+
+Notes
+-----
+A re-mint **recycles** identifiers: a string survives and names a
+different unit. Never migrate an identifier by string substitution --
+always go through
+:func:`openplaces.io.admin_codes.audit.resolve_identifier`, which follows
+the unit rather than the string.
+"""
+
+from __future__ import annotations
+
+import shutil
+
+import pandas as pd
+
+from openplaces.io.admin_codes.audit import resolve_identifier
+from openplaces.io.admin_codes.frame import assign_admin_ids
+from openplaces.io.admin_codes.registry import spine_path
+
+LEVELS = (2, 3, 4)
+
+#: Countries whose level-3 units are towns promoted from level 4. The
+#: level-3 admin geometry still holds their retired counties, on
+#: identifiers same-named towns now hold -- Worcester County's polygon
+#: sits on the town of Worcester. Name and type cannot separate that from
+#: a legitimate status change (Colombia's departments read 'Commissiary'
+#: in an older vintage), so these are skipped here and supplied by
+#: :func:`build_population_from_entity` instead.
+GEOMETRY_MISMATCHED = {
+    3: ('US-CT-', 'US-MA-', 'US-ME-', 'US-NH-', 'US-RI-', 'US-VT-'),
+}
+
+DEFAULT_RASTER = '_all/population/ghsl/r2023a/population-ghsl-r2023a.tif'
+
+
+def _spine(level):
+    """Return the live spine rows for one level, blank ids dropped."""
+    frame = pd.read_csv(spine_path(level), dtype=str, keep_default_na=False)
+    column = f'admin{level}_id'
+    return frame[frame[column].str.strip() != ''].copy()
+
+
+def population_path(level):
+    """Return the path of one level's population sidecar."""
+    return spine_path(level).parent / f'admin-spine-2026_population-admin{level}.csv'
+
+
+def _write_population(level, frame, replacing=None):
+    """Merge rows into a level's population table, replacing by admin_id."""
+    path = population_path(level)
+    if path.exists() and replacing is not None:
+        existing = pd.read_csv(path)
+        existing = existing[~existing['admin_id'].isin(set(replacing))]
+        frame = pd.concat([existing, frame], ignore_index=True)
+    frame.sort_values('admin_id').to_csv(path, index=False, encoding='utf-8')
+    return path
+
+
+def build_population(level, raster=DEFAULT_RASTER, verbose=True):
+    """Sum a population raster over each unit's own polygon.
+
+    Uses ``exactextract``, which weights a partial cell by the fraction of
+    it the polygon covers, so a unit smaller than one cell still receives
+    a proportionate share rather than zero.
+
+    Every geometry row is resolved through
+    :func:`~openplaces.io.admin_codes.audit.resolve_identifier` using the
+    row's **own name**, with no "this id is already live" shortcut. The
+    admin geometry carries more than one identifier vintage at once, and
+    an id may since have been reissued: the geometry row ``JP-TK`` names
+    Tokyo while the live ``JP-TK`` is Tokushima. Taking the shortcut
+    credits Tokyo's population to Tokushima.
+
+    Parameters
+    ----------
+    level : int
+        Admin level to build.
+    raster : str, optional
+        Population raster, relative to the configured rasters directory.
+    verbose : bool, optional
+        Print coverage and the summed total.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns ``admin_id``, ``population``, ``source``.
+    """
+    import openplaces as op
+    from openplaces.geo.raster import zonal_stats_with_exactextract
+    from openplaces.path import resolve_raster_path
+
+    raster_path = resolve_raster_path(raster)
+    if not raster_path.exists():
+        raise FileNotFoundError(
+            f'{raster_path} is missing. Ingest the population recipe first.'
+        )
+
+    column = f'admin{level}_id'
+    spine = _spine(level)
+    live = set(spine[column])
+    live_name = dict(zip(spine[column], spine['name']))
+    skip = GEOMETRY_MISMATCHED.get(level, ())
+
+    gdf = op.get_admin(level=level, geom=True).reset_index()
+    gdf = gdf[[column, 'name', 'geometry']]
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
+
+    def to_live(admin_id, geom_name):
+        if skip and admin_id.startswith(skip):
+            return None
+        geom_name = '' if pd.isna(geom_name) else str(geom_name).strip()
+        if admin_id in live and live_name[admin_id] == geom_name:
+            return admin_id
+        if not geom_name:
+            return admin_id if admin_id in live else None
+        got = resolve_identifier(admin_id, past_names={admin_id: geom_name})
+        return got if got in live else None
+
+    gdf['resolved'] = [to_live(a, n) for a, n in zip(gdf[column], gdf['name'])]
+    gdf = gdf[gdf['resolved'].notna()].drop_duplicates(subset=['resolved'])
+
+    stats = zonal_stats_with_exactextract(
+        gdf[['resolved', 'geometry']],
+        raster_path,
+        ['sum'],
+        include_cols=['resolved'],
+        progress=False,
+    )
+    value_column = next(c for c in stats.columns if c != 'resolved')
+    out = pd.DataFrame(
+        {
+            'admin_id': stats['resolved'],
+            'population': pd.to_numeric(stats[value_column], errors='coerce'),
+        }
+    )
+    out = out[out['population'].notna()]
+    out['population'] = out['population'].round(0).astype('int64')
+    out['source'] = 'ghs-pop-e2020'
+
+    overrides = spine_path(level).parent / 'admin-spine-2026_population-overrides.csv'
+    if overrides.exists():
+        extra = pd.read_csv(overrides)
+        extra = extra[extra['admin_id'].isin(live)]
+        extra = extra[~extra['admin_id'].isin(set(out['admin_id']))]
+        if len(extra):
+            out = pd.concat(
+                [out, extra[['admin_id', 'population', 'source']]],
+                ignore_index=True,
+            )
+
+    _write_population(level, out)
+    if verbose:
+        print(
+            f'level {level}: {len(out):,} of {len(live):,} units '
+            f'({len(out) / max(len(live), 1):.1%}), '
+            f'{out["population"].sum():,} people'
+        )
+    return out
+
+
+def build_population_from_entity(
+    recipe_id,
+    scope,
+    level,
+    join_column='admin3_id_admin1',
+    raster=DEFAULT_RASTER,
+    key=None,
+    verbose=True,
+):
+    """Take one country's units from a better geometry layer.
+
+    The global admin geometry does not carry every country's units --
+    New England's towns and Colombia's municipalities are both absent --
+    but an ingested entity recipe often does. Joins that layer to the
+    spine on the source's own national code rather than spatially, which
+    is both faster and free of edge-matching error.
+
+    Parameters
+    ----------
+    recipe_id : str
+        Ingested entity recipe carrying the geometry.
+    scope : str
+        Admin unit to pull, e.g. ``'US-MA'`` or ``'CO'``.
+    level : int
+        Spine level the units belong to.
+    join_column : str, optional
+        Spine column holding the source's own code.
+    raster : str, optional
+        Population raster, relative to the rasters directory.
+    key : callable, optional
+        Normalizes a code on both sides before joining. Needed where a
+        code is renumbered under a stable name: Connecticut replaced its
+        counties with planning regions in 2022, so a COUSUB GEOID's
+        middle three digits changed while every town kept its own, and
+        joining on ``lambda g: g[:2] + g[-5:]`` survives it.
+    verbose : bool, optional
+        Print how many units matched.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The rows written, with ``source`` naming the recipe.
+    """
+    import geopandas as gpd
+
+    import openplaces as op
+    from openplaces.geo.raster import zonal_stats_with_exactextract
+    from openplaces.path import resolve_raster_path
+
+    key = key or (lambda code: code)
+    column = f'admin{level}_id'
+    spine = _spine(level)
+    units = spine[spine[column].str.startswith(f'{scope}-')]
+    by_code = {
+        key(str(c).strip()): a
+        for c, a in zip(units[join_column], units[column])
+        if str(c).strip()
+    }
+
+    gdf = op.get_entities(recipe_id, scope, geom=True).reset_index()
+    source_column = next(
+        (c for c in (join_column, 'admin4_id_admin1') if c in gdf.columns),
+        None,
+    )
+    if source_column is None:
+        raise KeyError(f'No join column in {recipe_id}: {list(gdf.columns)}')
+
+    gdf['resolved'] = gdf[source_column].astype(str).str.strip().map(key).map(by_code)
+    matched = gdf[gdf['resolved'].notna()]
+    matched = matched[matched.geometry.notna() & ~matched.geometry.is_empty]
+    matched = matched.drop_duplicates(subset=['resolved'])
+    if not len(matched):
+        raise ValueError(f'{recipe_id} matched no unit of {scope}.')
+
+    polygons = gpd.GeoDataFrame(
+        matched[['resolved', 'geometry']], geometry='geometry', crs=gdf.crs
+    )
+    stats = zonal_stats_with_exactextract(
+        polygons,
+        resolve_raster_path(raster),
+        ['sum'],
+        include_cols=['resolved'],
+        progress=False,
+    )
+    value_column = next(c for c in stats.columns if c != 'resolved')
+    out = pd.DataFrame(
+        {
+            'admin_id': stats['resolved'],
+            'population': pd.to_numeric(stats[value_column], errors='coerce'),
+        }
+    )
+    out = out[out['population'].notna()]
+    out['population'] = out['population'].round(0).astype('int64')
+    out.loc[out['population'] <= 0, 'population'] = 1
+    out['source'] = f'ghs-pop-e2020-{recipe_id.split("_")[-1]}'
+
+    _write_population(level, out, replacing=set(out['admin_id']))
+    if verbose:
+        print(
+            f'{scope}: {len(out):,} of {len(units):,} units from '
+            f'{recipe_id} ({len(out) / max(len(units), 1):.1%})'
+        )
+    return out
+
+
+def fill_population_gaps(level, verbose=True):
+    """Apportion each parent's shortfall across children with no polygon.
+
+    A unit with no geometry cannot be reached by any spatial method --
+    not by a population raster and not by a building-footprint proxy,
+    since both need somewhere to aggregate into. The hierarchy can reach
+    it: the parent's population is known, and the difference between it
+    and its covered children belongs to the uncovered ones.
+
+    Where only some children are covered this produces a real ordering.
+    Where none are, the parent total is split evenly, which leaves the
+    tie-break exactly where it would be with no weights at all -- the
+    honest outcome when nothing distinguishes the siblings, and recorded
+    as ``parent-split-equal`` rather than dressed up as a measurement.
+
+    Run the parent level first: level 4 apportions from level 3.
+
+    Parameters
+    ----------
+    level : int
+        Admin level to fill. Must have a parent level.
+    verbose : bool, optional
+        Print the method breakdown.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The complete table for this level.
+    """
+    column = f'admin{level}_id'
+    child = pd.read_csv(population_path(level))
+    parent = pd.read_csv(population_path(level - 1))
+    parent_population = dict(zip(parent['admin_id'], parent['population']))
+
+    spine = _spine(level)
+    spine['parent'] = spine[column].str.rsplit('-', n=1).str[0]
+    known = dict(zip(child['admin_id'], child['population']))
+
+    filled, orphaned = [], []
+    for parent_id, group in spine.groupby('parent'):
+        ids = list(group[column])
+        missing = [i for i in ids if i not in known]
+        if not missing:
+            continue
+        total = parent_population.get(parent_id)
+        if total is None or pd.isna(total):
+            orphaned.extend(missing)
+            continue
+        covered = sum(known.get(i, 0) for i in ids if i in known)
+        share = max(float(total) - float(covered), 0.0) / len(missing)
+        method = 'parent-residual' if len(missing) < len(ids) else 'parent-split-equal'
+        filled.extend((i, round(share), method) for i in missing)
+
+    if orphaned:
+        # The parent is unknown too; compete as a typical unit rather
+        # than always losing.
+        fallback = float(pd.Series(list(known.values())).median())
+        filled.extend((i, round(fallback), 'level-median') for i in orphaned)
+
+    if filled:
+        added = pd.DataFrame(filled, columns=['admin_id', 'population', 'source'])
+        added['population'] = added['population'].astype('int64')
+        child = pd.concat([child, added], ignore_index=True)
+        _write_population(level, child)
+
+    if verbose:
+        print(f'level {level}: {len(child):,} of {len(spine):,} units')
+        print(child['source'].value_counts().to_string())
+    return child
+
+
+def repair_zero_weights(levels=LEVELS, verbose=True):
+    """Replace any zero weight with the level median.
+
+    A residual split hands out zero whenever the covered children already
+    account for the parent's whole total, which happens when a matched
+    polygon is too large -- two communes once absorbed Alpes-Maritimes
+    and left 161 others at zero. A unit weighted zero loses every tie it
+    enters, so a geometry artefact becomes a permanent handicap. Unknown
+    has to mean "competes as typical".
+
+    Parameters
+    ----------
+    levels : iterable of int, optional
+        Levels to repair.
+    verbose : bool, optional
+        Print how many units were repaired per level.
+
+    Returns
+    -------
+    dict of int to int
+        Units repaired per level.
+    """
+    repaired = {}
+    for level in levels:
+        path = population_path(level)
+        table = pd.read_csv(path)
+        median = float(table.loc[table['population'] > 0, 'population'].median())
+        zeros = table['population'] <= 0
+        count = int(zeros.sum())
+        repaired[level] = count
+        if count:
+            table.loc[zeros, 'population'] = int(round(median))
+            table.loc[zeros, 'source'] = 'level-median'
+            table.to_csv(path, index=False, encoding='utf-8')
+        if verbose:
+            print(f'level {level}: {count:,} zero-weighted -> {median:,.0f}')
+    return repaired
+
+
+def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
+    """Re-derive every identifier against the population weights.
+
+    Drives the production :func:`~openplaces.io.admin_codes.assign_admin_ids`
+    with ``pin_to_spine=False`` rather than reimplementing the mint, so
+    pinning, duplicate-name handling, anchor preference and the width
+    policy all behave exactly as in a normal run.
+
+    Levels cascade. A level-2 identifier that moves changes the *prefix*
+    of every identifier beneath it, so each level is minted and then its
+    descendants reparented -- spine and population sidecars alike --
+    before the next level is minted.
+
+    Outgoing identifiers are appended to the superseded snapshots first.
+    That file is the only bridge
+    :func:`~openplaces.io.admin_codes.audit.resolve_identifier` has from a
+    retired id to the live unit.
+
+    Parameters
+    ----------
+    levels : iterable of int, optional
+        Levels to mint, coarsest first.
+    apply : bool, optional
+        Write. Default False reports what would change.
+    backup_dir : pathlib.Path, optional
+        Copy the spine here before writing. Keep it outside the package.
+    verbose : bool, optional
+        Print per-level change and recycle counts.
+
+    Returns
+    -------
+    dict of int to dict
+        Per level: ``units``, ``changed``, ``recycled``.
+    """
+    levels = sorted(levels)
+    directory = spine_path(2).parent
+    spines = {level: _spine(level) for level in levels}
+    populations = {level: pd.read_csv(population_path(level)) for level in levels}
+
+    if apply and backup_dir is not None:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        for level in levels:
+            for path in (
+                spine_path(level),
+                population_path(level),
+                directory / f'admin-spine-2026_superseded-admin{level}.csv',
+            ):
+                shutil.copy2(path, backup_dir / path.name)
+
+    report = {}
+    for level in levels:
+        column = f'admin{level}_id'
+        parent_column = f'admin{level - 1}_id'
+        spine = spines[level]
+        weights = dict(
+            zip(populations[level]['admin_id'], populations[level]['population'])
+        )
+
+        work = spine.copy()
+        work[parent_column] = work[column].str.rsplit('-', n=1).str[0]
+        work['population'] = work[column].map(weights)
+        work['_previous'] = work[column]
+
+        minted = assign_admin_ids(
+            work,
+            new_admin_id_col=column,
+            parent_admin_id_col=parent_column,
+            weight_col='population',
+            pin_to_spine=False,
+        )
+        if column not in minted.columns:
+            minted = minted.reset_index()
+        if not minted[column].is_unique:
+            raise ValueError(f'level {level}: minted identifiers are not unique')
+
+        mapping = dict(zip(minted['_previous'], minted[column]))
+        changed = {o: n for o, n in mapping.items() if o != n}
+        named = dict(zip(minted['_previous'], minted['name']))
+        recycled = sum(
+            1
+            for _, row in minted.iterrows()
+            if row[column] in named and named[row[column]] != row['name']
+        )
+        report[level] = {
+            'units': len(minted),
+            'changed': len(changed),
+            'recycled': recycled,
+        }
+        if verbose:
+            print(
+                f'level {level}: {len(changed):,} of {len(minted):,} change '
+                f'({len(changed) / max(len(minted), 1):.1%}), '
+                f'{recycled:,} recycled'
+            )
+        if not apply:
+            continue
+
+        superseded = directory / f'admin-spine-2026_superseded-admin{level}.csv'
+        archive = pd.read_csv(
+            superseded, dtype=str, keep_default_na=False, encoding='utf-8-sig'
+        )
+        outgoing = spine[~spine[column].isin(set(minted[column]))]
+        outgoing = outgoing[~outgoing[column].isin(set(archive[column]))]
+        pd.concat([archive, outgoing[archive.columns]], ignore_index=True).to_csv(
+            superseded, index=False, encoding='utf-8-sig'
+        )
+
+        minted.drop(columns=[parent_column, 'population', '_previous']).to_csv(
+            spine_path(level), index=False, encoding='utf-8'
+        )
+        populations[level]['admin_id'] = populations[level]['admin_id'].map(
+            lambda i, m=mapping: m.get(i, i)
+        )
+        populations[level].to_csv(population_path(level), index=False, encoding='utf-8')
+
+        for lower in [x for x in levels if x > level]:
+            depth = lower - level
+
+            def reparent(admin_id, depth=depth, m=mapping):
+                # Split off exactly the trailing segments this descendant
+                # owns; everything before them is the ancestor that moved.
+                parts = admin_id.rsplit('-', depth)
+                return '-'.join([m.get(parts[0], parts[0]), *parts[1:]])
+
+            spines[lower][f'admin{lower}_id'] = spines[lower][f'admin{lower}_id'].map(
+                reparent
+            )
+            populations[lower]['admin_id'] = populations[lower]['admin_id'].map(
+                reparent
+            )
+
+    return report
+
+
+def resolve_stale_references(apply=False, verbose=True):
+    """Move committed sidecars onto the identifiers the re-mint produced.
+
+    Only files *keyed* to a live admin id are rewritten. The superseded
+    snapshots, the old-to-new migration tables and the published ISO and
+    prior-code tables all legitimately hold retired identifiers.
+
+    Every value goes through
+    :func:`~openplaces.io.admin_codes.audit.resolve_identifier` rather
+    than a string substitution, because a re-mint recycles: an id can
+    survive and name a different unit.
+
+    Parameters
+    ----------
+    apply : bool, optional
+        Write. Default False reports what would change.
+    verbose : bool, optional
+        Print per-file counts.
+
+    Returns
+    -------
+    int
+        Cells rewritten.
+    """
+    from openplaces.path import recipe_path
+
+    root = recipe_path()
+    spine_dir = spine_path(2).parent
+    live = set()
+    for level in (1, *LEVELS):
+        frame = pd.read_csv(spine_path(level), dtype=str, keep_default_na=False)
+        column = f'admin{level}_id'
+        live |= set(frame.loc[frame[column].str.strip() != '', column])
+
+    cache = {}
+
+    def to_live(value):
+        value = str(value).strip()
+        if not value or value in live:
+            return value
+        if value not in cache:
+            got = resolve_identifier(value)
+            cache[value] = got if got in live else value
+        return cache[value]
+
+    targets = [root / '_all/admin/regions/2026/admin-regions-2026.csv']
+    targets += [p for p in root.rglob('*crosswalk*.csv') if p.parent != spine_dir]
+
+    total = 0
+    for path in targets:
+        if not path.exists():
+            continue
+        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+        columns = [
+            c
+            for c in frame.columns
+            if c.endswith('_id') and ('admin' in c or c == 'region_admin_id')
+        ]
+        changed = 0
+        for column in columns:
+            updated = frame[column].map(to_live)
+            changed += int((updated != frame[column]).sum())
+            frame[column] = updated
+        if changed:
+            total += changed
+            if verbose:
+                print(f'{changed:>5} in {path.relative_to(root)}')
+            if apply:
+                frame.to_csv(path, index=False, encoding='utf-8')
+    if verbose:
+        print(f'total cell rewrites: {total:,}')
+    return total

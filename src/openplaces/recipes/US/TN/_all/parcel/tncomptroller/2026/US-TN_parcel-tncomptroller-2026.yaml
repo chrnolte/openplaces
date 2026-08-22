@@ -161,9 +161,9 @@
 # chars) are the raw components GISLINK/PARCELID are assembled from
 # (mirroring DC's SQUARE/SUFFIX/LOT -> SSL precedent) and are left
 # unmapped as redundant with GISLINK.
-#   Tested for real (Moore County, `US-TN-MO`, a 2,000-row live
+#   Tested for real (Moore County, `US-TN-MN`, a 2,000-row live
 #   sample, aggregate counts only): the bundled per-county pattern
-#   in `geo/parcel_id_links.csv` for `US-TN-MO` (built for a
+#   in `geo/parcel_id_links.csv` for `US-TN-MN` (built for a
 #   different, pre-existing raw parcel-id format, not GISLINK)
 #   produces a 100% excess-loss warning against GISLINK and the
 #   pipeline's own duplicate/loss guard (`compute_parcel_id_local`)
@@ -214,7 +214,7 @@
 #     `zoning_code` are therefore not available from this source at
 #     all, for any of the 86 counties.
 #
-# Measured field population (Moore County, `US-TN-MO`, smallest
+# Measured field population (Moore County, `US-TN-MN`, smallest
 # covered county by parcel count -- 4,260 statewide; a live
 # 2,000-row sample, aggregate counts only, no record values
 # retained or quoted): `ADDRESS` 2,000/2,000 (100%); `OWNER`

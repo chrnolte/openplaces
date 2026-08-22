@@ -26,7 +26,7 @@ def _state(admin_id, spine=None, verbose=False):
 
 
 def test_discover_link_sources_ma_property_layer_uses_layer_key():
-    state = _state('US-MA-MI-SO')
+    state = _state('US-MA-SOE')
     matches = links._discover_link_sources(state, 'parcel')
 
     primary = next(m for m in matches if m['layer'] is None)
@@ -39,13 +39,13 @@ def test_discover_link_sources_ma_property_layer_uses_layer_key():
 
 
 def test_discover_link_sources_nc_finds_geometry_and_standalone_roll():
-    state = _state('US-NC-NE')
+    state = _state('US-NC-NH')
     matches = links._discover_link_sources(state, 'parcel')
     recipe_ids = {m['recipe_id'] for m in matches}
 
     assert 'US-NC_parcel-nconemap-2025' in recipe_ids
-    assert 'US-NC-NE_parcel-nhcgov-2026' in recipe_ids
-    nhcgov = next(m for m in matches if m['recipe_id'] == 'US-NC-NE_parcel-nhcgov-2026')
+    assert 'US-NC-NH_parcel-nhcgov-2026' in recipe_ids
+    nhcgov = next(m for m in matches if m['recipe_id'] == 'US-NC-NH_parcel-nhcgov-2026')
     assert nhcgov['layer'] is None
     assert nhcgov['key'] == 'parcel_id_local'
 
@@ -84,7 +84,7 @@ def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-MA-MI-SO')
+    state = _state('US-MA-SOE')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
     assert ids == ['US-MA_parcel-massgis-2025']  # newest version only, US-CA excluded
@@ -115,20 +115,20 @@ def test_find_admin_scoped_recipe_ids_keeps_distinct_filename_suffixes(monkeypat
 def test_find_admin_scoped_recipe_ids_orders_by_specificity_then_version(monkeypatch):
     rows = pd.DataFrame(
         [
-            _recipe_row('US-NC-NE', 'nhcgov', '2026'),
+            _recipe_row('US-NC-NH', 'nhcgov', '2026'),
             _recipe_row('US-NC', 'nconemap', '2025'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-NC-NE')
+    state = _state('US-NC-NH')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
-    # Broader-scope 'US-NC' (2025) sorts first, county-scoped 'US-NC-NE'
+    # Broader-scope 'US-NC' (2025) sorts first, county-scoped 'US-NC-NH'
     # (2026) sorts last (wins link_by_id's write-priority): admin
     # specificity decides join order here, version merely happens to agree
     # with it in this fixture (see the disagreeing case below).
-    assert ids == ['US-NC_parcel-nconemap-2025', 'US-NC-NE_parcel-nhcgov-2026']
+    assert ids == ['US-NC_parcel-nconemap-2025', 'US-NC-NH_parcel-nhcgov-2026']
 
 
 def test_find_admin_scoped_recipe_ids_specificity_beats_newer_version(monkeypatch):
@@ -176,7 +176,7 @@ def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-MA-MI-SO')
+    state = _state('US-MA-SOE')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
     assert ids == ['US-MA_parcel-massgis-2025']
@@ -251,7 +251,7 @@ def test_link_by_id_auto_discover_recent_majority_source_wins_use_subgroup(
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
-    state = _state('US-NC-NE', spine=spine)
+    state = _state('US-NC-NH', spine=spine)
     state = links.link_by_id(
         state,
         auto_discover=True,
@@ -301,7 +301,7 @@ def test_link_by_id_auto_discover_track_provenance_records_winning_source(
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
-    state = _state('US-NC-NE', spine=spine)
+    state = _state('US-NC-NH', spine=spine)
     state = links.link_by_id(
         state,
         auto_discover=True,
@@ -566,7 +566,7 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
     spine = pd.DataFrame(
         {'parcel_id_local': ['A', 'B'], 'parcel_id_admin2': ['A', 'C']}
     )
-    state = _state('US-MA-MI-SO', spine=spine)
+    state = _state('US-MA-SOE', spine=spine)
     state = links.link_by_id(state, auto_discover=True, entity_type='parcel')
 
     assert state.spine['land_value'].tolist() == [10.0, 20.0]

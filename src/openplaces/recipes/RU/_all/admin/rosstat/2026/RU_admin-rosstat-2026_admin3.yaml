@@ -1,0 +1,77 @@
+# Recipe to import Russian municipal districts and urban okrugs (admin 3).
+#
+# Russia is the hardest of the countries attempted so far, and it failed for
+# a reason worth recording: not the districts, but their parents.
+#
+# The spine names federal subjects by their bare stem -- Amur, Arkhangel'sk,
+# Adygey -- while ISO 3166-2 names them in the declined adjectival form:
+# Amurskaya oblast', Arkhangel'skaya oblast', Adygeya Respublika. Stripping
+# the type word is not enough, because the stem itself is inflected, and the
+# stem boundary is not regular: Amur oblast is named for the river (Amur +
+# skaya) and Arkhangelsk oblast for the city (Arkhangelsk + aya), so the
+# same -skaya ending cuts in two different places.
+#
+# What does work is prefix matching. The spine's stem is a prefix of the
+# declined form in every case, which lifts parent resolution from 7 of 83 to
+# 58 of 83 with no ambiguity at all.
+#
+# The districts then need the same treatment one level down: Wikidata gives
+# "Shenkursky District" where the spine gives "Giaginskiy rayon" -- the same
+# adjective, transliterated -sky against -skiy. Normalizing that ending
+# takes the child match from 0.4% to 45.0%.
+#
+# Where the remainder sits, measured rather than guessed:
+#   536 units (22%) are under one of the 25 parents that still do not map,
+#       and are blocked outright regardless of their own names;
+#   of the 1,894 reachable units, 1,093 (58%) match.
+# Fixing the remaining parents is therefore worth more than any further work
+# on district names.
+
+description: >-
+  Russian municipal districts and urban okrugs (admin level 3).
+
+admin_id: RU
+
+entity:
+  entity_type: admin
+  source:
+    source_id: rosstat
+    portal_url: "https://rosstat.gov.ru/"
+    # Rosstat is the authority and publishes OKTMO. Wikidata is the
+    # machine-readable route here because an untyped harvest of Russia is
+    # too large for the query service to return at all, while restricting
+    # to the district classes makes it affordable.
+    download_url: "https://query.wikidata.org/sparql?query=SELECT%20%3Fitem%20%3FitemLabel%20%3FparentIso%20WHERE%20%7B%3Fparent%20wdt%3AP300%20%3FparentIso%20.%20FILTER(STRSTARTS(%3FparentIso%2C%22RU-%22))%20%3Fitem%20wdt%3AP131%20%3Fparent%20.%20VALUES%20%3Ftype%7Bwd%3AQ2198484%20wd%3AQ13626398%20wd%3AQ20719675%7D%20%3Fitem%20wdt%3AP31%20%3Ftype%20.%20SERVICE%20wikibase%3Alabel%7Bbd%3AserviceParam%20wikibase%3Alanguage%20%22en%2Cru%22%7D%7D"
+    license: "CC0 (Wikidata)"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+# Wikidata content-negotiates: it ignores `format=csv` in the query
+# string and serves SPARQL XML regardless, so the format has to be
+# asked for by header. Without this the download lands as XML under a
+# .csv name and fails to parse thousands of lines in.
+download_headers:
+  Accept: "text/csv"
+
+uncompressed_file_name: "ru_districts.csv"
+
+columns:
+  name: itemLabel
+  admin2_id_iso: parentIso
+
+keep_unnamed_columns: False
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_iso
+  admin_recipe_id: "admin-spine-2026_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True

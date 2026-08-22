@@ -30,6 +30,9 @@ admin_level: 1
 save_to:
   data_dir: core
   filename: admin1
+  # Deliberately not partitioned. Countries are the outermost context, so
+  # there is no parent to partition by, and the layer is small enough to
+  # hold globally.
 
 pipeline:
   - step: discover_sources

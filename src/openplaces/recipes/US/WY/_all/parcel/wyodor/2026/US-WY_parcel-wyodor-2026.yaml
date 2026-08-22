@@ -62,7 +62,7 @@
 # directly against `op.get_admin(admin_id='US-WY', level=3)`'s own
 # official county names, not guessed from abbreviations -- Wyoming's
 # admin3 codes do not follow simple first-two-letters-of-name rules
-# (e.g. `US-WY-CM` is Campbell, `US-WY-CB` is Carbon, `US-WY-CE` is
+# (e.g. `US-WY-CM` is Campbell, `US-WY-CA` is Carbon, `US-WY-CO` is
 # Converse).
 #
 # NOTE on the join key (Phase 5): `parcelnb` is a PLSS

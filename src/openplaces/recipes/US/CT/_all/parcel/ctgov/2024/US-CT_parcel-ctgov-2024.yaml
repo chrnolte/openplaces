@@ -30,14 +30,15 @@ layer: Basic_Parcels_2024
 # Read and process data in chunks
 # (avoids reading very large geodatabases into memory)
 process_by:
-  # Administrative level at which processing is chunked
-  admin_level: 4
+  # Administrative level at which processing is chunked.
+  # Connecticut has no counties; the town is the level-3 unit.
+  admin_level: 3
   # Column in original data used to identify the administrative level
   admin_id_column: Town_Name
   # Crosswalk from administrative identifiers in the original data
   # (e.g. county FIPS) to `openplaces` AdminIDs.
   admin_id_crosswalk:
-    recipe_id: "US-CT_parcel-ctgov-2024_admin4-crosswalk"
+    recipe_id: "US-CT_parcel-ctgov-2024_admin3-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:
@@ -50,4 +51,7 @@ columns:
   source_date: Edit_Date
 
 save_to:
+  # Same level as `process_by`, so nothing is aggregated: the town is the
+  # unit that holds the parcel roll, and with no county above it there is
+  # no coarser unit to gather towns into.
   admin_level: 3

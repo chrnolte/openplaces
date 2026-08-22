@@ -41,16 +41,16 @@ def test_prefixes_when_process_level_finer_than_save_level():
     recipe = _recipe(process_level=4, save_level=3)
 
     town_a = TableIngester(
-        recipe, {}, {'admin_id_to_process': 'US-MA-MI-WT'}, Path('.'), None
+        recipe, {}, {'admin_id_to_process': 'US-MA-WAT'}, Path('.'), None
     )._add_parcel_id_local(pd.DataFrame({'parcel_id_assessor': ['1005 0 0']}))
     town_b = TableIngester(
-        recipe, {}, {'admin_id_to_process': 'US-MA-MI-CO'}, Path('.'), None
+        recipe, {}, {'admin_id_to_process': 'US-MA-CON'}, Path('.'), None
     )._add_parcel_id_local(pd.DataFrame({'parcel_id_assessor': ['1005']}))
 
     # Same standardized key, different towns -- must no longer collide once merged.
     assert town_a['parcel_id_local'].iloc[0] != town_b['parcel_id_local'].iloc[0]
-    assert town_a['parcel_id_local'].iloc[0] == 'US-MA-MI-WT|1005'
-    assert town_b['parcel_id_local'].iloc[0] == 'US-MA-MI-CO|1005'
+    assert town_a['parcel_id_local'].iloc[0] == 'US-MA-WAT|1005'
+    assert town_b['parcel_id_local'].iloc[0] == 'US-MA-CON|1005'
 
 
 def test_no_prefix_when_process_level_equals_save_level():
@@ -67,7 +67,7 @@ def test_null_raw_value_stays_null_after_prefix():
     recipe = _recipe(process_level=4, save_level=3)
     df = pd.DataFrame({'parcel_id_assessor': [None]})
 
-    result = _ingester(recipe, 'US-MA-MI-WT')._add_parcel_id_local(df)
+    result = _ingester(recipe, 'US-MA-WAT')._add_parcel_id_local(df)
 
     assert pd.isna(result['parcel_id_local'].iloc[0])
 
@@ -78,7 +78,7 @@ def test_admin_id_column_groupby_path_also_prefixed():
     df = pd.DataFrame(
         {
             'parcel_id_assessor': ['1005 0 0', '1005'],
-            'town': ['US-MA-MI-WT', 'US-MA-MI-CO'],
+            'town': ['US-MA-WAT', 'US-MA-CON'],
         }
     )
 
@@ -86,4 +86,4 @@ def test_admin_id_column_groupby_path_also_prefixed():
 
     values = result['parcel_id_local'].tolist()
     assert values[0] != values[1]
-    assert set(values) == {'US-MA-MI-WT|1005', 'US-MA-MI-CO|1005'}
+    assert set(values) == {'US-MA-WAT|1005', 'US-MA-CON|1005'}

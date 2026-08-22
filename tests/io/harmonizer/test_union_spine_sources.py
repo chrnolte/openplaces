@@ -14,7 +14,7 @@ from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
 
 
-def _state(admin_id='US-NC-NE'):
+def _state(admin_id='US-NC-NH'):
     return HarmonizeState(
         recipe={'admin_id': AdminId('US')},
         admin_id=AdminId(admin_id),
@@ -35,7 +35,7 @@ def test_concatenates_sources_with_provenance_column(monkeypatch):
         monkeypatch,
         [
             {
-                'admin_id': 'US-NC-NE',
+                'admin_id': 'US-NC-NH',
                 'source_id': 'nhcgov',
                 'version': '2026',
                 'entity_type': 'transaction',
@@ -65,7 +65,7 @@ def test_load_failure_is_skipped_not_fatal(monkeypatch):
         monkeypatch,
         [
             {
-                'admin_id': 'US-NC-NE',
+                'admin_id': 'US-NC-NH',
                 'source_id': 'nhcgov',
                 'version': '2026',
                 'entity_type': 'transaction',
@@ -91,14 +91,14 @@ def test_empty_source_is_dropped_but_others_still_load(monkeypatch):
         monkeypatch,
         [
             {
-                'admin_id': 'US-NC-NE',
+                'admin_id': 'US-NC-NH',
                 'source_id': 'a',
                 'version': '1',
                 'entity_type': 'transaction',
                 'exclude_from_auto_discover': False,
             },
             {
-                'admin_id': 'US-NC-NE',
+                'admin_id': 'US-NC-NH',
                 'source_id': 'b',
                 'version': '1',
                 'entity_type': 'transaction',
@@ -107,8 +107,8 @@ def test_empty_source_is_dropped_but_others_still_load(monkeypatch):
         ],
     )
     frames = {
-        'US-NC-NE_transaction-a-1': pd.DataFrame(),
-        'US-NC-NE_transaction-b-1': pd.DataFrame({'price': [1]}),
+        'US-NC-NH_transaction-a-1': pd.DataFrame(),
+        'US-NC-NH_transaction-b-1': pd.DataFrame({'price': [1]}),
     }
     monkeypatch.setattr(
         spine_module, 'get_entities', lambda recipe_id, *a, **k: frames[recipe_id]

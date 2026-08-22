@@ -18,7 +18,7 @@ from openplaces.io.harmonizer import HarmonizeState
 def _state(spine, entity_type=None):
     recipe = {'entity': Entity(entity_type)} if entity_type else {}
     return HarmonizeState(
-        recipe=recipe, admin_id='US-NC-NE', verbose=False, timer=None, spine=spine
+        recipe=recipe, admin_id='US-NC-NH', verbose=False, timer=None, spine=spine
     )
 
 

@@ -18,7 +18,7 @@ from openplaces.io.ingester import ingest
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 RECIPE_ID = 'US_parcel-placeslab-fmv2026'
-ADMIN_ID = 'US-MA-MI'
+ADMIN_ID = 'US-NY-AL'
 
 
 @pytest.fixture

@@ -75,7 +75,7 @@
 # separated groups, e.g. "9-99-99999-99-9999-99999"; Sussex: dashes
 # plus decimal sub-groups, e.g. "999-99.99-99.99"). The repository's
 # bundled `geo/parcel_id_links.csv` already carries a `parcel`-kind
-# conversion for each of US-DE-NE/KE/SU (evidently added in
+# conversion for each of US-DE-NC/KE/SU (evidently added in
 # anticipation of a Delaware recipe before this one existed).
 # Verified empirically against 800 real PINs sampled per county
 # (transiently, never written to a tracked file): every county

@@ -1,14 +1,14 @@
 admin_id,source_id,kind,pattern,conv,tolerance,source
 US-WI-ON,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,,
 US-WI-VI,,parcel,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,0.03,
-US-NC-CE,,parcel,,simple,,parcel_id_admin3
-US-NC-CE,carteretcounty,parcel,,simple,,parcel_id_assessor
-US-NC-CM,columbuscounty,parcel,,simple,,
-US-NC-CM,nconemap,parcel,,simple,,parcel_id_admin3
-US-NC-CN,nconemap,parcel,,no_conv,,parcel_id_admin3
+US-NC-CA,,parcel,,simple,,parcel_id_admin3
+US-NC-CA,carteretcounty,parcel,,simple,,parcel_id_assessor
+US-NC-CE,columbuscounty,parcel,,simple,,
+US-NC-CE,nconemap,parcel,,simple,,parcel_id_admin3
+US-NC-CB,nconemap,parcel,,no_conv,,parcel_id_admin3
 US-NC-CU,cumberlandcounty,parcel,,simple,,
 US-NC-CU,nconemap,parcel,,simple,,parcel_id_admin3
-US-NC-HD,hertfordcounty,parcel,,simple,,
+US-NC-HY,hertfordcounty,parcel,,simple,,
 US-NC-NO,northamptoncounty,parcel,,simple,,
 US-NC-PM,nconemap,parcel,,simple,,parcel_id_admin3
 US-NC-PM,pamlicocounty,parcel,,simple,,

@@ -50,7 +50,12 @@ transformations:
 admin_id_crosswalk:
   admin_level: 3
   admin_id_column: admin3_id_admin1
-  admin_recipe_id: "US_admin-census-2021_admin3"
+  # 2025 TIGER tract GEOIDs carry Connecticut's nine planning-region codes
+  # (09110-09190), which the Census Bureau adopted as county-equivalents in
+  # June 2022. Crosswalking them against the 2021 admin recipe, which still
+  # holds the eight legacy counties, matched nothing for Connecticut and
+  # silently dropped all 884 of its tracts.
+  admin_recipe_id: "US_admin-census-2025_admin3"
 
 # Use census GEOID as index
 set_index: census_geo_id

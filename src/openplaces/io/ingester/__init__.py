@@ -39,6 +39,7 @@ from openplaces.io.cleanup import discard_receipt, receipt_justifies_skip
 from openplaces.io.ingester.raster_ingester import fetch_rasters_by_admin
 from openplaces.io.ingester.table_ingester import TableIngester
 from openplaces.io.readers import get_admin, get_entities
+from openplaces.io.transform import get_crosswalk
 from openplaces.io.usage_profile import require_usage_compatible
 from openplaces.path import (
     external_dir,
@@ -875,7 +876,54 @@ class Ingester:
                 )
             )
 
-        self.admin_ids_to_process = admin_ids_to_process
+        self.admin_ids_to_process = self._limit_to_crosswalk_scope(admin_ids_to_process)
+
+    def _limit_to_crosswalk_scope(self, admin_ids_to_process):
+        """Drop process units a scoped crosswalk does not claim to cover.
+
+        A `recipe_id`-form `process_by.admin_id_crosswalk` is a sidecar
+        listing the admin units a source actually carries -- Maine's parcel
+        layer covers organized towns only, so roughly two hundred of the
+        state's units have no rows by design. Expanding a whole-state
+        request to every unit and then failing on the first uncovered one
+        would make such a source impossible to ingest in bulk.
+
+        Only the *expanded* list is filtered. Naming an uncovered unit
+        explicitly still raises in `TableIngester.process`, because there
+        the caller has asserted the unit should be there and silence would
+        hide a real mistake.
+        """
+        process_by = self.recipe.get('process_by') or {}
+        crosswalk = process_by.get('admin_id_crosswalk') or {}
+        if 'recipe_id' not in crosswalk:
+            return admin_ids_to_process
+        if any(
+            admin_id.get_level() >= get_process_admin_level(self.recipe)
+            for admin_id in self.admin_ids
+        ):
+            return admin_ids_to_process
+        try:
+            spec = dict(crosswalk)
+            spec['admin_id'] = str(self.recipe['admin_id'])
+            covered = set(get_crosswalk(spec, flip=True).iloc[:, 0])
+        except Exception:  # noqa: BLE001 - absent sidecar is not fatal here
+            return admin_ids_to_process
+        # Compare as strings: AdminId does not hash equal to its own
+        # string form, so membership against the crosswalk's raw column
+        # silently matches nothing if the cast is left out.
+        kept = [a for a in admin_ids_to_process if str(a) in covered]
+        dropped = len(admin_ids_to_process) - len(kept)
+        if dropped and self.verbose:
+            print(
+                f'{dropped} admin unit(s) are outside '
+                f'{crosswalk["recipe_id"]} and have no source rows; skipping.'
+            )
+        if not kept:
+            # The crosswalk covers no unit at this level -- it is keyed to
+            # a different one. Filtering here would drop the whole run, so
+            # leave the list alone and let process() report the mismatch.
+            return admin_ids_to_process
+        return kept
 
     def _resolve_admin_ids_to_download(self):
         """Make list of admin_ids for which files need to be downloaded
@@ -1698,6 +1746,7 @@ class Ingester:
                 self.download_partition['download_url'],
                 _download_target,
                 verify_ssl=verify_ssl,
+                headers=self.recipe.get('download_headers'),
             )
             self.timer.mark(f'Download{_dl_suffix}')
 

@@ -278,11 +278,11 @@ scraper_options:
 # pattern.
 process_by:
   admin_level: 3
-  admin_id_column: COUNTY
+  admin_id_column: TOWN
   admin_id_crosswalk:
     admin_level: 3
     admin_id_column: name
-    admin_recipe_id: "US_admin-census-2021_admin3"
+    recipe_id: "US-ME_parcel-megis-2026_admin3-crosswalk"
 
 columns:
   parcel_id_admin2: STATE_ID

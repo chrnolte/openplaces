@@ -57,6 +57,6 @@ parcel_id_local:
   kind: parcel
 
 # No process_by chunking: single-county source, one download = one admin
-# unit (matches US-NC-NE_parcel-nhcgov-2026).
+# unit (matches US-NC-NH_parcel-nhcgov-2026).
 save_to:
   data_dir: core

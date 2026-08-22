@@ -1,0 +1,87 @@
+# Recipe to import Japanese municipalities and their JIS X 0402 codes.
+#
+# Japan differs from Brazil and the Philippines: the spine holds no official
+# code for any of its 1,809 municipalities, so the code linkage has to be
+# established rather than merely used.
+#
+# The bridge is Wikidata property P429, which records the Ministry of
+# Internal Affairs and Communications code and is CC0. Matching the spine's
+# romanized names against Wikidata's English labels recovers 95.2% of units
+# and, more importantly, attaches the official JIS code to each. Once that
+# code is stored in `admin3_id_admin1`, every future join is exact and this
+# name-matching step never has to run again.
+#
+# Two details carried the match from 42% to 95.2%:
+#
+# The MIC's own list is kanji and katakana with no romanization, so it
+# cannot be matched against the spine's romanized names directly. Wikidata
+# supplies the romanized form and the code together.
+#
+# Wikidata's English labels often keep the administrative suffix
+# (`Chiryu-shi`, `Daito-shi`). Stripping it before matching took the rate
+# from 86.6% to 95.2%. The same suffixes are also stripped before a code is
+# derived, so Chiryu-shi yields CHI rather than CHS -- see ADMIN_TYPE_WORDS
+# in `openplaces.io.admin_codes.candidates`.
+#
+# The 86 unmatched units are largely municipalities dissolved in the Heisei
+# mergers whose spine entries predate the merge.
+
+description: >-
+  Japanese municipality names and JIS X 0402 codes (admin level 3).
+
+admin_id: JP
+
+entity:
+  entity_type: admin
+  source:
+    source_id: soumu
+    portal_url: "https://www.soumu.go.jp/denshijiti/code.html"
+    # The authority is the Ministry of Internal Affairs and Communications,
+    # which publishes the code list as a spreadsheet. Wikidata is used as
+    # the machine-readable bridge because it carries the romanization the
+    # ministry's own list does not, under CC0.
+    download_url: "https://query.wikidata.org/sparql?query=SELECT%20%3Fitem%20%3Fcode%20%3Fen%20WHERE%20%7B%3Fitem%20wdt%3AP429%20%3Fcode%20.%20OPTIONAL%7B%3Fitem%20rdfs%3Alabel%20%3Fen%20FILTER(lang(%3Fen)%3D%22en%22)%7D%7D"
+    license: "CC0 (Wikidata); JIS X 0402 codes are a public standard"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+# Wikidata content-negotiates: it ignores `format=csv` in the query
+# string and serves SPARQL XML regardless, so the format has to be
+# asked for by header. Without this the download lands as XML under a
+# .csv name and fails to parse thousands of lines in.
+download_headers:
+  Accept: "text/csv"
+
+uncompressed_file_name: "jp_municipality_codes.csv"
+
+columns:
+  admin3_id_admin1: code
+  name: en
+
+keep_unnamed_columns: False
+
+# The first two digits of the JIS code are the prefecture (JIS X 0401),
+# which is what links a municipality to its admin2 parent.
+transformations:
+  - output: admin2_id_admin1
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 2
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "admin-spine-2026_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True

@@ -1,0 +1,96 @@
+# Recipe to import Philippine cities and municipalities from the PSGC.
+#
+# The Philippine Standard Geographic Code is the country's official
+# classification, maintained quarterly by the Philippine Statistics
+# Authority. As with Brazil, this joins on the official code rather than on
+# names: the spine already carries the six-digit PSGC in `admin3_id_admin1`
+# for all 1,628 units, and 1,612 of them (99.0%) match exactly.
+#
+# Two things to know about the codes:
+#
+# The PSGC moved from six digits to ten. The nine-digit form the API returns
+# is the six-digit municipality code plus a three-digit barangay suffix, so
+# the first six characters are the historical code the spine holds.
+#
+# The spine stores the code without its leading zero (`60401` for Aklan's
+# Altavas, where the PSGC has `060401`). Matching therefore zero-pads to six
+# rather than stripping, which is why the join is 99.0% and not 32%.
+#
+# The 16 unmatched units are genuine reorganizations rather than bad data:
+# Davao Occidental was created out of Davao del Sur in 2013, and Maguindanao
+# was split into del Norte and del Sur in 2022 on entering BARMM.
+
+description: >-
+  Philippine city and municipality names and PSGC codes (admin level 3).
+
+admin_id: PH
+
+entity:
+  entity_type: admin
+  source:
+    source_id: psa
+    portal_url: "https://psa.gov.ph/classification/psgc"
+    # The PSA publishes the PSGC as a quarterly spreadsheet whose URL
+    # changes each release. This endpoint is a community-maintained
+    # machine-readable mirror of that publication, which is worth stating
+    # plainly: the authority is the PSA, the convenience is not theirs.
+    download_url: "https://psgc.gitlab.io/api/cities-municipalities/"
+    license: "PSGC is a public statistical classification published by the PSA"
+    terms_url: "https://psa.gov.ph/classification/psgc"
+    redistribution_restricted: false
+  version: 2026
+
+uncompressed_file_name: "cities-municipalities.json"
+
+columns:
+  admin3_id_admin1: code
+  name: name
+  admin2_id_admin1: provinceCode
+
+keep_unnamed_columns: False
+
+# Both codes need reshaping to meet the spine.
+#
+# The municipality code: the API returns the ten-digit PSGC as nine digits
+# and the spine carries the historical six-digit form, which is its first
+# six characters.
+#
+# The province code: the spine holds it four digits wide with any leading
+# zero dropped -- Aklan is `604`, not `0604` -- so the source is truncated
+# to four and stripped to match. Zero-padding the other way would be the
+# natural instinct and would match nothing.
+transformations:
+  - output: admin3_id_admin1
+    input: admin3_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 6
+  - output: admin2_id_admin1
+    input: admin2_id_admin1
+    type: string
+    operation: substring
+    args:
+      start: 0
+      end: 4
+  - output: admin2_id_admin1
+    input: admin2_id_admin1
+    type: string
+    operation: lstrip
+    args:
+      chars: "0"
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_admin1
+  admin_recipe_id: "admin-spine-2026_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True

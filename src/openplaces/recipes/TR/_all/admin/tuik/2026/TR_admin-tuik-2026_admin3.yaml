@@ -1,0 +1,69 @@
+# Recipe to import Turkish districts (ilce) at admin level 3.
+#
+# Turkey needed a typed query where Brazil and the Philippines did not, and
+# the reason is worth recording because it recurs.
+#
+# A Turkish district and the town at its centre almost always share a name,
+# and both link to the province. An untyped harvest therefore returns two
+# equally-named candidates under the same parent for most districts: 73% of
+# units came back ambiguous and only 13.8% resolved. Restricting to
+# `wd:Q1147395` (district of Turkey) removes the collision -- ambiguity
+# falls to 4.1%.
+#
+# That is the opposite of what type filtering did for Colombia, where it
+# scored worse than leaving it off. The rule is not "always type" or "never
+# type": type when the untyped pool is ambiguous, which it is wherever a
+# country names its districts after their central town.
+#
+# The second half of the fix was vocabulary. Wikidata labels these as
+# "Kas ilcesi", "Demre (ilce)" or "Ardanuc Ilcesi" while the spine carries
+# the bare name; `ilce`/`ilcesi` mean district. Stripping them took the
+# match from 32.6% to 78.4%.
+
+description: >-
+  Turkish district (ilce) names at admin level 3.
+
+admin_id: TR
+
+entity:
+  entity_type: admin
+  source:
+    source_id: tuik
+    portal_url: "https://www.tuik.gov.tr/"
+    # TUIK is the authority for Turkish administrative divisions. Wikidata
+    # is used as the machine-readable route because it exposes the district
+    # class directly, under CC0.
+    download_url: "https://query.wikidata.org/sparql?query=SELECT%20%3Fitem%20%3FitemLabel%20%3FparentIso%20WHERE%20%7B%3Fparent%20wdt%3AP300%20%3FparentIso%20.%20FILTER(STRSTARTS(%3FparentIso%2C%22TR-%22))%20%3Fitem%20wdt%3AP131%20%3Fparent%20.%20%3Fitem%20wdt%3AP31%20wd%3AQ1147395%20.%20SERVICE%20wikibase%3Alabel%7Bbd%3AserviceParam%20wikibase%3Alanguage%20%22tr%2Cen%22%7D%7D"
+    license: "CC0 (Wikidata)"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+# Wikidata content-negotiates: it ignores `format=csv` in the query
+# string and serves SPARQL XML regardless, so the format has to be
+# asked for by header. Without this the download lands as XML under a
+# .csv name and fails to parse thousands of lines in.
+download_headers:
+  Accept: "text/csv"
+
+uncompressed_file_name: "tr_districts.csv"
+
+columns:
+  name: itemLabel
+  admin2_id_iso: parentIso
+
+keep_unnamed_columns: False
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_iso
+  admin_recipe_id: "admin-spine-2026_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+    name_col: name
+
+sort_index: True

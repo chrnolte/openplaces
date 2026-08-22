@@ -1,0 +1,83 @@
+# Recipe: Douglas County, GA parcel roll.
+#
+# Source: the county's self-hosted ArcGIS Server
+# (`maps.douglascountyga.gov`), `CountyLayers/Parcels/MapServer` layer
+# 15.
+#
+# NOTE on why this one pages instead of downloading in bulk. Checked and
+# rejected: the service advertises only `Query,Map,Data` (no `Extract`);
+# no ArcGIS Hub open-data site exists for the county on any candidate
+# domain; and neither the county GIS page nor the map server root
+# exposes a zipped shapefile. `arcgis_rest_scraper` is the fallback, not
+# the first choice. Re-check for a Hub site before assuming this holds.
+#
+# NOTE: carries year built and heated area, which most of the
+# value-poor Georgia county sources do not.
+#
+# NOTE: `mavcurr` / `mavprev` (sampled 75,000 and 35,500) are the only
+# money columns and their basis is undocumented -- most likely a capped
+# or maximum assessed value rather than fair market or the Georgia 40%
+# assessed figure. They are deliberately left unmapped rather than
+# guessed into `value`, where they would silently sit alongside Fulton's
+# and Clayton's fair-market totals on a different basis. Resolve the
+# basis with the assessor before mapping.
+#
+# NOTE: `efyr_built` is the effective (post-renovation) year, distinct
+# from `yr_built`; only the actual year is mapped.
+
+description: >-
+  Douglas County, GA parcel roll (year built, heated area, owner, situs,
+  zoning, subdivision, acreage) from the county ArcGIS layer. No mapped
+  values.
+
+admin_id: US-GA-DO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: douglasco
+    # Checked 2026-08-20 through the ArcGIS item or service this recipe
+    # reads: neither licenseInfo nor copyrightText is set, so the endpoint
+    # openplaces uses states no terms. Speaks for that endpoint only, not
+    # for anything the county may publish on its website.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
+    portal_url: "https://www.celebratedouglascounty.com/261/GIS"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "douglas_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://maps.douglascountyga.gov/arcgis/rest/services/CountyLayers/Parcels/MapServer/15"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: ParcelNo
+  address: PropertyAddress
+  owner_name: Owner
+  owner_address: address1
+  owner_city: MailingAddressCity
+  owner_admin2_id_admin1: MailingAddressState
+  owner_postal_code: MailingAddressZipCode
+  year_built: yr_built
+  area_sqft: heatedarea
+  area_ac: totalacres
+  zoning_code: ZONING_GIS
+  land_use_group: FLU_GIS
+  subdivision: SUBDIVISION
+  tax_neighborhood_code: neigh
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - zoning_code
+  - land_use_group
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

@@ -2,7 +2,7 @@
 # United Kingdom (2024)
 #
 # Replaces GADM as GB's admin level-3 source of record. GADM's GB admin3
-# is missing names on 69 of its 181 rows (e.g. Greater London, GB-NA-X28)
+# is missing names on 69 of its 181 rows (e.g. Greater London)
 # -- not just the isolated case it first looked like -- so name-matching
 # ONS's 218 Counties/UAs against the existing GADM rows
 # (`admin3_id_index_from_local`, as used for US counties) would leave most
@@ -71,7 +71,7 @@ transformations:
 
 # Function that returns an indexed version of the input GeoDataFrame
 create_index:
-  function: "openplaces.io.admin.generate_admin_ids"
+  function: "openplaces.io.admin_codes.assign_admin_ids"
   args:
     new_admin_id_col: admin3_id
     parent_admin_id_col: admin2_id
