@@ -15,6 +15,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import shapely
+from pandas.api.types import is_datetime64_any_dtype
 
 from openplaces.core.attribute_registry import (
     get_agg_func,
@@ -23,7 +24,12 @@ from openplaces.core.attribute_registry import (
 )
 from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.diagnostics import find_recipes
-from openplaces.geo.ids import add_openlocationcode_index, get_geo_ids
+from openplaces.geo.ids import (
+    PARCEL_ID_ALNUM_KEYS,
+    add_openlocationcode_index,
+    add_parcel_id_alnum,
+    get_geo_ids,
+)
 from openplaces.geo.link import get_entity_link_path
 from openplaces.geo.polygon import (
     clean_polygons,
@@ -53,6 +59,10 @@ from openplaces.recipe import (
     resolve_attribute_name,
     source_id_from_recipe_id,
 )
+
+# The key link_by_id joins on unless a recipe names another. Auto-discovery
+# resolves its own key per match; anything else here is a caller override.
+DEFAULT_LINK_KEY = 'parcel_id_local'
 
 # Columns carried in spine-reference crosswalk tables (index levels excluded).
 _CROSSWALK_COLS = [
@@ -1753,6 +1763,55 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
     return state
 
 
+def _align_for_combine(existing, incoming):
+    """Make two columns safe to `combine_first`, or fall back to object.
+
+    `Series.combine_first` re-infers a dtype for the union, and on two date
+    columns that disagree about time zones it raises rather than choosing
+    one ("Tz-aware datetime.datetime cannot be converted to datetime64").
+    That is a real mix: one source stamps its sale dates UTC and another
+    writes naive local dates, and nothing upstream reconciles them. It
+    surfaced the first time a statewide layer's date columns reached a
+    county whose own source is naive.
+
+    Where both sides are datetimes, the tz-aware one is converted to UTC
+    and the naive one localized to it, so the union is comparable rather
+    than merely combinable. Anything else that cannot be reconciled falls
+    back to object dtype: losing a dtype is recoverable, losing a county's
+    whole harmonize run is not.
+    """
+    left_dt = is_datetime64_any_dtype(existing)
+    right_dt = is_datetime64_any_dtype(incoming)
+    if not (left_dt or right_dt):
+        return existing, incoming
+    if not (left_dt and right_dt):
+        # One side is datetimes and the other is not (commonly object
+        # holding datetimes, which is what `to_datetime` chokes on). There
+        # is no timezone to reconcile because one side has no dtype to
+        # reconcile it with, so hand both over as object and let
+        # combine_first do the only thing that cannot raise.
+        return existing.astype(object), incoming.astype(object)
+    left_tz = getattr(existing.dtype, 'tz', None)
+    right_tz = getattr(incoming.dtype, 'tz', None)
+    if (left_tz is None) == (right_tz is None):
+        return existing, incoming
+    try:
+        aware = 'UTC'
+        existing = (
+            existing.dt.tz_localize(aware)
+            if left_tz is None
+            else existing.dt.tz_convert(aware)
+        )
+        incoming = (
+            incoming.dt.tz_localize(aware)
+            if right_tz is None
+            else incoming.dt.tz_convert(aware)
+        )
+    except (AttributeError, TypeError, ValueError):
+        return existing.astype(object), incoming.astype(object)
+    return existing, incoming
+
+
 def _write_prioritized(
     spine: gpd.GeoDataFrame,
     name: str,
@@ -1792,15 +1851,94 @@ def _write_prioritized(
 
     before = spine[name].copy() if provenance_token else None
     coverage = new_vals.notna().mean() if len(new_vals) else 0.0
+    existing, incoming = _align_for_combine(spine[name], new_vals)
     if coverage >= majority_coverage:
-        spine[name] = new_vals.combine_first(spine[name])
+        spine[name] = incoming.combine_first(existing)
     else:
-        spine[name] = spine[name].combine_first(new_vals)
+        spine[name] = existing.combine_first(incoming)
 
     if provenance_token:
         after = spine[name]
         changed = after.notna() & (before.isna() | (before != after))
         _record_source(spine, name, changed, provenance_token)
+
+
+# A join key value carried by this many rows, or by this share of the
+# reference, is a placeholder rather than an identifier. Measured on the
+# 2026 coastal-Texas and eastern-NC sources: a healthy file's most common
+# `parcel_id_local` covers 5 rows (Kleberg) to 49 (Pender, a real
+# multi-unit building), while Brazoria's most common value is '0' on
+# 24,241 rows and its runner-up covers 2,443. The floor keeps a genuine
+# condominium's units together; the share scales with file size.
+DEGENERATE_KEY_MIN_ROWS = 100
+DEGENERATE_KEY_MAX_SHARE = 0.001
+
+
+def _placeholder_key_mask(key: pd.Series) -> pd.Series:
+    """Values that cannot be identifiers whatever their frequency.
+
+    Empty strings and all-zero codes ('0', '000', '000-00-0000'): assessors
+    write these where a parcel number is unknown, and every row carrying one
+    is a different parcel.
+    """
+    text = key.astype('string').str.strip()
+    blank = text.isna() | text.eq('')
+    zeros = text.str.replace(r'[^0-9A-Za-z]', '', regex=True).str.fullmatch('0+')
+    return blank | zeros.fillna(False)
+
+
+def _neutralize_degenerate_keys(
+    ref: pd.DataFrame,
+    ref_key: str,
+    recipe_id: str | None = None,
+) -> pd.DataFrame:
+    """Blank out join-key values that are placeholders, not identifiers.
+
+    A key shared by thousands of rows makes every mode of
+    :func:`link_by_id` wrong, and silently: 'attributes' picks one row
+    arbitrarily for all of them, 'count' reports the whole group's size on
+    each, and 'aggregate' **sums** their value columns and writes that sum
+    onto every one. Measured consequence before this guard: a quarter-acre
+    Brazoria County lot carrying a $7.5 billion `total_value`, and 152
+    eastern-NC footprints holding 62% of the region's entire delivered
+    parcel value.
+
+    Setting the key to missing (rather than dropping the rows) lets each
+    mode's existing `dropna(subset=[ref_key])` skip them, so an unmatched
+    parcel simply gains no reference attributes -- the same outcome as a
+    parcel the reference never mentioned.
+
+    Returns *ref* unchanged when nothing is degenerate.
+    """
+    if ref_key not in ref.columns or ref.empty:
+        return ref
+    key = ref[ref_key]
+    bad = _placeholder_key_mask(key)
+
+    counts = key.astype('string').value_counts()
+    cutoff = max(DEGENERATE_KEY_MIN_ROWS, DEGENERATE_KEY_MAX_SHARE * len(ref))
+    overused = set(counts[counts > cutoff].index)
+    if overused:
+        bad = bad | key.astype('string').isin(overused)
+
+    # Only rows that actually carried a value are a change worth reporting;
+    # an already-missing key was never going to join.
+    bad = bad & key.notna()
+    if not bad.any():
+        return ref
+    ref = ref.copy()
+    ref.loc[bad, ref_key] = pd.NA
+    where = f' in {recipe_id}' if recipe_id else ''
+    sample = ', '.join(repr(v) for v in sorted(overused)[:3])
+    warnings.warn(
+        f'link_by_id: {int(bad.sum()):,} of {len(ref):,} reference rows'
+        f'{where} carry a degenerate {ref_key!r} (a placeholder, or a '
+        f'value shared by more than {cutoff:,.0f} rows'
+        + (f'; e.g. {sample}' if overused else '')
+        + '). They are left unjoined rather than aggregated together.',
+        stacklevel=2,
+    )
+    return ref
 
 
 def _warn_if_duplicate_key(
@@ -1861,8 +1999,8 @@ def link_by_id(
     auto_discover: bool = False,
     entity_type: str = 'parcel',
     mode: str = 'attributes',
-    spine_key: str = 'parcel_id_local',
-    ref_key: str = 'parcel_id_local',
+    spine_key: str = DEFAULT_LINK_KEY,
+    ref_key: str = DEFAULT_LINK_KEY,
     columns: list[str] | dict[str, str] | None = None,
     aggregation_function: dict[str, str] | None = None,
     suffix: str | None = None,
@@ -2066,12 +2204,18 @@ def link_by_id(
                 **(aggregation_function or {}),
                 **(match['aggregation_function'] or {}),
             }
+            # Auto-discovery normally picks the key per match. An
+            # explicit key from the caller overrides it, which is what
+            # lets a second pass re-run the same discovery on the
+            # punctuation-free fallback key.
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
                 mode='aggregate',
-                spine_key=match['key'],
-                ref_key=match['key'],
+                spine_key=(
+                    spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
+                ),
+                ref_key=(ref_key if ref_key != DEFAULT_LINK_KEY else match['key']),
                 columns=match_columns,
                 aggregation_function=match_aggregation_function or None,
                 suffix=suffix,
@@ -2092,6 +2236,17 @@ def link_by_id(
     if state.spine is None:
         warnings.warn('link_by_id: spine is None; skipping.')
         return state
+    # The punctuation-free fallback key is derived on demand rather than
+    # required from ingest. It is a pure function of id columns both sides
+    # already carry, so deriving it here makes the fallback work against
+    # everything already on disk instead of forcing a re-ingest of every
+    # parcel source in the country.
+    if spine_key in PARCEL_ID_ALNUM_KEYS:
+        # Recomputed, never inherited. resolve_spine would otherwise carry
+        # a copy from whichever source won the geometry, which for exactly
+        # the counties this fallback exists to serve is the source that
+        # has no usable id -- Pender arrived with 49 of 55,101 filled.
+        state.spine = add_parcel_id_alnum(state.spine, key=spine_key)
     if spine_key not in state.spine.columns:
         warnings.warn(
             f'link_by_id: spine has no {spine_key!r}; skipping {recipe_id}. '
@@ -2116,16 +2271,31 @@ def link_by_id(
         # restrict it here so a per-county aggregate isn't silently pooled
         # across the whole state.
         ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
+    if ref is not None and ref_key in PARCEL_ID_ALNUM_KEYS:
+        ref = add_parcel_id_alnum(ref, key=ref_key)
     if ref is None or ref_key not in ref.columns:
-        warnings.warn(
-            f'link_by_id: reference {recipe_id} has no {ref_key!r}; skipping.'
-        )
+        if ref_key in PARCEL_ID_ALNUM_KEYS:
+            # A derived fallback key simply cannot be built for a source
+            # that carries none of its input columns -- a county roll has
+            # no statewide PIN column, and that is the normal case rather
+            # than a misconfigured recipe. Silent, or every extra pass
+            # warns once per source in every county.
+            if state.verbose:
+                print(f'  link_by_id: {recipe_id} cannot derive {ref_key!r}; skipping.')
+        else:
+            warnings.warn(
+                f'link_by_id: reference {recipe_id} has no {ref_key!r}; skipping.'
+            )
         return state
     if ref_sort_by and ref_sort_by in ref.columns:
         ref = ref.sort_values(ref_sort_by, ascending=ref_sort_ascending, kind='stable')
 
     spine = state.spine
     skey = spine[spine_key].astype('string')
+    # Before any mode reads the key: a placeholder shared by thousands of
+    # rows is not an identifier, and every mode below would silently treat
+    # it as one (see _neutralize_degenerate_keys).
+    ref = _neutralize_degenerate_keys(ref, ref_key, recipe_id)
     rkey = ref[ref_key].astype('string')
     spine_entity = state.recipe.get('entity')
     spine_entity_type = (

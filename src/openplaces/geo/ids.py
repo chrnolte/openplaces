@@ -1062,3 +1062,75 @@ def compute_parcel_id_local(
         return simple
 
     return raw.where(raw.ne(''), pd.NA)
+
+
+PARCEL_ID_MATCH_CANDIDATES = (
+    'parcel_id_assessor',
+    'parcel_id_admin3',
+    'parcel_id_local',
+)
+
+
+PARCEL_ID_ALNUM = 'parcel_id_alnum'
+PARCEL_ID_ALNUM_PIN = 'parcel_id_alnum_pin'
+
+# Which raw columns each fallback key is built from. Two keys, because one
+# coalesce cannot serve both sides of every join: a county roll's
+# `parcel_id_assessor` *is* the PIN, while a statewide layer's may be a
+# different id system entirely rather than a punctuation variant of it --
+# NC OneMap's `altparno` is a tax account number ('0105060') in four
+# eastern counties and zero-filled in three others, with the PIN under
+# `parno` in all seven. Trying both keys in turn is what lets one rule
+# serve both shapes; collapsing them into a single coalesce silently
+# picks the wrong column on whichever side has two.
+PARCEL_ID_ALNUM_KEYS = {
+    PARCEL_ID_ALNUM: PARCEL_ID_MATCH_CANDIDATES,
+    PARCEL_ID_ALNUM_PIN: ('parcel_id_admin3',),
+}
+
+
+def add_parcel_id_alnum(df, key=PARCEL_ID_ALNUM):
+    """Add ``parcel_id_alnum``, a format-agnostic parcel-id match key.
+
+    ``parcel_id_local`` is the right key when both sides of a join
+    standardize the same way, and the wrong one the moment they do not.
+    Two sources describing the same parcel can disagree for reasons that
+    have nothing to do with the parcel: they may start from differently
+    punctuated ids (``4071-68-1844`` against ``4071681844``), and
+    :func:`~openplaces.geo.ids.compute_parcel_id_local`'s duplicate guard
+    may legitimately pick a different conversion on each side -- deleting
+    separators for one and inserting pipes for the other, so the two keys
+    can never meet. Measured on Northampton NC: 20,132 parcels share an id
+    and **zero** share a ``parcel_id_local``.
+
+    This key throws away exactly the information the two sides disagree
+    about -- punctuation and case -- and nothing else, so it is symmetric
+    by construction. It is deliberately *lossier* than
+    ``parcel_id_local``, which is why it is a fallback and never the
+    primary: collapsing ``1-23`` and ``12-3`` onto ``123`` is the risk
+    ``parcel_id_local``'s guard exists to avoid. Use it to catch the rows
+    the standardized key missed, not to replace it.
+
+    The source column is coalesced per row over
+    :data:`PARCEL_ID_MATCH_CANDIDATES`, skipping values that carry no
+    information (blank, or all zeros -- a zero-filled id column is a
+    placeholder, not an id). That is what lets one rule serve both a
+    county roll keyed on its own assessor id and a statewide layer whose
+    assessor column is zero-filled.
+    """
+    candidates = PARCEL_ID_ALNUM_KEYS.get(key, PARCEL_ID_MATCH_CANDIDATES)
+    present = [c for c in candidates if c in df.columns]
+    if not present:
+        return df
+    out = pd.Series(pd.NA, index=df.index, dtype='string')
+    for column in present:
+        candidate = (
+            df[column]
+            .astype('string')
+            .str.replace(r'[^A-Za-z0-9]', '', regex=True)
+            .str.upper()
+        )
+        usable = candidate.notna() & candidate.ne('') & candidate.str.strip('0').ne('')
+        out = out.where(out.notna(), candidate.where(usable))
+    df[key] = out
+    return df

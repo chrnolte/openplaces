@@ -22,7 +22,7 @@ from openplaces.core.constants import (
 )
 from openplaces.core.schema import AdminId
 from openplaces.geo import get_crs
-from openplaces.geo.ids import get_geo_ids
+from openplaces.geo.ids import add_parcel_id_alnum, get_geo_ids
 from openplaces.geo.overlay import overlay_admin_ids
 from openplaces.geo.polygon import (
     clean_polygons,
@@ -1131,8 +1131,13 @@ class TableIngester:
             if scope_across_chunks and admin_id is not None:
                 key = str(admin_id) + '|' + key
             df['parcel_id_local'] = key
-        return df
+        return add_parcel_id_alnum(df)
 
+    # Raw id columns the fallback match key may be built from, best first. The
+    # order matters: a source's own assessor id is the most specific, but a
+    # statewide layer often leaves it blank or zero-filled while carrying the
+    # real county PIN under parcel_id_admin3 (NC OneMap's altparno/parno pair is
+    # the measured case).
     # Save
 
     def _save_recipe_data(self, gdf):
