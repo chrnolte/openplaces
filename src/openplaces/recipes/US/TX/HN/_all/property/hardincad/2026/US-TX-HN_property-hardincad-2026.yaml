@@ -96,7 +96,14 @@ columns:
   postal_code: situs_zip
   legal_description: legal_desc
   area_ac: legal_acreage
-  market_value: market_value
+  # PACS `market_value` is the appraisal district's land-plus-structure
+  # total (Texas appraises at market value by statute, Tax Code 23.01),
+  # and this roll publishes no land/improvement split at all -- so it is
+  # `total_value`, the column the curated parcel product and the CHEER
+  # apportionment read. Mapped to `market_value` before, which nothing
+  # downstream consumes, leaving this county with no value evidence.
+  # Deliberately not `appraised_val`, the homestead-capped figure.
+  total_value: market_value
   tax_year: prop_val_yr
 
 columns_to_categorical:

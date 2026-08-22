@@ -76,7 +76,16 @@ columns:
   tax_year: TAX_YEAR
   land_value: LAND_VALUE
   improvement_value: IMP_VALUE
-  market_value: MKT_VALUE
+  # MKT_VALUE is the parcel's land-plus-structure total, not a separate
+  # market appraisal standing beside an assessed one: Texas appraises at
+  # market value by statute (Tax Code 23.01), and the data agrees --
+  # MKT_VALUE equals LAND_VALUE + IMP_VALUE to the dollar on 93.6% of
+  # Kleberg and 100% of Victoria parcels (median ratio 1.000). So it is
+  # `total_value`, the column the curated parcel product and the CHEER
+  # apportionment actually read. Mapped to `market_value` before, which
+  # no code and no downstream recipe consumes, leaving every Texas
+  # county with an empty total.
+  total_value: MKT_VALUE
   source_date: DATE_ACQ
 
 # The source ships every attribute as text, numbers included. Cast the
@@ -91,7 +100,7 @@ transformation_patterns:
     apply_to_columns:
       - land_value
       - improvement_value
-      - market_value
+      - total_value
       - tax_year
       - legal_area
       - year_built

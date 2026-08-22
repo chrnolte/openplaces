@@ -102,7 +102,11 @@ columns:
   area_ac: LANDSIZEAC
   land_value: LANDVALUE
   improvement_value: IMPVALUE
-  market_value: TOTALVALUE
+  # The source names this column TOTALVALUE, and it holds exactly that:
+  # LANDVALUE + IMPVALUE to the dollar on 100% of Fort Bend parcels. It
+  # is `total_value`, not a separate market appraisal -- mapped to
+  # `market_value` before, which nothing downstream reads.
+  total_value: TOTALVALUE
   address: SITUS
   address_number: SITUSSNO
   address_street: SITUSSNM
