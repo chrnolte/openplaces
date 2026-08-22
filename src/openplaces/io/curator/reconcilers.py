@@ -21,6 +21,17 @@ def _source_token(col: str, default: str | None = None) -> str:
     provenance sidecar. A column with no provenance suffix at all (e.g. a
     bare canonical name like ``structure_value``) falls back to *default*
     when given, else to *col* itself.
+
+    The ``_imputed`` branch is a **coarse, name-based** guess, and it
+    over-marks: a column such as ``land_value_imputed`` is a passthrough of
+    the source's real value on most rows and an estimate only on the rest
+    (see :func:`~openplaces.io.curator.land_value.impute_land_value`), so
+    labeling every row from the column's *name* marks assessed values as
+    imputed. Where the column carries a real per-row ``{col}_source``
+    sidecar, callers write that over this token afterwards
+    (:func:`~openplaces.io.curator.provenance.record_sources`) and the guess
+    never survives. No shipping recipe currently reaches this branch; prefer
+    propagating the sidecar to relying on it.
     """
     from openplaces.io.curator.formatters import _split_source
 
@@ -243,9 +254,24 @@ def select_value_source_by_admin_unit(
     # parcel one.
     use_other = coverage.fillna(0.0) < coverage_threshold
 
-    curated[output] = curated[other_column].where(use_other, curated[parcel_column])
+    from openplaces.io.curator.provenance import (
+        record_source,
+        record_sources,
+        source_column,
+    )
 
-    from openplaces.io.curator.provenance import record_source
+    # Snapshot both inputs' own provenance before writing any of it.
+    # Under the common `output: structure_value, parcel_column:
+    # structure_value` wiring the output shares the parcel column's
+    # sidecar, so writing the flat token first would overwrite the very
+    # thing that has to be carried forward.
+    incoming = {
+        column: curated[source_column(column)].astype(object).copy()
+        for column in (parcel_column, other_column)
+        if source_column(column) in curated.columns
+    }
+
+    curated[output] = curated[other_column].where(use_other, curated[parcel_column])
 
     record_source(
         curated, output, ~use_other, _source_token(parcel_column, default='parcel')
@@ -253,6 +279,15 @@ def select_value_source_by_admin_unit(
     record_source(
         curated, output, use_other, _source_token(other_column, default='nsi')
     )
+    # An input that arrived with per-row provenance keeps it: the
+    # parcel lane's value is apportioned from a parcel figure that was
+    # itself imputed on some rows and observed on others, which the flat
+    # token above cannot express. That token stays the fallback for an
+    # input carrying no provenance of its own.
+    for column, mask in ((parcel_column, ~use_other), (other_column, use_other)):
+        if column in incoming:
+            record_sources(curated, output, incoming[column], mask=mask)
+
     state.curated = curated
 
     if state.verbose:

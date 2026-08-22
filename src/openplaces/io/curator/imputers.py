@@ -162,6 +162,21 @@ def impute_from_group_statistic(
         mapped = mapped.where(~has_override, keys.map(corrections))
 
     curated[output] = mapped
+
+    # Every value this step writes is a cohort statistic or a
+    # hand-entered correction -- none of it read off the row's own
+    # record -- so the whole column is marked derived. The override
+    # token stays distinguishable from the learned one: they fail in
+    # different ways, and a reader chasing a wrong group mapping needs
+    # to know which produced it.
+    from openplaces.io.curator.provenance import record_source
+
+    record_source(curated, output, mapped.notna(), 'group_statistic', imputed=True)
+    if overrides:
+        record_source(
+            curated, output, has_override & mapped.notna(), 'override', imputed=True
+        )
+
     state.curated = curated
 
     if state.verbose:

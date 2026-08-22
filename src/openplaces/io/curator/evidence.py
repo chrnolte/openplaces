@@ -95,6 +95,65 @@ def link_curated_entity(
     return state
 
 
+def _apportioned_sources(pairs, ref, ref_key, ref_cols, spine_id_col, index):
+    """Map each entity's apportioned value back to its references' provenance.
+
+    Apportionment used to drop provenance entirely: an entity received a
+    share of a reference's dollars with no record of where they came from,
+    which silently ended the chain for every ``{column}_source`` sidecar
+    downstream of it. This rebuilds it from the same ``pairs`` the
+    apportionment ran on.
+
+    Two rules, and one covers both apportionment styles. The token is the
+    **dominant** reference's -- exact for a
+    :data:`~openplaces.io.harmonizer.apportion.WHOLE_VALUE_COLUMNS` column,
+    which goes to the principal entity from that one reference, and the
+    best available label for a proportional split, which is a weighted sum
+    over several. The derived marker is then applied if **any** contributing
+    reference's value was derived, because a sum containing one estimated
+    dollar is itself an estimate. Erring toward marking is the safe
+    direction: a value wrongly called original is a false claim, a value
+    wrongly called derived is only a lost guarantee.
+
+    Returns
+    -------
+    dict of {ref_column: Series}
+        Per-entity token for every *ref_cols* entry that has a sidecar on
+        *ref*, aligned to *index*. Columns with no sidecar are absent.
+    """
+    from openplaces.io.curator.provenance import is_imputed, mark_imputed, source_column
+
+    sides = {col: source_column(col) for col in ref_cols}
+    sides = {col: side for col, side in sides.items() if side in ref.columns}
+    if not sides or not len(pairs):
+        return {}
+
+    lookup = (
+        ref.dropna(subset=[ref_key])
+        .drop_duplicates(ref_key)
+        .set_index(ref_key)[list(sides.values())]
+    )
+    dominant = (
+        pairs.sort_values('area_intersection_m2', ascending=False)
+        .drop_duplicates(spine_id_col)
+        .set_index(spine_id_col)['parcel_id']
+    )
+
+    out = {}
+    for col, side in sides.items():
+        tokens = dominant.map(lookup[side]).reindex(index).astype(object)
+        contributed = is_imputed(pairs['parcel_id'].map(lookup[side]))
+        any_imputed = (
+            contributed.groupby(pairs[spine_id_col].to_numpy())
+            .any()
+            .reindex(index)
+            .fillna(False)
+            .astype(bool)
+        )
+        out[col] = tokens.where(~any_imputed, tokens.map(mark_imputed))
+    return out
+
+
 @_register('apportion_curated_values')
 def apportion_curated_values(
     state: CurateState,
@@ -316,11 +375,18 @@ def apportion_curated_values(
         equal_area_ref_ids=equal_area_ref_ids,
     )
 
+    from openplaces.io.curator.provenance import record_sources
+
+    sources = _apportioned_sources(pairs, ref, ref_key, present, id_col, curated.index)
     for ref_col, entity_col in columns.items():
         attributed = (
             result[ref_col] if ref_col in result.columns else pd.Series(dtype='float64')
         )
         curated[entity_col] = attributed.reindex(curated.index)
+        if ref_col in sources:
+            record_sources(
+                curated, entity_col, sources[ref_col], mask=curated[entity_col].notna()
+            )
 
     if state.verbose:
         n_linked = curated.index.isin(set(pairs[id_col])).sum()
