@@ -159,3 +159,14 @@ notebooks/sandbox.ipynb
 .snakemake/
 # Sphinx autoapi output, regenerated on every docs build
 docs/4_api/
+
+# Shovels permit connectors, held out of git pending Boston University
+# clearance. Shovels' terms forbid distributing "the Data (or any portion
+# thereof)" and creating "derivative works ... including any datasets ...
+# based on ... the Data". Their field NAMES are published in their own
+# public data dictionary, but the category vocabularies are not: the
+# occupancy-type crosswalk was 195 rows of `property_type_detail` values
+# enumerated from the licensed Data. See AGENTS.md, "Private-licence
+# connectors". Keep these files locally; never commit them.
+*shovels*
+*Shovels*
