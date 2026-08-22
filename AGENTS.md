@@ -533,6 +533,14 @@ Steps are organized by the nature of the transformation:
   (`evaluate_indicator` predicates; `score_decisions` enumerated votes;
   `vote_dynamic_values` open-vocabulary votes). Pure functions over a
   DataFrame — no thresholds, class names, or geography of their own.
+  Both report provenance, and both report *evidence* rather than the class:
+  `vote_dynamic_values` joins the labels that agreed (`nsi/fema/parcel`),
+  and `score_decisions` joins the `label` of each indicator that fired for
+  the winning decision (`no_improvement_value+block_context`), falling back
+  to the decision's declared `source` only where it labeled nothing. Labels
+  are opt-in per recipe; unlabeled decisions keep their old behavior, which
+  is why a `{col}_source` can still read as a synonym of the value beside
+  it until its indicators are labeled.
 - `reconcilers.py` — resolve conflicts between competing source columns
   (`reconcile_values` priority selection; `resolve_occupancy` parcel-vs-NSI;
   `resolve_by_vote`, the single voting seam every curate classification
@@ -541,7 +549,24 @@ Steps are organized by the nature of the transformation:
   `impute_from_group_statistic`, `impute_occupancy_type`)
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
-  pre-thresholded booleans; every cutoff lives in the vote decisions)
+  pre-thresholded booleans; every cutoff lives in the vote decisions).
+  `derive_group_class_share` adds the context an entity cannot supply about
+  itself: the share of its group (any id column it already carries, e.g.
+  `census_block_id`) whose evidence reads as a given class, excluding the
+  row itself. It is a **groupby, deliberately not a spatial operation** — no
+  buffering, no boundary union, no nearest-neighbor search — both because
+  geometric neighbor/"community" detection is a patented technique shape in
+  this domain (see the patent-risk section) and because aggregating within a
+  published administrative unit is older, plainer practice. It exists
+  because `flag_manufactured_home_communities` counts per *parcel* and so
+  cannot see a subdivided community where every home has its own lot. Feed
+  it only evidence a downstream vote has not written, or the class
+  reinforces itself. **No shipping recipe votes on it**: measured
+  2026-08-21, a block share computed from the assessor's own text
+  correlates +0.577 with the keyword rule that reads the same column, and
+  the points it uniquely moves are 0.294 precise against a 0.425 base rate.
+  It is kept as evidence, and as the mechanism
+  `notebooks/05_curate/mmh_separability.py` measures with.
 - `formatters.py` — structural/type-only output shaping (`cast_categoricals`,
   `order_columns`)
 - `filters.py` — (stub) remove records that do not belong in the canonical
