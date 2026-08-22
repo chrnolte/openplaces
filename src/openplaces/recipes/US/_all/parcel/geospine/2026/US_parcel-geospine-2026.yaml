@@ -148,6 +148,50 @@ pipeline:
       - land_value
       - year_built
 
+  # Second pass over the same discovered assessor tables, on the
+  # punctuation-free key, for the rows the standardized one could not
+  # reach. Two sources describing one parcel can hold the same id and
+  # still never meet on `parcel_id_local`: they may punctuate it
+  # differently, and compute_parcel_id_local's duplicate guard may pick a
+  # different conversion on each side. NC OneMap is the measured case --
+  # it carries the county PIN in `parno` while leaving `altparno` zero
+  # filled, so seven eastern counties took **164,983 parcels of land-use
+  # text plus 24,929 more as codes** from a layer already on disk and
+  # matched 117 of them. On the punctuation-free key the same seven match
+  # 189,566 of 195,245 (97.1%).
+  #
+  # Second, not first, and this ordering is the safety: the key is
+  # deliberately lossier (it cannot tell `1-23` from `12-3`), so it only
+  # ever fills what the standardized key left behind.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: parcel
+    spine_key: parcel_id_alnum
+    ref_key: parcel_id_alnum
+    track_provenance:
+      - use_group
+      - improvement_value
+      - land_value
+      - year_built
+
+  # Third and last pass, for the sources whose own `parcel_id_assessor` is
+  # not a punctuation variant of the county PIN but a different id system
+  # altogether -- NC OneMap's `altparno` is a tax account number in four
+  # eastern counties, so the coalesced key above picks it and matches
+  # nothing. Pairing the spine's key against the reference's PIN column
+  # specifically recovers Bladen, Gates, Northampton and Pasquotank
+  # (~78,000 parcels) that the previous pass left behind.
+  - step: link_by_id
+    auto_discover: true
+    entity_type: parcel
+    spine_key: parcel_id_alnum
+    ref_key: parcel_id_alnum_pin
+    track_provenance:
+      - use_group
+      - improvement_value
+      - land_value
+      - year_built
+
   # Attach every auto-discovered standalone `property`-entity source (e.g. a
   # county tax roll keyed by parcel_id_local, genuinely 1:n against parcels
   # -- multiple owner/unit rows per parcel) as aggregated evidence: sum for
