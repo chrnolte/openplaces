@@ -12,6 +12,37 @@ import pytest
 from openplaces.io.admin_codes import rebuild
 
 
+@pytest.fixture(autouse=True)
+def _never_touch_real_data(monkeypatch):
+    """No test may reach the real population phases.
+
+    Learned by doing it: one test called ``rebuild_spine(apply=True)``
+    without ``skip_population``, so phase 1 ran real raster zonal-stats
+    over 218,651 units and rewrote all three committed
+    ``population-admin*.csv`` files. Killing it mid-run left them
+    partial. ``skip_population`` is an argument a test can forget; this
+    fixture is not.
+    """
+    for name in (
+        'build_population',
+        'fill_population_gaps',
+        'repair_zero_weights',
+        'resolve_stale_references',
+    ):
+        monkeypatch.setattr(
+            rebuild.build,
+            name,
+            lambda *a, **k: pytest.fail('a test reached a real spine-writing phase'),
+            raising=False,
+        )
+    monkeypatch.setattr(
+        rebuild,
+        'apply_population_overrides',
+        lambda *a, **k: pytest.fail('a test reached the real overrides'),
+        raising=False,
+    )
+
+
 def test_the_override_table_parses_and_declares_known_strategies():
     frame = rebuild.load_overrides()
     assert len(frame) > 0
