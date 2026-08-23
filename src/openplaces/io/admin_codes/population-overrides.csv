@@ -1,0 +1,12 @@
+recipe_id,scope,level,join_column,key,note
+US_admin-census-2025_admin4,US-CT,3,,state_plus_subdivision,Connecticut renumbered its counties into planning regions in 2022 so the whole GEOID no longer joins
+US_admin-census-2025_admin4,US-MA,3,,state_plus_subdivision,New England towns govern; the global admin geometry has counties only
+US_admin-census-2025_admin4,US-ME,3,,state_plus_subdivision,New England towns govern; the global admin geometry has counties only
+US_admin-census-2025_admin4,US-NH,3,,state_plus_subdivision,New England towns govern; the global admin geometry has counties only
+US_admin-census-2025_admin4,US-RI,3,,state_plus_subdivision,New England towns govern; the global admin geometry has counties only
+US_admin-census-2025_admin4,US-VT,3,,state_plus_subdivision,New England towns govern; the global admin geometry has counties only
+CO_admin-dane-2025_admin3,CO,3,,,DANE supplies municipal weights where the global geometry has none
+GB_admin-ons-2024_admin4,GB,4,admin4_id_admin1,,
+DE_admin-gisco-2024_admin4,DE,4,admin4_id_admin1,,
+FR_admin-gisco-2024_admin4,FR,4,admin4_id_admin1,,
+US_admin-census-2025_admin4,US,4,admin4_id_admin1,,
