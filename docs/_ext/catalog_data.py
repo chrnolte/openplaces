@@ -439,7 +439,7 @@ def _ancestors_inclusive(admin_id: str) -> list[str]:
     Returns
     -------
     list of str
-        E.g. ``'US-NC-WO'`` -> ``['US', 'US-NC', 'US-NC-WO']``;
+        E.g. ``'US-NC-WI'`` -> ``['US', 'US-NC', 'US-NC-WI']``;
         ``'Global'`` -> ``['Global']``.
     """
     if admin_id == 'Global':
@@ -453,7 +453,7 @@ def all_admin_ids() -> frozenset[str]:
     """Every admin id with its own generated catalog page.
 
     This is every admin id carrying a recipe of its own, plus every
-    ancestor implied by it (e.g. a recipe scoped to 'US-NC-WO' also
+    ancestor implied by it (e.g. a recipe scoped to 'US-NC-WI' also
     implies pages for 'US' and 'US-NC'). 'Global' is excluded -- it is
     handled as a page of its own everywhere this is used, the way
     `summarize` treats it as a `Coverage` row outside the country list.

@@ -29,7 +29,7 @@ from openplaces.recipe import get_recipe_by_id
 
 SPINE = 'US_footprint-spine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
-COUNTY = 'US-NC-BS'
+COUNTY = 'US-NC-BR'
 
 
 @pytest.fixture

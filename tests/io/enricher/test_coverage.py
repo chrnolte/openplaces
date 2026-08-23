@@ -27,19 +27,19 @@ def evidence_path(tmp_path):
     save_parquet(
         evidence,
         path,
-        file_metadata={'openplaces:partitions': json.dumps(['US-NC-BS-SH'])},
+        file_metadata={'openplaces:partitions': json.dumps(['US-NC-BR-SH'])},
     )
     return path
 
 
 def test_missing_file_is_not_covered(enricher, tmp_path):
-    assert not enricher._is_covered(tmp_path / 'missing.parquet', ['US-NC-BS-SH'])
+    assert not enricher._is_covered(tmp_path / 'missing.parquet', ['US-NC-BR-SH'])
 
 
 def test_town_coverage_footer(enricher, evidence_path):
-    assert enricher._is_covered(evidence_path, ['US-NC-BS-SH'])
-    assert not enricher._is_covered(evidence_path, ['US-NC-BS-SM'])
-    assert not enricher._is_covered(evidence_path, ['US-NC-BS-SH', 'US-NC-BS-SM'])
+    assert enricher._is_covered(evidence_path, ['US-NC-BR-SH'])
+    assert not enricher._is_covered(evidence_path, ['US-NC-BR-SM'])
+    assert not enricher._is_covered(evidence_path, ['US-NC-BR-SH', 'US-NC-BR-SM'])
     # A full process-level request must re-run over a partial file.
     assert not enricher._is_covered(evidence_path, None)
 
@@ -47,13 +47,13 @@ def test_town_coverage_footer(enricher, evidence_path):
 def test_legacy_file_without_footer_counts_as_complete(enricher, tmp_path):
     path = tmp_path / 'legacy.parquet'
     save_parquet(pd.DataFrame({'x': [1]}, index=['a']), path)
-    assert enricher._is_covered(path, ['US-NC-BS-SM'])
+    assert enricher._is_covered(path, ['US-NC-BR-SM'])
     assert enricher._is_covered(path, None)
 
 
 def test_merged_coverage_unions_towns(enricher, evidence_path):
-    coverage = enricher._merged_coverage(evidence_path, ['US-NC-BS-SM'])
-    assert coverage == ['US-NC-BS-SH', 'US-NC-BS-SM']
+    coverage = enricher._merged_coverage(evidence_path, ['US-NC-BR-SM'])
+    assert coverage == ['US-NC-BR-SH', 'US-NC-BR-SM']
 
 
 def test_merge_evidence_updates_only_attempted_rows(evidence_path):

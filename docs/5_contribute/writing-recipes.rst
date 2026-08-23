@@ -57,14 +57,14 @@ Dataset description and source
    :input:`US`
       United States
 
-   :input:`US-MA`
-      Massachusetts, U.S.
+   :input:`US-CA`
+      California, U.S.
 
-   :input:`US-MA-MI`
-      Middlesex county, Massachusetts, United States.
+   :input:`US-CA-LA`
+      Los Angeles county, California, United States.
 
-   :input:`US-MA-MI-SO`
-      City of Somerville, Middlesex county, Massachusetts, United States.
+   :input:`US-CA-LA-CO`
+      City of Compton, Los Angeles county, California, United States.
 
 .. attribute:: entity
 
@@ -596,7 +596,7 @@ Columns
         kind: parcel                 # parcel | tax (selects the default conversion)
         admin_id_column: admin4_id   # optional: per-row admin unit (e.g., MA towns)
         instruction:                 # optional source-supplied override
-          "US-NC-NE": {pattern: ..., conv: ...}
+          "US-NC-NH": {pattern: ..., conv: ...}
 
    The conversion is admin-unit-specific: a recipe ``instruction`` if given,
    else the bundled default table (``geo/parcel_id_links.csv``, keyed by

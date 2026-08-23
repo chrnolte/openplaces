@@ -25,7 +25,7 @@ from openplaces.viz.qgis_map.resolver import (
 PARCEL_RECIPE = 'US_parcel-openplaces-2026'
 FOOTPRINT_RECIPE = 'US_footprint-cheer-2026'
 HARMONIZE_RECIPE = 'US_footprint-spine-2026'
-COUNTY = 'US-NC-CE'
+COUNTY = 'US-NC-AR'
 
 
 class TestResolveLayersStageValidation:

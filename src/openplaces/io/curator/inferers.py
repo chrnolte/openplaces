@@ -1213,7 +1213,7 @@ def derive_admin_attribute(
 
     The motivating use is a **stable external identifier**. openplaces'
     own ``admin3_id`` is internal and can be re-minted: a re-mint may hand
-    ``US-NC-CD`` to a different county than it named before, so an id
+    ``US-NC-CM`` to a different county than it named before, so an id
     written into a shipped file is only as durable as the mint behind it.
     A federal county FIPS code is not openplaces' to change, so an
     inventory that carries one stays joinable to Census, FEMA and every

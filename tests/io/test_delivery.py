@@ -40,7 +40,7 @@ def _recipe():
         'share': {
             'columns': CANONICAL,
             'point_columns': POINT_EXTRA,
-            'delivery': {'admin_level': 2, 'admin_ids': ['US-NC-AA', 'US-NC-BB']},
+            'delivery': {'admin_level': 2, 'admin_ids': ['US-NC-AL', 'US-NC-BB']},
         },
     }
 
@@ -71,9 +71,9 @@ def _county(footprint_ids, *, admin3_id, year_built=None, extra=None):
 
 @pytest.fixture
 def two_counties(mock_data_root):
-    _county(['a', 'b'], admin3_id='US-NC-AA')
+    _county(['a', 'b'], admin3_id='US-NC-AL')
     _county(['c', 'd'], admin3_id='US-NC-BB')
-    return ['US-NC-AA', 'US-NC-BB']
+    return ['US-NC-AL', 'US-NC-BB']
 
 
 def _bundle(admin_ids):
@@ -152,7 +152,7 @@ def test_bundle_covers_every_curated_column(two_counties):
         'geometry',
     }
     curated = set(
-        read_parquet(get_output_path(_recipe(), 'US-NC-AA'), geom=True).columns
+        read_parquet(get_output_path(_recipe(), 'US-NC-AL'), geom=True).columns
     )
     assert not curated - delivered
 
@@ -160,10 +160,10 @@ def test_bundle_covers_every_curated_column(two_counties):
 def test_shared_id_keeps_the_better_covered_copy(mock_data_root):
     # 'shared' straddles the county line and is curated by both counties;
     # only US-NC-BB has a year_built for it.
-    _county(['a', 'shared'], admin3_id='US-NC-AA', year_built=[1990, None])
+    _county(['a', 'shared'], admin3_id='US-NC-AL', year_built=[1990, None])
     _county(['shared', 'd'], admin3_id='US-NC-BB', year_built=[1974, 1990])
 
-    paths = _bundle(['US-NC-AA', 'US-NC-BB'])
+    paths = _bundle(['US-NC-AL', 'US-NC-BB'])
     canonical = read_parquet(paths['canonical'])
     evidence = read_parquet(paths['evidence'])
 
@@ -175,7 +175,7 @@ def test_shared_id_keeps_the_better_covered_copy(mock_data_root):
 
 
 def test_county_missing_a_declared_column_still_contributes(mock_data_root):
-    _county(['a', 'b'], admin3_id='US-NC-AA')
+    _county(['a', 'b'], admin3_id='US-NC-AL')
     frame = _county(['c'], admin3_id='US-NC-BB')
     save_parquet(
         frame.drop(columns='occupancy_type'),
@@ -183,7 +183,7 @@ def test_county_missing_a_declared_column_still_contributes(mock_data_root):
         combined=True,
     )
 
-    canonical = read_parquet(_bundle(['US-NC-AA', 'US-NC-BB'])['canonical'])
+    canonical = read_parquet(_bundle(['US-NC-AL', 'US-NC-BB'])['canonical'])
 
     assert list(canonical.index) == ['a', 'b', 'c']
     assert pd.isna(canonical.loc['c', 'occupancy_type'])
@@ -205,7 +205,7 @@ def test_no_curated_output_raises(mock_data_root):
 def test_recipe_declares_the_whole_delivery(two_counties):
     """A fully declared recipe delivers with no arguments but itself."""
     assert str(delivery_admin_id(_recipe())) == 'US-NC'
-    assert delivery_members(_recipe()) == ['US-NC-AA', 'US-NC-BB']
+    assert delivery_members(_recipe()) == ['US-NC-AL', 'US-NC-BB']
 
     paths = export_delivery(_recipe())
 
@@ -215,7 +215,7 @@ def test_recipe_declares_the_whole_delivery(two_counties):
 
 def test_declared_members_win_over_the_admin_hierarchy(mock_data_root):
     """A county outside the declared region must not slip into the bundle."""
-    _county(['a'], admin3_id='US-NC-AA')
+    _county(['a'], admin3_id='US-NC-AL')
     _county(['b'], admin3_id='US-NC-BB')
     _county(['z'], admin3_id='US-NC-ZZ')
 

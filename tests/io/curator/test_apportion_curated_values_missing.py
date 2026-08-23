@@ -17,7 +17,7 @@ SPINE = 'US_footprint-spine-2026'
 # spine's entity_recipe chain).
 GEOSPINE = 'US_footprint-geospine-2026'
 PARCEL_CURATE = 'US_parcel-openplaces-2026'
-COUNTY = 'US-FL-LK'
+COUNTY = 'US-FL-LA'
 
 
 @pytest.fixture

@@ -108,7 +108,7 @@ def basic_specs(tmp_path):
             role='output',
             entity_type='footprint',
             source='cheer',
-            display_name='US-NC-CE_footprint-cheer-2026',
+            display_name='US-NC-AR_footprint-cheer-2026',
             depth=0,
         ),
         _spec(
@@ -116,7 +116,7 @@ def basic_specs(tmp_path):
             role='output',
             entity_type='parcel',
             source='openplaces',
-            display_name='US-NC-CE_parcel-openplaces-2026',
+            display_name='US-NC-AR_parcel-openplaces-2026',
             combined=True,
             depth=0,
         ),
@@ -125,7 +125,7 @@ def basic_specs(tmp_path):
             role='input',
             entity_type='footprint',
             source='obm',
-            display_name='US-NC-CE_footprint-obm-2025',
+            display_name='US-NC-AR_footprint-obm-2025',
             depth=2,
         ),
         _spec(
@@ -191,7 +191,7 @@ class TestDefaultOutputPath:
         output_path = generator_module._default_output_path(
             recipe, AdminId('US', 'NC', 'CE')
         )
-        assert output_path.name == 'US-NC-CE_footprint-cheer-2026_map.qgz'
+        assert output_path.name == 'US-NC-AR_footprint-cheer-2026_map.qgz'
         assert output_path == (
             mock_data_root
             / 'data'
@@ -203,7 +203,7 @@ class TestDefaultOutputPath:
             / 'footprint'
             / 'cheer'
             / '2026'
-            / 'US-NC-CE_footprint-cheer-2026_map.qgz'
+            / 'US-NC-AR_footprint-cheer-2026_map.qgz'
         )
 
 
@@ -426,7 +426,7 @@ class TestStyleVariants:
             role='output',
             entity_type='footprint',
             source='cheer',
-            display_name='US-NC-CE_footprint-cheer-2026',
+            display_name='US-NC-AR_footprint-cheer-2026',
         )
         with pytest.raises(ValueError, match='does_not_exist_in_template'):
             _run(tmp_path, [spec])
@@ -498,7 +498,7 @@ class TestUnstyledFallback:
             role='input',
             entity_type='transaction',
             source='wholly-unregistered',
-            display_name='US-NC-CE_transaction-unregistered-2025',
+            display_name='US-NC-AR_transaction-unregistered-2025',
             depth=3,
         )
         with pytest.warns(UserWarning, match='No style registered'):
@@ -534,7 +534,7 @@ class TestProjectVariables:
         values = [v.text for v in root.find('properties/Variables/variableValues')]
         pairs = dict(zip(names, values, strict=True))
         assert pairs['recipe_id'] == 'test-recipe'
-        assert pairs['admin_id'] == 'US-NC-CE'
+        assert pairs['admin_id'] == 'US-NC-AR'
         assert 'generated_at' in pairs
 
     def test_title_set_when_given(self, tmp_path, basic_specs):
@@ -722,7 +722,7 @@ def _dynamic_cat_spec(dir_path: Path, *, values: list) -> LayerSpec:
         role='output',
         entity_type='footprint',
         source='dynamiccat',
-        display_name='US-NC-CE_footprint-dynamiccat-test',
+        display_name='US-NC-AR_footprint-dynamiccat-test',
         combined=True,
     )
     pd.DataFrame({'conflict_field': values}).to_parquet(spec.attr_path)
@@ -799,7 +799,7 @@ class TestDynamicCategories:
             role='output',
             entity_type='footprint',
             source='dynamiccat',
-            display_name='US-NC-CE_footprint-dynamiccat-nodata',
+            display_name='US-NC-AR_footprint-dynamiccat-nodata',
             combined=True,
         )
         pd.DataFrame({'other_column': ['x', 'y']}).to_parquet(spec.attr_path)

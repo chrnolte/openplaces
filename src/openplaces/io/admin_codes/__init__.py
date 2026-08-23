@@ -1,6 +1,6 @@
 """Short, recognizable codes for administrative-unit identifiers.
 
-An admin id such as US-MA-MI-SO is read by people navigating directories and
+An admin id such as US-MA-SOM is read by people navigating directories and
 filenames, so each segment has to be recognizable from the unit's name at a
 glance. This package generates those segments in two steps:
 

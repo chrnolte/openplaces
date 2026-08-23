@@ -26,7 +26,7 @@ def _state(admin_id, spine=None, verbose=False):
 
 
 def test_discover_link_sources_ma_property_layer_uses_layer_key():
-    state = _state('US-MA-SOE')
+    state = _state('US-MA-SOM')
     matches = links._discover_link_sources(state, 'parcel')
 
     primary = next(m for m in matches if m['layer'] is None)
@@ -51,9 +51,9 @@ def test_discover_link_sources_nc_finds_geometry_and_standalone_roll():
 
 
 def test_discover_link_sources_no_roll_for_uncovered_county():
-    # Brunswick (US-NC-BS) has no local roll recipe; only the state geometry
+    # Brunswick (US-NC-BR) has no local roll recipe; only the state geometry
     # (which contributes no value columns) should be discovered, no crash.
-    state = _state('US-NC-BS')
+    state = _state('US-NC-BR')
     matches = links._discover_link_sources(state, 'parcel')
     assert all(m['recipe_id'] == 'US-NC_parcel-nconemap-2025' for m in matches)
 
@@ -84,7 +84,7 @@ def test_find_admin_scoped_recipe_ids_keeps_newest_version(monkeypatch):
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-MA-SOE')
+    state = _state('US-MA-SOM')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
     assert ids == ['US-MA_parcel-massgis-2025']  # newest version only, US-CA excluded
@@ -97,18 +97,18 @@ def test_find_admin_scoped_recipe_ids_keeps_distinct_filename_suffixes(monkeypat
     # not competing versions of the same source.
     rows = pd.DataFrame(
         [
-            _recipe_row('US-TX-VI', 'victoriacad', '2026'),
-            _recipe_row('US-TX-VI', 'victoriacad', '2026', 'improvement-detail'),
+            _recipe_row('US-TX-VIC', 'victoriacad', '2026'),
+            _recipe_row('US-TX-VIC', 'victoriacad', '2026', 'improvement-detail'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-TX-VI')
+    state = _state('US-TX-VIC')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
     assert ids == [
-        'US-TX-VI_parcel-victoriacad-2026',
-        'US-TX-VI_parcel-victoriacad-2026_improvement-detail',
+        'US-TX-VIC_parcel-victoriacad-2026',
+        'US-TX-VIC_parcel-victoriacad-2026_improvement-detail',
     ]
 
 
@@ -176,7 +176,7 @@ def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-MA-SOE')
+    state = _state('US-MA-SOM')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
     assert ids == ['US-MA_parcel-massgis-2025']
@@ -360,7 +360,7 @@ def test_link_by_id_auto_discover_skips_self_join_keep_columns(monkeypatch):
         },
         index=pd.Index(['mh-park'], name='parcel_id'),
     )
-    state = _state('US-NC-CE', spine=spine)
+    state = _state('US-NC-AR', spine=spine)
     state.metadata['spine_source_recipe_ids'] = {'nconemap'}
     state.metadata['spine_keep_columns'] = {'use_subgroup'}
 
@@ -417,7 +417,7 @@ def test_link_by_id_auto_discover_skips_self_join_for_year_built(monkeypatch):
         },
         index=pd.Index(['old-house'], name='parcel_id'),
     )
-    state = _state('US-NC-CE', spine=spine)
+    state = _state('US-NC-AR', spine=spine)
     state.metadata['spine_source_recipe_ids'] = {'nconemap'}
     state.metadata['spine_keep_columns'] = {'year_built'}
 
@@ -517,7 +517,7 @@ def test_link_by_id_auto_discover_no_geometry_source_falls_back_to_column_drop(
         },
         index=pd.Index(['old-house'], name='parcel_id'),
     )
-    state = _state('US-NC-CE', spine=spine)
+    state = _state('US-NC-AR', spine=spine)
     state.metadata['spine_source_recipe_ids'] = {'nconemap'}
     state.metadata['spine_keep_columns'] = {'year_built'}
 
@@ -566,7 +566,7 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
     spine = pd.DataFrame(
         {'parcel_id_local': ['A', 'B'], 'parcel_id_admin2': ['A', 'C']}
     )
-    state = _state('US-MA-SOE', spine=spine)
+    state = _state('US-MA-SOM', spine=spine)
     state = links.link_by_id(state, auto_discover=True, entity_type='parcel')
 
     assert state.spine['land_value'].tolist() == [10.0, 20.0]
@@ -623,7 +623,7 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
     )
 
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B']})
-    state = _state('US-TX-VI', spine=spine)
+    state = _state('US-TX-VIC', spine=spine)
     state = links.link_by_id(
         state,
         auto_discover=True,

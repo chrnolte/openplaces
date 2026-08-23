@@ -16,8 +16,6 @@ The same counts print from the command line::
 """
 
 from catalog_data import (
-    coverage_detail,
-    doc_path,
     headline_lines,
     summarize,
     table_lines,
@@ -42,29 +40,6 @@ class RecipeState(Directive):
     def run(self) -> list[nodes.Node]:
         state = summarize()
         lines = headline_lines(state)
-
-        coverage_rows = []
-        for item in state.coverage:
-            path = doc_path(item.admin_id).as_posix()
-            coverage_rows.append(
-                [
-                    f':doc:`{item.name} </recipes/{path}>`',
-                    str(item.n_recipes),
-                    coverage_detail(item),
-                ]
-            )
-
-        lines += ['Coverage', '~' * 8, '']
-        lines += table_lines(
-            'Recipes by geography',
-            ['Geography', 'Recipes', 'Covered in detail'],
-            coverage_rows,
-        )
-        lines += [
-            'A country row counts every recipe written for it, including those',
-            'scoped to one of its subdivisions. Global recipes apply anywhere.',
-            '',
-        ]
 
         lines += ['Pipeline stages', '~' * 15, '']
         lines += table_lines(

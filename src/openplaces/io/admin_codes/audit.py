@@ -10,7 +10,7 @@ assignment is a global optimum per sibling group, so without pinning,
 adding one unit can move a code from one existing unit to another.
 
 :func:`resolve_identifier` is the only safe way to point an old reference
-at a live unit. Identifiers get *recycled*: US-NC-HE named Hyde and now
+at a live unit. Identifiers get *recycled*: US-NC-HD named Hyde and now
 names Hertford. So an id may not be treated as a stable string, and an id
 that looks live may still be the wrong unit. Resolution goes through the
 name, scoped to the unit's own resolved parent, and refuses to guess when

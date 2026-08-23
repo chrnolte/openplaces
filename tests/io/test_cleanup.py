@@ -18,7 +18,7 @@ FOOTPRINT_SPINE = 'US_footprint-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
 FOOTPRINT_GEOSPINE = 'US_footprint-geospine-2026'
 PARCEL_GEOSPINE = 'US_parcel-geospine-2026'
-COUNTY = 'US-NC-BS'
+COUNTY = 'US-NC-BR'
 # Every recipe in the cheer tree that consumes NSI directly: under the
 # geometry/attribute split, the geospine halves link it and the attribute
 # halves attribute it, so a valid NSI receipt must record all four.
@@ -287,18 +287,18 @@ def test_delete_image_caches_dry_run_filters_without_deleting(
 
     caches = _image_cache_frame(
         [
-            ['US-NC-BS-SH', 'googlesatellite', 'z20', 10, 12.5, selected],
-            ['US-NC-BS-SM', 'googlesatellite', 'z19', 5, 6.0, other_version],
+            ['US-NC-BR-SH', 'googlesatellite', 'z20', 10, 12.5, selected],
+            ['US-NC-BR-SM', 'googlesatellite', 'z19', 5, 6.0, other_version],
             ['US-MA-MI', 'googlesatellite', 'z20', 3, 2.0, other_admin],
         ]
     )
     monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
 
     result = opio.delete_image_caches(
-        'US-NC-BS', source='googlesatellite', version='z20'
+        'US-NC-BR', source='googlesatellite', version='z20'
     )
 
-    assert result['admin_id'].tolist() == ['US-NC-BS-SH']
+    assert result['admin_id'].tolist() == ['US-NC-BR-SH']
     assert selected.exists()
     output = capsys.readouterr().out
     assert 'Dry run: would delete 1 image cache(s), 12.5 MB total.' in output
@@ -313,13 +313,13 @@ def test_delete_image_caches_removes_matching_directories(monkeypatch, tmp_path)
 
     caches = _image_cache_frame(
         [
-            ['US-NC-BS-SH', 'googlesatellite', 'z20', 1, 1.0, first],
-            ['US-NC-BS-SM', 'googlesatellite', 'z20', 1, 2.0, second],
+            ['US-NC-BR-SH', 'googlesatellite', 'z20', 1, 1.0, first],
+            ['US-NC-BR-SM', 'googlesatellite', 'z20', 1, 2.0, second],
         ]
     )
     monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
 
-    result = opio.delete_image_caches('US-NC-BS', dry_run=False)
+    result = opio.delete_image_caches('US-NC-BR', dry_run=False)
 
     assert len(result) == 2
     assert not first.exists()

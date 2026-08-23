@@ -12,7 +12,7 @@ from openplaces.io.delivery import (
 from openplaces.recipe import get_output_path
 
 TARGET = 'US_footprint-cheer-2026'
-COUNTY = 'US-NC-BS'
+COUNTY = 'US-NC-BR'
 # The recipe ships several regions; these tests exercise the Carolina one,
 # which COUNTY belongs to.
 REGION = 'cheer-eastern-nc'

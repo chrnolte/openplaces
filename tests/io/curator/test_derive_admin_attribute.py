@@ -1,7 +1,7 @@
 """Tests for `derive_admin_attribute`.
 
 Its motivating use is a stable external identifier: `admin3_id` is
-openplaces' own and can be re-minted (a re-mint may hand `US-NC-CD` to a
+openplaces' own and can be re-minted (a re-mint may hand `US-NC-CM` to a
 different county than it named before), while a federal FIPS code is not
 ours to change.
 """
@@ -38,12 +38,12 @@ def test_the_attribute_is_copied_onto_every_entity(monkeypatch):
         monkeypatch,
         pd.DataFrame(
             {
-                'admin3_id': ['US-NC-CD', 'US-NC-PD'],
+                'admin3_id': ['US-NC-CM', 'US-NC-PE'],
                 'admin3_id_admin1': ['37029', '37141'],
             }
         ),
     )
-    frame = pd.DataFrame({'admin3_id': ['US-NC-CD', 'US-NC-CD', 'US-NC-PD']})
+    frame = pd.DataFrame({'admin3_id': ['US-NC-CM', 'US-NC-CM', 'US-NC-PE']})
     out = derive_admin_attribute(
         _state(frame), attribute='admin3_id_admin1', output='county_fips'
     ).curated
@@ -53,7 +53,7 @@ def test_the_attribute_is_copied_onto_every_entity(monkeypatch):
 def test_an_unknown_admin_id_gets_no_value(monkeypatch):
     _spine(
         monkeypatch,
-        pd.DataFrame({'admin3_id': ['US-NC-CD'], 'admin3_id_admin1': ['37029']}),
+        pd.DataFrame({'admin3_id': ['US-NC-CM'], 'admin3_id_admin1': ['37029']}),
     )
     out = derive_admin_attribute(
         _state(pd.DataFrame({'admin3_id': ['US-NC-ZZ']})),
@@ -74,9 +74,9 @@ def test_a_missing_admin_id_column_is_a_no_op(monkeypatch):
 
 
 def test_a_spine_without_the_attribute_is_a_no_op(monkeypatch):
-    _spine(monkeypatch, pd.DataFrame({'admin3_id': ['US-NC-CD'], 'name': ['Camden']}))
+    _spine(monkeypatch, pd.DataFrame({'admin3_id': ['US-NC-CM'], 'name': ['Camden']}))
     out = derive_admin_attribute(
-        _state(pd.DataFrame({'admin3_id': ['US-NC-CD']})),
+        _state(pd.DataFrame({'admin3_id': ['US-NC-CM']})),
         attribute='admin3_id_admin1',
         output='county_fips',
     ).curated

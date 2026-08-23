@@ -27,7 +27,7 @@ def _state():
         index=pd.Index(['F1'], name='footprint_id'),
     )
     return HarmonizeState(
-        recipe={}, admin_id='US-NC-CE', verbose=False, timer=None, spine=spine
+        recipe={}, admin_id='US-NC-AR', verbose=False, timer=None, spine=spine
     )
 
 

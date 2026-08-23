@@ -107,7 +107,7 @@ def test_resolve_spine_keep_columns_carries_value_fields(monkeypatch):
     )
     monkeypatch.setattr(spine_mod, 'get_entities', lambda *a, **k: parcels)
     state = HarmonizeState(
-        recipe={'admin_id': 'US-NC-CE'}, admin_id='US-NC-CE', verbose=False, timer=None
+        recipe={'admin_id': 'US-NC-AR'}, admin_id='US-NC-AR', verbose=False, timer=None
     )
     state = spine_mod.resolve_spine(
         state,
@@ -156,7 +156,7 @@ def test_resolve_spine_falls_back_when_highest_priority_source_has_no_geometry(
 
     monkeypatch.setattr(spine_mod, 'get_entities', _get_entities)
     state = HarmonizeState(
-        recipe={'admin_id': 'US-NC-CN'}, admin_id='US-NC-CN', verbose=False, timer=None
+        recipe={'admin_id': 'US-NC-CR'}, admin_id='US-NC-CR', verbose=False, timer=None
     )
     state = spine_mod.resolve_spine(
         state,

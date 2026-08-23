@@ -28,7 +28,7 @@ from openplaces.recipe import get_recipe_by_id
 
 SPINE = 'US_footprint-spine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
-COUNTY = 'US-NC-BS'
+COUNTY = 'US-NC-BR'
 
 # Every parcel below is 1 ha, so its improvement value doubles as its per-ha
 # density and the thresholds can be read straight off the dollar figures.

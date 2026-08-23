@@ -11,7 +11,7 @@ from openplaces.io.harmonizer.addresses import reconcile_postal_code
 def _state(df: pd.DataFrame, save_statistics: bool = False) -> HarmonizeState:
     return HarmonizeState(
         recipe={'entity': {'entity_type': 'footprint'}},
-        admin_id='US-NC-CE',
+        admin_id='US-NC-AR',
         verbose=False,
         timer=None,
         spine=df,
@@ -68,7 +68,7 @@ def test_no_source_columns_present_is_noop():
 def test_spine_none_is_noop():
     state = reconcile_postal_code(
         HarmonizeState(
-            recipe={}, admin_id='US-NC-CE', verbose=False, timer=None, spine=None
+            recipe={}, admin_id='US-NC-AR', verbose=False, timer=None, spine=None
         ),
         sources=['address_zip'],
     )

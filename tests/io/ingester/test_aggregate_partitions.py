@@ -244,7 +244,7 @@ def external_to_tmp(tmp_path, monkeypatch):
     return tmp_path
 
 
-TOWN = 'US-MA-SOE'
+TOWN = 'US-MA-SOM'
 CKS = ['2021-01_Deed', '2021-02_Deed']
 
 

@@ -29,7 +29,7 @@ class TestIdentifiers:
 
     def test_records_the_rule_behind_each_code(self):
         out = assign(frame(['US-NY'], ['Albany']))
-        assert out.loc['US-NY-AL', 'admin3_id_source'] == 'name'
+        assert out.loc['US-NY-LG', 'admin3_id_source'] == 'name'
 
     def test_keeps_the_input_columns(self):
         out = assign(frame(['US-MA'], ['Middlesex'], fips=['25017']))
@@ -142,14 +142,14 @@ class TestPinning:
     # need units the spine actually names.
     def test_a_unit_the_spine_names_keeps_its_code(self):
         out = self.pinned(['US-NY'], ['Albany'])
-        assert out.loc['US-NY-AL', 'admin3_id_source'] == 'pinned'
+        assert out.loc['US-NY-LG', 'admin3_id_source'] == 'pinned'
 
     def test_pinning_overrides_an_explicit_length(self):
         # The point of a pin is that the recorded id wins, so a caller
         # asking for three characters still gets the two-character code
         # the spine already issued.
         out = self.pinned(['US-NY'], ['Albany'], lengths=(3,))
-        assert out.index[0] == 'US-NY-AL'
+        assert out.index[0] == 'US-NY-LG'
 
     def test_a_new_sibling_does_not_move_existing_codes(self):
         names = ['Albany', 'Erie', 'Monroe']

@@ -35,7 +35,7 @@ def _spine(rows: dict[str, tuple]) -> gpd.GeoDataFrame:
     )
 
 
-def _state(spine, admin_id='US-NC-CE'):
+def _state(spine, admin_id='US-NC-AR'):
     return HarmonizeState(
         recipe={'entity': {'entity_type': 'parcel'}},
         admin_id=admin_id,

@@ -2,7 +2,7 @@ from openplaces.recipe import find_entity_recipe_id, get_recipe_by_id
 
 
 def test_find_entity_recipe_follows_pipeline_stage_order():
-    admin_id = 'US-NC-BS'
+    admin_id = 'US-NC-BR'
 
     assert find_entity_recipe_id(admin_id, 'footprint') == 'US_footprint-cheer-2026'
     assert (

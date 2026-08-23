@@ -485,7 +485,7 @@ def _townhome_shaped_frame(**overrides) -> pd.DataFrame:
 
 
 def test_condominium_wins_over_townhome_on_zero_land_value_morphology():
-    # Regression test for US-MA-SOE parcel 48e681aa651e741b736033de:
+    # Regression test for US-MA-SOM parcel 48e681aa651e741b736033de:
     # Townhome-shaped morphology (footprint shared across parcels) but
     # land_value is 0 with a real improvement_value -- the Massachusetts
     # condominium signature. Townhome's value_share_at_least indicator fails

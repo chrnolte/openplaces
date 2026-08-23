@@ -14,7 +14,7 @@ from openplaces.io.harmonizer import HarmonizeState
 def _state(spine):
     return HarmonizeState(
         recipe={'entity': {'entity_type': 'parcel'}},
-        admin_id='US-NC-CE',
+        admin_id='US-NC-AR',
         verbose=False,
         timer=None,
         spine=spine,

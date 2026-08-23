@@ -81,7 +81,7 @@ def _link_state():
         index=pd.Index(['F1'], name='footprint_id'),
     )
     return HarmonizeState(
-        recipe={}, admin_id='US-NC-CE', verbose=False, timer=None, spine=spine
+        recipe={}, admin_id='US-NC-AR', verbose=False, timer=None, spine=spine
     )
 
 
@@ -160,7 +160,7 @@ class _Entity:
 def _attr_state(spine):
     return HarmonizeState(
         recipe={'entity': _Entity('footprint')},
-        admin_id='US-NC-CE',
+        admin_id='US-NC-AR',
         verbose=False,
         timer=None,
         spine=spine,

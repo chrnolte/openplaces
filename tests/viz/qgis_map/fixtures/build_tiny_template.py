@@ -6,7 +6,7 @@ mirroring the real structure `openplaces.viz.qgis_map.generator` expects:
 `<vectorjoins>/<join>`, a `<layer-tree-group>` tree, a legacy
 `<legend>/<legendgroup>/<legendlayer>` tree, and a `<mapcanvas>` with
 `<extent>`/`<destinationsrs>`. Structure was reverse-engineered from a real
-QGIS 3.44 project file (`US-NC-CE.qgz`) authored via
+QGIS 3.44 project file (`US-NC-AR.qgz`) authored via
 `qgis/load_joined_parquet.py`; kept intentionally minimal (most metadata
 subtrees real QGIS writes are omitted) since the generator only reads/writes
 the elements documented in its own module docstring.

@@ -90,7 +90,7 @@ def test_cascade_default_unchanged(monkeypatch):
 
 
 def test_consensus_outvotes_lone_higher_ranked_source(monkeypatch):
-    # The reported US-NC-CE case: fema Multi-Family (1.0) vs parcel + overture
+    # The reported US-NC-AR case: fema Multi-Family (1.0) vs parcel + overture
     # Single-Family (1.5) -> the consensus wins and the source names both voters.
     monkeypatch.setattr(occ_mod, 'load_ruleset', lambda s, r: CLASS_MAP)
     curated = _frame(

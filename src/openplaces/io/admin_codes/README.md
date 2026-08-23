@@ -1,7 +1,7 @@
 # `admin_codes` — how administrative identifiers are made
 
 An `admin_id` is a hierarchical identifier for one administrative unit:
-`US-NC-ME` is Mecklenburg County, `US-AK-BE-AN` is Aniak. It is the
+`US-NC-MO` is Mecklenburg County, `US-AK-BE-AN` is Aniak. It is the
 primary key of the admin-unit table and the join key of anything
 aggregated across admin units, and it also appears in directory paths,
 filenames and column names — so it has to be both recognizable and short.
@@ -87,8 +87,8 @@ build.resolve_stale_references(apply=True)
 Each of these was a bug before it was a rule.
 
 **Resolve geometry rows by name, never by "the id is live".** The admin
-geometry carries more than one identifier vintage at once. Its `JP-TK`
-row names Tokyo; the live `JP-TK` is Tokushima. Trusting the id credits
+geometry carries more than one identifier vintage at once. Its `JP-TO`
+row names Tokyo; the live `JP-TO` is Tokushima. Trusting the id credits
 Tokyo's 13.7 million people to a town of 720,000.
 
 **Name and type cannot separate a level change from a status change.**

@@ -22,11 +22,11 @@ def test_dispatch_and_orchestrated_env(monkeypatch, no_orchestrated_env):
         calls['env'] = os.environ.get('OPENPLACES_ORCHESTRATED')
 
     monkeypatch.setattr(harmonizer_mod, 'harmonize', _fake_harmonize)
-    run_stage.main(['harmonize', 'US_footprint-spine-2026', 'US-NC-BS', '--verbose'])
+    run_stage.main(['harmonize', 'US_footprint-spine-2026', 'US-NC-BR', '--verbose'])
 
     assert calls['recipe_id'] == 'US_footprint-spine-2026'
     assert calls['kwargs'] == {
-        'admin_ids': ['US-NC-BS'],
+        'admin_ids': ['US-NC-BR'],
         'reprocess': False,
         'verbose': True,
     }
@@ -38,7 +38,7 @@ def test_no_orchestrated_flag(monkeypatch, no_orchestrated_env):
 
     monkeypatch.setattr(harmonizer_mod, 'harmonize', lambda *a, **k: None)
     run_stage.main(
-        ['harmonize', 'US_footprint-spine-2026', 'US-NC-BS', '--no-orchestrated']
+        ['harmonize', 'US_footprint-spine-2026', 'US-NC-BR', '--no-orchestrated']
     )
     assert os.environ.get('OPENPLACES_ORCHESTRATED') is None
 
@@ -56,7 +56,7 @@ def test_enrich_forwards_entity_recipe(monkeypatch, no_orchestrated_env):
         [
             'enrich',
             'US_footprint_built-n-stories-brails-2026',
-            'US-NC-BS',
+            'US-NC-BR',
             '--entity-recipe-id',
             'US_footprint-spine-2026',
         ]

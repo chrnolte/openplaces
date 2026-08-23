@@ -5,7 +5,7 @@ from openplaces.recipe import get_output_path
 
 SPINE = 'US_footprint-spine-2026'
 PARCEL = 'US-NC_parcel-nconemap-2025'
-ADMIN = 'US-NC-BS'
+ADMIN = 'US-NC-BR'
 
 
 def test_argument_order_invariance():
@@ -45,5 +45,5 @@ def test_admin_id_truncated_to_owner_save_level():
     # admin_id must resolve to the county's link path.
     admin = 'US_admin-census-2021_admin3'
     town = get_entity_link_path(PARCEL, admin, admin_id='US-NC-BS-SP')
-    county = get_entity_link_path(PARCEL, admin, admin_id='US-NC-BS')
+    county = get_entity_link_path(PARCEL, admin, admin_id='US-NC-BR')
     assert town == county

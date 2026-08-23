@@ -20,7 +20,7 @@ PARCEL_RECIPE = 'US_parcel-openplaces-2026'
 FOOTPRINT_RECIPE = (
     'US_footprint-cheer-2026'  # combined save_to; matches fixture 'test-output'
 )
-COUNTY = 'US-NC-CE'
+COUNTY = 'US-NC-AR'
 
 
 @pytest.fixture

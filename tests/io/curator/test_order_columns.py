@@ -15,7 +15,7 @@ def _state(columns):
     return CurateState(
         recipe={'recipe_id': 'US_footprint-cheer-2026'},
         entity_recipe={},
-        admin_id=AdminId('US-NC-BS'),
+        admin_id=AdminId('US-NC-BR'),
         verbose=False,
         timer=None,
         curated=curated,

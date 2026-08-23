@@ -57,7 +57,7 @@ def _assert_valid_ids(result, parent_prefix):
 def test_generate_admin_ids_english_frame():
     df = pd.DataFrame(
         {
-            'admin3_id': ['US-NC-CE'] * 4,
+            'admin3_id': ['US-NC-AR'] * 4,
             'name': ['North East', 'Springfield', 'Wilmington', 'Wrightsville'],
         }
     )
@@ -120,7 +120,7 @@ def test_admin3_index_from_local_uses_country_id(monkeypatch):
             )
         calls['get_admin_countries'].append(country_id)
         gdf = pd.DataFrame(
-            {'name': ['Medellin']}, index=pd.Index(['CO-AN-ME'], name='admin3_id')
+            {'name': ['Medellin']}, index=pd.Index(['CO-AN-MED'], name='admin3_id')
         )
         return gdf
 
@@ -143,7 +143,7 @@ def test_admin3_index_from_local_uses_country_id(monkeypatch):
     assert 'CO' in calls['get_recipe_countries']
     assert calls['get_admin_countries'] == ['CO']  # never hardcoded 'US'
     assert result.index.name == 'admin3_id'
-    assert result.loc['CO-AN-ME', 'name'] == 'Medellin'
+    assert result.loc['CO-AN-MED', 'name'] == 'Medellin'
 
 
 if __name__ == '__main__':

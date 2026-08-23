@@ -44,8 +44,8 @@ A compliant notebook contains exactly the following structure of markdown and co
 - **Code cell**:
   ```python
   ARGS_TEST = (
-      "--recipe_id US-NC-NE_parcel-nhcgov-2026 "
-      "--admin_ids US-NC-NE "
+      "--recipe_id US-NC-NH_parcel-nhcgov-2026 "
+      "--admin_ids US-NC-NH "
       "--reprocess "
       "--verbose "
   )
@@ -193,7 +193,7 @@ You can use the structure below as a starting template for any new processing pi
    "source": [
     "ARGS_TEST = (\n",
     "    '--recipe_id US_theme-source-2026 '\n",
-    "    '--admin_ids US-NC-BS '\n",
+    "    '--admin_ids US-NC-BR '\n",
     "    '--reprocess '\n",
     "    '--verbose '\n",
     ")\n",

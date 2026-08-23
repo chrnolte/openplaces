@@ -98,7 +98,7 @@ To simplify data integration and exchange, ``openplaces`` ships with a globally 
 - :input:`US` -> United States
 - :input:`CO-AN` -> Antioquia, a department of Colombia
 - :input:`US-CA-LA` -> Los Angeles county in California, U.S.
-- :input:`US-MA-MI-CA` -> The city of Cambridge in Middlesex county, Massachusetts, U.S.
+- :input:`US-CA-LA-CO` -> The city of Compton in Los Angeles county, California, U.S.
 
 These identifiers organize the :ref:`directory structure <directory_structure>` of ``openplaces``. This makes it easy to restrict or expand access to sensitive data on different locations or from different sources to different groups of collaborators.
 
@@ -110,7 +110,7 @@ Privacy-enabling
 
 While the code of ``openplaces``, including contributed recipes, is open-source, the underlying data doesn't have to be.
 
-``openplaces`` allows privacy-conscious analysts to create a dataset from restricted data for their home location in a secure computing environment, analyze it with publicly shared methods, and share replicable results for feedback and publication. This workflow avoids providing access to the underlying data. See the :ref:`privacy` note for more details.
+``openplaces`` allows privacy-conscious analysts to create a dataset from restricted data for their home location in a secure computing environment, analyze it with publicly shared methods, and share replicable results for feedback and publication. This workflow avoids providing access to the underlying data. For more details, see the project's page on :ref:`privacy` and the contributor guide on :ref:`keeping personal data out of the repository <no_personal_data>`.
 
 
 Extensible

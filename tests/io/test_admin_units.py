@@ -45,7 +45,7 @@ class TestParentOf:
     def test_works_at_any_depth(self):
         # The property the migration depends on: parentage does not need to
         # know how deep the branch is, so a shallower branch still resolves.
-        assert parent_of('US-CT-HA') == 'US-CT'
+        assert parent_of('US-CT-HAR') == 'US-CT'
         assert parent_of('US-NY-WE-YO') == 'US-NY-WE'
 
 

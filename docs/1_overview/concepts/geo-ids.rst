@@ -20,7 +20,7 @@ To streamline data exchange, essential :ref:`entities <entities>` in ``openplace
        Example: :input:`'US-CA-LA'` 
        (Los Angeles, California)
 
-       Global, hierarchical ISO/HASC/custom code
+       Global, hierarchical ISO/national/custom code
 
      - Purposefully human-readable
 
@@ -164,10 +164,10 @@ The parcel and footprint spines currently assign:
 
    * - Column
      - Containing area
-   * - ``admin4_id``
-     - ``openplaces`` :ref:`administrative unit <administrative_units>` at level 4 (town, city, county subdivision)
+   * - ``admin4_id`` (or ``admin3_id``)
+     - ``openplaces`` :ref:`administrative unit <administrative_units>` at level 4 (or level 3 in jurisdictions where the county level is skipped) representing the town, city, or county subdivision
    * - ``census_subdivision_id``
-     - The raw U.S. Census county subdivision (COUSUB) code for that same level-4 unit
+     - The raw U.S. Census county subdivision (COUSUB) code for that same town/city unit
    * - ``census_tract_id``
      - U.S. Census tract
    * - ``census_blockgroup_id``

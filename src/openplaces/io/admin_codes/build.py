@@ -94,8 +94,8 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
     :func:`~openplaces.io.admin_codes.audit.resolve_identifier` using the
     row's **own name**, with no "this id is already live" shortcut. The
     admin geometry carries more than one identifier vintage at once, and
-    an id may since have been reissued: the geometry row ``JP-TK`` names
-    Tokyo while the live ``JP-TK`` is Tokushima. Taking the shortcut
+    an id may since have been reissued: the geometry row ``JP-TO`` names
+    Tokyo while the live ``JP-TO`` is Tokushima. Taking the shortcut
     credits Tokyo's population to Tokushima.
 
     Parameters

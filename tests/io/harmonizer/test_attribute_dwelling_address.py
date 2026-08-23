@@ -19,7 +19,7 @@ from openplaces.io.harmonizer import HarmonizeState
 def _parcel_spine(parcel_ids):
     spine = pd.DataFrame(index=pd.Index(parcel_ids, name='parcel_id'))
     return HarmonizeState(
-        recipe={}, admin_id='US-NC-CE', verbose=False, timer=None, spine=spine
+        recipe={}, admin_id='US-NC-AR', verbose=False, timer=None, spine=spine
     )
 
 
@@ -124,7 +124,7 @@ def test_missing_priority_column_is_noop(monkeypatch):
 
 def test_spine_none_is_noop():
     state = HarmonizeState(
-        recipe={}, admin_id='US-NC-CE', verbose=False, timer=None, spine=None
+        recipe={}, admin_id='US-NC-AR', verbose=False, timer=None, spine=None
     )
     result = attrs.attribute_dwelling_address(state, footprint_recipe_id='fp')
     assert result.spine is None

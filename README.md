@@ -20,7 +20,7 @@ Its principal purpose is to support reproducible research for conservation, land
 - **Evidence-based curation**: reconciles competing sources, imputes gaps, and infers canonical
   attributes — including occupancy, story count, and roof shape from imagery-based models —
   while keeping every source's raw evidence traceable.
-- **Globally consistent, hierarchical administrative referencing** (e.g. `US-MA-MI-CA`) that
+- **Globally consistent, hierarchical administrative referencing** (e.g. `US-MA-CAM`) that
   ties sources across geographies together and supports international comparative research.
 - **Cluster-friendly workflows**: the same recipe runs unchanged on a laptop or scales out to a
   research cluster.

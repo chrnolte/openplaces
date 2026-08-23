@@ -20,7 +20,7 @@ from openplaces.io.admin_wikidata import (
     match_units,
 )
 
-PARENT_ISO = {'CO-AN': 'CO-ANT', 'CO-BY': 'CO-BOY'}
+PARENT_ISO = {'CO-AN': 'CO-AN', 'CO-BY': 'CO-BY'}
 
 
 @pytest.fixture
@@ -32,34 +32,34 @@ def harvest():
                 'item': 'http://www.wikidata.org/entity/Q1',
                 'itemLabel': 'Abejorral',
                 'native': '',
-                'parentIso': 'CO-ANT',
+                'parentIso': 'CO-AN',
             },
             # Same name under a different parent: must not be matched across.
             {
                 'item': 'http://www.wikidata.org/entity/Q2',
                 'itemLabel': 'Abejorral',
                 'native': '',
-                'parentIso': 'CO-BOY',
+                'parentIso': 'CO-BY',
             },
             # Two items sharing a name under one parent: ambiguous.
             {
                 'item': 'http://www.wikidata.org/entity/Q3',
                 'itemLabel': 'Otanche',
                 'native': '',
-                'parentIso': 'CO-BOY',
+                'parentIso': 'CO-BY',
             },
             {
                 'item': 'http://www.wikidata.org/entity/Q4',
                 'itemLabel': 'Otanche',
                 'native': '',
-                'parentIso': 'CO-BOY',
+                'parentIso': 'CO-BY',
             },
             # Diacritics and an administrative type word.
             {
                 'item': 'http://www.wikidata.org/entity/Q5',
                 'itemLabel': 'Chocó Municipality',
                 'native': '',
-                'parentIso': 'CO-ANT',
+                'parentIso': 'CO-AN',
             },
         ]
     )
@@ -88,11 +88,11 @@ class TestChildrenQuery:
 class TestIndexHarvest:
     def test_keys_on_parent_and_normalized_name(self, harvest):
         index = index_harvest(harvest)
-        assert ('CO-ANT', 'ABEJORRAL') in index
-        assert ('CO-BOY', 'OTANCHE') in index
+        assert ('CO-AN', 'ABEJORRAL') in index
+        assert ('CO-BY', 'OTANCHE') in index
 
     def test_collects_every_item_sharing_a_key(self, harvest):
-        assert len(index_harvest(harvest)[('CO-BOY', 'OTANCHE')]) == 2
+        assert len(index_harvest(harvest)[('CO-BY', 'OTANCHE')]) == 2
 
 
 class TestMatchUnits:
@@ -187,7 +187,7 @@ class TestFuzzyMatching:
         assert row['wikidata_id'] == 'Q1'
 
     def test_never_reaches_outside_the_parent(self, harvest):
-        # Otanche exists only under CO-BOY. A unit under CO-AN must not
+        # Otanche exists only under CO-BY. A unit under CO-AN must not
         # borrow it however close the spelling.
         result = match_units(
             units([('CO-AN-OTA', 'Otanch', 'CO-AN')]),
@@ -198,7 +198,7 @@ class TestFuzzyMatching:
         assert result.iloc[0]['status'] == MATCH_MISSING
 
     def test_a_fuzzy_hit_on_an_ambiguous_name_is_not_taken(self, harvest):
-        # Otanche has two items under CO-BOY; a near miss must not pick one.
+        # Otanche has two items under CO-BY; a near miss must not pick one.
         result = match_units(
             units([('CO-BY-OTA', 'Otanch', 'CO-BY')]),
             harvest,

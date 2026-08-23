@@ -11,5 +11,6 @@ Overview
    why-openplaces
    concepts
    package-state
+   recipe-state
    privacy
    references

@@ -13,7 +13,7 @@ from openplaces.recipe import get_output_path, get_recipe_by_id
 NSI = 'US_building-nsi-2022'
 FOOTPRINT_SPINE = 'US_footprint-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
-COUNTY = 'US-NC-BS'
+COUNTY = 'US-NC-BR'
 
 
 @pytest.fixture

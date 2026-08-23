@@ -405,7 +405,7 @@ def test_resolve_where_builds_admin_clause(monkeypatch):
 
     resolved = scraper._resolve_where(
         '1=1',
-        admin_id_to_download='US-AR-NW',
+        admin_id_to_download='US-AR-NE',
         admin_key_column='admin3_id_admin1',
         admin_key_transform=None,
         where_admin_column='countyfips',
@@ -423,7 +423,7 @@ def test_resolve_where_ands_onto_an_existing_clause(monkeypatch):
 
     resolved = scraper._resolve_where(
         'LOT_TYPE = 2',
-        admin_id_to_download='US-AR-NW',
+        admin_id_to_download='US-AR-NE',
         admin_key_column='admin3_id_admin1',
         admin_key_transform=None,
         where_admin_column='countyfips',
@@ -449,7 +449,7 @@ def test_resolve_where_requires_admin_key_column():
     with pytest.raises(ValueError, match='admin_key_column'):
         scraper._resolve_where(
             '1=1',
-            admin_id_to_download='US-AR-NW',
+            admin_id_to_download='US-AR-NE',
             admin_key_column=None,
             admin_key_transform=None,
             where_admin_column='countyfips',
@@ -479,7 +479,7 @@ def test_fetch_resolves_where_admin_column(fake_service, tmp_path, monkeypatch):
     scraper.fetch(
         target_path=out,
         layer_url='http://svc/Planning_Cadastre/FeatureServer/6',
-        admin_id_to_download='US-AR-NW',
+        admin_id_to_download='US-AR-NE',
         admin_key_column='admin3_id_admin1',
         where_admin_column='countyfips',
     )

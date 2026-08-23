@@ -49,19 +49,19 @@ def test_get_entities_expands_parent_and_warns_for_missing(
         'save_to': {'admin_level': 4},
         'aggregate_by': {'single_file': True},
     }
-    existing = tmp_path / 'US-MA-SOE_transaction_all.parquet'
+    existing = tmp_path / 'US-MA-SOM_transaction_all.parquet'
     missing = tmp_path / 'US-MA-SU-CA_transaction_all.parquet'
     existing.touch()
 
     monkeypatch.setattr(
         readers,
         'get_admin',
-        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-SOE', 'US-MA-SU-CA']),
+        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-SOM', 'US-MA-SU-CA']),
     )
 
     def get_output_path(recipe, admin_id, partition_id=None):
         assert partition_id == 'all'
-        return existing if str(admin_id) == 'US-MA-SOE' else missing
+        return existing if str(admin_id) == 'US-MA-SOM' else missing
 
     monkeypatch.setattr(readers, 'get_output_path', get_output_path)
     monkeypatch.setattr(
@@ -164,14 +164,14 @@ def test_get_entities_adds_admin_column(tmp_path, monkeypatch):
     }
 
     path1 = tmp_path / 'US-MA-BR.parquet'
-    path2 = tmp_path / 'US-MA-ES.parquet'
+    path2 = tmp_path / 'US-MA-ESS.parquet'
     path1.touch()
     path2.touch()
 
     monkeypatch.setattr(
         readers,
         'get_admin',
-        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-BR', 'US-MA-ES']),
+        lambda *args, **kwargs: pd.DataFrame(index=['US-MA-BR', 'US-MA-ESS']),
     )
 
     def get_output_path(recipe, admin_id, partition_id=None):
@@ -189,14 +189,14 @@ def test_get_entities_adds_admin_column(tmp_path, monkeypatch):
     monkeypatch.setattr(readers, 'read_parquet', mock_read_parquet)
 
     # 1. Columns=None (default): should add admin3_id and cast to category
-    data = readers.get_entities(recipe, admin_id=['US-MA-BR', 'US-MA-ES'])
+    data = readers.get_entities(recipe, admin_id=['US-MA-BR', 'US-MA-ESS'])
     assert 'admin3_id' in data.columns
     assert data['admin3_id'].dtype.name == 'category'
     assert data['admin3_id'].tolist() == [
         'US-MA-BR',
         'US-MA-BR',
-        'US-MA-ES',
-        'US-MA-ES',
+        'US-MA-ESS',
+        'US-MA-ESS',
     ]
     assert data['value'].tolist() == [1.0, 2.0, 1.0, 2.0]
 
@@ -204,7 +204,7 @@ def test_get_entities_adds_admin_column(tmp_path, monkeypatch):
     # add admin3_id, and cast to category.
     data2 = readers.get_entities(
         recipe,
-        admin_id=['US-MA-BR', 'US-MA-ES'],
+        admin_id=['US-MA-BR', 'US-MA-ESS'],
         columns=['value', 'admin3_id'],
     )
     assert 'admin3_id' in data2.columns
@@ -212,8 +212,8 @@ def test_get_entities_adds_admin_column(tmp_path, monkeypatch):
     assert data2['admin3_id'].tolist() == [
         'US-MA-BR',
         'US-MA-BR',
-        'US-MA-ES',
-        'US-MA-ES',
+        'US-MA-ESS',
+        'US-MA-ESS',
     ]
     assert data2['value'].tolist() == [1.0, 2.0, 1.0, 2.0]
 
@@ -221,7 +221,7 @@ def test_get_entities_adds_admin_column(tmp_path, monkeypatch):
     # and NOT add admin3_id.
     data3 = readers.get_entities(
         recipe,
-        admin_id=['US-MA-BR', 'US-MA-ES'],
+        admin_id=['US-MA-BR', 'US-MA-ESS'],
         columns=['value'],
     )
     assert 'admin3_id' not in data3.columns
