@@ -1007,7 +1007,7 @@ def get_output_path(
         Pass `None` for recipes not split by admin unit.
     partition_id : str, optional
         Partition value appended to the filename stem, e.g.
-        'US-NC-BS_footprint-obm-2025_032012.parquet' for a tile partition
+        'US-NC-BR_footprint-obm-2025_032012.parquet' for a tile partition
         with id '032012'.  Pass `None` (default) to obtain the final,
         merged output path.
     geo : bool, optional
@@ -1090,7 +1090,7 @@ def get_output_path(
             ).name
         else:
             # path() will join this with the auto-generated prefix via the
-            # same separator, e.g. US-NC-BS_footprint-obm-2025_032012.parquet
+            # same separator, e.g. US-NC-BR_footprint-obm-2025_032012.parquet
             filename = partition_id_save
 
     is_raster = bool(recipe.get('dataset') and recipe['dataset'].is_raster)

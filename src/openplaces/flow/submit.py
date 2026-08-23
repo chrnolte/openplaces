@@ -7,7 +7,7 @@ refuses to submit until a dry run has been produced and shown. The
 dry-run output is stored next to the SGE logs for the post-hoc record::
 
     python -m openplaces.flow.submit --config recipe=US_footprint-cheer-2026 \\
-        admin_ids=US-NC-BS,US-NC-CE
+        admin_ids=US-NC-BR,US-NC-AR
 """
 
 from __future__ import annotations
@@ -159,7 +159,7 @@ def main(argv=None) -> None:
         nargs='*',
         metavar='KEY=VALUE',
         help='Workflow config (e.g. recipe=US_footprint-cheer-2026 '
-        'admin_ids=US-NC-BS,US-NC-CE)',
+        'admin_ids=US-NC-BR,US-NC-AR)',
     )
     parser.add_argument(
         '--yes',

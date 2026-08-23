@@ -1,7 +1,7 @@
 """Build ``openplaces_template.qgz`` from a hand-authored reference project.
 
 Extracts real, already-styled layers out of the user's exploratory QGIS
-project (``US-NC-CE.qgz``, not part of this repo — lives under
+project (``US-NC-AR.qgz``, not part of this repo — lives under
 ``Dropbox/Data/world/show/qgis``), renames/relocates them into the packaged
 template's ``template_*`` naming and ``Buildings/{openplaces,inputs}`` /
 ``Parcels`` / ``Admin`` / ``Basemaps`` group convention documented in
@@ -20,7 +20,7 @@ needed. Everything downstream that varies per run (ids, datasources,
 joins to the *run's* clones) is handled by
 :func:`openplaces.viz.qgis_map.generator.generate_qgz`, not here.
 
-Run with ``python build_template_from_reference.py <path to US-NC-CE.qgz>``
+Run with ``python build_template_from_reference.py <path to US-NC-AR.qgz>``
 to regenerate ``openplaces_template.qgz`` in this directory. Re-run whenever
 the reference project gets updated with better/newer styling to pull in.
 """
@@ -64,7 +64,7 @@ class BaseLayer:
 BASE_LAYERS: tuple[BaseLayer, ...] = (
     BaseLayer(
         template_name='template_footprint_output',
-        source_geo_name='US-NC-CE_footprint-cheer-2026',
+        source_geo_name='US-NC-AR_footprint-cheer-2026',
         source_attr_name=None,
         group='Buildings/openplaces',
         checked=True,
@@ -72,107 +72,107 @@ BASE_LAYERS: tuple[BaseLayer, ...] = (
         variants=(
             Variant(
                 'template_footprint_output__roof_shape',
-                'roof_type - US-NC-CE_footprint-cheer-2026',
+                'roof_type - US-NC-AR_footprint-cheer-2026',
                 'Roof shape',
             ),
             Variant(
                 'template_footprint_output__n_stories',
-                'n_stories - US-NC-CE_footprint-cheer-2026',
+                'n_stories - US-NC-AR_footprint-cheer-2026',
                 'Number of stories',
             ),
             Variant(
                 'template_footprint_output__occupancy_type_conflict',
-                'occupancy_type_conflict - US-NC-CE_footprint-cheer-2026',
+                'occupancy_type_conflict - US-NC-AR_footprint-cheer-2026',
                 'Occupancy type (evidence conflicts)',
             ),
             Variant(
                 'template_footprint_output__priority_on_parcel',
-                'role - US-NC-CE_footprint-cheer-2026',
+                'role - US-NC-AR_footprint-cheer-2026',
                 'Priority on parcel',
             ),
             Variant(
                 'template_footprint_output__geometry_source',
-                'source - US-NC-CE_footprint-cheer-2026 copy copy',
+                'source - US-NC-AR_footprint-cheer-2026 copy copy',
                 'Geometry source',
             ),
             Variant(
                 'template_footprint_output__structure_value',
-                'structure_value - US-NC-CE_footprint-cheer-2026 copy',
+                'structure_value - US-NC-AR_footprint-cheer-2026 copy',
                 'Structure value (NSI, per area)',
             ),
             Variant(
                 'template_footprint_output__improvement_value',
-                'improvement_value - US-NC-CE_footprint-cheer-2026',
+                'improvement_value - US-NC-AR_footprint-cheer-2026',
                 'Improvement value (parcel, per area)',
             ),
         ),
     ),
     BaseLayer(
         'template_parcel_output',
-        'US-NC-CE_parcel-openplaces-2026',
-        'US-NC-CE_parcel-openplaces-2026_attr',
+        'US-NC-AR_parcel-openplaces-2026',
+        'US-NC-AR_parcel-openplaces-2026_attr',
         'Parcels',
         True,
     ),
     BaseLayer(
         'template_footprint_obm_input',
-        'US-NC-CE_footprint-obm-2025',
-        'US-NC-CE_footprint-obm-2025_attr',
+        'US-NC-AR_footprint-obm-2025',
+        'US-NC-AR_footprint-obm-2025_attr',
         'Buildings/inputs',
         False,
     ),
     BaseLayer(
         'template_footprint_fema_input',
-        'US-NC-CE_footprint-fema-2023',
-        'US-NC-CE_footprint-fema-2023_attr',
+        'US-NC-AR_footprint-fema-2023',
+        'US-NC-AR_footprint-fema-2023_attr',
         'Buildings/inputs',
         False,
     ),
     BaseLayer(
         'template_footprint_microsoft_input',
-        'US-NC-CE_footprint-microsoft-v2',
-        'US-NC-CE_footprint-microsoft-v2_attr',
+        'US-NC-AR_footprint-microsoft-v2',
+        'US-NC-AR_footprint-microsoft-v2_attr',
         'Buildings/inputs',
         False,
     ),
     BaseLayer(
         'template_footprint_ncdps_input',
-        'US-NC-CE_footprint-ncdps-2023',
-        'US-NC-CE_footprint-ncdps-2023_attr',
+        'US-NC-AR_footprint-ncdps-2023',
+        'US-NC-AR_footprint-ncdps-2023_attr',
         'Buildings/inputs',
         False,
     ),
     BaseLayer(
         'template_dwelling_overture_input',
-        'US-NC-CE_dwelling-overture-2025',
-        'US-NC-CE_dwelling-overture-2025_attr',
+        'US-NC-AR_dwelling-overture-2025',
+        'US-NC-AR_dwelling-overture-2025_attr',
         'Buildings/inputs',
         False,
     ),
     BaseLayer(
         'template_building_nsi_input',
-        'US-NC-CE_building-nsi-2022',
-        'US-NC-CE_building-nsi-2022_attr',
+        'US-NC-AR_building-nsi-2022',
+        'US-NC-AR_building-nsi-2022_attr',
         'Buildings/inputs',
         False,
         variants=(
             Variant(
                 'template_building_nsi_input__occupancy_type',
-                'US-NC-CE_building-nsi-2022 occupancy_type',
+                'US-NC-AR_building-nsi-2022 occupancy_type',
                 'Occupancy type',
             ),
         ),
     ),
     BaseLayer(
         'template_parcel_nconemap_input',
-        'US-NC-CE_parcel-nconemap-2025',
-        'US-NC-CE_parcel-nconemap-2025_attr',
+        'US-NC-AR_parcel-nconemap-2025',
+        'US-NC-AR_parcel-nconemap-2025_attr',
         'Parcels',
         False,
         variants=(
             Variant(
                 'template_parcel_nconemap_input__land_use_type',
-                'land_use_type - US-NC-CE_parcel-nconemap-2025',
+                'land_use_type - US-NC-AR_parcel-nconemap-2025',
                 'Land use (detailed)',
             ),
         ),
@@ -693,7 +693,7 @@ def build(source_qgz: Path, output_path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        'source_qgz', type=Path, help='Path to the reference US-NC-CE.qgz project.'
+        'source_qgz', type=Path, help='Path to the reference US-NC-AR.qgz project.'
     )
     parser.add_argument('--output', type=Path, default=_OUTPUT_PATH)
     args = parser.parse_args()

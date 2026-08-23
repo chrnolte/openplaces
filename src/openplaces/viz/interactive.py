@@ -359,7 +359,7 @@ def _drape_boundary(
     # town's
     # own polygon, its boundary line, and the buffered fence footprint
     # are
-    # three different geometries all keyed 'US-MA-WO-LA'. Caching would
+    # three different geometries all keyed 'US-MA-LAN'. Caching would
     # serve whichever was draped first for all three. Boundaries are a
     # handful of rows anyway, so there is nothing to gain.
     draped_geometry, _ = elevation_module.drape_parcel_elevation(
