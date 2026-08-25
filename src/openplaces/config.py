@@ -73,6 +73,7 @@ __all__ = [
     'merge_user_config',
     'detect_agent',
     'OpenPlacesConfig',
+    'DataRootNotSetError',
 ]
 
 
@@ -245,6 +246,62 @@ def set_terms_consent(source: str, accepted: bool) -> None:
     }
     merge_user_config(cfg.user_config_path, 'consent', {'terms': recorded})
     reload_config()
+
+
+class DataRootNotSetError(RuntimeError):
+    """Raised when no data directory has been configured.
+
+    Its own class because "you have not finished setting up" is a
+    different situation from "something went wrong", and a caller
+    (a notebook, `dev.py`) may want to offer setup rather than a
+    traceback.
+    """
+
+
+def can_prompt() -> bool:
+    """Return True when something is able to answer a prompt.
+
+    Not the same question as "is stdin a terminal", which is what this
+    used to ask. A Jupyter kernel is interactive and is not a tty:
+    `ipykernel` implements `input` over its stdin channel and routes it
+    to the frontend, so a notebook can answer perfectly well. Asking
+    `isatty` shut out the one surface the project designates for
+    interactive configuration.
+
+    What must stay shut out is a run with nobody watching, where a
+    blocking read is a hang rather than an error: CI, a container, a
+    cluster job, a test session.
+
+    Returns
+    -------
+    bool
+        True for a terminal or a notebook kernel, False for an
+        unattended run.
+    """
+    # An unattended runner says so in the environment. Checked first, so
+    # a CI job that happens to allocate a tty is still refused.
+    if os.environ.get('CI') or os.environ.get('PYTEST_CURRENT_TEST'):
+        return False
+
+    shell = sys.modules.get('IPython')
+    if shell is not None:
+        try:
+            active = shell.get_ipython()
+        except Exception:  # noqa: BLE001 - IPython present but not running
+            active = None
+        # ZMQInteractiveShell is the kernel behind Jupyter and qtconsole;
+        # TerminalInteractiveShell is plain ipython, covered by isatty.
+        if active is not None and type(active).__name__ == 'ZMQInteractiveShell':
+            return True
+
+    stdin = sys.stdin
+    if stdin is None or getattr(stdin, 'closed', False):
+        return False
+    try:
+        return bool(stdin.isatty())
+    except (ValueError, OSError):
+        # A detached or replaced stdin raises rather than answering.
+        return False
 
 
 def set_identity(nickname: str | None, place: str | None) -> str:
@@ -551,12 +608,7 @@ class OpenPlacesConfig:
         # The trigger is a missing 'directories' block rather than a
         # missing file, because `dev.py setup` may already have written
         # the file to record an identity before anyone chose directories.
-        if (
-            interactive
-            and not self._user_config_has('directories')
-            and sys.stdin is not None
-            and sys.stdin.isatty()
-        ):
+        if interactive and not self._user_config_has('directories') and can_prompt():
             self._interactive_setup()
 
         self.config = self._load_hierarchical_config()
@@ -598,6 +650,55 @@ class OpenPlacesConfig:
         if not self.user_config_path.exists():
             return False
         return key in self._load_yaml_config(self.user_config_path)
+
+    def setup(self, force: bool = False):
+        """Choose data directories interactively, and show the result.
+
+        The import-time prompt is deliberately quiet: `from openplaces
+        import cfg` blocking on a dialog is a strange first experience,
+        and it fires from any cell that imports. Calling this is the
+        visible, re-runnable version, which is what a setup notebook
+        wants: run the cell, answer, see the paths change.
+
+        Parameters
+        ----------
+        force : bool, optional
+            Re-run even when directories are already configured. Default
+            False, which reports the current settings and changes
+            nothing.
+
+        Returns
+        -------
+        OpenPlacesConfig
+            This object, reloaded, so a cell can end on `cfg.setup()`
+            and render the result.
+        """
+        if not force and self._user_config_has('directories'):
+            print(f'Directories are already configured in {self.user_config_path}')
+            print('Call cfg.setup(force=True) to choose again.\n')
+            self.show_paths()
+            return self
+
+        if not can_prompt():
+            raise RuntimeError(
+                'cfg.setup() needs somewhere to read an answer from, and '
+                'this run has nowhere: no terminal, no notebook kernel, or '
+                'CI/PYTEST_CURRENT_TEST is set. Use '
+                'python -m openplaces.config --set-identity, or write the '
+                'directories block into '
+                f'{self.user_config_path} directly.'
+            )
+
+        self._interactive_setup()
+        reload_config()
+        return get_config()
+
+    def show_paths(self):
+        """Print the directories this configuration resolves to."""
+        print(f'code_root: {self.code_root}')
+        print(f'data_root: {self.data_root}')
+        for key in sorted(self.config.get('directories', {})):
+            print(f'  {key}: {self.config["directories"][key]}')
 
     def _interactive_setup(self):
         """Interactive first-use configuration setup."""
@@ -871,18 +972,47 @@ class OpenPlacesConfig:
         return value
 
     def _resolve_directories(self):
-        """Resolve all configured directory paths."""
+        """Resolve all configured directory paths.
+
+        A missing ``data_root`` is refused rather than guessed. It used
+        to fall back to the code directory, which does not fail: a fresh
+        install quietly builds a second data store inside the checkout,
+        which on a synced or version-controlled directory is worse than
+        an error. Where somebody can answer, the setup runs; where
+        nobody can, this raises and says how to set it.
+        """
         if 'directories' not in self.config:
             return
 
-        # Determine base directory for relative paths
-        if (
-            'data_root' in self.config['directories']
-            and self.config['directories']['data_root']
-        ):
-            root = Path(self.config['directories']['data_root'])
-        else:
-            root = self.code_root
+        configured = self.config['directories'].get('data_root')
+        if not configured:
+            if can_prompt():
+                self._interactive_setup()
+                configured = (
+                    self._load_yaml_config(self.user_config_path)
+                    .get('directories', {})
+                    .get('data_root')
+                )
+            if not configured:
+                raise DataRootNotSetError(
+                    '\n'.join(
+                        [
+                            'openplaces has no data_root, and will not invent one.',
+                            '',
+                            'Where should downloads, caches and outputs '
+                            'live? It must be outside the code directory.',
+                            '',
+                            '  From a notebook or terminal:  cfg.setup()',
+                            '  Non-interactively, write a directories block into',
+                            f'  {self.user_config_path}',
+                            '',
+                            '      directories:',
+                            '        data_root: /path/to/your/data',
+                        ]
+                    )
+                )
+            self.config['directories']['data_root'] = configured
+        root = Path(configured)
 
         for dir_key, dir_value in self.config['directories'].items():
             if dir_key == 'data_root':

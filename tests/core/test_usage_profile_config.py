@@ -17,6 +17,7 @@ import yaml
 
 from openplaces.config import (
     OpenPlacesConfig,
+    merge_user_config,
     set_usage_profile,
     write_usage_profile,
 )
@@ -78,6 +79,8 @@ def test_admin_interests_replace_wholesale_and_clear_on_empty(stub_cfg):
 def test_property_completes_a_partial_user_config(monkeypatch, tmp_path):
     """A user config declaring one axis still reports every key."""
     config_path = tmp_path / 'config.yaml'
+    # A data_root is required now, so every fixture config supplies one.
+    merge_user_config(config_path, 'directories', {'data_root': str(tmp_path)})
     write_usage_profile(config_path, {'commercial': False})
     monkeypatch.setattr(
         OpenPlacesConfig, '_get_user_config_path', lambda self: config_path
