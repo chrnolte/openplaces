@@ -99,10 +99,12 @@ def test_admin3_create_index_declares_admin2_edge():
 def test_tile_entity_links_declare_admin_edges():
     edges = get_recipe_dependencies('tile-obm-2025')
     upstream = _upstream_ids(edges)
+    # The harmonized layers, not GADM: a persisted tile-to-admin
+    # crosswalk keyed on GADM identifiers is data openplaces cannot ship.
     assert {
-        'admin-gadm-4~1_admin1',
-        'admin-gadm-4~1_admin2',
-        'admin-gadm-4~1_admin3',
+        'admin-openplaces-2026_admin1',
+        'admin-openplaces-2026_admin2',
+        'admin-openplaces-2026_admin3',
         'US_admin-census-2021_admin2',
         'US_admin-census-2021_admin3',
     } <= upstream

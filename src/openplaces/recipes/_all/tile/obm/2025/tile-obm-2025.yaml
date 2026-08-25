@@ -46,9 +46,15 @@ set_index: tile_id
 # Persist n:m entity links to admin layers after ingest (tile_id <->
 # admin_id crosswalks); used to resolve tiled download partitions of
 # recipes with `download_by.tile_recipe_id` pointing here
+#
+# Linked to openplaces' own harmonized admin layers, not to GADM. A
+# GADM link would key a persisted crosswalk on GADM identifiers, which
+# openplaces cannot ship: GADM allows academic use but not
+# redistribution without prior permission. The harmonized layers cover
+# the same units and carry identifiers this project issues itself.
 entity_links:
-  - recipe_id: admin-gadm-4~1_admin1
-  - recipe_id: admin-gadm-4~1_admin2
-  - recipe_id: admin-gadm-4~1_admin3
+  - recipe_id: admin-openplaces-2026_admin1
+  - recipe_id: admin-openplaces-2026_admin2
+  - recipe_id: admin-openplaces-2026_admin3
   - recipe_id: US_admin-census-2021_admin2
   - recipe_id: US_admin-census-2021_admin3
