@@ -60,9 +60,17 @@ class LayerStyle:
     # as 'value=r,g,b' pairs joined by ';' (e.g. 'microsoft=255,0,255').
     category_colors: str | None
     # Explicit graduated class bounds for attr_override columns whose
-    # quantiles degenerate (counts that are mostly 1), as '|'-separated
-    # ascending numbers; the data maximum closes the last class.
+    # quantiles degenerate (counts that are mostly 1) or whose classes
+    # should sit on locale-snapped values, as '|'-separated ascending
+    # numbers in the DISPLAY unit; the data maximum closes the last
+    # class.
     attr_breaks: str | None
+    # Multiply the column by this factor before classifying (a QGIS
+    # renderer expression), converting storage units to display units:
+    # 0.09290304 turns a per-square-meter value into per-square-foot.
+    attr_scale: str | None
+    # Display-unit label appended to each class ('$/sqft').
+    attr_unit: str | None
 
 
 @cache
@@ -91,6 +99,8 @@ def _row_to_style(style_key: str, row: pd.Series) -> LayerStyle:
         attr_override=row.get('attr_override') or None,
         category_colors=row.get('category_colors') or None,
         attr_breaks=row.get('attr_breaks') or None,
+        attr_scale=row.get('attr_scale') or None,
+        attr_unit=row.get('attr_unit') or None,
     )
 
 

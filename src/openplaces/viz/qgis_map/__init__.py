@@ -69,6 +69,7 @@ def export_qgis_map(
     recipe: str | dict,
     admin_id: str | AdminId,
     *,
+    region: str | None = None,
     output_path=None,
     title: str | None = None,
     template_path=None,
@@ -116,8 +117,10 @@ def export_qgis_map(
     try:
         from openplaces.io.delivery import delivery_regions
 
-        for region in delivery_regions(recipe):
-            rid = region.get('region_id')
+        for region_row in delivery_regions(recipe):
+            rid = region_row.get('region_id')
+            if region is not None and rid != region:
+                continue
             from openplaces.io.delivery import delivery_admin_id
 
             bundle_admin = delivery_admin_id(recipe, region=rid)
@@ -133,6 +136,7 @@ def export_qgis_map(
         admin_id,
         filter_existing=filter_existing,
         include_inputs=include_inputs,
+        region=region,
         verbose=verbose,
     )
     if not include_inputs:

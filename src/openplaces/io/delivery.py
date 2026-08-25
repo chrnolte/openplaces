@@ -400,6 +400,28 @@ def delivery_paths(
         output_recipe['save_to']['data_dir'] = output_dir
 
     canonical = get_output_path(output_recipe, admin_id)
+
+    # Two declared regions can roll up to the same admin unit (both
+    # Boston test regions are Massachusetts towns), which would give
+    # their bundles identical filenames in one directory - the second
+    # delivery silently overwriting the first. Nest each colliding
+    # region's bundle in a subdirectory named after it; regions with a
+    # unit of their own (the CHEER NC/TX pair) keep their flat paths.
+    if region is not None:
+        siblings = [
+            r['region_id']
+            for r in delivery_regions(recipe)
+            if r.get('region_id') is not None
+        ]
+        if len(siblings) > 1 and region in siblings:
+            unit_of = {
+                rid: str(delivery_admin_id(recipe, admin_level, rid))
+                for rid in siblings
+            }
+            mine = unit_of[region]
+            if sum(unit == mine for unit in unit_of.values()) > 1:
+                canonical = canonical.parent / str(region) / canonical.name
+
     return {
         'canonical': canonical,
         'point': canonical.with_stem(f'{canonical.stem}_point'),

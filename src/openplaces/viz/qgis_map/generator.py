@@ -660,6 +660,8 @@ def _retarget_graduated(
     attr_field: str,
     *,
     explicit_breaks: str | None = None,
+    scale: str | None = None,
+    unit: str | None = None,
     verbose: bool,
 ) -> None:
     """Point *clone*'s graduated renderer at *attr_field*, breaks from data.
@@ -682,7 +684,9 @@ def _retarget_graduated(
         return
     try:
         values = pd.read_parquet(data_path, columns=[attr_field])[attr_field]
-        values = pd.to_numeric(values, errors='coerce').dropna()
+        values = pd.to_numeric(values, errors='coerce')
+        has_nulls = bool(values.isna().any())
+        values = values.dropna()
     except Exception as exc:
         warnings.warn(
             f'Could not read {attr_field!r} from {data_path}: {exc}; '
@@ -692,22 +696,43 @@ def _retarget_graduated(
     if values.empty:
         warnings.warn(f'{attr_field!r} is all-null in {data_path}.')
         return
+    factor = float(scale) if scale else 1.0
     if explicit_breaks:
         # Declared class bounds, for count columns whose quantiles
-        # degenerate (n_dwellings is 1 for most of any region). The
-        # data maximum closes the last class.
+        # degenerate (n_dwellings is 1 for most of any region) and for
+        # locale-snapped value ladders. Bounds are in the DISPLAY unit
+        # (post-scale); the data maximum closes the last class.
         breaks = sorted(float(b) for b in explicit_breaks.split('|'))
-        top = float(values.max())
-        if top > breaks[-1]:
+        top = float(values.max()) * factor
+        open_ended = top > breaks[-1]
+        if open_ended:
             breaks.append(top)
     else:
+        open_ended = False
         n_classes = 6
         qs = values.quantile([i / n_classes for i in range(n_classes + 1)]).tolist()
         # Collapse duplicate quantiles (heavily tied distributions).
         breaks = sorted(set(round(q, 6) for q in qs))
         if len(breaks) < 2:
             breaks = [float(values.min()), float(values.max()) + 1e-9]
-    renderer.set('attr', attr_field)
+    # A scale classifies on a renderer expression, converting the
+    # stored unit to the display unit without adding a column to the
+    # delivered file.
+    # A null value classifies into no range at all, so such features
+    # simply do not render - an invisible building reads as missing
+    # geometry, not missing data. Coalesce nulls onto a sentinel below
+    # every real class and give the sentinel its own grey 'No value'
+    # class, so absence is visibly its own color.
+    scaled = f'"{attr_field}" * {factor}' if factor != 1.0 else f'"{attr_field}"'
+    sentinel = None
+    if has_nulls:
+        sentinel = min(breaks[0], float(values.min()) * factor) - 1.0
+        renderer.set('attr', f'coalesce({scaled}, {sentinel})')
+    else:
+        renderer.set(
+            'attr',
+            f'"{attr_field}" * {factor}' if factor != 1.0 else attr_field,
+        )
     ranges_el = renderer.find('ranges')
     symbols_el = renderer.find('symbols')
     if ranges_el is None or symbols_el is None:
@@ -730,6 +755,23 @@ def _retarget_graduated(
     # any range test.
     yearish = 'year' in attr_field
     fmt = (lambda v: f'{v:.0f}') if yearish else (lambda v: f'{v:,.0f}')
+    if sentinel is not None:
+        ET.SubElement(
+            ranges_el,
+            'range',
+            {
+                'lower': str(sentinel - 0.5),
+                'upper': str(sentinel + 0.5),
+                'label': 'No value',
+                'symbol': 'null',
+                'render': 'true',
+            },
+        )
+        sym = _random_fill_symbol(name='null', seed=f'{attr_field}null')
+        for opt in sym.iter('Option'):
+            if opt.get('name') == 'color':
+                opt.set('value', '189,189,189,140')
+        symbols_el.append(sym)
     for i in range(n_ranges):
         lo, hi = breaks[i], breaks[i + 1]
         r, g, b, _ = cmap((i + 0.5) / max(n_ranges, 1))
@@ -740,7 +782,11 @@ def _retarget_graduated(
             {
                 'lower': str(lo),
                 'upper': str(hi),
-                'label': f'{fmt(lo)} - {fmt(hi)}',
+                'label': (
+                    f'{fmt(lo)}+ {unit or ""}'.rstrip()
+                    if open_ended and i == len(breaks) - 2
+                    else f'{fmt(lo)} - {fmt(hi)} {unit or ""}'.rstrip()
+                ),
                 'symbol': str(i),
                 'render': 'true',
             },
@@ -1389,6 +1435,8 @@ def generate_qgz(
                     spec.attr_path,
                     variant.attr_override,
                     explicit_breaks=variant.attr_breaks,
+                    scale=variant.attr_scale,
+                    unit=variant.attr_unit,
                     verbose=verbose,
                 )
             if not variant.dynamic_categorize_attr and not variant.attr_override:
@@ -1409,9 +1457,11 @@ def generate_qgz(
                         vectorjoins.remove(join)
             _apply_render_mode(variant_clone, spec.render)
             new_maplayers.append(variant_clone)
-            tree_entries.append(
-                (new_variant_id, variant_display_name, variant.default_visible)
-            )
+            # A polygon view renders through the canonical hash-join, so
+            # even a variant that defaults on as a point view must start
+            # unchecked here; opening the map should never pay the join.
+            variant_visible = variant.default_visible and spec.render != RENDER_POLYGONS
+            tree_entries.append((new_variant_id, variant_display_name, variant_visible))
 
         group_path = f'{style.group_path}/Unstyled' if unstyled else style.group_path
         if spec.group_override:

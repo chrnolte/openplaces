@@ -241,7 +241,7 @@ def _discover_ingest_leaves(
 
 
 def _build_delivery_specs(
-    recipe: dict, admin_id: AdminId, *, verbose: bool
+    recipe: dict, admin_id: AdminId, *, verbose: bool, region: str | None = None
 ) -> list[LayerSpec]:
     """Build the output layers for a recipe's region-wide delivery bundles.
 
@@ -304,8 +304,14 @@ def _build_delivery_specs(
         )
 
     specs: list[LayerSpec] = []
-    for region in delivery_regions(recipe):
-        region_id = region.get('region_id')
+    for region_row in delivery_regions(recipe):
+        region_id = region_row.get('region_id')
+        # Two regions can share one bundle admin unit (both Boston test
+        # regions are US-MA), so a caller building one region's map
+        # names it; without the filter that map would carry both
+        # bundles' layers.
+        if region is not None and region_id != region:
+            continue
         bundle_admin = delivery_admin_id(recipe, region=region_id)
         bundle_levels = tuple(bundle_admin.levels)
         if requested_levels != bundle_levels[: len(requested_levels)]:
@@ -328,6 +334,7 @@ def _build_delivery_specs(
                 RENDER_POINTS,
                 bundle_admin,
                 label='Occupancy type',
+                visible=False,
                 group_override='Buildings/Point geometries',
             )
         )
@@ -365,6 +372,33 @@ def _build_delivery_specs(
         # New England has no county subdivisions below its towns -- so a
         # missing sidecar is simply not offered.
         canonical = paths['canonical']
+
+        def _admin3_label(side):
+            # Level 3 is counties in most states but towns and cities in
+            # New England; read the sidecar's own 'type' column rather
+            # than hardcoding a geography.
+            try:
+                import pyarrow.parquet as pq
+
+                if 'type' in pq.read_schema(side).names:
+                    import pandas as pd
+
+                    kinds = set(
+                        pd.read_parquet(side, columns=['type'])['type']
+                        .dropna()
+                        .astype(str)
+                        .str.strip()
+                    )
+                    if kinds and 'County' not in kinds:
+                        return (
+                            'Towns and cities'
+                            if len(kinds) > 1
+                            else (next(iter(kinds)) + 's')
+                        )
+            except Exception:
+                pass
+            return 'Counties'
+
         admin_presentation = {
             'admin3': {
                 'label': 'Counties',
@@ -386,6 +420,8 @@ def _build_delivery_specs(
         for suffix, pres in admin_presentation.items():
             side = canonical.with_name(f'{canonical.stem}_{suffix}_geo.parquet')
             if side.exists():
+                if suffix == 'admin3':
+                    pres = {**pres, 'label': _admin3_label(side)}
                 specs.append(
                     _spec(
                         side,
@@ -406,6 +442,7 @@ def resolve_layers(
     admin_context_levels: tuple[int, ...] = (1,),
     filter_existing: bool = True,
     include_inputs: bool = True,
+    region: str | None = None,
     verbose: bool = False,
 ) -> list[LayerSpec]:
     """Resolve the map layers for a curate recipe at an admin unit.
@@ -452,7 +489,9 @@ def resolve_layers(
 
     specs: list[LayerSpec] = []
 
-    delivery_specs = _build_delivery_specs(recipe, admin_id, verbose=verbose)
+    delivery_specs = _build_delivery_specs(
+        recipe, admin_id, verbose=verbose, region=region
+    )
     if delivery_specs:
         specs.extend(delivery_specs)
     else:
