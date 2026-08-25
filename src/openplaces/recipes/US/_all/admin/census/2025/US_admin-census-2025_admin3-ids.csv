@@ -1,16 +1,15 @@
 admin3_id_admin1,admin3_id,name
 02063,US-AK-CH,Chugach
-02105,US-AK-HN,Hoohnah-Angoon
+02105,US-AK-HA,Hoonah-Angoon
 02195,US-AK-PE,Petersburg
-02230,US-AK-YA,Skagway
-02230,US-AK-YA,Yakutat
-24510,US-MD-BC,Baltimore City
-29510,US-MO-SL,St. Louis City
-51620,US-VA-FI,Franklin City
-51760,US-VA-RH,Richmond City
-24005,US-MD-BA,Baltimore
-51067,US-VA-FR,Franklin
-51161,US-VA-RN,Roanoke
-29189,US-MO-AE,St. Louis
-51059,US-VA-FA,Fairfax
-51159,US-VA-RI,Richmond
+02230,US-AK-SK,Skagway
+24005,US-MD-BA,Baltimore county
+24510,US-MD-BC,Baltimore city
+29189,US-MO-ST,St. Louis county
+29510,US-MO-SL,St. Louis city
+51059,US-VA-FA,Fairfax county
+51067,US-VA-FR,Franklin county
+51159,US-VA-RI,Richmond county
+51161,US-VA-RO,Roanoke county
+51620,US-VA-FC,Franklin city
+51760,US-VA-RH,Richmond city

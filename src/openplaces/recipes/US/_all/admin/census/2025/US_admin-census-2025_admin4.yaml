@@ -45,7 +45,17 @@ columns:
 
 # Filter query to select rows
 # Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56' and name != 'County subdivisions not defined'"
+# The six New England states are excluded for the same reason as in
+# US_admin-census-2025_admin3, mirrored: there a county subdivision IS
+# the level-3 governing unit, so it cannot also be a level-4 child of a
+# county. Those states' subdivisions are ingested as admin3 by their own
+# per-state recipes (US-MA_admin-census-2025_admin3 and siblings), which
+# read this same TIGER COUSUB layer.
+# CT 09, ME 23, MA 25, NH 33, RI 44, VT 50.
+query: >-
+  admin2_id_admin1 <= '56'
+  and admin2_id_admin1 not in ['09', '23', '25', '33', '44', '50']
+  and name != 'County subdivisions not defined'
 
 transformations:
   # Get county FIPS: first 5 characters of county subdivision FIPS

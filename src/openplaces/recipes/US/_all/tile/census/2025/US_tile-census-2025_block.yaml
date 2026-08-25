@@ -23,7 +23,7 @@ entity:
 # Download is partitioned by state
 download_by:
   admin_level: 2
-  admin_recipe_id: "US_admin-census-2021_admin2"
+  admin_recipe_id: "US_admin-census-2025_admin2"
 
 # Compressed file name to read
 compressed_file_name: "tl_2025_{admin2_id_admin1}_tabblock20.zip"
@@ -56,7 +56,7 @@ transformations:
 admin_id_crosswalk:
   admin_level: 2
   admin_id_column: admin2_id_admin1
-  admin_recipe_id: "US_admin-census-2021_admin2"
+  admin_recipe_id: "US_admin-census-2025_admin2"
 
 # Use census GEOID as index
 set_index: census_geo_id

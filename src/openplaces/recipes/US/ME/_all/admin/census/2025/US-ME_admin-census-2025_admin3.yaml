@@ -36,6 +36,19 @@ columns:
   admin3_id_admin1: GEOID
   admin3_id_ansi: COUSUBNS
 
+# TIGER ships one "County subdivisions not defined" placeholder per
+# county -- open water and unorganized area, with a subdivision code of
+# 00000 and no counterpart in the spine. Dropping it here keeps
+# create_index free to treat any remaining unmatched row as an error.
+query: "COUSUBFP != '00000'"
+
+# The GEOID mapped above identifies a spine town exactly, so the index
+# is a direct code join -- no name matching, no parent lookup.
+create_index:
+  function: "openplaces.io.admin.admin3_id_index_from_admin3_code"
+  args:
+    country_id: US-ME
+
 save_to:
   data_dir: core
   filename: admin3

@@ -41,7 +41,18 @@ columns:
 
 # Filter query to select rows
 # Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56'"
+# Territories are excluded by the FIPS ceiling. The six New England
+# states are excluded because their level 3 is towns, not counties:
+# their governing units are Census county subdivisions, ingested per
+# state from the same TIGER COUSUB layer that feeds
+# US_admin-census-2025_admin4. Leaving their counties in gives every one
+# of them an empty admin3_id -- there is no level-3 county in the spine
+# to match -- which used to abort this whole national ingest, and with
+# it every downstream admin map.
+# CT 09, ME 23, MA 25, NH 33, RI 44, VT 50.
+query: >-
+  admin2_id_admin1 <= '56'
+  and admin2_id_admin1 not in ['09', '23', '25', '33', '44', '50']
 
 # Function that returns an indexed version of the input GeoDataFrame
 # (reconciles local admin-3 units against the global GADM spine; the
