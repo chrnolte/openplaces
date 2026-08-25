@@ -7,6 +7,13 @@ description: >-
 admin_id: US
 
 # Entity: what is the unit of analysis of the imported data?
+# Superseded by the 2025 Census vintage. Kept readable for anything
+# that names it explicitly, but withdrawn from auto-discovery: its rows
+# carry pre-remint identifiers, and while `discover_sources` prefers the
+# newer vintage per admin unit, leaving this in the candidate pool lets
+# those stale rows fill any gap the newer layer does not cover.
+exclude_from_auto_discover: true
+
 entity:
   # What is its type? (parcel, property, transaction, person, admin)
   entity_type: admin

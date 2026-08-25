@@ -43,7 +43,7 @@ process_by:
   admin_id_crosswalk:
     admin_level: 3
     admin_id_column: admin3_id_admin1
-    admin_recipe_id: "US_admin-census-2021_admin3"
+    admin_recipe_id: "admin-openplaces-2026_admin3"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
 columns:

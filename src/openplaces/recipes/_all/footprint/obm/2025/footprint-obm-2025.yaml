@@ -40,6 +40,11 @@ uncompressed_file_name: "building.{tile_id}.gpkg"
 download_by:
   partition: tile_id
   tile_recipe_id: tile-obm-2025
+  # Which tile<->admin crosswalk to read. The tile grid is global and
+  # builds its crosswalks against the nationally-saved census layer; the
+  # overlay below uses the harmonized per-state reference, which a global
+  # recipe cannot cheaply link to.
+  tile_admin_recipe_id: US_admin-census-2025_admin3
 
 # Layer that identifies third-level admin subdivisions (Level 2 in GADM)
 layer: building
@@ -75,7 +80,7 @@ keep_overlapping_polygons: false
 # Assign administrative IDs using spatial joins/overlays
 overlay_admin_ids:
   admin_level: 3
-  admin_recipe_id: US_admin-census-2021_admin3
+  admin_recipe_id: admin-openplaces-2026_admin3
 
 # Function to give the GeoDataFrame an index
 create_index:

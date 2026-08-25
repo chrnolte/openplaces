@@ -1,10 +1,9 @@
-﻿admin3_id_admin1,admin3_id,name
+admin3_id_admin1,admin3_id,name
 02063,US-AK-CH,Chugach
-02105,US-AK-HN,Hoohnah-Angoon
+02105,US-AK-HA,Hoonah-Angoon
 02195,US-AK-PE,Petersburg
-02230,US-AK-YA,Skagway
-02230,US-AK-YA,Yakutat
-24510,US-MD-BC,Baltimore City
-29510,US-MO-SL,St. Louis City
-51620,US-VA-FI,Franklin City
-51760,US-VA-RH,Richmond City
+02230,US-AK-SK,Skagway
+24510,US-MD-BC,Baltimore city
+29510,US-MO-SL,St. Louis city
+51620,US-VA-FC,Franklin city
+51760,US-VA-RH,Richmond city

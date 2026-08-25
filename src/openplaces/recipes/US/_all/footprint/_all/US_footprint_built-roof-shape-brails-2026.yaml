@@ -14,6 +14,11 @@ dataset:
     source_id: brails
   version: 2026
 
+# Imagery is fetched at each footprint's own location, so this step
+# needs spine geometry. Since the geospine split the attribute spine
+# (`US_footprint-spine-2026`) carries none of its own -- it used to,
+# which is why this went undeclared and still worked.
+spine_geom: true
 image_recipe: image-googlesatellite-z20
 
 process_by:

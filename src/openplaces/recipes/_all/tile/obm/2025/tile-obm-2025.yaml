@@ -50,5 +50,11 @@ entity_links:
   - recipe_id: admin-gadm-4~1_admin1
   - recipe_id: admin-gadm-4~1_admin2
   - recipe_id: admin-gadm-4~1_admin3
-  - recipe_id: US_admin-census-2021_admin2
-  - recipe_id: US_admin-census-2021_admin3
+  # The harmonized reference, not a raw census vintage: these crosswalks
+  # decide which tiles a county's download pulls, so a layer keyed on
+  # superseded identifiers sends the wrong tiles to the wrong unit.
+  # Nationally-saved layers: this tile grid is global, and the
+  # harmonized admin recipe saves one file per state, so naming it here
+  # would make a single-county run wait on all 52 states.
+  - recipe_id: US_admin-census-2025_admin2
+  - recipe_id: US_admin-census-2025_admin3

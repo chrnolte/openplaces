@@ -11,7 +11,7 @@
 #
 # Sources today: MassGIS's L3_ASSESS table, bundled as an 'additional_layers'
 # entry on US-MA_parcel-massgis-2025 rather than registered as its own
-# standalone ingest recipe; and US-NC_property-shovels-2026 (NC building
+# standalone ingest recipe; and US_property-shovels-2026 (building
 # permits), a standalone ingest recipe auto-discovered like any other.
 
 description: >-
