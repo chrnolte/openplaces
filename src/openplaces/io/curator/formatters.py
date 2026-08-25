@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 
+import numpy as np
 import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
@@ -15,6 +16,40 @@ from openplaces.io.curator.provenance import SOURCE_SUFFIX
 from openplaces.recipe import provenance_suffixes as _provenance_suffixes
 from openplaces.recipe import resolve_attribute_name
 from openplaces.recipe import split_provenance_suffix as _split_source
+
+
+@_register('declare_columns')
+def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
+    """Ensure the listed columns exist, writing missing ones as all-null.
+
+    A recipe that runs across regions with uneven reference coverage
+    (e.g. a footprint source or point inventory that was never built for
+    one state) inherits a spine missing that reference's evidence
+    columns. Downstream steps and curated-reference readers treat a
+    missing declared column as a recipe error, deliberately; this step
+    is the per-recipe declaration that a listed column may legitimately
+    be absent, mirroring the enricher's write-declared-columns-as-null
+    convention for uncovered admin units. Existing columns are never
+    touched.
+
+    Parameters
+    ----------
+    columns : list of str
+        Column names to declare. Each missing name is added as an
+        all-null column; present names are left unchanged.
+    """
+    curated = state.curated
+    added = [col for col in columns if col not in curated.columns]
+    for col in added:
+        # np.nan, not pd.NA: a float-NaN column survives arithmetic and
+        # comparisons in later steps, where NAType raises on bool().
+        curated[col] = np.nan
+    if added and state.verbose:
+        print(
+            f'  declare_columns: {len(added)} absent column(s) '
+            f'declared null: {", ".join(added)}'
+        )
+    return state
 
 
 @_register('cast_categoricals')

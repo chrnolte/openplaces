@@ -285,11 +285,22 @@ def select_value_source_by_admin_unit(
 
     curated[output] = curated[other_column].where(use_other, curated[parcel_column])
 
+    # Only rows that actually received a value get a source token: a
+    # lane's token on a null cell (a secondary footprint the
+    # apportionment deliberately skipped) claims provenance for a value
+    # that does not exist.
+    has_value = curated[output].notna()
     record_source(
-        curated, output, ~use_other, _source_token(parcel_column, default='parcel')
+        curated,
+        output,
+        ~use_other & has_value,
+        _source_token(parcel_column, default='parcel'),
     )
     record_source(
-        curated, output, use_other, _source_token(other_column, default='nsi')
+        curated,
+        output,
+        use_other & has_value,
+        _source_token(other_column, default='nsi'),
     )
     # An input that arrived with per-row provenance keeps it: the
     # parcel lane's value is apportioned from a parcel figure that was
@@ -298,7 +309,10 @@ def select_value_source_by_admin_unit(
     # input carrying no provenance of its own.
     for column, mask in ((parcel_column, ~use_other), (other_column, use_other)):
         if column in incoming:
-            record_sources(curated, output, incoming[column], mask=mask)
+            record_sources(curated, output, incoming[column], mask=mask & has_value)
+    src_col = source_column(output)
+    if src_col in curated.columns:
+        curated.loc[~has_value, src_col] = pd.NA
 
     state.curated = curated
 

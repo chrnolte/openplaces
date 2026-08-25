@@ -940,8 +940,11 @@ def classify_footprint_priority(
     2. Else if any footprint has single-building-point evidence
        (``SourceGeometryType.single_building_point``, e.g. NSI), those are
        ``'primary'``; all others are ``'secondary'``.
-    3. If no footprint on a multi-footprint parcel has evidence, all are
-       ``'secondary'``.
+    3. If no footprint on a multi-footprint parcel has evidence, the
+       largest footprint is ``'primary'``, as is any other footprint at
+       least ``fallback_always_primary_m2`` square meters (default 355,
+       about twice the median single-family primary footprint measured
+       on CHEER evidence); the rest are ``'secondary'``.
     4. Footprints that are the sole geometry on their parcel are always
        ``'primary'``.
     5. Footprints not linked to any parcel are ``'unknown'``, unless they
@@ -960,7 +963,10 @@ def classify_footprint_priority(
         Entity type used to locate the parcel crosswalk in ``state.crosswalks``.
         Defaults to ``'parcel'``.
     thresholds : dict, optional
-        Not currently used; retained for recipe compatibility.
+        ``fallback_always_primary_m2`` (float or None, default 355):
+        size above which a no-evidence footprint is always promoted to
+        primary alongside its parcel's largest; None keeps only the
+        largest-footprint promotion.
     """
     from openplaces.core.schema import SourceGeometryType as _SGT
 
@@ -1037,6 +1043,30 @@ def classify_footprint_priority(
         elif sgt == _SGT.single_building_point:
             building_point_evidence.update(linked_ids)
 
+    # Geometry fallback for parcels with no point evidence at all. All-
+    # secondary was the old behavior, and it starves such parcels in value
+    # apportionment (only primary footprints receive the parcel's
+    # improvement value): every multi-building parcel in a region with no
+    # NSI/Overture points lost its structure value entirely. Calibrated
+    # 2026-08-25 on 46,422 evidence-labeled multi-footprint parcels
+    # across five CHEER counties (NC-CAM/CAR/ONS, TX-ARA/NUE): the
+    # largest footprint is an evidence primary on 90.8% of parcels, and
+    # additional footprints at or above ~2x the median single-family
+    # primary footprint (177 m2 -> 355 m2 default) are primary 84% of
+    # the time; adding a dominance guard on those extra promotions only
+    # lowered agreement. Threshold override:
+    # thresholds: {fallback_always_primary_m2: <m2>} (null disables the
+    # extra promotions; the largest footprint stays primary regardless).
+    from openplaces.geo.polygon import get_areas
+
+    thresholds = thresholds or {}
+    always_primary_m2 = thresholds.get('fallback_always_primary_m2', 355.0)
+    areas_m2 = (
+        state.spine['area_ha'] * 10_000
+        if 'area_ha' in state.spine.columns
+        else get_areas(state.spine, unit='m2')
+    )
+
     for parcel_id, group in multi_fp.groupby('parcel_id'):
         fp_ids = set(group[spine_id_col])
         has_addr = fp_ids & address_evidence
@@ -1052,9 +1082,13 @@ def classify_footprint_priority(
             for fp_id in fp_ids - has_bldg:
                 role[fp_id] = 'secondary'
         else:
-            # No point evidence on this parcel — all footprints are secondary.
-            # (Primary requires evidence, or sole occupancy of the parcel.)
-            for fp_id in fp_ids:
+            # No point evidence on this parcel: promote by geometry (see
+            # the calibration note above), demote the rest.
+            fp_areas = areas_m2.reindex(list(fp_ids)).fillna(0.0)
+            keep = {fp_areas.idxmax()}
+            if always_primary_m2 is not None:
+                keep |= set(fp_areas.index[fp_areas >= always_primary_m2])
+            for fp_id in fp_ids - keep:
                 role[fp_id] = 'secondary'
 
     # Promote unlinked footprints with dwelling evidence from 'unknown' to 'primary'.

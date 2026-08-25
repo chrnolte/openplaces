@@ -40,10 +40,14 @@ def test_mean_statistic():
     assert state.curated['out'].tolist() == [2.0, 2.0, 10.0]
 
 
-def test_missing_column_is_noop():
+def test_missing_column_declares_null_output():
+    # A missing cohort input (e.g. no NSI coverage in this region) still
+    # declares the output column, all-null, so downstream steps and
+    # curated-reference readers keep their missing-column strictness.
     df = pd.DataFrame({'g': ['a']})
     state = impute_from_group_statistic(_state(df), 'g', 'absent', 'out')
-    assert 'out' not in state.curated.columns
+    assert 'out' in state.curated.columns
+    assert state.curated['out'].isna().all()
 
 
 def test_unknown_statistic_raises():

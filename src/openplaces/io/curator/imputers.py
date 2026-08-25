@@ -139,6 +139,12 @@ def impute_from_group_statistic(
     """
     curated = state.curated
     if group_column not in curated or value_column not in curated:
+        # Still declare the output: downstream steps and curated-reference
+        # readers treat a missing declared column as a recipe error. A
+        # cohort input this admin unit lacks (e.g. no NSI coverage) yields
+        # an all-null output, the enricher's absent-coverage convention.
+        if output not in curated:
+            curated[output] = np.nan
         return state
 
     func = _GROUP_STATISTICS.get(statistic)
