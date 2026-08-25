@@ -160,7 +160,9 @@ Should we omit administrative levels that exist on paper but govern nothing (e.g
 * **Option A**: Keep every level everywhere to maintain structural uniformity.
 * **Option B**: Skip levels that do not govern, keeping them only as named groupings. *Currently implemented.*
 
-**Trade-off**: Option B shortens Somerville's identifier from ``US-MA-MI-SO`` to ``US-MA-SOM`` and removes a directory level. The cost is that census tracts no longer nest perfectly within towns, converting tract linkage from a clean join into a population-weighted apportionment.
+**Trade-off**: Option B shortens Somerville's identifier from ``US-MA-MI-SO`` to ``US-MA-SOM`` and removes a directory level. The cost is that census tracts no longer nest perfectly within towns.
+
+That cost is smaller than it first appears, and it is worth stating precisely, because this is the sentence a future reader would use to justify reversing the decision. A tract nests in a *county* everywhere, New England included: what a New England tract lacks is one town, not one county. So the tract keeps a clean join, to its county, and tract-to-town is a linkage nothing currently asks for. What the skipped level does cost is that a county-keyed source can no longer assume level 3 means counties. That is resolved by keying on the code's ``county`` *segment* rather than on an admin level (see :mod:`openplaces.io.admin_codes.segments`), which is also what survives a government reorganizing: Connecticut replaced its eight counties with nine planning regions in 2022, and the segment outlived the level.
 
 Vote 5: Tie-breaking by population weight
 -----------------------------------------

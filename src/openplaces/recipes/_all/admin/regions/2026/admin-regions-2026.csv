@@ -10,7 +10,7 @@ scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-IM,
 scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-LA,
 scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-OR,
 scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-RI,
-scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-AT,
+scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-AN,
 scag-socal,SCAG Southern California Region (6-County),US-CA,US-CA-VE,
 rlis-portland-metro,RLIS Portland Metro (3-County),US-OR,US-OR-CO,
 rlis-portland-metro,RLIS Portland Metro (3-County),US-OR,US-OR-MU,
@@ -186,7 +186,7 @@ us-ct-windham-county,"Windham County, US-CT (former)",US-CT,US-CT-WIM,9015.0
 us-ct-windham-county,"Windham County, US-CT (former)",US-CT,US-CT-WOK,9015.0
 us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-BOU,25001.0
 us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-BRE,25001.0
-us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-BAT,25001.0
+us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-BAR,25001.0
 us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-CHM,25001.0
 us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-DEN,25001.0
 us-ma-barnstable-county,"Barnstable County, US-MA (former)",US-MA,US-MA-EAM,25001.0
@@ -250,7 +250,7 @@ us-ma-bristol-county,"Bristol County, US-MA (former)",US-MA,US-MA-SEE,25005.0
 us-ma-bristol-county,"Bristol County, US-MA (former)",US-MA,US-MA-SOM,25005.0
 us-ma-bristol-county,"Bristol County, US-MA (former)",US-MA,US-MA-SWA,25005.0
 us-ma-bristol-county,"Bristol County, US-MA (former)",US-MA,US-MA-TAU,25005.0
-us-ma-bristol-county,"Bristol County, US-MA (former)",US-MA,US-MA-WEP,25005.0
+us-ma-bristol-county,"Bristol County, US-MA (former)",US-MA,US-MA-WET,25005.0
 us-ma-dukes-county,"Dukes County, US-MA (former)",US-MA,US-MA-AQU,25007.0
 us-ma-dukes-county,"Dukes County, US-MA (former)",US-MA,US-MA-CHK,25007.0
 us-ma-dukes-county,"Dukes County, US-MA (former)",US-MA,US-MA-EDG,25007.0
@@ -259,7 +259,7 @@ us-ma-dukes-county,"Dukes County, US-MA (former)",US-MA,US-MA-OAB,25007.0
 us-ma-dukes-county,"Dukes County, US-MA (former)",US-MA,US-MA-TIS,25007.0
 us-ma-dukes-county,"Dukes County, US-MA (former)",US-MA,US-MA-WTI,25007.0
 us-ma-essex-county,"Essex County, US-MA (former)",US-MA,US-MA-AND,25009.0
-us-ma-essex-county,"Essex County, US-MA (former)",US-MA,US-MA-ATO,25009.0
+us-ma-essex-county,"Essex County, US-MA (former)",US-MA,US-MA-AME,25009.0
 us-ma-essex-county,"Essex County, US-MA (former)",US-MA,US-MA-BEV,25009.0
 us-ma-essex-county,"Essex County, US-MA (former)",US-MA,US-MA-BOX,25009.0
 us-ma-essex-county,"Essex County, US-MA (former)",US-MA,US-MA-DAN,25009.0
@@ -318,7 +318,7 @@ us-ma-franklin-county,"Franklin County, US-MA (former)",US-MA,US-MA-SUN,25011.0
 us-ma-franklin-county,"Franklin County, US-MA (former)",US-MA,US-MA-WRC,25011.0
 us-ma-franklin-county,"Franklin County, US-MA (former)",US-MA,US-MA-WND,25011.0
 us-ma-franklin-county,"Franklin County, US-MA (former)",US-MA,US-MA-WHA,25011.0
-us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-AGT,25013.0
+us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-AGA,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-BLD,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-BRI,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-CHR,25013.0
@@ -332,7 +332,7 @@ us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-LON,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-LUD,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-MNT,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-MON,25013.0
-us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-PAT,25013.0
+us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-PAL,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-RUS,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-SOU,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-SPR,25013.0
@@ -341,11 +341,11 @@ us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-WAS,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-WES,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-WIM,25013.0
 us-ma-hampden-county,"Hampden County, US-MA (former)",US-MA,US-MA-WSP,25013.0
-us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-AMT,25015.0
+us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-AMH,25015.0
 us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-BEL,25015.0
 us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-CHD,25015.0
 us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-CUM,25015.0
-us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-EAT,25015.0
+us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-EAN,25015.0
 us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-GOS,25015.0
 us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-GRY,25015.0
 us-ma-hampshire-county,"Hampshire County, US-MA (former)",US-MA,US-MA-HAD,25015.0
@@ -419,13 +419,13 @@ us-ma-nantucket-county,"Nantucket County, US-MA (former)",US-MA,US-MA-NAN,25019.
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-AVO,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-BEM,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-BRO,25021.0
-us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-BRT,25021.0
+us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-BRA,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-CAN,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-COH,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-DED,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-DOV,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-FOX,25021.0
-us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-FRT,25021.0
+us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-FRN,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-HOK,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-MEY,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-MDF,25021.0
@@ -436,7 +436,7 @@ us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-NOK,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-NOD,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-PLA,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-QUI,25021.0
-us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-RAT,25021.0
+us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-RAN,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-SHN,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-STO,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-WAE,25021.0
@@ -446,7 +446,7 @@ us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-WST,25021.0
 us-ma-norfolk-county,"Norfolk County, US-MA (former)",US-MA,US-MA-WET,25021.0
 us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-ABI,25023.0
 us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-BRN,25023.0
-us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-BTO,25023.0
+us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-BRI,25023.0
 us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-CAR,25023.0
 us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-DUX,25023.0
 us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-EBR,25023.0
@@ -474,7 +474,7 @@ us-ma-plymouth-county,"Plymouth County, US-MA (former)",US-MA,US-MA-WHI,25023.0
 us-ma-suffolk-county,"Suffolk County, US-MA (former)",US-MA,US-MA-BOS,25025.0
 us-ma-suffolk-county,"Suffolk County, US-MA (former)",US-MA,US-MA-CHE,25025.0
 us-ma-suffolk-county,"Suffolk County, US-MA (former)",US-MA,US-MA-REV,25025.0
-us-ma-suffolk-county,"Suffolk County, US-MA (former)",US-MA,US-MA-WIT,25025.0
+us-ma-suffolk-county,"Suffolk County, US-MA (former)",US-MA,US-MA-WIP,25025.0
 us-ma-worcester-county,"Worcester County, US-MA (former)",US-MA,US-MA-ASM,25027.0
 us-ma-worcester-county,"Worcester County, US-MA (former)",US-MA,US-MA-ATH,25027.0
 us-ma-worcester-county,"Worcester County, US-MA (former)",US-MA,US-MA-AUB,25027.0
@@ -664,7 +664,7 @@ us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-NFR,23007.0
 us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-NSH,23007.0
 us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-NVI,23007.0
 us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-PHS,23007.0
-us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-RAT,23007.0
+us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-RAN,23007.0
 us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-RAN,23007.0
 us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-SFR,23007.0
 us-me-franklin-county,"Franklin County, US-ME (former)",US-ME,US-ME-SRI,23007.0
@@ -736,7 +736,7 @@ us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-RAN,23011.0
 us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-REA,23011.0
 us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-ROM,23011.0
 us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-SID,23011.0
-us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-NTY,23011.0
+us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-UNU,23011.0
 us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-VAS,23011.0
 us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-VIE,23011.0
 us-me-kennebec-county,"Kennebec County, US-ME (former)",US-ME,US-ME-WAE,23011.0
@@ -758,7 +758,7 @@ us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-NHA,23013.0
 us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-OWH,23013.0
 us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-ROT,23013.0
 us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-ROC,23013.0
-us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-STG,23013.0
+us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-GEO,23013.0
 us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-STH,23013.0
 us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-THO,23013.0
 us-me-knox-county,"Knox County, US-ME (former)",US-ME,US-ME-UNI,23013.0
@@ -801,7 +801,7 @@ us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-HAN,23017.0
 us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-HEB,23017.0
 us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-HIR,23017.0
 us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-HRT,23017.0
-us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-LIC,23017.0
+us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-LIP,23017.0
 us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-LOV,23017.0
 us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-MAG,23017.0
 us-me-oxford-county,"Oxford County, US-ME (former)",US-ME,US-ME-MEX,23017.0
@@ -861,7 +861,7 @@ us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-KEG,23019.
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-KNG,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LAG,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LEE,23019.0
-us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LIC,23019.0
+us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LIP,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LAK,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LOW,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-LEV,23019.0
@@ -876,7 +876,7 @@ us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-NPE,23019.
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-NEW,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-ORR,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-ORO,23019.0
-us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-OTO,23019.0
+us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-OLD,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-PAS,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-PEI,23019.0
 us-me-penobscot-county,"Penobscot County, US-ME (former)",US-ME,US-ME-PLY,23019.0
@@ -985,7 +985,7 @@ us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-STS,23027.0
 us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-SWA,23027.0
 us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-THE,23027.0
 us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-TRO,23027.0
-us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-NTY,23027.0
+us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-UNU,23027.0
 us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-WAO,23027.0
 us-me-waldo-county,"Waldo County, US-ME (former)",US-ME,US-ME-WIT,23027.0
 us-me-washington-county,"Washington County, US-ME (former)",US-ME,US-ME-ADD,23029.0
@@ -1085,7 +1085,7 @@ us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-EAT,33003.0
 us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-EFF,33003.0
 us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-FRM,33003.0
 us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-HAS,33003.0
-us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-HSL,33003.0
+us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-HAT,33003.0
 us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-JAC,33003.0
 us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-MAD,33003.0
 us-nh-carroll-county,"Carroll County, US-NH (former)",US-NH,US-NH-MOU,33003.0
@@ -1119,7 +1119,7 @@ us-nh-cheshire-county,"Cheshire County, US-NH (former)",US-NH,US-NH-WAL,33005.0
 us-nh-cheshire-county,"Cheshire County, US-NH (former)",US-NH,US-NH-WES,33005.0
 us-nh-cheshire-county,"Cheshire County, US-NH (former)",US-NH,US-NH-WIN,33005.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-ATG,33007.0
-us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-BEA,33007.0
+us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-BEP,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-BER,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-CAE,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-COL,33007.0
@@ -1158,7 +1158,7 @@ us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-STD,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-STA,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-SUC,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-THM,33007.0
-us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-WEH,33007.0
+us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-WEL,33007.0
 us-nh-coos-county,"Coos County, US-NH (former)",US-NH,US-NH-WHI,33007.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-ALE,33009.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-ASH,33009.0
@@ -1197,7 +1197,7 @@ us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-RUM,33009.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-SUH,33009.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-THO,33009.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-WAN,33009.0
-us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-WEH,33009.0
+us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-WEL,33009.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-WOO,33009.0
 us-nh-grafton-county,"Grafton County, US-NH (former)",US-NH,US-NH-WAV,33009.0
 us-nh-hillsborough-county,"Hillsborough County, US-NH (former)",US-NH,US-NH-AMH,33011.0
@@ -1413,7 +1413,7 @@ us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-NEK,50005.
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-PEA,50005.0
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-RYE,50005.0
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-SHD,50005.0
-us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-STJ,50005.0
+us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-JOH,50005.0
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-STD,50005.0
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-SUT,50005.0
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-WAL,50005.0
@@ -1421,7 +1421,7 @@ us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-WHE,50005.
 us-vt-caledonia-county,"Caledonia County, US-VT (former)",US-VT,US-VT-WAT,50005.0
 us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-BOL,50007.0
 us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-BUR,50007.0
-us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-BUS,50007.0
+us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-BUE,50007.0
 us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-CHA,50007.0
 us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-COL,50007.0
 us-vt-chittenden-county,"Chittenden County, US-VT (former)",US-VT,US-VT-ESS,50007.0
@@ -1447,12 +1447,12 @@ us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-CON,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-EHA,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-FED,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-GRY,50009.0
-us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-GUL,50009.0
+us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-GUI,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-LEM,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-LUN,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-LEW,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-MAI,50009.0
-us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-NON,50009.0
+us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-NOR,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-VIC,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-WAS,50009.0
 us-vt-essex-county,"Essex County, US-VT (former)",US-VT,US-VT-WAS,50009.0
@@ -1467,9 +1467,9 @@ us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-GEO,50011.0
 us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-HIG,50011.0
 us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-MOY,50011.0
 us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-RID,50011.0
-us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-SAC,50011.0
+us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-SAL,50011.0
 us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-SHN,50011.0
-us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-SAT,50011.0
+us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-ALB,50011.0
 us-vt-franklin-county,"Franklin County, US-VT (former)",US-VT,US-VT-SWA,50011.0
 us-vt-grand-isle-county,"Grand Isle County, US-VT (former)",US-VT,US-VT-ALB,50013.0
 us-vt-grand-isle-county,"Grand Isle County, US-VT (former)",US-VT,US-VT-GRI,50013.0
@@ -1503,7 +1503,7 @@ us-vt-orange-county,"Orange County, US-VT (former)",US-VT,US-VT-VEE,50017.0
 us-vt-orange-county,"Orange County, US-VT (former)",US-VT,US-VT-WAN,50017.0
 us-vt-orange-county,"Orange County, US-VT (former)",US-VT,US-VT-WFA,50017.0
 us-vt-orange-county,"Orange County, US-VT (former)",US-VT,US-VT-WIL,50017.0
-us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-ALY,50019.0
+us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-ALB,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-BAN,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-BRW,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-CHN,50019.0
@@ -1517,17 +1517,17 @@ us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-IRG,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-JAY,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-LOW,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-MRG,50019.0
-us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-NEC,50019.0
+us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-NEW,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-NET,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-TRO,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-WED,50019.0
 us-vt-orleans-county,"Orleans County, US-VT (former)",US-VT,US-VT-WEE,50019.0
-us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-BNS,50021.0
+us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-BEN,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-BRN,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-CAS,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-CHI,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-CLA,50021.0
-us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-DAY,50021.0
+us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-DAN,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-FAH,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-HUB,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-IRA,50021.0
@@ -1542,7 +1542,7 @@ us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-POU,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-PRO,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-PIT,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-RUT,50021.0
-us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-RUC,50021.0
+us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-RUT,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-SHR,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-SUD,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-TIN,50021.0
@@ -1552,7 +1552,7 @@ us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-WHA,50021.0
 us-vt-rutland-county,"Rutland County, US-VT (former)",US-VT,US-VT-WRU,50021.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-BAT,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-BER,50023.0
-us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-BAC,50023.0
+us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-BAR,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-CAB,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-CAL,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-DUX,50023.0
@@ -1561,17 +1561,17 @@ us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-FAY,5002
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-MAR,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-MIX,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-MON,50023.0
-us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-MRT,50023.0
+us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-MOR,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-NOR,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-PLA,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-ROX,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-WAI,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-WOR,50023.0
-us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-WOY,50023.0
+us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-WOO,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-WAR,50023.0
 us-vt-washington-county,"Washington County, US-VT (former)",US-VT,US-VT-WAT,50023.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-ATH,50025.0
-us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-BRK,50025.0
+us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-BRO,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-BRA,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-DOV,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-DUM,50025.0
@@ -1580,7 +1580,7 @@ us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-GUI,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-HAL,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-JAM,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-LON,50025.0
-us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-MAO,50025.0
+us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-MAR,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-NEE,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-PUT,50025.0
 us-vt-windham-county,"Windham County, US-VT (former)",US-VT,US-VT-ROC,50025.0
@@ -1607,7 +1607,7 @@ us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-NOR,50027.0
 us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-PLY,50027.0
 us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-POM,50027.0
 us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-REG,50027.0
-us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-ROR,50027.0
+us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-ROC,50027.0
 us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-ROY,50027.0
 us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-SHA,50027.0
 us-vt-windsor-county,"Windsor County, US-VT (former)",US-VT,US-VT-SPR,50027.0
@@ -1715,4 +1715,4 @@ boston-inner-core,Boston Inner Core,US-MA,US-MA-ARL,
 boston-inner-core,Boston Inner Core,US-MA,US-MA-MED,
 boston-inner-core,Boston Inner Core,US-MA,US-MA-EVE,
 boston-inner-core,Boston Inner Core,US-MA,US-MA-CHE,
-boston-inner-core,Boston Inner Core,US-MA,US-MA-WIT,
+boston-inner-core,Boston Inner Core,US-MA,US-MA-WIP,

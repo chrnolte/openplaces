@@ -49,3 +49,13 @@ KR-GJ,GJ,Gwangju,,customary-contraction,South Korea: Gwangju 광주; not derivab
 KR-DJ,DJ,Daejeon,,customary-contraction,South Korea: Daejeon 대전; not derivable from romanisation
 KR-UL,UL,Ulsan,,customary-contraction,South Korea: Ulsan 울산; not derivable from romanisation
 KR-SJ,SJ,Sejong,,customary-contraction,South Korea: Sejong 세종; not derivable from romanisation
+US-ME-LIP,LIP,Lincoln plantation,US-ME-LIC,collision.type-initial,P for plantation; Lincoln town is senior and keeps LIN.
+US-ME-RAP,RAP,Rangeley plantation,US-ME-RNG,collision.type-initial,"P for plantation, against Rangeley town."
+US-ME-UNT,UNT,Unity town,US-ME-UNY,collision.type-initial,"T for town; UNI, the plain form, is Union."
+US-ME-UNU,UNU,Unity UT,US-ME-NTY,collision.type-initial,"U for unorganized territory, against Unity town."
+US-NH-WEL,WEL,Wentworth location,US-NH-WEH,collision.type-initial,L for location; Wentworth town is senior and keeps WEN.
+US-NH-BEP,BEP,Beans purchase,US-NH-BEA,collision.type-initial,"P for purchase. Neither member is a town or city, so BEA stays unclaimed rather than going to one of them."
+US-NH-BEG,BEG,Beans grant,US-NH-BES,collision.type-initial,"G for grant, against Beans purchase."
+US-VT-NET,NET,Newport town,US-VT-NET,collision.type-initial,T for town; Newport city is senior and keeps NEW.
+US-VT-RLT,RLT,Rutland town,US-VT-RUD,collision.type-initial,"T for town on the RL stem: RUT is Rutland city, the senior, and the town own RU+T form would collide with it."
+US-VT-SAT,SAT,St. Albans town,US-VT-STA,collision.type-initial,T for town; St. Albans city is senior and keeps SAL.
