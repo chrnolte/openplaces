@@ -64,6 +64,72 @@ Views keyed on a column the canonical set does not carry are omitted rather than
 
 To open the files by hand instead, use the :guilabel:`Load joined openplaces parquet files` processing algorithm. Pick any one of the four, choose boundary polygons or centroid points, and tick :guilabel:`Join evidence columns` when the supplement is wanted too. That algorithm resolves the join key itself, so it reads a core ``_join_id`` file and an inventory file keyed on ``footprint_id`` equally well.
 
+Everything in a delivered region's folder
+-----------------------------------------
+
+A shipped region (for example
+:file:`share/US/TX/_all/footprint/cheer/2026/`) is a self-contained
+package. Every file it holds, and why:
+
+.. list-table::
+   :widths: 42 58
+
+   * - :file:`{stem}.parquet`
+     - The canonical table: one row per footprint, the compact column
+       set from the recipe's ``share:`` block plus each column's
+       ``{col}_source`` provenance sidecar. No geometry; the smallest
+       file that answers most questions.
+   * - :file:`{stem}_point.parquet`
+     - The same canonical columns on centroid points, plus the
+       point-only ratios (``structure_value_per_area``). What the map's
+       classified views read.
+   * - :file:`{stem}_geo.parquet`
+     - The boundary polygons alone, keyed by ``footprint_id``. Joins to
+       either table on that id; the map's polygon views do exactly
+       that.
+   * - :file:`{stem}_evidence.parquet`
+     - Every remaining column: the full evidence schema behind the
+       canonical values, with the same index and row order.
+   * - :file:`{stem}_LICENSE.txt`
+     - The licence and attribution terms the bundle ships under.
+   * - :file:`{stem}_map.qgz`
+     - A portable QGIS project over the bundle: point and polygon
+       views of every canonical classification, administrative
+       outlines and labels, and web basemaps. Every data source is
+       bundle-relative, so the folder opens anywhere.
+   * - :file:`{stem}_admin3_geo.parquet` /
+       :file:`{stem}_admin4_geo.parquet`
+     - County and county-subdivision outlines for the region's own
+       members, written beside the bundle so the map never references
+       the producing machine. The admin4 file exists only where
+       subdivisions do.
+   * - :file:`accuracies/`
+     - How well the inventory scores, shipped with it: survey and
+       permit agreement tables and figures
+       (``occupancy-scores``, ``permit-agreement``,
+       ``permit-signal-scores``, ``permit-signal-conflicts``,
+       ``permit-confusion``, ``permit-coverage``, ``permit-year-area``,
+       per-county coverage), a ``README.md`` describing them, and
+       ``INSIGHTS.md``, the standing read on what the references say
+       about the pipeline.
+
+How well it scores
+------------------
+
+Two references, neither an input to the inventory. Against the CHEER
+hand-labeled survey (1,370 points, ten North Carolina counties) the
+final occupancy vote reaches F1 0.758 overall: Single-Family 0.73,
+Multi-Family 0.79, Manufactured Home 0.83. Against Shovels building
+permits the vote agrees 94.7% on 93,188 scored North Carolina
+footprints (39 counties) and 94.6% on 149,963 Texas footprints (the
+eight permit-covered metro counties; Texas permits link by
+point-in-parcel because the metro appraisal districts' permit APNs are
+unrelated to the statewide parcel ids). The per-signal tables,
+per-county tiers, and the concrete vote changes these numbers support
+- chiefly demoting uncorroborated Overture multi-dwelling claims, the
+largest conflict block in both regions - live in each bundle's
+:file:`accuracies/` folder, with ``INSIGHTS.md`` as the entry point.
+
 Coverage of the :ref:`containing-area identifiers <containing_area_ids>`, as a minimum across the 44 counties:
 
 .. list-table::

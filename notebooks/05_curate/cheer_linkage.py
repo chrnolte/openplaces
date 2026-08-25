@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import os
 import geopandas as gpd
 import pandas as pd
 
@@ -173,8 +174,14 @@ OVERTURE_COLUMN = 'n_dwellings_overture_inv'
 # county, written by the shovels worktree. Permits are the second
 # out-of-band reference after the survey: not NSI-derived, not
 # parcel-derived, and not baked into the curated output.
+# Which state's permit batch to validate against; the TX batch was
+# built 2026-08-26 by mirroring the NC pair schema from the same raw
+# permit source.
+PERMIT_STATE = os.environ.get('OPENPLACES_PERMIT_STATE', 'NC')
+PERMIT_REGION = {'NC': 'cheer-eastern-nc', 'TX': 'cheer-coastal-tx'}[PERMIT_STATE]
 PERMIT_DIR = (
-    external_dir('US-NC', entity=Entity('property', 'shovels', '2026')) / 'validation'
+    external_dir(f'US-{PERMIT_STATE}', entity=Entity('property', 'shovels', '2026'))
+    / 'validation'
 )
 
 # Confidence tiers for permit occupancy evidence, strongest first. The
@@ -187,14 +194,19 @@ def permit_counties() -> list[str]:
     """Counties with a complete footprint+parcel permit pair on disk.
 
     An incomplete pair means a mid-write county, not a county without
-    permits, so it is skipped rather than read.
+    permits, so it is skipped rather than read. Exactly three-character
+    county codes: the directory still holds pairs written under two
+    superseded mints, which would double-count their counties.
     """
     import re
 
     kinds: dict[str, set[str]] = {}
-    for path in sorted(PERMIT_DIR.glob('US-NC-*_occupancy_validation.parquet')):
+    for path in sorted(
+        PERMIT_DIR.glob(f'US-{PERMIT_STATE}-*_occupancy_validation.parquet')
+    ):
         match = re.match(
-            r'(US-NC-\w\w)_(footprint|parcel)_occupancy_validation', path.stem
+            rf'(US-{PERMIT_STATE}-\w{{3}})_(footprint|parcel)_occupancy_validation',
+            path.stem,
         )
         if match:
             kinds.setdefault(match.group(1), set()).add(match.group(2))
