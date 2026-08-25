@@ -55,6 +55,19 @@ from openplaces.recipe import (
 )
 
 
+def _admin_level_of(admin_id) -> int:
+    """Depth of an admin id given as an AdminId, a string, or nothing.
+
+    `AdminId(x)` raises when `x` is already an AdminId, so callers that
+    accept either form cannot just reconstruct to ask for the level.
+    """
+    if admin_id is None or admin_id == '':
+        return 0
+    if not isinstance(admin_id, AdminId):
+        admin_id = AdminId(admin_id)
+    return admin_id.get_level()
+
+
 class TableIngester:
     """
     Processes a single table from an already-resolved source file into an
@@ -362,6 +375,18 @@ class TableIngester:
         admin_id = self.download_partition['admin_id_to_download'] or self.recipe.get(
             'admin_id'
         )
+        admin_ids_in_tile = self.download_partition.get('admin_ids_in_tile')
+
+        # A tile partition has no admin unit to download, and a global
+        # recipe has none of its own, so both sources of `admin_id` come
+        # back at level 0 -- which `get_admin` cannot resolve to a path
+        # for a recipe that saves per admin unit. The tile already knows
+        # which units it covers, so ask for those: it is the only
+        # non-empty answer available, and it loads the units needed
+        # rather than a whole country's to filter down afterwards.
+        if admin_ids_in_tile and _admin_level_of(admin_id) == 0:
+            admin_id = list(admin_ids_in_tile)
+
         admin_geometries = get_admin(
             admin_id,
             admin_specs['admin_level'],
@@ -369,8 +394,7 @@ class TableIngester:
             geom=True,
         )['geometry']
 
-        if 'admin_ids_in_tile' in self.download_partition:
-            admin_ids_in_tile = self.download_partition['admin_ids_in_tile']
+        if admin_ids_in_tile:
             admin_geometries = admin_geometries.loc[
                 [aid for aid in admin_ids_in_tile if aid in admin_geometries.index]
             ]
@@ -659,6 +683,30 @@ class TableIngester:
         # Filter rows
         if 'query' in self.recipe:
             df = df.query(self.recipe['query'])
+            if df.empty:
+                # Nothing survived, so there is nothing to attribute, index
+                # or save for this partition. Returning here rather than
+                # letting an empty frame fall through the crosswalk and
+                # `create_index`, both of which need columns the filter
+                # just removed every row of. A recipe that deliberately
+                # excludes a whole admin unit -- New England in
+                # `US_admin-census-2025_admin4`, whose level 3 is towns and
+                # which therefore has no level-4 subdivisions -- empties
+                # that unit's partition by design.
+                # Carry the index name `create_index` would have set.
+                # An unnamed empty frame concatenated with properly
+                # indexed partitions drops the name for the whole file,
+                # which lands on disk as `__index_level_0__` and makes
+                # every later read fail with
+                # `No match for FieldRef.Name(admin4_id)`.
+                index_name = (self.recipe.get('create_index') or {}).get(
+                    'args', {}
+                ).get('new_admin_id_col') or self.recipe.get('set_index')
+                if isinstance(index_name, str) and df.index.name != index_name:
+                    df.index.name = index_name
+                if self.verbose:
+                    print(f'  query left no rows for {self.table_name}; skipping.')
+                return df
 
         # Drop duplicate rows (some source dumps repeat exact rows). `true`
         # drops full-row duplicates; a list of column names dedupes on a subset.
@@ -676,7 +724,16 @@ class TableIngester:
         # an entire re-ingest before anyone noticed.
         if 'transformations' in self.recipe or 'transformation_patterns' in self.recipe:
             cols_before = list(df)
-            df = apply_transformations(df, self.recipe)
+            # getattr, because a TableIngester can be constructed without
+            # a download partition (several tests drive `process` directly
+            # on a prepared frame).
+            partition = getattr(self, 'download_partition', None) or {}
+            df = apply_transformations(
+                df,
+                self.recipe,
+                admin_id=partition.get('admin_id_to_download')
+                or self.recipe.get('admin_id'),
+            )
             cols_added = [v for v in df if v not in cols_before]
         else:
             cols_added = []
@@ -788,7 +845,16 @@ class TableIngester:
             and 'use_spatial_mask' in self.recipe['process_by']
             and self.recipe['process_by']['use_spatial_mask']
         )
-        if 'admin_id_crosswalk' in self.recipe:
+        # An empty frame has nothing to attribute, and building the
+        # crosswalk for one can fail outright: the recipe's `query` runs
+        # first, so a state the recipe deliberately excludes arrives here
+        # with zero rows, and asking `get_admin` for a level the excluded
+        # state does not populate returns a frame without the crosswalk's
+        # own column. New England is the live case -- its level 3 is
+        # towns, so it has no level-4 subdivisions and
+        # `US_admin-census-2025_admin4` filters it out, then died on the
+        # crosswalk for the very partitions it had just emptied.
+        if 'admin_id_crosswalk' in self.recipe and len(df):
             admin_id_crosswalk_dict = self.recipe['admin_id_crosswalk']
             admin_id_crosswalk_dict['admin_id'] = self.processing_chunk[
                 'admin_id_to_process'

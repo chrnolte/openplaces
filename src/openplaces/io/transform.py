@@ -207,10 +207,37 @@ def _get_input_value(df, input_ref):
 # Main transformation engine
 
 
+def _resolve_crosswalk_id(crosswalk_id: str, admin_id: Any) -> str:
+    """Substitute the partition's admin unit into a crosswalk id.
+
+    One national recipe can then read a per-state sidecar:
+    `{admin2_id}_property-shovels-2026_county-name-remap` resolves to the
+    North Carolina table for a North Carolina partition. The alternative
+    -- one merged national table keyed on county name -- is unsafe where
+    two states share a county name, and 17 names occur in both North
+    Carolina and Texas alone.
+
+    A placeholder with no admin unit to fill it is left as-is, so the
+    lookup fails on a missing crosswalk rather than quietly reading
+    whichever table happens to be first.
+    """
+    if '{' not in crosswalk_id or admin_id is None:
+        return crosswalk_id
+    levels = tuple(getattr(admin_id, 'levels', ()) or ()) or tuple(
+        x for x in str(admin_id).split('-') if x
+    )
+    for depth in (3, 2, 1):
+        token = f'{{admin{depth}_id}}'
+        if token in crosswalk_id and len(levels) >= depth:
+            crosswalk_id = crosswalk_id.replace(token, '-'.join(levels[:depth]))
+    return crosswalk_id
+
+
 def apply_transformations(
     df: pd.DataFrame | gpd.GeoDataFrame,
     recipe: dict[str, Any],
     silent: bool = False,
+    admin_id: Any = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
     """
     Apply transformations from recipe to dataframe.
@@ -224,6 +251,13 @@ def apply_transformations(
         'transformation_patterns' keys
     silent : bool, default False
         If True, suppress warnings
+    admin_id : str or AdminId, optional
+        Admin unit this partition covers. Substituted into a
+        `remap_file` step's `crosswalk_id` wherever it contains
+        `{admin1_id}` / `{admin2_id}` / `{admin3_id}`, which lets one
+        national recipe read a per-state crosswalk sidecar. Without it
+        such a placeholder is left alone and the lookup fails loudly
+        rather than silently reading the wrong state's table.
 
     Returns
     -------
@@ -244,12 +278,14 @@ def apply_transformations(
     # Apply individual transformations
     if 'transformations' in recipe:
         for transform_config in recipe['transformations']:
-            df = apply_transformation(df, transform_config, silent)
+            df = apply_transformation(df, transform_config, silent, admin_id=admin_id)
 
     # Apply pattern-based transformations
     if 'transformation_patterns' in recipe:
         for pattern_config in recipe['transformation_patterns']:
-            df = apply_transformation_pattern(df, pattern_config, silent)
+            df = apply_transformation_pattern(
+                df, pattern_config, silent, admin_id=admin_id
+            )
 
     return df
 
@@ -279,8 +315,13 @@ def apply_transformation(
     df: pd.DataFrame | gpd.GeoDataFrame,
     config: dict[str, Any],
     silent: bool = False,
+    admin_id: Any = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
-    """Apply a single transformation based on configuration."""
+    """Apply a single transformation based on configuration.
+
+    *admin_id* is the partition's admin unit, used only to resolve an
+    `{adminN_id}` placeholder in a `remap_file` step's `crosswalk_id`.
+    """
     transform_type = config['type']
     output_col = config['output']
 
@@ -353,7 +394,13 @@ def apply_transformation(
                 # beside the recipe), resolved by recipe id like the
                 # harmonizer's remap_id.
                 df[output_col] = df[config['input']].map(
-                    get_crosswalk({'recipe_id': config['crosswalk_id']})
+                    get_crosswalk(
+                        {
+                            'recipe_id': _resolve_crosswalk_id(
+                                config['crosswalk_id'], admin_id
+                            )
+                        }
+                    )
                 )
             else:
                 df[output_col] = _apply_remap_file(
@@ -598,8 +645,13 @@ def apply_transformation_pattern(
     df: pd.DataFrame | gpd.GeoDataFrame,
     config: dict[str, Any],
     silent: bool = False,
+    admin_id: Any = None,
 ) -> pd.DataFrame | gpd.GeoDataFrame:
-    """Apply pattern-based transformation to multiple columns."""
+    """Apply pattern-based transformation to multiple columns.
+
+    *admin_id* is forwarded to each per-column transformation; see
+    :func:`apply_transformation`.
+    """
     pattern = config['pattern']
     transform_type = config['type']
     apply_to_columns = config.get('apply_to_columns', [])
@@ -634,7 +686,7 @@ def apply_transformation_pattern(
                 f"got '{transform_type}'"
             )
 
-        df = apply_transformation(df, individual_config, silent)
+        df = apply_transformation(df, individual_config, silent, admin_id=admin_id)
 
     return df
 
@@ -737,7 +789,29 @@ def get_crosswalk(crosswalk_dict, flip=False):
             recipe=crosswalk_dict.get('admin_recipe_id'),
         )
 
-        crosswalk_series = admin_id_crosswalk[crosswalk_dict['admin_id_column']]
+        column = crosswalk_dict['admin_id_column']
+        if column not in admin_id_crosswalk:
+            # The named admin layer covers no unit of this scope, so it
+            # can map nothing here. New England is the live case: its
+            # level 3 is towns, `US_admin-census-2025_admin3` therefore
+            # excludes those states, and a national consumer that
+            # crosswalks per state (census tracts and block groups both
+            # do) reaches Connecticut and finds no county layer to join
+            # against. Census tracts nest in counties, so there is no
+            # correct level-3 answer for them there -- an empty mapping
+            # leaves those rows unattributed instead of aborting every
+            # other state's work.
+            warnings.warn(
+                f"No '{column}' at admin level "
+                f'{crosswalk_dict["admin_level"]} for '
+                f'{crosswalk_dict["admin_id"]!r} in '
+                f'{crosswalk_dict.get("admin_recipe_id")!r}; '
+                'rows in this scope stay unattributed.',
+                stacklevel=2,
+            )
+            crosswalk_series = pd.Series(dtype=object, name=column)
+        else:
+            crosswalk_series = admin_id_crosswalk[column]
     else:
         raise ValueError(f'Crosswalk dictionary not interpretable:\n\n{crosswalk_dict}')
 

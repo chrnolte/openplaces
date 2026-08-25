@@ -173,8 +173,33 @@ def get_admin(
                 print('Inferred Admin IDs: ' + admin_ids)
 
     if isinstance(recipe, dict):
-        # Set recipe_parquet_path: will be used twice
-        recipe_parquet_path = get_output_path(recipe, recipe['admin_id'])
+        # Set recipe_parquet_path: will be used twice.
+        #
+        # The recipe's own admin_id is the right key only when it has
+        # one. A global recipe that nonetheless saves per admin unit
+        # (`admin-openplaces-2026_admin3`: admin_id NULL, one file per
+        # level-2 unit) has none, and asking for a level-0 path from a
+        # recipe that saves at level 2 raises. Fall back to what the
+        # caller asked for, truncated to the recipe's save level.
+        path_admin_id = recipe['admin_id']
+        save_level = get_save_admin_level(recipe)
+        recipe_level = (
+            path_admin_id.get_level()
+            if isinstance(path_admin_id, AdminId)
+            else AdminId(path_admin_id).get_level()
+            if path_admin_id
+            else 0
+        )
+        if (
+            save_level
+            and recipe_level < save_level
+            and admin_id is not None
+            and admin_ids
+        ):
+            deepest = max(admin_ids, key=lambda a: a.get_level())
+            if deepest.get_level() >= save_level:
+                path_admin_id = AdminId(*deepest.levels[:save_level])
+        recipe_parquet_path = get_output_path(recipe, path_admin_id)
 
     try:
         # Load admin spine from default source

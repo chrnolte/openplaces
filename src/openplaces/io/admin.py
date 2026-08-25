@@ -630,6 +630,117 @@ def admin3_id_index_from_local(admin3_local, admin2_recipe_id):
     return admin3_local.set_index('admin3_id')
 
 
+def admin3_id_index_from_admin3_code(gdf, country_id, code_column='admin3_id_admin1'):
+    """Index a local admin-3 layer by joining its national code to the spine.
+
+    The New England states are why this exists. Their towns govern and
+    their counties do not, so the spine carries towns at level 3 -- and a
+    Census county subdivision *is* the town, meaning its 10-digit GEOID
+    already identifies a spine unit exactly. There is nothing to infer:
+    no name matching, no prefix truncation, no parent lookup.
+
+    That makes this the plainest of the index functions, and deliberately
+    so. `admin3_id_index_from_local` joins on parent plus cleaned name
+    because its sources carry no shared code; using it here would
+    reintroduce name ambiguity (Massachusetts has both a Bridgewater and
+    a West Bridgewater, and eight of its town names recur in other New
+    England states) to resolve a code that is already unique.
+
+    Parameters
+    ----------
+    gdf : GeoDataFrame
+        Local admin-3 source carrying *code_column*.
+    country_id : str
+        Admin id whose level-3 spine to resolve against, e.g. `'US-MA'`.
+        Scoping to the state keeps the join small and makes an unmatched
+        row a real error rather than a cross-state near-miss.
+    code_column : str, optional
+        Column holding the national code (default `'admin3_id_admin1'`).
+
+    Raises
+    ------
+    ValueError
+        If *code_column* is absent, if the spine offers no codes to join
+        against, or if any row fails to match. An admin layer is what
+        every other dataset is keyed on, so a partial index is worse than
+        no index at all.
+    """
+    if code_column not in gdf:
+        raise ValueError(
+            f"Cannot index by '{code_column}': column not in the source "
+            f'({sorted(gdf.columns)}).'
+        )
+
+    # 'name' as well as the code: the fallback below needs it, and a
+    # second get_admin call would re-read the same file.
+    spine = get_admin(country_id, level=3, columns=[code_column, 'name'])
+    codes = spine.reset_index().dropna(subset=[code_column])
+    if codes.empty:
+        raise ValueError(
+            f"The level-3 spine for '{country_id}' carries no "
+            f"'{code_column}' values to join against."
+        )
+    if codes[code_column].duplicated().any():
+        duplicated = sorted(codes.loc[codes[code_column].duplicated(), code_column])
+        raise ValueError(
+            f"Non-unique '{code_column}' in the level-3 spine for "
+            f"'{country_id}': {duplicated[:10]}"
+        )
+
+    gdf = gdf.copy()
+    gdf['admin3_id'] = (
+        gdf[code_column].astype(str).map(codes.set_index(code_column)['admin3_id'])
+    )
+
+    # Fall back to the name for anything the code join missed. A town
+    # that becomes a city gets a new Census subdivision code while the
+    # spine still holds the old one -- measured in Massachusetts for
+    # Watertown (spine 2501773440, TIGER 2501773405), Easthampton,
+    # Amesbury and Methuen, all four of which converted. The spine calls
+    # them "Watertown Town" and TIGER calls them "Watertown", so
+    # stripping the type word matches them without a hand-maintained
+    # code crosswalk that would need editing again at the next
+    # conversion.
+    unmatched = gdf['admin3_id'].isnull()
+    if unmatched.any() and 'name' in gdf:
+        from openplaces.utils import create_comparable_name_link
+
+        def _link(value):
+            link = create_comparable_name_link(value)
+            if not isinstance(link, str):
+                return link
+            for suffix in (' town', ' city', ' township', ' plantation'):
+                if link.endswith(suffix):
+                    link = link[: -len(suffix)]
+                    break
+            return link.strip()
+
+        by_name = spine.reset_index()
+        by_name['_link'] = by_name['name'].map(_link)
+        by_name = by_name.drop_duplicates('_link').set_index('_link')['admin3_id']
+        recovered = gdf.loc[unmatched, 'name'].map(_link).map(by_name)
+        gdf.loc[unmatched, 'admin3_id'] = recovered
+        if recovered.notna().any():
+            warnings.warn(
+                f'{recovered.notna().sum():,d} admin-3 unit(s) in '
+                f"'{country_id}' matched by name after their "
+                f"'{code_column}' changed: "
+                + ', '.join(sorted(gdf.loc[recovered.notna().index, 'name'])[:8]),
+                stacklevel=2,
+            )
+
+    unmatched = gdf['admin3_id'].isnull()
+    if unmatched.any():
+        report = [c for c in ('name', 'name_long', code_column) if c in gdf]
+        raise ValueError(
+            f'{unmatched.sum():,d} of {len(gdf):,d} admin-3 unit(s) in '
+            f"'{country_id}' had no spine match on '{code_column}':\n"
+            + str(gdf.loc[unmatched, report].head(20))
+        )
+
+    return gdf.set_index('admin3_id')
+
+
 def admin4_id_index_from_gb_ons(gdf, admin3_recipe_id, lookup_recipe_id):
     """Give dataframe `gdf` an `admin4_id` index for GB LADs.
 

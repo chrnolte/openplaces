@@ -42,8 +42,12 @@ def test_same_entity_type_falls_back_to_lexicographic():
 
 def test_admin_id_truncated_to_owner_save_level():
     # The parcel recipe saves at county level (3); a finer town-level
-    # admin_id must resolve to the county's link path.
+    # admin_id must resolve to the county's link path. The town id is
+    # synthetic -- this resolves a path by truncation and never consults
+    # the spine, so the town need not exist; only its county prefix has
+    # to match `county` below, which a bare-county-id sweep can silently
+    # break.
     admin = 'US_admin-census-2021_admin3'
-    town = get_entity_link_path(PARCEL, admin, admin_id='US-NC-BS-SP')
+    town = get_entity_link_path(PARCEL, admin, admin_id='US-NC-BR-SP')
     county = get_entity_link_path(PARCEL, admin, admin_id='US-NC-BR')
     assert town == county

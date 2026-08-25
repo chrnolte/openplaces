@@ -29,8 +29,24 @@ from openplaces.io.transform import make_index_unique
 
 
 def get_oriented_dims(geom) -> tuple[float, float, float]:
-    """Return ``(angle_deg % 180, length, width)`` of the minimum bounding rectangle."""
+    """Return ``(angle_deg % 180, length, width)`` of the minimum bounding rectangle.
+
+    A missing or empty geometry returns all zeros rather than raising.
+    Blank geometry is a legitimate state here -- `fix_polygons` blanks a
+    polygon whose coordinates are non-finite instead of handing it to
+    `shapely.make_valid`, which would raise -- and every caller feeds the
+    result into an aspect-ratio test. Zero width makes that ratio zero,
+    so such a row simply fails the elongation test instead of aborting
+    the whole geospine.
+    """
+    if geom is None or geom.is_empty:
+        return 0.0, 0.0, 0.0
     obb = geom.minimum_rotated_rectangle
+    if obb is None or obb.is_empty or not hasattr(obb, 'exterior'):
+        # A degenerate polygon (a point, or a zero-area sliver) has a
+        # rectangle that is not itself a polygon, so it has no corners
+        # to measure.
+        return 0.0, 0.0, 0.0
     coords = np.array(obb.exterior.coords)[:-1]  # 4 corners
     d0 = coords[1] - coords[0]
     d1 = coords[2] - coords[1]

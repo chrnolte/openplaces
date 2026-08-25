@@ -1049,11 +1049,21 @@ class Ingester:
         self.admin_ids_to_save. The link table is stored on self for reuse
         in _ingest_download_partition.
         """
+        # `download_by.tile_admin_recipe_id` wins when present. The tile
+        # crosswalk is built once, globally, by the tile recipe, so it can
+        # only be keyed on an admin layer that recipe itself links to --
+        # which is not necessarily the layer this recipe overlays against.
+        # Those two pulled apart the moment the overlay moved to the
+        # harmonized per-state reference while the global tile grid stayed
+        # on the nationally-saved census layer: the consumer then asked for
+        # a crosswalk nobody builds.
         admin_overlay_specs = self.recipe['overlay_admin_ids']
-        admin_recipe_id = admin_overlay_specs.get(
-            'admin_recipe_id'
-        ) or find_admin_recipe_id(
-            self.recipe['admin_id'], admin_overlay_specs['admin_level']
+        admin_recipe_id = (
+            (self.recipe.get('download_by') or {}).get('tile_admin_recipe_id')
+            or admin_overlay_specs.get('admin_recipe_id')
+            or find_admin_recipe_id(
+                self.recipe['admin_id'], admin_overlay_specs['admin_level']
+            )
         )
 
         tile_recipe_id = self.recipe['download_by']['tile_recipe_id']
@@ -1546,8 +1556,15 @@ class Ingester:
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )
+        # The partition's own admin unit, not the recipe's. A national
+        # recipe whose source ships one file per state
+        # (`download_by: {admin_level: 2}`) keeps each under that state's
+        # external directory; building the path from the recipe's
+        # `admin_id` instead sent every partition to the country-level
+        # path, so only one state's file could ever be found.
         self.recipe_external_dir = external_dir(
-            self.recipe.get('admin_id'),
+            self.download_partition.get('admin_id_to_download')
+            or self.recipe.get('admin_id'),
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )

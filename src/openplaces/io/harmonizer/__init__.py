@@ -13,6 +13,7 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import import_module as _import_module
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
@@ -274,6 +275,57 @@ def _load_steps() -> None:
     _steps_loaded = True
 
 
+def _missing_link_sidecars(recipe, admin_id) -> list[Path]:
+    """Link sidecars this recipe owes for `admin_id` but has not written.
+
+    A geospine's contract is its spine *plus* one sidecar per
+    `link_to_reference` join, and only the spine is checked before
+    skipping. The two come apart whenever a run wrote the spine while an
+    upstream ingest was failing: the spine exists, so the next run skips,
+    and the attribute recipe fails with "missing or stale link sidecar"
+    naming a geospine that looks finished. Treating a missing sidecar as
+    "not done" closes that gap, so a repaired upstream is picked up
+    without anyone having to reach for `reprocess`.
+
+    A reference with no output of its own is *not* owed a sidecar. The
+    linking step reads it with `missing='warn'` and writes nothing, so
+    demanding one would re-run the geometry phase on every single pass
+    for as long as that upstream stays unbuilt -- turning a warning into
+    a permanent rebuild.
+    """
+    from openplaces.geo.link import get_entity_link_path
+    from openplaces.io.harmonizer.links import _resolve_reference_recipe
+
+    def _reference_is_built(reference_id) -> bool:
+        try:
+            reference = get_recipe_by_id(reference_id)
+            return get_output_path(reference, admin_id).exists()
+        except Exception:  # noqa: BLE001 - unresolvable is "not built"
+            return False
+
+    owed: list[Path] = []
+    for step in recipe.get('pipeline') or []:
+        if not isinstance(step, dict):
+            continue
+        if step.get('step') == 'link_to_reference':
+            if step.get('save_link') is False:
+                continue
+        elif not step.get('save_link'):
+            continue
+        try:
+            reference_id, _ = _resolve_reference_recipe(
+                step.get('recipe_id'), step.get('entity_type'), admin_id
+            )
+        except Exception:  # noqa: BLE001 - an unresolvable reference is
+            continue  # the linking step's error to raise, not ours
+        if reference_id is None or not _reference_is_built(reference_id):
+            continue
+        path = get_entity_link_path(recipe['recipe_id'], reference_id, admin_id)
+        if not path.exists():
+            owed.append(path)
+    return owed
+
+
 class Harmonizer:
     """Recipe-driven harmonization via a composable step pipeline.
 
@@ -396,9 +448,17 @@ class Harmonizer:
                 if not reprocess and (
                     out_path.exists() or receipt_justifies_skip(self.recipe, admin_id)
                 ):
+                    missing = _missing_link_sidecars(self.recipe, admin_id)
+                    if not missing:
+                        if self.verbose:
+                            print(f'[skip] {admin_id}: output exists.')
+                        continue
                     if self.verbose:
-                        print(f'[skip] {admin_id}: output exists.')
-                    continue
+                        print(
+                            f'[rerun] {admin_id}: output exists but '
+                            f'{len(missing)} link sidecar(s) are missing '
+                            f'({missing[0].name}).'
+                        )
                 if reprocess:
                     discard_receipt(out_path)
                 if self.verbose:

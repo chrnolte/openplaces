@@ -109,6 +109,14 @@ def _scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dic
             continue
         if (data.get('stage') or 'ingest') != 'ingest':
             continue
+        # A recipe can withdraw itself from auto-discovery. The field was
+        # already set by two recipes and reported by
+        # `diagnostics.find_recipes`, but never enforced here -- and this
+        # is the path admin-source discovery actually takes, so a
+        # superseded layer stayed in the candidate pool and could fill
+        # any gap the current vintage did not cover.
+        if data.get('exclude_from_auto_discover'):
+            continue
         entity = data.get('entity') or {}
         raw_admin_id = data.get('admin_id')
         admin_id_str = (

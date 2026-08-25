@@ -701,7 +701,9 @@ def get_recipe_dependencies(
       'download_by.tile_recipe_id', 'footprint_recipe_id',
       'reference_parcel_recipe_id', merge_enrichments 'recipes' entries,
       ...); keys under a '\*crosswalk' block and 'remap_id' are excluded
-      (value crosswalks, not data dependencies)
+      (value crosswalks, not data dependencies) -- unless the block names
+      an 'admin_recipe_id', which reads that recipe's output to assign
+      admin units and so is a real dependency
     - pipeline steps or source entries with 'auto_discover' or a bare
       'entity_type', resolved per admin unit the same way the pipeline
       resolves them at run time
@@ -781,7 +783,21 @@ def get_recipe_dependencies(
             if isinstance(step_name, str):
                 context = step_name
             for key, value in node.items():
-                if isinstance(key, str) and key.endswith('crosswalk'):
+                if (
+                    isinstance(key, str)
+                    and key.endswith('crosswalk')
+                    and not (isinstance(value, dict) and value.get('admin_recipe_id'))
+                ):
+                    # A value crosswalk (a remap table) reads no recipe
+                    # output, so it is not a data dependency. An
+                    # `admin_id_crosswalk` naming an `admin_recipe_id`
+                    # is the opposite: it reads that recipe's output to
+                    # decide which admin unit every row belongs to.
+                    # Skipping it left `US-NC_parcel-nconemap-2025` with
+                    # zero declared inputs, so rebuilding the admin layer
+                    # could never invalidate it -- Camden kept a parcel
+                    # file full of Columbus County under `mtime`
+                    # rerun-triggers, and nothing said so.
                     continue
                 if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
                     _add(value, key, step=context)
