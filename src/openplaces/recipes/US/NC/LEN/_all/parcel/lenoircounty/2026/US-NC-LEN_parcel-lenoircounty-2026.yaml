@@ -1,0 +1,126 @@
+# Recipe: Lenoir County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer
+# (`services3.arcgis.com`, org id bDx73HOFAO3oSeDq), service
+# `Parcels_Zoning_Addressing`, layer 6 ("Parcels").
+#
+# 36,474 features against NC OneMap's 36,312, with a CAMA join carrying
+# a land/building value split, year built and finished area.
+#
+# Downloaded as one bulk GeoJSON export (~73 MB) from the ArcGIS Hub
+# download API rather than by paging the REST layer, which would take
+# ~19 sequential 2,000-feature requests against the county's server. The
+# REST endpoint backing it is
+# services3.arcgis.com/bDx73HOFAO3oSeDq/.../FeatureServer/6.
+#
+# The Hub export is generated asynchronously and cached; on a cold cache
+# the download URL can answer 404 for a few minutes while Hub builds the
+# file. A 404 on first ingest means "not built yet", not "gone".
+#
+# NOTE: about 4% of rows are empty shells -- every attribute null,
+# geometry present. They are left in at ingest: parcel_id_local comes
+# out null for them so they never join downstream, and filtering at
+# ingest would hide a real property of this source.
+#
+# Join key: NC_PIN ('9999-99-9999'), 98.4% populated and 3,931 distinct
+# per 4,000 sampled, under the generic `simple` fallback (there is no
+# bundled US-NC-LEN row, and none is needed). ParcelNum is the bare
+# four-digit parcel segment and collapses to 3,272 distinct values over
+# the same rows, so it is deliberately not used as the key.
+#
+# NC OneMap's own parcel_id_local for this county is ALTPARNO-derived
+# and lives in a different id space, so the two sources do not share a
+# key. That is tolerable because this layer supplies its own geometry
+# and therefore the parcel spine: the join that matters is this roll
+# against itself.
+#
+# NOTE on last_sale_date: DateSold is a 'YYYYMMDD' string, so it stays
+# human-readable and orderable -- unlike the Nash and Currituck layers,
+# whose date fields arrive as epoch milliseconds. Nothing casts this
+# column to a datetime at ingest (verified on the real output: it lands
+# as a string), so the '0' this source uses for "no recorded sale" on
+# ~27% of rows is nulled explicitly by a transformation below rather
+# than being left to a cast that never happens.
+#
+# NOTE: `City` sits in the Addr1/City/State/Zip block and is the owner's
+# mailing city, not the situs city; the situs side of this layer
+# publishes only PhysStrAdd. It is mapped as owner_city accordingly.
+
+description: >-
+  Lenoir County, NC parcel roll (land/building values, year built, finished
+  area, owner, situs, most recent sale) from the county's ArcGIS parcel layer.
+
+admin_id: US-NC-LEN
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: lenoircounty
+    # Checked 2026-08-20 through the ArcGIS Hub API for the dataset this
+    # recipe downloads: the item explicitly declares license "none" and
+    # carries no access-information text. So the county publishes the
+    # data without stating terms -- checked and absent, not unexamined.
+    license: "unknown (ArcGIS Hub item declares no licence)"
+    redistribution_restricted: null
+    portal_url: "https://www.co.lenoir.nc.us/departments/gis/"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/aaec5d13228741b5950cb50fbce252ad_6/downloads/data?format=geojson&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "lenoir_parcels.geojson"
+
+columns:
+  parcel_id_assessor: NC_PIN
+  address: PhysStrAdd
+  owner_name: Name1
+  owner_name_2: Name2
+  owner_address: Addr1
+  owner_city: City
+  owner_admin2_id_admin1: State
+  owner_postal_code: Zip
+  legal_description: LegalDesc1
+  use_group: CompCodeDe
+  tax_neighborhood_code: NHCode
+  year_built: YearBuilt
+  area_sqft: FinishedAr
+  # Structure detail, measured on this layer: bedrooms 52.8%,
+  # bathrooms 52.7%.
+  n_bedrooms: NumBeds
+  n_bathrooms: NumBaths
+  last_sale_date: DateSold
+  last_sale_year: DeedYear
+  last_sale_price: SalesAmt
+  land_value: LandFMVCur
+  improvement_value: ImproveFMV
+  total_value: TotalFMVCu
+  current_use_value: LandLUVCur
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DeedBook, DeedPage]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+  # DateSold uses the literal string '0' rather than null for "no
+  # recorded sale" on ~27% of rows. Nothing casts this column to a
+  # datetime at ingest, so those zeros would otherwise survive verbatim
+  # into the output alongside real 'YYYYMMDD' values; null them here.
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_date
+    args:
+      value: "0"
+    output: last_sale_date
+
+columns_to_categorical:
+  - use_group
+  - tax_neighborhood_code
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

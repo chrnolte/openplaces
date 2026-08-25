@@ -1,0 +1,64 @@
+# Recipe: Gates County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (hosted by GIS vendor AGD,
+# org id nJbIFHiSnaX0z0hS), backing its public parcel viewer. Caps a single
+# query at 1,000 features (`maxRecordCount`), so `arcgis_rest_scraper` pages
+# through it.
+#
+# NOTE: no year_built field in this layer's schema (verified). Land and
+# building value are populated (968/1000 and 667/1000 sampled records
+# respectively), so land/building value is included as a bonus.
+
+description: >-
+  Gates County, NC parcel roll (assessed land/building/total values, owner,
+  situs, deed reference) from the county's ArcGIS parcel layer. No year
+  built is available from this source.
+
+admin_id: US-NC-GAT
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: gatescounty
+    # Checked 2026-08-20 against the ArcGIS REST service this recipe
+    # reads: neither copyrightText nor licenseInfo is set on the service
+    # or its layer, so the endpoint openplaces actually uses states no
+    # terms. Checked and absent, not unexamined -- but this speaks only
+    # for that endpoint, not for anything the county may publish
+    # elsewhere.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
+    portal_url: "https://gatescountygis.com/"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "gates_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/GatesParcelService/FeatureServer/5"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: pin
+  address: formattedpropertyaddress
+  owner_name: name1
+  owner_name_2: name2
+  legal_description: legaldescription
+  last_sale_date: deeddate
+  last_sale_price: saleprice
+  last_sale_book_page: bookpage
+  land_value: assessedlandvalue
+  improvement_value: totalbuildingvalue
+  total_value: marketvalue
+  zoning_code: zoning
+
+columns_to_categorical:
+  - zoning_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

@@ -1,0 +1,74 @@
+# Recipe: Bertie County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (`services3.arcgis.com`,
+# org id tiupcc8dC1j2CPV5), backing its public parcel viewer. Layer 4
+# ("Parcels"); layer 0 in the same service is road centerlines, not
+# parcels. Caps a single query at 1,000 features (`maxRecordCount`), so
+# `arcgis_rest_scraper` pages through it.
+#
+# NOTE: no year_built field in this layer's schema (verified). LANDVAL and
+# BLDGVAL are populated (996/1000 and 499/1000 sampled records
+# respectively), so land/building value is included as a bonus.
+
+description: >-
+  Bertie County, NC parcel roll (assessed land/building/total values,
+  owner, situs, deed reference) from the county's ArcGIS parcel layer. No
+  year built is available from this source.
+
+admin_id: US-NC-BER
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: bertiecounty
+    # Checked 2026-08-20 against the ArcGIS REST service this recipe
+    # reads: neither copyrightText nor licenseInfo is set on the service
+    # or its layer, so the endpoint openplaces actually uses states no
+    # terms. Checked and absent, not unexamined -- but this speaks only
+    # for that endpoint, not for anything the county may publish
+    # elsewhere.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
+    portal_url: "https://bertiecounty.maps.arcgis.com/apps/webappviewer/index.html?id=6b7b91023ce84d778d1a207f75fe0454"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "bertie_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/tiupcc8dC1j2CPV5/arcgis/rest/services/Bertie_Parcel_Viewer/FeatureServer/4"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: GEOPIN
+  address: PARADDR
+  owner_name: OWNER
+  # PARCLASS is a coarse but near-complete land-use class (RESIDENTIAL /
+  # EXEMPT / BUSINESS), 99.6% populated. PARZONE is the zoning district,
+  # 32% populated -- partial because this county zones only part of its
+  # area, not because the field is unreliable.
+  use_group: PARCLASS
+  zoning_code: PARZONE
+  owner_address: ADDR1
+  owner_address_2: ADDR2
+  owner_city: OWNCITY
+  owner_admin2_id_admin1: OWNST
+  owner_postal_code: OWNZIP
+  land_value: LANDVAL
+  improvement_value: BLDGVAL
+  total_value: TAXVAL
+  last_sale_book_page: DEEDBKPG
+  n_buildings: NUMBLDG
+
+columns_to_categorical:
+  - use_group
+  - zoning_code
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

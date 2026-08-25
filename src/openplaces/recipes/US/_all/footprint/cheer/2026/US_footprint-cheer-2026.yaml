@@ -939,7 +939,7 @@ pipeline:
 
   # Carry the county's federal FIPS code alongside openplaces' own
   # admin3_id. Only one of the two is ours to change: an admin-id re-mint
-  # can hand `US-NC-CD` to a different county than it named before, while
+  # can hand `US-NC-CAL` to a different county than it named before, while
   # 37029 is Camden's for good. A delivered inventory that carries the
   # FIPS stays joinable to Census, FEMA and other federal products across
   # a re-mint, and a recipient can tell which county a row came from

@@ -1,0 +1,141 @@
+# Recipe: Pitt County, NC parcel roll.
+#
+# Source: the county's own ArcGIS Server (`gis.pittcountync.gov`,
+# on-prem, not ArcGIS Online), layer
+# `PittOpenData/CadastralPitt/MapServer/0` ("Pitt Parcels").
+#
+# Downloaded as one bulk GeoJSON export (~194 MB) from the ArcGIS Hub
+# download API rather than by paging the REST layer, which would take
+# ~41 sequential 2,000-feature requests against the county's own server.
+# The service is on-prem but is registered as a Hub dataset
+# (4b978f79c0124c7f899768d3eb459cd0), so the export is available; the
+# REST endpoint backing it is
+# gis.pittcountync.gov/gis/rest/services/PittOpenData/CadastralPitt/MapServer/0.
+#
+# The Hub export is generated asynchronously and cached; on a cold cache
+# the download URL can answer 404 for a few minutes while Hub builds the
+# file. A 404 on first ingest means "not built yet", not "gone".
+#
+# The same PittOpenData server publishes a "Pitt County Parcel Sales
+# History" table (`Tables/MapServer/8`) -- the full transaction history
+# rather than the last-sale snapshot mapped here. It is ingested as
+# US-NC-PIT_transaction-pittcounty-2026 and joins back to this roll on
+# the same key, so last_sale_price/last_sale_date reach the parcel spine
+# from both this snapshot and that history.
+#
+# The richest public parcel layer found anywhere in the CHEER study
+# area: 81,220 features against NC OneMap's 79,612 for this county,
+# carrying a land/building value split, year built, heated area,
+# building count and the highest sale-price coverage of any county
+# surveyed (77.8% of a 400- record sample positive, vs. 64.5% for the
+# best previously ingested county).
+#
+# PARCELNUMBER is the join key and is exact: every sampled value matches
+# NC OneMap's own parcel_id_local for this county under the bundled
+# `simple` conversion, so no id-override row is needed.
+#
+# NOTE on last_sale_date: `SalesMonthYear` is used rather than the
+# `DocumentDate` field, even though DocumentDate is finer-grained.
+# arcgis_rest_scraper writes `f=geojson`, and Esri serializes an
+# esriFieldTypeDate as epoch milliseconds there (verified: DocumentDate
+# comes back as 1001912400000, not an ISO string), which pandas would
+# read as nanoseconds and silently resolve to 1970. SalesMonthYear is a
+# plain 'MM/YYYY' string that parses correctly, trading day precision
+# for a date that is actually right. See also the note in
+# US-NC-NAS_parcel-rockymountnc-2026.yaml, whose source offers no string
+# alternative.
+#
+# NOTE: `UseCode` is a combined code-and-label string
+# ('01-SFR-CONST(01-SFR)') rather than a separate code and description,
+# so it is mapped to use_group -- the descriptive token is what the
+# downstream land-use keyword matching reads.
+
+description: >-
+  Pitt County, NC parcel roll (land/building values, year built, heated area,
+  owner, situs, most recent sale) from the county's ArcGIS parcel layer.
+
+admin_id: US-NC-PIT
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: pittcounty
+    # Terms verified 2026-08-20 by querying the ArcGIS Hub item this
+    # recipe reads: license "CC-BY-SA-4.0", licenseInfo "CC BY-SA",
+    # source "Pitt County Government". A deliberate declaration, not an
+    # empty field.
+    #
+    # CC-BY-SA-4.0 is SHARE-ALIKE, and Pitt is one of the 45 counties in
+    # the cheer-eastern-nc delivery region. A bundle mixing this geometry
+    # with ODbL-1.0 footprints inherits two share-alike licences that
+    # cannot both be satisfied by one release. See
+    # plans/legal-compliance-open-items-and-counsel-brief.md section 1.1.
+    license: "CC-BY-SA-4.0"
+    terms_url: "https://creativecommons.org/licenses/by-sa/4.0/"
+    redistribution_restricted: false
+    portal_url: "https://www.pittcountync.gov/168/Geographic-Information-Systems"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/4b978f79c0124c7f899768d3eb459cd0_0/downloads/data?format=geojson&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "pitt_parcels.geojson"
+
+columns:
+  parcel_id_assessor: PARCELNUMBER
+  parcel_id_admin3: NCPIN
+  address: PhysicalAddress
+  city: Municipality
+  owner_name: OwnerName
+  owner_address: OwnerAddress1
+  owner_address_2: OwnerAddress2
+  legal_description: LegalDescription
+  subdivision: SubdLookup
+  zoning_code: Zoning
+  use_group: UseCode
+  tax_neighborhood_code: Neighborhood
+  year_built: YearBuilt
+  area_sqft: HeatedSqFt
+  n_buildings: NumBldgs
+  # EffYR is the assessor's effective year built, 79.6% populated --
+  # better covered than YearBuilt itself (84% of a smaller base) and a
+  # distinct construct, so both are kept.
+  effective_year_built: EffYR
+  last_sale_date: SalesMonthYear
+  last_sale_price: SalesPrice
+  last_sale_book_page: DeedBkPg
+  land_value: CurLandValue
+  improvement_value: CurBuildValue
+  total_value: CurTaxValue
+
+transformations:
+  # SalesMonthYear carries its own "date not recorded" sentinels, the
+  # parcel-roll counterpart of the two in the sales-history table (see
+  # US-NC-PIT_transaction-pittcounty-2026.yaml): '01/1900' on 61 parcels
+  # and '01/1901' on 1,473, against 1 or 2 for every genuinely old month
+  # around them. Nulled so they cannot reach last_sale_date as real
+  # turn-of-the-century sales; the sale price on those rows is kept,
+  # since only the date is a placeholder.
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_date
+    args:
+      value: "01/1900"
+    output: last_sale_date
+
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_date
+    args:
+      value: "01/1901"
+    output: last_sale_date
+
+columns_to_categorical:
+  - use_group
+  - zoning_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
