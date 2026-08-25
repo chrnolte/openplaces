@@ -1,8 +1,8 @@
 admin_id,pattern_parcel,conv_parcel,pattern_tax,conv_tax
 US-AL-BI,Dx,split_groups: 0|16 & drop_cols: 0_1,D2 D2 D2 D1 D3 D3.Dx,split_groups: 6|-1 & keep_length: 1 2 3 4 5 6_0 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
 US-AL-BU,^(?:09)?([0-9]+)\.([0-9]+)$,,Sx,string_lengths: * 3
-US-AL-BR,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1
 US-AL-BU,Dx,string_lengths: 2 2 2 1 3 3 3 0,Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0
+US-AL-BR,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1
 US-AL-BL,Sx,string_lengths: 2 2 2 2 1 3 3 3 & drop_cols: 0,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),
 US-AL-CR,Dx,string_lengths: 2 2 2 1 3 3 3 0,Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0
 US-AL-CB,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1,Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0 & skip_empty: 1
@@ -35,14 +35,14 @@ US-AL-LO,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),drop_cols: 0 & skip_empty: 1,Dx Dx Dx 
 US-AL-LA,Sx,split_groups: 0|4 0_1|1 0_1_1|5 0_1_1_1|4 & drop_cols: 0_1_1_1 & skip_empty: 1,Sx,split_groups: 0|4 0_1|1 0_1_1|5 0_1_1_1|4 & drop_cols: 0_1_1_1 & skip_empty: 1
 US-AL-LW,Dx,split_groups: 0|2 0_1|2 0_1_1|2 0_1_1_1|3 0_1_1_1_1|3 0_1_1_1_1|3 & skip_empty: 1,Dx,split_groups: 0|2 0_1|2 0_1_1|2 0_1_1_1|3 0_1_1_1_1|3 0_1_1_1_1|3 & skip_empty: 1
 US-AL-MO,^(R[0-9]+)\.([0-9]+)$,skip_empty: 1,^(R[0-9]+)\.([0-9]+)?$,skip_empty: 1
+US-AL-MO,Ignored,simple,Ignored,simple
 US-AL-MC,Dx,keep_length: 1 & skip_empty: 1,Ignored,simple
 US-AL-MA,Ignored,simple,Ignored,simple
+US-AL-MA,Dx,keep_length: 1 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),keep_length: 1 2 3 4 5 6 7 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
 US-AL-ME,Dx,string_lengths: 2 1 1 2 1 3 3 3 & skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1
 US-AL-MR,Ignored,simple,Ignored,simple
 US-AL-MI,Ignored,simple,Ignored,simple
 US-AL-MN,Sx,string_lengths: 2 2 2 1 3 3 3 & skip_empty: 1,Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0 & skip_empty: 1
-US-AL-MA,Dx,keep_length: 1 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),keep_length: 1 2 3 4 5 6 7 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1
-US-AL-MO,Ignored,simple,Ignored,simple
 US-AL-PC,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),keep_length: 1 2 3 4 5 6 7 & merge_after: 0 0 0 0 0 0 0 & skip_empty: 1,Ignored,simple
 US-AL-PE,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx,
 US-AL-RA,Dx,string_lengths: 2 2 2 1 3 3 3 0,Dx Dx Dx Dx Dx Dx Dx.Dx( Sx),drop_cols: 0
@@ -158,6 +158,7 @@ US-CA-PU,Sx,string_lengths: 3 3 3 & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|. 
 US-CA-RI,Dx,split_groups: 0|16 & drop_cols: 0_1,Ignored,simple
 US-CA-SB,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|2 & drop_cols: 2_1 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1
 US-CA-AT,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
+US-CA-AT,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,Sx-Sx-Sx(-Sx),skip_empty: 1
 US-CA-SA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-CA-SD,Dx,string_lengths: 3 3 2 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1
 US-CA-SR,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 3 & keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -173,7 +174,6 @@ US-CA-SN,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1,Sx-Sx-Sx-Sx
 US-CA-SL,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-CA-ST,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1
 US-CA-SU,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
-US-CA-AT,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,Sx-Sx-Sx(-Sx),skip_empty: 1
 US-CA-TE,^([0-9A-Z]+)-([0-9A-Z]+)-([0-9A-Z.]+)-([0-9A-Z]+).*$,drop_cols: 3,Sx-Sx-Sx-Sx,drop_cols: 3
 US-CA-TU,Dx,split_groups: 0|-6 0_1|-3 & skip_empty: 1,Sx-Sx-Sx-Sx,skip_empty: 1
 US-CA-TL,Dx,string_lengths: 2 3 2 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1
@@ -195,8 +195,8 @@ US-CO-CR,Dx,string_lengths: 3 2 3 & skip_empty: 1,Dx,string_lengths: 3 2 3 & ski
 US-CO-CS,Ignored,simple,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-CO-CU,Dx,string_lengths: 2 4 4 & drop_cols: 0 & skip_empty: 1,Dx,string_lengths: 2 4 4 & skip_empty: 1
 US-CO-DE,Dx,string_lengths: 4 2 1 2 3 & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|1 3|1 & skip_empty: 1
-US-CO-DL,Ignored,simple,Ignored,simple
 US-CO-DE,Dx,keep_length: 1 & skip_empty: 1,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-CO-DL,Ignored,simple,Ignored,simple
 US-CO-DO,Dx,string_lengths: 4 2 1 2 3 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx( Sx),drop_cols: 5 & skip_empty: 1
 US-CO-EA,Dx,,Ignored,simple
 US-CO-EL,Dx,,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1
@@ -236,7 +236,9 @@ US-CO-SM,Sx(-)Dx,string_lengths: 3 3 3 3 & skip_empty: 1,Dx,string_lengths: 3 3 
 US-CO-WE,Dx,keep_length: 1 & skip_empty: 1,Sx,skip_empty: 1
 US-CT-BET,Sx [S-]x( [S-]x),split_groups: 2|- & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
 US-CT-BRO,Ignored,simple,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-CT-BRO,"^([0-9]{1,2})/([0-9A-Z]{1,4})(?:[-]+([0-9A-Z]{1,2}))?$",skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 2|-
 US-CT-BRI,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & drop_cols: 0 & skip_empty: 1
+US-CT-BRI,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),merge_after: 1 0
 US-CT-DAN,Sx/Dx,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-DAR,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 3 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
 US-CT-EAS,Ignored,simple,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
@@ -263,8 +265,10 @@ US-CT-BLO,Sx,skip_empty: 1,Sx,skip_empty: 1
 US-CT-BRL,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-CT-BUR,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
 US-CT-CAN,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-CT-CAN,Sx Sx( Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
 US-CT-EGR,Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1
 US-CT-EHA,[S.]x-Sx(-Sx)(/Dx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- 1_1_0|& & skip_empty: 1
+US-CT-EHA,Sx [S-]x( [S-]x),split_groups: 2|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-ENF,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1 & skip_empty: 1
 US-CT-EWI,Sx( )(Sx)( )(Sx) ( )(Sx),drop_cols: 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & drop_cols: 0 & skip_empty: 1
 US-CT-FAR,Dx(-Sx)(-Dx),skip_empty: 1,Ignored,simple
@@ -273,8 +277,10 @@ US-CT-GRA,Sx( )(Sx)( )(Sx) ( )(Sx),merge_after: 0 & skip_empty: 1,A4 M:Sx B:(Sx)
 US-CT-HAR,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),drop_cols: 1 & skip_empty: 1
 US-CT-HRT,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-CT-MAN,Sx,split_groups: 0|4 0_1|1 0_1_1|5 0_1_1_1|4 & drop_cols: 0_1_1_1 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 0 & skip_empty: 1
+US-CT-MAN,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 1 0
 US-CT-MAR,Ignored,simple,A4 M:Sx B:Sx L:(Sx)( Sx),split_groups: 2|U & merge_after: 2_0 1 0 & skip_empty: 1
 US-CT-NBR,Sx Sx( Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1
+US-CT-NBR,Dx-Sx( S1)-Dx(-Dx),skip_empty: 1 & drop_cols: 1 & switch: 2|3 & merge_after: 3,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 0|- 1|- & drop_cols: 0_1 & switch: 1_0|1_1
 US-CT-NEN,D2\D3.D3,,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|4 & merge_after: 2_0
 US-CT-PLA,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-CT-ROH,Sx-Sx-Sx(.Sx),merge_after: 0 0 0 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
@@ -284,11 +290,11 @@ US-CT-SUF,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,A4 M:Sx B:S
 US-CT-SWI,Ignored,simple,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
 US-CT-WET,Dx(.-Dx.-Dx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|[A-Z] & drop_cols: 3 & skip_empty: 1
 US-CT-WHA,Sx Sx Sx( Sx)( Sx),drop_cols: 1 3,^WHAR M:([0-9A-Z]+) B:([0-9A-Z]+) L:([0-9A-Z]+)(?:-([0-9A-Z]+))?$,drop_cols: 0
+US-CT-WHA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-CT-WIN,Dx(.-Dx.-Dx),skip_empty: 1,Dx.Dx,skip_empty: 1
 US-CT-WLO,Sx-Sx-Sx(-Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-CT-BAR,Ignored,simple,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
 US-CT-BEM,Sx( )(Sx)( )(Sx) ( )(Sx),merge_after: 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & skip_empty: 1
-US-CT-BRI,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),merge_after: 1 0
 US-CT-CAA,Dx( Dx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-CT-COK,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & skip_empty: 1
 US-CT-COR,[S.]x-Sx(-Sx)(/Dx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
@@ -304,6 +310,7 @@ US-CT-NOK,Sx-( )(Sx) ( )(Sx)( )(Dx),split_groups: 1|- 2|- & skip_empty: 1,A4 M:S
 US-CT-PLY,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-ROX,Dx( Dx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|3 & skip_empty: 1
 US-CT-SAL,Dx(-Sx)(-Dx),split_groups: 0|4 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
+US-CT-SAL,D2/D3-S3,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-CT-SHA,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-THN,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-CT-TOR,Sx/Sx/Sx,split_groups: 1|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
@@ -313,15 +320,16 @@ US-CT-WOO,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|
 US-CT-WAS,Sx-Sx-Sx(.Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-CT-WAN,Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-CHE,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-CT-CHE,Dx(-Sx)(-Dx),split_groups: 0|2 0_1|- & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-CT-CLI,^([0-9A-Z]+)/([0-9A-Z]+)/ ?([0-9 A-Z-]+)/?([0-9A-Z]*)$,split_groups: 2|- 2_1|- & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- 2_1|- & skip_empty: 1
 US-CT-CRO,Ignored,,Ignored,
 US-CT-DRI,Ignored,simple,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-CT-DUR,Sx,skip_empty: 1,A4 [S.]x,split_groups: 0|. & skip_empty: 1
-US-CT-EHA,Sx [S-]x( [S-]x),split_groups: 2|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-EHD,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & drop_cols: 1 & skip_empty: 1
 US-CT-ESS,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- 1_1_1|- & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 2|- 1|. & skip_empty: 1
 US-CT-HAD,Sx (Dx Sx) Sx,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 2|- & drop_cols: 3 & merge_after: 2_0 0_0 & skip_empty: 1
 US-CT-KIL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 4 & keep_length: 1 & merge_after: 0_0 0_0 0_0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-CT-KIL,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-CT-MID,Sx(-)Dx,skip_empty: 1,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1
 US-CT-MID,Sx,split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-CT-OSA,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
@@ -331,7 +339,6 @@ US-CT-ANS,Sx(-)Dx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge
 US-CT-BEY,D3/Sx(-Sx-S1),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),skip_empty: 1
 US-CT-BEF,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-BRA,S3/S3/D3/D.5,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
-US-CT-CHE,Dx(-Sx)(-Dx),split_groups: 0|2 0_1|- & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-CT-DER,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-EHV,Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
 US-CT-GUI,Sx(-)Dx,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|-2 1|- 1_1|- 2|- & merge_after: 0_0 0_0 0_0 0_0 0_0 0_0 0_0 & skip_empty: 1
@@ -341,7 +348,6 @@ US-CT-MER,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|6 1_1|6 & drop_cols: 0 & skip_
 US-CT-MIY,[S.]x-Sx(-Sx)(/Dx),split_groups: 0|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-CT-MIL,[S&-]x [S.]x [S&+-]x,max_length: 0|3 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 2|- & drop_cols: 3 & merge_after: 2_0 0_0 & skip_empty: 1
 US-CT-NAU,"^([0-9A-Z]+)[- /\.]{1,2}([0-9A-Z]+)(?:[- ,/\.]{1}([0-9A-Z]+))?(?:[- /\.]{1}([0-9A-Z-]+))?$",skip_empty: 1 & split_groups: 3|-,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 0|- 0_0|\. 0_1|- 0_1_0|\. 0_1_1|- 0_1_1_0|\. 0_1_1_1|-
-US-CT-NBR,Dx-Sx( S1)-Dx(-Dx),skip_empty: 1 & drop_cols: 1 & switch: 2|3 & merge_after: 3,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 0|- 1|- & drop_cols: 0_1 & switch: 1_0|1_1
 US-CT-NHA,Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & skip_empty: 1
 US-CT-NHV,Sx,string_lengths: 3 3 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-ORA,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & skip_empty: 1
@@ -351,9 +357,9 @@ US-CT-SEY,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_
 US-CT-SOY,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1
 US-CT-WAL,^([0-9A-Z]+)/([0-9]+)(?:/([0-9]+))?$|^([0-9A-Z]+)-([0-9A-Z]+)(?:-([0-9A-Z]+))?(?:-([0-9A-Z]+))?$,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 2|-
 US-CT-WOE,Sx,string_lengths: 4 4 4 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
-US-CT-WHA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-CT-WOL,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 1 0 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
 US-CT-WAT,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),skip_empty: 1
+US-CT-WAT,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- 3|- & drop_cols: 0 & join_char:   & skip_empty: 1
 US-CT-BOZ,Dx-D2/D3(-Sx),skip_empty: 1 & drop_cols: 0,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 2|-
 US-CT-COL,S2-S2/S3-S3,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
 US-CT-ELY,Unrecognized,,A4 M:Sx B:(Sx)( L:(Sx)),join_char:   & skip_empty: 1
@@ -370,18 +376,15 @@ US-CT-NOH,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:
 US-CT-NST,S4>D2>S4,drop_cols: 0 1 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),drop_cols: 0 & skip_empty: 1
 US-CT-OLY,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
 US-CT-PRE,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
-US-CT-SAL,D2/D3-S3,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-CT-SPR,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 1|- 1_1|- 2|- & merge_after: 0 0 0 0 0 0 & skip_empty: 1
 US-CT-STO,Sx-Sx-Sx(.Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 2|. & skip_empty: 1
 US-CT-VOL,Sx/Sx/Sx,split_groups: 1|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
-US-CT-WAT,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- 3|- & drop_cols: 0 & join_char:   & skip_empty: 1
 US-CT-AND,Sx-Sx-Sx(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-BOL,Unrecognized,,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & fill_zeros: 1 & join_char: - & skip_empty: 1
 US-CT-COA,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & drop_cols: 0_1 & skip_empty: 1
 US-CT-COV,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- 1_1_1|- & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-CT-ELL,[S.]x-Sx(-Sx)(/Dx),split_groups: 0|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 3|. & skip_empty: 1
 US-CT-HEB,Sx [S.]x,skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),switch: 1|2 & skip_empty: 1
-US-CT-MAN,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 1 0
 US-CT-SOM,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 3 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-CT-STD,Dx(.D1)/Dx(.Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. & skip_empty: 1
 US-CT-TOL,Ignored,simple,Ignored,simple
@@ -389,12 +392,9 @@ US-CT-UNI,Dx/Dx/Sx( -Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|-
 US-CT-VER,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-CT-WLN,D2/D3-D2,skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-CT-ASH,Sx-Sx-Sx(.Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 2|. & skip_empty: 1
-US-CT-BRO,"^([0-9]{1,2})/([0-9A-Z]{1,4})(?:[-]+([0-9A-Z]{1,2}))?$",skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1 & split_groups: 2|-
-US-CT-CAN,Sx Sx( Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
 US-CT-CHA,Ignored,simple,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-CT-EAD,Ignored,simple,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
 US-CT-HMP,"CT-D3-Dx-Dx-Sx(-Sx,./Sx,)",skip_empty: 1 & drop_cols: 0,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1 & split_groups: 0|- 2|-
-US-CT-KIL,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-CT-PLD,Sx/Sx/Sx,split_groups: 1|- & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|4 & merge_after: 2_0
 US-CT-POM,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 2|. & skip_empty: 1
 US-CT-PUT,Sx [S-]x( [S-]x),split_groups: 1|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
@@ -407,9 +407,9 @@ US-DE-NC,Dx,split_groups: 0|16 & drop_cols: 0_1,Sx,
 US-DE-SU,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1
 US-FL-AL,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-FL-BR,Sx-Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1
+US-FL-BR,Sx,skip_empty: 1,Sx( )-Sx-Sx-Sx-Sx-( Sx),keep_length: 2 3 4 & merge_after: 0 0 0 0 0 & skip_empty: 1
 US-FL-BE,Ignored,simple,Ignored,simple
 US-FL-BK,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
-US-FL-BR,Sx,skip_empty: 1,Sx( )-Sx-Sx-Sx-Sx-( Sx),keep_length: 2 3 4 & merge_after: 0 0 0 0 0 & skip_empty: 1
 US-FL-BA,Ignored,simple,Ignored,simple
 US-FL-CA,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1
 US-FL-CH,Sx(-)Dx,string_lengths: 3 3 3 3 & skip_empty: 1,Dx,string_lengths: 3 3 3 3 & skip_empty: 1
@@ -467,11 +467,11 @@ US-GA-BAK,Sx Sx( Sx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx Sx( 
 US-GA-BAC,Ignored,simple,Ignored,simple
 US-GA-BAL,Sx Sx( Sx),split_groups: 0|3 1|3 2|3 & drop_cols: 2_1 & skip_empty: 1,Sx Sx( Sx),split_groups: 0|3 1|3 2|3 & drop_cols: 2_1 & skip_empty: 1
 US-GA-BUR,Ignored,simple,Ignored,simple
+US-GA-BUR,Ignored,simple,Ignored,simple
 US-GA-BUT,^(?:([0-9A-Z]{4})|([0-9A-Z]{3}) )(?:([0-9A-Z]{7})|([0-9A-Z]{6}) )([0-9A-Z]{3})$,merge_after: 0 2 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),skip_empty: 1
 US-GA-BIB,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 4 & keep_length: 1 & merge_after: 0_0 0_0 0_0 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 4 & keep_length: 1 & merge_after: 0_0 0_0 0_0 & skip_empty: 1
 US-GA-BEH,Sx Sx( Sx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-GA-BUL,Ignored,simple,Ignored,simple
-US-GA-BUR,Ignored,simple,Ignored,simple
 US-GA-BRO,^([0-9A-Z]+)--?([0-9A-Z]+)-([0-9A-Z]+)?$,merge_after: 1,Sx Sx,
 US-GA-BLE,Ignored,,Sx-Sx-Sx,keep_length: 1 & join_char: 
 US-GA-BER,Ignored,simple,Ignored,simple
@@ -491,16 +491,16 @@ US-GA-CAR,Ignored,simple,Ignored,simple
 US-GA-COW,Ignored,simple,Ignored,simple
 US-GA-CHH,Ignored,simple,Ignored,simple
 US-GA-CLY,Sx Sx( Sx),keep_length: 1 & skip_empty: 1,Sx Sx( Sx),keep_length: 1 & skip_empty: 1
+US-GA-CLY,Sx Sx,split_groups: 1|7 & drop_cols: 1_1 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
 US-GA-CAT,Sx Sx( Sx),skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1
 US-GA-CLA,Ignored,simple,Ignored,simple
 US-GA-CHN,Sx,,Sx(-)Dx,skip_empty: 1
 US-GA-CHN,Ignored,simple,Ignored,simple
 US-GA-CAL,Ignored,simple,Ignored,simple
 US-GA-CAN,Ignored,simple,Ignored,simple
-US-GA-CLY,Sx Sx,split_groups: 1|7 & drop_cols: 1_1 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
 US-GA-DEK,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1,Sx Sx Sx Sx,skip_empty: 1
-US-GA-DEC,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1,Sx-Sx-(Sx),skip_empty: 1
 US-GA-DEK,Ignored,simple,Ignored,simple
+US-GA-DEC,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1,Sx-Sx-(Sx),skip_empty: 1
 US-GA-DAD,Ignored,simple,Ignored,simple
 US-GA-DOD,Ignored,simple,Ignored,simple
 US-GA-DOO,^([0-9]{4})([0-9]{2})([0-9]{1})([0-9A-Z]{4})([A-Z]?)$,,^([0-9]+)-([0-9]{2})-([0-9])- -([0-9A-Z]{5})(?:-([A-Z]))?$,
@@ -537,16 +537,16 @@ US-GA-HEN,Sx(-)Dx,keep_length: 0 & skip_empty: 1,Sx(-)Dx,keep_length: 0 & skip_e
 US-GA-IRW,Ignored,simple,Ignored,simple
 US-GA-JAC,Ignored,simple,Ignored,simple
 US-GA-JON,Sx( )(Sx)( )(Sx) ( )(Sx),merge_after: 0 0 0 & skip_empty: 1,Sx( )(Sx)( )(Sx) ( )(Sx),merge_after: 0 0 0 & skip_empty: 1
+US-GA-JON,Ignored,simple,Ignored,simple
 US-GA-JED,Ignored,simple,Ignored,simple
 US-GA-JOH,Sx Sx( Sx),split_groups: 0|3 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1
 US-GA-JEN,Ignored,simple,Ignored,simple
-US-GA-JON,Ignored,simple,Ignored,simple
 US-GA-JAS,Ignored,simple,Ignored,simple
 US-GA-LAN,Sx Sx( Sx),skip_empty: 1,Sx Sx( Sx),skip_empty: 1
+US-GA-LAN,Ignored,simple,Ignored,simple
 US-GA-LIN,Sx Sx( Sx),split_groups: 0|3 0_1|3 0_1_1|2 & skip_empty: 1,Sx Sx( Sx),skip_empty: 1
 US-GA-LEE,Ignored,simple,Ignored,simple
 US-GA-LON,Ignored,simple,Ignored,simple
-US-GA-LAN,Ignored,simple,Ignored,simple
 US-GA-LAM,Ignored,simple,Ignored,simple
 US-GA-LUM,Sx Sx( Sx),skip_empty: 1,Sx Sx( Sx),split_groups: 1|3 1_1|4 1_1_1|4 & skip_empty: 1
 US-GA-LAU,Sx Sx( Sx),split_groups: 0|3 1|3 2|3 & drop_cols: 2_1 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 3 & skip_empty: 1
@@ -555,11 +555,11 @@ US-GA-MCD,Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1,Sx Sx( Sx),split_groups: 1|5 & 
 US-GA-MUR,Ignored,simple,Ignored,simple
 US-GA-MAD,Ignored,simple,Ignored,simple
 US-GA-MUS,Sx Sx Sx,skip_empty: 1,Sx Sx Sx( Sx)( Sx),skip_empty: 1
+US-GA-MUS,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1,Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1
 US-GA-MCI,Ignored,simple,Ignored,simple
 US-GA-MIL,Ignored,simple,Ignored,simple
 US-GA-MON,Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
 US-GA-MOR,Ignored,simple,Ignored,simple
-US-GA-MUS,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1,Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1
 US-GA-MAR,Sx Sx( Sx),split_groups: 1|2 1_1|4 1_1_1|4 & skip_empty: 1,Sx Sx( Sx),split_groups: 1|2 1_1|4 1_1_1|4 & skip_empty: 1
 US-GA-MIT,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-GA-MAC,Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1,Sx,split_groups: 0|2 & skip_empty: 1
@@ -590,16 +590,16 @@ US-GA-SCH,Sx,,Sx(-)Dx,skip_empty: 1
 US-GA-TER,Ignored,simple,Ignored,simple
 US-GA-TAO,Ignored,simple,Ignored,simple
 US-GA-TAT,Sx Sx( Sx),skip_empty: 1,Sx Sx( Sx),skip_empty: 1
+US-GA-TAT,Sx Sx( Sx),split_groups: 0|3 0_1|3 0_1_1|2 & skip_empty: 1,Sx Sx( Sx),split_groups: 0|3 0_1|3 0_1_1|2 & skip_empty: 1
 US-GA-TEL,Ignored,simple,Ignored,simple
 US-GA-TOW,Sx Sx( Sx),split_groups: 1|3 1_1|4 1_1_1|4 & skip_empty: 1,Sx Sx( Sx),split_groups: 1|3 1_1|4 1_1_1|4 & skip_empty: 1
+US-GA-TOW,Ignored,simple,Ignored,simple
 US-GA-THO,Ignored,simple,Ignored,simple
 US-GA-TIF,^([A-Z]*)([0-9]+)([A-Z]*)-([0-9]+)(?:-([A-Z]+))?$,,^([A-Z]*)([0-9]+)([A-Z]*)?-([0-9]+)([A-Z]*)$,
 US-GA-TRE,Sx Sx,skip_empty: 1,Sx-Sx,split_groups: 0|4 & skip_empty: 1
 US-GA-TOO,Sx Sx( Sx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-GA-TUR,Ignored,simple,Ignored,simple
 US-GA-TUR,Sx Sx,split_groups: 1|7 & drop_cols: 1_1 & skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1
-US-GA-TAT,Sx Sx( Sx),split_groups: 0|3 0_1|3 0_1_1|2 & skip_empty: 1,Sx Sx( Sx),split_groups: 0|3 0_1|3 0_1_1|2 & skip_empty: 1
-US-GA-TOW,Ignored,simple,Ignored,simple
 US-GA-TAY,Sx Sx( Sx),split_groups: 1|3 1_1|4 1_1_1|4 & skip_empty: 1,Sx Sx( Sx),skip_empty: 1
 US-GA-UNI,Sx Sx( Sx),split_groups: 1|3 1_1|4 1_1_1|4 & skip_empty: 1,Sx Sx( Sx),skip_empty: 1
 US-GA-UPS,Sx Sx,skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1
@@ -619,12 +619,12 @@ US-IA-BO,Dx,string_lengths: 2 2 2 4 2 3 & switch: 0|2 & skip_empty: 1,Dx,string_
 US-IA-BR,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-IA-BV,Dx,string_lengths: 2 2 3 3,Sx-Sx-Sx-Sx,
 US-IA-CI,Ignored,simple,Dx,split_groups: 0|16 & drop_cols: 0_1
+US-IA-CI,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-IA-CE,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1,Dx,
 US-IA-CH,Sx,split_groups: 0|3 0_1|15 & drop_cols: 0_0 0_1_1 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1
 US-IA-CG,Ignored,simple,Ignored,simple
 US-IA-CK,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1,Dx,keep_length: 1 & skip_empty: 1
 US-IA-CO,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
-US-IA-CI,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-IA-CA,Dx,keep_length: 1 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-IA-CS,Sx,,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1
 US-IA-CL,Ignored,simple,Ignored,simple
@@ -667,9 +667,9 @@ US-IA-LU,Sx(-)Dx,split_groups: 0|[A-Z] 0_1|[A-Z] & skip_empty: 1,Dx,
 US-IA-LY,Ignored,simple,Ignored,simple
 US-IA-MD,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1,Dx,keep_length: 1 & skip_empty: 1
 US-IA-MI,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+US-IA-MI,Ignored,simple,Ignored,simple
 US-IA-MR,Dx,string_lengths: 2 2 3 8 & drop_cols: 0 & skip_empty: 1,Dx,string_lengths: 2 2 3 8 & drop_cols: 0 & skip_empty: 1
 US-IA-MH,Sx(-)Dx,split_groups: 0|[A-Z] 0_1|[A-Z] & skip_empty: 1,Dx,keep_length: 1 & skip_empty: 1
-US-IA-MI,Ignored,simple,Ignored,simple
 US-IA-MO,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1,Dx,keep_length: 1 & skip_empty: 1
 US-IA-MN,Dx,,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
 US-IA-MA,Dx,string_lengths: 6 6 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1
@@ -698,22 +698,22 @@ US-IA-WE,Dx,split_groups: 0|3 0_1|7 0_1_1|3 0_1_1_1|1 0_1_1_1_1|[0] & merge_afte
 US-IA-WR,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1
 US-IA-WI,Ignored,simple,Ignored,simple
 US-IA-WO,Ignored,simple,Sx,skip_empty: 1
+US-IA-WO,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,
 US-IA-WP,Sx(-)Dx,skip_empty: 1,Dx,
 US-IA-WA,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1,Dx,
 US-IA-WS,Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 9 & keep_length: 2 3 & merge_after: 1 1 & skip_empty: 1
-US-IA-WO,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,
 US-IA-WY,Sx,skip_empty: 1,Sx,
 US-ID-AD,Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1,Ignored,simple
 US-ID-AA,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1
 US-ID-BE,Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1,Sx,split_groups: 0|2 & skip_empty: 1
 US-ID-BU,Sx,string_lengths: 3 2 2 2 4 1 & skip_empty: 1,Sx,string_lengths: 3 2 2 2 4 1 & skip_empty: 1
+US-ID-BU,Sx,split_groups: 0|1 & drop_cols: 0_0,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-ID-BI,Ignored,simple,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1
 US-ID-BR,Sx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,Sx,split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1
 US-ID-BL,Sx,string_lengths: 14 & skip_empty: 1,Ignored,simple
 US-ID-BA,Sx,skip_empty: 1,Ignored,simple
 US-ID-BN,Sx,string_lengths: 14 & skip_empty: 1,Sx,string_lengths: 14 & skip_empty: 1
 US-ID-BS,Ignored,simple,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
-US-ID-BU,Sx,split_groups: 0|1 & drop_cols: 0_0,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-ID-BO,Ignored,simple,Sx(-Sx-S1),string_lengths: 14 & skip_empty: 1
 US-ID-CL,Ignored,simple,Sx,string_lengths: 14 & skip_empty: 1
 US-ID-CL,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1
@@ -742,9 +742,9 @@ US-IL-BR,Ignored,simple,Ignored,simple
 US-IL-BU,Dx,string_lengths: 2 2 3 3 & skip_empty: 1,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1
 US-IL-CO,Dx,,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-IL-CH,Dx-Dx-Dx-Dx-Dx(-Dx),skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,skip_empty: 1
+US-IL-CH,Ignored,simple,Ignored,simple
 US-IL-CL,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,Dx- Sx- Sx- Sx- Sx(- Sx),skip_empty: 1
 US-IL-CA,Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1
-US-IL-CH,Ignored,simple,Ignored,simple
 US-IL-CI,Ignored,simple,Ignored,simple
 US-IL-CK,Dx,skip_empty: 1 & split_groups: 0|-4,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1 & keep_length: 1 2 3 & merge_after: 0 0 0
 US-IL-CS,Sx-Sx-Sx(-Sx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
@@ -793,9 +793,9 @@ US-IL-ME,Dx,keep_length: 1 & skip_empty: 1,Dx,
 US-IL-MG,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-IL-MR,Ignored,simple,Ignored,simple
 US-IL-MU,Sx( )-Sx-Sx-Sx-Sx-( Sx),skip_empty: 1,Sx( )-Sx-Sx-Sx-Sx-( Sx),skip_empty: 1
+US-IL-MU,Sx,skip_empty: 1,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-IL-ML,Ignored,simple,Ignored,simple
 US-IL-MN,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1
-US-IL-MU,Sx,skip_empty: 1,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-IL-MP,Ignored,simple,Ignored,simple
 US-IL-MO,Ignored,simple,Ignored,simple
 US-IL-MS,Dx,keep_length: 1 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1
@@ -804,11 +804,11 @@ US-IL-MC,Sx-Sx-Sx-Sx,split_groups: 3|2 & drop_cols: 3_1 & keep_length: 1 2 3_0 &
 US-IL-MH,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1
 US-IL-OG,Ignored,simple,Ignored,simple
 US-IL-PU,Ignored,simple,Ignored,simple
+US-IL-PU,Ignored,simple,Ignored,simple
 US-IL-PO,Ignored,simple,Ignored,simple
 US-IL-PE,Dx,keep_length: 1 & skip_empty: 1,D2/D2/D3/D3,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-IL-PI,Sx-Sx-Sx( Sx),split_groups: 2|3 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-IL-PL,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1
-US-IL-PU,Ignored,simple,Ignored,simple
 US-IL-PR,Dx,string_lengths: 2 5 3 & skip_empty: 1,Dx,string_lengths: 2 5 3 & skip_empty: 1
 US-IL-RA,Dx,keep_length: 1 & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 3|2 & drop_cols: 3_1 & keep_length: 1 2 3_0 & merge_after: 0 0 0 & skip_empty: 1
 US-IL-RC,Sx-Sx-Sx-Sx,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 3 & merge_after: 0 0 0 & skip_empty: 1
@@ -816,9 +816,9 @@ US-IL-RI,Dx,string_lengths: 2 2 3 3 & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|
 US-IL-ST,Sx-Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx-Sx,skip_empty: 1
 US-IL-SH,Ignored,simple,Ignored,simple
 US-IL-SL,Sx,,Sx-Sx-Sx-Sx,split_groups: 3|2 & drop_cols: 3_1 & keep_length: 1 2 3_0 & merge_after: 0 0 0 & skip_empty: 1
+US-IL-SL,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,Dx-Dx-Dx-Dx-Dx,drop_cols: 0 & skip_empty: 1
 US-IL-SC,Ignored,simple,Ignored,simple
 US-IL-SA,Ignored,simple,Ignored,simple
-US-IL-SL,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,Dx-Dx-Dx-Dx-Dx,drop_cols: 0 & skip_empty: 1
 US-IL-SO,Sx-Sx-Sx-Sx,drop_cols: 9 & keep_length: 2 3 & merge_after: 1 1 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 9 & keep_length: 2 3 & merge_after: 1 1 & skip_empty: 1
 US-IL-SU,Dx,string_lengths: 2 2 3 3 & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1
 US-IL-TA,Ignored,simple,Ignored,simple
@@ -848,8 +848,8 @@ US-IN-CR,Ignored,simple,Ignored,simple
 US-IN-CY,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-DC,Ignored,simple,Ignored,simple
 US-IN-DE,Ignored,simple,Ignored,simple
-US-IN-DA,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-DE,Dx,string_lengths: 2 2 2 3 3 3 3 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
+US-IN-DA,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-DU,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-EL,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-FA,Ignored,simple,Ignored,simple
@@ -861,9 +861,9 @@ US-IN-GR,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-GE,Ignored,simple,Ignored,simple
 US-IN-GI,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-HA,Ignored,simple,Ignored,simple
+US-IN-HA,Ignored,simple,Ignored,simple
 US-IN-HE,Ignored,simple,Ignored,simple
 US-IN-HR,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
-US-IN-HA,Ignored,simple,Ignored,simple
 US-IN-HO,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1
 US-IN-HU,Ignored,simple,Ignored,simple
 US-IN-HN,Ignored,simple,Ignored,simple
@@ -930,6 +930,7 @@ US-KS-AT,Dx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,Dx,
 US-KS-BA,Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-BU,Sx,string_lengths: 3 2 1 2 2 3 2 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),drop_cols: 0 & skip_empty: 1
 US-KS-CA,Ignored,simple,Ignored,simple
+US-KS-CA,Dx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-CL,Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),skip_empty: 1
 US-KS-CF,Ignored,simple,Ignored,simple
 US-KS-CH,Ignored,simple,Ignored,simple
@@ -939,7 +940,6 @@ US-KS-CE,Dx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,Dx-
 US-KS-CU,Sx,string_lengths: 2 4 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-CR,Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),skip_empty: 1
 US-KS-CS,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
-US-KS-CA,Dx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-DE,Sx,string_lengths: 2 4 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),skip_empty: 1
 US-KS-DI,Ignored,simple,Ignored,simple
 US-KS-DN,Ignored,simple,Ignored,simple
@@ -970,8 +970,8 @@ US-KS-KE,Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,Dx-
 US-KS-KI,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-KW,Ignored,simple,Ignored,simple
 US-KS-LA,Ignored,simple,Ignored,simple
-US-KS-LN,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-LA,Dx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),skip_empty: 1
+US-KS-LN,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(-Sx)( Dx),drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-LO,Dx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
 US-KS-LI,Ignored,simple,Ignored,simple
 US-KS-LE,Sx,string_lengths: 3 3 2 1 2 2 3 2 1 & drop_cols: 0 & skip_empty: 1,D3-D2-D1-D2-D2-D3.D2-S1( D2),skip_empty: 1
@@ -1043,8 +1043,8 @@ US-KY-CAE,Ignored,simple,Ignored,simple
 US-KY-CHR,Unrecognized,,Unrecognized,
 US-KY-CRL,Sx-Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx-Sx,skip_empty: 1
 US-KY-CLI,Ignored,simple,Ignored,simple
-US-KY-CAM,Ignored,simple,Ignored,simple
 US-KY-CLI,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1
+US-KY-CAM,Ignored,simple,Ignored,simple
 US-KY-CRI,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
 US-KY-CAS,Ignored,simple,Ignored,simple
 US-KY-CAR,Ignored,simple,Ignored,simple
@@ -1068,10 +1068,10 @@ US-KY-GRE,Ignored,simple,Ignored,simple
 US-KY-GRA,Ignored,simple,Ignored,simple
 US-KY-GRN,Ignored,simple,Ignored,simple
 US-KY-HIC,Ignored,simple,Ignored,simple
+US-KY-HIC,Ignored,simple,Ignored,simple
 US-KY-HAK,Ignored,simple,Ignored,simple
 US-KY-HEN,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1
 US-KY-HAN,Ignored,simple,Ignored,simple
-US-KY-HIC,Ignored,simple,Ignored,simple
 US-KY-HOP,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1
 US-KY-HRS,Ignored,simple,Ignored,simple
 US-KY-HAT,Ignored,simple,Ignored,simple
@@ -1096,6 +1096,7 @@ US-KY-LIV,Ignored,simple,Ignored,simple
 US-KY-LYO,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1
 US-KY-MEN,Ignored,simple,Ignored,simple
 US-KY-MER,Unrecognized,,Unrecognized,
+US-KY-MER,Ignored,simple,Ignored,simple
 US-KY-MAD,Ignored,simple,Ignored,simple
 US-KY-MAG,Ignored,simple,Ignored,simple
 US-KY-MOR,Ignored,simple,Ignored,simple
@@ -1107,7 +1108,6 @@ US-KY-MCL,Ignored,simple,Ignored,simple
 US-KY-MOE,Ignored,simple,Ignored,simple
 US-KY-MRT,Sx-[S.]x(-Sx)(-Sx)(-Sx),,Sx-[S.]x(-Sx)(-Sx)(-Sx),
 US-KY-MAN,Ignored,simple,Ignored,simple
-US-KY-MER,Ignored,simple,Ignored,simple
 US-KY-MAS,Ignored,simple,Ignored,simple
 US-KY-MET,Ignored,simple,Ignored,simple
 US-KY-MUH,Ignored,simple,Ignored,simple
@@ -1154,9 +1154,9 @@ US-LA-CA,Sx,split_groups: 0|-5 0_0|4 0_0_0|2 & drop_cols: 0_0_1_1 & skip_empty: 
 US-LA-CL,Sx,skip_empty: 1,Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1
 US-LA-CM,Dx,string_lengths: 2 4 4 & skip_empty: 1,Dx,string_lengths: 2 4 4 & skip_empty: 1
 US-LA-CD,Ignored,simple,Ignored,simple
+US-LA-CD,Ignored,simple,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-LA-CO,Sx,split_groups: 0|-5 0_0|4 0_0_0|2 & drop_cols: 0_0_1_1 & skip_empty: 1,Sx,split_groups: 0|-5 0_0|4 0_0_0|2 & drop_cols: 0_0_1_1 & skip_empty: 1
 US-LA-CT,Sx(-)Dx,split_groups: 0|[A-Z] 0_1|[A-Z] & skip_empty: 1,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1
-US-LA-CD,Ignored,simple,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-LA-DS,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,Sx,skip_empty: 1
 US-LA-EB,Ignored,simple,Ignored,simple
 US-LA-EC,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,
@@ -1186,10 +1186,10 @@ US-LA-SA,Sx,split_groups: 0|1 & skip_empty: 1,Sx,split_groups: 0|1 & skip_empty:
 US-LA-SC,Ignored,simple,Ignored,simple
 US-LA-SB,Ignored,simple,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-LA-SM,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,Dx,
+US-LA-SM,Sx(-)Dx,skip_empty: 1,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
 US-LA-SL,Ignored,simple,Ignored,simple
 US-LA-SJ,Ignored,simple,Ignored,simple
 US-LA-SJ,Ignored,simple,Ignored,simple
-US-LA-SM,Sx(-)Dx,skip_empty: 1,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
 US-LA-ST,Ignored,simple,Ignored,simple
 US-LA-TA,Dx,keep_length: 1 & skip_empty: 1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-LA-TN,Sx,split_groups: 0|4 0_1|1 0_1_1|5 0_1_1_1|4 & drop_cols: 0_1_1_1 & skip_empty: 1,Sx,split_groups: 0|4 0_1|1 0_1_1|5 0_1_1_1|4 & drop_cols: 0_1_1_1 & skip_empty: 1
@@ -1206,11 +1206,13 @@ US-LA-WE,Sx,,Sx,
 US-MA-BOU,[S.-]x_Sx_Sx,skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|- 2|- & skip_empty: 1
 US-MA-BRE,[S.-]x_Sx_Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
 US-MA-BAR,Sx_Sx(_Sx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|. 1|. 2|. & skip_empty: 1
+US-MA-BAR,Sx_Sx(_Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-MA-CHM,Sx-Sx-Sx(-Sx),skip_empty: 1,A4 M:Sx B:Sx L:(Sx)( Sx),split_groups: 2|- & skip_empty: 1
 US-MA-DEN,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
 US-MA-EAM,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_1|E & drop_cols: 2 & merge_after: 0_0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 0_1|- 2|- & merge_after: 2_0 & skip_empty: 1
 US-MA-FAL,Sx Sx Sx Sx,skip_empty: 1,A4 Sx S:Sx P:Sx L:Sx,skip_empty: 1
 US-MA-HAR,"Sx_[S&;,-]x_0","split_groups: 1|- 1_0|& 1_0_0|, 1_0_0_0|; & skip_empty: 1",A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
+US-MA-HAR,Sx/(S) (Sx)/(S) (Sx)/(S)( (Sx)/(S)),split_groups: 4|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-MAS,Sx_Sx(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & skip_empty: 1
 US-MA-ORL,Sx_[S.]x_[S.]x(_[S.]x),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-PRO,Sx-Sx-Sx-Sx,skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|- 2|- & skip_empty: 1
@@ -1244,15 +1246,19 @@ US-MA-RIC,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after:
 US-MA-SAD,Sx Sx Sx([.-/]Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-SHD,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-STO,Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
+US-MA-STO,Sx Sx Sx,split_groups: 2|4 & keep_length: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-SAV,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-MA-TYR,Dx(_A)(_Dx)(_A)_Dx(_A),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & skip_empty: 1
 US-MA-WAS,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
+US-MA-WAS,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
 US-MA-WLM,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-WIR,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-WST,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
+US-MA-WST,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
 US-MA-ACU,Sx-[S.]x(-Sx)(-Sx)(-S.x),skip_empty: 1,A4 [S.]x,split_groups: 0|. & skip_empty: 1
 US-MA-ATT,Sx_[S&]x(_Sx)(_Sx),merge_after: 2 1 0,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
 US-MA-BER,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
+US-MA-BER,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-DAR,Sx_Sx(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|/ 3|4 & skip_empty: 1
 US-MA-DIG,D3.S=D3D=D4.S,drop_cols: 2 & keep_length: 3 & fill_zeros: 1 5 & merge_after: 1 4,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 & fill_zeros: 2
 US-MA-EAS,Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
@@ -1266,9 +1272,11 @@ US-MA-RAY,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|
 US-MA-REH,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & fill_zeros: 1 & join_char: - & skip_empty: 1
 US-MA-SEE,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
 US-MA-SOM,Sx,string_lengths: 3 1 4 4 1 & switch: 0|1 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 1|- & skip_empty: 1
+US-MA-SOM,[S.-]x_Sx_Sx,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|. & skip_empty: 1
 US-MA-SWA,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
 US-MA-TAU,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & drop_cols: 1 & skip_empty: 1
 US-MA-WET,"Sx_[S&;,-]x_0","split_groups: 1|- 1_0|& 1_0_0|, 1_0_0_0|; & skip_empty: 1",A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
+US-MA-WET,Sx-Sx,split_groups: 1|3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- & drop_cols: 0_0 & skip_empty: 1
 US-MA-AQU,Sx_Sx(_+_.Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|+ 2_0|. 2_1|. & drop_cols: 1 & skip_empty: 1
 US-MA-CHK,Sx_[S.]x(_[S#.-]x),skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
 US-MA-EDG,Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
@@ -1295,6 +1303,7 @@ US-MA-MAD,Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_gr
 US-MA-MBS,Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-MA-MER,Sx Sx Sx([.-/]Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-MA-MID,Sx( A)-Sx-Sx( A),skip_empty: 1,A4 A:Sx( A) A:Sx A:Sx( A),skip_empty: 1
+US-MA-MID,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & merge_after: 3_0 & skip_empty: 1
 US-MA-MET,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 1 0
 US-MA-NOA,D3.S=D3D=D4.S,drop_cols: 2 & keep_length: 3 & fill_zeros: 1 5 & merge_after: 1 4,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 & fill_zeros: 2
 US-MA-NEY,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
@@ -1324,6 +1333,7 @@ US-MA-HEA,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after
 US-MA-LEV,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-MA-LEY,D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 5 & merge_after: 0 4,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|. 2|. & keep_length: 0_1 2_1 & merge_after: 0_0 2_0
 US-MA-MON,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. & keep_length: 1_1 & merge_after: 1_0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
+US-MA-MON,Sx_Sx(_Sx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-MA-MOE,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-MA-NRT,[S&-]x [S.]x [S&+-]x,max_length: 0|3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),skip_empty: 1
 US-MA-NSA,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. & skip_empty: 1
@@ -1348,18 +1358,18 @@ US-MA-HOD,Sx(_Sx)_Sx_[S.-]x(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_gro
 US-MA-LON,Sx/(S) (Sx)/(S) (Sx)/(S)( (Sx)/(S)),keep_length: 1 3 5 7 & merge_after: 6 4 2 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
 US-MA-LUD,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx B:Sx P:Sx( [EU]:Sx),skip_empty: 1
 US-MA-MNT,Sx [S-]x( [S-]x),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & skip_empty: 1
-US-MA-MON,Sx_Sx(_Sx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-MA-PAL,Sx_Sx(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
 US-MA-RUS,Sx/(S) (Sx)/(S) (Sx)/(S)( (Sx)/(S)),keep_length: 1 3 5 7 & merge_after: 6 4 2 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|1 & skip_empty: 1
 US-MA-SOU,Sx(_Sx)_Sx_[S.-]x(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),skip_empty: 1
 US-MA-SPR,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-MA-TOL,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
-US-MA-WAS,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
 US-MA-WES,Dx(_A)(_Dx)(_A)_Dx(_A),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
 US-MA-WIM,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-MA-WSP,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 1 0
 US-MA-BEL,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
+US-MA-BEL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|- 2|- & skip_empty: 1
 US-MA-CHD,Sx_[S.]x_[S.]x(_[S.]x),skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|- 2|- & skip_empty: 1
+US-MA-CHD,Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-MA-CUM,Sx-Sx-Sx(-Sx),drop_cols: 3,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|3 2|. & drop_cols: 1_1 2_0 & merge_after: 0_0
 US-MA-EAT,Sx_[S.]x(_[S#.-]x),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
 US-MA-GOS,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
@@ -1374,6 +1384,7 @@ US-MA-PLD,D3.S=D3D=D4.S,drop_cols: 2 3,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_gro
 US-MA-SHA,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|4 & skip_empty: 1
 US-MA-SON,Sx_Sx(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
 US-MA-WAR,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
+US-MA-WAR,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- 2|- & merge_after: 2_0 1_1 1_0 0
 US-MA-WEA,D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 1 & merge_after: 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
 US-MA-WIG,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
 US-MA-WON,Sx Sx Sx([.-/]Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
@@ -1384,11 +1395,9 @@ US-MA-ASY,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups
 US-MA-AYE,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
 US-MA-BED,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
 US-MA-BIL,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
-US-MA-BEL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 0|- 2|- & skip_empty: 1
 US-MA-BOH,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
 US-MA-BUR,Sx-Sx-Sx(.Sx),skip_empty: 1,A4 M:Sx P:Sx( [ES]:(Sx))( U:Sx),split_groups: 1|- & skip_empty: 1
 US-MA-CAM,[S.]x-Sx(-Sx)(/Dx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
-US-MA-CHD,Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-MA-CON,Dx(-Sx)(-Dx),split_groups: 0|6 0_1|6 0_1_1|6 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & drop_cols: 0 & skip_empty: 1
 US-MA-CAE,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:Sx L:(Sx)( Sx),split_groups: 2|- & skip_empty: 1
 US-MA-DRA,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 3|. & skip_empty: 1
@@ -1414,7 +1423,6 @@ US-MA-PEP,Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_gr
 US-MA-REA,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,A4 A:[D.]x-Dx-[D.]x,split_groups: 0|. 2|. & skip_empty: 1
 US-MA-SHE,Sx [S-]x( [S-]x),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
 US-MA-SHI,Sx Sx Sx([.-/]Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
-US-MA-SOM,[S.-]x_Sx_Sx,skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|. & skip_empty: 1
 US-MA-STM,Sx-Sx(-Sx)(-Sx),split_groups: 1|2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-MA-SUD,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 A-D2-D5(-S)(-Sx).,keep_length: 1 & merge_after: 0 & skip_empty: 1
 US-MA-STW,[S-]6 [S-]6,split_groups: 0|- 1|- & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1
@@ -1452,12 +1460,9 @@ US-MA-NOD,Sx(_Sx)_Sx_[S.-]x(_Sx),merge_after: 3 2 1 0 & skip_empty: 1,A4 M:Sx B:
 US-MA-PLA,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-MA-QUI,Sx_[S.]x(_[S#.-]x),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
 US-MA-SHN,Dx(-Sx)(-Dx),split_groups: 0|3 0_1|3 0_1_1|3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
-US-MA-STO,Sx Sx Sx,split_groups: 2|4 & keep_length: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-WAE,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-WEY,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 & skip_empty: 1,A4 [SM]:Sx [BR]:Sx( [LS:(Sx)),skip_empty: 1
 US-MA-WRE,A-D2_Dx_Dx_Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
-US-MA-WST,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
-US-MA-WET,Sx-Sx,split_groups: 1|3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- & drop_cols: 0_0 & skip_empty: 1
 US-MA-ABI,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-MA-BRN,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_1|E & drop_cols: 2 & merge_after: 0_0 & skip_empty: 1,A4 [SM]:Sx [BR]:Sx( [LS:(Sx)),skip_empty: 1
 US-MA-CAR,Sx(_Sx)_Sx_[S.-]x(_Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
@@ -1471,7 +1476,6 @@ US-MA-HUL,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:
 US-MA-KIN,Dx(_A)(_Dx)(_A)_Dx(_A),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|-3 & drop_cols: 2_0 & skip_empty: 1
 US-MA-LAK,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-MRN,Sx_Sx(_Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
-US-MA-MID,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 3|- & merge_after: 3_0 & skip_empty: 1
 US-MA-MAR,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-MA-MAT,Dx.S1_Dx.Sx,skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|. 1|. 2|. & skip_empty: 1
 US-MA-NOL,Sx-Sx(-Sx)(-Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
@@ -1481,7 +1485,6 @@ US-MA-PLN,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split
 US-MA-ROC,Sx_Sx(_Sx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- & skip_empty: 1
 US-MA-ROR,D3.S-D4(.Sx)(_Dx),fill_zeros: 1 3 & switch: 2|3 3|4 & merge_after: 2 0 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 2|- & drop_cols: 3 & merge_after: 2_0 0_0 & skip_empty: 1
 US-MA-SCI,Sx_[S&]x(_Sx)(_Sx),merge_after: 2 1 0,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- 2|- & merge_after: 2_0 1_1 1_0 0
-US-MA-WAR,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- 2|- & merge_after: 2_0 1_1 1_0 0
 US-MA-WBI,Sx Sx( Sx),split_groups: 0|5 & drop_cols: 2 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- & skip_empty: 1
 US-MA-WHI,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-MA-BOS,Dx,string_lengths: 2 5 3 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
@@ -1491,8 +1494,6 @@ US-MA-WIP,Dx(_A)(_Dx)(_A)_Dx(_A),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups:
 US-MA-ASM,Sx_[S&]x(_Sx)(_Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|/ 3|4 & skip_empty: 1
 US-MA-ATH,Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-MA-AUB,Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- & skip_empty: 1
-US-MA-BAR,Sx_Sx(_Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
-US-MA-BER,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-BLA,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
 US-MA-BOL,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
 US-MA-BRD,D3.S=D3D=D4.S,drop_cols: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
@@ -1508,7 +1509,6 @@ US-MA-GRN,D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 5 & merge_after: 0 4,A4 M:Sx 
 US-MA-HAK,D3.S=D3D=D4.S,drop_cols: 2 & fill_zeros: 1 & merge_after: 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
 US-MA-HON,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-HOE,Sx-Sx-Sx,,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|4 & merge_after: 2_0
-US-MA-HAR,Sx/(S) (Sx)/(S) (Sx)/(S)( (Sx)/(S)),split_groups: 4|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- 2|- & skip_empty: 1
 US-MA-HUB,Dx(_A)(_Dx)(_A)_Dx(_A),merge_after: 4 2 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
 US-MA-LAN,D3.S=D3D=D4.S,drop_cols: 2,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 1|3 2|. & drop_cols: 1_1
 US-MA-LEI,[S&-]x [S.]x [S&+-]x,max_length: 0|3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|- 2_0|4 & skip_empty: 1
@@ -1604,10 +1604,12 @@ US-ME-MAP,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 
 US-ME-NAS,Dx,skip_empty: 1 & split_groups: 0|5 & drop_cols: 0_0,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1 & merge_after: 0 & split_groups: 1|[A-Z]
 US-ME-NSW,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),switch: 1|2 & skip_empty: 1
 US-ME-PER,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
+US-ME-PER,[S.]x-Sx(-Sx)(/Dx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
 US-ME-PRI,Sx-[S.]x(-Sx)(-Sx)(-S.x),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-ME-STJ,Sx,skip_empty: 1 & split_groups: 0|4 & drop_cols: 0_0,Sx [S-]x( [S-]x),skip_empty: 1 & drop_cols: 0 & split_groups: 1|- 1_1|- & merge_after: 1_0 1_0
 US-ME-SAG,Sx-Sx,split_groups: 1|2 1_1|2 1_1_1|3 1_1_1_1|3 & drop_cols: 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|2 2_1|. & drop_cols: 0 & merge_after: 2_1_0 & skip_empty: 1
 US-ME-WAD,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
+US-ME-WAD,Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 0_1|- 2|- & merge_after: 2_0 & skip_empty: 1
 US-ME-WED,Sx-Sx(-Sx)(-Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
 US-ME-WIE,Sx(-)Dx,skip_empty: 1 & split_groups: 0|5 & drop_cols: 0_0,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1 & merge_after: 0 0 & split_groups: 2|& 2_0|- & drop_cols: 2_1
 US-ME-WOD,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & merge_after: 1_1_0 & skip_empty: 1
@@ -1616,6 +1618,7 @@ US-ME-BAL,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 1 & skip_empty: 1,A4 A:Sx A:(Sx)(
 US-ME-BRI,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
 US-ME-BRU,Sx-Sx,split_groups: 0|4 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
 US-ME-CAS,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1
+US-ME-CAS,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-ME-CAE,Ignored,simple,Sx Sx( Sx),drop_cols: 0 & keep_length: 2 & merge_after: 1 & skip_empty: 1
 US-ME-CUM,Sx Sx( Sx),split_groups: 1|5 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-ME-FAL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1
@@ -1661,7 +1664,6 @@ US-ME-BLH,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,A4 M:Sx( B
 US-ME-BRK,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- 2_1|- & skip_empty: 1
 US-ME-BRN,Sx-Sx-Sx,merge_after: 1 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
 US-ME-BUC,Dx(-Sx)(-Dx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- & skip_empty: 1
-US-ME-CAS,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-ME-CRI,D5_D3-D3(-S3),skip_empty: 1 & drop_cols: 0,A4 M:Sx( B:Sx) L:Sx,skip_empty: 1
 US-ME-DED,Sx-Sx-Sx(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- 2_1|- & merge_after: 0_0 & skip_empty: 1
 US-ME-DEI,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & skip_empty: 1
@@ -1672,6 +1674,7 @@ US-ME-FRA,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1,A4 
 US-ME-GOU,Dx_Sx[- ]Sx,drop_cols: 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
 US-ME-GPO,Sx-Sx-Sx-Sx,split_groups: 0|2 & drop_cols: 0_0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- 1_1_0|& & skip_empty: 1
 US-ME-HAN,Ignored,simple,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & keep_length: 2_0 & merge_after: 0 0 & skip_empty: 1
+US-ME-HAN,Dx_Sx[- ]Sx,split_groups: 1|1 2|- & drop_cols: 0 1_0 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
 US-ME-LAM,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- 2_1|- & skip_empty: 1
 US-ME-MAE,Dx_Sx[- ]Sx,drop_cols: 0 & merge_after: 2_0 0_0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
 US-ME-MOD,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- 2_1|- & merge_after: 0_0 & skip_empty: 1
@@ -1700,6 +1703,7 @@ US-ME-HAL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1,A4 M:Sx( B
 US-ME-LIT,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & merge_after: 1 1 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & merge_after: 2_0 1 0
 US-ME-MAN,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- 2_1|- & skip_empty: 1
 US-ME-MON,Sx,string_lengths: 3 3 1 2 3 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
+US-ME-MON,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-ME-OAK,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1
 US-ME-PIN,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
 US-ME-RAH,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1 & skip_empty: 1
@@ -1752,7 +1756,6 @@ US-ME-DIX,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_
 US-ME-FRY,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- 2_1|- & skip_empty: 1
 US-ME-GIL,D5_Sx(-Sx),drop_cols: 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-ME-GRD,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
-US-ME-HAN,Dx_Sx[- ]Sx,split_groups: 1|1 2|- & drop_cols: 0 1_0 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
 US-ME-HEB,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- & drop_cols: 0_0 & skip_empty: 1
 US-ME-HIR,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 0_1|- 2|- & merge_after: 2_0 & skip_empty: 1
 US-ME-HRT,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
@@ -1763,14 +1766,12 @@ US-ME-NOR,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups
 US-ME-OTI,Sx-Sx-Sx,merge_after: 1 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & skip_empty: 1
 US-ME-OXF,Sx-Sx-Sx(.Sx),merge_after: 0 0 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & merge_after: 2_0 1 0
 US-ME-PAR,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 2|- 1|. & skip_empty: 1
-US-ME-PER,[S.]x-Sx(-Sx)(/Dx),skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & skip_empty: 1
 US-ME-PRT,Sx-Sx,split_groups: 1|A & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & drop_cols: 1 2_1
 US-ME-RUM,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
 US-ME-STM,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1
 US-ME-SUM,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-ME-SWE,Dx_Sx[- ]Sx,split_groups: 2|- & drop_cols: 0 & join_char:   & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & join_char:   & skip_empty: 1
 US-ME-STW,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
-US-ME-WAD,Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 0_1|- 2|- & merge_after: 2_0 & skip_empty: 1
 US-ME-WOK,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
 US-ME-WPA,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- 1_1_0|& & skip_empty: 1
 US-ME-ARG,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- 2|- & merge_after: 2_0 1_1 1_0 0
@@ -1787,6 +1788,7 @@ US-ME-HON,Dx_Sx[- ]Sx,split_groups: 1|1 2|- & drop_cols: 0 1_0 & skip_empty: 1,A
 US-ME-HOW,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & skip_empty: 1
 US-ME-KNG,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),merge_after: 1 0
 US-ME-LIN,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|1 2_1|- & skip_empty: 1
+US-ME-LIN,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
 US-ME-LEV,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1
 US-ME-MOC,Sx(-)Dx,skip_empty: 1 & drop_cols: 0_0 & split_groups: 0|4 0_1|3,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
 US-ME-MID,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- 1_1_0|& & skip_empty: 1
@@ -1827,9 +1829,7 @@ US-ME-FRT,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 4 & skip_empty: 1,A4 A:Sx A:
 US-ME-ISL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- 2_1|- & skip_empty: 1
 US-ME-JAC,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- & drop_cols: 0_0 & skip_empty: 1
 US-ME-LIB,^([0-9A-Z-]+)$,skip_empty: 1 & split_groups: 0|- 0_1|- 0_1_1|-,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1 & split_groups: 1|- 1_1|-
-US-ME-LIN,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
 US-ME-MOE,Sx-Sx,,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & drop_cols: 3 & skip_empty: 1
-US-ME-MON,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-ME-MOR,Sx-Sx,split_groups: 0|4 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1
 US-ME-NOT,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|1 2|- 2_1|- & merge_after: 0_0 & skip_empty: 1
 US-ME-PAO,Sx [S-]x( [S-]x),split_groups: 1|- & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & skip_empty: 1
@@ -1928,8 +1928,8 @@ US-MI-HO,Ignored,simple,Ignored,simple
 US-MI-HU,Ignored,simple,Ignored,simple
 US-MI-IS,Ignored,simple,Ignored,simple
 US-MI-IO,Ignored,simple,Ignored,simple
-US-MI-IN,Ignored,simple,Ignored,simple
 US-MI-IO,Sx-Sx-Sx-Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx,split_groups: 4|2 & skip_empty: 1
+US-MI-IN,Ignored,simple,Ignored,simple
 US-MI-IR,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-MI-JA,Ignored,simple,Ignored,simple
 US-MI-KA,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1
@@ -1945,6 +1945,7 @@ US-MI-LU,Ignored,simple,Ignored,simple
 US-MI-MA,Dx-Dx-Dx-Dx-Dx,drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),drop_cols: 0 & skip_empty: 1
 US-MI-MT,Ignored,simple,Ignored,simple
 US-MI-MI,Ignored,simple,Ignored,simple
+US-MI-MI,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1
 US-MI-MN,Sx-Sx-Sx-Sx,drop_cols: 9 & keep_length: 2 3 & merge_after: 1 1 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 9 & keep_length: 2 3 & merge_after: 1 1 & skip_empty: 1
 US-MI-MU,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 4 5 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 4 5 & skip_empty: 1
 US-MI-MK,Sx-Sx(-Sx)(-Sx),skip_empty: 1,Sx-Sx-Sx-Sx,split_groups: 0|2 & drop_cols: 0_0 & skip_empty: 1
@@ -1954,7 +1955,6 @@ US-MI-MO,Ignored,simple,Ignored,simple
 US-MI-MR,Ignored,simple,Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1
 US-MI-MM,Ignored,simple,Ignored,simple
 US-MI-MC,Ignored,simple,Ignored,simple
-US-MI-MI,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1
 US-MI-NE,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1
 US-MI-OC,Ignored,simple,Ignored,simple
 US-MI-OA,Dx,string_lengths: 2 4 4 & skip_empty: 1,Dx,string_lengths: 2 4 4 & skip_empty: 1
@@ -1966,11 +1966,11 @@ US-MI-OT,Ignored,simple,Ignored,simple
 US-MI-PI,Ignored,simple,Ignored,simple
 US-MI-RO,Ignored,simple,Ignored,simple
 US-MI-SC,Dx,split_groups: 0|16 & drop_cols: 0_1,Ignored,simple
+US-MI-SC,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1,Sx-Sx-Sx-Sx,skip_empty: 1
 US-MI-SA,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
 US-MI-SH,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1
 US-MI-SJ,Ignored,simple,Ignored,simple
 US-MI-SN,Ignored,simple,Ignored,simple
-US-MI-SC,Dx-Dx-Dx-Dx(-Dx-Dx-Dx),skip_empty: 1,Sx-Sx-Sx-Sx,skip_empty: 1
 US-MI-TU,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,Dx-Dx-Dx-Dx-Dx,split_groups: 4|2 & skip_empty: 1
 US-MI-VB,Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1
 US-MI-WE,Ignored,simple,Ignored,simple
@@ -2119,13 +2119,14 @@ US-MO-CM,Unrecognized,,Unrecognized,
 US-MO-CI,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1
 US-MO-CP,Ignored,simple,Ignored,simple
 US-MO-CS,Dx,,Dx-Dx-Dx-Dx-Dx-Dx.Dx,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
+US-MO-CS,Ignored,simple,Ignored,simple
 US-MO-CH,Ignored,simple,Ignored,simple
 US-MO-CD,Unrecognized,,Unrecognized,
 US-MO-CL,Ignored,simple,Ignored,simple
 US-MO-DD,Ignored,simple,Ignored,simple
 US-MO-DE,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1
-US-MO-DA,Ignored,simple,Ignored,simple
 US-MO-DE,Ignored,simple,Ignored,simple
+US-MO-DA,Ignored,simple,Ignored,simple
 US-MO-DO,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1
 US-MO-DU,Unrecognized,,Unrecognized,
 US-MO-DV,Ignored,simple,Ignored,simple
@@ -2188,7 +2189,6 @@ US-MO-RA,Unrecognized,,Unrecognized,
 US-MO-RY,Dx-Dx-Dx-Dx-Dx-Dx.Dx,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx.Dx,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
 US-MO-SC,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1
 US-MO-SE,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 2|3 4|2 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),skip_empty: 1
-US-MO-CS,Ignored,simple,Ignored,simple
 US-MO-SD,Ignored,simple,Ignored,simple
 US-MO-SN,Ignored,simple,Ignored,simple
 US-MO-SF,Ignored,simple,Ignored,simple
@@ -2214,12 +2214,12 @@ US-MS-AT,Ignored,simple,Ignored,simple
 US-MS-BE,Ignored,simple,Ignored,simple
 US-MS-BO,Ignored,simple,Ignored,simple
 US-MS-CI,Sx Sx Sx( Sx)( Sx),skip_empty: 1,Sx Sx Sx( Sx)( Sx),drop_cols: 0 & skip_empty: 1
+US-MS-CI,Ignored,simple,Ignored,simple
 US-MS-CL,Ignored,simple,Ignored,simple
 US-MS-CO,Ignored,simple,Ignored,simple
 US-MS-CR,Sx Sx Sx,skip_empty: 1,Sx Sx Sx,skip_empty: 1
 US-MS-CA,Ignored,simple,Ignored,simple
 US-MS-CP,Ignored,simple,Ignored,simple
-US-MS-CI,Ignored,simple,Ignored,simple
 US-MS-CV,Ignored,simple,Ignored,simple
 US-MS-CH,Ignored,simple,Ignored,simple
 US-MS-CY,Sx Sx( Sx),skip_empty: 1,Sx Sx( Sx),skip_empty: 1
@@ -2248,12 +2248,12 @@ US-MS-LF,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-MS-LM,Ignored,simple,Ignored,simple
 US-MS-LO,Sx,string_lengths: 3 3 1 2 3 & skip_empty: 1,Sx,string_lengths: 3 3 1 2 3 & skip_empty: 1
 US-MS-LA,Ignored,simple,Ignored,simple
-US-MS-LW,^([0-9A-Z]+)-([0-9]+)-([0-9]+)_([0-9]+)$,,Sx( )-D4-D5.D2,
 US-MS-LA,Ignored,simple,Ignored,simple
+US-MS-LW,^([0-9A-Z]+)-([0-9]+)-([0-9]+)_([0-9]+)$,,Sx( )-D4-D5.D2,
 US-MS-MA,D3A1-D2(A1 )-D3(/D2.D2),skip_empty: 1,D3A1-D2(A1 )-D3(/D2.D2),skip_empty: 1
+US-MS-MA,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-MS-MR,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1
 US-MS-MO,Ignored,simple,Ignored,simple
-US-MS-MA,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-MS-MN,Sx Sx( Sx),keep_length: 0 1 & skip_empty: 1,Sx Sx( Sx),keep_length: 0 1 & skip_empty: 1
 US-MS-NO,Ignored,simple,Ignored,simple
 US-MS-NE,Unrecognized,,Unrecognized,
@@ -2292,8 +2292,8 @@ US-MT-BH,Ignored,simple,Ignored,simple
 US-MT-BL,Ignored,simple,Ignored,simple
 US-MT-BR,Dx,string_lengths: 2 4 2 1 2 2 4 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),skip_empty: 1
 US-MT-CA,Sx,,Ignored,simple
-US-MT-CH,Ignored,simple,Ignored,simple
 US-MT-CA,Ignored,simple,Ignored,simple
+US-MT-CH,Ignored,simple,Ignored,simple
 US-MT-CR,Sx,,Ignored,simple
 US-MT-CU,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1,Ignored,simple
 US-MT-DL,Dx,string_lengths: 2 4 2 1 2 2 4 & skip_empty: 1,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),skip_empty: 1
@@ -2349,12 +2349,10 @@ US-NC-ALL,Sx,,Sx,skip_empty: 1
 US-NC-ANS,Dx,split_groups: 0|16 & drop_cols: 0_1,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-NC-ASH,Ignored,simple,Ignored,simple
 US-NC-AVE,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
-US-NC-BEA,Ignored,simple,Ignored,simple
+US-NC-BEA,Dx,split_groups: 0|16 & drop_cols: 0_1,Ignored,simple
 US-NC-BUN,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-NC-BLA,Dx,,Dx,split_groups: 0|1 0_1|6 & drop_cols: 0_0 & skip_empty: 1
-US-NC-BUN,Ignored,simple,Ignored,simple
 US-NC-BRU,Ignored,simple,Ignored,simple
-US-NC-BEA,Dx,split_groups: 0|16 & drop_cols: 0_1,Ignored,simple
 US-NC-CAT,Ignored,simple,Ignored,simple
 US-NC-CAM,Dx,string_lengths: 2 4 2 2 4 4 & skip_empty: 1,D2.D4.D2.D2.D4.D4,skip_empty: 1
 US-NC-CAB,Ignored,simple,Ignored,simple
@@ -2364,7 +2362,6 @@ US-NC-CAL,Sx Sx Sx( Sx)( Sx),,Sx Sx Sx( Sx)( Sx),
 US-NC-COL,(D5_)Dx.Dx-Dx-Dx.Dx,split_groups: 1|1 4|1 4_1|1 & drop_cols: 1_0 & keep_length: 1_1 2 3 & merge_after: 0 0 0 0 0 0 & skip_empty: 1,(D5_)Dx.Dx-Dx-Dx.Dx,split_groups: 1|1 4|1 4_1|1 & drop_cols: 1_0 & keep_length: 1_1 2 3 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
 US-NC-CRA,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1
 US-NC-CHE,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
-US-NC-CAT,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
 US-NC-CAS,Dx,string_lengths: 4 2 2 4 4 & skip_empty: 1,Dx.Dx.Dx.Dx.Dx,skip_empty: 1
 US-NC-CUM,Sx-Sx-Sx,,Sx-Sx-Sx(-Sx),drop_cols: 3
 US-NC-CLE,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
@@ -2386,7 +2383,6 @@ US-NC-GUI,Ignored,simple,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-NC-HEN,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx(-Sx),skip_empty: 1
 US-NC-HAY,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
 US-NC-HAL,Sx(-)Dx,split_groups: 0|- 0_0|3 & skip_empty: 1,Dx,split_groups: 0|3 0_1|7 0_1_1|3 0_1_1_1|1 0_1_1_1_1|[0] & merge_after: 0_1_1_0 0_1_1_0 & skip_empty: 1
-US-NC-HEN,Sx,skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-NC-HOK,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-NC-HER,Ignored,simple,Ignored,simple
 US-NC-HAR,Ignored,simple,Ignored,simple
@@ -2403,19 +2399,17 @@ US-NC-NHA,Ignored,simple,Ignored,simple
 US-NC-NOR,Dx,split_groups: 0|16 & drop_cols: 0_1,Sx-Sx,keep_length: 1 & merge_after: 0 & skip_empty: 1
 US-NC-ONS,Dx,,Dx,
 US-NC-ORA,Dx,keep_length: 1 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1
-US-NC-PER,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
+US-NC-PER,Ignored,simple,Ignored,simple
 US-NC-PIT,Ignored,simple,Ignored,simple
 US-NC-PAM,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1
 US-NC-PEN,Ignored,,Ignored,
 US-NC-POL,Sx-Sx(-Sx)(-Sx),skip_empty: 1,Sx-Sx(-Sx)(-Sx),skip_empty: 1
-US-NC-PER,Ignored,simple,Ignored,simple
 US-NC-PAS,^([0-9]+) ? ?([0-9]{2})?([0-9]{6})$,,^([0-9]+) ? ?([0-9]{2})?([0-9]{6})$,
 US-NC-RAN,Ignored,simple,Dx.Dx,skip_empty: 1
 US-NC-ROW,Sx,split_groups: 0|7 & skip_empty: 1,Sx,split_groups: 0|7 & skip_empty: 1
 US-NC-ROC,Sx,split_groups: 0|3 0_1|3 0_1_1|4 0_1_1_1|2 0_1_1_1_1|1 0_1_1_1_1_1|1 0_1_1_1_1_1_1|2 & merge_after: 0_0 0_0 0_0 0_0 0_0 0_0 & skip_empty: 1,Sx,split_groups: 0|3 0_1|3 0_1_1|4 0_1_1_1|2 0_1_1_1_1|1 0_1_1_1_1_1|1 0_1_1_1_1_1_1|2 & merge_after: 0_0 0_0 0_0 0_0 0_0 0_0 & skip_empty: 1
 US-NC-RIC,Sx,,Ignored,simple
 US-NC-RUT,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,
-US-NC-ROW,Ignored,simple,Ignored,simple
 US-NC-SCO,Ignored,simple,Ignored,simple
 US-NC-STA,Dx,split_groups: 0|16 & drop_cols: 0_1,Ignored,simple
 US-NC-STO,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Ignored,simple
@@ -2494,9 +2488,9 @@ US-NE-AR,Dx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,Dx,
 US-NE-BA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-NE-BT,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-NE-BU,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Dx,
+US-NE-BU,Dx,,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-NE-BL,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1
 US-NE-BO,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Dx.Dx,split_groups: 1|5 & keep_length: 1_0 & merge_after: 0 & skip_empty: 1
-US-NE-BU,Dx,,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-NE-BR,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,
 US-NE-BB,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,keep_length: 1 & skip_empty: 1
 US-NE-BY,Ignored,simple,Dx,keep_length: 1 & skip_empty: 1
@@ -2522,8 +2516,8 @@ US-NE-FI,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,
 US-NE-FO,Dx,,Sx,
 US-NE-FU,Dx.Dx,split_groups: 1|5 & keep_length: 1_0 & merge_after: 0 & skip_empty: 1,Dx.Dx,split_groups: 1|5 & keep_length: 1_0 & merge_after: 0 & skip_empty: 1
 US-NE-GR,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
-US-NE-GD,Ignored,simple,Dx,
 US-NE-GR,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,keep_length: 1 & skip_empty: 1
+US-NE-GD,Ignored,simple,Dx,
 US-NE-GA,Dx,,Dx,
 US-NE-GA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-NE-GO,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
@@ -2593,6 +2587,7 @@ US-NH-NHM,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after:
 US-NH-SNB,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-TIL,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-BAR,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
+US-NH-BAR,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-NH-BRD,Dx(-Sx)(-Dx),split_groups: 0|4 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-CHM,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
 US-NH-COY,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|3 2|4 & skip_empty: 1
@@ -2632,6 +2627,7 @@ US-NH-TRO,Sx( A)-Sx-Sx( A),skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),spli
 US-NH-WAL,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-WES,Sx,string_lengths: 6 6 6,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|4 & merge_after: 2_0
 US-NH-WIN,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
+US-NH-WIN,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- & keep_length: 0_1 1_1 & merge_after: 0_0 1_0 & skip_empty: 1
 US-NH-BER,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-NH-COL,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-NH-CLE,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|3 2|- & skip_empty: 1
@@ -2665,6 +2661,7 @@ US-NH-ENF,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|
 US-NH-FRC,Dx,skip_empty: 1 & split_groups: 0|6 0_1|6,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
 US-NH-GRO,Sx,string_lengths: 6 6 6,A4 M:Sx L:Sx( S:(Sx)),
 US-NH-GRA,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
+US-NH-GRA,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-NH-HAN,Dx(-Sx)(-Dx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|. & drop_cols: 2 & skip_empty: 1
 US-NH-HEB,Sx-[S.]x(-Sx)(-Sx)(-Sx),split_groups: 1|6 1_1|6 & drop_cols: 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-HOS,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -2673,9 +2670,10 @@ US-NH-LAF,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|. & skip_empty: 1,A4 M:
 US-NH-LEB,Sx Sx( Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
 US-NH-LIN,Sx-[S.]x(-Sx)(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|-3 & drop_cols: 2_0 & skip_empty: 1
 US-NH-LYM,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|1 & skip_empty: 1
+US-NH-LYM,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 1|3 & skip_empty: 1
 US-NH-LIS,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-NH-LIT,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
-US-NH-LYM,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 1|3 & skip_empty: 1
+US-NH-LIT,Sx,string_lengths: 4 4 4 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-MON,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 1|3 & skip_empty: 1
 US-NH-PIE,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-PLY,Sx-Sx-Sx-Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. 2|4 & skip_empty: 1
@@ -2700,7 +2698,6 @@ US-NH-HAK,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split
 US-NH-HIL,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-HOL,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|S 0_0|N & drop_cols: 4 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|. & skip_empty: 1
 US-NH-HUD,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
-US-NH-LIT,Sx,string_lengths: 4 4 4 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-LYN,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|. 2_1|- & skip_empty: 1
 US-NH-MAN,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-MER,Sx-Sx(-Sx)(-Sx),split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|1 2_1|- & skip_empty: 1
@@ -2779,8 +2776,7 @@ US-NH-SEA,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 
 US-NH-SHA,Dx,split_groups: 0|2 0_1|2 0_1_1|2 0_1_1_1|3 0_1_1_1_1|3 0_1_1_1_1|3 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),skip_empty: 1
 US-NH-SAN,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-STR,Dx(-Sx)(-Dx),string_lengths: 3 3 3 3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & skip_empty: 1
-US-NH-WIN,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- 1|- & keep_length: 0_1 1_1 & merge_after: 0_0 1_0 & skip_empty: 1
-US-NH-BAR,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
+US-NH-STR,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-NH-DOV,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
 US-NH-DUR,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-NH-FAR,Sx,string_lengths: 3 3 3 3 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 2|- 1|. & skip_empty: 1
@@ -2791,13 +2787,11 @@ US-NH-NDU,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 0|3 & drop_cols: 3 & skip
 US-NH-ROL,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|1 2_1|- & skip_empty: 1
 US-NH-ROC,Sx-Sx(-Sx)(-Sx),skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|/ 3|4 & skip_empty: 1
 US-NH-SOM,Dx=Sx=Dx,drop_cols: 1 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
-US-NH-STR,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-NH-ACW,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & keep_length: 2_0 & merge_after: 0 0 & skip_empty: 1
 US-NH-CHA,Ignored,simple,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-NH-CLA,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 2|- & skip_empty: 1
 US-NH-COR,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|- & skip_empty: 1
 US-NH-GOS,Sx-Sx-Sx(.Sx),skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
-US-NH-GRA,Sx-Sx-Sx,skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1
 US-NH-LNG,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|2 2_1|. & drop_cols: 0 & merge_after: 2_1_0 & skip_empty: 1
 US-NH-LEM,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1,A4 M:Sx L:Sx( S:(Sx)),split_groups: 2|1 2_1|- & skip_empty: 1
 US-NH-NET,Sx(-)Dx,split_groups: 0|- 0_0|3 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -2893,9 +2887,9 @@ US-NY-AE-AL,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),sk
 US-NY-AE-AE,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-AN,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-AF,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-AE-AF,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-AM,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-AD,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
-US-NY-AE-AF,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-BE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-BI,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-AE-BO,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -2955,7 +2949,9 @@ US-NY-CR-WI,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-S
 US-NY-CA-AT,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-AS,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-CA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CA-CA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-CO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CA-CO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-CL,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-DA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-EL,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -2968,10 +2964,12 @@ US-NY-CA-HI,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx
 US-NY-CA-HU,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-IS,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-LE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CA-LE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-LV,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-LY,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-MA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-MO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CA-MO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-NE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-NA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-OT,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -2983,7 +2981,9 @@ US-NY-CA-PR,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx
 US-NY-CA-RA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-RH,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-SC,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CA-SC,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-ST,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CA-ST,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-SV,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CA-YO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CN-AF,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
@@ -3056,8 +3056,8 @@ US-NY-CH-KI,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx
 US-NY-CH-MI,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CH-NH,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CH-PO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
-US-NY-CH-PL,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CH-PO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-CH-PL,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CH-RI,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CH-SE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-CH-SH,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -3068,23 +3068,17 @@ US-NY-CO,^[0-9]{6}-([0-9]+)\.([0-9]*)-([0-9]+)-([0-9]+)(?:\.([0-9]+))?$,,^[0-9]{
 US-NY-CY-RL,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-AU,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-BR,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
-US-NY-CA-CA,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
-US-NY-CA-CO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-FL,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-GE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-IR,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
-US-NY-CA-LE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-LO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-ME,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CY-MN,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
-US-NY-CA-MO,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-NI,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-OW,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
-US-NY-CA-SC,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CY-SM,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-SE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-SP,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
-US-NY-CA-ST,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-SU,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-TH,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-CA-VE,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
@@ -3166,8 +3160,8 @@ US-NY-ES-LE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),sk
 US-NY-ES-MI,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ES-MO,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ES-NE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
-US-NY-ES-NH,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ES-NE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-ES-NH,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ES-SA,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ES-SC,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ES-TI,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -3372,8 +3366,8 @@ US-NY-NY,Dx,string_lengths: 2 4 4 & drop_cols: 0 & skip_empty: 1,Sx( )-( )(Sx)( 
 US-NY-NI-CA,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-NI-HA,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-NI-LC,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
-US-NY-NI-LE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-NI-LC,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
+US-NY-NI-LE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-NI-NE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-NI-NF,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-NI-NI,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -3629,6 +3623,7 @@ US-NY-SC-SC,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( S
 US-NY-SH-BL,Dx(.-Dx.-Dx),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-SH-BR,Dx(.-Dx.-Dx),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-SH-CA,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
+US-NY-SH-CA,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-SH-CO,Dx(.-Dx.-Dx),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-SH-CB,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
 US-NY-SH-ES,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1
@@ -3668,8 +3663,8 @@ US-NY-ST-AV,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_emp
 US-NY-ST-BA,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ST-BR,Ignored,simple,Ignored,simple
 US-NY-ST-CM,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
-US-NY-ST-CR,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ST-CM,Ignored,simple,Ignored,simple
+US-NY-ST-CR,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ST-CN,Ignored,simple,Ignored,simple
 US-NY-ST-CO,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-ST-CT,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -3697,7 +3692,6 @@ US-NY-ST-WH,Ignored,simple,Ignored,simple
 US-NY-ST-WO,Ignored,simple,Ignored,simple
 US-NY-ST-WU,Ignored,simple,Ignored,simple
 US-NY-ST-WY,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
-US-NY-SH-CA,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-SH-CY,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1
 US-NY-SH-DI,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
 US-NY-SH-HE,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1
@@ -3848,10 +3842,10 @@ US-OH-BE,^([0-9]{2})-([0-9]{5})\.([0-9]{3}).*$,skip_empty: 1,^([0-9]{2})-([0-9]{
 US-OH-BR,Sx(-)Dx,skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-BU,Ignored,simple,Ignored,simple
 US-OH-CL,Ignored,simple,Ignored,simple
+US-OH-CL,Sx,split_groups: 0|1 & drop_cols: 0_0,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-OH-CR,Dx,,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-CH,S3-D2-D2-D2-S2-D3-D2,keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1,Ignored,simple
 US-OH-CI,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
-US-OH-CL,Sx,split_groups: 0|1 & drop_cols: 0_0,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-OH-CO,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-OH-CA,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-CS,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
@@ -3870,10 +3864,10 @@ US-OH-GR,Ignored,simple,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-OH-GU,Ignored,simple,Ignored,simple
 US-OH-HC,Dx,keep_length: 1 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-HA,Sx,,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
+US-OH-HA,Sx,string_lengths: 4 4 4 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1
 US-OH-HE,Ignored,simple,Ignored,simple
 US-OH-HI,Ignored,simple,Ignored,simple
 US-OH-HO,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
-US-OH-HA,Sx,string_lengths: 4 4 4 & skip_empty: 1,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1
 US-OH-HN,Sx,,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
 US-OH-HR,Sx,split_groups: 0|[E] & keep_length: 0_1 & merge_after: 0_0 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-HU,Ignored,simple,Ignored,simple
@@ -3891,9 +3885,9 @@ US-OH-MC,Ignored,simple,Ignored,simple
 US-OH-ME,Ignored,simple,Ignored,simple
 US-OH-MN,Ignored,simple,Ignored,simple
 US-OH-MA,Unrecognized,,Unrecognized,
+US-OH-MA,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-MI,Sx-Sx,keep_length: 1 & merge_after: 0 & skip_empty: 1,Ignored,simple
 US-OH-MD,Ignored,simple,Ignored,simple
-US-OH-MA,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1
 US-OH-MG,Dx,split_groups: 0|2 0_1|1 0_1_1|1 0_1_1_1|2 0_1_1_1_1|3 0_1_1_1_1_1|3 0_1_1_1_1_1_1|3 0_1_1_1_1_1_1_1|2 & skip_empty: 1,Sx,string_lengths: 2 3 2 3 & skip_empty: 1
 US-OH-MO,Sx Sx( Sx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx Sx( Sx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-OH-MU,Ignored,simple,Ignored,simple
@@ -3922,9 +3916,9 @@ US-OH-VW,Sx,,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 
 US-OH-VI,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx,split_groups: 0|7 & skip_empty: 1
 US-OH-WY,Ignored,simple,Ignored,simple
 US-OH-WA,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-OH-WA,Ignored,simple,Ignored,simple
 US-OH-WI,Ignored,simple,Ignored,simple
 US-OH-WO,Sx(-)Dx,split_groups: 0|- 0_0|3 & skip_empty: 1,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
-US-OH-WA,Ignored,simple,Ignored,simple
 US-OH-WS,Dx,split_groups: 0|16 & drop_cols: 0_1,Sx(-)Dx,skip_empty: 1
 US-OK-AD,Ignored,simple,Ignored,simple
 US-OK-AL,Ignored,simple,Ignored,simple
@@ -3970,13 +3964,13 @@ US-OK-LO,^a([0-9]+)$,,Dx,
 US-OK-LI,Ignored,simple,Ignored,simple
 US-OK-LV,Ignored,simple,Ignored,simple
 US-OK-MA,Ignored,simple,Ignored,simple
+US-OK-MA,Ignored,simple,Ignored,simple
 US-OK-MI,Ignored,simple,Ignored,simple
 US-OK-MJ,Ignored,simple,Ignored,simple
 US-OK-ML,Ignored,simple,Ignored,simple
 US-OK-MU,Dx,,Dx,split_groups: 0|2 0_1|2 & drop_cols: 0_0 & skip_empty: 1
 US-OK-MR,Ignored,simple,Ignored,simple
 US-OK-MC,Ignored,simple,Ignored,simple
-US-OK-MA,Ignored,simple,Ignored,simple
 US-OK-NO,Ignored,simple,Ignored,simple
 US-OK-NW,Sx-Sx-Sx-Sx-Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx-Sx,skip_empty: 1
 US-OK-OF,Ignored,simple,Ignored,simple
@@ -4101,6 +4095,7 @@ US-RI-JO,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & merge_after: 
 US-RI-LI,A2 Dx,skip_empty: 1 & split_groups: 1|- & drop_cols: 0,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),skip_empty: 1
 US-RI-NP,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & merge_after: 1_1_0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & merge_after: 1_0 & skip_empty: 1
 US-RI-NS,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|. 4|. & drop_cols: 1 & skip_empty: 1
+US-RI-NS,BI Sx:Sx,split_groups: 1|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-RI-PA,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- & drop_cols: 0 & skip_empty: 1,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & keep_length: 2_0 & merge_after: 0 0 & skip_empty: 1
 US-RI-PR,Dx(-Sx)(-Dx),split_groups: 0|2 0_1|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|[A-Z] & drop_cols: 3 & skip_empty: 1
 US-RI-SC,A2 Dx,skip_empty: 1 & drop_cols: 0 & split_groups: 1|/,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),skip_empty: 1
@@ -4111,7 +4106,6 @@ US-RI-EX,Sx [S-]x( [S-]x),drop_cols: 0 & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [S
 US-RI-HO,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 2|- & merge_after: 2_0 & skip_empty: 1
 US-RI-NA,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|1 & drop_cols: 0 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1
 US-RI-NK,Sx [S-]x( [S-]x),split_groups: 1|- 1_1|- 1_1_1|- & drop_cols: 0 & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 1|. & drop_cols: 2 & skip_empty: 1
-US-RI-NS,BI Sx:Sx,split_groups: 1|- & skip_empty: 1,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 2|- & skip_empty: 1
 US-RI-RI,RI Sx/Sx,split_groups: 1|- & skip_empty: 1,A4 M:Sx B:(Sx)( L:(Sx)),split_groups: 0|- & skip_empty: 1
 US-RI-SK,^([0-9]+)(?:-([0-9]{1}))?:([0-9A-Z]+)$,split_groups: 2|- & drop_cols: 2_1 & skip_empty: 1,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- & skip_empty: 1
 US-RI-WE,Ignored,simple,A4 M:Sx( B:Sx)( L:Sx)( [SUP]:(Sx)),split_groups: 0|- 1|- 2|- 3|- & merge_after: 3_0 2_1 2_0 2 1_1 1_0 1 0_1 0_0 0
@@ -4187,8 +4181,8 @@ US-SD-GR,Ignored,simple,Ignored,simple
 US-SD-GE,Sx(-)Dx,split_groups: 0|2 & merge_after: 0_1 & skip_empty: 1,Dx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
 US-SD-HK,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,keep_length: 1 & skip_empty: 1
 US-SD-HA,Ignored,simple,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
-US-SD-HU,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
 US-SD-HA,Sx(-)Dx,keep_length: 0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
+US-SD-HU,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
 US-SD-HR,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-SD-HN,Ignored,simple,Sx-Sx-Sx-Sx-Sx-Sx,keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1
 US-SD-HT,Ignored,simple,Ignored,simple
@@ -4223,8 +4217,8 @@ US-SD-WA,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,Dx,split_groups
 US-SD-YA,Unrecognized,,Unrecognized,
 US-TN-BE,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-BL,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
-US-TN-BN,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-BL,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
+US-TN-BN,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-BR,Ignored,simple,Ignored,simple
 US-TN-CH,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-CK,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
@@ -4234,8 +4228,8 @@ US-TN-CR,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,Sx Sx Sx(
 US-TN-CM,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-CN,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,Sx Sx Sx( Sx)( Sx),skip_empty: 1
 US-TN-CA,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
-US-TN-CE,^([0-9]{6})([A-Z]?)(?: ([A-Z]))? ([0-9]{5})$,split_groups: 0|3 & drop_cols: 0_0,^([0-9]{3})([A-Z]?)(?: +([A-Z]))? +([0-9]{5}) ([0-9A-Z]*)$,drop_cols: 4
 US-TN-CA,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
+US-TN-CE,^([0-9]{6})([A-Z]?)(?: ([A-Z]))? ([0-9]{5})$,split_groups: 0|3 & drop_cols: 0_0,^([0-9]{3})([A-Z]?)(?: +([A-Z]))? +([0-9]{5}) ([0-9A-Z]*)$,drop_cols: 4
 US-TN-CU,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,Sx Sx Sx( Sx)( Sx),skip_empty: 1
 US-TN-CY,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-DA,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
@@ -4274,16 +4268,16 @@ US-TN-LD,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A)
 US-TN-LA,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MC,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,Sx Sx Sx( Sx)( Sx),skip_empty: 1
 US-TN-MA,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
+US-TN-MA,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MD,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-ME,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MG,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MI,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MM,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MR,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
-US-TN-MN,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MR,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
+US-TN-MN,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-MO,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,Sx( )(Sx)( )(Sx) ( )(Sx),drop_cols: 3 & skip_empty: 1
-US-TN-MA,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-OB,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-OV,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
 US-TN-PE,Sx Sx( Sx),split_groups: 0|3 & drop_cols: 0_0 & skip_empty: 1,D3(A) (A) D5(A)(D3)( D2),skip_empty: 1
@@ -4327,7 +4321,7 @@ US-TX-BAN,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-TX-BLA,Dx,,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-TX-BOR,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1
 US-TX-BEE,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
-US-TX-BRA,Ignored,simple,Ignored,simple
+US-TX-BRA,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-TX-BRS,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
 US-TX-BEL,Ignored,simple,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
 US-TX-BRO,Ignored,simple,Dx,split_groups: 0|16 & drop_cols: 0_1
@@ -4341,7 +4335,6 @@ US-TX-BUN,Dx,,Dx,
 US-TX-BOW,Dx,keep_length: 1 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
 US-TX-BEX,Dx,keep_length: 1 & skip_empty: 1,Dx,
 US-TX-BAI,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|16 & drop_cols: 0_1
-US-TX-BRA,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-TX-CAM,Dx,,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-TX-CRO,Sx,string_lengths: 3 3 & skip_empty: 1,Sx,string_lengths: 3 3 & skip_empty: 1
 US-TX-COC,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|1 & drop_cols: 0_0
@@ -4359,7 +4352,6 @@ US-TX-CRA,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-TX-CAS,Ignored,simple,Sx(-)Dx,split_groups: 0|[A-Z] 0_1|[A-Z] & skip_empty: 1
 US-TX-CRT,Dx,keep_length: 1 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1
 US-TX-CAL,Ignored,simple,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
-US-TX-CAL,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-TX-CLA,Ignored,simple,Dx,
 US-TX-DIC,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-TX-DEW,Sx(-)Dx,split_groups: 0|6 0_1|1 0_1_1|5 & skip_empty: 1,Ignored,simple
@@ -4415,7 +4407,6 @@ US-TX-HAM,Dx,split_groups: 0|3 0_1|7 0_1_1|3 0_1_1_1|1 0_1_1_1_1|[0] & merge_aft
 US-TX-HAN,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 0_1_1_1_1_1_1_1|1 & merge_after: 0_1_1_1_1_1_0 0_1_1_1_1_1_0 0_1_1_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-TX-HOO,Ignored,simple,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-TX-HOP,Sx(-)Dx,string_lengths: 2 2 6 & drop_cols: 0 & skip_empty: 1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
-US-TX-HAN,Sx(-)Dx,skip_empty: 1,Ignored,simple
 US-TX-HOU,Ignored,simple,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
 US-TX-HUN,Ignored,simple,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
 US-TX-HUD,Dx,split_groups: 2|4 & skip_empty: 1,Sx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1
@@ -4453,7 +4444,6 @@ US-TX-LIP,Ignored,simple,Ignored,simple
 US-TX-LEO,Dx,simple,Sx-Sx-Sx(-Sx),simple
 US-TX-LIM,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-TX-LAM,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
-US-TX-LAM,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,
 US-TX-LAS,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,
 US-TX-LIB,Dx,,Dx,split_groups: 0|16 & drop_cols: 0_1
 US-TX-LUB,Sx,skip_empty: 1,Sx,split_groups: 0|7 & skip_empty: 1
@@ -4500,10 +4490,9 @@ US-TX-ROC,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|14 & drop_co
 US-TX-HRD,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
 US-TX-REE,Dx,split_groups: 0|16 & drop_cols: 0_1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-TX-REF,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
-US-TX-REA,Dx,,Dx,keep_length: 1 & skip_empty: 1
+US-TX-REA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-TX-RAI,Dx,,Dx,
 US-TX-RUS,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,Ignored,simple
-US-TX-REA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
 US-TX-RUN,Sx(-)Dx,string_lengths: 2 2 6 & drop_cols: 0 & skip_empty: 1,Sx,split_groups: 0|R 0_0|11 & skip_empty: 1
 US-TX-ROB,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,Dx,keep_length: 1 & skip_empty: 1
 US-TX-HAR,Dx,string_lengths: 2 3 2 2 4 & skip_empty: 1,Dx,string_lengths: 2 3 2 2 4 & skip_empty: 1
@@ -4557,8 +4546,6 @@ US-TX-WHE,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1
 US-TX-WIL,Sx,,Ignored,simple
 US-TX-WHA,Dx,split_groups: 0|16 & drop_cols: 0_1,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-TX-WOO,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1
-US-TX-WAR,Dx,,Sx,split_groups: 0|1 & drop_cols: 0_0
-US-TX-WIN,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Ignored,simple
 US-TX-WIY,Dx,,Dx,keep_length: 1 & skip_empty: 1
 US-TX-YOA,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-TX-YOU,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,split_groups: 0|16 & drop_cols: 0_1
@@ -4612,6 +4599,7 @@ US-VA-BL,Ignored,simple,Ignored,simple
 US-VA-BO,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",no_conv: 1,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",no_conv: 1
 US-VA-BR,Ignored,simple,Ignored,simple
 US-VA-CS,"^([0-9A-Z-,]+)$",skip_empty: 1 & split_groups: 0|- 0_1|- 0_1_1|- 0_1_1_1|-,"^([0-9A-Z ,]+)$",skip_empty: 1 & split_groups: 0|\s 0_1|\s 0_1_1|\s 0_1_1_1|\s 0_1_1_1_1|\s
+US-VA-CS,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-VA-CE,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx-Sx-Sx-Sx-Sx-Sx,split_groups: 4|1 & drop_cols: 4_1 5 & keep_length: 2 3 4_0 & merge_after: 0 0 0 0 & skip_empty: 1
 US-VA-CO,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
 US-VA-CI,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1
@@ -4619,7 +4607,6 @@ US-VA-CL,Ignored,simple,Ignored,simple
 US-VA-CA,Sx-Sx-Sx(-Sx),merge_after: 2 1 0,Ignored,simple
 US-VA-CM,Sx-Sx-Sx(-Sx),skip_empty: 1,Sx-Sx-Sx(-Sx),skip_empty: 1
 US-VA-CU,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1,Sx (Dx Sx) Sx,skip_empty: 1
-US-VA-CS,Dx,split_groups: 0|16 & drop_cols: 0_1,Dx,
 US-VA-CT,Sx-Sx(-Sx)(-Sx),merge_after: 2 1 0 & skip_empty: 1,Ignored,simple
 US-VA-CB,Ignored,simple,Ignored,simple
 US-VA-CV,Sx,string_lengths: 3 2 4 5 & skip_empty: 1,"^-*?([0-9A-Z]+)--(?:-([0-9A-Z])|([0-9A-Z]{2}))(?:--|-([0-9A-Z])|([0-9A-Z]{2,3}))-*?([0-9A-Z]+)?(?:-|([0-9A-Z]))$",merge_after: 5 & skip_empty: 1
@@ -4687,10 +4674,10 @@ US-VA-PI,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VA-PU,Sx Sx Sx Sx( Sx Sx Sx)|Sx-Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx-Sx,skip_empty: 1
 US-VA-PW,Ignored,simple,Ignored,simple
 US-VA-RC,Ignored,simple,Sx,skip_empty: 1
+US-VA-RC,Sx,string_lengths: 1 3 4 3 & skip_empty: 1,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1
 US-VA-RK,Ignored,simple,Sx (Dx Sx) Sx,merge_after: 0 0 0 & skip_empty: 1
 US-VA-RI,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",skip_empty: 1,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",skip_empty: 1
 US-VA-RO,Ignored,simple,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1
-US-VA-RC,Sx,string_lengths: 1 3 4 3 & skip_empty: 1,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1
 US-VA-RN,Ignored,simple,Ignored,simple
 US-VA-RP,Sx-Sx(-Sx)(-Sx),skip_empty: 1,Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1
 US-VA-RU,Dx,,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
@@ -4698,13 +4685,13 @@ US-VA-SO,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,Sx (Dx
 US-VA-SC,Dx,skip_empty: 1,Dx,skip_empty: 1
 US-VA-SA,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-S.x),skip_empty: 1
 US-VA-ST,Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1,Sx-Sx(-Sx)(-Sx),skip_empty: 1
+US-VA-ST,Ignored,simple,Dx,
 US-VA-SM,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1
 US-VA-SH,Sx( )-\(\(Sx\)\)-( )Sx,,Sx (Dx Sx) Sx,skip_empty: 1
 US-VA-SU,Ignored,simple,Ignored,simple
 US-VA-SP,Sx-Sx-Sx(-Sx),skip_empty: 1,Sx-Sx-Sx(-Sx),skip_empty: 1
 US-VA-SR,Sx-Sx(-Sx)(-Sx),skip_empty: 1,Sx-Sx(-Sx)(-Sx),skip_empty: 1
 US-VA-SX,Ignored,simple,Ignored,simple
-US-VA-ST,Ignored,simple,Dx,
 US-VA-TA,Ignored,simple,Ignored,simple
 US-VA-VB,Ignored,simple,Ignored,simple
 US-VA-WS,Sx-Sx-Sx(-Sx),skip_empty: 1,Sx (Dx Sx) Sx,skip_empty: 1
@@ -4740,6 +4727,7 @@ US-VT-WEY,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx
 US-VT-WHG,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-ARL,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-BEN,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-VT-BEN,Dx(.-Dx.-Dx),skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-DOR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-GLA,Ignored,simple,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-LAN,Ignored,simple,Ignored,simple
@@ -4758,6 +4746,7 @@ US-VT-WOD,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,I
 US-VT-BAR,Ignored,simple,Ignored,simple
 US-VT-BUE,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-DAN,Ignored,simple,Ignored,simple
+US-VT-DAN,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
 US-VT-GRO,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-HAK,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-KIR,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -4800,13 +4789,16 @@ US-VT-EHA,Ignored,simple,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_emp
 US-VT-FED,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-GRY,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1
 US-VT-GUI,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Sx-Sx-Sx,split_groups: 1|1 & drop_cols: 0 1_0 & skip_empty: 1
+US-VT-GUI,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-LEM,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-LUN,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-LEW,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-MAI,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
 US-VT-NOR,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-VT-NOR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-VIC,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,Sx-Sx-Sx,
 US-VT-WAN,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
+US-VT-WAN,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-VT-WAS,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-BAK,Ignored,simple,Ignored,simple
 US-VT-BEE,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
@@ -4824,6 +4816,7 @@ US-VT-SHN,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,S
 US-VT-SAT,Ignored,simple,Ignored,simple
 US-VT-SWA,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-ALB,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-VT-ALB,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-GRI,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-ILM,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-NHE,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
@@ -4835,6 +4828,7 @@ US-VT-ELM,Ignored,simple,Ignored,simple
 US-VT-HYP,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-JOH,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-MOR,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,Sx-Sx-Sx,
+US-VT-MOR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-STO,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,
 US-VT-WAE,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-WOL,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
@@ -4844,6 +4838,7 @@ US-VT-CHE,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignor
 US-VT-COH,Dx(.-Dx.-Dx),skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-FAE,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-NEW,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
+US-VT-NEW,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,
 US-VT-ORA,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-VT-RAN,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-STR,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -4851,10 +4846,8 @@ US-VT-THE,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Sx-
 US-VT-TOP,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-TUN,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-VEE,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
-US-VT-WAN,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-VT-WFA,Ignored,simple,Ignored,simple
 US-VT-WIL,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
-US-VT-ALB,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-BAN,Ignored,simple,Ignored,simple
 US-VT-BRW,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-CHN,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
@@ -4868,16 +4861,13 @@ US-VT-IRG,Ignored,simple,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_emp
 US-VT-JAY,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
 US-VT-LOW,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-MRG,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
-US-VT-NEW,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,
 US-VT-TRO,Sx-Sx-Sx,,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-WED,Sx-Sx-Sx,,Sx-Sx-Sx,
 US-VT-WEE,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
-US-VT-BEN,Dx(.-Dx.-Dx),skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-BRN,Dx(.-Dx.-Dx),skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-CAS,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-CHI,Ignored,simple,Ignored,simple
 US-VT-CLA,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
-US-VT-DAN,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1
 US-VT-FAH,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,Sx-Sx-Sx,
 US-VT-HUB,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-VT-IRA,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -4907,15 +4897,16 @@ US-VT-DUX,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignor
 US-VT-EMO,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-FAY,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-MAR,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
+US-VT-MAR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-MIX,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-MON,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
-US-VT-MOR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-NOD,Ignored,simple,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-PLA,Ignored,simple,Ignored,simple
 US-VT-ROX,Ignored,simple,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-WAI,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-WOR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-WOO,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-VT-WOO,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-WAR,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-WAY,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-ATH,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
@@ -4924,14 +4915,13 @@ US-VT-BRA,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,Sx-Sx-Sx,
 US-VT-DOV,Dx(.-Dx.-Dx),skip_empty: 1,Sx-Sx-Sx,
 US-VT-DUM,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-GRN,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,Sx-Sx-Sx,
-US-VT-GUI,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-HAL,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-JAM,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-LON,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
-US-VT-MAR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-NEE,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-PUT,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-ROC,Ignored,simple,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
+US-VT-ROC,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-SOM,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-STN,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-TOW,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
@@ -4950,16 +4940,13 @@ US-VT-CHR,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,
 US-VT-HAR,Sx-Sx-Sx,,Sx-Sx-Sx,skip_empty: 1
 US-VT-HAD,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Ignored,simple
 US-VT-LUD,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
-US-VT-NOR,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-POM,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-VT-REG,Sx-Sx-Sx,skip_empty: 1,Sx-Sx-Sx,
-US-VT-ROC,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-ROY,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-SPR,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-STE,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-WEA,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,Ignored,simple
 US-VT-WIR,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
-US-VT-WOO,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1
 US-VT-WEN,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-VT-WWI,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-WA-AD,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1
@@ -4968,8 +4955,8 @@ US-WA-BE,Sx,split_groups: 0|5 0_1|3 & skip_empty: 1,Sx,split_groups: 0|5 0_1|3 &
 US-WA-CH,Dx,,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1
 US-WA-CA,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
 US-WA-CO,Dx-Dx-Dx-Dx-Dx,keep_length: 1 2 3 4 & merge_after: 0 0 0 0 & skip_empty: 1,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),keep_length: 1 2 3 4 5 6 & merge_after: 0 0 0 0 0 0 & skip_empty: 1
-US-WA-CL,Ignored,simple,Sx-Sx,keep_length: 1 & merge_after: 0 & skip_empty: 1
 US-WA-CO,Ignored,simple,Ignored,simple
+US-WA-CL,Ignored,simple,Sx-Sx,keep_length: 1 & merge_after: 0 & skip_empty: 1
 US-WA-DO,Dx,string_lengths: 3 3 5 & skip_empty: 1,Dx,string_lengths: 3 3 5 & skip_empty: 1
 US-WA-FE,Sx,split_groups: 0|6 0_1|6 & skip_empty: 1,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1
 US-WA-FR,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Dx,split_groups: 0|16 & drop_cols: 0_1
@@ -5067,8 +5054,8 @@ US-WI-VE,Sx,string_lengths: 3 5 4 & skip_empty: 1,Sx-Sx-Sx,skip_empty: 1
 US-WI-VI,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1
 US-WI-WI,Sx,split_groups: 0|1 & drop_cols: 0_0,Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1
 US-WI-WA,Ignored,simple,Ignored,simple
-US-WI-WL,Ignored,simple,Ignored,simple
 US-WI-WA,Sx Sx,skip_empty: 1,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),skip_empty: 1
+US-WI-WL,Ignored,simple,Ignored,simple
 US-WI-WO,Ignored,simple,Ignored,simple
 US-WI-WP,Ignored,simple,Ignored,simple
 US-WI-WH,Sx-( )(Sx) ( )(Sx)( )(Dx),split_groups: 0|2 2|- & drop_cols: 0_0 & merge_after: 2_0 & skip_empty: 1,Sx-( )(Sx) ( )(Sx)( )(Dx),split_groups: 0|2 2|- & drop_cols: 0_0 & merge_after: 2_0 & skip_empty: 1
@@ -5122,9 +5109,9 @@ US-WV-UP,Sx,split_groups: 0|2 0_1|2 0_1_1|4 0_1_1_1|4 0_1_1_1_1|4 & skip_empty: 
 US-WY-AL,Dx,split_groups: 0|6 0_1|3 0_1_1|7 0_1_1_1|3 0_1_1_1_1|1 0_1_1_1_1_1|1 & merge_after: 0_1_1_1_0 0_1_1_1_0 & skip_empty: 1,Sx,string_lengths: 6 * 5 & skip_empty: 1
 US-WY-BH,Dx,split_groups: 0|1 & drop_cols: 0_0 & skip_empty: 1,Sx,split_groups: 0|1 & drop_cols: 0_0
 US-WY-CA,Dx,split_groups: 0|16 & drop_cols: 0_1,Ignored,simple
+US-WY-CA,Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
 US-WY-CO,Ignored,simple,Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1
 US-WY-CR,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,skip_empty: 1
-US-WY-CA,Sx,split_groups: 0|11 & drop_cols: 0_1 & skip_empty: 1,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1
 US-WY-FR,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Sx,
 US-WY-GO,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Ignored,simple
 US-WY-HS,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,Ignored,simple
