@@ -26,7 +26,10 @@ import re
 from itertools import combinations
 from typing import NamedTuple
 
-from openplaces.io.admin_codes.coverage import HONORIFICS
+from openplaces.io.admin_codes.coverage import (
+    ARTICLE_PREFIXES,
+    SAINT_PREFIXES,
+)
 from openplaces.io.admin_codes.languages import (
     LanguagePack,
     fold_diacritics,
@@ -86,7 +89,9 @@ def is_valid_code(code: str) -> bool:
     return bool(code) and CODE_PATTERN.fullmatch(code) is not None
 
 
-def tokenize(name: str, pack: LanguagePack) -> tuple[list[str], list[str]]:
+def tokenize(
+    name: str, pack: LanguagePack, drop_saints: bool = False
+) -> tuple[list[str], list[str]]:
     """Split a name into all tokens and significant tokens.
 
     Parameters
@@ -96,6 +101,11 @@ def tokenize(name: str, pack: LanguagePack) -> tuple[list[str], list[str]]:
     pack : LanguagePack
         Vocabulary deciding which tokens are articles, prepositions or
         conjunctions.
+    drop_saints : bool, optional
+        Also drop a saint particle (San, Santa, Saint, St). Default
+        False: naming a place for a saint is deliberate and speakers
+        keep it, so San Francisco is SF. Set True to generate the
+        fallback reading a mostly-Saint sibling group needs.
 
     Returns
     -------
@@ -126,13 +136,20 @@ def tokenize(name: str, pack: LanguagePack) -> tuple[list[str], list[str]]:
     # Saint's S and three of them opaque, which tripped the opacity gate
     # and widened the whole group to three characters against its own
     # recorded policy of two.
+    drop = ARTICLE_PREFIXES | (SAINT_PREFIXES if drop_saints else frozenset())
+    # A type word is only a legal-form suffix in the trailing position,
+    # which is where a source appends it: "Agawam Town", "Archer City".
+    # Anywhere else it is part of the name and removing it destroys the
+    # name -- District of Columbia became "of Columbia", Town Creek
+    # became "Creek", Huntsville Ward 1 became "Huntsville 1". Strip a
+    # trailing run only, and never all of it: a name that is nothing but
+    # type words keeps them.
+    kept = list(raw)
+    while len(kept) > 1 and pack.is_type_word(kept[-1]):
+        kept.pop()
     tokens = [
-        t
-        for t in raw
-        if not pack.is_article(t)
-        and not pack.is_type_word(t)
-        and t.upper() not in HONORIFICS
-    ] or raw
+        t for t in kept if not pack.is_article(t) and t.upper() not in drop
+    ] or kept
     significant = [
         t for t in tokens if not pack.is_preposition(t) and not pack.is_conjunction(t)
     ]
@@ -263,5 +280,18 @@ def generate_candidates(
     digits = ''.join(c for c in ''.join(tokens) if c.isdigit())
     if digits:
         add(word[0] + digits[:2], 'letter_number')
+
+    # The saint-dropped reading, ranked below everything above. A saint
+    # particle is kept by preference, but a sibling group that is mostly
+    # "Saint X" cannot tell its members apart on the particle they share:
+    # Dominica's ten parishes came out SA SD SG SI SJ SL SM SP SN ST,
+    # every code on Saint's S. Offering both readings lets the assigner
+    # keep the particle where it distinguishes and drop it where it does
+    # not, instead of the tokenizer deciding for a group it cannot see.
+    if any(t.upper() in SAINT_PREFIXES for t in tokens):
+        bare = ' '.join(t for t in tokens if t.upper() not in SAINT_PREFIXES)
+        if bare:
+            for candidate in generate_candidates(bare, pack, admin1_id, lengths):
+                add(candidate.code, f'saintless.{candidate.rule}')
 
     return out
