@@ -18,7 +18,7 @@ from openplaces.io.ingester import ingest
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
 RECIPE_ID = 'US_parcel-placeslab-fmv2026'
-ADMIN_ID = 'US-NY-LG'
+ADMIN_ID = 'US-NY-AE'  # Allegany; LG died in the 2026-08 re-mint
 
 
 @pytest.fixture

@@ -1,17 +1,18 @@
-use_group_code,use_group,use_subgroup
-A,residential,single family
-B,residential,multi-family
-C,open_space,vacant
-D,open_space,agricultural land
-E,residential,single family rural
-F,commercial,commercial and industrial
-G,industrial,oil gas and mineral reserves
-H,commercial,tangible personal vehicles
-I,commercial,banks
-J,industrial,utilities
-L,commercial,business personal property
-M,residential,mobile home
-N,exempt,intangible personal property
-O,residential,residential inventory
-S,commercial,special inventory
-X,exempt,totally exempt
+use_group_code,use_group,use_subgroup,admin_id
+A,residential,single family,
+B,residential,multi-family,
+C,open_space,vacant,
+D,open_space,agricultural land,
+E,residential,single family rural,
+F,commercial,commercial and industrial,
+G,industrial,oil gas and mineral reserves,
+H,commercial,tangible personal vehicles,
+I,commercial,banks,
+J,industrial,utilities,
+L,commercial,business personal property,
+M,residential,mobile home,
+N,exempt,intangible personal property,
+O,residential,residential inventory,
+S,commercial,special inventory,
+X,exempt,totally exempt,
+B,residential,,US-TX-KLE

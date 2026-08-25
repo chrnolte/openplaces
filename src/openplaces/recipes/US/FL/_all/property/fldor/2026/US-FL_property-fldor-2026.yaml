@@ -30,11 +30,14 @@ download_by:
 
 compressed_file_name: "{year}F.zip"
 # The zip's single common top-level folder (e.g. "2025F/") is stripped on
-# extraction (see io.unzip's strip-prefix behavior), so all 67 counties'
-# files land flat under the heap directory. Alachua (CO_NO 11) is always
-# present -- its presence is the "already unzipped" signal for the whole
-# (multi-county) partition.
-uncompressed_file_name: "NAL_{year}_11Alachua_F.csv"
+# extraction (see io.unzip's strip-prefix behavior). Some year zips are
+# partial (2008 ships 43 of 67 counties, without Alachua), so the
+# "already unzipped" signal is Leon (CO_NO 47), present in every year
+# roll published so far. A doubly-nested year (2007) keeps one folder
+# level after the strip; the ingester falls back to a recursive
+# search when this flat path is absent, and the file_pattern below
+# absorbs the extra level with its **/.
+uncompressed_file_name: "NAL_{year}_47Leon_F.csv"
 
 # Each county already has its own file inside the shared unzip, so it's
 # resolved per admin unit by file_pattern instead of splitting one file by
@@ -46,13 +49,37 @@ uncompressed_file_name: "NAL_{year}_11Alachua_F.csv"
 # (e.g. `NAL_2025_11Alachua_F.csv`).
 process_by:
   admin_level: 3
-  file_pattern: "NAL_{partition_id}_{admin3_id_admin2}*_F.csv"
+  file_pattern: "**/NAL_{partition_id}_{admin3_id_admin2}*_F.csv"
+  # The leading **/ spans both heap layouts: 2002-2006 zips
+  # extract their CSVs at the heap root, 2007+ inside a
+  # per-year folder (2007F/...).
+  # A county can be absent from one year's roll entirely (Lake is
+  # missing from 2017; 2008 ships 43 counties): skip that chunk
+  # rather than failing the whole ingest.
+  file_pattern_missing: skip
   admin_id_crosswalk:
     # Reuse floridagio's existing CO_NO -> admin3_id crosswalk: same DOR
     # county-numbering system (verified 11 = Alachua in both sources).
     recipe_id: "US-FL_parcel-floridagio-2026_admin3-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
+# Identifier columns read as text: clerk instrument numbers and
+# book/page references are identifiers, and some counties issue
+# instrument numbers too large for int64 (pyarrow overflows at
+# parquet write when pandas has upcast them to Python ints).
+csv_dtype:
+  PARCEL_ID: str
+  OR_BOOK1: str
+  OR_PAGE1: str
+  CLERK_NO1: str
+  OR_BOOK2: str
+  OR_PAGE2: str
+  CLERK_NO2: str
+  CENSUS_BK: str
+  PARCEL_ID_PRV_HMSTD: str
+  MP_ID: str
+  STATE_PAR_ID: str
+
 columns:
   parcel_id_assessor: PARCEL_ID
   roll_type: FILE_T

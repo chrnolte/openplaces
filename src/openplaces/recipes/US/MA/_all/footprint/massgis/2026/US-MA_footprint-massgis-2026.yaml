@@ -29,10 +29,12 @@ uncompressed_file_name: "structures.gdb"
 # Column that splits the data into chunks for processing
 # (avoids reading very large geodatabase into memory)
 process_by:
-  admin_level: 4
+  # Towns are level 3 since the New England migration; the admin4
+  # crosswalk this recipe once named no longer exists.
+  admin_level: 3
   admin_id_column: TOWN_ID
   admin_id_crosswalk:
-    recipe_id: "US-MA_parcel-massgis-2025_admin4-crosswalk"
+    recipe_id: "US-MA_parcel-massgis-2025_admin3-crosswalk"
 
 # Layer to load
 layer: STRUCTURES_POLY

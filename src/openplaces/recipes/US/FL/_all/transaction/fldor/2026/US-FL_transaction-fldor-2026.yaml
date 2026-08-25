@@ -37,7 +37,10 @@ compressed_file_name: "{year}F.zip"
 # files land flat under the heap directory. Alachua (CO_NO 11) is always
 # present -- its presence is the "already unzipped" signal for the whole
 # (multi-county) partition.
-uncompressed_file_name: "SDF_{year}_11Alachua_F.csv"
+# Leon (CO_NO 47), not Alachua: some NAL year rolls omit Alachua
+# and the SDF rolls follow the same convention; Leon is present
+# in every published year. A nested year folder is handled by the recursive fallback.
+uncompressed_file_name: "SDF_{year}_47Leon_F.csv"
 
 # Each county already has its own file inside the shared unzip, so it's
 # resolved per admin unit by file_pattern instead of splitting one file by
@@ -49,13 +52,35 @@ uncompressed_file_name: "SDF_{year}_11Alachua_F.csv"
 # (e.g. `SDF_2010_11Alachua_F.csv`).
 process_by:
   admin_level: 3
-  file_pattern: "SDF_{partition_id}_{admin3_id_admin2}*_F.csv"
+  file_pattern: "**/SDF_{partition_id}_{admin3_id_admin2}*_F.csv"
+  # The leading **/ spans both heap layouts: 2002-2006 zips
+  # extract their CSVs at the heap root, 2007+ inside a
+  # per-year folder (2007F/...).
+  # A county can be absent from one year's roll entirely (Lake is
+  # missing from 2017; 2008 ships 43 counties): skip that chunk
+  # rather than failing the whole ingest.
+  file_pattern_missing: skip
   admin_id_crosswalk:
     # Reuse floridagio's existing CO_NO -> admin3_id crosswalk (same DOR
     # county-numbering system as the NAL property recipe).
     recipe_id: "US-FL_parcel-floridagio-2026_admin3-crosswalk"
 
 # Columns from `openplaces` dictionary for entity -> columns in imported table
+# Identifier columns read as text: clerk instrument numbers and
+# book/page references are identifiers, and some counties issue
+# instrument numbers too large for int64 (pyarrow overflows at
+# parquet write when pandas has upcast them to Python ints).
+csv_dtype:
+  SALE_ID_CD: str
+  PARCEL_ID: str
+  OR_BOOK: str
+  OR_PAGE: str
+  CLERK_NO: str
+  CENSUS_BK: str
+  MP_ID: str
+  STATE_PAR_ID: str
+  RS_ID: str
+
 columns:
   parcel_id_assessor: PARCEL_ID
   tax_year: ASMNT_YR

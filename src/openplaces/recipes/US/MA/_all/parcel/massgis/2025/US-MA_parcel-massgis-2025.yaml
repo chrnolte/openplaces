@@ -38,7 +38,7 @@ process_by:
 columns:
   parcel_id_admin2: LOC_ID
   parcel_id_assessor: MAP_PAR_ID
-  admin4_id_source: TOWN_ID
+  admin3_id_source: TOWN_ID
   source_date: LAST_EDIT
   polygon_type: POLY_TYPE
 
@@ -46,17 +46,10 @@ columns:
 columns_to_categorical:
   - polygon_type
 
-# Expose the raw assessor parcel id (a copy of the admin-4-level MassGIS
-# map-parcel id) under the canonical name parcel_id_assessor, so it is the raw
-# key parcel_id_local derives from (consistent across parcel recipes).
-transformations:
-  - type: string
-    operation: concat
-    inputs: [parcel_id_admin4]
-    output: parcel_id_assessor
-
-# Standardized matching key from the MassGIS map-parcel id. Processed per town
-# (admin4), so each chunk resolves its town-specific conversion automatically.
+# Standardized matching key from the MassGIS map-parcel id
+# (parcel_id_assessor maps MAP_PAR_ID directly above; a stale
+# transformation that rebuilt it from a column no mapping produced was
+# removed with the towns-to-admin3 migration). Processed per town.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
@@ -113,7 +106,7 @@ additional_layers:
       last_sale_price: LS_PRICE
       last_sale_book: LS_BOOK
       last_sale_page: LS_PAGE
-      admin4_id_source: TOWN_ID
+      admin3_id_source: TOWN_ID
     columns_to_categorical:
       - city
       - zip

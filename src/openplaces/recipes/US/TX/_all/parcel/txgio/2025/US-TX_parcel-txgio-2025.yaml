@@ -129,6 +129,14 @@ notes: >-
   use_subgroup_code (Jefferson's local RMH covers 5,819 rows), which a
   per-county crosswalk can recover later.
 
+  Kleberg is the measured exception to the statewide first-character
+  key: its B codes sit on 29.2% of parcels (state median 0.2%, next
+  highest 2.8%) that NSI, story counts and dwelling markers show as
+  ordinary single-family and manufactured homes, so the remap carries a
+  US-TX-KLE-scoped row mapping B to residential with no subtype claim,
+  and the occupancy vote decides from physical evidence. Replace it
+  with the real meanings once Kleberg CAD's code sheet is in hand.
+
 # Standardized matching key (auto conversion; processed per admin3).
 parcel_id_local:
   source: parcel_id_assessor

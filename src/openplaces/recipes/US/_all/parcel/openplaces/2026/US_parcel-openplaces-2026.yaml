@@ -39,6 +39,16 @@ save_to:
   data_dir: share
 
 pipeline:
+  # Reference evidence that may legitimately be absent in a region: NSI
+  # and FEMA footprints are county-keyed sources not yet ingestible for
+  # New England's town-level admin3 units. Declared all-null so the vote
+  # and downstream readers keep their missing-column strictness for
+  # everything else. No-op wherever the evidence exists.
+  - step: declare_columns
+    columns:
+      - group_building_nsi
+      - group_footprint_fema
+
   # These parcel_id_assessor values are non-taxable placeholders, not real
   # parcels (found empirically in Carteret County, NC): WATER (water
   # bodies), ROW (road rights-of-way). Confirmed via direct data checks
