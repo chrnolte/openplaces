@@ -47,6 +47,7 @@ def _source_token(col: str, default: str | None = None) -> str:
 def reconcile_values(
     state: CurateState,
     priority: dict[str, list[str]],
+    valid_range: dict[str, list[float]] | None = None,
 ) -> CurateState:
     """Select each canonical value from competing source columns by priority.
 
@@ -66,6 +67,12 @@ def reconcile_values(
               n_dwellings: [n_dwellings_overture, n_dwellings_parcel]
               year_built: [year_built_parcel]
               improvement_value: [improvement_value_parcel]
+    valid_range : dict of {feature: [min, max]}, optional
+        Inclusive plausibility bounds per feature. An out-of-range value
+        in a candidate column is treated as missing, so selection falls
+        through to the next source instead of shipping a sentinel (an
+        assessor roll's year_built of 1 or 1000 meaning "unknown"), and
+        provenance credits the source that actually supplied the value.
     """
     from openplaces.io.curator.provenance import record_source
 
@@ -75,6 +82,11 @@ def reconcile_values(
         if not cols:
             continue
         sub = curated[cols]
+        bounds = (valid_range or {}).get(feature)
+        if bounds is not None:
+            lo, hi = float(bounds[0]), float(bounds[1])
+            numeric = sub.apply(pd.to_numeric, errors='coerce')
+            sub = sub.where(numeric.ge(lo) & numeric.le(hi))
         curated[feature] = sub.bfill(axis=1).iloc[:, 0]
         # Record which source column supplied each chosen value: the token is the
         # winning column's provenance suffix (parcel/nsi/overture).

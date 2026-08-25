@@ -53,6 +53,11 @@ share:
     - occupancy_type
     - year_built
     - n_stories
+    # Dwelling count on the verified footprint: overture markers linked
+    # to this footprint, NSI's unit count behind them, imputed where
+    # both are silent -- not the raw overture marker count, which ships
+    # in the evidence file.
+    - n_dwellings
     # Populated for manufactured homes only, and missing wherever the two
     # shape tests disagree -- so a null here means "not asked" or "not
     # resolved", never "one section".
@@ -73,7 +78,9 @@ share:
   # shipping it.
   #
   # This recipe ships more than one region from identical curation logic
-  # (45 of North Carolina's 100 counties, 42 of Texas's 254). Named here,
+  # (44 of North Carolina's 100 counties, 42 of Texas's 254; Lee County
+  # rode along 2026-08-17 to 2026-08-24 from an LE/LN code mix-up in a
+  # commit that meant to add Lenoir, and was removed). Named here,
   # defined once in the shared region registry
   # (_all/admin/regions/2026/admin-regions-2026.csv, read by
   # `op.get_regions`) rather than inline: neither region is derivable from
@@ -260,6 +267,11 @@ pipeline:
       n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
       year_built: [year_built_parcel, year_built_block_median_building_nsi]
       postal_code: [postal_code_dwelling_overture]
+    valid_range:
+      # Assessor sentinels for "unknown" (1 in New Hanover, 1000 in
+      # Wayne, 8104 in coastal Texas) are not years; out-of-range
+      # evidence falls through to NSI's block median.
+      year_built: [1500, 2035]
 
   # Address reconciliation and postal-city imputation are handled at the
   # harmonization stage on the input spine (reconcile_addresses /
@@ -515,10 +527,31 @@ pipeline:
           # Keywords also beat both modeled sources when they disagree
           # (permits back keyword over NSI 77/23 and over FEMA 80/20;
           # CHEER backs keyword 60/9 and 36/3), justifying the weight.
-          - type: equals
-            column: occupancy_keyword_class
-            value: Multi-Family
+          #
+          # Guarded since 2026-08-25: the keyword no longer carries the
+          # decision alone when every physical signal contradicts it
+          # (one story, at most one dwelling, and NSI actively saying
+          # single-family or manufactured). Kleberg CAD's use codes do
+          # not follow the statewide PTAD scheme (29.2% of its parcels
+          # are B-coded against a 0.2% state median), which classified a
+          # quarter of the county multi-family. Measured before landing:
+          # 2,433 Kleberg rows flip back, zero rows move in any NC
+          # county (the keyword's measured precision there is untouched),
+          # and 2.1-2.4% of multi-family moves in healthy TX counties,
+          # all of them assessor-only claims with no corroboration.
+          - type: all_of
             weight: 2
+            indicators:
+              - type: equals
+                column: occupancy_keyword_class
+                value: Multi-Family
+              - type: any_of
+                indicators:
+                  - {type: numeric_at_least, column: n_dwellings_overture, min: 2}
+                  - {type: numeric_at_least, column: n_stories, min: 2}
+                  - {type: is_null, column: n_stories}
+                  - {type: equals, column: occupancy_type_nsi_class, value: Multi-Family}
+                  - {type: is_null, column: occupancy_type_nsi_class}
           # NSI and FEMA are near-copies of one another (97.5% identical
           # against permits, 95.8% at the CHEER points, and FEMA is right
           # only a third of the time where NSI is wrong), so their
