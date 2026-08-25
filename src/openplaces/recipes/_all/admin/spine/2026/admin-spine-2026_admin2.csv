@@ -91,7 +91,7 @@ AM-ER,Erevan,City,Երևան|Ереван,Yerevan,,anchor
 AM-GE,Gegharkunik,Province,Գեղարքունիք|Гегаркуник,Gelark'unik',,name
 AM-KT,Kotayk,Province,Կոտայք|Котайк,Kotaik|Kotayk',,anchor
 AM-LO,Lori,Province,Լոռի|Лори,Loṙi,,anchor
-AM-RG,Aragatsotn,Province,Արագածոտն|Арагацотн,Aragacot'n,,skeleton
+AM-AA,Aragatsotn,Province,Արագածոտն|Арагацотн,Aragacot'n,,any2
 AM-SH,Shirak,Province,Շիրակ|Ширак,Širak,,name
 AM-SU,Syunik,Province,Սյունիք|Сюник,Syunik',,anchor
 AM-TA,Tavush,Province,Տավուշ|Тавуш,Tavuš,,name
@@ -724,7 +724,7 @@ DM-SJO,Saint Joseph,Parish,,,,compound.alt
 DM-SPA,Saint Patrick,Parish,,,,compound.alt
 DM-SPE,Saint Peter,Parish,,,,compound.alt
 DO-AL,La Altagracia,Province,,,,name
-DO-AN,San José de Ocoa,Province,,José Trujillo Valdez,,any2
+DO-SN,San José de Ocoa,Province,,José Trujillo Valdez,,any2
 DO-AZ,Azua,Province,,,,name
 DO-BA,Barahona,Province,,,,name
 DO-BH,Bahoruco,Province,,Baoruco,,skeleton
@@ -749,10 +749,10 @@ DO-SE,El Seybo,Province,,El Seibo,,name
 DO-SJ,San Juan,Province,,Benefactor|San Juan de la Maguan,,initials
 DO-SL,Salcedo,Province,,Hermanas Mirabal,,skeleton
 DO-SM,Samaná,Province,,,,skeleton
-DO-SN,Santiago Rodríguez,Province,,Santiago Rodriguez,,any2
+DO-ST,Santiago Rodríguez,Province,,Santiago Rodriguez,,any2
 DO-SP,San Pedro de Macorís,Province,,,,initials
 DO-SR,Sánchez Ramírez,Province,,,,initials
-DO-ST,La Estrelleta,Province,,Elías Piña|San Rafael,,skeleton
+DO-ET,La Estrelleta,Province,,Elías Piña|San Rafael,,any2
 DO-VA,Valverde,Province,,,,name
 DO-VE,La Vega,Province,,,,name
 DZ-AD,Aïn Defla,Province,ولاية عين الدفلى,Ain Dafla,44,initials
@@ -770,7 +770,7 @@ DZ-BR,Bouira,Province,ولاية البويرة,,10,skeleton
 DZ-CH,Chlef,Province,ولاية الشلف,El Asnam|Orléansville|Ech Chelif,2,name
 DZ-CO,Constantine,Province,قسنطينة,Constantina|Costatina|Qoussantin,25,name
 DZ-DJ,Djelfa,Province,ولاية الجلفة,El Djelfa,17,name
-DZ-DR,Adrar,Province,ولاية أدرا,Duperré,1,skeleton
+DZ-AR,Adrar,Province,ولاية أدرا,Duperré,1,any2
 DZ-EB,El Bayadh,Province,ولاية البيض,El Bayad|El Beyyadh|Géryville,32,initials
 DZ-EO,El Oued,Province,ولاية الوادي,El Ouadi|El Wad,39,initials
 DZ-ET,El Tarf,Province,ولاية الطارف,Et Tarf|El Taref,36,initials
@@ -821,7 +821,7 @@ EC-OR,El Oro,Province,,,07,name
 EC-PA,Pastaza,Province,,,16,name
 EC-PI,Pichincha,Province,,,17,name
 EC-RI,Los Rios,Province,,,12,name
-EC-RL,Orellana,Province,,,22,skeleton
+EC-OE,Orellana,Province,,,22,any2
 EC-SD,Santo Domingo de los Tsachilas,Province,,,23,anchor
 EC-SE,Santa Elena,Province,,,24,anchor
 EC-SU,Sucumbios,Province,,,21,name
@@ -847,7 +847,7 @@ EG-SH,Ash Sharqiyah,Governorate,محافظة الشرقية‎,Charkieh|Sharqia|
 EG-IS,Al Iskandariyah,Governorate,محافظة الإسكندرية,Alexandria|Alexandrie|El Iskanda,,name
 EG-MI,Al Minufiyah,Governorate,محافظة المنوفية,Menoufieh|Menufia|Menūfīya|Minūf,,name
 EG-QA,Al Qahirah,Governorate,,Cairo|El Cairo|El Qahira|Le Cair,,name
-EG-SA,As Suways,Governorate,محافظة السويس,El Suweiz|Es Suweis|Suez,,any2
+EG-SW,As Suways,Governorate,محافظة السويس,El Suweiz|Es Suweis|Suez,,skeleton
 EG-WJ,Al Wadi al Jadid,Governorate,محافظة الوادي الجديد‎,Al Wadi/Al Jadid|El-Wadi El-Gidi,,initials
 EG-BA,Al Bahr al Ahmar,Governorate,محافظة البحر الأحمر,Mar Rojo|Mar Vermelho|Mer Rouge|,,anchor
 EG-BH,Al Buhayrah,Governorate,البحيرة,Beheira|Behera|El Buhayra|Béhéra,,anchor
@@ -867,7 +867,7 @@ EG-MA,Matrouh,Governorate,محافظة مطروح,Marsā Matrūh|Mersa Matruh|We
 EG-MN,Al Minya,Governorate,,Minia|Minieh|Menia|Minya,,anchor
 EG-SS,Shamal Sina',Governorate,محافظة شمال سيناء,Shamal Sina|Nord Sinaï|North Sin,,initials
 EG-SU,Suhaj,Governorate,,Girga|Girgeh|Sawhāj|Sohag|Suhag,,name
-EG-SW,Aswan,Governorate,محافظة أسوان,Assouan|Assuã|Assuán|Syene,,skeleton
+EG-AW,Aswan,Governorate,محافظة أسوان,Assouan|Assuã|Assuán|Syene,,any2
 EG-AS,Asyut,Governorate,,Asyiut|Assiout|Assiut|Assyut|Asy,,name
 EH-BO,Boujdour,Province,,Bojador,,name
 EH-ES,Es Semara,Province,,Smara,,initials
@@ -1038,7 +1038,7 @@ GR-EW,Epirus and Western Macedonia,Decentralized administration,Ήπειρος �
 GR-MT,Macedonia and Thrace,Decentralized administration,Μακεδονία και Θράκη,,,conjunction
 GR-PW,"Peloponnese, Western Greece and",Decentralized administration,"Πελοπόννησος, Δυτική Ελλάδα και",,,conjunction
 GR-TC,Thessaly and Central Greece,Decentralized administration,Θεσσαλία και Στερεά Ελλάδα,,,conjunction
-GR-TH,Athos,Decentralized administration,Άθως,,,skeleton
+GR-AH,Athos,Decentralized administration,Άθως,,,any2
 GT-AV,Alta Verapaz,Department,,,,anchor
 GT-BV,Baja Verapaz,Department,,,,anchor
 GT-CM,Chimaltenango,Department,,,,anchor
@@ -1424,7 +1424,7 @@ JP-IS,Ishikawa,Prefecture,石川県,Isikawa,,name
 JP-IW,Iwate,Prefecture,岩手県,,,name
 JP-KA,Kanagawa,Prefecture,神奈川県,,,name
 JP-KG,Kagoshima,Prefecture,鹿児島県,,,skeleton
-JP-KN,Okinawa,Prefecture,沖縄県,,,skeleton
+JP-OK,Okinawa,Prefecture,沖縄県,,,name
 JP-KO,Kochi,Prefecture,高知県,Koti,,name
 JP-KU,Kumamoto,Prefecture,熊本県,,,name
 JP-KW,Kagawa,Prefecture,香川県,,,any2
@@ -1437,7 +1437,7 @@ JP-NI,Niigata,Prefecture,新潟県,,,name
 JP-NR,Nara,Prefecture,奈良県,,,skeleton
 JP-NS,Naoasaki,Prefecture,長崎県,Nagasaki,,skeleton
 JP-OI,Oita,Prefecture,大分県,,,name
-JP-OK,Okayama,Prefecture,岡山県,,,name
+JP-OA,Okayama,Prefecture,岡山県,,,any2
 JP-OS,Osaka,Urban Prefecture,大阪府,,,name
 JP-SA,Saitama,Prefecture,埼玉県,,,name
 JP-SG,Saga,Prefecture,佐賀県,,,skeleton
@@ -1595,9 +1595,9 @@ KY-NS,North Side,District,,,,initials
 KY-SI,Sister Islands,District,,,,initials
 KY-WB,West Bay,District,,,,initials
 KZ-AQ,Aqmola,Region,,Akmolin|Akmolinsk|Tselinograd,,name
-KZ-QT,Aqtöbe,Region,,Aktyubinsk,,skeleton
+KZ-AT,Aqtöbe,Region,,Aktyubinsk,,any2
 KZ-AL,Almaty,Region,,Alma-Ata|Alma-Atinskaya Oblast'|,,name
-KZ-AT,Atyrau,Region,,Ateransk|Gur'yev,,name
+KZ-AY,Atyrau,Region,,Ateransk|Gur'yev,,any2
 KZ-EK,East Kazakhstan,Region,,Shyghys Qazaqstan|Vostochno-Kaza,,initials
 KZ-QA,Qaraghandy,Region,,Karaganda|Karagandinskaya Oblast,,name
 KZ-QO,Qostanay,Region,,Kustanai|Kustanay,,name
@@ -1821,10 +1821,10 @@ ME-ZA,Žabljak,Municipality,,,,name
 MG-AN,Antananarivo,,,,,name
 MG-FI,Fianarantsoa,,,,,name
 MG-MA,Mahajanga,,,,,name
-MG-NT,Antsiranana,,,,,skeleton
+MG-AT,Antsiranana,,,,,any2
 MG-TM,Toamasina,,,,,skeleton
 MG-TO,Toliary,,,,,name
-MH-LK,Ailuk,Atol,,,,skeleton
+MH-AL,Ailuk,Atol,,,,any2
 MH-AI,Ailinglaplap,Atol,,Ailinglapalap,,name
 MH-AR,Arno,Atol,,,,name
 MH-AU,Aur,Atol,,,,name
@@ -2215,9 +2215,9 @@ NP-EA,East,Development Region,पुर्वाञ्चल विकास क
 NP-FW,Far-Western,Development Region,सुदुर पश्चिमाञ्चल विकास क्षेत्र,Sudur Pashchimanchal,,initials
 NP-MW,Mid-Western,Development Region,मध्य पश्चिमाञ्चल विकास क्षेत्र,Madhya Pashchimanchal,,initials
 NP-WE,West,Development Region,पश्चिमाञ्चल विकास क्षेत्र,Western|Pashchimanchal,,name
-NR-AN,Anabar,District,,,,name
+NR-AA,Anabar,District,,,,any2
 NR-AI,Aiwo,District,,,,name
-NR-NT,Anetan,District,,,,skeleton
+NR-AN,Anetan,District,,,,name
 NR-BA,Baiti,District,,,,name
 NR-BO,Boe,District,,,,name
 NR-BU,Buada,District,,,,name
@@ -2225,7 +2225,7 @@ NR-DE,Denigomodu,District,,,,name
 NR-EW,Ewa,District,,,,name
 NR-IJ,Ijuw,District,,,,name
 NR-ME,Meneng,District,,,,name
-NR-NB,Anibare,District,,,,skeleton
+NR-AB,Anibare,District,,,,any2
 NR-NI,Nibok,District,,,,name
 NR-UA,Uaboe,District,,,,name
 NR-YA,Yaren,District,,,,name
@@ -2456,7 +2456,7 @@ PR-DO,Dorado,Municipality,,,,name
 PR-FA,Fajardo,Municipality,,,,name
 PR-FL,Florida,Municipality,,,,name
 PR-GA,Guayanilla,Municipality,,,,any2
-PR-GD,Aguada,Municipality,,,,skeleton
+PR-AU,Aguada,Municipality,,,,any2
 PR-GN,Guánica,Municipality,,,,skeleton
 PR-GR,Gurabo,Municipality,,,,skeleton
 PR-GU,Guaynabo,Municipality,,,,name
@@ -2490,7 +2490,7 @@ PR-PO,Ponce,Municipality,,,,name
 PR-QU,Quebradillas,Municipality,,,,name
 PR-RG,Río Grande,Municipality,,,,initials
 PR-RI,Rincón,Municipality,,,,name
-PR-RY,Arroyo,Municipality,,,,skeleton
+PR-AO,Arroyo,Municipality,,,,any2
 PR-SA,Salinas,Municipality,,,,name
 PR-SB,Sabana Grande,Municipality,,,,any2
 PR-SG,San Germán,Municipality,,,,initials
@@ -2726,9 +2726,9 @@ RU-YAR,Yaroslavl',Region,Ярославская область,Yaroslavskaya,,na
 RU-YEV,Yevrey,Autonomous Region,Eврейская АОб,Den jødiske autonome oblasten|Ev,6701,name
 RU-ZAY,Zabaykal'ye,Territory,Забайкальский край,Zabaykalsky,,compound
 RW-AM,Amajyepfo,Province,,Southern Province|Province du Su,2,name
-RW-BR,Iburengerazuba,Province,,Western Province|Province de l'O,3,skeleton
+RW-IU,Iburengerazuba,Province,,Western Province|Province de l'O,3,any2
 RW-IB,Iburasirazuba,Province,,Eastern Province|Province de l'E,5,name
-RW-MJ,Amajyaruguru,Province,,Northern Province|Province du No,4,skeleton
+RW-AA,Amajyaruguru,Province,,Northern Province|Province du No,4,any2
 RW-UW,Umujyi wa Kigali,Province,,Kigali City|Ville de Kigali,1,initials
 SA-BA,Al Bahah,Province,ٱلْبَاحَة‎,Baha|Bahah,,name
 SA-HS,Al Hudud ash Shamaliyah,Province,الحدود الشمالية,Northern Borders,,initials
@@ -3142,7 +3142,7 @@ TR-CO,Çorum,Province,,,,name
 TR-DE,Denizli,Province,,,,name
 TR-DI,Diyarbakir,Province,,Diyarbakır,,name
 TR-DU,Düzce,Province,,,,name
-TR-DY,Adiyaman,Province,,Adıyaman,,skeleton
+TR-AI,Adiyaman,Province,,Adıyaman,,any2
 TR-ED,Edirne,Province,,Adrianople|Adrianopel,,name
 TR-EL,Elazığ,Province,,Elazig,,name
 TR-ER,Erzurum,Province,,,,name
@@ -3155,7 +3155,7 @@ TR-HK,Hakkari,Province,,,,skeleton
 TR-IG,Iğdır,Province,,,,name
 TR-IS,Istanbul,Province,,İstanbul|Constantinople|Estambul,,name
 TR-IZ,Izmir,Province,,İzmir|Esmirna|Smirne|Smyrna,,name
-TR-KR,Kars,Province,,,,skeleton
+TR-AS,Kars,Province,,,,any2
 TR-KB,Karabük,Province,,,,any2
 TR-KC,Kocaeli,Province,,İzmit,,skeleton
 TR-KE,Kirsehir,Province,,Kırşehir,,any2
@@ -3164,7 +3164,7 @@ TR-KL,Kilis,Province,,,,skeleton
 TR-KM,K. Maras,Province,,Kahramanmaraş,,compound
 TR-KN,Kinkkale,Province,,Kırıkkale,,skeleton
 TR-KO,Konya,Province,,Konieh|Kunja,,name
-TR-AA,Karaman,Province,,,,any2
+TR-KR,Karaman,Province,,,,skeleton
 TR-KS,Kastamonu,Province,,,,skeleton
 TR-KU,Kütahya,Province,,Kütanya,,name
 TR-KA,Kayseri,Province,,,,name
@@ -3176,18 +3176,18 @@ TR-MS,Mus,Province,,Muş,,skeleton
 TR-MU,Mugla,Province,,Muğla,,name
 TR-NE,Nevsehir,Province,,Nevşehir,,name
 TR-NI,Nigde,Province,,Niğde,,name
-TR-NT,Antalya,Province,,Adalia|Anatolia,,skeleton
+TR-AT,Antalya,Province,,Adalia|Anatolia,,any2
 TR-OR,Ordu,Province,,,,name
 TR-OS,Osmaniye,Province,,,,name
-TR-RD,Ardahan,Province,,,,skeleton
+TR-AA,Ardahan,Province,,,,any2
 TR-RI,Rize,Province,,,,name
-TR-RZ,Erzincan,Province,,,,skeleton
+TR-EZ,Erzincan,Province,,,,any2
 TR-SA,Sanliurfa,Province,,Şanlıurfa|Urfa,,name
 TR-SI,Sirnak,Province,,Şırnak,,name
 TR-SK,Sakarya,Province,,,,skeleton
 TR-SM,Samsun,Province,,,,skeleton
 TR-SN,Sinop,Province,,,,skeleton
-TR-SP,Isparta,Province,,,,skeleton
+TR-IP,Isparta,Province,,,,any2
 TR-SR,Siirt,Province,,,,skeleton
 TR-SV,Sivas,Province,,,,skeleton
 TR-TE,Tekirdag,Province,,Tekirdağ,,name

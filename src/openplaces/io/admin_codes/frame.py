@@ -16,6 +16,7 @@ import string
 import pandas as pd
 
 from openplaces.core.constants import STRING_SEPARATOR_WITHIN_IDS
+from openplaces.io.admin_codes.anchors import load_group_code_lengths
 from openplaces.io.admin_codes.candidates import is_valid_code
 from openplaces.io.admin_codes.derive import derive_codes
 from openplaces.io.admin_codes.registry import (
@@ -237,6 +238,14 @@ def assign_admin_ids(
         group_lengths = lengths
         if group_lengths is None and len(pinned_widths) == 1:
             group_lengths = (pinned_widths.pop(),)
+        # A reviewed decision about this specific group of siblings
+        # outranks the country convention, which describes a different
+        # level and cannot know that one state's counties are crowded
+        # where another's are not.
+        if lengths is None:
+            reviewed = load_group_code_lengths().get(str(parent).upper())
+            if reviewed:
+                group_lengths = (reviewed,)
 
         assigned = derive_codes(
             open_names,

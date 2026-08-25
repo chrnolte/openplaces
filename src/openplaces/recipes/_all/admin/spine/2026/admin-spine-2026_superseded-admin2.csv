@@ -1425,7 +1425,6 @@ JP-IW,Iwate,Prefecture,岩手県,,,hasc
 JP-KC,Kochi,Prefecture,高知県,Koti,,hasc
 JP-KG,Kagawa,Prefecture,香川県,,,hasc
 JP-KM,Kumamoto,Prefecture,熊本県,,,hasc
-JP-KN,Kanagawa,Prefecture,神奈川県,,,hasc
 JP-KS,Kagoshima,Prefecture,鹿児島県,,,hasc
 JP-KY,Kyoto,Urban Prefecture,京都府,Kioto,,hasc
 JP-ME,Mie,Prefecture,三重県,Miye,,hasc
@@ -1505,7 +1504,6 @@ KG-CU,Chüy,Province,,,,hasc
 KG-DA,Jalal-Abad,Province,,Djalal-Abad|Dzhalal-Abadskaya Ob,,hasc
 KG-GB,Biškek,City,,Bishkek,,hasc
 KG-NA,Naryn,Province,,Tien-Shanskaya Oblast'|Tyan'-Sha,,hasc
-KG-OC,Osh (city),City,,,,capitalized
 KG-OS,Osh,Province,,,,first2
 KG-TL,Talas,Province,,,,hasc
 KG-YK,Ysyk-Köl,Province,,Issyk-Kul|Issyk-Kul'skaya Oblast,,hasc
@@ -1588,9 +1586,7 @@ KW-HA,Hawalli,Province,حولي,"Hawali, Howali",,iso
 KW-JA,Al Jahrah,Province,الجهراء,Jahra,,hasc
 KW-KU,Al Kuwayt,Province,العاصمه,"Al Asimah, Capital, Kuwait",,hasc
 KW-MU,Mubarak Al-Kabeer,Province,مبارك الكبير,,,hasc
-KY-BT,Bodden Town,District,,,,hasc
 KY-EE,East End,District,,,,hasc
-KY-GT,George Town,District,,,,hasc
 KY-NS,North Side,District,,,,hasc
 KY-SI,Sister Islands,District,,,,hasc
 KY-WB,West Bay,District,,,,hasc
@@ -2093,7 +2089,6 @@ MY-TE,Trengganu,State,,Terengganu Darul Iman,,hasc
 MZ-CD,Cabo Delgado,Province,,,,hasc
 MZ-GA,Gaza,Province,,,,hasc
 MZ-IN,Inhambane,Province,,,,hasc
-MZ-MC,Maputo City,Province,,,,hasc
 MZ-MN,Manica,Province,,,,hasc
 MZ-MP,Maputo,Province,,,,hasc
 MZ-NM,Nampula,Province,,Moçambique|Mozambique,,hasc
@@ -3144,7 +3139,6 @@ TR-CK,Çanakkale,Province,,,,hasc
 TR-CM,Çorum,Province,,,,hasc
 TR-DN,Denizli,Province,,,,hasc
 TR-DU,Düzce,Province,,,,hasc
-TR-DY,Diyarbakir,Province,,Diyarbakır,,hasc
 TR-ED,Edirne,Province,,Adrianople|Adrianopel,,hasc
 TR-EG,Elazığ,Province,,Elazig,,hasc
 TR-EM,Erzurum,Province,,,,hasc
@@ -3185,7 +3179,6 @@ TR-OS,Osmaniye,Province,,,,hasc
 TR-RI,Rize,Province,,,,hasc
 TR-SI,Siirt,Province,,,,hasc
 TR-SK,Sakarya,Province,,,,hasc
-TR-SP,Sinop,Province,,,,hasc
 TR-SR,Sirnak,Province,,Şırnak,,hasc
 TR-SS,Samsun,Province,,,,hasc
 TR-SU,Sanliurfa,Province,,Şanlıurfa|Urfa,,hasc
@@ -3267,7 +3260,6 @@ UA-CV,Chernivtsi,Region,Чернівецька,Chernivets'ka Oblast'|Chernovits,
 UA-DP,Dnipropetrovs'k,Region,Дніпропетро́вська,Dnipropetrovsk|Dniepropietrovsk|,,hasc
 UA-DT,Donets'k,Region,Доне́цька,Donetsk|Donetskaya Oblast'|Donez,,hasc
 UA-IF,Ivano-Frankivs'k,Region,Івано-Франківська,Ivano-Frankovsk|Ivano-Frankovska,,hasc
-UA-KC,Kiev City,Independent City,Київ,Kyiv,,hasc
 UA-KH,Kirovohrad,Region,Кіровоградська,Kirovograd|Kirovogradskaya Oblas,,hasc
 UA-KK,Kharkiv,Region,Харківська,Charkow|Jarkov|Karkov|Khar'kov,,hasc
 UA-KM,Khmel'nyts'kyy,Region,Хмельницька,Khmelnitsky|Khmelnytskyi|Chmelni,,hasc
@@ -3477,7 +3469,6 @@ VG-VG,Virgin Gorda,District,,,,capitalized
 VI-SC,Saint Croix,District,,,,hasc
 VI-SJ,Saint John,District,,,,hasc
 VI-ST,Saint Thomas,District,,,,hasc
-VN-AG,An Giang,Province,,An Giang,,hasc
 VN-BD,Bình Định,Province,,Binh Dinh,,hasc
 VN-BG,Bắc Giang,Province,,Bac Giang,,hasc
 VN-BI,Bình Dương,Province,,Binh Duong,,hasc
@@ -3512,10 +3503,8 @@ VN-KH,Khánh Hòa,Province,,Khanh Hoa,,hasc
 VN-KT,Kon Tum,Province,,Kon Tum,,hasc
 VN-LA,Long An,Province,,Long An,,hasc
 VN-LD,Lâm Đồng,Province,,Lam Dong,,hasc
-VN-LI,Lai Châu,Province,,Lai Chau,,hasc
 VN-LO,Lào Cai,Province,,Lao Cai,,hasc
 VN-LS,Lạng Sơn,Province,,Lang Son,,hasc
-VN-NA,Nghệ An,Province,,Nghe An,,hasc
 VN-NB,Ninh Bình,Province,,Ninh Binh,,hasc
 VN-ND,Nam Định,Province,,Nam Dinh,,hasc
 VN-NT,Ninh Thuận,Province,,Ninh Thuan,,hasc
@@ -3732,6 +3721,7 @@ AF-TAK,Takhar,Province,,Takar,,anchor
 AF-URU,Uruzgan,Province,,Urozgan,,anchor
 AF-WAR,Wardak,Province,,Verdak|Wardag|Maiden,,name
 AF-ZAB,Zabul,Province,,Zubul|Zaboul,,anchor
+AM-RG,Aragatsotn,Province,Արագածոտն|Арагацотн,Aragacot'n,,skeleton
 AO-BGO,Bengo,Province,,,1,anchor
 AO-BGU,Benguela,Province,,Benguella,2,anchor
 AO-BIE,Bié,Province,,,3,anchor
@@ -3802,24 +3792,31 @@ CG-PLA,Plateaux,Region,,,,name
 CG-PON,Pointe Noire,Region,,,,compound
 CG-POO,Pool,Region,,,,name
 CG-SAN,Sangha,Region,,,,name
+DO-AN,San José de Ocoa,Province,,José Trujillo Valdez,,any2
+DZ-DR,Adrar,Province,ولاية أدرا,Duperré,1,skeleton
+EC-RL,Orellana,Province,,,22,skeleton
 EG-AF,Al Fayyum,Governorate,محافظة الفيوم,El Faiyum|el Fayoum|Faium|Faiyūm,,initials
 EG-AI,Al Iskandariyah,Governorate,محافظة الإسكندرية,Alexandria|Alexandrie|El Iskanda,,initials
 EG-AM,Al Minufiyah,Governorate,محافظة المنوفية,Menoufieh|Menufia|Menūfīya|Minūf,,initials
 EG-AQ,Al Qahirah,Governorate,,Cairo|El Cairo|El Qahira|Le Cair,,initials
 EG-AB,As Suways,Governorate,محافظة السويس,El Suweiz|Es Suweis|Suez,,sequential
-EG-AW,Al Wadi al Jadid,Governorate,محافظة الوادي الجديد‎,Al Wadi/Al Jadid|El-Wadi El-Gidi,,initials
 EG-KA,Kafr ash Shaykh,Governorate,محافظة كفر الشيخ,Kafr-El-Sheikh|Kafr ash Shaikh|K,,initials
 EG-SY,Asyut,Governorate,,Asyiut|Assiout|Assiut|Assyut|Asy,,skeleton
 FM-KSA,Kosrae,State,,Kusaie,,anchor
 FM-PNI,Pohnpei,State,,Ponape,,anchor
 FM-TRK,Chuuk,State,,Truk,,anchor
 FM-YAP,Yap,State,,,,anchor
+GR-TH,Athos,Decentralized administration,Άθως,,,skeleton
 IQ-AM,Al-Muthannia,Province,,Al-Muthanna,,initials
 IQ-AT,At-Ta'mim,Province,,Kirkuk|Tamin,,initials
 IQ-SA,Sala ad-Din,Province,,Salah ad-Din|Salaheddin,,initials
+JP-KN,Okinawa,Prefecture,沖縄県,,,skeleton
+KG-OC,Osh (city),City,,,,initials
 KW-AJ,Al Jahrah,Province,الجهراء,Jahra,,initials
 KW-AK,Al Kuwayt,Province,العاصمه,"Al Asimah, Capital, Kuwait",,initials
 KW-MA,Mubarak Al-Kabeer,Province,مبارك الكبير,,,initials
+KY-BT,Bodden Town,District,,,,initials
+KY-GT,George Town,District,,,,initials
 KZ-AKM,Aqmola,Region,,Akmolin|Akmolinsk|Tselinograd,,anchor
 KZ-AKT,Aqtöbe,Region,,Aktyubinsk,,anchor
 KZ-ALA,Almaty,Region,,Alma-Ata|Alma-Atinskaya Oblast'|,,anchor
@@ -3857,6 +3854,7 @@ MA-SMD,Souss - Massa - Draâ,Region,,,,initials
 MA-TAA,Tadla - Azilal,Region,,,,compound
 MA-TAH,Taza - Al Hoceima - Taounate,Region,,,,initials
 MA-TAT,Tanger - Tétouan,Region,,,,compound
+MG-NT,Antsiranana,,,,,skeleton
 MH-AIK,Ailuk,Atol,,,,name.ends
 MH-AIL,Ailinglaplap,Atol,,Ailinglapalap,,name
 MH-ARN,Arno,Atol,,,,name
@@ -3934,6 +3932,9 @@ MX-TLA,Tlaxcala,State,,,,anchor
 MX-VER,Veracruz,State,,Veracruz de Ignacio de la Llave,,name
 MX-YUC,Yucatán,State,,,,anchor
 MX-ZAC,Zacatecas,State,,,,anchor
+MZ-MC,Maputo City,Province,,,,initials
+NR-NT,Anetan,District,,,,skeleton
+NR-NB,Anibare,District,,,,skeleton
 NZ-AUK,Auckland,Region,,,02,anchor
 NZ-BOP,Bay of Plenty,Region,,,04,anchor
 NZ-CAN,Canterbury,Region,,,13,anchor
@@ -4093,6 +4094,8 @@ PH-ZAN,Zamboanga del Norte,Province,,,972,anchor
 PH-ZAS,Zamboanga del Sur,Province,,,973,anchor
 PH-ZMB,Zambales,Province,,,371,anchor
 PH-ZSI,Zamboanga Sibugay,Province,,,983,anchor
+PR-GD,Aguada,Municipality,,,,skeleton
+PR-RY,Arroyo,Municipality,,,,skeleton
 PS-GZA,Gaza,District,,,,anchor
 PS-WEB,West Bank,District,,,,compound
 PY-AMA,Amambay,Department,,,,name
@@ -4117,6 +4120,8 @@ QA-AD,Al Daayen,Municipality,الضعاين‎,,,initials
 QA-AK,Al Khor,Municipality,الخور‎,Al Khawr,,initials
 QA-MA,Madinat ash Shamal,Municipality,الشمال‎,,,initials
 RU-MOC,Moscow City,City,,,,compound
+RW-BR,Iburengerazuba,Province,,Western Province|Province de l'O,3,skeleton
+RW-MJ,Amajyaruguru,Province,,Northern Province|Province du No,4,skeleton
 SA-AB,Al Bahah,Province,ٱلْبَاحَة‎,Baha|Bahah,,initials
 SA-AH,Al Hudud ash Shamaliyah,Province,الحدود الشمالية,Northern Borders,,initials
 SA-AJ,Al Jawf,Province,منطقة الجوف,Jawf|Al Joaf|Al-Jouf|Jowf,,initials
@@ -4126,6 +4131,11 @@ SA-AR,Ar Riyad,Province,الرياض‎,Riyad|Riad|Riyadh,,initials
 SA-SR,'Asir,Province,عَسِيرٌ,Asir|Aseer|Assyear,,skeleton
 SD-AJ,Al Jazirah,State,ولاية الجزيرة,Gezira,,initials
 SD-AQ,Al Qadarif,State,القضارف,Gedarif|Gadarif|Gedaref|Gederaf,,initials
+TR-DY,Adiyaman,Province,,Adıyaman,,skeleton
+TR-NT,Antalya,Province,,Adalia|Anatolia,,skeleton
+TR-RD,Ardahan,Province,,,,skeleton
+TR-RZ,Erzincan,Province,,,,skeleton
+TR-SP,Isparta,Province,,,,skeleton
 TT-ARI,Arima,Borough,,,,anchor
 TT-CHA,Chaguanas,Borough,,,,anchor
 TT-CTT,Couva-Tabaquite-Talparo,Region,,Couva,,anchor
@@ -4157,6 +4167,10 @@ TW-TAI,Taiwan,Province,台灣,,,name
 TW-TNN,Tainan,Special Municipality,台南,,,anchor
 TW-TPE,Taipei,Special Municipality,台北,Taibei|Taipé|Taipeh,,anchor
 TW-TXG,Taichung,Special Municipality,台中,,,anchor
+UA-KC,Kiev City,Independent City,Київ,Kyiv,,initials
+VN-AG,An Giang,Province,,An Giang,,initials
+VN-LI,Lai Châu,Province,,Lai Chau,,any2
+VN-NA,Nghệ An,Province,,Nghe An,,initials
 VU-MAP,Malampa,Province,,,,anchor
 VU-PAM,Penama,Province,,,,anchor
 VU-SAM,Sanma,Province,,,,anchor

@@ -824,7 +824,6 @@ AR-BA-RP,Roque Pérez,Part,,,,hasc
 AR-BA-RU,Rauch,Part,,,,hasc
 AR-BA-SA,San Antonio de Areco,Part,,San Antonio de,,hasc
 AR-BA-SC,San Cayetano,Part,,,,hasc
-AR-BA-SD,Saavedra,Part,,,,hasc
 AR-BA-SE,San Vicente,Part,,,,hasc
 AR-BA-SF,San Fernando (1),Part,,,,initials
 AR-BA-SG,San Andrés de Giles,Part,,San Andres de Giles,,hasc
@@ -4825,7 +4824,6 @@ BR-MG-SAX,Santo Antônio do Rio Abaixo,Municipality,,,3160504,br.any3
 BR-MG-SAZ,Serra Azul de Minas,Municipality,,,3166501,br.first3
 BR-MG-SBA,São Bento Abade,Municipality,,,3160801,br.initials
 BR-MG-SBD,Santa Bárbara do Leste,Municipality,,,3157252,br.initials
-BR-MG-SBR,São Brás do Suaçuí,Municipality,,,3160900,br.first3
 BR-MG-SCD,Santa Cruz de Minas,Municipality,,,3157336,br.initials
 BR-MG-SCR,Santa Cruz do Escalvado,Municipality,,,3157401,br.first3
 BR-MG-SDA,Serra dos Aimorés,Municipality,,,3166709,br.initials
@@ -4839,7 +4837,6 @@ BR-MG-SDO,Senhora de Oliveira,Municipality,,,3166006,br.initials
 BR-MG-SDP,Santana de Pirapama,Municipality,,,3158508,br.initials
 BR-MG-SDR,Santana do Riacho,Municipality,,,3159001,br.initials
 BR-MG-SDS,Serra da Saudade,Municipality,,,3166600,br.initials
-BR-MG-SDU,Santos Dumont,Municipality,,,3160702,br.first3
 BR-MG-SDV,Santana da Vargem,Municipality,,,3158300,br.initials
 BR-MG-SEA,Senador Amaral,Municipality,,,3165578,br.first3
 BR-MG-SEC,Senador Cortes,Municipality,,,3165602,br.first3
@@ -5524,7 +5521,6 @@ BR-PB-SAA,Santo André,Municipality,,,2513851,br.first3
 BR-PB-SAB,São Bentinho,Municipality,,,2513927,br.first3
 BR-PB-SAC,Santa Cecília,Municipality,,,2513158,br.first3
 BR-PB-SAD,São Domingos,Municipality,,,2513968,br.first3
-BR-PB-SAE,São José de Caiana,Municipality,,,2514305,br.any3
 BR-PB-SAF,São Francisco,Municipality,,,2513984,br.first3
 BR-PB-SAG,Salgadinho,Municipality,,,2513000,br.any3
 BR-PB-SAH,Santa Helena,Municipality,,,2513307,br.first3
@@ -5540,7 +5536,6 @@ BR-PB-SAS,São Sebastião do Umbuzeiro,Municipality,,,2515203,br.first3
 BR-PB-SAT,Santa Teresinha,Municipality,,,2513802,br.first3
 BR-PB-SAU,São José do Brejo do Cruz,Municipality,,,2514651,br.any3
 BR-PB-SBE,São Bento,Municipality,,,2513901,br.first3
-BR-PB-SCR,Santa Cruz,Municipality,,,2513208,br.first3
 BR-PB-SDD,São Domingos do Cariri,Municipality,,,2513943,br.initials
 BR-PB-SDG,Santana dos Garrotes,Municipality,,,2513604,br.initials
 BR-PB-SDM,Santana de Mangueira,Municipality,,,2513505,br.initials
@@ -7152,7 +7147,6 @@ BR-RS-SSF,Senador Salgado Filho,Municipality,,,4320321,br.initials
 BR-RS-SVA,São Valentim do Sul,Municipality,,,4319711,br.first3
 BR-RS-SVD,Santa Vitória do Palmar,Municipality,,,4317301,br.initials
 BR-RS-SVE,São Vendelino,Municipality,,,4319752,br.first3
-BR-RS-SVI,São Vicente do Sul,Municipality,,,4319802,br.first3
 BR-RS-TAB,Tabaí,Municipality,,,4320859,br.first3
 BR-RS-TAE,Tapera,Municipality,,,4321006,br.any3
 BR-RS-TAP,Tapejara,Municipality,,,4320909,br.first3
@@ -7668,7 +7662,6 @@ BR-SP-BOI,Boituva,Municipality,,,3507001,br.first3
 BR-SP-BOR,Borá,Municipality,,,3507209,br.first3
 BR-SP-BOT,Botucatu,Municipality,,,3507506,br.first3
 BR-SP-BRA,Brejo Alegre,Municipality,,,3507753,br.first3
-BR-SP-BRN,Braúna,Municipality,,,3507704,br.any3
 BR-SP-BRO,Brodowski,Municipality,,,3507803,br.first3
 BR-SP-BRP,Bragança Paulista,Municipality,,,3507605,br.first3
 BR-SP-BRT,Brotas,Municipality,,,3507902,br.any3
@@ -8192,7 +8185,6 @@ BR-SP-TES,Teodoro Sampaio,Municipality,,,3554300,br.first3
 BR-SP-TIE,Tietê,Municipality,,,3554508,br.first3
 BR-SP-TIM,Timburi,Municipality,,,3554607,br.first3
 BR-SP-TOR,Torrinha,Municipality,,,3554706,br.first3
-BR-SP-TPI,Tapiratiba,Municipality,,,3553609,br.any3
 BR-SP-TQA,Taquarituba,Municipality,,,3553807,br.any3
 BR-SP-TQR,Taquarivaí,Municipality,,,3553856,br.any3
 BR-SP-TQU,Taquaritinga,Municipality,,,3553708,br.any3
@@ -9800,7 +9792,6 @@ CN-HI-SA,Sanya,Prefecture City,三亚市,Sānyà,,first2
 CN-HK-CA,Central and Western,District,,,,initials
 CN-HK-EA,Eastern,District,,,,first2
 CN-HK-IS,Islands,District,,,,first2
-CN-HK-KC,Kowloon City,District,,,,initials
 CN-HK-KT,Kwai Tsing,District,,,,initials
 CN-HK-KW,Kwun Tong,District,,,,first2
 CN-HK-NO,North,District,,<Null>,,first2
@@ -9919,7 +9910,6 @@ CN-SC-BA,Bazhong,Prefecture City,巴中市,Bāzhōng,,first2
 CN-SC-CH,Chengdu,Prefecture City,成都市,Chéngdū,,first2
 CN-SC-DA,Dazhou,Prefecture City,达州市,Dázhōu,,first2
 CN-SC-DE,Deyang,Prefecture City,德阳市,Déyáng,,first2
-CN-SC-GA,Guangyuan,Prefecture City,广元市,Guǎngyuán,,any2
 CN-SC-GT,Garzê Tibetan,Autonomous Prefecture,甘孜藏族自治州,Gānzī Zàngzú,,initials
 CN-SC-GU,Guang'an,Prefecture City,广安市,Guǎng'ān,,first2
 CN-SC-LE,Leshan,Prefecture City,乐山市,Lèshān,,first2
@@ -9961,7 +9951,6 @@ CN-SN-HA,Hanzhong,Prefecture City,汉中市,Hànzhōng,,first2
 CN-SN-SH,Shangluo,Prefecture City,商洛市,Shāngluò,,first2
 CN-SN-TO,Tongchuan,Prefecture City,铜川市,Tóngchuān,,first2
 CN-SN-WE,Weinan,Prefecture City,渭南市,Wèinán,,first2
-CN-SN-XA,Xianyang,Prefecture City,咸阳市,Xiányáng,,any2
 CN-SN-XI,Xi'an,Prefecture City,西安市,Xī'ān,,first2
 CN-SN-YA,Yan'an,Prefecture City,延安市,Yán'ān,,first2
 CN-SN-YU,Yulin,Prefecture City,榆林市,Yúlín,,first2
@@ -11525,7 +11514,6 @@ CZ-ZK-UH,Uherské Hradiště,District,,,,hasc
 CZ-ZK-VS,Vsetín,District,,,,hasc
 CZ-ZK-ZL,Zlín,District,,,,hasc
 DE-BB-BH,Brandenburg an der Havel,District,,,12051,hasc
-DE-BB-BR,Barnim,District,,,12060,hasc
 DE-BB-CT,Cottbus,District,,,12052,hasc
 DE-BB-DS,Dahme-Spreewald,District,,,12061,hasc
 DE-BB-EE,Elbe-Elster,District,,,12062,hasc
@@ -11740,7 +11728,6 @@ DE-NI-HD,Heidekreis,District,,,03358,hasc
 DE-NI-HH,Hildesheim,District,,,03254,hasc
 DE-NI-HL,Helmstedt,District,,,03154,hasc
 DE-NI-HP,Hameln-Pyrmont,District,,,03252,hasc
-DE-NI-HR,Harburg,District,,,03353,hasc
 DE-NI-HZ,Holzminden,District,,,03255,hasc
 DE-NI-LD,Lüchow-Dannenberg,District,,,03354,hasc
 DE-NI-LE,Leer,District,,,03457,hasc
@@ -11767,7 +11754,6 @@ DE-NI-WL,Wolfsburg,District,,,03103,hasc
 DE-NI-WS,Wesermarsch,District,,,03461,hasc
 DE-NI-WT,Wittmund,District,,,03462,hasc
 DE-NW-AC,Städteregion Aachen,District,,,05334,hasc
-DE-NW-BC,Bochum,District,,,05911,hasc
 DE-NW-BE,Bielefeld,District,,,05711,hasc
 DE-NW-BN,Bonn,District,,,05314,hasc
 DE-NW-BR,Borken,District,,,05554,hasc
@@ -11808,7 +11794,6 @@ DE-NW-RB,Rheinisch-Bergischer Kreis,District,,,05378,hasc
 DE-NW-RC,Recklinghausen,District,,,05562,hasc
 DE-NW-RE,Rhein-Erft-Kreis,District,,,05362,hasc
 DE-NW-RM,Remscheid,District,,,05120,hasc
-DE-NW-RN,Rhein-Kreis Neuss,District,,,05162,hasc
 DE-NW-RS,Rhein-Sieg-Kreis,District,,,05382,hasc
 DE-NW-SF,Steinfurt,District,,,05566,hasc
 DE-NW-SL,Solingen,District,,,05122,hasc
@@ -13548,73 +13533,25 @@ DZ-TM-TM,Tamenghasset,Chef-Lieu-Wilaya,,Tamanrasset|Tamanghāsat,1101,hasc
 DZ-TM-TZ,Tin Zaouatine,Commune,,,1107,hasc
 DZ-TN-OA,Oum El Assel,Commune,,,3702,hasc
 DZ-TN-TI,Tindouf,Chef-Lieu-Wilaya,,Tindūf,3701,hasc
-DZ-TO-AA,Ait Aggouacha,Commune,,,1535,hasc
-DZ-TO-AB,Ait Boumehdi,Commune,,Ait Boumahdi,1530,hasc
-DZ-TO-AC,Ait-Chaffaa,Commune-Cotiere,,Ait Chaffaa,1513,hasc
 DZ-TO-AD,Ait Bouadou,Commune,,`Ayt Buwadu,1565,hasc
-DZ-TO-AE,Ain-El-Hammam,Commune,,Ain El Hammam|`Ayn-al-Hamma-m,1502,hasc
 DZ-TO-AF,Azzefoun,Commune-Cotiere,,Azeffoun,1537,hasc
-DZ-TO-AG,Aghni-Goughrane,Commune,,Aghni Goughran,1561,hasc
-DZ-TO-AH,Ait-Yahia,Commune,,Ait Yahia,1527,hasc
-DZ-TO-AI,Ait Khelili,Commune,,`Ayt Khalil,1558,hasc
-DZ-TO-AK,Akerrou,Commune,,,1544,hasc
-DZ-TO-AL,Akbil,Commune,,,1503,hasc
-DZ-TO-AM,Ait-Mahmoud,Commune,,Ait Mahmoud,1528,hasc
-DZ-TO-AN,Ain-Zaouia,Commune,,Ain Zaouia,1525,hasc
-DZ-TO-AO,Ait Oumalou,Commune,,,1542,hasc
 DZ-TO-AR,Aghrib,Commune,,Aghrib,1553,hasc
-DZ-TO-AS,Assi Youcef,Commune,,Assī Yūsuf,1566,hasc
-DZ-TO-AT,Ait Toudert,Commune,,,1567,hasc
 DZ-TO-AU,Abi Youcef,Commune,,,1531,hasc
-DZ-TO-AY,Ait Yahia Moussa,Commune,,`Ayt Yahiya Mussa,1556,hasc
-DZ-TO-AZ,Azazga,Commune,,`Azāzghah,1518,hasc
-DZ-TO-BA,Beni Aissi,Commune,,,1515,hasc
-DZ-TO-BD,Beni-Douala,Commune,,Beni Douala|Bani- Duwala,1532,hasc
-DZ-TO-BG,Boghni,Commune,,Bughni,1540,hasc
 DZ-TO-BJ,Boudjima,Commune,,Bujima,1555,hasc
 DZ-TO-BK,Beni-Zikki,Commune,,Beni Ziki,1546,hasc
-DZ-TO-BN,Bounouh,Commune,,,1512,hasc
-DZ-TO-BO,Bouzeguene,Commune,,Bouzguen|Buzqan,1534,hasc
-DZ-TO-BY,Beni Yenni,Commune,,,1552,hasc
-DZ-TO-BZ,Beni Zmenzer,Commune,,,1516,hasc
-DZ-TO-DB,Draa-Ben-Khedda,Commune,,Draa Ben Khedda|Dara`a Ban Khadd,1547,hasc
 DZ-TO-DM,Draa El Mizan,Commune,,Dara`-al-Mizān,1510,hasc
 DZ-TO-FH,Freha,Commune,,Fariha,1504,hasc
 DZ-TO-FK,Frikat,Commune,,,1514,hasc
-DZ-TO-IB,Iboudraren,Commune,,,1560,hasc
-DZ-TO-ID,Idjeur,Commune,,,1549,hasc
-DZ-TO-IF,Iflissen,Commune-Cotiere,,,1554,hasc
 DZ-TO-IG,Ifigha,Commune,,,1541,hasc
-DZ-TO-IL,Illilten,Commune,,,1533,hasc
-DZ-TO-IM,Imsouhal,Commune,,,1563,hasc
 DZ-TO-IN,Iferhounene,Commune,,,1517,hasc
-DZ-TO-IO,Illoula Oumalou,Commune,,Iloula Oumalou,1519,hasc
-DZ-TO-IR,Irdjen,Commune,,Irjan,1507,hasc
-DZ-TO-IT,Ait Aissa Mimoun,Commune,,,1539,any2
-DZ-TO-LN,Larbaa-Nath-Irathen,Commune,,Larba Nait Irathen|Arba-`a- Naya,1521,hasc
-DZ-TO-MA,Maatkas,Commune,,Maatka|Ma`atka,1529,hasc
-DZ-TO-MC,Mechtrass,Commune,,,1506,hasc
 DZ-TO-MD,Makouda,Commune,,Makuda,1509,hasc
-DZ-TO-MI,Mizrana,Commune-Cotiere,,,1562,hasc
-DZ-TO-MK,M'Kira,Commune,,Mkira|Makirah,1526,hasc
 DZ-TO-ML,Mekla,Commune,,Maklah,1550,hasc
 DZ-TO-OC,Ouacif,Commune,,Wasif,1548,hasc
 DZ-TO-OD,Ouadhia,Commune,,Wadhīyah,1536,hasc
 DZ-TO-OG,Ouaguenoun,Commune,,,1524,hasc
-DZ-TO-SN,Sidi Naamane,Commune,,,1559,hasc
-DZ-TO-SO,Souamaa,Commune,,,1505,hasc
 DZ-TO-ST,Souk El Tenine,Commune,,Souk-El-Thenine,1557,hasc
-DZ-TO-TA,Tadmait,Commune,,Tadma`it,1564,hasc
-DZ-TO-TG,Tizi-Ghenif,Commune,,Tizi Ghenif,1511,hasc
-DZ-TO-TM,Timizart,Commune,,Timizart,1508,hasc
-DZ-TO-TN,Tizi N'Tleta,Commune,,Tizi Nthleta|Thizi Natlata,1551,hasc
-DZ-TO-TO,Tizi Ouzou,Chef-Lieu-Wilaya,,Tīzī Wazū,1501,hasc
-DZ-TO-TR,Tizi-Rached,Commune,,Tizi Rached,1522,hasc
 DZ-TO-TT,Tirmitine,Commune,,Tirmirtin,1543,hasc
-DZ-TO-TZ,Tigzirt,Commune-Cotiere,,Tighzirt,1538,hasc
 DZ-TO-YK,Yakourene,Commune,,Yakouren,1520,hasc
-DZ-TO-YT,Yatafene,Commune,,Yatafen,1545,hasc
-DZ-TO-ZE,Zekri,Commune,,,1523,hasc
 DZ-TP-AA,Ahmer El Ain,Commune,,,4219,hasc
 DZ-TP-AG,Aghbal,Commune,,,4207,hasc
 DZ-TP-AT,Ain Tagourait,Commune-Cotiere,,,4213,hasc
@@ -14255,7 +14192,6 @@ EG-FY-TA,Tamiyah,Subdivision,,,,hasc
 EG-FY-UI,Unorganized in Al Fayoum,Subdivision,,,,initials
 EG-FY-US,Yusuf as-Sidiq,Subdivision,,,,hasc
 EG-GH-BA,Basyun,Subdivision,,,,hasc
-EG-GH-KA,Qutur,Subdivision,,,,hasc
 EG-GH-KZ,Kafr az-Zayyat,Subdivision,,,,hasc
 EG-GH-MF,Al-Mahallah al-Kubra 1,Subdivision,,,,hasc
 EG-GH-MK,Al-Mahallah al-Kubra,Subdivision,,,,hasc
@@ -14307,7 +14243,6 @@ EG-IS-EK,Al-Qantarah ash-Sharqiyah,Subdivision,,,,hasc
 EG-IS-FA,Fa'id,Subdivision,,,,hasc
 EG-IS-IF,Ismailia 1,Subdivision,,,,hasc
 EG-IS-IM,Ismailia,Subdivision,,,,hasc
-EG-IS-IS,Ismailia 2,Subdivision,,,,hasc
 EG-IS-IT,Ismailia 3,Subdivision,,,,hasc
 EG-IS-KN,Al-Qantarah,Subdivision,,,,hasc
 EG-IS-TE,At-Tall al-Kabir,Subdivision,,,,hasc
@@ -14529,7 +14464,6 @@ ER-GB-MG,Mogolo,District,,,,hasc
 ER-GB-OM,Omhajer,District,,,,hasc
 ER-GB-SK,Shemboko,District,,Shambiko,,hasc
 ER-GB-TE,Teseneye,District,,Teseney,,hasc
-ER-MA-AC,Asmara City,District,,,,initials
 ER-MA-BE,Berikh,District,,,,hasc
 ER-MA-GN,Ghala Nefhi,District,,,,hasc
 ER-MA-SJ,Serejeka,District,,,,hasc
@@ -15112,19 +15046,16 @@ GB-NI-MU,Mid Ulster,,,,N09000009,initials
 GB-NI-NM,"Newry, Mourne and Down",,,,N09000010,initials
 GB-SC-AA,Argyll and Bute,,,,S12000035,initials
 GB-SC-AB,Aberdeenshire,,,,S12000034,first2
-GB-SC-AC,Aberdeen City,,,,S12000033,initials
 GB-SC-AN,Angus,,,,S12000041,first2
 GB-SC-CL,Clackmannanshire,,,,S12000005,first2
 GB-SC-CO,City of Edinburgh,,,,S12000036,initials
 GB-SC-DA,Dumfries and Galloway,,,,S12000006,initials
-GB-SC-DC,Dundee City,,,,S12000042,initials
 GB-SC-EA,East Ayrshire,,,,S12000008,initials
 GB-SC-ED,East Dunbartonshire,,,,S12000045,initials
 GB-SC-EL,East Lothian,,,,S12000010,initials
 GB-SC-ER,East Renfrewshire,,,,S12000011,initials
 GB-SC-FA,Falkirk,,,,S12000014,first2
 GB-SC-FI,Fife,,,,S12000047,first2
-GB-SC-GC,Glasgow City,,,,S12000049,initials
 GB-SC-HE,Na h-Eileanan Siar,,,,S12000013,initials
 GB-SC-HI,Highland,,,,S12000017,first2
 GB-SC-IN,Inverclyde,,,,S12000018,first2
@@ -16376,7 +16307,6 @@ HN-LP-SJ,San José,Municipality,,,,initials
 HN-LP-SM,Santa María,Municipality,,,,hasc
 HN-LP-SN,San Antonio del Norte,Municipality,,,,hasc
 HN-LP-SP,Santiago de Puringla,Municipality,,,,hasc
-HN-LP-ST,San Pedro de Tutule,Municipality,,,,hasc
 HN-LP-SU,San Juan,Municipality,,,,any2
 HN-LP-YA,Yarula,Municipality,,,,hasc
 HN-OC-BG,Belén Gualcho,Municipality,,,,hasc
@@ -18113,7 +18043,6 @@ IN-MH-JG,Jalgaon,District,,East Khandesh,,hasc
 IN-MH-JN,Jalna,District,,,,hasc
 IN-MH-KO,Kolhapur,District,,,,hasc
 IN-MH-LA,Latur,District,,"Kulaba, Kolaba, Kolabad",,hasc
-IN-MH-MC,Mumbai City,District,,,,initials
 IN-MH-MS,Mumbai Suburban,District,,,,initials
 IN-MH-NB,Nandurbar,District,,,,hasc
 IN-MH-ND,Nanded,District,,Nander,,hasc
@@ -18473,12 +18402,8 @@ IN-WB-PS,South 24 Parganas,District,,,,hasc
 IN-WB-PU,Puruliya,District,,,,hasc
 IN-WB-UD,Uttar Dinajpur,District,,,,hasc
 IN-WB-WM,Pashchim Medinipur,District,,Paschim Medinipur,,hasc
-IQ-AN-AF,Al Fallujah,District,,,,initials
 IQ-AN-AG,Abu Ghraib,District,,,,initials
-IQ-AN-AH,Al Haditha,District,,,,initials
 IQ-AN-AN,Anah,District,,,,first2
-IQ-AN-AQ,Al Qa'im,District,,,,initials
-IQ-AN-AR,Ar Ramadi,District,,,,initials
 IQ-AN-AU,Ar Rutbah,District,,,,any2
 IQ-AN-HI,Hit,District,,,,first2
 IQ-AN-KA,Kadhimiya,District,,,,first2
@@ -18489,18 +18414,8 @@ IQ-AR-MA,Makhmur,District,,,,first2
 IQ-AR-ME,Mergasur,District,,,,first2
 IQ-AR-SH,Shaqlawa,District,,,,first2
 IQ-AR-SO,Soran,District,,,,first2
-IQ-BA-AA,Abu al Khasib,District,,,,initials
-IQ-BA-AF,Al Faw,District,,,,initials
-IQ-BA-AM,Al Madiana,District,,,,initials
-IQ-BA-AQ,Al Qurnah,District,,,,initials
-IQ-BA-AZ,Al Zubair,District,,,,initials
 IQ-BA-BA,Basrah,District,,,,first2
 IQ-BA-SA,Shatt Al Arab,District,,,,initials
-IQ-BB-AA,Al-Mada'in,District,,,,any2
-IQ-BB-AH,Al Hashimiyah,District,,,,initials
-IQ-BB-AI,Al Misiab,District,,,,any2
-IQ-BB-AL,Al Hillah,District,,,,first2
-IQ-BB-AM,Al Mahawil,District,,,,initials
 IQ-BB-MA,Mahmudiya,District,,,,first2
 IQ-BG-AD,Adhamiya,District,,,,first2
 IQ-DA-AM,Amedi,District,,,,first2
@@ -18513,40 +18428,25 @@ IQ-DI-BA,Ba`qubah,District,,,,first2
 IQ-DI-BR,Balad Ruz,District,,,,initials
 IQ-DI-KH,Khanaqin,District,,,,first2
 IQ-DI-KI,Kifri,District,,,,first2
-IQ-DQ-AN,An Nasiriyah,District,,,,initials
 IQ-DQ-CH,Chibayish,District,,,,first2
 IQ-DQ-RE,Refai,District,,,,first2
-IQ-DQ-SA,Suq ash Shuyukh,District,,,,initials
 IQ-DQ-SH,Shatrah,District,,,,first2
-IQ-KA-AA,Ain Al Tamur,District,,,,initials
-IQ-KA-AJ,Al Jadwal al Gharbi,District,,,,initials
 IQ-KA-KA,Karbala,District,,,,first2
-IQ-MA-AA,Al Amarah,District,,,,initials
-IQ-MA-AI,Ali al Gharbi,District,,,,any2
-IQ-MA-AK,Al Kahla,District,,,,initials
-IQ-MA-AL,Al Mijar al Kabir,District,,,,first2
 IQ-MA-AM,Al Miamona,District,,,,initials
 IQ-MA-QS,Qal`at Salih,District,,,,initials
 IQ-MU-AA,As Samawah,District,,,,any2
 IQ-MU-AK,Al Khithir,District,,,,initials
 IQ-MU-AS,As Salman,District,,,,initials
 IQ-MU-RU,Rumaitha,District,,,,first2
-IQ-NA-AK,Al Kufa,District,,,,initials
-IQ-NA-AM,Al Manathera,District,,,,initials
 IQ-NA-NA,Najaf,District,,,,first2
-IQ-NI-AB,Al Ba'aj,District,,,,initials
-IQ-NI-AH,Al Hamdaniyah,District,,,,initials
 IQ-NI-AK,Akre,District,,,,first2
-IQ-NI-AS,Al Shikhan,District,,,,initials
 IQ-NI-HA,Hatra,District,,,,first2
 IQ-NI-MO,Mosul,District,,,,first2
 IQ-NI-SH,Shekhan,District,,,,first2
 IQ-NI-SI,Sinjar,District,,,,first2
 IQ-NI-TA,Talafar,District,,,,first2
 IQ-NI-TI,Tilkef,District,,,,first2
-IQ-QA-AD,Ad Diwaniyah,District,,,,initials
 IQ-QA-AF,Afak,District,,,,first2
-IQ-QA-AH,Al Hamza,District,,,,initials
 IQ-QA-SH,Shamiya,District,,,,first2
 IQ-SD-AD,Al Door,District,,,,initials
 IQ-SD-AF,Al-Faris,District,,,,initials
@@ -18570,10 +18470,6 @@ IQ-TS-DA,Daquq,District,,,,first2
 IQ-TS-DI,Dibis,District,,,,first2
 IQ-TS-HA,Haweeja,District,,,,first2
 IQ-TS-KI,Kirkuk,District,,,,first2
-IQ-WA-AH,Al Hayy,District,,,,initials
-IQ-WA-AK,Al Kut,District,,,,initials
-IQ-WA-AN,Al Noamania,District,,,,initials
-IQ-WA-AS,As Suwayrah,District,,,,initials
 IQ-WA-BA,Badrah,District,,,,first2
 IR-AL-KA,Karaj,County,,,,hasc
 IR-AL-NA,Nazarabad,County,,,,hasc
@@ -19994,30 +19890,20 @@ JP-KM-YU,Yunomae,Town,湯前町,,,first2
 JP-KN-AI,Aikawa,Town,愛川町,,,first2
 JP-KN-AT,Atsugi,City,厚木市,,,hasc
 JP-KN-AY,Ayase,City,綾瀬市,,,hasc
-JP-KN-CH,Chigasaki,City,茅ヶ崎市,,,hasc
 JP-KN-EB,Ebina,City,海老名市,,,hasc
 JP-KN-FJ,Fujisawa,City,藤沢市,,,hasc
-JP-KN-HA,Hakone,Town,箱根町,,,first2
 JP-KN-HD,Hadano,City,秦野市,,,hasc
 JP-KN-HR,Hiratsuka,City,平塚市,,,hasc
 JP-KN-HY,Hayama,Town,葉山町,,,any2
-JP-KN-IS,Isehara,City,伊勢原市,,,hasc
-JP-KN-KA,Kaisei,Town,開成町,,,first2
-JP-KN-KI,Kiyokawa,Town,清川村,,,first2
-JP-KN-KM,Kamakura,City,鎌倉市,,,hasc
 JP-KN-KW,Kawasaki,City,川崎市,,,hasc
 JP-KN-MA,Minamiashigara,City,南足柄市,,,hasc
 JP-KN-MG,Miura,City,三浦市,,,hasc
-JP-KN-MN,Manazuru,Town,真鶴町,,,any2
 JP-KN-MT,Matsuda,Town,松田町,,,any2
-JP-KN-NA,Nakai,Town,中井町,,,first2
-JP-KN-NI,Ninomiya,Town,二宮町,,,first2
 JP-KN-OD,Odawara,City,小田原市,,,hasc
 JP-KN-OI,Ōi,Town,大井町,,,first2
 JP-KN-OS,Ōiso,Town,大磯町,,,any2
 JP-KN-SA,Samukawa,Town,寒川町,,,first2
 JP-KN-SG,Sagamihara,City,相模原市,,,hasc
-JP-KN-YA,Yamakita,Town,山北町,,,first2
 JP-KN-YH,Yokohama,City,横浜市,,,hasc
 JP-KN-YM,Yamato,City,大和市,,,any2
 JP-KN-YS,Yokosuka,City,横須賀市,,,hasc
@@ -20974,7 +20860,6 @@ KE-EM-MW,Marakwet West,Constituency,,,148,initials
 KE-GA-BA,Balambala,Constituency,,,28,first2
 KE-GA-DA,Daadab,Constituency,,,30,first2
 KE-GA-FA,Fafi,Constituency,,,31,first2
-KE-GA-GT,Garissa Township,Constituency,,,27,initials
 KE-GA-IJ,Ijara,Constituency,,,32,first2
 KE-GA-LA,Lagdera,Constituency,,,29,first2
 KE-HB-HB,Homa Bay Town,Constituency,,,249,initials
@@ -21696,17 +21581,13 @@ KR-CN-WA,Wando,County,,,,first2
 KR-CN-YE,Yeongam,County,,,,first2
 KR-CN-YO,Yeonggwang,County,,,,any2
 KR-CN-YS,Yeosu,City,,,,any2
-KR-GB-BO,Boeun,County,,,,first2
-KR-GB-CH,Cheongju,City,,,,first2
 KR-GB-CU,Chungju,City,,,,any2
 KR-GB-DA,Danyang,County,,,,first2
 KR-GB-EU,Eumseong,County,,,,first2
-KR-GB-GO,Goesan,County,,,,first2
 KR-GB-JE,Jecheon,City,,,,first2
 KR-GB-JI,Jincheon,County,,,,first2
 KR-GB-JU,Jeungpyeong,County,,,,any2
 KR-GB-OK,Okcheon,County,,,,first2
-KR-GB-YE,Yeongdong,County,,,,first2
 KR-GN-AS,Asan,City,,,,first2
 KR-GN-BO,Boryeong,City,,,,first2
 KR-GN-BU,Buyeo,County,,,,first2
@@ -23180,30 +23061,11 @@ MN-SL-YE,Yeröö,Sum,Ерөө,Yeroo,,hasc
 MN-SL-ZU,Züünbüren,Sum,Зүүнбүрэн,Zuunburen,,hasc
 MN-TO-AG,Argalant,Sum,Аргалант,,,hasc
 MN-TO-AH,Arkhust,Sum,Архуст,Arhust,,hasc
-MN-TO-AL,Altanbulag,Sum,Алтанбулаг,,,hasc
-MN-TO-BA,Bayan,Sum,Баян,,,hasc
 MN-TO-BC,Bayanchandmani,Sum,Баянчандмань,,,hasc
-MN-TO-BD,Bayandelger,Sum,Баяндэлгэр,,,hasc
 MN-TO-BG,Bayantsogt,Sum,Баянцогт,,,hasc
 MN-TO-BH,Bayankhangai,Sum,Баянхангай,,,hasc
-MN-TO-BJ,Bayanjargalan,Sum,Баянжаргалан,,,hasc
-MN-TO-BO,Bayan-Önjüül,Sum,Баян-Өнжүүл,Bayan-Onjuul,,hasc
 MN-TO-BR,Bornuur,Sum,Борнуур,,,hasc
-MN-TO-BS,Batsümber,Sum,Батсүмбэр,Batsumber,,hasc
-MN-TO-BT,Bayantsagaan,Sum,Баянцагаан,,,hasc
-MN-TO-BU,Büren,Sum,Бүрэн,Buren,,hasc
-MN-TO-DE,Delgerkhaan,Sum,Дэлгэрхаан,Delgerhaan,,hasc
-MN-TO-ER,Erdene,Sum,Эрдэнэ,,,hasc
 MN-TO-ES,Erdenesant,Sum,Эрдэнэсант,,,hasc
-MN-TO-JA,Jargalant,Sum,Жаргалант,,,hasc
-MN-TO-LU,Lün,Sum,Лүн,Lun,,hasc
-MN-TO-MO,Möngönmorit,Sum,Мөнгөнморьт,Mongonmorit,,hasc
-MN-TO-ON,Öndörshireet,Sum,Өндөрширээт,Ondorshireet,,hasc
-MN-TO-SE,Sergelen,Sum,Сэргэлэн,,,hasc
-MN-TO-SU,Sümber,Sum,Сүмбэр,Sumber,,hasc
-MN-TO-TS,Tseel,Sum,Цээл,,,hasc
-MN-TO-UG,Ugtaal,Sum,Угтаал,,,hasc
-MN-TO-ZA,Zaamar,Sum,Заамар,,,hasc
 MN-UB-UB,Ulan Bator,Sum,,,,initials
 MN-UV-BA,Baruuntutuun,Sum,Баруунтуруун,Baruunturuun,,hasc
 MN-UV-BO,Bökhmörön,Sum,Бɵхмɵрɵн,Bohmoron,,hasc
@@ -23368,7 +23230,6 @@ MT-SO-SI,Is-Siġġiewi,Local council,,Siġġiewi|Città Ferdinand,,hasc
 MT-SO-SL,Santa Luċija,Local council,,,,hasc
 MT-SO-ZB,Ħaż-Żebbuġ,Local council,,Żebbuġ|Città Rohan,,hasc
 MT-SO-ZU,Iż-Żurrieq,Local council,,Żurrieq,,hasc
-MW-BA-BT,Balaka Town,Town,,,,initials
 MW-BA-TK,TA Kalembo,Traditional Authority,,,,initials
 MW-BA-TN,TA Nsamala,Traditional Authority,,,,initials
 MW-BL-BC,Blantyre City,City,,,,initials
@@ -23423,7 +23284,6 @@ MW-DO-SP,SC Mponela,Sub-chief,,,,any2
 MW-DO-TC,TA Chiwere,Traditional Authority,,,,initials
 MW-DO-TD,TA Dzoole,Traditional Authority,,,,initials
 MW-DO-TM,TA Msakambewa,Traditional Authority,,,,initials
-MW-KR-KT,Karonga Town,Town,,,,initials
 MW-KR-NN,Nyipa N. P. - Karonga,National Park,,,,initials
 MW-KR-SC,SC Mwirang'ombe,Sub-chief,,,,first2
 MW-KR-SM,SC Mwakaboko,Sub-chief,,,,initials
@@ -23470,7 +23330,6 @@ MW-MC-TA,TA Mlonyeni,Traditional Authority,,,,first2
 MW-MC-TM,TA Mkanda,Traditional Authority,,,,initials
 MW-MC-TZ,TA Zulu,Traditional Authority,,,,initials
 MW-MG-MB,Monkey Bay Urban,Urban,,,,initials
-MW-MG-MT,Mangochi Town,Town,,,,initials
 MW-MG-SC,SC Chowe,Sub-chief,,,,initials
 MW-MG-SM,SC Mbwana Nyambi,Sub-chief,,,,initials
 MW-MG-SN,SC Namabvi,Sub-chief,,,,initials
@@ -23481,7 +23340,6 @@ MW-MG-TK,TA Katuli,Traditional Authority,,,,initials
 MW-MG-TM,TA Makanjila,Traditional Authority,,,,initials
 MW-MG-TN,TA Nankumba,Traditional Authority,,,,initials
 MW-MH-LN,Liwonda National Park,National Park,,,,initials
-MW-MH-LT,Liwonde Town,Town,,,,initials
 MW-MH-SC,SC Chamba,Sub-chief,,,,initials
 MW-MH-SH,SC Chikweo,Sub-chief,,,,any2
 MW-MH-SI,SC Chiwalo,Sub-chief,,,,any2
@@ -26250,8 +26108,6 @@ MZ-IN-MS,Massinga,District,,,,hasc
 MZ-IN-PA,Panda,District,,,,hasc
 MZ-IN-VI,Vilanculos,District,,Vilankulo,,hasc
 MZ-IN-ZA,Zavala,District,,,,hasc
-MZ-MC-BO,Boane,District,,,,first2
-MZ-MC-MA,Maputo,District,,,,first2
 MZ-MN-BA,Barue,District,,,,hasc
 MZ-MN-GO,Gondola,District,,,,hasc
 MZ-MN-GU,Guro,District,,,,hasc
@@ -26406,13 +26262,9 @@ NA-OK-RN,Rundu Rural West,Constituency,,,,any2
 NA-OK-RR,Rundu Rural East,Constituency,,,,initials
 NA-OK-RU,Rundu Urban,Constituency,,,,hasc
 NA-ON-OD,Ondangwa,Constituency,,,,hasc
-NA-ON-OE,Oshakati East,Constituency,,,,hasc
 NA-ON-OG,Ongwediva,Constituency,,,,hasc
 NA-ON-OJ,Okatyali,Constituency,,Okatjali,,hasc
-NA-ON-OK,Okaku,Constituency,,,,hasc
-NA-ON-OM,Ompundja,Constituency,,,,hasc
 NA-ON-OT,Okatana,Constituency,,,,hasc
-NA-ON-OW,Oshakati West,Constituency,,,,hasc
 NA-ON-UK,Uukwiyu,Constituency,,,,hasc
 NA-ON-UV,Uuvudhiya,Constituency,,,,hasc
 NA-OS-AN,Anamulenge,Constituency,,,,hasc
@@ -26428,25 +26280,13 @@ NA-OS-OU,Outapi,Constituency,,,,hasc
 NA-OS-RA,Ruacana,Constituency,,Raucana,,hasc
 NA-OS-TS,Tsandi,Constituency,,,,hasc
 NA-OT-EE,Engodi,Constituency,,Eengodi,,hasc
-NA-OT-GU,Guinas,Constituency,,,,hasc
-NA-OT-OK,Okankolo,Constituency,,,,hasc
-NA-OT-OL,Olukonda,Constituency,,,,hasc
-NA-OT-OM,Omuthiyagwipundi,Constituency,,Omuthiyagwiipundi,,hasc
-NA-OT-ON,Onayena,Constituency,,,,hasc
 NA-OT-OP,Oniipa,Constituency,,,,hasc
 NA-OT-OT,Omuntele,Constituency,,,,hasc
-NA-OT-OY,Onyaanya,Constituency,,,,hasc
-NA-OT-TS,Tsumeb,Constituency,,,,hasc
 NA-OW-ED,Endola,Constituency,,,,hasc
-NA-OW-EE,Eenhana,Constituency,,,,hasc
 NA-OW-EG,Engela,Constituency,,,,hasc
-NA-OW-EP,Epembe,Constituency,,,,hasc
 NA-OW-OD,Ondobe,Constituency,,,,hasc
 NA-OW-OG,Ongenga,Constituency,,,,hasc
 NA-OW-OH,Ohangwena,Constituency,,,,hasc
-NA-OW-OK,Okongo,Constituency,,,,hasc
-NA-OW-OM,Omundaungilo,Constituency,,,,hasc
-NA-OW-OS,Oshikango,Constituency,,,,hasc
 NA-OW-OU,Omulonga,Constituency,,,,any2
 NC-IL-LI,Lifou,Commune,,,14,hasc
 NC-IL-MA,Maré,Commune,,,15,hasc
@@ -27120,32 +26960,9 @@ NG-ON-OK,Okitipupa,Local Authority,,,,first2
 NG-ON-OO,Owo,Local Authority,,,,any2
 NG-ON-OS,Ose,Local Authority,,,,first2
 NG-ON-OW,Ondo West,Local Authority,,,,initials
-NG-OS-AE,Atakumosa East,Local Authority,,,,initials
-NG-OS-AI,Aiyedade,Local Authority,,,,first2
-NG-OS-AW,Atakumosa West,Local Authority,,,,initials
-NG-OS-AY,Ayedire,Local Authority,,,,first2
-NG-OS-BO,Boluwaduro,Local Authority,,,,first2
 NG-OS-BR,Boripe,Local Authority,,,,any2
-NG-OS-EG,Egbedore,Local Authority,,,,first2
-NG-OS-EJ,Ejigbo,Local Authority,,,,first2
-NG-OS-EN,Ede North,Local Authority,,,,initials
-NG-OS-ES,Ede South,Local Authority,,,,initials
-NG-OS-IC,Ife Central,Local Authority,,,,initials
-NG-OS-IE,Ife East,Local Authority,,,,initials
-NG-OS-IF,Ifedayo,Local Authority,,,,first2
 NG-OS-IH,Ilesha East,Local Authority,,,,any2
 NG-OS-IK,Isokan,Local Authority,,,,any2
-NG-OS-IL,Ila,Local Authority,,,,first2
-NG-OS-IN,Ife North,Local Authority,,,,initials
-NG-OS-IO,Ifelodun,Local Authority,,,,any2
-NG-OS-IR,Irepodun,Local Authority,,,,first2
-NG-OS-IS,Ife South,Local Authority,,,,initials
-NG-OS-IW,Ilesha West,Local Authority,,,,initials
-NG-OS-OB,Obokun,Local Authority,,,,first2
-NG-OS-OL,Ola Oluwa,Local Authority,,,,first2
-NG-OS-OO,Odo-Otin,Local Authority,,,,initials
-NG-OS-OR,Oriade,Local Authority,,,,first2
-NG-OS-OS,Osogbo,Local Authority,,,,first2
 NG-OS-OU,Olorunda,Local Authority,,,,any2
 NG-OS-RE,Irewole,Local Authority,,,,any2
 NG-OS-RO,Orolu,Local Authority,,,,any2
@@ -30382,7 +30199,6 @@ PL-DO-JG,Jelenia Góra,County,,,0206,initials
 PL-DO-KG,Kamienna Góra,County,,,0207,initials
 PL-DO-KO,Kłodzko,County,,,0208,first2
 PL-DO-LB,Lubiń,County,,,0211,any2
-PL-DO-LC,Legnica (City),City with powiat rights,,,0209,initials
 PL-DO-LE,Legnica,County,,,0209,first2
 PL-DO-LS,Lwówek Śląski,County,,,0212,initials
 PL-DO-LU,Lubań,County,,,0210,first2
@@ -30402,11 +30218,9 @@ PL-DO-ZG,Zgorzelec,County,,,0225,first2
 PL-DO-ZO,Złotoryja,County,,,0226,first2
 PL-DO-ZS,Ząbkowice Śląskie,County,,,0224,initials
 PL-KP-AL,Aleksandrów,County,,,0401,first2
-PL-KP-BC,Bydgoszcz (City),City with powiat rights,,,0403,initials
 PL-KP-BR,Brodnica,County,,,0402,first2
 PL-KP-BY,Bydgoszcz,County,,,0403,first2
 PL-KP-CH,Chełmno,County,,,0404,first2
-PL-KP-GC,Grudziądz (City),City with powiat rights,,,0462,initials
 PL-KP-GD,Golub-Dobrzyń,County,,,0405,initials
 PL-KP-GR,Grudziądz,County,,,0406,first2
 PL-KP-IN,Inowrocław,County,,,0407,first2
@@ -30417,7 +30231,6 @@ PL-KP-RA,Radziejów,County,,,0411,first2
 PL-KP-RY,Rypin,County,,,0412,first2
 PL-KP-SE,Sępólno,County,,,0413,first2
 PL-KP-SW,Świecie,County,,,0414,first2
-PL-KP-TC,Toruń (City),City with powiat rights,,,0463,initials
 PL-KP-TO,Toruń,County,,,0415,first2
 PL-KP-TU,Tuchola,County,,,0416,first2
 PL-KP-WA,Wąbrzeźno,County,,,0417,first2
@@ -30449,7 +30262,6 @@ PL-LU-JL,Janów Lubelski,County,,,0605,initials
 PL-LU-KA,Krasnystaw,County,,,0606,any2
 PL-LU-KR,Kraśnik,County,,,0607,first2
 PL-LU-LB,Lublin,County,,,0609,any2
-PL-LU-LC,Lublin (City),City with powiat rights,,,0663,initials
 PL-LU-LU,Lubartów,County,,,0608,first2
 PL-LU-OL,Opole Lubelskie,County,,,0612,initials
 PL-LU-PA,Parczew,County,,,0613,first2
@@ -30461,7 +30273,6 @@ PL-LU-TL,Tomaszów Lubelski,County,,,0618,initials
 PL-LU-UK,Łuków,County,,,0611,first2
 PL-LU-WO,Włodawa,County,,,0619,first2
 PL-LU-ZA,Zamość,County,,,0620,first2
-PL-LU-ZC,Zamość (City),City with powiat rights,,,0664,initials
 PL-MA-BO,Bochnia,County,,,1201,first2
 PL-MA-BR,Brzesko,County,,,1202,first2
 PL-MA-CH,Chrzanów,County,,,1203,first2
@@ -30542,7 +30353,6 @@ PL-OD-PO,Poddębice,County,,,1011,first2
 PL-OD-PT,Piotrków Trybunalski,City with powiat rights,,,1062,initials
 PL-OD-RA,Radomsko,County,,,1012,first2
 PL-OD-RW,Rawa,County,,,1013,any2
-PL-OD-SC,Skierniewice (City),City with powiat rights,,,1063,initials
 PL-OD-SI,Sieradz,County,,,1014,first2
 PL-OD-SK,Skierniewice,County,,,1015,first2
 PL-OD-TM,Tomaszów Mazowiecki,County,,,1016,initials
@@ -30557,7 +30367,6 @@ PL-OP-KL,Kluczbork,County,,,1604,first2
 PL-OP-KR,Krapkowice,County,,,1605,first2
 PL-OP-NA,Namysłów,County,,,1606,first2
 PL-OP-NY,Nysa,County,,,1607,first2
-PL-OP-OC,Opole (City),City with powiat rights,,,1661,initials
 PL-OP-OL,Olesno,County,,,1608,first2
 PL-OP-OP,Opole,County,,,1609,first2
 PL-OP-PR,Prudnik,County,,,1610,first2
@@ -30570,7 +30379,6 @@ PL-PD-GR,Grajewo,County,,,2004,first2
 PL-PD-HA,Hajnówka,County,,,2005,first2
 PL-PD-KO,Kolno,County,,,2006,first2
 PL-PD-MO,Mońki,County,,,2008,first2
-PL-PD-OC,Łomża (City),City with powiat rights,,,2062,initials
 PL-PD-OM,Łomża,County,,,2007,first2
 PL-PD-SC,Suwałki (City),City with powiat rights,,,2063,initials
 PL-PD-SE,Sejny,County,,,2009,first2
@@ -30582,7 +30390,6 @@ PL-PD-ZA,Zambrów,County,,,2014,first2
 PL-PM-BY,Bytów,County,,,2201,first2
 PL-PM-CH,Chojnice,County,,,2202,first2
 PL-PM-CZ,Człuchów,County,,,2203,first2
-PL-PM-GC,Gdańsk (City),City with powiat rights,,,2261,initials
 PL-PM-GD,Gdańsk,County,,,2204,first2
 PL-PM-GY,Gdynia,City with powiat rights,,,2262,any2
 PL-PM-KA,Kartuzy,County,,,2205,first2
@@ -30605,7 +30412,6 @@ PL-PO-BR,Brzozów,County,,,1802,first2
 PL-PO-DE,Dębica,County,,,1803,first2
 PL-PO-JA,Jarosław,County,,,1804,first2
 PL-PO-JS,Jasło,County,,,1805,any2
-PL-PO-KC,Krosno (City),City with powiat rights,,,1861,initials
 PL-PO-KO,Kolbuszowa,County,,,1806,first2
 PL-PO-KR,Krosno,County,,,1807,first2
 PL-PO-LE,Lesko,County,,,1821,first2
@@ -30613,28 +30419,23 @@ PL-PO-LU,Lubaczów,County,,,1809,first2
 PL-PO-LZ,Leżajsk,County,,,1808,any2
 PL-PO-MI,Mielec,County,,,1811,first2
 PL-PO-NI,Nisko,County,,,1812,first2
-PL-PO-PC,Przemyśl (City),City with powiat rights,,,1862,initials
 PL-PO-PR,Przemyśl,County,,,1813,first2
 PL-PO-PZ,Przeworsk,County,,,1814,any2
-PL-PO-RC,Rzeszów (City),City with powiat rights,,,1863,initials
 PL-PO-RS,Ropczyce-Sędziszów,County,,,1815,initials
 PL-PO-RZ,Rzeszów,County,,,1816,first2
 PL-PO-SA,Sanok,County,,,1817,first2
 PL-PO-ST,Strzyżów,County,,,1819,first2
 PL-PO-SW,Stalowa Wola,County,,,1818,initials
 PL-PO-TA,Tarnobrzeg,County,,,1820,first2
-PL-PO-TC,Tarnobrzeg (City),City with powiat rights,,,1864,initials
 PL-SL-BB,Bielsko-Biała,City with powiat rights,,,2461,initials
 PL-SL-BE,Będzin,County,,,2401,first2
 PL-SL-BI,Bielsko,County,,,2402,first2
 PL-SL-BL,Bieruń-Lędziny,County,,,2414,initials
 PL-SL-BY,Bytom,City with powiat rights,,,2462,first2
-PL-SL-CC,Częstochowa (CIty),City with powiat rights,,,2464,initials
 PL-SL-CH,Chorzów,City with powiat rights,,,2463,first2
 PL-SL-CI,Cieszyn,County,,,2403,first2
 PL-SL-CZ,Częstochowa,County,,,2404,first2
 PL-SL-DG,Dąbrowa Górnicza,City with powiat rights,,,2465,initials
-PL-SL-GC,Gliwice (City),City with powiat rights,,,2466,initials
 PL-SL-GL,Gliwice,County,,,2405,first2
 PL-SL-JA,Jaworzno,City with powiat rights,,,2468,first2
 PL-SL-JZ,Jastrzębie-Zdrój,City with powiat rights,,,2467,initials
@@ -30647,7 +30448,6 @@ PL-SL-MY,Mysłowice,City with powiat rights,,,2470,first2
 PL-SL-PS,Piekary Śląskie,City with powiat rights,,,2471,initials
 PL-SL-PZ,Pszczyna,County,,,2410,any2
 PL-SL-RA,Racibórz,County,,,2411,first2
-PL-SL-RC,Rybnik (City),City with powiat rights,,,2473,initials
 PL-SL-RS,Ruda Śląska,City with powiat rights,,,2472,initials
 PL-SL-RY,Rybnik,County,,,2412,first2
 PL-SL-SO,Sosnowiec,City with powiat rights,,,2475,first2
@@ -30663,7 +30463,6 @@ PL-SL-ZY,Żywiec,County,,,2417,first2
 PL-SW-BU,Busko,County,,,2601,first2
 PL-SW-JE,Jędrzejów,County,,,2602,first2
 PL-SW-KA,Kazimierza,County,,,2603,first2
-PL-SW-KC,Kielce (City),City with powiat rights,,,2661,initials
 PL-SW-KI,Kielce,County,,,2604,first2
 PL-SW-KO,Końskie,County,,,2605,first2
 PL-SW-OP,Opatów,County,,,2606,first2
@@ -30681,13 +30480,11 @@ PL-WI-GO,Gostyń,County,,,3004,first2
 PL-WI-GW,Grodzisk Wielkopolski,County,,,3005,initials
 PL-WI-JA,Jarocin,County,,,3006,first2
 PL-WI-KA,Kalisz,County,,,3007,first2
-PL-WI-KC,Kalisz (City),City with powiat rights,,,3061,initials
 PL-WI-KE,Kępno,County,,,3008,first2
 PL-WI-KN,Konin (City),City with powiat rights,,,3062,any2
 PL-WI-KO,Konin,County,,,3010,first2
 PL-WI-KR,Krotoszyn,County,,,3012,first2
 PL-WI-KS,Kościan,County,,,3011,any2
-PL-WI-LC,Leszno (City),City with powiat rights,,,3063,initials
 PL-WI-LE,Leszno,County,,,3013,first2
 PL-WI-MI,Międzychód,County,,,3014,first2
 PL-WI-NT,Nowy Tomyśl,County,,,3015,initials
@@ -30695,7 +30492,6 @@ PL-WI-OB,Oborniki,County,,,3016,first2
 PL-WI-OO,Koło,County,,,3009,any2
 PL-WI-OS,Ostrzeszów,County,,,3018,first2
 PL-WI-OW,Ostrów Wielkopolski,County,,,3017,initials
-PL-WI-PC,Poznań (City),City with powiat rights,,,3064,initials
 PL-WI-PI,Piła,County,,,3019,first2
 PL-WI-PL,Pleszew,County,,,3020,first2
 PL-WI-PO,Poznań,County,,,3021,first2
@@ -30712,7 +30508,6 @@ PL-WI-ZO,Złotów,County,,,3031,first2
 PL-WM-BA,Bartoszyce,County,,,2801,first2
 PL-WM-BR,Braniewo,County,,,2802,first2
 PL-WM-DZ,Działdowo,County,,,2803,first2
-PL-WM-EC,Elbląg (City),City with powiat rights,,,2861,initials
 PL-WM-EK,Ełk,County,,,2805,first2
 PL-WM-EL,Elbląg,County,,,2804,first2
 PL-WM-GI,Giżycko,County,,,2806,first2
@@ -30723,7 +30518,6 @@ PL-WM-LI,Lidzbark,County,,,2809,first2
 PL-WM-MR,Mrągowo,County,,,2810,first2
 PL-WM-NI,Nidzica,County,,,2811,first2
 PL-WM-NM,Nowe Miasto,County,,,2812,initials
-PL-WM-OC,Olsztyn (City),City with powiat rights,,,2862,initials
 PL-WM-OL,Olecko,County,,,2813,first2
 PL-WM-OS,Ostróda,County,,,2815,first2
 PL-WM-OZ,Olsztyn,County,,,2814,any2
@@ -30737,7 +30531,6 @@ PL-ZA-GO,Goleniów,County,,,3204,first2
 PL-ZA-GR,Gryfice,County,,,3205,first2
 PL-ZA-GY,Gryfino,County,,,3206,any2
 PL-ZA-KA,Kamień,County,,,3207,first2
-PL-ZA-KC,Koszalin (City),City with powiat rights,,,3261,initials
 PL-ZA-KO,Kołobrzeg,County,,,3208,first2
 PL-ZA-KS,Koszalin,County,,,3209,any2
 PL-ZA-MY,Myślibórz,County,,,3210,first2
@@ -33490,7 +33283,6 @@ RO-PH-IZ,Izvoarele,Commune,,,,first2
 RO-PH-JU,Jugureni,Commune,,,,first2
 RO-PH-LA,Lapos,Commune,,,,first2
 RO-PH-LI,Lipanesti,Commune,,,,first2
-RO-PH-LO,Plopu,Commune,,,,any2
 RO-PH-MA,Magurele,Commune,,,,first2
 RO-PH-MG,Magureni,Commune,,,,any2
 RO-PH-MI,Mizil,Commune,,Oras Mizil,,first2
@@ -36876,11 +36668,9 @@ RW-SU-NU,Nyaruguru,District,,,23,hasc
 RW-SU-NY,Nyamagabe,District,,,25,hasc
 RW-SU-NZ,Nyanza,District,,,21,hasc
 RW-SU-RH,Ruhango,District,,,26,hasc
-SA-AS-AA,Abha,Governorate,أَبْهَا,,,any2
 SA-AS-AB,Al Birk,Governorate,,,,initials
 SA-AS-AH,Al Harjah,Governorate,,,,initials
 SA-AS-AM,Al Majardah,Governorate,,,,initials
-SA-AS-AN,Al-Namas,Governorate,النماص,,,initials
 SA-AS-AR,Ahad Rifaydah,Governorate,,,,initials
 SA-AS-BA,Balqarn,Governorate,بلقرن,,,first2
 SA-AS-BI,Bisha,Governorate,بيشة‎,Qal`at Bishah,,first2
@@ -37208,7 +36998,6 @@ SB-WE-VN,Vonunu,Ward,,,207,hasc
 SB-WE-VV,Vonavona,Ward,,,213,hasc
 SD-CD-MU,Mukjar,District,,,,first2
 SD-CD-ZA,Zallingi,District,,,,first2
-SD-DN-AF,Al Fasher,District,,,,initials
 SD-DN-KA,Kabkabiya,District,,,,first2
 SD-DN-KU,Kutum,District,,,,first2
 SD-DN-ME,Mellit,District,,,,first2
@@ -37218,7 +37007,6 @@ SD-DS-IE,Id El Ghanem,District,,,,initials
 SD-DS-KA,Kas,District,,,,first2
 SD-DS-NY,Nyala,District,,,,first2
 SD-DS-TU,Tulus,District,,,,first2
-SD-DW-AG,Al Geneina,District,,,,initials
 SD-ED-AD,Al Deain,District,,,,initials
 SD-ED-NY,Nyala,District,,,,first2
 SD-GD-AA,Al Galabat,District,,,,any2
@@ -37233,7 +37021,6 @@ SD-GZ-NA,North al Gazera,District,,,,initials
 SD-GZ-SA,Sharq al Gazera,District,,,,initials
 SD-GZ-SO,South al Gazera,District,,,,first2
 SD-GZ-UA,Um Al Gura,District,,,,initials
-SD-KA-AG,Al Gash,District,,,,initials
 SD-KA-HA,Hamashkorieb,District,,,,first2
 SD-KA-KA,Kassala,District,,,,first2
 SD-KA-NA,Nahr Atbara,District,,,,initials
@@ -37250,13 +37037,9 @@ SD-KS-DI,Dilling,District,,,,first2
 SD-KS-KA,Kadugli,District,,KADUGLI,,first2
 SD-KS-RA,Rashad,District,,,,first2
 SD-KS-TA,Talodi,District,,,,first2
-SD-NB-AD,Ad Damazin,District,,,,initials
-SD-NB-AK,Al Kurumik,District,,,,initials
-SD-NB-AR,Al Roseires,District,,,,initials
 SD-NB-BA,Baw,District,,,,first2
 SD-NB-GE,Geissan,District,,,,first2
 SD-NK-BA,Bara,District,,,,first2
-SD-NK-JA,Jebrat al Sheikh,District,,,,initials
 SD-NK-SH,Sheikan,District,,,,first2
 SD-NK-SO,Sowdari,District,,,,first2
 SD-NK-UR,Um Rawaba,District,,,,initials
@@ -37264,25 +37047,18 @@ SD-NO-AD,Addabah,District,,,,first2
 SD-NO-DO,Dongola,District,,,,first2
 SD-NO-ME,Merawi,District,,,,first2
 SD-NO-WH,Wadi Halfa,District,,,,initials
-SD-NR-AD,Ad Damer,District,,,,initials
 SD-NR-AH,Abu Hamad,District,,,,initials
-SD-NR-AM,Al Matammah,District,,,,initials
 SD-NR-AT,Atbara,District,,,,first2
 SD-NR-BE,Berber,District,,,,first2
 SD-NR-SH,Shendi,District,,,,first2
-SD-NW-AD,Ad Douiem,District,,,,initials
-SD-NW-AG,Al Gutaina,District,,,,initials
-SD-NW-AJ,Al Jabalian,District,,,,initials
 SD-NW-KO,Kosti,District,,,,first2
 SD-RS-HA,Halayeb,District,,,,first2
 SD-RS-PS,Port Sudan,District,,,,initials
 SD-RS-SI,Sinkat,District,,,,first2
 SD-RS-TO,Tokar,District,,,,first2
-SD-SI-AD,Ad Dinder,District,,,,initials
 SD-SI-SE,Sennar,District,,,,first2
 SD-SI-SI,Singa,District,,,,first2
 SD-WK-AB,Abyei,District,,,,first2
-SD-WK-AS,As Salam,District,,,,initials
 SD-WK-EN,En Nuhud,District,,,,initials
 SD-WK-GH,Ghebeish,District,,,,first2
 SD-WK-LA,Lagawa,District,,,,first2
@@ -38052,7 +37828,6 @@ SR-WA-KT,Kwatta,Ressort,,,,hasc
 SR-WA-LD,Lelydorp,Ressort,,,,hasc
 SR-WA-NG,De Nieuwe Grond,Ressort,,,,hasc
 SR-WA-SP,Saramaccapolder,Ressort,,Saramacca Polder,,hasc
-SS-EC-BA,Bahr al Jabal,District,,,,initials
 SS-EC-KK,Kajo Kaii,District,,,,initials
 SS-EC-NY,Nahr Yei,District,,,,initials
 SS-EC-TE,Terkaka,District,,,,first2
@@ -38063,7 +37838,6 @@ SS-EE-SH,Shokodom,District,,,,first2
 SS-JU-AK,Akobo,District,,,,first2
 SS-JU-AY,Ayod,District,,,,first2
 SS-JU-BO,Bor,District,,,,first2
-SS-JU-FA,Fam al Zaraf,District,,,,initials
 SS-JU-NA,Nahr Atiem,District,,,,initials
 SS-JU-PI,Pibor,District,,,,first2
 SS-JU-WA,Wat,District,,,,first2
@@ -38075,8 +37849,6 @@ SS-NB-AR,Aryat,District,,,,first2
 SS-NB-AW,Aweil,District,,,,first2
 SS-NB-NL,Nahr Lol,District,,,,initials
 SS-NB-WA,Wanjuk,District,,,,first2
-SS-NU-AM,Al Mabien,District,,,,initials
-SS-NU-AR,Al Renk,District,,,,initials
 SS-NU-BA,Baleit,District,,,,first2
 SS-NU-FA,Fashooda,District,,,,first2
 SS-NU-MA,Malut,District,,,,first2
@@ -38155,7 +37927,6 @@ SV-CH-SL,San Luis del Carmen,Municipality,,,,hasc
 SV-CH-SM,San Miguel de Mercedes,Municipality,,,,hasc
 SV-CH-SO,San Antonio Los Ranchos,Municipality,,,,hasc
 SV-CH-SR,San Rafael,Municipality,,,,hasc
-SV-CH-ST,Santa Rita,Municipality,,,,hasc
 SV-CH-SZ,San Francisco Morazán,Municipality,,,,hasc
 SV-CH-TE,Tejutla,Municipality,,,,hasc
 SV-CU-CA,Candelaria,Municipality,,,,hasc
@@ -38367,19 +38138,13 @@ SV-US-SM,Santa María,Municipality,,,,hasc
 SV-US-TE,Tecapán,Municipality,,,,hasc
 SV-US-US,Usulután,Municipality,,,,hasc
 SY-DI-DA,Damascus,District,,,,first2
-SY-DR-AS,As-Sanamayn,District,,,,initials
 SY-DR-DA,Daraa,District,,,,first2
 SY-DR-IZ,Izra',District,,,,first2
 SY-DY-AK,Abu Kamal,District,,,,initials
 SY-DY-DE,Deir ez-Zor,District,,,,initials
 SY-DY-MA,Mayadin,District,,,,first2
 SY-HA-AH,Al-Hasakah,District,,,,initials
-SY-HA-AM,Al-Malikiyah,District,,,,initials
-SY-HA-AQ,Al Qamishli,District,,,,initials
 SY-HA-RA,Ra's al-'Ayn,District,,,,initials
-SY-HI-AM,Al-Mukharram,District,,,,initials
-SY-HI-AQ,Al-Qusayr,District,,,,initials
-SY-HI-AR,Ar-Rastan,District,,,,initials
 SY-HI-HI,Hims,District,,,,first2
 SY-HI-PA,Palmyra,District,,,,first2
 SY-HI-TA,Talkalakh,District,,,,first2
@@ -38391,7 +38156,6 @@ SY-HL-AZ,A'zaz,District,,,,first2
 SY-HL-JA,Jarabulus,District,,,,first2
 SY-HL-JS,Jabal Sam'an,District,,,,initials
 SY-HL-MA,Manbij,District,,,,first2
-SY-HM-AS,As-Suqaylabiyah,District,,,,initials
 SY-HM-HA,Hama,District,,,,first2
 SY-HM-MA,Masyaf,District,,,,first2
 SY-HM-MU,Muhardeh,District,,,,first2
@@ -38399,19 +38163,13 @@ SY-HM-SA,Salamiyah,District,,,,first2
 SY-ID-AR,Arihah,District,,,,first2
 SY-ID-HA,Harem,District,,,,first2
 SY-ID-ID,Idlib,District,,,,first2
-SY-ID-JA,Jisr ash-Shugur,District,,,,initials
 SY-ID-MA,Ma'arrat al-Numan,District,,,,initials
-SY-LA-AH,Al-Haffah,District,,,,initials
 SY-LA-JA,Jableh,District,,,,first2
 SY-LA-LA,Latakia,District,,,,first2
 SY-LA-QA,Qardaha,District,,,,first2
 SY-QU-QU,Quneitra,District,,,,first2
 SY-RA-AR,Ar-Raqqah,District,,,,initials
-SY-RA-AT,Ath-Thawrah,District,,,,initials
 SY-RA-TA,Tal Abyad,District,,,,initials
-SY-RD-AN,An-Nabk,District,,,,initials
-SY-RD-AQ,Al-Qutayfah,District,,,,initials
-SY-RD-AT,At-Tall,District,,,,initials
 SY-RD-DA,Darayya,District,,,,first2
 SY-RD-DU,Duma,District,,,,first2
 SY-RD-MR,Markaz Rif Dimashq,District,,,,initials
@@ -38421,7 +38179,6 @@ SY-RD-ZA,Zabadani,District,,,,first2
 SY-SU-AS,As-Suwayda,District,,,,initials
 SY-SU-SA,Salkhad,District,,,,first2
 SY-SU-SH,Shahba,District,,,,first2
-SY-TA-AS,Ash-Shaykh Badr,District,,,,initials
 SY-TA-BA,Baniyas,District,,,,first2
 SY-TA-DU,Duraykish,District,,,,first2
 SY-TA-SA,Safita,District,,,,first2
@@ -39644,7 +39401,6 @@ TM-BA-GU,Gumdag,City,,Kum Dag,,first2
 TM-BA-HA,Hazar,City,,,,first2
 TM-BA-KA,Kanar,Borough,,,,first2
 TM-BA-MA,Magtymguly,District,,Garry Gala,,first2
-TM-BA-SC,Serdar City,City,,,,initials
 TM-BA-SE,Serdar,District,,Gyzylarvat,,first2
 TM-BA-TU,Türkmenbaşy,District,,,,first2
 TM-DA-AK,Akdepe,District,,,,first2
@@ -39669,10 +39425,8 @@ TM-LE-KO,Köýtendag,District,,Çarşaňňy,,first2
 TM-LE-SA,Saýat,District,,,,first2
 TM-LE-TU,Türkmenabat,City,,Türkmenabat,,first2
 TM-MA-BA,Baýramaly,District,,,,first2
-TM-MA-BC,Baýramaly City,City,,,,initials
 TM-MA-GA,Garagum,District,,,,first2
 TM-MA-MA,Mary,District,,,,first2
-TM-MA-MC,Mary City,City,,,,initials
 TM-MA-MU,Murgap,District,,,,first2
 TM-MA-OG,Oguzhan,District,,,,first2
 TM-MA-SA,Sakarçäge,District,,,,first2
@@ -39956,7 +39710,6 @@ TO-TT-VA,Vaini,District,,,,first2
 TO-VA-NA,n.a.,,,,,first2
 TR-AA-AL,Aladağ,District,,,,hasc
 TR-AA-AS,Seyhan,District,,,,hasc
-TR-AA-AY,Yüreğir,District,,,,hasc
 TR-AA-CE,Ceyhan,District,,,,hasc
 TR-AA-FE,Feke,District,,,,hasc
 TR-AA-IM,İmamoğlu,District,,,,hasc
@@ -39964,7 +39717,6 @@ TR-AA-KS,Karaisali,District,,,,hasc
 TR-AA-KT,Karataş,District,,,,hasc
 TR-AA-KZ,Kozan,District,,,,hasc
 TR-AA-PO,Pozantı,District,,,,hasc
-TR-AA-SA,Saimbeyli,District,,,,hasc
 TR-AA-TU,Tufanbeyli,District,,,,hasc
 TR-AA-YU,Yumurtalık,District,,,,hasc
 TR-AD-AD,Merkez,District,,Adiyaman,,hasc
@@ -40244,7 +39996,6 @@ TR-DU-GU,Gümüşova,District,,,,hasc
 TR-DU-KA,Kaynaşlı,District,,,,hasc
 TR-DU-YI,Yığılca,District,,,,hasc
 TR-DY-BI,Bismil,District,,,,hasc
-TR-DY-CE,Çermik,District,,,,hasc
 TR-DY-CI,Çınar,District,,,,hasc
 TR-DY-CU,Çüngüş,District,,,,hasc
 TR-DY-DI,Dicle,District,,,,hasc
@@ -40256,7 +40007,6 @@ TR-DY-HR,Hazro,District,,,,hasc
 TR-DY-KO,Kocaköy,District,,,,hasc
 TR-DY-KU,Kulp,District,,,,hasc
 TR-DY-LI,Lice,District,,,,hasc
-TR-DY-SI,Silvan,District,,,,hasc
 TR-ED-ED,Merkez,District,,Edirne,,hasc
 TR-ED-EN,Enez,District,,,,hasc
 TR-ED-HA,Havsa,District,,,,hasc
@@ -40738,8 +40488,6 @@ TR-SP-BO,Boyabat,District,,,,hasc
 TR-SP-DI,Dikmen,District,,,,hasc
 TR-SP-DU,Durağan,District,,,,hasc
 TR-SP-ER,Erfelek,District,,,,hasc
-TR-SP-GE,Gerze,District,,,,hasc
-TR-SP-SA,Saraydüzü,District,,,,hasc
 TR-SP-SP,Merkez,District,,Sinop,,hasc
 TR-SP-TU,Türkeli,District,,,,hasc
 TR-SR-BE,Beytüşşebap,District,,,,hasc
@@ -40986,7 +40734,6 @@ TZ-MO-MV,Mvomero,District,,,06,hasc
 TZ-MO-UL,Ulanga,District,,,04,hasc
 TZ-MT-MA,Masasi,District,,,03,hasc
 TZ-MT-MR,Mtwara Rural,District,,,01,hasc
-TZ-MT-MT,Masasi Town,District,,,07,initials
 TZ-MT-MU,Mtwara Urban,District,,Mtwara Mikindani,05,hasc
 TZ-MT-NA,Nanyumbu,District,,,06,first2
 TZ-MT-NE,Newala,District,,,02,hasc
@@ -41006,7 +40753,6 @@ TZ-MZ-SE,Sengerema,District,,,05,hasc
 TZ-MZ-UK,Ukerewe,District,,,01,hasc
 TZ-NJ-LU,Ludewa,District,,,05,hasc
 TZ-NJ-MA,Makete,District,,,03,hasc
-TZ-NJ-MT,Makambako Town,District,,,06,initials
 TZ-NJ-NJ,Njombe Rural,District,,Njombe,04,hasc
 TZ-NJ-NU,Njombe Urban,District,,,01,initials
 TZ-NJ-WA,Wanging'ombe,District,,,02,first2
@@ -41060,10 +40806,8 @@ TZ-TB-TA,Tabora,District,,,06,hasc
 TZ-TB-UR,Urambo,District,,,04,hasc
 TZ-TB-UY,Uyui,District,,,03,hasc
 TZ-TN-HA,Handeni,District,,,06,hasc
-TZ-TN-HT,Handeni Town,District,,,10,initials
 TZ-TN-KI,Kilindi,District,,,07,hasc
 TZ-TN-KO,Korogwe,District,,,02,hasc
-TZ-TN-KT,Korogwe Town,District,,,09,initials
 TZ-TN-LU,Lushoto,District,,,01,hasc
 TZ-TN-MK,Mkinga,District,,,08,first2
 TZ-TN-MU,Muheza,District,,,03,hasc
@@ -41231,15 +40975,12 @@ UA-IF-SN,Sniatyns'kyi,District,,Snyatynskyi,,hasc
 UA-IF-TL,Tlumats'kyi,District,,Tlumatskyi,,hasc
 UA-IF-TY,Tysmenyts'kyi,District,,Tysmenetskyi,,hasc
 UA-IF-VE,Verkhovyns'kyi,District,,Verhovynskyi,,hasc
-UA-KC-DE,Desnians'kyi,Raion,,Desnianskyi,,hasc
 UA-KC-DN,Dniprovs'kyi,Raion,,Dniprovskyi,,hasc
 UA-KC-HO,Holosiïvs'kyi,Raion,,Holosiivskyi,,hasc
 UA-KC-OB,Obolons'kyi,Raion,,Obolonskyi,,hasc
 UA-KC-PE,Pechers'kyi,Raion,,Pecherskyi,,hasc
 UA-KC-PO,Podil's'kyi,Raion,,Podilskyi,,hasc
-UA-KC-SH,Shevchenkivs'kyi,Raion,,Shevchenkivskyi,,hasc
 UA-KC-SO,Solomians'kyi,Raion,,Solomianskyi,,hasc
-UA-KC-SV,Sviatoshyns'kyi,Raion,,Sviatoshynskyi,,hasc
 UA-KH-BO,Bobrynets'kyi,District,,Bobrynetskyi,,hasc
 UA-KH-DB,Dobrovelychkivs'kyi,District,,Dobrovelychkivsky,,hasc
 UA-KH-DL,Dolyns'kyi,District,,Dolynskyi-Krv,,hasc
@@ -42055,7 +41796,6 @@ US-AZ-PN,Pinal,County,,,04021,
 US-AZ-SA,Santa Cruz,County,,,04023,
 US-AZ-YA,Yavapai,County,,,04025,
 US-AZ-YU,Yuma,County,,,04027,
-US-CA-AA,Alameda,County,,,06001,
 US-CA-AM,Amador,County,,,06005,
 US-CA-AP,Alpine,County,,,06003,
 US-CA-BU,Butte,County,,,06007,
@@ -42982,8 +42722,6 @@ US-KY-WO,Woodford,County,,,21239,
 US-KY-WR,Warren,County,,,21227,
 US-KY-WS,Washington,County,,,21229,
 US-KY-WY,Wayne,County,,,21231,
-US-LA-AD,Acadia,Parish,,,22001,
-US-LA-AE,Ascension,Parish,,,22005,
 US-LA-AL,Allen,Parish,,,22003,
 US-LA-AS,Assumption,Parish,,,22007,
 US-LA-AV,Avoyelles,Parish,,,22009,
@@ -43063,7 +42801,6 @@ US-MA-WO,Worcester,County,,,25027,
 US-MD-AL,Allegany,County,,,24001,
 US-MD-AN,Anne Arundel,County,,,24003,
 US-MD-BA,Baltimore county,County,,,24005,
-US-MD-BC,Baltimore city,City,,,24510,
 US-MD-CE,Cecil,County,,,24015,
 US-MD-CH,Charles,County,,,24017,
 US-MD-CL,Calvert,County,,,24009,
@@ -43146,7 +42883,6 @@ US-MI-LE,Leelanau,County,,,26089,
 US-MI-LI,Livingston,County,,,26093,
 US-MI-LK,Lake,County,,,26085,
 US-MI-LN,Lenawee,County,,,26091,
-US-MI-LP,Lapeer,County,,,26087,
 US-MI-LU,Luce,County,,,26095,
 US-MI-MB,Macomb,County,,,26099,
 US-MI-MC,Montcalm,County,,,26117,
@@ -43525,104 +43261,34 @@ US-MT-WI,Wibaux,County,,,30109,
 US-MT-YS,Yellowstone,County,,,30111,
 US-NC-AA,Alamance,County,,,37001,
 US-NC-AE,Alexander,County,,,37003,
-US-NC-AL,Alleghany,County,,,37005,
-US-NC-AN,Anson,County,,,37007,
-US-NC-AS,Ashe,County,,,37009,
-US-NC-AV,Avery,County,,,37011,
 US-NC-BA,Beaufort,County,,,37013,
-US-NC-BK,Burke,County,,,37023,
-US-NC-BL,Bladen,County,,,37017,
 US-NC-BO,Buncombe,County,,,37021,
 US-NC-BS,Brunswick,County,,,37019,
-US-NC-BT,Bertie,County,,,37015,
 US-NC-CB,Catawba,County,,,37035,
-US-NC-CD,Camden,County,,,37029,
-US-NC-CE,Carteret,County,,,37031,
-US-NC-CH,Chatham,County,,,37037,
-US-NC-CI,Currituck,County,,,37053,
-US-NC-CL,Caldwell,County,,,37027,
-US-NC-CM,Columbus,County,,,37047,
 US-NC-CN,Craven,County,,,37049,
-US-NC-CO,Cherokee,County,,,37039,
-US-NC-CR,Cabarrus,County,,,37025,
-US-NC-CS,Caswell,County,,,37033,
-US-NC-CU,Cumberland,County,,,37051,
 US-NC-CV,Cleveland,County,,,37045,
-US-NC-CW,Chowan,County,,,37041,
-US-NC-CY,Clay,County,,,37043,
 US-NC-DD,Davidson,County,,,37057,
 US-NC-DE,Dare,County,,,37055,
 US-NC-DH,Durham,County,,,37063,
-US-NC-DP,Duplin,County,,,37061,
-US-NC-DV,Davie,County,,,37059,
-US-NC-ED,Edgecombe,County,,,37065,
-US-NC-FO,Forsyth,County,,,37067,
-US-NC-FR,Franklin,County,,,37069,
-US-NC-GE,Greene,County,,,37079,
-US-NC-GH,Graham,County,,,37075,
 US-NC-GN,Granville,County,,,37077,
 US-NC-GS,Gaston,County,,,37071,
-US-NC-GT,Gates,County,,,37073,
-US-NC-GU,Guilford,County,,,37081,
-US-NC-HD,Hertford,County,,,37091,
-US-NC-HE,Hyde,County,,,37095,
-US-NC-HL,Halifax,County,,,37083,
 US-NC-HN,Henderson,County,,,37089,
-US-NC-HO,Hoke,County,,,37093,
 US-NC-HT,Harnett,County,,,37085,
 US-NC-HW,Haywood,County,,,37087,
-US-NC-IR,Iredell,County,,,37097,
-US-NC-JA,Jackson,County,,,37099,
 US-NC-JH,Johnston,County,,,37101,
-US-NC-JN,Jones,County,,,37103,
-US-NC-LE,Lee,County,,,37105,
-US-NC-LI,Lincoln,County,,,37109,
-US-NC-LN,Lenoir,County,,,37107,
 US-NC-MB,Mecklenburg,County,,,37119,
-US-NC-MD,Madison,County,,,37115,
-US-NC-ME,Moore,County,,,37125,
-US-NC-MI,Mitchell,County,,,37121,
-US-NC-MN,Macon,County,,,37113,
-US-NC-MO,Montgomery,County,,,37123,
-US-NC-MR,Martin,County,,,37117,
 US-NC-MW,McDowell,County,,,37111,
-US-NC-NA,Nash,County,,,37127,
 US-NC-NE,New Hanover,County,,,37129,
-US-NC-NO,Northampton,County,,,37131,
-US-NC-ON,Onslow,County,,,37133,
-US-NC-OR,Orange,County,,,37135,
 US-NC-PD,Pender,County,,,37141,
-US-NC-PI,Pitt,County,,,37147,
-US-NC-PM,Pamlico,County,,,37137,
 US-NC-PN,Person,County,,,37145,
-US-NC-PO,Polk,County,,,37149,
-US-NC-PQ,Perquimans,County,,,37143,
 US-NC-PU,Pasquotank,County,,,37139,
-US-NC-RA,Randolph,County,,,37151,
-US-NC-RB,Robeson,County,,,37155,
-US-NC-RC,Rockingham,County,,,37157,
-US-NC-RI,Richmond,County,,,37153,
-US-NC-RU,Rutherford,County,,,37161,
 US-NC-RW,Rowan,County,,,37159,
-US-NC-SC,Scotland,County,,,37165,
 US-NC-SN,Stanly,County,,,37167,
-US-NC-SO,Stokes,County,,,37169,
 US-NC-SP,Sampson,County,,,37163,
-US-NC-SU,Surry,County,,,37171,
-US-NC-SW,Swain,County,,,37173,
-US-NC-TR,Transylvania,County,,,37175,
-US-NC-TY,Tyrrell,County,,,37177,
-US-NC-UN,Union,County,,,37179,
-US-NC-VA,Vance,County,,,37181,
 US-NC-WE,Wilkes,County,,,37193,
-US-NC-WI,Washington,County,,,37187,
 US-NC-WK,Wake,County,,,37183,
 US-NC-WO,Wilson,County,,,37195,
-US-NC-WR,Warren,County,,,37185,
-US-NC-WT,Watauga,County,,,37189,
-US-NC-WY,Wayne,County,,,37191,
 US-NC-YD,Yadkin,County,,,37197,
-US-NC-YN,Yancey,County,,,37199,
 US-ND-AD,Adams,County,,,38001,
 US-ND-BA,Barnes,County,,,38003,
 US-ND-BE,Benson,County,,,38005,
@@ -44693,7 +44359,6 @@ US-VA-BK,Buckingham,County,,,51029,
 US-VA-BL,Bland,County,,,51021,
 US-VA-BO,Botetourt,County,,,51023,
 US-VA-BU,Brunswick,County,,,51025,
-US-VA-CC,Charles City,County,,,51036,
 US-VA-CD,Chesterfield,County,,,51041,
 US-VA-CE,Charlottesville,City,,,51540,
 US-VA-CG,Craig,County,,,51045,
@@ -45675,11 +45340,8 @@ VN-AG-AH,An Phú,District,,An Phu,,any2
 VN-AG-AK,Châu Thành,District,,Chau Thanh,,hasc
 VN-AG-AM,Phú Tân,District,,Phu Tan,,hasc
 VN-AG-AN,Tân Châu,Town,,Tan Chau,,hasc
-VN-AG-AP,Thoại Sơn,District,,Thoai Son,,hasc
 VN-AG-AS,Tri Tôn,District,,Tri Ton,,hasc
 VN-AG-AT,Tịnh Biên,District,,Tinh Bien,,hasc
-VN-AG-CM,Chợ Mới,District,,Cho Moi,,initials
-VN-AG-LX,Long Xuyên,City,,Long Xuyen,,initials
 VN-BD-AL,An Lão,District,,An Lao,,initials
 VN-BD-AN,An Nhơn,Town,,An Nhon,,initials
 VN-BD-BM,Vân Canh,District,,Van Canh,,hasc
@@ -45781,7 +45443,6 @@ VN-CB-HL,Hạ Lang,District,,Ha Lang,,initials
 VN-CB-HQ,Hà Quảng,District,,Ha Quang,,initials
 VN-CB-NB,Nguyên Bình,District,,Nguyen Binh,,initials
 VN-CB-PH,Phục Hoà,District,,Phuc Hoa,,initials
-VN-CB-TA,Thạch An,District,,Thach An,,initials
 VN-CB-TL,Trà Lĩnh,District,,Tra Linh,,initials
 VN-CM-CC,Cái Nước,District,,Cai Nuoc,,hasc
 VN-CM-CD,Cà Mau,City,,Ca Mau,,hasc
@@ -45910,7 +45571,6 @@ VN-HM-HH,Lý Nhân,District,,Ly Nhan,,hasc
 VN-HM-KB,Kim Bảng,District,,Kim Bang,,initials
 VN-HM-PL,Phủ Lý,City,,Phu Ly,,initials
 VN-HM-TL,Thanh Liêm,District,,Thanh Liem,,initials
-VN-HN-AP,Đan Phượng,District,,Dan Phuong,,initials
 VN-HN-BT,Bắc Từ Liêm,Urban District,,Bac Tu Liem,,initials
 VN-HN-BV,Ba Vì,District,,Ba Vi,,initials
 VN-HN-CG,Cầu Giấy,Urban District,,Cau Giay,,initials
@@ -45951,11 +45611,9 @@ VN-HO-LP,Đà Bắc,District,,Da Bac,,hasc
 VN-HO-LS,Lạc Sơn,District,,Lac Son,,initials
 VN-HO-LT,Lạc Thủy,District,,Lac Thuy,,initials
 VN-HO-MC,Mai Châu,District,,Mai Chau,,initials
-VN-HP-AL,An Lão,District,,An Lao,,initials
 VN-HP-BL,Bạch Long Vĩ,District,,Bach Long Vi,,initials
 VN-HP-CH,Cát Hải,District,,Cat Hai,,initials
 VN-HP-IP,An Dương,District,,An Duong,,hasc
-VN-HP-KA,Hải An,Urban District,,Hai An,,hasc
 VN-HP-KC,Dương Kinh,Urban District,,Duong Kinh,,hasc
 VN-HP-KD,Vĩnh Bảo,District,,Vinh Bao,,hasc
 VN-HP-KH,Hồng Bàng,Urban District,,Hong Bang,,hasc
@@ -45997,12 +45655,10 @@ VN-HY-LT,Mỹ Hào,District,,My Hao,,hasc
 VN-HY-LX,Phù Cừ,District,,Phu Cu,,hasc
 VN-HY-LY,Văn Lâm,District,,Van Lam,,hasc
 VN-HY-TL,Tiên Lữ,District,,Tien Lu,,initials
-VN-KG-AB,An Biên,District,,An Bien,,initials
 VN-KG-CT,Châu Thành,District,,Chau Thanh,,initials
 VN-KG-GQ,Gò Quao,District,,Go Quao,,initials
 VN-KG-GR,Giồng Riềng,District,,Giong Rieng,,initials
 VN-KG-GT,Giang Thành,District,,Giang Thanh,,initials
-VN-KG-HA,Hòn Đất,District,,Hon Dat,,initials
 VN-KG-KH,Kiên Hải,District,,Kien Hai,,initials
 VN-KG-KL,Kiên Lương,District,,Kien Luong,,initials
 VN-KG-MD,Hà Tiên,Town,,Ha Tien,,hasc
@@ -46059,12 +45715,7 @@ VN-LD-NT,Cát Tiên,District,,Cat Tien,,hasc
 VN-LD-NX,Đức Trọng,District,,Duc Trong,,hasc
 VN-LI-NC,Mường Tè,District,,Muong Te,,hasc
 VN-LI-NG,Tam Đường,District,,Tam Duong,,hasc
-VN-LI-NN,Nậm Nhùn,District,,Nam Nhun,,initials
 VN-LI-NR,Lai Châu,City,,Lai Chau,,hasc
-VN-LI-PT,Phong Thổ,District,,Phong Tho,,initials
-VN-LI-SH,Sìn Hồ,District,,Sin Ho,,initials
-VN-LI-TH,Than Uyên,District,,Than Uyen,,first2
-VN-LI-TU,Tân Uyên,District,,Tan Uyen,,initials
 VN-LO-BH,Bắc Hà,District,,Bac Ha,,initials
 VN-LO-BT,Bảo Thắng,District,,Bao Thang,,initials
 VN-LO-MK,Mường Khương,District,,Muong Khuong,,initials
@@ -46085,27 +45736,14 @@ VN-LS-LS,Lạng Sơn,City,,Lang Son,,initials
 VN-LS-NT,Văn Lãng,District,,Van Lang,,hasc
 VN-LS-TI,Tràng Định,District,,Trang Dinh,,initials
 VN-LS-VQ,Văn Quan,District,,Van Quan,,initials
-VN-NA-CC,Con Cuông,District,,Con Cuong,,initials
-VN-NA-CL,Cửa Lò,Town,,Cua Lo,,initials
-VN-NA-DC,Diễn Châu,District,,Dien Chau,,initials
-VN-NA-HM,Hoàng Mai,Town,,Hoang Mai,,initials
-VN-NA-NA,Nam Đàn,District,,Nam Dan,,initials
-VN-NA-NG,Nghĩa Đàn,District,,Nghia Dan,,first2
-VN-NA-NL,Nghi Lộc,District,,Nghi Loc,,initials
-VN-NA-OL,Đô Lương,District,,Do Luong,,initials
 VN-NA-PQ,Anh Sơn,District,,Anh Son,,hasc
 VN-NA-PS,Tân Kỳ,District,,Tan Ky,,hasc
 VN-NA-PV,Hưng Nguyên,District,,Hung Nguyen,,hasc
 VN-NA-PX,Kỳ Sơn,District,,Ky Son,,hasc
 VN-NA-QA,Thanh Chương,District,,Thanh Chuong,,hasc
-VN-NA-QC,Quỳ Châu,District,,Quy Chau,,initials
-VN-NA-QH,Quỳ Hợp,District,,Quy Hop,,initials
 VN-NA-QJ,Tương Dương,District,,Tuong Duong,,hasc
 VN-NA-QK,Vinh,City,,Vinh,,hasc
-VN-NA-QL,Yên Thành,District,,Yen Thanh,,hasc
-VN-NA-QP,Quế Phong,District,,Que Phong,,initials
 VN-NA-QU,Quỳnh Lưu,District,,Quynh Luu,,first2
-VN-NA-TH,Thái Hoà,Town,,Thai Hoa,,initials
 VN-NB-QB,Gia Viễn,District,,Gia Vien,,hasc
 VN-NB-QC,Hoa Lư,District,,Hoa Lu,,hasc
 VN-NB-QD,Kim Sơn,District,,Kim Son,,hasc
@@ -46521,8 +46159,6 @@ XK-UR-SR,Štrpce,Town|Municipal,Штрпце,,,any2
 XK-UR-ST,Štimlje,Town|Municipal,Штимље,,,first2
 XK-UR-UR,Uroševac,Town|Municipal,Урошевац,Ferizaj|Ferizoviç,,first2
 YE-AB-AH,Ahwar,District,احوار,,1209,first2
-YE-AB-AM,Al Mahfad,District,المحفد,,1201,initials
-YE-AB-AW,Al Wade'a,District,الوضيع,,1208,initials
 YE-AB-JA,Jayshan,District,جيشان,,1203,first2
 YE-AB-KH,Khanfir,District,خنفر,,1211,first2
 YE-AB-LA,Lawdar,District,لودر,,1204,first2
@@ -46531,17 +46167,11 @@ YE-AB-RA,Rasad,District,رصد,,1206,first2
 YE-AB-SA,Sarar,District,سرار,,1207,first2
 YE-AB-SI,Sibah,District,سباح,,1205,first2
 YE-AB-ZI,Zingibar,District,زنجبار,,1210,first2
-YE-AD-AB,Al Buraiqeh,District,البريقه,,2404,initials
-YE-AD-AL,Al Mualla,District,المعلا,,2406,first2
-YE-AD-AM,Al Mansura,District,المنصورة,,2403,initials
-YE-AD-AS,Ash Shaikh Outhman,District,الشيخ عثمان,,2402,initials
 YE-AD-AT,Attawahi,District,التواهي,,2405,first2
 YE-AD-CR,Craiter,District,كريتر,,2407,first2
 YE-AD-DS,Dar Sad,District,دار سعد,,2401,initials
 YE-AD-KM,Khur Maksar,District,خور مكسر,,2408,initials
-YE-AM-AA,Al Ashah,District,العشـــــه,,2903,initials
 YE-AM-AM,Al Madan,District,المــدان,,2906,initials
-YE-AM-AQ,Al Qaflah,District,القفلة,,2904,initials
 YE-AM-AR,Amran,District,عمران,,2915,any2
 YE-AM-AS,As Sawd,District,السود,,2914,initials
 YE-AM-AU,As Sudah,District,السوده,,2913,any2
@@ -46559,17 +46189,9 @@ YE-AM-RA,Raydah,District,ريده,,2911,first2
 YE-AM-SH,Shaharah,District,شهاره,,2905,first2
 YE-AM-SU,Suwayr,District,صـويــــر,,2907,first2
 YE-AM-TH,Thula,District,ثلاء,,2917,first2
-YE-BA-AA,Al A'rsh,District,العرش,,1416,initials
-YE-BA-AB,Al Bayda,District,البيضاء,,1410,initials
-YE-BA-AH,Ash Sharyah,District,الشرية,,1419,any2
 YE-BA-AL,Al Bayda City,District,مدينة البيضاء,,1409,first2
-YE-BA-AM,Al Malagim,District,الملاجم,,1420,initials
-YE-BA-AQ,Al Quraishyah,District,القريشية,,1414,initials
 YE-BA-AR,Ar Ryashyyah,District,الرياشية,,1418,initials
-YE-BA-AS,As Sawadiyah,District,السوادية,,1411,initials
-YE-BA-AT,At Taffah,District,الطفة,,1407,initials
 YE-BA-AW,As Sawma'ah,District,الصومعة,,1404,any2
-YE-BA-AZ,Az Zahir,District,الزاهر,,1405,initials
 YE-BA-DN,Dhi Na'im,District,ذي ناعم,,1406,initials
 YE-BA-MA,Maswarah,District,مسورة,,1403,first2
 YE-BA-MU,Mukayras,District,مكيراس,,1408,first2
@@ -46578,8 +46200,6 @@ YE-BA-NT,Nati',District,ناطع,,1402,any2
 YE-BA-RA,Radman Al Awad,District,ردمان,,1412,initials
 YE-BA-SA,Sabah,District,صباح,,1417,first2
 YE-BA-WR,Wald Rabi',District,ولد ربيع,,1415,initials
-YE-DH-AH,Al Hada,District,الحداء,,2001,initials
-YE-DH-AM,Al Manar,District,المنار,,2012,initials
 YE-DH-AN,Anss,District,عنس,,2010,first2
 YE-DH-DA,Dawran Aness,District,ضوران اًنس,,2011,initials
 YE-DH-DC,Dhamar City,District,مدينة ذمار,,2008,initials
@@ -46589,7 +46209,6 @@ YE-DH-MA,Maghirib Ans,District,مغرب عنس,,2004,initials
 YE-DH-MY,Mayfa'at Anss,District,ميفعة عنس,,2009,any2
 YE-DH-UT,Utmah,District,عتمة,,2005,first2
 YE-DH-WA,Wusab Al Ali,District,وصاب العالي,,2006,initials
-YE-DH-WU,Wusab As Safil,District,وصاب السافل,,2007,first2
 YE-DL-AA,Al Azariq,District,الازارق,,3008,initials
 YE-DL-AD,Ad Dhale'e,District,الضالع,,3006,initials
 YE-DL-AH,Al Husha,District,الحشاء,,3009,initials
@@ -46599,15 +46218,9 @@ YE-DL-DA,Damt,District,دمت,,3002,first2
 YE-DL-JA,Jahaf,District,جحاف,,3007,first2
 YE-DL-JU,Juban,District,جبن,,3001,first2
 YE-DL-QA,Qa'atabah,District,قعطبة,,3003,first2
-YE-HD-AA,Al Abr,District,العبر,,1906,initials
-YE-HD-AD,Ad Dis,District,الديس,,1914,initials
 YE-HD-AH,Adh Dhlia'ah,District,الضليعه,,1922,any2
 YE-HD-AI,Ash Shihr,District,الشحر,,1915,any2
-YE-HD-AL,Al Mukalla City,District,مدينة المكلا,,1929,first2
 YE-HD-AM,Al Mukalla,District,المكلا,,1930,initials
-YE-HD-AQ,Al Qaf,District,القف,,1903,initials
-YE-HD-AR,Ar Raydah Wa Qusayar,District,الريده وقصيعر,,1913,initials
-YE-HD-AS,As Sawm,District,السوم,,1912,initials
 YE-HD-AT,Al Qatn,District,القطن,,1907,any2
 YE-HD-BM,Brom Mayfa,District,بروم ميفع,,1925,initials
 YE-HD-DA,Daw'an,District,دوعن,,1918,first2
@@ -46617,7 +46230,6 @@ YE-HD-HA,Hagr As Sai'ar,District,حجر الصيعر,,1905,initials
 YE-HD-HI,Hidaybu,District,حديبو,,1926,first2
 YE-HD-HJ,Hajr,District,حجر,,1924,any2
 YE-HD-HU,Huraidhah,District,حريضه,,1928,first2
-YE-HD-MD,Amd,District,عمد,,1921,any2
 YE-HD-QW,Qulensya Wa Abd Al Kuri,District,قلنسيه وعبدالكوري,,1927,initials
 YE-HD-RA,Rakhyah,District,رخيه,,1920,first2
 YE-HD-RU,Rumah,District,رماه,,1901,first2
@@ -46686,20 +46298,8 @@ YE-HU-LM,Al Munirah,District,المنيرة,,1805,any2
 YE-HU-SS,As Sukhnah,District,السخنة,,1815,any2
 YE-HU-ZA,Zabid,District,زبيد,,1824,first2
 YE-HU-ZZ,Az Zuhrah,District,الزهرة,,1801,any2
-YE-IB-AA,As Saddah,District,السدة,,1106,any2
-YE-IB-AD,Al Dhihar,District,الظهار,,1119,initials
-YE-IB-AH,Ash Sha'ir,District,الشعر,,1105,any2
-YE-IB-AL,Al Mashannah,District,المشنة,,1118,first2
-YE-IB-AM,Al Makhadir,District,المخادر,,1107,initials
-YE-IB-AN,An Nadirah,District,النادرة,,1104,initials
-YE-IB-AQ,Al Qafr,District,القفر,,1101,initials
-YE-IB-AR,Ar Radmah,District,الرضمة,,1103,initials
-YE-IB-AS,As Sabrah,District,السبرة,,1114,initials
-YE-IB-AU,Al Udayn,District,العدين,,1111,initials
 YE-IB-AY,As Sayyani,District,السياني,,1115,any2
 YE-IB-BA,Ba'dan,District,بعدان,,1113,first2
-YE-IB-DA,Dhi As Sufal,District,ذي السفال,,1116,initials
-YE-IB-FA,Far Al Udayn,District,فرع العدين,,1110,initials
 YE-IB-HA,Hazm Al Udayn,District,حزم العدين,,1109,initials
 YE-IB-HU,Hubaysh,District,حبيش,,1108,first2
 YE-IB-IB,Ibb,District,إب,,1120,first2
@@ -46707,15 +46307,8 @@ YE-IB-JI,Jiblah,District,جبلة,,1112,first2
 YE-IB-MU,Mudhaykhirah,District,مذيخرة,,1117,first2
 YE-IB-YA,Yarim,District,يريم,,1102,first2
 YE-JA-AA,Al Matammah,District,المطمه,,1603,any2
-YE-JA-AG,Al Ghayl,District,الغيل,,1608,initials
-YE-JA-AH,Al Hazm,District,الحزم,,1605,initials
-YE-JA-AK,Al Khalq,District,الخلق,,1609,initials
-YE-JA-AL,Al Humaydat,District,الحميدات,,1602,first2
-YE-JA-AM,Al Maslub,District,المصلوب,,1607,initials
 YE-JA-AT,Al Maton,District,المتون,,1606,any2
-YE-JA-AZ,Az Zahir,District,الزاهر,,1604,initials
 YE-JA-BA,Bart Al Anan,District,برط العنان,,1610,initials
-YE-JA-KA,Kharab Al Marashi,District,خراب المراشى,,1612,initials
 YE-JA-KW,Khabb wa ash Sha'af,District,خب و الشعف,,1601,initials
 YE-JA-RA,Rajuzah,District,رجوزه,,1611,first2
 YE-LA-AA,Al Maflahy,District,المفلحي,,2503,any2
@@ -46733,22 +46326,16 @@ YE-LA-TA,Tur Al Bahah,District,طور الباحة,,2511,initials
 YE-LA-TU,Tuban,District,تبن,,2515,first2
 YE-LA-YA,Yafa'a,District,يافع,,2502,first2
 YE-LA-YH,Yahr,District,يهر,,2504,any2
-YE-MA-AA,Al Abdiyah,District,العبدية,,2611,initials
-YE-MA-AJ,Al Jubah,District,الجوبة,,2607,initials
 YE-MA-BI,Bidbadah,District,بدبده,,2605,first2
 YE-MA-HA,Harib Al Qaramish,District,حريب القرامش,,2604,initials
-YE-MA-HR,Harib,District,حريب,,2609,any2
 YE-MA-JM,Jabal Murad,District,جبل مراد,,2614,initials
 YE-MA-MA,Mahliyah,District,ماهليه,,2610,first2
-YE-MA-MC,Marib City,District,مدينة مأرب,,2612,initials
 YE-MA-ME,Medghal,District,مدغل,,2603,first2
 YE-MA-MJ,Majzar,District,مجزر,,2601,any2
 YE-MA-MR,Marib,District,مأرب,,2613,any2
 YE-MA-RA,Raghwan,District,رغوان,,2602,first2
 YE-MA-RH,Rahabah,District,رحبه,,2608,any2
 YE-MA-SI,Sirwah,District,صرواح,,2606,first2
-YE-MR-AG,Al Ghaydah,District,الغيظه,,2804,initials
-YE-MR-AM,Al Masilah,District,المسيلة,,2806,initials
 YE-MR-HA,Hat,District,حات,,2802,first2
 YE-MR-HU,Huswain,District,حصوين,,2809,first2
 YE-MR-HW,Hawf,District,حوف,,2803,any2
@@ -46756,34 +46343,15 @@ YE-MR-MA,Man'ar,District,منعر,,2805,first2
 YE-MR-QI,Qishn,District,قشن,,2808,first2
 YE-MR-SA,Sayhut,District,سيحوت,,2807,first2
 YE-MR-SH,Shahan,District,شحن,,2801,first2
-YE-MW-AK,Al Khabt,District,الخبت,,2704,initials
-YE-MW-AL,Al Mahwait City,District,مدينة المحويت,,2708,first2
-YE-MW-AM,Al Mahwait,District,المحويت,,2709,initials
-YE-MW-AR,Ar Rujum,District,الرجم,,2703,initials
-YE-MW-AT,At Tawilah,District,الطويلة,,2702,initials
 YE-MW-BS,Bani Sa'd,District,بني سعد,,2707,initials
 YE-MW-HU,Hufash,District,حفاش,,2706,first2
 YE-MW-MI,Milhan,District,ملحان,,2705,first2
 YE-MW-SK,Shibam Kawkaban,District,شبام كوكبان,,2701,initials
-YE-RA-AJ,Al Jabin,District,الجبين,,3102,initials
-YE-RA-AL,Al Jafariyah,District,الجعفرية,,3105,first2
-YE-RA-AS,As Salafiyah,District,السلفية,,3103,initials
-YE-RA-BA,Bilad At Ta'am,District,بلاد الطعام,,3101,initials
 YE-RA-KU,Kusmah,District,كسمه,,3104,first2
 YE-RA-MA,Mazhar,District,مزهر,,3106,first2
 YE-SA-AA,Assafi'yah,District,الصافية,,1304,any2
-YE-SA-AH,Ath'thaorah,District,الثورة,,1309,any2
-YE-SA-AS,As Sabain,District,السبعين,,1305,initials
-YE-SA-AT,At Tahrir,District,التحرير,,1307,initials
-YE-SA-AW,Al Wahdah,District,الوحدة,,1306,initials
-YE-SA-AZ,Az'zal,District,أزال,,1303,first2
-YE-SA-BA,Bani Al Harith,District,بني الحارث,,1310,initials
 YE-SA-MA,Ma'ain,District,معين,,1308,first2
-YE-SA-OC,Old City,District,صنعاء القديمة,,1301,initials
 YE-SA-SH,Shu'aub,District,شعوب,,1302,first2
-YE-SD-AD,Al Dhaher,District,الظاهر,,2207,initials
-YE-SD-AH,Al Hashwah,District,الحشوه,,2213,initials
-YE-SD-AS,As Safra,District,الصفراء,,2212,initials
 YE-SD-BA,Baqim,District,باقم,,2201,first2
 YE-SD-GH,Ghamr,District,غمر,,2204,first2
 YE-SD-HA,Haydan,District,حيدان,,2208,first2
@@ -46800,7 +46368,6 @@ YE-SH-AA,Ataq,District,عتق,,2113,any2
 YE-SH-AI,Ain,District,عين,,2106,first2
 YE-SH-AM,Arma,District,عرماء,,2104,any2
 YE-SH-AR,Ar Rawdah,District,الروضه,,2115,initials
-YE-SH-AS,As Said,District,الصعيد,,2112,initials
 YE-SH-AT,Al Talh,District,الطلح,,2102,initials
 YE-SH-BA,Bayhan,District,بيحان,,2107,first2
 YE-SH-DH,Dhar,District,دهر,,2101,first2
@@ -46808,17 +46375,12 @@ YE-SH-HA,Habban,District,حبان,,2114,first2
 YE-SH-HT,Hatib,District,حطيب,,2111,any2
 YE-SH-JA,Jardan,District,جردان,,2103,first2
 YE-SH-MA,Merkhah Al Ulya,District,مرخه العليا,,2108,initials
-YE-SH-ME,Merkhah As Sufla,District,مرخه السفلى,,2109,first2
-YE-SH-MY,Mayfa'a,District,ميفعه,,2116,any2
 YE-SH-NI,Nisab,District,نصاب,,2110,first2
 YE-SH-RU,Rudum,District,رضوم,,2117,first2
 YE-SH-US,Usaylan,District,عسيلان,,2105,first2
-YE-SN-AH,Al Haymah Ad Dakhiliyah,District,الحيمة الداخلية,,2308,initials
-YE-SN-AL,Al Haymah Al Kharijiyah,District,الحيمة الخارجية,,2309,first2
 YE-SN-AR,Arhab,District,ارحب,,2302,first2
 YE-SN-AT,Attyal,District,الطيال,,2313,first2
 YE-SN-AU,Al Husn,District,الحصن,,2315,any2
-YE-SN-BA,Bilad Ar Rus,District,بلاد الروس,,2306,initials
 YE-SN-BD,Bani Dhabyan,District,بني ضبيان,,2314,initials
 YE-SN-BH,Bani Hushaysh,District,بني حشيش,,2304,initials
 YE-SN-BM,Bani Matar,District,بني مطر,,2307,initials
@@ -46902,7 +46464,6 @@ Z9-HP-KI,Kinnaur,District,,Kalpa,,first2
 Z9-UT-UT,Uttarkashi,District,,,,first2
 ZA-EC-AN,Alfred Nzo,District Municipality,,,DC44,hasc
 ZA-EC-AT,Amathole,District Municipality,,,DC12,hasc
-ZA-EC-BC,Buffalo City,District Municipality,,,BUF,initials
 ZA-EC-CC,Cacadu,District Municipality,,,DC10,hasc
 ZA-EC-CH,Chris Hani,District Municipality,,,DC13,hasc
 ZA-EC-NM,Nelson Mandela Bay,District Municipality,,,NMA,hasc
@@ -47114,7 +46675,6 @@ ZW-MI-KW,Kwekwe,District,,,,first2
 ZW-MI-MB,Mberengwa,District,,,,first2
 ZW-MI-RE,Redcliff,District,,,,first2
 ZW-MI-SH,Shurugwi,District,,,,first2
-ZW-MI-ST,Shurugwi Town,District,,,,initials
 ZW-MI-ZU,Zvishavane Urban,District,,,,initials
 ZW-MI-ZV,Zvishavane,District,,,,first2
 ZW-MN-BI,Binga,District,,,,first2
@@ -48419,32 +47979,18 @@ CA-NS-NP,Annapolis,County,,,05,skeleton
 CA-QC-LMO,Les Moulins,Regional County Municipality,,,64,compound.alt
 CD-MA-KN,Kindu,Territory,,,,skeleton
 CH-SO-TI,Thierstein,District,,,,any2
-CO-AN-ANS,Angelópolis,Municipio,,,05036,name.ends
-CO-AN-GIO,Giraldo,Municipio,,,05306,name.ends
 CO-AN-GRN,Guarne,Municipio,,,05318,skeleton
 CO-AR-ARU,Arauca,Municipio,,,81001,any3
-CO-AT-SAE,Sabanagrande,Municipio,,,08634,name.ends
 CO-BD-BDC,"Bogotá, D.c.",Municipio,,,11001,initials
-CO-BO-SCR,San Cristóbal,Municipio,,,13620,compound.alt
 CO-BO-TUO,Turbaco,Municipio,,,13836,name.ends
 CO-BY-CHT,Chita,Municipio,,,15183,skeleton
-CO-BY-GUS,Guacamayas,Municipio,,,15317,name.ends
 CO-BY-SUN,Sutamarchán,Municipio,,,15776,name.ends
 CO-CQ-SOO,Solano,Municipio,,,18756,name.ends
-CO-CA-GUE,Guachené,Municipio,,,19300,name.ends
-CO-CA-TII,Timbiquí,Municipio,,,19809,name.ends
-CO-CO-CHA,Chimá,Municipio,,,23168,name.ends
-CO-CO-MOO,Montelíbano,Municipio,,,23466,name.ends
 CO-HU-PAO,Palermo,Municipio,,,41524,name.ends
-CO-ME-PLL,Puerto Lleras,Municipio,,,50577,compound.alt
-CO-NA-A00,San Bernardo,Municipio,,,52696,sequential
-CO-NA-CHI,Chachagüí,Municipio,,,52240,name.ends
 CO-NA-COA,Consacá,Municipio,,,52207,name.ends
 CO-NA-CUL,Cumbal,Municipio,,,52227,name.ends
 CO-NA-GUL,Guachucal,Municipio,,,52317,name.ends
-CO-NA-SAA,Sandoná,Municipio,,,52683,name.ends
 CO-NA-SPA,San Pablo,Municipio,,,52693,compound.alt
-CO-SA-A00,San Benito,Municipio,,,68673,sequential
 CU-CA-SA,Santa Cruz del Sur,Municipality,,,,any2
 DE-BY-BD,Bad Kissingen,District,,,09672,any2
 DE-NI-SN,Osnabrück,District,,,03459,skeleton
@@ -48741,7 +48287,6 @@ RU-IVA-IVO,Ivanovo,City,Иваново,,,name.ends
 RU-KAD-SEV,Gusev,City,Гусев,,,any3
 RU-KAR-ZHA,Segezha,District,Сегежа,,,any3
 RU-KOM-TYL,Vuktyl,District,Вуктыл,,,any3
-RU-KOM-USY,Usinskiy rayon,District,Усинский район,,R02001,name.ends
 RU-KOS-HAR,Shar'ya,District,Шарья,Sharya,,any3
 RU-KRK-BSK,Bogotol'skiy rayon,District,Боготольский район,,R62090,compound.alt
 RU-KUR-KUK,Kursk,City,Курск,,,name.ends
@@ -49615,6 +49160,10 @@ AO-ZAI-NOQ,Noqui,Municpality|City Council,,,1805,name
 AO-ZAI-NZE,N'Zeto,Municpality|City Council,,Nzeto,1803,compound.alt
 AO-ZAI-SOY,Soyo,Municpality|City Council,,,1802,name
 AO-ZAI-TOM,Tomboco,Municpality|City Council,,,1804,name
+AR-BA-SD,Saladillo,Part,,,,any2
+AR-CA-NC,Ancasti,Department,,,,skeleton
+AR-SA-ND,Los Andes,Department,,San Antonio de los Cobres,,skeleton
+AT-BU-BR,Oberpullendorf,District,,,,skeleton
 AT-KA-SA,Spittal an der Drau,District,,,,initials
 AT-NI-BR,Bruck an der Leitha,District,,,,any2
 AT-NI-KA,Krems an der Donau Stadt,District,,,,initials
@@ -50342,112 +49891,160 @@ BF-SOU-BGR,Bougouriba,Province,,Ioba,,anchor
 BF-SOU-IOB,Ioba,Province,,,,anchor
 BF-SOU-NOU,Noumbiel,Province,,,,anchor
 BF-SOU-PON,Poni,Province,,,,anchor
+BJ-OU-DJ,Adjohoun,Commune,,,,skeleton
+BO-CO-RN,Arani,Province,,,,skeleton
+BO-PA-NQ,Inquisivi,Province,,,,skeleton
+BR-AL-NH,Inhapi,Municipality,,,2703304,skeleton
+BR-AM-NM,Anamã,Municipality,,,1300086,skeleton
+BR-AM-RC,Urucará,Municipality,,,1304302,skeleton
+BR-AM-TM,Itamarati,Municipality,,,1301951,skeleton
+BR-BA-BCR,Ibicaraí,Municipality,,,2912103,skeleton
+BR-BA-BPT,Ibipitanga,Municipality,,,2912509,skeleton
+BR-BA-BQR,Ibiquera,Municipality,,,2912608,skeleton
+BR-BA-BRP,Ibirapuã,Municipality,,,2912806,skeleton
+BR-BA-BRT,Ibirataia,Municipality,,,2912905,skeleton
+BR-BA-BTR,Ibitiara,Municipality,,,2913002,skeleton
+BR-BA-TMR,Itamaraju,Municipality,,,2915601,skeleton
+BR-BA-RJB,Irajuba,Municipality,,,2914208,skeleton
+BR-BA-RTC,Arataca,Municipality,,,2902252,skeleton
+BR-BA-TBL,Itabela,Municipality,,,2914653,skeleton
+BR-BA-TBR,Itaberaba,Municipality,,,2914703,skeleton
+BR-BA-TGB,Itagibá,Municipality,,,2915205,skeleton
+BR-BA-TGM,Itagimirim,Municipality,,,2915304,skeleton
+BR-BA-TJP,Itajuípe,Municipality,,,2915502,skeleton
+BR-BA-TMB,Itambé,Municipality,,,2915809,skeleton
+BR-BA-TNG,Itanagra,Municipality,,,2915908,skeleton
+BR-BA-TNH,Itanhém,Municipality,,,2916005,skeleton
+BR-BA-TPB,Itapebi,Municipality,,,2916302,skeleton
+BR-BA-TPC,Itapicuru,Municipality,,,2916500,skeleton
+BR-BA-TPN,Itapetinga,Municipality,,,2916401,skeleton
+BR-BA-TPR,Itaparica,Municipality,,,2916104,skeleton
+BR-BA-TQR,Itaquara,Municipality,,,2916708,skeleton
+BR-BA-TRC,Itiruçu,Municipality,,,2916906,skeleton
+BR-BA-TRN,Itarantim,Municipality,,,2916807,skeleton
+BR-CE-BCT,Ibicuitinga,Municipality,,,2305332,skeleton
+BR-CE-PRN,Ipaporanga,Municipality,,,2305654,skeleton
+BR-CE-RCB,Aracoiaba,Municipality,,,2301208,skeleton
+BR-CE-RCM,Iracema,Municipality,,,2306009,skeleton
+BR-CE-RND,Ararendá,Municipality,,,2301257,skeleton
+BR-CE-RTB,Aratuba,Municipality,,,2301406,skeleton
+BR-CE-TCB,Itaiçaba,Municipality,,,2306207,skeleton
+BR-CE-TNG,Itaitinga,Municipality,,,2306256,skeleton
+BR-CE-TPN,Itapiúna,Municipality,,,2306504,skeleton
+BR-CE-TRM,Itarema,Municipality,,,2306553,skeleton
+BR-ES-BT,Ibitirama,Municipality,,,3202553,skeleton
+BR-ES-TG,Itaguaçu,Municipality,,,3202702,skeleton
+BR-ES-TR,Itarana,Municipality,,,3202900,skeleton
+BR-GO-RGN,Aragoiânia,Municipality,,,5201801,skeleton
+BR-GO-TGR,Itaguaru,Municipality,,,5210604,skeleton
+BR-GO-TPR,Itapuranga,Municipality,,,5211206,skeleton
+BR-GO-TRM,Itarumã,Municipality,,,5211305,skeleton
+BR-MA-RGN,Araguanã,Municipality,,,2100873,skeleton
 BR-MG-AAG,São José do Mantimento,Municipality,,,3163607,sequential
 BR-MG-NDR,Andrelândia,Municipality,,,3102803,skeleton
 BR-MG-ATO,Santo Antônio do Grama,Municipality,,,3160108,any3
+BR-MG-ANT,Santa Rita de Ibitipoca,Municipality,,,3159407,any3
+BR-MG-RJS,Araújos,Municipality,,,3103900,skeleton
 BR-MG-NTO,Santo Antônio do Rio Abaixo,Municipality,,,3160504,any3
+BR-MG-BPR,Ubaporanga,Municipality,,,3170057,skeleton
+BR-MG-BRC,Ibiraci,Municipality,,,3129707,skeleton
+BR-MG-BTR,Ibituruna,Municipality,,,3130002,skeleton
+BR-MG-GRT,Igaratinga,Municipality,,,3130200,skeleton
+BR-MG-TNH,Itanhandu,Municipality,,,3133105,skeleton
+BR-MG-LVR,Alvarenga,Municipality,,,3102209,skeleton
+BR-MG-NTA,Santa Rosa da Serra,Municipality,,,3159704,any3
+BR-MG-PNM,Ipanema,Municipality,,,3131208,skeleton
+BR-MG-RCB,Arceburgo,Municipality,,,3104106,skeleton
+BR-MG-RCN,Aricanduva,Municipality,,,3104452,skeleton
+BR-MG-RCT,Aracitaba,Municipality,,,3103306,skeleton
+BR-MG-RNT,Arantina,Municipality,,,3103603,skeleton
+BR-MG-RPN,Araponga,Municipality,,,3103702,skeleton
 BR-MG-AAQ,São João do Pacuí,Municipality,,,3162658,sequential
 BR-MG-STI,São Tiago,Municipality,,,3165008,compound.alt
+BR-MG-SBR,Sabará,Municipality,,,3156700,skeleton
+BR-MG-SDU,Santos Dumont,Municipality,,,3160702,compound.alt
 BR-MG-SLU,Santa Luzia,Municipality,,,3157807,compound.alt
 BR-MG-ANO,Santo Antônio do Aventureiro,Municipality,,,3160009,any3
-BR-MT-AAR,Alto Araguaia,Municipality,,,5100300,qualifier
-BR-MT-ABO,Alto Boa Vista,Municipality,,,5100359,qualifier
-BR-MT-AGA,Alto Garças,Municipality,,,5100409,qualifier
-BR-MT-APA,Alto Paraguai,Municipality,,,5100508,qualifier
+BR-MG-TBR,Itabira,Municipality,,,3131703,skeleton
+BR-MG-TCM,Itacambira,Municipality,,,3132008,skeleton
+BR-MG-TCR,Itacarambi,Municipality,,,3132107,skeleton
+BR-MG-TGR,Itaguara,Municipality,,,3132206,skeleton
+BR-MG-TJB,Itajubá,Municipality,,,3132404,skeleton
+BR-MG-TMB,Itambacuri,Municipality,,,3132701,skeleton
+BR-MG-TMG,Itamogi,Municipality,,,3132909,skeleton
+BR-MG-TMN,Itamonte,Municipality,,,3133006,skeleton
+BR-MG-TMR,Itamarandiba,Municipality,,,3132503,skeleton
+BR-MG-TNG,Itutinga,Municipality,,,3134509,skeleton
+BR-MG-TPC,Itapecerica,Municipality,,,3133501,skeleton
+BR-MG-TPG,Itapagipe,Municipality,,,3133402,skeleton
+BR-MG-TPV,Itapeva,Municipality,,,3133600,skeleton
+BR-MG-TVR,Itaverava,Municipality,,,3133907,skeleton
+BR-MS-NG,Angélica,Municipality,,,5000856,skeleton
+BR-MS-NR,Anaurilândia,Municipality,,,5000807,skeleton
+BR-MS-TU,Taquarussu,Municipality,,,5007976,any2
 BR-MT-RGN,Araguaiana,Municipality,,,5101001,skeleton
-BR-MT-ATA,Alto Taquari,Municipality,,,5100607,qualifier
-BR-MT-BJA,Bom Jesus do Araguaia,Municipality,,,5101852,preposition.significant
-BR-MT-CDO,Conquista D'Oeste,Municipality,,,5103361,initials
-BR-MT-CNP,Campo Novo do Parecis,Municipality,,,5102637,preposition.significant
-BR-MT-COA,Colniza,Municipality,,,5103254,name.ends
-BR-MT-FDO,Figueirópolis D'Oeste,Municipality,,,5103809,initials
-BR-MT-GAN,Gaúcha do Norte,Municipality,,,5103858,preposition.alt
-BR-MT-GDO,Glória D'Oeste,Municipality,,,5103957,initials
-BR-MT-LDO,Lambari D'Oeste,Municipality,,,5105234,initials
-BR-MT-LRV,Lucas do Rio Verde,Municipality,,,5105259,preposition.significant
-BR-MT-MDO,Mirassol d'Oeste,Municipality,,,5105622,initials
-BR-MT-NBA,Nova Bandeirantes,Municipality,,,5106158,qualifier
-BR-MT-NCA,Nova Canaã do Norte,Municipality,,,5106216,qualifier
-BR-MT-NGU,Nova Guarita,Municipality,,,5108808,qualifier
-BR-MT-NHO,Novo Horizonte do Norte,Municipality,,,5106273,qualifier
-BR-MT-NLA,Nova Lacerda,Municipality,,,5106182,qualifier
-BR-MT-NMN,Novo Mundo,Municipality,,,5106265,qualifier.spread
-BR-MT-NMO,Nova Monte Verde,Municipality,,,5108956,qualifier
-BR-MT-NMR,Nova Marilândia,Municipality,,,5108857,qualifier.spread
-BR-MT-NNA,Nova Nazaré,Municipality,,,5106174,qualifier
-BR-MT-NSN,Nova Santa Helena,Municipality,,,5106190,qualifier.spread
-BR-MT-NSL,Nossa Senhora do Livramento,Municipality,,,5106109,preposition.significant
-BR-MT-NOS,Novo Santo Antônio,Municipality,,,5106315,qualifier.alt
-BR-MT-NUB,Nova Ubiratã,Municipality,,,5106240,qualifier
-BR-MT-NXA,Nova Xavantina,Municipality,,,5106257,qualifier
-BR-MT-PAN,Porto Alegre do Norte,Municipality,,,5106778,preposition.significant
-BR-MT-POA,Pontal do Araguaia,Municipality,,,5106653,preposition.alt
-BR-MT-POL,Pontes e Lacerda,Municipality,,,5106752,conjunction
-BR-MT-RIO,Ribeirãozinho,Municipality,,,5107198,name.ends
-BR-MT-ROA,Rondolândia,Municipality,,,5107578,name.ends
-BR-MT-SAL,Santo Antônio do Leverger,Municipality,,,5107800,preposition.significant
-BR-MT-SCX,Santa Cruz do Xingu,Municipality,,,5107743,preposition.significant
-BR-MT-SFA,São Félix do Araguaia,Municipality,,,5107859,preposition.significant
-BR-MT-SJP,São José do Povo,Municipality,,,5107297,preposition.significant
-BR-MT-SJQ,São José dos Quatro Marcos,Municipality,,,5107107,preposition.significant
-BR-MT-SJR,São José do Rio Claro,Municipality,,,5107305,preposition.significant
-BR-MT-SJX,São José do Xingu,Municipality,,,5107354,preposition.significant
-BR-MT-SPC,São Pedro da Cipa,Municipality,,,5107404,preposition.significant
-BR-MT-SRT,Santa Rita do Trivelato,Municipality,,,5107768,preposition.significant
-BR-MT-TNN,Terra Nova do Norte,Municipality,,,5108055,preposition.significant
-BR-MT-VBS,Vila Bela da Santíssima Trindade,Municipality,,,5105507,preposition.significant
-BR-MT-VSD,Vale de São Domingos,Municipality,,,5108352,preposition.significant
-BR-PA-AAN,Água Azul do Norte,Municipality,,,1500347,preposition.significant
-BR-PA-ANS,Anajás,Municipality,,,1500701,name.ends
-BR-PA-ANU,Anapu,Municipality,,,1500859,name.ends
-BR-PA-BEA,Belterra,Municipality,,,1501451,name.ends
-BR-PA-BGA,Brejo Grande do Araguaia,Municipality,,,1501758,preposition.significant
-BR-PA-BJT,Bom Jesus do Tocantins,Municipality,,,1501576,preposition.significant
-BR-PA-COP,Concórdia do Pará,Municipality,,,1502756,preposition.alt
-BR-PA-CPO,Capitão Poço,Municipality,,,1502301,compound.alt
-BR-PA-CUO,Curralinho,Municipality,,,1502806,name.ends
-BR-PA-CUS,Curionópolis,Municipality,,,1502772,name.ends
-BR-PA-JAA,Jacareacanga,Municipality,,,1503754,name.ends
-BR-PA-MAM,Marapanim,Municipality,,,1504406,name.ends
-BR-PA-MRC,Maracanã,Municipality,,,1504307,skeleton
-BR-PA-NES,Nova Esperança do Piriá,Municipality,,,1504950,qualifier
-BR-PA-NIP,Nova Ipixuna,Municipality,,,1504976,qualifier
-BR-PA-NPR,Novo Progresso,Municipality,,,1505031,qualifier
-BR-PA-NRE,Novo Repartimento,Municipality,,,1505064,qualifier
-BR-PA-NTI,Nova Timboteua,Municipality,,,1505007,qualifier
-BR-PA-PAP,Palestina do Pará,Municipality,,,1505494,preposition.alt
-BR-PA-PAS,Paragominas,Municipality,,,1505502,name.ends
-BR-PA-PDA,Pau D'Arco,Municipality,,,1505551,initials
-BR-PA-SAA,São Domingos do Araguaia,Municipality,,,1507151,preposition.alt
-BR-PA-SLV,Salvaterra,Municipality,,,1506302,skeleton
-BR-PA-SBP,Santa Bárbara do Pará,Municipality,,,1506351,preposition.significant
-BR-PA-SCA,Santa Cruz do Arari,Municipality,,,1506401,preposition.significant
-BR-PA-SCO,São Caetano de Odivelas,Municipality,,,1507102,preposition.significant
-BR-PA-SDC,São Domingos do Capim,Municipality,,,1507201,preposition.significant
-BR-PA-SEJ,Senador José Porfírio,Municipality,,,1507805,compound
-BR-PA-SFP,São Francisco do Pará,Municipality,,,1507409,preposition.significant
-BR-PA-SFX,São Félix do Xingu,Municipality,,,1507300,preposition.significant
-BR-PA-SGA,São Geraldo do Araguaia,Municipality,,,1507458,preposition.significant
-BR-PA-SIP,Santa Izabel do Pará,Municipality,,,1506500,preposition.significant
-BR-PA-SJA,São João do Araguaia,Municipality,,,1507508,preposition.significant
-BR-PA-SLP,Santa Luzia do Pará,Municipality,,,1506559,preposition.significant
-BR-PA-SMB,Santa Maria das Barreiras,Municipality,,,1506583,preposition.significant
-BR-PA-SMG,São Miguel do Guamá,Municipality,,,1507607,preposition.significant
-BR-PA-SMP,Santa Maria do Pará,Municipality,,,1506609,preposition.significant
-BR-PA-SNO,Santarém Novo,Municipality,,,1506906,compound.alt
-BR-PA-SSB,São Sebastião da Boa Vista,Municipality,,,1507706,preposition.significant
-BR-PA-TRO,Trairão,Municipality,,,1508050,name.ends
-BR-PA-TUA,Tucumã,Municipality,,,1508084,name.ends
+BR-PB-SAE,Sapé,Municipality,,,2515302,name.ends
 BR-PB-SLG,Salgadinho,Municipality,,,2513000,skeleton
+BR-PB-SCR,Santa Cruz,Municipality,,,2513208,compound.alt
+BR-PB-TBN,Itabaiana,Municipality,,,2506905,skeleton
+BR-PB-TPR,Itapororoca,Municipality,,,2507101,skeleton
+BR-PE-RCB,Araçoiaba,Municipality,,,2601052,skeleton
+BR-PE-TCR,Itacuruba,Municipality,,,2607406,skeleton
+BR-PE-TPS,Itapissuma,Municipality,,,2607752,skeleton
+BR-PE-TQN,Itaquitinga,Municipality,,,2607802,skeleton
+BR-PR-TGJ,Itaguajé,Municipality,,,4110904,skeleton
 BR-PR-SNA,Santa Inês,Municipality,,,4123600,any3
+BR-PR-TPL,Itaipulândia,Municipality,,,4110953,skeleton
+BR-PR-TPR,Tapira,Municipality,,,4126900,skeleton
+BR-PR-VTB,Ivatuba,Municipality,,,4111605,skeleton
 BR-RJ-AG,São José de Ubá,Municipality,,,3305133,sequential
+BR-RJ-RL,Areal,Municipality,,,3300225,skeleton
+BR-RJ-RM,Araruama,Municipality,,,3300209,skeleton
 BR-RJ-SQ,Saquarema,Municipality,,,3305505,skeleton
+BR-RJ-TC,Itaocara,Municipality,,,3302106,skeleton
+BR-RJ-TG,Itaguaí,Municipality,,,3302007,skeleton
+BR-RJ-TL,Italva,Municipality,,,3302056,skeleton
+BR-RJ-TP,Itaperuna,Municipality,,,3302205,skeleton
+BR-RS-BRP,Ibirapuitã,Municipality,,,4309951,skeleton
 BR-RS-SJE,São Jerônimo,Municipality,,,4318408,compound.alt
 BR-RS-SPA,São Paulo das Missões,Municipality,,,4319307,compound.alt
 BR-RS-ANT,Santo Antônio do Planalto,Municipality,,,4317756,any3
+BR-RS-SVI,São Vicente do Sul,Municipality,,,4319802,compound.alt
+BR-RS-TPC,Itapuca,Municipality,,,4310579,skeleton
+BR-SC-RBT,Arabutã,Municipality,,,4201273,skeleton
+BR-SC-RCM,Iraceminha,Municipality,,,4207759,skeleton
 BR-SC-SCE,Santa Cecília,Municipality,,,4215505,compound.alt
+BR-SC-TPM,Itapema,Municipality,,,4208302,skeleton
+BR-SC-TPR,Itapiranga,Municipality,,,4208401,skeleton
+BR-SP-BRM,Ibirarema,Municipality,,,3519501,skeleton
+BR-SP-DLF,Adolfo,Municipality,,,3500204,skeleton
+BR-SP-TRP,Itirapina,Municipality,,,3523602,skeleton
+BR-SP-NDP,Indiaporã,Municipality,,,3520707,skeleton
+BR-SP-RCG,Araçariguama,Municipality,,,3502754,skeleton
+BR-SP-RCT,Araçatuba,Municipality,,,3502804,skeleton
+BR-SP-RLV,Arealva,Municipality,,,3503406,skeleton
+BR-SP-RMN,Aramina,Municipality,,,3503000,skeleton
+BR-SP-RND,Arandu,Municipality,,,3503109,skeleton
 BR-SP-SOL,Sales Oliveira,Municipality,,,3544905,compound.alt
+BR-SP-TBR,Itaberá,Municipality,,,3521705,skeleton
+BR-SP-TJB,Itajobi,Municipality,,,3521903,skeleton
+BR-SP-TNG,Itatinga,Municipality,,,3523503,skeleton
+BR-SP-TPI,Tapiraí,Municipality,,,3553500,any3
+BR-SP-TPN,Itapetininga,Municipality,,,3522307,skeleton
+BR-SP-TPV,Itapeva,Municipality,,,3522406,skeleton
+BR-SP-TVR,Ituverava,Municipality,,,3524105,skeleton
+BR-SP-BRN,Ubarana,Municipality,,,3555356,skeleton
+BR-SP-VNH,Avanhandava,Municipality,,,3504404,skeleton
+BR-TO-RGC,Araguacema,Municipality,,,1701903,skeleton
+BR-TO-RGM,Aragominas,Municipality,,,1701309,skeleton
+BR-TO-RGN,Araguanã,Municipality,,,1702158,skeleton
+BR-TO-RPM,Arapoema,Municipality,,,1702307,skeleton
+BR-TO-TCJ,Itacajá,Municipality,,,1710508,skeleton
+BY-BR-VN,Ivanaw,District,Іванаўскі раён,Ivanovo,,skeleton
+BY-GR-ST,Astravyets,District,Астравецкі раён,Ostrovets,,skeleton
+CA-NS-NT,Antigonish,County,,,14,skeleton
 CA-QC-LSH,La Région-Sherbrookoise,Regional County Municipality,,,43,compound.alt
+CD-IT-RW,Ariwara,Town,,,,skeleton
 CG-BOU-BOS,Boko-Songho,District,,,,compound
 CG-BOU-LOU,Loudima,District,,,,name
 CG-BOU-MAD,Madingou,District,,,,name
@@ -50496,10 +50093,14 @@ CG-POO-NGE,Ngabé,District,,,,name.ends
 CG-SAN-OUE,Ouesso,District,,,,name
 CG-SAN-SEM,Sembé,District,,,,name
 CG-SAN-SOU,Souanké,District,,,,name
+CH-BE-RB,Aarberg,District,,,,skeleton
 CN-AH-LA,Lu'an,Prefecture City,六安市,Lù'ān,,initials
+CN-HK-KC,Kowloon City,District,,,,initials
 CN-JS-HA,Huai'an,Prefecture City,淮安市,Huái'ān,,initials
 CN-JX-JA,Ji'an,Prefecture City,吉安市,Jí'ān,,initials
 CN-NM-XA,Xing'an,League,兴安盟,Xīng'ān,,initials
+CN-SC-GA,Guang'an,Prefecture City,广安市,Guǎng'ān,,initials
+CN-SN-XA,Xi'an,Prefecture City,西安市,Xī'ān,,initials
 CO-AM-CHO,La Chorrera,Área No Municipalizada,,,91405,name
 CO-AM-ENC,El Encanto,Área No Municipalizada,,,91263,name
 CO-AM-LET,Leticia,Municipio,,,91001,name
@@ -50519,6 +50120,7 @@ CO-AN-AMA,Amagá,Municipio,,,05030,name
 CO-AN-AND,Andes,Municipio,,,05034,name
 CO-AN-ANG,Angostura,Municipio,,,05038,name
 CO-AN-ANO,Anorí,Municipio,,,05040,name
+CO-AN-ANS,Angelópolis,Municipio,,,05036,name.ends
 CO-AN-ANZ,Anzá,Municipio,,,05044,name
 CO-AN-APA,Apartadó,Municipio,,,05045,name
 CO-AN-ARB,Arboletes,Municipio,,,05051,name
@@ -50559,6 +50161,7 @@ CO-AN-ENV,Envigado,Municipio,,,05266,name
 CO-AN-EST,La Estrella,Municipio,,,05380,name
 CO-AN-FRE,Fredonia,Municipio,,,05282,name
 CO-AN-FRO,Frontino,Municipio,,,05284,name
+CO-AN-GIO,Giraldo,Municipio,,,05306,name.ends
 CO-AN-GIR,Girardota,Municipio,,,05308,name
 CO-AN-GOP,Gómez Plata,Municipio,,,05310,compound
 CO-AN-GRA,Granada,Municipio,,,05313,name
@@ -50663,6 +50266,7 @@ CO-AT-PON,Ponedera,Municipio,,,08560,name
 CO-AT-PUC,Puerto Colombia,Municipio,,,08573,compound
 CO-AT-REP,Repelón,Municipio,,,08606,name
 CO-AT-SAB,Sabanalarga,Municipio,,,08638,name
+CO-AT-SAE,Sabanagrande,Municipio,,,08634,name.ends
 CO-AT-SAL,Santa Lucía,Municipio,,,08675,compound
 CO-AT-SAT,Santo Tomás,Municipio,,,,compound
 CO-AT-SLU,Santa Lucía,Municipio,,,,compound.alt
@@ -50707,6 +50311,7 @@ CO-BO-SAR,Santa Rosa,Municipio,,,13683,compound
 CO-BO-SRS,Santa Rosa del Sur,Municipio,,,,preposition.significant
 CO-BO-SCA,Santa Catalina,Municipio,,,,compound.alt
 CO-BO-SAM,Santa Cruz de Mompox,Municipio,,,13468,preposition.alt
+CO-BO-SCR,San Cristóbal,Municipio,,,13620,compound.alt
 CO-BO-SIM,Simití,Municipio,,,13744,name
 CO-BO-SJC,San Jacinto del Cauca,Municipio,,,13655,preposition.significant
 CO-BO-SJN,San Juan Nepomuceno,Municipio,,,13657,initials
@@ -50761,6 +50366,7 @@ CO-BY-GAM,Gámeza,Municipio,,,15296,name
 CO-BY-GAR,Garagoa,Municipio,,,15299,name
 CO-BY-GDS,Güicán de la Sierra,Municipio,,,15332,preposition
 CO-BY-GUA,Guateque,Municipio,,,15322,name
+CO-BY-GUS,Guacamayas,Municipio,,,15317,name.ends
 CO-BY-GYT,Guayatá,Municipio,,,15325,skeleton
 CO-BY-IZA,Iza,Municipio,,,15362,name
 CO-BY-JEN,Jenesano,Municipio,,,15367,name
@@ -50917,6 +50523,7 @@ CO-CA-CAL,Caldono,Municipio,,,19137,name
 CO-CA-COR,Corinto,Municipio,,,19212,name
 CO-CA-FLO,Florencia,Municipio,,,19290,name
 CO-CA-GUA,Guapi,Municipio,,,19318,name
+CO-CA-GUE,Guachené,Municipio,,,19300,name.ends
 CO-CA-INZ,Inzá,Municipio,,,19355,name
 CO-CA-JAM,Jambaló,Municipio,,,19364,name
 CO-CA-LDM,López de Micay,Municipio,,,19418,preposition
@@ -50942,6 +50549,7 @@ CO-CA-SRO,Santa Rosa,Municipio,,,19780,compound.alt
 CO-CA-SUA,Suárez,Municipio,,,,name
 CO-CA-SUC,Sucre,Municipio,,,19785,name
 CO-CA-TAM,El Tambo,Municipio,,,19256,name
+CO-CA-TII,Timbiquí,Municipio,,,19809,name.ends
 CO-CA-TIM,Timbío,Municipio,,,19807,name
 CO-CA-TOR,Toribío,Municipio,,,19821,name
 CO-CA-TOT,Totoró,Municipio,,,19824,name
@@ -51009,12 +50617,14 @@ CO-CO-BUE,Buenavista,Municipio,,,23079,name
 CO-CO-CAN,Canalete,Municipio,,,23090,name
 CO-CO-CDO,Ciénaga de Oro,Municipio,,,23189,preposition
 CO-CO-CER,Cereté,Municipio,,,23162,name
+CO-CO-CHA,Chimá,Municipio,,,23168,name.ends
 CO-CO-CHI,Chinú,Municipio,,,23182,name
 CO-CO-COR,Los Córdobas,Municipio,,,,name
 CO-CO-COT,Cotorra,Municipio,,,23300,name
 CO-CO-LOR,Lorica,Municipio,,,23417,name
 CO-CO-MOM,Momil,Municipio,,,23464,name
 CO-CO-MON,Montería,Municipio,,,23001,name
+CO-CO-MOO,Montelíbano,Municipio,,,23466,name.ends
 CO-CO-MOS,Moñitos,Municipio,,,23500,name.ends
 CO-CO-PDC,Purísima de la Concepción,Municipio,,,23586,preposition
 CO-CO-PLR,Planeta Rica,Municipio,,,23555,compound
@@ -51262,6 +50872,7 @@ CO-ME-LEJ,Lejanías,Municipio,,,50400,name
 CO-ME-MAC,La Macarena,Municipio,,,50350,name
 CO-ME-MAP,Mapiripán,Municipio,,,50325,name
 CO-ME-MES,Mesetas,Municipio,,,50330,name
+CO-ME-PLL,Puerto Lleras,Municipio,,,50577,compound.alt
 CO-ME-PUC,Puerto Concordia,Municipio,,,50450,compound
 CO-ME-PUG,Puerto Gaitán,Municipio,,,50568,compound
 CO-ME-PUL,Puerto López,Municipio,,,50573,compound
@@ -51285,6 +50896,7 @@ CO-NA-BAR,Barbacoas,Municipio,,,52079,name
 CO-NA-BEL,Belén,Municipio,,,52083,name
 CO-NA-BUE,Buesaco,Municipio,,,52110,name
 CO-NA-CHA,El Charco,Municipio,,,52250,name
+CO-NA-CHI,Chachagüí,Municipio,,,52240,name.ends
 CO-NA-CON,Consacá,Municipio,,,52207,name
 CO-NA-COL,Colón,Municipio,,,52203,name
 CO-NA-COO,Contadero,Municipio,,,52210,name.ends
@@ -51321,12 +50933,14 @@ CO-NA-PUP,Pupiales,Municipio,,,52585,name
 CO-NA-RIC,Ricaurte,Municipio,,,52612,name
 CO-NA-ROP,Roberto Payán,Municipio,,,52621,compound
 CO-NA-ROS,El Rosario,Municipio,,,52256,name
+CO-NA-SAA,Sandoná,Municipio,,,52683,name.ends
 CO-NA-SAB,Santa Bárbara,Municipio,,,,compound
 CO-NA-SAL,San Lorenzo,Municipio,,,52687,compound
 CO-NA-SAM,Samaniego,Municipio,,,52678,name
 CO-NA-SAN,Santacruz,Municipio,,,52699,name
 CO-NA-SAS,Sapuyes,Municipio,,,52720,name.ends
 CO-NA-SAT,San Andrés de Tumaco,Municipio,,,52835,preposition.significant
+CO-NA-A00,San Bernardo,Municipio,,,52685,sequential
 CO-NA-SAP,San Pablo,Municipio,,,52693,compound
 CO-NA-SPC,San Pedro de Cartago,Municipio,,,52694,preposition.significant
 CO-NA-TAM,Taminango,Municipio,,,52786,name
@@ -51492,6 +51106,7 @@ CO-SA-SAM,San Miguel,Municipio,,,68686,compound
 CO-SA-SAN,Los Santos,Municipio,,,,name
 CO-SA-SHO,Santa Helena del Opón,Municipio,,,,preposition.significant
 CO-SA-SAS,Los Santos,Municipio,,,68418,name.ends
+CO-SA-A00,San Benito,Municipio,,,68079,sequential
 CO-SA-SDT,Sabana de Torres,Municipio,,,68655,preposition
 CO-SA-SAO,Santa Helena del Opón,Municipio,,,68720,preposition.alt
 CO-SA-SIM,Simacota,Municipio,,,68745,name
@@ -51635,15 +51250,140 @@ CO-VI-PRI,La Primavera,Municipio,,,99524,name
 CO-VI-PUC,Puerto Carreño,Municipio,,,99001,compound
 CO-VI-SAR,Santa Rosalía,Municipio,,,99624,compound
 CO-VI-SRO,Santa Rosalía,Municipio,,,,compound.alt
+DE-BB-BR,Brandenburg an der Havel,District,,,12051,any2
+DE-BY-MB,Amberg,District,,,09361,skeleton
 DE-BY-DI,Dillingen an der Donau,District,,,09773,any2
 DE-BY-EU,Neu-Ulm,District,,,09775,any2
 DE-BY-PF,Pfaffenhofen an der Ilm,District,,,09186,any2
+DE-BY-RL,Erlangen,District,,,09562,skeleton
+DE-NI-HR,Harburg,District,,,03353,skeleton
+DE-NI-MD,Emden,District,,,03402,skeleton
+DE-NW-BC,Bochum,District,,,05911,skeleton
 DE-NW-MH,Mülheim an der Ruhr,District,,,05117,any2
+DE-NW-RN,Rhein-Kreis Neuss,District,,,05162,initials
 DE-RP-NA,Neustadt an der Weinstraße,District,,,07316,initials
 DJ-DI-AE,As Eyla,,,,,initials
+DO-AN-RA,Rancho Arriba,Municipal district,,,,initials
+DO-AN-SJ,San José de Ocoa,Municipality,,,,initials
+DO-AN-SL,Sabana Larga,Municipal district,,,,initials
 DO-ES-JA,Jamao al Norte,Municipal district,,,,initials
 DO-SA-LA,Licey al Medio,Municipality,,,,initials
+DO-SN-AL,Los Almácigos,Municipal district,,,,name
+DO-SN-MO,Monción,Municipal district,,,,name
+DO-SN-SI,San Ignacio de Sabaneta,Municipality,,,,initials
+DO-ST-BA,Banica,Municipality,,San Francisco de Bánica,,name
+DO-ST-CO,Comendador,Municipality,,,,name
+DO-ST-HV,Hondo Valle,Municipality,,,,initials
+DO-ST-JS,Juan Santiago,Municipality,,,,initials
+DO-ST-LL,El Llano,Municipality,,,,name
+DO-ST-PS,Pedro Santana,Municipality,,,,initials
+DZ-BE-KF,Akfadou,Commune,,,642,skeleton
+DZ-BE-ML,Amalou,Commune,,,616,skeleton
+DZ-BI-RL,Ourlal,Commune,,Oughlal,724,skeleton
 DZ-BR-AM,Ath Mansour Taourirt,Commune,,Ath Mansour,1043,initials
+DZ-DJ-MR,Amourah,Commune,,Amoura,1734,skeleton
+DZ-DR-AD,Adrar,Chef-Lieu-Wilaya,,Adrār,101,name
+DZ-DR-AK,Akabli,Commune,,Akabili,119,name
+DZ-DR-AO,Aoulef,Commune,,Awla-f,112,name
+DZ-DR-BB,Bordj Badji Mokhtar,Commune,,,125,initials
+DZ-DR-BO,Bouda,Commune,,,122,name
+DZ-DR-CH,Charouine,Commune,,Gharouine,103,name
+DZ-DR-DE,Deldoul,Commune,,,117,name
+DZ-DR-FE,Fenoughil,Commune,,,115,name
+DZ-DR-GR,Aougrout,Commune,,,123,skeleton
+DZ-DR-IZ,In Zghmir,Commune,,Inzegmir,105,initials
+DZ-DR-KK,Ksar Kaddour,Commune,,,107,initials
+DZ-DR-ME,Metarfa,Commune,,,120,name
+DZ-DR-OA,Ouled Ahmed Temmi,Commune,,Ouled Ahmed Timi,121,initials
+DZ-DR-OS,Ouled Said,Commune,,,110,initials
+DZ-DR-OU,Ouled Aissa,Commune,,,127,any2
+DZ-DR-RE,Reggane,Commune,,Rijān,104,name
+DZ-DR-SA,Sali,Commune,,,118,name
+DZ-DR-SE,Sebaa,Commune,,,126,name
+DZ-DR-TA,Tamekten,Commune,,Timokten,113,name
+DZ-DR-TE,Tamest,Commune,,,102,any2
+DZ-DR-TO,Timiaouine,Commune,,,128,any2
+DZ-DR-TL,Talmine,Commune,,,124,skeleton
+DZ-DR-TM,Tamantit,Commune,,Tamentit,114,skeleton
+DZ-DR-TN,Tinerkouk,Commune,,,116,skeleton
+DZ-DR-TI,Timmimoun,Commune,,Timimoun|Tīmīmūn,109,name
+DZ-DR-TS,Tsabit,Commune,,,108,name
+DZ-DR-TT,Tit,Commune,,,106,any2
+DZ-DR-ZK,Zaouiet Kounta,Commune,,,111,initials
+DZ-ME-ZR,Ouezra,Commune,,Ouzera,2602,skeleton
+DZ-MS-LT,Oultene,Commune,,,2846,skeleton
+DZ-NA-SL,Assela,Commune,,Asla,4507,skeleton
+DZ-TO-AA,Ait Aissa Mimoun,Commune,,,1539,initials
+DZ-TO-AB,Ait Bouadou,Commune,,`Ayt Buwadu,1565,initials
+DZ-TO-AC,Ait-Chaffaa,Commune-Cotiere,,Ait Chaffaa,1513,initials
+DZ-TO-AE,Ain-El-Hammam,Commune,,Ain El Hammam|`Ayn-al-Hamma-m,1502,initials
+DZ-TO-AG,Aghrib,Commune,,Aghrib,1553,name
+DZ-TO-AH,Aghni-Goughrane,Commune,,Aghni Goughran,1561,any2
+DZ-TO-AI,Ait-Yahia,Commune,,Ait Yahia,1527,any2
+DZ-TO-AK,Ait Khelili,Commune,,`Ayt Khalil,1558,initials
+DZ-TO-AL,Ait Aggouacha,Commune,,,1535,sequential
+DZ-TO-AM,Ait-Mahmoud,Commune,,Ait Mahmoud,1528,initials
+DZ-TO-AO,Ait Oumalou,Commune,,,1542,initials
+DZ-TO-AS,Assi Youcef,Commune,,Assī Yūsuf,1566,any2
+DZ-TO-AT,Ait Toudert,Commune,,,1567,initials
+DZ-TO-AY,Ait Yahia Moussa,Commune,,`Ayt Yahiya Mussa,1556,initials
+DZ-TO-AN,Ain-Zaouia,Commune,,Ain Zaouia,1525,any2
+DZ-TO-BA,Beni Aissi,Commune,,,1515,initials
+DZ-TO-BD,Beni-Douala,Commune,,Beni Douala|Bani- Duwala,1532,initials
+DZ-TO-BE,Beni-Zikki,Commune,,Beni Ziki,1546,any2
+DZ-TO-BG,Boghni,Commune,,Bughni,1540,skeleton
+DZ-TO-BI,Abi Youcef,Commune,,,1531,any2
+DZ-TO-BN,Bounouh,Commune,,,1512,skeleton
+DZ-TO-BO,Bouzeguene,Commune,,Bouzguen|Buzqan,1534,name
+DZ-TO-BU,Boudjima,Commune,,Bujima,1555,any2
+DZ-TO-BY,Beni Yenni,Commune,,,1552,initials
+DZ-TO-BZ,Beni Zmenzer,Commune,,,1516,initials
+DZ-TO-CF,Ouacif,Commune,,Wasif,1548,skeleton
+DZ-TO-DB,Draa-Ben-Khedda,Commune,,Draa Ben Khedda|Dara`a Ban Khadd,1547,initials
+DZ-TO-DE,Draa El Mizan,Commune,,Dara`-al-Mizān,1510,initials
+DZ-TO-DH,Ouadhia,Commune,,Wadhīyah,1536,skeleton
+DZ-TO-FG,Ifigha,Commune,,,1541,skeleton
+DZ-TO-FI,Frikat,Commune,,,1514,any2
+DZ-TO-FL,Iflissen,Commune-Cotiere,,,1554,skeleton
+DZ-TO-FR,Freha,Commune,,Fariha,1504,name
+DZ-TO-IB,Iboudraren,Commune,,,1560,name
+DZ-TO-ID,Idjeur,Commune,,,1549,name
+DZ-TO-IF,Iferhounene,Commune,,,1517,name
+DZ-TO-IL,Illilten,Commune,,,1533,name
+DZ-TO-IM,Imsouhal,Commune,,,1563,name
+DZ-TO-IO,Illoula Oumalou,Commune,,Iloula Oumalou,1519,initials
+DZ-TO-IR,Irdjen,Commune,,Irjan,1507,name
+DZ-TO-IT,Ait Boumehdi,Commune,,Ait Boumahdi,1530,any2
+DZ-TO-KB,Akbil,Commune,,,1503,skeleton
+DZ-TO-KR,Akerrou,Commune,,,1544,skeleton
+DZ-TO-LN,Larbaa-Nath-Irathen,Commune,,Larba Nait Irathen|Arba-`a- Naya,1521,initials
+DZ-TO-MA,Makouda,Commune,,Makuda,1509,name
+DZ-TO-MC,Mechtrass,Commune,,,1506,skeleton
+DZ-TO-ME,Mekla,Commune,,Maklah,1550,name
+DZ-TO-MI,Mizrana,Commune-Cotiere,,,1562,name
+DZ-TO-MK,M'Kira,Commune,,Mkira|Makirah,1526,compound
+DZ-TO-MT,Maatkas,Commune,,Maatka|Ma`atka,1529,skeleton
+DZ-TO-OU,Ouaguenoun,Commune,,,1524,name
+DZ-TO-SE,Souk El Tenine,Commune,,Souk-El-Thenine,1557,initials
+DZ-TO-SN,Sidi Naamane,Commune,,,1559,initials
+DZ-TO-SO,Souamaa,Commune,,,1505,name
+DZ-TO-TA,Tadmait,Commune,,Tadma`it,1564,name
+DZ-TO-TG,Tizi-Ghenif,Commune,,Tizi Ghenif,1511,initials
+DZ-TO-TI,Tirmitine,Commune,,Tirmirtin,1543,name
+DZ-TO-TM,Timizart,Commune,,Timizart,1508,skeleton
+DZ-TO-TN,Tizi N'Tleta,Commune,,Tizi Nthleta|Thizi Natlata,1551,compound.alt
+DZ-TO-TO,Tizi Ouzou,Chef-Lieu-Wilaya,,Tīzī Wazū,1501,initials
+DZ-TO-TR,Tizi-Rached,Commune,,Tizi Rached,1522,initials
+DZ-TO-TZ,Tigzirt,Commune-Cotiere,,Tighzirt,1538,any2
+DZ-TO-YA,Yakourene,Commune,,Yakouren,1520,name
+DZ-TO-YT,Yatafene,Commune,,Yatafen,1545,skeleton
+DZ-TO-ZE,Zekri,Commune,,,1523,name
+DZ-TO-ZF,Azzefoun,Commune-Cotiere,,Azeffoun,1537,skeleton
+DZ-TO-AZ,Azazga,Commune,,`Azāzghah,1518,name
+EC-RL-AG,Aguarico,Canton,,,2202,name
+EC-RL-JS,La Joya de los Sachas,Canton,,,2203,preposition.significant
+EC-RL-LO,Loreto,Canton,,,2204,name
+EC-RL-OR,Orellana,Canton,,Francisco de Orellana,2201,name
 EG-AF-AF,Al-Fayyum,Subdivision,,,,initials
 EG-AF-AL,Al-Fayyum City,Subdivision,,,,any2
 EG-AF-IB,Ibshaway,Subdivision,,Abshaway,,name
@@ -51745,7 +51485,6 @@ EG-AB-AT,'Ataqah,Subdivision,,,,name
 EG-AB-FA,Faisal,Subdivision,,,,name
 EG-AB-PS,Port Suez Police Department,Subdivision,,,,initials
 EG-AB-SU,Suez,Subdivision,,,,name
-EG-AW-AW,Al-Wahat al-Kharijah,Subdivision,,,,initials
 EG-AW-BS,Baris Shurtah,Subdivision,,,,initials
 EG-AW-SA,Shurtah al-Dakhlah,Subdivision,,,,initials
 EG-AW-SH,Shurtah al-Farafirah,Subdivision,,,,any2
@@ -51793,6 +51532,7 @@ EG-GH-A1,Al-Mahallah al-Kubra 1,Subdivision,,,,letter_number
 EG-GH-AL,Al-Mahallah al-Kubra 2,Subdivision,,,,any2
 EG-GH-AM,Al-Mahallah al-Kubra,Subdivision,,,,initials
 EG-GH-AS,As-Santah,Subdivision,,,,initials
+EG-GH-KA,Kafr az-Zayyat,Subdivision,,,,initials
 EG-GZ-AA,Al-Ahram,Subdivision,,Pyramids,,initials
 EG-GZ-AB,Al-Badrashayn,Subdivision,,,,initials
 EG-GZ-AD,Ad-Duqi,Subdivision,,,,initials
@@ -51808,6 +51548,7 @@ EG-IS-FI,Fa'id,Subdivision,,,,initials
 EG-IS-I1,Ismailia 1,Subdivision,,,,compound.alt
 EG-IS-I2,Ismailia 2,Subdivision,,,,compound.alt
 EG-IS-I3,Ismailia 3,Subdivision,,,,compound.alt
+EG-IS-IS,Ismailia,Subdivision,,,,name
 EG-JS-AT,At-Tur,Subdivision,,,,initials
 EG-KA-AB,Al-Burulus,Subdivision,,,,initials
 EG-KA-AH,Al-Hamul,Subdivision,,,,initials
@@ -51852,7 +51593,15 @@ EG-SU-DA,Dar as-Salam,Subdivision,,,,initials
 EG-SU-JA,Juhaynah al-Gharbiyah,Subdivision,,,,initials
 EG-SU-KH,Akhmim,Subdivision,,,,skeleton
 EG-SU-TC,Tahta City,Subdivision,,,,initials
+EG-SW-AB,Abu Simbel,Subdivision,,,,any2
 EG-SW-AC,Aswan City,Subdivision,,,,initials
+EG-SW-AS,Aswan,Subdivision,,,,name
+EG-SW-DA,Daraw,Subdivision,,,,name
+EG-SW-ID,Idfu,Subdivision,,,,name
+EG-SW-KU,Kawm Umbu,Subdivision,,,,initials
+EG-SW-NA,Nasr,Subdivision,,,,name
+EG-SW-NT,New Tushka City,Subdivision,,,,initials
+EG-SW-UI,Unorganized in Aswan,Subdivision,,,,initials
 EG-SY-A1,Asyut 1,Subdivision,,Kesm Awal Assuit,,compound.alt
 EG-SY-A2,Asyut 2,Subdivision,,Kesm Than Assuit,,compound.alt
 EG-SY-AB,Abnub,Subdivision,,,,name
@@ -51868,6 +51617,7 @@ EG-SY-NA,New Asyut City,Subdivision,,Assuit City,,initials
 EG-SY-SI,Sidfa,Subdivision,,,,name
 EG-SY-SS,Sahil Salim,Subdivision,,,,initials
 EG-SY-UI,Unorganized in Asyut,Subdivision,,,,initials
+ER-MA-AC,Asmara City,District,,,,initials
 FM-KSA-LEL,Lelu,Municipality,,,,name
 FM-KSA-MAL,Malem,Municipality,,,,name
 FM-KSA-UTW,Utwe,Municipality,,,,name
@@ -51944,29 +51694,99 @@ FM-YAP-WEL,Weloy,Municipality,,,,name
 FM-YAP-WOL,Woleai,Municipality,,,,name
 GB-EN-DL,Dudley,,,,E08000027,skeleton
 GB-EN-HD,Sheffield,,,,E08000019,any2
+GB-EN-HN,Haringey,,,,E09000014,any2
+GB-EN-SX,Essex,,,,E10000012,skeleton
+GB-SC-AC,Aberdeen City,,,,S12000033,initials
+GB-SC-DC,Dundee City,,,,S12000042,initials
+GB-SC-GC,Glasgow City,,,,S12000049,initials
+GE-SJ-KH,Akhaltsikhe,District,,,,skeleton
+GH-AA-CR,Accra,Metropolis,,,,skeleton
+GH-EP-SG,Asuogyaman,District,,,,skeleton
+GR-TH-AT,Athos,Region,Άθως,,,name
 GT-HU-AL,San Rafael Petzal,Municipality,,,,sequential
 GT-HU-AO,San Juan Atitán,Municipality,,,,sequential
+GT-QC-CAN,Canillá,Municipality,,,,name
+GT-QC-CHA,Chajul,Municipality,,,,name
+GT-QC-CHQ,Chinique,Municipality,,,,any3
+GT-QC-CHE,Chiché,Municipality,,,,name.ends
+GT-QC-CHN,Chicaman,Municipality,,,,name.ends
+GT-QC-CHI,Chichicastenango,Municipality,,,,name
+GT-QC-CUN,Cunén,Municipality,,,,name
+GT-QC-IXC,Ixcán,Municipality,,,,name
+GT-QC-JOY,Joyabaj,Municipality,,,,name
+GT-QC-NEB,Nebaj,Municipality,,,,name
+GT-QC-PAC,Pachalúm,Municipality,,,,name
+GT-QC-PAT,Patzité,Municipality,,,,name
+GT-QC-SAC,Sacapulas,Municipality,,,,name
+GT-QC-SAI,San Antonio Ilotenango,Municipality,,,,initials
+GT-QC-SAS,San Andrés Sajcabajá,Municipality,,,,initials
+GT-QC-SBJ,San Bartolomé Jocotenango,Municipality,,,,initials
+GT-QC-SCQ,Santa Cruz del Quiché,Municipality,,,,preposition.significant
+GT-QC-SJC,San Juan Cotzal,Municipality,,,,initials
+GT-QC-SPJ,San Pedro Jocopilas,Municipality,,,,initials
+GT-QC-USP,Uspantán,Municipality,,,,name
+GT-QC-ZAC,Zacualpa,Municipality,,,,name
+GT-QU-AN,San Miguel Sigüilá,Municipality,,,,any2
+GT-SM-AN,San Antonio Sacatepéquez,Municipality,,,,any2
+GT-SU-AN,San José El Idolo,Municipality,,,,any2
 GY-BA-R1,Rest of Region 1,Not Classified,,,105,preposition.significant
 GY-CU-R7,Rest of Region 7,Not Classified,,,709,preposition.significant
 GY-PT-R8,Rest of Region 8,Not Classified,,,809,preposition.significant
 GY-UD-R1,Rest of Region 10,Not Classified,,,1009,preposition.significant
 GY-UT-R9,Rest of Region 9,Not Classified,,,908,preposition.significant
+HN-CP-AG,San Jerónimo,Municipality,,,,sequential
 HN-CP-AI,San José,Municipality,,,,sequential
 HN-CP-ST,Santa Rita,Municipality,,,,any2
+HN-LP-ST,Santa Ana,Municipality,,,,any2
+HR-OB-RN,Ernestinovo,Commune,,,,skeleton
 IE-DU-DC,Dublin City,City,,,,initials
 IE-GA-GC,Galway City,City Council,,,,initials
+IN-BR-RW,Arwal,District,,,,skeleton
+IN-MH-MC,Mumbai City,District,,,,initials
+IN-UP-LG,Aligarh,District,,,,skeleton
+IN-UP-MR,Amroha,District,,,,skeleton
+IN-UP-TW,Etawah,District,,,,skeleton
 IQ-AM-AH,As Salman,District,,,,sequential
 IQ-AM-AK,Al Khithir,District,,,,initials
 IQ-AM-AS,As Samawah,District,,,,initials
 IQ-AM-RU,Rumaitha,District,,,,name
 IQ-AN-AB,Ar Rutbah,District,,,,sequential
+IQ-AN-AF,Al Fallujah,District,,,,initials
+IQ-AN-AH,Al Haditha,District,,,,initials
+IQ-AN-AQ,Al Qa'im,District,,,,initials
+IQ-AN-AR,Ar Ramadi,District,,,,initials
 IQ-AT-DA,Daquq,District,,,,name
 IQ-AT-DI,Dibis,District,,,,name
 IQ-AT-HA,Haweeja,District,,,,name
 IQ-AT-KI,Kirkuk,District,,,,anchor
+IQ-BA-AA,Abu al Khasib,District,,,,initials
+IQ-BA-AF,Al Faw,District,,,,initials
+IQ-BA-AM,Al Madiana,District,,,,initials
+IQ-BA-AQ,Al Qurnah,District,,,,initials
+IQ-BA-AZ,Al Zubair,District,,,,initials
+IQ-BB-AA,Al-Mada'in,District,,,,sequential
+IQ-BB-AH,Al Hillah,District,,,,initials
+IQ-BB-AI,Al Misiab,District,,,,sequential
+IQ-BB-AL,Al Hashimiyah,District,,,,any2
+IQ-BB-AM,Al Mahawil,District,,,,initials
+IQ-DQ-AN,An Nasiriyah,District,,,,initials
+IQ-DQ-SA,Suq ash Shuyukh,District,,,,initials
 IQ-DY-AK,Al Khalis,District,,,,initials
 IQ-DY-AM,Al Miqdadiyah,District,,,,initials
+IQ-KA-AA,Ain Al Tamur,District,,,,initials
+IQ-KA-AJ,Al Jadwal al Gharbi,District,,,,initials
+IQ-MA-AA,Al Amarah,District,,,,initials
+IQ-MA-AI,Ali al Gharbi,District,,,,any2
+IQ-MA-AK,Al Kahla,District,,,,initials
+IQ-MA-AL,Al Miamona,District,,,,any2
 IQ-MA-QA,Qal`at Salih,District,,,,initials
+IQ-NA-AK,Al Kufa,District,,,,initials
+IQ-NA-AM,Al Manathera,District,,,,initials
+IQ-NI-AB,Al Ba'aj,District,,,,initials
+IQ-NI-AH,Al Hamdaniyah,District,,,,initials
+IQ-NI-AS,Al Shikhan,District,,,,initials
+IQ-QA-AD,Ad Diwaniyah,District,,,,initials
+IQ-QA-AH,Al Hamza,District,,,,initials
 IQ-SA-AD,Al Door,District,,,,initials
 IQ-SA-AF,Al-Faris,District,,,,initials
 IQ-SA-AS,Al Shirkat,District,,,,initials
@@ -51975,22 +51795,141 @@ IQ-SA-BY,Bayji,District,,,,skeleton
 IQ-SA-SA,Samarra,District,,,,name
 IQ-SA-TH,Touz Hourmato,District,,,,initials
 IQ-SA-TI,Tikrit,District,,,,name
+IQ-WA-AH,Al Hayy,District,,,,initials
+IQ-WA-AK,Al Kut,District,,,,initials
+IQ-WA-AN,Al Noamania,District,,,,initials
+IQ-WA-AS,As Suwayrah,District,,,,initials
 JO-MA-AR,Ar-Ruwayshid,Sub-Province,,,,initials
+JP-AI-NY,Inuyama,City,犬山市,,,skeleton
+JP-AK-GT,Ōgata,Village,大潟村,,,skeleton
+JP-CH-NB,Inba,Town,印旛村,,,skeleton
+JP-FI-CH,Echizen,Town,越前市,,,skeleton
 JP-FI-SC,Sakai City,City,坂井市,,,initials
+JP-FK-ZB,Aizubange,Town,会津坂下町,,,skeleton
+JP-FK-ZM,Aizumisato,Town,,,,skeleton
+JP-FU-OE,Kōge,Town,上毛町,,,any2
 JP-GI-IT,Ikeda Town,Town,池田町,,,initials
+JP-HI-KT,Akiōta,Town,安芸太田町,,,skeleton
+JP-HO-KGW,Akaigawa,Village,赤井川村,,,skeleton
 JP-HO-KUC,Kushiro City,City,釧路町,,,compound
 JP-HO-SHH,Shiriuchi,Town,知内町,,,any3
+JP-HY-NM,Inami,Town,稲美町,,,skeleton
+JP-HY-SG,Asago,City,朝来市,,,skeleton
+JP-IW-CH,Ichinohe,Town,一戸町,,,skeleton
+JP-IW-WZ,Iwazumi,Town,岩泉町,,,skeleton
+JP-KG-IN,Kinkō,Town,錦江町,,,any2
+JP-KG-MG,Amagi,Town,天城町,,,skeleton
+JP-KN-AG,Aguni,Village,粟国村,,,name
+JP-KN-CH,Chatan,Town,北谷町,,,name
+JP-KN-GI,Ginowan,City,宜野湾市,,,name
+JP-KN-GN,Ginoza,Village,宜野座村,,,skeleton
+JP-KN-HA,Haebaru,Town,島尻郡,,,name
+JP-KN-HI,Higashi,Village,東村,,,name
+JP-KN-IE,Ie,Village,伊江村,,,name
+JP-KN-IH,Iheya,Village,島尻郡,,,name
+JP-KN-IS,Ishigaki,City,石垣市,,,name
+JP-KN-IT,Itoman,City,糸満市,,,name
+JP-KN-IZ,Izena,Village,島尻郡,,,name
+JP-KN-KA,Kadena,Town,嘉手納町,,,name
+JP-KN-KN,Kin,Town,金武町,,,skeleton
+JP-KN-KU,Kunigami,Village,国頭村,,,name
+JP-KN-KI,Kitanakagusuku,Village,北中城村,,,name
+JP-KN-KM,Kumejima,Town,久米島町,,,skeleton
+JP-KN-MD,Minami Daito,Town,南大東島,,,initials
+JP-KN-MI,Miyakojima,City,宮古島市,,,name
+JP-KN-MN,Minamidaitō,Village,島尻郡,,,skeleton
+JP-KN-MO,Motobu,Town,本部町,,,name
+JP-KN-NK,Nakagusuku,Village,中城村,,,skeleton
+JP-KN-NG,Nago,City,名護市,,,skeleton
+JP-KN-NA,Naha,City,那覇市,,,name
+JP-KN-NI,Nishihara,Town,西原町,,,name
+JP-KN-NJ,Nanjō,City,南城市,,,skeleton
+JP-KN-NN,Nakijin,Village,今帰仁村,,,any2
+JP-KN-OG,Ōgimi,Village,大宜味村,,,name
+JP-KN-OK,Okinawa,City,沖縄市,,,name
+JP-KN-ON,Onna,Village,恩納村,,,name
+JP-KN-RS,Urasoe,City,浦添市,,,skeleton
+JP-KN-TA,Taketomi,Town,竹富町,,,name
+JP-KN-TK,Tokashiki,Village,島尻郡,,,skeleton
+JP-KN-TN,Tonaki,Town,渡名喜村,,,skeleton
+JP-KN-TO,Tomigusuku,City,豊見城市,,,name
+JP-KN-TR,Tarama,Village,多良間村,,,skeleton
+JP-KN-UR,Uruma,City,うるま市,,,name
+JP-KN-YA,Yaese,Town,島尻郡,,,name
+JP-KN-YO,Yomitan,Village,読谷村,,,name
+JP-KN-YG,Yonaguni,Town,与那国町,,,any2
+JP-KN-YN,Yonabaru,Town,島尻郡,,,skeleton
+JP-KN-ZA,Zamami,Village,島尻郡,,,name
+JP-KO-OY,Tōyō,Town,東洋町,,,any2
 JP-KO-SC,Shimanto City,City,四万十町,,,initials
 JP-KO-TC,Tosa City,City,土佐町,,,initials
+JP-KU-SG,Asagiri,Town,あさぎり町,,,skeleton
+JP-KU-SH,Ashikita,Town,芦北町,,,skeleton
 JP-MI-KT,Kami Town,Town,加美町,,,initials
+JP-MI-ST,Ōsato,Town,大郷町,,,skeleton
+JP-NR-KR,Ikaruga,Town,斑鳩町,,,skeleton
+JP-OI-SK,Usuki,City,臼杵市,,,skeleton
+JP-OK-AK,Akaiwa,City,赤磐,,,name
+JP-OK-AS,Asakuchi,City,浅口市,,,name
+JP-OK-BI,Bizen,City,備前市,,,name
+JP-OK-HO,Shōō,Town,勝央町,,,any2
+JP-OK-IB,Ibara,City,井原市,,,name
+JP-OK-KG,Kagamino,Town,鏡野町,,,skeleton
+JP-OK-MA,Maniwa,City,真庭市,,,name
+JP-OK-MS,Misaki,Town,美咲町,,,skeleton
+JP-OK-NS,Naoshima,Town,直島町,,,skeleton
+JP-OK-NH,Nishiawakura,Village,西粟倉村,,,any2
+JP-OK-SA,Satoshō,Town,里庄町,,,name
+JP-OK-SE,Setouchi,City,瀬戸内市,,,name
+JP-OK-SH,Shōdoshima,Town,小豆島町,,,name
+JP-OK-SI,Shinjō,Village,新庄村,,,any2
+JP-OK-SO,Sōja,City,総社市,,,name
+JP-OK-TS,Tsuyama,City,津山市,,,name
+JP-OK-WA,Wake,Town,和気町,,,name
+JP-OS-SK,Ōsakasayama,City,大阪狭山市,,,skeleton
+JP-OS-ZM,Izumisano,City,泉佐野市,,,skeleton
+JP-SA-GN,Ogano,Town,小鹿野町,,,skeleton
+JP-SA-GS,Ogose,Town,越生町,,,skeleton
+JP-SA-AM,Kamikawa,Town,神川町,,,any2
 JP-SA-MC,Misato City,City,美里町,,,initials
+JP-SM-KN,Okinoshima,Town,隠岐の島町,,,skeleton
+JP-TO-KR,Akiruno,City,あきる野市,,,skeleton
 JP-WA-IT,Inami Town,Town,印南町,,,initials
+JP-WA-RD,Aridagawa,Town,有田川町,,,skeleton
+KE-GA-GT,Garissa Township,Constituency,,,27,initials
 KE-KM-TT,Thika Town,Constituency,,,114,initials
 KE-NE-NT,Nyeri Town,Constituency,,,99,initials
+KE-SI-GN,Ugunja,Constituency,,,233,skeleton
 KG-NA-AB,At-Bashi,District,,,,initials
 KG-OC-GO,Osh,City,,,,anchor
 KP-HWN-TAA,T'aet'an,County,,Taetan,,initials
 KP-KAD-PAG,P'an'gyo,County,,Pangyo,,initials
+KR-GB-AN,Andong,City,,,,name
+KR-GB-BO,Bonghwa,County,,,,name
+KR-GB-CO,Cheongsong,County,,,,any2
+KR-GB-CE,Cheongdo,County,,,,any2
+KR-GB-CH,Chilgok,County,,,,name
+KR-GB-GE,Gyeongju,City,,,,any2
+KR-GB-GI,Gimcheon,City,,,,name
+KR-GB-GN,Gunwi,County,,,,skeleton
+KR-GB-GO,Goryeong,County,,,,name
+KR-GB-GU,Gumi,City,,,,name
+KR-GB-GY,Gyeongsan,City,,,,name
+KR-GB-LN,Ulleung,County,,,,skeleton
+KR-GB-MU,Mungyeong,City,,,,name
+KR-GB-PO,Pohang,City,,,,name
+KR-GB-SA,Sangju,City,,,,name
+KR-GB-SE,Seongju,County,,,,name
+KR-GB-UI,Uiseong,County,,,,name
+KR-GB-UL,Uljin,County,,,,name
+KR-GB-YC,Yecheon,County,,,,skeleton
+KR-GB-YE,Yeongju,City,,,,name
+KR-GB-YG,Yeongyang,County,,,,any2
+KR-GB-YN,Yeongcheon,City,,,,skeleton
+KR-GB-YO,Yeongdeok,County,,,,any2
+KR-GG-NS,Anseong,City,,,,skeleton
+KR-GG-NY,Anyang,City,,,,skeleton
+KR-GG-WN,Uiwang,City,,,,skeleton
 KZ-AKM-AKS,Akkol`skiy,District,,Akkol'skiy (Alekseevskiy),,compound
 KZ-AKM-ARS,Arshalynskiy,District,,Arshalynskiy (Vishnevskiy),,name
 KZ-AKM-AST,Astrakhansiy,District,,Astrakhanskiy,,name
@@ -52165,7 +52104,10 @@ KZ-ZHA-ZHA,Zhambylskiy,District,,,,name
 KZ-ZHA-ZHB,Zhamb.,District,,,,name.ends
 KZ-ZHA-ZHU,Zhualynskiy,District,,,,name
 KZ-ZHA-ZHY,Zhualy,District,,,,name.ends
+LA-SV-TS,Atsaphangthong,District,,Ouat Saphangthon,,skeleton
 LK-BT-ET,Eravur Town,Division,,,,initials
+LK-KA-DM,Udadumbara,Division,,,,skeleton
+LK-KA-DP,Udapalatha,Division,,,,skeleton
 LK-MN-MT,Mannar Town,Division,,,,initials
 LR-GB-EE,District # 1,District,,,04,sequential
 LR-GB-EG,District # 2,District,,,06,sequential
@@ -52251,6 +52193,9 @@ MA-TAT-FAH,Fahs Anjra,Prefecture,,Fahs-Béni Makada,227,anchor
 MA-TAT-LAR,Larache,Province,,,331,anchor
 MA-TAT-TAA,Tanger-Assilah,Prefecture,,,511,compound
 MA-TAT-TET,Tétouan,Prefecture,,Tetouan,571,anchor
+MG-NT-DI,Diana,,,,,name
+MG-NT-SA,Sava,,,,,name
+MG-TO-NS,Anosy,,,,,skeleton
 ML-BKO-BKO,Bamako,Circle,,,,anchor
 ML-GAO-ANS,Ansongo,Circle,,,,name
 ML-GAO-BOU,Bourem,Circle,,,,name
@@ -52302,7 +52247,35 @@ ML-TIM-GOU,Goundam,Circle,,,,name
 ML-TIM-NIA,Niafunké,Circle,,Niafunke,,name
 ML-TIM-TOM,Tombouctou,Circle,,Timbuktu,,name
 MM-KY-HA,Hpa-an,District,,Pha-An|Pa-an,,initials
+MN-BO-LT,Altantsögts,Sum,Алтанцөгц,Altansogts,,skeleton
 MN-BO-OC,Ölgii (city),Sum,Өлгий,Olgii,,initials
+MN-SE-RK,Orkhon,Sum,Орхон,Orhon,,skeleton
+MN-TO-AL,Altanbulag,Sum,Алтанбулаг,,,name
+MN-TO-AR,Argalant,Sum,Аргалант,,,name
+MN-TO-BA,Bayan,Sum,Баян,,,name
+MN-TO-BY,Bayanchandmani,Sum,Баянчандмань,,,skeleton
+MN-TO-BD,Bayandelger,Sum,Баяндэлгэр,,,any2
+MN-TO-BJ,Bayanjargalan,Sum,Баянжаргалан,,,any2
+MN-TO-BK,Bayankhangai,Sum,Баянхангай,,,any2
+MN-TO-BS,Bayantsagaan,Sum,Баянцагаан,,,any2
+MN-TO-AY,Bayan-Önjüül,Sum,Баян-Өнжүүл,Bayan-Onjuul,,any2
+MN-TO-BO,Bornuur,Sum,Борнуур,,,name
+MN-TO-BT,Batsümber,Sum,Батсүмбэр,Batsumber,,skeleton
+MN-TO-BU,Büren,Sum,Бүрэн,Buren,,name
+MN-TO-BN,Bayantsogt,Sum,Баянцогт,,,any2
+MN-TO-DE,Delgerkhaan,Sum,Дэлгэрхаан,Delgerhaan,,name
+MN-TO-RD,Erdene,Sum,Эрдэнэ,,,skeleton
+MN-TO-JA,Jargalant,Sum,Жаргалант,,,name
+MN-TO-LU,Lün,Sum,Лүн,Lun,,name
+MN-TO-MO,Möngönmorit,Sum,Мөнгөнморьт,Mongonmorit,,name
+MN-TO-ON,Öndörshireet,Sum,Өндөрширээт,Ondorshireet,,name
+MN-TO-ER,Erdenesant,Sum,Эрдэнэсант,,,name
+MN-TO-RK,Arkhust,Sum,Архуст,Arhust,,skeleton
+MN-TO-SE,Sergelen,Sum,Сэргэлэн,,,name
+MN-TO-SU,Sümber,Sum,Сүмбэр,Sumber,,name
+MN-TO-TS,Tseel,Sum,Цээл,,,name
+MN-TO-UG,Ugtaal,Sum,Угтаал,,,name
+MN-TO-ZA,Zaamar,Sum,Заамар,,,name
 MR-ADR-AOU,Aoujeft,Department,,,,name
 MR-ADR-ATA,Atar,Department,,,,name
 MR-ADR-CHI,Chinguetti,Department,,Chingueti|Chinguitti,,name
@@ -52361,7 +52334,11 @@ MT-TR-AD,Ħad-Dingli,Local council,,Dingli,,initials
 MT-XL-AT,Ħal Tarxien,Local council,,Tarxien,,initials
 MT-XL-AZ,Ħaż-Żabbar,Local council,,Żabbar,,initials
 MT-XL-RA,Raħal Ġdid,Local council,,Paola,,initials
+MW-BA-BT,Balaka Town,Town,,,,initials
+MW-KR-KT,Karonga Town,Town,,,,initials
 MW-LI-LIC,Lilongwe City,City,,,,compound
+MW-MG-MT,Mangochi Town,Town,,,,initials
+MW-MH-LT,Liwonde Town,Town,,,,initials
 MW-MZ-MZC,Mzuzu City,City,,,,compound
 MW-SA-SAT,Salima Town,Town,,,,compound
 MW-TH-LUT,Luchenza Town,Town,,,,compound
@@ -54822,6 +54799,7 @@ MX-ZAC-VIG,Villa García,Municipality,,,,compound
 MX-ZAC-VIH,Villa Hidalgo,Municipality,,,,compound
 MX-ZAC-VIL,Villanueva,Municipality,,,,name
 MX-ZAC-ZAC,Zacatecas,Municipality,,,,anchor
+MZ-IN-NH,Inhassoro,District,,,,skeleton
 MZ-MA-BA,Barue,District,,,,name
 MZ-MA-GO,Gondola,District,,,,name
 MZ-MA-GU,Guro,District,,,,name
@@ -54830,7 +54808,99 @@ MZ-MA-MS,Macossa,District,,,,any2
 MZ-MA-MO,Mossurize,District,,,,name
 MZ-MA-SU,Sussundenga,District,,,,name
 MZ-MA-TA,Tambara,District,,,,name
+MZ-MC-BO,Boane,District,,,,name
+MZ-MC-MA,Maputo,District,,,,name
+NA-OD-KR,Okakarara,Constituency,,,,skeleton
+NA-OD-TV,Otavi,Constituency,,,,skeleton
+NA-OH-TJ,Otjinene,Constituency,,,,skeleton
+NA-ON-OA,Okatyali,Constituency,,Okatjali,,any2
+NA-ON-NG,Ongwediva,Constituency,,,,skeleton
+NA-ON-OK,Okaku,Constituency,,,,name
+NA-ON-OE,Oshakati East,Constituency,,,,initials
+NA-ON-KT,Okatana,Constituency,,,,skeleton
+NA-ON-OM,Ompundja,Constituency,,,,name
+NA-ON-ON,Ondangwa,Constituency,,,,name
+NA-ON-OW,Oshakati West,Constituency,,,,initials
+NA-ON-UU,Uukwiyu,Constituency,,,,name
+NA-ON-VD,Uuvudhiya,Constituency,,,,skeleton
+NA-OS-KH,Okahao,Constituency,,,,skeleton
+NA-OT-EN,Engodi,Constituency,,Eengodi,,name
+NA-OT-GU,Guinas,Constituency,,,,name
+NA-OT-MN,Omuntele,Constituency,,,,skeleton
+NA-OT-ON,Oniipa,Constituency,,,,name
+NA-OT-OY,Onyaanya,Constituency,,,,any2
+NA-OT-OK,Okankolo,Constituency,,,,name
+NA-OT-OL,Olukonda,Constituency,,,,name
+NA-OT-OM,Omuthiyagwipundi,Constituency,,Omuthiyagwiipundi,,name
+NA-OT-NY,Onayena,Constituency,,,,skeleton
+NA-OT-TS,Tsumeb,Constituency,,,,name
+NA-OW-EE,Eenhana,Constituency,,,,name
+NA-OW-EN,Engela,Constituency,,,,name
+NA-OW-EP,Epembe,Constituency,,,,name
+NA-OW-MN,Omundaungilo,Constituency,,,,skeleton
+NA-OW-ND,Endola,Constituency,,,,skeleton
+NA-OW-NG,Ongenga,Constituency,,,,skeleton
+NA-OW-OK,Okongo,Constituency,,,,name
+NA-OW-OM,Omulonga,Constituency,,,,name
+NA-OW-ON,Ondobe,Constituency,,,,name
+NA-OW-OS,Oshikango,Constituency,,,,name
+NA-OW-OW,Ohangwena,Constituency,,,,anchor
+NG-AK-BN,Ibeno,Local Authority,,,,skeleton
+NG-CR-BD,Obudu,Local Authority,,,,skeleton
+NG-CR-BN,Obanliku,Local Authority,,,,skeleton
+NG-CR-KM,Akamkpa,Local Authority,,,,skeleton
+NG-EB-HZ,Ohaozara,Local Authority,,,,skeleton
+NG-ED-RH,Orhionmwon,Local Authority,,,,skeleton
+NG-EK-KL,Ikole,Local Authority,,,,skeleton
+NG-EN-DN,Udenu,Local Authority,,,,skeleton
+NG-FC-BJ,Abaji,Local Authority,,,,skeleton
+NG-IM-RS,Orsu,Local Authority,,,,skeleton
+NG-KO-KH,Okehi,Local Authority,,,,skeleton
+NG-KW-SN,Isin,Local Authority,,,,skeleton
+NG-LA-KJ,Ikeja,Local Authority,,,,skeleton
+NG-NI-GW,Agwara,Local Authority,,,,skeleton
+NG-OS-AE,Atakumosa East,Local Authority,,,,initials
+NG-OS-AI,Aiyedade,Local Authority,,,,name
+NG-OS-AW,Atakumosa West,Local Authority,,,,initials
+NG-OS-AY,Ayedire,Local Authority,,,,name
+NG-OS-BL,Boluwaduro,Local Authority,,,,skeleton
+NG-OS-BO,Boripe,Local Authority,,,,name
+NG-OS-EG,Egbedore,Local Authority,,,,name
+NG-OS-EJ,Ejigbo,Local Authority,,,,name
+NG-OS-EN,Ede North,Local Authority,,,,initials
+NG-OS-ES,Ede South,Local Authority,,,,initials
+NG-OS-FD,Ifedayo,Local Authority,,,,skeleton
+NG-OS-IE,Ife East,Local Authority,,,,initials
+NG-OS-IC,Ife Central,Local Authority,,,,initials
+NG-OS-IL,Ilesha East,Local Authority,,,,any2
+NG-OS-IF,Ifelodun,Local Authority,,,,name
+NG-OS-IA,Ila,Local Authority,,,,any2
+NG-OS-IN,Ife North,Local Authority,,,,initials
+NG-OS-IO,Iwo,Local Authority,,,,any2
+NG-OS-IR,Irewole,Local Authority,,,,name
+NG-OS-IS,Ife South,Local Authority,,,,initials
+NG-OS-IW,Ilesha West,Local Authority,,,,initials
+NG-OS-OB,Obokun,Local Authority,,,,name
+NG-OS-OO,Odo-Otin,Local Authority,,,,initials
+NG-OS-OL,Olorunda,Local Authority,,,,name
+NG-OS-OA,Ola Oluwa,Local Authority,,,,any2
+NG-OS-OR,Oriade,Local Authority,,,,name
+NG-OS-OS,Osogbo,Local Authority,,,,name
+NG-OS-RL,Orolu,Local Authority,,,,skeleton
+NG-OS-RP,Irepodun,Local Authority,,,,skeleton
+NG-OS-SK,Isokan,Local Authority,,,,skeleton
+NG-OY-LR,Olorunsogo,Local Authority,,,,skeleton
+NG-OY-SY,Iseyin,Local Authority,,,,skeleton
+NG-OY-TS,Atisbo,Local Authority,,,,skeleton
 NG-PL-QA,Qua'an Pan,Local Authority,,,,initials
+NL-NB-RS,Oirschot,Municipality,,,,skeleton
+NL-NH-MS,Amstelveen,Municipality,,,,skeleton
+NL-NH-TG,Uitgeest,Municipality,,,,skeleton
+NL-XA-LB,Albrandswaard,Municipality,,,,skeleton
+NL-XA-BI,Brielle,Municipality,,,,any2
+NL-XA-GD,Gouda,Municipality,,,,skeleton
+NL-XA-NS,Nissewaard,Municipality,,,,skeleton
+NO-HO-LV,Ulvik,Municipality,,,,skeleton
 NZ-AUK-AUK,Auckland,District,,,076,anchor
 NZ-BOP-KAW,Kawerau,District,,,026,name
 NZ-BOP-OPO,Opotiki,District,,,027,name
@@ -56864,10 +56934,36 @@ PH-ZSI-SIA,Siay,Municipality,,,98313,name
 PH-ZSI-TAL,Talusan,Municipality,,,98314,name
 PH-ZSI-TIT,Titay,Municipality,,,98315,name
 PH-ZSI-TUN,Tungawan,Municipality,,,98316,name
-PL-MA-OI,Łosice,County,,,1410,any2
+PL-DO-LC,Legnica (City),City with powiat rights,,,0209,initials
+PL-KP-BC,Bydgoszcz (City),City with powiat rights,,,0403,initials
+PL-KP-GC,Grudziądz (City),City with powiat rights,,,0462,initials
+PL-KP-TC,Toruń (City),City with powiat rights,,,0463,initials
+PL-LU-LC,Lublin (City),City with powiat rights,,,0663,initials
+PL-LU-ZC,Zamość (City),City with powiat rights,,,0664,initials
 PL-MA-RC,Radom (City),City with powiat rights,,,1463,initials
+PL-MA-SC,Siedlce (City),City with powiat rights,,,1464,initials
 PL-MO-KC,Kraków (City),City with powiat rights,,,1261,initials
 PL-MO-TC,Tarnów (City),City with powiat rights,,,1263,initials
+PL-OD-SC,Skierniewice (City),City with powiat rights,,,1063,initials
+PL-OD-WC,Łowicz,County,,,1005,skeleton
+PL-OP-OC,Opole (City),City with powiat rights,,,1661,initials
+PL-PD-OC,Łomża (City),City with powiat rights,,,2062,initials
+PL-PM-GC,Gdańsk (City),City with powiat rights,,,2261,initials
+PL-PO-KC,Krosno (City),City with powiat rights,,,1861,initials
+PL-PO-PC,Przemyśl (City),City with powiat rights,,,1862,initials
+PL-PO-RC,Rzeszów (City),City with powiat rights,,,1863,initials
+PL-PO-TC,Tarnobrzeg (City),City with powiat rights,,,1864,initials
+PL-SL-CC,Częstochowa (CIty),City with powiat rights,,,2464,initials
+PL-SL-GC,Gliwice (City),City with powiat rights,,,2466,initials
+PL-SL-RC,Rybnik (City),City with powiat rights,,,2473,initials
+PL-SW-KC,Kielce (City),City with powiat rights,,,2661,initials
+PL-WI-KC,Kalisz (City),City with powiat rights,,,3061,initials
+PL-WI-LC,Leszno (City),City with powiat rights,,,3063,initials
+PL-WI-PC,Poznań (City),City with powiat rights,,,3064,initials
+PL-WM-EC,Elbląg (City),City with powiat rights,,,2861,initials
+PL-WM-LC,Olecko,County,,,2813,skeleton
+PL-WM-OC,Olsztyn (City),City with powiat rights,,,2862,initials
+PL-ZA-KC,Koszalin (City),City with powiat rights,,,3261,initials
 PS-GZA-DEB,Deir Al-Balah,Governorate,,,,anchor
 PS-GZA-GAS,Gaza ash Shamaliyah,Governorate,,North Gaza,,initials
 PS-GZA-GZA,Gaza,Governorate,,,,anchor
@@ -56884,6 +56980,15 @@ PS-WEB-RAA,Ramallah and Al-Bireh,Governorate,,,,conjunction
 PS-WEB-SLT,Salfit,Governorate,,,,anchor
 PS-WEB-TBS,Tubas,Governorate,,,,anchor
 PS-WEB-TKM,Tulkarm,Governorate,,,,anchor
+PT-AV-ST,Estarreja,Municipality,,,0108,skeleton
+PT-BE-LM,Almodôvar,Municipality,,,0202,skeleton
+PT-BE-LV,Alvito,Municipality,,,0203,skeleton
+PT-FA-LC,Alcoutim,Municipality,,,0802,skeleton
+PT-FA-LJ,Aljezur,Municipality,,,0803,skeleton
+PT-LE-LV,Alvaiázere,Municipality,,,1002,skeleton
+PT-SA-LC,Alcanena,Municipality,,,1402,skeleton
+PT-SA-LP,Alpiarça,Municipality,,,1404,skeleton
+PT-SE-LC,Alcochete,Municipality,,,1502,skeleton
 PY-AMA-BEV,Bella Vista,District,,,,compound
 PY-AMA-CAB,Capitán Bado,District,,,,compound
 PY-AMA-PJC,Pedro Juan Caballero,District,,,,initials
@@ -57101,7 +57206,35 @@ PY-SAP-TAC,Tacuatí,District,,,,name
 PY-SAP-UNI,Unión,District,,,,name
 PY-SAP-VDR,Villa del Rosario,District,,,,preposition
 PY-SAP-YDN,Yataity del Norte,District,,,,preposition
+RO-AR-RC,Archis,Commune,,,,skeleton
+RO-BC-NC,Oncesti,Commune,,,,skeleton
+RO-BN-RU,Romuli,Commune,,,,any2
+RO-BT-NT,Unteni,Commune,,,,skeleton
+RO-CL-LM,Ulmu,Commune,,,,skeleton
+RO-CT-LM,Aliman,Commune,,,,skeleton
+RO-DB-LM,Ulmi,Commune,,,,skeleton
+RO-GJ-LM,Alimpesti,Commune,,,,skeleton
+RO-GJ-ND,Andreesti,Commune,,Vladimir,,skeleton
+RO-GJ-RM,Iormanesti,Commune,,Glogova,,skeleton
+RO-IL-LB,Albesti,Commune,,,,skeleton
+RO-MH-LV,Ilovita,Commune,,,,skeleton
+RO-MM-RA,Rona De Jos,Commune,,,,any2
+RO-MS-LC,Lunca,Commune,,,,any2
+RO-MS-RN,Ernei,Commune,,,,skeleton
+RO-OT-BG,Oboga,Commune,,,,skeleton
+RO-OT-ZV,Izvoarele,Commune,,,,skeleton
+RO-PH-LO,Plopu,Commune,,,,any2
+RO-PH-PS,Apostolache,Commune,,,,skeleton
+RO-VL-LN,Olanu,Commune,,,,skeleton
+RO-VL-TA,Stanesti,Commune,,,,any2
+RO-VS-VR,Averesti,Commune,,Bunesti-averesti,,skeleton
 RU-BAS-ALS,Al'sheyevskiy rayon,District,Альшеевский район,,R46000,compound
+RU-IRK-BOY,Bodaybinskiy rayon,District,Бодайбинский район,,R63090,name.ends
+RU-IRK-RKT,Irkutsk,City,Иркутск,,,skeleton
+RU-KAC-KAK,Karachayevsk,District,Карачаевск,,,name.ends
+RU-KAR-PTK,Pitkyarantskiy rayon,District,Питкярантский район,,R01001,skeleton
+RU-KEM-SNK,Osinniki,District,Осинники,,,skeleton
+RU-KOM-USY,Usinskiy rayon,District,Усинский район,,R02001,name.ends
 RU-KUN-ALM,Al'menevskiy rayon,District,Альменевский район,,R48000,compound
 RU-MOC-CEN,Central,District,,Central Administrative Okrug,,name
 RU-MOC-EAS,Eastern,District,,Eastern Administrative Okrug,,name
@@ -57113,9 +57246,24 @@ RU-MOC-SOU,Southern,District,,Southern Administrative Okrug,,name
 RU-MOC-SOW,South-Western,District,,South-Western Administrative Okr,,compound
 RU-MOC-WES,Western,District,,Western Administrative Okrug,,name
 RU-MOC-ZEL,Zelenogradsky,District,,Zelenogradsky Administrative Okr,,name
+RU-SAN-POY,Poronayskiy rayon,District,Поронайский район,,R71001,name.ends
+RU-SAN-UGY,Uglegorskiy rayon,District,Углегорский район,,R71001,name.ends
+RU-SAR-TKR,Atkarsk,City,Аткарск,,,skeleton
 RU-TAT-ALK,Al'keevskiy rayon,District,Алькеевский район,,R32000,compound
 RU-TAT-ALM,Al'met'evsk,District,Альметьевск,Almetyevsk,,compound
 RU-TAT-AME,Al'met'evskiy rayon,District,Альметьевский район,,R32000,initials
+RW-BR-KA,Karongi,District,,,31,name
+RW-BR-NA,Nyabihu,District,,,34,any2
+RW-BR-NG,Ngororero,District,,,35,name
+RW-BR-NY,Nyamasheke,District,,,37,name
+RW-BR-RS,Rusizi,District,,,36,skeleton
+RW-BR-RT,Rutsiro,District,,,32,skeleton
+RW-BR-RU,Rubavu,District,,,33,name
+RW-MJ-BU,Burera,District,,,44,name
+RW-MJ-GA,Gakenke,District,,,42,name
+RW-MJ-GI,Gicumbi,District,,,45,name
+RW-MJ-MU,Musanze,District,,,43,name
+RW-MJ-RU,Rulindo,District,,,41,name
 SA-AB-AA,Al Aqiq,Governorate,العقيق‎,,,initials
 SA-AB-AB,Al Bahah,Governorate,ٱلْبَاحَة‎,,,initials
 SA-AB-AH,Al Hajrah,Governorate,,,,initials
@@ -57178,9 +57326,11 @@ SA-AR-SA,Shaqra,Governorate,,,,any2
 SA-AR-SH,Ash Shimasiyah,Governorate,,,,any2
 SA-AR-TH,Thadiq,Governorate,,,,name
 SA-AR-WA,Wadi Ad Dawasir,Governorate,,,,initials
+SA-AS-AA,Al Ahsa,Governorate,,,,initials
 SA-AS-AJ,Al Jubayl,Governorate,,,,initials
 SA-AS-AK,Al Khubar,Governorate,,,,initials
 SA-AS-AL,Al Khafji,Governorate,,,,any2
+SA-AS-AN,Al Nuayriyah,Governorate,,,,initials
 SA-AS-AQ,Al Qatif,Governorate,,,,initials
 SA-AS-AU,Al Udayd,Governorate,,,,initials
 SA-AS-QA,Qaryah Al Ulya,Governorate,,,,initials
@@ -57236,11 +57386,34 @@ SD-AQ-AG,Al Gadaref,District,,,,initials
 SD-AQ-AL,Al Galabat,District,,,,any2
 SD-AQ-AR,Al Rahd,District,,,,initials
 SD-DE-AD,Al Deain,District,,,,initials
+SD-DN-AF,Al Fasher,District,,,,initials
+SD-DW-AG,Al Geneina,District,,,,initials
+SD-KA-AG,Al Gash,District,,,,initials
+SD-NB-AD,Ad Damazin,District,,,,initials
+SD-NB-AK,Al Kurumik,District,,,,initials
+SD-NB-AR,Al Roseires,District,,,,initials
+SD-NK-JA,Jebrat al Sheikh,District,,,,initials
+SD-NR-AD,Ad Damer,District,,,,initials
+SD-NR-AM,Al Matammah,District,,,,initials
+SD-NW-AD,Ad Douiem,District,,,,initials
+SD-NW-AG,Al Gutaina,District,,,,initials
+SD-NW-AJ,Al Jabalian,District,,,,initials
+SD-SI-AD,Ad Dinder,District,,,,initials
+SD-WK-AS,As Salam,District,,,,initials
+SE-KR-LM,Älmhult,Municipality,,,,skeleton
+SE-NO-RJ,Arjeplog,Municipality,,,,skeleton
+SE-NO-VR,Överkalix,Municipality,,,,skeleton
+SE-VR-RJ,Årjäng,Municipality,,,,skeleton
+SS-EC-BA,Bahr al Jabal,District,,,,initials
+SS-JU-FA,Fam al Zaraf,District,,,,initials
+SS-NU-AM,Al Mabien,District,,,,initials
+SS-NU-AR,Al Renk,District,,,,initials
 SS-UY-AL,Al Leiri,District,,,,initials
 SS-UY-AM,Al Mayom,District,,,,initials
 SV-CH-AE,San José Cancasque,Municipality,,,,sequential
 SV-CH-AI,San Francisco Lempa,Municipality,,,,sequential
 SV-CH-AL,San Antonio Los Ranchos,Municipality,,,,sequential
+SV-CH-ST,Santa Rita,Municipality,,,,any2
 SV-PA-CUY,Cuyultitán,Municipality,,,,name
 SV-PA-JER,Jerusalén,Municipality,,,,name
 SV-PA-MEC,Mercedes La Ceiba,Municipality,,Mercedes de Ceiba,,compound
@@ -57265,9 +57438,96 @@ SV-PA-TAP,Tapalhuaca,Municipality,,,,name
 SV-PA-ZAC,Zacatecoluca,Municipality,,,,name
 SY-AL-AB,Al Bab,District,,,,initials
 SY-AL-AS,As-Safirah,District,,,,initials
+SY-DR-AS,As-Sanamayn,District,,,,initials
+SY-HA-AM,Al-Malikiyah,District,,,,initials
+SY-HA-AQ,Al Qamishli,District,,,,initials
+SY-HI-AM,Al-Mukharram,District,,,,initials
+SY-HI-AQ,Al-Qusayr,District,,,,initials
+SY-HI-AR,Ar-Rastan,District,,,,initials
+SY-HM-AS,As-Suqaylabiyah,District,,,,initials
+SY-ID-JA,Jisr ash-Shugur,District,,,,initials
+SY-LA-AH,Al-Haffah,District,,,,initials
+SY-RA-AT,Ath-Thawrah,District,,,,initials
+SY-RD-AN,An-Nabk,District,,,,initials
+SY-RD-AQ,Al-Qutayfah,District,,,,initials
+SY-RD-AT,At-Tall,District,,,,initials
+SY-TA-AS,Ash-Shaykh Badr,District,,,,initials
 TD-HL-HA,Haraze Al Biar,Department,,Ndjamena,,initials
 TH-ROE-ATS,At Samat,District,อำเภออาจสามารถ,,4514,compound
+TJ-SU-ST,Istaravshan,District,,,,skeleton
 TM-AH-TC,Tejen city,City,,,,initials
+TM-BA-SC,Serdar City,City,,,,initials
+TM-MA-BC,Baýramaly City,City,,,,initials
+TM-MA-MC,Mary City,City,,,,initials
+TR-AR-RD,Ardanuç,District,,,,skeleton
+TR-BU-RH,Orhaneli,District,,,,skeleton
+TR-DY-BE,Besni,District,,,,name
+TR-DY-CE,Çelikhan,District,,,,name
+TR-DY-GE,Gerger,District,,,,name
+TR-DY-GO,Gölbaşı,District,,,,name
+TR-DY-KA,Kahta,District,,,,name
+TR-DY-ME,Merkez,District,,Adiyaman,,name
+TR-DY-SA,Samsat,District,,,,name
+TR-DY-SI,Sincik,District,,,,name
+TR-DY-TU,Tut,District,,,,name
+TR-ER-LR,Olur,District,,,,skeleton
+TR-IS-SN,Esenler,District,,,,skeleton
+TR-KR-AK,Akyaka,District,,,,name
+TR-KR-AR,Arpaçay,District,,,,name
+TR-KR-DI,Digor,District,,,,name
+TR-KR-SE,Selim,District,,,,name
+TR-KR-SU,Susuz,District,,,,name
+TR-KE-KC,Akçakent,District,,,,skeleton
+TR-AA-AY,Ayrancı,District,,,,name
+TR-AA-BA,Başyayla,District,,,,name
+TR-AA-ER,Ermenek,District,,,,name
+TR-AA-KA,Kazımkarabekir,District,,,,name
+TR-AA-SA,Sarıveliler,District,,,,name
+TR-ML-RG,Arguvan,District,,,,skeleton
+TR-NT-AK,Akseki,District,,,,name
+TR-NT-AL,Alanya,District,,,,name
+TR-NT-EL,Elmalı,District,,,,name
+TR-NT-FI,Finike,District,,,,name
+TR-NT-GA,Gazipaşa,District,,,,name
+TR-NT-GU,Gündoğmuş,District,,,,name
+TR-NT-IB,İbradi,District,,,,name
+TR-NT-KA,Kaş,District,,,,name
+TR-NT-KE,Kemer,District,,,,name
+TR-NT-KL,Kale,District,,,,skeleton
+TR-NT-KO,Korkuteli,District,,,,name
+TR-NT-KU,Kumluca,District,,,,name
+TR-NT-MA,Manavgat,District,,,,name
+TR-NT-ME,Merkez,District,,Antalya,,name
+TR-NT-SE,Serik,District,,,,name
+TR-RD-CI,Çıldır,District,,,,name
+TR-RD-DA,Damal,District,,,,name
+TR-RD-GO,Göle,District,,,,name
+TR-RD-HA,Hanak,District,,,,name
+TR-RD-ME,Merkez,District,,Ardahan,,name
+TR-RD-PO,Posof,District,,,,name
+TR-RZ-CA,Çayırlı,District,,,,name
+TR-RZ-IL,İliç,District,,,,name
+TR-RZ-KE,Kemah,District,,,,name
+TR-RZ-KM,Kemaliye,District,,,,skeleton
+TR-RZ-ME,Merkez,District,,Erzincan,,name
+TR-RZ-OT,Otlukbeli,District,,,,name
+TR-RZ-RE,Refahiye,District,,,,name
+TR-RZ-TE,Tercan,District,,,,name
+TR-RZ-UZ,Üzümlü,District,,,,name
+TR-SP-AK,Aksu,District,,,,name
+TR-SP-AT,Atabey,District,,,,name
+TR-SP-EG,Eğirdir,District,,,,name
+TR-SP-GE,Gelendost,District,,,,name
+TR-SP-GO,Gönen,District,,,,name
+TR-SP-KE,Keçiborlu,District,,,,name
+TR-SP-ME,Merkez,District,,Isparta,,name
+TR-SP-SA,Şarkikaraağaç,District,,,,name
+TR-SP-SE,Senirkent,District,,,,name
+TR-SP-SU,Sütçüler,District,,,,name
+TR-SP-UL,Uluborlu,District,,,,name
+TR-SP-YA,Yalvaç,District,,,,name
+TR-SP-YE,Yenişarbademli,District,,,,name
+TR-TR-RS,Arsin,District,,,,skeleton
 TW-FUJ-KIN,Kinmen,County,金門縣,Jīnmén Xiàn,,anchor
 TW-FUJ-LIE,Lienkiang,County,馬祖列島,Mǎzǔ Lièdǎo|Matsu Islands,,name
 TW-KHH-KHH,Kaohsiung,Special Municipality,高雄市,Gāoxióng Shì,,anchor
@@ -57292,13 +57552,20 @@ TW-TPE-TPE,Taipei,Special Municipality,台北市,Táiběi Shì,,anchor
 TW-TXG-TXG,Taichung,Special Municipality,台中,Taichung City,,anchor
 TZ-IR-MT,Mafinga Town,District,,,05,initials
 TZ-KI-KT,Kasulu Town,District,,,08,initials
+TZ-MT-MT,Masasi Town,District,,,07,initials
+TZ-NJ-MT,Makambako Town,District,,,06,initials
 TZ-SH-KT,Kahama Town,District,,,05,initials
+TZ-TN-HT,Handeni Town,District,,,10,initials
+TZ-TN-KT,Korogwe Town,District,,,09,initials
+UA-KC-DE,Desnians'kyi,Raion,,Desnianskyi,,any2
 UA-KC-DK,Dniprovs'kyi,Raion,,Dniprovskyi,,initials
 UA-KC-HK,Holosiïvs'kyi,Raion,,Holosiivskyi,,initials
 UA-KC-OK,Obolons'kyi,Raion,,Obolonskyi,,initials
 UA-KC-PK,Pechers'kyi,Raion,,Pecherskyi,,initials
 UA-KC-PS,Podil's'kyi,Raion,,Podilskyi,,compound.alt
+UA-KC-SH,Shevchenkivs'kyi,Raion,,Shevchenkivskyi,,any2
 UA-KC-SK,Solomians'kyi,Raion,,Solomianskyi,,initials
+UA-KC-SV,Sviatoshyns'kyi,Raion,,Sviatoshynskyi,,any2
 UA-KI-BAK,Baryshivs'kyi,District,,Baryshivskyi,,compound
 UA-KI-BIK,Bilotserkivs'ka,City,,BilaTserkva,,compound
 UA-KI-BKA,Brovars'ka,City,,,,compound.alt
@@ -57329,6 +57596,17 @@ UA-KI-VKK,Vasyl'kivs'kyi,District,,Vasylkivskyi,,initials
 UA-KI-VOK,Volodars'kyi,District,,Volodarskyi-Kyi,,compound
 UA-KI-VYK,Vyshhorods'kyi,District,,Vyshgorodskyi,,compound
 UA-KI-ZGK,Zgurivs'kyi,District,,Zgurivskyi,,compound
+US-CA-AA,Santa Cruz,County,,,06087,any2
+US-CA-LP,Alpine,County,,,06003,skeleton
+US-CO-RC,Archuleta,County,,,08007,skeleton
+US-FL-KC,Okeechobee,County,,,12093,skeleton
+US-ID-DM,Adams,County,,,16003,skeleton
+US-KS-LK,Elk,County,,,20049,skeleton
+US-KS-LS,Ellsworth,County,,,20053,skeleton
+US-KS-SB,Osborne,County,,,20141,skeleton
+US-LA-AE,St. James,Parish,,,22093,sequential
+US-LA-AD,St. Mary,Parish,,,22101,sequential
+US-LA-BR,Iberville,Parish,,,22047,skeleton
 US-MA-AGT,Agawam Town,City,,,2501300840,compound
 US-MA-AMT,Amherst Town,City,,,2501501370,compound
 US-MA-ATO,Amesbury Town,City,,,2500901260,compound.alt
@@ -57342,6 +57620,7 @@ US-MA-RAT,Randolph Town,City,,,2502156000,compound
 US-MA-SMR,Somerset,Town,,,2500562430,skeleton
 US-MA-WEP,Westport,Town,,,2500577570,any3
 US-MA-WIT,Winthrop Town,City,,,2502581005,compound
+US-MD-BC,Baltimore city,City,,,24510,initials
 US-ME-DRN,Dresden,Town,,,2301518475,name.ends
 US-ME-LIC,Lincoln,,,,2301739422,any3
 US-ME-UNY,Unity,Town,,,2302778255,name.ends
@@ -57349,19 +57628,155 @@ US-ME-OTO,Old Town,City,,,2301955225,qualifier
 US-ME-RNG,Rangeley,,,,2300761875,skeleton
 US-ME-RAT,Rangeley town,Town,,,2300761840,compound
 US-ME-NTY,Unity,,,,2301178190,skeleton
+US-MI-LC,Alcona,County,,,26001,skeleton
+US-MI-LG,Alger,County,,,26003,skeleton
+US-MI-LP,Alpena,County,,,26007,skeleton
+US-MI-TS,Otsego,County,,,26137,skeleton
 US-MO-AE,St. Charles,County,,,29183,sequential
+US-NC-AL,Alamance,County,,,37001,name
+US-NC-AN,Anson,County,,,37007,name
+US-NC-AS,Ashe,County,,,37009,name
+US-NC-AV,Avery,County,,,37011,name
+US-NC-BT,Bertie,County,,,37015,any2
+US-NC-BE,Beaufort,County,,,37013,name
+US-NC-BL,Bladen,County,,,37017,name
+US-NC-BU,Buncombe,County,,,37021,name
+US-NC-BR,Brunswick,County,,,37019,name
+US-NC-BK,Burke,County,,,37023,any2
+US-NC-AR,Carteret,County,,,37031,any2
+US-NC-CA,Cabarrus,County,,,37025,name
+US-NC-CD,Caldwell,County,,,37027,any2
+US-NC-CE,Cherokee,County,,,37039,any2
+US-NC-CH,Chatham,County,,,37037,name
+US-NC-CI,Currituck,County,,,37053,any2
+US-NC-CL,Cleveland,County,,,37045,name
+US-NC-CM,Camden,County,,,37029,skeleton
+US-NC-CO,Columbus,County,,,37047,name
+US-NC-CR,Craven,County,,,37049,name
+US-NC-CS,Caswell,County,,,37033,skeleton
+US-NC-CT,Catawba,County,,,37035,skeleton
+US-NC-CU,Cumberland,County,,,37051,name
+US-NC-CW,Chowan,County,,,37041,any2
+US-NC-CY,Clay,County,,,37043,any2
+US-NC-DA,Davidson,County,,,37057,name
+US-NC-DP,Duplin,County,,,37061,skeleton
+US-NC-DR,Dare,County,,,37055,skeleton
+US-NC-DU,Durham,County,,,37063,name
+US-NC-DV,Davie,County,,,37059,skeleton
+US-NC-ED,Edgecombe,County,,,37065,name
+US-NC-FO,Forsyth,County,,,37067,name
+US-NC-FR,Franklin,County,,,37069,name
+US-NC-GA,Gaston,County,,,37071,name
+US-NC-GE,Greene,County,,,37079,any2
+US-NC-GH,Graham,County,,,37075,any2
+US-NC-GR,Granville,County,,,37077,name
+US-NC-GT,Gates,County,,,37073,skeleton
+US-NC-GU,Guilford,County,,,37081,name
+US-NC-HY,Haywood,County,,,37087,skeleton
+US-NC-HR,Hertford,County,,,37091,skeleton
+US-NC-HL,Halifax,County,,,37083,skeleton
+US-NC-HE,Henderson,County,,,37089,name
+US-NC-HO,Hoke,County,,,37093,name
+US-NC-HA,Harnett,County,,,37085,name
+US-NC-HD,Hyde,County,,,37095,any2
+US-NC-IR,Iredell,County,,,37097,name
+US-NC-JA,Jackson,County,,,37099,name
+US-NC-JN,Jones,County,,,37103,skeleton
+US-NC-JO,Johnston,County,,,37101,name
+US-NC-LE,Lee,County,,,37105,name
+US-NC-LG,Alleghany,County,,,37005,skeleton
+US-NC-LI,Lincoln,County,,,37109,name
+US-NC-LN,Lenoir,County,,,37107,skeleton
+US-NC-LX,Alexander,County,,,37003,skeleton
+US-NC-MA,Macon,County,,,37113,name
+US-NC-MC,McDowell,County,,,37111,name
+US-NC-MD,Madison,County,,,37115,skeleton
+US-NC-ME,Mecklenburg,County,,,37119,name
+US-NC-MI,Mitchell,County,,,37121,name
+US-NC-MN,Montgomery,County,,,37123,skeleton
+US-NC-MO,Moore,County,,,37125,name
+US-NC-MR,Martin,County,,,37117,skeleton
+US-NC-NA,Nash,County,,,37127,name
+US-NC-NH,New Hanover,County,,,37129,qualifier
+US-NC-NO,Northampton,County,,,37131,name
+US-NC-ON,Onslow,County,,,37133,name
+US-NC-OR,Orange,County,,,37135,name
+US-NC-PA,Pasquotank,County,,,37139,name
+US-NC-PR,Person,County,,,37145,skeleton
+US-NC-PI,Pitt,County,,,37147,name
+US-NC-PM,Pamlico,County,,,37137,skeleton
+US-NC-PE,Pender,County,,,37141,name
+US-NC-PO,Polk,County,,,37149,name
+US-NC-PQ,Perquimans,County,,,37143,any2
+US-NC-RA,Randolph,County,,,37151,name
+US-NC-RC,Rockingham,County,,,37157,skeleton
+US-NC-RI,Richmond,County,,,37153,name
+US-NC-RB,Robeson,County,,,37155,skeleton
+US-NC-RU,Rutherford,County,,,37161,name
+US-NC-RO,Rowan,County,,,37159,name
+US-NC-SA,Sampson,County,,,37163,name
+US-NC-SC,Scotland,County,,,37165,name
+US-NC-SO,Stokes,County,,,37169,any2
+US-NC-ST,Stanly,County,,,37167,name
+US-NC-SU,Surry,County,,,37171,name
+US-NC-SW,Swain,County,,,37173,name
+US-NC-TR,Transylvania,County,,,37175,name
+US-NC-TY,Tyrrell,County,,,37177,name
+US-NC-UN,Union,County,,,37179,name
+US-NC-VA,Vance,County,,,37181,name
+US-NC-WA,Wake,County,,,37183,name
+US-NC-WI,Wilson,County,,,37195,name
+US-NC-WL,Wilkes,County,,,37193,skeleton
+US-NC-WR,Warren,County,,,37185,skeleton
+US-NC-WS,Washington,County,,,37187,skeleton
+US-NC-WT,Watauga,County,,,37189,skeleton
+US-NC-WY,Wayne,County,,,37191,skeleton
+US-NC-YA,Yadkin,County,,,37197,name
+US-NC-YN,Yancey,County,,,37199,skeleton
 US-NH-BEA,Beans,,,,3300704260,name
 US-NH-BES,Beans,,,,3300704100,name.ends
 US-NH-HSL,Hart's Location,Town,,,3300334500,initials
 US-NH-WEH,Wentworth,,,,3300780740,name.ends
 US-NV-CC,Carson City,City,,,32510,initials
+US-NY-LG,Allegany,County,,,36003,skeleton
+US-NY-ND,Oneida,County,,,36065,skeleton
+US-NY-NT,Ontario,County,,,36069,skeleton
+US-NY-RL,Orleans,County,,,36073,skeleton
+US-OK-KF,Okfuskee,County,,,40107,skeleton
+US-OK-KM,Okmulgee,County,,,40111,skeleton
+US-TN-NC,Unicoi,County,,,47171,skeleton
+US-VA-CC,Charles City,County,,,51036,initials
 US-VA-FS,Falls Church,City,,,51610,any2
 US-VA-JC,James City,County,,,51095,initials
+US-VA-LB,Albemarle,County,,,51003,skeleton
+US-VA-LG,Alleghany,County,,,51005,skeleton
+US-VA-ML,Amelia,County,,,51007,skeleton
+US-VA-OT,Norton,City,,,51720,any2
 US-VA-RH,Richmond city,City,,,51760,any2
+US-VT-ALY,Albany,Town,,,5001900475,name.ends
 US-VT-BAC,Barre city,City,,,5002303175,compound
+US-VT-BNS,Benson,Town,,,5002105200,skeleton
+US-VT-BRG,Brighton,Town,,,5000908725,skeleton
+US-VT-BRK,Brookline,Town,,,5002509475,skeleton
+US-VT-BUS,Buels,,,,5000710300,name.ends
+US-VT-CHL,Chelsea,Town,,,5001713525,skeleton
+US-VT-DAY,Danby,Town,,,5002116825,name.ends
+US-VT-GUL,Guildhall,Town,,,5000930775,name.ends
+US-VT-MAO,Marlboro,Town,,,5002543375,name.ends
+US-VT-MRT,Moretown,Town,,,5002346225,skeleton
 US-VT-NEC,Newport city,City,,,5001948850,compound
+US-VT-NON,Norton,Town,,,5000952750,name.ends
+US-VT-ROR,Rochester,Town,,,5002760100,name.ends
 US-VT-RUC,Rutland city,City,,,5002161225,compound
 US-VT-SAC,St. Albans city,City,,,5001161675,initials
+US-VT-SOH,South Hero,Town,,,5001367000,qualifier.alt
+US-VT-SAA,Stannard,Town,,,5000569925,any3
+US-VT-WLD,Walden,Town,,,5000575700,skeleton
+US-VT-WRR,Warren's,,,,5000976562,any3
+US-VT-WST,Westfield,Town,,,5001980200,skeleton
+US-VT-WND,Windham,Town,,,5002584850,skeleton
+US-VT-WNH,Winhall,Town,,,5000385075,skeleton
+US-VT-WOY,Woodbury,Town,,,5002385525,name.ends
 UY-MO-A0,Municipio B,Municipiality,,,,sequential
 UY-MO-A1,Municipio C,Municipiality,,,,sequential
 UY-MO-A2,Municipio A,Municipiality,,,,sequential
@@ -57370,9 +57785,13 @@ UY-MO-A4,Municipio E,Municipiality,,,,sequential
 UY-MO-A5,Municipio F,Municipiality,,,,sequential
 UY-MO-A6,Municipio G,Municipiality,,,,sequential
 UY-MO-CH,Municipio CH,Municipiality,,,,name
+VE-AM-TB,Atabapo,Municipality,,,,skeleton
+VN-AG-AP,An Phú,District,,An Phu,,initials
+VN-AG-CM,Chợ Mới,District,,Cho Moi,,initials
 VN-AG-CO,Châu Đốc,City,,Chau Doc,,initials
 VN-AG-CP,Châu Phú,District,,Chau Phu,,initials
 VN-AG-CT,Châu Thành,District,,Chau Thanh,,initials
+VN-AG-LX,Long Xuyên,City,,Long Xuyen,,initials
 VN-AG-PT,Phú Tân,District,,Phu Tan,,initials
 VN-AG-TB,Tịnh Biên,District,,Tinh Bien,,initials
 VN-AG-TC,Tân Châu,Town,,Tan Chau,,initials
@@ -57385,10 +57804,16 @@ VN-BI-AN,An Nhơn,Town,,An Nhon,,initials
 VN-BI-HA,Hoài Ân,District,,Hoai An,,initials
 VN-BR-AO,Đất Đỏ,District,,Dat Do,,compound.alt
 VN-CB-HA,Hoà An,District,,Hoa An,,initials
+VN-CB-TA,Thạch An,District,,Thach An,,initials
 VN-GL-AK,An Khê,Town,,An Khe,,initials
+VN-HN-AP,Đan Phượng,District,,Dan Phuong,,initials
 VN-HP-AD,An Dương,District,,An Duong,,initials
+VN-HP-AL,An Lão,District,,An Lao,,initials
+VN-HP-KA,Kiến An,Urban District,,Kien An,,initials
 VN-HY-AT,Ân Thi,District,,An Thi,,initials
+VN-KG-AB,An Biên,District,,An Bien,,initials
 VN-KG-AM,An Minh,District,,An Minh,,initials
+VN-KG-HA,Hòn Đất,District,,Hon Dat,,initials
 VN-LA-BEL,Bến Lức,District,,Ben Luc,,compound
 VN-LA-CAG,Cần Giuộc,District,,Can Giuoc,,compound
 VN-LA-CAU,Cần Đước,District,,Can Duoc,,compound
@@ -57406,12 +57831,30 @@ VN-LA-UHU,Đức Huệ,District,,Duc Hue,,compound.alt
 VN-LA-VIH,Vĩnh Hưng,District,,Vinh Hung,,compound
 VN-LI-LC,Lai Châu,City,,Lai Chau,,initials
 VN-LI-MT,Mường Tè,District,,Muong Te,,initials
+VN-LI-NN,Nậm Nhùn,District,,Nam Nhun,,initials
+VN-LI-PT,Phong Thổ,District,,Phong Tho,,initials
+VN-LI-SH,Sìn Hồ,District,,Sin Ho,,initials
 VN-LI-TA,Tân Uyên,District,,Tan Uyen,,any2
+VN-LI-TH,Than Uyên,District,,Than Uyen,,any2
+VN-LI-TU,Tam Đường,District,,Tam Duong,,initials
 VN-NA-AS,Anh Sơn,District,,Anh Son,,initials
+VN-NA-CC,Con Cuông,District,,Con Cuong,,initials
+VN-NA-CL,Cửa Lò,Town,,Cua Lo,,initials
+VN-NA-DC,Diễn Châu,District,,Dien Chau,,initials
+VN-NA-HM,Hoàng Mai,Town,,Hoang Mai,,initials
 VN-NA-HN,Hưng Nguyên,District,,Hung Nguyen,,initials
 VN-NA-KS,Kỳ Sơn,District,,Ky Son,,initials
+VN-NA-NA,Nam Đàn,District,,Nam Dan,,initials
+VN-NA-NG,Nghĩa Đàn,District,,Nghia Dan,,any2
+VN-NA-NL,Nghi Lộc,District,,Nghi Loc,,initials
+VN-NA-OL,Đô Lương,District,,Do Luong,,compound
+VN-NA-QC,Quỳ Châu,District,,Quy Chau,,initials
+VN-NA-QH,Quỳ Hợp,District,,Quy Hop,,initials
+VN-NA-QL,Quỳnh Lưu,District,,Quynh Luu,,initials
+VN-NA-QP,Quế Phong,District,,Que Phong,,initials
 VN-NA-TC,Thanh Chương,District,,Thanh Chuong,,initials
 VN-NA-TD,Tương Dương,District,,Tuong Duong,,initials
+VN-NA-TH,Thái Hoà,Town,,Thai Hoa,,initials
 VN-NA-TK,Tân Kỳ,District,,Tan Ky,,initials
 VN-NA-VI,Vinh,City,,Vinh,,name
 VN-NA-YT,Yên Thành,District,,Yen Thanh,,initials
@@ -57479,6 +57922,12 @@ VU-TOB-CET,Central Torba,Area council,,Central Area Council,54,compound
 VU-TOB-NOT,Northern Torba,Area council,,Northern Area Council,55,compound
 VU-TOB-SOT,Southern Torba,Area council,,Southern Area Council,53,compound
 VU-TOB-STO,South Torba,Area council,,,0,compound.alt
+YE-AB-AM,Al Mahfad,District,المحفد,,1201,initials
+YE-AB-AW,Al Wade'a,District,الوضيع,,1208,initials
+YE-AD-AB,Al Buraiqeh,District,البريقه,,2404,initials
+YE-AD-AL,Al Mualla,District,المعلا,,2406,any2
+YE-AD-AM,Al Mansura,District,المنصورة,,2403,initials
+YE-AD-AS,Ash Shaikh Outhman,District,الشيخ عثمان,,2402,initials
 YE-AL-AA,Al Azariq,District,الازارق,,3008,initials
 YE-AL-AD,Ad Dhale'e,District,الضالع,,3006,initials
 YE-AL-AH,Al Husha,District,الحشاء,,3009,initials
@@ -57488,12 +57937,32 @@ YE-AL-DA,Damt,District,دمت,,3002,name
 YE-AL-JA,Jahaf,District,جحاف,,3007,name
 YE-AL-JU,Juban,District,جبن,,3001,name
 YE-AL-QA,Qa'atabah,District,قعطبة,,3003,initials
+YE-AM-AA,Al Ashah,District,العشـــــه,,2903,initials
 YE-AM-AB,As Sawd,District,السود,,2914,sequential
 YE-AM-AL,Al Madan,District,المــدان,,2906,any2
+YE-AM-AQ,Al Qaflah,District,القفلة,,2904,initials
+YE-BA-AA,Al A'rsh,District,العرش,,1416,compound.alt
+YE-BA-AB,Al Bayda City,District,مدينة البيضاء,,1409,initials
 YE-BA-AD,As Sawadiyah,District,السوادية,,1411,sequential
+YE-BA-AH,Ash Sharyah,District,الشرية,,1419,any2
+YE-BA-AM,Al Malagim,District,الملاجم,,1420,initials
+YE-BA-AQ,Al Quraishyah,District,القريشية,,1414,initials
+YE-BA-AS,As Sawma'ah,District,الصومعة,,1404,initials
+YE-BA-AT,At Taffah,District,الطفة,,1407,initials
+YE-BA-AZ,Az Zahir,District,الزاهر,,1405,initials
+YE-DH-AH,Al Hada,District,الحداء,,2001,initials
+YE-DH-AM,Al Manar,District,المنار,,2012,initials
 YE-DH-JB,Jabal Ash sharq,District,جبل الشرق,,2003,any2
+YE-DH-WU,Wusab Al Ali,District,وصاب العالي,,2006,any2
+YE-HD-AA,Al Abr,District,العبر,,1906,initials
+YE-HD-AD,Ad Dis,District,الديس,,1914,initials
 YE-HD-AG,Al Qaf,District,القف,,1903,sequential
+YE-HD-AL,Al Mukalla,District,المكلا,,1930,any2
+YE-HD-AQ,Al Qatn,District,القطن,,1907,initials
+YE-HD-AR,Ar Raydah Wa Qusayar,District,الريده وقصيعر,,1913,initials
+YE-HD-AS,As Sawm,District,السوم,,1912,initials
 YE-HD-HG,Hagr As Sai'ar,District,حجر الصيعر,,1905,any2
+YE-HD-MD,Amd,District,عمد,,1921,skeleton
 YE-HJ-AAS,Aflah Ash Shawm,District,افلح الشام,,1710,initials
 YE-HJ-AAY,Aflah Al Yaman,District,افلح اليمن,,1714,initials
 YE-HJ-ABS,Abs,District,عبس,,1704,name
@@ -57551,9 +58020,28 @@ YE-HU-HAY,Hays,District,حيس,,1819,name
 YE-HU-JRS,Jabal Ra's,District,جبل راس,,1818,initials
 YE-HU-KAM,Kamaran,District,كمران,,1803,name
 YE-HU-ZAB,Zabid,District,زبيد,,1824,name
+YE-IB-AA,As Sabrah,District,السبرة,,1114,sequential
+YE-IB-AD,Al Dhihar,District,الظهار,,1119,initials
+YE-IB-AH,Ash Sha'ir,District,الشعر,,1105,any2
 YE-IB-AI,As Saddah,District,السدة,,1106,sequential
+YE-IB-AL,Al Makhadir,District,المخادر,,1107,any2
+YE-IB-AM,Al Mashannah,District,المشنة,,1118,initials
+YE-IB-AN,An Nadirah,District,النادرة,,1104,initials
+YE-IB-AQ,Al Qafr,District,القفر,,1101,initials
+YE-IB-AR,Ar Radmah,District,الرضمة,,1103,initials
+YE-IB-AS,As Sayyani,District,السياني,,1115,initials
+YE-IB-AU,Al Udayn,District,العدين,,1111,initials
+YE-IB-DA,Dhi As Sufal,District,ذي السفال,,1116,initials
+YE-IB-FA,Far Al Udayn,District,فرع العدين,,1110,initials
 YE-JA-AB,Al Humaydat,District,الحميدات,,1602,sequential
+YE-JA-AG,Al Ghayl,District,الغيل,,1608,initials
+YE-JA-AH,Al Hazm,District,الحزم,,1605,initials
 YE-JA-AJ,Al Maslub,District,المصلوب,,1607,sequential
+YE-JA-AK,Al Khalq,District,الخلق,,1609,initials
+YE-JA-AL,Al Maton,District,المتون,,1606,any2
+YE-JA-AM,Al Matammah,District,المطمه,,1603,initials
+YE-JA-AZ,Az Zahir,District,الزاهر,,1604,initials
+YE-JA-KA,Kharab Al Marashi,District,خراب المراشى,,1612,initials
 YE-LA-AHA,Al Hawtah,District,الحوطة,,2514,compound.alt
 YE-LA-ALH,Al Had,District,الحد,,2501,compound
 YE-LA-ALM,Al Maqatirah,District,المقاطرة,,2512,compound
@@ -57569,9 +58057,40 @@ YE-LA-TAB,Tur Al Bahah,District,طور الباحة,,2511,initials
 YE-LA-TUB,Tuban,District,تبن,,2515,name
 YE-LA-YAA,Yafa'a,District,يافع,,2502,compound
 YE-LA-YAH,Yahr,District,يهر,,2504,name
+YE-MA-AA,Al Abdiyah,District,العبدية,,2611,initials
+YE-MA-AJ,Al Jubah,District,الجوبة,,2607,initials
+YE-MA-HR,Harib Al Qaramish,District,حريب القرامش,,2604,any2
+YE-MA-MC,Marib City,District,مدينة مأرب,,2612,initials
+YE-MR-AG,Al Ghaydah,District,الغيظه,,2804,initials
+YE-MR-AM,Al Masilah,District,المسيلة,,2806,initials
+YE-MW-AK,Al Khabt,District,الخبت,,2704,initials
+YE-MW-AL,Al Mahwait City,District,مدينة المحويت,,2708,any2
+YE-MW-AM,Al Mahwait,District,المحويت,,2709,initials
+YE-MW-AR,Ar Rujum,District,الرجم,,2703,initials
+YE-MW-AT,At Tawilah,District,الطويلة,,2702,initials
+YE-RA-AJ,Al Jabin,District,الجبين,,3102,initials
+YE-RA-AL,Al Jafariyah,District,الجعفرية,,3105,any2
+YE-RA-AS,As Salafiyah,District,السلفية,,3103,initials
+YE-RA-BA,Bilad At Ta'am,District,بلاد الطعام,,3101,initials
+YE-SA-AH,Ath'thaorah,District,الثورة,,1309,any2
+YE-SA-AS,As Sabain,District,السبعين,,1305,initials
+YE-SA-AT,At Tahrir,District,التحرير,,1307,initials
+YE-SA-AW,Al Wahdah,District,الوحدة,,1306,initials
+YE-SA-AZ,Az'zal,District,أزال,,1303,initials
+YE-SA-BA,Bani Al Harith,District,بني الحارث,,1310,initials
+YE-SA-OC,Old City,District,صنعاء القديمة,,1301,initials
+YE-SD-AD,Al Dhaher,District,الظاهر,,2207,initials
+YE-SD-AH,Al Hashwah,District,الحشوه,,2213,initials
+YE-SD-AS,As Safra,District,الصفراء,,2212,initials
 YE-SH-AL,Al Talh,District,الطلح,,2102,any2
+YE-SH-AS,As Said,District,الصعيد,,2112,initials
+YE-SH-ME,Merkhah Al Ulya,District,مرخه العليا,,2108,any2
+YE-SH-MY,Mayfa'a,District,ميفعه,,2116,any2
 YE-SH-RM,Arma,District,عرماء,,2104,skeleton
 YE-SN-AD,Al Husn,District,الحصن,,2315,sequential
+YE-SN-AH,Al Haymah Ad Dakhiliyah,District,الحيمة الداخلية,,2308,initials
+YE-SN-AL,Al Haymah Al Kharijiyah,District,الحيمة الخارجية,,2309,any2
+YE-SN-BA,Bilad Ar Rus,District,بلاد الروس,,2306,initials
 YE-TA-AAN,Al Mukha,District,المخاء,,1506,sequential
 YE-TA-ALM,Al Mawasit,District,المواسط,,1522,compound
 YE-TA-ALQ,Al Qahirah,District,القاهرة,,1519,compound
@@ -57584,75 +58103,16 @@ YE-TA-ATI,At Ta'iziyah,District,التعزية,,1502,initials
 YE-TA-AWI,Al Wazi'iyah,District,الوازعية,,1516,initials
 YE-TA-SHB,Shara'b Ar Rawnah,District,شرعب الرونة,,1504,compound
 YE-TA-SBA,Shara'b As Salam,District,شرعب السلام,,1503,initials
-CO-AN-ML,Amalfi,Municipio,,,05031,skeleton
-CO-AN-BN,Betania,Municipio,,,05091,any2
-CO-AN-TN,Ituango,Municipio,,,05361,skeleton
-CO-AR-RQ,Arauquita,Municipio,,,81065,skeleton
-CO-BO-AL,Altos del Rosario,Municipio,,,13030,any2
-CO-BY-UI,Cuítiva,Municipio,,,15226,any2
-CO-BY-GH,Gachantivá,Municipio,,,15293,any2
-CO-BY-NT,Santa Rosa de Viterbo,Municipio,,,15693,any2
-CO-BY-US,Susacón,Municipio,,,15774,any2
-CO-BY-SZ,Sutatenza,Municipio,,,15778,any2
-CO-BY-TQ,Tipacoque,Municipio,,,15810,any2
-CO-CL-MU,Marulanda,Municipio,,,17446,any2
-CO-CL-SL,Salamina,Municipio,,,17653,skeleton
-CO-CL-VC,Victoria,Municipio,,,17867,skeleton
-CO-CA-PM,Piamonte,Municipio,,,19533,skeleton
-CO-CA-SE,La Sierra,Municipio,,,19392,any2
-CO-CO-MI,Moñitos,Municipio,,,23500,any2
-CO-CO-CL,San Carlos,Municipio,,,23419,saintless.any2
-CO-CU-HO,Choachí,Municipio,,,25181,any2
-CO-CU-FN,Funza,Municipio,,,25286,skeleton
-CO-CU-GL,Gachalá,Municipio,,,25293,any2
-CO-CU-GB,Guayabal de Síquima,Municipio,,,25328,any2
-CO-CU-MC,Machetá,Municipio,,,25426,skeleton
-CO-CU-PO,El Peñón,Municipio,,,25258,any2
-CO-CU-QB,Quebradanegra,Municipio,,,25592,skeleton
-CO-CU-UP,Supatá,Municipio,,,25777,any2
-CO-CU-VC,Venecia,Municipio,,,25506,any2
-CO-GJ-RM,Urumita,Municipio,,,44855,skeleton
-CO-HU-LT,Altamira,Municipio,,,41026,skeleton
-CO-MA-PN,El Piñón,Municipio,,,47258,skeleton
-CO-MA-AA,Santa Marta,Municipio,,,,any2
-CO-NA-NC,Ancuya,Municipio,,,52036,skeleton
-CO-NA-PS,Puerres,Municipio,,,52573,any2
-CO-NS-ST,Santiago,Municipio,,,54680,any2
-CO-SA-EP,Cepitá,Municipio,,,68160,any2
-CO-SA-GO,Guapotá,Municipio,,,68322,any2
-CO-SA-JQ,San Joaquín,Municipio,,,68682,saintless.skeleton
-CO-SA-VT,Vetas,Municipio,,,68867,skeleton
-CO-SU-CL,Colosó,Municipio,,,70204,skeleton
-CO-TO-CR,Carmen de Apicalá,Municipio,,,73148,any2
-CO-VA-SC,Cali,Municipio,,,76001,preposition.significant
-CO-VA-VJ,Vijes,Municipio,,,76869,skeleton
-NL-XA-BI,Brielle,Municipality,,,,any2
-NL-XA-GD,Gouda,Municipality,,,,skeleton
-NL-XA-NS,Nissewaard,Municipality,,,,skeleton
-NZ-SI-AN,Antipodes Islands,Territory,,,NZ.02.05,any2
-RU-IRK-BOY,Bodaybinskiy rayon,District,Бодайбинский район,,R63090,name.ends
-RU-KAC-KAK,Karachayevsk,District,Карачаевск,,,name.ends
-RU-KAR-PTK,Pitkyarantskiy rayon,District,Питкярантский район,,R01001,skeleton
-RU-SAN-POY,Poronayskiy rayon,District,Поронайский район,,R71001,name.ends
-RU-SAN-UGY,Uglegorskiy rayon,District,Углегорский район,,R71001,name.ends
-US-VT-ALY,Albany,Town,,,5001900475,name.ends
-US-VT-BNS,Benson,Town,,,5002105200,skeleton
-US-VT-BRG,Brighton,Town,,,5000908725,skeleton
-US-VT-BRK,Brookline,Town,,,5002509475,skeleton
-US-VT-BUS,Buels,,,,5000710300,name.ends
-US-VT-CHL,Chelsea,Town,,,5001713525,skeleton
-US-VT-DAY,Danby,Town,,,5002116825,name.ends
-US-VT-GUL,Guildhall,Town,,,5000930775,name.ends
-US-VT-MAO,Marlboro,Town,,,5002543375,name.ends
-US-VT-MRT,Moretown,Town,,,5002346225,skeleton
-US-VT-NON,Norton,Town,,,5000952750,name.ends
-US-VT-ROR,Rochester,Town,,,5002760100,name.ends
-US-VT-SOH,South Hero,Town,,,5001367000,qualifier.alt
-US-VT-STK,Starksboro,Town,,,5000170075,any3
-US-VT-SAA,Stannard,Town,,,5000569925,any3
-US-VT-WLD,Walden,Town,,,5000575700,skeleton
-US-VT-WRR,Warren's,,,,5000976562,any3
-US-VT-WST,Westfield,Town,,,5001980200,skeleton
-US-VT-WND,Windham,Town,,,5002584850,skeleton
-US-VT-WNH,Winhall,Town,,,5000385075,skeleton
-US-VT-WOY,Woodbury,Town,,,5002385525,name.ends
+ZA-EC-BC,Buffalo City,District Municipality,,,BUF,initials
+ZA-KN-AM,Amajuba,District Municipality,,,DC25,name
+ZA-KN-ET,eThekwini,District Municipality,,,ETH,name
+ZA-KN-IL,iLembe,District Municipality,,,DC29,name
+ZA-KN-MK,Umkhanyakude,District Municipality,,,DC27,skeleton
+ZA-KN-MZ,Umzinyathi,District Municipality,,,DC24,skeleton
+ZA-KN-SI,Sisonke,District Municipality,,,DC43,name
+ZA-KN-TH,Uthukela,District Municipality,,,DC23,skeleton
+ZA-KN-UG,Ugu,District Municipality,,,DC21,name
+ZA-KN-UM,Umgungundlovu,District Municipality,,,DC22,name
+ZA-KN-UT,Uthungulu,District Municipality,,,DC28,name
+ZA-KN-ZU,Zululand,District Municipality,,,DC26,name
+ZW-MI-ST,Shurugwi Town,District,,,,initials

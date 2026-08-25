@@ -294,4 +294,20 @@ def generate_candidates(
             for candidate in generate_candidates(bare, pack, admin1_id, lengths):
                 add(candidate.code, f'saintless.{candidate.rule}')
 
+    # A reader's strongest cue is the letter the name starts with, so a
+    # code carrying it outranks one that does not, whatever rule made
+    # it. Carteret County is the case: its own name yields CA, CR, CT
+    # and CE, all held by heavier C-named neighbours, and it fell
+    # through to AR, a code with no C in it. Preferring first-letter
+    # codes does not conjure a free one, but it makes the assigner trade
+    # within the group rather than exile one member to an opaque code.
+    #
+    # A stable partition, so every rule keeps its relative order inside
+    # each half and the preference only ever breaks ties between them.
+    lead = significant[0][0] if significant and significant[0] else ''
+    if lead:
+        out = [c for c in out if lead in c.code] + [
+            c for c in out if lead not in c.code
+        ]
+
     return out

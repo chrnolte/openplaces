@@ -268,6 +268,36 @@ def get_anchor_codes(admin1_id: str) -> dict[str, str]:
 
 
 @cache
+@cache
+def load_group_code_lengths() -> dict[str, int]:
+    """Return reviewed code lengths keyed by a group's parent admin id.
+
+    The country-level convention describes what a country publishes for
+    its own subdivisions, which is the wrong granularity for a decision
+    about one sibling group: North Carolina's counties are crowded in a
+    way Wyoming's are not.
+
+    Returns
+    -------
+    dict of str to int
+        Parent admin id, e.g. 'US-NC', mapped to its code length.
+    """
+    path = _RECIPE_DIR / 'admin-openplaces-2026_group-code-length.csv'
+    if not path.exists():
+        return {}
+    table = pd.read_csv(path, keep_default_na=False)
+    out = {}
+    for row in table.itertuples(index=False):
+        parent = str(row.parent_admin_id).strip().upper()
+        if not parent:
+            continue
+        try:
+            out[parent] = int(float(row.length))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def get_code_length_convention(admin1_id: str) -> int | None:
     """Return the code length a country uses for its own subdivisions.
 
