@@ -175,6 +175,7 @@ repository.
   `isinstance(x, Foo | Bar)` ✓
   `isinstance(x, (Foo, Bar))` ✗
 - Do not use sequences of lines (`─`, `-`, `=`) in comments
+- Do not use em-dashes (literal `—` or text-based `---`) in documentation, docstrings, or code comments. Use commas, colons, parentheses, or spaced hyphens (` - `) instead.
 
 ## Docstrings
 - Use NumPy-style docstrings exclusively throughout the codebase (no Google-style docstrings).
@@ -386,8 +387,11 @@ stale pre-split sidecar is ignored. Enricher and curator load their entity spine
 through `get_entities` for the same reason. Rerunning an attribute recipe involves
 no spatial computation (`--reprocess attributes` in the driver). Each sidecar's
 footer fingerprint (format 2) covers the step config, the configs of every *prior
-geometry-phase* pipeline step, and size/mtime of the ingest inputs; `load_geospine`
-recomputes it exactly and fails closed — a stale sidecar raises with instructions
+geometry-phase* pipeline step, and size/mtime of the ingest inputs, plus a
+per-source content sha256 stamped at write time: an input whose mtime moved but
+whose bytes did not (a sync-tool touch; Dropbox re-hydration bumped every cache
+mtime on 2026-08-24) revalidates through the hash instead of forcing a geometry
+rerun (`_fingerprints_match`). Anything else fails closed — a stale sidecar raises with instructions
 to rerun the geospine, never silently recomputing geometry. Curate readers resolve
 the sidecar's owner through `geo/link.get_link_owner_recipe_id` (the geospine when
 split, the recipe itself when not). Geospine recipes declare

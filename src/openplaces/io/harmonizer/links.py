@@ -754,6 +754,11 @@ def _link_fingerprint(
     receipt's recorded size/mtime; a missing source with no receipt
     yields nulls, which no longer match once the file reappears (fail
     safe: recompute).
+
+    Comparison is :func:`_fingerprints_match`, not raw equality: the
+    written copy additionally carries a per-source content sha256
+    (stamped by :func:`_with_source_hashes`), which validates a source
+    whose mtime moved but whose bytes did not.
     """
     from openplaces.io.cleanup import _relative_posix
     from openplaces.io.harmonizer import _load_steps
@@ -817,6 +822,87 @@ def _link_fingerprint(
     }
 
 
+def _hash_file(path) -> str:
+    """Streaming SHA-256 of a file's full content."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, 'rb') as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _with_source_hashes(fingerprint: dict) -> dict:
+    """Return a copy of *fingerprint* with each source content-hashed.
+
+    Called at sidecar write time only, so a load never pays for hashing
+    unless an mtime actually moved. Measured cost of the full-content
+    hashes at write: 8 ms for a typical county's 8 inputs, 223 ms for
+    Harris (431 MB, dominated by the statewide parcel file); noise
+    against the minutes the geometry phase just spent.
+    """
+    from openplaces.io.cleanup import _resolve_relative
+
+    out = dict(fingerprint)
+    sources = []
+    for entry in fingerprint.get('sources') or []:
+        entry = dict(entry)
+        try:
+            path = _resolve_relative(entry.get('path'))
+            if entry.get('size') is not None and path.exists():
+                entry['sha256'] = _hash_file(path)
+        except OSError:
+            pass
+        sources.append(entry)
+    out['sources'] = sources
+    return out
+
+
+def _fingerprints_match(stored: dict, fresh: dict) -> bool:
+    """Decide whether a stored fingerprint still validates a sidecar.
+
+    Exact equality passes. Otherwise every part must match except
+    source mtimes, and each source whose mtime moved must hash to the
+    sha256 the sidecar recorded at write time. This is what lets a
+    sync-tool touch (Dropbox re-hydration bumped every cache mtime on
+    2026-08-24 with byte-identical content, reading as region-wide
+    staleness) cost one hash check instead of a full geometry rerun,
+    while any actual content change still fails closed. A stored entry
+    without a hash (pre-hash sidecars) keeps the old behavior: an
+    mtime move alone marks it stale.
+    """
+    from openplaces.io.cleanup import _resolve_relative
+
+    if stored == fresh:
+        return True
+    if {k: v for k, v in stored.items() if k != 'sources'} != {
+        k: v for k, v in fresh.items() if k != 'sources'
+    }:
+        return False
+    stored_sources = stored.get('sources')
+    fresh_sources = fresh.get('sources')
+    if not isinstance(stored_sources, list) or not isinstance(fresh_sources, list):
+        return False
+    if len(stored_sources) != len(fresh_sources):
+        return False
+    for old, new in zip(stored_sources, fresh_sources):
+        if old.get('path') != new.get('path') or old.get('size') != new.get('size'):
+            return False
+        if old.get('mtime') == new.get('mtime'):
+            continue
+        digest = old.get('sha256')
+        if not digest:
+            return False
+        try:
+            path = _resolve_relative(old['path'])
+            if not path.exists() or _hash_file(path) != digest:
+                return False
+        except OSError:
+            return False
+    return True
+
+
 def _load_link_sidecar(
     sidecar_path, fingerprint: dict, spine_id_col: str, verbose: bool = False
 ):
@@ -835,7 +921,7 @@ def _load_link_sidecar(
         stored = json.loads(stored_raw)
     except json.JSONDecodeError:
         return None
-    if stored != fingerprint:
+    if not _fingerprints_match(stored, fingerprint):
         if verbose:
             print(
                 '  Link (overlay): sidecar fingerprint mismatch; recomputing overlay.'
@@ -883,7 +969,9 @@ def _write_link_sidecar(
     to_parquet(
         flat.reset_index(),
         sidecar_path,
-        file_metadata={_LINK_METADATA_KEY: json.dumps(fingerprint)},
+        file_metadata={
+            _LINK_METADATA_KEY: json.dumps(_with_source_hashes(fingerprint))
+        },
     )
     if verbose:
         print(f'  Link (overlay): wrote link sidecar {sidecar_path.name}')
@@ -908,7 +996,7 @@ def _load_point_link_sidecar(sidecar_path, fingerprint: dict, verbose: bool = Fa
         stored = json.loads(stored_raw)
     except json.JSONDecodeError:
         return None
-    if stored != fingerprint:
+    if not _fingerprints_match(stored, fingerprint):
         if verbose:
             print('  Link (point): sidecar fingerprint mismatch; recomputing links.')
         return None
@@ -941,7 +1029,7 @@ def _write_point_link_sidecar(
         flat.reset_index(),
         sidecar_path,
         file_metadata={
-            _LINK_METADATA_KEY: json.dumps(fingerprint),
+            _LINK_METADATA_KEY: json.dumps(_with_source_hashes(fingerprint)),
             _LINK_INDEX_KEY: index_name,
         },
     )
