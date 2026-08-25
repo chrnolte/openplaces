@@ -142,17 +142,31 @@ def get_admin(
         if level is None:
             # Default to countries
             level = 1
-        # Prefer an in-country recipe when all requested admin IDs share the
-        # same country; fall back to the global GADM default otherwise.
+        # Prefer the most specific admin recipe scope the requested IDs
+        # share, walking up to the country; fall back to the global GADM
+        # default otherwise. The walk matters where a level's geometry
+        # ships per state rather than nationally: New England admin3 is
+        # towns, excluded from the national county layer and provided by
+        # per-state COUSUB recipes (US-MA_admin-census-2025_admin3), so a
+        # request scoped inside one state must find that state's recipe.
         in_country_recipe_id = None
         if admin_id is not None:
-            country_ids = list(
-                dict.fromkeys(str(AdminId(_aid.levels[0])) for _aid in admin_ids)
-            )
-            if len(country_ids) == 1:
+            common = admin_ids[0].levels
+            for _aid in admin_ids[1:]:
+                n = 0
+                while (
+                    n < len(common)
+                    and n < len(_aid.levels)
+                    and common[n] == _aid.levels[n]
+                ):
+                    n += 1
+                common = common[:n]
+            for scope_level in range(len(common), 0, -1):
                 in_country_recipe_id = find_admin_recipe_id(
-                    country_ids[0], level, silent=True
+                    AdminId(*common[:scope_level]), level, silent=True
                 )
+                if in_country_recipe_id:
+                    break
         recipe = in_country_recipe_id or f'{ADMIN_GEO_SOURCE_DEFAULT}_admin{level}'
         if isinstance(recipe, str):
             recipe = get_recipe_by_id(recipe)

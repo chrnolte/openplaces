@@ -157,9 +157,29 @@ class TableIngester:
             # Some sources (e.g. FL DOR's NAL rolls) ship one file per admin
             # unit already, rather than one shared file to split by FID.
             data_path_override = self._resolve_file_pattern_path(file_pattern)
+            if data_path_override is None:
+                # process_by.file_pattern_missing: skip - this partition's
+                # download genuinely lacks this admin unit (FL DOR's 2008
+                # roll ships 43 of 67 counties), the same soft gap as a
+                # missing download URL. Nothing to read, nothing written.
+                return None
         elif process_in_chunks:
             if bbox is not None:
                 read_kwargs['bbox'] = bbox
+            elif (self.recipe.get('process_by') or {}).get('use_spatial_mask'):
+                # A masked chunk needs no FID map: restrict the read to
+                # the admin unit's bounding box (cheap through a format
+                # with a spatial index, e.g. a state GDB read per town)
+                # and let the mask overlay downstream cut the exact
+                # boundary. The geometries are already in the data's CRS
+                # (_load_admin_geometries reprojects when loading).
+                if 'admin_geometries' not in self.download_partition:
+                    self._load_admin_geometries()
+                read_kwargs['bbox'] = tuple(
+                    self.download_partition['admin_geometries']
+                    .loc[[admin_id_to_process]]
+                    .total_bounds
+                )
             else:
                 self._ensure_table_fid_filter()
                 scope = self.download_partition.get('admin_id_crosswalk_scope')
@@ -303,6 +323,19 @@ class TableIngester:
         pattern = pattern.replace('{' + reverse_crosswalk.name + '}', str(raw_code))
 
         matches = list(self.recipe_heap_dir.glob(pattern))
+        if len(matches) == 0 and (
+            (self.recipe.get('process_by') or {}).get('file_pattern_missing') == 'skip'
+        ):
+            # Opt-in tolerance for a source whose per-unit files come and
+            # go across partitions (FL DOR year rolls omit whole
+            # counties in some years). Absent stays a hard error unless
+            # the recipe declares the gap expected.
+            warnings.warn(
+                f"process_by.file_pattern '{pattern}' matched no file for "
+                f'{admin_id_to_process}; skipping this chunk '
+                '(file_pattern_missing: skip).'
+            )
+            return None
         if len(matches) != 1:
             raise ValueError(
                 f"process_by.file_pattern '{pattern}' matched {len(matches)} "
@@ -358,18 +391,16 @@ class TableIngester:
         Reads admin unit boundaries and stores them in download_partition
         for reuse across admin chunks and tables.
         """
-        if (
-            'process_by' in self.recipe
-            and 'use_spatial_index' in self.recipe['process_by']
-            and self.recipe['process_by']['use_spatial_index']
-        ):
+        process_by = self.recipe.get('process_by') or {}
+        if process_by.get('use_spatial_index') or process_by.get('use_spatial_mask'):
             admin_specs = self.recipe['process_by']
         elif 'overlay_admin_ids' in self.recipe:
             admin_specs = self.recipe['overlay_admin_ids']
         else:
             raise ValueError(
                 'Cannot load admin geometries: recipe has neither '
-                'process_by.use_spatial_index nor overlay_admin_ids.'
+                'process_by.use_spatial_index/use_spatial_mask nor '
+                'overlay_admin_ids.'
             )
 
         admin_id = self.download_partition['admin_id_to_download'] or self.recipe.get(
@@ -921,8 +952,14 @@ class TableIngester:
                 admin_specs = self.recipe['overlay_admin_ids']
                 admin_geometries = self.download_partition['admin_geometries']
 
+            # `admin_specs` is the whole `process_by` block in the
+            # spatial-mask case, so it carries chunking keys that are not
+            # overlay parameters. Allowlist rather than exclude, so a new
+            # `process_by` key cannot break the call the way
+            # `use_spatial_mask` did.
+            _overlay_keys = {'admin_level', 'admin_id', 'include_overlays'}
             kwargs_overlay = {
-                k: v for k, v in admin_specs.items() if k != 'admin_recipe_id'
+                k: v for k, v in admin_specs.items() if k in _overlay_keys
             }
             cols_before = set(df.columns)
             df = overlay_admin_ids(
@@ -931,7 +968,17 @@ class TableIngester:
                 timer=self.timer,
                 **kwargs_overlay,
             )
-            cols_added += [v for v in df.columns if v not in cols_before]
+            _new_cols = [v for v in df.columns if v not in cols_before]
+            cols_added += _new_cols
+
+            # A spatial mask reads by the admin unit's *bounding box*, so a
+            # non-rectangular unit picks up its neighbors' rows. The overlay
+            # above is given only this unit's geometry, so those rows come
+            # back with a null admin id: drop them, or they are written into
+            # this unit's output file (31k of 50k rows for a coastal county).
+            if use_spatial_mask and _new_cols:
+                _admin_col = _new_cols[0]
+                df = df[df[_admin_col].notna()]
 
         # Set index
         _entity = self.recipe.get('entity')

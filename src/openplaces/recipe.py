@@ -180,6 +180,40 @@ def get_recipe_dict(filepath, *args, **kwargs):
     return recipe_dict
 
 
+def coverage_is_complete(recipe_id) -> bool:
+    """Whether *recipe_id* declares complete coverage of its admin scope.
+
+    A recipe may state `coverage: complete`, meaning every admin unit in
+    its scope is expected to have data (NSI covers every U.S. county).
+    A harmonize step that finds such a reference missing then raises
+    instead of soft-skipping: the absence is an unfinished or broken
+    ingest, not a data gap. A recipe without the key keeps the tolerant
+    default - sources like Overture genuinely cover some states and not
+    others, and their absence stays an expected, silent skip.
+    """
+    try:
+        return get_recipe_by_id(recipe_id).get('coverage') == 'complete'
+    except Exception:
+        return False
+
+
+def raise_if_coverage_complete(recipe_id, admin_id, cause=None):
+    """Escalate a missing reference that declares complete coverage.
+
+    Absence of a complete-coverage reference (NSI anywhere in the U.S.)
+    is an unfinished or broken ingest, and skipping it silently degrades
+    every vote downstream; callers invoke this before their tolerant
+    soft-skip path.
+    """
+    if coverage_is_complete(recipe_id):
+        raise RuntimeError(
+            f'{recipe_id} declares complete coverage but has no data for '
+            f'{admin_id}. Ingest it for this admin unit (or fix the '
+            'failed load) rather than letting the pipeline run without '
+            'it.'
+        ) from cause
+
+
 def get_recipe_by_id(recipe_id, **kwargs):
     """Shortcut to get recipe_id by its parts
 

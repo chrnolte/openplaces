@@ -1,0 +1,90 @@
+# Recipe to import FEMA's USA Structures for Massachusetts (2023)
+#
+# State-scoped fork of US_footprint-fema-2023, and the template for the
+# other five New England states. The national recipe splits its
+# per-state download into admin3 chunks by the FIPS column - a county
+# code, which cannot name a New England town. Here the chunking is
+# spatial instead: each town's footprints are cut from the state GDB by
+# a bbox-filtered read plus the exact boundary mask
+# (process_by.use_spatial_mask). Everything else - source, columns,
+# transformations, index - matches the national recipe, and the outputs
+# land on the same entity-keyed paths, so downstream readers loading
+# `US_footprint-fema-2023` for a Massachusetts town find these files.
+
+description: >-
+  FEMA USA Structures building footprints for Massachusetts, split per town.
+
+admin_id: US-MA
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: fema
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://disasters.geoplatform.gov/USA_Structures/"
+    download_url_source: "https://disasters.geoplatform.gov/USA_Structures/"
+    download_url_source_regex: 'href="(.*Deliverable[0-9]+{admin2_id_leaf}.zip)'
+    verify_ssl: false
+  version: 2023
+
+compressed_file_name: "Deliverable*{admin2_id_leaf}.zip"
+uncompressed_file_name: "{admin2_id_leaf}_Structures.gdb"
+
+# Every U.S. county has FEMA USA Structures coverage: a unit with no data is an
+# unfinished or broken ingest, so harmonize steps raise instead of
+# soft-skipping when this reference is absent (see
+# recipe.coverage_is_complete). Sources with real geographic gaps
+# (Overture) deliberately do not declare this.
+coverage: complete
+
+download_by:
+  admin_level: 2
+
+# Spatial, not FIPS-keyed: admin level 3 is towns here, and the data
+# only carries county FIPS. The bbox read keeps each town's slice of
+# the state GDB cheap; the mask cuts the exact town boundary.
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  building_id_fema: BUILD_ID
+  address: PROP_ADDR
+  city: PROP_CITY
+  occupancy_class: OCC_CLS
+  occupancy_type: PRIM_OCC
+  height: HEIGHT
+  construction_code: B_CODE
+  footprint_area_m2: SQMETERS
+  footprint_area_sqft: SQFEET
+  image_date: IMAGE_DATE
+  validation_method: VAL_METHOD
+  postal_code: PROP_ZIP
+  census_tract_id: CENSUSCODE
+  admin3_id_admin1: FIPS
+
+# Derived columns. `group` normalizes the raw PRIM_OCC occupancy into
+# the NSI-style group vocabulary, exactly as the national recipe does,
+# reusing its remap sidecar so the two cannot drift.
+transformations:
+  - output: group
+    type: remap_file
+    input: occupancy_type
+    crosswalk_id: US_footprint-fema-2023_group-remap
+
+columns_to_categorical:
+  - occupancy_class
+  - occupancy_type
+  - group
+  - image_date
+  - validation_method
+  - building_code
+
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id

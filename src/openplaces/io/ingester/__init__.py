@@ -94,6 +94,38 @@ def _match_extracted_file(heap_dir: Path, expected_path: Path) -> Path | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
+def _transform_partition_key(value, spec: dict) -> str:
+    """Apply a scalar string transformation to a resolved partition key.
+
+    A deliberately small vocabulary mirroring the string operations in
+    io.transform, applied to one value rather than a column. Declared as
+    ``download_by: partition_key_transformation: {placeholder: spec}``.
+
+    Parameters
+    ----------
+    value : str
+        The resolved partition key.
+    spec : dict
+        ``operation`` plus ``args``: ``substring`` ([start, stop]),
+        ``zfill`` ([width]), ``add_prefix``/``add_suffix`` ([text]).
+    """
+    value = str(value)
+    operation = spec.get('operation')
+    args = spec.get('args') or []
+    if operation == 'substring':
+        return value[args[0] : args[1]]
+    if operation == 'zfill':
+        return value.zfill(args[0])
+    if operation == 'add_prefix':
+        return f'{args[0]}{value}'
+    if operation == 'add_suffix':
+        return f'{value}{args[0]}'
+    raise ValueError(
+        f'Unknown partition_key_transformation operation {operation!r}; '
+        "expected one of 'substring', 'zfill', 'add_prefix', 'add_suffix'."
+    )
+
+
 def _warn_registry_type_mismatches(gdf) -> None:
     """Warn when a column's dtype disagrees with the attribute registry."""
     reg = _load_attr_registry()
@@ -726,6 +758,19 @@ class Ingester:
             or AdminId(admin_id_str).is_parent_of(admin_id_requested)
         ]
         admin_ids_to_save = list(dict.fromkeys(admin_ids_to_save))
+        if self.admin_ids and not admin_ids_to_save and save_level != 0:
+            # Every requested id fell outside the spine. Before the
+            # re-mint this was a quiet no-op that reported success; a
+            # recycled or retired identifier then cost a full run that
+            # looked fine while doing nothing.
+            requested = ', '.join(str(a) for a in self.admin_ids)
+            raise ValueError(
+                f'None of the requested admin ids ({requested}) resolve '
+                f'to a unit at save level {save_level} within '
+                f'{self.recipe.get("admin_id")!r}. A re-mint may have '
+                'renamed them; resolve the old id through '
+                'admin_codes.audit.resolve_identifier.'
+            )
 
         if not reprocess:
             # Skip if the output exists, or a tombstone receipt records its
@@ -1358,9 +1403,13 @@ class Ingester:
             key_transform = self.recipe['download_by']['admin_key_transform'][
                 placeholder
             ]
-            # Temporary hack: supporting only one type of transformation
             if key_transform == 'remove_spaces':
                 partition_key = partition_key.replace(' ', '')
+            elif key_transform == 'slugify':
+                # Lowercase, whitespace to single hyphens. Geofabrik and
+                # similar publishers name state files this way
+                # ('North Carolina' -> 'north-carolina').
+                partition_key = '-'.join(partition_key.lower().split())
             else:
                 raise NotImplementedError(
                     f'key_transform == {key_transform} not yet supported.'
@@ -1396,6 +1445,21 @@ class Ingester:
             else:
                 if placeholder.startswith('admin'):
                     _partition_key = self._get_admin_partition_key(placeholder)
+                    # download_by.partition_key_transformation reshapes a
+                    # resolved key before it enters the URL/filename. The
+                    # motivating case: New England towns' admin3_id_admin1
+                    # is the 10-digit COUSUB GEOID whose first five digits
+                    # are the county FIPS a county-keyed API (NSI) wants;
+                    # a substring makes every town of one county resolve
+                    # to the same download, which the filename cache then
+                    # fetches once. A no-op for units whose key already
+                    # has the target shape (a county's own 5-digit FIPS).
+                    _pkt = (self.recipe.get('download_by') or {}).get(
+                        'partition_key_transformation'
+                    ) or {}
+                    _spec = _pkt.get(placeholder)
+                    if _spec:
+                        _partition_key = _transform_partition_key(_partition_key, _spec)
                 elif (
                     self.recipe.get('download_by')
                     and self.recipe['download_by'].get('partition') == placeholder
@@ -2075,10 +2139,13 @@ class Ingester:
                 print('Reading with bounding box. This can be slow.')
             if 'admin_geometries' not in self.download_partition:
                 self._make_table_ingester(self.recipe)._load_admin_geometries()
+            # `admin_geometries` is a GeoSeries, so .loc[...] is already the
+            # shapely geometry; .bounds on it is the (minx, miny, maxx, maxy)
+            # tuple the readers want.
             bbox = (
                 self.download_partition['admin_geometries']
                 .loc[admin_id_to_process]
-                .geometry.bounds
+                .bounds
             )
 
         # Process primary table.  In aggregate mode use a temp recipe (no

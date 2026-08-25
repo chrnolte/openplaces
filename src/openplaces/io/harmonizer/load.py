@@ -43,6 +43,7 @@ from openplaces.recipe import (
     get_recipe_by_id,
     get_recipe_id,
     get_save_admin_level,
+    raise_if_coverage_complete,
     source_id_from_recipe_id,
 )
 
@@ -202,8 +203,11 @@ def _restore_link(
             # The geospine run skipped this link for the same reason (an
             # expected admin-scoped coverage gap), so there is nothing to
             # restore -- unless a sidecar exists, which means the input
-            # disappeared after the link ran.
+            # disappeared after the link ran. A reference declaring
+            # complete coverage escalates instead (see
+            # recipe.coverage_is_complete).
             if overlay is None:
+                raise_if_coverage_complete(resolved_id, state.admin_id)
                 return state
             raise RuntimeError(
                 f'Link sidecar {sidecar_path.name} exists but its reference '

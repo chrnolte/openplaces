@@ -56,6 +56,7 @@ from openplaces.recipe import (
     get_recipe_dependencies,
     get_recipe_id,
     get_save_admin_level,
+    raise_if_coverage_complete,
     resolve_attribute_name,
     source_id_from_recipe_id,
 )
@@ -439,6 +440,7 @@ def _link_spatial_overlay(
     # expected admin-scoped gap, not an error.
     ref_raw = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
     if ref_raw is None or len(ref_raw) == 0:
+        raise_if_coverage_complete(recipe_id, state.admin_id)
         if state.verbose:
             print(f'  Link (overlay): no {recipe_id} for {state.admin_id}; skipping.')
         return state
@@ -1339,6 +1341,7 @@ def _link_spatial_point(
     # not an error.
     ref = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
     if ref is None or len(ref) == 0:
+        raise_if_coverage_complete(recipe_id, state.admin_id)
         if state.verbose:
             print(
                 f'  Link ({entity_type or "point"}): no {recipe_id} for '
@@ -1812,6 +1815,13 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
     ``use_group``/``use_subgroup`` for a use-code crosswalk). The crosswalk's
     own key length determines how much to truncate codes before lookup
     (handles e.g. 3- vs 4-digit codes sharing one 3-digit crosswalk).
+
+    An optional ``admin_id`` column scopes a row to one admin unit and
+    its descendants; a scoped row overrides the unscoped row for the
+    same key. This is how a single deviant source jurisdiction (Kleberg
+    County's use codes do not follow the statewide category scheme)
+    gets corrected in data, without forking the recipe or teaching the
+    code any geography.
     """
     if state.spine is None:
         return state
@@ -1834,6 +1844,19 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
             continue
         table = pd.read_csv(csv_path, dtype=str)
         key_col = table.columns[0]
+        if 'admin_id' in table.columns:
+            admin = str(state.admin_id) if state.admin_id is not None else ''
+            scope = table['admin_id'].fillna('')
+            applies = (scope == '') | scope.map(
+                lambda s: bool(s) and (admin == s or admin.startswith(s + '-'))
+            )
+            table = (
+                table[applies]
+                .assign(_depth=scope[applies].str.len())
+                .sort_values('_depth', kind='stable')
+                .drop_duplicates(subset=[key_col], keep='last')
+                .drop(columns=['_depth', 'admin_id'])
+            )
         table = table.drop_duplicates(subset=[key_col]).set_index(key_col)
         key_lengths = table.index.to_series().astype(str).str.len()
         key_length = int(key_lengths.mode().iat[0])

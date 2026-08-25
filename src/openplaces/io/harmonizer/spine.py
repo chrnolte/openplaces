@@ -26,6 +26,7 @@ from openplaces.io.harmonizer import (
 )
 from openplaces.io.readers import get_admin, get_entities
 from openplaces.io.transform import make_index_unique
+from openplaces.recipe import raise_if_coverage_complete
 
 
 def get_oriented_dims(geom) -> tuple[float, float, float]:
@@ -322,6 +323,7 @@ def resolve_spine(
             if state.verbose:
                 print(f'  Load {label}: {len(gdf):,d} footprints')
         except Exception as exc:
+            raise_if_coverage_complete(recipe_id, state.admin_id, cause=exc)
             warnings.warn(f'Could not load {recipe_id} for {state.admin_id}: {exc}')
 
     if not source_gdfs:
@@ -692,13 +694,25 @@ def _resolve_geographic_reference(state, link):
     id_column = link.get('id_column')
 
     if admin_level is not None:
-        ref = get_admin(state.admin_id, admin_level, geom=True)
+        try:
+            ref = get_admin(state.admin_id, admin_level, geom=True)
+        except ValueError:
+            # No units at this level under this admin unit is absent
+            # coverage, not an error: a New England town has no admin4
+            # children (the census admin4 recipe excludes those states
+            # by design), and the caller already leaves the column
+            # null for a reference with no coverage.
+            return None
     else:
         bbox = tuple(state.spine.total_bounds) if state.spine is not None else None
         ref = get_entities(
             recipe_id, state.admin_id, geom=True, bbox=bbox, missing='warn'
         )
-    if ref is None or len(ref) == 0:
+    if ref is None or len(ref) == 0 or 'geometry' not in ref.columns:
+        # Also the missing-ingest case: get_entities(missing='warn')
+        # hands back an attribute-only frame when the reference layer
+        # was never built for this state; a reference that cannot be
+        # joined spatially is absent coverage here, not a crash.
         return None
 
     values = ref[id_column] if id_column else pd.Series(ref.index, index=ref.index)

@@ -38,6 +38,13 @@ compressed_file_name: "Deliverable*{admin2_id_leaf}.zip"
 uncompressed_file_name: "{admin2_id_leaf}_Structures.gdb"
 
 # How is the download data partitioned?
+# Every U.S. county has FEMA USA Structures coverage: a unit with no data is an
+# unfinished or broken ingest, so harmonize steps raise instead of
+# soft-skipping when this reference is absent (see
+# recipe.coverage_is_complete). Sources with real geographic gaps
+# (Overture) deliberately do not declare this.
+coverage: complete
+
 download_by:
   admin_level: 2
 

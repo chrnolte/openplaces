@@ -49,11 +49,33 @@ compressed_file_name: "nsi_2026_{admin3_id_admin1}.geojson"
 # County (not state, unlike the 2022 recipe): a whole-state API response can
 # run into the multi-GB range (e.g. Los Angeles County alone returned ~2GB),
 # so county keeps each request's payload manageable and independently
-# retryable. Because download_by and save_to are both admin_level 3, no
-# process_by/admin_id_crosswalk split step is needed -- each downloaded
-# county file is saved as a single chunk.
+# retryable.
+#
+# The API accepts only a 5-digit county FIPS. Where admin level 3 is a
+# county, admin3_id_admin1 already is that code and the substring is a
+# no-op. Where admin level 3 is a New England town, admin3_id_admin1 is
+# the 10-digit COUSUB GEOID whose first five digits are the county FIPS:
+# every town of one county resolves to the same URL and filename, so the
+# county file downloads once and is shared. The spatial mask below then
+# cuts each town's own structures out of that shared county file; for a
+# county it just trims the API's occasional over-the-line stragglers.
+# Every U.S. county has NSI structures: a unit with no data is an
+# unfinished or broken ingest, so harmonize steps raise instead of
+# soft-skipping when this reference is absent (see
+# recipe.coverage_is_complete). Sources with real geographic gaps
+# (Overture) deliberately do not declare this.
+coverage: complete
+
 download_by:
   admin_level: 3
+  partition_key_transformation:
+    admin3_id_admin1:
+      operation: substring
+      args: [0, 5]
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
 
 # Columns: `openplaces` variable name -> variable name in imported table
 columns:
@@ -126,14 +148,12 @@ columns_to_categorical:
   - footprint_source
   - flood_zone_subtype
 
-# Translate `admin_id` information from source to `openplaces` admin_ids.
-# Also acts as a data-quality filter: structures whose census block FIPS
-# doesn't match the queried county (possible at query boundaries) are
-# dropped by the inner join.
-admin_id_crosswalk:
-  admin_level: 3
-  admin_id_column: admin3_id_admin1
-  admin_recipe_id: "admin-openplaces-2026_admin3"
+# No admin_id_crosswalk: the admin id is assigned by the spatial mask
+# declared in process_by above, which both translates to `openplaces`
+# admin ids and drops query-boundary stragglers - the two jobs the
+# code-based crosswalk did. A code join cannot work where admin level 3
+# is a New England town (the structure only carries its county FIPS),
+# and the geometry-based assignment is exact in both worlds.
 
 # Set the index from an existing column
 set_index: building_id_nsi
