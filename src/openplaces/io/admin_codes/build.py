@@ -84,6 +84,34 @@ def population_path(level):
     return directory / f'admin-spine-2026_population-admin{level}.csv'
 
 
+MEASURED_SOURCES = ('ghs-pop-e2020',)
+
+#: Sources that stand in for a measurement nobody could take: the gap
+#: filler apportioning a parent's shortfall, or the level median. Only
+#: these may be revised afterwards.
+ESTIMATED_SOURCES = ('parent-', 'level-median')
+
+
+def is_measured(source) -> bool:
+    """Return True when a weight came from summing the raster.
+
+    A measured weight is knowledge, including when it is zero: the
+    raster covered the unit and found nobody.
+    """
+    return str(source).startswith(MEASURED_SOURCES)
+
+
+def is_estimated(source) -> bool:
+    """Return True when a weight is openplaces' own guess.
+
+    The complement is wider than :func:`is_measured`: a reviewed
+    override is not a measurement either, but it is a decision somebody
+    recorded on purpose, and a nameless placeholder deliberately
+    weighted zero should stay at zero. Only a gap fill may be revised.
+    """
+    return str(source).startswith(ESTIMATED_SOURCES)
+
+
 def _write_population(level, frame, replacing=None):
     """Merge rows into a level's population table, replacing by admin_id."""
     path = population_path(level)
@@ -174,16 +202,24 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
             'population': pd.to_numeric(stats[value_column], errors='coerce'),
         }
     )
-    out = out[out['population'].notna()]
-    out['population'] = out['population'].round(0).astype('int64')
+    # A polygon exactextract returns nothing for did not fail to be
+    # measured: the raster is global, so no intersecting cell means no
+    # counted people. Dropping the row instead sends it to the gap
+    # filler, which hands an uninhabited unit the median of its level
+    # and lets it win ties against real towns.
+    out['population'] = out['population'].fillna(0).round(0).astype('int64')
     out['source'] = 'ghs-pop-e2020'
 
     overrides = spine_path(level).parent / 'admin-spine-2026_population-overrides.csv'
     if overrides.exists():
         extra = pd.read_csv(overrides)
         extra = extra[extra['admin_id'].isin(live)]
-        extra = extra[~extra['admin_id'].isin(set(out['admin_id']))]
         if len(extra):
+            # Overrides replace, they do not merely fill gaps. Filling
+            # covers a unit with no polygon; replacing covers a unit
+            # that has a value and has the wrong one. A reviewer needs
+            # to be able to say a figure is wrong, not only missing.
+            out = out[~out['admin_id'].isin(set(extra['admin_id']))]
             out = pd.concat(
                 [out, extra[['admin_id', 'population', 'source']]],
                 ignore_index=True,
@@ -290,9 +326,20 @@ def build_population_from_entity(
             'population': pd.to_numeric(stats[value_column], errors='coerce'),
         }
     )
-    out = out[out['population'].notna()]
-    out['population'] = out['population'].round(0).astype('int64')
-    out.loc[out['population'] <= 0, 'population'] = 1
+    # Reindex against the polygons that went in. A polygon the extractor
+    # returns no row at all for is not merely NaN, it is absent, so
+    # filling NaN alone cannot reach it: it silently leaves the table
+    # and the gap filler later hands it the median of its level. That is
+    # how Maine's Codyville and Drew, both present with valid geometry,
+    # ended up weighted 26,320 apiece. No clamp up to 1 either, because
+    # that made a real zero indistinguishable from a real one.
+    out = (
+        out.set_index('admin_id')
+        .reindex(polygons['resolved'])
+        .rename_axis('admin_id')
+        .reset_index()
+    )
+    out['population'] = out['population'].fillna(0).round(0).astype('int64')
     out['source'] = f'ghs-pop-e2020-{recipe_id.split("_")[-1]}'
 
     _write_population(level, out, replacing=set(out['admin_id']))
@@ -385,6 +432,15 @@ def repair_zero_weights(levels=LEVELS, verbose=True):
     enters, so a geometry artefact becomes a permanent handicap. Unknown
     has to mean "competes as typical".
 
+    **Only a gap fill is revised.** A measured zero is knowledge and a
+    reviewed override is a decision; neither is openplaces guessing, so
+    neither is touched. The rule applies to an estimate
+    that came out at zero, never to a raster sum that did: the raster
+    covering a unit and finding nobody is knowledge, and replacing it
+    with the median of the level asserts the opposite of what was
+    measured. Losing ties is the correct outcome for an uninhabited
+    unit, and a memorable code is better spent on a real town.
+
     Parameters
     ----------
     levels : iterable of int, optional
@@ -402,7 +458,8 @@ def repair_zero_weights(levels=LEVELS, verbose=True):
         path = population_path(level)
         table = pd.read_csv(path)
         median = float(table.loc[table['population'] > 0, 'population'].median())
-        zeros = table['population'] <= 0
+        estimated = table['source'].map(is_estimated)
+        zeros = (table['population'] <= 0) & estimated
         count = int(zeros.sum())
         repaired[level] = count
         if count:
