@@ -1,0 +1,119 @@
+# Recipe: Perquimans County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer (hosted by GIS vendor AGD,
+# org id nJbIFHiSnaX0z0hS), backing its public parcel viewer. Caps a single
+# query at 1,000 features (`maxRecordCount`), so `arcgis_rest_scraper` pages
+# through it.
+#
+# NOTE: the layer carries only a single combined value field (`TAX_VAL`) --
+# no land/building split, so no `improvement_value` is available from this
+# source (verified populated: 997/1000 sampled records). `LAND_USE_V` is a
+# value, not a land-use code, despite the name -- see the note above
+# `columns:` below. An earlier version of this comment said the reverse.
+
+description: >-
+  Perquimans County, NC parcel roll (total assessed value, owner, situs,
+  deed reference) from the county's ArcGIS parcel layer. No land/building
+  value split is available from this source.
+
+admin_id: US-NC-PQ
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: perquimanscounty
+    # Checked 2026-08-20 against the ArcGIS REST service this recipe
+    # reads: neither copyrightText nor licenseInfo is set on the service
+    # or its layer, so the endpoint openplaces actually uses states no
+    # terms. Checked and absent, not unexamined -- but this speaks only
+    # for that endpoint, not for anything the county may publish
+    # elsewhere.
+    license: "unknown (service declares no copyright or licence)"
+    redistribution_restricted: null
+    portal_url: "https://agdonline.maps.arcgis.com/apps/webappviewer/index.html?id=559506e85ee046a194333eb12e80710f"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "perquimans_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/Perquimans_Service/FeatureServer/2"
+  where: "1=1"
+  out_fields: "*"
+
+# NOTE: LAND_USE_V is not a land-use code despite the name -- it is the
+# present-use-value assessment (NC's deferred agricultural valuation). It is
+# 12.8% populated, every non-blank value parses as a number from $100 to
+# $2,992,500 with a median of $38,400, it correlates 0.850 with TAX_VAL, and
+# its median ratio to TAX_VAL is 0.31. It was previously mapped to
+# `use_group_code`, which fed dollar amounts into the land-use lane; the
+# apparent 98.7% coverage that made it look real was whitespace. There is no
+# registry attribute for present-use-value, so it is left unmapped rather
+# than renamed into an invented one.
+#
+# This layer publishes no land-use column at all: DESCR and desc_ are free
+# text (949 distinct over 15,044 rows), not a category.
+
+columns:
+  parcel_id_assessor: pin
+  address: ADDRESS_1
+  owner_name: NAME
+  last_sale_date: DATE_SOLD
+  total_value: TAX_VAL
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEED_BK_1, DEED_PG_1]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+  # DATE_SOLD is a lossy MYYYY/MMYYYY concatenation with no zero-padding and
+  # no day (e.g. "62022" = month 6, year 2022; "0" = blank/unset). Zero-pad
+  # to 6 digits, then split into month/year and let to_datetime default the
+  # day to the 1st. A bare 4-digit value (e.g. "1973") is ambiguous between
+  # a year-only record and a 1-digit month + 3-digit year, so it is left
+  # unparsed (NaT) rather than guessed.
+  - type: string
+    operation: zfill
+    input: last_sale_date
+    args:
+      width: 6
+    output: _date_sold_padded
+  - type: string
+    operation: substring
+    input: _date_sold_padded
+    args:
+      start: 0
+      end: 2
+    output: _date_sold_month
+  - type: string
+    operation: substring
+    input: _date_sold_padded
+    args:
+      start: 2
+      end: 6
+    output: _date_sold_year
+  - type: string
+    operation: concat
+    inputs: [_date_sold_year, _date_sold_month]
+    args:
+      sep: "-"
+    output: last_sale_date
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+drop_columns:
+  - _date_sold_padded
+  - _date_sold_month
+  - _date_sold_year
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

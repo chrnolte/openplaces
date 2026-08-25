@@ -1,0 +1,128 @@
+# Recipe: Robeson County, NC parcel roll.
+#
+# Source: the county's ArcGIS REST service on the ROKtech "ROKMAPS"
+# platform (`arcgis4.roktech.net`), layer 15 ("Parcels"), backing the
+# county's interactive viewer's own "Extract Data" tool. Not a documented
+# public API, so may change without notice. Caps a single query at 1,000
+# features (`maxRecordCount`), so `arcgis_rest_scraper` pages through it.
+#
+# NOTE: no year_built field in this layer's 74-field schema (verified; no
+# non-spatial CAMA table exists on this service either). Land and building
+# value are populated (979/1000 and 631/1000 sampled records
+# respectively), so land/building value is included as a bonus.
+#
+# NOTE: `use_group`/`use_subgroup` are unmapped today, so every
+# use-code-derived indicator downstream is inert for this county. Of the 74
+# raw fields across 80,386 features, most candidates are dead: `PARCELTYPE`
+# is administrative (Base Parcel 80,211 / Non Par 163 / Other 6 / ROW Overlap
+# 2); `NBHCLASS`, `QUALCODE` and `RECTYPE` are empty; `PAR_CODE` is blank on
+# 78,073 parcels and its ~600 non-blank values (HOS, INF, VCN...) look like
+# special designations.
+#
+# PARDESC1 IS THE EXCEPTION. Three codes are now verified against the CHEER
+# hand labels (232 points spatially joined to this layer's own geometry, so
+# the id-lineage mismatch below does not bias the test) and expanded via the
+# remap_pattern transformation:
+#
+#   D-10 -> SINGLE FAMILY RESIDENCE  65/67 points, 66 independent parcels;
+#                                    24,606 parcels county-wide
+#   C-92 -> MOBILE HOME PARK         49/49 points, but only 9 independent
+#                                    parcels; 118 county-wide
+#   C-65 -> APARTMENTS               29/29 points, 7 independent parcels;
+#                                    32 county-wide
+#
+# The earlier letter-prefix reading (D-71 = mobile home on land) did NOT
+# hold: D-71 measured only 7/10 manufactured-home on 10 parcels, so its
+# 8,830 parcels stay unmapped. V-80 ('vacant', 10,324 parcels) carried
+# manufactured homes on 15/17 labelled points -- the leased-land signature,
+# where the structure's record is separate from the land parcel -- also
+# left unmapped pending corroboration from a second source.
+#
+# Separate, still open: the local source keys on a 12-digit PIN_NUMBER
+# ('111111111111') while the curated parcel entity's parcel_id_assessor
+# holds a different lineage ('222222222'), and only 227 of 80,297 parcels
+# join by id.
+
+description: >-
+  Robeson County, NC parcel roll (assessed land/building values, owner,
+  situs, most recent sale) from the county's ArcGIS parcel layer. No year
+  built is available from this source.
+
+admin_id: US-NC-RB
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: robesoncounty
+    # Checked 2026-08-20 twice over: the ArcGIS service this recipe reads
+    # sets neither copyrightText nor licenseInfo, and the county's own GIS
+    # pages were fetched and scanned for licence, resale, redistribution
+    # and data-agreement language, which found none either. So this is
+    # absence confirmed on both the endpoint and the site, not merely an
+    # empty metadata field -- the weaker claim that applies to the
+    # counties whose sites could not be reached.
+    license: "unknown (no terms on the service or the county site)"
+    redistribution_restricted: null
+    portal_url: "https://maps.roktech.net/ROKMAPS_Robeson/"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "robeson_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://arcgis4.roktech.net/arcgis/rest/services/robeson/ROKMAPS_v2/MapServer/15"
+  where: "1=1"
+  out_fields: "*"
+
+columns:
+  parcel_id_assessor: PIN_NUMBER
+  # Raw land class code (with the source's trailing space), kept verbatim
+  # so the code itself stays on the parcel entity; the verified labels are
+  # written to use_group by the remap_pattern transformation below, and
+  # derive_use_classes combines both ('MOBILE HOME PARK | C-92 ').
+  use_subgroup: PARDESC1
+  # PARDESC3 (an improvement-type code, blank on 91% of parcels and
+  # unverified) is deliberately no longer mapped: use_group now carries the
+  # CHEER-verified PARDESC1 labels instead.
+  address: PHYSTRADR
+  owner_name: OWNAM1
+  owner_name_2: OWNAM2
+  owner_address: OWADR1
+  owner_city: OWCITY
+  owner_admin2_id_admin1: OWSTATE
+  owner_postal_code: OWZIP
+  last_sale_date: DATESOLD
+  last_sale_price: SALEAMT
+  land_value: LNDASVCUR
+  improvement_value: IMPASVCUR
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DEEDBOOK, DEEDPAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+  # CHEER-verified PARDESC1 expansions (see the header note for the
+  # evidence). The labels are chosen to match the existing shared keyword
+  # rulesets (land-use-keywords, parcel-occupancy-keywords) so no new
+  # global rules are needed; unmatched codes leave use_group missing and
+  # travel on in use_subgroup unchanged. Patterns are end-anchored because
+  # the source pads every code with a trailing space.
+  - output: use_group
+    type: remap_pattern
+    input: use_subgroup
+    patterns:
+      - {pattern: 'D-10\s*$', value: SINGLE FAMILY RESIDENCE}
+      - {pattern: 'C-92\s*$', value: MOBILE HOME PARK}
+      - {pattern: 'C-65\s*$', value: APARTMENTS}
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

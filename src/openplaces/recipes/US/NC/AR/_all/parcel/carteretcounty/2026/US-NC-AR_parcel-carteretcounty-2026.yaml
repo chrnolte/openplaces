@@ -1,0 +1,123 @@
+# Recipe: Carteret County, NC parcel roll.
+#
+# Source: the county's ArcGIS FeatureServer layer
+# (`services1.arcgis.com`, org id CsRkg76wVkJL8hZq), service
+# `parcel_boundariesAGOLcopy`.
+#
+# Downloaded as one bulk GeoJSON export (~301 MB -- this layer carries
+# ~120 fields per parcel) from the ArcGIS Hub download API rather than
+# by paging the REST layer, which would take ~32 sequential
+# 2,000-feature requests against the county's server. The REST endpoint
+# backing it is
+# services1.arcgis.com/CsRkg76wVkJL8hZq/.../FeatureServer/0.
+#
+# The Hub export is generated asynchronously and cached, and this
+# layer's width makes it slower to build than most: the download URL
+# answered 404 for several minutes across two separate polling runs
+# before the file appeared. A 404 on first ingest means "not built yet",
+# not "gone" -- re-run rather than switching to the scraper.
+#
+# 63,993 features against NC OneMap's 63,768 -- a near-exact match on
+# the same parcels, with a CAMA join NC OneMap does not carry:
+# land/building values, year built, heated area and a use code with a
+# real description.
+#
+# NOTE: this county needs an id-override row scoped to this source_id,
+# and unusually it exists to *undo* one. US_parcel_id-overrides.csv
+# already carries a blank-source_id row at US-NC-AR redirecting
+# parcel_id_local to parcel_id_admin3, because NC OneMap's ALTPARNO for
+# Carteret is block-level truncated to 8 of the real PIN's 15 digits. A
+# blank source_id matches every source at that admin unit, so without a
+# more specific row that redirect would also hit this recipe -- which
+# publishes no parcel_id_admin3 at all, leaving parcel_id_local null for
+# every row. The exact-source row points this recipe back at
+# parcel_id_assessor, where BITekPIN carries the full 15-digit PIN and
+# matches NC OneMap's own parcel_id_local on 99.3% of sampled rows.
+#
+# GISPIN is the truncated 8-digit form of the same key (306 distinct
+# values per 4,000 sampled) and is deliberately not used; PIN15 is
+# identical to BITekPIN.
+#
+# NOTE on last_sale_date: DDATE is used rather than the SaleDate field.
+# arcgis_rest_scraper writes `f=geojson`, where Esri serializes an
+# esriFieldTypeDate as epoch milliseconds rather than an ISO string
+# (verified: SaleDate comes back as 1455667200000). DDATE is the same
+# sale as a plain 'YYYYMMDD' string that parses correctly, and the two
+# are populated on exactly the same 81.0% of rows -- so this costs
+# nothing.
+#
+# NOTE: Y_BLT_HOUS uses 0 rather than null for "never recorded" --
+# nulled generically at ingest (attribute_registry.csv's year_built
+# null_placeholder), the same as Bladen and Sampson.
+
+description: >-
+  Carteret County, NC parcel roll (land/building values, year built, heated
+  area, owner, situs, most recent sale) from the county's ArcGIS parcel layer.
+
+admin_id: US-NC-AR
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: carteretcounty
+    # Checked 2026-08-20 twice over: the ArcGIS Hub item for this dataset
+    # explicitly declares license "none", and the county's own site was
+    # fetched and scanned for licence, resale, redistribution and
+    # data-agreement language, which found none either.
+    license: "unknown (no terms on the Hub item or the county site)"
+    redistribution_restricted: null
+    portal_url: "https://www.carteretcountync.gov/163/Geographic-Information-Systems"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/751a48fa768241aab25477c6d3eb4ec1_0/downloads/data?format=geojson&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "carteret_parcels.geojson"
+
+columns:
+  parcel_id_assessor: BITekPIN
+  address: PropertyAd
+  city: SITE_CITY
+  owner_name: OWNER
+  owner_name_2: OWNER2
+  owner_address: MAIL_ADDRE
+  owner_city: MAIL_CITY
+  owner_admin2_id_admin1: MAIL_STATE
+  owner_postal_code: MAIL_ZI5
+  legal_description: LEGAL_DESC
+  subdivision: Subdivisio
+  use_group: Use_desc
+  use_group_code: Use_code
+  tax_neighborhood_code: Neighborho
+  year_built: Y_BLT_HOUS
+  area_sqft: HtdSqFt
+  # Structure detail, measured on this layer: bedrooms 70.7%, bathrooms
+  # 70.8%. BATHROOMS is fractional here (2.0, 2.5), i.e. it already
+  # folds half baths in, unlike the counties that publish full and half
+  # counts separately.
+  n_bedrooms: BEDROOMS
+  n_bathrooms: BATHROOMS
+  last_sale_date: DDATE
+  last_sale_price: SALE_PRICE
+  land_value: LAND_VALUE
+  improvement_value: STRUC_VAL
+  total_value: Total_EMV
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [DBOOK, DPAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - tax_neighborhood_code
+  - owner_admin2_id_admin1
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
