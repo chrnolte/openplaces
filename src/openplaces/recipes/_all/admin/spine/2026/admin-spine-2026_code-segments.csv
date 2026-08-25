@@ -1,0 +1,7 @@
+scheme,admin1_id,segment,start,length,total_length,notes
+us-census-geoid,US,state,0,2,2,"State FIPS; two digits, zero padded."
+us-census-geoid,US,county,0,5,5,"County FIPS: state plus a three-digit county code. Connecticut's three digits have named its nine planning regions since 2022 and its eight legacy counties before that, so the segment outlived the government it was named for."
+us-census-geoid,US,cousub,0,10,10,"County subdivision: county plus a five-digit subdivision code. The governing unit in the six New England states, a non-governing statistical unit elsewhere."
+us-census-geoid,US,tract,0,11,11,"Census tract: county plus a six-digit tract code. Nests in counties everywhere and in county subdivisions nowhere."
+us-census-geoid,US,blockgroup,0,12,12,"Block group: tract plus one digit."
+us-census-geoid,US,block,0,15,15,"Census block: tract plus a four-digit block code. Nests within county subdivisions in the twelve strong-MCD states, which include all six New England states."
