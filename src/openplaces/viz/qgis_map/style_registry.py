@@ -55,6 +55,14 @@ class LayerStyle:
     variant_label: str | None
     notes: str | None
     dynamic_categorize_attr: str | None
+    attr_override: str | None
+    # Per-category color overrides for a dynamically categorized column,
+    # as 'value=r,g,b' pairs joined by ';' (e.g. 'microsoft=255,0,255').
+    category_colors: str | None
+    # Explicit graduated class bounds for attr_override columns whose
+    # quantiles degenerate (counts that are mostly 1), as '|'-separated
+    # ascending numbers; the data maximum closes the last class.
+    attr_breaks: str | None
 
 
 @cache
@@ -80,6 +88,9 @@ def _row_to_style(style_key: str, row: pd.Series) -> LayerStyle:
         variant_label=row['variant_label'] or None,
         notes=row['notes'] or None,
         dynamic_categorize_attr=row.get('dynamic_categorize_attr') or None,
+        attr_override=row.get('attr_override') or None,
+        category_colors=row.get('category_colors') or None,
+        attr_breaks=row.get('attr_breaks') or None,
     )
 
 

@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
+import geopandas as gpd
 import pandas as pd
 from pyproj import CRS
 
@@ -33,6 +34,7 @@ from openplaces.recipe import get_recipe_by_id, get_recipe_id
 from openplaces.viz.qgis_map.resolver import (
     RENDER_OUTLINE,
     RENDER_POINTS,
+    RENDER_POLYGONS,
     LayerSpec,
     resolve_layers,
 )
@@ -241,6 +243,74 @@ def _fills_to_markers(clone: ET.Element) -> None:
             symbols.append(marker)
 
 
+def _translucent_fills(clone: ET.Element) -> None:
+    """Restyle every fill symbol for a classified polygon delivery view.
+
+    The boundary takes the category's color fully opaque; the fill keeps
+    the same color at 30% opacity, so the classification reads at every
+    zoom level: boundaries carry it when polygons are large, the tinted
+    fill when they shrink below boundary width.
+    """
+    for symbols in clone.iter('symbols'):
+        for symbol in symbols.findall('symbol'):
+            if symbol.get('type') != 'fill':
+                continue
+            for opt in symbol.iter('Option'):
+                if opt.get('name') == 'color':
+                    rgb = ','.join(opt.get('value', '').split(',')[:3])
+                    opt.set('value', f'{rgb},76')
+                    for sibling in symbol.iter('Option'):
+                        if sibling.get('name') == 'outline_color':
+                            sibling.set('value', f'{rgb},255')
+                    break
+
+
+def _add_join(
+    clone: ET.Element,
+    *,
+    attr_id: str,
+    field: str,
+    subset: list[str] | None = None,
+) -> None:
+    """Give *clone* a single vector join to *attr_id* on *field*.
+
+    Written from scratch rather than rewritten from the template because
+    the delivery polygon file has no template-authored join to inherit.
+    An empty custom prefix keeps the joined fields' bare names, which is
+    what lets the template renderers classify them unchanged.
+
+    *subset* limits the join to the named columns. This is what keeps
+    activating a joined view responsive: QGIS memory-caches the whole
+    join table the first time the layer draws, and hashing one
+    classifying column instead of the full canonical schema is the
+    difference between seconds and a minute on millions of rows.
+    """
+    vectorjoins = clone.find('vectorjoins')
+    if vectorjoins is None:
+        vectorjoins = ET.SubElement(clone, 'vectorjoins')
+    for join in list(vectorjoins.findall('join')):
+        vectorjoins.remove(join)
+    join = ET.SubElement(
+        vectorjoins,
+        'join',
+        {
+            'joinLayerId': attr_id,
+            'joinFieldName': field,
+            'targetFieldName': field,
+            'memoryCache': '1',
+            'hasCustomPrefix': '1',
+            'customPrefix': '',
+            'upsertOnEdit': '0',
+            'cascadedDelete': '0',
+            'editable': '0',
+        },
+    )
+    if subset:
+        subset_el = ET.SubElement(join, 'joinFieldsSubset')
+        for name in subset:
+            ET.SubElement(subset_el, 'field', {'name': name})
+
+
 def _to_outline(clone: ET.Element) -> None:
     """Replace *clone*'s renderer with a plain, unclassified outline."""
     old = clone.find('renderer-v2')
@@ -271,12 +341,171 @@ def _data_columns(path: Path) -> set[str]:
         return set()
 
 
+def _display_label(spec) -> str:
+    """The visible layer name: label first, file stem at the end."""
+    if spec.label:
+        return f'{spec.label} - {spec.display_name}'
+    return spec.display_name
+
+
+def _restyle_outline(clone: ET.Element, spec) -> None:
+    """Apply a spec's outline color/width to a RENDER_OUTLINE clone."""
+    if not (spec.outline_color or spec.outline_width):
+        return
+    for opt in clone.iter('Option'):
+        if opt.get('name') == 'outline_color' and spec.outline_color:
+            opt.set('value', spec.outline_color)
+        elif opt.get('name') == 'outline_width' and spec.outline_width:
+            opt.set('value', spec.outline_width)
+
+
+def _enable_labels(clone: ET.Element, spec) -> None:
+    """Label *clone* with the spec's expression, if it declares one.
+
+    Purple text with a white buffer, matching the administrative
+    outlines this exists for. Attributes QGIS does not find here fall
+    back to its own defaults, which is also why no placement element is
+    written: the polygon default (around the centroid) is the wanted
+    behavior.
+    """
+    if not spec.label_expression:
+        return
+    clone.set('labelsEnabled', '1')
+    for old in clone.findall('labeling'):
+        clone.remove(old)
+    labeling = ET.SubElement(clone, 'labeling', {'type': 'simple'})
+    settings = ET.SubElement(labeling, 'settings', {'calloutType': 'simple'})
+    text_style = ET.SubElement(
+        settings,
+        'text-style',
+        {
+            'fieldName': spec.label_expression,
+            'isExpression': '1',
+            'fontSize': spec.label_size,
+            'fontSizeUnit': 'Point',
+            'textColor': '128,0,128,255',
+            'textOpacity': spec.label_opacity,
+        },
+    )
+    ET.SubElement(
+        text_style,
+        'text-buffer',
+        {
+            'bufferDraw': '1',
+            'bufferSize': spec.label_buffer,
+            'bufferSizeUnits': 'MM',
+            'bufferColor': '255,255,255,255',
+            'bufferOpacity': '1',
+        },
+    )
+    ET.SubElement(settings, 'rendering', {'drawLabels': '1'})
+
+
+def _move_group_first(parent: ET.Element, name: str) -> None:
+    """Move the named layer-tree/legend group to the top of *parent*.
+
+    Group creation appends, which draws (and lists) a late-created group
+    below everything else; administrative context wants the opposite.
+    """
+    for tag in ('layer-tree-group', 'legendgroup'):
+        target = None
+        for child in parent.findall(tag):
+            if child.get('name') == name:
+                target = child
+                break
+        if target is not None:
+            parent.remove(target)
+            parent.insert(0, target)
+
+
 def _apply_render_mode(clone: ET.Element, render: str) -> None:
     """Re-render *clone* for data shaped differently than the template's."""
     if render == RENDER_POINTS:
         _fills_to_markers(clone)
     elif render == RENDER_OUTLINE:
         _to_outline(clone)
+    elif render == RENDER_POLYGONS:
+        _translucent_fills(clone)
+
+
+# Anchors of the ordered categorical ramp, IBM's colorblind-safe
+# palette in its published order: blue, purple, magenta, orange, gold.
+# The hue sweep never passes through green, so adjacent classes stay
+# separable under deuteranopia/protanopia, and salience rises with the
+# value instead of peaking at both ends the way a diverging ramp does.
+_ORDERED_RAMP = (
+    (100, 143, 255),
+    (120, 94, 240),
+    (220, 38, 127),
+    (254, 97, 0),
+    (255, 176, 0),
+)
+
+
+def _ramp_rgb(t: float) -> tuple[int, int, int]:
+    """Linearly interpolate _ORDERED_RAMP at position t in [0, 1]."""
+    t = min(max(t, 0.0), 1.0)
+    scaled = t * (len(_ORDERED_RAMP) - 1)
+    i = min(int(scaled), len(_ORDERED_RAMP) - 2)
+    frac = scaled - i
+    a, b = _ORDERED_RAMP[i], _ORDERED_RAMP[i + 1]
+    return tuple(round(x + (y - x) * frac) for x, y in zip(a, b))
+
+
+def _parse_category_colors(raw: str | None) -> dict[str, tuple[int, int, int]]:
+    """Parse a registry category_colors cell into {value: (r, g, b)}."""
+    out: dict[str, tuple[int, int, int]] = {}
+    for pair in (raw or '').split(';'):
+        if '=' not in pair:
+            continue
+        value, _, rgb = pair.partition('=')
+        parts = rgb.split('|')
+        if len(parts) == 3:
+            try:
+                out[value.strip()] = tuple(int(p) for p in parts)
+            except ValueError:
+                continue
+    return out
+
+
+def _recolor_ordinal_categories(clone: ET.Element) -> None:
+    """Recolor a template-baked categorized renderer whose values are numeric.
+
+    Keeps the template author's class list (a capped story count, a
+    section count) and replaces only the colors: sorted numerically and
+    mapped along the ordered ramp, so perceived salience rises with the
+    value. Non-numeric categories (the NULL catch-all) keep their
+    template color. A renderer with any non-numeric non-empty value is
+    left entirely untouched.
+    """
+    renderer = clone.find('.//renderer-v2')
+    if renderer is None or renderer.get('type') != 'categorizedSymbol':
+        return
+    symbols_el = renderer.find('symbols')
+    if symbols_el is None:
+        return
+    pairs = []
+    for cat in renderer.iter('category'):
+        value = cat.get('value') or ''
+        if value in ('', 'NULL'):
+            continue
+        try:
+            pairs.append((float(value), cat.get('symbol')))
+        except ValueError:
+            return
+    if len(pairs) < 2:
+        return
+    pairs.sort()
+    by_name = {sym.get('name'): sym for sym in symbols_el}
+    for i, (_, symbol_name) in enumerate(pairs):
+        symbol = by_name.get(symbol_name)
+        if symbol is None:
+            continue
+        r, g, b = _ramp_rgb(i / (len(pairs) - 1))
+        for opt in symbol.iter('Option'):
+            if opt.get('name') == 'color':
+                alpha = opt.get('value', '').split(',')[3:4] or ['127']
+                opt.set('value', f'{r},{g},{b},{alpha[0]}')
 
 
 def _random_fill_symbol(*, name: str, seed: str) -> ET.Element:
@@ -288,6 +517,12 @@ def _random_fill_symbol(*, name: str, seed: str) -> ET.Element:
     """
     rng = random.Random(seed)
     r, g, b = (rng.randint(0, 255) for _ in range(3))
+    return _fill_symbol(name=name, rgb=(r, g, b))
+
+
+def _fill_symbol(*, name: str, rgb: tuple[int, int, int]) -> ET.Element:
+    """Build a `<symbol type="fill">` with a 50%-opacity fixed color."""
+    r, g, b = rgb
     symbol = ET.Element(
         'symbol',
         {
@@ -325,8 +560,13 @@ def _random_fill_symbol(*, name: str, seed: str) -> ET.Element:
 
 
 def _regenerate_categories(
-    clone: ET.Element, data_path: Path, attr_field: str, *, verbose: bool
-) -> None:
+    clone: ET.Element,
+    data_path: Path,
+    attr_field: str,
+    *,
+    color_overrides: dict[str, tuple[int, int, int]] | None = None,
+    verbose: bool,
+) -> bool:
     """Rebuild *clone*'s categorized-symbol renderer from *data_path*'s real data.
 
     Replaces the template-baked `<categories>`/`<symbols>` lists with one
@@ -337,6 +577,13 @@ def _regenerate_categories(
     otherwise wrong or incomplete for any other admin unit. Fails soft (warns
     and leaves the template-baked renderer as-is) on any read/shape problem,
     matching :func:`_update_extent`'s posture toward missing/bad data.
+
+    Returns True when the category list was rebuilt from data. False
+    means the template's categories are still in place and would
+    misdescribe this data; a variant caller should drop the view rather
+    than ship it, since a base layer's wrong legend is at least visibly
+    wrong while a variant named after one column silently showing
+    another's classes is not.
     """
     renderer = clone.find('.//renderer-v2')
     categories_el = renderer.find('categories') if renderer is not None else None
@@ -347,7 +594,7 @@ def _regenerate_categories(
                 f'{attr_field!r} is flagged dynamic_categorize_attr but the cloned '
                 'layer has no categorized-symbol <renderer-v2>; leaving it untouched.'
             )
-        return
+        return False
 
     try:
         values = pd.read_parquet(data_path, columns=[attr_field])[attr_field]
@@ -356,14 +603,26 @@ def _regenerate_categories(
             f'Could not read {attr_field!r} from {data_path} to regenerate '
             f'categories: {exc}; leaving template-baked categories as-is.'
         )
-        return
-    unique_values = sorted(str(v) for v in values.dropna().unique().tolist())
+        return False
+    counts = {str(k): int(v) for k, v in values.dropna().value_counts().items()}
+    # An all-numeric value set is ordinal (story counts, section
+    # counts): sort it numerically, not lexically, and color it along
+    # the ordered ramp so perceived salience tracks the value. A mixed
+    # or textual set has no inherent order, so it is sorted by count,
+    # largest class first, which floats the simple, dominant classes to
+    # the top of the legend and sinks the long tail of rare composites.
+    try:
+        unique_values = sorted(counts, key=float)
+        ordinal = True
+    except ValueError:
+        unique_values = sorted(counts, key=lambda v: (-counts[v], v))
+        ordinal = False
     if not unique_values:
         warnings.warn(
             f'{attr_field!r} has no non-null values in {data_path}; leaving '
             'template-baked categories as-is.'
         )
-        return
+        return False
 
     for child in list(categories_el):
         categories_el.remove(child)
@@ -371,19 +630,126 @@ def _regenerate_categories(
         symbols_el.remove(child)
     renderer.set('attr', attr_field)
 
+    overrides = color_overrides or {}
     for i, value in enumerate(unique_values):
         symbol_name = str(i)
+        label = value if ordinal else f'{value} ({counts[value]:,})'
         ET.SubElement(
             categories_el,
             'category',
             {
                 'value': value,
-                'label': value,
+                'label': label,
                 'symbol': symbol_name,
                 'render': 'true',
             },
         )
-        symbols_el.append(_random_fill_symbol(name=symbol_name, seed=value))
+        if value in overrides:
+            symbols_el.append(_fill_symbol(name=symbol_name, rgb=overrides[value]))
+        elif ordinal:
+            t_pos = i / max(len(unique_values) - 1, 1)
+            symbols_el.append(_fill_symbol(name=symbol_name, rgb=_ramp_rgb(t_pos)))
+        else:
+            symbols_el.append(_random_fill_symbol(name=symbol_name, seed=value))
+    return True
+
+
+def _retarget_graduated(
+    clone: ET.Element,
+    data_path: Path,
+    attr_field: str,
+    *,
+    explicit_breaks: str | None = None,
+    verbose: bool,
+) -> None:
+    """Point *clone*'s graduated renderer at *attr_field*, breaks from data.
+
+    The template's graduated layers classify evidence columns that the
+    delivery bundle does not carry, so a cloned value layer either needs
+    its attribute retargeted to the delivered column and its class breaks
+    recomputed from that column's real distribution, or it silently drops
+    out of delivery maps. Quantile breaks over six classes; colors
+    interpolate a light-to-dark ramp. Fails soft like
+    :func:`_regenerate_categories`.
+    """
+    renderer = clone.find('.//renderer-v2')
+    if renderer is None or renderer.get('type') != 'graduatedSymbol':
+        if verbose:
+            warnings.warn(
+                f'attr_override {attr_field!r} needs a graduatedSymbol '
+                'renderer; leaving the clone untouched.'
+            )
+        return
+    try:
+        values = pd.read_parquet(data_path, columns=[attr_field])[attr_field]
+        values = pd.to_numeric(values, errors='coerce').dropna()
+    except Exception as exc:
+        warnings.warn(
+            f'Could not read {attr_field!r} from {data_path}: {exc}; '
+            'leaving template-baked ranges as-is.'
+        )
+        return
+    if values.empty:
+        warnings.warn(f'{attr_field!r} is all-null in {data_path}.')
+        return
+    if explicit_breaks:
+        # Declared class bounds, for count columns whose quantiles
+        # degenerate (n_dwellings is 1 for most of any region). The
+        # data maximum closes the last class.
+        breaks = sorted(float(b) for b in explicit_breaks.split('|'))
+        top = float(values.max())
+        if top > breaks[-1]:
+            breaks.append(top)
+    else:
+        n_classes = 6
+        qs = values.quantile([i / n_classes for i in range(n_classes + 1)]).tolist()
+        # Collapse duplicate quantiles (heavily tied distributions).
+        breaks = sorted(set(round(q, 6) for q in qs))
+        if len(breaks) < 2:
+            breaks = [float(values.min()), float(values.max()) + 1e-9]
+    renderer.set('attr', attr_field)
+    ranges_el = renderer.find('ranges')
+    symbols_el = renderer.find('symbols')
+    if ranges_el is None or symbols_el is None:
+        return
+    for el in (ranges_el, symbols_el):
+        for child in list(el):
+            el.remove(child)
+    # The shared value convention (viz/colors.py, and the 3d values
+    # notebook's turbo/jet): blue is cheap/small, warmer is more, so a
+    # QGIS value view reads like every other openplaces value figure.
+    # Classes sample class midpoints, which keeps the extremes off the
+    # near-black endpoints of the ramp.
+    from openplaces.viz.colors import get_diverging_colormap
+
+    cmap = get_diverging_colormap('price_blue')
+    n_ranges = len(breaks) - 1
+    # A year is not a quantity: 1,963 as a label misreads. The column
+    # name is the reliable signal; the domain is not, because source
+    # junk (a year_built of 1 or 8104 both ship in real rolls) breaks
+    # any range test.
+    yearish = 'year' in attr_field
+    fmt = (lambda v: f'{v:.0f}') if yearish else (lambda v: f'{v:,.0f}')
+    for i in range(n_ranges):
+        lo, hi = breaks[i], breaks[i + 1]
+        r, g, b, _ = cmap((i + 0.5) / max(n_ranges, 1))
+        color = (round(r * 255), round(g * 255), round(b * 255))
+        ET.SubElement(
+            ranges_el,
+            'range',
+            {
+                'lower': str(lo),
+                'upper': str(hi),
+                'label': f'{fmt(lo)} - {fmt(hi)}',
+                'symbol': str(i),
+                'render': 'true',
+            },
+        )
+        sym = _random_fill_symbol(name=str(i), seed=f'{attr_field}{i}')
+        for opt in sym.iter('Option'):
+            if opt.get('name') == 'color':
+                opt.set('value', f'{color[0]},{color[1]},{color[2]},210')
+        symbols_el.append(sym)
 
 
 def _find_or_create_group(
@@ -563,6 +929,29 @@ def _collapse_layer_tree(layer_tree_root: ET.Element) -> None:
             el.set('expanded', '0')
 
 
+def _expand_group_path(layer_tree_root: ET.Element, path: str) -> None:
+    """Re-expand one group path after the collapse pass.
+
+    The first thing a reader does on a delivery map is browse the
+    classified point views, so that path opens ready to click while
+    everything else stays closed. Each segment must exist and be a
+    group; a map without the path (a non-delivery map) is left alone.
+    """
+    node = layer_tree_root
+    for name in path.split('/'):
+        node = next(
+            (
+                child
+                for child in node.findall('layer-tree-group')
+                if child.get('name') == name
+            ),
+            None,
+        )
+        if node is None:
+            return
+        node.set('expanded', '1')
+
+
 def _collapse_legend(legend_root: ET.Element) -> None:
     """Legacy-legend-tree counterpart to :func:`_collapse_layer_tree`."""
     for el in legend_root.iter():
@@ -605,7 +994,13 @@ def _set_project_variables(
         ET.SubElement(values_el, 'value').text = value
 
 
-def _update_extent(root: ET.Element, admin_id: AdminId, *, verbose: bool) -> None:
+def _update_extent(
+    root: ET.Element,
+    admin_id: AdminId,
+    *,
+    region_path: Path | None = None,
+    verbose: bool,
+) -> None:
     mapcanvas = root.find('.//mapcanvas')
     if mapcanvas is None:
         if verbose:
@@ -620,7 +1015,14 @@ def _update_extent(root: ET.Element, admin_id: AdminId, *, verbose: bool) -> Non
             )
         return
     try:
-        admin_gdf = get_admin(admin_id, geom=True)
+        if region_path is not None:
+            # A delivery map frames the delivered region, not the admin
+            # unit that was asked for: eastern North Carolina is 45 of
+            # the state's 100 counties, and centering on the state puts
+            # the data in the right half of the canvas.
+            admin_gdf = gpd.read_parquet(region_path)
+        else:
+            admin_gdf = get_admin(admin_id, geom=True)
     except Exception as exc:
         if verbose:
             warnings.warn(f'Could not resolve admin geometry for {admin_id}: {exc}')
@@ -798,7 +1200,7 @@ def generate_qgz(
         geo_clone = _clone_maplayer(
             geo_template,
             new_id=new_geo_id,
-            new_layername=spec.display_name,
+            new_layername=_display_label(spec),
             new_datasource=geo_datasource,
         )
         if style.dynamic_categorize_attr:
@@ -806,18 +1208,91 @@ def generate_qgz(
                 geo_clone,
                 spec.attr_path,
                 style.dynamic_categorize_attr,
+                color_overrides=_parse_category_colors(style.category_colors),
                 verbose=verbose,
             )
         _apply_render_mode(geo_clone, spec.render)
+        _restyle_outline(geo_clone, spec)
 
         # (layer_id, display_name, checked) for every clone inserted into the
         # tree/legend for this spec: the base clone plus any style variants.
+        base_visible = style.default_visible if spec.visible is None else spec.visible
         tree_entries: list[tuple[str, str, bool]] = [
-            (new_geo_id, spec.display_name, style.default_visible)
+            (new_geo_id, _display_label(spec), base_visible)
         ]
 
+        if spec.label_expression:
+            # Labels live on their own layer, not on the outline clone:
+            # a nullSymbol renderer draws no geometry, so this twin is
+            # purely the label pass, and the layers panel gets a
+            # one-click toggle for each admin level's labels.
+            label_name = (
+                f'{spec.label} labels - {spec.display_name}'
+                if spec.label
+                else f'Labels - {spec.display_name}'
+            )
+            label_id = f'{sanitize(spec.display_name)}_labels_{uuid.uuid4().hex}'
+            label_clone = _clone_maplayer(
+                geo_template,
+                new_id=label_id,
+                new_layername=label_name,
+                new_datasource=geo_datasource,
+            )
+            old_renderer = label_clone.find('renderer-v2')
+            if old_renderer is not None:
+                label_clone.remove(old_renderer)
+            label_clone.append(ET.Element('renderer-v2', {'type': 'nullSymbol'}))
+            label_joins = label_clone.find('vectorjoins')
+            if label_joins is not None:
+                label_clone.remove(label_joins)
+            _enable_labels(label_clone, spec)
+            new_maplayers.append(label_clone)
+            label_visible = (
+                base_visible if spec.label_visible is None else spec.label_visible
+            )
+            tree_entries.append((label_id, label_name, label_visible))
+
         new_attr_id: str | None = None
-        if spec.combined:
+        delivery_join_field: str | None = None
+        if spec.combined and spec.attr_path != spec.geo_path:
+            # A delivery polygon view: the geometry file carries only the
+            # entity id, so the canonical table rides along as a
+            # geometryless layer and every clone hash-joins it on that id.
+            shared = _data_columns(spec.geo_path) & _data_columns(spec.attr_path)
+            shared -= {'geometry', 'bbox'}
+            if not shared:
+                raise ValueError(
+                    f'{spec.geo_path.name} and {spec.attr_path.name} share no '
+                    'join column; cannot classify the polygon view.'
+                )
+            delivery_join_field = sorted(shared)[0]
+            new_attr_id = f'{sanitize(spec.display_name)}_attr_{uuid.uuid4().hex}'
+            attr_clone = _clone_maplayer(
+                geo_template,
+                new_id=new_attr_id,
+                new_layername=f'Attributes - {spec.attr_path.stem}',
+                new_datasource=_relative_datasource(
+                    spec.attr_path, anchor=output_path.parent
+                ),
+            )
+            _set_geometry_type(
+                attr_clone, geometry='No geometry', wkb_type='NoGeometry'
+            )
+            old_renderer = attr_clone.find('renderer-v2')
+            if old_renderer is not None:
+                attr_clone.remove(old_renderer)
+            old_joins = attr_clone.find('vectorjoins')
+            if old_joins is not None:
+                attr_clone.remove(old_joins)
+            base_attr = _classifying_attr(geo_clone)
+            _add_join(
+                geo_clone,
+                attr_id=new_attr_id,
+                field=delivery_join_field,
+                subset=[base_attr] if base_attr else None,
+            )
+            new_maplayers.extend((attr_clone, geo_clone))
+        elif spec.combined:
             # Attributes and geometry already live in one file (e.g. a
             # share-ready terminal deliverable); no attr sibling to join.
             vectorjoins = geo_clone.find('vectorjoins')
@@ -874,14 +1349,18 @@ def generate_qgz(
                 f'{uuid.uuid4().hex}'
             )
             variant_label = variant.variant_label or variant.style_key
-            variant_display_name = f'{spec.display_name} — {variant_label}'
+            variant_display_name = f'{variant_label} - {spec.display_name}'
             variant_clone = _clone_maplayer(
                 variant_template,
                 new_id=new_variant_id,
                 new_layername=variant_display_name,
                 new_datasource=geo_datasource,
             )
-            variant_attr = _classifying_attr(variant_clone)
+            variant_attr = (
+                variant.attr_override
+                or variant.dynamic_categorize_attr
+                or _classifying_attr(variant_clone)
+            )
             if available and variant_attr and variant_attr not in available:
                 if verbose:
                     warnings.warn(
@@ -890,13 +1369,38 @@ def generate_qgz(
                     )
                 continue
             if variant.dynamic_categorize_attr:
-                _regenerate_categories(
+                regenerated = _regenerate_categories(
                     variant_clone,
                     spec.attr_path,
                     variant.dynamic_categorize_attr,
+                    color_overrides=_parse_category_colors(variant.category_colors),
                     verbose=verbose,
                 )
-            if new_attr_id is not None:
+                if not regenerated:
+                    # No data for this column here (an all-null column
+                    # in this region): shipping the clone would show the
+                    # template column's classes under this variant's
+                    # name, which is how a construction-type view once
+                    # listed geometry sources.
+                    continue
+            if variant.attr_override:
+                _retarget_graduated(
+                    variant_clone,
+                    spec.attr_path,
+                    variant.attr_override,
+                    explicit_breaks=variant.attr_breaks,
+                    verbose=verbose,
+                )
+            if not variant.dynamic_categorize_attr and not variant.attr_override:
+                _recolor_ordinal_categories(variant_clone)
+            if new_attr_id is not None and delivery_join_field is not None:
+                _add_join(
+                    variant_clone,
+                    attr_id=new_attr_id,
+                    field=delivery_join_field,
+                    subset=[variant_attr] if variant_attr else None,
+                )
+            elif new_attr_id is not None:
                 _set_join_target(variant_clone, new_attr_id=new_attr_id)
             else:
                 vectorjoins = variant_clone.find('vectorjoins')
@@ -910,6 +1414,8 @@ def generate_qgz(
             )
 
         group_path = f'{style.group_path}/Unstyled' if unstyled else style.group_path
+        if spec.group_override:
+            group_path = spec.group_override
         tree_group = _find_or_create_group(layer_tree_root, group_path, verbose=verbose)
         legend_group = _find_or_create_legendgroup(
             legend_root, group_path, verbose=verbose
@@ -953,10 +1459,25 @@ def generate_qgz(
     _collapse_layer_tree(layer_tree_root)
     _collapse_legend(legend_root)
 
+    if layer_tree_root is not None:
+        _expand_group_path(layer_tree_root, 'Buildings/Point geometries')
+    # Administrative context lists and draws above everything else.
+    if layer_tree_root is not None:
+        _move_group_first(layer_tree_root, 'Administrative units')
+    if legend_root is not None:
+        _move_group_first(legend_root, 'Administrative units')
     _set_project_variables(root, recipe=recipe, admin_id=admin_id)
     if title:
         _set_text(root, 'title', title)
-    _update_extent(root, admin_id, verbose=verbose)
+    region_path = next(
+        (
+            s.geo_path
+            for s in layer_specs
+            if s.group_override == 'Administrative units' and s.exists
+        ),
+        None,
+    )
+    _update_extent(root, admin_id, region_path=region_path, verbose=verbose)
     _ensure_project_crs(root)
     _ensure_projections_enabled(root)
 

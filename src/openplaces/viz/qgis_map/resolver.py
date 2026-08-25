@@ -34,6 +34,11 @@ RENDER_POINTS = 'points'
 # Strip symbology down to a plain outline. The bundle's `_geo` file has no
 # attributes at all, so it can only be shown, not classified.
 RENDER_OUTLINE = 'outline'
+# Keep the template's classified fills on polygon geometry, restyled for
+# a delivery view: category-colored opaque boundaries over a 30%-opacity
+# fill of the same color, attributes hash-joined from the canonical
+# table when the polygon file carries none.
+RENDER_POLYGONS = 'polygons'
 
 
 @dataclass(frozen=True)
@@ -92,6 +97,28 @@ class LayerSpec:
     depth: int
     combined: bool
     render: str = RENDER_DEFAULT
+    # Presentation overrides, used by delivery bundle layers. `label`
+    # replaces the file stem as the visible layer name (the stem moves to
+    # the end); `group_override` re-homes the layer out of its style's
+    # group; the outline fields recolor/reweight a RENDER_OUTLINE layer.
+    label: str | None = None
+    group_override: str | None = None
+    outline_color: str | None = None
+    outline_width: str | None = None
+    # None defers to the style's default_visible; a bool forces it. Used
+    # to keep the joined polygon views unchecked so opening the map does
+    # not classify millions of polygons.
+    visible: bool | None = None
+    # QGIS label expression for the layer (e.g. name over admin id); the
+    # size is in points. Labels stay off when the expression is None.
+    label_expression: str | None = None
+    label_size: str = '9'
+    label_opacity: str = '1'
+    label_buffer: str = '0.8'
+    # None: the label layer's checkbox follows the base layer's
+    # visibility. False keeps a label layer available but off at open
+    # (the admin4 labels crowd the initial view).
+    label_visible: bool | None = None
 
 
 def _entity_parts(recipe: dict) -> tuple[str, str | None, str | None]:
@@ -252,7 +279,13 @@ def _build_delivery_specs(
     entity_type, source, version = _entity_parts(recipe)
     requested_levels = tuple(admin_id.levels)
 
-    def _spec(path: Path, render: str, bundle_admin: AdminId) -> LayerSpec:
+    def _spec(
+        path: Path,
+        render: str,
+        bundle_admin: AdminId,
+        attr_path: Path | None = None,
+        **presentation,
+    ) -> LayerSpec:
         return LayerSpec(
             role='output',
             recipe_id=get_recipe_id(recipe),
@@ -261,12 +294,13 @@ def _build_delivery_specs(
             version=version,
             admin_id=bundle_admin,
             display_name=path.stem,
-            attr_path=path,
+            attr_path=attr_path or path,
             geo_path=path,
             exists=path.exists(),
             depth=0,
             combined=True,
             render=render,
+            **presentation,
         )
 
     specs: list[LayerSpec] = []
@@ -282,8 +316,86 @@ def _build_delivery_specs(
             if verbose:
                 warnings.warn(f'Could not resolve delivery paths: {exc}')
             continue
-        specs.append(_spec(paths['point'], RENDER_POINTS, bundle_admin))
-        specs.append(_spec(paths['geo'], RENDER_OUTLINE, bundle_admin))
+        # Buildings split into two sibling groups: every classified view
+        # exists once on centroid markers and once on the boundary
+        # polygons, with the same category colors. The polygon twins are
+        # solid category-colored boundaries over a 30%-opacity fill; the
+        # polygon file carries only geometry, so they join the canonical
+        # table on the shared entity id.
+        specs.append(
+            _spec(
+                paths['point'],
+                RENDER_POINTS,
+                bundle_admin,
+                label='Occupancy type',
+                group_override='Buildings/Point geometries',
+            )
+        )
+        specs.append(
+            _spec(
+                paths['geo'],
+                RENDER_POLYGONS,
+                bundle_admin,
+                # The point file, not the canonical table: same columns
+                # plus the point-only ratios (structure_value_per_area),
+                # so every point view has a polygon twin. Subset joins
+                # keep the cache cost identical.
+                attr_path=paths['point'],
+                label='Occupancy type',
+                visible=False,
+                group_override='Buildings/Polygon geometries',
+            )
+        )
+        specs.append(
+            _spec(
+                paths['geo'],
+                RENDER_OUTLINE,
+                bundle_admin,
+                label='Polygons',
+                group_override='Buildings/Polygon geometries',
+            )
+        )
+        # Administrative context that ships WITH the bundle. The map must
+        # stay openable from the delivery folder alone, so county and
+        # county-subdivision outlines are aggregate sidecar files written
+        # beside the bundle (see `ensure_delivery_admin_outlines`), never
+        # references back into this machine's cache tree. Their own layer
+        # group sits above the entity groups; purple outlines, the finer
+        # (admin4) level thinner than its parent. admin4 is optional --
+        # New England has no county subdivisions below its towns -- so a
+        # missing sidecar is simply not offered.
+        canonical = paths['canonical']
+        admin_presentation = {
+            'admin3': {
+                'label': 'Counties',
+                'outline_width': '0.33',
+                'label_expression': 'concat("name", char(10), "admin3_id")',
+                'label_size': '9',
+                'label_opacity': '0.8',
+            },
+            'admin4': {
+                'label': 'County subdivisions',
+                'outline_width': '0.18',
+                'label_expression': 'concat("name", char(10), "admin4_id")',
+                'label_size': '9',
+                'label_opacity': '0.8',
+                'label_buffer': '0.4',
+                'label_visible': False,
+            },
+        }
+        for suffix, pres in admin_presentation.items():
+            side = canonical.with_name(f'{canonical.stem}_{suffix}_geo.parquet')
+            if side.exists():
+                specs.append(
+                    _spec(
+                        side,
+                        RENDER_OUTLINE,
+                        bundle_admin,
+                        group_override='Administrative units',
+                        outline_color='128,0,128,76',
+                        **pres,
+                    )
+                )
     return specs
 
 
