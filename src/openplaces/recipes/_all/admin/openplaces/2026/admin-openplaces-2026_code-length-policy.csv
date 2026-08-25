@@ -1,23 +1,23 @@
 admin1_id,n_units,n_iso_alpha_codes,iso_code_length,intuitive_2char_covered,intuitive_2char_share,recommended_length,reason
 AD,7,0,,7,1.0,2,intuitive coverage 100%
 AE,7,7,2,7,1.0,2,published convention
-AF,34,34,3,34,1.0,3,published convention
+AF,34,34,3,34,1.0,2,two characters cover every unit (ISO publishes three)
 AG,8,0,,8,1.0,2,intuitive coverage 100%
 AI,18,0,,18,1.0,2,intuitive coverage 100%
 AL,12,36,2,12,1.0,2,published convention
 AM,11,11,2,11,1.0,2,published convention
-AO,18,18,3,18,1.0,3,published convention
+AO,18,18,3,18,1.0,2,two characters cover every unit (ISO publishes three)
 AR,24,24,1,24,1.0,2,intuitive coverage 100%
 AS,4,0,,4,1.0,2,intuitive coverage 100%
 AT,9,0,,9,1.0,2,intuitive coverage 100%
-AU,11,8,3,11,1.0,3,published convention
+AU,11,8,3,11,1.0,2,two characters cover every unit (ISO publishes three)
 AX,3,0,,3,1.0,2,intuitive coverage 100%
-AZ,10,78,3,10,1.0,3,published convention
-BA,3,3,3,3,1.0,3,published convention
+AZ,10,78,3,10,1.0,2,two characters cover every unit (ISO publishes three)
+BA,3,3,3,3,1.0,2,two characters cover every unit (ISO publishes three)
 BB,11,0,,11,1.0,2,intuitive coverage 100%
 BD,8,8,1,8,1.0,2,intuitive coverage 100%
-BE,3,13,3,3,1.0,3,published convention
-BF,13,45,3,13,1.0,3,published convention
+BE,3,13,3,3,1.0,2,two characters cover every unit (ISO publishes three)
+BF,13,45,3,13,1.0,2,two characters cover every unit (ISO publishes three)
 BG,28,0,,28,1.0,2,intuitive coverage 100%
 BH,4,0,,4,1.0,2,intuitive coverage 100%
 BI,17,18,2,17,1.0,2,published convention
@@ -36,14 +36,14 @@ BZ,6,6,2,6,1.0,2,published convention
 CA,13,13,2,13,1.0,2,published convention
 CD,26,30,2,26,1.0,2,published convention
 CF,17,17,2,17,1.0,2,published convention
-CG,12,1,3,12,1.0,3,published convention
+CG,12,1,3,12,1.0,2,two characters cover every unit (ISO publishes three)
 CH,26,26,2,26,1.0,2,published convention
 CI,14,14,2,14,1.0,2,published convention
 CK,11,0,,11,1.0,2,intuitive coverage 100%
 CL,16,16,2,16,1.0,2,published convention
 CM,10,10,2,10,1.0,2,published convention
 CN,33,34,2,32,0.97,2,published convention
-CO,33,33,3,33,1.0,3,published convention
+CO,33,33,3,33,1.0,2,two characters cover every unit (ISO publishes three)
 CR,7,7,1,7,1.0,2,intuitive coverage 100%
 CU,16,0,,16,1.0,2,intuitive coverage 100%
 CV,22,24,2,22,1.0,2,published convention
@@ -64,7 +64,7 @@ ES,18,68,2,18,1.0,2,published convention
 ET,11,13,2,11,1.0,2,published convention
 FI,5,4,2,5,1.0,2,published convention
 FJ,5,5,1,5,1.0,2,intuitive coverage 100%
-FM,4,4,3,4,1.0,3,published convention
+FM,4,4,3,4,1.0,2,two characters cover every unit (ISO publishes three)
 FO,6,0,,6,1.0,2,intuitive coverage 100%
 FR,13,36,1,13,1.0,2,intuitive coverage 100%
 GA,9,0,,9,1.0,2,intuitive coverage 100%
@@ -110,7 +110,7 @@ KP,14,0,,12,0.857,3,intuitive coverage only 86%
 KR,17,0,,17,1.0,2,intuitive coverage 100%
 KW,6,6,2,6,1.0,2,published convention
 KY,6,0,,6,1.0,2,intuitive coverage 100%
-KZ,14,16,3,14,1.0,3,published convention
+KZ,14,16,3,14,1.0,2,two characters cover every unit (ISO publishes three)
 LA,18,19,2,18,1.0,2,published convention
 LB,8,8,2,8,1.0,2,published convention
 LC,10,0,,10,1.0,2,intuitive coverage 100%
@@ -120,25 +120,25 @@ LR,15,15,2,15,1.0,2,published convention
 LS,10,10,1,10,1.0,2,intuitive coverage 100%
 LT,10,10,2,10,1.0,2,published convention
 LU,3,15,2,3,1.0,2,published convention
-LV,5,9,3,5,1.0,3,published convention
+LV,5,9,3,5,1.0,2,two characters cover every unit (ISO publishes three)
 LY,22,22,2,22,1.0,2,published convention
-MA,15,77,3,15,1.0,3,published convention
+MA,15,77,3,15,1.0,2,two characters cover every unit (ISO publishes three)
 MD,37,37,2,37,1.0,2,published convention
 ME,21,0,,21,1.0,2,intuitive coverage 100%
 MG,6,6,1,6,1.0,2,intuitive coverage 100%
-MH,22,26,3,22,1.0,3,published convention
+MH,22,26,3,22,1.0,2,two characters cover every unit (ISO publishes three)
 MK,80,0,,79,0.988,3,intuitive coverage only 99%
-ML,9,1,3,9,1.0,3,published convention
+ML,9,1,3,9,1.0,2,two characters cover every unit (ISO publishes three)
 MM,15,0,,15,1.0,2,intuitive coverage 100%
 MN,22,0,,22,1.0,2,intuitive coverage 100%
 MP,4,0,,4,1.0,2,intuitive coverage 100%
 MQ,4,0,,4,1.0,2,intuitive coverage 100%
-MR,13,1,3,13,1.0,3,published convention
+MR,13,1,3,13,1.0,2,two characters cover every unit (ISO publishes three)
 MS,3,0,,3,1.0,2,intuitive coverage 100%
 MT,5,0,,5,1.0,2,intuitive coverage 100%
 MU,12,12,2,12,1.0,2,published convention
 MW,28,31,2,28,1.0,2,published convention
-MX,32,32,3,32,1.0,3,published convention
+MX,32,32,3,32,1.0,2,two characters cover every unit (ISO publishes three)
 MY,16,0,,16,1.0,2,intuitive coverage 100%
 MZ,11,11,1,11,1.0,2,intuitive coverage 100%
 NA,13,15,2,13,1.0,2,published convention
@@ -150,21 +150,21 @@ NL,11,15,2,11,1.0,2,published convention
 NO,19,0,,19,1.0,2,intuitive coverage 100%
 NP,5,14,2,5,1.0,2,published convention
 NR,14,0,,14,1.0,2,intuitive coverage 100%
-NZ,19,19,3,19,1.0,3,published convention
+NZ,19,19,3,19,1.0,2,two characters cover every unit (ISO publishes three)
 OM,11,13,2,11,1.0,2,published convention
 PA,13,4,2,13,1.0,2,published convention
-PE,26,26,3,26,1.0,3,published convention
+PE,26,26,3,26,1.0,2,two characters cover every unit (ISO publishes three)
 PF,5,0,,5,1.0,2,intuitive coverage 100%
-PG,22,22,3,22,1.0,3,published convention
-PH,81,83,3,81,1.0,3,published convention
+PG,22,22,3,22,1.0,2,two characters cover every unit (ISO publishes three)
+PH,81,83,3,81,1.0,2,two characters cover every unit (ISO publishes three)
 PK,6,8,2,6,1.0,2,published convention
 PL,16,1,2,16,1.0,2,published convention
 PM,2,0,,2,1.0,2,intuitive coverage 100%
 PR,78,0,,78,1.0,2,intuitive coverage 100%
-PS,2,16,3,2,1.0,3,published convention
+PS,2,16,3,2,1.0,2,two characters cover every unit (ISO publishes three)
 PT,20,0,,20,1.0,2,intuitive coverage 100%
 PW,16,0,,15,0.938,3,intuitive coverage only 94%
-PY,18,1,3,18,1.0,3,published convention
+PY,18,1,3,18,1.0,2,two characters cover every unit (ISO publishes three)
 QA,7,8,2,7,1.0,2,published convention
 RE,4,0,,4,1.0,2,intuitive coverage 100%
 RO,42,42,2,42,1.0,2,published convention
@@ -203,9 +203,9 @@ TM,6,6,1,6,1.0,2,intuitive coverage 100%
 TN,24,0,,24,1.0,2,intuitive coverage 100%
 TO,5,0,,5,1.0,2,intuitive coverage 100%
 TR,81,0,,81,1.0,2,intuitive coverage 100%
-TT,15,17,3,15,1.0,3,published convention
-TV,9,8,3,9,1.0,3,published convention
-TW,7,25,3,7,1.0,3,published convention
+TT,15,17,3,15,1.0,2,two characters cover every unit (ISO publishes three)
+TV,9,8,3,9,1.0,2,two characters cover every unit (ISO publishes three)
+TW,7,25,3,7,1.0,2,two characters cover every unit (ISO publishes three)
 TZ,31,0,,31,1.0,2,intuitive coverage 100%
 UA,27,0,,27,1.0,2,intuitive coverage 100%
 UG,56,4,1,53,0.946,3,intuitive coverage only 95%
@@ -218,7 +218,7 @@ VE,25,25,1,25,1.0,2,intuitive coverage 100%
 VG,5,0,,5,1.0,2,intuitive coverage 100%
 VI,3,0,,3,1.0,2,intuitive coverage 100%
 VN,63,5,2,63,1.0,2,published convention
-VU,6,6,3,6,1.0,3,published convention
+VU,6,6,3,6,1.0,2,two characters cover every unit (ISO publishes three)
 WF,3,3,2,3,1.0,2,published convention
 WS,11,11,2,11,1.0,2,published convention
 XA,2,0,,2,1.0,2,intuitive coverage 100%

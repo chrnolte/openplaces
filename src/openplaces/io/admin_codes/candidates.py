@@ -26,6 +26,7 @@ import re
 from itertools import combinations
 from typing import NamedTuple
 
+from openplaces.io.admin_codes.coverage import HONORIFICS
 from openplaces.io.admin_codes.languages import (
     LanguagePack,
     fold_diacritics,
@@ -116,8 +117,21 @@ def tokenize(name: str, pack: LanguagePack) -> tuple[list[str], list[str]]:
     # the spine gives "Haines" and "Dillingham" -- and leaving them in
     # produced HB and DC instead of HA and DI, which is how 56% of US
     # county codes ended up unrecognizable.
+    # HONORIFICS as well as the pack's own articles. The two lists were
+    # applied inconsistently: `coverage.intuitive_codes` dropped them and
+    # so judged a group two-character-codeable, while this generator kept
+    # them and produced codes built on the honorific. Dominica is the
+    # measured case -- ten parishes named "Saint X" whose two-character
+    # solution came out SA SD SG SI SJ SL SM SP SN ST, every code on
+    # Saint's S and three of them opaque, which tripped the opacity gate
+    # and widened the whole group to three characters against its own
+    # recorded policy of two.
     tokens = [
-        t for t in raw if not pack.is_article(t) and not pack.is_type_word(t)
+        t
+        for t in raw
+        if not pack.is_article(t)
+        and not pack.is_type_word(t)
+        and t.upper() not in HONORIFICS
     ] or raw
     significant = [
         t for t in tokens if not pack.is_preposition(t) and not pack.is_conjunction(t)

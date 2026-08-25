@@ -45,8 +45,18 @@ VOWELS = frozenset('AEIOUY')
 # Honorifics carry no identifying signal and are dropped when people
 # abbreviate, so Saint George is George. Kept separate from the language
 # packs' articles because these are cross-linguistic name particles.
+# Arabic assimilates the article's L to a following sun letter, so the
+# same particle is romanized As-, Ash-, Ad-, An-, Ar-, At-, Az-, and so
+# on (as-Sudd, ar-Riyadh). Each is the definite article, carries no more
+# signal than Al-, and without them the article reaches the code.
+SUN_LETTER_ARTICLES = frozenset(
+    {'AS', 'ASH', 'AD', 'ADH', 'AN', 'AR', 'AT', 'ATH', 'AZ', 'AL'}
+)
+
 HONORIFICS = frozenset(
-    {w.upper() for w in ADMIN_NAME_PREFIXES} | {'SAINT', 'ST', 'STE', 'SANTO', 'SAO'}
+    {w.upper() for w in ADMIN_NAME_PREFIXES}
+    | {'SAINT', 'ST', 'STE', 'SANTO', 'SAO'}
+    | SUN_LETTER_ARTICLES
 )
 
 # A group is treated as two-letter-codeable only when every unit can be
