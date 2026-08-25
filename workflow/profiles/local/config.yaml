@@ -1,0 +1,93 @@
+# Snakemake profile for a single workstation (no cluster submission).
+#
+# Usage (from the repo root, in an activated `openplaces` env):
+#   snakemake --profile workflow/profiles/local \
+#       --config recipe=US_footprint-cheer-2026
+#
+# Scope it to specific counties by adding `admin_ids=US-NC-CM,US-NC-...`;
+# an unscoped run builds and ships every region the recipe declares.
+#
+# Notes:
+# - rerun-triggers mtime is the reason to use this at all. A hand-rolled
+#   stage loop re-runs nothing it has already written, so a geospine
+#   rebuilt underneath an attribute spine leaves the spine stale and the
+#   curate inherits ids whose geometry no longer exists (measured: 36 of
+#   Camden's 54,084 rows, carrying no geometry and no attributes).
+#   Snakemake compares mtimes and re-runs the dependents.
+#   It must stay `mtime`, not the default: openplaces has no parameter
+#   hashing, so a recipe-YAML edit would otherwise cascade a full rebuild.
+# - latency-wait is NOT short, despite this being a workstation: the
+#   data root sits on Dropbox, which is precisely a filesystem with
+#   visibility lag. At 15s, `US_tile-census-2025_blockgroup` -- whose
+#   geometry sidecar is 1.03 GB -- reported
+#   "completed successfully, but some output files are missing", and
+#   because keep-going was not in force that one job took the whole run
+#   down with it, killing four unrelated jobs mid-write. Those then
+#   looked broken while succeeding standalone, which is a very
+#   expensive way to lose an afternoon.
+# - keep-going lets the other 86 counties finish when one county's source
+#   is broken, which is the normal failure mode of a 40-job-per-county
+#   graph over other people's servers.
+# - The three BRAILS lanes are excluded by default: they fetch Google
+#   Static API imagery per footprint, uncached by policy and billed per
+#   call (54,048 requests for one small county), and they reach the
+#   curated product at 0.0%. Opt back in deliberately with
+#   `--config exclude_recipe_ids=`. It lives in `defaults.yaml`
+#   rather than a profile `config:` entry because the latter is replaced
+#   wholesale by any command-line `--config`, which would silently drop
+#   it the moment anyone passes `--config recipe=...`.
+
+# 20 cores are present but memory is the real limit, and this box is
+# shared with other sessions (measured 26 GB free of 63 GB). The
+# Snakefile already tags each rule with `mem_mb` from
+# profiles/scc/mem_lookup.csv (default 8000), so capping the mem_mb
+# resource is what actually bounds concurrency: many small jobs run
+# together, heavy geospine jobs queue. Raise both on an idle machine.
+cores: 6
+resources:
+  - mem_mb=20000
+  # One token per staging recipe (see HEAP_TOKENS in the Snakefile):
+  # each serializes against itself only, so unrelated ingests still
+  # run in parallel. Generated from the recipes that stage into a
+  # heap directory; regenerate if that set changes.
+  - heap_us_nc_footprint_ncdps_2023=1
+  - heap_us_nc_parcel_nconemap_2025=1
+  - heap_us_admin_census_2025_admin2=1
+  - heap_us_admin_census_2025_admin3=1
+  - heap_us_admin_census_2025_admin4=1
+  - heap_us_building_nsi_2026=1
+  - heap_us_footprint_fema_2023=1
+  - heap_us_footprint_microsoft_v2=1
+  - heap_us_parcel_placeslab_fmv2026=1
+  - heap_us_property_shovels_2026=1
+  - heap_us_tile_census_2025_block=1
+  - heap_us_tile_census_2025_blockgroup=1
+  - heap_us_tile_census_2025_tract=1
+  - heap_us_tile_census_2025_zcta5=1
+  - heap_admin_gadm_4_1_admin1=1
+  - heap_admin_gadm_4_1_admin2=1
+  - heap_admin_gadm_4_1_admin3=1
+  - heap_footprint_obm_2025=1
+  - heap_tile_obm_2025=1
+latency-wait: 120
+retries: 1
+rerun-triggers: mtime
+
+# Metadata in one SQLite database, not one file per output.
+#
+# The file backend names each metadata file after the base64 of its
+# output's full path. openplaces' link sidecars concatenate two recipe
+# ids, so they produce the longest names in the tree: for
+# US-NC-CM_footprint-geospine-2026_US-NC_parcel-nconemap-2025.parquet the
+# encoded name is 204 characters, and with the `.snakemake/metadata/`
+# prefix the total reaches 266 -- past Windows' 260-character MAX_PATH.
+# Windows then refuses it with ENOENT, Snakemake cannot record the job,
+# and the run fails with every rule having succeeded.
+#
+# A new user should not have to enable LongPathsEnabled in the registry
+# to run this workflow, so the database backend is the default here. It
+# also removes tens of thousands of tiny files from a synced folder.
+persistence-backend: db
+printshellcmds: true
+keep-going: true
+configfile: workflow/profiles/local/defaults.yaml

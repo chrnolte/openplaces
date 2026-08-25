@@ -44,8 +44,10 @@
 #   python -m openplaces.flow.submit --config recipe=... admin_ids=...
 
 import csv
+import re
 from pathlib import Path
 
+from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
 from openplaces.flow.dag import rule_name
 
@@ -82,12 +84,52 @@ def _load_mem_lookup():
     if lookup_path.exists():
         with open(lookup_path, encoding='utf-8') as f:
             for row in csv.DictReader(f):
-                key = (row['stage'], row['admin_id'] or None)
+                if not row.get('stage') or str(row['stage']).startswith('#'):
+                    continue
+                key = (
+                    row['stage'],
+                    (row.get('recipe_id') or '').strip() or None,
+                    (row.get('admin_id') or '').strip() or None,
+                )
                 lookup[key] = int(row['mem_mb'])
     return lookup
 
 
 MEM_LOOKUP = _load_mem_lookup()
+
+# One concurrency token per ingest recipe that stages files into a heap
+# directory, so a recipe never runs two admin units against its own
+# staging area at once.
+#
+# The collision is on the *directory*, not the archive name. A heap path
+# is keyed by the recipe's own admin scope --
+# `_heap/US/NC/_all/footprint/ncdps/2023/` -- so every county of a
+# state-scoped recipe extracts into one place even when each county has
+# its own zip. Classifying by archive filename missed that and let the
+# race back in: 14 `PermissionError [WinError 32]`, eight pyogrio
+# openfilegdb failures reading a GDB mid-write, and a `DataSourceError`
+# on the ncdps heap, in a three-county run.
+#
+# Serializing all ingest behind a single token also fixed it, but cost
+# every recipe's parallelism and projected to ~24 h for one region. A
+# token per recipe keeps unrelated ingests concurrent.
+def _heap_token(recipe_id: str) -> str:
+    return 'heap_' + re.sub(r'[^0-9a-zA-Z]+', '_', recipe_id).strip('_').lower()
+
+
+def _staging_recipes() -> dict:
+    tokens = {}
+    for node in dag.nodes():
+        if node.stage != 'ingest':
+            continue
+        recipe = dag._recipe(node.recipe_id)
+        if recipe.get('compressed_file_name') or recipe.get('uncompressed_file_name'):
+            tokens[node.recipe_id] = _heap_token(node.recipe_id)
+    return tokens
+
+
+HEAP_TOKENS = _staging_recipes()
+
 STAGE_RUNTIME_MIN = {
     'ingest': 720,
     'harmonize': 240,
@@ -97,8 +139,24 @@ STAGE_RUNTIME_MIN = {
 }
 
 
-def mem_mb(stage, admin_id):
-    return MEM_LOOKUP.get((stage, admin_id), MEM_LOOKUP.get((stage, None), 8000))
+
+def mem_mb(stage, admin_id, recipe_id=None):
+    """Memory reservation, most specific match first.
+
+    Keyed on the recipe as well as the stage, because the heavy jobs are
+    heavy by recipe: a global tile overlay and a one-county parcel ingest
+    are both `ingest`, and giving them the same reservation lets the
+    scheduler pack several of the former into one machine.
+    """
+    for key in (
+        (stage, recipe_id, admin_id),
+        (stage, recipe_id, None),
+        (stage, None, admin_id),
+        (stage, None, None),
+    ):
+        if key in MEM_LOOKUP:
+            return MEM_LOOKUP[key]
+    return 8000
 
 
 rule all:
@@ -109,7 +167,16 @@ rule all:
 for node in dag.nodes():
     _out = str(dag.output_path(node.stage, node.recipe_id, node.admin_id))
     _retention = dag.retention(node.stage, node.recipe_id, node.admin_id)
-    _flagged = temp(_out) if _retention == 'until_consumed' else _out
+    # Deliberately NOT temp(). `until_consumed` is openplaces' own
+    # retention class, cleaned up by `io.cleanup` which knows an output is
+    # more than one file. Snakemake's temp() deletes only the primary
+    # parquet and leaves the `_geo` sidecar and every link table behind,
+    # so the unit ends up in a state neither side considers complete:
+    # measured on `dwelling-overture-2025` for US-NC-CM, whose directory
+    # kept _geo and both geospine link tables while the attribute file it
+    # is declared to produce had been removed. One owner for the
+    # lifecycle, and it is not the orchestrator.
+    _flagged = _out
     if node.stage == 'deliver':
         # io/delivery.py leaves the shipped bundle read-only between runs,
         # and Snakemake refuses to run any rule whose output is read-only --
@@ -118,11 +185,26 @@ for node in dag.nodes():
         # the next delivery, which is the price of the guard.
         from openplaces.io.delivery import unlock_delivery
 
-        unlock_delivery(node.recipe_id)
+        # Name the region. A recipe declaring more than one refuses to
+        # guess which bundle is meant (by design -- picking wrong ships a
+        # region's rows under another's filename), so an unqualified call
+        # here aborts planning for every multi-region recipe, which is
+        # every CHEER build.
+        unlock_delivery(
+            node.recipe_id,
+            region=dag.delivery_region(node.recipe_id, node.admin_id),
+        )
     _job = (node.stage, node.recipe_id, node.admin_id)
     _extra = [str(p) for p in dag.extra_outputs(*_job)]
     _inputs = [str(p) for p in dag.input_paths(*_job)]
-    _admin_arg = f' {node.admin_id}' if node.admin_id else ''
+    # A deliver job is addressed by region, not by admin unit: that is
+    # what run_stage forwards to export_delivery. Every other stage takes
+    # the admin unit it processes.
+    if node.stage == 'deliver':
+        _stage_arg = dag.delivery_region(node.recipe_id, node.admin_id)
+    else:
+        _stage_arg = node.admin_id
+    _admin_arg = f' {_stage_arg}' if _stage_arg else ''
 
     rule:
         name:
@@ -132,11 +214,41 @@ for node in dag.nodes():
         output:
             _flagged,
             *_extra,
+        # Persistent per-job wall/CPU/RSS profile, one tsv per rule, in
+        # the same _logs tree where openplaces' own stage timers land on
+        # finish(). Together they give ex-post profiling at two grains:
+        # Snakemake's job totals here, the library's per-step timings in
+        # the JSON files beside them. notebooks/flow/monitor_build.ipynb
+        # joins the two on (stage, recipe, admin unit).
+        benchmark:
+            str(
+                Path(cfg.get_dir('cache'))
+                / '_logs'
+                / 'benchmarks'
+                / f'{rule_name(node)}.tsv'
+            )
         resources:
-            mem_mb=lambda wc, attempt, _s=node.stage, _a=node.admin_id: (
-                mem_mb(_s, _a) * attempt
+            mem_mb=lambda wc, attempt, _s=node.stage, _a=node.admin_id, _r=node.recipe_id: (
+                mem_mb(_s, _a, _r) * attempt
             ),
             runtime=STAGE_RUNTIME_MIN.get(node.stage, 240),
+            # One token per shared-heap recipe, not one for all ingest.
+            #
+            # Only a recipe whose unzipped source is a single directory
+            # shared by many admin units can race: two counties then have
+            # one job reading a GDB while another rewrites it (208 rule
+            # failures in a 45-county run, measured on nconemap's 6.17 GB
+            # archive). A per-county or per-tile archive cannot collide.
+            #
+            # Serializing *all* ingest to fix that was far too broad: it
+            # put every county's seven ingests in one queue and took the
+            # 45-county run to 2.0 min/job, about 24 hours for North
+            # Carolina alone. Each of these recipes now serializes only
+            # against itself, so unrelated ingests run in parallel again.
+            **{
+                token: int(node.recipe_id == owner)
+                for owner, token in HEAP_TOKENS.items()
+            },
         shell:
             f'python -m openplaces.flow.run_stage {node.stage}'
             f' {node.recipe_id}{_admin_arg}'

@@ -146,6 +146,15 @@ class Timer:
         self._finished = True
         if round(record.duration, 2) or round(record.cpu_duration, 2):
             self._log(label, record.duration, record.cpu_duration)
+        # Persist every finished run. The save machinery existed but no
+        # stage called it, so per-step timings were printed once and
+        # discarded -- there was nothing on disk to analyze a slow build
+        # with. Guarded completely: a timing write must never be able to
+        # fail the stage it measured.
+        try:
+            self.save()
+        except Exception:
+            pass
 
     @property
     def total_duration(self) -> float:

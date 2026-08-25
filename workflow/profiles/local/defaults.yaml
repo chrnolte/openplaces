@@ -1,0 +1,21 @@
+# Config defaults for the local profile, kept in a configfile rather than
+# the profile's own `config:` list.
+#
+# A profile `config:` entry is REPLACED wholesale by any command-line
+# `--config`, so passing `--config recipe=...` silently drops the
+# exclusion below and the imagery lanes come back. A configfile merges
+# per key instead, so `--config recipe=...` overrides only `recipe`.
+#
+# These three lanes fetch Google Static API imagery per footprint,
+# uncached by policy and billed per call (54,048 requests for one small
+# county), and reach the curated product at 0.0%. Re-enable deliberately
+# with `--config exclude_recipe_ids=`.
+exclude_recipe_ids:
+  # An optional reference lane: placeslab covers part of the country, and
+  # where it has nothing for a county the ingest exits 0 writing no file
+  # at all, which the orchestrator can only read as a failed job. Include
+  # it explicitly for regions the reference actually covers.
+  - US_parcel-placeslab-fmv2026
+  - US_footprint_built-roof-shape-brails-2026
+  - US_footprint_built-n-stories-brails-2026
+  - US_footprint_built-occupancy-brails-2026

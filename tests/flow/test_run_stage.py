@@ -70,7 +70,13 @@ def test_unknown_stage_rejected():
 
 
 def test_deliver_dispatch(monkeypatch, no_orchestrated_env):
-    """deliver takes the region as one admin unit, not an admin_ids list."""
+    """deliver takes the region, and forwards it as `region=`.
+
+    Not as the second positional, which is `export_delivery`'s
+    `admin_id`: that left `region` unset, and a recipe declaring more
+    than one region refuses to guess which bundle is meant, so every
+    multi-region delivery failed at job time.
+    """
     import os
 
     import openplaces.io.delivery as delivery_mod
@@ -82,11 +88,13 @@ def test_deliver_dispatch(monkeypatch, no_orchestrated_env):
         calls['env'] = os.environ.get('OPENPLACES_ORCHESTRATED')
 
     monkeypatch.setattr(delivery_mod, 'export_delivery', _fake_export)
-    run_stage.main(['deliver', 'US_footprint-cheer-2026', 'US-NC', '--verbose'])
+    run_stage.main(
+        ['deliver', 'US_footprint-cheer-2026', 'cheer-eastern-nc', '--verbose']
+    )
 
     assert calls['recipe'] == 'US_footprint-cheer-2026'
-    assert calls['admin_id'] == 'US-NC'
-    assert calls['kwargs'] == {'verbose': True}
+    assert calls['admin_id'] is None
+    assert calls['kwargs'] == {'region': 'cheer-eastern-nc', 'verbose': True}
     assert calls['env'] == '1'
 
 

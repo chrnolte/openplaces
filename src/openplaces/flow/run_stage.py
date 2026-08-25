@@ -73,7 +73,13 @@ def main(argv=None) -> None:
     if args.stage == DELIVER:
         from openplaces.io.delivery import export_delivery
 
-        export_delivery(args.recipe_id, args.admin_id, verbose=args.verbose)
+        # `region=`, not the second positional. This argument is the
+        # region id (see the module docstring and --admin-id's help), and
+        # `export_delivery`'s second positional is `admin_id`, so passing
+        # it through positionally left `region` unset -- which a recipe
+        # declaring more than one region refuses to guess at, failing
+        # every multi-region delivery at job time.
+        export_delivery(args.recipe_id, region=args.admin_id, verbose=args.verbose)
         return
 
     admin_ids = [args.admin_id] if args.admin_id else None

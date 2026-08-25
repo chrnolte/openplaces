@@ -1,6 +1,11 @@
-stage,admin_id,mem_mb
-ingest,,4000
-harmonize,,16000
-enrich,,8000
-curate,,8000
-deliver,,16000
+stage,recipe_id,admin_id,mem_mb
+ingest,,,4000
+harmonize,,,16000
+enrich,,,8000
+curate,,,8000
+deliver,,,16000
+# A global tile grid overlaid against every admin layer. It falls
+# back to a geopandas overlay when DuckDB declines the workload, and
+# at the 4000 default five of them could be co-scheduled inside a
+# 20 GB cap; it was killed mid-run while succeeding standalone.
+ingest,tile-obm-2025,,24000

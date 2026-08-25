@@ -54,9 +54,17 @@ class StageNode:
 
 
 def rule_name(node: StageNode) -> str:
-    """Snakemake rule name of one job (used by the Snakefile and --forcerun)."""
+    """Snakemake rule name of one job (used by the Snakefile and --forcerun).
+
+    Hyphens are kept, so a rule reads `ingest_US_parcel-nconemap-2025_US-NC-CM`
+    rather than flattening every id into underscores. Snakemake's `name:`
+    directive accepts them -- a rule name is not required to be a Python
+    identifier -- and the flattened form was actively harmful: an admin id
+    rendered as `US_NC_BS` matches no search for `US-NC-BS`, which is how a
+    stale identifier survived a repository-wide sweep of the real ones.
+    """
     raw = f'{node.stage}_{node.recipe_id}_{node.admin_id or "global"}'
-    return re.sub(r'[^0-9a-zA-Z_]', '_', raw)
+    return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
 
 
 class RecipeDAG:
@@ -136,6 +144,80 @@ class RecipeDAG:
                 # _walk_dag truncates finer-saving recipes to the walk
                 # admin; _node_admins re-expands them to their save level
                 _add(node_id, node_recipe, target_admin)
+
+        # Close the graph over its own declared inputs.
+        #
+        # `input_paths` expands an upstream to every admin unit the
+        # consumer will actually read, using `_node_admins` against the
+        # *consumer's* admin unit. The walk above only ever passed the
+        # target's own unit, so a job that consumes a coarser sibling --
+        # `US_tile-census-2025_tract` sits at level 1 and reads the
+        # harmonized admin layer for every state under it -- declared
+        # fifty inputs while the graph contained one producer. Snakemake
+        # then aborts the whole run with MissingInputException, which is
+        # what a from-scratch install hits first.
+        #
+        # Iterating to a fixed point because a newly added producer has
+        # upstreams of its own.
+        # Deduplicate on the output file, not just the (recipe, admin)
+        # key. A global consumer resolves an upstream to admin None while
+        # a national one resolves the same recipe to 'US'; both write the
+        # same parquet, and two rules producing one file is an
+        # AmbiguousRuleException that stops the workflow dead.
+        def _produces(node) -> str | None:
+            try:
+                return str(self.output_path(node.stage, node.recipe_id, node.admin_id))
+            except Exception:  # noqa: BLE001 - unresolvable, fall back to the key
+                return None
+
+        produced = set()
+        for existing in self._nodes:
+            path = _produces(existing)
+            if path is not None:
+                produced.add(path)
+
+        pending = list(self._nodes)
+        while pending:
+            consumer = pending.pop()
+            consumer_admin = self._node_admin(
+                consumer.recipe_id,
+                AdminId(consumer.admin_id) if consumer.admin_id else None,
+            )
+            try:
+                edges = get_recipe_dependencies(
+                    self._recipe(consumer.recipe_id),
+                    admin_id=consumer_admin,
+                    exclude_recipe_ids=self.exclude_recipe_ids,
+                )
+            except Exception:  # noqa: BLE001 - an unresolvable edge adds nothing
+                continue
+            for edge in edges:
+                upstream_id = edge.upstream_recipe_id
+                if not upstream_id or upstream_id in self.exclude_recipe_ids:
+                    continue
+                try:
+                    upstream = self._recipe(upstream_id)
+                    upstream_admins = self._node_admins(upstream_id, consumer_admin)
+                except Exception:  # noqa: BLE001
+                    continue
+                for upstream_admin in upstream_admins:
+                    admin_str = (
+                        str(upstream_admin) if upstream_admin is not None else None
+                    )
+                    key = (upstream_id, admin_str)
+                    if key in seen:
+                        continue
+                    added = StageNode(
+                        upstream.get('stage', 'ingest'), upstream_id, admin_str
+                    )
+                    path = _produces(added)
+                    if path is not None and path in produced:
+                        continue
+                    seen.add(key)
+                    if path is not None:
+                        produced.add(path)
+                    self._nodes.append(added)
+                    pending.append(added)
 
         # Node-level edges (upstream -> consumer), for plan() and to_mermaid()
         self._edges: list[tuple[tuple, tuple]] = []
@@ -272,7 +354,26 @@ class RecipeDAG:
         if admin_id is None:
             return [None]
         admin_id = AdminId(str(admin_id))
-        save_level = get_save_admin_level(self._recipe(recipe_id))
+        recipe = self._recipe(recipe_id)
+
+        # A recipe scoped to one region has no jobs outside it. Named
+        # explicitly by a national recipe -- `US_footprint-cheer-2026`
+        # names `US-NC_footprint_building-cheer-v0`, and
+        # `US_footprint-spine-2026` names the North Carolina permit
+        # connector -- it would otherwise be scheduled for every Texas
+        # county too, where its own ingester rejects the admin unit as
+        # out of scope. The curate step already tolerates the missing
+        # evidence; the job should never have been derived.
+        scope = recipe.get('admin_id')
+        scope_levels = tuple(getattr(scope, 'levels', ()) or ())
+        if not scope_levels and scope:
+            # A string scope; a blank or NULL one means global, which
+            # covers every unit and must not be treated as a prefix.
+            scope_levels = tuple(x for x in str(scope).split('-') if x)
+        if scope_levels and admin_id.levels[: len(scope_levels)] != scope_levels:
+            return []
+
+        save_level = get_save_admin_level(recipe)
         if save_level <= admin_id.get_level():
             return [self._node_admin(recipe_id, admin_id)]
         try:
@@ -364,6 +465,16 @@ class RecipeDAG:
                 return spec['region_id']
         raise KeyError(f'No delivery region of {recipe_id!r} covers {admin_id!r}.')
 
+    def delivery_region(self, recipe_id: str, admin_id=None) -> str | None:
+        """The region a deliver node ships, for callers outside this class.
+
+        An orchestrator has to name the region for anything it does to a
+        bundle before running the job -- `delivery.unlock_delivery` most
+        of all, which otherwise asks a multi-region recipe for "the"
+        region and gets the deliberate refusal to guess.
+        """
+        return self._delivery_region(recipe_id, admin_id)
+
     def _delivery_paths(self, recipe_id: str, admin_id=None) -> dict:
         """The four bundle files, straight from the writer's own resolver.
 
@@ -388,8 +499,14 @@ class RecipeDAG:
         `entity_links` entries, persist one the same way.
         """
         if stage == 'deliver':
+            # Every role except 'canonical', which is the primary output.
+            # 'terms' belongs here: `export_delivery` always writes the
+            # LICENSE notice, and `target_paths` asks for the whole
+            # bundle -- so omitting it made `rule all` demand a file no
+            # rule declared, and every delivery run died at planning with
+            # "Missing input files for rule all".
             bundle = self._delivery_paths(recipe_id, admin_id)
-            return [bundle[role] for role in ('point', 'geo', 'evidence')]
+            return [bundle[role] for role in ('point', 'geo', 'evidence', 'terms')]
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
         node_admin = self._node_admin(recipe_id, admin_id)

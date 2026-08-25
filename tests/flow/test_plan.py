@@ -101,7 +101,7 @@ def test_plan_columns_and_order(dag, data_root):
 def test_mermaid_full_detail(dag):
     mermaid = dag.to_mermaid(collapse_admin=False)
     assert 'flowchart LR' in mermaid
-    assert 'US_footprint_cheer_2026_US_NC_BS[' in mermaid
+    assert 'US_footprint_cheer_2026_US_NC_BR[' in mermaid
     assert '-->' in mermaid
     for stage in ('ingest', 'harmonize', 'enrich', 'curate'):
         assert f'classDef {stage}' in mermaid
