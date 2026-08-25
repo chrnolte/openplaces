@@ -415,7 +415,11 @@ pipeline:
           roof_shape_confidence_2_building_cheer: roof_shape_confidence_2
           roof_shape_3_building_cheer: roof_shape_3
           roof_shape_confidence_3_building_cheer: roof_shape_confidence_3
-          construction_type_building_cheer: construction_type
+          # Kept as evidence like foundation above: canonical
+          # construction_type is reconciled against NSI below, and
+          # reconcile_values reads evidence columns, not values a
+          # merge already folded into the canonical name.
+          construction_type_building_cheer: construction_type_building_cheer
           has_garage_building_cheer: has_garage
           n_stories_building_cheer: n_stories_building_cheer
           # Kept as evidence, not merged onto canonical foundation_type:
@@ -456,6 +460,12 @@ pipeline:
       # those address columns, and addresses feed the point linkage that
       # the occupancy baseline is measured against.
       foundation_type: [foundation_type_building_nsi, foundation_type_building_cheer]
+      # Construction: CHEER's per-building classification first where it
+      # ran (NC), then NSI's bldgtype, which is derived from occupancy
+      # statistics rather than observed per building - a prior, like its
+      # foundation, but national.
+      construction_type: [construction_type_building_cheer,
+                          construction_type_building_nsi]
 
   # Estimate manufactured home probability using morphology/assessor keywords for voting.
   - step: classify_manufactured_homes

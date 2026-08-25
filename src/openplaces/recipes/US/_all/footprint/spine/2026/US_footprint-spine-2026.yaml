@@ -88,6 +88,11 @@ pipeline:
           # one, which a per-building classifier is not guaranteed to be
           # (see the foundation_type reconciliation in US_footprint-cheer-2026).
           - foundation_type
+          # Same prior-not-observation caveat: NSI derives bldgtype from
+          # occupancy statistics. Still the only national source, and the
+          # fallback behind the per-building CHEER inventory where that
+          # inventory exists.
+          - construction_type
 
   # Reconcile a canonical address and extract clean street names to support curation grouping.
   - step: reconcile_addresses
@@ -154,7 +159,7 @@ pipeline:
     count_as: n_permits_per_footprint_address
 
   - step: link_by_id
-    recipe_id: US-NC_property-shovels-2026
+    recipe_id: US_property-shovels-2026
     mode: aggregate
     spine_key: parcel_id_local
     ref_key: parcel_id_local
