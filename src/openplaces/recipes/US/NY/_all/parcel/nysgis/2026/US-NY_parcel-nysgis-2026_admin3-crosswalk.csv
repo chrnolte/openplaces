@@ -1,5 +1,5 @@
 admin3_id,county_name
-US-NY-LG,Albany
+US-NY-AE,Albany
 US-NY-BR,Bronx
 US-NY-BO,Broome
 US-NY-CA,Cayuga
@@ -14,10 +14,10 @@ US-NY-LE,Lewis
 US-NY-LI,Livingston
 US-NY-MN,Montgomery
 US-NY-NY,NewYork
-US-NY-ND,Oneida
+US-NY-OE,Oneida
 US-NY-ON,Onondaga
-US-NY-NT,Ontario
-US-NY-NT,Orange
+US-NY-OA,Ontario
+US-NY-OA,Orange
 US-NY-OS,Oswego
 US-NY-OT,Otsego
 US-NY-PU,Putnam

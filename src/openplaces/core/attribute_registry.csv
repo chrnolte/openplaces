@@ -201,7 +201,7 @@ population_native_american_share,Population share: American Indian/Alaska Native
 population_pacific_islander_share,Population share: Native Hawaiian/Pacific Islander,fraction (0-1),float,mean,,,enrich
 population_gravity_index,"Population gravity: decay-weighted residential population density from a building-footprint-distributed population raster",,float,mean,,,enrich
 census_tract_id,Census tract identifier,,string,first,,,harmonize
-county_fips,"County FIPS code (5-digit state+county), copied from the admin spine. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
+county_fips,"County FIPS code (5-digit state+county), read as the `county` segment of the unit's own national code rather than stored anywhere: outside New England it IS admin3_id_admin1, and in New England it is that column's first five characters. A federal identifier, so unlike admin3_id it survives an openplaces admin-id re-mint and stays joinable to Census, FEMA and other federal products",,string,first,,,curate
 census_blockgroup_id,Census block group identifier,,string,first,,,harmonize
 census_subdivision_id,Raw Census county subdivision (COUSUB) identifier for the containing admin4 unit,,string,first,,,harmonize
 census_block_id,Census block identifier (2020 TIGER vintage),,string,first,,,harmonize

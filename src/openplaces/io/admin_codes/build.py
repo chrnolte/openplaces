@@ -84,6 +84,132 @@ def population_path(level):
     return directory / f'admin-spine-2026_population-admin{level}.csv'
 
 
+MEASURED_SOURCES = ('ghs-pop-e2020',)
+
+#: Sources that stand in for a measurement nobody could take: the gap
+#: filler apportioning a parent's shortfall, or the level median. Only
+#: these may be revised afterwards.
+ESTIMATED_SOURCES = ('parent-', 'level-median')
+
+
+def is_measured(source) -> bool:
+    """Return True when a weight came from summing the raster.
+
+    A measured weight is knowledge, including when it is zero: the
+    raster covered the unit and found nobody.
+    """
+    return str(source).startswith(MEASURED_SOURCES)
+
+
+def is_estimated(source) -> bool:
+    """Return True when a weight is openplaces' own guess.
+
+    The complement is wider than :func:`is_measured`: a reviewed
+    override is not a measurement either, but it is a decision somebody
+    recorded on purpose, and a nameless placeholder deliberately
+    weighted zero should stay at zero. Only a gap fill may be revised.
+    """
+    return str(source).startswith(ESTIMATED_SOURCES)
+
+
+#: Polygons keyed by resolved admin id, filled by `build_population`
+#: and reused by the verifier so the two cannot disagree about which
+#: shape belongs to which unit.
+_RESOLVED_POLYGONS: dict = {}
+
+
+def resolved_polygons(level):
+    """Return this level's polygons keyed by the unit they really name.
+
+    Resolving is not the same as reading the geometry layer's own
+    identifier column: that layer holds several identifier vintages at
+    once, so a row labelled ``JP-TO`` may be Tokyo while the live
+    ``JP-TO`` is Tokushima. Each row is resolved through its own name
+    instead, and everything that needs to say which shape belongs to
+    which unit goes through here, so no two callers can disagree.
+
+    Deliberately raster-free. Verifying that a weight still belongs to
+    its unit is a question about geometry and identity only, and an
+    earlier version answered it by re-running the whole zonal sum: nine
+    minutes to check something that takes seconds.
+
+    Parameters
+    ----------
+    level : int
+        Admin level wanted.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Columns ``resolved`` and ``geometry``.
+    """
+    if level in _RESOLVED_POLYGONS:
+        return _RESOLVED_POLYGONS[level]
+
+    import openplaces as op
+
+    column = f'admin{level}_id'
+    spine = _spine(level)
+    live = set(spine[column])
+    live_name = dict(zip(spine[column], spine['name']))
+    skip = GEOMETRY_MISMATCHED.get(level, ())
+
+    gdf = op.get_admin(level=level, geom=True).reset_index()
+    gdf = gdf[[column, 'name', 'geometry']]
+    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
+
+    def to_live(admin_id, geom_name):
+        if skip and admin_id.startswith(skip):
+            return None
+        geom_name = '' if pd.isna(geom_name) else str(geom_name).strip()
+        if admin_id in live and live_name[admin_id] == geom_name:
+            return admin_id
+        if not geom_name:
+            return admin_id if admin_id in live else None
+        got = resolve_identifier(admin_id, past_names={admin_id: geom_name})
+        return got if got in live else None
+
+    gdf['resolved'] = [to_live(a, n) for a, n in zip(gdf[column], gdf['name'])]
+    gdf = gdf[gdf['resolved'].notna()].drop_duplicates(subset=['resolved'])
+    _RESOLVED_POLYGONS[level] = gdf[['resolved', 'geometry']]
+    return _RESOLVED_POLYGONS[level]
+
+
+def _polygon_ids(polygons) -> dict:
+    """Return each unit's geometry-derived identifier, keyed by admin id.
+
+    A weight is a measurement taken over a shape, and `admin_id` is not
+    a durable name for that shape: a re-mint moves it, and a vote on the
+    naming rules will move it again. `geo_id` is computed from the
+    polygon itself (quantized bounds, area, compactness), so it can be
+    recomputed later and compared, which is what turns "this row belongs
+    to this unit" from an assumption into a check.
+
+    It changes when the boundary changes, which is correct: a weight
+    measured over an old outline is not a measurement of the new one.
+
+    Parameters
+    ----------
+    polygons : geopandas.GeoDataFrame
+        Frame with a `resolved` admin id column and geometry.
+
+    Returns
+    -------
+    dict
+        admin id mapped to its geo_id, empty when they cannot be
+        computed. Never fatal: a missing identifier costs verifiability,
+        not the weight itself.
+    """
+    from openplaces.geo.ids import get_geo_ids
+
+    try:
+        ids = get_geo_ids(polygons, handle_duplicates=False)
+    except Exception as exc:  # noqa: BLE001 - verifiability is optional
+        print(f'  geo_id unavailable ({type(exc).__name__}: {exc})')
+        return {}
+    return dict(zip(polygons['resolved'], ids))
+
+
 def _write_population(level, frame, replacing=None):
     """Merge rows into a level's population table, replacing by admin_id."""
     path = population_path(level)
@@ -91,6 +217,9 @@ def _write_population(level, frame, replacing=None):
         existing = pd.read_csv(path)
         existing = existing[~existing['admin_id'].isin(set(replacing))]
         frame = pd.concat([existing, frame], ignore_index=True)
+    if 'geo_id' not in frame.columns:
+        frame = frame.assign(geo_id='')
+    frame['geo_id'] = frame['geo_id'].fillna('')
     frame.sort_values('admin_id').to_csv(
         path, index=False, encoding='utf-8', lineterminator='\n'
     )
@@ -126,7 +255,6 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
     pandas.DataFrame
         Columns ``admin_id``, ``population``, ``source``.
     """
-    import openplaces as op
     from openplaces.geo.raster import zonal_stats_with_exactextract
     from openplaces.path import resolve_raster_path
 
@@ -139,29 +267,10 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
     column = f'admin{level}_id'
     spine = _spine(level)
     live = set(spine[column])
-    live_name = dict(zip(spine[column], spine['name']))
-    skip = GEOMETRY_MISMATCHED.get(level, ())
-
-    gdf = op.get_admin(level=level, geom=True).reset_index()
-    gdf = gdf[[column, 'name', 'geometry']]
-    gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
-
-    def to_live(admin_id, geom_name):
-        if skip and admin_id.startswith(skip):
-            return None
-        geom_name = '' if pd.isna(geom_name) else str(geom_name).strip()
-        if admin_id in live and live_name[admin_id] == geom_name:
-            return admin_id
-        if not geom_name:
-            return admin_id if admin_id in live else None
-        got = resolve_identifier(admin_id, past_names={admin_id: geom_name})
-        return got if got in live else None
-
-    gdf['resolved'] = [to_live(a, n) for a, n in zip(gdf[column], gdf['name'])]
-    gdf = gdf[gdf['resolved'].notna()].drop_duplicates(subset=['resolved'])
-
+    polygons = resolved_polygons(level)
+    geo_ids = _polygon_ids(polygons)
     stats = zonal_stats_with_exactextract(
-        gdf[['resolved', 'geometry']],
+        polygons,
         raster_path,
         ['sum'],
         include_cols=['resolved'],
@@ -174,16 +283,25 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
             'population': pd.to_numeric(stats[value_column], errors='coerce'),
         }
     )
-    out = out[out['population'].notna()]
-    out['population'] = out['population'].round(0).astype('int64')
+    # A polygon exactextract returns nothing for did not fail to be
+    # measured: the raster is global, so no intersecting cell means no
+    # counted people. Dropping the row instead sends it to the gap
+    # filler, which hands an uninhabited unit the median of its level
+    # and lets it win ties against real towns.
+    out['population'] = out['population'].fillna(0).round(0).astype('int64')
     out['source'] = 'ghs-pop-e2020'
+    out['geo_id'] = out['admin_id'].map(geo_ids)
 
     overrides = spine_path(level).parent / 'admin-spine-2026_population-overrides.csv'
     if overrides.exists():
         extra = pd.read_csv(overrides)
         extra = extra[extra['admin_id'].isin(live)]
-        extra = extra[~extra['admin_id'].isin(set(out['admin_id']))]
         if len(extra):
+            # Overrides replace, they do not merely fill gaps. Filling
+            # covers a unit with no polygon; replacing covers a unit
+            # that has a value and has the wrong one. A reviewer needs
+            # to be able to say a figure is wrong, not only missing.
+            out = out[~out['admin_id'].isin(set(extra['admin_id']))]
             out = pd.concat(
                 [out, extra[['admin_id', 'population', 'source']]],
                 ignore_index=True,
@@ -276,6 +394,7 @@ def build_population_from_entity(
     polygons = gpd.GeoDataFrame(
         matched[['resolved', 'geometry']], geometry='geometry', crs=gdf.crs
     )
+    geo_ids = _polygon_ids(polygons)
     stats = zonal_stats_with_exactextract(
         polygons,
         resolve_raster_path(raster),
@@ -290,10 +409,22 @@ def build_population_from_entity(
             'population': pd.to_numeric(stats[value_column], errors='coerce'),
         }
     )
-    out = out[out['population'].notna()]
-    out['population'] = out['population'].round(0).astype('int64')
-    out.loc[out['population'] <= 0, 'population'] = 1
+    # Reindex against the polygons that went in. A polygon the extractor
+    # returns no row at all for is not merely NaN, it is absent, so
+    # filling NaN alone cannot reach it: it silently leaves the table
+    # and the gap filler later hands it the median of its level. That is
+    # how Maine's Codyville and Drew, both present with valid geometry,
+    # ended up weighted 26,320 apiece. No clamp up to 1 either, because
+    # that made a real zero indistinguishable from a real one.
+    out = (
+        out.set_index('admin_id')
+        .reindex(polygons['resolved'])
+        .rename_axis('admin_id')
+        .reset_index()
+    )
+    out['population'] = out['population'].fillna(0).round(0).astype('int64')
     out['source'] = f'ghs-pop-e2020-{recipe_id.split("_")[-1]}'
+    out['geo_id'] = out['admin_id'].map(geo_ids)
 
     _write_population(level, out, replacing=set(out['admin_id']))
     if verbose:
@@ -385,6 +516,15 @@ def repair_zero_weights(levels=LEVELS, verbose=True):
     enters, so a geometry artefact becomes a permanent handicap. Unknown
     has to mean "competes as typical".
 
+    **Only a gap fill is revised.** A measured zero is knowledge and a
+    reviewed override is a decision; neither is openplaces guessing, so
+    neither is touched. The rule applies to an estimate
+    that came out at zero, never to a raster sum that did: the raster
+    covering a unit and finding nobody is knowledge, and replacing it
+    with the median of the level asserts the opposite of what was
+    measured. Losing ties is the correct outcome for an uninhabited
+    unit, and a memorable code is better spent on a real town.
+
     Parameters
     ----------
     levels : iterable of int, optional
@@ -402,7 +542,8 @@ def repair_zero_weights(levels=LEVELS, verbose=True):
         path = population_path(level)
         table = pd.read_csv(path)
         median = float(table.loc[table['population'] > 0, 'population'].median())
-        zeros = table['population'] <= 0
+        estimated = table['source'].map(is_estimated)
+        zeros = (table['population'] <= 0) & estimated
         count = int(zeros.sum())
         repaired[level] = count
         if count:
@@ -412,6 +553,69 @@ def repair_zero_weights(levels=LEVELS, verbose=True):
         if verbose:
             print(f'level {level}: {count:,} zero-weighted -> {median:,.0f}')
     return repaired
+
+
+def verify_population_identity(level, verbose=True):
+    """Check that each weight still belongs to the unit it names.
+
+    Recomputes every unit's `geo_id` from its current polygon and
+    compares it to the one recorded when the weight was measured. A
+    mismatch means the row and the unit have come apart: an identifier
+    was renamed and the weight did not follow, or two units' weights
+    were swapped by a migration keyed on the identifier string rather
+    than on the unit.
+
+    This exists because that has happened twice. A re-mint recycles
+    identifiers, so a table keyed on `admin_id` alone cannot tell a
+    correct row from one that has been moved onto the wrong unit, and
+    the damage is silent: every unit still has a number.
+
+    Parameters
+    ----------
+    level : int
+        Admin level to check.
+    verbose : bool, optional
+        Print a summary.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per disagreement, with the recorded and recomputed
+        identifiers. Empty when every measured weight still matches its
+        unit's polygon.
+    """
+
+    table = pd.read_csv(population_path(level), dtype=str, keep_default_na=False)
+    recorded = table[table['geo_id'].str.strip() != '']
+    if not len(recorded):
+        if verbose:
+            print(f'level {level}: no geo_id recorded; nothing to verify')
+        return pd.DataFrame(columns=['admin_id', 'recorded', 'recomputed'])
+
+    # Resolve identity exactly as the build does. The admin geometry
+    # carries more than one identifier vintage at once, so taking a
+    # row's id at face value compares one unit's shape against another
+    # unit's recorded weight: an earlier version of this check did that
+    # and reported 3,056 false mismatches, neatly shifted by one row
+    # within each parent.
+    gdf = resolved_polygons(level)
+    current = _polygon_ids(gdf)
+
+    rows = []
+    for admin_id, was in zip(recorded['admin_id'], recorded['geo_id']):
+        now = current.get(admin_id)
+        # A unit with no polygon today cannot be checked, which is not
+        # the same as failing: report only genuine disagreements.
+        if now is not None and now != was:
+            rows.append({'admin_id': admin_id, 'recorded': was, 'recomputed': now})
+    out = pd.DataFrame(rows, columns=['admin_id', 'recorded', 'recomputed'])
+    if verbose:
+        checked = sum(1 for a in recorded['admin_id'] if a in current)
+        print(
+            f'level {level}: {checked:,} of {len(recorded):,} measured '
+            f'weights checked, {len(out):,} no longer match their unit'
+        )
+    return out
 
 
 def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):

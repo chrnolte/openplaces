@@ -97,11 +97,13 @@ After that, you can make precise global maps.
 
    get_admin(geom=True).plot()
 
-.. image:: images/admin-gadm-4~1_admin1.png
-  :width: 350
-  :alt: Administrative units
-
 Note that these are large geometry files and will take a while to render (~10 seconds).
+
+The figure that stood here was a rendering of GADM's own boundaries.
+GADM's terms allow academic use but not redistribution without prior
+permission, so a derived picture of its geometry does not belong in a
+public repository, and no GADM data ships with openplaces. Run the code
+above against your own GADM download to produce it locally.
 
 For detailed technical information about how these administrative identifiers are algorithmically generated and managed, see the sub-page on :ref:`admin_identifiers`.
 

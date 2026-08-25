@@ -33,7 +33,6 @@ import re
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from openplaces.core.constants import ADMIN_NAME_PREFIXES
 from openplaces.io.admin_codes.languages import (
     LanguagePack,
     fold_diacritics,
@@ -53,11 +52,37 @@ SUN_LETTER_ARTICLES = frozenset(
     {'AS', 'ASH', 'AD', 'ADH', 'AN', 'AR', 'AT', 'ATH', 'AZ', 'AL'}
 )
 
-HONORIFICS = frozenset(
-    {w.upper() for w in ADMIN_NAME_PREFIXES}
-    | {'SAINT', 'ST', 'STE', 'SANTO', 'SAO'}
-    | SUN_LETTER_ARTICLES
-)
+#: Kept when a code is derived, not stripped. Naming a place for a saint
+#: is a deliberate act and speakers keep the particle: San Francisco is
+#: SF, not FR. Contrast the definite articles below, which a speaker
+#: drops without thinking.
+#:
+#: The keeping is a preference, not a rule. Where a sibling group is
+#: mostly "Saint X" the shared particle cannot distinguish anyone, and
+#: codes built on it go opaque -- Dominica's ten parishes came out SA SD
+#: SG SI SJ SL SM SP SN ST. Both forms are therefore offered, the kept
+#: one ranked first, and the group's own opacity gate decides.
+SAINT_PREFIXES = frozenset({'SAINT', 'ST', 'STE', 'SAN', 'SANTA', 'SANTO', 'SAO'})
+
+#: Particles dropped regardless of the country's own language.
+#:
+#: Deliberately almost empty. **A particle is a particle only in the
+#: language a country names things in.** `El` is a Spanish article, so
+#: Mexico drops it and English-speaking Texas does not: in El Paso it is
+#: not a word the speaker is discarding, it is part of an imported
+#: proper name, which is why the city is EP and not PA. That test is
+#: already data, in the per-language `article` rows of the vocabulary,
+#: and is applied through `LanguagePack.is_article`. Nothing global is
+#: needed to express it.
+#:
+#: The Arabic sun-letter forms are the one exception, and only because
+#: no country is mapped to `ar` in the country-language table yet.
+#: Moving them into an `ar` pack, which is where they belong, would
+#: silently stop stripping them. Fix the table, then move them.
+ARTICLE_PREFIXES = SUN_LETTER_ARTICLES
+
+#: Retained for callers that want every droppable particle at once.
+HONORIFICS = ARTICLE_PREFIXES | SAINT_PREFIXES
 
 # A group is treated as two-letter-codeable only when every unit can be
 # given a distinct intuitive code. Relaxing this admits units whose code
@@ -144,27 +169,38 @@ def intuitive_codes(
     if pack is None:
         pack = get_language_pack(admin1_id=admin1_id)
     raw = [w for w in re.split(r'[^A-Z0-9]+', fold_diacritics(name)) if w]
-    words = [w for w in raw if not pack.is_article(w) and w not in HONORIFICS] or raw
-    significant = [
-        w for w in words if not pack.is_preposition(w) and not pack.is_conjunction(w)
-    ] or words
 
-    # A name with no alphanumeric content yields no tokens at all, which
-    # an alias row can easily be. Guarded rather than assumed, because the
-    # same missing guard in `candidates` crashed a full build once.
-    if not significant:
-        return set()
+    def read(drop_saints: bool) -> set[str]:
+        drop = ARTICLE_PREFIXES | (SAINT_PREFIXES if drop_saints else frozenset())
+        words = [w for w in raw if not pack.is_article(w) and w not in drop] or raw
+        significant = [
+            w
+            for w in words
+            if not pack.is_preposition(w) and not pack.is_conjunction(w)
+        ] or words
+        # A name with no alphanumeric content yields no tokens at all,
+        # which an alias row can easily be. Guarded rather than assumed,
+        # because the same missing guard in `candidates` crashed a full
+        # build once.
+        if not significant:
+            return set()
+        codes = set()
+        head = significant[0]
+        if len(head) >= 2:
+            codes.add(head[:2])
+            codes.add(head[0] + head[-1])
+        if len(significant) >= 2:
+            codes.add(significant[0][0] + significant[1][0])
+        onsets = syllable_onsets(head)
+        if len(onsets) >= 2:
+            codes.add(onsets[0] + onsets[1])
+        return codes
 
-    codes = set()
-    head = significant[0]
-    if len(head) >= 2:
-        codes.add(head[:2])
-        codes.add(head[0] + head[-1])
-    if len(significant) >= 2:
-        codes.add(significant[0][0] + significant[1][0])
-    onsets = syllable_onsets(head)
-    if len(onsets) >= 2:
-        codes.add(onsets[0] + onsets[1])
+    # Both readings count as intuitive. A saint prefix is kept by
+    # preference, but a reader reconstructs Saint George as either SA or
+    # GE, and the group's matching should be free to use whichever keeps
+    # the whole group legible.
+    codes = read(drop_saints=False) | read(drop_saints=True)
     return {c for c in codes if re.fullmatch(r'[A-Z][A-Z]', c)}
 
 

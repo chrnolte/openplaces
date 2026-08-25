@@ -576,21 +576,17 @@ def admin3_id_index_from_local(admin3_local, admin2_recipe_id):
         ) & admin3_local['name_long'].eq(admin3_local['name'] + ' city')
         admin3_local.loc[i_city_duplicates, 'name_link'] += ' city'
 
-    # Load global reference layer (GADM)
+    # The spine, which is openplaces' own layer.
     admin3 = get_admin(country_id, level=3)
     admin3['admin2_id'] = admin3.index.str.slice(0, 5)
 
-    # Correct (replace) names from global reference layer to official
-    admin3_name_crosswalk = get_recipe(
-        country_id, admin_entity, filename='admin3-names-from-gadm'
-    )
-    for _, row in admin3_name_crosswalk.iterrows():
-        admin3.loc[
-            admin3['admin2_id'].eq(row['admin2_id'])
-            & admin3['name'].eq(row['admin3_name_gadm']),
-            'name',
-        ] = row['admin3_name_official']
-
+    # A sidecar of GADM-spelling corrections used to run here, because
+    # the spine's names came from GADM and a local source spells them
+    # officially. The spine no longer carries GADM names: every one of
+    # the 51 US corrections matched nothing, and Colombia's last three
+    # were applied to the spine directly. Nothing is corrected on the
+    # way past any more, and the tables that held GADM's strings are
+    # gone with it.
     admin3['name_link'] = admin3['name'].str.lower().apply(create_comparable_name_link)
 
     # Join global admin-2 data (with identifier) to local admin-2 data

@@ -1199,8 +1199,10 @@ def derive_group_class_share(
 @_register('derive_admin_attribute')
 def derive_admin_attribute(
     state: CurateState,
-    attribute: str,
     output: str,
+    attribute: str | None = None,
+    segment: str | None = None,
+    scheme: str = 'us-census-geoid',
     admin_id_column: str = 'admin3_id',
     admin_level: int | None = None,
 ) -> CurateState:
@@ -1223,13 +1225,31 @@ def derive_admin_attribute(
     rather than any hard-coded table, so which attribute is surfaced is a
     recipe's decision and no geography lives in this function.
 
+    Two ways to name what to copy, and only one of them is safe for a
+    code whose meaning varies by geography. Pass *attribute* to copy a
+    spine column verbatim. Pass *segment* to take one named part of the
+    unit's national code, resolved through
+    :mod:`~openplaces.io.admin_codes.segments`, which is what a federal
+    identifier needs: ``admin3_id_admin1`` holds a 5-digit county FIPS
+    in 44 states and a 10-digit county-subdivision GEOID in the six New
+    England states, so copying it verbatim writes two different things
+    into one column. ``segment='county'`` returns the county FIPS in
+    both.
+
     Parameters
     ----------
-    attribute : str
-        Column on the admin spine to copy (e.g. ``admin3_id_admin1``,
-        which for US counties holds the 5-digit FIPS code).
     output : str
         Column to write onto the entity.
+    attribute : str, optional
+        Column on the admin spine to copy verbatim. Mutually exclusive
+        with *segment*; exactly one of the two is required.
+    segment : str, optional
+        Name of a part of the unit's own national code, in the source's
+        vocabulary (e.g. ``'county'``, ``'state'``). Mutually exclusive
+        with *attribute*.
+    scheme : str, optional
+        Coding scheme *segment* belongs to, default
+        ``'us-census-geoid'``.
     admin_id_column : str, optional
         Entity column holding the admin id to look up (default
         ``admin3_id``).
@@ -1238,6 +1258,13 @@ def derive_admin_attribute(
         named ``admin{N}_id``; required otherwise.
     """
     from openplaces.io.readers import get_admin
+
+    if (attribute is None) == (segment is None):
+        raise ValueError(
+            'derive_admin_attribute: pass exactly one of attribute= or '
+            'segment=. Use segment= for a federal code whose width varies '
+            "by geography (e.g. segment='county')."
+        )
 
     curated = state.curated
     if admin_id_column not in curated.columns:
@@ -1269,19 +1296,27 @@ def derive_admin_attribute(
         return state
 
     spine = spine.reset_index()
-    if admin_id_column not in spine.columns or attribute not in spine.columns:
+    wanted = attribute if attribute is not None else f'{admin_id_column}_admin1'
+    if admin_id_column not in spine.columns or wanted not in spine.columns:
         if state.verbose:
             print(
                 f'  derive_admin_attribute: spine has no '
-                f'{attribute!r}/{admin_id_column!r}; {output} not derived.'
+                f'{wanted!r}/{admin_id_column!r}; {output} not derived.'
             )
         return state
 
     lookup = (
         spine.dropna(subset=[admin_id_column])
         .drop_duplicates(admin_id_column)
-        .set_index(admin_id_column)[attribute]
+        .set_index(admin_id_column)[wanted]
     )
+    if segment is not None:
+        from openplaces.io.admin_codes.segments import slice_segment
+
+        # Not strict: the spine is global and a curate run may cover
+        # units whose national code belongs to another scheme entirely.
+        # Those come back missing rather than aborting the recipe.
+        lookup = slice_segment(lookup, segment=segment, scheme=scheme, strict=False)
     curated[output] = (
         curated[admin_id_column].astype(object).map(lookup).astype('string')
     )

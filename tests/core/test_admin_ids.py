@@ -64,7 +64,11 @@ def test_generate_admin_ids_english_frame():
     result = generate_admin_ids(
         df, new_admin_id_col='admin4_id', parent_admin_id_col='admin3_id'
     )
-    _assert_valid_ids(result, 'US-NC-CE-')
+    # Asserted against the parent the frame declares, not a literal. The
+    # previous literal was 'US-NC-CE-' against a 'US-NC-AR' parent, left
+    # behind by a re-mint that swapped Carteret and Cherokee. A test that
+    # names a code goes stale every time the mint runs.
+    _assert_valid_ids(result, df['admin3_id'].iloc[0] + '-')
 
 
 def test_generate_admin_ids_spanish_frame_folds_accents():
