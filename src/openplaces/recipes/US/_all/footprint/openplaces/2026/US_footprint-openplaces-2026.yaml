@@ -1,13 +1,15 @@
-# Recipe: canonical openplaces footprint inventory for study regions
-# outside the CHEER geography. A fork of US_footprint-cheer-2026 (per
-# the New England plan's guidance to fork rather than extend): the
-# curation logic is identical, and the NC/TX-specific evidence lanes
-# (CHEER Inventory v0, BRAILS runs) soft-skip wherever their evidence
-# files do not exist, which is everywhere this recipe ships.
+# The single national curate recipe for the openplaces footprint
+# inventory. Unified 2026-08-25 from US_footprint-cheer-2026 and its
+# genesis-region fork: the curation logic was never regional, and every
+# regional variation it needs is data, not structure - admin-scoped
+# remap rows, registry regions, enrichment merges that skip units
+# without evidence, and the declared-null columns below. Projects
+# (cheer, lakesense, places-fmv-conus) are delivery groupings in the
+# region registry, not curation forks.
 
 description: >-
-  Canonical openplaces footprint inventory: the CHEER curation logic applied
-  to study regions outside the CHEER geography.
+  Canonical openplaces footprint inventory: one national curation, delivered
+  per registered region.
 
 stage: curate
 admin_id: US
@@ -36,6 +38,73 @@ save_to:
 # columns -- this is the compact inventory a modeller works from, not
 # everything the curate stage can produce. Each listed column's
 # `{column}_source` sidecar is appended automatically, plus geometry_source.
+# How this inventory is validated: the hand-labelled reference, the class
+# vocabulary both sides are compared on, and the linkage thresholds. Read
+# by io.curator.validation.ValidationContext, the same declarative role
+# `share:` plays for delivery. Licence-restricted reference tables are
+# declared in the untracked sidecar
+# `US_footprint-openplaces-2026_validation-references.yaml` beside this file,
+# never here.
+validation:
+  classes: [Single-Family, Multi-Family, Manufactured Home]
+  # The reference records one residential class per building; the
+  # inventory resolves Multi-Family into height bands. Collapse them so
+  # the vocabularies are comparable.
+  collapse:
+    Low-Rise Multi-Family: Multi-Family
+    Mid-Rise Multi-Family: Multi-Family
+    High-Rise Multi-Family: Multi-Family
+  # Manufactured Home counts as single: a double wide is one home.
+  single_dwelling_classes: [Single-Family, Manufactured Home]
+  link:
+    # Street View pins land just off the roof polygon (Brunswick median
+    # 1.7 m, 98% under 20 m); 15 m clears the offsets without grabbing
+    # the neighbouring building.
+    max_distance_m: 15
+    street_threshold: 80.0
+    # A house and its garage share one address; the survey only labels
+    # habitable buildings, so ties break toward the parcel's primary.
+    prefer_column: priority_on_parcel
+    prefer_values: [primary, unknown]
+  # Identifies a surveyed building by where it sits in the source
+  # workbook, which no pipeline change can move.
+  prediction_key: [source_sheet, source_row]
+  class_map: occupancy-class-map.csv
+  keyword_ruleset: parcel-occupancy-keywords.csv
+  inventory_suffix: _inv
+  # Overture carries a count, not a class: two or more dwellings reads
+  # as Multi-Family, anything else (including no count) as
+  # Single-Family. It never declines, so read its precision, not recall.
+  dwelling_count_column: n_dwellings_overture_inv
+  source_columns:
+    final_vote: predicted
+    nsi: occupancy_type_nsi_class_inv
+    fema: occupancy_type_fema_class_inv
+    keyword: occupancy_keyword_class_inv
+    parcel: occupancy_type_parcel_inv
+  # order_columns drops the derived class columns from published output;
+  # they are reconstructed from raw evidence through the same rulesets
+  # the vote used, so scoring cannot silently lose those blocks.
+  derived_source_columns:
+    nsi: {column: occupancy_type_building_nsi}
+    fema: {column: group_footprint_fema}
+    keyword:
+      column: use_group_combined_parcel
+      ruleset: parcel-occupancy-keywords.csv
+      # Mirrors the vote's own flag: without it, unreviewed rules would
+      # assert classes on rows the vote never saw a keyword claim for.
+      reviewed_only: true
+  ground_truth:
+    entity_type: footprint
+    source: cheer
+    version: summerscholars2026
+    admin_id: US-NC
+    filename: US-NC_footprint-cheer-summerscholars.csv
+    regenerate_hint: >-
+      Run notebooks/02_ingest/footprints/prepare_cheer_ground_truth.ipynb
+      to regenerate it from the source workbook.
+
+
 share:
   columns:
     - admin3_id
@@ -78,7 +147,7 @@ share:
   # shipping it.
   #
   # This recipe ships more than one region from identical curation logic
-  # (12 and 57 Massachusetts towns respectively; Lee County
+  # (44 of North Carolina's 100 counties, 42 of Texas's 254; Lee County
   # rode along 2026-08-17 to 2026-08-24 from an LE/LN code mix-up in a
   # commit that meant to add Lenoir, and was removed). Named here,
   # defined once in the shared region registry
@@ -90,6 +159,8 @@ share:
   delivery:
     admin_level: 2
     regions:
+      - cheer-eastern-nc
+      - cheer-coastal-tx
       - boston-inner-core
       - boston-outer-rings
       - central-florida-lakes
@@ -165,6 +236,8 @@ pipeline:
       - address_unit
       - city
       - county_fips
+
+
 
   # Link the curated parcel attributes (occupancy, use group, and community
   # flags) by parcel_id to drive the downstream reconciliation and inference
@@ -300,13 +373,10 @@ pipeline:
   - step: reconcile_values
     priority:
       n_dwellings: [n_dwellings_overture, n_dwellings_nsi]
-      year_built: [year_built_parcel, year_built_block_median_building_nsi]
       postal_code: [postal_code_dwelling_overture]
-    valid_range:
-      # Assessor sentinels for "unknown" (1 in New Hanover, 1000 in
-      # Wayne, 8104 in coastal Texas) are not years; out-of-range
-      # evidence falls through to NSI's block median.
-      year_built: [1500, 2035]
+    # year_built is deliberately NOT reconciled here: its NCDPS lane is
+    # enrichment evidence that merge_enrichments only attaches further
+    # down, so its reconcile runs after that step.
 
   # Address reconciliation and postal-city imputation are handled at the
   # harmonization stage on the input spine (reconcile_addresses /
@@ -472,6 +542,27 @@ pipeline:
           # Kept as evidence, not merged onto canonical foundation_type:
           # it is reconciled behind NSI below.
           foundation_type_building_cheer: foundation_type_building_cheer
+      # NCDPS 2020 original per-building construction years (validated
+      # against block-level variance 2026-08-25: real records, not a
+      # broadcast statistic). NC-only; skipped where absent.
+      - recipe_id: US-NC_footprint_footprint-ncdps-2023
+        columns:
+          year_built_footprint_ncdps: year_built_footprint_ncdps
+          year_built_source_footprint_ncdps: year_built_source_footprint_ncdps
+
+  # Reconcile year_built after the enrichment merge so the NCDPS lane
+  # exists when its turn comes: the assessor's own value wins, NCDPS's
+  # original per-building year (validated against block-level variance
+  # 2026-08-25) outranks NSI's block median, which is a statistic.
+  - step: reconcile_values
+    priority:
+      year_built: [year_built_parcel, year_built_footprint_ncdps,
+                   year_built_block_median_building_nsi]
+    valid_range:
+      # Assessor sentinels for "unknown" (1 in New Hanover, 1000 in
+      # Wayne, 8104 in coastal Texas) are not years; out-of-range
+      # evidence falls through to the next lane.
+      year_built: [1500, 2035]
 
   # Reconcile canonical n_stories: direct floor detection first, then NSI's
   # modeled count, then CHEER's -- last because it is the same modeled
@@ -552,12 +643,31 @@ pipeline:
         source: multi_dwelling
         min_score: 2
         indicators:
-          # 92.3% precise on its own -- the single best signal for this
-          # question, and sufficient unaided.
-          - type: numeric_at_least
-            column: n_dwellings_overture
-            min: *multi_dwelling_min
+          # 92.3% precise on its own overall -- but the permit
+          # validation (2026-08-25, accuracies/INSIGHTS.md) showed its
+          # conflict subset is systematically wrong: where the vote
+          # followed an Overture count against NSI, permits sided with
+          # NSI 78/22 (NC, 9,056 conflicts) and 75/25 (TX, 10,150), and
+          # against the keyword 92/8 and 98/2. Guarded since
+          # 2026-08-25, the mirror of the assessor-keyword guard below:
+          # the count keeps its deciding weight unless BOTH independent
+          # label lanes actively say single-dwelling AND a present story
+          # count agrees with them -- silence from any lane keeps the
+          # old behavior, so coverage gaps cannot flip rows.
+          - type: all_of
             weight: 2
+            indicators:
+              - type: numeric_at_least
+                column: n_dwellings_overture
+                min: *multi_dwelling_min
+              - type: any_of
+                indicators:
+                  - {type: equals, column: occupancy_type_nsi_class, value: Multi-Family}
+                  - {type: is_null, column: occupancy_type_nsi_class}
+                  - {type: equals, column: occupancy_keyword_class, value: Multi-Family}
+                  - {type: is_null, column: occupancy_keyword_class}
+                  - {type: numeric_at_least, column: n_stories, min: 2}
+                  - {type: is_null, column: n_stories}
           # 83.6% precise; assessor keywords naming a multi-unit building.
           # Keywords also beat both modeled sources when they disagree
           # (permits back keyword over NSI 77/23 and over FEMA 80/20;

@@ -711,7 +711,7 @@ def cleanup(
     ----------
     recipe : str or dict
         Terminal recipe the DAG is rooted at (e.g.
-        'US_footprint-cheer-2026').
+        'US_footprint-openplaces-2026').
     admin_ids : str or list, optional
         Admin units in scope; None scans the terminal recipe's outputs on
         disk.

@@ -6,7 +6,7 @@ deploy_pipeline notebook); `main` composes them into the CLI, which
 refuses to submit until a dry run has been produced and shown. The
 dry-run output is stored next to the SGE logs for the post-hoc record::
 
-    python -m openplaces.flow.submit --config recipe=US_footprint-cheer-2026 \\
+    python -m openplaces.flow.submit --config recipe=US_footprint-openplaces-2026 \\
         admin_ids=US-NC-BR,US-NC-AR
 """
 
@@ -158,7 +158,7 @@ def main(argv=None) -> None:
         '--config',
         nargs='*',
         metavar='KEY=VALUE',
-        help='Workflow config (e.g. recipe=US_footprint-cheer-2026 '
+        help='Workflow config (e.g. recipe=US_footprint-openplaces-2026 '
         'admin_ids=US-NC-BR,US-NC-AR)',
     )
     parser.add_argument(

@@ -73,7 +73,7 @@ class RecipeDAG:
     Parameters
     ----------
     target_recipe_id : str
-        Terminal recipe (e.g. 'US_footprint-cheer-2026').
+        Terminal recipe (e.g. 'US_footprint-openplaces-2026').
     admin_ids : list of str, optional
         Admin units in scope. Coarser IDs are used as-is; each node's
         admin unit is truncated to its recipe's save level. None builds a
@@ -357,7 +357,7 @@ class RecipeDAG:
         recipe = self._recipe(recipe_id)
 
         # A recipe scoped to one region has no jobs outside it. Named
-        # explicitly by a national recipe -- `US_footprint-cheer-2026`
+        # explicitly by a national recipe -- `US_footprint-openplaces-2026`
         # names `US-NC_footprint_building-cheer-v0`, and
         # `US_footprint-spine-2026` names the North Carolina permit
         # connector -- it would otherwise be scheduled for every Texas

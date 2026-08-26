@@ -103,7 +103,7 @@ transformations:
 
 notes: >-
   Ground truth for the manufactured-home geometry rule in
-  US_footprint-cheer-2026 (aspect_min 2.5, area_max_m2 185). Measured over
+  US_footprint-openplaces-2026 (aspect_min 2.5, area_max_m2 185). Measured over
   1,064,697 title records with usable dimensions: that rule matches 67.3%
   of real Texas manufactured homes, and the miss is structural rather than
   noisy. Single-section homes (702,798; median aspect 4.75) are matched

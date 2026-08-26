@@ -511,7 +511,7 @@ def export_delivery(
     Parameters
     ----------
     recipe : str or dict
-        Curation recipe ID (e.g. ``'US_footprint-cheer-2026'``) or a
+        Curation recipe ID (e.g. ``'US_footprint-openplaces-2026'``) or a
         pre-loaded recipe dict. Must declare a ``share: columns:`` block.
     admin_id : str or `AdminId`, optional
         Admin unit the bundle covers, e.g. ``'US-NC'``. Names the output

@@ -56,7 +56,7 @@ class BaseLayer:
     checked: bool
     variants: tuple[Variant, ...] = field(default_factory=tuple)
     #: True for a recipe whose own `save_to.combined` is true (attributes and
-    #: geometry live in one file, e.g. `US_footprint-cheer-2026`) — no attr
+    #: geometry live in one file, e.g. `US_footprint-openplaces-2026`) — no attr
     #: sibling is extracted, and the join is stripped from every clone.
     combined: bool = False
 
@@ -68,7 +68,7 @@ BASE_LAYERS: tuple[BaseLayer, ...] = (
         source_attr_name=None,
         group='Buildings/openplaces',
         checked=True,
-        combined=True,  # US_footprint-cheer-2026 recipe: save_to.combined: true
+        combined=True,  # US_footprint-openplaces-2026 recipe: save_to.combined: true
         variants=(
             Variant(
                 'template_footprint_output__roof_shape',

@@ -21,7 +21,7 @@ Two worker flavors, one file:
 The stage chain is an argument, not code, because which recipes make up
 a build is pipeline configuration::
 
-    python -m openplaces.flow.region_pool US_footprint-cheer-2026
+    python -m openplaces.flow.region_pool US_footprint-openplaces-2026
         cheer-coastal-tx
         --chain "harmonize:US_property-spine-2026,
                  harmonize:US_footprint-geospine-2026,..."

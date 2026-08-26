@@ -287,7 +287,7 @@ pipeline:
   # Known, deliberate-until-measured divergence: elongated_aspect_min is 2.0
   # here (a *count* of candidate shapes per parcel, where a looser net is
   # tolerable) while the footprint occupancy vote's per-building geometry
-  # indicator uses 2.5 (US_footprint-cheer-2026, mh_aspect_min anchor).
+  # indicator uses 2.5 (US_footprint-openplaces-2026, mh_aspect_min anchor).
   # Aligning them changes park detection, so it awaits out-of-band evidence.
   - step: summarize_footprint_morphology
     footprint_recipe_id: US_footprint-spine-2026

@@ -1,0 +1,43 @@
+# Enrichment recipe: attach NCDPS 2020 building attributes onto the
+# footprint spine by polygon overlap.
+#
+# Exists because North Carolina assessors' current GIS feeds often
+# carry no construction year (Pamlico's has none at all; the statewide
+# OneMap column is empty for many counties), so the curated year_built
+# fell through to NSI's census-block median everywhere - which is a
+# statistic, not a building's year. The NCDPS/NCEM 2020 footprints
+# carry an original per-building YEAR_BUILT with per-row source
+# attribution: measured on Carteret 2026-08-25, 88.9% coverage, 88% of
+# it 'PARCEL DERIVED - HIGH CONFIDENCE', within-census-block standard
+# deviation median 13.6 years and only 6.9% zero-variance blocks - the
+# pattern of real records, where the delivered NSI lane's blocks are
+# 100% zero-variance by construction. The small 'NSI DERIVED' remainder
+# (7%) rides along: even it predates and outranks a broadcast median,
+# and year_built_source_footprint_ncdps keeps it distinguishable.
+
+description: >-
+  NCDPS 2020 per-building construction year attached to North Carolina
+  footprints by polygon overlap.
+
+stage: enrich
+admin_id: US-NC
+
+entity:
+  entity_type: footprint
+
+dataset: footprint-ncdps-2023
+
+# Matching is geometric, so the spine must be loaded with its geometry.
+spine_geom: true
+
+reference_building_recipe_id: US-NC_footprint-ncdps-2023
+
+process_by:
+  admin_level: 3
+
+pipeline:
+  - step: enrich_footprints_from_reference_buildings
+    # Attached as `{column}_footprint_ncdps`.
+    columns:
+      - year_built
+      - year_built_source

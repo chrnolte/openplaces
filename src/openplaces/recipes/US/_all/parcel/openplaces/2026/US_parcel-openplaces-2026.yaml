@@ -34,7 +34,7 @@ process_by:
 
 save_to:
   # Canonical curated output: shipped self-contained (attributes +
-  # geometry) in the share bucket, like US_footprint-cheer-2026. The
+  # geometry) in the share bucket, like US_footprint-openplaces-2026. The
   # core bucket is the normalized store for intermediates.
   data_dir: share
 

@@ -1,6 +1,0 @@
-pattern,match_type,occupancy_type
-Single Family,contains,Single-Family
-Single-Family,contains,Single-Family
-Multi Family,contains,Multi-Family
-Multi-Family,contains,Multi-Family
-Manufactured,contains,Manufactured Home
