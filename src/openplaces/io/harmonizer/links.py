@@ -2081,7 +2081,6 @@ def _columns_as_pairs(
     return [(c, c) for c in columns]
 
 
-@_register('link_by_id')
 def _warn_if_link_underperforms(
     matched: int, total: int, spine_key: str, recipe_id: str, admin_id
 ) -> None:
@@ -2114,6 +2113,7 @@ def _warn_if_link_underperforms(
     )
 
 
+@_register('link_by_id')
 def link_by_id(
     state: HarmonizeState,
     recipe_id: str | None = None,
