@@ -487,3 +487,268 @@ def test_fetch_resolves_where_admin_column(fake_service, tmp_path, monkeypatch):
     wheres = [p['where'] for p in seen_params if 'where' in p]
     assert wheres
     assert all(w == "countyfips = '05101'" for w in wheres)
+
+
+# attribute_join: comparing on a normalized key
+
+
+def _write_points(path, pins):
+    """Write a tiny point FeatureCollection keyed on PIN."""
+    path.write_text(
+        json.dumps(
+            {
+                'type': 'FeatureCollection',
+                'features': [
+                    {
+                        'type': 'Feature',
+                        'properties': {'PIN': pin},
+                        'geometry': {'type': 'Point', 'coordinates': [i, 0.0]},
+                    }
+                    for i, pin in enumerate(pins)
+                ],
+            }
+        ),
+        encoding='utf-8',
+    )
+
+
+def test_key_conv_matches_across_a_separator_difference(tmp_path):
+    """The Maine case: one submission punctuates a map-lot with dashes and
+    the other with underscores, so a literal comparison matches nothing."""
+    out = tmp_path / 'layer.geojson'
+    _write_points(out, ['012-345', '012-346', '012-347'])
+    table = {f'012_{n}': {'EXTRA': int(n)} for n in ('345', '346', '347')}
+
+    scraper._apply_attribute_join(
+        out,
+        table,
+        key='PIN',
+        fields=['EXTRA'],
+        min_match=0.9,
+        verbose=False,
+        label='t',
+        key_conv='pipe',
+    )
+
+    doc = _read(out)
+    joined = {f['properties']['PIN']: f['properties']['EXTRA'] for f in doc['features']}
+    assert joined == {'012-345': 345, '012-346': 346, '012-347': 347}
+
+
+def test_key_conv_leaves_the_sources_own_key_column_intact(tmp_path):
+    out = tmp_path / 'layer.geojson'
+    _write_points(out, ['012-345'])
+    scraper._apply_attribute_join(
+        out,
+        {'012_345': {'EXTRA': 1}},
+        key='PIN',
+        fields=['EXTRA'],
+        min_match=0.5,
+        verbose=False,
+        label='t',
+        key_conv='pipe',
+    )
+    props = _read(out)['features'][0]['properties']
+    assert props['PIN'] == '012-345'
+    assert scraper._JOIN_KEY_COLUMN not in props
+
+
+def test_key_conv_drops_attribute_rows_that_become_ambiguous(tmp_path):
+    """Normalizing makes keys collide that did not collide before. Two
+    assessor rows reaching one key would each attach to every parcel
+    carrying it, so they are dropped rather than picked between."""
+    out = tmp_path / 'layer.geojson'
+    _write_points(out, ['012-345', '012-999'])
+    table = {
+        '012-345': {'EXTRA': 1},
+        '012_345': {'EXTRA': 2},  # collides with the row above under pipe
+        '012_999': {'EXTRA': 9},
+    }
+
+    scraper._apply_attribute_join(
+        out,
+        table,
+        key='PIN',
+        fields=['EXTRA'],
+        min_match=0.4,
+        verbose=False,
+        label='t',
+        key_conv='pipe',
+    )
+
+    doc = _read(out)
+    assert len(doc['features']) == 2, 'an ambiguous key must not multiply rows'
+    joined = {f['properties']['PIN']: f['properties']['EXTRA'] for f in doc['features']}
+    assert joined['012-999'] == 9
+    assert joined['012-345'] is None
+
+
+def test_key_conv_that_loses_matches_raises(tmp_path):
+    """A conversion is only ever meant to recover matches. One that costs
+    them is the wrong conversion, and saying so beats a quiet regression."""
+    out = tmp_path / 'layer.geojson'
+    _write_points(out, ['12-3', '1-23'])
+    # Both sides agree literally; 'simple' collapses them onto one key,
+    # which then reads as ambiguous and is dropped.
+    table = {'12-3': {'EXTRA': 1}, '1-23': {'EXTRA': 2}}
+
+    with pytest.raises(RuntimeError, match='is the wrong conversion'):
+        scraper._apply_attribute_join(
+            out,
+            table,
+            key='PIN',
+            fields=['EXTRA'],
+            min_match=0.0,
+            verbose=False,
+            label='t',
+            key_conv='simple',
+        )
+
+
+def test_no_key_conv_is_unchanged_behaviour(tmp_path):
+    out = tmp_path / 'layer.geojson'
+    _write_points(out, ['012-345'])
+    scraper._apply_attribute_join(
+        out,
+        {'012-345': {'EXTRA': 7}},
+        key='PIN',
+        fields=['EXTRA'],
+        min_match=0.9,
+        verbose=False,
+        label='t',
+    )
+    props = _read(out)['features'][0]['properties']
+    assert props == {'PIN': '012-345', 'EXTRA': 7}
+
+
+# attribute_join: a key rebuilt from several fields
+
+
+def _write_features(path, rows):
+    """Write a point FeatureCollection whose properties are `rows`."""
+    path.write_text(
+        json.dumps(
+            {
+                'type': 'FeatureCollection',
+                'features': [
+                    {
+                        'type': 'Feature',
+                        'properties': props,
+                        'geometry': {'type': 'Point', 'coordinates': [i, 0.0]},
+                    }
+                    for i, props in enumerate(rows)
+                ],
+            }
+        ),
+        encoding='utf-8',
+    )
+
+
+def test_composite_key_joins_on_the_parts(tmp_path):
+    """The Acton case: both sides agree on the town code and on the
+    map-lot, and disagree on the single field that concatenates them, so
+    rebuilding the key from its parts is what reaches the rows."""
+    out = tmp_path / 'layer.geojson'
+    _write_features(
+        out,
+        [
+            {'GEOCODE': '31010', 'LOT': '001-002', 'STATE_ID': 'junk-1'},
+            {'GEOCODE': '31010', 'LOT': '001-003', 'STATE_ID': 'junk-2'},
+        ],
+    )
+    table = {
+        f'31010{scraper._KEY_PART_SEPARATOR}001-002': {'EXTRA': 1},
+        f'31010{scraper._KEY_PART_SEPARATOR}001-003': {'EXTRA': 2},
+    }
+
+    scraper._apply_attribute_join(
+        out,
+        table,
+        key=['GEOCODE', 'LOT'],
+        fields=['EXTRA'],
+        min_match=0.9,
+        verbose=False,
+        label='t',
+    )
+
+    joined = {
+        f['properties']['LOT']: f['properties']['EXTRA'] for f in _read(out)['features']
+    }
+    assert joined == {'001-002': 1, '001-003': 2}
+
+
+def test_composite_key_parts_cannot_bleed_into_each_other(tmp_path):
+    """('1', '2-3') and ('1-2', '3') must stay distinct -- joining the
+    parts on a hyphen would collapse them onto one key."""
+    out = tmp_path / 'layer.geojson'
+    _write_features(out, [{'A': '1', 'B': '2-3'}, {'A': '1-2', 'B': '3'}])
+    table = {f'1{scraper._KEY_PART_SEPARATOR}2-3': {'EXTRA': 1}}
+
+    scraper._apply_attribute_join(
+        out,
+        table,
+        key=['A', 'B'],
+        fields=['EXTRA'],
+        min_match=0.4,
+        verbose=False,
+        label='t',
+    )
+
+    joined = {
+        f['properties']['A']: f['properties']['EXTRA'] for f in _read(out)['features']
+    }
+    assert joined == {'1': 1, '1-2': None}
+
+
+def test_composite_key_combines_with_key_conv(tmp_path):
+    out = tmp_path / 'layer.geojson'
+    _write_features(out, [{'GEOCODE': '31010', 'LOT': '001-002'}])
+    table = {f'31010{scraper._KEY_PART_SEPARATOR}001_002': {'EXTRA': 5}}
+
+    scraper._apply_attribute_join(
+        out,
+        table,
+        key=['GEOCODE', 'LOT'],
+        fields=['EXTRA'],
+        min_match=0.9,
+        verbose=False,
+        label='t',
+        key_conv='pipe',
+    )
+
+    props = _read(out)['features'][0]['properties']
+    assert props['EXTRA'] == 5
+    assert props['GEOCODE'] == '31010' and props['LOT'] == '001-002'
+
+
+def test_composite_key_names_a_missing_field(tmp_path):
+    out = tmp_path / 'layer.geojson'
+    _write_features(out, [{'GEOCODE': '31010'}])
+    with pytest.raises(ValueError, match=r"\['LOT'\]"):
+        scraper._apply_attribute_join(
+            out,
+            {},
+            key=['GEOCODE', 'LOT'],
+            fields=['EXTRA'],
+            min_match=0.0,
+            verbose=False,
+            label='t',
+        )
+
+
+def test_composite_key_is_requested_from_the_service(fake_service):
+    """Every part of the key has to be in `outFields`, or the attribute
+    side cannot assemble the same string the geometry side does."""
+    fake_service['total'] = 4
+    scraper._fetch_attribute_table(
+        'http://svc/9',
+        key=['PIN', 'EXTRA'],
+        fields=['EXTRA'],
+        where='1=1',
+        page_size=2,
+        timeout=1,
+        retries=1,
+        verbose=False,
+        label='t',
+    )
+    assert fake_service['attribute_queries'] == ['PIN,EXTRA,EXTRA'] * 2

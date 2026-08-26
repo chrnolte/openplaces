@@ -1,0 +1,99 @@
+# Recipe to import county subdivisions for the United States (2016)
+
+description: >-
+  U.S. county subdivision boundaries from Census TIGER/Line 2016 (admin level 4).
+
+# Administrative unit identifier: where does this data come from?
+admin_id: US
+
+# Entity: what is the unit of analysis of the imported data?
+#
+# Why a vintage this old is worth keeping. The parcel-id conversion
+# table (`geo/parcel_id_links.csv`) is derived from a source keyed on
+# 2016-vintage county subdivision codes, and the Census re-codes a
+# subdivision whenever its legal status changes: ten Massachusetts towns
+# that have since become cities carry one code here and a different one
+# now (Framingham `2501724925` then, `2501724960` today). Their codes
+# alone cannot bridge the gap, so the rebuild matches on the name this
+# layer records. Withdrawn from auto-discovery for the same reason as
+# the 2021 vintage: its rows are superseded, and leaving them in the
+# candidate pool lets them fill gaps the current layer should fill.
+exclude_from_auto_discover: true
+
+entity:
+  # What is its type? (parcel, property, transaction, person, admin)
+  entity_type: admin
+  # What is the source and URL of a dataset that identifies each unit?
+  source:
+    source_id: census
+    # Work of the U.S. Government, so uncopyrightable in the US by
+    # statute (17 U.S.C. 105) rather than by a licence anyone grants.
+    # Checked 2026-08-25: the agency publishes no terms page because it
+    # does not need one.
+    license: "public-domain (US Government work, 17 U.S.C. 105)"
+    redistribution_restricted: false
+    terms_url: null
+    portal_url: "https://www2.census.gov/geo/tiger/TIGER2016/"
+    download_url: "https://www2.census.gov/geo/tiger/TIGER2016/COUSUB/tl_2016_{admin2_id_admin1}_cousub.zip"
+  version: 2016
+
+# Name of compressed file (set to skip re-downloading)
+compressed_file_name: "tl_2016_{admin2_id_admin1}_cousub.zip"
+
+# How is the download data partitioned?
+#
+# Partitioned and crosswalked through the 2021 vintage rather than a
+# 2016 one. State and county FIPS codes did not move between the two in
+# the lower 48; the one exception is Alaska, where Valdez-Cordova
+# (`02261`) was replaced by Chugach and Copper River in 2019, so those
+# subdivisions do not carry through. Nothing that reads this layer needs
+# them: the 2016-vintage keys it exists to resolve are all in the six
+# New England states plus New York and Michigan.
+download_by:
+  admin_level: 2
+  admin_recipe_id: 'US_admin-census-2021_admin2'
+
+# Columns from `openplaces` dictionary for entity -> columns in imported table
+columns:
+  name: NAME
+  name_long: NAMELSAD
+  admin4_id_admin1: GEOID
+  admin4_id_ansi: COUSUBNS
+  admin2_id_admin1: STATEFP
+  type_source: CLASSFP
+  functional_status: FUNCSTAT
+  stats_area_id_legal: LSAD
+
+# Filter query to select rows
+# Keeps 50 states and DC (territories are in `admin1` according to ISO)
+query: "admin2_id_admin1 <= '56' and name != 'County subdivisions not defined'"
+
+transformations:
+  # Get county FIPS: first 5 characters of county subdivision FIPS
+  - output: admin3_id_admin1
+    type: string
+    operation: substring
+    input: admin4_id_admin1
+    args:
+      start: 0
+      end: 5
+
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 3
+  admin_id_column: admin3_id_admin1
+  admin_recipe_id: "US_admin-census-2021_admin3"
+
+# Function that returns an indexed version of the input GeoDataFrame
+# (usually a custom function designed for a specific indexing case)
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+
+save_to:
+  data_dir: cache
+  filename: admin4
+  admin_level: 1

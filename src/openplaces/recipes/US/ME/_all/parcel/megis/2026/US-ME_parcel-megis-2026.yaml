@@ -111,12 +111,21 @@
 # format: "99999*0000*999*") where that same town's own geometry
 # submission uses dash-delimited codes ("999-999-999"). Left
 # unnormalized rather than guess at a per-town remapping.
-# `join_min_match` is set to 0.55 (below the observed 62.2% floor,
-# comfortably above a value that would indicate real breakage) --
-# the default 0.9 would make every ingest raise. The ~38% of
-# parcels without an ADB match get all-null owner/value/sale
-# columns, not a failed ingest; this is a real, load-bearing
-# limitation of the source, not a bug in this recipe.
+# `join_min_match` is set to 0.60 -- below the 62.2% measured with a
+# literal comparison, so it cannot start failing even if `key_conv`
+# (below) helps nothing, and far enough under the default 0.9 that
+# the ingest does not raise on a limitation of the source. It is
+# deliberately not raised to match the expected post-`key_conv`
+# floor, because that floor has not been measured on a full run --
+# only per-town, on a sample.
+#
+# What the remaining shortfall is, measured 2026-08-25 over all 319
+# submitting towns: 110 of them filed geometry and NO ADB rows at
+# all (188,872 parcels, 26.7% of the layer), which no join key
+# reaches. The genuinely unmatched-but-present residue is about
+# 78,600 parcels, 11.1%, and that is what `key_conv` works on.
+# Parcels without an ADB match get all-null owner/value/sale
+# columns, not a failed ingest.
 #
 # Fields left unmapped, and why (checked values, not just names,
 # per acquiring_sources.md Phase 4):
@@ -248,7 +257,38 @@ scraper_options:
   out_fields: "*"
   attribute_join:
     layer_url: "https://services1.arcgis.com/RbMX0mRVOFNTdLzd/arcgis/rest/services/Maine_Parcels_Organized_Towns/FeatureServer/9"
-    key: STATE_ID
+    # Rebuilt from its parts rather than taken from STATE_ID. The
+    # source documents STATE_ID as GEOCODE + "_" + MAP_BK_LOT, and for
+    # most towns it is - but not all of them assemble it the same way.
+    # Acton's two submissions agree on GEOCODE exactly and on MAP_BK_LOT
+    # 97.9%, while their STATE_IDs match 0.1%, and no conversion of
+    # STATE_ID recovers that because the difference is in the assembly,
+    # not the punctuation. Keying on the parts reaches it (0.979) and
+    # costs nothing where STATE_ID already worked, since the parts are
+    # what STATE_ID is made of.
+    key:
+      - GEOCODE
+      - MAP_BK_LOT
+    # Compare the key through `pipe` rather than literally. Measured
+    # 2026-08-25 against the live service: a town's geometry submission
+    # and its own ADB submission routinely agree on the map-lot and
+    # disagree on how they punctuate it (Kennebunk writes `999-999` in
+    # one and `999_999` in the other), which a literal comparison scores
+    # at zero. Over the six largest towns that submit ADB rows and match
+    # none of them -- 30,204 parcels -- `pipe` on STATE_ID recovers
+    # 29.7%: China 0.994, Kennebunk 0.784, and nothing for the other
+    # four.
+    #
+    # `pipe` rather than `simple` because it collapses each run of
+    # separators to one marker instead of deleting it, so `12-3` and
+    # `1-23` stay distinct rather than both becoming `123`.
+    #
+    # With the composite key above, Acton joins too, taking the sample
+    # to 39.3%. Boothbay, Freeport and South Portland remain out of
+    # reach: their ADB numbering carries a segment their geometry does
+    # not, which is a question about what the source means rather than
+    # about how it is punctuated.
+    key_conv: pipe
     where: "1=1"
     fields:
       - OWNER1
@@ -269,7 +309,7 @@ scraper_options:
   # Below the default 0.9: only ~62% of parcels have a matching ADB
   # row at all (see header). Well above a value that would still
   # catch a genuinely broken key.
-  join_min_match: 0.55
+  join_min_match: 0.60
 
 # COUNTY (plain county name, e.g. "Sagadahoc") matches the census
 # admin3 recipe's own `name` column exactly (verified), so no
