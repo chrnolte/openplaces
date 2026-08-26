@@ -29,6 +29,41 @@ from openplaces.io.transform import make_index_unique
 from openplaces.recipe import raise_if_coverage_complete
 
 
+def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
+    """Drop source rows far outside the admin unit being harmonized.
+
+    A per-county source file is trusted to contain that county's rows,
+    and mostly does - but real files carry strays (the NCDPS Cabarrus
+    footprints include a 52-building block that sits in Buncombe,
+    190 km away), which then fail the delivery bbox gate. Rows whose
+    representative point falls outside the unit's bounding box plus a
+    margin are dropped with a warning; the margin keeps genuine
+    border-straddling buildings, matching the gate's own bbox logic.
+    """
+    if gdf is None or len(gdf) == 0 or 'geometry' not in getattr(gdf, 'columns', ()):
+        return gdf
+    try:
+        bounds = get_admin([str(admin_id)], geom=True).total_bounds
+    except Exception:
+        return gdf
+    pts = gdf.geometry.representative_point()
+    inside = (
+        (pts.x >= bounds[0] - margin_deg)
+        & (pts.y >= bounds[1] - margin_deg)
+        & (pts.x <= bounds[2] + margin_deg)
+        & (pts.y <= bounds[3] + margin_deg)
+    )
+    n_out = int((~inside).sum())
+    if n_out:
+        warnings.warn(
+            f'{label}: dropped {n_out:,d} row(s) outside {admin_id} '
+            f'(plus {margin_deg} deg margin); a per-unit source file '
+            'carried strays.'
+        )
+        return gdf[inside]
+    return gdf
+
+
 def get_oriented_dims(geom) -> tuple[float, float, float]:
     """Return ``(angle_deg % 180, length, width)`` of the minimum bounding rectangle.
 
@@ -318,6 +353,7 @@ def resolve_spine(
         label = src.get('label', recipe_id)
         try:
             gdf = get_entities(recipe_id, state.admin_id, geom=True)
+            gdf = _drop_out_of_unit_rows(gdf, state.admin_id, label)
             source_gdfs[recipe_id] = gdf
             loaded.append(src)
             if state.verbose:
