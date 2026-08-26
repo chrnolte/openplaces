@@ -8,7 +8,7 @@ def _upstream_ids(edges):
 
 
 def test_curate_recipe_edges():
-    edges = get_recipe_dependencies('US_footprint-cheer-2026')
+    edges = get_recipe_dependencies('US_footprint-openplaces-2026')
     upstream = _upstream_ids(edges)
     assert 'US_footprint-spine-2026' in upstream
     assert 'US_parcel-openplaces-2026' in upstream
@@ -103,8 +103,8 @@ def test_admin_id_crosswalk_is_not_an_edge():
 
 
 def test_edges_carry_consumer_id():
-    edges = get_recipe_dependencies('US_footprint-cheer-2026')
-    assert all(e.recipe_id == 'US_footprint-cheer-2026' for e in edges)
+    edges = get_recipe_dependencies('US_footprint-openplaces-2026')
+    assert all(e.recipe_id == 'US_footprint-openplaces-2026' for e in edges)
 
 
 def test_admin3_create_index_declares_admin2_edge():

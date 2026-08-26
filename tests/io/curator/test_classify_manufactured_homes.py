@@ -41,7 +41,7 @@ RULESET = [
 def _state(df: pd.DataFrame) -> CurateState:
     return CurateState(
         recipe={
-            'entity': 'footprint-cheer-2026',
+            'entity': 'footprint-openplaces-2026',
             'admin_id': 'US',
             'occupancy': OCC_CONFIG,
         },

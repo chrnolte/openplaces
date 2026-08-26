@@ -44,7 +44,7 @@ def _state(verbose=False):
         index=pd.Index(['f1', 'f2'], name='footprint_id'),
     )
     return CurateState(
-        recipe={'recipe_id': 'US_footprint-cheer-2026'},
+        recipe={'recipe_id': 'US_footprint-openplaces-2026'},
         entity_recipe=get_recipe_by_id(SPINE),
         admin_id=AdminId(COUNTY),
         verbose=verbose,

@@ -13,7 +13,7 @@ from openplaces.flow import RecipeDAG
 from openplaces.flow import submit as submit_mod
 from openplaces.recipe import get_output_path
 
-TARGET = 'US_footprint-cheer-2026'
+TARGET = 'US_footprint-openplaces-2026'
 SPINE = 'US_footprint-spine-2026'
 NSI = 'US_building-nsi-2026'
 COUNTY = 'US-NC-BR'
@@ -101,7 +101,7 @@ def test_plan_columns_and_order(dag, data_root):
 def test_mermaid_full_detail(dag):
     mermaid = dag.to_mermaid(collapse_admin=False)
     assert 'flowchart LR' in mermaid
-    assert 'US_footprint_cheer_2026_US_NC_BR[' in mermaid
+    assert 'US_footprint_openplaces_2026_US_NC_BR[' in mermaid
     assert '-->' in mermaid
     for stage in ('ingest', 'harmonize', 'enrich', 'curate'):
         assert f'classDef {stage}' in mermaid
@@ -113,7 +113,7 @@ def test_mermaid_collapse(dag):
     # Explicit collapse folds per-admin jobs into recipe-level nodes
     collapsed = dag.to_mermaid(collapse_admin=True)
     assert 'admin units)' in collapsed
-    assert 'US_footprint_cheer_2026_all[' in collapsed
+    assert 'US_footprint_openplaces_2026_all[' in collapsed
     assert len(collapsed) < len(dag.to_mermaid(collapse_admin=False))
 
 

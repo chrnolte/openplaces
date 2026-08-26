@@ -11,8 +11,8 @@ from openplaces.io.delivery import (
 )
 from openplaces.recipe import get_output_path
 
-TARGET = 'US_footprint-cheer-2026'
-COUNTY = 'US-NC-BR'
+TARGET = 'US_footprint-openplaces-2026'
+COUNTY = 'US-NC-BRU'
 # The recipe ships several regions; these tests exercise the Carolina one,
 # which COUNTY belongs to.
 REGION = 'cheer-eastern-nc'
@@ -131,7 +131,7 @@ def test_delivery_outputs_match_the_writer(shipping_dag):
 
 def test_delivery_inputs_are_every_member_county(shipping_dag):
     members = delivery_members(TARGET, region=REGION)
-    assert len(members) == 45
+    assert len(members) == 44
     assert shipping_dag.input_paths('deliver', TARGET, 'US-NC') == [
         get_output_path(TARGET, admin_id=member) for member in members
     ]
@@ -244,19 +244,21 @@ def test_to_mermaid_rejects_invalid_direction(dag):
 
 
 def test_regions_are_declared_and_disjoint():
-    """The recipe ships two named regions, and no county feeds both.
+    """The recipe ships several named regions, and no county feeds two.
 
     Membership comes from the shared region registry, not from the recipe,
-    so this also asserts the two stay wired together.
+    so this also asserts the two CHEER regions stay wired together.
     """
     from openplaces.io.readers import get_region_admin_ids
 
     regions = {spec['region_id']: spec for spec in delivery_regions(TARGET)}
     for region_id, spec in regions.items():
         assert spec['admin_ids'] == get_region_admin_ids(region_id)
-    assert set(regions) == {'cheer-eastern-nc', 'cheer-coastal-tx'}
-    assert len(regions['cheer-eastern-nc']['admin_ids']) == 45
+    assert {'cheer-eastern-nc', 'cheer-coastal-tx'} <= set(regions)
+    assert len(regions['cheer-eastern-nc']['admin_ids']) == 44
     assert len(regions['cheer-coastal-tx']['admin_ids']) == 42
+    members = [m for spec in regions.values() for m in spec['admin_ids']]
+    assert len(members) == len(set(members))
     assert not set(regions['cheer-eastern-nc']['admin_ids']) & set(
         regions['cheer-coastal-tx']['admin_ids']
     )
@@ -286,5 +288,8 @@ def test_unknown_region_is_named_in_the_error():
     """A typo'd region id must say what is registered, not fail obscurely."""
     from openplaces.io.readers import get_regions
 
-    with pytest.raises(KeyError, match='cheer-coastal-tx'):
+    # The registry is long enough that the listing is elided in the
+    # middle, so match on the framing and its last entry, not on the id
+    # the typo was aiming for.
+    with pytest.raises(KeyError, match='registered: .*western-nc'):
         get_regions('cheer-coastal-texas')

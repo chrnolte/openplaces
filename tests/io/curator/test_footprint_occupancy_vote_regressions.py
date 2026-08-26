@@ -1,6 +1,6 @@
 """Regressions for the CHEER footprint occupancy vote, on the shipped recipe.
 
-Loads `US_footprint-cheer-2026`'s own `derive_indicators` and both
+Loads `US_footprint-openplaces-2026`'s own `derive_indicators` and both
 `resolve_by_vote` blocks rather than hand-copied fixtures, so a recipe edit
 that reintroduces one of these behaviors fails here.
 
@@ -21,7 +21,7 @@ from openplaces.io.curator.inferers import derive_indicators
 from openplaces.io.curator.reconcilers import resolve_by_vote
 from openplaces.recipe import get_recipe_by_id
 
-RECIPE_ID = 'US_footprint-cheer-2026'
+RECIPE_ID = 'US_footprint-openplaces-2026'
 
 # The recipe's votes, in pipeline order. n_sections gates on the occupancy
 # class, so it has to run after the vote that decides it.

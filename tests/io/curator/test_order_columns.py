@@ -13,7 +13,7 @@ def _state(columns):
         index=pd.Index(['f1'], name='footprint_id'),
     )
     return CurateState(
-        recipe={'recipe_id': 'US_footprint-cheer-2026'},
+        recipe={'recipe_id': 'US_footprint-openplaces-2026'},
         entity_recipe={},
         admin_id=AdminId('US-NC-BR'),
         verbose=False,

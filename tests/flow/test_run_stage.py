@@ -89,10 +89,10 @@ def test_deliver_dispatch(monkeypatch, no_orchestrated_env):
 
     monkeypatch.setattr(delivery_mod, 'export_delivery', _fake_export)
     run_stage.main(
-        ['deliver', 'US_footprint-cheer-2026', 'cheer-eastern-nc', '--verbose']
+        ['deliver', 'US_footprint-openplaces-2026', 'cheer-eastern-nc', '--verbose']
     )
 
-    assert calls['recipe'] == 'US_footprint-cheer-2026'
+    assert calls['recipe'] == 'US_footprint-openplaces-2026'
     assert calls['admin_id'] is None
     assert calls['kwargs'] == {'region': 'cheer-eastern-nc', 'verbose': True}
     assert calls['env'] == '1'
@@ -109,6 +109,6 @@ def test_deliver_without_admin_id_leaves_it_to_the_recipe(
         'export_delivery',
         lambda recipe, admin_id=None, **kw: calls.update(admin_id=admin_id),
     )
-    run_stage.main(['deliver', 'US_footprint-cheer-2026'])
+    run_stage.main(['deliver', 'US_footprint-openplaces-2026'])
 
     assert calls['admin_id'] is None
