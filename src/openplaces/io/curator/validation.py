@@ -26,6 +26,8 @@ Two things this module insists on that a naive accuracy check gets wrong:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -398,3 +400,600 @@ def score_classification(
         }
     )
     return pd.DataFrame(records)
+
+
+def class_from_ruleset(
+    recipe,
+    terms: pd.Series,
+    ruleset: str,
+    *,
+    reviewed_only: bool = False,
+) -> pd.Series | None:
+    """Reconstruct a class column from raw evidence through a recipe ruleset.
+
+    Applies the same ordered ruleset a curate vote used, so a
+    reconstructed column scores identically to one the recipe's
+    formatting stage dropped from published output.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Curate recipe (id or dict) whose sidecar rulesets to read.
+    terms : pandas.Series
+        Raw label text the class column is derived from.
+    ruleset : str
+        Filename of the ruleset CSV beside the curate recipe.
+    reviewed_only : bool, optional
+        Keep only matches whose winning rule is marked reviewed,
+        mirroring the recipe's own flag. Nulling unreviewed matches
+        after the fact, rather than dropping those rules up front, is
+        deliberate: pre-filtering would let a term fall through to a
+        later reviewed rule and assert a class the vote never saw.
+
+    Returns
+    -------
+    pandas.Series or None
+        The reconstructed class column, or None when the ruleset cannot
+        be located, leaving the caller to omit that source.
+    """
+    from types import SimpleNamespace
+
+    from openplaces.io.curator.occupancy import load_ruleset, match_ruleset
+    from openplaces.recipe import get_recipe_by_id
+
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    try:
+        state = SimpleNamespace(recipe=recipe)
+        rules = load_ruleset(state, ruleset)
+    except (FileNotFoundError, KeyError):
+        return None
+    proposal, reviewed = match_ruleset(terms.astype(object), rules)
+    if reviewed_only:
+        proposal = proposal.where(reviewed)
+    return proposal
+
+
+def reference_confidence_tier(
+    frame: pd.DataFrame,
+    *,
+    count_column: str = 'n_permits_with_occupancy_type',
+    mode_pct_column: str = 'occupancy_type_mode_pct',
+    mode_column: str = 'occupancy_type_mode',
+    matched_via_column: str = 'matched_via',
+    id_match_value: str = 'parcel_id_local',
+) -> pd.Series:
+    """Confidence tier for a reference-label table, high to low.
+
+    Two things separate a strong claim from a weak one: how the
+    reference reached the entity (an id join beats an address or point
+    match) and whether its records agree (a unanimous mode over at
+    least two label-bearing records beats a single uncorroborated one).
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Entity-keyed reference labels carrying the four columns named by
+        the keyword arguments (the permit pair-table schema by default).
+
+    Returns
+    -------
+    pandas.Series
+        One of `1_id_strong`, `2_id_weak`, `3_addr_strong`,
+        `4_addr_weak`, or `none` where no record names a label.
+    """
+    n_labels = pd.to_numeric(frame[count_column], errors='coerce')
+    unanimous = frame[mode_pct_column].ge(0.999) & n_labels.ge(2)
+    by_id = frame[matched_via_column].eq(id_match_value)
+    spoke = frame[mode_column].notna()
+    tier = pd.Series('none', index=frame.index)
+    tier[spoke & ~by_id & ~unanimous] = '4_addr_weak'
+    tier[spoke & ~by_id & unanimous] = '3_addr_strong'
+    tier[spoke & by_id & ~unanimous] = '2_id_weak'
+    tier[spoke & by_id & unanimous] = '1_id_strong'
+    return tier
+
+
+class ValidationContext:
+    """Everything a validation notebook needs, built from recipe data.
+
+    A curate recipe declares its validation configuration in a
+    `validation:` block, the same way delivery columns live in `share:`:
+    the hand-labelled reference it is scored against, the class
+    vocabulary and how the inventory's finer bands collapse onto it,
+    linkage thresholds, and the evidence columns each vote input is
+    scored from. Reference tables whose source is licence-restricted
+    are declared in an untracked sidecar
+    (`{recipe_id}_validation-references.yaml` beside the recipe) that
+    is merged over the committed block when present, so the committed
+    surface never names such a source.
+
+    Notebooks build one context and read the same names the block
+    declares; nothing geography- or source-specific lives in this
+    class.
+    """
+
+    def __init__(self, recipe, references_state=None):
+        """Build a context for one curate recipe.
+
+        Parameters
+        ----------
+        recipe : str or dict
+            Curate recipe id or dict carrying a `validation:` block.
+        references_state : str, optional
+            Which entry of the sidecar's `references:` mapping to
+            activate (e.g. a state code). Without it the
+            reference-table helpers raise when used.
+        """
+        from openplaces.recipe import get_recipe_by_id, get_recipe_id
+
+        if isinstance(recipe, str):
+            recipe = get_recipe_by_id(recipe)
+        self.recipe = recipe
+        self.recipe_id = get_recipe_id(recipe)
+        config = dict(recipe.get('validation') or {})
+        sidecar = self._load_references_sidecar()
+        if sidecar:
+            config = {**config, **sidecar}
+        if not config:
+            raise ValueError(
+                f'{self.recipe_id} declares no validation: block and has '
+                'no validation-references sidecar.'
+            )
+        self.config = config
+        self.classes = tuple(config.get('classes') or ())
+        self.collapse = dict(config.get('collapse') or {})
+        self.single_dwelling_classes = tuple(
+            config.get('single_dwelling_classes') or ()
+        )
+        link = dict(config.get('link') or {})
+        self.max_distance_m = link.get('max_distance_m', 15)
+        self.street_threshold = link.get('street_threshold', 80.0)
+        self.prefer_column = link.get('prefer_column')
+        self.prefer_values = tuple(link.get('prefer_values') or ())
+        self.prediction_key = list(config.get('prediction_key') or [])
+        self.class_map = config.get('class_map')
+        self.keyword_ruleset = config.get('keyword_ruleset')
+        self.source_columns = dict(config.get('source_columns') or {})
+        self.derived_source_columns = dict(config.get('derived_source_columns') or {})
+        self.dwelling_count_column = config.get('dwelling_count_column')
+        self.inventory_suffix = config.get('inventory_suffix', '_inv')
+        self.references_state = references_state
+        self.reference = None
+        if references_state is not None:
+            table = dict(config.get('references') or {})
+            if references_state not in table:
+                raise KeyError(
+                    f'No validation reference declared for '
+                    f'{references_state!r}; the untracked sidecar '
+                    f'{self.recipe_id}_validation-references.yaml '
+                    f'declares: {sorted(table)}'
+                )
+            self.reference = dict(table[references_state])
+
+    # Configuration resolution
+
+    def _load_references_sidecar(self):
+        import yaml
+
+        from openplaces.path import recipe_path
+
+        base = recipe_path(
+            self.recipe.get('admin_id'),
+            self.recipe.get('entity') or self.recipe.get('dataset'),
+            # recipe_path prefixes the recipe id itself
+            filename='validation-references',
+        )
+        path = Path(str(base))
+        if path.suffix != '.yaml':
+            path = path.with_suffix('.yaml')
+        if not path.exists():
+            return {}
+        with open(path, encoding='utf-8') as f:
+            return yaml.safe_load(f) or {}
+
+    @property
+    def ground_truth_path(self):
+        from openplaces.core.schema import Entity
+        from openplaces.path import external_dir
+
+        spec = dict(self.config.get('ground_truth') or {})
+        entity = Entity(spec['entity_type'], spec['source'], str(spec['version']))
+        return external_dir(spec['admin_id'], entity=entity) / spec['filename']
+
+    def _cache_path(self, filename=None, **kwargs):
+        from openplaces.path import cache_path
+
+        return cache_path(
+            str(self.recipe.get('admin_id') or 'US'),
+            entity=self.recipe.get('entity'),
+            filename=filename,
+            **kwargs,
+        )
+
+    @property
+    def validation_dir(self):
+        return self._cache_path(as_dir=True)
+
+    @property
+    def linked_path(self):
+        return self._cache_path('validation-footprints')
+
+    @property
+    def baseline_path(self):
+        return self._cache_path('occupancy-baseline', default_extension='csv')
+
+    @property
+    def baseline_predictions_path(self):
+        return self._cache_path(
+            'occupancy-baseline-predictions', default_extension='csv'
+        )
+
+    # Reference tables (entity-keyed label pairs), from the sidecar
+
+    def _reference_dir(self):
+        from openplaces.core.schema import Entity
+        from openplaces.path import external_dir
+
+        if not self.reference:
+            raise ValueError(
+                'This context was built without references_state; pass '
+                "one, e.g. ValidationContext(recipe, 'NC')."
+            )
+        entity = Entity(
+            self.reference['entity_type'],
+            self.reference['source'],
+            str(self.reference['version']),
+        )
+        return external_dir(
+            self.reference['admin_id'], entity=entity
+        ) / self.reference.get('subdir', 'validation')
+
+    @property
+    def reference_region(self):
+        return self.reference['region'] if self.reference else None
+
+    @property
+    def reference_dir(self):
+        return self._reference_dir()
+
+    @property
+    def reference_strong_tiers(self):
+        return tuple(
+            (self.reference or {}).get(
+                'strong_tiers', ('1_id_strong', '2_id_weak', '3_addr_strong')
+            )
+        )
+
+    def reference_admin_ids(self):
+        """Admin units with a complete footprint+parcel pair on disk.
+
+        An incomplete pair means a mid-write unit, not a unit without
+        records, so it is skipped rather than read. The admin id
+        pattern is anchored to the sidecar's declared admin scope and
+        code width so files written under superseded id mints cannot
+        double-count their units.
+        """
+        import re
+
+        scope = self.reference['admin_id']
+        width = int(self.reference.get('admin_code_width', 3))
+        kinds = {}
+        for path in sorted(
+            self._reference_dir().glob(f'{scope}-*_occupancy_validation.parquet')
+        ):
+            match = re.match(
+                rf'({re.escape(scope)}-\w{{{width}}})_'
+                r'(footprint|parcel)_occupancy_validation',
+                path.stem,
+            )
+            if match:
+                kinds.setdefault(match.group(1), set()).add(match.group(2))
+        return sorted(c for c, k in kinds.items() if k == {'footprint', 'parcel'})
+
+    def load_reference(self, admin_id, kind='footprint'):
+        """Load one unit's entity-level reference labels, or None."""
+        path = self._reference_dir() / f'{admin_id}_{kind}_occupancy_validation.parquet'
+        if not path.exists():
+            return None
+        frame = pd.read_parquet(path)
+        frame.index.name = f'{kind}_id'
+        return frame
+
+    def reference_tier(self, frame):
+        """Confidence tier of loaded reference labels (module helper)."""
+        return reference_confidence_tier(frame)
+
+    # Stands in for "no class" when two class columns are compared, so a
+    # missing value on either side compares equal to itself and unequal
+    # to every real class.
+    _NO_CLASS = '<none>'
+
+    def link_ground_truth(self, counties=None, *, verbose=False, save=True):
+        """Link the hand-labelled points to curated entities, per unit.
+
+        Address identity is tried before proximity (see
+        :func:`link_points_to_entities`): the nearest footprint to a
+        survey pin is very often a shed or the neighbour's house.
+
+        Parameters
+        ----------
+        counties : tuple of str, optional
+            Admin units to link. Defaults to :meth:`survey_admin_ids`.
+        verbose : bool, optional
+            Report per-unit linkage counts.
+        save : bool, optional
+            Write the linked frame to :attr:`linked_path` (parquet, plus
+            a CSV sidecar for review). Default True.
+
+        Returns
+        -------
+        geopandas.GeoDataFrame
+            One row per linked point: the reference columns, every
+            curated column suffixed with :attr:`inventory_suffix`,
+            `matched_by`, and the derived comparison columns
+            `predicted`, `is_single_dwelling`, `validation_result`,
+            `occupancy_type_conflict_sources` and `sources_disagree`.
+            The geometry is the matched entity, not the reference pin.
+        """
+        import geopandas as gpd
+
+        import openplaces as op
+
+        counties = tuple(counties) if counties else self.survey_admin_ids()
+        admin1_id = str((self.config.get('ground_truth') or {}).get('admin_id') or '')
+        frames = []
+        crs = None
+        for admin_id in counties:
+            points = self.load_ground_truth((admin_id,))
+            if points.empty:
+                continue
+            entities = op.get_entities(
+                self.recipe_id, admin_id, geom=True, missing='ignore'
+            )
+            if entities is None or entities.empty:
+                if verbose:
+                    print(f'{admin_id}: no curated output on disk, skipped')
+                continue
+            crs = entities.crs
+            # reset_index carries the entity id through as a column, so
+            # a reference-table notebook can join on an id that is
+            # stable across branches.
+            linked = link_points_to_entities(
+                points,
+                entities.reset_index(),
+                max_distance_m=self.max_distance_m,
+                street_threshold=self.street_threshold,
+                admin1_id=admin1_id or None,
+                prefer_column=self.prefer_column,
+                prefer_values=self.prefer_values,
+            )
+            if linked.empty:
+                if verbose:
+                    print(f'{admin_id}: {len(points)} points, none linked')
+                continue
+            if verbose:
+                by_route = linked['matched_by'].value_counts()
+                print(
+                    f'{admin_id}: {len(linked)}/{len(points)} points linked '
+                    f'(address {by_route.get("address", 0)}, '
+                    f'distance {by_route.get("distance", 0)})'
+                )
+            frames.append(linked)
+
+        if not frames:
+            return gpd.GeoDataFrame()
+
+        suffix = self.inventory_suffix
+        linked = pd.concat(frames, ignore_index=True)
+        linked['predicted'] = self.collapse_bands(linked[f'occupancy_type{suffix}'])
+        linked['is_single_dwelling'] = linked['occupancy_type_canonical'].isin(
+            self.single_dwelling_classes
+        )
+        linked['validation_result'] = classify_validation_result(
+            linked['occupancy_type_canonical'], linked['predicted']
+        )
+
+        sources = self.source_values(linked)
+        linked['occupancy_type_conflict_sources'] = summarize_sources(
+            {'ground_truth': linked['occupancy_type_canonical'], **sources}
+        )
+        # Flag the rows worth reading by hand: any input that spoke and
+        # was overruled. Both sides compare through a sentinel: a row
+        # the vote declined to classify makes `ne` return pd.NA on a
+        # nullable column, and reading a missing vote as a disagreement
+        # is the intended answer, not a convenience.
+        predicted = linked['predicted'].astype(object).fillna(self._NO_CLASS)
+        disagree = pd.Series(False, index=linked.index)
+        for label, values in sources.items():
+            if label == 'final_vote':
+                continue
+            values = values.astype(object)
+            disagree |= values.notna() & values.fillna(self._NO_CLASS).ne(predicted)
+        linked['sources_disagree'] = disagree
+
+        # link_points_to_entities returns a plain DataFrame, so the
+        # matched geometry arrives as a CRS-less object column; restore
+        # it from the entities it came from.
+        linked = gpd.GeoDataFrame(
+            linked.drop(columns=f'geometry{suffix}'),
+            geometry=gpd.GeoSeries(linked[f'geometry{suffix}'], crs=crs),
+        )
+        if save:
+            self.validation_dir.mkdir(parents=True, exist_ok=True)
+            linked.to_parquet(self.linked_path)
+            linked.drop(columns='geometry').to_csv(
+                Path(str(self.linked_path)).with_suffix('.csv'), index=False
+            )
+            if verbose:
+                print(f'wrote {len(linked)} linked points to {self.linked_path}')
+        return linked
+
+    # Vocabulary
+
+    def collapse_bands(self, values):
+        """Map the inventory's finer class bands onto the reference's."""
+        return values.astype(object).replace(self.collapse)
+
+    def class_from_ruleset(self, terms, ruleset=None, **kwargs):
+        """Recipe-bound wrapper for the module-level class_from_ruleset."""
+        return class_from_ruleset(
+            self.recipe, terms, ruleset or self.class_map, **kwargs
+        )
+
+    # Survey ground truth
+
+    def survey_admin_ids(self):
+        """Admin units present in the ground-truth table, sorted.
+
+        Discovered rather than hardcoded: the table's own admin column
+        already reflects points that landed outside their declared
+        source sheet.
+        """
+        path = self.ground_truth_path
+        if not path.exists():
+            spec = dict(self.config.get('ground_truth') or {})
+            raise FileNotFoundError(
+                f'Ground truth not found at {path}. ' + spec.get('regenerate_hint', '')
+            )
+        admin_ids = pd.read_csv(path, usecols=['admin_id'])['admin_id']
+        return tuple(sorted(admin_ids.dropna().unique()))
+
+    def load_ground_truth(self, counties=None):
+        """Load the hand-labelled points, optionally restricted by unit."""
+        points = pd.read_csv(self.ground_truth_path)
+        points = points[points['admin_id'].notna()]
+        if counties:
+            points = points[points['admin_id'].isin(tuple(counties))]
+        return points.reset_index(drop=True)
+
+    # Sources and scoring
+
+    def source_values(self, linked):
+        """The vote and each input it arbitrates, on the reference vocabulary.
+
+        Parameters
+        ----------
+        linked : pandas.DataFrame
+            Linked frame carrying curated columns under
+            `inventory_suffix`.
+
+        Returns
+        -------
+        dict of str to pandas.Series
+            Source label to comparable class values, bands collapsed.
+        """
+        values = {
+            label: self.collapse_bands(linked[column])
+            for label, column in self.source_columns.items()
+            if column in linked.columns
+        }
+        for label, spec in self.derived_source_columns.items():
+            column = spec['column'] + self.inventory_suffix
+            if label in values or column not in linked.columns:
+                continue
+            derived = self.class_from_ruleset(
+                linked[column],
+                spec.get('ruleset', self.class_map),
+                reviewed_only=spec.get('reviewed_only', False),
+            )
+            if derived is not None:
+                values[label] = self.collapse_bands(derived)
+        count_col = self.dwelling_count_column
+        if count_col and count_col in linked.columns:
+            dwellings = pd.to_numeric(linked[count_col], errors='coerce')
+            values['overture'] = pd.Series(
+                [
+                    'Multi-Family' if n >= 2 else 'Single-Family'
+                    for n in dwellings.fillna(0)
+                ],
+                index=linked.index,
+                dtype=object,
+            )
+        return values
+
+    def score_sources(self, linked):
+        """Score the vote and each of its inputs against the hand labels."""
+        tables = []
+        for label, values in self.source_values(linked).items():
+            table = score_classification(
+                linked['occupancy_type_canonical'], values, list(self.classes)
+            )
+            table.insert(0, 'source', label)
+            tables.append(table)
+        return pd.concat(tables, ignore_index=True)
+
+    # Baseline bookkeeping for the paired gate
+
+    def save_baseline_predictions(self, linked, path=None):
+        """Write the accepted run's per-point predictions."""
+        path = Path(path or self.baseline_predictions_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        columns = [*self.prediction_key, 'occupancy_type_canonical', 'predicted']
+        linked[columns].to_csv(path, index=False)
+        return path
+
+    def load_baseline_predictions(self, path=None):
+        """Read the baseline predictions, failing with a how-to hint."""
+        path = Path(path or self.baseline_predictions_path)
+        if not path.exists():
+            raise FileNotFoundError(
+                f'No baseline predictions at {path}. Run the validation '
+                'once with --write_baseline to record the accepted run '
+                'before gating against it.'
+            )
+        return pd.read_csv(path)
+
+    def align_to_baseline(self, linked, baseline):
+        """Line the current run's predictions up with the baseline's.
+
+        Returns the points both runs share; points only one run has are
+        counted in the report rather than silently dropped, so the gate
+        cannot quietly score a different set of buildings than the
+        baseline did.
+        """
+        key = self.prediction_key
+        current = linked[[*key, 'occupancy_type_canonical', 'predicted']].copy()
+        merged = current.merge(
+            baseline, on=key, how='inner', suffixes=('', '_base'), validate='1:1'
+        )
+        report = {
+            'n_shared': len(merged),
+            'n_baseline_only': len(baseline) - len(merged),
+            'n_current_only': len(current) - len(merged),
+        }
+        report['n_truth_changed'] = int(
+            merged['occupancy_type_canonical']
+            .astype(object)
+            .ne(merged['occupancy_type_canonical_base'].astype(object))
+            .sum()
+        )
+        return (
+            merged['occupancy_type_canonical'],
+            merged['predicted_base'],
+            merged['predicted'],
+            report,
+        )
+
+    @staticmethod
+    def check_baseline_coverage(table, baseline):
+        """Fail loudly when a baseline row finds no counterpart in table.
+
+        The gate merges on (source, class); a source missing from the
+        scored table would silently shrink the comparison while the
+        gate still reports a pass.
+        """
+        expected = set(map(tuple, baseline[['source', 'class']].to_numpy()))
+        actual = set(map(tuple, table[['source', 'class']].to_numpy()))
+        missing = sorted(expected - actual)
+        if missing:
+            raise SystemExit(
+                f'FAIL: {len(missing)} baseline row(s) had no counterpart '
+                f'to compare against, so the gate would have scored only '
+                f'{len(actual)} of {len(expected)} rows: {missing}'
+            )
+
+
+def validation_context(recipe, references_state=None):
+    """Build a :class:`ValidationContext`; see the class docstring."""
+    return ValidationContext(recipe, references_state)

@@ -1094,8 +1094,8 @@ def derive_group_class_share(
     indicator column holds a measurement and every cutoff lives in the vote
     that reads it.
 
-    Method note, and why this shape rather than a more obvious one
-    -------------------------------------------------------------
+    Method note: why not the obvious spatial shape
+    ----------------------------------------------
     The grouping is a **groupby on an identifier the entity already carries**
     -- a census block, a parcel, any space-partitioning id assigned upstream
     by ``link_geographic_ids``. It performs no geometric operation of its own:
@@ -1106,9 +1106,9 @@ def derive_group_class_share(
     neighbors, is a technique shape with active patents in the property-data
     space (see the patent-risk section of ``AGENTS.md``); aggregating a
     statistic within a published administrative unit is both mechanistically
-    different and far older practice. Where a radius-based neighborhood and a
+    different and far older practice. A radius-based neighborhood and a
     block-level groupby answer the question about equally well -- measured on
-    Harris County, TX, they agree closely -- the groupby is preferred.
+    Harris County, TX, they agree closely -- so the groupby wins.
 
     It is also the same mechanism
     :func:`flag_manufactured_home_communities` already uses, one column over,

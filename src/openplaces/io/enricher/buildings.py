@@ -148,9 +148,15 @@ def enrich_footprints_from_reference_buildings(
     # Carrying them through the overlay would collide wherever the spine
     # already has a column of the same name (n_stories, year_built and
     # area_m2 all recur).
-    pairs = overlay_polygons(
-        state.spine[['geometry']], reference[['geometry']], iou=True
-    )
+    ref_geo = reference[['geometry']]
+    if ref_geo.index.name == state.spine.index.name:
+        # A reference of the spine's own entity type (NCDPS footprints
+        # enriching the footprint spine) shares the index name, which
+        # the overlay refuses as ambiguous. The reference's ids are only
+        # used to pull attributes back out below, so a disambiguated
+        # name is free.
+        ref_geo = ref_geo.rename_axis(f'{ref_geo.index.name}_reference')
+    pairs = overlay_polygons(state.spine[['geometry']], ref_geo, iou=True)
     if state.timer:
         state.timer.mark('overlay footprints against reference buildings')
     if pairs.empty:

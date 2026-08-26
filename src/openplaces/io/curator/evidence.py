@@ -142,6 +142,15 @@ def _apportioned_sources(pairs, ref, ref_key, ref_cols, spine_id_col, index):
     out = {}
     for col, side in sides.items():
         tokens = dominant.map(lookup[side]).reindex(index).astype(object)
+        # Record the entity-crossing hop the same way geometry_source
+        # does (`parcel.pamlicocounty`): the token names the lane and
+        # the dataset it carried, so `parcel.floridagio` and the flat
+        # `parcel` fallback read as one lane instead of two vocabularies
+        # in one column. The `+imputed` marker splits on `+`, so the dot
+        # is invisible to is_imputed.
+        tokens = tokens.map(
+            lambda t: t if pd.isna(t) or str(t).startswith('parcel') else f'parcel.{t}'
+        )
         contributed = is_imputed(pairs['parcel_id'].map(lookup[side]))
         any_imputed = (
             contributed.groupby(pairs[spine_id_col].to_numpy())

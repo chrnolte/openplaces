@@ -138,8 +138,11 @@ class TestApportionmentPropagation:
         )
         out = self._apportion(monkeypatch, tmp_path, footprints, sidecar, ref)
 
-        assert out.loc['F1', 'structure_value_source'] == 'improvement_value'
-        assert out.loc['F2', 'structure_value_source'] == '_is_residential+imputed'
+        # The apportionment hop is recorded lane-first, like geometry_source
+        assert out.loc['F1', 'structure_value_source'] == 'parcel.improvement_value'
+        assert (
+            out.loc['F2', 'structure_value_source'] == 'parcel._is_residential+imputed'
+        )
         assert not is_imputed(out['structure_value_source']).loc['F1']
         assert is_imputed(out['structure_value_source']).loc['F2']
 
@@ -172,7 +175,10 @@ class TestApportionmentPropagation:
         )
         out = self._apportion(monkeypatch, tmp_path, footprints, sidecar, ref)
 
-        assert out.loc['F1', 'structure_value_source'] == 'improvement_value+imputed'
+        assert (
+            out.loc['F1', 'structure_value_source']
+            == 'parcel.improvement_value+imputed'
+        )
         assert is_imputed(out['structure_value_source']).loc['F1']
 
     def test_a_sub_threshold_sliver_does_not_contaminate_the_token(
@@ -202,7 +208,8 @@ class TestApportionmentPropagation:
         )
         out = self._apportion(monkeypatch, tmp_path, footprints, sidecar, ref)
 
-        assert out.loc['F1', 'structure_value_source'] == 'improvement_value'
+        # The apportionment hop is recorded lane-first, like geometry_source
+        assert out.loc['F1', 'structure_value_source'] == 'parcel.improvement_value'
 
     def test_reference_without_a_sidecar_writes_no_sidecar(self, monkeypatch, tmp_path):
         footprints = self._footprints(['P1'], ['F1'])
