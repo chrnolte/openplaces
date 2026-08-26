@@ -24,6 +24,7 @@ from openlocationcode import openlocationcode as olc
 from pandas.api.types import is_float_dtype
 
 from openplaces.geo.polygon import reproject
+from openplaces.path import spine_path
 from openplaces.table import add_unique_suffix
 
 # Default area/compactness quantization, expressed as the historical hardcoded
@@ -591,12 +592,144 @@ def _parcel_id_patterns() -> pd.DataFrame:
     return patterns[patterns['active'] == 1].set_index('pattern')
 
 
+# Admin levels `parcel_id_links.csv` keys on: county-or-town,
+# municipality.
+_PARCEL_ID_LINK_LEVELS = (3, 4)
+
+
+@cache
+def _parcel_id_link_units() -> dict[tuple[str, str], str]:
+    """Map each unit's national code to the admin id it holds *today*.
+
+    Keyed on (country, code) because a national code means nothing outside
+    the scheme that issued it -- Colombia's DANE codes are five digits, like
+    a US county FIPS, so an unscoped lookup pairs Greene County, Arkansas
+    with Argelia, Antioquia.
+    """
+    units: dict[tuple[str, str], str] = {}
+    for level in _PARCEL_ID_LINK_LEVELS:
+        column = f'admin{level}_id'
+        spine = pd.read_csv(
+            spine_path(level),
+            dtype=str,
+            keep_default_na=False,
+            usecols=[column, f'{column}_admin1'],
+        )
+        for admin_id, code in zip(spine[column], spine[f'{column}_admin1']):
+            if code:
+                units.setdefault((admin_id.split('-')[0], code), admin_id)
+    return units
+
+
+# Achieved linkage below which a `parcel_id_local` join is treated as
+# not yet solved for that admin unit. The bundled conversions were
+# measured on one vintage of one pair of sources; a newly ingested source
+# for the same county can carry a differently formatted id, and the join
+# then quietly returns few rows rather than failing. Anything under this
+# is worth re-deriving from the data actually in hand -- see
+# `geo.build_parcel_id_links.recheck_parcel_id_links`.
+PARCEL_ID_RELINK_THRESHOLD = 0.9
+
+# The two sides of a parcel-to-tax join, as `_resolve_instruction` names
+# them.
+_PARCEL_ID_KINDS = ('parcel', 'tax')
+
+# What identifies one conversion, independently of the unit it applies to.
+_PARCEL_ID_RULE_COLUMNS = ['pattern', 'conv', 'source_column']
+
+
+@cache
+def _parcel_id_link_table() -> pd.DataFrame:
+    """The bundled conversions, on the admin ids the spine names today.
+
+    One row per (unit, kind), each drawn from the smallest library of
+    distinct conversions that still lets every unit reach the best match
+    rate its source measured (see `geo/import_parcel_id_links.py`).
+
+    The table is keyed on the unit's own national code, not on its admin
+    id, and the admin id is resolved against the live spine here. Keying
+    the file on an identifier openplaces mints let three successive
+    re-mints retarget it by string: 163 ids ended up duplicated, 54 named
+    no live unit, and twenty rows carried a neighboring county's rule
+    after an initials-based code collision (Broward taking Bradford's).
+    Resolving through the code makes a re-mint a no-op for this file.
+    The `admin_id` and `name` columns are carried for readability and are
+    joined on by nothing; `tests/geo/test_parcel_id_links.py` keeps them
+    honest.
+    """
+    links = pd.read_csv(
+        _PARCEL_ID_DIR / 'parcel_id_links.csv', dtype=str, keep_default_na=False
+    )
+    units = _parcel_id_link_units()
+    links['admin_id'] = [
+        units.get((country, code))
+        for country, code in zip(links['country_id'], links['admin_id_admin1'])
+    ]
+    return links[links['admin_id'].notna()].copy()
+
+
+def parcel_id_link_library() -> pd.DataFrame:
+    """Return the distinct conversions the bundled table draws on.
+
+    A few hundred rules covering every county the source measured, rather
+    than one rule per county: the same conversion serves many places, and
+    the import deliberately picks a small shared vocabulary over a large
+    per-county one. This is the set worth trying against a newly ingested
+    source whose ids do not fit the rule its unit was given.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Columns `pattern`, `conv`, `source_column`, `kind`, and
+        `n_units`, most widely used first.
+    """
+    table = _parcel_id_link_table()
+    counts = (
+        table.groupby([*_PARCEL_ID_RULE_COLUMNS, 'kind'])
+        .size()
+        .reset_index(name='n_units')
+    )
+    return counts.sort_values('n_units', ascending=False, ignore_index=True)
+
+
 @cache
 def _parcel_id_links() -> pd.DataFrame:
-    """Default per-admin-unit conversions (parcel + tax kinds), by admin_id."""
-    return pd.read_csv(_PARCEL_ID_DIR / 'parcel_id_links.csv', dtype=str).set_index(
-        'admin_id'
-    )
+    """Default per-admin-unit conversions (parcel + tax kinds), by admin_id.
+
+    The table's one rule per unit and kind, widened back into the
+    `pattern_{kind}`/`conv_{kind}` columns `_resolve_instruction` reads.
+    """
+    table = _parcel_id_link_table()
+    sides = []
+    for kind in _PARCEL_ID_KINDS:
+        side = table[table['kind'] == kind].set_index('admin_id')
+        duplicated = side.index.duplicated(keep=False)
+        if duplicated.any():
+            raise ValueError(
+                f'parcel_id_links.csv resolves {int(duplicated.sum())} '
+                f'{kind} rows onto {side.index[duplicated].nunique()} shared '
+                f'admin ids (first: {side.index[duplicated][0]}). Two rules '
+                'for one unit means at least one describes a unit it does '
+                'not name, and the wrong conversion produces a plausible key '
+                'that joins to nothing. Rebuild with '
+                '`python -m openplaces.geo.import_parcel_id_links`.'
+            )
+        sides.append(
+            side[_PARCEL_ID_RULE_COLUMNS].rename(
+                columns={
+                    'pattern': f'pattern_{kind}',
+                    'conv': f'conv_{kind}',
+                    'source_column': f'source_column_{kind}',
+                }
+            )
+        )
+    links = pd.concat(sides, axis=1)
+    # The file is read as literal text so that a code is never mistaken
+    # for a missing value, but an absent instruction has to stay absent:
+    # an empty `conv` means "apply this row's pattern and join with
+    # '|'", which is not what the `or 'simple'` fallback in
+    # `_resolve_instruction` would make of an empty string.
+    return links.replace('', pd.NA)
 
 
 def _pattern_regex(pattern) -> str:
