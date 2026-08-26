@@ -25,35 +25,50 @@ class TestAuditSpine:
         assert report.loc[4, 'reproduced'] == report.loc[4, 'units']
 
 
+def _name_by_id(level=3):
+    """Map every live admin id at *level* to the unit it names."""
+    live = _read(level)
+    column = f'admin{level}_id'
+    return dict(zip(live[column], live['name']))
+
+
+def _resolves_to(identifier, name, **kwargs):
+    """Assert that *identifier* resolves to the unit called *name*.
+
+    Every assertion in this class is written this way on purpose. What
+    the resolver promises is about *units*, not about strings, and an
+    expected code frozen into a test goes stale on the next re-mint
+    without saying so: these tests pinned `US-NY-LG` and `US-NC-LG` until
+    a re-mint moved both, at which point they asserted the wrong county.
+    """
+    resolved = resolve_identifier(identifier, **kwargs)
+    assert resolved is not None, f'{identifier} resolved to nothing'
+    assert _name_by_id().get(resolved) == name, (
+        f'{identifier} resolved to {resolved}, which names '
+        f'{_name_by_id().get(resolved)!r}, not {name!r}'
+    )
+
+
 class TestResolveIdentifier:
     def test_resolution_follows_the_unit_the_id_used_to_name(self):
-        # There is deliberately no "this id looks live, keep it" shortcut.
-        # US-NY-LG named Allegany before the rebuild and names Albany
-        # after it, so resolving it must return *Allegany's* new id --
-        # returning the unchanged string would silently hand a caller the
-        # wrong county.
-        assert resolve_identifier('US-NY-LG') == 'US-NY-LG'
+        # There is deliberately no "this id looks live, keep it"
+        # shortcut. US-NY-LG named Allegany before the rebuild and names
+        # a different county after it, so resolving it must land on
+        # *Allegany* -- returning the unchanged string would silently
+        # hand a caller the wrong county.
+        _resolves_to('US-NY-LG', 'Allegany')
 
     def test_a_retired_identifier_resolves_by_name(self):
         # US-NC-AL was Alamance before the rebuild.
-        assert resolve_identifier('US-NC-AL') == 'US-NC-LG'
+        _resolves_to('US-NC-AL', 'Alamance')
 
     def test_a_recycled_identifier_follows_the_unit_not_the_string(self):
-        # US-NC-HD named Hyde before the rebuild and names a different
-        # county now. Resolving it must land on Hyde, never on the unit
-        # that happens to hold the string today.
-        #
-        # Asserted against the *unit* rather than a fixed code: a
-        # re-mint moves codes, and an expected value frozen here would
-        # go stale silently. It already did once -- Hyde was US-NC-HY
-        # until the weighted re-mint, and US-NC-HY is now Haywood, so
-        # the old literal would have asserted the wrong county.
-        live = _read(3)
-        name_by_id = dict(zip(live['admin3_id'], live['name']))
-
-        resolved = resolve_identifier('US-NC-HD')
-        assert name_by_id[resolved] == 'Hyde'
-        assert name_by_id['US-NC-HD'] != 'Hyde', (
+        # US-NC-HD named Hyde before the rebuild. Resolving it must land
+        # on Hyde, never on whatever unit happens to hold the string
+        # today.
+        name_by_id = _name_by_id()
+        _resolves_to('US-NC-HD', 'Hyde')
+        assert name_by_id.get('US-NC-HD') != 'Hyde', (
             'US-NC-HD still names Hyde, so this no longer tests recycling'
         )
 
@@ -62,10 +77,7 @@ class TestResolveIdentifier:
 
     def test_extra_name_knowledge_can_be_supplied(self):
         assert resolve_identifier('XX-YY-ZZ') is None
-        assert (
-            resolve_identifier('US-NY-QQ', past_names={'US-NY-QQ': 'Albany'})
-            == 'US-NY-LG'
-        )
+        _resolves_to('US-NY-QQ', 'Albany', past_names={'US-NY-QQ': 'Albany'})
 
     def test_a_unit_whose_level_disappeared_still_resolves(self):
         # Connecticut's towns moved from level 4 to level 3 when the

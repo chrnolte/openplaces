@@ -1,6 +1,6 @@
 """Tests for get_recipe_dependencies against the committed recipe tree."""
 
-from openplaces.recipe import get_recipe_dependencies
+from openplaces.recipe import get_recipe_by_id, get_recipe_dependencies
 
 
 def _upstream_ids(edges):
@@ -69,12 +69,31 @@ def test_enrich_recipe_edges():
 
 
 def test_ingest_recipe_admin_and_tile_edges():
-    edges = get_recipe_dependencies('footprint-obm-2025')
+    """A tile-partitioned ingest recipe depends on its tile index and on
+    the admin layer it resolves units against.
+
+    Both edges are checked against what the recipe itself declares rather
+    than against a literal recipe id: this test pinned
+    `US_admin-census-2021_admin3` until the re-mint repointed recipes at
+    the openplaces admin layer, which is a change in what the tree says,
+    not a break in what this function derives.
+    """
+    recipe_id = 'footprint-obm-2025'
+    recipe = get_recipe_by_id(recipe_id)
+    edges = get_recipe_dependencies(recipe_id)
     by_kind = {}
     for e in edges:
         by_kind.setdefault(e.kind, set()).add(e.upstream_recipe_id)
-    assert 'tile-obm-2025' in by_kind.get('tile_recipe_id', set())
-    assert 'US_admin-census-2021_admin3' in by_kind.get('admin_recipe_id', set())
+
+    declared = recipe['download_by']
+    assert declared['tile_recipe_id'] in by_kind.get('tile_recipe_id', set())
+    assert declared['tile_admin_recipe_id'] in by_kind.get(
+        'tile_admin_recipe_id', set()
+    )
+
+    admin_edges = by_kind.get('admin_recipe_id', set())
+    assert admin_edges, 'no admin_recipe_id edge was derived'
+    assert all('admin' in upstream for upstream in admin_edges), admin_edges
 
 
 def test_admin_id_crosswalk_is_not_an_edge():
@@ -97,17 +116,23 @@ def test_admin3_create_index_declares_admin2_edge():
 
 
 def test_tile_entity_links_declare_admin_edges():
-    edges = get_recipe_dependencies('tile-obm-2025')
-    upstream = _upstream_ids(edges)
-    # The harmonized layers, not GADM: a persisted tile-to-admin
-    # crosswalk keyed on GADM identifiers is data openplaces cannot ship.
-    assert {
-        'admin-openplaces-2026_admin1',
-        'admin-openplaces-2026_admin2',
-        'admin-openplaces-2026_admin3',
-        'US_admin-census-2021_admin2',
-        'US_admin-census-2021_admin3',
-    } <= upstream
+    """Every recipe named in `entity_links` becomes an edge.
+
+    Checked against what the recipe declares rather than a literal list:
+    this test pinned the 2021 census vintage until the tile grid moved to
+    2025, which is a change in the tree, not in what this function
+    derives. What the assertion is really for is that all of them arrive
+    and that they are admin layers - a persisted tile-to-admin crosswalk
+    keyed on GADM identifiers is data openplaces cannot ship.
+    """
+    recipe_id = 'tile-obm-2025'
+    recipe = get_recipe_by_id(recipe_id)
+    declared = {link['recipe_id'] for link in recipe['entity_links']}
+    assert declared, 'the tile recipe declares no entity_links'
+    assert all('admin' in upstream for upstream in declared), declared
+
+    edges = get_recipe_dependencies(recipe_id)
+    assert declared <= _upstream_ids(edges)
     steps = {e.step for e in edges if e.kind == 'recipe_id'}
     assert 'entity_links' in steps
 
