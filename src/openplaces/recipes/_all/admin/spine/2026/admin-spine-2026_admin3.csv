@@ -46104,43 +46104,43 @@ US-VA-WA,Washington,County,,,51191,anchor
 US-VA-WY,Wythe,County,,,51197,name
 US-VA-YO,York,County,,,51199,name
 US-VT-ADD,Addison,Town,,,5000100325,name
-US-VT-ALH,Alburgh,Town,,,5001300860,name.ends
-US-VT-ALB,Albany,Town,,,5001900475,name
+US-VT-ALB,Alburgh,Town,,,5001300860,name.ends
+US-VT-ALY,Albany,Town,,,5001900475,name
 US-VT-AND,Andover,Town,,,5002701300,name
 US-VT-ARL,Arlington,Town,,,5000301450,name
 US-VT-ATH,Athens,Town,,,5002501900,name
 US-VT-AVE,Averill,Town,,,5000902125,name
 US-VT-AVS,Avery's,,,,5000902162,compound
-US-VT-BAE,Barre city,City,,,5002303175,name.ends
+US-VT-BAR,Barre city,City,,,5002303175,name.ends
 US-VT-BAD,Barnard,Town,,,5002702725,name.ends
 US-VT-BAK,Bakersfield,Town,,,5001102500,name
 US-VT-BAL,Baltimore,Town,,,5002702575,name
 US-VT-BAN,Barton,Town,,,5001903550,name.ends
 US-VT-BAT,Barnet,Town,,,5000502875,name.ends
-US-VT-BAR,Barre town,Town,,,5002303250,name
+US-VT-BAE,Barre town,Town,,,5002303250,name
 US-VT-BEE,Berkshire,Town,,,5001105425,name.ends
 US-VT-BEL,Belvidere,Town,,,5001504375,name
-US-VT-BNG,Bennington,Town,,,5000304825,skeleton
+US-VT-BEN,Bennington,Town,,,5000304825,skeleton
 US-VT-BER,Berlin,Town,,,5002305650,name
 US-VT-BET,Bethel,Town,,,5002705800,name
 US-VT-BLO,Bloomfield,Town,,,5000906325,name
-US-VT-BEN,Benson,Town,,,5002105200,name
+US-VT-BNS,Benson,Town,,,5002105200,name
 US-VT-BOL,Bolton,Town,,,5000706550,name
 US-VT-BRA,Brattleboro,Town,,,5002507900,name
-US-VT-BRF,Bradford,Town,,,5001707375,any3
+US-VT-BRD,Bradford,Town,,,5001707375,any3
 US-VT-BRE,Braintree,Town,,,5001707600,name.ends
-US-VT-BRI,Brighton,Town,,,5000908725,name
-US-VT-BRO,Brookline,Town,,,5002509475,name
-US-VT-BRL,Bristol,Town,,,5000109025,name.ends
+US-VT-BRG,Brighton,Town,,,5000908725,name
+US-VT-BRK,Brookline,Town,,,5002509475,name
+US-VT-BRI,Bristol,Town,,,5000109025,name.ends
 US-VT-BRN,Brandon,Town,,,5002107750,name.ends
-US-VT-BRD,Brookfield,Town,,,5001709325,name.ends
+US-VT-BRO,Brookfield,Town,,,5001709325,name.ends
 US-VT-BRR,Bridgewater,Town,,,5002708275,name.ends
 US-VT-BRT,Bridport,Town,,,5000108575,name.ends
 US-VT-BRU,Brunswick,Town,,,5000910075,name
 US-VT-BRW,Brownington,Town,,,5001909850,skeleton
-US-VT-BUR,Burke,Town,,,5000510450,name
-US-VT-BUN,Burlington,City,,,5000710675,name.ends
-US-VT-BUE,Buels,,,,5000710300,name
+US-VT-BUE,Burke,Town,,,5000510450,name
+US-VT-BUR,Burlington,City,,,5000710675,name.ends
+US-VT-BUS,Buels,,,,5000710300,name
 US-VT-CAB,Cabot,Town,,,5002311125,name
 US-VT-CAL,Calais,Town,,,5002311350,name
 US-VT-CAM,Cambridge,Town,,,5001511500,name
@@ -46148,10 +46148,10 @@ US-VT-CAN,Canaan,Town,,,5000911800,name
 US-VT-CAS,Castleton,Town,,,5002111950,name
 US-VT-CAV,Cavendish,Town,,,5002712250,name
 US-VT-CHA,Charlotte,Town,,,5000713300,name
-US-VT-CHE,Chelsea,Town,,,5001713525,name
+US-VT-CHL,Chelsea,Town,,,5001713525,name
 US-VT-CHI,Chittenden,Town,,,5002114350,name
 US-VT-CHN,Charleston,Town,,,5001913150,name.ends
-US-VT-CHR,Chester,Town,,,5002713675,name.ends
+US-VT-CHE,Chester,Town,,,5002713675,name.ends
 US-VT-CLA,Clarendon,Town,,,5002114500,name
 US-VT-COH,Corinth,Town,,,5001715700,name.ends
 US-VT-COL,Colchester,Town,,,5000714875,name
@@ -46159,8 +46159,8 @@ US-VT-CON,Concord,Town,,,5000915250,name
 US-VT-COR,Cornwall,Town,,,5000116000,name
 US-VT-COV,Coventry,Town,,,5001916150,name
 US-VT-CRA,Craftsbury,Town,,,5001916300,name
-US-VT-DAE,Danville,Town,,,5000517125,name.ends
-US-VT-DAN,Danby,Town,,,5002116825,name
+US-VT-DAN,Danville,Town,,,5000517125,name.ends
+US-VT-DAY,Danby,Town,,,5002116825,name
 US-VT-DER,Derby,Town,,,5001917350,name
 US-VT-DOR,Dorset,Town,,,5000317725,name
 US-VT-DOV,Dover,Town,,,5002517875,name
@@ -46186,19 +46186,19 @@ US-VT-GEO,Georgia,Town,,,5001127700,name
 US-VT-GLA,Glastenbury,Town,,,5000327962,name
 US-VT-GLO,Glover,Town,,,5001928075,name
 US-VT-GOS,Goshen,Town,,,5000128600,name
-US-VT-GRA,Granville,Town,,,5000129575,name
+US-VT-GRN,Granville,Town,,,5000129575,name
 US-VT-GRE,Greensboro,Town,,,5001930175,name
 US-VT-GRI,Grand Isle,Town,,,5001329275,compound
-US-VT-GRN,Grafton,Town,,,5002528900,name.ends
+US-VT-GRA,Grafton,Town,,,5002528900,name.ends
 US-VT-GRO,Groton,Town,,,5000530550,name
 US-VT-GRY,Granby,Town,,,5000929125,name.ends
-US-VT-GUD,Guilford,Town,,,5002530925,name.ends
-US-VT-GUI,Guildhall,Town,,,5000930775,name
-US-VT-HAR,Hartland,Town,,,5002732425,name
+US-VT-GUI,Guilford,Town,,,5002530925,name.ends
+US-VT-GUL,Guildhall,Town,,,5000930775,name
+US-VT-HAD,Hartland,Town,,,5002732425,name
 US-VT-HAK,Hardwick,Town,,,5000531825,name.ends
 US-VT-HAL,Halifax,Town,,,5002531150,name
 US-VT-HAN,Hancock,Town,,,5000131525,name
-US-VT-HAD,Hartford,Town,,,5002732275,name.ends
+US-VT-HAR,Hartford,Town,,,5002732275,name.ends
 US-VT-HIG,Highgate,Town,,,5001133025,name
 US-VT-HIN,Hinesburg,Town,,,5000733475,name
 US-VT-HOL,Holland,Town,,,5001933775,name
@@ -46226,8 +46226,8 @@ US-VT-LUN,Lunenburg,Town,,,5000941425,name
 US-VT-LYN,Lyndon,Town,,,5000541725,name
 US-VT-MAI,Maidstone,Town,,,5000942475,name
 US-VT-MAN,Manchester,Town,,,5000342850,name
-US-VT-MAR,Marlboro,Town,,,5002543375,name
-US-VT-MAD,Marshfield,Town,,,5002343600,name.ends
+US-VT-MAO,Marlboro,Town,,,5002543375,name
+US-VT-MAR,Marshfield,Town,,,5002343600,name.ends
 US-VT-MEN,Mendon,Town,,,5002144125,name
 US-VT-MID,Middlebury,Town,,,5000144350,name
 US-VT-MIL,Milton,Town,,,5000745250,name
@@ -46236,11 +46236,11 @@ US-VT-MIX,Middlesex,Town,,,5002344500,name.ends
 US-VT-MNK,Monkton,Town,,,5000145550,skeleton
 US-VT-MOH,Mount Holly,Town,,,5002147200,compound
 US-VT-MON,Montpelier,City,,,5002346000,name
-US-VT-MRS,Morristown,Town,,,5001546675,skeleton
+US-VT-MOR,Morristown,Town,,,5001546675,skeleton
 US-VT-MOT,Mount Tabor,Town,,,5002147425,compound
 US-VT-MOY,Montgomery,Town,,,5001145850,name.ends
 US-VT-MRG,Morgan,Town,,,5001946450,skeleton
-US-VT-MOR,Moretown,Town,,,5002346225,name
+US-VT-MRT,Moretown,Town,,,5002346225,name
 US-VT-NEW,Newport city,City,,,5001948850,name
 US-VT-NEE,Newfane,Town,,,5002548400,name.ends
 US-VT-NEK,Newark,Town,,,5000547725,name.ends
@@ -46248,8 +46248,8 @@ US-VT-NET,Newport town,Town,,,5001948925,anchor
 US-VT-NEY,Newbury,Town,,,5001748175,name.ends
 US-VT-NHA,New Haven,Town,,,5000148700,qualifier
 US-VT-NHE,North Hero,Town,,,5001350650,qualifier
-US-VT-NOD,Northfield,Town,,,5002350275,name.ends
-US-VT-NOR,Norton,Town,,,5000952750,name
+US-VT-NOR,Northfield,Town,,,5002350275,name.ends
+US-VT-NON,Norton,Town,,,5000952750,name
 US-VT-NOH,Norwich,Town,,,5002752900,name.ends
 US-VT-ORA,Orange,Town,,,5001753425,name
 US-VT-ORW,Orwell,Town,,,5000153725,name
@@ -46257,8 +46257,8 @@ US-VT-PAN,Panton,Town,,,5000153950,name
 US-VT-PAW,Pawlet,Town,,,5002154250,name
 US-VT-PEA,Peacham,Town,,,5000554400,name
 US-VT-PER,Peru,Town,,,5000355000,name
-US-VT-PIT,Pittsfield,Town,,,5002155450,name
-US-VT-PID,Pittsford,Town,,,5002155600,name.ends
+US-VT-PID,Pittsfield,Town,,,5002155450,name
+US-VT-PIT,Pittsford,Town,,,5002155600,name.ends
 US-VT-PLA,Plainfield,Town,,,5002355825,name
 US-VT-PLY,Plymouth,Town,,,5002756050,name
 US-VT-POM,Pomfret,Town,,,5002756350,name
@@ -46269,41 +46269,41 @@ US-VT-PUT,Putney,Town,,,5002557700,name
 US-VT-RAN,Randolph,Town,,,5001758075,name
 US-VT-REA,Readsboro,Town,,,5000358600,name
 US-VT-REG,Reading,Town,,,5002758375,name.ends
-US-VT-RID,Richmond,Town,,,5000759275,name.ends
-US-VT-RIC,Richford,Town,,,5001159125,name
+US-VT-RIC,Richmond,Town,,,5000759275,name.ends
+US-VT-RID,Richford,Town,,,5001159125,name
 US-VT-RIP,Ripton,Town,,,5000159650,name
-US-VT-ROM,Rockingham,Town,,,5002560250,name.ends
-US-VT-ROC,Rochester,Town,,,5002760100,name
+US-VT-ROC,Rockingham,Town,,,5002560250,name.ends
+US-VT-ROR,Rochester,Town,,,5002760100,name
 US-VT-ROX,Roxbury,Town,,,5002360625,name
 US-VT-ROY,Royalton,Town,,,5002760850,name
 US-VT-RUT,Rutland city,City,,,5002161225,name
 US-VT-RUP,Rupert,Town,,,5000361000,name
 US-VT-RLT,Rutland town,Town,,,5002161300,anchor
 US-VT-RYE,Ryegate,Town,,,5000561525,name
-US-VT-ALS,St. Albans city,City,,,5001161675,saintless.name.ends
+US-VT-STA,St. Albans city,City,,,5001161675,saintless.name.ends
 US-VT-SAL,Salisbury,Town,,,5000162575,name
 US-VT-SAN,Sandgate,Town,,,5000362875,name
 US-VT-SAT,St. Albans town,Town,,,5001161750,anchor
 US-VT-SBU,South Burlington,City,,,5000766175,qualifier
 US-VT-SEA,Searsburg,Town,,,5000363175,name
-US-VT-SHA,Sharon,Town,,,5002763775,name
+US-VT-SHN,Sharon,Town,,,5002763775,name
 US-VT-SHD,Sheffield,Town,,,5000564075,name.ends
-US-VT-SHE,South Hero,Town,,,5001367000,qualifier
-US-VT-SHL,Shelburne,Town,,,5000764300,skeleton
-US-VT-SHN,Sheldon,Town,,,5001164600,name.ends
+US-VT-SOH,South Hero,Town,,,5001367000,qualifier
+US-VT-SHE,Shelburne,Town,,,5000764300,skeleton
+US-VT-SHL,Sheldon,Town,,,5001164600,name.ends
 US-VT-SHO,Shoreham,Town,,,5000165050,name
 US-VT-SHR,Shrewsbury,Town,,,5002165275,name
-US-VT-SHY,Shaftsbury,Town,,,5000363550,name.ends
+US-VT-SHA,Shaftsbury,Town,,,5000363550,name.ends
 US-VT-SOM,Somerset,Town,,,5002565762,name
 US-VT-SPR,Springfield,Town,,,5002769550,name
-US-VT-STA,Starksboro,Town,,,5000170075,name
-US-VT-STD,Stannard,Town,,,5000569925,name.ends
-US-VT-STO,Stockbridge,Town,,,5002770375,name
+US-VT-STK,Starksboro,Town,,,5000170075,name
+US-VT-SAA,Stannard,Town,,,5000569925,name.ends
+US-VT-STE,Stockbridge,Town,,,5002770375,name
 US-VT-STG,St. George,Town,,,5000762050,compound
 US-VT-STJ,St. Johnsbury,Town,,,5000562200,compound
-US-VT-STM,Stamford,Town,,,5000369775,skeleton
+US-VT-STD,Stamford,Town,,,5000369775,skeleton
 US-VT-STN,Stratton,Town,,,5002570750,name.ends
-US-VT-STE,Stowe,Town,,,5001570525,name.ends
+US-VT-STO,Stowe,Town,,,5001570525,name.ends
 US-VT-STR,Strafford,Town,,,5001770675,name
 US-VT-SUD,Sudbury,Town,,,5002171050,name
 US-VT-SUN,Sunderland,Town,,,5000371425,name
@@ -46320,23 +46320,23 @@ US-VT-VEE,Vershire,Town,,,5001774950,name.ends
 US-VT-VEN,Vernon,Town,,,5002574800,name.ends
 US-VT-VER,Vergennes,City,,,5000174650,name
 US-VT-VIC,Victory,Town,,,5000975175,name
-US-VT-WAD,Wallingford,Town,,,5002175925,name.ends
+US-VT-WAL,Wallingford,Town,,,5002175925,name.ends
 US-VT-WAE,Waterville,Town,,,5001577425,name.ends
 US-VT-WAI,Waitsfield,Town,,,5002375325,name
-US-VT-WAL,Walden,Town,,,5000575700,name
+US-VT-WLD,Walden,Town,,,5000575700,name
 US-VT-WAM,Waltham,Town,,,5000176075,name.ends
-US-VT-WSH,Washington,Town,,,5001776750,skeleton
+US-VT-WAN,Washington,Town,,,5001776750,skeleton
 US-VT-WAO,Wardsboro,Town,,,5002576225,name.ends
 US-VT-WAR,Warren,Town,,,5002376525,name
-US-VT-WAS,Warren's,,,,5000976562,compound
-US-VT-WAT,Waterford,Town,,,5000577125,name
-US-VT-WAY,Waterbury,Town,,,5002376975,name.ends
+US-VT-WRR,Warren's,,,,5000976562,compound
+US-VT-WAD,Waterford,Town,,,5000577125,name
+US-VT-WAT,Waterbury,Town,,,5002376975,name.ends
 US-VT-WEA,Weathersfield,Town,,,5002777500,name
-US-VT-WES,Westfield,Town,,,5001980200,name
+US-VT-WST,Westfield,Town,,,5001980200,name
 US-VT-WEE,Westmore,Town,,,5001981700,name.ends
 US-VT-WEL,Wells,Town,,,5002177950,name
 US-VT-WEN,Weston,Town,,,5002782000,name.ends
-US-VT-WER,Westminster,Town,,,5002581400,name.ends
+US-VT-WES,Westminster,Town,,,5002581400,name.ends
 US-VT-WED,Westford,Town,,,5000780350,name.ends
 US-VT-WEY,Weybridge,Town,,,5000183275,name
 US-VT-WFA,West Fairlee,Town,,,5001779975,qualifier
@@ -46344,19 +46344,19 @@ US-VT-WHA,West Haven,Town,,,5002180875,qualifier
 US-VT-WHE,Wheelock,Town,,,5000583500,name
 US-VT-WHG,Whiting,Town,,,5000183800,name.ends
 US-VT-WHI,Whitingham,Town,,,5002583950,name
-US-VT-WII,Winooski,City,,,5000785150,name.ends
-US-VT-WIL,Williamstown,Town,,,5001784175,name
-US-VT-WIM,Windham,Town,,,5002584850,name.ends
-US-VT-WIN,Winhall,Town,,,5000385075,name
+US-VT-WIN,Winooski,City,,,5000785150,name.ends
+US-VT-WLM,Williamstown,Town,,,5001784175,name
+US-VT-WND,Windham,Town,,,5002584850,name.ends
+US-VT-WNH,Winhall,Town,,,5000385075,name
 US-VT-WIR,Windsor,Town,,,5002784925,name.ends
-US-VT-WLM,Wilmington,Town,,,5002584700,skeleton
-US-VT-WLS,Williston,Town,,,5000784475,skeleton
+US-VT-WIM,Wilmington,Town,,,5002584700,skeleton
+US-VT-WIL,Williston,Town,,,5000784475,skeleton
 US-VT-WOD,Woodford,Town,,,5000385675,name.ends
 US-VT-WOL,Wolcott,Town,,,5001585375,name
-US-VT-WOK,Woodstock,Town,,,5002785975,name.ends
+US-VT-WOO,Woodstock,Town,,,5002785975,name.ends
 US-VT-WOR,Worcester,Town,,,5002386125,name
-US-VT-WOO,Woodbury,Town,,,5002385525,name
-US-VT-WAN,Warner's,,,,5000976337,any3
+US-VT-WOY,Woodbury,Town,,,5002385525,name
+US-VT-WAS,Warner's,,,,5000976337,any3
 US-VT-WRU,West Rutland,Town,,,5002182300,qualifier
 US-VT-WWI,West Windsor,Town,,,5002783050,qualifier
 US-WA-AD,Adams,County,,,53001,name

@@ -9823,16 +9823,16 @@ US,5000100325,US-VT-ADD,Addison,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.965
 US,5000100325,US-VT-ADD,Addison,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.965,767.0,836.0
 US,5000108575,US-VT-BRT,Bridport,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.884,726.0,678.0
 US,5000108575,US-VT-BRT,Bridport,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.884,726.0,678.0
-US,5000109025,US-VT-BRL,Bristol,parcel,auto,apn,Sx-Sx-Sx,,0.98,1563.0,1688.0
-US,5000109025,US-VT-BRL,Bristol,tax,auto,apn,Sx-Sx-Sx,,0.98,1563.0,1688.0
+US,5000109025,US-VT-BRI,Bristol,parcel,auto,apn,Sx-Sx-Sx,,0.98,1563.0,1688.0
+US,5000109025,US-VT-BRI,Bristol,tax,auto,apn,Sx-Sx-Sx,,0.98,1563.0,1688.0
 US,5000116000,US-VT-COR,Cornwall,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.822,742.0,632.0
 US,5000116000,US-VT-COR,Cornwall,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.822,742.0,632.0
 US,5000126300,US-VT-FER,Ferrisburgh,parcel,auto,apn,Ignored,simple,0.905,1561.0,1611.0
 US,5000126300,US-VT-FER,Ferrisburgh,tax,auto,apn,Ignored,simple,0.905,1561.0,1611.0
 US,5000128600,US-VT-GOS,Goshen,parcel,auto,apn,Sx-Sx-Sx,split_groups: 1|1 & drop_cols: 0 1_0 & skip_empty: 1,0.761,188.0,145.0
 US,5000128600,US-VT-GOS,Goshen,tax,auto,apn,Sx-Sx-Sx,split_groups: 1|1 & drop_cols: 0 1_0 & skip_empty: 1,0.761,188.0,145.0
-US,5000129575,US-VT-GRA,Granville,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.967,332.0,323.0
-US,5000129575,US-VT-GRA,Granville,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.967,332.0,323.0
+US,5000129575,US-VT-GRN,Granville,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.967,332.0,323.0
+US,5000129575,US-VT-GRN,Granville,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.967,332.0,323.0
 US,5000131525,US-VT-HAN,Hancock,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.962,265.0,262.0
 US,5000131525,US-VT-HAN,Hancock,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.962,265.0,262.0
 US,5000139325,US-VT-LEI,Leicester,parcel,auto,apn,Ignored,simple,0.926,794.0,789.0
@@ -9855,8 +9855,8 @@ US,5000162575,US-VT-SAL,Salisbury,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.953,7
 US,5000162575,US-VT-SAL,Salisbury,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.953,700.0,768.0
 US,5000165050,US-VT-SHO,Shoreham,parcel,auto,apn,Ignored,simple,0.942,694.0,757.0
 US,5000165050,US-VT-SHO,Shoreham,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.942,694.0,757.0
-US,5000170075,US-VT-STA,Starksboro,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.72,939.0,956.0
-US,5000170075,US-VT-STA,Starksboro,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.72,939.0,956.0
+US,5000170075,US-VT-STK,Starksboro,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.72,939.0,956.0
+US,5000170075,US-VT-STK,Starksboro,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.72,939.0,956.0
 US,5000174650,US-VT-VER,Vergennes,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.968,895.0,1016.0
 US,5000174650,US-VT-VER,Vergennes,tax,auto,apn,Ignored,simple,0.968,895.0,1016.0
 US,5000176075,US-VT-WAM,Waltham,parcel,auto,apn,Sx-Sx-Sx,,0.98,196.0,228.0
@@ -9867,8 +9867,8 @@ US,5000183800,US-VT-WHG,Whiting,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.955,222
 US,5000183800,US-VT-WHG,Whiting,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.955,222.0,227.0
 US,5000301450,US-VT-ARL,Arlington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.971,1368.0,1424.0
 US,5000301450,US-VT-ARL,Arlington,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.971,1368.0,1424.0
-US,5000304825,US-VT-BNG,Bennington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.926,5651.0,5985.0
-US,5000304825,US-VT-BNG,Bennington,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.926,5651.0,5985.0
+US,5000304825,US-VT-BEN,Bennington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.926,5651.0,5985.0
+US,5000304825,US-VT-BEN,Bennington,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.926,5651.0,5985.0
 US,5000317725,US-VT-DOR,Dorset,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.968,1557.0,1543.0
 US,5000317725,US-VT-DOR,Dorset,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.968,1557.0,1543.0
 US,5000327962,US-VT-GLA,Glastenbury,parcel,auto,apn,Ignored,simple,0.667,12.0,9.0
@@ -9889,22 +9889,22 @@ US,5000362875,US-VT-SAN,Sandgate,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3
 US,5000362875,US-VT-SAN,Sandgate,tax,auto,apn,Ignored,simple,0.953,361.0,354.0
 US,5000363175,US-VT-SEA,Searsburg,parcel,auto,apn,Ignored,simple,0.975,158.0,177.0
 US,5000363175,US-VT-SEA,Searsburg,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.975,158.0,177.0
-US,5000363550,US-VT-SHY,Shaftsbury,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,1815.0,1819.0
-US,5000363550,US-VT-SHY,Shaftsbury,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,1815.0,1819.0
-US,5000369775,US-VT-STM,Stamford,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.96,725.0,716.0
-US,5000369775,US-VT-STM,Stamford,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.96,725.0,716.0
+US,5000363550,US-VT-SHA,Shaftsbury,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,1815.0,1819.0
+US,5000363550,US-VT-SHA,Shaftsbury,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,1815.0,1819.0
+US,5000369775,US-VT-STD,Stamford,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.96,725.0,716.0
+US,5000369775,US-VT-STD,Stamford,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.96,725.0,716.0
 US,5000371425,US-VT-SUN,Sunderland,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.978,689.0,740.0
 US,5000371425,US-VT-SUN,Sunderland,tax,auto,apn,Sx-Sx-Sx,,0.978,689.0,740.0
-US,5000385075,US-VT-WIN,Winhall,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.95,1742.0,1991.0
-US,5000385075,US-VT-WIN,Winhall,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.95,1742.0,1991.0
+US,5000385075,US-VT-WNH,Winhall,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.95,1742.0,1991.0
+US,5000385075,US-VT-WNH,Winhall,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.95,1742.0,1991.0
 US,5000385675,US-VT-WOD,Woodford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.969,452.0,473.0
 US,5000385675,US-VT-WOD,Woodford,tax,auto,apn,Ignored,simple,0.969,452.0,473.0
 US,5000502875,US-VT-BAT,Barnet,parcel,auto,apn,Ignored,simple,0.868,1209.0,1154.0
 US,5000502875,US-VT-BAT,Barnet,tax,auto,apn,Ignored,simple,0.868,1209.0,1154.0
-US,5000510450,US-VT-BUR,Burke,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.967,1066.0,1283.0
-US,5000510450,US-VT-BUR,Burke,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.967,1066.0,1283.0
-US,5000517125,US-VT-DAE,Danville,parcel,auto,apn,Ignored,simple,0.926,1604.0,1572.0
-US,5000517125,US-VT-DAE,Danville,tax,auto,apn,Ignored,simple,0.926,1604.0,1572.0
+US,5000510450,US-VT-BUE,Burke,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.967,1066.0,1283.0
+US,5000510450,US-VT-BUE,Burke,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.967,1066.0,1283.0
+US,5000517125,US-VT-DAN,Danville,parcel,auto,apn,Ignored,simple,0.926,1604.0,1572.0
+US,5000517125,US-VT-DAN,Danville,tax,auto,apn,Ignored,simple,0.926,1604.0,1572.0
 US,5000530550,US-VT-GRO,Groton,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.947,809.0,796.0
 US,5000530550,US-VT-GRO,Groton,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.947,809.0,796.0
 US,5000531825,US-VT-HAK,Hardwick,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.926,1535.0,1537.0
@@ -9923,22 +9923,22 @@ US,5000562200,US-VT-STJ,St. Johnsbury,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 
 US,5000562200,US-VT-STJ,St. Johnsbury,tax,auto,apn,Sx-Sx-Sx,,0.958,2913.0,3036.0
 US,5000564075,US-VT-SHD,Sheffield,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.957,515.0,521.0
 US,5000564075,US-VT-SHD,Sheffield,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.957,515.0,521.0
-US,5000569925,US-VT-STD,Stannard,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.812,213.0,179.0
-US,5000569925,US-VT-STD,Stannard,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.812,213.0,179.0
+US,5000569925,US-VT-SAA,Stannard,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.812,213.0,179.0
+US,5000569925,US-VT-SAA,Stannard,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.812,213.0,179.0
 US,5000571575,US-VT-SUT,Sutton,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.977,598.0,614.0
 US,5000571575,US-VT-SUT,Sutton,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.977,598.0,614.0
-US,5000575700,US-VT-WAL,Walden,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.952,750.0,744.0
-US,5000575700,US-VT-WAL,Walden,tax,auto,apn,Ignored,simple,0.952,750.0,744.0
-US,5000577125,US-VT-WAT,Waterford,parcel,auto,apn,Ignored,simple,0.965,807.0,858.0
-US,5000577125,US-VT-WAT,Waterford,tax,auto,apn,Ignored,simple,0.965,807.0,858.0
+US,5000575700,US-VT-WLD,Walden,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.952,750.0,744.0
+US,5000575700,US-VT-WLD,Walden,tax,auto,apn,Ignored,simple,0.952,750.0,744.0
+US,5000577125,US-VT-WAD,Waterford,parcel,auto,apn,Ignored,simple,0.965,807.0,858.0
+US,5000577125,US-VT-WAD,Waterford,tax,auto,apn,Ignored,simple,0.965,807.0,858.0
 US,5000583500,US-VT-WHE,Wheelock,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.963,571.0,589.0
 US,5000583500,US-VT-WHE,Wheelock,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.963,571.0,589.0
 US,5000706550,US-VT-BOL,Bolton,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.919,484.0,795.0
 US,5000706550,US-VT-BOL,Bolton,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.919,484.0,795.0
-US,5000710300,US-VT-BUE,Buels,parcel,auto,apn,Ignored,simple,0.0,30.0,0.0
-US,5000710300,US-VT-BUE,Buels,tax,auto,apn,Empty,,0.0,30.0,0.0
-US,5000710675,US-VT-BUN,Burlington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.955,8490.0,11112.0
-US,5000710675,US-VT-BUN,Burlington,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.955,8490.0,11112.0
+US,5000710300,US-VT-BUS,Buels,parcel,auto,apn,Ignored,simple,0.0,30.0,0.0
+US,5000710300,US-VT-BUS,Buels,tax,auto,apn,Empty,,0.0,30.0,0.0
+US,5000710675,US-VT-BUR,Burlington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.955,8490.0,11112.0
+US,5000710675,US-VT-BUR,Burlington,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.955,8490.0,11112.0
 US,5000713300,US-VT-CHA,Charlotte,parcel,auto,apn,Sx-Sx-Sx,merge_after: 1 & skip_empty: 1,0.936,1726.0,1810.0
 US,5000713300,US-VT-CHA,Charlotte,tax,auto,apn,Sx-Sx-Sx,merge_after: 1 & skip_empty: 1,0.936,1726.0,1810.0
 US,5000714875,US-VT-COL,Colchester,parcel,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.923,5279.0,7117.0
@@ -9953,30 +9953,30 @@ US,5000736700,US-VT-JER,Jericho,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 
 US,5000736700,US-VT-JER,Jericho,tax,auto,apn,Ignored,simple,0.963,2064.0,2135.0
 US,5000745250,US-VT-MIL,Milton,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 1 & skip_empty: 1,0.887,4104.0,4494.0
 US,5000745250,US-VT-MIL,Milton,tax,auto,apn,Sx-Sx-Sx,drop_cols: 1 & skip_empty: 1,0.887,4104.0,4494.0
-US,5000759275,US-VT-RID,Richmond,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.944,1580.0,1759.0
-US,5000759275,US-VT-RID,Richmond,tax,auto,apn,Sx-Sx-Sx,,0.944,1580.0,1759.0
+US,5000759275,US-VT-RIC,Richmond,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.944,1580.0,1759.0
+US,5000759275,US-VT-RIC,Richmond,tax,auto,apn,Sx-Sx-Sx,,0.944,1580.0,1759.0
 US,5000762050,US-VT-STG,St. George,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.977,222.0,386.0
 US,5000762050,US-VT-STG,St. George,tax,auto,apn,Ignored,simple,0.977,222.0,386.0
-US,5000764300,US-VT-SHL,Shelburne,parcel,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|. & skip_empty: 1,0.966,2638.0,2997.0
-US,5000764300,US-VT-SHL,Shelburne,tax,auto,apn,Sx-Sx-Sx,,0.966,2638.0,2997.0
+US,5000764300,US-VT-SHE,Shelburne,parcel,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),split_groups: 1|. & skip_empty: 1,0.966,2638.0,2997.0
+US,5000764300,US-VT-SHE,Shelburne,tax,auto,apn,Sx-Sx-Sx,,0.966,2638.0,2997.0
 US,5000766175,US-VT-SBU,South Burlington,parcel,auto,apn,Ignored,simple,0.869,6190.0,7797.0
 US,5000766175,US-VT-SBU,South Burlington,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.869,6190.0,7797.0
 US,5000773975,US-VT-UND,Underhill,parcel,auto,apn,Ignored,simple,0.928,1409.0,1365.0
 US,5000773975,US-VT-UND,Underhill,tax,auto,apn,Ignored,simple,0.928,1409.0,1365.0
 US,5000780350,US-VT-WED,Westford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.913,1006.0,962.0
 US,5000780350,US-VT-WED,Westford,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.913,1006.0,962.0
-US,5000784475,US-VT-WLS,Williston,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.936,3131.0,4316.0
-US,5000784475,US-VT-WLS,Williston,tax,auto,apn,Ignored,simple,0.936,3131.0,4316.0
-US,5000785150,US-VT-WII,Winooski,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.906,1731.0,2083.0
-US,5000785150,US-VT-WII,Winooski,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.906,1731.0,2083.0
+US,5000784475,US-VT-WIL,Williston,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.936,3131.0,4316.0
+US,5000784475,US-VT-WIL,Williston,tax,auto,apn,Ignored,simple,0.936,3131.0,4316.0
+US,5000785150,US-VT-WIN,Winooski,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.906,1731.0,2083.0
+US,5000785150,US-VT-WIN,Winooski,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.906,1731.0,2083.0
 US,5000902125,US-VT-AVE,Averill,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.969,257.0,264.0
 US,5000902125,US-VT-AVE,Averill,tax,auto,apn,Sx-Sx-Sx,,0.969,257.0,264.0
 US,5000902162,US-VT-AVS,Avery's,parcel,auto,apn,Sx-Sx-Sx,,1.0,3.0,13.0
 US,5000902162,US-VT-AVS,Avery's,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,1.0,3.0,13.0
 US,5000906325,US-VT-BLO,Bloomfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.719,317.0,282.0
 US,5000906325,US-VT-BLO,Bloomfield,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.719,317.0,282.0
-US,5000908725,US-VT-BRI,Brighton,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.973,1076.0,1099.0
-US,5000908725,US-VT-BRI,Brighton,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.973,1076.0,1099.0
+US,5000908725,US-VT-BRG,Brighton,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.973,1076.0,1099.0
+US,5000908725,US-VT-BRG,Brighton,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.973,1076.0,1099.0
 US,5000910075,US-VT-BRU,Brunswick,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.966,146.0,151.0
 US,5000910075,US-VT-BRU,Brunswick,tax,auto,apn,Sx-Sx-Sx,,0.966,146.0,151.0
 US,5000911800,US-VT-CAN,Canaan,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.971,684.0,699.0
@@ -9989,8 +9989,8 @@ US,5000925975,US-VT-FED,Ferdinand,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.949,3
 US,5000925975,US-VT-FED,Ferdinand,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.949,39.0,85.0
 US,5000929125,US-VT-GRY,Granby,parcel,auto,apn,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1,0.931,131.0,145.0
 US,5000929125,US-VT-GRY,Granby,tax,auto,apn,Sx-Sx-Sx,split_groups: 2|3 & keep_length: 1 2_0 & merge_after: 0 0 & skip_empty: 1,0.931,131.0,145.0
-US,5000930775,US-VT-GUI,Guildhall,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.968,281.0,286.0
-US,5000930775,US-VT-GUI,Guildhall,tax,auto,apn,Sx-Sx-Sx,split_groups: 1|1 & drop_cols: 0 1_0 & skip_empty: 1,0.968,281.0,286.0
+US,5000930775,US-VT-GUL,Guildhall,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.968,281.0,286.0
+US,5000930775,US-VT-GUL,Guildhall,tax,auto,apn,Sx-Sx-Sx,split_groups: 1|1 & drop_cols: 0 1_0 & skip_empty: 1,0.968,281.0,286.0
 US,5000939700,US-VT-LEM,Lemington,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.993,135.0,145.0
 US,5000939700,US-VT-LEM,Lemington,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.993,135.0,145.0
 US,5000939775,US-VT-LEW,Lewis,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,1.0,3.0,39.0
@@ -9999,14 +9999,14 @@ US,5000941425,US-VT-LUN,Lunenburg,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.946,1
 US,5000941425,US-VT-LUN,Lunenburg,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.946,1013.0,1038.0
 US,5000942475,US-VT-MAI,Maidstone,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.976,380.0,375.0
 US,5000942475,US-VT-MAI,Maidstone,tax,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.976,380.0,375.0
-US,5000952750,US-VT-NOR,Norton,parcel,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.926,296.0,283.0
-US,5000952750,US-VT-NOR,Norton,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.926,296.0,283.0
+US,5000952750,US-VT-NON,Norton,parcel,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.926,296.0,283.0
+US,5000952750,US-VT-NON,Norton,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.926,296.0,283.0
 US,5000975175,US-VT-VIC,Victory,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.82,183.0,165.0
 US,5000975175,US-VT-VIC,Victory,tax,auto,apn,Sx-Sx-Sx,,0.82,183.0,165.0
-US,5000976337,US-VT-WAN,Warner's,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.667,3.0,3.0
-US,5000976337,US-VT-WAN,Warner's,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.667,3.0,3.0
-US,5000976562,US-VT-WAS,Warren's,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.936,47.0,56.0
-US,5000976562,US-VT-WAS,Warren's,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.936,47.0,56.0
+US,5000976337,US-VT-WAS,Warner's,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.667,3.0,3.0
+US,5000976337,US-VT-WAS,Warner's,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.667,3.0,3.0
+US,5000976562,US-VT-WRR,Warren's,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.936,47.0,56.0
+US,5000976562,US-VT-WRR,Warren's,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.936,47.0,56.0
 US,5001102500,US-VT-BAK,Bakersfield,parcel,auto,apn,Ignored,simple,0.923,762.0,726.0
 US,5001102500,US-VT-BAK,Bakersfield,tax,auto,apn,Ignored,simple,0.923,762.0,726.0
 US,5001105425,US-VT-BEE,Berkshire,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.918,766.0,775.0
@@ -10027,26 +10027,26 @@ US,5001133025,US-VT-HIG,Highgate,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & s
 US,5001133025,US-VT-HIG,Highgate,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.939,1657.0,1770.0
 US,5001145850,US-VT-MOY,Montgomery,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.977,965.0,967.0
 US,5001145850,US-VT-MOY,Montgomery,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.977,965.0,967.0
-US,5001159125,US-VT-RIC,Richford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.903,1223.0,1174.0
-US,5001159125,US-VT-RIC,Richford,tax,auto,apn,Sx-Sx-Sx,,0.903,1223.0,1174.0
-US,5001161675,US-VT-ALS,St. Albans city,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.96,2190.0,2548.0
-US,5001161675,US-VT-ALS,St. Albans city,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.96,2190.0,2548.0
+US,5001159125,US-VT-RID,Richford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.903,1223.0,1174.0
+US,5001159125,US-VT-RID,Richford,tax,auto,apn,Sx-Sx-Sx,,0.903,1223.0,1174.0
+US,5001161675,US-VT-STA,St. Albans city,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.96,2190.0,2548.0
+US,5001161675,US-VT-STA,St. Albans city,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.96,2190.0,2548.0
 US,5001161750,US-VT-SAT,St. Albans town,parcel,auto,apn,Ignored,simple,0.921,2757.0,3512.0
 US,5001161750,US-VT-SAT,St. Albans town,tax,auto,apn,Ignored,simple,0.921,2757.0,3512.0
-US,5001164600,US-VT-SHN,Sheldon,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.836,1030.0,994.0
-US,5001164600,US-VT-SHN,Sheldon,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.836,1030.0,994.0
+US,5001164600,US-VT-SHL,Sheldon,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.836,1030.0,994.0
+US,5001164600,US-VT-SHL,Sheldon,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.836,1030.0,994.0
 US,5001171725,US-VT-SWA,Swanton,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.947,2899.0,3461.0
 US,5001171725,US-VT-SWA,Swanton,tax,auto,apn,Ignored,simple,0.947,2899.0,3461.0
-US,5001300860,US-VT-ALH,Alburgh,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.919,1526.0,1868.0
-US,5001300860,US-VT-ALH,Alburgh,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.919,1526.0,1868.0
+US,5001300860,US-VT-ALB,Alburgh,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.919,1526.0,1868.0
+US,5001300860,US-VT-ALB,Alburgh,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.919,1526.0,1868.0
 US,5001329275,US-VT-GRI,Grand Isle,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.958,1227.0,1320.0
 US,5001329275,US-VT-GRI,Grand Isle,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.958,1227.0,1320.0
 US,5001335875,US-VT-ILM,Isle La Motte,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.979,566.0,883.0
 US,5001335875,US-VT-ILM,Isle La Motte,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.979,566.0,883.0
 US,5001350650,US-VT-NHE,North Hero,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.965,1046.0,1095.0
 US,5001350650,US-VT-NHE,North Hero,tax,auto,apn,Ignored,simple,0.965,1046.0,1095.0
-US,5001367000,US-VT-SHE,South Hero,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.972,1092.0,1259.0
-US,5001367000,US-VT-SHE,South Hero,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.972,1092.0,1259.0
+US,5001367000,US-VT-SOH,South Hero,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.972,1092.0,1259.0
+US,5001367000,US-VT-SOH,South Hero,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.972,1092.0,1259.0
 US,5001504375,US-VT-BEL,Belvidere,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.929,280.0,292.0
 US,5001504375,US-VT-BEL,Belvidere,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.929,280.0,292.0
 US,5001511500,US-VT-CAM,Cambridge,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.979,1776.0,2049.0
@@ -10059,22 +10059,22 @@ US,5001535050,US-VT-HYP,Hyde Park,parcel,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & me
 US,5001535050,US-VT-HYP,Hyde Park,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.982,1354.0,1535.0
 US,5001537075,US-VT-JOH,Johnson,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.916,1248.0,1391.0
 US,5001537075,US-VT-JOH,Johnson,tax,auto,apn,Ignored,simple,0.916,1248.0,1391.0
-US,5001546675,US-VT-MRS,Morristown,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.908,2465.0,2669.0
-US,5001546675,US-VT-MRS,Morristown,tax,auto,apn,Sx-Sx-Sx,,0.908,2465.0,2669.0
-US,5001570525,US-VT-STE,Stowe,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.851,3179.0,3932.0
-US,5001570525,US-VT-STE,Stowe,tax,auto,apn,Sx-Sx-Sx,,0.851,3179.0,3932.0
+US,5001546675,US-VT-MOR,Morristown,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.908,2465.0,2669.0
+US,5001546675,US-VT-MOR,Morristown,tax,auto,apn,Sx-Sx-Sx,,0.908,2465.0,2669.0
+US,5001570525,US-VT-STO,Stowe,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.851,3179.0,3932.0
+US,5001570525,US-VT-STO,Stowe,tax,auto,apn,Sx-Sx-Sx,,0.851,3179.0,3932.0
 US,5001577425,US-VT-WAE,Waterville,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.982,385.0,388.0
 US,5001577425,US-VT-WAE,Waterville,tax,auto,apn,Ignored,simple,0.982,385.0,388.0
 US,5001585375,US-VT-WOL,Wolcott,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.977,960.0,998.0
 US,5001585375,US-VT-WOL,Wolcott,tax,auto,apn,Ignored,simple,0.977,960.0,998.0
-US,5001707375,US-VT-BRF,Bradford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.959,1328.0,1327.0
-US,5001707375,US-VT-BRF,Bradford,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.959,1328.0,1327.0
+US,5001707375,US-VT-BRD,Bradford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.959,1328.0,1327.0
+US,5001707375,US-VT-BRD,Bradford,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.959,1328.0,1327.0
 US,5001707600,US-VT-BRE,Braintree,parcel,auto,apn,Ignored,simple,0.99,615.0,713.0
 US,5001707600,US-VT-BRE,Braintree,tax,auto,apn,Ignored,simple,0.99,615.0,713.0
-US,5001709325,US-VT-BRD,Brookfield,parcel,auto,apn,Ignored,simple,0.0,1022.0,892.0
-US,5001709325,US-VT-BRD,Brookfield,tax,auto,apn,Ignored,simple,0.0,1022.0,892.0
-US,5001713525,US-VT-CHE,Chelsea,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.955,828.0,810.0
-US,5001713525,US-VT-CHE,Chelsea,tax,auto,apn,Ignored,simple,0.955,828.0,810.0
+US,5001709325,US-VT-BRO,Brookfield,parcel,auto,apn,Ignored,simple,0.0,1022.0,892.0
+US,5001709325,US-VT-BRO,Brookfield,tax,auto,apn,Ignored,simple,0.0,1022.0,892.0
+US,5001713525,US-VT-CHL,Chelsea,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.955,828.0,810.0
+US,5001713525,US-VT-CHL,Chelsea,tax,auto,apn,Ignored,simple,0.955,828.0,810.0
 US,5001715700,US-VT-COH,Corinth,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.978,1011.0,1022.0
 US,5001715700,US-VT-COH,Corinth,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.978,1011.0,1022.0
 US,5001725675,US-VT-FAE,Fairlee,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.967,694.0,690.0
@@ -10095,14 +10095,14 @@ US,5001773675,US-VT-TUN,Tunbridge,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 
 US,5001773675,US-VT-TUN,Tunbridge,tax,auto,apn,Ignored,simple,0.976,873.0,909.0
 US,5001774950,US-VT-VEE,Vershire,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.939,527.0,511.0
 US,5001774950,US-VT-VEE,Vershire,tax,auto,apn,Ignored,simple,0.939,527.0,511.0
-US,5001776750,US-VT-WSH,Washington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.938,708.0,712.0
-US,5001776750,US-VT-WSH,Washington,tax,auto,apn,Ignored,simple,0.938,708.0,712.0
+US,5001776750,US-VT-WAN,Washington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.938,708.0,712.0
+US,5001776750,US-VT-WAN,Washington,tax,auto,apn,Ignored,simple,0.938,708.0,712.0
 US,5001779975,US-VT-WFA,West Fairlee,parcel,auto,apn,Ignored,simple,0.917,460.0,449.0
 US,5001779975,US-VT-WFA,West Fairlee,tax,auto,apn,Ignored,simple,0.917,460.0,449.0
-US,5001784175,US-VT-WIL,Williamstown,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.987,1527.0,1637.0
-US,5001784175,US-VT-WIL,Williamstown,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.987,1527.0,1637.0
-US,5001900475,US-VT-ALB,Albany,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.956,656.0,665.0
-US,5001900475,US-VT-ALB,Albany,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.956,656.0,665.0
+US,5001784175,US-VT-WLM,Williamstown,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.987,1527.0,1637.0
+US,5001784175,US-VT-WLM,Williamstown,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.987,1527.0,1637.0
+US,5001900475,US-VT-ALY,Albany,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.956,656.0,665.0
+US,5001900475,US-VT-ALY,Albany,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.956,656.0,665.0
 US,5001903550,US-VT-BAN,Barton,parcel,auto,apn,Ignored,simple,0.953,1611.0,1652.0
 US,5001903550,US-VT-BAN,Barton,tax,auto,apn,Ignored,simple,0.953,1611.0,1652.0
 US,5001909850,US-VT-BRW,Brownington,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.97,605.0,688.0
@@ -10135,12 +10135,12 @@ US,5001948925,US-VT-NET,Newport town,parcel,auto,apn,Ignored,simple,0.0,927.0,20
 US,5001948925,US-VT-NET,Newport town,tax,auto,apn,Ignored,simple,0.0,927.0,2095.0
 US,5001973525,US-VT-TRO,Troy,parcel,auto,apn,Sx-Sx-Sx,,0.987,1027.0,1041.0
 US,5001973525,US-VT-TRO,Troy,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.987,1027.0,1041.0
-US,5001980200,US-VT-WES,Westfield,parcel,auto,apn,Sx-Sx-Sx,,0.976,465.0,469.0
-US,5001980200,US-VT-WES,Westfield,tax,auto,apn,Sx-Sx-Sx,,0.976,465.0,469.0
+US,5001980200,US-VT-WST,Westfield,parcel,auto,apn,Sx-Sx-Sx,,0.976,465.0,469.0
+US,5001980200,US-VT-WST,Westfield,tax,auto,apn,Sx-Sx-Sx,,0.976,465.0,469.0
 US,5001981700,US-VT-WEE,Westmore,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.961,667.0,709.0
 US,5001981700,US-VT-WEE,Westmore,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.961,667.0,709.0
-US,5002105200,US-VT-BEN,Benson,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.966,621.0,644.0
-US,5002105200,US-VT-BEN,Benson,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.966,621.0,644.0
+US,5002105200,US-VT-BNS,Benson,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.966,621.0,644.0
+US,5002105200,US-VT-BNS,Benson,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.966,621.0,644.0
 US,5002107750,US-VT-BRN,Brandon,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.976,1905.0,2002.0
 US,5002107750,US-VT-BRN,Brandon,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.976,1905.0,2002.0
 US,5002111950,US-VT-CAS,Castleton,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.954,2325.0,2438.0
@@ -10149,8 +10149,8 @@ US,5002114350,US-VT-CHI,Chittenden,parcel,auto,apn,Ignored,simple,0.951,768.0,76
 US,5002114350,US-VT-CHI,Chittenden,tax,auto,apn,Ignored,simple,0.951,768.0,760.0
 US,5002114500,US-VT-CLA,Clarendon,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.973,1172.0,1333.0
 US,5002114500,US-VT-CLA,Clarendon,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.973,1172.0,1333.0
-US,5002116825,US-VT-DAN,Danby,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.977,766.0,862.0
-US,5002116825,US-VT-DAN,Danby,tax,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.977,766.0,862.0
+US,5002116825,US-VT-DAY,Danby,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.977,766.0,862.0
+US,5002116825,US-VT-DAY,Danby,tax,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.977,766.0,862.0
 US,5002125375,US-VT-FAH,Fair Haven,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.864,1333.0,1221.0
 US,5002125375,US-VT-FAH,Fair Haven,tax,auto,apn,Sx-Sx-Sx,,0.864,1333.0,1221.0
 US,5002134450,US-VT-HUB,Hubbardton,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.785,864.0,727.0
@@ -10169,10 +10169,10 @@ US,5002147425,US-VT-MOT,Mount Tabor,parcel,auto,apn,Ignored,simple,0.0,167.0,0.0
 US,5002147425,US-VT-MOT,Mount Tabor,tax,auto,apn,Empty,,0.0,167.0,0.0
 US,5002154250,US-VT-PAW,Pawlet,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.969,811.0,822.0
 US,5002154250,US-VT-PAW,Pawlet,tax,auto,apn,Ignored,simple,0.969,811.0,822.0
-US,5002155450,US-VT-PIT,Pittsfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.953,514.0,517.0
-US,5002155450,US-VT-PIT,Pittsfield,tax,auto,apn,Ignored,simple,0.953,514.0,517.0
-US,5002155600,US-VT-PID,Pittsford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.986,1410.0,1544.0
-US,5002155600,US-VT-PID,Pittsford,tax,auto,apn,Ignored,simple,0.986,1410.0,1544.0
+US,5002155450,US-VT-PID,Pittsfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.953,514.0,517.0
+US,5002155450,US-VT-PID,Pittsfield,tax,auto,apn,Ignored,simple,0.953,514.0,517.0
+US,5002155600,US-VT-PIT,Pittsford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.986,1410.0,1544.0
+US,5002155600,US-VT-PIT,Pittsford,tax,auto,apn,Ignored,simple,0.986,1410.0,1544.0
 US,5002156875,US-VT-POU,Poultney,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.979,1696.0,1796.0
 US,5002156875,US-VT-POU,Poultney,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.979,1696.0,1796.0
 US,5002157250,US-VT-PRO,Proctor,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.907,827.0,778.0
@@ -10187,18 +10187,18 @@ US,5002171050,US-VT-SUD,Sudbury,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 
 US,5002171050,US-VT-SUD,Sudbury,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.936,501.0,495.0
 US,5002172925,US-VT-TIN,Tinmouth,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.966,446.0,454.0
 US,5002172925,US-VT-TIN,Tinmouth,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.966,446.0,454.0
-US,5002175925,US-VT-WAD,Wallingford,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.984,1181.0,1189.0
-US,5002175925,US-VT-WAD,Wallingford,tax,auto,apn,Ignored,simple,0.984,1181.0,1189.0
+US,5002175925,US-VT-WAL,Wallingford,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.984,1181.0,1189.0
+US,5002175925,US-VT-WAL,Wallingford,tax,auto,apn,Ignored,simple,0.984,1181.0,1189.0
 US,5002177950,US-VT-WEL,Wells,parcel,auto,apn,Ignored,simple,0.984,940.0,994.0
 US,5002177950,US-VT-WEL,Wells,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.984,940.0,994.0
 US,5002180875,US-VT-WHA,West Haven,parcel,auto,apn,Ignored,simple,0.0,207.0,0.0
 US,5002180875,US-VT-WHA,West Haven,tax,auto,apn,Empty,,0.0,207.0,0.0
 US,5002182300,US-VT-WRU,West Rutland,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.984,1044.0,1058.0
 US,5002182300,US-VT-WRU,West Rutland,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.984,1044.0,1058.0
-US,5002303175,US-VT-BAE,Barre city,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.976,3233.0,3362.0
-US,5002303175,US-VT-BAE,Barre city,tax,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.976,3233.0,3362.0
-US,5002303250,US-VT-BAR,Barre town,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.982,3526.0,3827.0
-US,5002303250,US-VT-BAR,Barre town,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.982,3526.0,3827.0
+US,5002303175,US-VT-BAR,Barre city,parcel,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.976,3233.0,3362.0
+US,5002303175,US-VT-BAR,Barre city,tax,auto,apn,Sx-Sx-Sx,drop_cols: 0 & skip_empty: 1,0.976,3233.0,3362.0
+US,5002303250,US-VT-BAE,Barre town,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.982,3526.0,3827.0
+US,5002303250,US-VT-BAE,Barre town,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.982,3526.0,3827.0
 US,5002305650,US-VT-BER,Berlin,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.945,1303.0,1816.0
 US,5002305650,US-VT-BER,Berlin,tax,auto,apn,Sx-Sx-Sx,,0.945,1303.0,1816.0
 US,5002311125,US-VT-CAB,Cabot,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.863,998.0,909.0
@@ -10211,16 +10211,16 @@ US,5002321925,US-VT-EMO,East Montpelier,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length
 US,5002321925,US-VT-EMO,East Montpelier,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.969,1187.0,1240.0
 US,5002325825,US-VT-FAY,Fayston,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.928,1077.0,1194.0
 US,5002325825,US-VT-FAY,Fayston,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.928,1077.0,1194.0
-US,5002343600,US-VT-MAD,Marshfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.964,834.0,830.0
-US,5002343600,US-VT-MAD,Marshfield,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.964,834.0,830.0
+US,5002343600,US-VT-MAR,Marshfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.964,834.0,830.0
+US,5002343600,US-VT-MAR,Marshfield,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.964,834.0,830.0
 US,5002344500,US-VT-MIX,Middlesex,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,940.0,944.0
 US,5002344500,US-VT-MIX,Middlesex,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,940.0,944.0
 US,5002346000,US-VT-MON,Montpelier,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.975,2672.0,3305.0
 US,5002346000,US-VT-MON,Montpelier,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.975,2672.0,3305.0
-US,5002346225,US-VT-MOR,Moretown,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.961,912.0,960.0
-US,5002346225,US-VT-MOR,Moretown,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.961,912.0,960.0
-US,5002350275,US-VT-NOD,Northfield,parcel,auto,apn,Ignored,simple,0.884,1980.0,1986.0
-US,5002350275,US-VT-NOD,Northfield,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.884,1980.0,1986.0
+US,5002346225,US-VT-MRT,Moretown,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.961,912.0,960.0
+US,5002346225,US-VT-MRT,Moretown,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.961,912.0,960.0
+US,5002350275,US-VT-NOR,Northfield,parcel,auto,apn,Ignored,simple,0.884,1980.0,1986.0
+US,5002350275,US-VT-NOR,Northfield,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.884,1980.0,1986.0
 US,5002355825,US-VT-PLA,Plainfield,parcel,auto,apn,Ignored,simple,0.976,613.0,630.0
 US,5002355825,US-VT-PLA,Plainfield,tax,auto,apn,Ignored,simple,0.976,613.0,630.0
 US,5002360625,US-VT-ROX,Roxbury,parcel,auto,apn,Ignored,simple,0.963,598.0,600.0
@@ -10229,40 +10229,40 @@ US,5002375325,US-VT-WAI,Waitsfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2
 US,5002375325,US-VT-WAI,Waitsfield,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.984,1002.0,1166.0
 US,5002376525,US-VT-WAR,Warren,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.867,2301.0,3231.0
 US,5002376525,US-VT-WAR,Warren,tax,auto,apn,Ignored,simple,0.867,2301.0,3231.0
-US,5002376975,US-VT-WAY,Waterbury,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.908,2213.0,2292.0
-US,5002376975,US-VT-WAY,Waterbury,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.908,2213.0,2292.0
-US,5002385525,US-VT-WOO,Woodbury,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.948,901.0,884.0
-US,5002385525,US-VT-WOO,Woodbury,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.948,901.0,884.0
+US,5002376975,US-VT-WAT,Waterbury,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.908,2213.0,2292.0
+US,5002376975,US-VT-WAT,Waterbury,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.908,2213.0,2292.0
+US,5002385525,US-VT-WOY,Woodbury,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.948,901.0,884.0
+US,5002385525,US-VT-WOY,Woodbury,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.948,901.0,884.0
 US,5002386125,US-VT-WOR,Worcester,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.954,502.0,496.0
 US,5002386125,US-VT-WOR,Worcester,tax,auto,apn,Ignored,simple,0.954,502.0,496.0
 US,5002501900,US-VT-ATH,Athens,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.963,243.0,259.0
 US,5002501900,US-VT-ATH,Athens,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.963,243.0,259.0
 US,5002507900,US-VT-BRA,Brattleboro,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.921,4034.0,4896.0
 US,5002507900,US-VT-BRA,Brattleboro,tax,auto,apn,Sx-Sx-Sx,,0.921,4034.0,4896.0
-US,5002509475,US-VT-BRO,Brookline,parcel,auto,apn,Ignored,simple,0.977,341.0,342.0
-US,5002509475,US-VT-BRO,Brookline,tax,auto,apn,Ignored,simple,0.977,341.0,342.0
+US,5002509475,US-VT-BRK,Brookline,parcel,auto,apn,Ignored,simple,0.977,341.0,342.0
+US,5002509475,US-VT-BRK,Brookline,tax,auto,apn,Ignored,simple,0.977,341.0,342.0
 US,5002517875,US-VT-DOV,Dover,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.882,2211.0,3461.0
 US,5002517875,US-VT-DOV,Dover,tax,auto,apn,Sx-Sx-Sx,,0.882,2211.0,3461.0
 US,5002518325,US-VT-DUM,Dummerston,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.986,1004.0,1038.0
 US,5002518325,US-VT-DUM,Dummerston,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.986,1004.0,1038.0
-US,5002528900,US-VT-GRN,Grafton,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.972,610.0,622.0
-US,5002528900,US-VT-GRN,Grafton,tax,auto,apn,Sx-Sx-Sx,,0.972,610.0,622.0
-US,5002530925,US-VT-GUD,Guilford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.946,1126.0,1103.0
-US,5002530925,US-VT-GUD,Guilford,tax,auto,apn,Ignored,simple,0.946,1126.0,1103.0
+US,5002528900,US-VT-GRA,Grafton,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.972,610.0,622.0
+US,5002528900,US-VT-GRA,Grafton,tax,auto,apn,Sx-Sx-Sx,,0.972,610.0,622.0
+US,5002530925,US-VT-GUI,Guilford,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.946,1126.0,1103.0
+US,5002530925,US-VT-GUI,Guilford,tax,auto,apn,Ignored,simple,0.946,1126.0,1103.0
 US,5002531150,US-VT-HAL,Halifax,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.936,691.0,657.0
 US,5002531150,US-VT-HAL,Halifax,tax,auto,apn,Ignored,simple,0.936,691.0,657.0
 US,5002536175,US-VT-JAM,Jamaica,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.958,1233.0,1299.0
 US,5002536175,US-VT-JAM,Jamaica,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.958,1233.0,1299.0
 US,5002540225,US-VT-LON,Londonderry,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.969,1497.0,1577.0
 US,5002540225,US-VT-LON,Londonderry,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.969,1497.0,1577.0
-US,5002543375,US-VT-MAR,Marlboro,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.974,658.0,672.0
-US,5002543375,US-VT-MAR,Marlboro,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,658.0,672.0
+US,5002543375,US-VT-MAO,Marlboro,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.974,658.0,672.0
+US,5002543375,US-VT-MAO,Marlboro,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.974,658.0,672.0
 US,5002548400,US-VT-NEE,Newfane,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.975,1221.0,1312.0
 US,5002548400,US-VT-NEE,Newfane,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.975,1221.0,1312.0
 US,5002557700,US-VT-PUT,Putney,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.951,1032.0,1052.0
 US,5002557700,US-VT-PUT,Putney,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.951,1032.0,1052.0
-US,5002560250,US-VT-ROM,Rockingham,parcel,auto,apn,Ignored,simple,0.972,2139.0,2260.0
-US,5002560250,US-VT-ROM,Rockingham,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.972,2139.0,2260.0
+US,5002560250,US-VT-ROC,Rockingham,parcel,auto,apn,Ignored,simple,0.972,2139.0,2260.0
+US,5002560250,US-VT-ROC,Rockingham,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.972,2139.0,2260.0
 US,5002565762,US-VT-SOM,Somerset,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.889,36.0,33.0
 US,5002565762,US-VT-SOM,Somerset,tax,auto,apn,Ignored,simple,0.889,36.0,33.0
 US,5002570750,US-VT-STN,Stratton,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.924,511.0,1610.0
@@ -10273,14 +10273,14 @@ US,5002574800,US-VT-VEN,Vernon,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 &
 US,5002574800,US-VT-VEN,Vernon,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.971,908.0,945.0
 US,5002576225,US-VT-WAO,Wardsboro,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.907,1115.0,1037.0
 US,5002576225,US-VT-WAO,Wardsboro,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.907,1115.0,1037.0
-US,5002581400,US-VT-WER,Westminster,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.97,1570.0,1607.0
-US,5002581400,US-VT-WER,Westminster,tax,auto,apn,Ignored,simple,0.97,1570.0,1607.0
+US,5002581400,US-VT-WES,Westminster,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.97,1570.0,1607.0
+US,5002581400,US-VT-WES,Westminster,tax,auto,apn,Ignored,simple,0.97,1570.0,1607.0
 US,5002583950,US-VT-WHI,Whitingham,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.97,1164.0,1158.0
 US,5002583950,US-VT-WHI,Whitingham,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.97,1164.0,1158.0
-US,5002584700,US-VT-WLM,Wilmington,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.967,2918.0,3150.0
-US,5002584700,US-VT-WLM,Wilmington,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.967,2918.0,3150.0
-US,5002584850,US-VT-WIM,Windham,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.954,546.0,538.0
-US,5002584850,US-VT-WIM,Windham,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.954,546.0,538.0
+US,5002584700,US-VT-WIM,Wilmington,parcel,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.967,2918.0,3150.0
+US,5002584700,US-VT-WIM,Wilmington,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.967,2918.0,3150.0
+US,5002584850,US-VT-WND,Windham,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.954,546.0,538.0
+US,5002584850,US-VT-WND,Windham,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.954,546.0,538.0
 US,5002701300,US-VT-AND,Andover,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.95,585.0,589.0
 US,5002701300,US-VT-AND,Andover,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.95,585.0,589.0
 US,5002702575,US-VT-BAL,Baltimore,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.949,117.0,118.0
@@ -10293,12 +10293,12 @@ US,5002708275,US-VT-BRR,Bridgewater,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 
 US,5002708275,US-VT-BRR,Bridgewater,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.851,844.0,794.0
 US,5002712250,US-VT-CAV,Cavendish,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.747,1323.0,1203.0
 US,5002712250,US-VT-CAV,Cavendish,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.747,1323.0,1203.0
-US,5002713675,US-VT-CHR,Chester,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.933,1958.0,1865.0
-US,5002713675,US-VT-CHR,Chester,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.933,1958.0,1865.0
-US,5002732275,US-VT-HAD,Hartford,parcel,auto,apn,Sx-Sx-Sx,,0.979,4131.0,5696.0
-US,5002732275,US-VT-HAD,Hartford,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.979,4131.0,5696.0
-US,5002732425,US-VT-HAR,Hartland,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.968,1516.0,1593.0
-US,5002732425,US-VT-HAR,Hartland,tax,auto,apn,Ignored,simple,0.968,1516.0,1593.0
+US,5002713675,US-VT-CHE,Chester,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.933,1958.0,1865.0
+US,5002713675,US-VT-CHE,Chester,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.933,1958.0,1865.0
+US,5002732275,US-VT-HAR,Hartford,parcel,auto,apn,Sx-Sx-Sx,,0.979,4131.0,5696.0
+US,5002732275,US-VT-HAR,Hartford,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.979,4131.0,5696.0
+US,5002732425,US-VT-HAD,Hartland,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.968,1516.0,1593.0
+US,5002732425,US-VT-HAD,Hartland,tax,auto,apn,Ignored,simple,0.968,1516.0,1593.0
 US,5002741275,US-VT-LUD,Ludlow,parcel,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),drop_cols: 3 & skip_empty: 1,0.944,2461.0,3560.0
 US,5002741275,US-VT-LUD,Ludlow,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.944,2461.0,3560.0
 US,5002752900,US-VT-NOH,Norwich,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.896,1694.0,1623.0
@@ -10309,16 +10309,16 @@ US,5002756350,US-VT-POM,Pomfret,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & 
 US,5002756350,US-VT-POM,Pomfret,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.956,593.0,606.0
 US,5002758375,US-VT-REG,Reading,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.991,542.0,558.0
 US,5002758375,US-VT-REG,Reading,tax,auto,apn,Sx-Sx-Sx,,0.991,542.0,558.0
-US,5002760100,US-VT-ROC,Rochester,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.983,938.0,957.0
-US,5002760100,US-VT-ROC,Rochester,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.983,938.0,957.0
+US,5002760100,US-VT-ROR,Rochester,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.983,938.0,957.0
+US,5002760100,US-VT-ROR,Rochester,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.983,938.0,957.0
 US,5002760850,US-VT-ROY,Royalton,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 0 0 & skip_empty: 1,0.968,1363.0,1365.0
 US,5002760850,US-VT-ROY,Royalton,tax,auto,apn,Ignored,simple,0.968,1363.0,1365.0
-US,5002763775,US-VT-SHA,Sharon,parcel,auto,apn,Ignored,simple,0.0,794.0,801.0
-US,5002763775,US-VT-SHA,Sharon,tax,auto,apn,Ignored,simple,0.0,794.0,801.0
+US,5002763775,US-VT-SHN,Sharon,parcel,auto,apn,Ignored,simple,0.0,794.0,801.0
+US,5002763775,US-VT-SHN,Sharon,tax,auto,apn,Ignored,simple,0.0,794.0,801.0
 US,5002769550,US-VT-SPR,Springfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.923,3889.0,4045.0
 US,5002769550,US-VT-SPR,Springfield,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.923,3889.0,4045.0
-US,5002770375,US-VT-STO,Stockbridge,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.787,979.0,797.0
-US,5002770375,US-VT-STO,Stockbridge,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.787,979.0,797.0
+US,5002770375,US-VT-STE,Stockbridge,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.787,979.0,797.0
+US,5002770375,US-VT-STE,Stockbridge,tax,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.787,979.0,797.0
 US,5002777500,US-VT-WEA,Weathersfield,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.939,1565.0,1713.0
 US,5002777500,US-VT-WEA,Weathersfield,tax,auto,apn,Ignored,simple,0.939,1565.0,1713.0
 US,5002782000,US-VT-WEN,Weston,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.961,660.0,655.0
@@ -10327,8 +10327,8 @@ US,5002783050,US-VT-WWI,West Windsor,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1
 US,5002783050,US-VT-WWI,West Windsor,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.969,800.0,909.0
 US,5002784925,US-VT-WIR,Windsor,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 0 & skip_empty: 1,0.991,1332.0,1413.0
 US,5002784925,US-VT-WIR,Windsor,tax,auto,apn,Sx-Sx-Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.991,1332.0,1413.0
-US,5002785975,US-VT-WOK,Woodstock,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.861,1943.0,1957.0
-US,5002785975,US-VT-WOK,Woodstock,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.861,1943.0,1957.0
+US,5002785975,US-VT-WOO,Woodstock,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 2 & merge_after: 1 & skip_empty: 1,0.861,1943.0,1957.0
+US,5002785975,US-VT-WOO,Woodstock,tax,auto,apn,Sx-Sx-Sx,split_groups: 0|[A-Z] & skip_empty: 1,0.861,1943.0,1957.0
 US,51001,US-VA-AC,Accomack,parcel,auto,apn,Sx,string_lengths: 3 2 1 2 2 3 2 & skip_empty: 1,0.783,47182.0,40950.0
 US,51001,US-VA-AC,Accomack,tax,auto,apn,Sx,string_lengths: 3 2 1 2 2 3 2 & skip_empty: 1,0.783,47182.0,40950.0
 US,51003,US-VA-AB,Albemarle,parcel,auto,apn,Dx,split_groups: 0|16 & drop_cols: 0_1,0.98,44922.0,48354.0
