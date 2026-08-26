@@ -51,8 +51,14 @@ columns:
   stats_area_id_legal: LSAD
 
 # Filter query to select rows
-# Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56' and name != 'County subdivisions not defined'"
+# Keeps 50 states and DC (territories are in `admin1` according to ISO).
+# New England is excluded, as in the 2025 recipe: its towns are level 3,
+# so there is no county layer for a subdivision there to crosswalk to,
+# and the parent join came back empty for those partitions.
+query: >-
+  admin2_id_admin1 <= '56'
+  and admin2_id_admin1 not in ['09', '23', '25', '33', '44', '50']
+  and name != 'County subdivisions not defined'
 
 transformations:
   # Get county FIPS: first 5 characters of county subdivision FIPS

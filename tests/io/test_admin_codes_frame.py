@@ -5,10 +5,24 @@ import pytest
 
 from openplaces.io.admin_codes import assign_admin_ids
 from openplaces.io.admin_codes.frame import _placeholder_codes
+from openplaces.io.admin_codes.registry import load_registry
 
 
 def frame(parents, names, **columns):
     return pd.DataFrame({'admin2_id': parents, 'name': names, **columns})
+
+
+def spine_id(parent, name, level=3):
+    """Return the id the committed spine records for one unit.
+
+    Read rather than written down: a re-mint moves codes, and a literal
+    frozen here goes stale silently. Albany was 'US-NY-LG' until the
+    2026-08 re-mint and is 'US-NY-AL' now.
+    """
+    pins, _, _ = load_registry(level)
+    code = pins.get((parent, name))
+    assert code is not None, f'the spine no longer names {name} under {parent}'
+    return f'{parent}-{code}'
 
 
 def assign(df, **kwargs):
@@ -28,8 +42,11 @@ class TestIdentifiers:
         assert out.index.name == 'admin3_id'
 
     def test_records_the_rule_behind_each_code(self):
+        # Pinning is off here, so this is the derivation rule firing, not
+        # the spine's record. Assert the rule, not the code it produced.
         out = assign(frame(['US-NY'], ['Albany']))
-        assert out.loc['US-NY-LG', 'admin3_id_source'] == 'name'
+        assert len(out) == 1
+        assert out['admin3_id_source'].iloc[0] == 'name'
 
     def test_keeps_the_input_columns(self):
         out = assign(frame(['US-MA'], ['Middlesex'], fips=['25017']))
@@ -142,14 +159,16 @@ class TestPinning:
     # need units the spine actually names.
     def test_a_unit_the_spine_names_keeps_its_code(self):
         out = self.pinned(['US-NY'], ['Albany'])
-        assert out.loc['US-NY-LG', 'admin3_id_source'] == 'pinned'
+        assert out.loc[spine_id('US-NY', 'Albany'), 'admin3_id_source'] == 'pinned'
 
     def test_pinning_overrides_an_explicit_length(self):
         # The point of a pin is that the recorded id wins, so a caller
         # asking for three characters still gets the two-character code
         # the spine already issued.
+        recorded = spine_id('US-NY', 'Albany')
+        assert len(recorded.rsplit('-', 1)[1]) == 2, 'need a 2-char pin to test'
         out = self.pinned(['US-NY'], ['Albany'], lengths=(3,))
-        assert out.index[0] == 'US-NY-LG'
+        assert out.index[0] == recorded
 
     def test_a_new_sibling_does_not_move_existing_codes(self):
         names = ['Albany', 'Erie', 'Monroe']

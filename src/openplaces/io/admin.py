@@ -164,7 +164,24 @@ def get_admin2_iso():
 
 
 def admin2_id_index_from_admin2_gadm(admin2):
-    """Give dataframe `admin` an `admin2_id` index based on GADM data"""
+    """Give dataframe `admin` an `admin2_id` index based on GADM data
+
+    See Also
+    --------
+    openplaces.io.admin_codes.assign_admin_ids : the successor, now wired
+        into `admin-gadm-4~1_admin2`.
+
+    Notes
+    -----
+    Superseded, and no longer called by any recipe. It mints an identifier
+    from GADM's own ISO and HASC codes, which is what the spine did before
+    the 2026 re-mint; the successor instead reproduces the code the
+    committed spine already records for a unit and assigns only units the
+    spine does not name. Because GADM's sibling groups are not the spine's
+    (45,966 level-3 units against 48,695), minting here could not reproduce
+    the spine even under the current rules. Kept as the record of how
+    pre-2026 identifiers were derived; do not wire it into new recipes.
+    """
 
     # Join with level-2 administrative units
     admin2 = admin2.join(
@@ -270,6 +287,22 @@ def admin2_id_index_from_admin2_gadm(admin2):
 
 
 def admin3_id_index_from_admin3_gadm(admin3):
+    """Give dataframe `admin3` an `admin3_id` index based on GADM data
+
+    See Also
+    --------
+    openplaces.io.admin_codes.assign_admin_ids : the successor, now wired
+        into `admin-gadm-4~1_admin3`.
+
+    Notes
+    -----
+    Superseded, and no longer called by any recipe, for the reasons given
+    on :func:`admin2_id_index_from_admin2_gadm`. The per-country exceptions
+    below (Brazil's three-letter codes, Uruguay's unnamed units, the
+    numbered city zones) are the shape of problem the successor's code
+    derivation now handles generally. Kept as the record of how pre-2026
+    identifiers were derived; do not wire it into new recipes.
+    """
     admin2 = get_admin(level=2, columns=['admin2_id_gadm'])
 
     # Join admin2

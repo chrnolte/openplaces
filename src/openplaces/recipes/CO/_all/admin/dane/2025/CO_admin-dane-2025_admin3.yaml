@@ -39,11 +39,23 @@ admin_id_crosswalk:
   admin_recipe_id: "admin-spine-2026_admin2"
 
 
+# Identifiers are not minted here: units the committed spine already names
+# keep the code it records (pinned on name, or on the DANE municipality
+# code in `admin3_id_admin1` for the siblings that share a name), and
+# only units it does not name are assigned. The legacy
+# `generate_admin_ids` minted afresh on every run, so this layer could
+# never agree with the spine.
 create_index:
-  function: "openplaces.io.admin.generate_admin_ids"
+  function: "openplaces.io.admin_codes.assign_admin_ids"
   args:
     new_admin_id_col: admin3_id
     parent_admin_id_col: admin2_id
     name_col: name
 
 sort_index: True
+
+# The level suffix is what keeps this output apart from the admin2
+# recipe's; see the note there.
+save_to:
+  data_dir: cache
+  filename: admin3

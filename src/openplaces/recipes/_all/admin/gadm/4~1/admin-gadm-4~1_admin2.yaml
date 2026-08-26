@@ -53,9 +53,21 @@ null_value_strings: ["?", "NA"]
 # Filter query to select rows
 query: "type != 'Water body'"
 
-# Function that returns an indexed version of the input 1GeoDataFrame1
-# (usually a custom function designed for a specific case)
-index_function: "openplaces.io.admin.admin2_id_index_from_admin2_gadm"
+# Translate `admin_id` information from source to `openplaces` admin_ids
+admin_id_crosswalk:
+  admin_level: 1
+  admin_id_column: admin1_id_a3
+  admin_recipe_id: 'admin-gadm-4~1_admin1'
+
+# Identifiers are not minted here: units the committed spine already names
+# keep the code it records, and only units it does not name are assigned.
+# See `openplaces.io.admin_codes.registry` for why the spine, rather than
+# this recipe, is the registry of record.
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
 
 # Sort by index?
 sort_index: True

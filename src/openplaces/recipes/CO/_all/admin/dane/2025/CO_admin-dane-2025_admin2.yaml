@@ -39,11 +39,24 @@ transformations:
 
 keep_unnamed_columns: False
 
+# Identifiers are not minted here: units the committed spine already names
+# keep the code it records (pinned on name, or on the DANE department
+# code in `admin2_id_admin1` where the spelling differs), and only units
+# it does not name are assigned. The legacy `generate_admin_ids` minted
+# afresh on every run, so this layer could never agree with the spine.
 create_index:
-  function: "openplaces.io.admin.generate_admin_ids"
+  function: "openplaces.io.admin_codes.assign_admin_ids"
   args:
     new_admin_id_col: admin2_id
     parent_admin_id_col: admin1_id
     name_col: name
 
 sort_index: True
+
+# The level suffix is what keeps this output apart from the admin3
+# recipe's: without it both resolve to `CO_admin-dane-2025.parquet` and
+# whichever ingests last overwrites the other (found 2026-08-26 with
+# 1,122 municipalities sitting in the department layer's path).
+save_to:
+  data_dir: cache
+  filename: admin2

@@ -48,8 +48,14 @@ columns:
   stats_area_id_legal: LSAD
 
 # Filter query to select rows
-# Keeps 50 states and DC (territories are in `admin1` according to ISO)
-query: "admin2_id_admin1 <= '56'"
+# Keeps 50 states and DC (territories are in `admin1` according to ISO).
+# New England (CT, ME, MA, NH, RI, VT) is excluded, as in the 2025
+# recipe: those states' level 3 is towns, not counties, so the spine has
+# no unit for a TIGER county there to match and the index would fail on
+# every one of them.
+query: >-
+  admin2_id_admin1 <= '56'
+  and admin2_id_admin1 not in ['09', '23', '25', '33', '44', '50']
 
 # Function that returns an indexed version of the input GeoDataFrame
 # (reconciles local admin-3 units against the global GADM spine; the

@@ -3,7 +3,13 @@ admin3_id_admin1,admin3_id,name
 02105,US-AK-HA,Hoonah-Angoon
 02195,US-AK-PE,Petersburg
 02230,US-AK-SK,Skagway
-24510,US-MD-BC,Baltimore city
+24005,US-MD-BA,Baltimore county
+24510,US-MD-BL,Baltimore city
+29189,US-MO-ST,St. Louis county
 29510,US-MO-SL,St. Louis city
-51620,US-VA-FC,Franklin city
-51760,US-VA-RH,Richmond city
+51059,US-VA-FA,Fairfax county
+51067,US-VA-FR,Franklin county
+51159,US-VA-RI,Richmond county
+51161,US-VA-RO,Roanoke county
+51620,US-VA-FN,Franklin city
+51760,US-VA-RC,Richmond city
