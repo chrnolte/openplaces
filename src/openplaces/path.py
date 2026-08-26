@@ -26,8 +26,16 @@ __all__ = [
     'reports_path',
     'code_path',
     'recipe_path',
+    'spine_path',
     'OpenPlacesReference',
 ]
+
+# The committed admin spine, resolved against the installed
+# package rather than `cfg.code_root`: it ships with `openplaces`
+# and is read by code well below the recipe layer.
+# `io.admin_codes.registry` imports `spine_path` from here, so its
+# established import path keeps working.
+SPINE_DIR = Path(__file__).parent / 'recipes' / '_all' / 'admin' / 'spine' / '2026'
 
 
 class OpenPlacesPath(type(Path())):
@@ -274,6 +282,11 @@ def reports_path(*args, root=cfg.reports_dir, use_prefix=False, **kwargs):
 
 def code_path(*args):
     return cfg.code_root.joinpath(*args)
+
+
+def spine_path(level: int) -> Path:
+    """Return the committed spine CSV for one admin level."""
+    return SPINE_DIR / f'admin-spine-2026_admin{level}.csv'
 
 
 def recipe_path(

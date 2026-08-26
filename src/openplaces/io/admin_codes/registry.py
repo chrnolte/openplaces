@@ -25,16 +25,13 @@ alternative is guessing that two differently-named rows are the same place.
 """
 
 from functools import cache
-from pathlib import Path
 
 import pandas as pd
 
-SPINE_DIR = Path(__file__).parents[2] / 'recipes' / '_all' / 'admin' / 'spine' / '2026'
-
-
-def spine_path(level: int) -> Path:
-    """Return the committed spine CSV for one admin level."""
-    return SPINE_DIR / f'admin-spine-2026_admin{level}.csv'
+# `spine_path` lives in `path` (Layer 1) so that `geo` can read
+# the spine without importing from `io`. Imported here because
+# this is where callers have always got it from.
+from openplaces.path import spine_path
 
 
 def level_of(admin_id_column: str) -> int | None:
