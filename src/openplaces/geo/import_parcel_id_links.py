@@ -30,6 +30,12 @@ Run it as::
 
     python -m openplaces.geo.import_parcel_id_links --auto <path> --manual <path>
 
+After a re-mint moves the admin ids, the `admin_id` and `name` columns go
+stale without anything breaking, because they are comments and the key is
+the national code. Refresh them with::
+
+    python -m openplaces.geo.import_parcel_id_links --refresh-ids
+
 See `plans/revalidate-parcel-id-links-against-its-ztrax-source.md`.
 """
 
@@ -576,11 +582,69 @@ def build(
     return out
 
 
+def refresh_admin_ids(country_id: str = 'US', verbose: bool = True) -> pd.DataFrame:
+    """Re-resolve the committed table's `admin_id` and `name` columns.
+
+    Those two are carried for readability and joined on by nothing: the
+    key is `(country_id, admin_id_admin1)`, and `geo.ids` resolves the
+    admin id against the live spine every time it loads. So a re-mint
+    leaves them stale without changing any behavior, and
+    `tests/geo/test_parcel_id_links.py` fails on the drift rather than on
+    a defect. This is the one-command answer to that failure.
+
+    It needs no grid-search table, which is the point: refreshing a
+    comment column should not depend on a file that is not in the
+    repository.
+
+    Parameters
+    ----------
+    country_id : str, optional
+        Country whose scheme issued the codes.
+    verbose : bool, optional
+        Print how many rows moved and how many keys no longer resolve.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The table with both columns re-resolved. Rows whose key names no
+        live unit are left exactly as they were: the code is still the
+        key, a later spine may name it again, and the test that every key
+        resolves is the right place for that to surface.
+    """
+    table = pd.read_csv(LINKS_PATH, dtype=str, keep_default_na=False)
+    live = _read_live_spine()
+    index = _UnitIndex(live[live['code'] != ''], {}, country_id)
+    resolved = [index.by_code.get(code) for code in table['admin_id_admin1']]
+
+    moved = unresolved = 0
+    admin_ids, names = [], []
+    for was, now, name in zip(table['admin_id'], resolved, table['name']):
+        if now is None:
+            unresolved += 1
+            admin_ids.append(was)
+            names.append(name)
+            continue
+        moved += was != now
+        admin_ids.append(now)
+        names.append(index.name_of.get(now, name))
+    table['admin_id'] = admin_ids
+    table['name'] = names
+
+    if verbose:
+        print(f'{len(table):,} rows: {moved:,} admin ids refreshed')
+        if unresolved:
+            print(
+                f'  {unresolved:,} keys name no live unit and were left '
+                'alone; run the full import if that is not expected'
+            )
+    return table
+
+
 def main(argv=None) -> None:
     """Import the table and write it in place."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        '--auto', type=Path, required=True, help='grid-search table (parquet)'
+        '--auto', type=Path, default=None, help='grid-search table (parquet)'
     )
     parser.add_argument(
         '--manual', type=Path, default=None, help='hand-written overrides (csv)'
@@ -596,9 +660,27 @@ def main(argv=None) -> None:
         help='commit whose committed rule keeps rank 0 for each unit',
     )
     parser.add_argument(
+        '--refresh-ids',
+        action='store_true',
+        help='re-resolve the admin_id/name comment columns and stop '
+        '(needs no grid-search table)',
+    )
+    parser.add_argument(
         '--dry-run', action='store_true', help='report and write nothing'
     )
     args = parser.parse_args(argv)
+
+    if args.refresh_ids:
+        table = refresh_admin_ids()
+        if args.dry_run:
+            print(f'dry run: would write {LINKS_PATH}')
+            return
+        table.to_csv(LINKS_PATH, index=False)
+        print(f'wrote {LINKS_PATH}')
+        return
+
+    if args.auto is None:
+        parser.error('--auto is required unless --refresh-ids is given')
 
     table = build(
         args.auto,
