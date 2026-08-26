@@ -19,6 +19,5 @@ If it works, you can submit your recipes and code to the public `GitHub reposito
    :maxdepth: 2
 
    writing-recipes
-   no-personal-data
    contributor-workflow
    bu-cluster

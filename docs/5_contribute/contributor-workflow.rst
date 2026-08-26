@@ -202,3 +202,12 @@ These hooks are triggered when you try to commit changes to the repository:
 
 If fixes were implemented (automatically or by you), you need to re-add the edited files and re-commit them, until you pass all checks.
 
+
+For details on keeping personal data out of the repository, including how to fabricate fixtures and what counts as a personal record, see the guide on :ref:`no_personal_data`.
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   no-personal-data
+

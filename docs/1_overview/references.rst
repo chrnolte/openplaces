@@ -121,8 +121,8 @@ Data sources
 Every ingest recipe declares its own source, and the recipe tree at
 :gh-file:`src/openplaces/recipes` is the authoritative per-source record:
 each recipe's ``source`` block carries the portal URL, and where one exists,
-the DOI. At the time of writing the tree spans **81 distinct sources across
-124 recipes**.
+the DOI. For the current count of sources and recipes in the active catalog,
+see the :ref:`package_state` page.
 
 They fall into three groups, which differ in how they should be cited:
 
@@ -132,7 +132,7 @@ compilation, recorded in its recipe as
 `doi:10.7910/DVN/PKJ90M <https://doi.org/10.7910/DVN/PKJ90M>`_.
 
 **Institutional and programme datasets.** National and international
-products --- among them the National Structure Inventory, FEMA USA
+products, including the National Structure Inventory, FEMA USA
 Structures, Overture Maps, Microsoft Building Footprints, OpenBuildingsMap,
 the USGS 3DEP elevation programme, the U.S. Census Bureau's TIGER and ACS
 products, IPUMS NHGIS, Eurostat/GISCO, the JRC Global Human Settlement Layer,
@@ -146,13 +146,12 @@ of which the recipe records.
 
 .. note::
 
-   Source metadata is incomplete. Of the 81 sources in the recipe tree, one
-   declares a DOI and none declares a licence. Portal URLs are recorded
-   almost everywhere, so provenance is traceable, but terms of use are not
-   yet captured in a form that can be checked automatically. Two sources are
-   known to carry conditions that matter --- GADM is licensed for
-   non-commercial use only, and Google imagery has caching restrictions ---
-   and a reader should not assume the remainder are unrestricted.
+   Source metadata is incomplete; many recipes do not yet record a DOI or license.
+   Portal URLs are recorded almost everywhere, so provenance is traceable, but
+   terms of use are not yet captured in a form that can be checked automatically.
+   Two sources are known to carry conditions that matter: GADM is licensed for
+   non-commercial use only, and Google imagery has caching restrictions;
+   a reader should not assume the remainder are unrestricted.
    Contributors adding a recipe should record the source's licence and
    citation alongside its URL.
 

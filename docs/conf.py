@@ -57,9 +57,9 @@ try:
     autoapi_ignore = [
         str((_repo_root / _entry.rstrip('/')).resolve())
         for _entry in _git.stdout.splitlines()
-    ]
+    ] + ['*build_template_from_reference.py']
 except Exception:
-    autoapi_ignore = []
+    autoapi_ignore = ['*build_template_from_reference.py']
 
 autoapi_dirs = ['../src/openplaces']
 autoapi_template_dir = '_templates/autoapi'

@@ -46,7 +46,7 @@ When multiple siblings contend for the same candidate code, conflicts are resolv
 
 Deference to published conventions
 ----------------------------------
-The generation pipeline adopts published national or international code lengths (e.g., ISO 3166-2 or HASC) when the published scheme maps to the corresponding administrative level and unit counts require it. However, a reviewed override set (e.g., for Colombian departments) outranks inferred conventions.
+The generation pipeline adopts published national or international code lengths (e.g., ISO 3166-2) when the published scheme maps to the corresponding administrative level and unit counts require it. However, a reviewed override set (e.g., for Colombian departments) outranks inferred conventions.
 
 
 Simulation and empirical findings

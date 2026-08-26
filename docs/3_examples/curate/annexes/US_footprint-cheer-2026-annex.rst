@@ -243,7 +243,7 @@ This stage produces entity-keyed evidence without selecting any canonical value.
 
 2. **Detect story counts**
 
-   Fetches street-level Google Street View photos (``image-googlestreetview-2026.yaml``) and runs detectors over them to estimate floors of living area (:ref:`Cetiner et al. 2025 <Cetiner et al. 2025>`). The EfficientDet inference engine is not bundled (its upstream is LGPL-3.0, incompatible with this repository's licence), so this step raises unless a replacement is supplied; ``n_stories`` is still produced from NSI and from a modeled inventory.
+   Fetches street-level Google Street View photos (``image-googlestreetview-2026.yaml``) and runs detectors over them to estimate floors of living area (:ref:`Cetiner et al. 2025 <Cetiner et al. 2025>`). The EfficientDet inference engine is not bundled (its upstream is LGPL-3.0, incompatible with this repository's license), so this step raises unless a replacement is supplied; ``n_stories`` is still produced from NSI and from a modeled inventory.
 
    *Dependency*: Requires the completed footprint geometries from Stage 2.
 
@@ -321,7 +321,7 @@ This stage curates the parcel spine to produce clean assessor attributes:
 Footprint curation
 ~~~~~~~~~~~~~~~~~~
 
-Recipe: ``US_footprint-cheer-2026``
+Recipe: ``US_footprint-openplaces-2026``
 
 This stage curates the footprint spine, integrating parcel, imagery, and point evidence into the final exposure dataset. The curation recipe steps are chronologically executed, structured into functional sub-stages to highlight data-flow dependencies:
 
@@ -405,7 +405,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    e. **Derive named indicator columns**
 
-      Computes the named precursor columns the occupancy votes score against: the metric minimum-bounding-rectangle ``aspect_ratio``; each occupancy source coerced to the canonical class vocabulary (``occupancy_type_nsi_class``, ``occupancy_type_fema_class``, and the reviewed-only ``occupancy_keyword_class``); and ``habitable_size_ratio``, each footprint's area relative to a locally derived habitable-size threshold. Indicator columns hold measurements or labels, never pre-thresholded booleans — every cutoff lives in the vote decisions, so each threshold is stated exactly once in the recipe.
+      Computes the named precursor columns the occupancy votes score against: the metric minimum-bounding-rectangle ``aspect_ratio``; each occupancy source coerced to the canonical class vocabulary (``occupancy_type_nsi_class``, ``occupancy_type_fema_class``, and the reviewed-only ``occupancy_keyword_class``); and ``habitable_size_ratio``, each footprint's area relative to a locally derived habitable-size threshold. Indicator columns hold measurements or labels, never pre-thresholded booleans, as every cutoff lives in the vote decisions, so each threshold is stated exactly once in the recipe.
 
       *Dependency*: Requires footprint metrics from Step 3.d and joined parcel evidence (Step 1.a).
 
@@ -482,7 +482,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    b. **Vote dwelling multiplicity**
 
-      The first of two questions: does this footprint hold one dwelling or several? A weighted vote over Overture dwelling counts, assessor keywords, and the NSI/FEMA classes writes ``multi`` or ``single`` to the intermediate ``dwelling_multiplicity`` column. Every manufactured-home signal also scores as single-dwelling evidence here — a manufactured home is by definition one dwelling — which is precisely the information a flat three-way vote discarded by treating the classes as competitors.
+      The first of two questions: does this footprint hold one dwelling or several? A weighted vote over Overture dwelling counts, assessor keywords, and the NSI/FEMA classes writes ``multi`` or ``single`` to the intermediate ``dwelling_multiplicity`` column. Every manufactured-home signal also scores as single-dwelling evidence here (a manufactured home is by definition one dwelling), which is precisely the information a flat three-way vote discarded by treating the classes as competitors.
 
       *Dependency*: Requires derived indicators (Step 3.e), reconciled dwelling counts (Step 3.a), and manufactured home probability (Step 6.a).
 
@@ -506,7 +506,7 @@ This stage curates the footprint spine, integrating parcel, imagery, and point e
 
    e. **Flag manufactured home communities**
 
-      Re-evaluates mobile home park boundaries and flags parcels containing more than :input:`min_homes` (3) final Manufactured Home footprints (i.e., 4 or more). It writes the count to ``n_manufactured_homes_per_parcel`` and the boolean flag to ``manufactured_home_community``, deliberately overwriting the parcel-lane seed joined in Step 1.a — the final value supersedes the seed.
+      Re-evaluates mobile home park boundaries and flags parcels containing more than :input:`min_homes` (3) final Manufactured Home footprints (i.e., 4 or more). It writes the count to ``n_manufactured_homes_per_parcel`` and the boolean flag to ``manufactured_home_community``, deliberately overwriting the parcel-lane seed joined in Step 1.a (the final value supersedes the seed).
 
       *Dependency*: Requires final occupancy classification from Step 6.c.
 

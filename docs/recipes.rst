@@ -26,6 +26,11 @@ exists yet for that geography -- not that the underlying data doesn't exist.
 
 .. recipe-children::
 
+Recipe statistics
+-----------------
+
+.. recipe-state::
+
 .. toctree::
    :hidden:
    :titlesonly:

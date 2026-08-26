@@ -22,49 +22,13 @@ Open and run it after :ref:`installing <install>` and activating your environmen
    cd notebooks
    jupyter notebook
 
-.. _identity:
-
-How openplaces identifies itself
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Setup also asks for a **nickname** and a **place**. They go into the
-``User-Agent`` header of every request ``openplaces`` makes:
-
-.. code-block:: text
-
-   openplaces/0.1.0 (+https://openplaces.io; ada@some-university)
-
-``openplaces`` downloads from public servers run by other people — county
-GIS portals, state agencies, national statistical offices. Naming the
-project and linking its page tells an operator what the traffic is; the
-handle gives them someone to ask if a run causes unexpected load. Some
-servers also reject requests carrying no recognizable agent at all.
-
-You are **not registering anything**, and nothing is sent to this project.
-Pick any handle you are willing to see in a server log — a work handle and
-an institution or city is the usual choice. Leave it blank and requests go
-out as ``unidentified``, which is a worse neighbor but an honest one.
-
-When an AI coding agent drives a run, it is disclosed too
-(``; agent: claude-code``), so a provider can tell autonomous traffic from
-a person at a keyboard. Set ``OPENPLACES_AGENT`` to name an agent
-``openplaces`` does not recognize.
-
-Change it at any time:
-
-.. code-block:: bash
-
-   python -m openplaces.config --set-identity ada some-university
-   python -m openplaces.config --user-agent      # show what will be sent
-
-   python dev.py identity                        # or, interactively
 
 .. _directory_structure:
 
 Directory structure
 ~~~~~~~~~~~~~~~~~~~
 
-``openplaces`` uses different directories for different stages of the analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports / publications.
+``openplaces`` uses different directories for different stages of the analytical pipeline: input data (external downloads, own raw data), scratch directories for intermediate data, canonical, analysis-ready data, output data, shared data, fitted models, and reports or publications.
 
 This simplifies data sharing across different machines and cloud services, and makes it easier to configure team- and user-specific permissions. 
 
@@ -74,53 +38,53 @@ This simplifies data sharing across different machines and cloud services, and m
 
    * - Name
      - Default
-     - Shared/User
+     - Shared
      - Description
    * - ``data_root``
      - :input:`None`
-     - 🌍 Shared
+     - 🌍 Yes
      - Root directory for data, models, reports.
 
        If :input:`None`, the project code directory is used as the data root.
    * - ``core``
      - :file:`data/core`
-     - 👤 User (multi-user)
+     - 👤 No
      - Processed, analysis-ready data
    * - ``external``
      - :file:`data/external`
-     - 🌍 Shared
+     - 🌍 Yes
      - Downloaded data from third-party sources
    * - ``raw``
      - :file:`data/raw`
-     - 🌍 Shared
+     - 🌍 Yes
      - Raw data from your own data collection efforts
    * - ``cache``
      - :file:`data/cache`
-     - 👤 User (multi-user)
+     - 👤 No
      - Intermediate files generated during processing
    * - ``heap``
      - :file:`data/cache/_heap`
-     - 👤 User (multi-user)
+     - 👤 No
      - Freshly unzipped data, not yet with standard prefixes
    * - ``logs``
      - :file:`data/cache/_logs`
-     - 👤 User (multi-user)
+     - 👤 No
      - Logs from script runs with timing and metadata
    * - ``out``
      - :file:`data/out`
-     - 👤 User (multi-user)
+     - 👤 No
      - Output and results data
    * - ``share``
      - :file:`data/share`
-     - 🌍 Shared
+     - 🌍 Yes
      - Shared data between users
    * - ``models``
      - :file:`models`
-     - 👤 User (multi-user)
+     - 👤 No
      - Trained and serialized models, model predictions, or model summaries
    * - ``reports``
      - :file:`reports`
-     - 👤 User (multi-user)
+     - 👤 No
      - Reports and figures
 
 .. note::
@@ -128,7 +92,6 @@ This simplifies data sharing across different machines and cloud services, and m
    In multi-user mode, user-specific directories are in ``data/<username>/``.
 
 Credits to `Cookiecutter Data Science <https://cookiecutter-data-science.drivendata.org/>`_ (Carl Boettiger's lab @ Berkeley) for inspiring this directory structure.
-
 
 
 Single vs. multi-user mode
@@ -190,12 +153,40 @@ Best for team projects where multiple people work on the same codebase.
    │       └── out/               # 👤 Yours
    ├── models/                    # 🌍 Shared
    │   └── YourUsername/          # 👤 Yours
+   │   └── YourUsername/          # 👤 Yours
    └── reports/                   # 🌍 Shared
        └── YourUsername/          # 👤 Yours
 
 * User subfolders for: ``cache``, ``heap``, ``logs``, ``core``, ``out``
 * Shared folders for: ``external``, ``raw``, ``share``
 * User subfolders in ``models``, ``reports``
+
+
+.. _identity:
+
+Identifying yourself to data providers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Setup also asks for a **nickname** and a **place**. They go into the ``User-Agent`` header of every request ``openplaces`` makes:
+
+.. code-block:: text
+
+   openplaces/0.1.0 (+https://openplaces.io; ada@some-university)
+
+``openplaces`` downloads from public servers run by other people, such as county GIS portals, state agencies, and national statistical offices. Naming the project and linking its page tells an operator what the traffic is; the handle gives them someone to ask if a run causes unexpected load. Some servers also reject requests carrying no recognizable agent at all.
+
+You are **not registering anything**, and nothing is sent to this project. Pick any handle you are willing to see in a server log: a work handle and an institution or city is the usual choice. Leave it blank and requests go out as ``unidentified``, which is a worse neighbor but an honest one.
+
+When an AI coding agent drives a run, it is disclosed too (``; agent: claude-code``), so a provider can tell autonomous traffic from a person at a keyboard. Set ``OPENPLACES_AGENT`` to name an agent ``openplaces`` does not recognize.
+
+Change it at any time:
+
+.. code-block:: bash
+
+   python -m openplaces.config --set-identity ada some-university
+   python -m openplaces.config --user-agent      # show what will be sent
+
+   python dev.py identity                        # or, interactively
 
 
 Location of configuration files
@@ -236,4 +227,3 @@ Configuration files are used in priority order: **user > project > defaults**.
 3. **Built-in defaults** (fallback)
    
    *  Hardcoded in ``config.py``.
-

@@ -181,6 +181,18 @@ File handling
 
       Rules to transform admin key values before substituting them into the download URL (e.g., remove spaces from county names).
 
+      Supported values:
+
+      :input:`remove_spaces`
+         Strip all spaces (``New Hanover`` becomes ``NewHanover``).
+
+      :input:`slugify`
+         Lowercase and join whitespace with single hyphens
+         (``North Carolina`` becomes ``north-carolina``), the convention
+         Geofabrik and similar publishers use for per-state files.
+
+      Any other value raises ``NotImplementedError``.
+
       Example (NC building recipe, which uses the county name in the URL):
 
       .. code-block:: yaml

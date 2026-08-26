@@ -16,7 +16,6 @@ The same counts print from the command line::
 """
 
 from catalog_data import (
-    headline_lines,
     summarize,
     table_lines,
 )
@@ -39,7 +38,7 @@ class RecipeState(Directive):
 
     def run(self) -> list[nodes.Node]:
         state = summarize()
-        lines = headline_lines(state)
+        lines = []
 
         lines += ['Pipeline stages', '~' * 15, '']
         lines += table_lines(
