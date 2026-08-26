@@ -700,6 +700,14 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
             continue
         if (data.get('stage') or 'ingest') != 'ingest':
             continue
+        if data.get('exclude_from_auto_discover'):
+            # The harmonizer's discovery skips these (a recipe kept out
+            # of resolve_spine on purpose); the dependency scan must
+            # agree, or a merely-existing excluded recipe changes the
+            # dependency edge set - and with it every link-sidecar
+            # fingerprint of the entity type, reading as region-wide
+            # staleness for data that never changed.
+            continue
         raw_admin_id = data.get('admin_id')
         admin_id_str = (
             str(raw_admin_id)

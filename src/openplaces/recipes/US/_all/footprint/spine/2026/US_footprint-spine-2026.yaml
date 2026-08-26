@@ -54,7 +54,11 @@ pipeline:
     entity_type: parcel
 
   # Attribution only: aggregate source columns into suffixed evidence columns.
+  # checkpoint: the spine after this step is persisted; a rerun whose
+  # changes sit in later steps restores it instead of re-running the
+  # load and reconcile prefix (about two-thirds of an attribute rerun).
   - step: reconcile_attributes
+    checkpoint: true
     sources:
       - entity_type: parcel
         columns:
@@ -86,7 +90,7 @@ pipeline:
           # NSI assigns foundation from regional/flood-zone rules, so it is
           # a prior rather than a per-building observation -- but a stable
           # one, which a per-building classifier is not guaranteed to be
-          # (see the foundation_type reconciliation in US_footprint-cheer-2026).
+          # (see the foundation_type reconciliation in US_footprint-openplaces-2026).
           - foundation_type
           # Same prior-not-observation caveat: NSI derives bldgtype from
           # occupancy statistics. Still the only national source, and the
@@ -135,7 +139,7 @@ pipeline:
   # Independent occupancy_type evidence from NC building permits: APN-based
   # linking first (parcel_id_local, computed by both sides at ingest time),
   # then an address fallback for footprints the APN pass missed. Deliberately
-  # not yet added to US_footprint-cheer-2026's occupancy vote -- that vote/
+  # not yet added to US_footprint-openplaces-2026's occupancy vote -- that vote/
   # kernel mechanism is mid-overhaul on a separate branch; see this recipe's
   # evidence-only mandate above.
   #

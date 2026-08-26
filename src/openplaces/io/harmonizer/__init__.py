@@ -130,6 +130,110 @@ class HarmonizeState:
         }
 
 
+def _attribute_checkpoint_path(recipe, admin_id):
+    """Cache path of an attribute recipe's mid-pipeline checkpoint."""
+    from openplaces.recipe import get_output_path
+
+    out = get_output_path(recipe, admin_id)
+    return out.with_name(out.stem + '_checkpoint.parquet')
+
+
+def _checkpoint_chain(recipe, pipeline, upto, admin_id):
+    """Validity fingerprint for a checkpoint after step *upto*.
+
+    The ordered config hashes of every step up to and including the
+    checkpointed one, plus the size/mtime of the entity_recipe output
+    the pipeline loads (the geospine for the split spine recipes): a
+    change to any covered step config or to the loaded input
+    invalidates the checkpoint, a change to a later step does not.
+    """
+    import hashlib
+    import json as _json
+
+    from openplaces.io.harmonizer.links import _fingerprint_safe_step
+    from openplaces.recipe import get_output_path, get_recipe_by_id
+
+    hashes = []
+    for step_cfg in pipeline[: upto + 1]:
+        safe = _fingerprint_safe_step(step_cfg)
+        hashes.append(
+            hashlib.sha256(
+                _json.dumps(safe, sort_keys=True, default=str).encode()
+            ).hexdigest()[:16]
+        )
+    source = None
+    entity_recipe_id = recipe.get('entity_recipe')
+    if entity_recipe_id:
+        try:
+            upstream = get_recipe_by_id(str(entity_recipe_id))
+            path = get_output_path(upstream, admin_id)
+            stat = path.stat()
+            source = {
+                'path': path.name,
+                'size': stat.st_size,
+                'mtime': round(stat.st_mtime, 3),
+            }
+        except Exception:
+            source = None
+    return {'format': 1, 'steps': hashes, 'source': source}
+
+
+def _load_attribute_checkpoint(recipe, admin_id, chain, verbose=False):
+    """Return the checkpointed spine when *chain* still validates, else None."""
+    import json as _json
+
+    import geopandas as gpd
+    import pyarrow.parquet as pq
+
+    path = _attribute_checkpoint_path(recipe, admin_id)
+    if not path.exists():
+        return None
+    try:
+        meta = pq.read_schema(path).metadata or {}
+        stored = _json.loads(meta[b'openplaces:checkpoint'])
+    except Exception:
+        return None
+    if stored != chain:
+        if verbose:
+            print('  Checkpoint stale; running the full pipeline.')
+        return None
+    try:
+        try:
+            spine = gpd.read_parquet(path)
+        except Exception:
+            spine = pd.read_parquet(path)
+    except Exception:
+        return None
+    if verbose:
+        print(
+            f'  Checkpoint: restored {len(spine):,d} rows after step '
+            f'{len(chain["steps"])}; earlier steps skipped.'
+        )
+    return spine
+
+
+def _save_attribute_checkpoint(recipe, admin_id, spine, chain, verbose=False):
+    """Persist *spine* plus its validity *chain* in the parquet footer."""
+    import json as _json
+
+    import pyarrow.parquet as pq
+
+    from openplaces.io import to_parquet
+
+    path = _attribute_checkpoint_path(recipe, admin_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        to_parquet(coerce_mixed_object_columns(spine.copy()), path)
+        table = pq.read_table(path)
+        meta = dict(table.schema.metadata or {})
+        meta[b'openplaces:checkpoint'] = _json.dumps(chain).encode()
+        pq.write_table(table.replace_schema_metadata(meta), path)
+        if verbose:
+            print(f'  Checkpoint saved: {path.name}')
+    except Exception as exc:
+        warnings.warn(f'Could not save attribute checkpoint: {exc}')
+
+
 def restrict_to_admin_by_name(df, recipe_id: str, admin_id: AdminId):
     """Fall back to a plain-text admin-name filter for an over-broad source.
 
@@ -517,7 +621,36 @@ class Harmonizer:
             reprocess=reprocess,
         )
 
+        # A pipeline step marked 'checkpoint: true' persists the spine
+        # after it runs; a later rerun whose config chain up to that
+        # step (and the loaded entity_recipe output) is unchanged
+        # restores it and runs only the remaining steps. One checkpoint
+        # per recipe, placed by the recipe author after the expensive
+        # reconcile block: profiling (Nueces, 2026-08-25) puts the
+        # load-plus-reconcile prefix at about two-thirds of an
+        # attribute rerun. Delete the '_checkpoint.parquet' beside the
+        # output to force a full rerun.
+        checkpoint_index = next(
+            (
+                i
+                for i, s in enumerate(pipeline)
+                if isinstance(s, dict) and s.get('checkpoint')
+            ),
+            None,
+        )
+        resume_from = 0
+        if checkpoint_index is not None:
+            chain = _checkpoint_chain(self.recipe, pipeline, checkpoint_index, admin_id)
+            restored = _load_attribute_checkpoint(
+                self.recipe, admin_id, chain, verbose=self.verbose
+            )
+            if restored is not None:
+                state.spine = restored
+                resume_from = checkpoint_index + 1
+
         for step_index, step_cfg in enumerate(pipeline):
+            if step_index < resume_from:
+                continue
             state.step_index = step_index
             step_name = step_cfg.get('step')
             if not step_name:
@@ -533,8 +666,14 @@ class Harmonizer:
                     f"Unknown pipeline step: '{step_name}'. "
                     f'Registered steps: {", ".join(sorted(_STEP_REGISTRY))}.'
                 )
-            params = {k: v for k, v in step_cfg.items() if k != 'step'}
+            params = {
+                k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
+            }
             state = fn(state, **params)
+            if step_index == checkpoint_index and resume_from == 0:
+                _save_attribute_checkpoint(
+                    self.recipe, admin_id, state.spine, chain, verbose=self.verbose
+                )
 
         if state.spine is None:
             warnings.warn(f'Pipeline for {admin_id} produced no spine; nothing saved.')

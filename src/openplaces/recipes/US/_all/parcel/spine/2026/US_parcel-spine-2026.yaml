@@ -185,6 +185,7 @@ pipeline:
   # Assign the dominant FEMA occupancy class by overlap area, from the
   # overlay crosswalk the geospine persisted.
   - step: reconcile_attributes
+    checkpoint: true
     sources:
       - recipe_id: US_footprint-fema-2023
         columns:
