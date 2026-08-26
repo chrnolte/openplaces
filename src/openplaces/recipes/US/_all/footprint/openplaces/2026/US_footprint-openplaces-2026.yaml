@@ -160,6 +160,7 @@ share:
     admin_level: 2
     regions:
       - cheer-eastern-nc
+      - western-nc
       - cheer-coastal-tx
       - boston-inner-core
       - boston-outer-rings
