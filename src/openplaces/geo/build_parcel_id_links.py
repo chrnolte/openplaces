@@ -31,6 +31,8 @@ from openplaces.core.schema import AdminId
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import (
     _PARCEL_ID_DIR,
+    PARCEL_ID_RELINK_THRESHOLD,
+    _resolve_instruction,
     convert_parcel_id,
     dominant_parcel_id_pattern,
     simplest_parcel_id_pattern,
@@ -438,3 +440,265 @@ def _write_overrides(proposed: pd.DataFrame) -> None:
         out = pd.concat([existing, to_append], ignore_index=True)
         path.parent.mkdir(parents=True, exist_ok=True)
         out.to_csv(path, index=False)
+
+
+def measure_parcel_id_linkage(pc: pd.Series, za: pd.Series, admin_id) -> float:
+    """Return the share of *pc* ids the bundled rules link into *za*.
+
+    Applies each side's own bundled conversion (the `parcel` kind to *pc*,
+    the `tax` kind to *za*) and reports the fraction of all *pc* rows whose
+    key also appears among *za*'s non-duplicated keys -- the same measure
+    `find_best_parcel_id_link` maximizes, so the two are comparable.
+
+    Parameters
+    ----------
+    pc : pd.Series
+        Raw parcel-side ids for *admin_id*.
+    za : pd.Series
+        Raw tax or transaction-side ids for the same unit.
+    admin_id : str or AdminId
+        Unit whose bundled rules to apply.
+
+    Returns
+    -------
+    float
+        Between 0 and 1; 0 when either side is empty.
+    """
+    if pc is None or za is None or pc.empty or za.empty:
+        return 0.0
+    pattern_pc, conv_pc, _ = _resolve_instruction(admin_id, None, 'parcel')
+    pattern_za, conv_za, _ = _resolve_instruction(admin_id, None, 'tax')
+    converted = convert_parcel_id(
+        pc.astype('string').str.strip().str.upper(), pattern_pc, conv_pc
+    )
+    targets = _unique_converted_values(
+        za.astype('string').str.strip().str.upper(), pattern_za, conv_za
+    )
+    return float(converted.isin(targets).sum() / len(pc))
+
+
+def _converted_share(pc: pd.Series, pattern: str, conv: str) -> float:
+    """Return the share of populated ids in *pc* that convert to a key."""
+    raw = pc.astype('string').str.strip().str.upper()
+    populated = raw.notna() & raw.ne('')
+    n = int(populated.sum())
+    if not n:
+        return 0.0
+    key = convert_parcel_id(raw, pattern, conv)
+    return float((key.notna() & populated).sum() / n)
+
+
+def measure_parcel_id_fit(pc: pd.Series, admin_id) -> dict:
+    """Report how a unit's bundled conversion behaves on one id column.
+
+    The cross-dataset measure (:func:`measure_parcel_id_linkage`) needs a
+    second source, and many places have only one: Maine ships a statewide
+    parcel layer and no tax roll. A conversion can still be shown not to
+    fit from one side alone, because a pattern written for differently
+    formatted ids matches nothing at all. Measured 2026-08-25, the
+    bundled rules convert 0% of Maine's 557,000 ingested parcel ids,
+    whose shape is `S_S-S_S-S` where those rules expect `Sx-Sx_Sx-Sx`.
+
+    Two numbers say it. `excess_loss` is how much more of the column the
+    conversion fails to convert than a plain `simple` would, the same
+    comparison `compute_parcel_id_local`'s `max_loss` guard makes at
+    ingest time. `uniqueness` is the share of produced keys that are
+    distinct, which catches the opposite failure: a conversion that
+    matches but collapses distinct ids together.
+
+    Parameters
+    ----------
+    pc : pd.Series
+        Raw parcel-side ids for *admin_id*.
+    admin_id : str or AdminId
+        Unit whose bundled rule to apply.
+
+    Returns
+    -------
+    dict
+        `n`, `converted`, `converted_simple`, `excess_loss`, `uniqueness`.
+    """
+    raw = pc.astype('string').str.strip().str.upper()
+    populated = raw.notna() & raw.ne('')
+    n = int(populated.sum())
+    if not n:
+        return {
+            'n': 0,
+            'converted': 0.0,
+            'converted_simple': 0.0,
+            'excess_loss': 0.0,
+            'uniqueness': 0.0,
+        }
+    pattern, conv, _ = _resolve_instruction(admin_id, None, 'parcel')
+    key = convert_parcel_id(raw, pattern, conv)
+    kept = key.notna() & populated
+    n_kept = int(kept.sum())
+    converted = n_kept / n
+    simple = _converted_share(pc, None, 'simple')
+    return {
+        'n': n,
+        'converted': converted,
+        'converted_simple': simple,
+        'excess_loss': simple - converted,
+        'uniqueness': (key[kept].nunique() / n_kept) if n_kept else 0.0,
+    }
+
+
+def recheck_parcel_id_links(
+    admin_ids: list[str],
+    threshold: float = PARCEL_ID_RELINK_THRESHOLD,
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Re-derive the parcel-id link for units whose bundled rule underperforms.
+
+        The bundled conversions were measured once, on one vintage of one pair
+        of sources. A county's newly ingested parcel or transaction data can
+        carry a differently formatted id, and the join then quietly returns
+        few rows rather than failing -- which is why this exists: run it when
+        a unit's data is first ingested and linked, and whenever a link
+        reports less than *threshold*.
+
+    For a unit with both a parcel and a tax or transaction source
+        ingested, it measures the cross-dataset linkage the bundled rules
+        actually achieve (:func:`measure_parcel_id_linkage`) and, below
+        *threshold*, re-runs the grid search (:func:`find_best_parcel_id_link`).
+
+        For a unit with only a parcel source - Maine, where the state ships a
+        parcel layer and no tax roll - there is no linkage to measure, but a
+        rule written for another source's id format still shows itself by
+        converting nothing (:func:`measure_parcel_id_fit`). Below *threshold*
+        it proposes the simplest pattern that fits the ids in hand. That
+        proposal is self-consistency only, never cross-validated, and
+        `cross_validated` says which kind each row is.
+
+        Either way a proposal is returned **only if it beats what the bundled
+        rule achieved**, so a re-check can never make a unit worse. Units
+        already at or above *threshold* are reported untouched.
+
+        Nothing is written. The proposals go to
+        `{country}_{entity_type}_id-overrides.csv` through
+        :func:`propose_parcel_id_overrides`, or into the bundled table by
+        hand, both of which are decisions for a person.
+
+        Parameters
+        ----------
+        admin_ids : list of str
+            Units to re-check. Not auto-discovered: pass the units whose data
+            has actually been ingested.
+        threshold : float, optional
+            Achieved linkage below which the search is re-run.
+        verbose : bool, optional
+            Print one line per unit re-checked.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns `admin_id, cross_validated, achieved, best, improved,
+            pattern_parcel, conv_parcel, pattern_tax, conv_tax, n_pc, n_za`.
+            `achieved` is what the bundled rules manage today and `best` what
+            the search found; `improved` marks the rows worth acting on.
+            Empty when no unit has an ingested parcel source.
+    """
+    parcel_recipes = find_recipes('parcel', stage='ingest')
+    tax_side_recipes = pd.concat(
+        [
+            find_recipes('transaction', stage='ingest'),
+            find_recipes('property', stage='ingest'),
+        ],
+        ignore_index=True,
+    )
+
+    rows = []
+    for admin_id_str in admin_ids:
+        admin_id = AdminId(admin_id_str)
+        pc_row = _most_specific_recipe(parcel_recipes, admin_id)
+        if pc_row is None:
+            continue
+        pc = _load_assessor_ids(pc_row, admin_id)
+        if pc is None or pc.empty:
+            continue
+        za_row = _most_specific_recipe(tax_side_recipes, admin_id)
+        za = _load_assessor_ids(za_row, admin_id) if za_row is not None else None
+        cross = za is not None and not za.empty
+
+        row = {
+            'admin_id': admin_id_str,
+            'cross_validated': cross,
+            'achieved': None,
+            'best': None,
+            'improved': False,
+            'pattern_parcel': None,
+            'conv_parcel': None,
+            'pattern_tax': None,
+            'conv_tax': None,
+            'n_pc': len(pc),
+            'n_za': len(za) if cross else 0,
+        }
+
+        if cross:
+            achieved = measure_parcel_id_linkage(pc, za, admin_id_str)
+            row.update(achieved=achieved, best=achieved)
+            if achieved < threshold:
+                best = find_best_parcel_id_link(pc, za)
+                if best['success'] > achieved:
+                    row.update(
+                        best=best['success'],
+                        improved=True,
+                        pattern_parcel=best['pattern_pc'],
+                        conv_parcel=best['conv_pc'],
+                        pattern_tax=best['pattern_za'],
+                        conv_tax=best['conv_za'],
+                    )
+            measure = 'linkage'
+        else:
+            # One side only. The conversion can still be shown not to
+            # fit, and a pattern written for another source's format is
+            # the common way that happens: it matches nothing. `achieved`
+            # is the share of ids that convert at all, on the same 0-to-1
+            # scale, so *threshold* means the same thing in both branches
+            # -- but the proposal is self-consistency only, never
+            # cross-validated, which `cross_validated` records.
+            fit = measure_parcel_id_fit(pc, admin_id_str)
+            row.update(achieved=fit['converted'], best=fit['converted'])
+            if fit['converted'] < threshold and fit['excess_loss'] > 0:
+                pattern = simplest_parcel_id_pattern(pc)
+                proposed = _converted_share(pc, pattern, 'skip_empty: 1')
+                if proposed > fit['converted']:
+                    row.update(
+                        best=proposed,
+                        improved=True,
+                        pattern_parcel=pattern,
+                        conv_parcel='skip_empty: 1',
+                    )
+            measure = 'converts'
+
+        rows.append(row)
+        if verbose:
+            verdict = (
+                'ok'
+                if row['achieved'] >= threshold
+                else (
+                    f'-> {row["best"]:.3f}'
+                    if row['improved']
+                    else 'no better rule found'
+                )
+            )
+            note = '' if cross else ' (one source)'
+            print(f'  {admin_id_str}: {measure} {row["achieved"]:.3f} {verdict}{note}')
+
+    return pd.DataFrame(
+        rows,
+        columns=[
+            'admin_id',
+            'cross_validated',
+            'achieved',
+            'best',
+            'improved',
+            'pattern_parcel',
+            'conv_parcel',
+            'pattern_tax',
+            'conv_tax',
+            'n_pc',
+            'n_za',
+        ],
+    )

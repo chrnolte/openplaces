@@ -26,6 +26,7 @@ from openplaces.core.schema import AdminId, SourceGeometryType
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import (
     PARCEL_ID_ALNUM_KEYS,
+    PARCEL_ID_RELINK_THRESHOLD,
     add_openlocationcode_index,
     add_parcel_id_alnum,
     get_geo_ids,
@@ -2081,6 +2082,38 @@ def _columns_as_pairs(
 
 
 @_register('link_by_id')
+def _warn_if_link_underperforms(
+    matched: int, total: int, spine_key: str, recipe_id: str, admin_id
+) -> None:
+    """Flag a `parcel_id_local` join that resolved too few of the spine.
+
+    The bundled conversions in `geo/parcel_id_links.csv` were measured
+    once, on one vintage of one pair of sources. A newly ingested source
+    for the same county can format its ids differently, and the join then
+    quietly returns few rows rather than failing -- there is no error to
+    catch, only a thin result. So the achieved share is compared against
+    `PARCEL_ID_RELINK_THRESHOLD` and a shortfall is named, with the
+    command that re-derives the rule from the data actually in hand.
+
+    Only `parcel_id_local` joins are checked: other keys are not derived
+    by a conversion this repository can re-fit.
+    """
+    if spine_key != DEFAULT_LINK_KEY or not total:
+        return
+    achieved = matched / total
+    if achieved >= PARCEL_ID_RELINK_THRESHOLD:
+        return
+    warnings.warn(
+        f'link_by_id: {recipe_id} matched only {achieved:.1%} of '
+        f'{total:,d} spine rows for {admin_id} on {spine_key} '
+        f'(under {PARCEL_ID_RELINK_THRESHOLD:.0%}). The bundled conversion '
+        'may not fit this source. Re-derive it with '
+        '`openplaces.geo.build_parcel_id_links.recheck_parcel_id_links('
+        f'[{str(admin_id)!r}])`.',
+        stacklevel=3,
+    )
+
+
 def link_by_id(
     state: HarmonizeState,
     recipe_id: str | None = None,
@@ -2414,12 +2447,15 @@ def link_by_id(
                 skey.map(mapper),
                 provenance_token=token if out_name in provenance_cols else None,
             )
+        matched = int(skey.isin(set(rkey.dropna())).sum())
         if state.verbose:
-            matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (attributes): {matched:,d}/{len(spine):,d} spine '
                 f'rows matched {recipe_id} ({len(pairs)} columns)'
             )
+        _warn_if_link_underperforms(
+            matched, len(spine), spine_key, recipe_id, state.admin_id
+        )
     elif mode == 'count':
         count_as = count_as or 'n_transactions'
         counts = rkey.dropna().value_counts()
@@ -2427,12 +2463,15 @@ def link_by_id(
         spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
         if flag_as:
             spine[flag_as] = spine[count_as] > 0
+        linked = int((spine[count_as] > 0).sum())
         if state.verbose:
-            linked = int((spine[count_as] > 0).sum())
             print(
                 f'  Link by id (count): {linked:,d}/'
                 f'{len(spine):,d} spine rows linked to {recipe_id} ({count_as})'
             )
+        # A count link is a different question: a parcel with no
+        # transaction is a real zero, not a failed join, so a low share
+        # says nothing about the conversion and nothing is flagged here.
     elif mode == 'aggregate':
         pairs = [
             (c, o)
