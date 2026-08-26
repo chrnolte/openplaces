@@ -22,6 +22,8 @@ def test_single_source_seeds_every_row_with_its_own_label(monkeypatch):
         crs='EPSG:4326',
         index=pd.Index(['A', 'B'], name='parcel_id'),
     )
+    # Synthetic coordinates: keep the stray-row guard out of the way.
+    monkeypatch.setattr(spine_mod, '_drop_out_of_unit_rows', lambda gdf, *a, **k: gdf)
     monkeypatch.setattr(spine_mod, 'get_entities', lambda *a, **k: parcels)
     state = HarmonizeState(
         recipe={'admin_id': 'US-NC-BL'}, admin_id='US-NC-BL', verbose=False, timer=None
@@ -56,6 +58,8 @@ def test_two_non_overlapping_sources_each_seed_their_own_rows(monkeypatch):
         index=pd.Index(['B'], name='parcel_id'),
     )
     sources = {'bladenco': primary, 'nconemap': secondary}
+    # Synthetic coordinates: keep the stray-row guard out of the way.
+    monkeypatch.setattr(spine_mod, '_drop_out_of_unit_rows', lambda gdf, *a, **k: gdf)
     monkeypatch.setattr(
         spine_mod, 'get_entities', lambda recipe_id, *a, **k: sources[recipe_id]
     )

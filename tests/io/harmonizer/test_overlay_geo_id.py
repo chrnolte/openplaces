@@ -63,6 +63,8 @@ def test_parcel_spine_overlay_does_not_collide_with_ref_level(monkeypatch):
         crs='EPSG:4326',
         index=pd.Index(['A', 'B'], name='parcel_id'),
     )
+    # Synthetic coordinates: keep the stray-row guard out of the way.
+    monkeypatch.setattr(spine_mod, '_drop_out_of_unit_rows', lambda gdf, *a, **k: gdf)
     monkeypatch.setattr(spine_mod, 'get_entities', lambda *a, **k: parcels)
     state = HarmonizeState(
         recipe={'admin_id': 'US-MA-MI'}, admin_id='US-MA-MI', verbose=False, timer=None
@@ -105,6 +107,8 @@ def test_resolve_spine_keep_columns_carries_value_fields(monkeypatch):
         crs='EPSG:4326',
         index=pd.Index(['A', 'B'], name='parcel_id'),
     )
+    # Synthetic coordinates: keep the stray-row guard out of the way.
+    monkeypatch.setattr(spine_mod, '_drop_out_of_unit_rows', lambda gdf, *a, **k: gdf)
     monkeypatch.setattr(spine_mod, 'get_entities', lambda *a, **k: parcels)
     state = HarmonizeState(
         recipe={'admin_id': 'US-NC-AR'}, admin_id='US-NC-AR', verbose=False, timer=None
@@ -154,6 +158,8 @@ def test_resolve_spine_falls_back_when_highest_priority_source_has_no_geometry(
             raise FileNotFoundError(f'no _geo.parquet for {recipe_id}')
         return fallback
 
+    # Synthetic coordinates: keep the stray-row guard out of the way.
+    monkeypatch.setattr(spine_mod, '_drop_out_of_unit_rows', lambda gdf, *a, **k: gdf)
     monkeypatch.setattr(spine_mod, 'get_entities', _get_entities)
     state = HarmonizeState(
         recipe={'admin_id': 'US-NC-CR'}, admin_id='US-NC-CR', verbose=False, timer=None

@@ -309,9 +309,14 @@ def get_admin(
         admin_from_recipe[shared_columns] = admin_from_recipe[shared_columns].fillna(
             admin[shared_columns]
         )
+        # Fill columns for spine-only rows (units the recipe lacks) from the
+        # spine, so that they come back named rather than nameless: the
+        # fillna above only reaches rows the recipe has.
+        spine_shared = admin[shared_columns]
         admin = admin.drop(columns=shared_columns).join(admin_from_recipe, how='outer')[
             column_order
         ]
+        admin[shared_columns] = admin[shared_columns].fillna(spine_shared)
         # Cast to GeoDataFrame if geometries are included
         if isinstance(admin_from_recipe, gpd.GeoDataFrame):
             admin = gpd.GeoDataFrame(admin, crs=admin_from_recipe.crs)

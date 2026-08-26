@@ -42,11 +42,19 @@ def _drop_out_of_unit_rows(gdf, admin_id, label, margin_deg=0.02):
     """
     if gdf is None or len(gdf) == 0 or 'geometry' not in getattr(gdf, 'columns', ()):
         return gdf
+    # Without a CRS the rows cannot be placed against the unit at all
+    # (synthetic fixtures, or a source whose CRS was never declared), so
+    # nothing is dropped.
+    if getattr(gdf, 'crs', None) is None:
+        return gdf
     try:
-        bounds = get_admin([str(admin_id)], geom=True).total_bounds
+        unit = get_admin([str(admin_id)], geom=True)
+        bounds = unit.total_bounds
     except Exception:
         return gdf
     pts = gdf.geometry.representative_point()
+    if unit.crs is not None and gdf.crs != unit.crs:
+        pts = pts.to_crs(unit.crs)
     inside = (
         (pts.x >= bounds[0] - margin_deg)
         & (pts.y >= bounds[1] - margin_deg)
