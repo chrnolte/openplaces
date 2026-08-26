@@ -234,13 +234,18 @@ def _fetch_attribute_table(
 ) -> dict:
     """Page a layer for attributes only, keyed by `key`.
 
+    `key` may name one field or several; several are assembled into one
+    string, the same way :func:`_composite_key` assembles the geometry
+    side, so the two always agree.
+
     `returnGeometry=false` with a short `outFields` list is what makes this
     viable on services that cannot serve geometry in bulk.
     """
     query_url = f'{layer_url.rstrip("/")}/query'
+    key_fields = _key_fields(key)
     params = {
         'where': where,
-        'outFields': ','.join([key, *fields]),
+        'outFields': ','.join([*key_fields, *fields]),
         'returnGeometry': 'false',
         'f': 'json',
     }
@@ -264,9 +269,11 @@ def _fetch_attribute_table(
         )
         for feature in page.get('features', []):
             attributes = feature.get('attributes') or {}
-            key_value = attributes.get(key)
-            if key_value is not None:
-                table[key_value] = {f: attributes.get(f) for f in fields}
+            parts = [attributes.get(f) for f in key_fields]
+            if any(part is None for part in parts):
+                continue
+            key_value = _KEY_PART_SEPARATOR.join(str(part) for part in parts)
+            table[key_value] = {f: attributes.get(f) for f in fields}
         if verbose:
             _log(f'{label}: joined {len(table)} attribute rows so far')
     return table
@@ -297,6 +304,46 @@ def _get_json(
     raise last_exc
 
 
+# Column the join key is assembled in. Temporary: dropped before the
+# file is written, so the source's own columns survive untouched.
+_JOIN_KEY_COLUMN = '_join_key'
+
+# Separator between the parts of a composite key. A unit separator
+# cannot occur in an assessor identifier, so joining on it can never
+# make two different (part, part) pairs collide the way a hyphen could
+# ('1' + '2-3' against '1-2' + '3'). `pipe` renders it as a boundary
+# like any other separator, which is one more reason to prefer `pipe`
+# over `simple` here: `simple` deletes separators and would reintroduce
+# exactly that ambiguity.
+_KEY_PART_SEPARATOR = '\x1f'
+
+
+def _key_fields(key) -> list:
+    """Return the join key's source fields, from a name or a list of them."""
+    if isinstance(key, str):
+        return [key]
+    return list(key)
+
+
+def _composite_key(frame, fields: list, *, label: str, side: str):
+    """Assemble the join key from *fields* of *frame*.
+
+    A single field is used as-is, so a recipe naming one field behaves
+    exactly as it did before composite keys existed.
+    """
+    missing = [f for f in fields if f not in frame.columns]
+    if missing:
+        raise ValueError(
+            f'{label}: attribute_join key field(s) {missing} are not columns '
+            f'of the {side}. Available: {sorted(frame.columns)[:20]}'
+        )
+    parts = [frame[f].astype('string').fillna('') for f in fields]
+    key = parts[0]
+    for part in parts[1:]:
+        key = key + _KEY_PART_SEPARATOR + part
+    return key
+
+
 def _apply_attribute_join(
     path: Path,
     table: dict,
@@ -306,11 +353,23 @@ def _apply_attribute_join(
     min_match: float,
     verbose: bool,
     label: str,
+    key_conv: str | None = None,
 ) -> None:
     """Merge an attribute table into the vector file at `path`, in place.
 
     Read through pyogrio rather than `json` -- it parses at C level, which
     matters on the hundred-MB exports this mode exists to serve.
+
+    With *key_conv*, both sides are compared through
+    :func:`~openplaces.geo.ids.convert_parcel_id` instead of literally.
+    Two submissions of the same parcel roll routinely agree on the
+    identifier and disagree on how they punctuate it: measured on Maine's
+    assessor table 2026-08-25, Kennebunk's geometry writes a map-lot as
+    `999-999` where its own assessor rows write `999_999`, and a literal
+    comparison matches none of 7,183 parcels where `pipe` matches 78%.
+    `pipe` is the conversion to reach for, because it collapses each run
+    of separators to a single marker rather than deleting it, so
+    `12-3` and `1-23` stay distinct.
     """
     # Imported lazily so the plain paging path stays a requests-only
     # module with no geo stack to load.
@@ -318,32 +377,48 @@ def _apply_attribute_join(
     import pandas as pd
 
     gdf = gpd.read_file(path)
-    if key not in gdf.columns:
-        raise ValueError(
-            f'{label}: attribute_join key {key!r} is not a column of the '
-            f'downloaded file. Available: {sorted(gdf.columns)[:20]}'
+    key_fields = _key_fields(key)
+
+    # The attribute side arrives already keyed on the assembled string
+    # (`_fetch_attribute_table` builds it the same way), so only the
+    # geometry side has to be assembled here. Both are string by
+    # construction, which also settles the dtype mismatch that used to
+    # make a space-padded key silently match nothing against an integer.
+    attributes = pd.DataFrame.from_dict(table, orient='index')
+    attributes.index.name = _JOIN_KEY_COLUMN
+    attributes = attributes.reset_index()
+    attributes[_JOIN_KEY_COLUMN] = attributes[_JOIN_KEY_COLUMN].astype('string')
+    gdf[_JOIN_KEY_COLUMN] = _composite_key(
+        gdf, key_fields, label=label, side='downloaded file'
+    )
+
+    literal_matched = int(
+        gdf[_JOIN_KEY_COLUMN].isin(set(attributes[_JOIN_KEY_COLUMN])).sum()
+    )
+    dropped = 0
+    if key_conv:
+        gdf, attributes, dropped = _normalize_join_key(
+            gdf, attributes, key_conv=key_conv
         )
 
-    attributes = pd.DataFrame.from_dict(table, orient='index')
-    attributes.index.name = key
-    attributes = attributes.reset_index()
+    matched = gdf[_JOIN_KEY_COLUMN].isin(set(attributes[_JOIN_KEY_COLUMN].dropna()))
+    n_matched = int(matched.sum())
+    if key_conv and n_matched < literal_matched:
+        raise RuntimeError(
+            f'{label}: attribute_join key_conv={key_conv!r} matched '
+            f'{n_matched:,} features where comparing {key_fields} literally '
+            f'matched {literal_matched:,}. A conversion that loses matches '
+            'is the wrong conversion for this source; drop it or pick '
+            'another.'
+        )
 
-    # A key whose dtype differs between the two sides silently matches
-    # nothing -- a space-padded string parcel key on one side against an
-    # integer on the other. Align on string form, which is what these
-    # assessor keys always are.
-    if gdf[key].dtype != attributes[key].dtype:
-        gdf[key] = gdf[key].astype('string')
-        attributes[key] = attributes[key].astype('string')
-
-    n_matched = int(gdf[key].isin(set(attributes[key])).sum())
     match_rate = n_matched / len(gdf) if len(gdf) else 0.0
     if match_rate < min_match:
         raise RuntimeError(
             f'{label}: attribute join matched only {n_matched:,} of '
             f'{len(gdf):,} features ({match_rate:.1%}), below the required '
-            f'{min_match:.0%}. Check that {key!r} is the right join key and '
-            'that both sides use the same identifier form.'
+            f'{min_match:.0%}. Check that {key_fields} is the right join key '
+            'and that both sides use the same identifier form.'
         )
 
     # Never let joined columns silently overwrite the bulk file's own.
@@ -354,13 +429,56 @@ def _apply_attribute_join(
             f'downloaded file: {collisions}. Rename or drop them.'
         )
 
-    merged = gdf.merge(attributes, on=key, how='left')
+    merged = gdf.merge(attributes, on=_JOIN_KEY_COLUMN, how='left')
+    merged = merged.drop(columns=[_JOIN_KEY_COLUMN])
     merged.to_file(path, driver='GeoJSON')
     if verbose:
+        gain = (
+            f' ({n_matched - literal_matched:+,} vs a literal comparison)'
+            if key_conv
+            else ''
+        )
+        lost = f', {dropped:,} ambiguous attribute rows dropped' if dropped else ''
         _log(
             f'{label}: joined {len(fields)} column(s) onto '
             f'{n_matched:,}/{len(gdf):,} features ({match_rate:.1%})'
+            f'{gain}{lost}'
         )
+
+
+def _normalize_join_key(gdf, attributes, *, key_conv):
+    """Convert the assembled key on both sides, dropping ambiguous rows.
+
+    Normalizing makes keys collide that did not collide before, and a
+    collision on the *attribute* side is the dangerous one: two assessor
+    rows reaching one normalized key would each attach to every parcel
+    carrying it, inventing rows and picking arbitrarily between
+    conflicting values. Those keys are dropped rather than resolved,
+    which costs the parcels behind them their attributes and never gives
+    them another parcel's. A collision on the geometry side is harmless:
+    two parcels may legitimately resolve to one assessor row.
+
+    Returns
+    -------
+    tuple
+        (geometry frame, attribute frame, number of attribute rows dropped)
+    """
+    from openplaces.geo.ids import convert_parcel_id
+
+    gdf = gdf.copy()
+    attributes = attributes.copy()
+    for frame in (gdf, attributes):
+        frame[_JOIN_KEY_COLUMN] = convert_parcel_id(
+            frame[_JOIN_KEY_COLUMN], None, key_conv
+        )
+
+    ambiguous = attributes[_JOIN_KEY_COLUMN].notna() & attributes.duplicated(
+        _JOIN_KEY_COLUMN, keep=False
+    )
+    dropped = int(ambiguous.sum())
+    if dropped:
+        attributes = attributes[~ambiguous]
+    return gdf, attributes, dropped
 
 
 def _layer_page_size(
@@ -577,6 +695,11 @@ def fetch(
         one exists; it is one request rather than hundreds, and it is the
         access route the agency intends.
     attribute_join : dict, optional
+        `key` is a field name, or a list of them when the identifier has
+        to be rebuilt from its parts. `key_conv` is an optional
+        :func:`~openplaces.geo.ids.convert_parcel_id` conversion applied
+        to both sides before they are compared, for a source whose two
+        submissions punctuate the same identifier differently.
         Enrich the downloaded features with columns pulled attribute-only
         from a REST layer. Keys:
         `layer_url` (defaults to the scraper's own `layer_url`), `key`
@@ -813,4 +936,5 @@ def _maybe_attribute_join(
         min_match=float(join_min_match),
         verbose=verbose,
         label=label,
+        key_conv=attribute_join.get('key_conv'),
     )
