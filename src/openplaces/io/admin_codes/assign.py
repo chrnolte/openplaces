@@ -77,6 +77,7 @@ def assign_codes(
     length_penalty: float = 0.15,
     score_fn: Callable[[int], float] = rank_score,
     reserved: set[str] | None = None,
+    fallback_width: int | None = None,
 ) -> dict[str, tuple[str, str]]:
     """Choose a unique code for every unit in one sibling group.
 
@@ -96,6 +97,14 @@ def assign_codes(
         Maps a zero-based preference rank to a satisfaction score.
     reserved : set of str, optional
         Codes already used elsewhere and not available to this group.
+    fallback_width : int, optional
+        Width of the sequential codes handed to units that offered no
+        candidate. Defaults to the widest candidate in the group, which
+        is right when the group is solved at one width and wrong when a
+        name offered nothing at all: a five-digit territory name in a
+        two-character group has no candidate to read a width from and
+        arrived three characters wide. The caller solving at a fixed
+        width passes it here.
 
     Returns
     -------
@@ -140,7 +149,7 @@ def assign_codes(
     # Guarantee at least one column per unit so a solution always
     # exists.
     if len(codes) < len(units):
-        width = max(
+        width = fallback_width or max(
             (
                 candidate.length
                 for unit in units

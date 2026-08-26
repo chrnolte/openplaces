@@ -120,6 +120,17 @@ def tokenize(
     >>> tokenize("Bouches-du-Rhone", pack)
     (['BOUCHES', 'DU', 'RHONE'], ['BOUCHES', 'RHONE'])
     """
+    # A leading number set off by punctuation is an ordinal the source
+    # prefixed to a real name ("2, Pollocksville" is township 2 of Jones
+    # County, named Pollocksville; 357 of the 359 such US subdivisions
+    # take this shape), so it is dropped. The punctuation is the tell:
+    # a number joined by a space is part of the name, as in Ecuador's
+    # "27 De Abril" or "105 Mile Post 2". A name that is nothing but a
+    # number keeps it, and `generate_candidates` turns that into a
+    # number code rather than a sequential fallback.
+    unprefixed = re.sub(r'^\s*\d+\s*[,.;:/]\s*', '', name)
+    if unprefixed.strip():
+        name = unprefixed
     raw = [t for t in re.split(r'[^A-Za-z0-9]+', fold_diacritics(name)) if t]
     # Administrative type words say what a unit is, not which one it is, so
     # they must not reach a code. Sources disagree about carrying them --
@@ -217,6 +228,20 @@ def generate_candidates(
         if len(code) in lengths and is_valid_code(code) and code not in seen:
             seen.add(code)
             out.append(Candidate(code, rule, len(code)))
+
+    # A name that is only a number (a numbered township or district:
+    # "1", "12", "3A") carries its number into the code, behind the
+    # letter the format requires and zero-padded to the group's width,
+    # so US-NC-PAM's township "1" is A01 and sorts with its siblings.
+    # Without this the name yields no candidate at all and the unit
+    # falls to the sequential pool, whose A00, A01, ... look the same
+    # but bear no relation to the number the source gave.
+    body = ''.join(tokens).upper()
+    if re.fullmatch(r'\d+[A-Z]?', body):
+        for width in sorted(lengths):
+            if len(body) <= width - 1:
+                add('A' + body.zfill(width - 1), 'number')
+        return out
 
     has_preposition = any(pack.is_preposition(t) for t in tokens)
     has_conjunction = any(pack.is_conjunction(t) for t in tokens)

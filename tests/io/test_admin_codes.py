@@ -288,3 +288,46 @@ class TestAssignment:
 
     def test_empty_group_returns_empty(self):
         assert assign_codes({}) == {}
+
+
+class TestNumberedNames:
+    """Names the source numbers rather than names.
+
+    US county subdivisions carry both shapes: a township that is only a
+    number ("1"), and one whose source prefixed an ordinal to a real
+    name ("2, Pollocksville"). Before these rules the first yielded no
+    candidate at all and the second built its code on the digit, so
+    both fell to the sequential pool.
+    """
+
+    def test_a_pure_number_becomes_a_padded_number_code(self):
+        assert generate_candidates('1', admin1_id='US', lengths=(3,))[0].code == 'A01'
+        assert generate_candidates('12', admin1_id='US', lengths=(3,))[0].code == 'A12'
+        assert generate_candidates('1', admin1_id='US', lengths=(2,))[0].code == 'A1'
+
+    def test_a_number_with_a_letter_suffix_keeps_the_suffix(self):
+        assert generate_candidates('3A', admin1_id='US', lengths=(3,))[0].code == 'A3A'
+
+    def test_a_number_too_wide_for_the_group_yields_nothing(self):
+        # Falls to the sequential pool, as before.
+        assert generate_candidates('104', admin1_id='US', lengths=(3,)) == []
+
+    def test_a_leading_ordinal_is_dropped_before_a_real_name(self):
+        codes = [
+            c.code for c in generate_candidates('2, Pollocksville', admin1_id='US')
+        ]
+        assert codes[0] == 'POL'
+        assert not any(c.startswith('2') or '2' in c for c in codes[:3])
+
+    def test_a_trailing_number_still_counts(self):
+        # "Ward 1" keeps its number: only a *leading* ordinal is dropped.
+        codes = [c.code for c in generate_candidates('Ward 1', admin1_id='US')]
+        assert 'W1' in codes
+
+    def test_a_space_joined_number_is_part_of_the_name(self):
+        # Ecuador's parishes are named for dates; the number is the name.
+
+        tokens, _ = tokenize('27 De Abril', get_language_pack(admin1_id='EC'))
+        assert tokens[0] == '27'
+        tokens, _ = tokenize('2, Pollocksville', get_language_pack(admin1_id='US'))
+        assert tokens == ['POLLOCKSVILLE']

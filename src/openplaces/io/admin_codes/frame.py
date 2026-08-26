@@ -197,16 +197,26 @@ def assign_admin_ids(
         # Units the spine already names keep their code; only the rest
         # are assigned, out of what those leave free.
         held = {n: pins[(parent, n)] for n in set(named) if (parent, n) in pins}
-        # Rows a name cannot identify are pinned per row, on the
-        # source's own code, and so are resolved outside `held`.
+        # The source's own code identifies a unit before its name does,
+        # so a row carrying one the spine knows is pinned on it first,
+        # and the name pin only serves rows the code cannot place. The
+        # order matters where two siblings share a name: Cedar Falls,
+        # Iowa is both a city and the balance of its township, and with
+        # the name consulted first whichever row came first took the
+        # spine's code while the row whose GEOID the spine actually
+        # records was minted afresh, 496 times over in the 2025 county
+        # subdivisions.
         pinned_rows = {}
         for idx, external in externals[rows.index].items():
-            name = names[idx]
-            if name in held or not external:
+            if not external:
                 continue
             code = by_external.get((parent, str(external)))
             if code is not None:
                 pinned_rows[idx] = code
+        # A code a row has claimed on its source code is no longer
+        # available to its name, or a same-named sibling would take it
+        # a second time.
+        held = {n: c for n, c in held.items() if c not in set(pinned_rows.values())}
         # Codes this parent has issued but no current unit claims. Held
         # in reserve rather than reissued, so a retired id resolves to
         # nothing instead of to some other unit.
@@ -234,7 +244,17 @@ def assign_admin_ids(
             weights = _population_weights(raw)
         # Pinned codes fix the group's width, so a unit added later does
         # not arrive three characters wide among two-character siblings.
-        pinned_widths = {len(code) for code in held.values()}
+        # The width comes from every code the spine has issued under this
+        # parent, not only from the rows in hand: a source vintage can
+        # carry none of the siblings the spine already names (TIGER 2025
+        # lists Crawford County, Arkansas as 13 numbered townships where
+        # the spine holds 25 named ones at two characters), and a group
+        # minted on the source's rows alone arrived three characters
+        # wide among them.
+        pinned_widths = {
+            len(code)
+            for code in [*held.values(), *pinned_rows.values(), *issued.get(parent, ())]
+        }
         group_lengths = lengths
         if group_lengths is None and len(pinned_widths) == 1:
             group_lengths = (pinned_widths.pop(),)

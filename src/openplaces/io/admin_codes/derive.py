@@ -126,6 +126,7 @@ def derive_codes(
             weights=weights,
             length_penalty=length_penalty,
             reserved=reserved,
+            fallback_width=min(widths),
         )
 
     # An explicit request is honored exactly as given.
