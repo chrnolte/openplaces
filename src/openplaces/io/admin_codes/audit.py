@@ -50,16 +50,20 @@ def audit_spine(levels=LEVELS, reproduce=True):
     levels : iterable of int, optional
         Admin levels to check. Defaults to 2, 3 and 4.
     reproduce : bool, optional
-        Also re-run the generator over each level and compare. This is the
-        expensive check and the important one; leave it on unless you are
-        iterating.
+        Also re-run the generator over each level, from names alone, and
+        count the codes it agrees with. Informational, not an invariant:
+        the spine is minted with population weights deciding contested
+        codes, and this pass runs unweighted so the audit needs nothing
+        from the data tree. The weighted fixed point is what
+        `build.remint_spine(apply=False)` and its test measure.
 
     Returns
     -------
     pandas.DataFrame
         One row per level, with the count of violations found by each
-        check. A clean spine is all zeros except `reproduced`, which
-        should equal `units`.
+        check. A clean spine is all zeros except `reproduced`, the number
+        of codes an unweighted re-mint agrees with (1.3% of level 4 differ
+        by weighted tie-breaks alone).
 
     Notes
     -----

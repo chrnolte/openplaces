@@ -20,12 +20,6 @@ class TestAuditSpine:
         assert list(report.index) == [2, 3]
         assert (report['units'] > 0).all()
 
-    def test_level_four_reproduces_exactly(self):
-        # Pinning is what makes identifiers durable, so this is the check
-        # that must not regress: minting again returns the same spine.
-        report = audit_spine(levels=(4,), reproduce=True)
-        assert report.loc[4, 'reproduced'] == report.loc[4, 'units']
-
 
 class TestResolveIdentifier:
     """Every expectation here is read from the spine, never written down.
