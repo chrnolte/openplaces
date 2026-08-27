@@ -1,0 +1,75 @@
+# Recipe to import Microsoft's global ML building footprints
+
+description: >-
+  Microsoft GlobalMLBuildingFootprints, fetched per admin unit from the
+  quadkey-tiled global release.
+
+notes: >-
+  This is Microsoft's maintained global product, not the legacy US layer that
+  US_footprint-microsoft-v2 reads. Three differences matter. It is
+  CDLA-Permissive-2.0 rather than ODbL, so it carries attribution but no
+  share-alike and does not add to the CHEER bundle's copyleft exposure. It is
+  quadkey-partitioned, so one county costs 4 tiles and a few seconds instead of
+  a statewide download plus an admin overlay. And it carries height and
+  confidence. Measured on US-NC-CAR 2026-08-25 it covers 97.6 percent of
+  footprint-obm-2025 against the legacy layer's 74.4 percent, but it does NOT
+  contain the legacy-only buildings that currently patch OBM's holes (1.8
+  percent), so it complements rather than replaces US_footprint-microsoft-v2.
+  Tiles are selected in memory by the scraper: the published index carries a
+  quadkey and a URL but no tile geometry, so there is no tile recipe to build.
+
+# Scoped to the US because `scraper_options.region_name` selects the
+# index's UnitedStates partition. A global variant would drop both.
+# `admin_id: US` also equals US_footprint-geospine-2026's own admin_id,
+# so resolve_spine's auto_discover (strict children only) will not pick
+# this up, the same as US_footprint-fema-2023.
+admin_id: US
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: microsoftglobal
+    portal_url: "https://github.com/microsoft/GlobalMLBuildingFootprints"
+    # Terms verified 2026-08-25 in the portal README: "This data is licensed
+    # by Microsoft under the Community Data License Agreement - Permissive,
+    # Version 2.0 (CDLA-Permissive-2.0)." Attribution required; unlike ODbL
+    # there is no share-alike obligation on derived databases.
+    license: "CDLA-Permissive-2.0"
+    terms_url: "https://cdla.dev/permissive-2-0/"
+    redistribution_restricted: false
+    download_url_scraper: "microsoft_global_scraper"
+  version: 2026
+
+scraper_options:
+  region_name: "UnitedStates"
+  zoom: 9
+  admin_recipe_id: "admin-openplaces-2026_admin3"
+
+# The scraper writes one line-delimited GeoJSON per admin unit, read
+# through GDAL's GeoJSONSeq driver.
+uncompressed_file_name: "microsoft-global.geojsonl"
+
+download_by:
+  admin_level: 3
+
+overlay_admin_ids:
+  admin_level: 3
+  admin_recipe_id: 'admin-openplaces-2026_admin3'
+
+keep_overlapping_polygons: false
+
+# `confidence` is uniformly -1 across the UnitedStates partition
+# (checked on US-NC-CAR, 52,167 rows), so it is not mapped. Microsoft
+# uses -1 as height's missing sentinel; the attribute registry's
+# null_placeholder for `height` converts it (24.1% of Carteret rows).
+columns:
+  height: height
+
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
+
+save_to:
+  data_dir: cache
+  admin_level: 3

@@ -1,0 +1,70 @@
+# Recipe to import raw OpenStreetMap building footprints (Geofabrik extracts)
+
+description: >-
+  Raw OpenStreetMap building polygons from Geofabrik per-state extracts, used as
+  a provenance control for OSM-derived footprint products.
+
+notes: >-
+  This exists to answer a question the derived products cannot: how much of
+  OpenBuildingMap, Overture and GlobalBuildingAtlas is simply OpenStreetMap
+  re-served, and which buildings each of them adds or drops during conflation.
+  It is deliberately NOT a spine source, hence exclude_from_auto_discover.
+  Geofabrik's -free.shp.zip extract is used rather than the .osm.pbf because
+  .pbf is not in GEOPANDAS_EXTENSIONS, while .zip is handled by the existing
+  reader. Downloads are large (NC 828 MB, TX 1.4 GB, MA 552 MB) because
+  Geofabrik ships all OSM themes in one archive.
+
+admin_id: US
+
+# Keeps this out of resolve_spine's auto_discover sweep in
+# US_footprint-geospine-2026. Without it, ingesting one state would silently
+# add an OSM layer to the CHEER spine on its next rebuild.
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: osm
+    portal_url: "https://download.geofabrik.de/north-america/us.html"
+    download_url: "https://download.geofabrik.de/north-america/us/{admin2_name}-latest-free.shp.zip"
+    # OpenStreetMap data is ODbL-1.0. Geofabrik redistributes it under the
+    # same terms and asks for attribution to OpenStreetMap contributors.
+    license: "ODbL-1.0"
+    terms_url: "https://www.openstreetmap.org/copyright"
+    redistribution_restricted: false
+  version: 2026
+
+download_by:
+  admin_level: 2
+  admin_key_transform:
+    admin2_name: "slugify"
+
+compressed_file_name: "{admin2_name}-latest-free.shp.zip"
+uncompressed_file_name: "gis_osm_buildings_a_free_1.shp"
+
+layer: gis_osm_buildings_a_free_1
+
+process_by:
+  admin_level: 3
+  use_spatial_mask: true
+
+columns:
+  building_id_osm: osm_id
+  use_group: type
+  name: name
+
+columns_to_categorical:
+  - use_group
+
+overlay_admin_ids:
+  admin_level: 3
+  admin_recipe_id: 'admin-openplaces-2026_admin3'
+
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
+
+save_to:
+  data_dir: cache
+  admin_level: 3

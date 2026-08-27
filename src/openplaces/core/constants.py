@@ -120,6 +120,9 @@ NEVER_DELETE = frozenset({'share', 'raw'})
 GEOPANDAS_EXTENSIONS = {
     '.shp',
     '.geojson',
+    # Line-delimited GeoJSON (GDAL's GeoJSONSeq driver). Microsoft's
+    # GlobalMLBuildingFootprints ships this content under a .csv.gz name.
+    '.geojsonl',
     '.gpkg',
     '.gdb',
     '.kml',

@@ -30,7 +30,7 @@ area_deed_ac,Parcel area per the recorded deed (as opposed to the assessor's rec
 area_sqft,Floor area,sqft,float,mean,50,,
 n_stories,Number of stories,,float,mean,51,,
 n_dwellings,Number of dwelling units in the building,,float,sum,52,,
-height,Building height,m,float,max,53,,
+height,Building height,m,float,max,53,,,-1
 n_sections,"Number of factory-built sections joined on site to form the structure (1 single-wide, 2 double-wide, 3 triple-wide). Meaningful only for manufactured homes; missing for site-built structures",,float,max,54,,curate
 foundation_type,Foundation type code (B basement; C crawl; F fill; I pile; P pier; S slab; W solid wall),,categorical,first,56,,
 construction_type,"Structural construction material code (C concrete; H manufactured; M masonry; S steel; W wood)",,categorical,first,57,,

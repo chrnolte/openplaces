@@ -1,0 +1,87 @@
+# Recipe to import the lidar building footprints of the state of Texas, US
+
+description: >-
+  Texas lidar-derived building footprints from the Texas Geographic Information
+  Office (StratMap 2026).
+
+notes: >-
+  Coverage is partial and growing: the 2026 collection holds 2,185,538 buildings
+  across 79 of Texas's 254 counties, all SourceType lidar, SourceYear 2022 to
+  2025. It covers only 2 of the 42 CHEER coastal Texas counties (Fayette and
+  Washington, both inland) and none of the coast, so it does not currently help
+  US_footprint-cheer-2026; it is worth re-checking on each StratMap release.
+  BuildingHeight is in FEET while HAG, LAG, AverageZ and HRE are elevations in
+  meters (verified: BuildingHeight / (HRE - LAG) has median 3.268 against 3.281
+  ft per m), so it is converted below rather than mapped straight to height.
+
+admin_id: US-TX
+
+# US-TX is a strict child of US, so resolve_spine's auto_discover in
+# US_footprint-geospine-2026 would sweep this in as soon as any county
+# has a cached output. Held out for now because coverage is 2 of the 42
+# CHEER coastal Texas counties: including it would perturb a shipped
+# spine for almost no gain. Remove this line once a StratMap release
+# covers enough of the region to be worth the rebuild.
+exclude_from_auto_discover: true
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: txgio
+    # Checked 2026-08-25, matching the sibling US-TX_parcel-txgio-2025
+    # recipe: the TxGIO site asserts "Content of this site copyright Texas
+    # Geographic Information Office and Texas Water Development Board
+    # unless otherwise noted" -- a claim over the site, not a licence for
+    # the StratMap data this recipe downloads, for which no separate terms
+    # were found. Public records, but "no page found" is not "no
+    # restriction", so the flag stays unset.
+    license: "unknown (site content copyright asserted; no data licence found)"
+    terms_url: "https://geographic.texas.gov/"
+    redistribution_restricted: null
+    portal_url: "https://geographic.texas.gov/"
+    download_url: "https://tnris-data-warehouse.s3.us-east-1.amazonaws.com/LCD/collection/stratmap-2026-building-footprints/items/blg/stratmap-2026-building-footprints_48_fgdb.zip"
+  version: 2026
+
+compressed_file_name: "stratmap-2026-building-footprints_48_fgdb.zip"
+uncompressed_file_name: "stratmap-2026-building-footprints_48.gdb"
+
+layer: stratmap_buildings
+
+# The geodatabase is statewide (718 MB, 2.19M features), so read it one
+# county at a time. `County` holds the county name, which the admin
+# recipe's `name` column crosswalks to an admin3_id.
+process_by:
+  admin_level: 3
+  admin_id_column: County
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: name
+    admin_recipe_id: "admin-openplaces-2026_admin3"
+
+columns:
+  height_ft_source: BuildingHeight
+  roof_elevation: HRE
+  ground_elevation: LAG
+  source_year: SourceYear
+  source_type: SourceType
+  source_collection: CollName
+
+transformations:
+  # BuildingHeight ships in feet; openplaces `height` is meters.
+  - output: height
+    type: expression
+    expression: "height_ft_source * 0.3048"
+    inputs: [height_ft_source]
+
+columns_to_categorical:
+  - source_type
+  - source_collection
+
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
+
+save_to:
+  data_dir: cache
+  admin_level: 3

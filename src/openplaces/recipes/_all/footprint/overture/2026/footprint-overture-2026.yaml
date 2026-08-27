@@ -1,0 +1,74 @@
+# Recipe to import Overture Maps building footprints
+
+description: >-
+  Overture Maps building footprints, read per tile from cloud GeoParquet with
+  bounding-box pushdown.
+
+notes: >-
+  Overture assembles this theme from OpenStreetMap (highest priority), Esri
+  Community Maps, Microsoft ML Buildings, Google Open Buildings, an East Asian
+  ML dataset, Instituto Geografico Nacional (Spain) and City of Vancouver. It
+  therefore overlaps heavily with footprint-obm-2025 and US_footprint-microsoft-v2,
+  which is the point: it is a candidate for serving both from one county-
+  extractable read instead of a statewide download plus admin overlay. The
+  per-feature `sources` column (list of structs, one `dataset` field per
+  contributing source) is not mapped here because the ingester has no
+  list-of-struct transformation; read it directly from S3 when provenance
+  matters.
+
+admin_id: NULL
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: overture
+    portal_url: "https://overturemaps.org"
+    download_url: "s3://overturemaps-us-west-2/release/latest/theme=buildings/type=building/"
+    # Terms verified 2026-08-25 at the terms_url below. The *buildings*
+    # theme is ODbL because OpenStreetMap feeds it, and Overture requires
+    # every other source in the theme to be ODbL or compatible. This is
+    # deliberately NOT the licence recorded on dwelling-overture-2025,
+    # which reads the permissive *addresses* theme.
+    license: "ODbL-1.0"
+    terms_url: "https://docs.overturemaps.org/attribution/"
+    redistribution_restricted: false
+  version: 2026
+
+download_by:
+  partition: latlon_tile
+  tile_size_deg: 1.0
+  bbox_column: bbox
+  s3_anonymous: true
+  s3_region: us-west-2
+
+overlay_admin_ids:
+  admin_level: 3
+  admin_recipe_id: 'admin-openplaces-2026_admin3'
+
+keep_overlapping_polygons: false
+
+columns:
+  building_id_overture: id
+  height: height
+  min_height: min_height
+  n_stories: num_floors
+  use_group: subtype
+  use_group_code: class
+  roof_shape: roof_shape
+  roof_material: roof_material
+  roof_height: roof_height
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - roof_shape
+  - roof_material
+
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
+
+save_to:
+  data_dir: cache
+  admin_level: 3
