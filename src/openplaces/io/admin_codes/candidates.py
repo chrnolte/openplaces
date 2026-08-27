@@ -243,6 +243,22 @@ def generate_candidates(
                 add('A' + body.zfill(width - 1), 'number')
         return out
 
+    # A name the source numbered ("4, Cumberland") offers its number
+    # behind the name's first letters as the next choice after the plain
+    # name, so siblings that share the name after the ordinal is dropped
+    # (Allegany County, Maryland has several election districts called
+    # Cumberland) come out CU4, CU6, C22: still found under the letter a
+    # reader searches by, and told apart by the number the source gave.
+    ordinal = re.match(r'^\s*(\d+)\s*[,.;:/]\s*\S', name)
+
+    def add_numbered() -> None:
+        if not ordinal:
+            return
+        number = ordinal.group(1)
+        for width in sorted(lengths):
+            if len(number) < width:
+                add(significant[0][: width - len(number)] + number, 'name_number')
+
     has_preposition = any(pack.is_preposition(t) for t in tokens)
     has_conjunction = any(pack.is_conjunction(t) for t in tokens)
 
@@ -263,11 +279,13 @@ def generate_candidates(
         add(leading_qualifier[0] + head[0][0], 'qualifier')
         add(leading_qualifier[0] + head[0][0] + head[0][2:3], 'qualifier.spread')
         add(leading_qualifier[:2] + head[0][0], 'qualifier.alt')
+        add_numbered()
 
     elif len(significant) == 1:
         word = significant[0]
         add(word[:3], 'name')
         add(word[:2], 'name')
+        add_numbered()
         # Guarded: stripping type words can reduce a name to a single
         # character, and this rule reads word[1] unconditionally. The
         # guard was missing before type-word stripping ever produced such
@@ -295,6 +313,7 @@ def generate_candidates(
         add(first[:2] + second[0], 'compound')
         add(first[0] + second[:2], 'compound.alt')
         add(first[0] + second[0], 'initials')
+        add_numbered()
 
     # Late fallbacks. Deliberately last: these carry little signal, and
     # a high share of them at any level is a symptom worth reporting.

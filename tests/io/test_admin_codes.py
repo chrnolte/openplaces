@@ -317,7 +317,9 @@ class TestNumberedNames:
             c.code for c in generate_candidates('2, Pollocksville', admin1_id='US')
         ]
         assert codes[0] == 'POL'
-        assert not any(c.startswith('2') or '2' in c for c in codes[:3])
+        # The ordinal survives only as the numbered alternative (PO2).
+        assert not any(c.startswith('2') for c in codes)
+        assert 'PO2' in codes[:4]
 
     def test_a_trailing_number_still_counts(self):
         # "Ward 1" keeps its number: only a *leading* ordinal is dropped.
@@ -331,3 +333,22 @@ class TestNumberedNames:
         assert tokens[0] == '27'
         tokens, _ = tokenize('2, Pollocksville', get_language_pack(admin1_id='US'))
         assert tokens == ['POLLOCKSVILLE']
+
+    def test_a_numbered_name_offers_its_number_behind_the_name(self):
+        # Several Allegany County districts are "N, Cumberland": the first
+        # takes CUM, the rest stay under C with their number.
+        codes = [c.code for c in generate_candidates('4, Cumberland', admin1_id='US')]
+        assert codes[0] == 'CUM'
+        assert 'CU4' in codes[:4]
+        codes = [c.code for c in generate_candidates('22, Cumberland', admin1_id='US')]
+        assert 'C22' in codes[:4]
+        from openplaces.io.admin_codes.derive import derive_codes
+
+        assigned = derive_codes(
+            ['4, Cumberland', '6, Cumberland', '22, Cumberland'],
+            admin1_id='US',
+            lengths=(3,),
+        )
+        assert {c for c, _ in assigned.values()} == {'CUM', 'CU6', 'C22'} or (
+            {c for c, _ in assigned.values()} == {'CU4', 'CU6', 'C22'}
+        )
