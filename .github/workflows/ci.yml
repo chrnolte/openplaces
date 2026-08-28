@@ -41,10 +41,24 @@ jobs:
           # is dropping support for the channel-list spelling.
           conda-remove-defaults: true
 
+      # openplaces refuses to invent a data_root, so importing it on a
+      # fresh machine raises DataRootNotSetError, and the prompt that
+      # would otherwise ask is correctly suppressed on a runner with no
+      # console. Write the directories block the error message names,
+      # pointing at the runner's scratch space: outside the checkout, as
+      # the config requires, and discarded with the runner.
+      - name: Configure data root
+        run: |
+          mkdir -p "$HOME/.config/openplaces" "$RUNNER_TEMP/openplaces-data"
+          cat > "$HOME/.config/openplaces/config.yaml" <<YAML
+          directories:
+            data_root: $RUNNER_TEMP/openplaces-data
+          YAML
+
       - name: Environment
         run: |
           conda info
-          python -c "import openplaces; print('openplaces imports cleanly')"
+          python -c "import openplaces as op; print('openplaces imports cleanly'); print('data_root:', op.cfg.get_dir('data_root'))"
 
       - name: Format
         run: ruff format --check src/ tests/
