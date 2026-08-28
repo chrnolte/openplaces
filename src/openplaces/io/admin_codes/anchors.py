@@ -316,8 +316,8 @@ def get_code_length_convention(admin1_id: str) -> int | None:
     --------
     >>> get_code_length_convention('US')
     2
-    >>> get_code_length_convention('CO')
-    3
+    >>> get_code_length_convention('CO')  # reviewed policy: two cover all
+    2
     """
     wanted = admin1_id.strip().upper()
 

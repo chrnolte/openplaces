@@ -58,11 +58,14 @@ class TestIntuitiveCodes:
     def test_acronym_from_two_words(self):
         assert 'NE' in intuitive_codes('North East', admin1_id='US')
 
-    def test_honorifics_are_stripped(self):
-        # Saint George reads as George, so GE rather than SA.
+    def test_a_saint_offers_both_readings(self):
+        # Naming a place for a saint is deliberate and speakers keep the
+        # particle (San Francisco is SF), so both readings are offered:
+        # George alone (GE) and the full name (SA, SG). A mostly-Saint
+        # sibling group can still drop the particle.
         codes = intuitive_codes('Saint George', admin1_id='BB')
         assert 'GE' in codes
-        assert 'SA' not in codes
+        assert 'SG' in codes
 
     def test_articles_are_stripped(self):
         assert 'BU' in intuitive_codes('Al Butnan', admin1_id='LY')

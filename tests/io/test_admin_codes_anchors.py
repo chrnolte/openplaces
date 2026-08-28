@@ -90,9 +90,12 @@ class TestAnchors:
     def test_length_convention_is_national_not_universal(self):
         # 25 countries use one character, 96 use two and 30 use three,
         # so a single global width would be wrong for a third of the
-        # world.
+        # world. The reviewed policy outranks the published scheme where
+        # it has an entry: Colombia's ISO codes are three characters,
+        # but two cover every department, so the policy says two.
         assert get_code_length_convention('US') == 2
-        assert get_code_length_convention('CO') == 3
+        assert get_code_length_convention('CO') == 2
+        assert get_code_length_convention('RU') == 3
         assert get_code_length_convention('ZZ') is None
 
 
@@ -122,10 +125,12 @@ class TestDeriveCodes:
 
     def test_default_length_follows_the_country_convention(self, spine2):
         # Mexico publishes three-letter state codes and has no reviewed
-        # overrides, so the convention decides the width.
+        # overrides, so the convention decides the width; the reviewed
+        # length policy sets it to two because two characters cover
+        # every state.
         sub = spine2[spine2['admin2_id'].str.startswith('MX-')]
         result = derive_codes(list(sub['name']), admin1_id='MX')
-        assert all(len(code) == 3 for code, _ in result.values())
+        assert all(len(code) == 2 for code, _ in result.values())
 
     def test_a_reviewed_override_outranks_the_convention(self):
         # Colombia publishes three-letter codes, but every department
@@ -140,9 +145,10 @@ class TestDeriveCodes:
         # The override width wins only when it covers the whole sibling
         # group. A group where it does not must not end up split across
         # two widths, so it falls back to the convention. Colombia's
-        # municipalities carry no overrides at all.
+        # municipalities carry no overrides at all, and the convention
+        # for Colombia is the reviewed policy's two characters.
         result = derive_codes(['Abejorral', 'Abriaquí', 'Amalfi'], admin1_id='CO')
-        assert all(len(code) == 3 for code, _ in result.values())
+        assert all(len(code) == 2 for code, _ in result.values())
 
     def test_codes_are_unique_and_well_formed(self, spine2):
         sub = spine2[spine2['admin2_id'].str.startswith('CO-')]

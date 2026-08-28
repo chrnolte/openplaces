@@ -93,8 +93,10 @@ class TestAgainstTheCommittedSpine:
         counties = admin_code_segment(segment='county').dropna()
         towns = counties[counties.index.str.match(r'US-(CT|MA|ME|NH|RI|VT)-')]
         # Six states whose level 3 is towns, not counties: the county is
-        # only reachable through the segment.
-        assert len(towns) == 1603
+        # only reachable through the segment. 1,604 since 2026-08-26,
+        # when Essex Junction (a city since 2022, listed by TIGER 2025
+        # beside Essex town) was admitted to the Vermont spine.
+        assert len(towns) == 1604
         assert towns.nunique() == 68
         assert towns.str.len().eq(5).all()
 
