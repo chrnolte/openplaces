@@ -289549,3 +289549,7 @@ US-WV-PL-A00,A,,,,,5407390892,sequential
 US-WV-PL-A01,B,,,,,5407390894,sequential
 US-WV-PL-A02,C,,,,,5407390896,sequential
 US-WV-PL-A03,D,,,,,5407390898,sequential
+PH-LE-PL-ST,Santiago,Village,,,Barangay,,any2
+ZW-MA-MR-W10,Ward 10,Ward,,,Ward,,compound.alt
+ZW-MS-MA-W19,Ward 19,Ward,,,Ward,,compound.alt
+ZW-MS-MN-W15,Ward 15,Ward,,,Ward,,compound.alt

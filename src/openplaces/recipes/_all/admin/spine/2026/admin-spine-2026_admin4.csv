@@ -22124,8 +22124,8 @@ DE-BY-BY-BS,"Betzenstein, St",,,,,09472118,initials
 DE-BY-BY-CS,"Creußen, St",,,,,09472127,initials
 DE-BY-BY-EC,Eckersdorf,,,,,09472131,name
 DE-BY-BY-EM,Emtmannsberg,,,,,09472133,name
-DE-BY-BY-FC,Fichtelberg,,,,,09472453,skeleton
-DE-BY-BY-FI,Fichtelberg,,,,,09472138,name
+DE-BY-BY-FI,Fichtelberg,,,,,09472453,name
+DE-BY-BY-FC,Fichtelberg,,,,,09472138,skeleton
 DE-BY-BY-FN,Forst Neustädtlein a.Forst,,,,,09472454,initials
 DE-BY-BY-GE,Gesees,,,,,09472140,name
 DE-BY-BY-GF,Glashüttener Forst,,,,,09472456,initials
@@ -95569,8 +95569,8 @@ KR-GG-IC-MO,Moga,Township,,,Myeon,,name
 KR-GG-IC-SE,Seolseong,Township,,,Myeon,,name
 KR-GG-IC-SI,Sindun,Township,,,Myeon,,name
 KR-GG-IC-YU,Yul,Township,,,Myeon,,name
-KR-GG-NA-BE,Byeollae,Neighborhood,,,Dong,,any2
-KR-GG-NA-BY,Byeollae,Township,,,Myeon,,name
+KR-GG-NA-BY,Byeollae,Neighborhood,,,Dong,,name
+KR-GG-NA-BE,Byeollae,Township,,,Myeon,,any2
 KR-GG-NA-D1,Dasan 1,Neighborhood,,,Dong,,compound.alt
 KR-GG-NA-D2,Dasan 2,Neighborhood,,,Dong,,compound.alt
 KR-GG-NA-GE,Geumgok,Neighborhood,,,Dong,,name
@@ -96514,8 +96514,8 @@ KR-IC-JU-SN,Sinpo,Neighborhood,,,Dong,,skeleton
 KR-IC-JU-SO,Songwol,Neighborhood,,,Dong,,name
 KR-IC-JU-UN,Unseo,Neighborhood,,,Dong,,name
 KR-IC-JU-YE,Yeonan,Neighborhood,,,Dong,,name
-KR-IC-JU-YG,Yeongjong,Neighborhood,,,Dong,,any2
 KR-IC-JU-YN,Yeongjong,Neighborhood,,,Dong,,skeleton
+KR-IC-JU-YG,Yeongjong,Neighborhood,,,Dong,,any2
 KR-IC-JU-YO,Yongyu,Neighborhood,,,Dong,,name
 KR-IC-JU-YU,Yulmok,Neighborhood,,,Dong,,name
 KR-IC-MI-D1,Dohwa 1(il),Neighborhood,,,Dong,,compound.alt
@@ -127831,12 +127831,12 @@ PH-LE-PL-RI,Rizal,Village,,,Barangay,,name
 PH-LE-PL-SA,Sabang,Village,,,Barangay,,name
 PH-LE-PL-SG,San Guillermo,Village,,,Barangay,,initials
 PH-LE-PL-SI,San Isidro,Village,,,Barangay,,initials
-PH-LE-PL-SJ,San Joaquin,Village,,,Barangay,,initials
+PH-LE-PL-JO,San Joaquin,Village,,,Barangay,,saintless.name
 PH-LE-PL-SM,San Miguel,Village,,,Barangay,,initials
-PH-LE-PL-SN,San Juan,Village,,,Barangay,,any2
+PH-LE-PL-SJ,San Juan,Village,,,Barangay,,initials
 PH-LE-PL-SP,San Pablo,Village,,,Barangay,,initials
 PH-LE-PL-SR,San Roque,Village,,,Barangay,,initials
-PH-LE-PL-ST,Santiago,Village,,,Barangay,,any2
+PH-LE-PL-SN,Santiago,Village,,,Barangay,,skeleton
 PH-LE-PL-TA,Tabunok,Village,,,Barangay,,name
 PH-LE-PL-TB,Taberna,Village,,,Barangay,,skeleton
 PH-LE-PL-TI,Tinabilan,Village,,,Barangay,,name
@@ -201278,14 +201278,14 @@ US-TN-VB-A3,3,,,,,4717590556,number
 US-TN-VB-A4,4,,,,,4717590746,number
 US-TN-VB-A5,5,,,,,4717590936,number
 US-TN-WA-A01,1,,,,,4717990180,number
-US-TN-WA-A02,2,,,,,4717990370,sequential
-US-TN-WA-A03,3,,,,,4717990560,sequential
-US-TN-WA-A04,4,,,,,4717990750,sequential
-US-TN-WA-A05,5,,,,,4717990940,sequential
-US-TN-WA-A06,6,,,,,4717991130,sequential
-US-TN-WA-A07,7,,,,,4717991320,sequential
-US-TN-WA-A08,8,,,,,4717991510,sequential
-US-TN-WA-A09,9,,,,,4717991700,sequential
+US-TN-WA-A02,2,,,,,4717990370,number
+US-TN-WA-A03,3,,,,,4717990560,number
+US-TN-WA-A04,4,,,,,4717990750,number
+US-TN-WA-A05,5,,,,,4717990940,number
+US-TN-WA-A06,6,,,,,4717991130,number
+US-TN-WA-A07,7,,,,,4717991320,number
+US-TN-WA-A08,8,,,,,4717991510,number
+US-TN-WA-A09,9,,,,,4717991700,number
 US-TN-WA-A10,10,,,,,4717991890,number
 US-TN-WA-A11,11,,,,Z1,4717992083,number
 US-TN-WA-A12,12,,,,Z1,4717992273,number
@@ -216970,12 +216970,12 @@ ZW-MA-CI-W13,Ward 13,Ward,,,Ward,,compound.alt
 ZW-MA-CI-W14,Ward 14,Ward,,,Ward,,compound.alt
 ZW-MA-CI-W15,Ward 15,Ward,,,Ward,,compound.alt
 ZW-MA-CI-W16,Ward 16,Ward,,,Ward,,compound.alt
-ZW-MA-CI-W17,Ward 17,Ward,,,Ward,,compound.alt
+ZW-MA-CI-WA1,Ward 17,Ward,,,Ward,,compound
 ZW-MA-CI-W18,Ward 18,Ward,,,Ward,,compound.alt
 ZW-MA-CI-W21,Ward 21,Ward,,,Ward,,compound.alt
 ZW-MA-CI-W22,Ward 22,Ward,,,Ward,,compound.alt
 ZW-MA-CI-W23,Ward 23,Ward,,,Ward,,compound.alt
-ZW-MA-CI-WA1,Ward 19,Ward,,,Ward,,compound
+ZW-MA-CI-W19,Ward 19,Ward,,,Ward,,compound.alt
 ZW-MA-CI-WA2,Ward 20,Ward,,,Ward,,compound
 ZW-MA-CI-WA3,Ward 3,Ward,,,Ward,,compound
 ZW-MA-CI-WA4,Ward 4,Ward,,,Ward,,compound
@@ -217033,7 +217033,7 @@ ZW-MA-MA-WA7,Ward 7,Ward,,,Ward,,compound
 ZW-MA-MA-WA8,Ward 8,Ward,,,Ward,,compound
 ZW-MA-MA-WA9,Ward 9,Ward,,,Ward,,compound
 ZW-MA-MA-WAR,Ward 1,Ward,,,Ward,,any3
-ZW-MA-MR-W10,Ward 10,Ward,,,Ward,,compound.alt
+ZW-MA-MR-WA1,Ward 10,Ward,,,Ward,,compound
 ZW-MA-MR-W11,Ward 11,Ward,,,Ward,,compound.alt
 ZW-MA-MR-W13,Ward 13,Ward,,,Ward,,compound.alt
 ZW-MA-MR-W14,Ward 14,Ward,,,Ward,,compound.alt
@@ -217042,7 +217042,7 @@ ZW-MA-MR-W16,Ward 16,Ward,,,Ward,,compound.alt
 ZW-MA-MR-W17,Ward 17,Ward,,,Ward,,compound.alt
 ZW-MA-MR-W18,Ward 18,Ward,,,Ward,,compound.alt
 ZW-MA-MR-W19,Ward 19,Ward,,,Ward,,compound.alt
-ZW-MA-MR-WA1,Ward 12,Ward,,,Ward,,compound
+ZW-MA-MR-W12,Ward 12,Ward,,,Ward,,compound.alt
 ZW-MA-MR-WA2,Ward 2,Ward,,,Ward,,compound
 ZW-MA-MR-WA3,Ward 3,Ward,,,Ward,,compound
 ZW-MA-MR-WA4,Ward 4,Ward,,,Ward,,compound
@@ -217084,7 +217084,7 @@ ZW-MA-MT-WA9,Ward 9,Ward,,,Ward,,compound
 ZW-MA-MT-WAD,Ward 2,Ward,,,Ward,,any3
 ZW-MA-MT-WAR,Ward 1,Ward,,,Ward,,any3
 ZW-MA-MU-W11,Ward 11,Ward,,,Ward,,compound.alt
-ZW-MA-MU-W12,Ward 12,Ward,,,Ward,,compound.alt
+ZW-MA-MU-WA1,Ward 12,Ward,,,Ward,,compound
 ZW-MA-MU-W13,Ward 13,Ward,,,Ward,,compound.alt
 ZW-MA-MU-W14,Ward 14,Ward,,,Ward,,compound.alt
 ZW-MA-MU-W15,Ward 15,Ward,,,Ward,,compound.alt
@@ -217109,7 +217109,7 @@ ZW-MA-MU-W33,Ward 33,Ward,,,Ward,,compound.alt
 ZW-MA-MU-W34,Ward 34,Ward,,,Ward,,compound.alt
 ZW-MA-MU-W35,Ward 35,Ward,,,Ward,,compound.alt
 ZW-MA-MU-W36,Ward 36,Ward,,,Ward,,compound.alt
-ZW-MA-MU-WA1,Ward 10,Ward,,,Ward,,compound
+ZW-MA-MU-W10,Ward 10,Ward,,,Ward,,compound.alt
 ZW-MA-MU-WA2,Ward 2,Ward,,,Ward,,compound
 ZW-MA-MU-WA3,Ward 3,Ward,,,Ward,,compound
 ZW-MA-MU-WA4,Ward 4,Ward,,,Ward,,compound
@@ -218219,14 +218219,14 @@ ZW-MS-MA-W14,Ward 14,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W16,Ward 16,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W17,Ward 17,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W18,Ward 18,Ward,,,Ward,,compound.alt
-ZW-MS-MA-W19,Ward 19,Ward,,,Ward,,compound.alt
+ZW-MS-MA-WA1,Ward 19,Ward,,,Ward,,compound
 ZW-MS-MA-W20,Ward 20,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W21,Ward 21,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W22,Ward 22,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W23,Ward 23,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W24,Ward 24,Ward,,,Ward,,compound.alt
 ZW-MS-MA-W26,Ward 26,Ward,,,Ward,,compound.alt
-ZW-MS-MA-WA1,Ward 15,Ward,,,Ward,,compound
+ZW-MS-MA-W15,Ward 15,Ward,,,Ward,,compound.alt
 ZW-MS-MA-WA2,Ward 25,Ward,,,Ward,,compound
 ZW-MS-MA-WA3,Ward 3,Ward,,,Ward,,compound
 ZW-MS-MA-WA4,Ward 4,Ward,,,Ward,,compound
@@ -218242,10 +218242,10 @@ ZW-MS-MN-W11,Ward 11,Ward,,,Ward,,compound.alt
 ZW-MS-MN-W12,Ward 12,Ward,,,Ward,,compound.alt
 ZW-MS-MN-W13,Ward 13,Ward,,,Ward,,compound.alt
 ZW-MS-MN-W14,Ward 14,Ward,,,Ward,,compound.alt
-ZW-MS-MN-W15,Ward 15,Ward,,,Ward,,compound.alt
+ZW-MS-MN-WA1,Ward 15,Ward,,,Ward,,compound
 ZW-MS-MN-W16,Ward 16,Ward,,,Ward,,compound.alt
 ZW-MS-MN-W17,Ward 17,Ward,,,Ward,,compound.alt
-ZW-MS-MN-WA1,Ward 1,Ward,,,Ward,,compound
+ZW-MS-MN-WAR,Ward 1,Ward,,,Ward,,any3
 ZW-MS-MN-WA2,Ward 2,Ward,,,Ward,,compound
 ZW-MS-MN-WA3,Ward 3,Ward,,,Ward,,compound
 ZW-MS-MN-WA4,Ward 4,Ward,,,Ward,,compound
