@@ -4,7 +4,7 @@
 # same portal as the parcel roll), one row per assessed structure/card on a
 # parcel (a parcel with an outbuilding has more than one row). Carries the
 # construction year that the parcel-level CSV export
-# (US-NC-CB_parcel-cravencounty-2026.yaml) does not.
+# (US-NC-CRA_parcel-cravencounty-2026.yaml) does not.
 #
 # The shapefile has no dedicated parcel-id column of its own; `PPRIO` is the
 # same raw assessor id format as the parcel roll's `PID` (e.g.

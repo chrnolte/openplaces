@@ -82,7 +82,7 @@ If you use **openplaces** in academic work, please cite:
 
 ## Acknowledgments
 
-This codebase combines code contributions developed under four federal research grants, supported by the U.S. National Science Foundation (NSF) and the National Aeronautics and Space Administration (NASA).
+This codebase combines code contributions developed under five federal research grants, supported by the U.S. National Science Foundation (NSF) and the National Aeronautics and Space Administration (NASA), and a U.S. Geological Survey (USGS) subaward through the Southeast Climate Adaptation Science Center.
 
 For more information, visit: https://placeslab.org/research
 

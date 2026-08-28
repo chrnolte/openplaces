@@ -14,18 +14,20 @@ import pytest
 
 from openplaces.core.schema import AdminId, Entity
 from openplaces.io import to_parquet
+from openplaces.io.delivery import delivery_admin_id, delivery_regions
 from openplaces.recipe import get_output_path, get_recipe_by_id
 from openplaces.viz.qgis_map.resolver import (
     RENDER_OUTLINE,
     RENDER_POINTS,
+    RENDER_POLYGONS,
     _build_spec,
     resolve_layers,
 )
 
 PARCEL_RECIPE = 'US_parcel-openplaces-2026'
-FOOTPRINT_RECIPE = 'US_footprint-cheer-2026'
+FOOTPRINT_RECIPE = 'US_footprint-openplaces-2026'
 HARMONIZE_RECIPE = 'US_footprint-spine-2026'
-COUNTY = 'US-NC-AR'
+COUNTY = 'US-NC-CAR'
 
 
 class TestResolveLayersStageValidation:
@@ -123,7 +125,7 @@ class TestBuildSpecAdminTruncation:
             'save_to': {'data_dir': 'cache'},
             'process_by': {'admin_level': 2},
         }
-        target = AdminId('US', 'NC', 'CE')
+        target = AdminId('US', 'NC', 'CAR')
         resolved_admin = target.truncate_to_level(2)
         assert resolved_admin == AdminId('US', 'NC')
 
@@ -155,27 +157,52 @@ class TestDeliveryBundleLayers:
     resolve a path for the region -- without this the output layer silently
     vanished from the map.
 
-    The CHEER footprint recipe declares two regions (Eastern NC and coastal
-    Texas), so scope is decided by containment, the same test
-    `RecipeDAG._delivery_in_scope` applies: a request at a bundle's own unit
-    or an ancestor of it carries that bundle, so `US` carries both, `US-NC`
-    carries only Carolina, and a county carries neither.
+    Each bundle contributes three output layers: the canonical attributes
+    on centroid markers, their polygon twins (the boundary file joined to
+    that same point table), and the plain boundary outlines.
+
+    The recipe declares several regions, and scope is decided by
+    containment, the same test `RecipeDAG._delivery_in_scope` applies: a
+    request at a bundle's own unit or an ancestor of it carries that
+    bundle, so `US` carries all of them, `US-NC` carries only the Carolina
+    ones, and a county carries none. Membership is read from the recipe
+    rather than restated here, so adding a region does not falsify these.
     """
 
     REGION = 'US-NC'
+    BUNDLE_RENDERS = [RENDER_POINTS, RENDER_POLYGONS, RENDER_OUTLINE]
 
-    def test_bundle_resolves_points_and_outline(self, mock_data_root):
+    @staticmethod
+    def _bundle_admin_ids(scope: str) -> list[str]:
+        """The bundle unit of every declared region that *scope* carries."""
+        scope_levels = tuple(AdminId(scope).levels)
+        carried = []
+        for row in delivery_regions(FOOTPRINT_RECIPE):
+            bundle = delivery_admin_id(FOOTPRINT_RECIPE, region=row['region_id'])
+            if tuple(bundle.levels)[: len(scope_levels)] == scope_levels:
+                carried.append(str(bundle))
+        return carried
+
+    def test_bundle_resolves_points_polygons_and_outline(self, mock_data_root):
         specs = resolve_layers(
             FOOTPRINT_RECIPE, self.REGION, filter_existing=False, include_inputs=False
         )
         outputs = [s for s in specs if s.role == 'output']
+        regions = self._bundle_admin_ids(self.REGION)
 
-        assert [s.render for s in outputs] == [RENDER_POINTS, RENDER_OUTLINE]
-        assert outputs[0].attr_path.name.endswith('_point.parquet')
-        assert outputs[1].attr_path.name.endswith('_geo.parquet')
+        assert [s.render for s in outputs] == self.BUNDLE_RENDERS * len(regions)
+        points, polygons, outline = outputs[:3]
+        assert points.attr_path.name.endswith('_point.parquet')
+        assert polygons.geo_path.name.endswith('_geo.parquet')
+        assert outline.attr_path.name.endswith('_geo.parquet')
 
-    def test_bundle_layers_stand_alone(self, mock_data_root):
-        """Neither layer joins: points carry attributes, polygons show shape."""
+    def test_only_the_polygon_twin_joins(self, mock_data_root):
+        """Points carry their own attributes; the polygon twin reads theirs.
+
+        The boundary file holds geometry alone, so the polygon views join
+        the point table to classify on the same columns with the same
+        colors. The plain outline needs no attribute at all.
+        """
         outputs = [
             s
             for s in resolve_layers(
@@ -186,9 +213,13 @@ class TestDeliveryBundleLayers:
             )
             if s.role == 'output'
         ]
+        points, polygons, outline = outputs[:3]
 
         assert all(s.combined for s in outputs)
-        assert all(s.attr_path == s.geo_path for s in outputs)
+        assert points.attr_path == points.geo_path
+        assert outline.attr_path == outline.geo_path
+        assert polygons.attr_path == points.attr_path
+        assert polygons.attr_path != polygons.geo_path
 
     def test_county_scope_is_unchanged(self, mock_data_root):
         outputs = [
@@ -201,7 +232,7 @@ class TestDeliveryBundleLayers:
         assert outputs[0].render == 'default'
 
     def test_country_scope_carries_every_region(self, mock_data_root):
-        """A US map of a two-region recipe shows both bundles."""
+        """A US map of a multi-region recipe shows every bundle."""
         outputs = [
             s
             for s in resolve_layers(
@@ -209,14 +240,10 @@ class TestDeliveryBundleLayers:
             )
             if s.role == 'output'
         ]
+        regions = self._bundle_admin_ids('US')
 
-        assert [s.render for s in outputs] == [
-            RENDER_POINTS,
-            RENDER_OUTLINE,
-            RENDER_POINTS,
-            RENDER_OUTLINE,
-        ]
-        assert {str(s.admin_id) for s in outputs} == {'US-NC', 'US-TX'}
+        assert [s.render for s in outputs] == self.BUNDLE_RENDERS * len(regions)
+        assert {str(s.admin_id) for s in outputs} == set(regions)
         # Each bundle's layers resolve to its own region's files, never the
         # sibling's -- shipping one region's rows under the other's filename
         # is exactly what the region selector exists to prevent.
@@ -235,6 +262,8 @@ class TestDeliveryBundleLayers:
             )
             if s.role == 'output'
         ]
+        regions = self._bundle_admin_ids(self.REGION)
 
-        assert len(outputs) == 2
-        assert {str(s.admin_id) for s in outputs} == {'US-NC'}
+        assert regions and set(regions) == {self.REGION}
+        assert len(outputs) == len(self.BUNDLE_RENDERS) * len(regions)
+        assert {str(s.admin_id) for s in outputs} == {self.REGION}

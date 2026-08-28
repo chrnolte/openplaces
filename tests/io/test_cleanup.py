@@ -18,7 +18,7 @@ FOOTPRINT_SPINE = 'US_footprint-spine-2026'
 PARCEL_SPINE = 'US_parcel-spine-2026'
 FOOTPRINT_GEOSPINE = 'US_footprint-geospine-2026'
 PARCEL_GEOSPINE = 'US_parcel-geospine-2026'
-COUNTY = 'US-NC-BR'
+COUNTY = 'US-NC-BRU'
 # Every recipe in the cheer tree that consumes NSI directly: under the
 # geometry/attribute split, the geospine halves link it and the attribute
 # halves attribute it, so a valid NSI receipt must record all four.
@@ -172,7 +172,7 @@ def test_receipt_skip_consumer_cascade(data_root):
             'recipe_id': FOOTPRINT_SPINE,
             'admin_id': COUNTY,
             'consumers_verified': [
-                {'recipe_id': 'US_footprint-cheer-2026', 'path': 'gone'}
+                {'recipe_id': 'US_footprint-openplaces-2026', 'path': 'gone'}
             ],
         },
     )
@@ -223,7 +223,9 @@ def test_data_lock_exclusive(data_root):
 
 def test_cleanup_dry_run_defaults_and_blocked(data_root):
     _write_parquet(_nsi_path())
-    report = cl.cleanup('US_footprint-cheer-2026', admin_ids=[COUNTY], verbose=False)
+    report = cl.cleanup(
+        'US_footprint-openplaces-2026', admin_ids=[COUNTY], verbose=False
+    )
     nsi_rows = report[report['recipe_id'] == NSI]
     assert not nsi_rows.empty
     # Spines missing: NSI is blocked, not deletable
@@ -236,13 +238,15 @@ def test_cleanup_deletes_consumed_input(data_root):
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
 
-    report = cl.cleanup('US_footprint-cheer-2026', admin_ids=[COUNTY], verbose=False)
+    report = cl.cleanup(
+        'US_footprint-openplaces-2026', admin_ids=[COUNTY], verbose=False
+    )
     nsi_rows = report[report['recipe_id'] == NSI]
     assert (nsi_rows['action'] == 'would_delete').all()
     assert _nsi_path().exists()  # dry run never deletes
 
     report = cl.cleanup(
-        'US_footprint-cheer-2026',
+        'US_footprint-openplaces-2026',
         admin_ids=[COUNTY],
         dry_run=False,
         verbose=False,
@@ -261,7 +265,7 @@ def test_cleanup_stage_filter(data_root):
     for spine_path in _spine_paths():
         _write_parquet(spine_path)
     report = cl.cleanup(
-        'US_footprint-cheer-2026',
+        'US_footprint-openplaces-2026',
         admin_ids=[COUNTY],
         stages=('harmonize',),
         verbose=False,
@@ -287,18 +291,18 @@ def test_delete_image_caches_dry_run_filters_without_deleting(
 
     caches = _image_cache_frame(
         [
-            ['US-NC-BR-SH', 'googlesatellite', 'z20', 10, 12.5, selected],
-            ['US-NC-BR-SM', 'googlesatellite', 'z19', 5, 6.0, other_version],
+            ['US-NC-BRU-SH', 'googlesatellite', 'z20', 10, 12.5, selected],
+            ['US-NC-BRU-SM', 'googlesatellite', 'z19', 5, 6.0, other_version],
             ['US-MA-MI', 'googlesatellite', 'z20', 3, 2.0, other_admin],
         ]
     )
     monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
 
     result = opio.delete_image_caches(
-        'US-NC-BR', source='googlesatellite', version='z20'
+        'US-NC-BRU', source='googlesatellite', version='z20'
     )
 
-    assert result['admin_id'].tolist() == ['US-NC-BR-SH']
+    assert result['admin_id'].tolist() == ['US-NC-BRU-SH']
     assert selected.exists()
     output = capsys.readouterr().out
     assert 'Dry run: would delete 1 image cache(s), 12.5 MB total.' in output
@@ -313,13 +317,13 @@ def test_delete_image_caches_removes_matching_directories(monkeypatch, tmp_path)
 
     caches = _image_cache_frame(
         [
-            ['US-NC-BR-SH', 'googlesatellite', 'z20', 1, 1.0, first],
-            ['US-NC-BR-SM', 'googlesatellite', 'z20', 1, 2.0, second],
+            ['US-NC-BRU-SH', 'googlesatellite', 'z20', 1, 1.0, first],
+            ['US-NC-BRU-SM', 'googlesatellite', 'z20', 1, 2.0, second],
         ]
     )
     monkeypatch.setattr(diagnostics, 'list_image_caches', lambda: caches)
 
-    result = opio.delete_image_caches('US-NC-BR', dry_run=False)
+    result = opio.delete_image_caches('US-NC-BRU', dry_run=False)
 
     assert len(result) == 2
     assert not first.exists()
@@ -354,7 +358,7 @@ def test_aggressive_keeps_explicit_retention(data_root):
         _write_parquet(spine_path)
     # The curated consumer exists, so an until_consumed spine is deletable.
     curated = get_output_path(
-        get_recipe_by_id('US_footprint-cheer-2026'), admin_id=COUNTY
+        get_recipe_by_id('US_footprint-openplaces-2026'), admin_id=COUNTY
     )
     _write_parquet(curated)
     parcel_curated = get_output_path(
@@ -363,7 +367,7 @@ def test_aggressive_keeps_explicit_retention(data_root):
     _write_parquet(parcel_curated)
 
     report = cl.cleanup(
-        'US_footprint-cheer-2026',
+        'US_footprint-openplaces-2026',
         admin_ids=[COUNTY],
         aggressive=True,
         verbose=False,

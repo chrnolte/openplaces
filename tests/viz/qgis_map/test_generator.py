@@ -90,7 +90,7 @@ def _spec(
         entity_type=entity_type,
         source=source,
         version='2025',
-        admin_id=AdminId('US', 'NC', 'CE'),
+        admin_id=AdminId('US', 'NC', 'CAR'),
         display_name=display_name,
         attr_path=attr_path,
         geo_path=geo_path,
@@ -108,7 +108,7 @@ def basic_specs(tmp_path):
             role='output',
             entity_type='footprint',
             source='cheer',
-            display_name='US-NC-AR_footprint-cheer-2026',
+            display_name='US-NC-CAR_footprint-openplaces-2026',
             depth=0,
         ),
         _spec(
@@ -116,7 +116,7 @@ def basic_specs(tmp_path):
             role='output',
             entity_type='parcel',
             source='openplaces',
-            display_name='US-NC-AR_parcel-openplaces-2026',
+            display_name='US-NC-CAR_parcel-openplaces-2026',
             combined=True,
             depth=0,
         ),
@@ -125,7 +125,7 @@ def basic_specs(tmp_path):
             role='input',
             entity_type='footprint',
             source='obm',
-            display_name='US-NC-AR_footprint-obm-2025',
+            display_name='US-NC-CAR_footprint-obm-2025',
             depth=2,
         ),
         _spec(
@@ -151,7 +151,7 @@ MINIMAL_RECIPE = {'recipe_id': 'test-recipe', 'stage': 'curate'}
 def _run(tmp_path, specs, **kwargs):
     return generate_qgz(
         MINIMAL_RECIPE,
-        AdminId('US', 'NC', 'CE'),
+        AdminId('US', 'NC', 'CAR'),
         layer_specs=specs,
         template_path=TEMPLATE_PATH,
         output_path=tmp_path / 'out.qgz',
@@ -185,25 +185,25 @@ def _find_legendlayer(root: ET.Element, name: str) -> ET.Element:
 class TestDefaultOutputPath:
     def test_admin_entity_prefix_appears_once(self, mock_data_root):
         recipe = {
-            'recipe_id': 'US_footprint-cheer-2026',
-            'entity': Entity('footprint', 'cheer', '2026'),
+            'recipe_id': 'US_footprint-openplaces-2026',
+            'entity': Entity('footprint', 'openplaces', '2026'),
         }
         output_path = generator_module._default_output_path(
-            recipe, AdminId('US', 'NC', 'CE')
+            recipe, AdminId('US', 'NC', 'CAR')
         )
-        assert output_path.name == 'US-NC-AR_footprint-cheer-2026_map.qgz'
+        assert output_path.name == 'US-NC-CAR_footprint-openplaces-2026_map.qgz'
         assert output_path == (
             mock_data_root
             / 'data'
             / 'share'
             / 'US'
             / 'NC'
-            / 'CE'
+            / 'CAR'
             / '_all'
             / 'footprint'
-            / 'cheer'
+            / 'openplaces'
             / '2026'
-            / 'US-NC-AR_footprint-cheer-2026_map.qgz'
+            / 'US-NC-CAR_footprint-openplaces-2026_map.qgz'
         )
 
 
@@ -359,7 +359,7 @@ class TestStyleVariants:
             m.find('layername').text
             for m in root.find('projectlayers').findall('maplayer')
         }
-        assert f'{footprint_spec.display_name} — Roof shape' in layernames
+        assert f'Roof shape - {footprint_spec.display_name}' in layernames
 
     def test_variant_joins_the_base_clones_shared_attr_id(self, tmp_path, basic_specs):
         out = _run(tmp_path, basic_specs)
@@ -375,7 +375,7 @@ class TestStyleVariants:
         [variant] = [
             m
             for m in maplayers
-            if m.find('layername').text == f'{footprint_spec.display_name} — Roof shape'
+            if m.find('layername').text == f'Roof shape - {footprint_spec.display_name}'
         ]
         [join] = variant.find('vectorjoins').findall('join')
         assert join.get('joinLayerId') == base_attr_id
@@ -384,19 +384,19 @@ class TestStyleVariants:
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
         footprint_spec = _footprint_cheer_spec(basic_specs)
-        variant_name = f'{footprint_spec.display_name} — Roof shape'
+        variant_name = f'Roof shape - {footprint_spec.display_name}'
         tree_layers = root.find('layer-tree-group').iter('layer-tree-layer')
         [entry] = [layer for layer in tree_layers if layer.get('name') == variant_name]
         assert entry.get('checked') == 'Qt::Unchecked'
 
     def test_combined_spec_variant_has_no_join(self, tmp_path, basic_specs):
         # Combined specs have no attr sibling, but variants are still cloned
-        # (e.g. footprint-cheer-2026's own curate output is combined) — the
+        # (e.g. footprint-openplaces-2026's own curate output is combined) — the
         # variant clone just shares the base's datasource with no join.
         out = _run(tmp_path, basic_specs)
         root = _read_qgs_root(out)
         parcel_spec = next(s for s in basic_specs if s.entity_type == 'parcel')
-        variant_name = f'{parcel_spec.display_name} — Zone'
+        variant_name = f'Zone - {parcel_spec.display_name}'
         maplayers = root.find('projectlayers').findall('maplayer')
         [variant] = [m for m in maplayers if m.find('layername').text == variant_name]
         vectorjoins = variant.find('vectorjoins')
@@ -417,6 +417,11 @@ class TestStyleVariants:
             variant_label='Broken',
             notes=None,
             dynamic_categorize_attr=None,
+            attr_override=None,
+            category_colors=None,
+            attr_breaks=None,
+            attr_scale=None,
+            attr_unit=None,
         )
         monkeypatch.setattr(
             generator_module, 'get_style_variants', lambda style_key: [bad_variant]
@@ -426,7 +431,7 @@ class TestStyleVariants:
             role='output',
             entity_type='footprint',
             source='cheer',
-            display_name='US-NC-AR_footprint-cheer-2026',
+            display_name='US-NC-CAR_footprint-openplaces-2026',
         )
         with pytest.raises(ValueError, match='does_not_exist_in_template'):
             _run(tmp_path, [spec])
@@ -498,7 +503,7 @@ class TestUnstyledFallback:
             role='input',
             entity_type='transaction',
             source='wholly-unregistered',
-            display_name='US-NC-AR_transaction-unregistered-2025',
+            display_name='US-NC-CAR_transaction-unregistered-2025',
             depth=3,
         )
         with pytest.warns(UserWarning, match='No style registered'):
@@ -534,7 +539,7 @@ class TestProjectVariables:
         values = [v.text for v in root.find('properties/Variables/variableValues')]
         pairs = dict(zip(names, values, strict=True))
         assert pairs['recipe_id'] == 'test-recipe'
-        assert pairs['admin_id'] == 'US-NC-AR'
+        assert pairs['admin_id'] == 'US-NC-CAR'
         assert 'generated_at' in pairs
 
     def test_title_set_when_given(self, tmp_path, basic_specs):
@@ -572,6 +577,11 @@ class TestMissingTemplateLayer:
             variant_label=None,
             notes=None,
             dynamic_categorize_attr=None,
+            attr_override=None,
+            category_colors=None,
+            attr_breaks=None,
+            attr_scale=None,
+            attr_unit=None,
         )
         monkeypatch.setattr(
             generator_module, 'get_style', lambda et, s, role: bad_style
@@ -613,7 +623,7 @@ class TestDeterminism:
             counter_box['n'] = 0
             return generate_qgz(
                 MINIMAL_RECIPE,
-                AdminId('US', 'NC', 'CE'),
+                AdminId('US', 'NC', 'CAR'),
                 layer_specs=basic_specs,
                 template_path=TEMPLATE_PATH,
                 output_path=tmp_path / output_name,
@@ -635,7 +645,7 @@ class TestMissingTemplate:
         with pytest.raises(FileNotFoundError, match='template'):
             generate_qgz(
                 MINIMAL_RECIPE,
-                AdminId('US', 'NC', 'CE'),
+                AdminId('US', 'NC', 'CAR'),
                 layer_specs=basic_specs,
                 template_path=tmp_path / 'does_not_exist.qgz',
                 output_path=tmp_path / 'out.qgz',
@@ -722,7 +732,7 @@ def _dynamic_cat_spec(dir_path: Path, *, values: list) -> LayerSpec:
         role='output',
         entity_type='footprint',
         source='dynamiccat',
-        display_name='US-NC-AR_footprint-dynamiccat-test',
+        display_name='US-NC-CAR_footprint-dynamiccat-test',
         combined=True,
     )
     pd.DataFrame({'conflict_field': values}).to_parquet(spec.attr_path)
@@ -775,14 +785,14 @@ class TestDynamicCategories:
         spec2 = _dynamic_cat_spec(dir2, values=['shared_label'])
         out1 = generate_qgz(
             MINIMAL_RECIPE,
-            AdminId('US', 'NC', 'CE'),
+            AdminId('US', 'NC', 'CAR'),
             layer_specs=[spec1],
             template_path=TEMPLATE_PATH,
             output_path=dir1 / 'out.qgz',
         )
         out2 = generate_qgz(
             MINIMAL_RECIPE,
-            AdminId('US', 'NC', 'CE'),
+            AdminId('US', 'NC', 'CAR'),
             layer_specs=[spec2],
             template_path=TEMPLATE_PATH,
             output_path=dir2 / 'out.qgz',
@@ -799,7 +809,7 @@ class TestDynamicCategories:
             role='output',
             entity_type='footprint',
             source='dynamiccat',
-            display_name='US-NC-AR_footprint-dynamiccat-nodata',
+            display_name='US-NC-CAR_footprint-dynamiccat-nodata',
             combined=True,
         )
         pd.DataFrame({'other_column': ['x', 'y']}).to_parquet(spec.attr_path)

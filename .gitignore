@@ -170,3 +170,6 @@ docs/4_api/
 # connectors". Keep these files locally; never commit them.
 *shovels*
 *Shovels*
+
+# Licence-restricted validation reference declarations stay local
+*validation-references*

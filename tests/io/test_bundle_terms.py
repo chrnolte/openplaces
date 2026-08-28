@@ -12,7 +12,7 @@ import pytest
 
 from openplaces.io.bundle_terms import bundle_terms, format_notice
 
-RECIPE = 'US_footprint-cheer-2026'
+RECIPE = 'US_footprint-openplaces-2026'
 
 # The measured composition of the shipped NC bundle, 2026-08-18.
 _COMPOSITION = ['obm'] * 858 + ['ncdps'] * 69 + ['microsoft'] * 33

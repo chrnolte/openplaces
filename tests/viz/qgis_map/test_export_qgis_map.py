@@ -18,9 +18,9 @@ TEMPLATE_PATH = FIXTURES / 'tiny_template.qgz'
 
 PARCEL_RECIPE = 'US_parcel-openplaces-2026'
 FOOTPRINT_RECIPE = (
-    'US_footprint-cheer-2026'  # combined save_to; matches fixture 'test-output'
+    'US_footprint-openplaces-2026'  # combined save_to; matches fixture 'test-output'
 )
-COUNTY = 'US-NC-AR'
+COUNTY = 'US-NC-CAR'
 
 
 @pytest.fixture
@@ -76,7 +76,7 @@ class TestExportQgisMap:
             assert len(qgs_members) == 1
 
     def test_returns_populated_qgz_when_output_data_exists(self, mock_data_root):
-        # footprint-cheer-2026 saves attributes+geometry combined in one
+        # footprint-openplaces-2026 saves attributes+geometry combined in one
         # file, so only that single path needs to exist on disk.
         recipe = get_recipe_by_id(FOOTPRINT_RECIPE)
         output_path = get_output_path(recipe, admin_id=AdminId(COUNTY))

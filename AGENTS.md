@@ -47,29 +47,61 @@ repository.
   GitHub account, not an institutional one) — don't propose or perform an org
   transfer, mirror, or similar hosting change unprompted.
 
-## Private-licence connectors: do not commit them yet
+## Restricted-licence sources: the terms decide what may be committed
 
-- **A recipe that reads a source under a private, non-redistributable
-  licence stays out of git until Boston University clears it.** That
-  covers the recipe YAML, its sidecar crosswalks, and any pipeline step
-  that names it -- a `link_by_id` pointing at such a recipe is part of the
-  connector, not separate from it. Leave the files in the working tree and
-  say so; do not commit and do not delete.
-- The test is the source's terms, not the data: a source marked
-  `redistribution_restricted: true`, or whose licence forbids
-  redistribution or derivative works, is in scope even though a recipe
-  contains no data itself. Shovels is the current example -- its terms
-  forbid creating "derivative works of ... the Data (including any
-  datasets, models, data products, or other works that are based on or
-  trained on the Data)" -- and a committed connector is a public,
-  attributable statement that this project integrates that source.
-- This is the same posture as the IP section below: the question is
+- **A connector is not a secret.** That a research group holds a licence
+  to a private dataset, and that this project can read it, is ordinary
+  and may be said in public. A recipe naming such a source, and a
+  pipeline step that links to it, are acceptable in git on the same
+  footing as any other recipe, subject to the rule below.
+- **What may not be committed is anything the source's terms do not
+  permit, or that evidences a use they do not permit.** Before committing
+  a recipe for a source whose licence restricts redistribution,
+  derivative works, or disclosure, read the terms and check each of the
+  following against them:
+  - **Schema disclosure.** A recipe reproduces column names, field codes,
+    and value vocabularies. Some licences treat data documentation, or
+    "any portion" of the data, as confidential or as non-redistributable.
+    If the terms can be read that way, keep the recipe (and any sidecar
+    crosswalk that reproduces the source's codes) out of git until the
+    licensor, or Boston University's review, has cleared it.
+  - **Derivative products.** A licence that forbids "derivative works"
+    or "data products based on the Data" forbids publishing anything
+    derived from it, and a recipe or pipeline step written so that such a
+    product would be published is evidence of intent to do so. Restricted
+    evidence may inform an internal check; it must never reach a shipped
+    output. Pin that with a test, as
+    `test_restricted_shovels_columns_are_never_published` does.
+  - **Scope of use.** Internal validation against a licensed dataset is
+    a different use from training, redistribution, or commercial
+    delivery. Describe the actual use accurately in the recipe's notes,
+    and do not describe or configure a use the terms do not cover.
+- **Record the restriction on the `Source`** (`license`, `terms_url`,
+  `redistribution_restricted: true`) so `bundle_terms` reports it and the
+  usage-profile gate (below) can act on it. A recipe that reads as though
+  the source were open is the failure mode; a recipe that says plainly
+  what the terms are is not.
+- **When in doubt, hold the file, do not delete it.** The question is
   institutional, the answer is not an agent's to assume, and the cost of
-  waiting is a file that sits uncommitted for a while.
-- **`US-NC_property-shovels-2026` predates this rule and is already
-  committed and pushed** (2026-08-15). Removing it from history is a
-  decision for a human, exactly like the personal-data rule above --
-  flag it, do not quietly rewrite.
+  waiting is a file that sits uncommitted for a while. Say so in the
+  handoff; never commit to "fix it later."
+- **Shovels (`US-NC_property-shovels-2026`) is the worked example.** Its
+  terms forbid derivative works "based on or trained on the Data". The
+  project uses it only to validate an occupancy classification, and none
+  of its data or any column derived from it is published (the test above
+  pins that). The recipe was committed on 2026-08-15 and removed from
+  the tracked tree on 2026-08-22 (`4bf1588`, git-ignored so it stays
+  local) as a precaution while Boston University reviews whether
+  publishing its schema description is within the terms. Of the held
+  files only the occupancy-type value crosswalk reproduces any part of
+  the Data (a field's value vocabulary); it was removed from git history
+  on 2026-08-27 (see `plans/shovels-terms-and-the-withheld-connector.md`).
+  The recipe YAML and the county-name remaps, which carry no Data, stay
+  in history and out of the tree. The `link_by_id` steps that name the
+  recipe in the spine recipes are unaffected by that hold. Any further
+  history change is a decision for a human, exactly like the
+  personal-data rule above: flag it, do not quietly rewrite, and do not
+  re-add the files until the review has answered.
 
 ## Third-party code: attribute it, check its license
 - Porting or adapting code from another project (a GitHub repo, a paper's

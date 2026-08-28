@@ -2,9 +2,11 @@ from openplaces.recipe import find_entity_recipe_id, get_recipe_by_id
 
 
 def test_find_entity_recipe_follows_pipeline_stage_order():
-    admin_id = 'US-NC-BR'
+    admin_id = 'US-NC-BRU'
 
-    assert find_entity_recipe_id(admin_id, 'footprint') == 'US_footprint-cheer-2026'
+    assert (
+        find_entity_recipe_id(admin_id, 'footprint') == 'US_footprint-openplaces-2026'
+    )
     assert (
         find_entity_recipe_id(
             admin_id,
@@ -23,8 +25,8 @@ def test_find_entity_recipe_follows_pipeline_stage_order():
     assert get_recipe_by_id(enrichment_id)['stage'] == 'enrich'
 
 
-def test_cheer_curation_recipe_declares_predecessors():
-    recipe = get_recipe_by_id('US_footprint-cheer-2026')
+def test_curation_recipe_declares_predecessors():
+    recipe = get_recipe_by_id('US_footprint-openplaces-2026')
 
     assert recipe['stage'] == 'curate'
     assert recipe['entity_recipe'] == 'US_footprint-spine-2026'
@@ -40,4 +42,7 @@ def test_cheer_curation_recipe_declares_predecessors():
         # coverage. merge_enrichments skips a spec with no evidence
         # for the admin unit, so a run outside NC is unaffected.
         'US-NC_footprint_building-cheer-v0',
+        # Also NC-only, and skipped the same way: the NCDPS per-building
+        # construction years the year_built reconcile ranks above NSI.
+        'US-NC_footprint_footprint-ncdps-2023',
     }

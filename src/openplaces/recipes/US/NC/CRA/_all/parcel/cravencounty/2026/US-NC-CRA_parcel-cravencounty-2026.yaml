@@ -7,7 +7,7 @@
 #
 # A companion building-card shapefile from the same portal carries year
 # built per structure, keyed to this roll's PID by its own PPRIO field; see
-# US-NC-CAT_property-cravencounty-2026.yaml.
+# US-NC-CRA_property-cravencounty-2026.yaml.
 #
 # NOTE: because this roll ships no geometry, the parcel spine for
 # Craven is NC OneMap's, and this roll reaches it only through the
@@ -19,7 +19,7 @@
 #
 # The fix is on the NC OneMap side, not here: a
 # US_parcel_id-overrides.csv row scoped to `source_id: nconemap` at
-# US-NC-CAT points parcel_id_local at parcel_id_admin3 (PARNO) instead.
+# US-NC-CRA points parcel_id_local at parcel_id_admin3 (PARNO) instead.
 # PARNO holds the same PID this roll's own key uses, spacing included
 # ('9-999   -999'), so both sides resolve under the bundled `no_conv`
 # and 99.9% of NC OneMap's 59,752 Craven rows find a match in this
