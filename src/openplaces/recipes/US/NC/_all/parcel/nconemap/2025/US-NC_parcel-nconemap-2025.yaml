@@ -97,12 +97,15 @@ columns_to_categorical:
 # county (auto conversion; processed per admin3). Connects these GIS parcels to
 # the assessment roll and the sales transactions.
 #
-# altparno is a county-contributed field and is empty in some counties'
-# submissions, which leaves their parcels unjoinable to any local roll.
-# Those counties are redirected to another id column by an admin-scoped
-# row in US_parcel_id-overrides.csv rather than by changing the default
-# here -- see the rows scoped to `source_id: nconemap` (US-NC-COL,
-# US-NC-CRA, US-NC-CUM, US-NC-PAM), and the note in
+# altparno is a county-contributed field and is unusable in some
+# counties' submissions: blank for every row (US-NC-CHE, US-NC-CRA), or
+# populated with something that is not a parcel id (US-NC-CAB, where 55%
+# of values carry letters and the most common is a county name). Either
+# way those parcels are unjoinable to any local roll, so the county is
+# redirected to parno by an admin-scoped row in
+# US_parcel_id-overrides.csv rather than by changing the default here --
+# see the rows scoped to `source_id: nconemap` (US-NC-CAB, US-NC-CHE,
+# US-NC-COL, US-NC-CRA, US-NC-CUM, US-NC-PAM), and the note in
 # US-NC-CRA_parcel-cravencounty-2026.yaml.
 parcel_id_local:
   source: parcel_id_assessor
