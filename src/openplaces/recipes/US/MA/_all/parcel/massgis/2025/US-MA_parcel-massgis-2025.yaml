@@ -84,7 +84,7 @@ additional_layers:
       improvement_value: BLDG_VAL
       land_value: LAND_VAL
       other_value: OTHER_VAL
-      value: TOTAL_VAL
+      total_value: TOTAL_VAL
       assessment_year: FY
       owner_name: OWNER1
       owner_address: OWN_ADDR

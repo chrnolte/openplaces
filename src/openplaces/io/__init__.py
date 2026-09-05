@@ -447,6 +447,14 @@ def find_latest_file_or_gdb(
     """
     Find the most recently modified file or .gdb directory in a directory.
 
+    The newest candidate wins, with one exception: a .json file is chosen
+    only when nothing else qualifies. An archive that ships a data file
+    often ships a metadata or schema JSON beside it, and the newer of the
+    two is not the data. Newest-wins is otherwise kept deliberately: the
+    heap directory is shared across partitions and reruns and is never
+    cleared, so the file just extracted must beat a stale one of any
+    other format.
+
     Parameters
     ----------
     directory : str
@@ -480,8 +488,8 @@ def find_latest_file_or_gdb(
     if not all_matches:
         return None
 
-    # Return the item with the most recent modification time
-    return max(all_matches, key=lambda f: f.stat().st_mtime)
+    # Newest wins, except that a .json sidecar never beats a data file
+    return max(all_matches, key=lambda f: (f.suffix != '.json', f.stat().st_mtime))
 
 
 def _remove_if_exists(filepath: Path) -> None:
