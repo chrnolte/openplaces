@@ -97,25 +97,30 @@ def enrich_footprints_from_reference_buildings(
     reference_recipe = get_recipe_by_id(reference_recipe_id)
     suffix = suffix or _evidence_suffix(reference_recipe)
 
-    def _empty(reason: str) -> EnrichState:
-        """Emit the declared columns as all-null rather than nothing.
+    def _empty(reason: str, known: list[str] | None = None) -> EnrichState:
+        """Emit the evidence columns as all-null rather than nothing.
 
-        The evidence table's schema has to hold whether or not this admin
-        unit has reference coverage: the curate stage skips a missing
-        evidence file but treats a present one that lacks a declared
-        column as a recipe error, so writing a column-less table here
-        would poison every later curate run for the unit.
+        The evidence table's schema should hold whether or not this admin
+        unit has reference coverage: curate's merge_enrichments skips a
+        column it cannot find, and a later curate step reading that
+        column then fails, unless the recipe declares it through
+        declare_columns. The columns are the declared `columns`, or, when
+        the recipe relies on the default of every reference column, the
+        reference's own columns whenever it was loaded (*known*). With
+        neither, nothing can be written: the reference is absent and its
+        schema unknown, which curate treats exactly like a missing file.
         """
         if state.verbose:
             print(f'  {reason}; writing empty {suffix} evidence.')
-        if columns:
+        names = columns if columns is not None else known
+        if names:
             state.evidence = pd.concat(
                 [
                     state.evidence,
                     pd.DataFrame(
                         {
                             f'{c}{suffix}': pd.Series(pd.NA, index=state.evidence.index)
-                            for c in columns
+                            for c in names
                         }
                     ),
                 ],
@@ -160,11 +165,13 @@ def enrich_footprints_from_reference_buildings(
     if state.timer:
         state.timer.mark('overlay footprints against reference buildings')
     if pairs.empty:
-        return _empty(f'no footprint overlaps any {reference_recipe_id} building')
+        return _empty(
+            f'no footprint overlaps any {reference_recipe_id} building', attach
+        )
 
     pairs = pairs[pairs['iou'] >= min_iou]
     if pairs.empty:
-        return _empty(f'no overlap reaches min_iou={min_iou}')
+        return _empty(f'no overlap reaches min_iou={min_iou}', attach)
 
     # One reference building per footprint: the best-overlapping one.
     best = pairs['iou'].groupby(level=0).idxmax()
