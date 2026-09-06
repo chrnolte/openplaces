@@ -29,9 +29,7 @@ reconcile `n_stories` from NSI and from the CHEER Inventory v0 evidence.
 
 from __future__ import annotations
 
-import os
 import time
-import warnings
 from functools import cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -48,8 +46,6 @@ from openplaces.io.enricher.detectors.checkpoint import PredictionCheckpoint
 from openplaces.io.enricher.detectors.device import get_device
 from openplaces.io.enricher.models import get_model
 from openplaces.io.scrapers.types import ImageSet
-
-warnings.filterwarnings('ignore')
 
 _MODEL_URL = 'https://zenodo.org/record/4421613/files/efficientdet-d4_trained.pth'
 _MODEL_FILENAME = 'efficientdet-d4_nfloorDetector.pth'
@@ -69,7 +65,7 @@ def _load_infer(model_path: str, use_gpu: bool):
     """Load the EfficientDet inference engine, cached per (path, use_gpu).
 
     Avoids re-running `load_model` (weight deserialization + device
-    transfer) on every `NStoriesDetector.predict` call — the same engine
+    transfer) on every `NStoriesDetector.predict` call; the same engine
     is reused across every admin unit processed in one pipeline run.
     """
     raise RuntimeError(
@@ -127,8 +123,9 @@ class NStoriesDetector:
         Returns
         -------
         dict
-            Mapping from the same keys as ``images.images`` to an integer
-            story count, or ``None`` when the image file does not exist.
+            Mapping from the same keys as `images.images` to an integer
+            story count, or None when the image carries no pixels (its
+            fetch failed, or its scratch file is already gone).
         """
         model_path = get_model(
             _MODEL_URL,
@@ -141,10 +138,9 @@ class NStoriesDetector:
         # incomplete for detection models.
         gpu_enabled = get_device().type == 'cuda'
 
-        image_list = [
-            os.path.join(images.dir_path, image.filename)
-            for image in images.images.values()
-        ]
+        # Images live in memory (or in a caller-owned scratch directory
+        # that is gone before the step returns): there is no image
+        # directory to build paths from, by design. See `ImageSet`.
         image_keys = list(images.images.keys())
 
         # --- helpers (ported verbatim from BRAILS++) ---
@@ -203,9 +199,7 @@ class NStoriesDetector:
         if checkpoint is not None:
             predictions = checkpoint.load()
         pending = [
-            (key, im_path)
-            for key, im_path in zip(image_keys, image_list)
-            if key not in predictions
+            (key, images.images[key]) for key in image_keys if key not in predictions
         ]
         n_total = len(image_keys)
         n_done = n_total - len(pending)
@@ -221,17 +215,16 @@ class NStoriesDetector:
         tmp_img = Path(temp_dir.name) / 'input.jpg'
 
         print('\nPerforming story detections...')
-        for key, im_path in tqdm(pending, initial=n_done, total=n_total):
-            if not os.path.isfile(im_path):
+        for key, image in tqdm(pending, initial=n_done, total=n_total):
+            try:
+                with image.open() as opened:
+                    # Load + resize with PIL (replaces cv2)
+                    pil_img = opened.convert('RGB').resize((640, 640), PILImage.LANCZOS)
+            except (ValueError, OSError):
+                # No payload and no path, or a scratch file that no
+                # longer exists: nothing to detect on.
                 _record(key, None)
                 continue
-
-            # Load + resize with PIL (replaces cv2)
-            pil_img = (
-                PILImage.open(im_path)
-                .convert('RGB')
-                .resize((640, 640), PILImage.LANCZOS)
-            )
             pil_img.save(str(tmp_img))
 
             _, _, boxes = gtf_infer.predict(str(tmp_img), threshold=0.2)

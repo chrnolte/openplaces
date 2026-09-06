@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from openplaces.config import cfg
+from openplaces.io import request_headers
 
 
 def get_model(
@@ -37,7 +38,9 @@ def get_model(
             delete=False,
         ) as temp_file:
             temp_path = Path(temp_file.name)
-            response = requests.get(url, stream=True, timeout=120)
+            response = requests.get(
+                url, stream=True, timeout=120, headers=request_headers()
+            )
             response.raise_for_status()
             for chunk in response.iter_content(chunk_size=65536):
                 if chunk:

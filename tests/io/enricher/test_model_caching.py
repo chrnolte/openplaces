@@ -9,6 +9,7 @@ fails loudly rather than by exercising a cache it no longer has.
 import pytest
 import torch
 
+from openplaces.io.enricher import models
 from openplaces.io.enricher.detectors import classify, n_stories
 
 
@@ -59,3 +60,29 @@ def test_efficientdet_removal_is_complete():
     """The LGPL-3.0 subtree must not come back without a NOTICE carve-out."""
     with pytest.raises(ImportError):
         import openplaces.io.enricher.detectors.efficientdet_lib  # noqa: F401
+
+
+def test_model_download_identifies_openplaces(monkeypatch, tmp_path):
+    """The weight download goes out under the project's User-Agent."""
+    import requests
+
+    seen = {}
+
+    class _Response:
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size):
+            yield b'weights'
+
+    def fake_get(url, **kwargs):
+        seen.update(kwargs)
+        return _Response()
+
+    monkeypatch.setattr(requests, 'get', fake_get)
+    path = models.get_model(
+        'https://example.invalid/w.pth', 'w.pth', tmp_path / 'w.pth'
+    )
+
+    assert path.read_bytes() == b'weights'
+    assert seen['headers']['User-Agent'].startswith('openplaces/')
