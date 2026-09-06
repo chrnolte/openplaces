@@ -110,6 +110,11 @@ def _resolve_calibrate_group_col(
     town_col = (
         _ADMIN4_GROUP_COL if _ADMIN4_GROUP_COL in joined.columns else 'index_right'
     )
+    # A left sjoin emits one row per matching polygon, so a centroid
+    # inside overlapping (or duplicated) town polygons carries its label
+    # twice and the reindex below would refuse the duplicate. Either
+    # town is as good a calibration group as the other; keep the first.
+    joined = joined[~joined.index.duplicated(keep='first')]
     old = old.copy()
     old[_ADMIN4_GROUP_COL] = joined[town_col].reindex(old.index)
     return old, _ADMIN4_GROUP_COL
@@ -251,8 +256,8 @@ def enrich_parcels_from_reference_crosswalk(
     parcel across several new ones conserves its total), and `id_columns`
     (unweighted "first" pick -- for stable reference-geography identifiers
     like a census tract/block-group/ZIP code, not floating values). Missing
-    reference coverage for an admin unit is tolerated (returns `state`
-    unchanged), matching how image-based steps tolerate a missing
+    or empty reference coverage for an admin unit is tolerated (returns
+    `state` unchanged), matching how image-based steps tolerate a missing
     `image_recipe` admin unit (`io/enricher/attributes.py:_build_image_set`).
 
     When `mean_columns`/`sum_columns` default (are not passed explicitly),
@@ -264,7 +269,11 @@ def enrich_parcels_from_reference_crosswalk(
     explicitly bypasses all of that -- rescaling and renaming both need
     crosswalk-CSV metadata this function has no way to infer for an
     arbitrary caller-chosen column, so those columns aggregate under their
-    raw name, unscaled.
+    raw name, unscaled. `id_columns` passed alongside them are picked
+    under their raw name too, each new parcel taking the value of the
+    reference parcel it overlaps most; the registry-driven "first" pick
+    of the default path needs a registered canonical name, which a raw
+    column does not have.
 
     Parameters
     ----------
@@ -314,6 +323,11 @@ def enrich_parcels_from_reference_crosswalk(
     try:
         old = get_entities(reference_recipe, state.admin_id, geom=True)
     except FileNotFoundError:
+        return state
+    if old is None or old.empty:
+        # A file that exists but holds no rows for this unit is the same
+        # absence as no file, and the verbose report below divides by
+        # len(old).
         return state
     if state.timer:
         state.timer.mark('load reference parcels')
@@ -427,6 +441,22 @@ def enrich_parcels_from_reference_crosswalk(
             aggregation_function=dict.fromkeys(sum_columns, 'sum'),
         )
         if result is not None:
+            parts.append(result)
+
+    if id_columns and explicit:
+        # Raw-named columns cannot go through aggregate_rows_weighted's
+        # 'first' path (it drops any column the attribute registry does
+        # not know, returning None), so pick directly: the value of the
+        # reference parcel with the largest overlap.
+        joined = crosswalk.merge(
+            old[id_columns], left_on='parcel_id_old', right_index=True
+        )
+        result = (
+            joined.sort_values('area_ha', ascending=False)
+            .groupby('parcel_id_new')[id_columns]
+            .first()
+        )
+        if not result.empty:
             parts.append(result)
 
     if id_columns and not explicit:
