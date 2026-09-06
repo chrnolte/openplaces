@@ -258,3 +258,69 @@ def test_every_recipe_with_a_usage_requirement_names_its_source():
         # And the requirement itself must construct cleanly
         requirement = UsageRequirement(**source['usage_requirement'])
         assert not requirement.is_empty(), path.name
+
+
+def _unnamed_source(**requirement):
+    """A source with no id and no recipe id to fall back on.
+
+    `Source.__str__` is the empty string when `source_id` is None, so
+    every such source used to collapse onto one memo entry and one
+    standing-decision key.
+    """
+    return Source(
+        terms_url='https://example.org/terms',
+        usage_requirement=UsageRequirement(**requirement),
+    )
+
+
+def test_two_unnamed_sources_do_not_share_one_answer(monkeypatch):
+    """Answering for one source must not answer for an unrelated one."""
+    monkeypatch.setattr('sys.stdin', _Tty())
+    asked = []
+    monkeypatch.setattr('builtins.input', lambda *a: asked.append(1) or 'y')
+
+    require_usage_compatible(_unnamed_source(non_commercial=True))
+    require_usage_compatible(_unnamed_source(non_commercial=True))
+
+    assert len(asked) == 2
+
+
+def test_an_unnamed_source_records_no_standing_decision(monkeypatch):
+    """A standing 'proceed' under an empty key would cover every source."""
+    recorded = {}
+    monkeypatch.setattr(
+        'openplaces.io.usage_profile.set_usage_override',
+        lambda source, compatible, reason=None: recorded.update({source: compatible}),
+    )
+    monkeypatch.setattr('sys.stdin', _Tty())
+    monkeypatch.setattr('builtins.input', lambda *a: 'a')
+
+    assert require_usage_compatible(_unnamed_source(non_commercial=True)) is True
+    assert recorded == {}
+
+
+def test_an_unnamed_source_does_not_read_a_standing_decision(monkeypatch):
+    """Nor may it inherit one somebody recorded for a different source."""
+    looked_up = []
+    monkeypatch.setattr(
+        'openplaces.io.usage_profile.get_usage_override',
+        lambda source: looked_up.append(source) or True,
+    )
+    monkeypatch.setattr('sys.stdin', _NoTty())
+
+    with pytest.raises(UsageProfileMismatchError):
+        require_usage_compatible(_unnamed_source(non_commercial=True))
+
+    assert looked_up == []
+
+
+def test_a_recipe_id_still_keys_an_unnamed_source(monkeypatch):
+    """The recipe id is a real identifier and keeps its old behavior."""
+    monkeypatch.setattr('sys.stdin', _Tty())
+    asked = []
+    monkeypatch.setattr('builtins.input', lambda *a: asked.append(1) or 'y')
+
+    require_usage_compatible(_unnamed_source(non_commercial=True), 'a-recipe')
+    require_usage_compatible(_unnamed_source(non_commercial=True), 'a-recipe')
+
+    assert len(asked) == 1
