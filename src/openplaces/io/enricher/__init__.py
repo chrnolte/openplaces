@@ -450,11 +450,21 @@ class Enricher:
         Rows whose keys were attempted (images processed, even when the
         result is missing) take the new values; all other rows keep the
         existing evidence.
+
+        The result spans the union of both indexes. A sub-admin run hands
+        in only its own towns (`_restrict_to_sub_admins`), while the file
+        on disk may hold every town enriched before it, and the coverage
+        footer written beside the result claims all of them. Building the
+        result on the new frame's index alone dropped the earlier towns'
+        rows while the footer still reported them covered, so they were
+        never regenerated.
         """
+        index = existing.index.union(new.index, sort=False)
+        new = new.reindex(index)
+        existing = existing.reindex(index)
         if attempted_keys is None:
-            return new.combine_first(existing.reindex(new.index))
+            return new.combine_first(existing)
         merged = new.copy()
-        existing = existing.reindex(merged.index)
         keep = ~merged.index.isin(attempted_keys)
         for column in merged.columns.intersection(existing.columns):
             merged.loc[keep, column] = existing.loc[keep, column]
