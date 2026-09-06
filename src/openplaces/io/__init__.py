@@ -442,7 +442,7 @@ def _get_strip_prefix(member_list):
 
 
 def find_latest_file_or_gdb(
-    directory: str, extensions: list[str] = GEOPANDAS_EXTENSIONS | PANDAS_EXTENSIONS
+    directory: str, extensions: set[str] = GEOPANDAS_EXTENSIONS | PANDAS_EXTENSIONS
 ) -> Path | None:
     """
     Find the most recently modified file or .gdb directory in a directory.
@@ -451,36 +451,48 @@ def find_latest_file_or_gdb(
     only when nothing else qualifies. An archive that ships a data file
     often ships a metadata or schema JSON beside it, and the newer of the
     two is not the data. Newest-wins is otherwise kept deliberately: the
-    heap directory is shared across partitions and reruns and is never
-    cleared, so the file just extracted must beat a stale one of any
-    other format.
+    heap directory is shared across partitions and reruns, and ingest
+    never clears it before extracting, so the file just extracted must
+    beat a stale one of any other format.
+
+    Suffixes are compared case-insensitively. County and state shapefile
+    archives routinely ship uppercase extensions, and matching them by
+    raw case would leave the data file unrecognized and hand the caller
+    the JSON sidecar the rule above exists to demote.
 
     Parameters
     ----------
     directory : str
         Path to the directory to search
-    extensions : list[str]
-        List of accepted file extensions (e.g., ['.csv', '.txt', '.json'])
+    extensions : set[str]
+        Accepted file extensions (e.g., {'.csv', '.txt', '.json'})
 
     Returns
     -------
-    Optional[Path]
+    Path | None
         Path to the most recent file or .gdb directory, or None if no matches found
     """
     dir_path = Path(directory)
     if not dir_path.exists() or not dir_path.is_dir():
         raise ValueError(f'Directory does not exist: {directory}')
 
-    # Normalize extensions to include leading dot
-    normalized_exts = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
+    # Normalize extensions to include a leading dot, and casefold so an
+    # uppercase suffix in the archive still matches
+    normalized_exts = {
+        (ext if ext.startswith('.') else f'.{ext}').lower() for ext in extensions
+    }
 
     # Find all files with matching extensions
     matching_files = [
-        f for f in dir_path.iterdir() if f.is_file() and f.suffix in normalized_exts
+        f
+        for f in dir_path.iterdir()
+        if f.is_file() and f.suffix.lower() in normalized_exts
     ]
 
     # Find all .gdb directories
-    gdb_dirs = [d for d in dir_path.iterdir() if d.is_dir() and d.suffix == '.gdb']
+    gdb_dirs = [
+        d for d in dir_path.iterdir() if d.is_dir() and d.suffix.lower() == '.gdb'
+    ]
 
     # Combine files and .gdb directories
     all_matches = matching_files + gdb_dirs
@@ -489,7 +501,9 @@ def find_latest_file_or_gdb(
         return None
 
     # Newest wins, except that a .json sidecar never beats a data file
-    return max(all_matches, key=lambda f: (f.suffix != '.json', f.stat().st_mtime))
+    return max(
+        all_matches, key=lambda f: (f.suffix.lower() != '.json', f.stat().st_mtime)
+    )
 
 
 def _remove_if_exists(filepath: Path) -> None:
