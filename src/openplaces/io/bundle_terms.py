@@ -270,7 +270,9 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
         listed.setdefault(entry['source_id'], set()).add(entry['license'])
 
     # One source id can carry more than one licence, and a
-    # `geometry_source` value records only the id. The dependency walk
+    # `geometry_source` value records only the id, never which of a
+    # source's products a row came from (tracked as a follow-up on
+    # the provenance column, not resolvable here). The dependency walk
     # reaches whichever recipe feeds this bundle by name, which for
     # `overture` was the permissive addresses recipe even where the
     # geometry came from the ODbL buildings recipe. Every distinct
@@ -441,11 +443,24 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
                 'the database itself, since both licences let a Produced Work',
                 'carry its own licence, subject to attribution.',
             ]
+        # The private-sharing sentence holds only where nothing above
+        # restricts redistribution; a signed-agreement source is not
+        # satisfied by carrying a notice, so it gets a pointer instead.
+        if terms.get('restricted'):
+            lines += [
+                '',
+                'One or more sources above restrict redistribution; see',
+                'Redistribution restricted before passing this bundle on.',
+            ]
+        else:
+            lines += [
+                '',
+                'Sharing it privately with named collaborators is a smaller act than',
+                'publishing, and is generally satisfied by keeping this notice with',
+                'the data.',
+            ]
         lines += [
-            '',
-            'Sharing it privately with named collaborators is a smaller act than',
-            'publishing, and is generally satisfied by keeping this notice with the',
-            'data. Publishing it is a decision for you as the distributor, not for',
+            'Publishing it is a decision for you as the distributor, not for',
             'openplaces, which is why this file states the terms rather than enforcing',
             'them.',
             '',

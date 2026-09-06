@@ -220,3 +220,27 @@ def test_geometry_of_unrecorded_provenance_is_reported_not_hidden():
     notice = format_notice(RECIPE, terms)
     assert '90.0%' in notice
     assert 'source not recorded' in notice
+
+
+def test_private_sharing_reads_as_satisfied_only_where_nothing_restricts_it(terms):
+    """Keeping the notice with the data settles attribution, not a contract.
+
+    A signed-agreement, no-resale source is not satisfied by carrying a
+    notice, so the sentence that says private sharing generally is must
+    not appear over one.
+    """
+    notice = format_notice(RECIPE, terms, 'US-NC')
+
+    assert 'generally satisfied by keeping this notice' in notice
+    assert 'restrict redistribution; see' not in notice
+    # Who decides is stated either way.
+    assert 'decision for you as the distributor' in notice
+
+
+def test_a_restricted_source_replaces_that_sentence_with_a_pointer():
+    composition = _COMPOSITION + ['parcel.edgecombecounty'] * 40
+    notice = format_notice(RECIPE, bundle_terms(RECIPE, pd.Series(composition)))
+
+    assert 'generally satisfied by keeping this notice' not in notice
+    assert 'restrict redistribution; see' in notice
+    assert 'decision for you as the distributor' in notice
