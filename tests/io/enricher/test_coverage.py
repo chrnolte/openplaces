@@ -5,6 +5,7 @@ import json
 import pandas as pd
 import pytest
 
+from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet, save_parquet
 from openplaces.io.enricher import Enricher
 
@@ -130,3 +131,21 @@ def test_sequential_town_runs_accumulate_evidence(monkeypatch, tmp_path):
         'c': 'US-NC-BR-SM',
     }
     assert enricher._is_covered(out_path, ['US-NC-BR-SH', 'US-NC-BR-SM'])
+
+
+@pytest.mark.parametrize(
+    'admin_ids',
+    ['US-NC-BR', AdminId('US-NC-BR'), [AdminId('US-NC-BR'), 'US-NC-BR-SH']],
+)
+def test_resolve_admin_ids_accepts_admin_id_objects(enricher, admin_ids):
+    """An AdminId is accepted as the docstring says, not only its string.
+
+    The comprehension that finds full process-level requests used to
+    re-wrap the original elements, and AdminId(AdminId(...)) raises.
+    """
+    enricher.recipe = {'process_by': {'admin_level': 3}}
+    enricher.entity_recipe = {'admin_id': AdminId('US-NC')}
+
+    assert enricher._resolve_admin_ids(admin_ids) == ['US-NC-BR']
+    # A full county request supersedes the town named beside it.
+    assert enricher.sub_admin_ids == {}

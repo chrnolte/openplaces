@@ -195,9 +195,11 @@ class Enricher:
         if isinstance(admin_ids, str | AdminId):
             admin_ids = [admin_ids]
 
+        admin_ids = [
+            aid if isinstance(aid, AdminId) else AdminId(aid) for aid in admin_ids
+        ]
         expanded: list[str] = []
         for aid in admin_ids:
-            aid = AdminId(aid) if not isinstance(aid, AdminId) else aid
             if aid.get_level() < process_level:
                 expanded += get_admin_ids(process_level, admin_id=aid)
             elif aid.get_level() == process_level:
@@ -210,16 +212,9 @@ class Enricher:
         expanded = list(dict.fromkeys(expanded))
 
         # A full process-level request supersedes sub-level subsets.
-        full = {
-            str(AdminId(aid))
-            for aid in admin_ids
-            if AdminId(aid).get_level() <= process_level
-        }
+        full = [aid for aid in admin_ids if aid.get_level() <= process_level]
         for parent in list(self.sub_admin_ids):
-            if any(
-                AdminId(full_id).is_parent_or_equal_of(AdminId(parent))
-                for full_id in full
-            ):
+            if any(full_id.is_parent_or_equal_of(AdminId(parent)) for full_id in full):
                 del self.sub_admin_ids[parent]
 
         invalid = [
