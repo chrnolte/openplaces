@@ -50,8 +50,43 @@ def _is(license_text: str | None, prefixes: tuple[str, ...]) -> bool:
     return any(text.startswith(prefix) for prefix in prefixes)
 
 
-def _source_terms(recipe) -> dict[str, dict]:
-    """Map each upstream source id to the terms its recipe records.
+def _terms_key(entry: dict) -> tuple:
+    """Identify one recorded set of terms.
+
+    Keyed on what a recipe records, never on the source id alone. Two
+    recipes can share a source id and record different licences: the
+    Overture addresses theme is permissive while the Overture buildings
+    theme is ODbL-1.0, both under the source id `overture`. Keying on the
+    id let whichever recipe was reached first shadow the other, so a
+    bundle built on Overture footprints reported the permissive licence
+    and dropped the share-alike obligation entirely.
+
+    Recipes that record the same terms collapse onto one entry, which is
+    the common case for several versions of one source.
+    """
+    return (
+        entry['source_id'],
+        entry['license'],
+        entry['terms_url'],
+        entry['portal_url'],
+        entry['redistribution_restricted'],
+    )
+
+
+def _blank_entry(source_id: str) -> dict:
+    """An entry for a source whose terms no recipe records."""
+    return {
+        'source_id': source_id,
+        'recipe_id': None,
+        'license': None,
+        'terms_url': None,
+        'portal_url': None,
+        'redistribution_restricted': None,
+    }
+
+
+def _source_terms(recipe) -> dict[tuple, dict]:
+    """Collect the terms every upstream recipe records, one entry each.
 
     Walks the recipe's real dependency graph rather than guessing from
     names, so a source only appears here if it actually feeds this recipe.
@@ -62,8 +97,11 @@ def _source_terms(recipe) -> dict[str, dict]:
     depends on the footprint sources. Stopping at one level reports every
     source as unrecorded, which reads as "nobody checked" when the truth is
     "nobody looked far enough".
+
+    Keyed by `_terms_key`, so two recipes sharing a source id but
+    recording different licences both survive.
     """
-    terms: dict[str, dict] = {}
+    terms: dict[tuple, dict] = {}
     seen: set[str] = set()
     frontier = [recipe]
 
@@ -91,22 +129,29 @@ def _source_terms(recipe) -> dict[str, dict]:
             source_id = str(getattr(source, 'source_id', '') or '')
             if not source_id:
                 source_id = source_id_from_recipe_id(upstream_id)
-            terms.setdefault(
-                source_id,
-                {
-                    'source_id': source_id,
-                    'recipe_id': upstream_id,
-                    'license': getattr(source, 'license', None),
-                    'terms_url': getattr(source, 'terms_url', None),
-                    'portal_url': getattr(source, 'portal_url', None),
-                },
-            )
+            entry = {
+                'source_id': source_id,
+                'recipe_id': upstream_id,
+                'license': getattr(source, 'license', None),
+                'terms_url': getattr(source, 'terms_url', None),
+                'portal_url': getattr(source, 'portal_url', None),
+                'redistribution_restricted': getattr(
+                    source, 'redistribution_restricted', None
+                ),
+            }
+            terms.setdefault(_terms_key(entry), entry)
     return terms
 
 
 @cache
-def _catalog_terms() -> dict[str, dict]:
-    """Terms recorded by every recipe in the catalog, keyed by source id.
+def _catalog_terms() -> dict[str, list[dict]]:
+    """Terms recorded by every recipe in the catalog, grouped by source id.
+
+    Each source id maps to every *distinct* set of terms recorded for it,
+    not to whichever recipe the directory walk reached first. One source
+    id can carry more than one licence (`overture` covers both the
+    permissive addresses theme and the ODbL buildings theme), and keeping
+    only the first hid the other from the notice.
 
     A fallback for sources the dependency walk cannot reach. A spine
     auto-discovers its per-admin inputs (which county footprint source to
@@ -129,7 +174,8 @@ def _catalog_terms() -> dict[str, dict]:
     from openplaces.config import cfg
 
     root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
-    index: dict[str, dict] = {}
+    index: dict[str, list[dict]] = {}
+    seen: set[tuple] = set()
     for path in sorted(root.rglob('*.yaml')):
         try:
             recipe = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
@@ -142,17 +188,25 @@ def _catalog_terms() -> dict[str, dict]:
         if not isinstance(source, dict):
             continue
         source_id = str(source.get('source_id') or '')
-        # First recipe wins: several versions of one source record the same
-        # terms, and a later one should not silently replace an earlier.
-        if not source_id or source_id in index:
+        if not source_id:
             continue
-        index[source_id] = {
+        entry = {
             'source_id': source_id,
             'recipe_id': path.stem,
             'license': source.get('license'),
             'terms_url': source.get('terms_url'),
             'portal_url': source.get('portal_url'),
+            'redistribution_restricted': source.get('redistribution_restricted'),
         }
+        # First recipe wins per distinct set of terms: several
+        # versions of one source record the same terms, and a later
+        # one should not replace an earlier. Different terms are
+        # kept side by side.
+        key = _terms_key(entry)
+        if key in seen:
+            continue
+        seen.add(key)
+        index.setdefault(source_id, []).append(entry)
     return index
 
 
@@ -171,69 +225,95 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
     Returns
     -------
     dict
-        ``sources``  -- one entry per contributing source, each with its
-        recorded licence, terms URL and (when known) geometry share, sorted
-        by share descending.
+        ``sources``  -- one entry per set of terms a contributing source
+        records, each with its recorded licence, terms URL and (when
+        known) geometry share, sorted by share descending.
         ``share_alike`` -- licences requiring the bundle itself to carry
         them, with the combined share they reach.
         ``attribution`` -- sources that must be credited.
+        ``restricted`` -- sources whose recipe records
+        `redistribution_restricted`.
         ``unrecorded`` -- sources whose terms nobody has checked yet.
+        ``unknown_share`` -- the share of the bundle's geometry whose
+        source the bundle itself does not record.
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
 
     known = _source_terms(recipe)
+    known_ids = {entry['source_id'] for entry in known.values()}
 
     shares: dict[str, float] = {}
+    unknown_share = 0.0
     if geometry_source is not None and len(geometry_source):
-        counts = geometry_source.value_counts(normalize=True, dropna=True)
-        for value, share in counts.items():
-            shares[_resolve_source_id(str(value), known)] = shares.get(
-                _resolve_source_id(str(value), known), 0.0
-            ) + float(share)
+        # Shares are taken over every row, not only the attributed ones.
+        # Normalizing over non-nulls made them sum to 1.0 whatever the
+        # coverage, so geometry of unrecorded provenance vanished from
+        # the notice instead of being reported as unaccounted for.
+        total = len(geometry_source)
+        recorded = geometry_source.dropna().astype(str).str.strip()
+        counts = recorded[recorded != ''].value_counts()
+        for value, count in counts.items():
+            source_id = _resolve_source_id(str(value), known_ids)
+            shares[source_id] = shares.get(source_id, 0.0) + float(count) / total
+        unknown_share = max(0.0, 1.0 - sum(shares.values()))
 
     sources = []
-    for source_id, entry in known.items():
-        if shares and source_id not in shares:
+    listed: dict[str, set] = {}
+    for entry in known.values():
+        if shares and entry['source_id'] not in shares:
             # Feeds the recipe but contributed no geometry to this bundle
             # (an attribute-only or reference input); not a licence the
             # geometry inherits.
             continue
-        sources.append({**entry, 'share': shares.get(source_id)})
+        sources.append({**entry, 'share': shares.get(entry['source_id'])})
+        listed.setdefault(entry['source_id'], set()).add(entry['license'])
 
+    # One source id can carry more than one licence, and a
+    # `geometry_source` value records only the id. The dependency walk
+    # reaches whichever recipe feeds this bundle by name, which for
+    # `overture` was the permissive addresses recipe even where the
+    # geometry came from the ODbL buildings recipe. Every distinct
+    # licence the catalog records for a contributing id is therefore
+    # reported, not only the one the walk happened to find.
     catalog = _catalog_terms()
     for source_id in shares:
-        if source_id in known:
-            continue
-        fallback = catalog.get(source_id)
-        sources.append(
-            {
-                **(
-                    fallback
-                    or {
-                        'source_id': source_id,
-                        'recipe_id': None,
-                        'license': None,
-                        'terms_url': None,
-                        'portal_url': None,
-                    }
-                ),
-                'share': shares[source_id],
-            }
-        )
+        recorded = listed.get(source_id, set())
+        fallbacks = catalog.get(source_id) or []
+        if not fallbacks and not recorded:
+            fallbacks = [_blank_entry(source_id)]
+        for fallback in fallbacks:
+            if fallback['license'] in recorded:
+                continue
+            if not fallback['license'] and recorded:
+                # A recipe that recorded nothing does not unsettle one
+                # that did.
+                continue
+            sources.append({**fallback, 'share': shares[source_id]})
+            recorded.add(fallback['license'])
+            listed[source_id] = recorded
 
     sources.sort(key=lambda entry: (-(entry['share'] or 0), entry['source_id']))
 
     share_alike: dict[str, float] = {}
-    attribution, unrecorded = [], []
+    attribution, restricted, unrecorded = [], [], []
+    counted: set[tuple[str, str]] = set()
     for entry in sources:
+        if entry['redistribution_restricted']:
+            restricted.append(entry)
         license_text = entry['license']
         if not license_text:
             unrecorded.append(entry)
             continue
         if _is(license_text, SHARE_ALIKE_LICENSES):
             key = str(license_text)
-            share_alike[key] = share_alike.get(key, 0.0) + (entry['share'] or 0.0)
+            # One source id can record the same share-alike licence
+            # under two recipes; its share is still counted once.
+            if (entry['source_id'], key) in counted:
+                share_alike.setdefault(key, 0.0)
+            else:
+                counted.add((entry['source_id'], key))
+                share_alike[key] = share_alike.get(key, 0.0) + (entry['share'] or 0.0)
         if _is(license_text, ATTRIBUTION_LICENSES):
             attribution.append(entry)
 
@@ -241,11 +321,13 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
         'sources': sources,
         'share_alike': share_alike,
         'attribution': attribution,
+        'restricted': restricted,
         'unrecorded': unrecorded,
+        'unknown_share': unknown_share,
     }
 
 
-def _resolve_source_id(value: str, known: dict) -> str:
+def _resolve_source_id(value: str, known_ids: set[str]) -> str:
     """Map a `geometry_source` value onto a known upstream source id.
 
     Values are dotted where geometry was derived rather than taken whole
@@ -255,10 +337,10 @@ def _resolve_source_id(value: str, known: dict) -> str:
     source is still reported rather than silently dropped.
     """
     catalog = _catalog_terms()
-    if value in known or value in catalog:
+    if value in known_ids or value in catalog:
         return value
     for token in reversed(value.split('.')):
-        if token in known or token in catalog:
+        if token in known_ids or token in catalog:
             return token
     return value
 
@@ -286,15 +368,47 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         lines[1] = '=' * 70
 
     lines += ['Sources', '-' * 70]
+    # One source id can record more than one licence (a source shipping
+    # two themes under one id). Naming the recipe on those lines is what
+    # tells the reader which entry is which.
+    repeated = {
+        entry['source_id']
+        for entry in terms['sources']
+        if sum(
+            1 for other in terms['sources'] if other['source_id'] == entry['source_id']
+        )
+        > 1
+    }
     for entry in terms['sources']:
         share = entry['share']
         share_text = f'{share:6.1%}  ' if share is not None else ' ' * 8
         license_text = entry['license'] or _UNRECORDED
-        lines.append(f'{share_text}{entry["source_id"]:<20} {license_text}')
+        label = entry['source_id']
+        if label in repeated and entry['recipe_id']:
+            label = f'{label} ({entry["recipe_id"]})'
+        lines.append(f'{share_text}{label:<20} {license_text}')
         url = entry['terms_url'] or entry['portal_url']
         if url:
             lines.append(f'{" " * 8}{"":<20} {url}')
+    if terms.get('unknown_share'):
+        lines.append(
+            f'{terms["unknown_share"]:6.1%}  '
+            f'{"(source not recorded)":<20} {_UNRECORDED}'
+        )
     lines.append('')
+
+    if terms.get('restricted'):
+        lines += [
+            'Redistribution restricted',
+            '-' * 70,
+            'The terms recorded for these sources restrict redistribution.',
+            'Read each one before passing this bundle on.',
+        ]
+        for entry in terms['restricted']:
+            url = entry['terms_url'] or entry['portal_url'] or ''
+            license_text = entry['license'] or _UNRECORDED
+            lines.append(f'  {entry["source_id"]}: {license_text}  {url}')
+        lines.append('')
 
     if terms['share_alike']:
         lines += ['Share-alike', '-' * 70]
