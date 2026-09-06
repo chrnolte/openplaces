@@ -523,7 +523,12 @@ class RecipeDAG:
             ref_id, _ = _resolve_reference_recipe(
                 step.get('recipe_id'), step.get('entity_type'), node_admin
             )
-            if ref_id is not None:
+            # A reference pruned from this graph (exclude_recipe_ids) has
+            # no job producing it; the harmonize step soft-skips it, so
+            # declaring its sidecar would make Snakemake discard a
+            # finished spine as incomplete (observed 2026-08-28 for a
+            # county Overture does not cover).
+            if ref_id is not None and ref_id not in self.exclude_recipe_ids:
                 paths.append(get_entity_link_path(recipe_id, ref_id, node_admin))
         for entry in recipe.get('entity_links') or []:
             paths.append(

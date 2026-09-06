@@ -205,6 +205,17 @@ for node in dag.nodes():
     else:
         _stage_arg = node.admin_id
     _admin_arg = f' {_stage_arg}' if _stage_arg else ''
+    # Bound here and passed through `params`, never written into the
+    # `shell:` directive directly: Snakemake evaluates that directive's
+    # expression when the job runs, inside a closure over this loop's
+    # variables, so every rule would execute the command of whichever
+    # node the loop visited last (observed 2026-08-27: an NSI ingest ran
+    # the global admin3 harmonize). `params` are evaluated when the rule
+    # is defined, like `input` and `output`.
+    _cmd = (
+        f'python -m openplaces.flow.run_stage {node.stage}'
+        f' {node.recipe_id}{_admin_arg}'
+    )
 
     rule:
         name:
@@ -249,9 +260,10 @@ for node in dag.nodes():
                 token: int(node.recipe_id == owner)
                 for owner, token in HEAP_TOKENS.items()
             },
+        params:
+            cmd=_cmd,
         shell:
-            f'python -m openplaces.flow.run_stage {node.stage}'
-            f' {node.recipe_id}{_admin_arg}'
+            '{params.cmd}'
 
 
 onsuccess:
