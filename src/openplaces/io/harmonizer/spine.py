@@ -22,6 +22,7 @@ from openplaces.io.harmonizer import (
     HarmonizeState,
     _record_source,
     _register,
+    _rename_right_index,
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_admin, get_entities
@@ -880,8 +881,11 @@ def _inherit_geographic_ids(
             linked[['lat', 'long'] + available].copy(), x='long', y='lat'
         )
         joined = gpd.sjoin(points, spine[['geometry']], how='inner', predicate='within')
-        spine_id_name = spine.index.name or 'index'
-        grouped = joined.groupby(spine_id_name)
+        # geopandas names the right-index column three different ways
+        # (and 'index_right' for an unnamed index, which 'index' misses),
+        # so resolve it through the shared helper rather than by hand.
+        joined = _rename_right_index(joined, spine.index.name, '_spine_id')
+        grouped = joined.groupby('_spine_id')
     else:
         return empty, []
 
