@@ -137,9 +137,12 @@ class AdminId:
             # `fullmatch`, not `match`: an unanchored test accepts any
             # string that merely starts with two uppercase alphanumerics,
             # so 'MA-MI' or 'US ' passed and the resulting levels
-            # disagreed with the id's own string form. The upper bound of
-            # 3 is deliberately not anchored too: superseded level-4 codes
-            # in the admin spine run to five characters (e.g. 'X2304').
+            # disagreed with the id's own string form.
+            # Do NOT restore the old upper bound of 3 while anchoring.
+            # The pattern is open-ended on purpose: 4223 superseded
+            # level-4 codes in the admin spine are four or five
+            # characters ('IN-AN-NI-X2304', 'PH-BS-ML-Z3POB'), and
+            # '{2,3}' would start rejecting every one of them.
             if not isinstance(level, str) or not re.fullmatch('[A-Z0-9]{2,}', level):
                 raise ValueError(
                     f"Admin ID {levels} is invalid at level {i}: '{level}'."
