@@ -4,6 +4,7 @@ Input/output utilities
 
 import bz2
 import gc
+import json
 import math
 import re
 import shutil
@@ -874,6 +875,40 @@ def delete_parquet(parquet_path):
             _path.unlink()
 
 
+def _covering_bbox_column(schema) -> str | None:
+    """Return the name of a geoparquet file's covering-bbox column.
+
+    GeoParquet records the struct column holding per-row bounding boxes
+    (written by write_covering_bbox=True) in the file's `geo` metadata
+    rather than under a fixed name. It is an internal spatial index: no
+    attribute registry entry and no `order_columns` step knows it, so a
+    read that skips geometry must skip it too.
+
+    Parameters
+    ----------
+    schema : pyarrow.Schema
+        Arrow schema of the parquet file, carrying its `geo` metadata.
+
+    Returns
+    -------
+    str or None
+        The column name, or None when the file declares no covering.
+    """
+    raw = (schema.metadata or {}).get(b'geo')
+    if raw is None:
+        return None
+    try:
+        geo = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    column = geo.get('primary_column')
+    spec = (geo.get('columns') or {}).get(column) or {}
+    corner = ((spec.get('covering') or {}).get('bbox') or {}).get('xmin')
+    if isinstance(corner, list | tuple) and corner:
+        return corner[0]
+    return None
+
+
 def read_parquet(
     parquet_path,
     geom=False,
@@ -921,7 +956,8 @@ def read_parquet(
     # into the same file as the attributes -- no `_geo` sidecar, no join-id
     # column. Detected via a cheap schema-only peek, before deciding whether
     # to read through pandas or geopandas.
-    schema_names = pq.ParquetFile(parquet_path).schema_arrow.names
+    schema = pq.ParquetFile(parquet_path).schema_arrow
+    schema_names = schema.names
     if 'geometry' in schema_names:
         if geom == 'simplified':
             raise ValueError(
@@ -930,15 +966,26 @@ def read_parquet(
                 'geometry sidecar was never written for it.'
             )
         columns = kwargs.pop('columns', None)
+        bbox_column = _covering_bbox_column(schema)
         read_filters = filters
         if bbox is not None:
             minx, miny, maxx, maxy = bbox
-            read_filters = (
-                (pyarrow.compute.field('bbox', 'xmin') <= maxx)
-                & (pyarrow.compute.field('bbox', 'ymin') <= maxy)
-                & (pyarrow.compute.field('bbox', 'xmax') >= minx)
-                & (pyarrow.compute.field('bbox', 'ymax') >= miny)
+            field = bbox_column or 'bbox'
+            bbox_filter = (
+                (pyarrow.compute.field(field, 'xmin') <= maxx)
+                & (pyarrow.compute.field(field, 'ymin') <= maxy)
+                & (pyarrow.compute.field(field, 'xmax') >= minx)
+                & (pyarrow.compute.field(field, 'ymax') >= miny)
             )
+            if read_filters is None:
+                read_filters = bbox_filter
+            else:
+                # Both predicates have to survive: replacing one with the
+                # other returns rows the caller excluded (e.g. narrowing
+                # to one state, then also passing a bbox).
+                if not isinstance(read_filters, pyarrow.compute.Expression):
+                    read_filters = pq.filters_to_expression(read_filters)
+                read_filters = read_filters & bbox_filter
         if geom:
             if columns is not None and 'geometry' not in columns:
                 columns = [*columns, 'geometry']
@@ -949,8 +996,12 @@ def read_parquet(
             # geom is the ultimate decision on whether geometry is read at
             # all: skip gpd.read_parquet (which requires a geometry column
             # present to build a GeoDataFrame) and the WKB decode it implies,
-            # reading everything else straight through pandas instead.
-            columns = [c for c in (columns or schema_names) if c != 'geometry']
+            # reading everything else straight through pandas instead. The
+            # covering-bbox struct goes with it: gpd.read_parquet drops it,
+            # a plain pandas read would hand it to downstream writes.
+            skip = {'geometry'} | ({bbox_column} if bbox_column else set())
+            requested = schema_names if columns is None else columns
+            columns = [c for c in requested if c not in skip]
             df = pd.read_parquet(
                 parquet_path, filters=read_filters, columns=columns, **kwargs
             )
@@ -958,7 +1009,25 @@ def read_parquet(
             df = df.drop(columns='_join_id')
         return df
 
-    df = pd.read_parquet(parquet_path, filters=filters, **kwargs)
+    columns = kwargs.pop('columns', None)
+    join_id_column = None
+    join_column_added = False
+
+    if geom:
+        # Resolved from the schema rather than from the frame, so a
+        # caller's explicit column list can be widened before the read.
+        if '_join_id' in schema_names:
+            join_id_column = '_join_id'
+        elif 'geo_id' in schema_names:
+            join_id_column = 'geo_id'
+        else:
+            raise ValueError('Could not identify column to join GeoParquet.')
+
+        if columns is not None and join_id_column not in columns:
+            columns = [*columns, join_id_column]
+            join_column_added = True
+
+    df = pd.read_parquet(parquet_path, filters=filters, columns=columns, **kwargs)
 
     if 'geometry' in df:
         raise ValueError(
@@ -969,17 +1038,16 @@ def read_parquet(
         )
 
     if geom:
-        if '_join_id' in df:
-            join_id_column = '_join_id'
-        elif 'geo_id' in df:
-            join_id_column = 'geo_id'
-        else:
-            raise ValueError('Could not identify column to join GeoParquet.')
-
         geo_suffix = '_geo_simplified' if geom == 'simplified' else '_geo'
         geoparquet_path = parquet_path.with_stem(parquet_path.stem + geo_suffix)
 
-        if bbox is not None:
+        if df.empty:
+            # A predicate matching no rows would build an empty `in` list
+            # below, which pyarrow rejects against the sidecar's string
+            # column. Read zero sidecar rows instead, so the result still
+            # carries the geometry column and the sidecar's CRS.
+            geoparquet_filters = pyarrow.compute.scalar(False)
+        elif bbox is not None:
             minx, miny, maxx, maxy = bbox
             geoparquet_filters = (
                 (pyarrow.compute.field('bbox', 'xmin') <= maxx)
@@ -1001,6 +1069,9 @@ def read_parquet(
             ),
             crs=gdf.crs,
         )
+
+    if join_column_added and join_id_column in df:
+        df = df.drop(columns=join_id_column)
 
     if drop_join_id and '_join_id' in df:
         df = df.drop(columns='_join_id')
