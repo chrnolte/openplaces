@@ -19,9 +19,9 @@ skips the click when it returns False.
 
 from __future__ import annotations
 
-import sys
+import warnings
 
-from openplaces.config import get_terms_consent, set_terms_consent
+from openplaces.config import can_prompt, get_terms_consent, set_terms_consent
 
 __all__ = [
     'ConsentNotDelegableError',
@@ -37,10 +37,11 @@ __all__ = [
 _YES = ('y', 'yes')
 _ALWAYS = ('a', 'always')
 
-# Answers given in this process, by source. A recipe partitioned by month
-# asks its scraper once per month, and asking a person the same question
-# twelve times teaches them to stop reading it. Standing decisions live in
-# the user config instead (`config.set_terms_consent`).
+# Answers given in this process, by source. A recipe partitioned by
+# month asks its scraper once per month, and asking a person the same
+# question twelve times teaches them to stop reading it. Standing
+# decisions live in the user config instead
+# (`config.set_terms_consent`).
 _ANSWERED: dict[str, bool] = {}
 
 _PROMPT = """\
@@ -126,14 +127,15 @@ def require_terms_consent(
     Raises
     ------
     ConsentNotDelegableError
-        When *accept_terms* is True. Refused outright rather than
-        downgraded to a prompt, so a recipe that reads as though consent
-        were handled cannot ship.
+        When *accept_terms* is True, or is any value that is neither True,
+        False, nor None. Refused outright rather than downgraded to a
+        prompt, so a recipe that reads as though consent were handled
+        cannot ship.
     TermsNotAcceptedError
         When nothing has been accepted and no one can be asked, because
-        stdin is not a terminal (a cluster job, CI, a Snakemake rule). The
-        message says to run the download interactively once, which is the
-        only way consent is ever created.
+        the run is unattended (a cluster job, CI, a Snakemake rule, a
+        test session). The message says to run the download interactively
+        once, which is the only way consent is ever created.
 
     Notes
     -----
@@ -143,6 +145,17 @@ def require_terms_consent(
     person running it to someone else's contract, so it has to come from
     that person.
     """
+    if accept_terms is not None and not isinstance(accept_terms, bool):
+        # A YAML `1`, `"true"` or `on` used to fall through to the prompt
+        # or to the unattended error, which is the silent downgrade this
+        # module refuses. Only an unambiguous boolean is a decision.
+        raise ConsentNotDelegableError(
+            f'{source}: `accept_terms` must be `false` or absent, not '
+            f'{accept_terms!r}. A recipe cannot accept terms of use on '
+            'behalf of whoever runs it, and a value that is not plainly '
+            'true or false cannot be read as a refusal either.'
+        )
+
     if accept_terms is False:
         if verbose:
             print(f'  {source}: terms of use declined by recipe configuration.')
@@ -170,7 +183,11 @@ def require_terms_consent(
             print(f'  {source}: terms of use previously {settled} by this user.')
         return standing
 
-    if sys.stdin is None or not sys.stdin.isatty():
+    # `can_prompt` rather than a raw isatty: a Jupyter kernel answers
+    # `input` perfectly well without being a terminal, and asking isatty
+    # shut out the one surface the project designates for interactive
+    # configuration.
+    if not can_prompt():
         raise TermsNotAcceptedError(
             f'{source} is published behind a terms-of-use gate, and this run '
             'cannot ask anyone to accept it.\n'
@@ -189,13 +206,32 @@ def require_terms_consent(
         "this software's. openplaces will not agree on your behalf."
     )
     print()
-    answer = input(_PROMPT + '> ').strip().lower()
+    try:
+        answer = input(_PROMPT + '> ').strip().lower()
+    except EOFError:
+        # Ctrl-D closes the prompt without answering it, which is not an
+        # acceptance. Takes the same path as any other non-answer.
+        # KeyboardInterrupt deliberately propagates: Ctrl-C means stop
+        # the run, not skip this download.
+        answer = ''
+        print()
 
     accepted = answer in _YES or answer in _ALWAYS
     _ANSWERED[source] = accepted
     if answer in _ALWAYS:
-        set_terms_consent(source, True)
-        print(f'Recorded: {source} terms accepted. Change it in your config.')
+        try:
+            set_terms_consent(source, True)
+        except Exception as error:  # noqa: BLE001 - persisting is optional
+            # The person accepted; failing to write that down is a reason
+            # to ask again next run, not to abort the download they just
+            # agreed to.
+            warnings.warn(
+                f'Could not record the standing decision for {source} '
+                f'({error}); it holds for this run only.',
+                stacklevel=2,
+            )
+        else:
+            print(f'Recorded: {source} terms accepted. Change it in your config.')
     elif not accepted:
         print('Not accepted; skipping this download.')
     return accepted

@@ -40,18 +40,14 @@ def _forget():
     forget_terms_consent()
 
 
-class _NoTty:
-    """stdin of an unattended run: readable, but nobody is watching."""
+def _attended(monkeypatch, attended=True):
+    """Declare whether someone is able to answer the prompt.
 
-    @staticmethod
-    def isatty():
-        return False
-
-
-class _Tty:
-    @staticmethod
-    def isatty():
-        return True
+    Patches `config.can_prompt`, not `sys.stdin.isatty`: a Jupyter kernel
+    answers `input` without being a terminal, and a test session is
+    unattended even when it has one, so the tty is not the question.
+    """
+    monkeypatch.setattr('openplaces.io.consent.can_prompt', lambda: attended)
 
 
 def test_a_recipe_may_decline_but_never_accept():
@@ -82,7 +78,7 @@ def test_a_standing_decision_in_the_user_config_is_honored(monkeypatch):
 def test_always_records_a_standing_decision(monkeypatch):
     recorded = []
 
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: 'a')
     monkeypatch.setattr(
         'openplaces.io.consent.set_terms_consent',
@@ -97,7 +93,7 @@ def test_yes_does_not_record_a_standing_decision(monkeypatch):
     """[y] is for this run; only [a] is a commitment worth persisting."""
     recorded = []
 
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: 'y')
     monkeypatch.setattr(
         'openplaces.io.consent.set_terms_consent',
@@ -109,7 +105,7 @@ def test_yes_does_not_record_a_standing_decision(monkeypatch):
 
 
 def test_an_unattended_run_raises_rather_than_accepting(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _NoTty())
+    _attended(monkeypatch, attended=False)
 
     with pytest.raises(TermsNotAcceptedError) as excinfo:
         require_terms_consent('a portal', terms_url='https://example.invalid/terms')
@@ -121,7 +117,7 @@ def test_an_unattended_run_raises_rather_than_accepting(monkeypatch):
 
 
 def test_declining_at_the_prompt_returns_false(monkeypatch, capsys):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: 'n')
 
     assert require_terms_consent('a portal') is False
@@ -131,14 +127,14 @@ def test_declining_at_the_prompt_returns_false(monkeypatch, capsys):
 @pytest.mark.parametrize('answer', ['', ' ', 'no', 'maybe', 'sure', 'always?'])
 def test_anything_but_yes_is_a_refusal(monkeypatch, answer):
     """Ambiguity resolves against agreeing, which is the safe direction."""
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: answer)
 
     assert require_terms_consent('a portal') is False
 
 
 def test_accepting_at_the_prompt_returns_true(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: 'y')
 
     assert require_terms_consent('a portal') is True
@@ -148,7 +144,7 @@ def test_an_answer_is_remembered_for_the_rest_of_the_process(monkeypatch):
     """A recipe downloading twelve months asks once, not twelve times."""
     asked = []
 
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: asked.append(1) or 'y')
 
     assert require_terms_consent('a portal') is True
@@ -162,7 +158,7 @@ def test_an_answer_is_remembered_for_the_rest_of_the_process(monkeypatch):
 
 def test_a_remembered_refusal_is_not_re_asked(monkeypatch):
     answers = iter(['n', 'y'])
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda _: next(answers))
 
     assert require_terms_consent('a portal') is False
@@ -219,3 +215,54 @@ def test_no_recipe_ships_a_pre_accepted_terms_gate():
         f'recipes setting `accept_terms: true`: {offenders}. The key raises; '
         'record consent per user by answering [a] at the prompt.'
     )
+
+
+def test_a_non_boolean_accept_terms_is_a_recipe_error(monkeypatch):
+    """A YAML `1` or `"true"` must not fall through to the prompt.
+
+    Falling through is the silent downgrade this module refuses: a recipe
+    that reads as though consent were handled would then ask, or fail
+    unattended, rather than being rejected as broken.
+    """
+    _attended(monkeypatch)
+    monkeypatch.setattr('builtins.input', lambda _: 'y')
+
+    for value in (1, 0, 'true', 'false', 'yes'):
+        with pytest.raises(ConsentNotDelegableError):
+            require_terms_consent('a portal', accept_terms=value)
+
+
+def test_closing_the_prompt_is_a_refusal(monkeypatch, capsys):
+    """Ctrl-D answers nothing, and nothing is not acceptance."""
+
+    def _eof(_):
+        raise EOFError
+
+    _attended(monkeypatch)
+    monkeypatch.setattr('builtins.input', _eof)
+
+    assert require_terms_consent('a portal') is False
+    assert 'skipping' in capsys.readouterr().out
+
+
+def test_a_failed_config_write_does_not_lose_the_acceptance(monkeypatch):
+    """The person accepted; the download they agreed to still proceeds."""
+
+    def _explode(source, accepted):
+        raise OSError('config is read-only')
+
+    _attended(monkeypatch)
+    monkeypatch.setattr('builtins.input', lambda _: 'a')
+    monkeypatch.setattr('openplaces.io.consent.set_terms_consent', _explode)
+
+    with pytest.warns(UserWarning, match='this run only'):
+        assert require_terms_consent('a portal') is True
+
+
+def test_a_notebook_can_answer_even_without_a_terminal(monkeypatch):
+    """`can_prompt` is the gate, so a kernel is not shut out."""
+    _attended(monkeypatch)
+    monkeypatch.setattr('sys.stdin', None)
+    monkeypatch.setattr('builtins.input', lambda _: 'y')
+
+    assert require_terms_consent('a portal') is True
