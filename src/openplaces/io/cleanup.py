@@ -32,7 +32,7 @@ import pandas as pd
 from openplaces.config import cfg
 from openplaces.core.attribute_registry import get_data_type
 from openplaces.core.constants import NEVER_DELETE, STANDARD_DIRS
-from openplaces.core.schema import AdminId
+from openplaces.core.schema import AdminId, sanitize
 from openplaces.io import delete_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.recipe import (
@@ -1009,29 +1009,102 @@ def cleanup_consumed_inputs(
 # COMPACT (BUCKET GARBAGE COLLECTOR)
 
 
+def _recipe_id_rest(recipe_id: str) -> list[str]:
+    """Recipe ID parts after the leading admin ID, if it has one."""
+    parts = recipe_id.split('_')
+    try:
+        AdminId(parts[0])
+    except ValueError:
+        return parts
+    return parts[1:]
+
+
+def _layer_output_names(recipe_id: str) -> list[tuple[str, tuple[str, ...]]]:
+    """Return (token, filename parts) of each `additional_layers` output.
+
+    A secondary entity writes its own token, which appears in no recipe
+    ID at all, so it can only be read off the loaded recipe. Without
+    these entries its output matches no recipe and is classed as an
+    orphan while the recipe still produces it.
+    """
+    try:
+        recipe = get_recipe_by_id(recipe_id)
+    except Exception:
+        return []
+    names = []
+    for layer_spec in recipe.get('additional_layers') or []:
+        entity = layer_spec.get('entity')
+        if entity is None:
+            continue
+        filename = (layer_spec.get('save_to') or {}).get('filename')
+        names.append((str(entity), tuple(str(filename).split('_')) if filename else ()))
+    return names
+
+
 @cache
-def _recipe_token_index() -> dict:
-    """Map each recipe's entity/dataset token to its recipe IDs.
+def _recipe_token_index() -> dict[str, list[tuple[str, tuple[str, ...]]]]:
+    """Map each output token to its (recipe ID, filename parts) candidates.
 
     A recipe ID reads {admin}_{token}[_{filename}]; output files read
     {file_admin}_{token}[_{filename}][_{suffix}].parquet, where file_admin
-    may be deeper than the recipe's admin scope.
+    may be deeper than the recipe's admin scope. Entities declared in
+    `additional_layers` are indexed under their own token as well.
+    """
+    index: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
+    for recipe_id in _all_recipe_ids():
+        rest = _recipe_id_rest(recipe_id)
+        if not rest:
+            continue
+        index.setdefault(rest[0], []).append((recipe_id, tuple(rest[1:])))
+        for token, filename_parts in _layer_output_names(recipe_id):
+            index.setdefault(token, []).append((recipe_id, filename_parts))
+    return index
+
+
+@cache
+def _enrich_suffix_index() -> dict[str, list[str]]:
+    """Map an enrich recipe's dataset suffix to its recipe IDs.
+
+    An enrich output is named after the entity recipe it enriches plus
+    its own dataset ({admin}_{entity token}_{dataset}), so the token in
+    its filename is the spine's, never the enrich recipe's own. Matching
+    the trailing dataset instead keeps the evidence file from being
+    judged by the spine's retention and consumer set.
     """
     index: dict[str, list[str]] = {}
     for recipe_id in _all_recipe_ids():
-        parts = recipe_id.split('_')
         try:
-            AdminId(parts[0])
-            token_pos = 1
-        except ValueError:
-            token_pos = 0
-        if len(parts) > token_pos:
-            index.setdefault(parts[token_pos], []).append(recipe_id)
+            recipe = get_recipe_by_id(recipe_id)
+        except Exception:
+            continue
+        if recipe.get('stage') != 'enrich':
+            continue
+        dataset = recipe.get('dataset')
+        if dataset is None:
+            continue
+        index.setdefault(sanitize(str(dataset)), []).append(recipe_id)
     return index
+
+
+def _recipe_admin_covers(recipe_id: str, admin) -> bool:
+    """Whether a recipe's own admin scope covers a file's admin unit."""
+    try:
+        recipe_admin = AdminId(recipe_id.split('_')[0])
+    except ValueError:
+        return True
+    return admin is not None and recipe_admin.is_parent_or_equal_of(admin)
 
 
 def _match_recipe_for_file(stem: str) -> tuple[str | None, str | None]:
     """Match an output filename stem to (recipe_id, admin_id).
+
+    The most specific candidate wins: an enrich evidence file is matched
+    on its trailing dataset before the spine token it is named after, and
+    among token candidates the one whose declared filename parts match
+    the most of the stem. Taking the first candidate instead attributed
+    every sibling `_suffix` recipe's output, and every enrich evidence
+    file, to the primary recipe, which judged it by the wrong retention
+    and the wrong consumer set.
 
     Returns (None, admin) when the stem parses but matches no recipe in
     the current tree (an orphan candidate).
@@ -1043,27 +1116,29 @@ def _match_recipe_for_file(stem: str) -> tuple[str | None, str | None]:
         rest = parts[1:]
     except ValueError:
         rest = parts
+    # A '_geo' sidecar belongs to the output it sits beside
+    if len(rest) > 1 and rest[-1] == 'geo':
+        rest = rest[:-1]
     if not rest:
         return None, None
     admin_str = str(admin) if admin else None
-    for recipe_id in _recipe_token_index().get(rest[0], []):
-        recipe_parts = recipe_id.split('_')
-        try:
-            recipe_admin = AdminId(recipe_parts[0])
-            recipe_rest = recipe_parts[1:]
-        except ValueError:
-            recipe_admin = None
-            recipe_rest = recipe_parts
-        # The recipe's admin scope must cover the file's admin unit
-        if recipe_admin is not None:
-            if admin is None or not recipe_admin.is_parent_or_equal_of(admin):
-                continue
-        # The recipe's filename parts must prefix the file's remaining parts
-        recipe_filename = recipe_rest[1:]
-        if list(rest[1 : 1 + len(recipe_filename)]) != recipe_filename:
+
+    suffix_index = _enrich_suffix_index()
+    for start in range(1, len(rest)):
+        for recipe_id in suffix_index.get('_'.join(rest[start:]), []):
+            if _recipe_admin_covers(recipe_id, admin):
+                return recipe_id, admin_str
+
+    best_id, best_len = None, -1
+    for recipe_id, filename_parts in _recipe_token_index().get(rest[0], []):
+        if not _recipe_admin_covers(recipe_id, admin):
             continue
-        return recipe_id, admin_str
-    return None, admin_str
+        # The recipe's filename parts must prefix the file's remaining parts
+        if tuple(rest[1 : 1 + len(filename_parts)]) != filename_parts:
+            continue
+        if len(filename_parts) > best_len:
+            best_id, best_len = recipe_id, len(filename_parts)
+    return best_id, admin_str
 
 
 def _match_recipe_for_path(
@@ -1105,17 +1180,10 @@ def _match_recipe_for_path(
     # subdirectories), so try progressively shorter prefixes
     for length in range(len(dataset_parts), 1, -1):
         token = '-'.join(dataset_parts[:length])
-        for recipe_id in index.get(token, []):
-            recipe_parts = recipe_id.split('_')
-            try:
-                recipe_admin = AdminId(recipe_parts[0])
-            except ValueError:
-                recipe_admin = None
-            if recipe_admin is not None:
-                if dir_admin is None or not recipe_admin.is_parent_or_equal_of(
-                    AdminId(dir_admin)
-                ):
-                    continue
+        for recipe_id, _ in index.get(token, []):
+            dir_admin_id = AdminId(dir_admin) if dir_admin else None
+            if not _recipe_admin_covers(recipe_id, dir_admin_id):
+                continue
             return recipe_id, admin_str
     return None, admin_str
 

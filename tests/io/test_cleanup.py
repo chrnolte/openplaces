@@ -341,6 +341,70 @@ def test_delete_image_caches_handles_empty_inventory(monkeypatch, capsys):
     assert not hasattr(diagnostics, 'delete_image_caches')
 
 
+# Matching a file to the recipe that writes it
+
+
+MASSGIS = 'US-MA_parcel-massgis-2025'
+MASSGIS_TOWN = 'US-MA-MI'
+STORIES_ENRICH = 'US_footprint_built-n-stories-brails-2026'
+VICTORIA = 'US-TX-VIC_property-victoriacad-2026'
+
+
+def test_additional_layer_output_matches_its_host_recipe():
+    """A secondary entity's output is not an orphan.
+
+    Its token appears in no recipe ID, so indexing recipe IDs alone left
+    the MassGIS property table matching nothing; orphan GC would unlink a
+    table the recipe still produces and the harmonizer reads.
+    """
+    recipe_id, admin = cl._match_recipe_for_file(
+        f'{MASSGIS_TOWN}_property-massgis-2025'
+    )
+    assert (recipe_id, admin) == (MASSGIS, MASSGIS_TOWN)
+
+
+def test_additional_layer_output_survives_orphan_gc(data_root):
+    layer_path = get_output_path(
+        get_recipe_by_id(MASSGIS), admin_id=MASSGIS_TOWN, layer='property'
+    )
+    _write_parquet(layer_path)
+    old = time.time() - 30 * 86400
+    os.utime(layer_path, (old, old))
+
+    report = cl.compact(delete=('orphans',), dry_run=False)
+    row = report[report['path'] == cl._relative_posix(layer_path)]
+    assert layer_path.exists()
+    assert (row['class'] != 'orphan').all()
+    assert (row['recipe_id'] == MASSGIS).all()
+
+
+def test_enrich_evidence_matches_its_own_recipe():
+    """Evidence is named after the spine, so it matched the spine.
+
+    The trailing dataset is what identifies the enrich recipe; without
+    it the evidence file was judged by the spine's retention class and
+    the spine's consumer set, and `compact(recipes=[enrich_id])` listed
+    nothing at all.
+    """
+    stem = f'{COUNTY}_footprint-spine-2026_built-n-stories-brails-2026'
+    recipe_id, admin = cl._match_recipe_for_file(stem)
+    assert (recipe_id, admin) == (STORIES_ENRICH, COUNTY)
+
+
+def test_suffixed_recipe_wins_over_its_unsuffixed_sibling():
+    recipe_id, _ = cl._match_recipe_for_file(
+        'US-TX-VIC_property-victoriacad-2026_improvement-detail'
+    )
+    assert recipe_id == f'{VICTORIA}_improvement-detail'
+    recipe_id, _ = cl._match_recipe_for_file(VICTORIA)
+    assert recipe_id == VICTORIA
+
+
+def test_geometry_sidecar_matches_its_own_output():
+    recipe_id, _ = cl._match_recipe_for_file(f'{COUNTY}_footprint-spine-2026_geo')
+    assert recipe_id == FOOTPRINT_SPINE
+
+
 # compact()
 
 
