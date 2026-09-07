@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from shapely.geometry import box
 
-from openplaces.table import aggregate_rows
+from openplaces.table import add_unique_suffix, aggregate_rows
 
 
 def _parcels(rows, index=None):
@@ -139,3 +139,13 @@ def test_blank_registry_aggregation_is_skipped(monkeypatch):
 
     assert 'postal_code' not in result.columns
     assert result.loc['a', 'land_value'] == 30.0
+
+
+def test_add_unique_suffix_on_a_categorical_series():
+    # A suffixed value is a new category; assigning it into a
+    # categorical Series raises instead of widening the dtype.
+    s = pd.Series(pd.Categorical(['a', 'a', 'b']))
+
+    result = add_unique_suffix(s)
+
+    assert result.tolist() == ['a-1', 'a-2', 'b']

@@ -27,9 +27,12 @@ from openplaces.recipe import resolve_attribute_name
 def add_unique_suffix(s):
     """Make string Series unique by appending unique integer suffices.
 
-    All duplicate occurrences are suffixed (``-1``, ``-2``, â€¦), including the
+    All duplicate occurrences are suffixed (`-1`, `-2`, ...), including the
     first one.  Use `make_index_unique` when operating on a DataFrame index and
     the first (or largest) occurrence should keep the unsuffixed value.
+
+    A categorical Series is converted to object first: a suffixed value is a
+    new category, and assigning it into a categorical raises instead.
 
     Parameters
     ----------
@@ -38,6 +41,8 @@ def add_unique_suffix(s):
     """
     # Avoid warnings about setting slices
     s = s.copy()
+    if isinstance(s.dtype, pd.CategoricalDtype):
+        s = s.astype(object)
     duplicates = s.duplicated(keep=False)
     # Handle collisions with suffix
     counts = s[duplicates].groupby(s[duplicates], sort=False).cumcount() + 1
