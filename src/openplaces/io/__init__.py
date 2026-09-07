@@ -32,6 +32,7 @@ from openplaces.core.constants import (
 from openplaces.core.schema import AdminId
 
 __all__ = [
+    'DriveTransferError',
     'compress',
     'delete_image_caches',
     'download',
@@ -1261,7 +1262,7 @@ def compress(
     filepaths: str | Path | list[str] | set[str],
     zip_filepath: str | None = None,
     delete_original: bool = False,
-) -> None:
+) -> list[Path]:
     """Compress one or more files.
 
     Parameters
@@ -1272,6 +1273,14 @@ def compress(
         Output ZIP filepath. If None, derived from the first entry in filepaths.
     delete_original : bool
         If True, deletes the original file(s) after compression.
+
+    Returns
+    -------
+    list of Path
+        The files actually written into the archive, with a shapefile
+        expanded to its sibling parts. Empty when none existed. Callers
+        that defer deletion until a later step succeeds (see `share`)
+        delete exactly these.
     """
     if isinstance(filepaths, str | Path):
         filepaths = [filepaths]
@@ -1310,6 +1319,12 @@ def compress(
         for p in paths_to_compress:
             p.unlink()
 
+    return paths_to_compress
+
+
+class DriveTransferError(RuntimeError):
+    """Raised when an `rclone` transfer did not complete successfully."""
+
 
 def to_drive(filepath, directory, remote='budrive', verbose=True):
     """Copy file to Google Drive
@@ -1326,12 +1341,33 @@ def to_drive(filepath, directory, remote='budrive', verbose=True):
         Name of the `rclone` remote to copy to
     verbose : bool
         If True, print progress
+
+    Raises
+    ------
+    DriveTransferError
+        If `rclone` cannot be run, or exits non-zero (an expired token,
+        a missing remote, an exhausted quota). Callers must not delete
+        any local copy until this returns without raising.
     """
 
-    cmd = ['rclone', 'copy', filepath, f'{remote}:{directory}']
+    cmd = ['rclone', 'copy', str(filepath), f'{remote}:{directory}']
     if verbose and sys.stdout.isatty():
         cmd += ['--progress']
-    subprocess.run(cmd)
+
+    try:
+        completed = subprocess.run(cmd, check=False)
+    except OSError as error:
+        raise DriveTransferError(
+            f'Could not run `rclone` to upload {filepath}: {error}'
+        ) from error
+
+    if completed.returncode != 0:
+        raise DriveTransferError(
+            f'`rclone copy` failed with exit code {completed.returncode} '
+            f'uploading {filepath} to {remote}:{directory}. No local file '
+            'was deleted. Check that the remote exists and its token is '
+            f'still valid: `rclone listremotes`, `rclone about {remote}:`.'
+        )
 
 
 def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
@@ -1349,9 +1385,16 @@ def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
     filepath : pathlib.Path
         Filepath used for saving (and for the compressed ZIP file).
     delete_original : bool
-        If True, deletes the unzipped file after compression
+        If True, deletes the unzipped file and the ZIP once the upload
+        has succeeded.
     verbose : bool
         If True, prints statements ('Saving', 'compressing', etc.)
+
+    Raises
+    ------
+    DriveTransferError
+        If the upload fails. Every local copy is left in place, so a
+        failed transfer never leaves the data existing nowhere.
     """
 
     if verbose:
@@ -1361,7 +1404,10 @@ def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
     if verbose:
         print(' compressing...', end='')
     zip_path = filepath.parent / f'{filepath.stem}_{filepath.suffix[1:]}.zip'
-    compress(filepath, zip_path, delete_original=delete_original)
+    # The uncompressed file is kept until the upload has succeeded: if
+    # it were deleted here and `to_drive` then failed, the ZIP would be
+    # unlinked below and the data would exist nowhere.
+    compressed = compress(filepath, zip_path, delete_original=False)
 
     if drive_dir is None:
         drive_dir = filepath.parent.relative_to(cfg.share_dir)
@@ -1372,4 +1418,6 @@ def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
         print(' done!')
 
     if delete_original:
+        for path in compressed:
+            path.unlink(missing_ok=True)
         zip_path.unlink()
