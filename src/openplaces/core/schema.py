@@ -119,18 +119,35 @@ class AdminId:
         Parameters
         ----------
         *levels : str
-            Administrative level strings (e.g., 'US', 'MA'). Can also
-            accept a single string with separators (e.g., 'US-MA-MI') or
-            a sequence of strings.
+            Administrative level strings (e.g., 'US', 'MA'). A single
+            argument may also be a string with separators ('US-MA-MI'),
+            a sequence of level strings, another AdminId, or None or the
+            empty string for the global id.
+
+        Raises
+        ------
+        ValueError
+            If any resolved level is not a string of the expected shape.
         """
         if len(levels) == 0 or levels[0] is None:
             tuple_of_levels = ()
-        elif len(levels) == 1 and STRING_SEPARATOR_WITHIN_IDS in levels[0]:
-            tuple_of_levels = tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS))
-        elif isinstance(levels, list | tuple | set):
-            tuple_of_levels = tuple(levels)
+        elif len(levels) == 1 and isinstance(levels[0], AdminId):
+            # Re-wrapping an AdminId is what a caller holding either a
+            # string or an id does. `AdminId(str(admin_id))` was the
+            # workaround, and it raises on the global id.
+            tuple_of_levels = levels[0].levels
+        elif len(levels) == 1 and isinstance(levels[0], list | tuple | set):
+            # The docstring has always promised a sequence is accepted;
+            # only the multi-argument form actually was.
+            tuple_of_levels = tuple(levels[0])
+        elif len(levels) == 1 and isinstance(levels[0], str):
+            # The empty string is the global id, so that str(AdminId())
+            # round-trips back through AdminId().
+            tuple_of_levels = (
+                tuple(levels[0].split(STRING_SEPARATOR_WITHIN_IDS)) if levels[0] else ()
+            )
         else:
-            raise ValueError(f'`levels` is {type(levels)}. Cannot interpret:\n{levels}')
+            tuple_of_levels = tuple(levels)
 
         # Verify that AdminId is correct
         for i, level in enumerate(tuple_of_levels):
@@ -380,9 +397,16 @@ class UsageRequirement:
             Human-readable reasons the profile does not meet this
             requirement. Empty when every condition is met.
         """
+        # A user config is hand-edited, and nothing validates its shape
+        # on the way in. This method is documented as never raising, so
+        # every read below tolerates the wrong type instead of trusting
+        # it: an unreadable declaration declares nothing, which leaves
+        # the condition unmet and sends the caller to the prompt.
+        if not isinstance(profile, dict):
+            profile = {}
         reasons = []
         if self.non_commercial:
-            commercial = (profile or {}).get('commercial')
+            commercial = profile.get('commercial')
             if commercial is None:
                 reasons.append(
                     'the source is limited to non-commercial use, and this '
@@ -394,7 +418,17 @@ class UsageRequirement:
                     'the source is limited to non-commercial use, and this '
                     'installation is declared as commercial'
                 )
-        declared_env = (profile or {}).get('environment') or {}
+        declared_env = profile.get('environment') or {}
+        if not isinstance(declared_env, dict):
+            # The natural mirror of the recipe-side list syntax
+            # ('environment: [restricted]') is a list here too, and
+            # `declared_env.get` raised AttributeError on it, aborting
+            # the ingest gate rather than prompting.
+            flags = [declared_env] if isinstance(declared_env, str) else declared_env
+            try:
+                declared_env = {str(flag): True for flag in flags}
+            except TypeError:
+                declared_env = {}
         for item in self.environment:
             flags = item if isinstance(item, list) else [item]
             if not any(declared_env.get(flag) for flag in flags):
@@ -534,7 +568,7 @@ class Source:
                 '`download_url_source_regex` (string pattern) to extract the URLs.'
             )
 
-        self.source_id = sanitize(source_id) if source_id is not None else None
+        self.source_id = sanitize_id_part(source_id) if source_id is not None else None
         self.portal_url = portal_url
         self.download_url = download_url
         self.download_url_source = download_url_source
@@ -584,6 +618,22 @@ class Entity:
         if isinstance(entity_type, str) and STRING_SEPARATOR_WITHIN_IDS in entity_type:
             parts = entity_type.split(STRING_SEPARATOR_WITHIN_IDS)
 
+            if source is not None or version is not None:
+                # The compact string used to win and the keywords were
+                # dropped without a word, so an id built from the wrong
+                # source read as correct everywhere downstream.
+                raise ValueError(
+                    f"Entity '{entity_type}' already carries its source and "
+                    'version; pass either the compact string or the parts, '
+                    'not both.'
+                )
+            if len(parts) > 3:
+                raise ValueError(
+                    f"Entity '{entity_type}' has {len(parts)} "
+                    f"'{STRING_SEPARATOR_WITHIN_IDS}'-separated parts; an "
+                    'entity id has at most three (entity type, source, '
+                    'version).'
+                )
             if len(parts) == 3:
                 entity_type, source, version = parts
             elif len(parts) == 2:
@@ -602,7 +652,11 @@ class Entity:
             self.source = None
 
         if version:
-            self.version = sanitize(str(version))
+            # `sanitize_id_part`, not `sanitize`: the version is one part
+            # of a '-'-joined id, so a version that itself contains '-'
+            # ('2024-01') would stringify to a four-part id that
+            # `Entity(str(entity))` then rejects.
+            self.version = sanitize_id_part(version)
         else:
             self.version = None
 
@@ -730,14 +784,14 @@ class DataSet:
             and STRING_SEPARATOR_WITHIN_IDS in theme
         ):
             parts = theme.split(STRING_SEPARATOR_WITHIN_IDS)
-            for i, part in enumerate(parts[::-1]):
-                if i == 0:
-                    # Last
-                    version = part
-                elif i == 1:
-                    # Second-to_last
-                    source = part
-            theme = parts[:-2]
+            # Three parts at minimum, because the last two are read as
+            # the source and the version: 'bio-species' is a two-level
+            # theme with neither, and stripping both left an empty theme
+            # that raised IndexError out of Theme.
+            if len(parts) >= 3:
+                version = parts[-1]
+                source = parts[-2]
+                theme = parts[:-2]
 
         if isinstance(theme, Theme):
             self.theme = theme
@@ -749,15 +803,12 @@ class DataSet:
         else:
             self.source = Source(source)
 
-        if isinstance(version, str):
-            self.version = version
-        elif version:
-            self.version = str(version)
-        else:
-            # If no version is provided, default to YYYYMMDD timestamp
-            from datetime import datetime
-
-            self.version = datetime.now().strftime('%Y%m%d')
+        # A missing version stays missing. It used to default to
+        # today's date, which turned a bare theme token into a live
+        # dataset whose output path moved every day. Sanitized like an
+        # entity's, so a YAML float 4.1 gives the '4~1' the recipe id
+        # spells rather than a '4.1' directory beside it.
+        self.version = sanitize_id_part(version) if version is not None else None
 
         if isinstance(is_raster, bool | None):
             self.is_raster = is_raster or False
@@ -767,9 +818,10 @@ class DataSet:
         self.nodata = nodata
 
     def __str__(self) -> str:
-        return STRING_SEPARATOR_WITHIN_IDS.join(
-            [str(self.theme), str(self.source), str(self.version)]
-        )
+        # An absent source or version is left out rather than spelled
+        # 'None', the same way Entity does it.
+        parts = [str(self.theme), str(self.source), self.version]
+        return STRING_SEPARATOR_WITHIN_IDS.join([p for p in parts if p])
 
     def to_prefix(self) -> Path:
         """Return path directory structure."""
@@ -779,7 +831,13 @@ class DataSet:
     def to_path(self) -> Path:
         """Return path directory structure."""
 
-        parts = [self.theme.to_path(), str(self.source), str(self.version)]
+        parts = [self.theme.to_path()]
+        if str(self.source):
+            parts.append(str(self.source))
+        if self.version:
+            parts.append(self.version)
+        if not str(self.source) or not self.version:
+            parts.append(ESCAPE_DIR)
 
         return Path(*parts)
 
@@ -791,8 +849,10 @@ def cast_dataset_or_entity(value):
     recipe (e.g. an enrich recipe crosswalking to an entity from a different
     time period) through the same `dataset` slot. `DataSet` and `Entity`
     parse the same compact ``{first}-{source}-{version}`` shape, differing
-    only in which vocabulary validates the first token, so a `DataSet` is
-    tried first and an `Entity` is used as the fallback.
+    only in which vocabulary validates the first token, so the first token
+    decides which of the two is built. That dispatch used to be done by
+    catching `ValueError` from a speculative `DataSet`, which missed the
+    `IndexError` a two-token string raised out of `Theme`.
 
     Parameters
     ----------
@@ -802,6 +862,11 @@ def cast_dataset_or_entity(value):
     Returns
     -------
     DataSet or Entity
+
+    Raises
+    ------
+    ValueError
+        When the first token is in neither vocabulary.
     """
     if isinstance(value, DataSet | Entity):
         return value
@@ -812,10 +877,16 @@ def cast_dataset_or_entity(value):
         if 'entity_type' in value:
             return Entity(**value)
         return DataSet(**value)
-    try:
-        return DataSet(value)
-    except ValueError:
+    first = str(value).split(STRING_SEPARATOR_WITHIN_IDS)[0]
+    if first in ENTITY_TYPES:
         return Entity(value)
+    if first in TOP_LEVEL_THEMES:
+        return DataSet(value)
+    raise ValueError(
+        f"'{value}' starts with '{first}', which is neither a registered "
+        'entity type nor a top-level theme, so it is neither an entity nor '
+        'a dataset.'
+    )
 
 
 def sanitize(s, max_length=255):
@@ -842,3 +913,28 @@ def sanitize(s, max_length=255):
 
     # Ensure not empty
     return s if s else None
+
+
+def sanitize_id_part(s, max_length=255) -> str | None:
+    """Sanitize a value that becomes one part of a separator-joined id.
+
+    `sanitize` keeps the dash, because a whole id ('parcel-massgis-2025')
+    is sanitized in one piece elsewhere. A single *part* of an id may not
+    contain one: a version '2024-01' would make a four-part entity id
+    that the compact-string parser rejects, so the id could not be read
+    back.
+
+    Parameters
+    ----------
+    s : str
+        Value to sanitize.
+    max_length : int, default 255
+        Maximum length.
+
+    Returns
+    -------
+    str or None
+        Sanitized value with the id separator mapped to a tilde, or None
+        when nothing is left.
+    """
+    return sanitize(str(s).replace(STRING_SEPARATOR_WITHIN_IDS, '~'), max_length)

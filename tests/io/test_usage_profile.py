@@ -87,8 +87,10 @@ class _Tty:
 
 
 def _source(**requirement):
+    # No '-' in the id: it is the id separator, and Source maps it to a
+    # tilde so a source id stays one part of an entity id.
     return Source(
-        source_id='a-source',
+        source_id='a_source',
         terms_url='https://example.org/terms',
         usage_requirement=UsageRequirement(**requirement),
     )
@@ -174,7 +176,7 @@ def test_always_records_a_standing_decision(monkeypatch):
     monkeypatch.setattr('sys.stdin', _Tty())
     monkeypatch.setattr('builtins.input', lambda *a: 'a')
     assert require_usage_compatible(_source(non_commercial=True)) is True
-    assert recorded == {'a-source': True}
+    assert recorded == {'a_source': True}
 
 
 def test_an_answer_is_remembered_for_the_rest_of_the_process(monkeypatch):

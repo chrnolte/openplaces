@@ -1,6 +1,14 @@
 import pytest
 
-from openplaces.core.schema import AdminId, Source, UsageRequirement
+from openplaces.core.constants import ESCAPE_DIR
+from openplaces.core.schema import (
+    AdminId,
+    DataSet,
+    Entity,
+    Source,
+    UsageRequirement,
+    cast_dataset_or_entity,
+)
 
 
 class TestAdminIdTruncateToLevel:
@@ -117,3 +125,121 @@ class TestUsageRequirement:
         profile = {'admin_interests': [interest]}
         unmet = requirement.unmet(profile, admin_id=admin_id)
         assert (unmet == []) is expected_met
+
+
+class TestAdminIdConstruction:
+    """The single-argument branch, which used to assume a string."""
+
+    def test_global_id_round_trips(self):
+        assert AdminId(str(AdminId())) == AdminId()
+        assert AdminId('').levels == ()
+
+    def test_an_admin_id_can_be_rewrapped(self):
+        assert AdminId(AdminId('US', 'MA')) == AdminId('US', 'MA')
+        assert AdminId(AdminId()) == AdminId()
+
+    def test_a_sequence_is_accepted_as_the_docstring_promises(self):
+        assert AdminId(['US', 'MA']) == AdminId('US', 'MA')
+        assert AdminId(('US', 'MA', 'MI')) == AdminId('US', 'MA', 'MI')
+
+    def test_a_non_string_level_still_raises_value_error(self):
+        # Not TypeError, and not a message about the type of `levels`:
+        # two parsers use AdminId raising ValueError as their
+        # discriminator between an admin prefix and another token.
+        with pytest.raises(ValueError, match='invalid at level'):
+            AdminId(7)
+
+
+class TestEntityRoundTrip:
+    """An entity id must parse back into the entity that produced it."""
+
+    def test_a_separator_in_the_version_does_not_leak_into_the_id(self):
+        entity = Entity('transaction', 'retr', '2024-01')
+        assert Entity(str(entity)) == entity
+        assert str(entity).count('-') == 2
+
+    def test_a_separator_in_the_source_does_not_leak_into_the_id(self):
+        entity = Entity('parcel', 'two-words', '2025')
+        assert Entity(str(entity)) == entity
+
+    def test_a_compact_string_cannot_be_combined_with_explicit_parts(self):
+        # Silently discarding them produced an entity, and a path, for a
+        # source nobody asked for.
+        with pytest.raises(ValueError, match='already carries'):
+            Entity('parcel-massgis-2025', source='other')
+        with pytest.raises(ValueError, match='already carries'):
+            Entity('parcel-massgis-2025', version='2030')
+
+    def test_too_many_parts_are_refused_by_name(self):
+        with pytest.raises(ValueError, match='at most three'):
+            Entity('parcel-massgis-2025-extra')
+
+
+class TestCastDatasetOrEntity:
+    """Dispatch on the first token's vocabulary, not on exceptions."""
+
+    def test_a_two_token_theme_is_a_dataset(self):
+        # This is path.py's own documented example, and it used to raise
+        # IndexError out of Theme, which no caller handles.
+        dataset = cast_dataset_or_entity('bio-species')
+        assert isinstance(dataset, DataSet)
+        assert str(dataset.theme) == 'bio-species'
+
+    def test_a_two_token_entity_is_an_entity(self):
+        entity = cast_dataset_or_entity('parcel-massgis')
+        assert isinstance(entity, Entity)
+        assert str(entity.entity_type) == 'parcel'
+
+    def test_a_full_dataset_id_is_a_dataset(self):
+        dataset = cast_dataset_or_entity('land-elevation-usgs-3dep')
+        assert isinstance(dataset, DataSet)
+        assert dataset.version == '3dep'
+
+    def test_an_unknown_first_token_raises_value_error(self):
+        with pytest.raises(ValueError, match='neither a registered'):
+            cast_dataset_or_entity('admin1-something')
+
+
+class TestDataSetVersion:
+    """A dataset's version is recorded, never invented."""
+
+    def test_a_missing_version_stays_missing(self):
+        # It used to default to today's date, so a bare theme token
+        # parsed as a live dataset whose output path moved every day.
+        dataset = DataSet('bio-species')
+        assert dataset.version is None
+        assert str(dataset) == 'bio-species'
+        assert ESCAPE_DIR in dataset.to_path().parts
+
+    def test_a_float_version_is_sanitized_like_a_recipe_id(self):
+        # A YAML `version: 4.1` gave a '4.1' directory beside the '4~1'
+        # the recipe id spells.
+        assert DataSet('land', 'example', 4.1).version == '4~1'
+        assert '4~1' in DataSet('land', 'example', 4.1).to_path().parts
+
+    def test_a_full_compact_string_still_splits(self):
+        dataset = DataSet('land-elevation-usgs-3dep')
+        assert str(dataset.theme) == 'land-elevation'
+        assert str(dataset.source) == 'usgs'
+        assert dataset.version == '3dep'
+
+
+class TestUsageRequirementProfileShapes:
+    """`unmet` is documented as never raising, on any config shape."""
+
+    def test_a_list_environment_declaration_is_read_not_crashed_on(self):
+        # The natural mirror of the recipe-side list syntax. It used to
+        # raise AttributeError, aborting the ingest gate instead of
+        # prompting.
+        requirement = UsageRequirement(environment=['restricted'])
+        assert requirement.unmet({'environment': ['restricted']}) == []
+        assert requirement.unmet({'environment': ['licensed']})
+
+    def test_a_string_environment_declaration_is_read(self):
+        requirement = UsageRequirement(environment=['restricted'])
+        assert requirement.unmet({'environment': 'restricted'}) == []
+
+    def test_an_unusable_profile_leaves_every_condition_unmet(self):
+        requirement = UsageRequirement(non_commercial=True, environment=['licensed'])
+        assert len(requirement.unmet('not a profile')) == 2
+        assert len(requirement.unmet({'environment': 3})) == 2
