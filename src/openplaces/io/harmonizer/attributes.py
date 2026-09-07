@@ -657,12 +657,20 @@ def _attribute_polygon_reference(
         )
 
     footprints_from_ref = state.metadata.get(f'inferred_from_{crosswalk_key}')
-    mask_ref_src = spine['geometry_source'].str.contains(r'\.', regex=True, na=False)
-    if (
-        mask_ref_src.any()
-        and footprints_from_ref is not None
+    # A spine built by union_spine_sources carries 'source', not
+    # 'geometry_source', and has no reference-inferred rows at all, so
+    # the column is read only once the block is known to apply.
+    has_inferred = (
+        footprints_from_ref is not None
         and 'parcel_id' in footprints_from_ref.columns
-    ):
+        and 'geometry_source' in spine.columns
+    )
+    mask_ref_src = (
+        spine['geometry_source'].str.contains(r'\.', regex=True, na=False)
+        if has_inferred
+        else None
+    )
+    if has_inferred and mask_ref_src.any():
         ref_attr_cols = [
             c for c in (columns or _POLYGON_REF_COLS) if c in ref_polys.columns
         ]

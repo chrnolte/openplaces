@@ -487,3 +487,38 @@ def test_point_reference_excludes_flagged_points_from_n_dwellings_sum():
     )
 
     assert state.spine.loc['F1', 'n_dwellings_nsi'] == 1.0
+
+
+def test_spine_without_geometry_source_is_attributed(monkeypatch):
+    # union_spine_sources writes 'source', not 'geometry_source', and adds
+    # no reference-inferred rows. Reading the column before checking that
+    # the inferred-backfill block applies aborted the whole attribution
+    # with a KeyError.
+    spine = gpd.GeoDataFrame(
+        {'source': ['massgis']},
+        geometry=[box(0, 0, 1, 1)],
+        crs='EPSG:4326',
+    )
+    spine.index.name = 'footprint_id'
+    state = _state(spine)
+
+    ref = gpd.GeoDataFrame(
+        {'use_group_combined': ['residential | single family']},
+        geometry=[box(0, 0, 1, 1)],
+        crs='EPSG:4326',
+    )
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+    state = links._link_spatial_overlay(
+        state, 'parcel_ref', 'parcel', {'area_intersection_m2_min': 0}
+    )
+
+    state = attrs._attribute_polygon_reference(
+        state,
+        'parcel_ref',
+        'parcel',
+        state.references['parcel_ref'],
+        columns=['use_group_combined'],
+    )
+
+    assert 'geometry_source' not in state.spine.columns
+    assert state.spine['overlap_fraction_parcel'].iloc[0] > 0
