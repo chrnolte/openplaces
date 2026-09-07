@@ -23,7 +23,7 @@ cached on first access.
 Lookups are keyed on base attribute names only. A caller holding a possibly
 provenance-suffixed column (e.g. ``improvement_value_parcel``) should resolve
 it via :func:`openplaces.recipe.resolve_attribute_name` first. That helper
-lives in the higher recipe layer — not here — because the provenance suffix
+lives in the higher recipe layer, not here, because the provenance suffix
 vocabulary is derived from the recipes directory, which layer 0 cannot import.
 
 One suffix *is* handled here rather than in the recipe layer:
@@ -143,14 +143,20 @@ def get_attributes(
     return result
 
 
-def get_attribute_order(attr: str) -> int | None:
+def get_attribute_order(attr: str) -> float | None:
     """Return the registry ``sort`` rank for *attr*, or ``None`` if unset.
 
     The rank gives the intra-phase ordering of attributes used by the curation
     ``order_columns`` step. Lower ranks come first.
+
+    The rank is returned as a float, not an int. The CSV uses fractional
+    sub-ranks (20.1, 20.2, 20.3 for the land-value variants; 21.1, 21.2)
+    to order attributes within one group, and truncating them collapsed
+    every sub-rank onto its parent, leaving the intended order to fall
+    back to incoming column order.
     """
     reg = load_registry()
     if attr not in reg.index or 'sort' not in reg.columns:
         return None
     value = reg.at[attr, 'sort']
-    return None if pd.isna(value) else int(value)
+    return None if pd.isna(value) else float(value)

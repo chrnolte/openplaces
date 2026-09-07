@@ -8,6 +8,7 @@ shared (blank entity_type) rows.
 
 from openplaces.core.attribute_registry import (
     get_agg_func,
+    get_attribute_order,
     get_attributes,
     get_data_type,
     get_null_placeholder,
@@ -54,3 +55,29 @@ def test_get_attributes_stage_filter():
     assert 'occupancy_type' in curate.index
     # an ingest/general (blank stage) attribute is not returned for a stage query
     assert 'land_value' not in curate.index
+
+
+def test_fractional_sort_ranks_are_not_truncated():
+    # The CSV orders the land-value variants with sub-ranks under one
+    # parent rank (20.1, 20.2, 20.3 under land_value's 20). Casting the
+    # rank to int collapsed all four onto 20, so the intended order fell
+    # back to whatever order the columns arrived in.
+    assert get_attribute_order('land_value') == 20
+    assert get_attribute_order('land_value_exempt') == 20.1
+    assert get_attribute_order('land_value_taxable') == 20.2
+    assert get_attribute_order('land_value_preferential') == 20.3
+    ranks = [
+        get_attribute_order(name)
+        for name in (
+            'land_value',
+            'land_value_exempt',
+            'land_value_taxable',
+            'land_value_preferential',
+        )
+    ]
+    assert ranks == sorted(ranks)
+    assert len(set(ranks)) == len(ranks)
+
+
+def test_unset_sort_rank_is_none():
+    assert get_attribute_order('totally_made_up_attribute') is None

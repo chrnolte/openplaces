@@ -127,7 +127,10 @@ _BARE_ID = re.compile(r'^(.+?)_id(_.+)?$')
 _BIG = 10_000
 
 
-def _attr_rank(name: str) -> int:
+def _attr_rank(name: str) -> float:
+    # Float, not int: the registry's fractional sub-ranks (20.1, 20.2)
+    # order attributes within one group, and rounding them to their
+    # parent rank loses that order.
     from openplaces.core.attribute_registry import get_attribute_order
 
     rank = get_attribute_order(resolve_attribute_name(name))
