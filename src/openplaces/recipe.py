@@ -618,8 +618,30 @@ def find_entity_recipe_id(
     """Find the most suitable entity recipe.
 
     Recipes follow the pipeline order ingest, harmonize, enrich, curate unless
-    *stage* is specified. Within a stage, prefer the requested source, the
-    most specific applicable administrative scope, and the latest version.
+    *stage* is specified. Within a stage, prefer the most specific applicable
+    administrative scope, then the latest version.
+
+    *source_id* filters rather than ranks. It used to be a preference, so a
+    caller asking for a source with no recipe silently received a different
+    source's: the enricher's request for the harmonized spine
+    (``source_id='spine'``) would fall through to the geospine, which is the
+    same entity type at the same stage. Every caller tests only for None, so
+    the substitution reached the data instead of the error.
+
+    Parameters
+    ----------
+    admin_id : str or AdminId
+        Admin unit the recipe must cover.
+    entity_type : str
+        Entity type the recipe must produce.
+    stage : str, optional
+        Restrict to one pipeline stage; without it the latest stage wins.
+    source_id : str, optional
+        Restrict to recipes of this source. Returns None when none matches.
+    filename : str, optional
+        Filename stem to match within the recipe directory.
+    silent : bool
+        Suppress the message printed when several recipes qualify.
     """
     admin_id = AdminId(admin_id) if not isinstance(admin_id, AdminId) else admin_id
     recipe_paths_found = []
@@ -655,11 +677,12 @@ def find_entity_recipe_id(
             continue
         source = entity.get('source') or {}
         recipe_source_id = source.get('source_id', '')
+        if source_id is not None and recipe_source_id != source_id:
+            continue
         version = str(entity.get('version', ''))
         candidates.append(
             (
                 stage_rank.get(recipe_stage, -1),
-                recipe_source_id == source_id if source_id else False,
                 recipe_admin_id.get_level(),
                 version,
                 Path(filepath).stem,
@@ -669,7 +692,7 @@ def find_entity_recipe_id(
     if not candidates:
         return None
     candidates.sort()
-    recipe_id = candidates[-1][4]
+    recipe_id = candidates[-1][3]
     if len(candidates) > 1 and not silent:
         print(f'Picked {recipe_id} for {admin_id} ({entity_type}).')
     return recipe_id

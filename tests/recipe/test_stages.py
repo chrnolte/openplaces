@@ -74,3 +74,32 @@ def test_unknown_stage_is_rejected_at_load(tmp_path):
     )
     with pytest.raises(ValueError, match='not a known openplaces pipeline stage'):
         get_recipe_dict(recipe_file, 'US-XX')
+
+
+def test_unmatched_source_id_returns_none_rather_than_another_source():
+    """source_id filters; it does not merely rank.
+
+    As a preference it returned the next-best recipe of a different
+    source, and every caller tests only for None, so an enrich run whose
+    spine had been renamed would have silently read the geospine.
+    """
+    assert (
+        find_entity_recipe_id(
+            'US-NC-BRU',
+            'footprint',
+            stage='harmonize',
+            source_id='nonexistent',
+            silent=True,
+        )
+        is None
+    )
+    assert (
+        find_entity_recipe_id(
+            'US-NC-BRU',
+            'footprint',
+            stage='harmonize',
+            source_id='spine',
+            silent=True,
+        )
+        == 'US_footprint-spine-2026'
+    )
