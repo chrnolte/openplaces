@@ -2003,7 +2003,13 @@ def detect_condo_building_clusters(
     # A hub attached to multiple qualifying clusters (change 3) has a
     # duplicate index entry in `component`; a scalar column can only hold
     # one, so keep the first (deterministic, not otherwise meaningful).
+    n_repeated = int(component.index.duplicated().sum())
     component_for_column = component[~component.index.duplicated(keep='first')]
+    if n_repeated and state.verbose:
+        print(
+            f'  {group_id_column}: {n_repeated:,d} hub parcel(s) belong to more '
+            'than one cluster; kept the first cluster id for the column.'
+        )
 
     spine[group_id_column] = spine.index.to_series().map(component_for_column)
     state.spine = spine

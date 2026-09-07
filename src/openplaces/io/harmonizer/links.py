@@ -1566,8 +1566,15 @@ def _link_spatial_point(
                 sort_cols,
                 ascending=[True, False][: len(sort_cols)],
             )
-        if linked.index.duplicated().any():
+        n_repeated = int(linked.index.duplicated().sum())
+        if n_repeated:
             linked = linked[~linked.index.duplicated()].copy()
+            if state.verbose:
+                print(
+                    f'  Deduplicate: {n_repeated:,d} reference point(s) matched '
+                    f'more than one {spine_id_col}; kept the first by source '
+                    f'priority ({len(linked):,d} remain)'
+                )
 
         # Filter: for footprints that already have a same-parcel dwelling point,
         # drop dwelling points that are on a different parcel.
@@ -1581,8 +1588,15 @@ def _link_spatial_point(
                 _ref_sub, _poly_ref_filter[['geometry']], how='left'
             ).drop(columns='geometry')
             _pts_poly = _rename_right_index(_pts_poly, _prf_id, '_pt_parcel')
-            if _pts_poly.index.duplicated().any():
+            n_repeated = int(_pts_poly.index.duplicated().sum())
+            if n_repeated:
                 _pts_poly = _pts_poly[~_pts_poly.index.duplicated()].copy()
+                if state.verbose:
+                    print(
+                        f'  Cross-parcel filter: {n_repeated:,d} reference '
+                        f'point(s) fell in more than one {_prf_id}; kept the '
+                        'first'
+                    )
             _fp_parcel_sets = (
                 state.crosswalks[overlay_ids[0]]
                 .reset_index()[[spine_id_col, _prf_id]]
@@ -1638,8 +1652,14 @@ def _link_spatial_point(
             ref_on_poly = _rename_right_index(
                 ref_on_poly, poly_ref_id_col, poly_ref_id_col
             )
-            if ref_on_poly.index.duplicated().any():
+            n_repeated = int(ref_on_poly.index.duplicated().sum())
+            if n_repeated:
                 ref_on_poly = ref_on_poly[~ref_on_poly.index.duplicated()].copy()
+                if state.verbose:
+                    print(
+                        f'  Reference join ({recipe_id}): {n_repeated:,d} point(s) '
+                        f'fell in more than one {poly_ref_id_col}; kept the first'
+                    )
             if poly_ref_id_col in ref_on_poly.columns:
                 linked = linked.join(ref_on_poly[[poly_ref_id_col]])
 

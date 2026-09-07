@@ -589,7 +589,17 @@ def get_entities(
             bbox=bbox,
         )
         geometry = predecessor['geometry']
-        if geometry.index.duplicated().any():
+        n_repeated = int(geometry.index.duplicated().sum())
+        if n_repeated:
+            # Silent before: the join would otherwise fan every attribute
+            # row out across the repeated geometries. Report rather than
+            # raise, so a read that only wants to draw still works.
+            warnings.warn(
+                f'{n_repeated} repeated {geometry.index.name} label(s) in the '
+                f'geometry of {get_recipe_id(geometry_recipe)} for {admin_id}; '
+                'kept the first geometry of each.',
+                stacklevel=2,
+            )
             geometry = geometry[~geometry.index.duplicated()]
         data = gpd.GeoDataFrame(data.join(geometry, how='left'), crs=predecessor.crs)
         # A bbox read of a geometry-bearing recipe returns only the rows
