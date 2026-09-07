@@ -27,6 +27,7 @@ import stat
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 from openplaces.core.schema import AdminId
@@ -105,9 +106,17 @@ def delivery_regions(recipe) -> list[dict]:
 
     if isinstance(names, str):
         names = [names]
+    # One registry read for the whole block, not one per named region:
+    # the CSV was re-parsed for each of the seven declared regions, and
+    # `delivery_paths` resolves regions repeatedly.
+    registry = get_regions()
     regions = []
     for name in names:
-        rows = get_regions(name)
+        rows = registry[registry['region_id'] == str(name)]
+        if rows.empty:
+            # Ask the registry directly so its own error, which lists
+            # what is registered, is the one the caller sees.
+            get_regions(name)
         anchor = rows.get('region_admin_id', pd.Series(dtype=str))
         anchor = anchor[anchor.astype(str).str.strip().ne('')]
         regions.append(
@@ -175,8 +184,15 @@ def delivery_admin_id(recipe, admin_level=None, region=None) -> AdminId:
     a recipe is filed at the scope it can process (``US`` for the CHEER
     footprint recipe) while its bundle covers only the region actually
     delivered (``US-NC``). Falls back to the recipe's admin ID when no
-    members are declared, and to an explicit ``bundle_admin_id`` when the
-    region's members do not all sit under one unit at *admin_level*.
+    members are declared.
+
+    Every member has to sit under the resulting unit, and a region whose
+    members do not raises here rather than shipping under the first
+    member's state: the unit was read off ``members[0]`` alone, so a
+    two-state region with no declared anchor was filed, and named, as
+    though it were one state's. Declare the region's own unit to fix it,
+    as ``region_admin_id`` in the region registry or ``admin_id`` in the
+    recipe's inline ``share: delivery:`` block.
 
     Parameters
     ----------
@@ -195,8 +211,22 @@ def delivery_admin_id(recipe, admin_level=None, region=None) -> AdminId:
     if spec.get('admin_id'):
         return AdminId(str(spec['admin_id']))
     members = spec.get('admin_ids') or []
-    anchor = AdminId(str(members[0])) if members else AdminId(str(recipe['admin_id']))
-    return AdminId(*anchor.levels[:admin_level])
+    if not members:
+        anchor = AdminId(str(recipe['admin_id']))
+        return AdminId(*anchor.levels[:admin_level])
+    anchor = AdminId(str(members[0]))
+    unit = AdminId(*anchor.levels[:admin_level])
+    outside = [m for m in members if not unit.is_parent_or_equal_of(AdminId(str(m)))]
+    if outside:
+        raise ValueError(
+            f'Delivery region {spec.get("region_id") or "(inline)"!r} of '
+            f'{recipe.get("recipe_id", recipe)!r} has members outside '
+            f'{unit}, which was derived from its first member: '
+            f'{", ".join(str(m) for m in outside[:5])}. Declare the '
+            "region's own unit (`region_admin_id` in the region registry, "
+            "or `admin_id` in the recipe's `share: delivery:` block)."
+        )
+    return unit
 
 
 def _unlock(path: Path) -> None:
@@ -219,7 +249,8 @@ def unlock_delivery(recipe, **kwargs) -> None:
     recipe : str or dict
         Recipe ID or loaded recipe dictionary.
     **kwargs
-        Forwarded to `delivery_paths` (admin_id, admin_level, output_dir).
+        Forwarded to `delivery_paths` (admin_id, admin_level, output_dir,
+        region).
     """
     for path in delivery_paths(recipe, **kwargs).values():
         _unlock(path)
@@ -269,13 +300,72 @@ def share_columns(recipe) -> tuple[list[str], list[str]]:
 
 
 def _share_spec(recipe):
-    """Return the recipe's `share` block, erroring when it declares no columns."""
+    """Return the recipe's `share` block, validated as a deliverable set.
+
+    Every problem here is one the export would otherwise hit halfway
+    through, after the canonical file had already been written: a
+    duplicated name fails deep inside pyarrow, a missing coordinate
+    column raises a bare KeyError from the point pass, and a `_source`
+    sidecar named explicitly is appended a second time automatically.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe.
+
+    Returns
+    -------
+    tuple of (list of str, list of str)
+        The canonical columns and the point-only columns.
+    """
     columns, point_columns = share_columns(recipe)
+    recipe_id = recipe.get('recipe_id', recipe)
     if not columns:
         raise ValueError(
-            f'Recipe {recipe.get("recipe_id", recipe)!r} has no `share: columns:` '
+            f'Recipe {recipe_id!r} has no `share: columns:` '
             'block, so there is no canonical column list to deliver. Add one to '
             'the recipe naming the attributes the shared file should carry.'
+        )
+
+    def _repeated(names):
+        seen, repeated = set(), []
+        for name in names:
+            if name in seen and name not in repeated:
+                repeated.append(name)
+            seen.add(name)
+        return repeated
+
+    repeated = _repeated([*columns, *point_columns])
+    if repeated:
+        raise ValueError(
+            f'Recipe {recipe_id!r} names {", ".join(repeated)} more than once '
+            'across `share: columns:` and `share: point_columns:`; the '
+            'delivered files would carry duplicate column names.'
+        )
+
+    sidecars = [c for c in [*columns, *point_columns] if c.endswith(SOURCE_SUFFIX)]
+    if sidecars:
+        raise ValueError(
+            f'Recipe {recipe_id!r} names the provenance sidecar(s) '
+            f'{", ".join(sidecars)} explicitly. Every canonical column has '
+            f'its own `{SOURCE_SUFFIX}` sidecar added automatically, so '
+            'naming one here duplicates it.'
+        )
+
+    coordinates = [c for c in COORDINATE_COLUMNS if c in point_columns]
+    if coordinates:
+        raise ValueError(
+            f'Recipe {recipe_id!r} names {", ".join(coordinates)} under '
+            '`share: point_columns:`. The coordinates become the point '
+            "file's geometry, so they belong in `share: columns:`."
+        )
+    missing = [c for c in COORDINATE_COLUMNS if c not in columns]
+    if missing:
+        raise ValueError(
+            f'Recipe {recipe_id!r} does not declare {", ".join(missing)} in '
+            '`share: columns:`, and the point file is built from those '
+            'coordinates. Add them, or the export fails after the canonical '
+            'file has already been written.'
         )
     return columns, point_columns
 
@@ -337,19 +427,54 @@ def delivery_members(recipe, admin_id=None, admin_ids=None, region=None) -> list
 
 
 def _resolve_inputs(recipe, admin_id, admin_ids, region=None):
-    """Return the process admin level and the [(admin_id, path)] files to pool."""
+    """Return the process admin level and the [(admin_id, path)] files to pool.
+
+    Raises when a declared member has no curated file. A bundle is
+    published as the region it names, so quietly dropping the units that
+    were not built ships a different dataset under that name, and the
+    only trace used to be a unit count printed when verbose.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded curation recipe.
+    admin_id : str or `AdminId` or None
+        Admin unit the bundle covers, used for the hierarchy fallback.
+    admin_ids : list of str or None
+        Explicit member list, overriding the recipe's declared one.
+    region : str, optional
+        Which declared region to resolve.
+
+    Returns
+    -------
+    tuple of (int, list of (str, pathlib.Path))
+        The process admin level, and one (admin_id, path) pair per member.
+    """
     inputs = []
+    missing = []
     for process_id in delivery_members(recipe, admin_id, admin_ids, region):
         path = get_output_path(recipe, process_id)
         if path.exists():
             inputs.append((process_id, path))
+        else:
+            missing.append(process_id)
+    if missing and inputs:
+        listed = ', '.join(missing[:10])
+        more = f' (and {len(missing) - 10} more)' if len(missing) > 10 else ''
+        raise FileNotFoundError(
+            f'{len(missing)} of {len(missing) + len(inputs)} declared members '
+            f'have no curated output: {listed}{more}. Curate them, or pass '
+            '`admin_ids` naming exactly the units this bundle should pool; '
+            'shipping the rest under the region name would publish a '
+            'different dataset than the one declared.'
+        )
     return get_process_admin_level(recipe), inputs
 
 
 def delivery_paths(
     recipe, admin_id=None, admin_level=None, output_dir=None, region=None
 ) -> dict:
-    """Return the four bundle paths, keyed by their role.
+    """Return the five bundle paths, keyed by their role.
 
     The single source of truth for where a delivery lands: `export_delivery`
     writes exactly these, and the orchestrator declares exactly these as the
@@ -454,7 +579,8 @@ def delivery_accuracy_dir(recipe, **kwargs) -> Path:
         Recipe ID or loaded recipe dictionary.
     **kwargs
         Passed to :func:`delivery_paths` (``admin_id``, ``admin_level``,
-        ``output_dir``) so the directory follows the bundle it describes.
+        ``output_dir``, ``region``) so the directory follows the bundle it
+        describes.
 
     Returns
     -------
@@ -472,15 +598,37 @@ def _deduplicate(frame, coverage_columns, admin_id_column):
     land in the same Open Location Code cell -- so they share an entity id.
     Keep whichever copy carries more non-null canonical attributes, breaking
     ties on the admin id so the result does not depend on read order.
+
+    The decision is made on two arrays and applied with a single
+    positional take. Assigning a column, sorting the whole frame and
+    dropping the column again held three copies of a region-wide
+    GeoDataFrame at once, in the step this module is memory-bound in
+    (4.1 million Texas footprints).
+
+    Parameters
+    ----------
+    frame : geopandas.GeoDataFrame
+        The pooled region, indexed by entity id.
+    coverage_columns : list of str
+        Columns whose non-null count decides which copy is better covered.
+    admin_id_column : str
+        Column holding the contributing unit, the tie-breaker.
+
+    Returns
+    -------
+    tuple of (geopandas.GeoDataFrame, int)
+        The deduplicated frame and the number of rows dropped.
     """
     if not frame.index.has_duplicates:
         return frame, 0
 
-    coverage = frame[coverage_columns].notna().sum(axis=1)
-    ordered = frame.assign(_coverage=coverage).sort_values(
-        ['_coverage', admin_id_column], ascending=[False, True], kind='stable'
-    )
-    kept = ordered[~ordered.index.duplicated(keep='first')].drop(columns='_coverage')
+    coverage = frame[coverage_columns].notna().sum(axis=1).to_numpy()
+    admin_rank = pd.factorize(frame[admin_id_column], sort=True)[0]
+    # Primary key last: coverage descending, then admin id ascending,
+    # then original position (lexsort is stable).
+    order = np.lexsort((admin_rank, -coverage))
+    first = ~pd.Index(frame.index.to_numpy()[order]).duplicated(keep='first')
+    kept = frame.iloc[np.sort(order[first])]
     return kept, len(frame) - len(kept)
 
 
@@ -536,7 +684,7 @@ def export_delivery(
     -------
     dict of str to pathlib.Path
         The written paths, keyed ``'canonical'``, ``'point'``, ``'geo'``,
-        ``'evidence'``.
+        ``'evidence'`` and ``'terms'`` (the licence notice).
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)
@@ -565,6 +713,17 @@ def export_delivery(
         available = parquet_columns(path)
         wanted = [column for column in declared if column in available]
         wanted += _source_columns(canonical_columns, available)
+        # A split (non-combined) curated output keeps its geometry in a
+        # `_geo` sidecar joined on `_join_id`, or failing that `geo_id`.
+        # Requesting only the declared columns dropped that key, and the
+        # read then failed with 'Could not identify column to join
+        # GeoParquet'; nothing here checks `save_to: combined`.
+        if 'geometry' not in available:
+            for join_key in ('_join_id', 'geo_id'):
+                if join_key in available:
+                    if join_key not in wanted:
+                        wanted.append(join_key)
+                    break
         part = read_parquet(path, geom=True, columns=wanted)
         # A declared column a single unit happens to lack is
         # filled, not dropped, so every unit has the same schema.
