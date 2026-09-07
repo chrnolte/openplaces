@@ -120,6 +120,33 @@ def test_inherit_from_disagreeing_group_falls_back_and_is_reported(monkeypatch):
     ]
 
 
+def test_inherit_from_lat_long_join_on_an_unnamed_spine_index(monkeypatch):
+    # No group_by column on the linked recipe, so inheritance falls
+    # back to the lat/long point join. geopandas names the right-index
+    # column 'index_right' for an unnamed spine index, which the
+    # hand-built spine.index.name or 'index' missed: groupby raised.
+    def _boom(*a, **k):
+        raise AssertionError('should not need the direct reference')
+
+    monkeypatch.setattr(spine_module, 'get_admin', _boom)
+    footprints = pd.DataFrame(
+        {'lat': [0.3, 0.35], 'long': [0.3, 0.35], 'admin4_id': ['A', 'A']}
+    )
+    monkeypatch.setattr(spine_module, 'get_entities', lambda *a, **k: footprints)
+
+    spine = gpd.GeoDataFrame(
+        {'lat': [0.3], 'long': [0.3]},
+        geometry=[box(0.2, 0.2, 0.4, 0.4)],
+        crs='epsg:4326',
+    )
+    state = spine_module.link_geographic_ids(
+        _state(spine),
+        links=[{'admin_level': 4, 'output_column': 'admin4_id'}],
+        inherit_from={'recipe_id': 'US_footprint-spine-2026', 'group_by': 'parcel_id'},
+    )
+    assert state.spine['admin4_id'].tolist() == ['A']
+
+
 def test_noop_when_spine_is_none():
     state = spine_module.link_geographic_ids(_state(None), links=_links())
     assert state.spine is None

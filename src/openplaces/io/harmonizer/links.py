@@ -1162,6 +1162,36 @@ def _filter_by_size_limit(
     return near[no_limit | in_range]
 
 
+#: Quality order for picking one representative among several linked
+#: reference points: source label ascending (the ranking baked into the
+#: label), structure value descending (the larger structure wins).
+_POINT_QUALITY_ORDER = {'source': True, 'structure_value': False}
+
+
+def _point_quality_sort(frame: pd.DataFrame) -> tuple[list[str], list[bool]]:
+    """Return the sort columns and directions for a quality ranking.
+
+    Each column keeps its own direction, so a frame carrying only
+    'structure_value' still sorts it descending. Slicing a fixed
+    ascending list positionally instead paired the surviving column with
+    the first direction, which picked the *lowest*-value point as the
+    representative wherever 'source' was absent.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Linked reference points to be ranked.
+
+    Returns
+    -------
+    tuple of (list of str, list of bool)
+        Present sort columns and their ascending flags, both empty when
+        the frame carries neither.
+    """
+    cols = [c for c in _POINT_QUALITY_ORDER if c in frame.columns]
+    return cols, [_POINT_QUALITY_ORDER[c] for c in cols]
+
+
 def _aggregate_multipoint(
     linked: pd.DataFrame,
     spine_id_col: str,
@@ -1204,11 +1234,9 @@ def _aggregate_multipoint(
     n_aggregated = 0
 
     for _fp_id, group in multis.groupby(spine_id_col, sort=False):
-        sort_cols = [c for c in ['source', 'structure_value'] if c in group.columns]
+        sort_cols, sort_ascending = _point_quality_sort(group)
         if sort_cols:
-            group = group.sort_values(
-                sort_cols, ascending=[True, False][: len(sort_cols)]
-            )
+            group = group.sort_values(sort_cols, ascending=sort_ascending)
         rep = group.iloc[0].copy()
 
         if len(group) > 1:
@@ -1292,6 +1320,50 @@ def flag_duplicate_points(
     return resolution
 
 
+def _point_step_config(
+    thresholds: dict,
+    remap_id: str | None,
+    source_geometry_type=None,
+) -> dict:
+    """Build the step-config half of a spatial_point link fingerprint.
+
+    Shared by the writer (:func:`_link_spatial_point`) and the geospine
+    loader, which have to spell the same dict or every attribute run
+    fails closed against a sidecar that is in fact current.
+
+    The source geometry type is included only where it changes what the
+    sidecar holds, which is when aggregate_multipoint is on: it selects
+    between the building-point and dwelling-point aggregation branches,
+    and changing it used to reload a sidecar built by the other. Off that
+    path it touches nothing the sidecar carries, and including it there
+    would invalidate every sidecar already on disk for no gain.
+
+    Parameters
+    ----------
+    thresholds : dict
+        The step's thresholds block.
+    remap_id : str or None
+        Value-crosswalk recipe applied to the reference before linking.
+    source_geometry_type : SourceGeometryType or str or None, optional
+        The step's declared source geometry type, if any.
+
+    Returns
+    -------
+    dict
+        Step config to hand to :func:`_link_fingerprint`.
+    """
+    config = {
+        'join': 'spatial_point',
+        'thresholds': thresholds,
+        'remap_id': remap_id,
+    }
+    if thresholds.get('aggregate_multipoint'):
+        config['source_geometry_type'] = (
+            None if source_geometry_type is None else str(source_geometry_type)
+        )
+    return config
+
+
 def _link_spatial_point(
     state: HarmonizeState,
     recipe_id: str,
@@ -1361,6 +1433,12 @@ def _link_spatial_point(
     ref = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
     if ref is None or len(ref) == 0:
         raise_if_coverage_complete(recipe_id, state.admin_id)
+        # Record the reference's type even with nothing to link:
+        # reconcile_attributes needs it to name this source's evidence
+        # columns, which it writes as nulls so a zero-coverage unit's
+        # spine carries the same columns as its neighbors'.
+        if entity_type:
+            state.reference_types[recipe_id] = entity_type
         if state.verbose:
             print(
                 f'  Link ({entity_type or "point"}): no {recipe_id} for '
@@ -1436,11 +1514,11 @@ def _link_spatial_point(
         fingerprint = _link_fingerprint(
             state,
             recipe_id,
-            {
-                'join': 'spatial_point',
-                'thresholds': thresholds,
-                'remap_id': remap_id,
-            },
+            _point_step_config(
+                thresholds,
+                remap_id,
+                state.source_geometry_types.get(recipe_id),
+            ),
         )
         if not state.reprocess:
             linked = _load_point_link_sidecar(
@@ -1568,12 +1646,9 @@ def _link_spatial_point(
         linked = within
 
         # Deduplicate: one spine entity per point (keep highest-quality source first)
-        sort_cols = [c for c in ['source', 'structure_value'] if c in linked.columns]
+        sort_cols, sort_ascending = _point_quality_sort(linked)
         if sort_cols:
-            linked = linked.sort_values(
-                sort_cols,
-                ascending=[True, False][: len(sort_cols)],
-            )
+            linked = linked.sort_values(sort_cols, ascending=sort_ascending)
         n_repeated = int(linked.index.duplicated().sum())
         if n_repeated:
             linked = linked[~linked.index.duplicated()].copy()
@@ -1901,7 +1976,13 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
         key_length = int(key_lengths.mode().iat[0])
         codes = spine[column].astype('string').str.slice(0, key_length)
         for target in table.columns:
-            spine[target] = codes.map(table[target])
+            # Gap-fill, never wholesale replace: auto-discovery
+            # calls this once per matched source, and a county
+            # crosswalk covering only part of the roll would
+            # otherwise null out every value a statewide crosswalk
+            # already resolved. Same rule as the value columns
+            # joined beside it.
+            _write_prioritized(spine, target, codes.map(table[target]))
         if state.verbose:
             matched = codes.isin(table.index).sum()
             print(
@@ -2011,6 +2092,56 @@ def _write_prioritized(
         after = spine[name]
         changed = after.notna() & (before.isna() | (before != after))
         _record_source(spine, name, changed, provenance_token)
+
+
+#: Count columns already written during this harmonize run, so a
+#: run's first source replaces whatever a restored spine carried and
+#: every later source adds to it (see :func:`_accumulate_count`).
+_COUNT_COLUMNS_KEY = '_link_count_columns'
+
+
+def _accumulate_count(
+    state: HarmonizeState,
+    spine: gpd.GeoDataFrame,
+    name: str,
+    counts: pd.Series,
+) -> None:
+    """Add *counts* into ``spine[name]``, once per source in this run.
+
+    A count is a tally of contributing reference records, not a competing
+    estimate of one quantity, so two sources are summed rather than
+    resolved against each other: under auto-discovery the last matched
+    source used to overwrite the column outright, and every earlier
+    source's records vanished from it. :func:`_write_prioritized` is the
+    wrong tool here for a mechanical reason too, since a count column is
+    dense by construction (an unmatched row is a real 0, never null), so
+    its coverage rule would always take the newest source whole.
+
+    The first write of a run replaces the column, so a spine restored
+    with a stale count does not accumulate on top of it; later writes add.
+
+    Parameters
+    ----------
+    state : HarmonizeState
+        Run state; its metadata records which columns this run has
+        already written.
+    spine : geopandas.GeoDataFrame
+        Spine to write into, mutated in place.
+    name : str
+        Count column name.
+    counts : pandas.Series
+        Per-spine-row record count for this source, aligned to *spine*.
+    """
+    written = state.metadata.setdefault(_COUNT_COLUMNS_KEY, set())
+    values = counts.fillna(0).astype('int64')
+    if name in spine.columns and name in written:
+        spine[name] = (
+            pd.to_numeric(spine[name], errors='coerce').fillna(0).astype('int64')
+            + values
+        )
+    else:
+        spine[name] = values
+    written.add(name)
 
 
 # A join key value carried by this many rows, or by this share of the
@@ -2313,7 +2444,10 @@ def link_by_id(
         since ``'aggregate'`` is also used for non-transaction references like
         MassGIS condo unit stacks); pass ``flag_as=None`` to skip the
         ``'count'``-mode presence flag when it isn't needed (e.g. it's exactly
-        ``count_as > 0`` and not worth persisting).
+        ``count_as > 0`` and not worth persisting). A count column written
+        by more than one source in a run (every auto-discovered match
+        shares one *count_as*) accumulates across them rather than being
+        overwritten by the last; see :func:`_accumulate_count`.
     layer : str, optional
         Secondary layer (entity type or full entity string) of an
         ``additional_layers`` entity to load from *recipe_id*, e.g. the
@@ -2521,7 +2655,7 @@ def link_by_id(
         count_as = count_as or 'n_transactions'
         counts = rkey.dropna().value_counts()
         mapper = counts.to_dict() if counts.empty else counts
-        spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
+        _accumulate_count(state, spine, count_as, skey.map(mapper))
         if flag_as:
             spine[flag_as] = spine[count_as] > 0
         linked = int((spine[count_as] > 0).sum())
@@ -2626,7 +2760,7 @@ def link_by_id(
         count_col = count_as or 'n_records_per_key'
         gsize = grouped.size()
         mapper = gsize.to_dict() if gsize.empty else gsize
-        spine[count_col] = skey.map(mapper).fillna(0).astype('int64')
+        _accumulate_count(state, spine, count_col, skey.map(mapper))
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(

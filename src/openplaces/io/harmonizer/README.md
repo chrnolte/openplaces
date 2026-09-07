@@ -218,6 +218,16 @@ Attribution only — between-source value selection moved to the curate stage
 Dispatches to `_attribute_polygon_reference` (MultiIndex crosswalk) or
 `_attribute_point_reference` (flat crosswalk).
 
+**Declared columns always appear.** A point reference writes every column
+the source entry declares, null where the reference carried nothing for a
+row or lacks the column entirely; a reference with zero rows for the admin
+unit (no crosswalk at all) still gets its columns and a 0 match count, via
+`_attribute_absent_point_reference`. This follows the enricher's contract:
+a missing declared column reads as a recipe error, not as a coverage gap,
+so one county's spine cannot ship a narrower schema than its neighbors'.
+An absent *polygon* reference warns instead, since its evidence is derived
+from the reference geometry and cannot be named without loading it.
+
 ---
 
 ##### `_attribute_polygon_reference` (attributes.py)

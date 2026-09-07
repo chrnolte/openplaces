@@ -319,3 +319,52 @@ def test_aggregate_mode_duplicate_spine_key_still_aggregates_and_warns(monkeypat
         )
 
     assert state.spine['land_value'].tolist() == [100.0, 100.0, 50.0]
+
+
+def test_count_mode_accumulates_across_sources(monkeypatch):
+    # Two transaction sources for one county: the second used to
+    # overwrite the first, so every record the first contributed left
+    # n_transactions. A count is a tally of records, not a competing
+    # estimate of one quantity, so the two sources add.
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B', 'C']})
+    first = pd.DataFrame({'parcel_id_local': ['A', 'A', 'B']})
+    second = pd.DataFrame({'parcel_id_local': ['A', 'C']})
+    state = _state(spine)
+
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: first)
+    state = links.link_by_id(state, 'tx_state', mode='count')
+    assert state.spine['n_transactions'].tolist() == [2, 1, 0]
+
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: second)
+    state = links.link_by_id(state, 'tx_county', mode='count')
+
+    assert state.spine['n_transactions'].tolist() == [3, 1, 1]
+    assert state.spine['is_transacted'].tolist() == [True, True, True]
+
+
+def test_aggregate_mode_accumulates_record_counts(monkeypatch):
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B', 'C']})
+    first = pd.DataFrame(
+        {'parcel_id_local': ['A', 'A', 'B'], 'land_value': [1.0, 2.0, 3.0]}
+    )
+    second = pd.DataFrame({'parcel_id_local': ['C'], 'land_value': [4.0]})
+    state = _state(spine)
+
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: first)
+    state = links.link_by_id(state, 'roll_a', mode='aggregate', columns=['land_value'])
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: second)
+    state = links.link_by_id(state, 'roll_b', mode='aggregate', columns=['land_value'])
+
+    assert state.spine['n_records_per_key'].tolist() == [2, 1, 1]
+
+
+def test_count_mode_replaces_a_restored_count_on_the_first_write(monkeypatch):
+    # A spine restored mid-pipeline can already carry the column; a
+    # run's first source replaces it, never adding to a stale tally.
+    spine = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'n_transactions': [9, 9]})
+    ref = pd.DataFrame({'parcel_id_local': ['A']})
+    monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
+
+    state = links.link_by_id(_state(spine), 'tx', mode='count')
+
+    assert state.spine['n_transactions'].tolist() == [1, 0]

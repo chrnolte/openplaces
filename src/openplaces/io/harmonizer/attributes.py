@@ -197,6 +197,69 @@ def _collect_dwelling_linked(state: HarmonizeState) -> set:
     return ids
 
 
+def _attribute_absent_point_reference(
+    state: HarmonizeState,
+    recipe_id: str,
+    entity_type: str | None,
+    columns: list[str] | None,
+    collect_ids: bool = False,
+) -> HarmonizeState:
+    """Write a zero-coverage point reference's evidence columns as nulls.
+
+    A point link whose reference had no rows for this admin unit leaves no
+    crosswalk behind, and the attribution loop used to emit nothing at all:
+    a rural county's spine then lacked n_dwellings_overture and its
+    siblings while every neighbor carried them. The columns are written
+    here instead, null, and the match count 0, matching the enricher's
+    contract that a declared column is always present so a missing one
+    reads as a recipe error rather than as a coverage gap.
+
+    Only a point reference is handled. A polygon overlay's evidence is
+    computed from the reference geometry itself (apportioned values,
+    overlap fractions), which cannot be named without loading it, and its
+    absence warns instead.
+
+    Parameters
+    ----------
+    state : HarmonizeState
+        Current pipeline state; its spine is written in place.
+    recipe_id : str
+        Reference recipe the recipe declared and no crosswalk resolved.
+    entity_type : str or None
+        Entity type the source entry declared, if any.
+    columns : list of str or None
+        Declared columns; the standard point columns when unset.
+    collect_ids : bool, default False
+        Forwarded to :func:`_attribute_point_reference`.
+
+    Returns
+    -------
+    HarmonizeState
+        The state, with the reference's evidence columns present.
+    """
+    sgt = state.source_geometry_types.get(recipe_id)
+    ref_entity_type = state.reference_types.get(recipe_id, entity_type)
+    if sgt is None or not str(sgt).endswith('point'):
+        warnings.warn(
+            f'reconcile_attributes: crosswalk for {recipe_id!r} not in state; skipping.'
+        )
+        return state
+
+    spine_id_col = state.spine.index.name
+    # Deliberately column-less apart from the join key: every
+    # aggregation in _attribute_point_reference then finds nothing to
+    # do, and the declared columns are written by its closing null pass.
+    empty = pd.DataFrame({spine_id_col: pd.Series(dtype=object)})
+    return _attribute_point_reference(
+        state,
+        recipe_id,
+        ref_entity_type,
+        empty,
+        list(columns) if columns else list(_POINT_REF_COLS),
+        collect_ids=collect_ids,
+    )
+
+
 @_register('reconcile_attributes')
 def reconcile_attributes(
     state: HarmonizeState,
@@ -243,6 +306,15 @@ def reconcile_attributes(
 
         if recipe_id is not None:
             crosswalk_keys = [recipe_id] if recipe_id in state.crosswalks else []
+            if not crosswalk_keys:
+                state = _attribute_absent_point_reference(
+                    state,
+                    recipe_id,
+                    entity_type,
+                    columns,
+                    collect_ids=src_cfg.get('collect_ids', False),
+                )
+                continue
         elif entity_type is not None:
             crosswalk_keys = list(state.get_crosswalks_by_type(entity_type).keys())
         else:
@@ -657,12 +729,20 @@ def _attribute_polygon_reference(
         )
 
     footprints_from_ref = state.metadata.get(f'inferred_from_{crosswalk_key}')
-    mask_ref_src = spine['geometry_source'].str.contains(r'\.', regex=True, na=False)
-    if (
-        mask_ref_src.any()
-        and footprints_from_ref is not None
+    # A spine built by union_spine_sources carries 'source', not
+    # 'geometry_source', and has no reference-inferred rows at all, so
+    # the column is read only once the block is known to apply.
+    has_inferred = (
+        footprints_from_ref is not None
         and 'parcel_id' in footprints_from_ref.columns
-    ):
+        and 'geometry_source' in spine.columns
+    )
+    mask_ref_src = (
+        spine['geometry_source'].str.contains(r'\.', regex=True, na=False)
+        if has_inferred
+        else None
+    )
+    if has_inferred and mask_ref_src.any():
         ref_attr_cols = [
             c for c in (columns or _POLYGON_REF_COLS) if c in ref_polys.columns
         ]
@@ -738,10 +818,12 @@ def _attribute_point_reference(
     source_id = source_id_from_recipe_id(crosswalk_key)
 
     avail_cols = columns or [c for c in _POINT_REF_COLS if c in crosswalk.columns]
+    # Named for every declared column, not only the ones the crosswalk
+    # carries: a column this reference had nothing to say about is still
+    # written (null) at the end, so one admin unit's spine cannot ship a
+    # narrower schema than its neighbors'.
     renamed: dict[str, str] = {
-        c: f'{c}{_point_suffix(crosswalk_key, entity_type, col=c)}'
-        for c in avail_cols
-        if c in crosswalk.columns
+        c: f'{c}{_point_suffix(crosswalk_key, entity_type, col=c)}' for c in avail_cols
     }
     # Read naturally as n_<plural-entity>_<source> (e.g. n_dwellings_overture)
     # rather than carrying the verbose source attribute name.
@@ -914,6 +996,14 @@ def _attribute_point_reference(
             .agg(lambda s: '|'.join(s.dropna().astype(str).unique()))
         )
         spine[index_name] = grouped_ids.where(grouped_ids != '').reindex(spine.index)
+
+    # Every declared column ends up present, null where this reference
+    # carried it for no row (or carried it not at all). A unit the
+    # reference does not cover then differs from a covered one by the
+    # values, never by the schema.
+    for out_name in renamed.values():
+        if out_name not in spine.columns:
+            spine[out_name] = pd.NA
 
     state.spine = spine
     return state

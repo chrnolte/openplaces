@@ -23,6 +23,7 @@ from openplaces.io.harmonizer import (
     HarmonizeState,
     _record_source,
     _register,
+    _rename_right_index,
     restrict_to_admin_by_name,
 )
 from openplaces.io.readers import get_admin, get_entities
@@ -634,7 +635,17 @@ def _expand_auto_discover(
         (i for i, s in enumerate(sources) if s.get('auto_discover')),
         None,
     )
-    existing_ids = {s.get('recipe_id') for s in sources if not s.get('auto_discover')}
+    # Keyed by (recipe_id, layer): a bundled additional_layers table
+    # and its host recipe are different tables under one recipe id, so
+    # the layer is part of a source's identity. A bare recipe id
+    # compared against the (recipe_id, layer) key the layer loop builds
+    # could never match, so a source listed both explicitly and as a
+    # layer was merged twice.
+    existing_ids = {
+        (s.get('recipe_id'), s.get('layer'))
+        for s in sources
+        if not s.get('auto_discover')
+    }
 
     recipe = state.recipe
     recipe_admin_str = str(recipe['admin_id'])
@@ -663,7 +674,7 @@ def _expand_auto_discover(
             and admin_scope_covers(rid_str, admin_str)
         ):
             child_id = row['recipe_id']
-            if child_id not in existing_ids:
+            if (child_id, None) not in existing_ids:
                 specificity = rid_str.count('-') + 1
                 ranked.append(
                     (
@@ -672,7 +683,7 @@ def _expand_auto_discover(
                         {'recipe_id': child_id, 'label': row['source_id']},
                     )
                 )
-                existing_ids.add(child_id)
+                existing_ids.add((child_id, None))
     ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
     discovered: list[dict] = [entry for _specificity, _version, entry in ranked]
 
@@ -933,8 +944,11 @@ def _inherit_geographic_ids(
             linked[['lat', 'long'] + available].copy(), x='long', y='lat'
         )
         joined = gpd.sjoin(points, spine[['geometry']], how='inner', predicate='within')
-        spine_id_name = spine.index.name or 'index'
-        grouped = joined.groupby(spine_id_name)
+        # geopandas names the right-index column three different ways
+        # ('index_right' for an unnamed index, which 'index' misses),
+        # so resolve it through the shared helper rather than by hand.
+        joined = _rename_right_index(joined, spine.index.name, '_spine_id')
+        grouped = joined.groupby('_spine_id')
     else:
         return empty, []
 

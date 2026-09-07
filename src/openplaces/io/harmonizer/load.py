@@ -33,6 +33,7 @@ from openplaces.io.harmonizer.links import (
     _link_fingerprint,
     _load_link_sidecar,
     _load_point_link_sidecar,
+    _point_step_config,
     _prepare_reference,
     _resolve_reference_recipe,
     snap_chained_links,
@@ -165,6 +166,7 @@ def _restore_link(
         return state
 
     join = step_cfg.get('join', 'spatial_overlay')
+    empty_reference = False
     thresholds = step_cfg.get('thresholds') or {}
     sidecar_path = get_entity_link_path(
         get_recipe_id(geospine), resolved_id, state.admin_id
@@ -244,11 +246,11 @@ def _restore_link(
         fingerprint = _link_fingerprint(
             shim,
             resolved_id,
-            {
-                'join': 'spatial_point',
-                'thresholds': thresholds,
-                'remap_id': step_cfg.get('remap_id'),
-            },
+            _point_step_config(
+                thresholds,
+                step_cfg.get('remap_id'),
+                step_cfg.get('source_geometry_type'),
+            ),
         )
         linked = _load_point_link_sidecar(
             sidecar_path, fingerprint, verbose=state.verbose
@@ -258,13 +260,25 @@ def _restore_link(
                 resolved_id, state.admin_id, geom=False, missing='ignore', columns=[]
             )
             if probe is None or len(probe) == 0:
-                return state
-            raise RuntimeError(
-                f'Missing or stale link sidecar {sidecar_path} for '
-                f'{resolved_id}; rerun {get_recipe_id(geospine)} for '
-                f'{state.admin_id} to recompute the geometry phase.'
-            )
-        state.crosswalks[resolved_id] = linked
+                # Same rule as the overlay branch above: the geospine
+                # run skipped this link for an expected admin-scoped
+                # coverage gap, so nothing is left to restore. One that
+                # declares complete coverage and produced nothing is a
+                # vanished input, not a gap, and escalates.
+                raise_if_coverage_complete(resolved_id, state.admin_id)
+                # Fall through to the type bookkeeping below rather than
+                # returning: reconcile_attributes names this reference's
+                # (all-null) evidence columns from it.
+                linked = None
+                empty_reference = True
+            if not empty_reference:
+                raise RuntimeError(
+                    f'Missing or stale link sidecar {sidecar_path} for '
+                    f'{resolved_id}; rerun {get_recipe_id(geospine)} for '
+                    f'{state.admin_id} to recompute the geometry phase.'
+                )
+        if linked is not None:
+            state.crosswalks[resolved_id] = linked
     else:
         raise ValueError(f'Unknown join mode in geospine pipeline: {join!r}')
 

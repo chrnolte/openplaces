@@ -665,3 +665,30 @@ def test_apply_remap_csvs_noop_without_matching_column():
     )
     state = links._apply_remap_csvs(state, 'US-MA_parcel-massgis-2025')
     assert 'use_group' not in state.spine.columns
+
+
+def test_apply_remap_csvs_gap_fills_instead_of_replacing():
+    # Auto-discovery applies one remap per matched source. A sparse
+    # crosswalk (here one code of five rows) must not null out values
+    # an earlier, broader source already resolved.
+    spine = pd.DataFrame(
+        {
+            'use_group_code': ['101', '777', '778', '779', '780'],
+            'use_group': [None, 'commercial', 'commercial', 'commercial', None],
+            'use_subgroup': [None, 'retail', 'retail', 'retail', None],
+        },
+        index=pd.Index(['a', 'b', 'c', 'd', 'e'], name='parcel_id'),
+    )
+    state = HarmonizeState(
+        recipe={}, admin_id=None, verbose=False, timer=None, spine=spine
+    )
+    state = links._apply_remap_csvs(state, 'US-MA_parcel-massgis-2025')
+    out = state.spine
+
+    # The row this crosswalk knows is filled...
+    assert out['use_group'].iloc[0] == 'residential'
+    assert out['use_subgroup'].iloc[0] == 'single family'
+    # ...and every row it does not know keeps what it already had.
+    assert out['use_group'].tolist()[1:4] == ['commercial'] * 3
+    assert out['use_subgroup'].tolist()[1:4] == ['retail'] * 3
+    assert pd.isna(out['use_group'].iloc[4])
