@@ -125,6 +125,9 @@ def test_admin_id_helper_resolves_a_null_scope_recipe():
     from openplaces.recipe import get_recipe_by_id
 
     recipe = get_recipe_by_id(RECIPE_ID)
-    output_ids, finer = readers._get_output_admin_ids(recipe, [AdminId('US-NC-WAK')])
+    output_ids, finer, whole = readers._get_output_admin_ids(
+        recipe, [AdminId('US-NC-WAK')]
+    )
     assert output_ids == [AdminId('US-NC')]
     assert finer == [AdminId('US-NC-WAK')]
+    assert whole == []
