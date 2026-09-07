@@ -113,7 +113,8 @@ def quadkeys_for_bounds(bounds, zoom: int = DEFAULT_ZOOM) -> set[str]:
     """
     minx, miny, maxx, maxy = bounds
     x_start, x_end = sorted((_tile_x(minx, zoom), _tile_x(maxx, zoom)))
-    # Tile rows run north to south, so the box's north edge is the low row.
+    # Tile rows run north to south, so the box's north edge is
+    # the low row.
     y_start, y_end = sorted((_tile_y(maxy, zoom), _tile_y(miny, zoom)))
     return {
         _quadkey_from_tile(tile_x, tile_y, zoom)
