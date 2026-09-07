@@ -57,6 +57,8 @@ from rasterio.transform import from_bounds
 from requests.adapters import HTTPAdapter, Retry
 from tqdm import tqdm
 
+from openplaces.io import request_headers
+
 from .types import AssetInventory, ImageSet
 from .types import Image as ScrapedImage
 
@@ -330,22 +332,26 @@ class GoogleSatellite:
         tiles, offsets, imbnds = [], [], []
         ntiles = (len(x_list), len(y_list))
 
-        session = requests.Session()
-        session.mount('https://', HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY))
-        for y_idx, ycoord in enumerate(y_list):
-            for x_idx, xcoord in enumerate(x_list):
-                url = GOOGLE_TILE_URL.format(x=xcoord, y=ycoord, z=ZOOM_LEVEL)
+        # Closed on the way out, and identified: every outbound request
+        # openplaces makes names the project and its operator, and never
+        # a browser agent (see openplaces.io.request_headers).
+        with requests.Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY))
+            session.headers.update(request_headers())
+            for y_idx, ycoord in enumerate(y_list):
+                for x_idx, xcoord in enumerate(x_list):
+                    url = GOOGLE_TILE_URL.format(x=xcoord, y=ycoord, z=ZOOM_LEVEL)
 
-                response = session.get(url)
-                response.raise_for_status()
+                    response = session.get(url)
+                    response.raise_for_status()
 
-                tile_image = Image.open(BytesIO(response.content))
-                tiles.append(tile_image)
-                offsets.append((x_idx * TILE_SIZE, y_idx * TILE_SIZE))
-                tile_bounds = self._tile_bbox(ZOOM_LEVEL, xcoord, ycoord)
-                imbnds = self._update_image_bounds(
-                    imbnds, tile_bounds, ntiles, x_idx, y_idx
-                )
+                    tile_image = Image.open(BytesIO(response.content))
+                    tiles.append(tile_image)
+                    offsets.append((x_idx * TILE_SIZE, y_idx * TILE_SIZE))
+                    tile_bounds = self._tile_bbox(ZOOM_LEVEL, xcoord, ycoord)
+                    imbnds = self._update_image_bounds(
+                        imbnds, tile_bounds, ntiles, x_idx, y_idx
+                    )
 
         return tiles, offsets, imbnds
 

@@ -67,6 +67,8 @@ from requests.adapters import HTTPAdapter, Retry
 from shapely.geometry import Polygon
 from tqdm import tqdm
 
+from openplaces.io import request_headers
+
 from .types import AssetInventory, ImageSet
 from .types import Image as ScrapedImage
 
@@ -197,7 +199,10 @@ class GoogleStreetview:
                 'key': api_key,
             }
             response = requests.get(
-                BASE_API_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
+                BASE_API_URL,
+                params=params,
+                timeout=REQUESTS_TIMEOUT_VAL,
+                headers=request_headers(),
             )
 
             data = response.json()
@@ -661,7 +666,10 @@ class GoogleStreetview:
         for attempt in range(1, API_REQUEST_MAX_ATTEMPTS + 1):
             try:
                 response = requests.get(
-                    BASE_API_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
+                    BASE_API_URL,
+                    params=params,
+                    timeout=REQUESTS_TIMEOUT_VAL,
+                    headers=request_headers(),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -759,6 +767,7 @@ class GoogleStreetview:
                 params=params,
                 proxies=None,
                 timeout=REQUESTS_TIMEOUT_VAL,
+                headers=request_headers(),
             )
             response.raise_for_status()
 
@@ -1027,7 +1036,11 @@ class GoogleStreetview:
         response = None
         for attempt in range(1, max_attempts + 1):
             try:
-                response = requests.get(request_url, timeout=REQUESTS_TIMEOUT_VAL)
+                response = requests.get(
+                    request_url,
+                    timeout=REQUESTS_TIMEOUT_VAL,
+                    headers=request_headers(),
+                )
             except requests.RequestException:
                 if attempt == max_attempts:
                     raise
@@ -1231,16 +1244,19 @@ class GoogleStreetview:
         list[PIL.Image.Image]
             List of downloaded tile images.
         """
-        session = requests.Session()
-        session.mount('https://', HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY))
         tiles = []
-        for url in urls:
-            response = session.get(url)
-            if not response.ok:
-                raise ConnectionError(
-                    f'Tile download failed (HTTP {response.status_code}): {url}'
-                )
-            tiles.append(PIL.Image.open(BytesIO(response.content)))
+        # Closed on the way out, and identified: see
+        # openplaces.io.request_headers.
+        with requests.Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY))
+            session.headers.update(request_headers())
+            for url in urls:
+                response = session.get(url)
+                if not response.ok:
+                    raise ConnectionError(
+                        f'Tile download failed (HTTP {response.status_code}): {url}'
+                    )
+                tiles.append(PIL.Image.open(BytesIO(response.content)))
 
         return tiles
 
