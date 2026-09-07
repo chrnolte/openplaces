@@ -834,7 +834,9 @@ class TableIngester:
                 # step below would have done. Returning here with the raw
                 # read's own columns gave the aggregate a set of stray
                 # all-null source columns that no populated chunk carries.
-                if 'columns' in self.recipe:
+                if 'columns' in self.recipe and not self.recipe.get(
+                    'keep_unnamed_columns'
+                ):
                     kept = [c for c in self.recipe['columns'] if c in df]
                     kept += [c for c in ('geo_id', 'geometry') if c in df]
                     df = df[kept]

@@ -74,3 +74,11 @@ def test_a_function_indexer_named_by_args_name_is_honored():
     df = _ingester(recipe)._preprocess_recipe_data(_raw())
 
     assert df.index.name == 'footprint_id'
+
+
+def test_keep_unnamed_columns_is_respected():
+    """A recipe that deliberately keeps unmapped columns still gets them."""
+    recipe = _recipe(keep_unnamed_columns=True)
+    df = _ingester(recipe)._preprocess_recipe_data(_raw())
+
+    assert 'INTERNAL_SEQ' in df.columns
