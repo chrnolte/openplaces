@@ -767,6 +767,39 @@ def apply_transformation_pattern(
     return df
 
 
+def _read_crosswalk_table(read, key_position: int = 0) -> pd.DataFrame:
+    """Read a crosswalk table, keeping a zero-padded key column as text.
+
+    pandas parses a key such as '037' as the integer 37, which then
+    matches nothing in the string column the crosswalk maps, and the
+    resulting all-NaN mapping raises nothing. The table is re-read as
+    text only when that changes the key column, so a crosswalk with
+    plain numeric keys and numeric values keeps the dtypes it has.
+
+    Parameters
+    ----------
+    read : callable
+        Called with one argument, a pandas `dtype` (None, or a
+        per-column mapping), and returning the crosswalk DataFrame.
+    key_position : int
+        Positional index of the key column.
+    """
+    table = read(None)
+    if table.empty:
+        return table
+    key_col = table.columns[key_position]
+    if pd.api.types.is_string_dtype(table[key_col]):
+        return table
+    text = read({key_col: str})
+    keys = text[key_col].astype('string')
+    padded = (
+        keys.str.len().gt(1)
+        & keys.str.startswith('0')
+        & ~keys.str.contains('.', regex=False)
+    )
+    return text if padded.any() else table
+
+
 def _apply_remap(
     series: pd.Series, mapping: dict[str, Any], default: Any = None
 ) -> pd.Series:
@@ -802,7 +835,9 @@ def _apply_remap_file(
     if not os.path.exists(crosswalk_file):
         raise FileNotFoundError(f'Crosswalk file not found: {crosswalk_file}')
 
-    crosswalk = pd.read_csv(crosswalk_file)
+    crosswalk = _read_crosswalk_table(
+        lambda dtype: pd.read_csv(crosswalk_file, dtype=dtype), key_col
+    )
     mapping = dict(zip(crosswalk.iloc[:, key_col], crosswalk.iloc[:, value_col]))
     return series.map(mapping)
 
@@ -854,10 +889,14 @@ def get_crosswalk(crosswalk_dict, flip=False):
         raise ValueError('crosswalk_dict must be dict.')
 
     if 'recipe_id' in crosswalk_dict:
-        crosswalk_table = get_recipe_by_id(
-            crosswalk_dict['recipe_id'],
-            dtype=crosswalk_dict['dtype'] if 'dtype' in crosswalk_dict else None,
-        )
+        if 'dtype' in crosswalk_dict:
+            crosswalk_table = get_recipe_by_id(
+                crosswalk_dict['recipe_id'], dtype=crosswalk_dict['dtype']
+            )
+        else:
+            crosswalk_table = _read_crosswalk_table(
+                lambda dtype: get_recipe_by_id(crosswalk_dict['recipe_id'], dtype=dtype)
+            )
         # Create a pd.Series from the first two columns:
         crosswalk_series = crosswalk_table.set_index(crosswalk_table.columns[0])[
             crosswalk_table.columns[1]
