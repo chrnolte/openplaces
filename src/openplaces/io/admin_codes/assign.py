@@ -57,6 +57,14 @@ def _fallback_codes(count: int, taken: set[str], width: int = 3) -> list[str]:
     exhausts its candidates does not end up carrying two code widths at
     once. Digits lead so a fallback is visually distinct from a code
     derived from the name.
+
+    Raises
+    ------
+    ValueError
+        If the width has no room left for *count* codes. Returning short
+        instead leaves the assignment with fewer codes than units, and
+        the units that then go unmatched drop out of the result without
+        anything having failed, surfacing much later as a missing key.
     """
     out = []
     for letter in string.ascii_uppercase:
@@ -68,6 +76,10 @@ def _fallback_codes(count: int, taken: set[str], width: int = 3) -> list[str]:
             code = letter + ''.join(rest)
             if code not in taken and is_valid_code(code):
                 out.append(code)
+    if len(out) < count:
+        raise ValueError(
+            f'Ran out of {width}-character codes: needed {count}, {len(out)} available.'
+        )
     return out
 
 

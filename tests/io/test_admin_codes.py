@@ -289,6 +289,20 @@ class TestAssignment:
     def test_empty_group_returns_empty(self):
         assert assign_codes({}) == {}
 
+    def test_an_exhausted_width_fails_instead_of_dropping_units(self):
+        # Three units all wanting the same code, solved at a width that
+        # holds no valid code at all. Returning short matched only the
+        # shorter side and two units left the result without anything
+        # having failed, surfacing later as a KeyError somewhere else.
+        candidates = {f'unit{i}': [Candidate('AB', 'name', 2)] for i in range(3)}
+        with pytest.raises(ValueError, match='Ran out of'):
+            assign_codes(candidates, fallback_width=1)
+
+    def test_a_width_with_room_still_covers_every_unit(self):
+        candidates = {f'unit{i}': [Candidate('AB', 'name', 2)] for i in range(3)}
+        assignment = assign_codes(candidates, fallback_width=2)
+        assert len(assignment) == 3
+
 
 class TestNumberedNames:
     """Names the source numbers rather than names.
