@@ -155,6 +155,16 @@ def prompt_identity() -> tuple[str, str]:
     return nickname, place
 
 
+class ConfigFileUnreadableError(OSError):
+    """Raised when an existing user config file cannot be parsed.
+
+    Its own class because "your config file is broken" is a different
+    situation from "something went wrong writing it": the caller must
+    stop rather than rewrite, since rewriting would discard every other
+    setting the file holds.
+    """
+
+
 def merge_user_config(config_path, key: str, value) -> None:
     """Set one top-level key in a user config file, creating it if needed.
 
@@ -170,16 +180,37 @@ def merge_user_config(config_path, key: str, value) -> None:
         Top-level key to set.
     value : Any
         Value to store under *key*, replacing whatever is there.
+
+    Raises
+    ------
+    ConfigFileUnreadableError
+        When the file exists but cannot be parsed as a YAML mapping.
     """
     config_path = Path(config_path)
     config_path.parent.mkdir(parents=True, exist_ok=True)
     existing = {}
     if config_path.exists():
+        # A file that cannot be read is not an empty file. Treating it as
+        # one rewrote the whole config with just this key, so a stray tab
+        # in config.yaml plus one recorded decision used to erase the
+        # user's directories and identity.
         try:
             with open(config_path, encoding='utf-8') as f:
-                existing = yaml.safe_load(f) or {}
-        except (OSError, yaml.YAMLError):
+                existing = yaml.safe_load(f)
+        except (OSError, yaml.YAMLError) as error:
+            raise ConfigFileUnreadableError(
+                f'Cannot update {config_path}: it exists but could not be '
+                f'read ({error}). Fix or move the file by hand; rewriting '
+                'it here would discard everything else it holds.'
+            ) from error
+        if existing is None:
             existing = {}
+        elif not isinstance(existing, dict):
+            raise ConfigFileUnreadableError(
+                f'Cannot update {config_path}: its top level is a '
+                f'{type(existing).__name__}, not a mapping. Fix or move '
+                'the file by hand.'
+            )
 
     existing[key] = value
     with open(config_path, 'w', encoding='utf-8') as f:
@@ -215,7 +246,12 @@ def get_terms_consent(source: str) -> bool | None:
         False when they chose to always decline, None when no standing
         decision exists and they should be asked.
     """
-    recorded = (cfg.get('consent') or {}).get('terms') or {}
+    # `get_config()` rather than the module-level `cfg`: `reload_config`
+    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
+    # import and a decision recorded during this process is invisible to
+    # the next read (and, worse, to the next write, which rebuilds the
+    # whole mapping from it).
+    recorded = (get_config().get('consent') or {}).get('terms') or {}
     entry = recorded.get(source)
     if isinstance(entry, dict):
         return entry.get('accepted')
@@ -239,12 +275,17 @@ def set_terms_consent(source: str, accepted: bool) -> None:
     """
     from datetime import date
 
-    recorded = dict((cfg.get('consent') or {}).get('terms') or {})
+    # `get_config()` rather than the module-level `cfg`: `reload_config`
+    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
+    # import and a decision recorded during this process is invisible to
+    # the next read (and, worse, to the next write, which rebuilds the
+    # whole mapping from it).
+    recorded = dict((get_config().get('consent') or {}).get('terms') or {})
     recorded[source] = {
         'accepted': bool(accepted),
         'recorded': date.today().isoformat(),
     }
-    merge_user_config(cfg.user_config_path, 'consent', {'terms': recorded})
+    merge_user_config(get_config().user_config_path, 'consent', {'terms': recorded})
     reload_config()
 
 
@@ -463,7 +504,12 @@ def get_usage_override(source_id: str) -> bool | None:
         profile mismatch, False when they chose to always skip it, None
         when no standing decision exists and they should be asked.
     """
-    recorded = cfg.get('usage_overrides') or {}
+    # `get_config()` rather than the module-level `cfg`: `reload_config`
+    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
+    # import and a decision recorded during this process is invisible to
+    # the next read (and, worse, to the next write, which rebuilds the
+    # whole mapping from it).
+    recorded = get_config().get('usage_overrides') or {}
     entry = recorded.get(source_id)
     if isinstance(entry, dict):
         return entry.get('compatible')
@@ -490,7 +536,12 @@ def set_usage_override(source_id: str, compatible: bool, reason: str | None = No
     """
     from datetime import date
 
-    recorded = dict(cfg.get('usage_overrides') or {})
+    # `get_config()` rather than the module-level `cfg`: `reload_config`
+    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
+    # import and a decision recorded during this process is invisible to
+    # the next read (and, worse, to the next write, which rebuilds the
+    # whole mapping from it).
+    recorded = dict(get_config().get('usage_overrides') or {})
     entry = {
         'compatible': bool(compatible),
         'recorded': date.today().isoformat(),
@@ -498,7 +549,7 @@ def set_usage_override(source_id: str, compatible: bool, reason: str | None = No
     if reason:
         entry['reason'] = reason
     recorded[source_id] = entry
-    merge_user_config(cfg.user_config_path, 'usage_overrides', recorded)
+    merge_user_config(get_config().user_config_path, 'usage_overrides', recorded)
     reload_config()
 
 
