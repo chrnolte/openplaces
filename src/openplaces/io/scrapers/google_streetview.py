@@ -1330,7 +1330,10 @@ class GoogleStreetview:
         b64_string += '=' * ((4 - len(b64_string) % 4) % 4)
         data = b64_string.replace('-', '+').replace('_', '/')
         data = base64.b64decode(data)
-        return np.array(data)
+        # np.array() on a bytes object yields a 0-d |S<n> array, which
+        # cannot be indexed byte-wise; frombuffer gives the byte vector
+        # the header and plane parsers expect.
+        return np.frombuffer(data, dtype=np.uint8)
 
     def _parse_dmap_header(self, depth_map: np.ndarray) -> dict[str, int]:
         """
@@ -1431,7 +1434,8 @@ class GoogleStreetview:
                 if plane_idx > 0:
                     plane = planes[plane_idx]
                     depth = np.abs(
-                        plane['d'](
+                        plane['d']
+                        / (
                             ray_dir[0] * plane['n'][0]
                             + ray_dir[1] * plane['n'][1]
                             + ray_dir[2] * plane['n'][2]
