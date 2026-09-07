@@ -1,9 +1,12 @@
 """Tests for the recipe-facing admin id assignment."""
 
+import warnings
+
 import pandas as pd
 import pytest
 
 from openplaces.io.admin_codes import assign_admin_ids
+from openplaces.io.admin_codes import frame as frame_module
 from openplaces.io.admin_codes.frame import _placeholder_codes
 from openplaces.io.admin_codes.registry import load_registry
 
@@ -182,3 +185,53 @@ class TestPinning:
         out = self.pinned(['US-MA'], ['Nonexistent Placeville'])
         assert out['admin3_id_source'].iloc[0] != 'pinned'
         assert out.index[0].startswith('US-MA-')
+
+
+class TestReviewedGroupLength:
+    """A reviewed length may not split a group's width in two."""
+
+    @pytest.fixture
+    def pinned_two_reviewed_three(self, monkeypatch):
+        # A fabricated parent whose one existing sibling was minted two
+        # characters wide, with a reviewed row asking for three.
+        pins = {('XX-AA', 'Alpha'): 'AL'}
+        monkeypatch.setattr(
+            frame_module,
+            'load_registry',
+            lambda level, sep: (pins, {}, {'XX-AA': ('AL',)}),
+        )
+        monkeypatch.setattr(
+            frame_module, 'load_group_code_lengths', lambda: {'XX-AA': 3}
+        )
+
+    def test_the_pinned_width_wins(self, pinned_two_reviewed_three):
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            out = assign_admin_ids(
+                frame(['XX-AA', 'XX-AA'], ['Alpha', 'Bravo']),
+                new_admin_id_col='admin3_id',
+                parent_admin_id_col='admin2_id',
+            )
+        widths = {len(i.rsplit('-', 1)[1]) for i in out.index}
+        assert widths == {2}, f'mixed-width parent: {sorted(out.index)}'
+
+    def test_the_ignored_review_is_reported(self, pinned_two_reviewed_three):
+        with pytest.warns(UserWarning, match='already 2 characters'):
+            assign_admin_ids(
+                frame(['XX-AA', 'XX-AA'], ['Alpha', 'Bravo']),
+                new_admin_id_col='admin3_id',
+                parent_admin_id_col='admin2_id',
+            )
+
+    def test_a_remint_adopts_the_reviewed_length(self, pinned_two_reviewed_three):
+        # Nothing is pinned when the group is minted from scratch, so
+        # the reviewed length applies to the whole group at once, which
+        # is the way it is meant to take effect.
+        out = assign_admin_ids(
+            frame(['XX-AA', 'XX-AA'], ['Alpha', 'Bravo']),
+            new_admin_id_col='admin3_id',
+            parent_admin_id_col='admin2_id',
+            pin_to_spine=False,
+        )
+        widths = {len(i.rsplit('-', 1)[1]) for i in out.index}
+        assert widths == {3}
