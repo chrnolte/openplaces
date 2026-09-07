@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from shapely.strtree import STRtree
 
+from openplaces.core.schema import admin_scope_covers
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.polygon import get_areas, overlay_polygons, points_from_coords
 from openplaces.io.harmonizer import (
@@ -652,11 +653,16 @@ def _expand_auto_discover(
         if row['exclude_from_auto_discover']:
             continue
         rid_str = row['admin_id']
-        if rid_str and rid_str != recipe_admin_str and admin_str.startswith(rid_str):
-            prefix = f'{rid_str}_'
-            child_id = (
-                f'{prefix}{row["entity_type"]}-{row["source_id"]}-{row["version"]}'
-            )
+        # Containment by level, not by string prefix: a recipe scoped to
+        # the pre-2026 'US-NC-WA' (Wake) does not cover 'US-NC-WAR'
+        # (Warren). The id is read, not rebuilt, so a recipe carrying a
+        # filename suffix keeps it (CO_parcel-igac-2026_rural).
+        if (
+            rid_str
+            and rid_str != recipe_admin_str
+            and admin_scope_covers(rid_str, admin_str)
+        ):
+            child_id = row['recipe_id']
             if child_id not in existing_ids:
                 specificity = rid_str.count('-') + 1
                 ranked.append(

@@ -28,6 +28,7 @@ from openplaces.core.schema import (
     DataSet,
     Entity,
     Source,
+    admin_scope_covers,
     cast_dataset_or_entity,
     sanitize,
 )
@@ -876,8 +877,15 @@ def get_recipe_dependencies(
             # empty result means the step legitimately has no source here
             recipe_admin_str = str(recipe.get('admin_id') or '')
             for src in _scan_ingest_recipe_ids(entity_type):
+                # Containment by level, mirroring the harmonizer: a raw
+                # prefix test would make the pre-2026 'US-NC-WA' (Wake)
+                # a dependency of 'US-NC-WAR' (Warren).
                 rid = src['admin_id']
-                if rid and rid != recipe_admin_str and admin_str.startswith(rid):
+                if (
+                    rid
+                    and rid != recipe_admin_str
+                    and admin_scope_covers(rid, admin_str)
+                ):
                     _add(src['recipe_id'], 'auto_discover', step=step_name)
             for match in additional:
                 _add(match['recipe_id'], 'auto_discover', step=step_name)

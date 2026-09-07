@@ -15,6 +15,7 @@ import geopandas as gpd
 import pandas as pd
 import yaml
 
+from openplaces.core.schema import admin_scope_covers
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_admin_ids, get_entities
 
@@ -150,8 +151,11 @@ def _scan_entity_ingest_recipes(entity_type: str) -> list[dict]:
 def _best_recipe_for(admin_id_str: str, sources: list[dict]) -> str | None:
     """Return recipe_id of the highest-priority source covering admin_id."""
     for src in sources:
-        rid = src['admin_id']
-        if rid == '' or admin_id_str.startswith(rid):
+        # Containment by level, not by string prefix: leaf codes mix two
+        # and three characters, so a source scoped to the pre-2026
+        # 'US-NC-WA' (Wake) would otherwise be picked for 'US-NC-WAR'
+        # (Warren).
+        if admin_scope_covers(src['admin_id'], admin_id_str):
             return src['recipe_id']
     return None
 
