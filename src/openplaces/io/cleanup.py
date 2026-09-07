@@ -780,13 +780,46 @@ def _delete_output_with_receipt(
 # CLEANUP (DAG-SCOPED)
 
 
+def _node_admins(upstream, admin_id, admin_level: int) -> list:
+    """Admin units at which one upstream recipe's output is reclaimable.
+
+    Normally a single unit: the walk admin truncated to the recipe's save
+    level. A recipe that saves finer than the walk admin (town-level
+    inputs of a county spine) has no output at the walk admin at all, and
+    leaving it there made `get_output_path` raise, which was swallowed:
+    the node vanished from the report and was never reclaimable. Its
+    finer units are read off disk instead, so only units with something
+    to reclaim are visited. Image recipes stay at the walk admin, which
+    is what their own handler expands.
+    """
+    if admin_id is None:
+        return [None]
+    try:
+        save_level = get_save_admin_level(upstream)
+    except Exception:
+        save_level = admin_level
+    if save_level <= admin_level:
+        return [_truncate_admin(admin_id, save_level)]
+    entity = upstream.get('entity')
+    if entity is not None and str(entity.entity_type) == 'image':
+        return [_truncate_admin(admin_id, admin_level)]
+    walk_admin = AdminId(str(admin_id))
+    finer = []
+    for candidate in _admin_ids_with_output(upstream):
+        node_admin = AdminId(candidate)
+        if node_admin.get_level() == save_level and walk_admin.is_parent_of(node_admin):
+            finer.append(node_admin)
+    return finer
+
+
 def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids=None):
     """Yield (recipe_id, recipe, node_admin) for every node upstream of root.
 
     The root itself is not yielded. Each upstream node's admin unit is the
-    walk admin truncated to that recipe's save level; recipes saving finer
-    than the walk admin (e.g. per-town image caches under a county walk)
-    keep the walk admin and are expanded by their handler.
+    walk admin truncated to that recipe's save level; a recipe saving
+    finer than the walk admin is yielded once per finer unit that has an
+    output on disk (see `_node_admins`), except image recipes, which keep
+    the walk admin and are expanded by their own handler.
 
     exclude_recipe_ids : set of str, optional
         Forwarded to `get_recipe_dependencies`. An excluded recipe's edges
@@ -817,16 +850,8 @@ def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            try:
-                save_level = get_save_admin_level(upstream)
-            except Exception:
-                save_level = admin_level
-            node_admin = (
-                _truncate_admin(admin_id, min(save_level, admin_level))
-                if admin_id
-                else None
-            )
-            yield upstream_id, upstream, node_admin
+            for node_admin in _node_admins(upstream, admin_id, admin_level):
+                yield upstream_id, upstream, node_admin
             pending.append(upstream)
 
 
@@ -1144,25 +1169,20 @@ def cleanup_consumed_inputs(
             seen.add(upstream_id)
             try:
                 upstream = get_recipe_by_id(upstream_id)
-                save_level = get_save_admin_level(upstream)
             except Exception:
                 continue
-            node_admin = (
-                _truncate_admin(admin_id, min(save_level, admin_level))
-                if admin_id
-                else None
-            )
-            rows.extend(
-                _cleanup_node(
-                    upstream_id,
-                    upstream,
-                    node_admin,
-                    index,
-                    include_images=include_images,
-                    aggressive=False,
-                    dry_run=False,
+            for node_admin in _node_admins(upstream, admin_id, admin_level):
+                rows.extend(
+                    _cleanup_node(
+                        upstream_id,
+                        upstream,
+                        node_admin,
+                        index,
+                        include_images=include_images,
+                        aggressive=False,
+                        dry_run=False,
+                    )
                 )
-            )
 
     report = pd.DataFrame(rows, columns=_REPORT_COLUMNS)
     if verbose and not report.empty:

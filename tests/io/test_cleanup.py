@@ -463,6 +463,47 @@ def test_cleanup_stage_filter(data_root):
     assert (report['recipe_id'] != NSI).all()
 
 
+def test_finer_saving_upstream_is_expanded_to_its_own_units(data_root):
+    """A town-level input of a county walk stays reclaimable.
+
+    Such a node used to keep the walk admin, where get_output_path
+    raises on the level mismatch; the exception was swallowed, so the
+    node silently vanished from the report and no cleanup ever reached
+    it. Only units that actually have an output are visited.
+    """
+    recipe = dict(get_recipe_by_id(NSI))
+    save_to = dict(recipe.get('save_to') or {})
+    save_to['admin_level'] = 4
+    recipe['save_to'] = save_to
+
+    in_scope = [f'{COUNTY}-AA', f'{COUNTY}-AB']
+    out_of_scope = 'US-NC-CAB-AA'
+    for town in [*in_scope, out_of_scope]:
+        _write_parquet(get_output_path(recipe, admin_id=town))
+
+    # The walk admin itself has no output at that level at all
+    with pytest.raises(ValueError):
+        get_output_path(recipe, admin_id=COUNTY)
+
+    node_admins = cl._node_admins(recipe, COUNTY, 3)
+    assert sorted(str(a) for a in node_admins) == in_scope
+
+    rows = []
+    for node_admin in node_admins:
+        rows.extend(
+            cl._cleanup_node(
+                NSI,
+                recipe,
+                node_admin,
+                cl._dependency_index(),
+                include_images=False,
+                aggressive=False,
+                dry_run=True,
+            )
+        )
+    assert sorted(row['admin_id'] for row in rows) == in_scope
+
+
 def _image_cache_frame(rows):
     return pd.DataFrame(
         rows,
