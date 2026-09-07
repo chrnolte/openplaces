@@ -106,21 +106,18 @@ def get_admin(
         If none, use level of `admin_id` (deepest if a list is passed).
     recipe : str
         Use this recipe to import geometries and additional attributes.
-    geom : bool
-        If False or None, return DataFrame without geometries.
-        If True, return GeoDataFrame with geometries.
+    geom : bool or 'simplified'
+        If False, return a DataFrame without geometries.
+        If True, return a GeoDataFrame with full geometries.
+        If 'simplified', return a GeoDataFrame with simplified geometries
+        from the `_geo_simplified` companion file written by
+        `AdminHarmonizer`.
     columns : list of str or None
         If a list of strings, will be used to select columns.
     all_columns : bool
         If True, returns not only the most important columns
-    silent : True
+    silent : bool
         Silence warnings
-    geom : bool or 'simplified'
-        If False, return a DataFrame without geometries.
-        If True, return a GeoDataFrame with full geometries.
-        If ``'simplified'``, return a GeoDataFrame with simplified geometries
-        from the ``_geo_simplified`` companion file written by
-        ``AdminHarmonizer``.
     """
 
     if level is not None and level < 1:
@@ -216,7 +213,7 @@ def get_admin(
             admin_ids = [AdminId(*_admin_id.levels[:level]) for _admin_id in admin_ids]
             admin_ids = list(dict.fromkeys(admin_ids))
             if not silent:
-                print('Inferred Admin IDs: ' + admin_ids)
+                print(f'Inferred Admin IDs: {format_list(admin_ids)}')
 
     if isinstance(recipe, dict):
         # Resolve every output file the request covers, not just one.
@@ -329,7 +326,7 @@ def get_admin(
         admin = admin[mask_select].copy()
 
     if isinstance(recipe, dict):
-        if admin_id is None or not mask_select.any():
+        if admin_id is None:
             filters = None
         else:
             filters = [(f'admin{level}_id', 'in', sorted(set(admin.index)))]
@@ -372,9 +369,15 @@ def get_admin(
             [x for x in columns_to_retain + ['geometry'] if x in admin]
         ].copy()
 
-    # Return without empty columns
+    # Return without empty columns. `geometry` is exempt: dropping it
+    # when every selected unit happens to lack geometry hands a geom=True
+    # caller a plain DataFrame, and the callers that then reach for
+    # `.geometry` raise KeyError or AttributeError instead of reporting
+    # that the units have no geometry.
     column_is_empty = admin.eq('').all() | admin.isnull().all()
     non_empty_columns = list(column_is_empty[~column_is_empty].index)
+    if geom and 'geometry' in admin and 'geometry' not in non_empty_columns:
+        non_empty_columns.append('geometry')
     return admin[non_empty_columns]
 
 
@@ -427,7 +430,11 @@ def get_regions(region_id=None):
 
 def get_region_admin_ids(region_id):
     """Get the admin unit IDs a named region groups, in registry order."""
-    return list(dict.fromkeys(get_regions(region_id)['admin_id'].dropna()))
+    # The registry is read with `keep_default_na=False`, so a blank cell
+    # arrives as an empty string rather than NaN and `dropna` alone lets
+    # it through as a member id.
+    admin_ids = get_regions(region_id)['admin_id'].dropna()
+    return list(dict.fromkeys(admin_ids[admin_ids.astype(str).str.strip() != '']))
 
 
 def _as_admin_id(value):
@@ -532,7 +539,7 @@ def get_entities(
         Spatial bounding box filter in EPSG:4326, forwarded to
         :func:`openplaces.io.read_parquet` for each resolved output file.
         Exploits per-file covering-bbox predicate pushdown, so files whose
-        extent doesn't overlap contribute no rows to the combined result —
+        extent doesn't overlap contribute no rows to the combined result:
         this bounds memory use when loading a recipe across many
         administrative units without loading every file in full.
     """
