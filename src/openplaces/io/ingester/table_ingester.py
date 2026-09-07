@@ -533,79 +533,39 @@ class TableIngester:
                 path=data_path,
             )
         elif suffix in PANDAS_EXTENSIONS:
-            # `csv_dtype: str` reads every column as text — the robust choice
-            # for messy flat dumps where a column mixes ints and strings.
-            # A dict maps specific columns to dtypes.
-            csv_dtype = self.recipe.get('csv_dtype')
-            if csv_dtype == 'str':
-                dtype = str
-            elif isinstance(csv_dtype, dict):
-                dtype = csv_dtype
-            else:
-                dtype = None
-
-            if self.recipe.get('fixed_width'):
-                gdf = self._read_fixed_width(
-                    data_path, dtype, encoding=kwargs.get('encoding')
-                )
-            elif suffix == '.json':
-                # Flattened rather than read directly, because these APIs
-                # nest: IBGE returns a municipality's state four levels
-                # down at `microrregiao.mesorregiao.UF.sigla`.
-                # `json_normalize` turns that into a dotted column name a
-                # recipe can map like any other. `record_path` selects the
-                # list of records when it is not the top-level object.
-                with open(data_path, encoding='utf-8') as handle:
-                    payload = json.load(handle)
-                gdf = pd.json_normalize(
-                    payload, record_path=self.recipe.get('record_path')
-                )
-                if dtype is not None:
-                    gdf = gdf.astype(dtype)
-            elif suffix in {'.xlsx', '.xls'}:
-                header = self.recipe.get('header', 'infer')
-                gdf = pd.read_excel(
-                    data_path,
-                    sheet_name=self.recipe.get('sheet_name', 0),
-                    header=None if header in (None, 'none') else header,
-                    names=self.recipe.get('names'),
-                    dtype=dtype,
-                )
-            else:
-                # low_memory=False avoids per-chunk dtype inference (the source
-                # of mixed-type object columns that then fail Parquet writes).
-                read_kwargs = {
-                    'delimiter': self.recipe.get('delimiter', ','),
-                    'low_memory': False,
-                }
-                if dtype is not None:
-                    read_kwargs['dtype'] = dtype
-                # The recipe's `encoding` key is read into `kwargs` above
-                # (used directly by the `.gdb`/geopandas/fixed_width
-                # branches) but was not previously forwarded here, so a
-                # plain non-UTF-8 flat file (e.g. a UTF-16 export) failed
-                # to decode regardless of a declared `encoding:`.
-                if kwargs.get('encoding'):
-                    read_kwargs['encoding'] = kwargs['encoding']
-                gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
-
-            # `fids` (built by `_prepare_table_fid_filter` from a plain read
-            # of this same file, so its index is this file's own 0-based
-            # row order) was silently ignored here: none of the three
-            # sub-branches above ever look at `kwargs`, so a chunked
-            # `process_by.admin_id_column` recipe backed by a flat file
-            # (csv/xlsx/fixed-width) wrote the *entire* file under every
-            # single admin unit's output instead of that unit's rows only.
-            # Row order is unchanged by `usecols`/dtype selection, so a
-            # positional `.iloc` on the freshly-read frame is exactly the
-            # same row set the crosswalk built the FID filter from.
             if 'fids' in kwargs:
-                gdf = gdf.iloc[kwargs['fids']]
-
-            self.timer.mark(
-                'Read data table' + timer_suffix,
-                path=data_path,
-            )
+                # A `process_by.admin_id_column` recipe re-enters this branch
+                # once per admin unit with the same file and the same
+                # columns, differing only in which rows it keeps. Parsing the
+                # whole file every time made a statewide roll (New York
+                # ORPTS: 62 counties over a multi-GB file) pay the parse 62
+                # times. Cache the parsed frame on the download partition and
+                # slice it instead; only one entry is kept, so moving on to
+                # another file or table releases the previous frame.
+                cache_key = (self.table_name, str(data_path), tuple(columns or ()))
+                cached = self.download_partition.get('flat_table_cache')
+                if cached is None or cached[0] != cache_key:
+                    cached = (
+                        cache_key,
+                        self._read_flat_table(
+                            data_path, columns, kwargs.get('encoding')
+                        ),
+                    )
+                    self.download_partition['flat_table_cache'] = cached
+                    self.timer.mark('Read data table' + timer_suffix, path=data_path)
+                # `fids` (built by `_prepare_table_fid_filter` from a plain
+                # read of this same file, so its index is this file's own
+                # 0-based row order) is applied positionally: row order is
+                # unchanged by `usecols`/dtype selection, so `.iloc` selects
+                # exactly the rows the crosswalk built the filter from.
+                # De-duplicated because a crosswalk mapping one raw code to
+                # two admin units repeats a position, which would otherwise
+                # write the same source row twice.
+                fids = list(dict.fromkeys(kwargs['fids']))
+                gdf = cached[1].iloc[fids].copy()
+            else:
+                gdf = self._read_flat_table(data_path, columns, kwargs.get('encoding'))
+                self.timer.mark('Read data table' + timer_suffix, path=data_path)
         elif suffix in ZIP_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
@@ -647,6 +607,77 @@ class TableIngester:
             'default', 'received a polygon with more than 100 parts'
         )
         return gdf
+
+    def _read_flat_table(self, data_path, columns, encoding):
+        """Read one flat (non-spatial) source file in full.
+
+        Covers the fixed-width, JSON, spreadsheet, and delimited-text
+        layouts a recipe can declare. Row filtering is the caller's job:
+        this returns every row of the file, so a chunked recipe can parse
+        once per download partition and slice per admin unit.
+
+        Parameters
+        ----------
+        data_path : Path
+            File to read.
+        columns : list, optional
+            Column names to read, where the layout supports selection.
+        encoding : str, optional
+            From the recipe's ``encoding`` key.
+        """
+        # `csv_dtype: str` reads every column as text — the robust choice
+        # for messy flat dumps where a column mixes ints and strings.
+        # A dict maps specific columns to dtypes.
+        csv_dtype = self.recipe.get('csv_dtype')
+        if csv_dtype == 'str':
+            dtype = str
+        elif isinstance(csv_dtype, dict):
+            dtype = csv_dtype
+        else:
+            dtype = None
+
+        suffix = data_path.suffix.lower()
+
+        if self.recipe.get('fixed_width'):
+            return self._read_fixed_width(data_path, dtype, encoding=encoding)
+
+        if suffix == '.json':
+            # Flattened rather than read directly, because these APIs
+            # nest: IBGE returns a municipality's state four levels
+            # down at `microrregiao.mesorregiao.UF.sigla`.
+            # `json_normalize` turns that into a dotted column name a
+            # recipe can map like any other. `record_path` selects the
+            # list of records when it is not the top-level object.
+            with open(data_path, encoding='utf-8') as handle:
+                payload = json.load(handle)
+            df = pd.json_normalize(payload, record_path=self.recipe.get('record_path'))
+            return df.astype(dtype) if dtype is not None else df
+
+        if suffix in {'.xlsx', '.xls'}:
+            header = self.recipe.get('header', 'infer')
+            return pd.read_excel(
+                data_path,
+                sheet_name=self.recipe.get('sheet_name', 0),
+                header=None if header in (None, 'none') else header,
+                names=self.recipe.get('names'),
+                dtype=dtype,
+            )
+
+        # low_memory=False avoids per-chunk dtype inference (the source
+        # of mixed-type object columns that then fail Parquet writes).
+        read_kwargs = {
+            'delimiter': self.recipe.get('delimiter', ','),
+            'low_memory': False,
+        }
+        if dtype is not None:
+            read_kwargs['dtype'] = dtype
+        # The recipe's `encoding` key is used directly by the `.gdb`,
+        # geopandas and fixed-width branches but was not previously
+        # forwarded here, so a plain non-UTF-8 flat file (e.g. a UTF-16
+        # export) failed to decode regardless of a declared `encoding:`.
+        if encoding:
+            read_kwargs['encoding'] = encoding
+        return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
     def _read_fixed_width(self, data_path, dtype, encoding=None):
         """Read a fixed-width flat file using the recipe's ``fixed_width`` layout.
