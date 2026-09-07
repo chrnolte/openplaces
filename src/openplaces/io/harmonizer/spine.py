@@ -634,7 +634,16 @@ def _expand_auto_discover(
         (i for i, s in enumerate(sources) if s.get('auto_discover')),
         None,
     )
-    existing_ids = {s.get('recipe_id') for s in sources if not s.get('auto_discover')}
+    # Keyed by (recipe_id, layer): a bundled additional_layers table and its
+    # host recipe are different tables under one recipe id, so the layer is
+    # part of a source's identity. Comparing a bare recipe id against the
+    # (recipe_id, layer) key the layer loop builds could never match, and a
+    # source listed both explicitly and as a layer was merged twice.
+    existing_ids = {
+        (s.get('recipe_id'), s.get('layer'))
+        for s in sources
+        if not s.get('auto_discover')
+    }
 
     recipe = state.recipe
     recipe_admin_str = str(recipe['admin_id'])
@@ -658,7 +667,7 @@ def _expand_auto_discover(
             child_id = (
                 f'{prefix}{row["entity_type"]}-{row["source_id"]}-{row["version"]}'
             )
-            if child_id not in existing_ids:
+            if (child_id, None) not in existing_ids:
                 specificity = rid_str.count('-') + 1
                 ranked.append(
                     (
@@ -667,7 +676,7 @@ def _expand_auto_discover(
                         {'recipe_id': child_id, 'label': row['source_id']},
                     )
                 )
-                existing_ids.add(child_id)
+                existing_ids.add((child_id, None))
     ranked.sort(key=lambda t: (t[0], t[1]), reverse=True)
     discovered: list[dict] = [entry for _specificity, _version, entry in ranked]
 
