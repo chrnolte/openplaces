@@ -745,8 +745,14 @@ def _legacy_upgrader(recipe):
     from openplaces.io.transform import apply_legacy_columns, apply_transformations
 
     def upgrade(df):
+        # Only a frame that actually carries a legacy column name needs the
+        # transformations re-run: a freshly ingested partition already had
+        # them applied, and a non-idempotent step (a prefix, a concat) would
+        # apply a second time on every roll-up.
+        renames = recipe.get('legacy_columns') or {}
+        is_legacy = any(old in df.columns for old in renames)
         df = apply_legacy_columns(df, recipe)
-        if recipe.get('legacy_columns') and recipe.get('transformations'):
+        if is_legacy and recipe.get('transformations'):
             df = apply_transformations(df, recipe, silent=True)
         return df
 
