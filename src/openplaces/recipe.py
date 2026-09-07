@@ -857,6 +857,16 @@ def get_recipe_dependencies(
             'reference_parcel_recipe_id',
         ):
             continue
+        # A top-level scalar matching the *recipe_id key convention is a
+        # dependency too. `_walk` only sees keys nested inside a dict or
+        # list value, so `reference_building_recipe_id` (declared at the
+        # root by US-NC_footprint_building-cheer-v0 and read by
+        # io/enricher/buildings.py) produced no edge at all: the enrich
+        # job was neither ordered after that ingest nor listed it as an
+        # input, and bundle_terms never reached the reference's licence.
+        if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
+            _add(value, key)
+            continue
         _walk(value, context=key)
 
     # Auto-discovered references in pipeline steps and their sources

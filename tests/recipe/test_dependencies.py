@@ -158,3 +158,20 @@ def test_exclude_recipe_ids_suppresses_edge():
 def test_exclude_recipe_ids_default_is_unaffected():
     upstream = _upstream_ids(get_recipe_dependencies('US_parcel-openplaces-2026'))
     assert 'US_parcel_parcel-placeslab-fmv2026' in upstream
+
+
+def test_top_level_recipe_id_key_is_an_edge():
+    # `reference_building_recipe_id` is declared at the recipe root, where
+    # the nested *recipe_id walk never looked; without an edge the enrich
+    # job is neither ordered after that ingest nor lists it as an input.
+    edges = get_recipe_dependencies('US-NC_footprint_building-cheer-v0')
+    upstream = _upstream_ids(edges)
+    assert 'US-NC_building-cheer-v0' in upstream
+    assert any(e.kind == 'reference_building_recipe_id' for e in edges)
+
+
+def test_top_level_edge_from_a_fabricated_recipe():
+    recipe = dict(get_recipe_by_id('US-NC_footprint_building-cheer-v0'))
+    recipe['reference_footprint_recipe_id'] = 'US-XX_footprint-fabricated-2026'
+    upstream = _upstream_ids(get_recipe_dependencies(recipe))
+    assert 'US-XX_footprint-fabricated-2026' in upstream
