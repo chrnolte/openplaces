@@ -21,7 +21,7 @@ from openplaces.core.constants import (
     PANDAS_EXTENSIONS,
     ZIP_EXTENSIONS,
 )
-from openplaces.core.schema import AdminId
+from openplaces.core.schema import AdminId, admin_scope_covers
 from openplaces.geo import get_crs
 from openplaces.geo.ids import add_parcel_id_alnum, get_geo_ids
 from openplaces.geo.overlay import overlay_admin_ids
@@ -1320,10 +1320,14 @@ class TableIngester:
                     + str(gdf.sample(1).T)
                 )
             admin_ids_in_data = sorted(set(gdf[admin_id_col].dropna()))
+            # A raw prefix test is not containment: leaf codes mix two
+            # and three characters, so the pre-2026 'US-NC-WA' (Wake)
+            # would have gathered Warren's units into Wake's file.
+            chunk_admin_id = self.processing_chunk['admin_id_to_process']
             admin_ids_to_save_expected = [
                 admin_id
                 for admin_id in self.admin_ids_to_save
-                if admin_id.startswith(self.processing_chunk['admin_id_to_process'])
+                if admin_scope_covers(chunk_admin_id, admin_id)
             ]
             admin_ids_to_save_in_data = [
                 admin_id
