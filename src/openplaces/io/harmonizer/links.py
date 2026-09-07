@@ -61,6 +61,7 @@ from openplaces.recipe import (
     resolve_attribute_name,
     source_id_from_recipe_id,
 )
+from openplaces.table import require_unique_index
 
 # The key link_by_id joins on unless a recipe names another. Auto-discovery
 # resolves its own key per match; anything else here is a caller override.
@@ -555,6 +556,15 @@ def _build_crosswalk(
     the sliver trimming and link labeling can never diverge between them.
     Tolerates a geometry-free overlay (the reloaded sidecar).
     """
+    # A repeated (spine id, reference id) pair says the spine carried the
+    # same label twice: a real multi-overlap pairs one spine id with
+    # several distinct reference ids, never twice with the same one. Left
+    # alone, the two copies of one entity go down the multi branch, compete
+    # on intersection area, and the smaller is trimmed away as a neighbor.
+    require_unique_index(
+        footprints_on_ref.index, f'link_to_reference crosswalk on {spine_id_col}'
+    )
+
     crosswalk_cols = [v for v in _CROSSWALK_COLS if v in footprints_on_ref.columns]
     mask_multi = footprints_on_ref.index.get_level_values(spine_id_col).duplicated(
         keep=False
