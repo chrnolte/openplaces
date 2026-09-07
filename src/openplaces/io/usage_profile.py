@@ -108,7 +108,9 @@ def require_usage_compatible(
     recipe_id : str, optional
         Fallback key for remembered answers when the source has no
         `source_id`, and named in messages so the reader knows which
-        recipe reached the gate.
+        recipe reached the gate. With neither, nothing identifies the
+        source, so it is asked about on every call and no standing
+        decision is recorded for it.
     admin_id : str, optional
         The recipe's own admin unit, for an `admin_interest` condition.
     verbose : bool, default False
@@ -132,17 +134,24 @@ def require_usage_compatible(
     if requirement is None or requirement.is_empty():
         return True
 
-    key = getattr(source, 'source_id', None) or recipe_id or str(source)
-    label = recipe_id or key
+    # A source with neither an id nor a recipe id cannot be told apart
+    # from any other, and `str(source)` is the empty string when
+    # `source_id` is None. Keying on that pooled unrelated sources under
+    # one memo entry and one standing decision, so answering the
+    # remember-this prompt once would have recorded a proceed that
+    # applied to every id-less source. Such a source is asked about
+    # every time instead, and no standing decision is written for it.
+    key = getattr(source, 'source_id', None) or recipe_id or None
+    label = recipe_id or key or 'an unnamed source'
 
     unmet = requirement.unmet(get_usage_profile(), admin_id=admin_id)
     if not unmet:
         return True
 
-    if key in _ANSWERED:
+    if key is not None and key in _ANSWERED:
         return _ANSWERED[key]
 
-    standing = get_usage_override(key)
+    standing = get_usage_override(key) if key is not None else None
     if standing is not None:
         if verbose:
             settled = 'proceed' if standing else 'skip'
@@ -190,21 +199,29 @@ def require_usage_compatible(
         print()
 
     accepted = answer in _YES or answer in _ALWAYS
-    _ANSWERED[key] = accepted
+    if key is not None:
+        _ANSWERED[key] = accepted
     if answer in _ALWAYS:
-        try:
-            set_usage_override(key, True, reason='; '.join(unmet))
-        except Exception as error:  # noqa: BLE001 - persisting is optional
-            # The person answered; failing to write that down is a
-            # reason to ask again next run, not to abort the download
-            # they just confirmed.
-            warnings.warn(
-                f'Could not record the standing decision for {key} '
-                f'({error}); it holds for this run only.',
-                stacklevel=2,
+        if key is None:
+            print(
+                'This source records no identifier, so no standing '
+                'decision can be recorded for it; proceeding for this '
+                'run only.'
             )
         else:
-            print(f'Recorded: proceeding with {key}. Change it in your config.')
+            try:
+                set_usage_override(key, True, reason='; '.join(unmet))
+            except Exception as error:  # noqa: BLE001 - persisting is optional
+                # The person answered; failing to write that down is a
+                # reason to ask again next run, not to abort the
+                # download they just confirmed.
+                warnings.warn(
+                    f'Could not record the standing decision for {key} '
+                    f'({error}); it holds for this run only.',
+                    stacklevel=2,
+                )
+            else:
+                print(f'Recorded: proceeding with {key}. Change it in your config.')
     elif not accepted:
         print('Not confirmed; skipping this download.')
     return accepted

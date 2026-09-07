@@ -152,3 +152,95 @@ def test_a_single_share_alike_licence_raises_no_conflict():
 
     assert 'ODbL-1.0' in notice
     assert 'CANNOT ALL BE SATISFIED' not in notice
+
+
+def test_two_recipes_sharing_a_source_id_both_report_their_licence():
+    """Overture ships two themes under one source id and two licences.
+
+    The addresses theme is permissive, the buildings theme is ODbL-1.0.
+    A `geometry_source` value records only the id, so a notice that keeps
+    whichever recipe it reached first drops a share-alike obligation from
+    a bundle that inherits one.
+    """
+    composition = _COMPOSITION + ['overture'] * 40
+    terms = bundle_terms(RECIPE, pd.Series(composition))
+
+    overture = [e for e in terms['sources'] if e['source_id'] == 'overture']
+    licenses = {entry['license'] for entry in overture}
+
+    assert 'ODbL-1.0' in licenses
+    assert any(str(text).startswith('mixed-permissive') for text in licenses)
+
+    # The ODbL share now reaches the Overture geometry as well.
+    assert terms['share_alike']['ODbL-1.0'] > 0.92
+
+    notice = format_notice(RECIPE, terms)
+    # Both entries are named by their recipe, so neither reads as the
+    # other's terms.
+    assert 'footprint-overture-2026' in notice
+    assert 'dwelling-overture-2025' in notice
+
+
+def test_a_redistribution_restricted_source_is_named_in_the_notice():
+    """Edgecombe County parcels are a signed-agreement, no-resale source.
+
+    `redistribution_restricted` was recorded by recipes and read by
+    nothing, so the notice for a bundle carrying such a source said
+    nothing about it.
+    """
+    composition = _COMPOSITION + ['parcel.edgecombecounty'] * 40
+    terms = bundle_terms(RECIPE, pd.Series(composition))
+
+    assert 'edgecombecounty' in {e['source_id'] for e in terms['restricted']}
+
+    notice = format_notice(RECIPE, terms, 'US-NC')
+    assert 'Redistribution restricted' in notice
+    assert 'edgecombecounty' in notice.split('Redistribution restricted')[1]
+
+
+def test_a_bundle_without_restricted_sources_has_no_restriction_section():
+    """The section must not appear where nothing recorded a restriction."""
+    notice = format_notice(RECIPE, bundle_terms(RECIPE, pd.Series(_COMPOSITION)))
+
+    assert 'Redistribution restricted' not in notice
+
+
+def test_geometry_of_unrecorded_provenance_is_reported_not_hidden():
+    """Shares normalized over non-nulls always summed to 1.0.
+
+    100 attributed rows against 900 nulls then read as "100% of the
+    geometry is ODbL-1.0", which overstates what is known about the
+    bundle in both directions.
+    """
+    terms = bundle_terms(RECIPE, pd.Series(['obm'] * 100 + [None] * 900))
+
+    assert terms['unknown_share'] == pytest.approx(0.9)
+    assert terms['share_alike']['ODbL-1.0'] == pytest.approx(0.1)
+
+    notice = format_notice(RECIPE, terms)
+    assert '90.0%' in notice
+    assert 'source not recorded' in notice
+
+
+def test_private_sharing_reads_as_satisfied_only_where_nothing_restricts_it(terms):
+    """Keeping the notice with the data settles attribution, not a contract.
+
+    A signed-agreement, no-resale source is not satisfied by carrying a
+    notice, so the sentence that says private sharing generally is must
+    not appear over one.
+    """
+    notice = format_notice(RECIPE, terms, 'US-NC')
+
+    assert 'generally satisfied by keeping this notice' in notice
+    assert 'restrict redistribution; see' not in notice
+    # Who decides is stated either way.
+    assert 'decision for you as the distributor' in notice
+
+
+def test_a_restricted_source_replaces_that_sentence_with_a_pointer():
+    composition = _COMPOSITION + ['parcel.edgecombecounty'] * 40
+    notice = format_notice(RECIPE, bundle_terms(RECIPE, pd.Series(composition)))
+
+    assert 'generally satisfied by keeping this notice' not in notice
+    assert 'restrict redistribution; see' in notice
+    assert 'decision for you as the distributor' in notice
