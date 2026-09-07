@@ -401,7 +401,7 @@ class Ingester:
                 # camera configuration only and produces no output.
                 if self.verbose:
                     print(
-                        f'{self.recipe_id}: imagery is fetched on the fly '
+                        f'{self._recipe_id()}: imagery is fetched on the fly '
                         'during enrichment; nothing to ingest.'
                     )
                 return
@@ -876,8 +876,9 @@ class Ingester:
                 admin_ids_to_process = self.admin_ids_to_save
             else:
                 raise ValueError(
-                    'Error not captured self.admin_ids_to_save ='
-                    + self.admin_ids_to_save
+                    'A recipe processed at admin level 0 saves either '
+                    'globally or not at all, but admin_ids_to_save is '
+                    f'{self.admin_ids_to_save}.'
                 )
         elif self._is_aggregate_mode:
             # save_to is coarser than process_by: expand save-level IDs
@@ -995,8 +996,9 @@ class Ingester:
                 admin_ids_to_download = []
             else:
                 raise ValueError(
-                    'Error not captured self.admin_ids_to_download ='
-                    + self.admin_ids_to_download
+                    'A recipe downloaded at admin level 0 has one global '
+                    'download, but admin_ids_to_process is '
+                    f'{self.admin_ids_to_process}.'
                 )
 
         else:
@@ -1118,7 +1120,7 @@ class Ingester:
         )
         if not tile_admin_link_path.exists():
             raise ValueError(
-                'File linking {tile_recipe_id} and {admin_recipe_id} not found:\n\n'
+                f'File linking {tile_recipe_id} and {admin_recipe_id} not found:\n\n'
                 + str(tile_admin_link_path)
                 + '\n\nDid you process the overlay?'
             )
@@ -1524,7 +1526,7 @@ class Ingester:
                         f'placeholders in download URL:\n{placeholders_in_url}'
                     )
         elif source.download_url_source is not None:
-            if not self.recipe['download_by']:
+            if not self.recipe.get('download_by'):
                 raise ValueError(
                     '`download_url_source` was provided, but '
                     '`download_by` is not defined.'
@@ -1654,8 +1656,11 @@ class Ingester:
                 downloaded_path = self.recipe_external_dir / compressed_file_name
             elif uncompressed_file_name is not None:
                 downloaded_path = self.recipe_external_dir / uncompressed_file_name
-            elif 'download_url' in self.download_partition:
-                # Try to extract filename from URL
+            elif self.download_partition.get('download_url'):
+                # Try to extract filename from URL. `download_url` is present
+                # but None whenever the source declares no URL at all (a
+                # manually placed file, or a browser-driven scraper), which
+                # `re.search` cannot take.
                 re_match = re.search(
                     REGEX_FILENAME_IN_URL, self.download_partition['download_url']
                 )
@@ -1681,7 +1686,7 @@ class Ingester:
                             'Others:\n\n'
                             + '\n'.join([x for x in filepaths if x != downloaded_path])
                         )
-                elif 'download_url' in self.download_partition:
+                elif self.download_partition.get('download_url'):
                     # No existing file matches the wildcard pattern (nothing
                     # downloaded yet). Save under the concrete filename from
                     # the resolved download URL instead of the literal
