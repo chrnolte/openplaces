@@ -825,7 +825,14 @@ def _existing_partition_ids(recipe, admin_id) -> list[str]:
     Fallback for recipes without a declared partition range (no
     'download_by': 'partition'), e.g. scraped checkpoint partitions: globs the
     files next to the recipe's bare output path and extracts the partition
-    suffix, skipping the aggregated 'all' file and '_geo' sidecars.
+    suffix.
+
+    Skipped: geometry sidecars, and any sibling that records its own
+    partition coverage in its footer, which marks it as a previous
+    roll-up's output rather than a partition. A sibling that is neither,
+    but shares the stem for some other reason (a differently suffixed
+    product of another stage), is still indistinguishable from a
+    partition by name alone.
     """
     base = get_output_path(recipe, admin_id)
     if not base.parent.exists():
@@ -833,7 +840,11 @@ def _existing_partition_ids(recipe, admin_id) -> list[str]:
     pids = []
     for p in sorted(base.parent.glob(base.stem + '_*' + base.suffix)):
         pid = p.stem[len(base.stem) + 1 :]
-        if pid == 'all' or pid.endswith('_geo'):
+        if pid == 'all' or pid.endswith(('_geo', '_geo_simplified')):
+            continue
+        # Merging a previous roll-up back in would duplicate every row it
+        # already holds, and deleting it as an original would discard it.
+        if read_partition_coverage(p):
             continue
         pids.append(pid)
     return pids

@@ -62,3 +62,23 @@ def test_single_file_rollup_of_year_partitions_still_works(cache_to_tmp):
     assert sorted(read_parquet(all_path)['sale_price']) == [100, 200]
     assert not path_2021.exists()
     assert not path_2022.exists()
+
+
+def test_partition_discovery_skips_sidecars_and_previous_rollups(cache_to_tmp):
+    from openplaces.io.aggregate import _existing_partition_ids
+
+    recipe = get_recipe_by_id(RECIPE_ID)
+    partition_path = _write_partition(recipe, '2021', [100])
+    _write_partition(recipe, '2022', [200])
+    # A geometry sidecar and a simplified sidecar beside a partition.
+    for suffix in ('_geo', '_geo_simplified'):
+        partition_path.with_stem(partition_path.stem + suffix).touch()
+    # A previous roll-up, recognizable by the coverage it records.
+    rollup_path = get_output_path(recipe, ADMIN_ID, partition_id='2019')
+    save_parquet(
+        pd.DataFrame({'sale_price': [1]}),
+        rollup_path,
+        file_metadata={'openplaces:partitions': '["2019"]'},
+    )
+
+    assert _existing_partition_ids(recipe, ADMIN_ID) == ['2021', '2022']
