@@ -42,47 +42,20 @@ from openplaces.core.attribute_registry import (
     PROVENANCE_SOURCE_SUFFIX as SOURCE_SUFFIX,
 )
 
-# The marker every non-original value's token must contain, and the
-# separator joining it to the route token it qualifies.
-IMPUTED_MARKER = 'imputed'
-TOKEN_SEPARATOR = '+'
+# Spelled at layer 0 (openplaces.core.provenance) so the harmonize stage,
+# which may not import this module, writes the same marker rather than a
+# second copy of it. Re-exported here, where the rule is documented.
+from openplaces.core.provenance import (  # noqa: F401
+    IMPUTED_MARKER,
+    TOKEN_SEPARATOR,
+    is_imputed,
+    mark_imputed,
+)
 
 
 def source_column(column: str) -> str:
     """Return the provenance sidecar name for *column*."""
     return f'{column}{SOURCE_SUFFIX}'
-
-
-def mark_imputed(token) -> str:
-    """Return *token* marked as a derived, non-original value.
-
-    A missing or empty *token* becomes the bare marker, so a derived value
-    with no known route still reports itself as derived rather than as
-    nothing. Idempotent: a token that already carries the marker is
-    returned unchanged, which is what lets a chain of steps each mark what
-    they pass along without accumulating ``imputed+imputed``.
-    """
-    if token is None or pd.isna(token) or str(token) == '':
-        return IMPUTED_MARKER
-    text = str(token)
-    if IMPUTED_MARKER in text.split(TOKEN_SEPARATOR):
-        return text
-    return f'{text}{TOKEN_SEPARATOR}{IMPUTED_MARKER}'
-
-
-def is_imputed(values) -> pd.Series:
-    """Return a boolean Series flagging tokens that carry the marker.
-
-    Matches the marker as a whole ``+``-separated part, never as a
-    substring, so a source legitimately named e.g. ``imputed_rates`` is not
-    mistaken for one. Missing tokens are False -- unknown provenance is not
-    a claim that the value was derived.
-    """
-    text = pd.Series(values).astype(object).astype('string')
-    parts = text.str.split(TOKEN_SEPARATOR)
-    return parts.map(
-        lambda p: IMPUTED_MARKER in p if isinstance(p, list) else False
-    ).astype(bool)
 
 
 def _object_sidecar(existing: pd.Series | None, index: pd.Index) -> pd.Series:

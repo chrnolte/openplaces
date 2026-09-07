@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from openplaces.core.provenance import is_imputed
 from openplaces.io.harmonizer import HarmonizeState
 from openplaces.io.harmonizer.addresses import impute_postal_city
 
@@ -107,7 +108,13 @@ def test_impute_postal_city_backfills_city_and_rerenders_address():
     res = state.spine
 
     assert res.loc[0, 'city'] == 'North Billerica'
-    assert res.loc[0, 'city_source'] == 'zipcodes'
+    # openplaces filled a cell no source supplied, so the token carries
+    # the imputed marker; the postal_city evidence column, read straight
+    # off the ZIP dataset, does not.
+    assert res.loc[0, 'city_source'] == 'zipcodes+imputed'
+    assert is_imputed([res.loc[0, 'city_source']]).iloc[0]
+    assert res.loc[0, 'postal_city_source'] == 'zipcodes'
+    assert not is_imputed([res.loc[0, 'postal_city_source']]).iloc[0]
     assert res.loc[0, 'address'] == '1 Sample Ave, North Billerica, MA 01862'
 
 

@@ -22,6 +22,7 @@ import pandas as pd
 from openplaces.core.attribute_registry import (
     PROVENANCE_SOURCE_SUFFIX as _SOURCE_SUFFIX,
 )
+from openplaces.core.provenance import mark_imputed
 from openplaces.io.harmonizer import HarmonizeState, _register
 
 
@@ -663,7 +664,11 @@ def impute_postal_city(
         fillable = missing_city & resolved
         if fillable.any():
             spine.loc[fillable, city_column] = spine.loc[fillable, 'postal_city']
-            _record_source(spine, city_column, fillable, 'zipcodes')
+            # openplaces filled this cell, so its token says so. The
+            # marker is spelled in exactly one place (core.provenance),
+            # never assembled by hand here. 'postal_city' above is not
+            # marked: it is the ZIP dataset's own value, read not derived.
+            _record_source(spine, city_column, fillable, mark_imputed('zipcodes'))
 
             if address_column in spine.columns:
                 # Re-render only the rows just backfilled (a strict subset of
