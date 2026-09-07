@@ -2132,8 +2132,11 @@ class Ingester:
         # For spatial-mask chunking, load admin geometries once and derive
         # the bounding box before creating any TableIngester.
         bbox = None
-        if process_in_chunks and 'use_spatial_mask' in self.recipe.get(
-            'process_by', {}
+        # Truthiness, not key presence: `use_spatial_mask: false` was read
+        # as "masked" here and as "not masked" by the TableIngester, which
+        # gave a bbox-clipped read whose out-of-unit rows were never dropped.
+        if process_in_chunks and (self.recipe.get('process_by') or {}).get(
+            'use_spatial_mask'
         ):
             if self.verbose:
                 print('Reading with bounding box. This can be slow.')

@@ -1024,8 +1024,12 @@ class TableIngester:
             # above is given only this unit's geometry, so those rows come
             # back with a null admin id: drop them, or they are written into
             # this unit's output file (31k of 50k rows for a coastal county).
-            if use_spatial_mask and _new_cols:
-                _admin_col = _new_cols[0]
+            # Keyed on the admin layer's own index name, not on whichever
+            # columns the overlay added: `overlay_admin_ids` writes that
+            # column in place, so a recipe that already maps or derives it
+            # added no column at all and the drop never ran.
+            _admin_col = admin_geometries.index.name
+            if use_spatial_mask and _admin_col in df.columns:
                 df = df[df[_admin_col].notna()]
 
         # Set index
