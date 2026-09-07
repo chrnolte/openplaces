@@ -64,3 +64,18 @@ def test_scan_keeps_only_the_newest_version_per_source(monkeypatch):
         'US-FL_parcel-floridagio-2026',
         'US-FL_parcel-floridagio-2026_improvement-detail',
     }
+
+
+def test_entity_lookup_parses_each_recipe_file_once():
+    """The resolver re-read and re-parsed the tree on every call."""
+    from openplaces.recipe import _recipe_yaml, find_entity_recipe_id
+
+    _recipe_yaml.cache_clear()
+    find_entity_recipe_id('US-NC-BRU', 'footprint', stage='ingest', silent=True)
+    after_first = _recipe_yaml.cache_info()
+    find_entity_recipe_id('US-NC-BRU', 'footprint', stage='ingest', silent=True)
+    after_second = _recipe_yaml.cache_info()
+
+    assert after_first.misses > 0
+    assert after_second.misses == after_first.misses
+    assert after_second.hits > after_first.hits
