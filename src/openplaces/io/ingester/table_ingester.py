@@ -418,14 +418,43 @@ class TableIngester:
         if admin_ids_in_tile and _admin_level_of(admin_id) == 0:
             admin_id = list(admin_ids_in_tile)
 
-        admin_geometries = get_admin(
-            admin_id,
-            admin_specs['admin_level'],
-            recipe=admin_specs.get('admin_recipe_id'),
-            geom=True,
-        )['geometry']
+        def _read_admin_geometries(requested):
+            return get_admin(
+                requested,
+                admin_specs['admin_level'],
+                recipe=admin_specs.get('admin_recipe_id'),
+                geom=True,
+            )['geometry']
+
+        admin_geometries = _read_admin_geometries(admin_id)
 
         if admin_ids_in_tile:
+            # `get_admin` resolves a single output file per call, keyed on
+            # the deepest id it was asked for, so a tile spanning two
+            # states came back with only the first state's units. The rest
+            # then got null geometry, the left join gave their buildings no
+            # admin id, and their county files were never written. Ask
+            # again for whatever is still missing: each round resolves at
+            # least one more file, or stops.
+            missing = [
+                aid for aid in admin_ids_in_tile if aid not in admin_geometries.index
+            ]
+            while missing:
+                more = _read_admin_geometries(missing)
+                found = [aid for aid in missing if aid in more.index]
+                if not found:
+                    warnings.warn(
+                        f'{len(missing)} admin unit(s) in this tile have no '
+                        f'geometry at level {admin_specs["admin_level"]} and '
+                        'will contribute no rows: ' + ', '.join(sorted(missing)[:5])
+                    )
+                    break
+                admin_geometries = gpd.GeoSeries(
+                    pd.concat([admin_geometries, more.loc[found]]),
+                    crs=admin_geometries.crs,
+                )
+                missing = [aid for aid in missing if aid not in found]
+
             admin_geometries = admin_geometries.loc[
                 [aid for aid in admin_ids_in_tile if aid in admin_geometries.index]
             ]
