@@ -4,6 +4,7 @@ Input/output utilities
 
 import bz2
 import gc
+import json
 import math
 import re
 import shutil
@@ -32,6 +33,7 @@ from openplaces.core.constants import (
 from openplaces.core.schema import AdminId
 
 __all__ = [
+    'DriveTransferError',
     'compress',
     'delete_image_caches',
     'download',
@@ -175,20 +177,25 @@ def download(
     if to_path.suffix == '':
         # Assumption: `to_path` refers to a directory
         # Extract filename and add it to `to_path`
+        filename = ''
 
         # Try Content-Disposition header first if response provided
         if response and 'content-disposition' in response.headers:
             content_disp = response.headers['content-disposition']
             if 'filename=' in content_disp:
                 filename_part = content_disp.split('filename=')[1]
-                filename = filename_part.split(';')[0].strip('"\'')
-                to_path /= unquote(filename)
-        else:
-            # Fall back to URL parsing
+                filename = unquote(filename_part.split(';')[0].strip('"\''))
+
+        if not filename:
+            # The fallback fires whenever no name was extracted, not
+            # only when the header was absent: a Content-Disposition
+            # carrying no filename= would otherwise leave `to_path`
+            # pointing at the directory itself, and the suffix sniffing
+            # below would rename that directory.
             parsed = urlparse(from_url)
-            path = unquote(parsed.path)
-            filename = Path(path).name
-            to_path /= filename
+            filename = Path(unquote(parsed.path)).name
+
+        to_path /= filename or 'download'
 
     # If extension is still unknown, sniff from Content-Type then first chunk
     first_chunk = b''
@@ -204,8 +211,13 @@ def download(
         if ext is not None:
             to_path = to_path.with_suffix(ext)
 
-    # Download to temp location first, then move to final destination
-    temp_path = Path(tempfile.gettempdir()) / f'{to_path.name}.part'
+    # Download to temp location first, then move to final destination.
+    # The staging directory is unique per call: keyed on the basename
+    # alone, two concurrent jobs fetching per-county archives that share
+    # a name (parcels.zip) wrote the same file and each moved a
+    # half-written mix into place.
+    temp_dir = Path(tempfile.mkdtemp(prefix='openplaces-download-'))
+    temp_path = temp_dir / f'{to_path.name}.part'
 
     try:
         with open(temp_path, 'wb') as f:
@@ -226,11 +238,10 @@ def download(
         # Move completed download to final destination
         shutil.move(str(temp_path), str(to_path))
 
-    except Exception:
-        # Clean up partial download on any error
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
+    finally:
+        # Removes a partial download on error, and the empty staging
+        # directory on success.
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     return to_path
 
@@ -329,9 +340,10 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
             tar.extractall(out_dir)
         return out_dir
 
-    if in_path.suffix in {'.bz2', '.tbz2'}:
-        # Handle .tar.bz2 / .tbz2
-        if in_path.stem.endswith('.tar') or in_path.suffix == '.tbz2':
+    if in_path.suffix.lower() in {'.bz2', '.tbz2'}:
+        # Casefolded like the tar.gz test above: uppercase extensions
+        # are routine in county and state archives.
+        if in_path.stem.lower().endswith('.tar') or in_path.suffix.lower() == '.tbz2':
             with tarfile.open(in_path, 'r:bz2') as tar:
                 tar.extractall(out_dir)
         # Handle bare .bz2 (single compressed file)
@@ -347,18 +359,28 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
 
 
 def _needs_7z(zip_path):
-    """Return True if any entry uses a compression type unsupported by zipfile."""
-    with ZipFile(zip_path, 'r') as z:
-        return any(
-            info.compress_type
-            not in {
-                ZIP_STORED,
-                ZIP_DEFLATED,
-                ZIP_BZIP2,
-                ZIP_LZMA,
-            }
-            for info in z.infolist()
-        )
+    """Return True if Python's zipfile cannot extract the archive.
+
+    Either because zipfile cannot open the container at all (a 7z, rar
+    or bare gz file), or because an entry inside a real zip uses a
+    compression type zipfile cannot deflate. Probing the container
+    first would leave the whole 7z fallback unreachable for the first
+    case, which then failed with a misleading 'not a zip file'.
+    """
+    try:
+        with ZipFile(zip_path, 'r') as z:
+            return any(
+                info.compress_type
+                not in {
+                    ZIP_STORED,
+                    ZIP_DEFLATED,
+                    ZIP_BZIP2,
+                    ZIP_LZMA,
+                }
+                for info in z.infolist()
+            )
+    except BadZipFile:
+        return True
 
 
 def _unzip_standard(in_path, out_dir, members):
@@ -411,7 +433,8 @@ def _unzip_with_7z(in_path, out_dir, verbose=True):
     sz = _find_7z()
     if not sz:
         raise RuntimeError(
-            f'Archive {in_path.name} uses a compression type `zipfile` cannot deflate. '
+            f'Archive {in_path.name} cannot be extracted by `zipfile` (an '
+            'unsupported compression type, or not a zip container at all). '
             'Install 7z: brew install sevenzip (macOS), '
             'winget install 7zip.7zip (Windows), or sudo apt install 7zip (Linux).'
         )
@@ -576,7 +599,15 @@ def to_parquet(
         pyarrow.parquet.read_metadata() without scanning rows. Only supported
         for plain (non-geo) DataFrames; ignored for GeoDataFrames.
     **kwargs
-        Additional arguments passed to to_parquet()
+        Additional arguments passed to to_parquet(). When file_metadata is
+        given the write goes through pyarrow directly, which accepts none of
+        pandas' keywords: only index is honored there, and anything else
+        raises rather than being dropped.
+
+    Raises
+    ------
+    TypeError
+        If file_metadata is combined with a keyword other than index.
     """
     if isinstance(filepath, str):
         filepath = Path(filepath)
@@ -593,7 +624,18 @@ def to_parquet(
     elif file_metadata:
         import pyarrow.parquet as pq
 
-        table = pyarrow.Table.from_pandas(df)
+        # pq.write_table takes none of pandas' to_parquet keywords, so a
+        # dropped index=False wrote an index level column here and not
+        # on the branch below: the same call produced two schemas.
+        index = kwargs.pop('index', None)
+        if kwargs:
+            raise TypeError(
+                'to_parquet() cannot pass '
+                + ', '.join(sorted(kwargs))
+                + ' through with file_metadata; only `index` is honored '
+                'on the footer-metadata path.'
+            )
+        table = pyarrow.Table.from_pandas(df, preserve_index=index)
         merged = dict(table.schema.metadata or {})
         merged.update(
             {
@@ -616,7 +658,8 @@ def to_csv(
 ) -> None:
     """Save dataframe as CSV file.
 
-    Automatically drops 'geometry' column if present.
+    Automatically drops the active geometry column if present, under
+    whatever name the frame gives it.
 
     Parameters
     ----------
@@ -634,9 +677,12 @@ def to_csv(
 
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    # Drop geometry if present
+    # Drop geometry if present. The active geometry column is not
+    # always named 'geometry', and it can also be unset entirely.
     if isinstance(df, gpd.GeoDataFrame):
-        df = df.drop(columns='geometry')
+        geometry_column = df.active_geometry_name
+        if geometry_column is not None and geometry_column in df.columns:
+            df = df.drop(columns=geometry_column)
 
     df.to_csv(filepath, index=index, **kwargs)
 
@@ -873,6 +919,40 @@ def delete_parquet(parquet_path):
             _path.unlink()
 
 
+def _covering_bbox_column(schema) -> str | None:
+    """Return the name of a geoparquet file's covering-bbox column.
+
+    GeoParquet records the struct column holding per-row bounding boxes
+    (written by write_covering_bbox=True) in the file's `geo` metadata
+    rather than under a fixed name. It is an internal spatial index: no
+    attribute registry entry and no `order_columns` step knows it, so a
+    read that skips geometry must skip it too.
+
+    Parameters
+    ----------
+    schema : pyarrow.Schema
+        Arrow schema of the parquet file, carrying its `geo` metadata.
+
+    Returns
+    -------
+    str or None
+        The column name, or None when the file declares no covering.
+    """
+    raw = (schema.metadata or {}).get(b'geo')
+    if raw is None:
+        return None
+    try:
+        geo = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    column = geo.get('primary_column')
+    spec = (geo.get('columns') or {}).get(column) or {}
+    corner = ((spec.get('covering') or {}).get('bbox') or {}).get('xmin')
+    if isinstance(corner, list | tuple) and corner:
+        return corner[0]
+    return None
+
+
 def read_parquet(
     parquet_path,
     geom=False,
@@ -916,11 +996,18 @@ def read_parquet(
 
     import pyarrow.parquet as pq
 
+    # A single column name is widened here, before either branch can
+    # append the join id or the geometry column to it and unpack the
+    # string into its characters.
+    if isinstance(kwargs.get('columns'), str):
+        kwargs['columns'] = [kwargs['columns']]
+
     # A combined file (save_parquet(..., combined=True)) has geometry baked
     # into the same file as the attributes -- no `_geo` sidecar, no join-id
     # column. Detected via a cheap schema-only peek, before deciding whether
     # to read through pandas or geopandas.
-    schema_names = pq.ParquetFile(parquet_path).schema_arrow.names
+    schema = pq.ParquetFile(parquet_path).schema_arrow
+    schema_names = schema.names
     if 'geometry' in schema_names:
         if geom == 'simplified':
             raise ValueError(
@@ -929,15 +1016,26 @@ def read_parquet(
                 'geometry sidecar was never written for it.'
             )
         columns = kwargs.pop('columns', None)
+        bbox_column = _covering_bbox_column(schema)
         read_filters = filters
         if bbox is not None:
             minx, miny, maxx, maxy = bbox
-            read_filters = (
-                (pyarrow.compute.field('bbox', 'xmin') <= maxx)
-                & (pyarrow.compute.field('bbox', 'ymin') <= maxy)
-                & (pyarrow.compute.field('bbox', 'xmax') >= minx)
-                & (pyarrow.compute.field('bbox', 'ymax') >= miny)
+            field = bbox_column or 'bbox'
+            bbox_filter = (
+                (pyarrow.compute.field(field, 'xmin') <= maxx)
+                & (pyarrow.compute.field(field, 'ymin') <= maxy)
+                & (pyarrow.compute.field(field, 'xmax') >= minx)
+                & (pyarrow.compute.field(field, 'ymax') >= miny)
             )
+            if read_filters is None:
+                read_filters = bbox_filter
+            else:
+                # Both predicates have to survive: replacing one with the
+                # other returns rows the caller excluded (e.g. narrowing
+                # to one state, then also passing a bbox).
+                if not isinstance(read_filters, pyarrow.compute.Expression):
+                    read_filters = pq.filters_to_expression(read_filters)
+                read_filters = read_filters & bbox_filter
         if geom:
             if columns is not None and 'geometry' not in columns:
                 columns = [*columns, 'geometry']
@@ -948,8 +1046,12 @@ def read_parquet(
             # geom is the ultimate decision on whether geometry is read at
             # all: skip gpd.read_parquet (which requires a geometry column
             # present to build a GeoDataFrame) and the WKB decode it implies,
-            # reading everything else straight through pandas instead.
-            columns = [c for c in (columns or schema_names) if c != 'geometry']
+            # reading everything else straight through pandas instead. The
+            # covering-bbox struct goes with it: gpd.read_parquet drops it,
+            # a plain pandas read would hand it to downstream writes.
+            skip = {'geometry'} | ({bbox_column} if bbox_column else set())
+            requested = schema_names if columns is None else columns
+            columns = [c for c in requested if c not in skip]
             df = pd.read_parquet(
                 parquet_path, filters=read_filters, columns=columns, **kwargs
             )
@@ -957,7 +1059,25 @@ def read_parquet(
             df = df.drop(columns='_join_id')
         return df
 
-    df = pd.read_parquet(parquet_path, filters=filters, **kwargs)
+    columns = kwargs.pop('columns', None)
+    join_id_column = None
+    join_column_added = False
+
+    if geom:
+        # Resolved from the schema rather than from the frame, so a
+        # caller's explicit column list can be widened before the read.
+        if '_join_id' in schema_names:
+            join_id_column = '_join_id'
+        elif 'geo_id' in schema_names:
+            join_id_column = 'geo_id'
+        else:
+            raise ValueError('Could not identify column to join GeoParquet.')
+
+        if columns is not None and join_id_column not in columns:
+            columns = [*columns, join_id_column]
+            join_column_added = True
+
+    df = pd.read_parquet(parquet_path, filters=filters, columns=columns, **kwargs)
 
     if 'geometry' in df:
         raise ValueError(
@@ -968,17 +1088,16 @@ def read_parquet(
         )
 
     if geom:
-        if '_join_id' in df:
-            join_id_column = '_join_id'
-        elif 'geo_id' in df:
-            join_id_column = 'geo_id'
-        else:
-            raise ValueError('Could not identify column to join GeoParquet.')
-
         geo_suffix = '_geo_simplified' if geom == 'simplified' else '_geo'
         geoparquet_path = parquet_path.with_stem(parquet_path.stem + geo_suffix)
 
-        if bbox is not None:
+        if df.empty:
+            # A predicate matching no rows would build an empty `in` list
+            # below, which pyarrow rejects against the sidecar's string
+            # column. Read zero sidecar rows instead, so the result still
+            # carries the geometry column and the sidecar's CRS.
+            geoparquet_filters = pyarrow.compute.scalar(False)
+        elif bbox is not None:
             minx, miny, maxx, maxy = bbox
             geoparquet_filters = (
                 (pyarrow.compute.field('bbox', 'xmin') <= maxx)
@@ -1000,6 +1119,9 @@ def read_parquet(
             ),
             crs=gdf.crs,
         )
+
+    if join_column_added and join_id_column in df:
+        df = df.drop(columns=join_id_column)
 
     if drop_join_id and '_join_id' in df:
         df = df.drop(columns='_join_id')
@@ -1261,7 +1383,7 @@ def compress(
     filepaths: str | Path | list[str] | set[str],
     zip_filepath: str | None = None,
     delete_original: bool = False,
-) -> None:
+) -> list[Path]:
     """Compress one or more files.
 
     Parameters
@@ -1272,6 +1394,14 @@ def compress(
         Output ZIP filepath. If None, derived from the first entry in filepaths.
     delete_original : bool
         If True, deletes the original file(s) after compression.
+
+    Returns
+    -------
+    list of Path
+        The files actually written into the archive, with a shapefile
+        expanded to its sibling parts. Empty when none existed. Callers
+        that defer deletion until a later step succeeds (see `share`)
+        delete exactly these.
     """
     if isinstance(filepaths, str | Path):
         filepaths = [filepaths]
@@ -1310,6 +1440,12 @@ def compress(
         for p in paths_to_compress:
             p.unlink()
 
+    return paths_to_compress
+
+
+class DriveTransferError(RuntimeError):
+    """Raised when an `rclone` transfer did not complete successfully."""
+
 
 def to_drive(filepath, directory, remote='budrive', verbose=True):
     """Copy file to Google Drive
@@ -1326,12 +1462,33 @@ def to_drive(filepath, directory, remote='budrive', verbose=True):
         Name of the `rclone` remote to copy to
     verbose : bool
         If True, print progress
+
+    Raises
+    ------
+    DriveTransferError
+        If `rclone` cannot be run, or exits non-zero (an expired token,
+        a missing remote, an exhausted quota). Callers must not delete
+        any local copy until this returns without raising.
     """
 
-    cmd = ['rclone', 'copy', filepath, f'{remote}:{directory}']
+    cmd = ['rclone', 'copy', str(filepath), f'{remote}:{directory}']
     if verbose and sys.stdout.isatty():
         cmd += ['--progress']
-    subprocess.run(cmd)
+
+    try:
+        completed = subprocess.run(cmd, check=False)
+    except OSError as error:
+        raise DriveTransferError(
+            f'Could not run `rclone` to upload {filepath}: {error}'
+        ) from error
+
+    if completed.returncode != 0:
+        raise DriveTransferError(
+            f'`rclone copy` failed with exit code {completed.returncode} '
+            f'uploading {filepath} to {remote}:{directory}. No local file '
+            'was deleted. Check that the remote exists and its token is '
+            f'still valid: `rclone listremotes`, `rclone about {remote}:`.'
+        )
 
 
 def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
@@ -1349,9 +1506,16 @@ def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
     filepath : pathlib.Path
         Filepath used for saving (and for the compressed ZIP file).
     delete_original : bool
-        If True, deletes the unzipped file after compression
+        If True, deletes the unzipped file and the ZIP once the upload
+        has succeeded.
     verbose : bool
         If True, prints statements ('Saving', 'compressing', etc.)
+
+    Raises
+    ------
+    DriveTransferError
+        If the upload fails. Every local copy is left in place, so a
+        failed transfer never leaves the data existing nowhere.
     """
 
     if verbose:
@@ -1361,7 +1525,10 @@ def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
     if verbose:
         print(' compressing...', end='')
     zip_path = filepath.parent / f'{filepath.stem}_{filepath.suffix[1:]}.zip'
-    compress(filepath, zip_path, delete_original=delete_original)
+    # The uncompressed file is kept until the upload has succeeded: if
+    # it were deleted here and `to_drive` then failed, the ZIP would be
+    # unlinked below and the data would exist nowhere.
+    compressed = compress(filepath, zip_path, delete_original=False)
 
     if drive_dir is None:
         drive_dir = filepath.parent.relative_to(cfg.share_dir)
@@ -1372,4 +1539,6 @@ def share(df, filepath, drive_dir=None, delete_original=True, verbose=True):
         print(' done!')
 
     if delete_original:
+        for path in compressed:
+            path.unlink(missing_ok=True)
         zip_path.unlink()
