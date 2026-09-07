@@ -433,6 +433,36 @@ def get_table_recipe(recipe: str | dict, layer: str) -> dict:
     )
 
 
+_VERSION_CHUNK_REGEX = re.compile(r'(\d+)')
+
+
+def version_sort_key(version) -> tuple:
+    """Return a sortable key for a recipe version string.
+
+    Versions are compared as raw strings almost everywhere, and the tree
+    mixes formats within one scope and stage: US ingest footprints carry
+    both 'v2' (microsoft) and '2026' (microsoftglobal, osm). As strings
+    'v2' > '2026', so an un-sourced lookup selected the legacy layer, and
+    a future 'v10' would lose to 'v2'.
+
+    Digit runs compare numerically and rank above letter runs, so '2026'
+    beats 'v2', 'v10' beats 'v2', and '2026pc' beats '2026'.
+
+    Parameters
+    ----------
+    version : str or None
+        Version string as declared on the recipe's entity or dataset.
+
+    Returns
+    -------
+    tuple
+        Key for use with sorted()/max(); comparable with any other key
+        this function returns.
+    """
+    chunks = [c for c in _VERSION_CHUNK_REGEX.split(str(version or '')) if c]
+    return tuple((1, int(c), '') if c.isdigit() else (0, 0, c) for c in chunks)
+
+
 def find_recipe_id(admin_id, entity_or_dataset, filename=None, silent=False):
     """Find a recipe ID by admin_id and entity/dataset identifier.
 
@@ -456,7 +486,9 @@ def find_recipe_id(admin_id, entity_or_dataset, filename=None, silent=False):
         return None
     elif len(recipe_paths_found) == 1:
         return Path(recipe_paths_found[0]).name
-    recipe_paths_found = sorted(recipe_paths_found, key=lambda p: Path(p).parent.name)
+    recipe_paths_found = sorted(
+        recipe_paths_found, key=lambda p: version_sort_key(Path(p).parent.name)
+    )
     if not silent:
         print(
             f'Multiple recipes found for {admin_id} ({entity_or_dataset}):\n'
@@ -679,12 +711,11 @@ def find_entity_recipe_id(
         recipe_source_id = source.get('source_id', '')
         if source_id is not None and recipe_source_id != source_id:
             continue
-        version = str(entity.get('version', ''))
         candidates.append(
             (
                 stage_rank.get(recipe_stage, -1),
                 recipe_admin_id.get_level(),
-                version,
+                version_sort_key(entity.get('version', '')),
                 Path(filepath).stem,
             )
         )
@@ -746,19 +777,21 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
     Mirrors the harmonizer's auto-discovery scan
     (io/harmonizer/discover.py) with recipe-layer machinery so dependency
     extraction resolves auto_discover references the same way the pipeline
-    does at run time.
+    does at run time. That includes the dedup key: one recipe per
+    (admin_id, source_id, filename_suffix), newest version, exactly as
+    :func:`openplaces.io.harmonizer.links._find_admin_scoped_recipe_ids`
+    does. Emitting every version instead made the older file a declared
+    input, and a fingerprint input, of a job that never opens it, so
+    touching or deleting it read as staleness.
+
+    Reads the shared recipe index rather than globbing and parsing the
+    tree a second time; the index is parsed once per process.
     """
-    root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
-    sources = []
-    for filepath in sorted(root.glob(f'**/{entity_type}/*/*/*.yaml')):
-        try:
-            with open(filepath, encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-        except Exception:
-            continue
-        if (data.get('stage') or 'ingest') != 'ingest':
-            continue
-        if data.get('exclude_from_auto_discover'):
+    from openplaces.diagnostics import find_recipes
+
+    best: dict[tuple[str, str, str], dict] = {}
+    for _, row in find_recipes(entity_type, stage='ingest').iterrows():
+        if row['exclude_from_auto_discover']:
             # The harmonizer's discovery skips these (a recipe kept out
             # of resolve_spine on purpose); the dependency scan must
             # agree, or a merely-existing excluded recipe changes the
@@ -766,22 +799,24 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
             # fingerprint of the entity type, reading as region-wide
             # staleness for data that never changed.
             continue
-        raw_admin_id = data.get('admin_id')
-        admin_id_str = (
-            str(raw_admin_id)
-            if raw_admin_id is not None and str(raw_admin_id) != 'None'
-            else ''
-        )
-        entity = data.get('entity') or {}
-        sources.append(
-            {
-                'recipe_id': filepath.stem,
-                'admin_id': admin_id_str,
-                'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
-                'version': str(entity.get('version') or ''),
-            }
-        )
-    sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
+        admin_id_str = row['admin_id']
+        key = (admin_id_str, row['source_id'], row['filename_suffix'])
+        version = str(row['version'] or '')
+        candidate = {
+            'recipe_id': row['recipe_id'],
+            'admin_id': admin_id_str,
+            'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
+            'version': version,
+        }
+        if key not in best or version_sort_key(version) > version_sort_key(
+            best[key]['version']
+        ):
+            best[key] = candidate
+    sources = sorted(
+        best.values(),
+        key=lambda s: (s['specificity'], version_sort_key(s['version'])),
+        reverse=True,
+    )
     return tuple(sources)
 
 
@@ -1085,8 +1120,9 @@ def find_additional_layer_recipes(
         # not exist, raising OSError in every Colombia spine run.
         key = (admin_id_str, row['source_id'], row['filename_suffix'])
         recipe_id = row['recipe_id']
-        if key not in best or row['version'] > best[key][0]:
-            best[key] = (row['version'], recipe_id, row['source_id'])
+        version = version_sort_key(row['version'])
+        if key not in best or version > best[key][0]:
+            best[key] = (version, recipe_id, row['source_id'])
 
     matches = []
     for _version, recipe_id, source_id in sorted(best.values(), key=lambda vrs: vrs[0]):
