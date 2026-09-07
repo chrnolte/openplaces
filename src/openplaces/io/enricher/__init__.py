@@ -196,9 +196,11 @@ class Enricher:
         if isinstance(admin_ids, str | AdminId):
             admin_ids = [admin_ids]
 
+        admin_ids = [
+            aid if isinstance(aid, AdminId) else AdminId(aid) for aid in admin_ids
+        ]
         expanded: list[str] = []
         for aid in admin_ids:
-            aid = AdminId(aid) if not isinstance(aid, AdminId) else aid
             if aid.get_level() < process_level:
                 expanded += get_admin_ids(process_level, admin_id=aid)
             elif aid.get_level() == process_level:
@@ -211,16 +213,9 @@ class Enricher:
         expanded = list(dict.fromkeys(expanded))
 
         # A full process-level request supersedes sub-level subsets.
-        full = {
-            str(AdminId(aid))
-            for aid in admin_ids
-            if AdminId(aid).get_level() <= process_level
-        }
+        full = [aid for aid in admin_ids if aid.get_level() <= process_level]
         for parent in list(self.sub_admin_ids):
-            if any(
-                AdminId(full_id).is_parent_or_equal_of(AdminId(parent))
-                for full_id in full
-            ):
+            if any(full_id.is_parent_or_equal_of(AdminId(parent)) for full_id in full):
                 del self.sub_admin_ids[parent]
 
         invalid = [
@@ -455,11 +450,21 @@ class Enricher:
         Rows whose keys were attempted (images processed, even when the
         result is missing) take the new values; all other rows keep the
         existing evidence.
+
+        The result spans the union of both indexes. A sub-admin run hands
+        in only its own towns (`_restrict_to_sub_admins`), while the file
+        on disk may hold every town enriched before it, and the coverage
+        footer written beside the result claims all of them. Building the
+        result on the new frame's index alone dropped the earlier towns'
+        rows while the footer still reported them covered, so they were
+        never regenerated.
         """
+        index = existing.index.union(new.index, sort=False)
+        new = new.reindex(index)
+        existing = existing.reindex(index)
         if attempted_keys is None:
-            return new.combine_first(existing.reindex(new.index))
+            return new.combine_first(existing)
         merged = new.copy()
-        existing = existing.reindex(merged.index)
         keep = ~merged.index.isin(attempted_keys)
         for column in merged.columns.intersection(existing.columns):
             merged.loc[keep, column] = existing.loc[keep, column]

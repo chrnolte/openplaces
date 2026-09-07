@@ -27,12 +27,12 @@ def _gdf(boxes, extra=None, crs='EPSG:4326'):
     ).set_index('parcel_id')
 
 
-def _make_state(spine, reprocess=False):
+def _make_state(spine, reprocess=False, verbose=False):
     return EnrichState(
         recipe={'reference_parcel_recipe_id': 'FAKE_placeslab-fmv'},
         entity_recipe={},
         admin_id=AdminId('US-MA-MI'),
-        verbose=False,
+        verbose=verbose,
         timer=None,
         spine=spine,
         evidence=pd.DataFrame(index=spine.index),
@@ -77,6 +77,70 @@ def test_writes_weighted_evidence_columns(monkeypatch):
     assert result.evidence.loc['new_1', 'slope'] == pytest.approx(5.0)
     assert result.evidence.loc['new_1', 'm2_bld_fp'] == pytest.approx(200.0)
     assert result.metadata['attempted_keys'] == {'new_1'}
+
+
+def test_empty_reference_returns_state_unchanged(monkeypatch):
+    """A reference file with no rows for the unit is treated like no file.
+
+    Verbose mode reports the matched share as a fraction of the reference
+    rows, which divided by zero before the guard.
+    """
+    monkeypatch.setattr(parcels_mod, 'get_recipe_by_id', lambda rid: {})
+    old = _gdf({'old_1': box(0, 0, 0.001, 0.001)}, extra={'slope': [5.0]})
+    monkeypatch.setattr(parcels_mod, 'get_entities', lambda *a, **k: old.iloc[:0])
+
+    spine = _gdf({'new_1': box(0, 0, 0.001, 0.001)})
+    state = _make_state(spine, verbose=True)
+
+    result = enrich_parcels_from_reference_crosswalk(
+        state, mean_columns=['slope'], silent_qa=True
+    )
+
+    assert result is state
+    assert result.evidence.empty
+
+
+def test_explicit_id_columns_are_picked_from_the_largest_overlap(monkeypatch):
+    """`id_columns` passed with explicit `mean_columns` is honored, not dropped."""
+    monkeypatch.setattr(parcels_mod, 'get_recipe_by_id', lambda rid: {})
+    old = _gdf(
+        {'old_1': box(0, 0, 0.001, 0.0002), 'old_2': box(0, 0.0002, 0.001, 0.001)},
+        extra={'slope': [5.0, 7.0], 'zip_raw': ['00001', '00002']},
+    )
+    monkeypatch.setattr(parcels_mod, 'get_entities', lambda *a, **k: old)
+
+    spine = _gdf({'new_1': box(0, 0, 0.001, 0.001)})
+    state = _make_state(spine)
+
+    result = enrich_parcels_from_reference_crosswalk(
+        state, mean_columns=['slope'], id_columns=['zip_raw'], silent_qa=True
+    )
+
+    assert result.evidence.loc['new_1', 'zip_raw'] == '00002'
+    assert result.evidence.loc['new_1', 'slope'] == pytest.approx(6.6, abs=0.1)
+
+
+def test_calibration_towns_may_overlap(monkeypatch):
+    """A reference centroid inside two town polygons gets one town, not an error."""
+    towns = gpd.GeoDataFrame(
+        {'admin4_id_admin1': ['2500101', '2500102']},
+        geometry=[box(-1, -1, 1, 1), box(-1, -1, 1, 1)],
+        index=pd.Index(['US-MA-MI-A', 'US-MA-MI-B'], name='admin4_id'),
+        crs='EPSG:4326',
+    )
+    monkeypatch.setattr(parcels_mod, 'get_admin', lambda *a, **k: towns)
+
+    old = _gdf({'old_1': box(0, 0, 0.001, 0.001)})
+    spine = _gdf(
+        {'new_1': box(0, 0, 0.001, 0.001)}, extra={'admin4_id': ['US-MA-MI-A']}
+    )
+    state = _make_state(spine)
+
+    resolved, group_col = parcels_mod._resolve_calibrate_group_col(state, old)
+
+    assert group_col == 'admin4_id'
+    assert resolved.index.equals(old.index)
+    assert resolved.loc['old_1', 'admin4_id'] in {'US-MA-MI-A', 'US-MA-MI-B'}
 
 
 def test_missing_reference_parcel_recipe_raises():

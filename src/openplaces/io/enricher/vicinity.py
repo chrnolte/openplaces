@@ -23,6 +23,28 @@ from openplaces.io.enricher.zonal import sample_raster
 from openplaces.path import resolve_raster_path
 
 
+def _covers(raster_path: Path, bounds: tuple) -> bool:
+    """Whether the raster at *raster_path* extends over *bounds*.
+
+    The cached vicinity raster is keyed on the admin unit, but it is
+    computed over the bounds of whatever spine subset the run handed in:
+    a run naming two towns writes a raster of just those towns. Reusing
+    that file for the whole county would sample every other parcel
+    against a window that does not contain it and return nodata without
+    a word, so the extent is checked before reuse rather than trusted.
+    One pixel of tolerance absorbs the snapping of bounds to the grid.
+    """
+    with rasterio.open(raster_path) as src:
+        left, bottom, right, top = src.bounds
+        tolerance = max(abs(src.res[0]), abs(src.res[1]))
+    return (
+        left - tolerance <= bounds[0]
+        and bottom - tolerance <= bounds[1]
+        and right + tolerance >= bounds[2]
+        and top + tolerance >= bounds[3]
+    )
+
+
 def _admin_vicinity_raster_path(source_raster_path, admin_id, px_radius: int) -> Path:
     """Path for an admin-unit-scoped vicinity raster created from
     *source_raster_path*."""
@@ -53,7 +75,10 @@ def vicinity_coverage(
         to ``{source_raster_path's dir}/vicinity_coverage/{admin_id}/
         {stem}Vicinity{px_radius}px.tif`` before being sampled, so it can be
         reused rather than recomputed on the next run (skipped when it
-        already exists, unless *reprocess*).
+        already exists and extends over the current spine's bounds,
+        unless *reprocess*). A raster written by a run restricted to a
+        few sub-admin units is therefore recomputed, and overwritten, by
+        the next run over a wider extent.
     px_radius : int
         Neighborhood radius, in source-raster pixels.
     reprocess : bool
@@ -80,10 +105,11 @@ def vicinity_coverage(
         source_raster_path, state.admin_id, px_radius
     )
 
-    if reprocess or not out_path.exists():
-        with rasterio.open(source_raster_path) as src:
-            raster_crs = src.crs
-        bounds = tuple(spine.to_crs(raster_crs).total_bounds)
+    with rasterio.open(source_raster_path) as src:
+        raster_crs = src.crs
+    bounds = tuple(spine.to_crs(raster_crs).total_bounds)
+
+    if reprocess or not out_path.exists() or not _covers(out_path, bounds):
         array, transform, crs = compute_vicinity_coverage(
             source_raster_path, bounds, bounds_crs=raster_crs, px_radius=px_radius
         )
