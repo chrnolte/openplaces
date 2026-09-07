@@ -446,6 +446,37 @@ def test_aggressive_keeps_explicit_retention(data_root):
         assert path.exists()
 
 
+def test_aggressive_keeps_config_protected_recipe(data_root, monkeypatch):
+    """A retention.recipes override survives the aggressive demotion.
+
+    It is the documented way to protect a recipe whose YAML declares no
+    retention of its own, so an aggressive sweep that reads only the
+    YAML deletes exactly what the user pinned.
+    """
+    monkeypatch.setitem(
+        cfg.config,
+        'retention',
+        {'cleanup': {}, 'recipes': {FOOTPRINT_SPINE: 'keep'}},
+    )
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    for curated_id in ('US_footprint-openplaces-2026', 'US_parcel-openplaces-2026'):
+        _write_parquet(get_output_path(get_recipe_by_id(curated_id), admin_id=COUNTY))
+
+    report = cl.cleanup(
+        'US_footprint-openplaces-2026',
+        admin_ids=[COUNTY],
+        aggressive=True,
+        dry_run=False,
+        verbose=False,
+    )
+    rows = report[report['recipe_id'] == FOOTPRINT_SPINE]
+    assert not rows.empty
+    assert (rows['class'] == 'keep').all()
+    assert (rows['action'] == 'kept').all()
+    assert _spine_paths()[0].exists()
+
+
 def test_compact_classification(data_root):
     nsi_path = _write_parquet(_nsi_path())
     heap_file = cfg.get_dir('heap') / 'leftover.tmp'

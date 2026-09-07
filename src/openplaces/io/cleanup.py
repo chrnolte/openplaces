@@ -98,6 +98,18 @@ def _cleanup_config() -> dict:
     return (cfg.get('retention') or {}).get('cleanup') or {}
 
 
+def _recipe_retention_override(recipe_id) -> str | None:
+    """Per-recipe retention set in the user's config, if any.
+
+    Mirrors the retention.recipes lookup in
+    :meth:`~openplaces.config.OpenPlacesConfig.retention_for`.
+    """
+    if recipe_id is None:
+        return None
+    recipes = (cfg.get('retention') or {}).get('recipes') or {}
+    return recipes.get(str(recipe_id))
+
+
 # RECEIPTS
 
 
@@ -809,7 +821,13 @@ def _cleanup_node(
     # link sidecars are exactly what `--reprocess attributes` reuses, so
     # deleting them turns the next attribute-only rerun into a full
     # geometry rerun) keeps its declared class even under aggressive.
+    # A per-recipe retention.recipes entry in the user's own config is
+    # the documented protection lever and counts the same way: it is the
+    # only way to protect a recipe whose YAML declares no retention, so
+    # ignoring it here deleted exactly the outputs a user had pinned.
     explicit_retention = (node_recipe.get('save_to') or {}).get('retention')
+    if explicit_retention is None:
+        explicit_retention = _recipe_retention_override(node_id)
     if (
         aggressive
         and data_dir == 'core'
