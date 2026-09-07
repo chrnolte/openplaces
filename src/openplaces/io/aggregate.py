@@ -42,6 +42,25 @@ from openplaces.table import (  # noqa: F401
 )
 
 
+def _delete_parquet_pair(path) -> None:
+    """Delete an attribute parquet and its `_geo` sidecar.
+
+    Uses `delete_data` rather than `io.delete_parquet`, which unlinks
+    bare: the deletions here should also clean up an emptied directory
+    and report a locked file. The sidecar goes first so the attribute
+    file is the one that triggers that cleanup.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Attribute parquet path.
+    """
+    geo_path = path.with_stem(path.stem + '_geo')
+    if geo_path.exists():
+        delete_data(geo_path)
+    delete_data(path)
+
+
 def _has_geometry(path) -> bool:
     """True if *path* carries geometry, in a `_geo` sidecar or in itself.
 
@@ -453,13 +472,8 @@ def _aggregate_to_file(
             pass
 
     if not keep_original:
-        # geo companion first so the attribute file triggers the empty-directory
-        # cleanup on its turn.
         for _input_id, p in inputs:
-            geo_path = p.with_stem(p.stem + '_geo')
-            if geo_path.exists():
-                delete_data(geo_path)
-            delete_data(p)
+            _delete_parquet_pair(p)
 
     if verbose:
         print(f'Aggregated {len(input_paths)} chunk(s) -> {final_path.name}')
@@ -728,10 +742,7 @@ def join_partitions_by_index(
 
         if not keep_original:
             for p in partition_paths:
-                geo_path = p.with_stem(p.stem + '_geo')
-                if geo_path.exists():
-                    delete_data(geo_path)
-                delete_data(p)
+                _delete_parquet_pair(p)
 
 
 def _legacy_upgrader(recipe):
