@@ -710,11 +710,21 @@ def _retarget_graduated(
     else:
         open_ended = False
         n_classes = 6
-        qs = values.quantile([i / n_classes for i in range(n_classes + 1)]).tolist()
+        # Quantiles of the DISPLAY unit, like the explicit branch above:
+        # the renderer classifies a scaled expression, so raw-unit
+        # breaks put every feature outside every class and the layer
+        # rendered empty.
+        display_values = values * factor
+        qs = display_values.quantile(
+            [i / n_classes for i in range(n_classes + 1)]
+        ).tolist()
         # Collapse duplicate quantiles (heavily tied distributions).
         breaks = sorted(set(round(q, 6) for q in qs))
         if len(breaks) < 2:
-            breaks = [float(values.min()), float(values.max()) + 1e-9]
+            breaks = [
+                float(display_values.min()),
+                float(display_values.max()) + 1e-9,
+            ]
     # A scale classifies on a renderer expression, converting the
     # stored unit to the display unit without adding a column to the
     # delivered file.
