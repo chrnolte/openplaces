@@ -185,6 +185,10 @@ class TestFuzzyMatching:
         row = result.iloc[0]
         assert row['status'] == MATCH_FUZZY
         assert row['wikidata_id'] == 'Q1'
+        # The count reported the empty exact-key set, so a fuzzy row
+        # carried an id alongside zero candidates and a reviewer
+        # filtering on a positive count missed every one of them.
+        assert row['n_candidates'] == 1
 
     def test_never_reaches_outside_the_parent(self, harvest):
         # Otanche exists only under CO-BY. A unit under CO-AN must not
@@ -215,3 +219,11 @@ class TestFuzzyMatching:
             fuzzy_cutoff=FUZZY_CUTOFF,
         )
         assert result.iloc[0]['status'] == MATCH_MISSING
+
+
+def test_the_docstring_names_every_status_that_can_be_emitted():
+    # The documented vocabulary listed three of the four, leaving the
+    # one that carries an id without saying how much to trust it.
+    doc = match_units.__doc__
+    for status in (MATCH_UNIQUE, MATCH_FUZZY, MATCH_AMBIGUOUS, MATCH_MISSING):
+        assert f"'{status}'" in doc

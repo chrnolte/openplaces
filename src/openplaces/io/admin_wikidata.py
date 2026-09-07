@@ -123,18 +123,28 @@ def match_units(
     parent_iso : dict
         Mapping from a spine parent admin_id to that parent's ISO code, as
         used in the harvest.
+    fuzzy_cutoff : float, optional
+        Similarity a near-miss spelling must reach before it is offered
+        at all. Unset disables the near-miss pass, so no row can come
+        back 'fuzzy'.
 
     Returns
     -------
     pandas.DataFrame
-        One row per unit with admin_id, name, wikidata_id (empty unless the
-        match is unique), n_candidates and status.
+        One row per unit with admin_id, name, wikidata_id (empty unless
+        exactly one item was found), n_candidates and status.
+        n_candidates counts the items the status was decided on, which
+        for a fuzzy row is what the near-miss spelling found rather than
+        the empty exact-key set, so filtering on a positive count does
+        not silently drop every fuzzy row.
 
     Notes
     -----
-    Status is one of 'unique', 'ambiguous' or 'missing'. Only 'unique' is
-    safe to adopt without review; 'ambiguous' names the conflict so a human
-    can settle it, and 'missing' is the residual another source must cover.
+    Status is one of 'unique', 'fuzzy', 'ambiguous' or 'missing'. Only
+    'unique' is safe to adopt without review; 'fuzzy' carries an id found
+    under a near-miss spelling and is a suggestion for review, never a
+    fact; 'ambiguous' names the conflict so a human can settle it; and
+    'missing' is the residual another source must cover.
     """
     index = index_harvest(harvest)
     # Names available under each parent, for the near-miss pass. Restricted
@@ -149,6 +159,7 @@ def match_units(
         parent_code = parent_iso.get(unit.parent_admin_id, '')
         key = (parent_code, normalize_name(unit.name))
         candidates = index.get(key, set())
+        n_candidates = len(candidates)
         if len(candidates) == 1:
             status, item = MATCH_UNIQUE, next(iter(candidates))
         elif candidates:
@@ -163,6 +174,11 @@ def match_units(
             found = index.get((parent_code, near[0])) if near else None
             if found and len(found) == 1:
                 status, item = MATCH_FUZZY, next(iter(found))
+                # What the near-miss spelling found, not the exact key's
+                # empty set: a row reporting an id alongside zero
+                # candidates is invisible to anyone filtering on a
+                # positive count to list the matches.
+                n_candidates = len(found)
             else:
                 status, item = MATCH_MISSING, ''
         else:
@@ -172,7 +188,7 @@ def match_units(
                 'admin_id': unit.admin_id,
                 'name': unit.name,
                 'wikidata_id': item.rsplit('/', 1)[-1] if item else '',
-                'n_candidates': len(candidates),
+                'n_candidates': n_candidates,
                 'status': status,
             }
         )
