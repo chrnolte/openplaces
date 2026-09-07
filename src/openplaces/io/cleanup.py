@@ -841,17 +841,19 @@ def _delete_output_with_receipt(
 # CLEANUP (DAG-SCOPED)
 
 
-def _node_admins(upstream, admin_id, admin_level: int) -> list:
+def _node_admins(upstream, admin_id, admin_level: int, expand_finer=False) -> list:
     """Admin units at which one upstream recipe's output is reclaimable.
 
     Normally a single unit: the walk admin truncated to the recipe's save
     level. A recipe that saves finer than the walk admin (town-level
     inputs of a county spine) has no output at the walk admin at all, and
     leaving it there made `get_output_path` raise, which was swallowed:
-    the node vanished from the report and was never reclaimable. Its
-    finer units are read off disk instead, so only units with something
-    to reclaim are visited. Image recipes stay at the walk admin, which
-    is what their own handler expands.
+    the node vanished from the report and was never reclaimable. With
+    *expand_finer* its finer units are read off disk instead, so only
+    units with something to reclaim are visited; that scan is why a
+    caller not about to delete anything leaves the flag off. Image
+    recipes stay at the walk admin, which is what their own handler
+    expands.
     """
     if admin_id is None:
         return [None]
@@ -859,8 +861,8 @@ def _node_admins(upstream, admin_id, admin_level: int) -> list:
         save_level = get_save_admin_level(upstream)
     except Exception:
         save_level = admin_level
-    if save_level <= admin_level:
-        return [_truncate_admin(admin_id, save_level)]
+    if save_level <= admin_level or not expand_finer:
+        return [_truncate_admin(admin_id, min(save_level, admin_level))]
     entity = upstream.get('entity')
     if entity is not None and str(entity.entity_type) == 'image':
         return [_truncate_admin(admin_id, admin_level)]
@@ -916,15 +918,9 @@ def _walk_dag(root_recipe, admin_id, exclude_recipe_ids=None, expand_finer=False
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            if expand_finer:
-                node_admins = _node_admins(upstream, admin_id, admin_level)
-            else:
-                try:
-                    save_level = get_save_admin_level(upstream)
-                except Exception:
-                    save_level = admin_level
-                node_admins = [_truncate_admin(admin_id, min(save_level, admin_level))]
-            for node_admin in node_admins:
+            for node_admin in _node_admins(
+                upstream, admin_id, admin_level, expand_finer=expand_finer
+            ):
                 yield upstream_id, upstream, node_admin
             pending.append(upstream)
 
@@ -1261,7 +1257,9 @@ def cleanup_consumed_inputs(
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            for node_admin in _node_admins(upstream, admin_id, admin_level):
+            for node_admin in _node_admins(
+                upstream, admin_id, admin_level, expand_finer=True
+            ):
                 rows.extend(
                     _cleanup_node(
                         upstream_id,

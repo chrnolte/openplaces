@@ -527,8 +527,10 @@ def test_finer_saving_upstream_is_expanded_to_its_own_units(data_root):
     with pytest.raises(ValueError):
         get_output_path(recipe, admin_id=COUNTY)
 
-    node_admins = cl._node_admins(recipe, COUNTY, 3)
+    node_admins = cl._node_admins(recipe, COUNTY, 3, expand_finer=True)
     assert sorted(str(a) for a in node_admins) == in_scope
+    # The scan is opt-in: without it the node stays at the walk admin
+    assert [str(a) for a in cl._node_admins(recipe, COUNTY, 3)] == [COUNTY]
 
     rows = []
     for node_admin in node_admins:
@@ -556,7 +558,9 @@ def test_finer_saving_upstream_without_output_keeps_the_walk_admin(data_root):
     save_to = dict(recipe.get('save_to') or {})
     save_to['admin_level'] = 4
     recipe['save_to'] = save_to
-    assert [str(a) for a in cl._node_admins(recipe, COUNTY, 3)] == [COUNTY]
+    assert [str(a) for a in cl._node_admins(recipe, COUNTY, 3, expand_finer=True)] == [
+        COUNTY
+    ]
 
 
 def _image_cache_frame(rows):
