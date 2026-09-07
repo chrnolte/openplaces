@@ -23,9 +23,10 @@ the prompt or via `--set-usage-profile`.
 
 from __future__ import annotations
 
-import sys
+import warnings
 
 from openplaces.config import (
+    can_prompt,
     get_usage_override,
     get_usage_profile,
     set_usage_override,
@@ -122,10 +123,10 @@ def require_usage_compatible(
     ------
     UsageProfileMismatchError
         When the requirement is unmet, no standing decision exists, and
-        no one can be asked because stdin is not a terminal (a cluster
-        job, CI, a Snakemake rule). The message names the unmet
-        conditions and the `--set-usage-profile` command that declares
-        a profile.
+        no one can be asked because the run is unattended (a cluster
+        job, CI, a Snakemake rule, a test session). The message names
+        the unmet conditions and the `--set-usage-profile` command that
+        declares a profile.
     """
     requirement = getattr(source, 'usage_requirement', None)
     if requirement is None or requirement.is_empty():
@@ -152,7 +153,11 @@ def require_usage_compatible(
         return standing
 
     reasons = '\n'.join(f'  - {reason}' for reason in unmet)
-    if sys.stdin is None or not sys.stdin.isatty():
+    # `can_prompt` rather than a raw isatty, the same helper the terms
+    # gate asks: a Jupyter kernel answers `input` perfectly well without
+    # being a terminal, and a test session or CI job must be refused even
+    # when one happens to be attached.
+    if not can_prompt():
         raise UsageProfileMismatchError(
             f'{label}: this source conditions access on its users, and the '
             'declared usage profile does not meet its conditions:\n'
@@ -174,13 +179,32 @@ def require_usage_compatible(
         "operator\nof this download, not this software's."
     )
     print()
-    answer = input(_PROMPT + '> ').strip().lower()
+    try:
+        answer = input(_PROMPT + '> ').strip().lower()
+    except EOFError:
+        # Ctrl-D closes the prompt without answering it, which is not a
+        # confirmation. Takes the same path as any other non-answer.
+        # KeyboardInterrupt deliberately propagates: Ctrl-C means stop
+        # the run, not skip this download.
+        answer = ''
+        print()
 
     accepted = answer in _YES or answer in _ALWAYS
     _ANSWERED[key] = accepted
     if answer in _ALWAYS:
-        set_usage_override(key, True, reason='; '.join(unmet))
-        print(f'Recorded: proceeding with {key}. Change it in your config.')
+        try:
+            set_usage_override(key, True, reason='; '.join(unmet))
+        except Exception as error:  # noqa: BLE001 - persisting is optional
+            # The person answered; failing to write that down is a
+            # reason to ask again next run, not to abort the download
+            # they just confirmed.
+            warnings.warn(
+                f'Could not record the standing decision for {key} '
+                f'({error}); it holds for this run only.',
+                stacklevel=2,
+            )
+        else:
+            print(f'Recorded: proceeding with {key}. Change it in your config.')
     elif not accepted:
         print('Not confirmed; skipping this download.')
     return accepted

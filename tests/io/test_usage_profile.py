@@ -72,18 +72,15 @@ def _forget():
     forget_usage_answers()
 
 
-class _NoTty:
-    """stdin of an unattended run: readable, but nobody is watching."""
+def _attended(monkeypatch, attended=True):
+    """Declare whether someone is able to answer the prompt.
 
-    @staticmethod
-    def isatty():
-        return False
-
-
-class _Tty:
-    @staticmethod
-    def isatty():
-        return True
+    Patches `config.can_prompt`, not `sys.stdin.isatty`: a Jupyter
+    kernel answers `input` without being a terminal, and a test session
+    is unattended even when it has one, so the tty is not the question.
+    The terms gate asks the same helper.
+    """
+    monkeypatch.setattr('openplaces.io.usage_profile.can_prompt', lambda: attended)
 
 
 def _source(**requirement):
@@ -131,26 +128,29 @@ def test_a_standing_override_is_honored(monkeypatch):
 
 
 def test_an_unattended_mismatch_raises_with_directions(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _NoTty())
+    _attended(monkeypatch, False)
+    monkeypatch.setattr(
+        'builtins.input', lambda *a: pytest.fail('prompted an unattended run')
+    )
     with pytest.raises(UsageProfileMismatchError, match='set-usage-profile'):
         require_usage_compatible(_source(non_commercial=True))
 
 
 def test_declining_at_the_prompt_returns_false(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda *a: 'n')
     assert require_usage_compatible(_source(non_commercial=True)) is False
 
 
 @pytest.mark.parametrize('answer', ['', 'no', 'never', 'q'])
 def test_anything_but_yes_is_a_refusal(monkeypatch, answer):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda *a: answer)
     assert require_usage_compatible(_source(non_commercial=True)) is False
 
 
 def test_proceeding_at_the_prompt_returns_true(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda *a: 'y')
     assert require_usage_compatible(_source(non_commercial=True)) is True
 
@@ -161,7 +161,7 @@ def test_yes_does_not_record_a_standing_decision(monkeypatch):
         'openplaces.io.usage_profile.set_usage_override',
         lambda *a, **k: recorded.setdefault('called', (a, k)),
     )
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda *a: 'y')
     require_usage_compatible(_source(non_commercial=True))
     assert not recorded
@@ -173,14 +173,14 @@ def test_always_records_a_standing_decision(monkeypatch):
         'openplaces.io.usage_profile.set_usage_override',
         lambda source, compatible, reason=None: recorded.update({source: compatible}),
     )
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     monkeypatch.setattr('builtins.input', lambda *a: 'a')
     assert require_usage_compatible(_source(non_commercial=True)) is True
     assert recorded == {'a_source': True}
 
 
 def test_an_answer_is_remembered_for_the_rest_of_the_process(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     asked = []
     monkeypatch.setattr('builtins.input', lambda *a: asked.append(1) or 'y')
     require_usage_compatible(_source(non_commercial=True))
@@ -189,7 +189,7 @@ def test_an_answer_is_remembered_for_the_rest_of_the_process(monkeypatch):
 
 
 def test_a_remembered_refusal_is_not_re_asked(monkeypatch):
-    monkeypatch.setattr('sys.stdin', _Tty())
+    _attended(monkeypatch)
     asked = []
     monkeypatch.setattr('builtins.input', lambda *a: asked.append(1) or 'n')
     assert require_usage_compatible(_source(non_commercial=True)) is False
@@ -212,7 +212,7 @@ def test_and_of_or_environment_evaluation(monkeypatch, declared, expected):
         'openplaces.io.usage_profile.get_usage_profile',
         lambda: _profile(**declared),
     )
-    monkeypatch.setattr('sys.stdin', _NoTty())
+    _attended(monkeypatch, False)
     source = _source(environment=['restricted', ['encrypted_at_rest', 'offline_only']])
     if expected:
         assert require_usage_compatible(source) is True
@@ -236,7 +236,7 @@ def test_admin_interest_jurisdiction_matching(
         'openplaces.io.usage_profile.get_usage_profile',
         lambda: _profile(admin_interests=[interest]),
     )
-    monkeypatch.setattr('sys.stdin', _NoTty())
+    _attended(monkeypatch, False)
     source = _source(admin_interest=True)
     if expected:
         assert require_usage_compatible(source, admin_id=admin_id) is True
@@ -260,3 +260,76 @@ def test_every_recipe_with_a_usage_requirement_names_its_source():
         # And the requirement itself must construct cleanly
         requirement = UsageRequirement(**source['usage_requirement'])
         assert not requirement.is_empty(), path.name
+
+
+def test_a_terminal_alone_does_not_make_a_test_run_attended(monkeypatch):
+    """The gate asks whether anyone can answer, not whether a tty exists.
+
+    `can_prompt` is False inside a test session (and in CI) whatever
+    stdin looks like, so a suite that happens to run in a terminal is
+    still refused rather than blocking on `input`.
+    """
+    monkeypatch.setattr(
+        'builtins.input', lambda *a: pytest.fail('prompted a test session')
+    )
+    with pytest.raises(UsageProfileMismatchError):
+        require_usage_compatible(_source(non_commercial=True))
+
+
+def test_end_of_input_at_the_prompt_is_a_refusal(monkeypatch):
+    """Ctrl-D closes the prompt without answering it.
+
+    Not an answer, so not a confirmation: the download is skipped, the
+    same as any other non-answer.
+    """
+    _attended(monkeypatch)
+
+    def _eof(*args):
+        raise EOFError
+
+    monkeypatch.setattr('builtins.input', _eof)
+    assert require_usage_compatible(_source(non_commercial=True)) is False
+
+
+def test_a_keyboard_interrupt_still_stops_the_run(monkeypatch):
+    """Ctrl-C means stop, not skip this download."""
+    _attended(monkeypatch)
+
+    def _interrupt(*args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr('builtins.input', _interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        require_usage_compatible(_source(non_commercial=True))
+
+
+def test_a_failure_to_record_the_answer_does_not_lose_it(monkeypatch):
+    """The person answered; failing to write it down holds for this run."""
+    _attended(monkeypatch)
+    monkeypatch.setattr('builtins.input', lambda *a: 'a')
+
+    def _fails(*args, **kwargs):
+        raise OSError('config is read-only')
+
+    monkeypatch.setattr('openplaces.io.usage_profile.set_usage_override', _fails)
+    with pytest.warns(UserWarning, match='holds for this run only'):
+        assert require_usage_compatible(_source(non_commercial=True)) is True
+
+
+def test_no_recipe_key_can_declare_a_profile_match():
+    """The gate reads the user's config, never the recipe.
+
+    A recipe records `usage_requirement` (a fact about the source) and
+    nothing else: there is no recipe-side field that satisfies, waives,
+    or pre-answers the requirement, so no committed file can decide for
+    the person running it.
+    """
+    import inspect
+
+    signature = inspect.signature(require_usage_compatible)
+    assert set(signature.parameters) == {
+        'source',
+        'recipe_id',
+        'admin_id',
+        'verbose',
+    }
