@@ -19,3 +19,17 @@ def test_recipe_id_with_filename_suffix_token():
 
 def test_irregular_recipe_id_falls_back_to_whole_token():
     assert source_id_from_recipe_id('US_spine') == 'spine'
+
+
+def test_filename_suffix_is_not_mistaken_for_the_source():
+    # A suffixed id ends in the suffix, not in the source token; taking
+    # the last token made 'rural' the source id of an igac recipe.
+    assert source_id_from_recipe_id('CO_parcel-igac-2026_rural') == 'igac'
+    assert source_id_from_recipe_id('US_admin-census-2025_admin3') == 'census'
+
+
+def test_entity_plus_dataset_recipe_id():
+    # The entity token carries no source, so the dataset token answers.
+    assert (
+        source_id_from_recipe_id('US_footprint_built-n-stories-brails-2026') == 'brails'
+    )

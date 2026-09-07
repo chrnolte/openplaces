@@ -539,15 +539,37 @@ def resolve_attribute_name(column: str) -> str:
 def source_id_from_recipe_id(recipe_id: str) -> str:
     """Extract the source id from a recipe id.
 
-    A recipe id is ``{admin_id}_{entity_or_theme}-{source}-{version}[...]``;
-    takes the last ``_``-delimited token, then the second ``-``-delimited
-    field within it (e.g. ``'US_building-nsi-2022'`` -> ``'nsi'``). Falls
-    back to the whole token when it has no ``-`` (an un-versioned or
-    otherwise irregular recipe id).
+    A recipe id is ``{admin_id}_{entity_or_theme}-{source}-{version}``,
+    optionally followed by a filename suffix. The entity or dataset token
+    is parsed with the same caster :func:`get_recipe_by_id` uses, so the
+    source is read off the parsed object rather than by counting
+    ``-``-delimited fields (``'US_building-nsi-2022'`` -> ``'nsi'``;
+    ``'US_footprint_built-n-stories-brails-2026'`` -> ``'brails'``).
+
+    Reading the *last* token used to be enough only because no committed
+    recipe id carried a suffix: ``'CO_parcel-igac-2026_rural'`` yielded
+    ``'rural'`` and ``'US_admin-census-2025_admin3'`` yielded ``'admin3'``,
+    which would have reached provenance tokens, column suffixes and
+    licence keys as though the suffix were the source.
+
+    Falls back to the last token when nothing in the id parses (an
+    un-versioned or otherwise irregular recipe id).
     """
-    base = recipe_id.rsplit('_', 1)[-1]
-    parts = base.split('-', 2)
-    return parts[1] if len(parts) > 1 else base
+    parts = recipe_id.removesuffix('.yaml').split('_')
+    try:
+        AdminId(parts[0])
+        parts = parts[1:]
+    except ValueError:
+        pass
+    for token in parts:
+        try:
+            parsed = cast_dataset_or_entity(token)
+        except (ValueError, IndexError):
+            continue
+        source_id = getattr(getattr(parsed, 'source', None), 'source_id', None)
+        if source_id:
+            return str(source_id)
+    return parts[-1] if parts else recipe_id
 
 
 def find_admin_recipe_id(admin_id, admin_level, silent=False):
