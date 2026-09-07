@@ -269,9 +269,9 @@ class RecipeDAG:
             consumer_key = (node.recipe_id, node.admin_id)
             for member in spec['admin_ids']:
                 # Only members this run actually built have a node. A
-                # scoped run that still ships (deliver=true on a couple of
-                # counties) declares the whole region as members, and an
-                # edge to a job that is not in the graph is a KeyError in
+                # scoped run that still ships (deliver=true on a few
+                # counties) declares the whole region as members, and
+                # an edge to a job not in the graph is a KeyError in
                 # `to_mermaid`, which indexes its node ids directly.
                 member_key = (target_recipe_id, str(member))
                 if member_key in seen:
@@ -616,9 +616,9 @@ class RecipeDAG:
             # so declaring one would make Snakemake discard a finished
             # spine as incomplete (observed 2026-08-28 for a county
             # Overture does not cover). Pruning (exclude_recipe_ids) is
-            # one way that happens; a reference scoped to another region,
-            # named by a national spine, is the other, and testing the
-            # graph rather than the exclusion list covers both.
+            # one way that happens; a reference scoped to another
+            # region, named by a national spine, is the other, and
+            # testing the graph rather than the list covers both.
             if ref_id is not None and self._graph_produces(ref_id, node_admin):
                 paths.append(get_entity_link_path(recipe_id, ref_id, node_admin))
         for entry in recipe.get('entity_links') or []:

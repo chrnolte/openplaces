@@ -64,8 +64,8 @@ if isinstance(exclude_recipe_ids, str):
     exclude_recipe_ids = [r for r in exclude_recipe_ids.split(',') if r]
 
 # None lets the DAG decide from scope; true/false override it. The
-# parsing lives in flow.dag so it can be tested: Snakemake types a config
-# value by its literal form, and `deliver=0` arrives as an integer.
+# parsing lives in flow.dag so it can be tested: Snakemake types a
+# config value by its literal form, so `deliver=0` is an integer.
 deliver = parse_deliver_config(config.get('deliver'))
 
 dag = RecipeDAG(

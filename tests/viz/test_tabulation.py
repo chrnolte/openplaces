@@ -66,8 +66,8 @@ def test_palette_match_uses_per_column_weights(monkeypatch):
     frame = pd.DataFrame(
         {
             'occupancy_type': ['Single-Family'] * 98 + ['rare-1', 'rare-2'],
-            # Many more y groups than x categories, which is what let the
-            # zip pair weights with the wrong labels.
+            # Many more y groups than x categories, which is what
+            # let the zip pair weights with the wrong labels.
             'county': [f'c{i % 20}' for i in range(100)],
         }
     )

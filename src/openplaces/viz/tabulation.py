@@ -53,9 +53,9 @@ def tabulate(
 
     if show_empty_category:
         for col in (x_cat, y_cat):
-            # A categorical column has to be given the category before it
-            # can be filled. Skipping it made the option a no-op for
-            # exactly the frames curate produces (it casts categoricals),
+            # A categorical column has to be given the category
+            # before it can be filled. Skipping it made the option a
+            # no-op for the frames curate produces (it casts them),
             # and the missing rows were then dropped by the groupby and
             # renormalized away: a frame half of whose rows were missing
             # reported 50/50 where the truth is 25/25 plus 50 percent

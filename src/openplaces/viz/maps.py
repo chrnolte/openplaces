@@ -569,15 +569,15 @@ def show_building(
             parcel_id = _present(_p_txt, 'parcel_id_admin3')
             txt_p = f'Parcel ID: {"" if parcel_id is None else parcel_id}\n'
             for var in ['address', 'use_group', 'use_subgroup']:
-                # `if _p_txt[var]` read a missing value as present: a NaN
-                # float is truthy, and .title() then raised on a float.
+                # `if _p_txt[var]` read a missing value as present: a
+                # NaN float is truthy, and .title() raised on a float.
                 text = _present(_p_txt, var)
                 if text is None:
                     continue
                 text = str(text).title()
                 txt_p += f'{text[:25]}' + ('...' if len(text) > 25 else '') + '\n'
-            # Each of these is absent from some parcel layer, and four of
-            # them had no presence guard at all, so a layer other than
+            # Each of these is absent from some parcel layer, and
+            # four had no presence guard at all, so a layer other than
             # the MA/NC ones raised after the map was already drawn.
             for label, var in (
                 ('Year built', 'year_built'),
@@ -995,9 +995,9 @@ def show_ingested_geometries(
     ax.set_title(title)
     ax.axis('off')
 
-    # No finite extent (every geometry empty or null): a basemap would be
-    # fetched for the default axis limits, which is a place the data has
-    # nothing to do with.
+    # No finite extent (every geometry empty or null): a basemap
+    # would be fetched for the default axis limits, which is a place
+    # the data has nothing to do with.
     if np.isfinite(entities.total_bounds).all():
         basemap_provider = basemap_source.split('.')
         source = cx.providers

@@ -49,10 +49,10 @@ def add_log_ticks(
     lo, hi = ax.get_xlim() if axis == 'x' else ax.get_ylim()
     ticks = []
     labels = []
-    # Starting at 10**0 left an axis of shares, rates or ratios inside the
-    # unit interval with no tick in range at all, which then wiped
-    # matplotlib's own ticks (below). Decades below 1 are labeled in plain
-    # decimal form, since short_number rounds 0.01 to '0'.
+    # Starting at 10**0 left an axis of shares, rates or ratios in
+    # the unit interval with no tick in range at all, which then wiped
+    # matplotlib's own ticks (below). Decades below 1 are labeled in
+    # plain decimal form, since short_number rounds 0.01 to '0'.
     for n in range(_MIN_DECADE, 19):
         for m in subs:
             value = m * 10**n

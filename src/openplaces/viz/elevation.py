@@ -296,10 +296,10 @@ def get_elevation_datum(
 
     values = []
     for admin_id in pd.unique(id_values):
-        # Only the rows this tile covers. Reading the whole scene's bounds
-        # out of every tile is boundless, so each read allocates the full
-        # multi-county window regardless of overlap: a 45-county scene
-        # against 10 m tiles asks for roughly 12 GB on the first tile.
+        # Only the rows this tile covers. Reading the whole scene's
+        # bounds out of every tile is boundless, so each read takes the
+        # full multi-county window regardless of overlap: a 45-county
+        # scene against 10 m tiles asks for about 12 GB on tile one.
         unit = gdf.iloc[np.flatnonzero(id_values == admin_id)]
         dem_path = Path(get_dataset(elevation_recipe, admin_id=admin_id))
         if not dem_path.exists():
