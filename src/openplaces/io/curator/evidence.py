@@ -95,7 +95,9 @@ def link_curated_entity(
     return state
 
 
-def _apportioned_sources(pairs, ref, ref_key, ref_cols, spine_id_col, index):
+def _apportioned_sources(
+    pairs, ref, ref_key, ref_cols, spine_id_col, index, lane='parcel'
+):
     """Map each entity's apportioned value back to its references' provenance.
 
     Apportionment used to drop provenance entirely: an entity received a
@@ -114,6 +116,14 @@ def _apportioned_sources(pairs, ref, ref_key, ref_cols, spine_id_col, index):
     dollar is itself an estimate. Erring toward marking is the safe
     direction: a value wrongly called original is a false claim, a value
     wrongly called derived is only a lost guarantee.
+
+    Parameters
+    ----------
+    lane : str, optional
+        Entity type of the reference, used as the provenance lane prefix
+        (default ``'parcel'``). The reference key inside *pairs* is
+        normalized to ``'parcel_id'`` by the caller, but the lane a token
+        names must be the reference's own.
 
     Returns
     -------
@@ -149,7 +159,7 @@ def _apportioned_sources(pairs, ref, ref_key, ref_cols, spine_id_col, index):
         # in one column. The `+imputed` marker splits on `+`, so the dot
         # is invisible to is_imputed.
         tokens = tokens.map(
-            lambda t: t if pd.isna(t) or str(t).startswith('parcel') else f'parcel.{t}'
+            lambda t: t if pd.isna(t) or str(t).startswith(lane) else f'{lane}.{t}'
         )
         contributed = is_imputed(pairs['parcel_id'].map(lookup[side]))
         any_imputed = (
@@ -386,7 +396,9 @@ def apportion_curated_values(
 
     from openplaces.io.curator.provenance import record_sources
 
-    sources = _apportioned_sources(pairs, ref, ref_key, present, id_col, curated.index)
+    sources = _apportioned_sources(
+        pairs, ref, ref_key, present, id_col, curated.index, lane=entity_type
+    )
     for ref_col, entity_col in columns.items():
         attributed = (
             result[ref_col] if ref_col in result.columns else pd.Series(dtype='float64')
@@ -413,6 +425,7 @@ def collect_link_ids(
     entity_type: str | None = None,
     link_recipe_id: str | None = None,
     column: str = 'parcel_id_all',
+    ref_key: str | None = None,
     include_below_threshold: bool = False,
 ) -> CurateState:
     """Materialize all linked reference ids per entity from a link sidecar.
@@ -437,6 +450,11 @@ def collect_link_ids(
         Output column written onto the curated entity (default
         ``parcel_id_all``). Left missing where the collected value is
         identical to the base id column (e.g. ``parcel_id``).
+    ref_key : str, optional
+        Sidecar column holding the reference's own id. Defaults to
+        ``{entity_type}_id``, or ``parcel_id`` when only a
+        ``link_recipe_id`` was given. Name it explicitly for a reference
+        whose id column does not follow that pattern.
     include_below_threshold : bool, optional
         When False (default), only link-labeled pairs (those kept by the
         harmonize crosswalk's sliver thresholds) are collected. When
@@ -447,6 +465,8 @@ def collect_link_ids(
     FileNotFoundError
         When the sidecar is missing: curation cannot recompute the
         overlay, so re-run harmonize with ``save_link: true`` first.
+    KeyError
+        When the sidecar carries no *ref_key* column.
     """
     from openplaces.io.harmonizer.links import _resolve_reference_recipe
 
@@ -478,13 +498,25 @@ def collect_link_ids(
         # fall back to the first (index) column
         id_col = links.columns[0]
 
-    links = links.dropna(subset=['parcel_id'])
+    # The reference id column, not the literal 'parcel_id': recipe
+    # resolution here is generic over entity_type, so reading one
+    # hardcoded name raised KeyError for every non-parcel reference.
+    if ref_key is None:
+        ref_key = f'{entity_type}_id' if entity_type else 'parcel_id'
+    if ref_key not in links.columns:
+        raise KeyError(
+            f'Link sidecar {sidecar_path.name} has no {ref_key!r} column; '
+            f'found {list(links.columns)}. Set ref_key to the reference '
+            'id column the harmonize overlay wrote.'
+        )
+
+    links = links.dropna(subset=[ref_key])
     if not include_below_threshold and 'link' in links.columns:
         links = links[links['link'].notna()]
     if 'area_intersection_m2' in links.columns:
         links = links.sort_values('area_intersection_m2', ascending=False)
 
-    collected = links.groupby(id_col)['parcel_id'].agg(
+    collected = links.groupby(id_col)[ref_key].agg(
         lambda s: '|'.join(s.dropna().astype(str).unique())
     )
     curated[column] = collected.where(collected != '').reindex(curated.index)
