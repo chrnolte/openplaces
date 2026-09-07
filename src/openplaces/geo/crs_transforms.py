@@ -143,9 +143,9 @@ def _accuracy_sort_key(transformer):
     Returns
     -------
     tuple
-        ``(accuracy, description)``, with an unknown accuracy sorted
+        `(accuracy, description)`, with an unknown accuracy sorted
         last. PROJ reports an exact operation as accuracy 0.0, which the
-        previous ``(t.accuracy or -1) >= 0`` test rewrote to infinity and
+        previous `(t.accuracy or -1) >= 0` test rewrote to infinity and
         so ranked below every approximate sibling.
     """
     accuracy = transformer.accuracy

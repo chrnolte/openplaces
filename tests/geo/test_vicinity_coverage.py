@@ -56,8 +56,8 @@ def test_nodata_is_excluded_from_the_neighborhood(tmp_path):
 
     array, _, _ = compute_vicinity_coverage(path, (0, 0, 20, 20), px_radius=2)
 
-    # Nothing may exceed 100%: before the fix the 255 sentinel counted as
-    # covered, and the uint8 cast then wrapped modulo 256.
+    # Nothing may exceed 100%: before the fix the 255 sentinel
+    # counted as covered, and the uint8 cast wrapped modulo 256.
     observed = array[array != 255]
     assert observed.max() <= 100
     assert array[10, 2] == 100  # deep in the covered half

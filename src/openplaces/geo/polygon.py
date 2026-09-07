@@ -1208,7 +1208,7 @@ _GEOMETRY_COLLECTION_TYPE_ID = 7
 def _polygonal_only(gdf):
     """Reduce each overlay row to the polygonal part of its geometry.
 
-    ``gpd.overlay(..., keep_geom_type=False)`` returns a
+    `gpd.overlay(..., keep_geom_type=False)` returns a
     GeometryCollection whenever two polygons share an area *and* touch
     along an edge or at a point: the collection holds the overlap
     polygon next to a LineString or Point. Filtering the result down to
