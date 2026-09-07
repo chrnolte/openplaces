@@ -752,7 +752,19 @@ def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
     return report
 
 
-def resolve_stale_references(apply=False, verbose=True):
+class AmbiguousReferenceError(ValueError):
+    """A committed sidecar holds a recycled id the data cannot disambiguate.
+
+    Raised by :func:`resolve_stale_references` when a cell names an
+    identifier that is live today *and* named a different unit before a
+    re-mint. Such a cell may mean either unit, and the superseded
+    snapshot records only one past name per id, with no vintage, so no
+    rewrite can be justified from the identifier alone. The fix is to
+    regenerate the file from its source's own codes.
+    """
+
+
+def resolve_stale_references(apply=False, verbose=True, on_ambiguous='raise'):
     """Move committed sidecars onto the identifiers the re-mint produced.
 
     Only files *keyed* to a live admin id are rewritten. The superseded
@@ -762,24 +774,57 @@ def resolve_stale_references(apply=False, verbose=True):
     Every value goes through
     :func:`~openplaces.io.admin_codes.audit.resolve_identifier` rather
     than a string substitution, because a re-mint recycles: an id can
-    survive and name a different unit.
+    survive and name a different unit. There is deliberately no "the id
+    is already live, keep it" shortcut; that shortcut once left every
+    cell that meant Konin pointing at Kolo, which now holds Konin's old
+    id.
+
+    Only a *retired* identifier is rewritten, since a string the spine no
+    longer issues can only mean the unit it used to name. A *recycled*
+    identifier, one that is live and resolves by its past name to a
+    different live unit, is ambiguous: the cell may predate the re-mint
+    and mean the old unit, or postdate it and be correct as written. The
+    per-state crosswalks hold both kinds in one file (Tennessee's carries
+    US-TN-MA on both a Maury row and a McNairy row), so a blind rewrite
+    would corrupt as many cells as it repaired. Those cells are never
+    rewritten; see `on_ambiguous`.
 
     Parameters
     ----------
     apply : bool, optional
         Write. Default False reports what would change.
     verbose : bool, optional
-        Print per-file counts.
+        Print per-file counts, and every ambiguous cell.
+    on_ambiguous : {'raise', 'report'}, optional
+        What to do when a recycled id is found. 'raise' (the default)
+        raises :class:`AmbiguousReferenceError` before anything is
+        written, so a dry run cannot report a clean tree that is not.
+        'report' lists them and leaves them as they are.
 
     Returns
     -------
     int
         Cells rewritten.
-    """
-    from openplaces.path import recipe_path
 
-    root = recipe_path()
+    Raises
+    ------
+    AmbiguousReferenceError
+        If a recycled identifier is found and `on_ambiguous` is 'raise'.
+    """
+    if on_ambiguous not in ('raise', 'report'):
+        raise ValueError(
+            f"on_ambiguous must be 'raise' or 'report', not {on_ambiguous!r}"
+        )
+
+    # The recipes root is three directories above the spine's
+    # `_all/admin/spine/<version>` folder. `recipe_path()` with no
+    # arguments resolves to `recipes/_all`, and rooting the walk there
+    # once made this sweep scan no per-state crosswalk at all: every
+    # one of them lives under a country or state directory, and the
+    # regions file was looked up at `_all/_all/...` and skipped as
+    # missing.
     spine_dir = spine_path(2).parent
+    root = spine_dir.parents[3]
     live = set()
     for level in (1, *LEVELS):
         frame = pd.read_csv(spine_path(level), dtype=str, keep_default_na=False)
@@ -789,8 +834,10 @@ def resolve_stale_references(apply=False, verbose=True):
     cache = {}
 
     def to_live(value):
+        # Every id is resolved through its past name, live or not; the
+        # ambiguity of a live one is decided below, from the result.
         value = str(value).strip()
-        if not value or value in live:
+        if not value:
             return value
         if value not in cache:
             got = resolve_identifier(value)
@@ -801,6 +848,8 @@ def resolve_stale_references(apply=False, verbose=True):
     targets += [p for p in root.rglob('*crosswalk*.csv') if p.parent != spine_dir]
 
     total = 0
+    ambiguous = []
+    pending = []
     for path in targets:
         if not path.exists():
             continue
@@ -812,15 +861,49 @@ def resolve_stale_references(apply=False, verbose=True):
         ]
         changed = 0
         for column in columns:
-            updated = frame[column].map(to_live)
+            current = frame[column].str.strip()
+            updated = current.map(to_live)
+            moved = updated != current
+            # A live id that resolves elsewhere is recycled: the cell
+            # may mean either unit, and nothing in the id says which.
+            recycled = moved & current.isin(live)
+            ambiguous += [
+                (path.relative_to(root).as_posix(), column, old, new)
+                for old, new in zip(current[recycled], updated[recycled])
+            ]
+            updated = updated.where(~recycled, frame[column])
             changed += int((updated != frame[column]).sum())
             frame[column] = updated
         if changed:
             total += changed
             if verbose:
                 print(f'{changed:>5} in {path.relative_to(root)}')
-            if apply:
-                frame.to_csv(path, index=False, encoding='utf-8')
+            pending.append((path, frame))
+
+    if ambiguous:
+        lines = [
+            f'{f}: {c} {old} is live today, but the unit it named before '
+            f'the re-mint is now {new}'
+            for f, c, old, new in ambiguous
+        ]
+        if on_ambiguous == 'raise':
+            raise AmbiguousReferenceError(
+                f'{len(ambiguous)} cell(s) name a recycled identifier that may '
+                'mean either its old or its current unit. Regenerate the files '
+                "from their source codes, or pass on_ambiguous='report' to "
+                'leave them and rewrite only retired identifiers.\n'
+                + '\n'.join(f'  {line}' for line in lines)
+            )
+        if verbose:
+            print(
+                f'{len(ambiguous)} ambiguous cell(s) name a recycled id and were '
+                'not rewritten; regenerate these files from source:'
+            )
+            for line in lines:
+                print(f'  {line}')
+    if apply:
+        for path, frame in pending:
+            frame.to_csv(path, index=False, encoding='utf-8')
     if verbose:
         print(f'total cell rewrites: {total:,}')
     return total
