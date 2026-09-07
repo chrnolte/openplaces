@@ -1,4 +1,7 @@
+import warnings
+
 import geopandas as gpd
+import pytest
 from shapely.geometry import box
 
 from openplaces.geo.overlay import overlay_polygons_with_duckdb
@@ -56,18 +59,18 @@ def test_duckdb_overlay_fallback(monkeypatch, capsys):
         'openplaces.geo.overlay._overlay_polygons_paths', mock_overlay_paths
     )
 
-    # 2a. Fallback with default print
-    capsys.readouterr()
-    res_fallback = overlay_polygons_with_duckdb(gdf1, gdf2, how='intersection')
+    # 2a. The fallback warns, so the reason is visible in any run and
+    # not only under verbose: the geopandas rerun can take hours.
+    with pytest.warns(UserWarning, match='Simulated DuckDB failure'):
+        res_fallback = overlay_polygons_with_duckdb(gdf1, gdf2, how='intersection')
     assert len(res_fallback) == 1
-    captured = capsys.readouterr().out
-    assert 'DuckDB spatial join failed' in captured
-    assert 'Falling back to geopandas' in captured
 
     # 2b. Fallback silenced with silent=True
     capsys.readouterr()
-    res_fallback_silent = overlay_polygons_with_duckdb(
-        gdf1, gdf2, how='intersection', silent=True
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        res_fallback_silent = overlay_polygons_with_duckdb(
+            gdf1, gdf2, how='intersection', silent=True
+        )
     assert len(res_fallback_silent) == 1
     assert capsys.readouterr().out == ''
