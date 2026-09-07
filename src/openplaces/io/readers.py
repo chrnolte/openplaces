@@ -53,6 +53,38 @@ ADMIN_PRIMARY_COLUMNS = {
 }
 
 
+def _concat_recipe_files(paths, reader=None, **read_kwargs):
+    """Read a recipe's per-unit output files and concatenate them.
+
+    A recipe that saves one file per admin unit answers a multi-unit
+    request with several files. They share one schema and an admin-id
+    index, so a plain concatenation is the whole combination.
+
+    Parameters
+    ----------
+    paths : list of pathlib.Path
+        Output files to read, all of them known to exist.
+    reader : callable, optional
+        Function that reads one path. Defaults to
+        :func:`openplaces.io.read_parquet`.
+    **read_kwargs
+        Forwarded to the reader.
+
+    Returns
+    -------
+    pandas.DataFrame or geopandas.GeoDataFrame
+        The concatenated files, keeping each file's own index.
+    """
+    reader = read_parquet if reader is None else reader
+    frames = [reader(path, **read_kwargs) for path in paths]
+    if len(frames) == 1:
+        return frames[0]
+    combined = pd.concat(frames)
+    if isinstance(frames[0], gpd.GeoDataFrame):
+        combined = gpd.GeoDataFrame(combined, crs=frames[0].crs)
+    return combined
+
+
 def get_admin(
     admin_id=None,
     level=None,
@@ -187,33 +219,36 @@ def get_admin(
                 print('Inferred Admin IDs: ' + admin_ids)
 
     if isinstance(recipe, dict):
-        # Set recipe_parquet_path: will be used twice.
+        # Resolve every output file the request covers, not just one.
         #
-        # The recipe's own admin_id is the right key only when it has
-        # one. A global recipe that nonetheless saves per admin unit
+        # A recipe that saves one file per admin unit
         # (`admin-openplaces-2026_admin3`: admin_id NULL, one file per
-        # level-2 unit) has none, and asking for a level-0 path from a
-        # recipe that saves at level 2 raises. Fall back to what the
-        # caller asked for, truncated to the recipe's save level.
-        path_admin_id = recipe['admin_id']
-        save_level = get_save_admin_level(recipe)
-        recipe_level = (
-            path_admin_id.get_level()
-            if isinstance(path_admin_id, AdminId)
-            else AdminId(path_admin_id).get_level()
-            if path_admin_id
-            else 0
-        )
-        if (
-            save_level
-            and recipe_level < save_level
-            and admin_id is not None
-            and admin_ids
-        ):
-            deepest = max(admin_ids, key=lambda a: a.get_level())
-            if deepest.get_level() >= save_level:
-                path_admin_id = AdminId(*deepest.levels[:save_level])
-        recipe_parquet_path = get_output_path(recipe, path_admin_id)
+        # level-2 unit) needs one path per requested unit. Keying on a
+        # single deepest id returned the first state's rows and left
+        # every other requested state as spine-only rows with null
+        # geometry, silently at the default `silent=True`.
+        recipe_output_admin_ids, _ = _get_output_admin_ids(recipe, admin_ids)
+        recipe_parquet_paths = [
+            get_output_path(recipe, output_admin_id)
+            for output_admin_id in recipe_output_admin_ids
+        ]
+        missing_parquet_paths = [p for p in recipe_parquet_paths if not p.exists()]
+        recipe_parquet_paths = [p for p in recipe_parquet_paths if p.exists()]
+        if not recipe_parquet_paths:
+            raise FileNotFoundError(
+                'No output file of recipe '
+                f'`{get_recipe_id(recipe)}` exists for '
+                f'{format_list(recipe_output_admin_ids)}; first expected '
+                f'path: {missing_parquet_paths[0]}'
+            )
+        if missing_parquet_paths and not silent:
+            warnings.warn(
+                f'\n\n{len(missing_parquet_paths)} of '
+                f'{len(missing_parquet_paths) + len(recipe_parquet_paths)} '
+                f'output files of recipe `{get_recipe_id(recipe)}` do not '
+                f'exist; their admin units are returned from the spine '
+                f'alone. First missing path: {missing_parquet_paths[0]}\n'
+            )
 
     try:
         # Load admin spine from default source
@@ -234,7 +269,9 @@ def get_admin(
         )
         if isinstance(recipe, dict):
             # Load spine from recipe
-            admin = pd.read_parquet(recipe_parquet_path)[[]]
+            admin = _concat_recipe_files(recipe_parquet_paths, reader=pd.read_parquet)[
+                []
+            ]
         else:
             raise OSError(
                 f'\n\nAdmin spine not found: {ADMIN_SOURCE_DEFAULT}_admin{level}.\n'
@@ -247,7 +284,9 @@ def get_admin(
         admin_ids_in_spine = list(admin.index)
 
         # Read only the ID column
-        admin_ids_from_recipe = read_parquet(recipe_parquet_path, columns=[]).index
+        admin_ids_from_recipe = _concat_recipe_files(
+            recipe_parquet_paths, columns=[]
+        ).index
         admin_ids_to_add_to_spine = sorted(
             set(admin_ids_from_recipe) - set(admin_ids_in_spine)
         )
@@ -296,8 +335,8 @@ def get_admin(
             filters = [(f'admin{level}_id', 'in', sorted(set(admin.index)))]
 
         # Read attribute data from filesystem
-        admin_from_recipe = read_parquet(
-            recipe_parquet_path, geom=geom, filters=filters
+        admin_from_recipe = _concat_recipe_files(
+            recipe_parquet_paths, geom=geom, filters=filters
         )
 
         # Get column order (retain admin, add recipe)
