@@ -3,6 +3,7 @@
 import pytest
 
 from openplaces.flow import RecipeDAG
+from openplaces.flow.dag import parse_deliver_config
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.delivery import (
     delivery_members,
@@ -103,6 +104,21 @@ def test_target_paths(dag):
     assert dag.target_paths() == [get_output_path(TARGET, admin_id=COUNTY)]
 
 
+def test_target_paths_expand_a_scope_coarser_than_the_save_level():
+    """A state-scoped run must list the county files it actually builds.
+
+    The jobs are already expanded to the recipe's save level when the
+    graph is built; asking for the state's own output raised instead,
+    so `rule all` could not be constructed.
+    """
+    state_dag = RecipeDAG(TARGET, admin_ids=['US-DE'], deliver=False)
+    counties = [node.admin_id for node in state_dag.nodes() if node.recipe_id == TARGET]
+    assert len(counties) > 1
+    assert state_dag.target_paths() == [
+        get_output_path(TARGET, admin_id=county) for county in counties
+    ]
+
+
 def test_scoped_run_does_not_deliver(dag):
     """A one-county run must leave the shipped regional bundle alone."""
     assert dag.delivery_node is None
@@ -138,12 +154,29 @@ def test_delivery_inputs_are_every_member_county(shipping_dag):
 
 
 def test_delivery_edges_let_plan_propagate(shipping_dag):
-    """Every member county must feed the bundle, or plan() misses re-ships."""
+    """Every in-graph member county must feed the bundle.
+
+    Restricted to members this run actually built: a forced ship from one
+    county still declares the whole region as members, and an edge to a
+    job the graph does not contain is a KeyError in `to_mermaid`.
+    """
     consumer = (TARGET, 'US-NC')
     upstreams = {up for up, down in shipping_dag._edges if down == consumer}
+    node_keys = {(node.recipe_id, node.admin_id) for node in shipping_dag.nodes()}
+    members = set(delivery_members(TARGET, region=REGION))
     assert upstreams == {
-        (TARGET, member) for member in delivery_members(TARGET, region=REGION)
+        (TARGET, member) for member in members if (TARGET, member) in node_keys
     }
+    assert upstreams
+
+
+def test_every_edge_names_a_node_in_the_graph(shipping_dag):
+    """An edge to a missing job made to_mermaid raise instead of drawing."""
+    node_keys = {(node.recipe_id, node.admin_id) for node in shipping_dag.nodes()}
+    for upstream, consumer in shipping_dag._edges:
+        assert upstream in node_keys, upstream
+        assert consumer in node_keys, consumer
+    assert shipping_dag.to_mermaid(collapse_admin=False).startswith('%%{init:')
 
 
 def test_target_paths_are_the_bundle_when_shipping(shipping_dag):
@@ -293,3 +326,21 @@ def test_unknown_region_is_named_in_the_error():
     # the typo was aiming for.
     with pytest.raises(KeyError, match='registered: .*western-nc'):
         get_regions('cheer-coastal-texas')
+
+
+@pytest.mark.parametrize(
+    ('raw', 'expected'),
+    [
+        (None, None),
+        (True, True),
+        (False, False),
+        ('true', True),
+        ('false', False),
+        # Snakemake types `--config deliver=0` as an integer, which a
+        # string-only test skipped, so an unscoped run shipped anyway.
+        (0, False),
+        (1, True),
+    ],
+)
+def test_parse_deliver_config(raw, expected):
+    assert parse_deliver_config(raw) is expected

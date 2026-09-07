@@ -67,6 +67,34 @@ def rule_name(node: StageNode) -> str:
     return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
 
 
+def parse_deliver_config(value) -> bool | None:
+    """Read a `--config deliver=...` value as the DAG's tri-state flag.
+
+    None (the key absent) lets `RecipeDAG` decide from the run's scope;
+    anything else is an explicit override.
+
+    Snakemake types a config value by its literal form, so
+    `deliver=false` arrives as the string 'false' but `deliver=0` arrives
+    as the integer 0. A string-only test skipped the integer form, which
+    then read as None and let an unscoped run ship and overwrite every
+    declared bundle. Everything that is not already a bool is normalized
+    through its string form instead.
+
+    Parameters
+    ----------
+    value : bool, str, int or None
+        The raw config value.
+
+    Returns
+    -------
+    bool or None
+        True/False for an explicit override, None when *value* is None.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes')
+
+
 class RecipeDAG:
     """Dependency graph of every job needed to build a terminal recipe.
 
@@ -239,7 +267,14 @@ class RecipeDAG:
             self._nodes.append(node)
             consumer_key = (node.recipe_id, node.admin_id)
             for member in spec['admin_ids']:
-                self._edges.append(((target_recipe_id, member), consumer_key))
+                # Only members this run actually built have a node. A
+                # scoped run that still ships (deliver=true on a couple of
+                # counties) declares the whole region as members, and an
+                # edge to a job that is not in the graph is a KeyError in
+                # `to_mermaid`, which indexes its node ids directly.
+                member_key = (target_recipe_id, str(member))
+                if member_key in seen:
+                    self._edges.append((member_key, consumer_key))
 
     @property
     def delivery_node(self):
@@ -609,7 +644,14 @@ class RecipeDAG:
 
         Every bundle this run delivers -- each depends on its own member
         counties, so targeting them still builds those -- otherwise the
-        per-unit curated files.
+        target recipe's own jobs.
+
+        The non-delivery branch reads the target's jobs out of the graph
+        rather than re-deriving them from the requested scope. A scope
+        coarser than the target's save level (a state id for a
+        county-level curation) is expanded into child nodes when the graph
+        is built, so asking for its output directly raised instead of
+        listing the 121 files the run actually produces.
         """
         if self.delivery_nodes:
             paths: list[Path] = []
@@ -618,10 +660,16 @@ class RecipeDAG:
                     self._delivery_paths(node.recipe_id, node.admin_id).values()
                 )
             return paths
-        return [
-            self.output_path('curate', self.target_recipe_id, admin_id)
-            for admin_id in self.admin_ids
-        ]
+        paths = []
+        seen: set[Path] = set()
+        for node in self._nodes:
+            if node.recipe_id != self.target_recipe_id or node.stage == 'deliver':
+                continue
+            path = self.output_path(node.stage, node.recipe_id, node.admin_id)
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+        return paths
 
     def plan(self) -> pd.DataFrame:
         """Preview which jobs would run and why (library-side, stat-only).
