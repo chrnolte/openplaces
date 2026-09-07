@@ -1787,7 +1787,16 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         # replace the whole slice rather than only adding rows to it, so
         # a source it supersedes (e.g. GADM) can't leave stale,
         # geometry-less rows behind in the spine.
-        admin_spine = admin_spine[~admin_spine.index.str.startswith(admin_id_prefix)]
+        # The slice ends at a level boundary. `admin_id_prefix` is a
+        # unit id, never a free-form prefix, so a bare string test let
+        # a recipe scoped to the pre-2026 'US-NC-WA' (Wake) delete
+        # 'US-NC-WAR' (Warren) and every unit under it from the spine.
+        owned = (
+            admin_spine.index == admin_id_prefix
+        ) | admin_spine.index.str.startswith(
+            admin_id_prefix + STRING_SEPARATOR_WITHIN_IDS
+        )
+        admin_spine = admin_spine[~owned]
     else:
         # A global recipe (e.g. GADM) must not (re-)populate admin_ids
         # under an admin1 unit that already has its own, more specific

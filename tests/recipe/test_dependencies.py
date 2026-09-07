@@ -158,3 +158,44 @@ def test_exclude_recipe_ids_suppresses_edge():
 def test_exclude_recipe_ids_default_is_unaffected():
     upstream = _upstream_ids(get_recipe_dependencies('US_parcel-openplaces-2026'))
     assert 'US_parcel_parcel-placeslab-fmv2026' in upstream
+
+
+def test_auto_discovered_edges_stop_at_a_level_boundary(monkeypatch):
+    """A shorter sibling id is not an upstream dependency.
+
+    'US-NC-WA' is Wake County's pre-2026 id and 'US-NC-WAR' is Warren
+    County's current one, so the string-prefix test this replaced made
+    Wake's roll a declared input of every Warren job.
+    """
+    import openplaces.recipe as recipe_module
+    from openplaces.core.schema import AdminId, Entity
+
+    scanned = (
+        {
+            'recipe_id': 'US-NC-WA_parcel-wakeco-2026',
+            'admin_id': 'US-NC-WA',
+            'specificity': 3,
+            'version': '2026',
+        },
+        {
+            'recipe_id': 'US-NC-WAR_parcel-warrenco-2026',
+            'admin_id': 'US-NC-WAR',
+            'specificity': 3,
+            'version': '2026',
+        },
+    )
+    monkeypatch.setattr(
+        recipe_module, '_scan_ingest_recipe_ids', lambda entity_type: scanned
+    )
+    monkeypatch.setattr(
+        recipe_module, 'find_additional_layer_recipes', lambda *a, **k: []
+    )
+
+    recipe = {
+        'admin_id': AdminId('US'),
+        'entity': Entity('parcel', 'spine', '2026'),
+        'pipeline': [{'step': 'resolve_spine', 'sources': [{'auto_discover': True}]}],
+    }
+    edges = get_recipe_dependencies(recipe, admin_id=AdminId('US-NC-WAR'))
+
+    assert _upstream_ids(edges) == {'US-NC-WAR_parcel-warrenco-2026'}

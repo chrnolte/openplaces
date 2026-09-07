@@ -9,8 +9,25 @@ from openplaces.core.schema import AdminId
 from openplaces.io.harmonizer import HarmonizeState
 
 
+def _rows(records):
+    # `find_recipes` carries `recipe_id`, the recipe file's stem, which
+    # `_expand_auto_discover` reads rather than rebuilding.
+    return pd.DataFrame(
+        [
+            {
+                'recipe_id': (
+                    f'{r["admin_id"]}_{r["entity_type"]}-'
+                    f'{r["source_id"]}-{r["version"]}'
+                ),
+                **r,
+            }
+            for r in records
+        ]
+    )
+
+
 def test_expand_auto_discover_skips_excluded_recipe(monkeypatch):
-    rows = pd.DataFrame(
+    rows = _rows(
         [
             {
                 'admin_id': 'US-MA',
@@ -50,7 +67,7 @@ def test_expand_auto_discover_orders_most_specific_admin_id_first(monkeypatch):
     # (state) one even when it has an OLDER version -- resolve_spine treats
     # discovered[0] as the primary/geometry-tie winner, so specificity, not
     # version, must decide who that is.
-    rows = pd.DataFrame(
+    rows = _rows(
         [
             {
                 'admin_id': 'US-NC',

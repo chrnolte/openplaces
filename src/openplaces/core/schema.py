@@ -149,7 +149,16 @@ class AdminId:
 
         # Verify that AdminId is correct
         for i, level in enumerate(tuple_of_levels):
-            if not isinstance(level, str) or not re.match('[A-Z0-9]{2,3}', level):
+            # `fullmatch`, not `match`: an unanchored test accepts any
+            # string that merely starts with two uppercase alphanumerics,
+            # so 'MA-MI' or 'US ' passed and the resulting levels
+            # disagreed with the id's own string form.
+            # Do NOT restore the old upper bound of 3 while anchoring.
+            # The pattern is open-ended on purpose: 4223 superseded
+            # level-4 codes in the admin spine are four or five
+            # characters ('IN-AN-NI-X2304', 'PH-BS-ML-Z3POB'), and
+            # '{2,3}' would start rejecting every one of them.
+            if not isinstance(level, str) or not re.fullmatch('[A-Z0-9]{2,}', level):
                 raise ValueError(
                     f"Admin ID {levels} is invalid at level {i}: '{level}'."
                 )
@@ -254,6 +263,48 @@ class AdminId:
         if level <= 0:
             return None
         return AdminId(*self.levels[:level])
+
+
+def admin_scope_covers(
+    scope: 'str | AdminId | None', admin_id: 'str | AdminId | None'
+) -> bool:
+    """Check whether *scope* contains *admin_id* in the admin hierarchy.
+
+    This is the level-boundary-aware replacement for testing containment
+    with a raw string prefix. Leaf codes mix two and three characters
+    within one country, so a plain prefix test lets one unit claim an
+    unrelated sibling: the pre-2026 North Carolina id 'US-NC-WA' (Wake)
+    is a string prefix of 'US-NC-WAR' (Warren).
+
+    Parameters
+    ----------
+    scope : str or AdminId or None
+        The covering unit. An empty string, an empty AdminId, or None is
+        global scope and covers every unit.
+    admin_id : str or AdminId or None
+        The unit to test for containment.
+
+    Returns
+    -------
+    bool
+        True if scope is admin_id or one of its ancestors.
+
+    Examples
+    --------
+    >>> admin_scope_covers('US-NC', 'US-NC-WAR')
+    True
+    >>> admin_scope_covers('US-NC-WA', 'US-NC-WAR')
+    False
+    >>> admin_scope_covers('', 'US-NC-WAR')
+    True
+    """
+    parent = scope if isinstance(scope, AdminId) else AdminId(scope or None)
+    if not parent.levels:
+        return True
+    child = admin_id if isinstance(admin_id, AdminId) else AdminId(admin_id or None)
+    if not child.levels:
+        return False
+    return parent.is_parent_or_equal_of(child)
 
 
 @dataclass

@@ -25,6 +25,18 @@ def _state(admin_id='US-NC-NH'):
 
 
 def _mock_discovery(monkeypatch, rows):
+    # `find_recipes` always carries `recipe_id` (the recipe file's stem),
+    # which the discovery step reads rather than rebuilding; for these
+    # unsuffixed rows the two forms coincide.
+    rows = [
+        {
+            'recipe_id': (
+                f'{r["admin_id"]}_{r["entity_type"]}-{r["source_id"]}-{r["version"]}'
+            ),
+            **r,
+        }
+        for r in rows
+    ]
     monkeypatch.setattr(
         spine_module, 'find_recipes', lambda *a, **k: pd.DataFrame(rows)
     )

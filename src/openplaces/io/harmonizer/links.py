@@ -22,7 +22,11 @@ from openplaces.core.attribute_registry import (
     get_attributes,
     load_registry,
 )
-from openplaces.core.schema import AdminId, SourceGeometryType
+from openplaces.core.schema import (
+    AdminId,
+    SourceGeometryType,
+    admin_scope_covers,
+)
 from openplaces.diagnostics import find_recipes
 from openplaces.geo.ids import (
     PARCEL_ID_ALNUM_KEYS,
@@ -257,8 +261,8 @@ def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
     """Auto-discover the best ingest recipe for *entity_type* and *admin_id*.
 
     Scans all stage=``'ingest'`` recipes of the given entity type and returns
-    the recipe_id of the one with the most-specific ``admin_id`` prefix that
-    is a parent of (or equal to) *admin_id*.
+    the recipe_id of the one whose most specific ``admin_id`` is a parent
+    of (or equal to) *admin_id*.
     """
     df = find_recipes(entity_type, stage='ingest')
     if df.empty:
@@ -267,10 +271,13 @@ def _find_reference_recipe(entity_type: str, admin_id: AdminId) -> str | None:
     candidates = []
     for _, row in df.iterrows():
         rid_str = row['admin_id']
-        if rid_str == '' or admin_str.startswith(rid_str):
+        # Containment by level, not by string prefix: a recipe scoped to
+        # the pre-2026 'US-NC-WA' (Wake) is not a parent of 'US-NC-WAR'
+        # (Warren). The id is read, not rebuilt, so a recipe carrying a
+        # filename suffix keeps it (CO_parcel-igac-2026_rural).
+        if admin_scope_covers(rid_str, admin_str):
             level = rid_str.count('-') + 1 if rid_str else 0
-            prefix = f'{rid_str}_' if rid_str else ''
-            recipe_id = f'{prefix}{entity_type}-{row["source_id"]}-{row["version"]}'
+            recipe_id = row['recipe_id']
 
             # Since this reference recipe is auto-discovered for a spatial join,
             # we check if it has geometry. If it was ingested, a companion

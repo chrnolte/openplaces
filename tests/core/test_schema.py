@@ -7,6 +7,7 @@ from openplaces.core.schema import (
     Entity,
     Source,
     UsageRequirement,
+    admin_scope_covers,
     cast_dataset_or_entity,
 )
 
@@ -28,6 +29,46 @@ class TestAdminIdTruncateToLevel:
     def test_level_beyond_depth_is_a_no_op(self):
         admin_id = AdminId('US', 'MA')
         assert admin_id.truncate_to_level(5) == admin_id
+
+
+class TestAdminScopeCovers:
+    """Containment is a level test, not a string-prefix test.
+
+    The pair is real: 'US-NC-WA' is Wake County's pre-2026 id and
+    'US-NC-WAR' is Warren County's current one, both in the admin spine.
+    """
+
+    def test_ancestor_covers_descendant(self):
+        assert admin_scope_covers('US-NC', 'US-NC-WAR')
+
+    def test_unit_covers_itself(self):
+        assert admin_scope_covers('US-NC-WAR', 'US-NC-WAR')
+
+    def test_mixed_width_sibling_is_not_covered(self):
+        assert not admin_scope_covers('US-NC-WA', 'US-NC-WAR')
+
+    def test_empty_scope_is_global(self):
+        assert admin_scope_covers('', 'US-NC-WAR')
+        assert admin_scope_covers(None, 'US-NC-WAR')
+
+    def test_empty_admin_id_is_covered_only_by_global(self):
+        assert not admin_scope_covers('US-NC', '')
+
+    def test_admin_id_objects_are_accepted(self):
+        assert admin_scope_covers(AdminId('US', 'NC'), AdminId('US', 'NC', 'WAR'))
+
+
+class TestAdminIdLevelValidation:
+    def test_a_level_holding_a_separator_is_rejected(self):
+        with pytest.raises(ValueError):
+            AdminId('US', 'NC-WAR')
+
+    def test_a_level_holding_trailing_space_is_rejected(self):
+        with pytest.raises(ValueError):
+            AdminId('US ', 'NC')
+
+    def test_superseded_long_level_codes_are_still_accepted(self):
+        assert str(AdminId('US-MN-LO-X157')) == 'US-MN-LO-X157'
 
 
 class TestSourceTerms:
