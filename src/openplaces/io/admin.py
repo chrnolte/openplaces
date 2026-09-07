@@ -690,9 +690,10 @@ def admin3_id_index_from_admin3_code(gdf, country_id, code_column='admin3_id_adm
     ------
     ValueError
         If *code_column* is absent, if the spine offers no codes to join
-        against, or if any row fails to match. An admin layer is what
-        every other dataset is keyed on, so a partial index is worse than
-        no index at all.
+        against, if any row fails to match, or if two rows resolve to the
+        same spine unit. An admin layer is what every other dataset is
+        keyed on, so a partial or ambiguous index is worse than no index
+        at all.
     """
     if code_column not in gdf:
         raise ValueError(
@@ -749,12 +750,16 @@ def admin3_id_index_from_admin3_code(gdf, country_id, code_column='admin3_id_adm
         by_name = by_name.drop_duplicates('_link').set_index('_link')['admin3_id']
         recovered = gdf.loc[unmatched, 'name'].map(_link).map(by_name)
         gdf.loc[unmatched, 'admin3_id'] = recovered
-        if recovered.notna().any():
+        # The recovered subset, not `recovered.index`, which is every
+        # unmatched row: naming rows that did not match points the
+        # reader at units the next block is about to raise on.
+        matched_by_name = recovered[recovered.notna()]
+        if len(matched_by_name):
             warnings.warn(
-                f'{recovered.notna().sum():,d} admin-3 unit(s) in '
+                f'{len(matched_by_name):,d} admin-3 unit(s) in '
                 f"'{country_id}' matched by name after their "
                 f"'{code_column}' changed: "
-                + ', '.join(sorted(gdf.loc[recovered.notna().index, 'name'])[:8]),
+                + ', '.join(sorted(gdf.loc[matched_by_name.index, 'name'])[:8]),
                 stacklevel=2,
             )
 
@@ -765,6 +770,21 @@ def admin3_id_index_from_admin3_code(gdf, country_id, code_column='admin3_id_adm
             f'{unmatched.sum():,d} of {len(gdf):,d} admin-3 unit(s) in '
             f"'{country_id}' had no spine match on '{code_column}':\n"
             + str(gdf.loc[unmatched, report].head(20))
+        )
+
+    # The spine side of the join is unique by construction, but the
+    # source side is not, and neither is the name fallback: two rows
+    # whose names strip to the same link, or a name-recovered row
+    # landing on a unit a code match already claimed, both hand the
+    # same id to two rows. Indexing on it would silently double a unit
+    # everything downstream is keyed on.
+    duplicated = gdf['admin3_id'].duplicated(keep=False)
+    if duplicated.any():
+        report = [c for c in ('name', 'name_long', code_column) if c in gdf]
+        raise ValueError(
+            f'{duplicated.sum():,d} admin-3 unit(s) in {country_id!r} share '
+            f'an `admin3_id` after matching on {code_column!r} and name:\n'
+            + str(gdf.loc[duplicated, [*report, 'admin3_id']].head(20))
         )
 
     return gdf.set_index('admin3_id')
