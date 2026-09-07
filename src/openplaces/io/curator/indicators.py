@@ -23,6 +23,37 @@ import numpy as np
 import pandas as pd
 
 
+def as_matchable_text(series: pd.Series) -> pd.Series:
+    """Return *series* as nullable-string text safe for the ``.str`` accessor.
+
+    A code column can arrive numeric (a land-use or occupancy code read
+    without a string cast), and pandas' ``.str`` accessor raises
+    AttributeError on an integer dtype rather than simply matching
+    nothing, which aborts a whole county's curate. This is the same dtype
+    slip :func:`~openplaces.io.curator._coerce_registry_numerics` absorbs
+    on the numeric side. Whole-numbered values render without a decimal
+    point, so a float-typed code column matches the pattern a person
+    wrote for it (92, not 92.0). Missing values stay missing.
+
+    Parameters
+    ----------
+    series : pandas.Series
+        Column of labels or codes to match patterns against.
+
+    Returns
+    -------
+    pandas.Series
+        The same values as pandas' nullable string dtype.
+    """
+    if pd.api.types.is_bool_dtype(series):
+        return series.astype('string')
+    if pd.api.types.is_float_dtype(series):
+        finite = series.dropna()
+        if len(finite) and np.isfinite(finite).all() and (finite % 1 == 0).all():
+            return series.astype('Int64').astype('string')
+    return series.astype('string')
+
+
 def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     """Return a boolean Series marking rows that satisfy one voting indicator.
 
@@ -113,14 +144,14 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
 
     if kind == 'keyword':
         return (
-            curated[col]
-            .astype(object)
+            as_matchable_text(curated[col])
             .str.contains(
                 indicator['pattern'],
                 case=False,
                 na=False,
                 regex=bool(indicator.get('regex', True)),
             )
+            .astype(bool)
         )
 
     if kind == 'equals':

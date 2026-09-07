@@ -162,8 +162,20 @@ def impute_from_group_statistic(
         from openplaces.io.transform import get_crosswalk
 
         corrections = get_crosswalk({'recipe_id': overrides})
-        keys = curated[group_column].astype('string').str.strip()
         corrections.index = corrections.index.astype('string').str.strip()
+        repeated = corrections.index[corrections.index.duplicated()].unique()
+        if len(repeated):
+            shown = ', '.join(repr(str(k)) for k in repeated[:5])
+            more = f' (and {len(repeated) - 5} more)' if len(repeated) > 5 else ''
+            # pandas would otherwise raise InvalidIndexError from the
+            # .map() below, naming neither the crosswalk nor the key.
+            raise ValueError(
+                f'Override crosswalk {overrides!r} maps {shown}{more} more '
+                f'than once, so {output!r} has no single correction for '
+                'them. Keys are compared after trimming surrounding '
+                'whitespace; each group value must appear exactly once.'
+            )
+        keys = curated[group_column].astype('string').str.strip()
         has_override = keys.isin(corrections.index)
         mapped = mapped.where(~has_override, keys.map(corrections))
 

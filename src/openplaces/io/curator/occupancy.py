@@ -90,8 +90,10 @@ def coerce_to_class(series: pd.Series, rules: list[dict]) -> pd.Series:
     rule are returned unchanged (e.g. non-residential categories); missing values
     stay missing.
     """
-    terms = series.astype(object)
-    result = terms.copy()
+    from openplaces.io.curator.indicators import as_matchable_text
+
+    terms = as_matchable_text(series)
+    result = series.astype(object).copy()
     unmatched = pd.Series(True, index=series.index)
     for rule in rules:
         mask = unmatched & terms.str.contains(
@@ -99,7 +101,7 @@ def coerce_to_class(series: pd.Series, rules: list[dict]) -> pd.Series:
             case=False,
             na=False,
             regex=rule['match_type'] == 'regex',
-        )
+        ).astype(bool)
         if mask.any():
             result.loc[mask] = rule['occupancy_type']
             unmatched.loc[mask] = False
@@ -114,16 +116,19 @@ def match_ruleset(terms: pd.Series, rules: list[dict]) -> tuple[pd.Series, pd.Se
     unchanged, because this answers "which class did the label assert?", not
     "normalize this label".
     """
+    from openplaces.io.curator.indicators import as_matchable_text
+
+    text = as_matchable_text(terms)
     proposal = pd.Series(pd.NA, index=terms.index, dtype=object)
     reviewed = pd.Series(False, index=terms.index)
     unmatched = pd.Series(True, index=terms.index)
     for rule in rules:
-        mask = unmatched & terms.str.contains(
+        mask = unmatched & text.str.contains(
             rule['pattern'],
             case=False,
             na=False,
             regex=rule['match_type'] == 'regex',
-        )
+        ).astype(bool)
         if mask.any():
             proposal.loc[mask] = rule['occupancy_type']
             reviewed.loc[mask] = rule['reviewed']
