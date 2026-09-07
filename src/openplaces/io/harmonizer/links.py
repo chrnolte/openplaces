@@ -1863,7 +1863,13 @@ def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
         key_length = int(key_lengths.mode().iat[0])
         codes = spine[column].astype('string').str.slice(0, key_length)
         for target in table.columns:
-            spine[target] = codes.map(table[target])
+            # Gap-fill, never wholesale replace: auto-discovery
+            # calls this once per matched source, and a county
+            # crosswalk covering only part of the roll would
+            # otherwise null out every value a statewide crosswalk
+            # already resolved. Same rule as the value columns
+            # joined beside it.
+            _write_prioritized(spine, target, codes.map(table[target]))
         if state.verbose:
             matched = codes.isin(table.index).sum()
             print(
@@ -1973,6 +1979,56 @@ def _write_prioritized(
         after = spine[name]
         changed = after.notna() & (before.isna() | (before != after))
         _record_source(spine, name, changed, provenance_token)
+
+
+#: Count columns already written during this harmonize run, so a
+#: run's first source replaces whatever a restored spine carried and
+#: every later source adds to it (see :func:`_accumulate_count`).
+_COUNT_COLUMNS_KEY = '_link_count_columns'
+
+
+def _accumulate_count(
+    state: HarmonizeState,
+    spine: gpd.GeoDataFrame,
+    name: str,
+    counts: pd.Series,
+) -> None:
+    """Add *counts* into ``spine[name]``, once per source in this run.
+
+    A count is a tally of contributing reference records, not a competing
+    estimate of one quantity, so two sources are summed rather than
+    resolved against each other: under auto-discovery the last matched
+    source used to overwrite the column outright, and every earlier
+    source's records vanished from it. :func:`_write_prioritized` is the
+    wrong tool here for a mechanical reason too, since a count column is
+    dense by construction (an unmatched row is a real 0, never null), so
+    its coverage rule would always take the newest source whole.
+
+    The first write of a run replaces the column, so a spine restored
+    with a stale count does not accumulate on top of it; later writes add.
+
+    Parameters
+    ----------
+    state : HarmonizeState
+        Run state; its metadata records which columns this run has
+        already written.
+    spine : geopandas.GeoDataFrame
+        Spine to write into, mutated in place.
+    name : str
+        Count column name.
+    counts : pandas.Series
+        Per-spine-row record count for this source, aligned to *spine*.
+    """
+    written = state.metadata.setdefault(_COUNT_COLUMNS_KEY, set())
+    values = counts.fillna(0).astype('int64')
+    if name in spine.columns and name in written:
+        spine[name] = (
+            pd.to_numeric(spine[name], errors='coerce').fillna(0).astype('int64')
+            + values
+        )
+    else:
+        spine[name] = values
+    written.add(name)
 
 
 # A join key value carried by this many rows, or by this share of the
@@ -2275,7 +2331,10 @@ def link_by_id(
         since ``'aggregate'`` is also used for non-transaction references like
         MassGIS condo unit stacks); pass ``flag_as=None`` to skip the
         ``'count'``-mode presence flag when it isn't needed (e.g. it's exactly
-        ``count_as > 0`` and not worth persisting).
+        ``count_as > 0`` and not worth persisting). A count column written
+        by more than one source in a run (every auto-discovered match
+        shares one *count_as*) accumulates across them rather than being
+        overwritten by the last; see :func:`_accumulate_count`.
     layer : str, optional
         Secondary layer (entity type or full entity string) of an
         ``additional_layers`` entity to load from *recipe_id*, e.g. the
@@ -2483,7 +2542,7 @@ def link_by_id(
         count_as = count_as or 'n_transactions'
         counts = rkey.dropna().value_counts()
         mapper = counts.to_dict() if counts.empty else counts
-        spine[count_as] = skey.map(mapper).fillna(0).astype('int64')
+        _accumulate_count(state, spine, count_as, skey.map(mapper))
         if flag_as:
             spine[flag_as] = spine[count_as] > 0
         linked = int((spine[count_as] > 0).sum())
@@ -2588,7 +2647,7 @@ def link_by_id(
         count_col = count_as or 'n_records_per_key'
         gsize = grouped.size()
         mapper = gsize.to_dict() if gsize.empty else gsize
-        spine[count_col] = skey.map(mapper).fillna(0).astype('int64')
+        _accumulate_count(state, spine, count_col, skey.map(mapper))
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
