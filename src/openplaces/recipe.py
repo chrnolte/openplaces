@@ -969,8 +969,13 @@ def find_additional_layer_recipes(
     this one.
 
     Recipes with ``exclude_from_auto_discover: true`` are skipped, and only
-    the newest version per (admin_id, source_id) is kept, mirroring
-    :func:`find_entity_recipe_id`'s specificity/version precedence.
+    the newest version per (admin_id, source_id, filename_suffix) is kept,
+    mirroring :func:`find_entity_recipe_id`'s specificity/version
+    precedence and
+    :func:`openplaces.io.harmonizer.links._find_admin_scoped_recipe_ids`'s
+    dedup key. The suffix belongs in that key: two files sharing a source
+    (``CO_parcel-igac-2026_rural`` and ``_urban``) are different tables
+    meant to coexist, not competing versions of one.
 
     Parameters
     ----------
@@ -995,7 +1000,7 @@ def find_additional_layer_recipes(
     from openplaces.diagnostics import find_recipes
 
     admin_id = admin_id if isinstance(admin_id, AdminId) else AdminId(admin_id)
-    best: dict[tuple[str, str], tuple[str, str, str]] = {}
+    best: dict[tuple[str, str, str], tuple[str, str, str]] = {}
     for _, row in find_recipes(host_entity_type, stage='ingest').iterrows():
         if row['exclude_from_auto_discover']:
             continue
@@ -1004,10 +1009,14 @@ def find_additional_layer_recipes(
             admin_id
         ):
             continue
-        key = (admin_id_str, row['source_id'])
-        recipe_id = (
-            f'{admin_id_str}_{host_entity_type}-{row["source_id"]}-{row["version"]}'
-        )
+        # Keyed on the filename suffix as well, and reading the recipe
+        # id the index already carries rather than rebuilding it: a
+        # rebuilt id drops the suffix, so sibling files such as
+        # `CO_parcel-igac-2026_rural` and `_urban` collapsed onto one
+        # another and then named a `CO_parcel-igac-2026` file that does
+        # not exist, raising OSError in every Colombia spine run.
+        key = (admin_id_str, row['source_id'], row['filename_suffix'])
+        recipe_id = row['recipe_id']
         if key not in best or row['version'] > best[key][0]:
             best[key] = (row['version'], recipe_id, row['source_id'])
 
