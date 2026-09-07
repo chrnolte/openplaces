@@ -13,6 +13,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow as pa
 
 from openplaces.config import cfg
 from openplaces.core.attribute_registry import load_registry as _load_attr_registry
@@ -269,12 +270,14 @@ class Ingester:
 
     @property
     def _process_level(self):
-        """Max admin level across download_by and process_by."""
-        level = self.recipe['admin_id'].get_level()
-        for by in ('download_by', 'process_by'):
-            if by in self.recipe and 'admin_level' in self.recipe[by]:
-                level = max(level, self.recipe[by]['admin_level'])
-        return level
+        """Max admin level across download_by and process_by.
+
+        Delegated rather than recomputed: the local copy omitted the
+        deprecated `cache_by: admin_level` term, so on a recipe still
+        carrying it `_is_aggregate_mode` and
+        `_resolve_admin_ids_to_process` disagreed about the level.
+        """
+        return get_process_admin_level(self.recipe)
 
     @staticmethod
     def _make_temp_recipe(recipe):
@@ -912,8 +915,11 @@ class Ingester:
             present = set(
                 pd.read_parquet(save_path, columns=[process_col])[process_col].unique()
             )
-        except Exception:
-            return False  # Column absent (pre-stamp file): leave as-is
+        except (ValueError, KeyError, pa.ArrowInvalid):
+            # Column absent (a pre-stamp file): leave as-is. Narrow, so a
+            # locked or unreadable parquet raises instead of reading as
+            # "complete" and silently skipping the rebuild.
+            return False
 
         return not expected.issubset(present)
 
@@ -1016,7 +1022,10 @@ class Ingester:
             spec = dict(crosswalk)
             spec['admin_id'] = str(self.recipe['admin_id'])
             covered = set(get_crosswalk(spec, flip=True).iloc[:, 0])
-        except Exception:  # noqa: BLE001 - absent sidecar is not fatal here
+        except (FileNotFoundError, KeyError, ValueError):
+            # An absent or unreadable sidecar is not fatal here: the scope
+            # is an optimization and `process()` reports a real mismatch.
+            # Narrow, so an unexpected failure is not read as "unscoped".
             return admin_ids_to_process
         # Compare as strings: AdminId does not hash equal to its own
         # string form, so membership against the crosswalk's raw column

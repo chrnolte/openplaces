@@ -314,6 +314,15 @@ class TableIngester:
         reverse_crosswalk = self.download_partition['admin_id_crosswalk_reverse']
 
         admin_id_to_process = self.processing_chunk['admin_id_to_process']
+        if admin_id_to_process not in reverse_crosswalk.index:
+            # The reverse crosswalk records no scope of its own (unlike the
+            # forward one), so an admin unit a scoped sidecar does not cover
+            # reached `.loc` and raised a bare KeyError naming only the id.
+            raise KeyError(
+                f"{admin_id_to_process} has no code in this recipe's "
+                'process_by.admin_id_crosswalk, so no file name can be '
+                'built for it.'
+            )
         raw_code = reverse_crosswalk.loc[admin_id_to_process]
 
         pattern = file_pattern.replace(
@@ -1394,11 +1403,22 @@ class TableIngester:
 
         if split_dataset_by_admin:
             admin_id_col = f'admin{admin_level}_id'
+            if admin_id_col not in gdf and gdf.empty:
+                # An empty chunk has nothing to split and no column to
+                # report missing: the crosswalk join and the admin overlay
+                # both skip an empty frame, so a `query` that excludes a
+                # whole partition by design (New England in
+                # `US_admin-census-2025_admin4`) arrived here without the
+                # column, raised, and then raised a second, more confusing
+                # error while building the message.
+                if self.verbose:
+                    print(f'  no rows to save for {self.table_name}.')
+                return
             if admin_id_col not in gdf:
                 raise ValueError(
                     f"Recipe says 'save_to: admin_level: {admin_level}', but column "
                     f"'{admin_id_col}' does not exist in DataFrame:\n\n"
-                    + str(gdf.sample(1).T)
+                    + str(gdf.head(1).T)
                 )
             admin_ids_in_data = sorted(set(gdf[admin_id_col].dropna()))
             admin_ids_to_save_expected = [
