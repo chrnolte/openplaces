@@ -96,33 +96,67 @@ def check_prerequisites(overrides=None, verbose=True) -> list[str]:
     return missing
 
 
-def apply_population_overrides(overrides=None, verbose=True) -> int:
+def apply_population_overrides(overrides=None, verbose=True, strict=True) -> int:
     """Phase 2 -- weights from a country's own admin entity.
 
     Applied in table order, level 3 before level 4, because a parent's
     total is what phase 3 apportions a child's shortfall against.
+
+    Every row is attempted before anything is raised, so one run reports
+    every broken override rather than only the first.
+
+    Parameters
+    ----------
+    overrides : pandas.DataFrame, optional
+        Override table. Read from the committed CSV when omitted.
+    verbose : bool, optional
+        Print one line per row, saying whether it was applied.
+    strict : bool, optional
+        Raise if any row failed. Default True: a failed override leaves
+        its units on gap-filled weights, and the mint that follows turns
+        those weights into identifiers, which is the spine that looks
+        finished and is not. Pass False only to survey the damage.
+
+    Returns
+    -------
+    int
+        Number of overrides applied.
+
+    Raises
+    ------
+    RuntimeError
+        If *strict* and any override failed.
     """
     overrides = load_overrides() if overrides is None else overrides
     applied = 0
+    failed = []
     for _, row in overrides.sort_values('level').iterrows():
         kwargs = {}
         if row['join_column']:
             kwargs['join_column'] = row['join_column']
         if row['key']:
             kwargs['key'] = KEY_STRATEGIES[row['key']]
+        label = f'{row["scope"]:6s} level {row["level"]} <- {row["recipe_id"]}'
         try:
             build.build_population_from_entity(
                 row['recipe_id'], row['scope'], level=row['level'], **kwargs
             )
             applied += 1
         except Exception as exc:  # noqa: BLE001
-            warnings.warn(
-                f'population override {row["recipe_id"]} @ {row["scope"]} '
-                f'(level {row["level"]}) failed: {exc}',
-                stacklevel=2,
+            failed.append(
+                f'{row["recipe_id"]} @ {row["scope"]} (level {row["level"]}): {exc}'
             )
+            warnings.warn(f'population override {failed[-1]}', stacklevel=2)
+            if verbose:
+                print(f'    {label} FAILED')
+            continue
         if verbose:
-            print(f'    {row["scope"]:6s} level {row["level"]} <- {row["recipe_id"]}')
+            print(f'    {label}')
+    if failed and strict:
+        raise RuntimeError(
+            f'{len(failed)} of {len(overrides)} population override(s) failed; '
+            'their units would be minted on gap-filled weights: ' + '; '.join(failed)
+        )
     return applied
 
 
@@ -154,8 +188,10 @@ def rebuild_spine(
     Raises
     ------
     RuntimeError
-        If prerequisites are missing, or the mint has not reached a fixed
-        point within *max_passes*.
+        If prerequisites are missing, if a phase-2 population override
+        failed, or if the mint has not reached a fixed point within
+        *max_passes*. Every one of those leaves weights the mint would
+        turn into identifiers, so none of them may be minted through.
     """
     if missing := check_prerequisites(verbose=verbose):
         raise RuntimeError(
@@ -172,6 +208,8 @@ def rebuild_spine(
         if verbose:
             print('  phase 2: country overrides')
         if apply:
+            # Raises on a failed override rather than minting on the
+            # gap-filled weights it left behind.
             apply_population_overrides(verbose=verbose)
         if verbose:
             print('  phase 3: apportion each parent shortfall')
