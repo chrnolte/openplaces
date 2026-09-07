@@ -42,6 +42,21 @@ from openplaces.table import (  # noqa: F401
 )
 
 
+def _has_geometry(path) -> bool:
+    """True if *path* carries geometry, in a `_geo` sidecar or in itself.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Attribute parquet path.
+    """
+    if not path.exists():
+        return False
+    if path.with_stem(path.stem + '_geo').exists():
+        return True
+    return 'geometry' in parquet_columns(path)
+
+
 def _has_default_index(df) -> bool:
     """True if *df* has a default, unnamed RangeIndex (0..n-1, step 1)."""
     idx = df.index
@@ -305,9 +320,11 @@ def _aggregate_to_file(
     # the file itself (combined layout, `save_to: combined: true`).
     # Checking only for the sidecar silently read combined inputs
     # without their geometry, writing a geometry-less aggregate.
-    has_geo = input_paths[0].with_stem(input_paths[0].stem + '_geo').exists() or (
-        'geometry' in parquet_columns(input_paths[0])
-    )
+    # Decided per input: a chunk written without geometry beside chunks
+    # that carry it used to make the whole aggregate geometry-less (when
+    # the bare chunk came first) or raise (when it came later).
+    input_has_geo = {p: _has_geometry(p) for p in input_paths}
+    has_geo = any(input_has_geo.values())
 
     try:
         dfs = []
@@ -315,9 +332,9 @@ def _aggregate_to_file(
         # legacy replace_by path reloads and drops only the rows being replaced
         # so a partial re-run doesn't discard prior chunks.
         if how == 'union' and final_path.exists():
-            dfs.append(read_parquet(final_path, geom=has_geo))
+            dfs.append(read_parquet(final_path, geom=_has_geometry(final_path)))
         elif replace_by is not None and final_path.exists():
-            existing_df = read_parquet(final_path, geom=has_geo)
+            existing_df = read_parquet(final_path, geom=_has_geometry(final_path))
             replaced_ids = {input_id for input_id, _ in inputs}
             if replace_by in existing_df.columns:
                 existing_df = existing_df[~existing_df[replace_by].isin(replaced_ids)]
@@ -328,7 +345,7 @@ def _aggregate_to_file(
 
         new_dfs = []
         for input_id, p in inputs:
-            df = read_parquet(p, geom=has_geo)
+            df = read_parquet(p, geom=input_has_geo[p])
             if (
                 replace_by is not None
                 and replace_by not in df.columns
@@ -404,7 +421,14 @@ def _aggregate_to_file(
                 merged = merged.drop_duplicates()
         merged = merged.reset_index(drop=True) if reset_index else merged.sort_index()
         if has_geo:
-            merged = gpd.GeoDataFrame(merged, crs=dfs[0].crs)
+            # The CRS comes from whichever frame carried geometry: with a
+            # mixed batch the first frame may have none.
+            crs = next(
+                (df.crs for df in dfs if getattr(df, 'crs', None) is not None), None
+            )
+            if 'geometry' in merged.columns:
+                merged['geometry'] = gpd.GeoSeries(merged['geometry'], crs=crs)
+            merged = gpd.GeoDataFrame(merged, crs=crs)
 
         for col, (cats, ordered) in cat_meta.items():
             if col in merged.columns:
