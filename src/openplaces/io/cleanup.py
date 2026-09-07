@@ -43,6 +43,7 @@ from openplaces.recipe import (
     get_recipe_retention,
     get_save_admin_level,
     resolve_attribute_name,
+    saves_geometry,
 )
 
 RECEIPT_SUFFIX = '.consumed.json'
@@ -177,6 +178,29 @@ def _parquet_schema_ok(path) -> bool:
     return True
 
 
+def _geometry_sidecar_ok(path: Path) -> bool:
+    """True when an output's '_geo' sidecar is present and readable.
+
+    save_parquet writes the attribute table first and the geometry
+    sidecar second, so a job killed between the two leaves an attribute
+    file that passes every check on its own while its geometry is gone.
+    A '_join_id' column exists only to join to that sidecar, which makes
+    it the one unambiguous on-disk signal that the sidecar is owed. An
+    output keyed on 'geo_id' carries no such signal, so a missing
+    sidecar there still goes unnoticed; a sidecar that is present is
+    validated either way.
+    """
+    geo_path = path.with_name(path.stem + '_geo' + path.suffix)
+    if geo_path.exists():
+        return _parquet_schema_ok(geo_path)
+    try:
+        import pyarrow.parquet as pq
+
+        return '_join_id' not in pq.read_schema(path).names
+    except Exception:
+        return False
+
+
 def _required_subadmin_ids(admin_id) -> set[str] | None:
     """Sub-admin (level 4) units of an admin unit, or None when unknown.
 
@@ -197,6 +221,8 @@ def is_output_complete(recipe, admin_id, required_partitions=None) -> bool:
 
     - plain parquet: exists AND the footer is readable AND registry-known
       columns pass the (schema-only) dtype check
+    - split geometry layout: the '_geo' sidecar, which save_parquet writes
+      second, is present and readable (see `_geometry_sidecar_ok`)
     - aggregated/partitioned parquet with a coverage footer: additionally,
       the recorded coverage is a superset of `required_partitions`
     - enrich evidence: coverage covers all sub-admin units, or the
@@ -228,6 +254,8 @@ def is_output_complete(recipe, admin_id, required_partitions=None) -> bool:
     if out_path.suffix != '.parquet':
         return True
     if not _parquet_schema_ok(out_path):
+        return False
+    if saves_geometry(recipe) and not _geometry_sidecar_ok(out_path):
         return False
     coverage = read_partition_coverage(out_path)
     if not coverage or COVERAGE_ALL in coverage:

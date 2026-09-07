@@ -4,8 +4,10 @@ import json
 import os
 import time
 
+import geopandas as gpd
 import pandas as pd
 import pytest
+from shapely.geometry import Point
 
 import openplaces.diagnostics as diagnostics
 import openplaces.io as opio
@@ -116,6 +118,40 @@ def test_is_output_complete_rejects_bad_suffixed_registry_dtype(data_root):
     # float, so a string column must fail despite the provenance suffix
     df = pd.DataFrame({'improvement_value_parcel': ['not', 'numeric']})
     _write_parquet(_nsi_path(), df)
+    assert not cl.is_output_complete(NSI, COUNTY)
+
+
+def test_is_output_complete_requires_the_geometry_sidecar(data_root):
+    """A write killed between the two files is not complete.
+
+    save_parquet writes the attribute table first and the '_geo' sidecar
+    second; the attribute half passes every check on its own, so a
+    consumer killed in between counted as complete and its inputs were
+    reclaimed with receipts.
+    """
+    path = _nsi_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = gpd.GeoDataFrame(
+        {'value': [1.0, 2.0]},
+        geometry=[Point(0, 0), Point(1, 1)],
+        crs='EPSG:4326',
+    )
+    opio.save_parquet(frame, path)
+    geo_path = path.with_name(path.stem + '_geo' + path.suffix)
+    assert geo_path.exists()
+    assert cl.is_output_complete(NSI, COUNTY)
+
+    geo_path.unlink()
+    assert not cl.is_output_complete(NSI, COUNTY)
+
+
+def test_is_output_complete_rejects_truncated_geometry_sidecar(data_root):
+    path = _nsi_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = gpd.GeoDataFrame({'value': [1.0]}, geometry=[Point(0, 0)], crs='EPSG:4326')
+    opio.save_parquet(frame, path)
+    geo_path = path.with_name(path.stem + '_geo' + path.suffix)
+    geo_path.write_bytes(b'PAR1 truncated')
     assert not cl.is_output_complete(NSI, COUNTY)
 
 
