@@ -591,9 +591,10 @@ def get_entities(
         geometry = predecessor['geometry']
         n_repeated = int(geometry.index.duplicated().sum())
         if n_repeated:
-            # Silent before: the join would otherwise fan every attribute
-            # row out across the repeated geometries. Report rather than
-            # raise, so a read that only wants to draw still works.
+            # Silent before: the join would otherwise fan every
+            # attribute row out across the repeated geometries. Report
+            # rather than raise, so a read that only wants to draw
+            # still works.
             warnings.warn(
                 f'{n_repeated} repeated {geometry.index.name} label(s) in the '
                 f'geometry of {get_recipe_id(geometry_recipe)} for {admin_id}; '

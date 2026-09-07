@@ -556,11 +556,12 @@ def _build_crosswalk(
     the sliver trimming and link labeling can never diverge between them.
     Tolerates a geometry-free overlay (the reloaded sidecar).
     """
-    # A repeated (spine id, reference id) pair says the spine carried the
-    # same label twice: a real multi-overlap pairs one spine id with
-    # several distinct reference ids, never twice with the same one. Left
-    # alone, the two copies of one entity go down the multi branch, compete
-    # on intersection area, and the smaller is trimmed away as a neighbor.
+    # A repeated (spine id, reference id) pair says the spine carried
+    # the same label twice: a real multi-overlap pairs one spine id
+    # with several distinct reference ids, never twice with the same
+    # one. Left alone, the two copies of one entity go down the multi
+    # branch, compete on area, and the smaller is trimmed as a
+    # neighbor.
     require_unique_index(
         footprints_on_ref.index, f'link_to_reference crosswalk on {spine_id_col}'
     )

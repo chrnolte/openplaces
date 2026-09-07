@@ -215,9 +215,9 @@ def zonal_stats_with_exactextract(
     # Create a GeoDataFrame with only geometry to avoid dtype issues
     gdf_geom = gpd.GeoDataFrame(geometry=gdf.geometry, crs=gdf.crs)
 
-    # Carry a synthetic row position, not the index label, as the key back
-    # to gdf: a repeated label would multiply the join below into the
-    # product of its occurrences.
+    # Carry a synthetic row position, not the index label, as the
+    # key back to gdf: a repeated label would multiply the join below
+    # into the product of its occurrences.
     position_col = '_row_position'
     gdf_geom[position_col] = np.arange(len(gdf))
 
@@ -247,9 +247,10 @@ def zonal_stats_with_exactextract(
             }
         )
 
-    # Put the stats back on the input rows by position (exactextract may
-    # return them in any order), then rebuild the frame column by column:
-    # a label join or a concat cannot align an index whose labels repeat.
+    # Put the stats back on the input rows by position (exactextract
+    # may return them in any order), then rebuild the frame column by
+    # column: neither a label join nor a concat can align an index
+    # whose labels repeat.
     stats_frame = (
         result.drop(columns=['geometry'], errors='ignore')
         .set_index(position_col)
@@ -397,9 +398,9 @@ def sample_rasterized(parcels_r, raster_path, raster_key, stat) -> pd.Series:
 
     df = pd.DataFrame({'idx': flat_ids[mask], 'val': flat_vals[mask]})
     grouped = df.groupby('idx')['val'].agg(agg_fn)
-    # Reindex on the burned row positions, not on the parcel ids: keying a
-    # dict by the id collapses two rows sharing a label into one entry, and
-    # both rows then read back the same statistic.
+    # Reindex on the burned row positions, not on the parcel ids:
+    # keying a dict by the id collapses two rows sharing a label into
+    # one entry, and both then read back the same statistic.
     values = grouped.reindex(np.arange(1, len(parcel_ids) + 1)).to_numpy(
         dtype='float64'
     )

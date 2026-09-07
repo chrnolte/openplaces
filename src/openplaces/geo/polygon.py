@@ -1039,11 +1039,11 @@ def resolve_overlapping_polygons(
         raise ValueError(
             'At least one of overlap_ratio_threshold or iou_threshold must be set.'
         )
-    # The pair comparison below reads each side with `df.loc[label]`, and a
-    # repeated label makes that a DataFrame rather than a row: the equality
-    # test stops meaning anything and the following drop would remove every
-    # row sharing the label. Which of the copies a pair refers to cannot be
-    # recovered here, so refuse rather than guess.
+    # The pair comparison below reads each side with df.loc[label],
+    # and a repeated label makes that a DataFrame rather than a row:
+    # the equality test stops meaning anything, and the drop that
+    # follows would remove every row sharing the label. Which copy a
+    # pair refers to cannot be recovered here, so refuse to guess.
     require_unique_index(df, 'resolve_overlapping_polygons')
 
     overlaps = find_overlaps(df, iou=True).query(

@@ -238,10 +238,10 @@ class Curator:
         # and its geometry is resolved via the entity_recipe chain -- a raw
         # read would find no `_geo` sidecar (or a stale pre-split one).
         curated = get_entities(self.entity_recipe, admin_id, geom=True)
-        # Curate steps merge evidence, vote and impute by entity id, so a
-        # repeated label would silently fan those joins out. Refuse here,
-        # where the recipe and the admin unit can still be named, rather
-        # than deep inside a step's reindex.
+        # Curate steps merge evidence, vote and impute by entity id,
+        # so a repeated label would fan those joins out. Refuse here,
+        # where the recipe and the admin unit can still be named,
+        # rather than deep inside a step's reindex.
         recipe_id = self.recipe.get('recipe_id', 'recipe')
         require_unique_index(curated, f'curate {recipe_id} for {admin_id}')
         curated = _coerce_registry_numerics(curated)
