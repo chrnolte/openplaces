@@ -11,6 +11,12 @@ import pytest
 
 from openplaces.io.admin_codes import rebuild
 
+# Bound before the autouse fixture replaces the module attribute with
+# its guard stub, so the override tests below can exercise the real
+# function. They reach no real data: both the table it reads and the
+# builder it calls are monkeypatched.
+_apply_overrides = rebuild.apply_population_overrides
+
 
 @pytest.fixture(autouse=True)
 def _never_touch_real_data(monkeypatch):
@@ -127,3 +133,64 @@ def test_convergence_stops_the_loop_and_sweeps_references(monkeypatch):
     out = rebuild.rebuild_spine(apply=True, skip_population=True, verbose=False)
     assert out == {'passes': 3, 'history': [5, 5, 0], 'converged': True}
     assert calls['sweep'] == 1
+
+
+def _overrides(rows):
+    """An override table shaped like the committed CSV."""
+    import pandas as pd
+
+    return pd.DataFrame(
+        rows, columns=['recipe_id', 'scope', 'level', 'join_column', 'key', 'note']
+    )
+
+
+def test_a_failed_override_stops_the_rebuild_before_it_mints(monkeypatch):
+    # A failed override leaves its units on gap-filled weights, and the
+    # mint turns weights into identifiers. Warning and minting anyway is
+    # exactly the spine that looks finished and is not.
+    table = _overrides(
+        [
+            ('good-recipe', 'US-MA', 3, '', '', ''),
+            ('broken-recipe', 'US-ME', 3, '', '', ''),
+        ]
+    )
+
+    def fake_entity(recipe_id, scope, level=None, **kwargs):
+        if recipe_id == 'broken-recipe':
+            raise ValueError('matched no unit')
+
+    monkeypatch.setattr(rebuild, 'load_overrides', lambda *a, **k: table)
+    monkeypatch.setattr(rebuild.build, 'build_population_from_entity', fake_entity)
+    with pytest.warns(UserWarning, match='broken-recipe'):
+        with pytest.raises(RuntimeError, match='override'):
+            _apply_overrides(verbose=False)
+
+
+def test_every_override_is_attempted_before_raising(monkeypatch):
+    # One run should name every broken override, not only the first.
+    table = _overrides(
+        [
+            ('broken-one', 'US-MA', 3, '', '', ''),
+            ('broken-two', 'US-ME', 3, '', '', ''),
+        ]
+    )
+
+    def fake_entity(recipe_id, scope, level=None, **kwargs):
+        raise ValueError('matched no unit')
+
+    monkeypatch.setattr(rebuild, 'load_overrides', lambda *a, **k: table)
+    monkeypatch.setattr(rebuild.build, 'build_population_from_entity', fake_entity)
+    with pytest.warns(UserWarning):
+        with pytest.raises(RuntimeError) as info:
+            _apply_overrides(verbose=False)
+    assert 'broken-one' in str(info.value)
+    assert 'broken-two' in str(info.value)
+
+
+def test_a_clean_override_run_reports_what_it_applied(monkeypatch):
+    table = _overrides([('good-recipe', 'US-MA', 3, '', '', '')])
+    monkeypatch.setattr(rebuild, 'load_overrides', lambda *a, **k: table)
+    monkeypatch.setattr(
+        rebuild.build, 'build_population_from_entity', lambda *a, **k: None
+    )
+    assert _apply_overrides(verbose=False) == 1
