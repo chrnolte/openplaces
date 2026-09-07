@@ -161,8 +161,9 @@ def has_geometry(gdf):
     # filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
 
     if isinstance(gdf, gpd.GeoDataFrame):
-        warnings.filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
-        return ~gdf['geometry'].is_empty & gdf['geometry'].notna()
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
+            return ~gdf['geometry'].is_empty & gdf['geometry'].notna()
     elif isinstance(gdf, gpd.GeoSeries):
         return ~gdf.is_empty & gdf.notna()
     else:
@@ -344,10 +345,12 @@ def crs_is_mea(crs):
                 + str(crs)
             )
 
-    # Still testing whether this makes the warning disappear
-    warnings.filterwarnings('ignore', category=UserWarning)
-    crs_dict = crs.to_dict()
-    warnings.filterwarnings('default', category=UserWarning)
+    # Scope the suppression: a bare filterwarnings('default') does not
+    # restore the caller's filter, it prepends an entry that overrides
+    # whatever the caller had set, for the rest of the process.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=UserWarning)
+        crs_dict = crs.to_dict()
 
     return (crs_dict['proj'] in ['cea', 'aea']) and (crs_dict['units'] == 'm')
 
@@ -375,10 +378,12 @@ def get_lat_long_centroids(gdf, crs='epsg:4326', geom=False):
     if crs != crs_orig:
         gdf = gdf.to_crs(crs)
 
-    # Suppress warnings if centroids are in geographic CRS
-    warnings.filterwarnings('ignore', category=UserWarning)
-    gdf['geometry'] = gdf['geometry'].centroid
-    warnings.filterwarnings('default', category=UserWarning)
+    # Suppress the geographic-CRS centroid warning for this call only:
+    # filterwarnings('default') afterwards would leave a global entry
+    # overriding the caller's own filter rather than restoring it.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=UserWarning)
+        gdf['geometry'] = gdf['geometry'].centroid
 
     gdf['lat'] = gdf.geometry.y
     gdf['long'] = gdf.geometry.x
