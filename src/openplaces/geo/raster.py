@@ -215,9 +215,11 @@ def zonal_stats_with_exactextract(
     # Create a GeoDataFrame with only geometry to avoid dtype issues
     gdf_geom = gpd.GeoDataFrame(geometry=gdf.geometry, crs=gdf.crs)
 
-    # add parcel ID as a regular column to allow for future join back to gpd
-    index_name = gdf.index.name or 'index'
-    gdf_geom[index_name] = gdf.index
+    # Carry a synthetic row position, not the index label, as the key back
+    # to gdf: a repeated label would multiply the join below into the
+    # product of its occurrences.
+    position_col = '_row_position'
+    gdf_geom[position_col] = np.arange(len(gdf))
 
     # Run exactextract
     result = exact_extract(
@@ -225,7 +227,7 @@ def zonal_stats_with_exactextract(
         vec=gdf_geom,
         ops=stats,
         weights=weights_arg,
-        include_cols=[index_name],
+        include_cols=[position_col],
         include_geom=True,
         output='pandas',
         strategy=strategy,
@@ -234,7 +236,7 @@ def zonal_stats_with_exactextract(
 
     # Optional column prefix
     if col_prefix:
-        passthrough = {'geometry', index_name}
+        passthrough = {'geometry', position_col}
         if include_cols:
             passthrough |= set(
                 [include_cols] if isinstance(include_cols, str) else include_cols
@@ -245,11 +247,20 @@ def zonal_stats_with_exactextract(
             }
         )
 
-    # Set parcel ID as index (aligns correctly regardless of row order)
-    result = result.set_index(index_name)
-    # Drop geometry from result, join all original gdf columns back
-    result = result.drop(columns=['geometry']).join(gdf)
-    return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf.crs)
+    # Put the stats back on the input rows by position (exactextract may
+    # return them in any order), then rebuild the frame column by column:
+    # a label join or a concat cannot align an index whose labels repeat.
+    stats_frame = (
+        result.drop(columns=['geometry'], errors='ignore')
+        .set_index(position_col)
+        .reindex(np.arange(len(gdf)))
+    )
+    geometry_col = gdf.geometry.name
+    columns = {col: stats_frame[col].to_numpy() for col in stats_frame.columns}
+    columns.update({col: gdf[col].values for col in gdf.columns})
+    return gpd.GeoDataFrame(
+        columns, index=gdf.index, geometry=geometry_col, crs=gdf.crs
+    )
 
 
 def sample_raster_at_points(raster_path, x, y):
@@ -362,9 +373,8 @@ def sample_rasterized(parcels_r, raster_path, raster_key, stat) -> pd.Series:
         raster_data = src.read(1, window=win)
         nodata = src.nodata
 
-    parcel_ids = parcels_r.index.tolist()
+    parcel_ids = parcels_r.index
     int_indices = range(1, len(parcel_ids) + 1)
-    idx_to_pid = dict(zip(int_indices, parcel_ids))
 
     shapes = (
         (geom, idx) for geom, idx in zip(parcels_r.geometry, int_indices, strict=True)
@@ -387,8 +397,13 @@ def sample_rasterized(parcels_r, raster_path, raster_key, stat) -> pd.Series:
 
     df = pd.DataFrame({'idx': flat_ids[mask], 'val': flat_vals[mask]})
     grouped = df.groupby('idx')['val'].agg(agg_fn)
-    result_vals = {idx_to_pid[i]: v for i, v in grouped.items() if i in idx_to_pid}
-    return pd.Series(result_vals, dtype='float64').reindex(parcel_ids)
+    # Reindex on the burned row positions, not on the parcel ids: keying a
+    # dict by the id collapses two rows sharing a label into one entry, and
+    # both rows then read back the same statistic.
+    values = grouped.reindex(np.arange(1, len(parcel_ids) + 1)).to_numpy(
+        dtype='float64'
+    )
+    return pd.Series(values, index=parcel_ids, dtype='float64')
 
 
 def clip(
