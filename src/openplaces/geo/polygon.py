@@ -18,6 +18,7 @@ from shapely.geometry import MultiPolygon, Point, Polygon
 
 from openplaces.core.constants import AC_TO_HA, M2_PER_AREA_UNIT, M2_TO_SQFT
 from openplaces.geo.crs_transforms import get_or_resolve_crs_transform
+from openplaces.table import require_unique_index
 
 PROJ4 = {
     'ortho': '+proj=ortho +lat_0={LAT} +lon_0={LON} +x_0=0 +y_0=0 '
@@ -1038,6 +1039,13 @@ def resolve_overlapping_polygons(
         raise ValueError(
             'At least one of overlap_ratio_threshold or iou_threshold must be set.'
         )
+    # The pair comparison below reads each side with `df.loc[label]`, and a
+    # repeated label makes that a DataFrame rather than a row: the equality
+    # test stops meaning anything and the following drop would remove every
+    # row sharing the label. Which of the copies a pair refers to cannot be
+    # recovered here, so refuse rather than guess.
+    require_unique_index(df, 'resolve_overlapping_polygons')
+
     overlaps = find_overlaps(df, iou=True).query(
         ' | '.join(f'({c})' for c in conditions)
     )
@@ -1181,19 +1189,26 @@ def resolve_overlapping_polygons(
 
 
 def _coverage_fractions(piece_intersection, index_name, gdf):
-    """Return fraction of each polygon in gdf covered by piece_intersection."""
+    """Return fraction of each polygon in gdf covered by piece_intersection.
+
+    Raises
+    ------
+    ValueError
+        When *index_name* repeats in *gdf*. The numerator is one summed
+        area per id while the denominator would carry one entry per row,
+        so the division fans out and reports every copy of a fully
+        covered polygon as partially covered, which then sends it into
+        leftover-fragment handling and raises from there instead.
+    """
+    ids = pd.Index(gdf[index_name].values, name=index_name)
+    require_unique_index(ids, f'identity overlay on {index_name}')
     frag_area = shapely.area(piece_intersection.geometry.values)
     covered = (
         pd.Series(frag_area, name='_fa')
         .groupby(piece_intersection[index_name].values)
         .sum()
     )
-    native = pd.Series(
-        shapely.area(gdf.geometry.values),
-        index=gdf[index_name].values,
-        name='_na',
-    )
-    native.index.name = index_name
+    native = pd.Series(shapely.area(gdf.geometry.values), index=ids, name='_na')
     return covered / native
 
 
