@@ -112,6 +112,15 @@ def _transform_partition_key(value, spec: dict) -> str:
     value = str(value)
     operation = spec.get('operation')
     args = spec.get('args') or []
+    # Each operation's arity, checked before indexing: a short `args` list
+    # otherwise raised a bare IndexError naming neither the recipe key nor
+    # the operation that wanted more arguments.
+    arity = {'substring': 2, 'zfill': 1, 'add_prefix': 1, 'add_suffix': 1}
+    if operation in arity and len(args) < arity[operation]:
+        raise ValueError(
+            f"partition_key_transformation operation '{operation}' needs "
+            f'{arity[operation]} argument(s), got {args!r}.'
+        )
     if operation == 'substring':
         return value[args[0] : args[1]]
     if operation == 'zfill':
@@ -763,14 +772,28 @@ class Ingester:
             # re-mint this was a quiet no-op that reported success; a
             # recycled or retired identifier then cost a full run that
             # looked fine while doing nothing.
-            requested = ', '.join(str(a) for a in self.admin_ids)
-            raise ValueError(
-                f'None of the requested admin ids ({requested}) resolve '
-                f'to a unit at save level {save_level} within '
-                f'{self.recipe.get("admin_id")!r}. A re-mint may have '
-                'renamed them; resolve the old id through '
-                'admin_codes.audit.resolve_identifier.'
-            )
+            #
+            # A unit the spine knows but that has no children at the save
+            # level is a different case: legitimately empty scope, not a
+            # renamed id. 83 of the 263 spine countries carry no admin3
+            # rows, so a global recipe asked for one of them should do
+            # nothing quietly rather than abort the run.
+            unresolved = [
+                admin_id
+                for admin_id in self.admin_ids
+                if not self._admin_id_is_in_spine(admin_id)
+            ]
+            if unresolved:
+                requested = ', '.join(str(a) for a in unresolved)
+                scope = self.recipe.get('admin_id')
+                scope_text = repr(str(scope)) if scope and scope.levels else 'the world'
+                raise ValueError(
+                    f'None of the requested admin ids ({requested}) resolve '
+                    f'to a unit at save level {save_level} within '
+                    f'{scope_text}. A re-mint may have '
+                    'renamed them; resolve the old id through '
+                    'admin_codes.audit.resolve_identifier.'
+                )
 
         if not reprocess:
             # Skip if the output exists, or a tombstone receipt records its
@@ -788,6 +811,33 @@ class Ingester:
             ]
 
         return admin_ids_to_save
+
+    def _admin_id_is_in_spine(self, admin_id) -> bool:
+        """Is a requested admin unit itself present in the admin spine?
+
+        Asked at the requested unit's own level, which is what separates a
+        retired or renamed identifier from a unit that is simply childless
+        at the level a recipe saves to.
+
+        Parameters
+        ----------
+        admin_id : AdminId
+            The requested unit. Level 0 (global) is always present.
+
+        Returns
+        -------
+        bool
+            False when the spine cannot be read at that level either, so
+            an unreadable spine keeps the louder of the two outcomes.
+        """
+        level = admin_id.get_level()
+        if level == 0:
+            return True
+        try:
+            spine_ids = get_admin(self.recipe['admin_id'], level).index
+        except (FileNotFoundError, KeyError, ValueError):
+            return False
+        return str(admin_id) in {str(spine_id) for spine_id in spine_ids}
 
     def _resolve_admin_ids_to_save(self, reprocess):
         """Create list of admin_ids for which to create output files
@@ -1447,21 +1497,6 @@ class Ingester:
             else:
                 if placeholder.startswith('admin'):
                     _partition_key = self._get_admin_partition_key(placeholder)
-                    # download_by.partition_key_transformation reshapes a
-                    # resolved key before it enters the URL/filename. The
-                    # motivating case: New England towns' admin3_id_admin1
-                    # is the 10-digit COUSUB GEOID whose first five digits
-                    # are the county FIPS a county-keyed API (NSI) wants;
-                    # a substring makes every town of one county resolve
-                    # to the same download, which the filename cache then
-                    # fetches once. A no-op for units whose key already
-                    # has the target shape (a county's own 5-digit FIPS).
-                    _pkt = (self.recipe.get('download_by') or {}).get(
-                        'partition_key_transformation'
-                    ) or {}
-                    _spec = _pkt.get(placeholder)
-                    if _spec:
-                        _partition_key = _transform_partition_key(_partition_key, _spec)
                 elif (
                     self.recipe.get('download_by')
                     and self.recipe['download_by'].get('partition') == placeholder
@@ -1473,6 +1508,25 @@ class Ingester:
                         f'Placeholder: `{placeholder}`, '
                         f'`download_by`: `{self.recipe["download_by"]}`'
                     )
+
+                # download_by.partition_key_transformation reshapes a
+                # resolved key before it enters the URL/filename. The
+                # motivating case: New England towns' admin3_id_admin1 is
+                # the 10-digit COUSUB GEOID whose first five digits are
+                # the county FIPS a county-keyed API (NSI) wants; a
+                # substring makes every town of one county resolve to the
+                # same download, which the filename cache then fetches
+                # once. A no-op for units whose key already has the target
+                # shape (a county's own 5-digit FIPS). Applied to every
+                # placeholder, not only `admin*` ones: the documented
+                # `year` case was silently ignored and the URL was built
+                # from the untransformed key.
+                _pkt = (self.recipe.get('download_by') or {}).get(
+                    'partition_key_transformation'
+                ) or {}
+                _spec = _pkt.get(placeholder)
+                if _spec:
+                    _partition_key = _transform_partition_key(_partition_key, _spec)
 
                 self.download_partition['partition_key_dict'][placeholder] = (
                     _partition_key
