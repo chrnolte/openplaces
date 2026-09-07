@@ -14,7 +14,7 @@ import pandas as pd
 import yaml
 
 from openplaces.core.constants import ESCAPE_DIR, STRING_SEPARATOR_WITHIN_IDS
-from openplaces.core.schema import AdminId
+from openplaces.core.schema import AdminId, sanitize
 
 
 def find_recipes(
@@ -119,10 +119,15 @@ def _recipe_index() -> pd.DataFrame:
             level = int(suffix) if suffix.isdigit() else None
 
         recipe_id = yaml_path.stem
+        # The version is sanitized in a filename ('4.1' -> '4~1'), so
+        # the base has to be built the same way; comparing the raw
+        # version left every GADM level recipe with an empty suffix, and
+        # a dedup keyed on (admin_id, source_id, suffix) then collapsed
+        # admin1 through admin4 into one.
         base_id = (
-            f'{admin_id_str}_{entity_type}-{source_id}-{version}'
+            f'{admin_id_str}_{entity_type}-{source_id}-{sanitize(version)}'
             if admin_id_str
-            else f'{entity_type}-{source_id}-{version}'
+            else f'{entity_type}-{source_id}-{sanitize(version)}'
         )
         filename_suffix = (
             recipe_id[len(base_id) :].lstrip('_')

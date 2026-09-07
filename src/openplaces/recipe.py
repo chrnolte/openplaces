@@ -19,6 +19,7 @@ import yaml
 from openplaces.config import cfg
 from openplaces.core.constants import (
     RECIPE_PER_TABLE_KEYS,
+    RECIPE_STAGES,
     RETENTION_CLASSES,
     STANDARD_DIRS,
     STRING_SEPARATOR_BETWEEN_IDS,
@@ -131,6 +132,17 @@ def get_recipe_dict(filepath, *args, **kwargs):
     if 'stage' not in recipe_dict:
         recipe_dict['stage'] = 'ingest'
 
+    # Validated here rather than at the point of use: a typo
+    # ('harmonise') loaded silently, ranked below every ingest recipe
+    # in `find_entity_recipe_id`, and surfaced only when the
+    # orchestrated job ran and argparse rejected the stage name.
+    if recipe_dict['stage'] not in RECIPE_STAGES:
+        stage = recipe_dict['stage']
+        raise ValueError(
+            f"Recipe 'stage' is '{stage}', which is not a known openplaces "
+            'pipeline stage. Valid options:' + '\n- ' + '\n- '.join(RECIPE_STAGES)
+        )
+
     # Ensure that 'admin_id' exists in recipe
     if 'admin_id' not in recipe_dict:
         recipe_dict['admin_id'] = admin_id_arg
@@ -194,7 +206,13 @@ def coverage_is_complete(recipe_id) -> bool:
     """
     try:
         return get_recipe_by_id(recipe_id).get('coverage') == 'complete'
-    except Exception:
+    except OSError:
+        # Only a missing recipe file reads as "no declaration, stay
+        # tolerant". A recipe that exists but fails to load (bad YAML, a
+        # value the schema rejects) must not be swallowed: it would be
+        # reported as tolerant and soft-skipped, which is the exact
+        # outcome this guard exists to prevent, and the caller has
+        # already swallowed the load failure once.
         return False
 
 
@@ -416,6 +434,36 @@ def get_table_recipe(recipe: str | dict, layer: str) -> dict:
     )
 
 
+_VERSION_CHUNK_REGEX = re.compile(r'(\d+)')
+
+
+def version_sort_key(version) -> tuple:
+    """Return a sortable key for a recipe version string.
+
+    Versions are compared as raw strings almost everywhere, and the tree
+    mixes formats within one scope and stage: US ingest footprints carry
+    both 'v2' (microsoft) and '2026' (microsoftglobal, osm). As strings
+    'v2' > '2026', so an un-sourced lookup selected the legacy layer, and
+    a future 'v10' would lose to 'v2'.
+
+    Digit runs compare numerically and rank above letter runs, so '2026'
+    beats 'v2', 'v10' beats 'v2', and '2026pc' beats '2026'.
+
+    Parameters
+    ----------
+    version : str or None
+        Version string as declared on the recipe's entity or dataset.
+
+    Returns
+    -------
+    tuple
+        Key for use with sorted()/max(); comparable with any other key
+        this function returns.
+    """
+    chunks = [c for c in _VERSION_CHUNK_REGEX.split(str(version or '')) if c]
+    return tuple((1, int(c), '') if c.isdigit() else (0, 0, c) for c in chunks)
+
+
 def find_recipe_id(admin_id, entity_or_dataset, filename=None, silent=False):
     """Find a recipe ID by admin_id and entity/dataset identifier.
 
@@ -439,7 +487,9 @@ def find_recipe_id(admin_id, entity_or_dataset, filename=None, silent=False):
         return None
     elif len(recipe_paths_found) == 1:
         return Path(recipe_paths_found[0]).name
-    recipe_paths_found = sorted(recipe_paths_found, key=lambda p: Path(p).parent.name)
+    recipe_paths_found = sorted(
+        recipe_paths_found, key=lambda p: version_sort_key(Path(p).parent.name)
+    )
     if not silent:
         print(
             f'Multiple recipes found for {admin_id} ({entity_or_dataset}):\n'
@@ -540,15 +590,37 @@ def resolve_attribute_name(column: str) -> str:
 def source_id_from_recipe_id(recipe_id: str) -> str:
     """Extract the source id from a recipe id.
 
-    A recipe id is ``{admin_id}_{entity_or_theme}-{source}-{version}[...]``;
-    takes the last ``_``-delimited token, then the second ``-``-delimited
-    field within it (e.g. ``'US_building-nsi-2022'`` -> ``'nsi'``). Falls
-    back to the whole token when it has no ``-`` (an un-versioned or
-    otherwise irregular recipe id).
+    A recipe id is `{admin_id}_{entity_or_theme}-{source}-{version}`,
+    optionally followed by a filename suffix. The entity or dataset token
+    is parsed with the same caster :func:`get_recipe_by_id` uses, so the
+    source is read off the parsed object rather than by counting
+    `-`-delimited fields (`'US_building-nsi-2022'` -> `'nsi'`;
+    `'US_footprint_built-n-stories-brails-2026'` -> `'brails'`).
+
+    Reading the *last* token used to be enough only because no committed
+    recipe id carried a suffix: `'CO_parcel-igac-2026_rural'` yielded
+    `'rural'` and `'US_admin-census-2025_admin3'` yielded `'admin3'`,
+    which would have reached provenance tokens, column suffixes and
+    licence keys as though the suffix were the source.
+
+    Falls back to the last token when nothing in the id parses (an
+    un-versioned or otherwise irregular recipe id).
     """
-    base = recipe_id.rsplit('_', 1)[-1]
-    parts = base.split('-', 2)
-    return parts[1] if len(parts) > 1 else base
+    parts = recipe_id.removesuffix('.yaml').split('_')
+    try:
+        AdminId(parts[0])
+        parts = parts[1:]
+    except ValueError:
+        pass
+    for token in parts:
+        try:
+            parsed = cast_dataset_or_entity(token)
+        except (ValueError, IndexError):
+            continue
+        source_id = getattr(getattr(parsed, 'source', None), 'source_id', None)
+        if source_id:
+            return str(source_id)
+    return parts[-1] if parts else recipe_id
 
 
 def find_admin_recipe_id(admin_id, admin_level, silent=False):
@@ -568,6 +640,31 @@ def find_admin_recipe_id(admin_id, admin_level, silent=False):
     )
 
 
+@cache
+def _recipe_yaml(filepath: str) -> dict:
+    """Parse one recipe file, cached for the life of the process.
+
+    The tree is static while a process runs, and the resolvers here read
+    the same files repeatedly: measured on a 3-county graph, this pattern
+    cost 8,173 parses of 182 distinct files. Same caveat as
+    `openplaces.diagnostics._recipe_index`: a session that edits a recipe
+    on disk has to call `_recipe_yaml.cache_clear()` to see it. The
+    returned dict is shared, so callers read it and never mutate it.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the recipe .yaml file.
+
+    Returns
+    -------
+    dict
+        The parsed recipe, or an empty dict for an empty file.
+    """
+    with open(filepath, encoding='utf-8') as f:
+        return yaml.safe_load(f) or {}
+
+
 def find_entity_recipe_id(
     admin_id,
     entity_type,
@@ -579,8 +676,30 @@ def find_entity_recipe_id(
     """Find the most suitable entity recipe.
 
     Recipes follow the pipeline order ingest, harmonize, enrich, curate unless
-    *stage* is specified. Within a stage, prefer the requested source, the
-    most specific applicable administrative scope, and the latest version.
+    *stage* is specified. Within a stage, prefer the most specific applicable
+    administrative scope, then the latest version.
+
+    *source_id* filters rather than ranks. It used to be a preference, so a
+    caller asking for a source with no recipe silently received a different
+    source's: the enricher's request for the harmonized spine
+    (`source_id='spine'`) would fall through to the geospine, which is the
+    same entity type at the same stage. Every caller tests only for None, so
+    the substitution reached the data instead of the error.
+
+    Parameters
+    ----------
+    admin_id : str or AdminId
+        Admin unit the recipe must cover.
+    entity_type : str
+        Entity type the recipe must produce.
+    stage : str, optional
+        Restrict to one pipeline stage; without it the latest stage wins.
+    source_id : str, optional
+        Restrict to recipes of this source. Returns None when none matches.
+    filename : str, optional
+        Filename stem to match within the recipe directory.
+    silent : bool
+        Suppress the message printed when several recipes qualify.
     """
     admin_id = AdminId(admin_id) if not isinstance(admin_id, AdminId) else admin_id
     recipe_paths_found = []
@@ -600,16 +719,10 @@ def find_entity_recipe_id(
         recipe_paths_found.extend(glob.glob(str(evidence_recipe_path)))
 
     candidates = []
-    stage_rank = {
-        'ingest': 0,
-        'harmonize': 1,
-        'enrich': 2,
-        'curate': 3,
-    }
+    stage_rank = {stage: rank for rank, stage in enumerate(RECIPE_STAGES)}
 
     for filepath in sorted(set(recipe_paths_found)):
-        with open(filepath, encoding='utf-8') as f:
-            recipe_data = yaml.safe_load(f) or {}
+        recipe_data = _recipe_yaml(str(filepath))
         recipe_stage = recipe_data.get('stage') or 'ingest'
         if stage is not None and recipe_stage != stage:
             continue
@@ -621,13 +734,13 @@ def find_entity_recipe_id(
             continue
         source = entity.get('source') or {}
         recipe_source_id = source.get('source_id', '')
-        version = str(entity.get('version', ''))
+        if source_id is not None and recipe_source_id != source_id:
+            continue
         candidates.append(
             (
                 stage_rank.get(recipe_stage, -1),
-                recipe_source_id == source_id if source_id else False,
                 recipe_admin_id.get_level(),
-                version,
+                version_sort_key(entity.get('version', '')),
                 Path(filepath).stem,
             )
         )
@@ -635,7 +748,7 @@ def find_entity_recipe_id(
     if not candidates:
         return None
     candidates.sort()
-    recipe_id = candidates[-1][4]
+    recipe_id = candidates[-1][3]
     if len(candidates) > 1 and not silent:
         print(f'Picked {recipe_id} for {admin_id} ({entity_type}).')
     return recipe_id
@@ -689,19 +802,21 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
     Mirrors the harmonizer's auto-discovery scan
     (io/harmonizer/discover.py) with recipe-layer machinery so dependency
     extraction resolves auto_discover references the same way the pipeline
-    does at run time.
+    does at run time. That includes the dedup key: one recipe per
+    (admin_id, source_id, filename_suffix), newest version, exactly as
+    :func:`openplaces.io.harmonizer.links._find_admin_scoped_recipe_ids`
+    does. Emitting every version instead made the older file a declared
+    input, and a fingerprint input, of a job that never opens it, so
+    touching or deleting it read as staleness.
+
+    Reads the shared recipe index rather than globbing and parsing the
+    tree a second time; the index is parsed once per process.
     """
-    root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
-    sources = []
-    for filepath in sorted(root.glob(f'**/{entity_type}/*/*/*.yaml')):
-        try:
-            with open(filepath, encoding='utf-8') as f:
-                data = yaml.safe_load(f) or {}
-        except Exception:
-            continue
-        if (data.get('stage') or 'ingest') != 'ingest':
-            continue
-        if data.get('exclude_from_auto_discover'):
+    from openplaces.diagnostics import find_recipes
+
+    best: dict[tuple[str, str, str], dict] = {}
+    for _, row in find_recipes(entity_type, stage='ingest').iterrows():
+        if row['exclude_from_auto_discover']:
             # The harmonizer's discovery skips these (a recipe kept out
             # of resolve_spine on purpose); the dependency scan must
             # agree, or a merely-existing excluded recipe changes the
@@ -709,22 +824,24 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
             # fingerprint of the entity type, reading as region-wide
             # staleness for data that never changed.
             continue
-        raw_admin_id = data.get('admin_id')
-        admin_id_str = (
-            str(raw_admin_id)
-            if raw_admin_id is not None and str(raw_admin_id) != 'None'
-            else ''
-        )
-        entity = data.get('entity') or {}
-        sources.append(
-            {
-                'recipe_id': filepath.stem,
-                'admin_id': admin_id_str,
-                'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
-                'version': str(entity.get('version') or ''),
-            }
-        )
-    sources.sort(key=lambda s: (s['specificity'], s['version']), reverse=True)
+        admin_id_str = row['admin_id']
+        key = (admin_id_str, row['source_id'], row['filename_suffix'])
+        version = str(row['version'] or '')
+        candidate = {
+            'recipe_id': row['recipe_id'],
+            'admin_id': admin_id_str,
+            'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
+            'version': version,
+        }
+        if key not in best or version_sort_key(version) > version_sort_key(
+            best[key]['version']
+        ):
+            best[key] = candidate
+    sources = sorted(
+        best.values(),
+        key=lambda s: (s['specificity'], version_sort_key(s['version'])),
+        reverse=True,
+    )
     return tuple(sources)
 
 
@@ -858,6 +975,16 @@ def get_recipe_dependencies(
             'reference_parcel_recipe_id',
         ):
             continue
+        # A top-level scalar matching the *recipe_id key convention is a
+        # dependency too. `_walk` only sees keys nested inside a dict or
+        # list value, so `reference_building_recipe_id` (declared at the
+        # root by US-NC_footprint_building-cheer-v0 and read by
+        # io/enricher/buildings.py) produced no edge at all: the enrich
+        # job was neither ordered after that ingest nor listed it as an
+        # input, and bundle_terms never reached the reference's licence.
+        if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
+            _add(value, key)
+            continue
         _walk(value, context=key)
 
     # Auto-discovered references in pipeline steps and their sources
@@ -977,8 +1104,13 @@ def find_additional_layer_recipes(
     this one.
 
     Recipes with ``exclude_from_auto_discover: true`` are skipped, and only
-    the newest version per (admin_id, source_id) is kept, mirroring
-    :func:`find_entity_recipe_id`'s specificity/version precedence.
+    the newest version per (admin_id, source_id, filename_suffix) is kept,
+    mirroring :func:`find_entity_recipe_id`'s specificity/version
+    precedence and
+    :func:`openplaces.io.harmonizer.links._find_admin_scoped_recipe_ids`'s
+    dedup key. The suffix belongs in that key: two files sharing a source
+    (`CO_parcel-igac-2026_rural` and `_urban`) are different tables
+    meant to coexist, not competing versions of one.
 
     Parameters
     ----------
@@ -1003,7 +1135,7 @@ def find_additional_layer_recipes(
     from openplaces.diagnostics import find_recipes
 
     admin_id = admin_id if isinstance(admin_id, AdminId) else AdminId(admin_id)
-    best: dict[tuple[str, str], tuple[str, str, str]] = {}
+    best: dict[tuple[str, str, str], tuple[str, str, str]] = {}
     for _, row in find_recipes(host_entity_type, stage='ingest').iterrows():
         if row['exclude_from_auto_discover']:
             continue
@@ -1012,12 +1144,17 @@ def find_additional_layer_recipes(
             admin_id
         ):
             continue
-        key = (admin_id_str, row['source_id'])
-        recipe_id = (
-            f'{admin_id_str}_{host_entity_type}-{row["source_id"]}-{row["version"]}'
-        )
-        if key not in best or row['version'] > best[key][0]:
-            best[key] = (row['version'], recipe_id, row['source_id'])
+        # Keyed on the filename suffix as well, and reading the recipe
+        # id the index already carries rather than rebuilding it: a
+        # rebuilt id drops the suffix, so sibling files such as
+        # `CO_parcel-igac-2026_rural` and `_urban` collapsed onto one
+        # another and then named a `CO_parcel-igac-2026` file that does
+        # not exist, raising OSError in every Colombia spine run.
+        key = (admin_id_str, row['source_id'], row['filename_suffix'])
+        recipe_id = row['recipe_id']
+        version = version_sort_key(row['version'])
+        if key not in best or version > best[key][0]:
+            best[key] = (version, recipe_id, row['source_id'])
 
     matches = []
     for _version, recipe_id, source_id in sorted(best.values(), key=lambda vrs: vrs[0]):

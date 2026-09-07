@@ -199,3 +199,20 @@ def test_auto_discovered_edges_stop_at_a_level_boundary(monkeypatch):
     edges = get_recipe_dependencies(recipe, admin_id=AdminId('US-NC-WAR'))
 
     assert _upstream_ids(edges) == {'US-NC-WAR_parcel-warrenco-2026'}
+
+
+def test_top_level_recipe_id_key_is_an_edge():
+    # `reference_building_recipe_id` is declared at the recipe root, where
+    # the nested *recipe_id walk never looked; without an edge the enrich
+    # job is neither ordered after that ingest nor lists it as an input.
+    edges = get_recipe_dependencies('US-NC_footprint_building-cheer-v0')
+    upstream = _upstream_ids(edges)
+    assert 'US-NC_building-cheer-v0' in upstream
+    assert any(e.kind == 'reference_building_recipe_id' for e in edges)
+
+
+def test_top_level_edge_from_a_fabricated_recipe():
+    recipe = dict(get_recipe_by_id('US-NC_footprint_building-cheer-v0'))
+    recipe['reference_footprint_recipe_id'] = 'US-XX_footprint-fabricated-2026'
+    upstream = _upstream_ids(get_recipe_dependencies(recipe))
+    assert 'US-XX_footprint-fabricated-2026' in upstream

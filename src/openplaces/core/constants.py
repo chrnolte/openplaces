@@ -114,6 +114,14 @@ RETENTION_CLASSES = ('keep', 'until_consumed', 'transient')
 NEVER_DELETE = frozenset({'share', 'raw'})
 
 
+# The pipeline stages a recipe may declare, in pipeline order. The order
+# is the rank `recipe.find_entity_recipe_id` resolves predecessors by,
+# so the tuple is the single place both the vocabulary and the ranking
+# are stated. 'deliver' is deliberately absent: it is a node kind the
+# orchestrator derives, never a recipe's own stage.
+RECIPE_STAGES = ('ingest', 'harmonize', 'enrich', 'curate')
+
+
 # FILE HANDLING
 
 # Vector file extensions read with `geopandas` into a `GeoDataFrame`
