@@ -12,6 +12,7 @@ no name at all, and the country prefix that selects the language vocabulary.
 
 import itertools
 import string
+import warnings
 
 import pandas as pd
 
@@ -256,15 +257,28 @@ def assign_admin_ids(
             for code in [*held.values(), *pinned_rows.values(), *issued.get(parent, ())]
         }
         group_lengths = lengths
-        if group_lengths is None and len(pinned_widths) == 1:
-            group_lengths = (pinned_widths.pop(),)
+        pinned_width = pinned_widths.pop() if len(pinned_widths) == 1 else None
+        if group_lengths is None and pinned_width is not None:
+            group_lengths = (pinned_width,)
         # A reviewed decision about this specific group of siblings
         # outranks the country convention, which describes a different
         # level and cannot know that one state's counties are crowded
-        # where another's are not.
+        # where another's are not. It does not outrank the group's own
+        # pinned width: a pinned row keeps the width it was minted at, so
+        # minting the rest at a width that disagrees leaves the parent
+        # holding both, which is the mixed-width group the pinned width
+        # exists to prevent. Re-minting the group is how a reviewed
+        # length is meant to be adopted.
         if lengths is None:
             reviewed = load_group_code_lengths().get(str(parent).upper())
-            if reviewed:
+            if reviewed and pinned_width is not None and reviewed != pinned_width:
+                warnings.warn(
+                    f'Reviewed code length {reviewed} for {parent} ignored: '
+                    f'its codes are already {pinned_width} characters wide. '
+                    'Re-mint the group to adopt the reviewed length.',
+                    stacklevel=2,
+                )
+            elif reviewed:
                 group_lengths = (reviewed,)
 
         assigned = derive_codes(

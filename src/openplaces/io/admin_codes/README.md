@@ -35,7 +35,15 @@ A re-mint **recycles** identifiers: a string survives and names a
 
 `resolve_identifier` deliberately has no "this id is already live, keep
 it" shortcut, because that shortcut is what silently returns the wrong
-place. Three separate bugs during the 2026 rebuild came from taking it.
+place. Four separate bugs during the 2026 rebuild came from taking it,
+the last inside `build.resolve_stale_references` itself.
+
+The same recycling makes one case undecidable from the identifier alone:
+a sidecar cell holding an id that is live *and* used to name another
+unit may predate the re-mint (stale) or postdate it (correct as written),
+and the superseded snapshot keeps one past name per id with no vintage.
+`resolve_stale_references` rewrites only retired ids and raises on
+recycled ones; regenerate such a file from its source's own codes.
 
 ## Rebuilding the spine
 

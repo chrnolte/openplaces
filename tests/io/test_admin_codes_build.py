@@ -5,7 +5,8 @@ these cover what can be checked cheaply: the module imports, the paths it
 writes to are the committed ones, and the two dry-run steps report without
 touching anything. The guarantee that matters -- that the pipeline
 reproduces the committed spine -- is asserted by
-`test_admin_codes_audit.py::test_level_four_reproduces_exactly`.
+`test_admin_codes_audit.py::test_weighted_derivation_reproduces_the_spine_exactly`
+for levels 2 and 3, and by `test_the_mint_is_a_fixed_point` below for all.
 """
 
 import pandas as pd
@@ -75,11 +76,130 @@ class TestPaths:
         assert not build.is_estimated('override-data-error')
 
 
+def _sidecar_tree(tmp_path):
+    """A spine of fabricated units plus one crosswalk keyed to them.
+
+    XX-AA-RT is retired (only the superseded snapshot names it, as
+    Retiredton, which now lives at XX-AA-NW). XX-AA-RC is recycled: it is
+    live and names Newcomb, but before the re-mint it named Oldfield,
+    which now lives at XX-AA-OF.
+    """
+    spine = tmp_path / 'recipes' / '_all' / 'admin' / 'spine' / '2026'
+    spine.mkdir(parents=True)
+    rows = {
+        1: [('XX', 'Exland')],
+        2: [('XX-AA', 'Alpha')],
+        3: [
+            ('XX-AA-NW', 'Retiredton'),
+            ('XX-AA-RC', 'Newcomb'),
+            ('XX-AA-OF', 'Oldfield'),
+        ],
+        4: [('XX-AA-NW-TW', 'Town')],
+    }
+    for level, units in rows.items():
+        pd.DataFrame(units, columns=[f'admin{level}_id', 'name']).to_csv(
+            spine / f'admin-spine-2026_admin{level}.csv', index=False
+        )
+    crosswalk = tmp_path / 'recipes' / 'XX' / '_all' / 'parcel' / 'src' / '2026'
+    crosswalk.mkdir(parents=True)
+    path = crosswalk / 'XX_parcel-src-2026_admin3-crosswalk.csv'
+    pd.DataFrame(
+        {
+            'admin3_id': ['XX-AA-RT', 'XX-AA-RC', 'XX-AA-OF', ''],
+            'admin3_id_admin1': ['1', '2', '3', '4'],
+        }
+    ).to_csv(path, index=False)
+    return spine, path
+
+
+@pytest.fixture
+def sidecar_tree(tmp_path, monkeypatch):
+    spine, crosswalk = _sidecar_tree(tmp_path)
+    monkeypatch.setattr(
+        build, 'spine_path', lambda level: spine / f'admin-spine-2026_admin{level}.csv'
+    )
+    past = {'XX-AA-RT': 'XX-AA-NW', 'XX-AA-RC': 'XX-AA-OF'}
+    monkeypatch.setattr(build, 'resolve_identifier', lambda i: past.get(i))
+    return crosswalk
+
+
+class TestResolveStaleReferences:
+    def test_a_retired_identifier_is_rewritten(self, sidecar_tree):
+        n = build.resolve_stale_references(
+            apply=True, verbose=False, on_ambiguous='report'
+        )
+        assert n == 1
+        written = pd.read_csv(sidecar_tree, dtype=str, keep_default_na=False)
+        assert written['admin3_id'].tolist() == ['XX-AA-NW', 'XX-AA-RC', 'XX-AA-OF', '']
+
+    def test_a_recycled_identifier_is_resolved_not_kept_because_it_is_live(
+        self, sidecar_tree
+    ):
+        # The forbidden shortcut returned a live id untouched, so a cell
+        # that meant Oldfield stayed on the id Newcomb now holds and the
+        # sweep reported a clean tree. The id must go through the
+        # resolver like any other, and what comes back is an ambiguity
+        # the sweep refuses to settle by itself.
+        with pytest.raises(build.AmbiguousReferenceError) as info:
+            build.resolve_stale_references(apply=False, verbose=False)
+        assert 'XX-AA-RC' in str(info.value)
+        assert 'XX-AA-OF' in str(info.value)
+        assert 'XX-AA-RT' not in str(info.value)
+
+    def test_an_ambiguous_cell_is_never_rewritten(self, sidecar_tree):
+        before = sidecar_tree.read_text()
+        build.resolve_stale_references(apply=True, verbose=False, on_ambiguous='report')
+        written = pd.read_csv(sidecar_tree, dtype=str, keep_default_na=False)
+        assert written.loc[1, 'admin3_id'] == 'XX-AA-RC'
+        assert before != sidecar_tree.read_text(), 'the retired id should move'
+
+    def test_raising_writes_nothing(self, sidecar_tree):
+        before = sidecar_tree.read_text()
+        with pytest.raises(build.AmbiguousReferenceError):
+            build.resolve_stale_references(apply=True, verbose=False)
+        assert sidecar_tree.read_text() == before
+
+    def test_a_dry_run_writes_nothing(self, sidecar_tree):
+        before = sidecar_tree.read_text()
+        n = build.resolve_stale_references(
+            apply=False, verbose=False, on_ambiguous='report'
+        )
+        assert n == 1
+        assert sidecar_tree.read_text() == before
+
+    def test_the_sweep_walks_every_state_directory(self, sidecar_tree):
+        # The crosswalk sits under `recipes/XX/...`, not under `_all`;
+        # rooting the walk at `recipes/_all` once scanned none of them.
+        n = build.resolve_stale_references(
+            apply=False, verbose=False, on_ambiguous='report'
+        )
+        assert n == 1
+
+
 class TestDryRuns:
-    def test_resolving_references_reports_without_writing(self):
-        # Run against the committed tree: after a settled re-mint nothing
-        # should still name a retired identifier.
-        assert build.resolve_stale_references(apply=False, verbose=False) == 0
+    def test_no_reference_names_a_retired_identifier(self):
+        # Run against the committed tree: after a settled re-mint
+        # nothing keyed to a live id should still name a retired one.
+        # Recycled ids are a separate question, below.
+        assert (
+            build.resolve_stale_references(
+                apply=False, verbose=False, on_ambiguous='report'
+            )
+            == 0
+        )
+
+    @pytest.mark.xfail(
+        strict=True,
+        raises=build.AmbiguousReferenceError,
+        reason=(
+            'Per-state admin3 crosswalks written across the 2026 re-mints hold '
+            'recycled ids of both vintages, which the identifier alone cannot '
+            'separate. They are being regenerated from their source codes; '
+            'remove this marker once the sweep passes.'
+        ),
+    )
+    def test_no_reference_names_a_recycled_identifier(self):
+        build.resolve_stale_references(apply=False, verbose=False)
 
     @needs_population
     def test_the_mint_is_a_fixed_point(self):
@@ -90,3 +210,69 @@ class TestDryRuns:
             assert counts['changed'] == 0, (
                 f'level {level}: {counts["changed"]:,} identifiers would move'
             )
+
+
+class TestPopulationCoverage:
+    """Every polygon handed to the extractor comes back out weighted."""
+
+    @pytest.fixture
+    def one_unit_dropped(self, tmp_path, monkeypatch):
+        """Three fabricated units, of which the extractor reports two.
+
+        Returns the frame `build_population` writes for level 3.
+        """
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        from openplaces import path as op_path
+        from openplaces.geo import raster as op_raster
+
+        units = ['XX-AA-AA', 'XX-AA-BB', 'XX-AA-CC']
+        polygons = gpd.GeoDataFrame(
+            {'resolved': units, 'geometry': [box(i, 0, i + 1, 1) for i in range(3)]},
+            geometry='geometry',
+            crs='EPSG:4326',
+        )
+        spine = pd.DataFrame({'admin3_id': units, 'name': list('ABC')})
+        stats = pd.DataFrame(
+            # The middle unit is missing outright, not NaN.
+            {'resolved': ['XX-AA-AA', 'XX-AA-CC'], 'sum': [12.0, 34.0]}
+        )
+        raster = tmp_path / 'population.tif'
+        raster.write_bytes(b'')
+        written = tmp_path / 'level3-population.csv'
+
+        monkeypatch.setattr(build, 'resolved_polygons', lambda level: polygons)
+        monkeypatch.setattr(build, '_spine', lambda level: spine)
+        monkeypatch.setattr(build, '_polygon_ids', lambda polygons: {})
+        monkeypatch.setattr(build, 'population_path', lambda level: written)
+        monkeypatch.setattr(
+            build, 'spine_path', lambda level: tmp_path / 'admin-spine-2026_admin3.csv'
+        )
+        monkeypatch.setattr(op_path, 'resolve_raster_path', lambda name: raster)
+        monkeypatch.setattr(
+            op_raster,
+            'zonal_stats_with_exactextract',
+            lambda *args, **kwargs: stats,
+        )
+        return build.build_population(3, verbose=False)
+
+    def test_a_unit_the_extractor_skips_is_still_weighted(self, one_unit_dropped):
+        # Without the reindex the row is absent, so the gap filler hands
+        # it the level median and an uninhabited unit outranks real
+        # towns in the mint.
+        assert set(one_unit_dropped['admin_id']) == {
+            'XX-AA-AA',
+            'XX-AA-BB',
+            'XX-AA-CC',
+        }
+
+    def test_a_skipped_unit_is_weighted_zero_not_null(self, one_unit_dropped):
+        skipped = one_unit_dropped.set_index('admin_id').loc['XX-AA-BB']
+        assert skipped['population'] == 0
+        assert skipped['source'] == 'ghs-pop-e2020'
+
+    def test_the_measured_units_keep_their_sums(self, one_unit_dropped):
+        measured = one_unit_dropped.set_index('admin_id')['population']
+        assert measured['XX-AA-AA'] == 12
+        assert measured['XX-AA-CC'] == 34
