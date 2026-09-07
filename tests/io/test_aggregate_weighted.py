@@ -128,3 +128,61 @@ def test_explicit_aggregation_function_override():
     )
 
     assert result.loc['a', 'year_built'] == pytest.approx(2000 * 1.0 + 1980 * 1.0)
+
+
+def test_registry_join_nonnull_column_aggregates():
+    # use_group is registered with aggregation='join_nonnull', a registry
+    # name that has to be resolved to a callable before groupby.agg sees it.
+    df = pd.DataFrame(
+        {
+            'parcel_id_new': ['a', 'a', 'b'],
+            'use_group': ['residential', 'commercial', 'residential'],
+            'area_ha': [1.0, 3.0, 5.0],
+        }
+    )
+
+    result = aggregate_rows_weighted(df, by='parcel_id_new', wcol='area_ha')
+
+    assert set(result.loc['a', 'use_group'].split(' + ')) == {
+        'residential',
+        'commercial',
+    }
+    assert result.loc['b', 'use_group'] == 'residential'
+
+
+def test_address_column_uses_the_address_specific_join():
+    # address resolves to join_nonnull_addresses, not the plain string join.
+    df = pd.DataFrame(
+        {
+            'parcel_id_new': ['a', 'a'],
+            'address': ['1 Example St Unit 1', '1 Example St Unit 2'],
+            'area_ha': [1.0, 1.0],
+        }
+    )
+
+    result = aggregate_rows_weighted(df, by='parcel_id_new', wcol='area_ha')
+
+    # The two unit variants collapse to one base address; the plain string
+    # join would have produced a two-address string.
+    assert result.loc['a', 'address'] == '1 Example St Unit 1'
+
+
+def test_dict_can_aggregate_non_registry_column_with_an_unweighted_kind():
+    # The dict contract also holds for the unweighted kinds, which are
+    # grouped on a path that used to filter by registry membership.
+    df = pd.DataFrame(
+        {
+            'parcel_id_new': ['a', 'a'],
+            'legacy_site_code': ['X1', 'X2'],
+            'area_ha': [1.0, 3.0],
+        }
+    )
+
+    result = aggregate_rows_weighted(
+        df,
+        by='parcel_id_new',
+        wcol='area_ha',
+        aggregation_function={'legacy_site_code': 'first'},
+    )
+
+    assert result.loc['a', 'legacy_site_code'] == 'X1'

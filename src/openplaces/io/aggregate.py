@@ -148,7 +148,15 @@ def aggregate_rows_weighted(
 
     weighted_mean_cols = [c for c, f in agg_cols.items() if f == 'mean']
     weighted_sum_cols = [c for c, f in agg_cols.items() if f == 'sum']
-    plain_cols = {c: f for c, f in agg_cols.items() if f not in ('mean', 'sum')}
+    # Registry names ('join_nonnull') are resolved to the callables
+    # groupby.agg needs. aggregate_rows resolves them on its own path, but
+    # not for the entries of a dict it is handed, so an unresolved name
+    # reached pandas and raised AttributeError.
+    plain_cols = {
+        c: (_agg_func_for(resolve_attribute_name(c), f) if isinstance(f, str) else f)
+        for c, f in agg_cols.items()
+        if f not in ('mean', 'sum')
+    }
 
     group_keys = df[by] if isinstance(by, str) else [df[c] for c in by_cols]
     w = pd.to_numeric(df[wcol], errors='coerce')
@@ -170,11 +178,11 @@ def aggregate_rows_weighted(
         parts.append(df[weighted_sum_cols].mul(w, axis=0).groupby(group_keys).sum())
 
     if plain_cols:
-        plain_result = aggregate_rows(
-            df[[*by_cols, *plain_cols]], by, aggregation_function=plain_cols
-        )
-        if plain_result is not None:
-            parts.append(plain_result)
+        # Grouped here rather than through aggregate_rows, which keeps only
+        # columns the attribute registry knows and so silently dropped a
+        # dict-declared column that is not registered, the opposite of what
+        # this function's dict contract promises.
+        parts.append(df.groupby(group_keys)[list(plain_cols)].agg(plain_cols))
 
     if not parts:
         return None
