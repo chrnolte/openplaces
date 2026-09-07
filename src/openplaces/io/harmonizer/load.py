@@ -33,6 +33,7 @@ from openplaces.io.harmonizer.links import (
     _link_fingerprint,
     _load_link_sidecar,
     _load_point_link_sidecar,
+    _point_step_config,
     _prepare_reference,
     _resolve_reference_recipe,
     snap_chained_links,
@@ -244,11 +245,11 @@ def _restore_link(
         fingerprint = _link_fingerprint(
             shim,
             resolved_id,
-            {
-                'join': 'spatial_point',
-                'thresholds': thresholds,
-                'remap_id': step_cfg.get('remap_id'),
-            },
+            _point_step_config(
+                thresholds,
+                step_cfg.get('remap_id'),
+                step_cfg.get('source_geometry_type'),
+            ),
         )
         linked = _load_point_link_sidecar(
             sidecar_path, fingerprint, verbose=state.verbose
@@ -258,6 +259,12 @@ def _restore_link(
                 resolved_id, state.admin_id, geom=False, missing='ignore', columns=[]
             )
             if probe is None or len(probe) == 0:
+                # Same rule as the overlay branch above: the geospine run
+                # skipped this link for an expected admin-scoped coverage
+                # gap, so there is nothing to restore. A reference that
+                # declares complete coverage and produced nothing is a
+                # vanished input, not a gap, and escalates.
+                raise_if_coverage_complete(resolved_id, state.admin_id)
                 return state
             raise RuntimeError(
                 f'Missing or stale link sidecar {sidecar_path} for '

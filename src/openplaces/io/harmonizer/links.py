@@ -1302,6 +1302,50 @@ def flag_duplicate_points(
     return resolution
 
 
+def _point_step_config(
+    thresholds: dict,
+    remap_id: str | None,
+    source_geometry_type=None,
+) -> dict:
+    """Build the step-config half of a spatial_point link fingerprint.
+
+    Shared by the writer (:func:`_link_spatial_point`) and the geospine
+    loader, which have to spell the same dict or every attribute run
+    fails closed against a sidecar that is in fact current.
+
+    The source geometry type is included only where it changes what the
+    sidecar holds, which is when aggregate_multipoint is on: it selects
+    between the building-point and dwelling-point aggregation branches,
+    and changing it used to reload a sidecar built by the other. Off that
+    path it touches nothing the sidecar carries, and including it there
+    would invalidate every sidecar already on disk for no gain.
+
+    Parameters
+    ----------
+    thresholds : dict
+        The step's thresholds block.
+    remap_id : str or None
+        Value-crosswalk recipe applied to the reference before linking.
+    source_geometry_type : SourceGeometryType or str or None, optional
+        The step's declared source geometry type, if any.
+
+    Returns
+    -------
+    dict
+        Step config to hand to :func:`_link_fingerprint`.
+    """
+    config = {
+        'join': 'spatial_point',
+        'thresholds': thresholds,
+        'remap_id': remap_id,
+    }
+    if thresholds.get('aggregate_multipoint'):
+        config['source_geometry_type'] = (
+            None if source_geometry_type is None else str(source_geometry_type)
+        )
+    return config
+
+
 def _link_spatial_point(
     state: HarmonizeState,
     recipe_id: str,
@@ -1446,11 +1490,11 @@ def _link_spatial_point(
         fingerprint = _link_fingerprint(
             state,
             recipe_id,
-            {
-                'join': 'spatial_point',
-                'thresholds': thresholds,
-                'remap_id': remap_id,
-            },
+            _point_step_config(
+                thresholds,
+                remap_id,
+                state.source_geometry_types.get(recipe_id),
+            ),
         )
         if not state.reprocess:
             linked = _load_point_link_sidecar(

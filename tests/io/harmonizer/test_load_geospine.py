@@ -358,6 +358,153 @@ class TestLoadGeospine:
             load_mod.load_geospine(attr_state, entity_recipe_id=changed)
 
 
+class TestPointLinkRestore:
+    """The point branch of the geospine restore, vs the overlay branch."""
+
+    NSI = 'US_building-nsi-2026'
+
+    def _point_geospine(self):
+        return _geospine_recipe(
+            pipeline=[
+                {
+                    'step': 'resolve_spine',
+                    'thresholds': {'min_area_m2': 10, 'overlap_iou_max': 0.5},
+                },
+                {
+                    'step': 'link_to_reference',
+                    'join': 'spatial_point',
+                    'recipe_id': self.NSI,
+                    'entity_type': 'building',
+                    'save_link': True,
+                },
+            ]
+        )
+
+    def test_vanished_complete_coverage_reference_escalates(
+        self, data_root, monkeypatch
+    ):
+        # No sidecar and no reference rows. NSI declares complete US
+        # coverage, so this is a broken ingest, not an admin-scoped gap:
+        # the overlay branch always escalated it and the point branch
+        # returned silently.
+        recipe = self._point_geospine()
+        _save_geospine_output(recipe, _spine_gdf())
+
+        real = load_mod.get_entities
+        monkeypatch.setattr(
+            load_mod,
+            'get_entities',
+            lambda r, *a, **k: pd.DataFrame() if r == self.NSI else real(r, *a, **k),
+        )
+        attr_state = HarmonizeState(
+            recipe={'pipeline': [{'step': 'load_geospine'}]},
+            admin_id=AdminId(COUNTY),
+            verbose=False,
+            timer=None,
+        )
+        with pytest.raises(RuntimeError, match='complete coverage'):
+            load_mod.load_geospine(attr_state, entity_recipe_id=recipe)
+
+    def test_absent_reference_without_coverage_claim_still_skips(
+        self, data_root, monkeypatch
+    ):
+        # The tolerant path is unchanged for a reference that makes no
+        # coverage claim (many rural counties have no Overture points).
+        recipe = self._point_geospine()
+        overture = 'dwelling-overture-2025'
+        recipe['pipeline'][1]['recipe_id'] = overture
+        recipe['pipeline'][1]['entity_type'] = 'dwelling'
+        _save_geospine_output(recipe, _spine_gdf())
+
+        real = load_mod.get_entities
+        monkeypatch.setattr(
+            load_mod,
+            'get_entities',
+            lambda r, *a, **k: pd.DataFrame() if r == overture else real(r, *a, **k),
+        )
+        attr_state = HarmonizeState(
+            recipe={'pipeline': [{'step': 'load_geospine'}]},
+            admin_id=AdminId(COUNTY),
+            verbose=False,
+            timer=None,
+        )
+        out = load_mod.load_geospine(attr_state, entity_recipe_id=recipe)
+        assert overture not in out.crosswalks
+
+
+class TestPointFingerprintGeometryType:
+    """source_geometry_type selects an aggregation branch, so it is
+    fingerprinted wherever aggregate_multipoint is on."""
+
+    NSI = 'US_building-nsi-2026'
+
+    def _points_gdf(self):
+        return gpd.GeoDataFrame(
+            {'source': ['Parcel', 'ESRI'], 'occupancy_type': ['RES1', 'RES3']},
+            geometry=[Point(2, 2), Point(2.5, 2.5)],
+            crs='epsg:4326',
+        )
+
+    def _run(self, monkeypatch, thresholds, sgt):
+        from openplaces.core.schema import SourceGeometryType
+
+        monkeypatch.setattr(
+            links_mod, 'get_entities', lambda *a, **k: self._points_gdf()
+        )
+        recipe = dict(get_recipe_by_id(GEOSPINE))
+        recipe['pipeline'] = [{'step': 'link_to_reference', 'join': 'spatial_point'}]
+        state = HarmonizeState(
+            recipe=recipe,
+            admin_id=AdminId(COUNTY),
+            verbose=False,
+            timer=None,
+            spine=_spine_gdf(),
+        )
+        state.step_index = 0
+        state.source_geometry_types[self.NSI] = SourceGeometryType(sgt)
+        return links_mod._link_spatial_point(
+            state, self.NSI, 'building', None, thresholds, save_link=True
+        )
+
+    def _count_sjoins(self, monkeypatch):
+        calls = {'n': 0}
+        real = links_mod.gpd.sjoin
+
+        def _counting(*args, **kwargs):
+            calls['n'] += 1
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(links_mod.gpd, 'sjoin', _counting)
+        return calls
+
+    def test_changed_geometry_type_invalidates_an_aggregating_sidecar(
+        self, data_root, monkeypatch
+    ):
+        thresholds = {'aggregate_multipoint': True}
+        self._run(monkeypatch, thresholds, 'single_building_point')
+
+        calls = self._count_sjoins(monkeypatch)
+        self._run(monkeypatch, thresholds, 'single_dwelling_point')
+        assert calls['n'] > 0, 'a different aggregation branch must recompute'
+
+    def test_same_geometry_type_still_reloads(self, data_root, monkeypatch):
+        thresholds = {'aggregate_multipoint': True}
+        self._run(monkeypatch, thresholds, 'single_building_point')
+
+        calls = self._count_sjoins(monkeypatch)
+        self._run(monkeypatch, thresholds, 'single_building_point')
+        assert calls['n'] == 0
+
+    def test_geometry_type_is_ignored_without_aggregation(self, data_root, monkeypatch):
+        # Off the aggregation path it changes nothing the sidecar holds,
+        # so it must not invalidate the sidecars already on disk.
+        self._run(monkeypatch, {}, 'single_building_point')
+
+        calls = self._count_sjoins(monkeypatch)
+        self._run(monkeypatch, {}, 'single_dwelling_point')
+        assert calls['n'] == 0
+
+
 class TestReaderGeometryIndirection:
     def test_geometry_resolved_via_entity_recipe(self, data_root):
         from openplaces.core.schema import Entity
