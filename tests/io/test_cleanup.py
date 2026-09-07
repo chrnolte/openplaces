@@ -345,6 +345,25 @@ def test_delete_with_receipt_survives_a_truncated_footer(data_root):
     assert cl.read_receipt(out)['partitions'] == []
 
 
+# Dependency index
+
+
+def test_global_node_resolves_consumers_at_their_own_scope():
+    """A node with no admin unit must not make every consumer unresolved.
+
+    admin_id None became '', which raised in AdminId and was swallowed as
+    "unresolved", so level-0 outputs were neither deletable nor
+    receipt-skippable and a deleted global tile was re-ingested on every
+    run. Such a consumer is resolved against its own admin scope instead.
+    """
+    index = cl._dependency_index()
+    consumer = FOOTPRINT_SPINE
+    assert consumer in index._auto_consumers
+    upstreams, unresolved = index._auto_upstreams(consumer, '')
+    assert not unresolved
+    assert (upstreams, unresolved) == index._auto_upstreams(consumer, 'US')
+
+
 # Locks
 
 

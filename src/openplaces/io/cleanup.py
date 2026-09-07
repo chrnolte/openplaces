@@ -438,10 +438,16 @@ class _DependencyIndex:
         if key not in self._auto_cache:
             upstream_ids: set[str] = set()
             unresolved = False
+            consumer = self.recipes[consumer_id]
+            # A global node has no admin unit of its own, and '' is not
+            # one either: it raised in AdminId, which marked every
+            # auto-discovering consumer unresolved, so a level-0 output
+            # was neither deletable nor receipt-skippable and a deleted
+            # global tile was re-ingested every run. Resolve such a node
+            # against the consumer's own scope instead.
+            resolve_admin = admin_str or consumer.get('admin_id')
             try:
-                edges = get_recipe_dependencies(
-                    self.recipes[consumer_id], admin_id=admin_str
-                )
+                edges = get_recipe_dependencies(consumer, admin_id=resolve_admin)
             except Exception:
                 edges = []
                 unresolved = True
