@@ -54,17 +54,34 @@ def declare_columns(state: CurateState, columns: list[str]) -> CurateState:
 
 @_register('cast_categoricals')
 def cast_categoricals(state: CurateState) -> CurateState:
-    """Cast registry-defined categoricals and provenance sidecars to Categorical."""
-    from openplaces.core.attribute_registry import get_categorical_attrs
+    """Cast registry-defined categoricals and provenance sidecars to Categorical.
+
+    The registry decides, under the column's own name or under the base
+    name left once a provenance suffix is stripped
+    (``occupancy_type_dwelling_overture`` -> ``occupancy_type``). That
+    lookup runs before any name matching, so a registered non-categorical
+    attribute is never cast merely because a categorical attribute happens
+    to be a prefix of its name: ``roof_shape_confidence_building_cheer``
+    is a float and stays one, rather than becoming an unordered
+    Categorical over its own float values that raises on every ``> 0.6``
+    comparison. Only a column the registry knows under neither name falls
+    back to matching a categorical attribute plus an ``_`` boundary.
+    """
+    from openplaces.core.attribute_registry import get_categorical_attrs, load_registry
 
     curated = state.curated
+    known = load_registry().index
     cat_attrs = get_categorical_attrs()
     cat_sorted = sorted(cat_attrs, key=len, reverse=True)
     for col in curated.columns:
         if curated[col].dtype == 'category':
             continue
-        base = next((a for a in cat_sorted if col.startswith(a)), None)
-        if base is not None or col.endswith(SOURCE_SUFFIX):
+        base = resolve_attribute_name(col)
+        if base in known:
+            is_categorical = base in cat_attrs
+        else:
+            is_categorical = any(col.startswith(f'{a}_') for a in cat_sorted)
+        if is_categorical or col.endswith(SOURCE_SUFFIX):
             curated[col] = pd.Categorical(curated[col])
     state.curated = curated
     return state

@@ -848,6 +848,7 @@ def resolve_by_vote(
 # Recipe role keys accepted by reconcile_addresses: address_full is a
 # one-line string to parse; the rest are the component keys of
 # openplaces.geo.address.ADDRESS_COMPONENTS, used verbatim.
+@_register('reconcile_addresses')
 def reconcile_addresses(state: CurateState, **kwargs) -> CurateState:
     """Curate-stage wrapper: reconcile addresses on ``state.curated``.
 
