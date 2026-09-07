@@ -146,9 +146,10 @@ def require_terms_consent(
     that person.
     """
     if accept_terms is not None and not isinstance(accept_terms, bool):
-        # A YAML `1`, `"true"` or `on` used to fall through to the prompt
-        # or to the unattended error, which is the silent downgrade this
-        # module refuses. Only an unambiguous boolean is a decision.
+        # A YAML `1`, `"true"` or `on` used to fall through to
+        # the prompt or to the unattended error, which is the silent
+        # downgrade this module refuses. Only an unambiguous boolean
+        # is a decision.
         raise ConsentNotDelegableError(
             f'{source}: `accept_terms` must be `false` or absent, not '
             f'{accept_terms!r}. A recipe cannot accept terms of use on '
@@ -222,9 +223,9 @@ def require_terms_consent(
         try:
             set_terms_consent(source, True)
         except Exception as error:  # noqa: BLE001 - persisting is optional
-            # The person accepted; failing to write that down is a reason
-            # to ask again next run, not to abort the download they just
-            # agreed to.
+            # The person accepted; failing to write that down is
+            # a reason to ask again next run, not to abort the
+            # download they just agreed to.
             warnings.warn(
                 f'Could not record the standing decision for {source} '
                 f'({error}); it holds for this run only.',

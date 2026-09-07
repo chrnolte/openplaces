@@ -190,10 +190,11 @@ def merge_user_config(config_path, key: str, value) -> None:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     existing = {}
     if config_path.exists():
-        # A file that cannot be read is not an empty file. Treating it as
-        # one rewrote the whole config with just this key, so a stray tab
-        # in config.yaml plus one recorded decision used to erase the
-        # user's directories and identity.
+        # A file that cannot be read is not an empty file.
+        # Treating it as one rewrote the whole config with just this
+        # key, so a stray tab in config.yaml plus one recorded
+        # decision used to erase the user's directories and
+        # identity.
         try:
             with open(config_path, encoding='utf-8') as f:
                 existing = yaml.safe_load(f)
@@ -246,11 +247,11 @@ def get_terms_consent(source: str) -> bool | None:
         False when they chose to always decline, None when no standing
         decision exists and they should be asked.
     """
-    # `get_config()` rather than the module-level `cfg`: `reload_config`
-    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
-    # import and a decision recorded during this process is invisible to
-    # the next read (and, worse, to the next write, which rebuilds the
-    # whole mapping from it).
+    # `get_config()` rather than the module-level `cfg`:
+    # `reload_config` rebinds `_cfg` only, so `cfg` still holds the
+    # snapshot taken at import, and a decision recorded during this
+    # process is invisible to the next read (and, worse, to the next
+    # write, which rebuilds the whole mapping from it).
     recorded = (get_config().get('consent') or {}).get('terms') or {}
     entry = recorded.get(source)
     if isinstance(entry, dict):
@@ -275,11 +276,11 @@ def set_terms_consent(source: str, accepted: bool) -> None:
     """
     from datetime import date
 
-    # `get_config()` rather than the module-level `cfg`: `reload_config`
-    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
-    # import and a decision recorded during this process is invisible to
-    # the next read (and, worse, to the next write, which rebuilds the
-    # whole mapping from it).
+    # `get_config()` rather than the module-level `cfg`:
+    # `reload_config` rebinds `_cfg` only, so `cfg` still holds the
+    # snapshot taken at import, and a decision recorded during this
+    # process is invisible to the next read (and, worse, to the next
+    # write, which rebuilds the whole mapping from it).
     recorded = dict((get_config().get('consent') or {}).get('terms') or {})
     recorded[source] = {
         'accepted': bool(accepted),
@@ -504,11 +505,11 @@ def get_usage_override(source_id: str) -> bool | None:
         profile mismatch, False when they chose to always skip it, None
         when no standing decision exists and they should be asked.
     """
-    # `get_config()` rather than the module-level `cfg`: `reload_config`
-    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
-    # import and a decision recorded during this process is invisible to
-    # the next read (and, worse, to the next write, which rebuilds the
-    # whole mapping from it).
+    # `get_config()` rather than the module-level `cfg`:
+    # `reload_config` rebinds `_cfg` only, so `cfg` still holds the
+    # snapshot taken at import, and a decision recorded during this
+    # process is invisible to the next read (and, worse, to the next
+    # write, which rebuilds the whole mapping from it).
     recorded = get_config().get('usage_overrides') or {}
     entry = recorded.get(source_id)
     if isinstance(entry, dict):
@@ -536,11 +537,11 @@ def set_usage_override(source_id: str, compatible: bool, reason: str | None = No
     """
     from datetime import date
 
-    # `get_config()` rather than the module-level `cfg`: `reload_config`
-    # rebinds `_cfg` only, so `cfg` still holds the snapshot taken at
-    # import and a decision recorded during this process is invisible to
-    # the next read (and, worse, to the next write, which rebuilds the
-    # whole mapping from it).
+    # `get_config()` rather than the module-level `cfg`:
+    # `reload_config` rebinds `_cfg` only, so `cfg` still holds the
+    # snapshot taken at import, and a decision recorded during this
+    # process is invisible to the next read (and, worse, to the next
+    # write, which rebuilds the whole mapping from it).
     recorded = dict(get_config().get('usage_overrides') or {})
     entry = {
         'compatible': bool(compatible),

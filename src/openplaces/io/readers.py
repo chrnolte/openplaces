@@ -369,11 +369,11 @@ def get_admin(
             [x for x in columns_to_retain + ['geometry'] if x in admin]
         ].copy()
 
-    # Return without empty columns. `geometry` is exempt: dropping it
-    # when every selected unit happens to lack geometry hands a geom=True
+    # Return without empty columns. `geometry` is exempt: dropping
+    # it when every selected unit lacks geometry hands a geom=True
     # caller a plain DataFrame, and the callers that then reach for
-    # `.geometry` raise KeyError or AttributeError instead of reporting
-    # that the units have no geometry.
+    # `.geometry` raise KeyError or AttributeError instead of
+    # reporting that the units have no geometry.
     column_is_empty = admin.eq('').all() | admin.isnull().all()
     non_empty_columns = list(column_is_empty[~column_is_empty].index)
     if geom and 'geometry' in admin and 'geometry' not in non_empty_columns:
@@ -669,15 +669,17 @@ def get_entities(
             missing=missing,
             bbox=bbox,
         )
-        # `columns` is deliberately not forwarded even though only the
-        # geometry is wanted: a split attribute plus `_geo` pair is joined
-        # through a `_join_id`/`geo_id` column read from the attribute
-        # file, and a narrowed read drops the very column that join needs.
+        # `columns` is deliberately not forwarded even though only
+        # the geometry is wanted: a split attribute plus `_geo` pair
+        # is joined through a `_join_id`/`geo_id` column read from
+        # the attribute file, and a narrowed read would drop the very
+        # column that join needs.
         if 'geometry' not in predecessor:
-            # The predecessor's own files were missing and `missing` let
-            # that pass, so there is no geometry to join. Honor the same
-            # policy here rather than raising KeyError, and keep the result
-            # a GeoDataFrame so a caller can ask and be told.
+            # The predecessor's own files were missing and
+            # `missing` let that pass, so there is no geometry to
+            # join. Honor the same policy here rather than raising
+            # KeyError, and keep the result a GeoDataFrame so a
+            # caller can ask and be told.
             message = (
                 f'{get_recipe_id(geometry_recipe)} returned no geometry for '
                 f'{admin_id}, so {get_recipe_id(recipe)} is returned with an '
@@ -715,17 +717,17 @@ def get_entities(
     # carry one, or a spatial fallback (join to just the requested units'
     # boundary polygons) otherwise.
     #
-    # Everything the caller asked for is kept, so the levels combine as a
-    # union and units requested whole at the save level survive. Applying
-    # each level as a successive filter instead returned an empty frame for
-    # a two-level request, and dropped every row of a county the caller had
-    # named alongside a town.
+    # Everything the caller asked for is kept, so the levels combine
+    # as a union and units requested whole at the save level survive.
+    # Applying each level as a successive filter instead returned an
+    # empty frame for a two-level request, and dropped every row of a
+    # county the caller had named alongside a town.
     if finer_by_level and not data.empty:
         keep = pd.Series(False, index=data.index)
         save_col = f'admin{save_level}_id' if save_level > 0 else None
         whole_ids = {str(admin) for admin in whole_output_ids}
-        # A unit asked for whole has to be identifiable before anything is
-        # narrowed, or narrowing would drop all of its rows.
+        # A unit asked for whole has to be identifiable before
+        # anything is narrowed, or narrowing drops all of its rows.
         unresolved_whole = bool(whole_ids) and (
             save_col is None or save_col not in data.columns
         )
@@ -738,8 +740,8 @@ def get_entities(
                 from openplaces.geo.overlay import overlay_admin_ids
 
                 boundaries = get_admin(sorted(ids), level, geom=True)['geometry']
-                # overlay_admin_ids joins without aligning CRSs, and a
-                # projected or CRS-less frame then raises inside the join.
+                # overlay_admin_ids joins without aligning CRSs,
+                # and a projected frame then raises inside the join.
                 if data.crs is not None and boundaries.crs is not None:
                     boundaries = boundaries.to_crs(data.crs)
                 data = overlay_admin_ids(data, admin_geometries=boundaries)
