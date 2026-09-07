@@ -314,7 +314,8 @@ def is_output_complete(recipe, admin_id, required_partitions=None) -> bool:
         return False
     coverage = read_partition_coverage(out_path)
     if not coverage or COVERAGE_ALL in coverage:
-        # No coverage footer (plain output or legacy file) or full coverage
+        # No coverage footer (a plain or legacy file), or full
+        # coverage
         return True
     if required_partitions is not None:
         return set(map(str, required_partitions)) <= coverage
@@ -542,13 +543,12 @@ def _dependency_index() -> _DependencyIndex:
 
 
 def _truncate_admin(admin_id, level: int) -> AdminId | None:
+    """AdminId.truncate_to_level, tolerating None and a plain string."""
     if admin_id is None:
         return None
     if not isinstance(admin_id, AdminId):
         admin_id = AdminId(admin_id)
-    if level <= 0:
-        return None
-    return AdminId(*admin_id.levels[:level])
+    return admin_id.truncate_to_level(level)
 
 
 def _consumers_complete(
@@ -876,7 +876,7 @@ def _node_admins(upstream, admin_id, admin_level: int) -> list:
     return finer or [_truncate_admin(admin_id, admin_level)]
 
 
-def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids=None):
+def _walk_dag(root_recipe, admin_id, exclude_recipe_ids=None):
     """Yield (recipe_id, recipe, node_admin) for every node upstream of root.
 
     The root itself is not yielded. Each upstream node's admin unit is the
@@ -1009,7 +1009,7 @@ def cleanup(
     for admin_id in admin_ids:
         lock = DataLock(admin_id) if not dry_run else nullcontext()
         with lock:
-            for node_id, node_recipe, node_admin in _walk_dag(recipe, admin_id, index):
+            for node_id, node_recipe, node_admin in _walk_dag(recipe, admin_id):
                 if stages and node_recipe.get('stage') not in stages:
                     continue
                 rows.extend(
@@ -1194,7 +1194,7 @@ def cleanup_consumed_inputs(
 
     Backs the stage entrypoints' cleanup='consumed' hook: after a stage
     finishes an admin unit, each of its direct inputs is deleted iff every
-    consumer in the recipe tree is complete. Safe when called early —
+    consumer in the recipe tree is complete. Safe when called early:
     consumers with no output yet block deletion (e.g. the NSI parquet
     survives the footprint-spine hook until the parcel spine also exists).
     No-op when retention.cleanup.enabled is false.
@@ -1383,7 +1383,7 @@ def _match_recipe_for_file(stem: str) -> tuple[str | None, str | None]:
     for recipe_id, filename_parts in _recipe_token_index().get(rest[0], []):
         if not _recipe_admin_covers(recipe_id, admin):
             continue
-        # The recipe's filename parts must prefix the file's remaining parts
+        # The recipe's filename parts must prefix the file's own
         if tuple(rest[1 : 1 + len(filename_parts)]) != filename_parts:
             continue
         if len(filename_parts) > best_len:
@@ -1608,6 +1608,7 @@ def compact(
                 shared_buckets,
                 include_shared,
                 index,
+                memo,
             )
             row['action'] = rows_action
 
@@ -1678,8 +1679,8 @@ def _classify_file(
     retention = 'keep'
     if recipe is not None:
         # Retention follows the bucket the file actually lives in: a
-        # downloaded archive in 'external' is an input copy protected by
-        # the bucket default, not by the recipe's (cache) output retention
+        # downloaded archive in 'external' is an input copy protected
+        # by the bucket default, not by the recipe's output retention
         from openplaces.recipe import _get_save_to
 
         save_dir, _ = _get_save_to(recipe)
@@ -1716,6 +1717,7 @@ def _compact_action(
     shared_buckets,
     include_shared,
     index,
+    memo: dict | None = None,
 ) -> str:
     cls = row['class']
     path = _resolve_relative(row['path'])
@@ -1725,14 +1727,14 @@ def _compact_action(
         recipe = index.recipes.get(row['recipe_id']) or {}
         entity = recipe.get('entity')
         if entity is not None and str(entity.entity_type) == 'image':
-            # Image caches are deleted per cache with one receipt, not per
-            # tile file; compact only reports them
+            # Image caches are deleted per cache with one receipt,
+            # not per tile file; compact only reports them
             row['blocked_by'] = 'image cache: use cleanup(include_images=True)'
             return 'blocked'
         if dry_run:
             return 'would_delete'
         _, blocked_by, verified = _consumers_complete(
-            row['recipe_id'], row['admin_id'], index
+            row['recipe_id'], row['admin_id'], index, memo=memo
         )
         if blocked_by:
             row['blocked_by'] = ', '.join(blocked_by)

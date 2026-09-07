@@ -138,7 +138,6 @@ class RecipeDAG:
             for node_id, node_recipe, node_admin in _walk_dag(
                 target,
                 target_admin,
-                index=None,
                 exclude_recipe_ids=self.exclude_recipe_ids,
             ):
                 # _walk_dag yields a finer-saving recipe at whichever
