@@ -119,8 +119,8 @@ def _recipe_index() -> pd.DataFrame:
             level = int(suffix) if suffix.isdigit() else None
 
         recipe_id = yaml_path.stem
-        # The version is sanitized in a filename ('4.1' -> '4~1'), so the
-        # base has to be built the same way; comparing against the raw
+        # The version is sanitized in a filename ('4.1' -> '4~1'), so
+        # the base has to be built the same way; comparing the raw
         # version left every GADM level recipe with an empty suffix, and
         # a dedup keyed on (admin_id, source_id, suffix) then collapsed
         # admin1 through admin4 into one.

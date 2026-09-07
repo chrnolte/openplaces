@@ -189,11 +189,11 @@ def delivery_admin_id(recipe, admin_level=None, region=None) -> AdminId:
 
     Every member has to sit under the resulting unit, and a region whose
     members do not raises here rather than shipping under the first
-    member's state: the unit was read off ``members[0]`` alone, so a
+    member's state: the unit was read off `members[0]` alone, so a
     two-state region with no declared anchor was filed, and named, as
     though it were one state's. Declare the region's own unit to fix it,
-    as ``region_admin_id`` in the region registry or ``admin_id`` in the
-    recipe's inline ``share: delivery:`` block.
+    as `region_admin_id` in the region registry or `admin_id` in the
+    recipe's inline `share: delivery:` block.
 
     Parameters
     ----------
@@ -590,7 +590,7 @@ def delivery_accuracy_dir(recipe, **kwargs) -> Path:
         Recipe ID or loaded recipe dictionary.
     **kwargs
         Passed to :func:`delivery_paths` (``admin_id``, ``admin_level``,
-        ``output_dir``, ``region``) so the directory follows the bundle it
+        `output_dir`, `region`) so the directory follows the bundle it
         describes.
 
     Returns
@@ -702,7 +702,7 @@ def export_delivery(
     -------
     dict of str to pathlib.Path
         The written paths, keyed ``'canonical'``, ``'point'``, ``'geo'``,
-        ``'evidence'`` and ``'terms'`` (the licence notice).
+        `'evidence'` and `'terms'` (the licence notice).
     """
     if isinstance(recipe, str):
         recipe = get_recipe_by_id(recipe)

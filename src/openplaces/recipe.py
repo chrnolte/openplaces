@@ -131,10 +131,10 @@ def get_recipe_dict(filepath, *args, **kwargs):
     if 'stage' not in recipe_dict:
         recipe_dict['stage'] = 'ingest'
 
-    # Validated here rather than at the point of use: a typo ('harmonise')
-    # loaded silently, ranked below every ingest recipe in
-    # `find_entity_recipe_id`, and only surfaced when the orchestrated job
-    # eventually ran and argparse rejected the stage name.
+    # Validated here rather than at the point of use: a typo
+    # ('harmonise') loaded silently, ranked below every ingest recipe
+    # in `find_entity_recipe_id`, and surfaced only when the
+    # orchestrated job ran and argparse rejected the stage name.
     if recipe_dict['stage'] not in RECIPE_STAGES:
         stage = recipe_dict['stage']
         raise ValueError(
@@ -589,16 +589,16 @@ def resolve_attribute_name(column: str) -> str:
 def source_id_from_recipe_id(recipe_id: str) -> str:
     """Extract the source id from a recipe id.
 
-    A recipe id is ``{admin_id}_{entity_or_theme}-{source}-{version}``,
+    A recipe id is `{admin_id}_{entity_or_theme}-{source}-{version}`,
     optionally followed by a filename suffix. The entity or dataset token
     is parsed with the same caster :func:`get_recipe_by_id` uses, so the
     source is read off the parsed object rather than by counting
-    ``-``-delimited fields (``'US_building-nsi-2022'`` -> ``'nsi'``;
-    ``'US_footprint_built-n-stories-brails-2026'`` -> ``'brails'``).
+    `-`-delimited fields (`'US_building-nsi-2022'` -> `'nsi'`;
+    `'US_footprint_built-n-stories-brails-2026'` -> `'brails'`).
 
     Reading the *last* token used to be enough only because no committed
-    recipe id carried a suffix: ``'CO_parcel-igac-2026_rural'`` yielded
-    ``'rural'`` and ``'US_admin-census-2025_admin3'`` yielded ``'admin3'``,
+    recipe id carried a suffix: `'CO_parcel-igac-2026_rural'` yielded
+    `'rural'` and `'US_admin-census-2025_admin3'` yielded `'admin3'`,
     which would have reached provenance tokens, column suffixes and
     licence keys as though the suffix were the source.
 
@@ -656,7 +656,7 @@ def find_entity_recipe_id(
     *source_id* filters rather than ranks. It used to be a preference, so a
     caller asking for a source with no recipe silently received a different
     source's: the enricher's request for the harmonized spine
-    (``source_id='spine'``) would fall through to the geospine, which is the
+    (`source_id='spine'`) would fall through to the geospine, which is the
     same entity type at the same stage. Every caller tests only for None, so
     the substitution reached the data instead of the error.
 
@@ -1077,7 +1077,7 @@ def find_additional_layer_recipes(
     precedence and
     :func:`openplaces.io.harmonizer.links._find_admin_scoped_recipe_ids`'s
     dedup key. The suffix belongs in that key: two files sharing a source
-    (``CO_parcel-igac-2026_rural`` and ``_urban``) are different tables
+    (`CO_parcel-igac-2026_rural` and `_urban`) are different tables
     meant to coexist, not competing versions of one.
 
     Parameters
