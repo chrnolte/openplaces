@@ -5,7 +5,8 @@ these cover what can be checked cheaply: the module imports, the paths it
 writes to are the committed ones, and the two dry-run steps report without
 touching anything. The guarantee that matters -- that the pipeline
 reproduces the committed spine -- is asserted by
-`test_admin_codes_audit.py::test_level_four_reproduces_exactly`.
+`test_admin_codes_audit.py::test_weighted_derivation_reproduces_the_spine_exactly`
+for levels 2 and 3, and by `test_the_mint_is_a_fixed_point` below for all.
 """
 
 import pandas as pd

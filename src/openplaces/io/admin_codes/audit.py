@@ -4,10 +4,13 @@ Two jobs that were learned the hard way and are easy to get wrong again.
 
 :func:`audit_spine` states the invariants: format, hierarchy, uniqueness,
 one code width per parent, and -- the one that matters most -- that
-re-running the generator over the spine reproduces it. That last check is
-what proves identifiers are stable rather than merely optimal; the
-assignment is a global optimum per sibling group, so without pinning,
-adding one unit can move a code from one existing unit to another.
+re-deriving every code from names alone reproduces the spine. That check
+runs with pinning *off*: pinning reads the committed code back out of the
+registry, which is the file under audit, so a pinned run reproduces the
+spine by construction and would not move on a derivation regression
+(measured at level 2: 3648 of 3654 pinned against 3337 derived). Fed the
+population weights the mint used, the derived run is the same computation
+as the re-mint and must reproduce every code; unweighted it is a floor.
 
 :func:`resolve_identifier` is the only safe way to point an old reference
 at a live unit. Identifiers get *recycled*: US-NC-HD named Hyde and now
@@ -42,7 +45,7 @@ def _read(level, superseded=False):
     )
 
 
-def audit_spine(levels=LEVELS, reproduce=True):
+def audit_spine(levels=LEVELS, reproduce=True, weights=None):
     """Check every invariant an identifier set must satisfy.
 
     Parameters
@@ -50,27 +53,37 @@ def audit_spine(levels=LEVELS, reproduce=True):
     levels : iterable of int, optional
         Admin levels to check. Defaults to 2, 3 and 4.
     reproduce : bool, optional
-        Also re-run the generator over each level, from names alone, and
-        count the codes it agrees with. Informational, not an invariant:
-        the spine is minted with population weights deciding contested
-        codes, and this pass runs unweighted so the audit needs nothing
-        from the data tree. The weighted fixed point is what
-        `build.remint_spine(apply=False)` and its test measure.
+        Also re-derive every code at each level from names alone, with
+        the registry pinning switched off, and count the codes the
+        derivation agrees with. Without `weights` the pass runs
+        unweighted, so the audit needs nothing from the data tree, and
+        the count is a floor rather than an invariant: the spine was
+        minted with population deciding contested codes (measured
+        2026-09-06: 3337 of 3654 at level 2, 40588 of 48696 at level 3,
+        185306 of 218754 at level 4).
+    weights : mapping of int to pandas.Series, optional
+        Population per admin id, keyed by level, as read from
+        `build.population_path`. With the weights the mint used, the
+        derivation is the same computation as `build.remint_spine` and
+        must reproduce every code (48696 of 48696 at level 3); a
+        shortfall is a real regression in the generator or the weights.
+        A unit missing from the series competes with weight zero.
 
     Returns
     -------
     pandas.DataFrame
         One row per level, with the count of violations found by each
         check. A clean spine is all zeros except `reproduced`, the number
-        of codes an unweighted re-mint agrees with (1.3% of level 4 differ
-        by weighted tie-breaks alone).
+        of codes the derivation agrees with: equal to `units` when
+        weighted, a documented floor when not.
 
     Notes
     -----
-    A handful of level-2 and level-3 rows are known not to reproduce:
-    Colombian municipalities that share a name with a sibling and carry no
-    source code to tell them apart. They are a defect in the source data,
-    not in the generator, and are counted rather than hidden.
+    Pinning must stay off here. `assign_admin_ids` pins by default, and
+    pinned it reads each committed code back out of the registry, which
+    is the file being audited; the check then reports the spine
+    reproduced whatever the generator would derive. That is how a
+    resolver defect went unnoticed: the number never moved.
     """
     rows = []
     for level in levels:
@@ -91,8 +104,20 @@ def audit_spine(levels=LEVELS, reproduce=True):
         if reproduce:
             work = spine.copy()
             work['_parent'] = parents
+            weight_col = None
+            if weights is not None and level in weights:
+                weight_col = '_population'
+                population = pd.Series(weights[level], dtype=float)
+                work[weight_col] = spine[column].map(population).fillna(0.0).to_numpy()
+            # pin_to_spine=False is the point of the check: a pinned run
+            # copies the committed code out of the registry and proves
+            # nothing about whether the names derive it.
             minted = assign_admin_ids(
-                work, new_admin_id_col=column, parent_admin_id_col='_parent'
+                work,
+                new_admin_id_col=column,
+                parent_admin_id_col='_parent',
+                weight_col=weight_col,
+                pin_to_spine=False,
             )
             reproduced = int(
                 (
