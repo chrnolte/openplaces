@@ -2,11 +2,11 @@
 Registry-driven table helpers shared by the geo and io layers.
 
 These functions were previously defined in :mod:`openplaces.io.aggregate`
-and :mod:`openplaces.io.transform`, which put them above ``geo/`` in the
-module layer hierarchy even though ``geo/`` is one of their main callers.
+and :mod:`openplaces.io.transform`, which put them above `geo/` in the
+module layer hierarchy even though `geo/` is one of their main callers.
 That produced a module-level import cycle between
-``geo/crosswalk.py`` and ``io/aggregate.py``, broken only by deferring the
-``geo.address`` import inside :func:`join_nonnull_addresses`.
+`geo/crosswalk.py` and `io/aggregate.py`, broken only by deferring the
+`geo.address` import inside :func:`join_nonnull_addresses`.
 
 They live here instead because their real dependencies are low: the
 attribute registry, the recipe attribute-name resolver, and the pure
@@ -27,9 +27,12 @@ from openplaces.recipe import resolve_attribute_name
 def add_unique_suffix(s):
     """Make string Series unique by appending unique integer suffices.
 
-    All duplicate occurrences are suffixed (``-1``, ``-2``, …), including the
+    All duplicate occurrences are suffixed (`-1`, `-2`, ...), including the
     first one.  Use `make_index_unique` when operating on a DataFrame index and
     the first (or largest) occurrence should keep the unsuffixed value.
+
+    A categorical Series is converted to object first: a suffixed value is a
+    new category, and assigning it into a categorical raises instead.
 
     Parameters
     ----------
@@ -38,6 +41,8 @@ def add_unique_suffix(s):
     """
     # Avoid warnings about setting slices
     s = s.copy()
+    if isinstance(s.dtype, pd.CategoricalDtype):
+        s = s.astype(object)
     duplicates = s.duplicated(keep=False)
     # Handle collisions with suffix
     counts = s[duplicates].groupby(s[duplicates], sort=False).cumcount() + 1
@@ -58,10 +63,10 @@ def join_nonnull_addresses(x):
     value's base address (unit designator stripped via
     :func:`openplaces.geo.address.strip_unit_suffix`) -- a condo/apartment
     building's per-unit property records otherwise differ only by an
-    APT/UNIT/# suffix, and joining every one of them with ``' + '`` produces
+    APT/UNIT/# suffix, and joining every one of them with ' + ' produces
     a multi-address string that no downstream address parser can split back
     into a single street/number. Genuinely different base addresses (e.g. a
-    parcel spanning two streets) still join with ``' + '``, unchanged from
+    parcel spanning two streets) still join with ' + ', unchanged from
     :func:`join_nonnull_strings`.
     """
     parts = [str(v) for v in x if v is not None and pd.notna(v)]
@@ -80,15 +85,33 @@ _AGG_ALIASES = {'join_nonnull': join_nonnull_strings}
 def _agg_func_for(canonical_name: str, fname: str):
     """Resolve a registry aggregation name to a concrete callable/name.
 
-    Identical to a plain ``_AGG_ALIASES.get(fname, fname)`` lookup, except
+    Identical to a plain `_AGG_ALIASES.get(fname, fname)` lookup, except
     *address* gets :func:`join_nonnull_addresses` instead of the plain
-    :func:`join_nonnull_strings` every other ``'join_nonnull'`` column
-    (e.g. ``use_group``) still uses -- see that function's docstring for
+    :func:`join_nonnull_strings` every other 'join_nonnull' column
+    (e.g. `use_group`) still uses -- see that function's docstring for
     why a plain string join corrupts a multi-unit building's address.
     """
     if fname == 'join_nonnull' and canonical_name == 'address':
         return join_nonnull_addresses
     return _AGG_ALIASES.get(fname, fname)
+
+
+def _has_agg_func(fname) -> bool:
+    """True when *fname* is a usable aggregation name from the registry.
+
+    The registry is read with `pd.read_csv`, so a blank aggregation cell
+    arrives as float NaN rather than None; a NaN reaching `groupby.agg`
+    raises a TypeError far from its cause.
+
+    Parameters
+    ----------
+    fname : str, float, or None
+        Value returned by
+        :func:`openplaces.core.attribute_registry.get_agg_func`.
+    """
+    if fname is None:
+        return False
+    return not (isinstance(fname, float) and pd.isna(fname))
 
 
 def aggregate_rows(
@@ -104,13 +127,15 @@ def aggregate_rows(
     ----------
     df : pd.DataFrame
         Input DataFrame.  Columns that appear in the attribute registry with a
-        non-null aggregation function are included in the result.
+        non-null aggregation function are included in the result.  The
+        grouping column(s) are excluded: they are the result's index, and
+        returning them as columns too breaks a downstream `reset_index`.
     by : str or list of str
         Column(s) to group by.
     aggregation_function : None, callable, or dict, optional
         Controls which aggregation function is applied to each column.
 
-        ``None``
+        None
             Use the function recorded in the attribute registry for each column.
         callable
             Apply this single function to all aggregatable columns.
@@ -118,11 +143,13 @@ def aggregate_rows(
             Map column names to callables; columns absent from the dict fall
             back to the registry default.
     sort_by : str, optional
-        Column to sort *df* by descending before grouping.  When the column is
-        absent or omitted and *df* is a GeoDataFrame, rows are sorted by
-        geometry area descending.
+        Column to sort *df* by descending before grouping.  When omitted and
+        *df* is a GeoDataFrame, rows are sorted by geometry area descending.
+        A *sort_by* naming a column *df* does not have warns and falls back
+        to that area order, which changes which row every 'first'-aggregated
+        column comes from.
     list_columns : list of str, optional
-        Column names for which an additional ``{col}_list`` column is added to
+        Column names for which an additional `{col}_list` column is added to
         the output, collecting all values per group into a Python list.  The
         normal scalar aggregation for each column is still applied; these are
         extra columns alongside the registry-aggregated ones.
@@ -130,13 +157,19 @@ def aggregate_rows(
     Returns
     -------
     pd.DataFrame or None
-        Aggregated DataFrame with *by* as the index, or ``None`` when no
+        Aggregated DataFrame with *by* as the index, or None when no
         aggregatable columns are found in *df*.
 
     Raises
     ------
     ValueError
-        When *aggregation_function* is not ``None``, a callable, or a dict.
+        When *aggregation_function* is not None, a callable, or a dict.
+
+    Warns
+    -----
+    UserWarning
+        When *sort_by* names a column that is absent, or when rows are
+        dropped because their grouping key is null.
     """
     if not (
         aggregation_function is None
@@ -148,37 +181,87 @@ def aggregate_rows(
             f'got {type(aggregation_function)}'
         )
 
+    by_cols = [by] if isinstance(by, str) else list(by)
+
+    if sort_by is not None and sort_by not in df.columns:
+        warnings.warn(
+            f'aggregate_rows: sort_by={sort_by!r} is not a column of the '
+            'input, so rows are ordered by geometry area (or left in input '
+            'order); a first-aggregated column then comes from a different '
+            'row than intended.',
+            stacklevel=2,
+        )
+
     if sort_by is not None and sort_by in df.columns:
         df = df.sort_values(sort_by, ascending=False)
     elif isinstance(df, gpd.GeoDataFrame):
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', 'Geometry is in a geographic CRS')
-            df = df.loc[df.geometry.area.sort_values(ascending=False).index]
+            areas = df.geometry.area.to_numpy()
+        # Positionally, never by label: re-selecting rows with .loc on a
+        # non-unique index multiplies them, and the groupby below would
+        # then aggregate the inflated input.
+        df = df.iloc[(-areas).argsort(kind='stable')]
 
     agg_cols: dict = {}
     for col in df.columns:
-        fname = get_agg_func(resolve_attribute_name(col))
-        if fname is None:
+        if col in by_cols:
+            continue
+        canonical_name = resolve_attribute_name(col)
+        fname = get_agg_func(canonical_name)
+        if not _has_agg_func(fname):
             continue
         if callable(aggregation_function):
             agg_cols[col] = aggregation_function
         elif isinstance(aggregation_function, dict):
             agg_cols[col] = aggregation_function.get(
-                col, _agg_func_for(resolve_attribute_name(col), fname)
+                col, _agg_func_for(canonical_name, fname)
             )
         else:
-            agg_cols[col] = _agg_func_for(resolve_attribute_name(col), fname)
+            agg_cols[col] = _agg_func_for(canonical_name, fname)
 
-    for col in list_columns or []:
-        if col not in df.columns:
-            continue
-        # Categorical dtype cannot hold list values; cast to object first.
-        if isinstance(df[col].dtype, pd.CategoricalDtype):
-            df = df.copy()
+    list_cols = [col for col in list_columns or [] if col in df.columns]
+    # Categorical dtype cannot hold list values; cast to object
+    # first, in one copy of the frame rather than one per column.
+    categorical_lists = [
+        col for col in list_cols if isinstance(df[col].dtype, pd.CategoricalDtype)
+    ]
+    if categorical_lists:
+        df = df.copy()
+        for col in categorical_lists:
             df[col] = df[col].astype(object)
-        agg_cols[f'{col}_list'] = pd.NamedAgg(column=col, aggfunc=list)
 
-    if not agg_cols:
+    if not agg_cols and not list_cols:
         return None
 
-    return df.groupby(by).agg(agg_cols)
+    # *by* may name an index level rather than a column, which has
+    # no null key to report.
+    key_cols = [col for col in by_cols if col in df.columns]
+    n_null_keys = int(df[key_cols].isna().any(axis=1).sum()) if key_cols else 0
+    if n_null_keys:
+        # groupby drops these rows. Keeping them instead (dropna=False)
+        # would put a null-keyed group in the result, and a downstream
+        # merge treats null as equal to null, attaching that group's
+        # values to unrelated rows: a worse failure than the drop.
+        warnings.warn(
+            f'aggregate_rows: {n_null_keys} row(s) have a null '
+            f'{by_cols} grouping key and are dropped from the aggregate.',
+            stacklevel=2,
+        )
+
+    grouped = df.groupby(by)
+    result = grouped.agg(agg_cols) if agg_cols else None
+
+    if list_cols:
+        # Named aggregation only works through keyword arguments: a
+        # pd.NamedAgg placed in the dict passed to agg() raises
+        # KeyError, because '{col}_list' is not a column of the input.
+        lists = grouped.agg(
+            **{
+                f'{col}_list': pd.NamedAgg(column=col, aggfunc=list)
+                for col in list_cols
+            }
+        )
+        result = lists if result is None else result.join(lists)
+
+    return result
