@@ -45,14 +45,41 @@ def fill_missing_numeric(
     return state
 
 
+# Columns impute_n_dwellings reads, in preference order, most specific
+# first. Deliberately an explicit ordered list and not a prefix scan:
+# several occupancy-shaped columns coexist on the footprint spine with
+# different vocabularies (a coarsened class, a vote on Overture dwelling
+# counts, a raw source code), only one of which keys the lookup, and a
+# prefix scan silently took whichever DataFrame order happened to put
+# first. That made the step's output depend on incidental column order,
+# up to imputing nothing at all.
+_DWELLING_CLASS_COLUMNS = (
+    'occupancy_type_building_nsi',
+    'occupancy_type',
+    'purpose_subgroup',
+    'use_subgroup',
+)
+
+
 @_register('impute_n_dwellings')
-def impute_n_dwellings(state: CurateState) -> CurateState:
+def impute_n_dwellings(state: CurateState, column: str | None = None) -> CurateState:
     """Fill missing ``n_dwellings`` from an occupancy-class lookup.
 
     Rows still missing a dwelling-unit count after value reconciliation are
-    filled from the occupancy class of the first available
-    ``purpose_subgroup`` / ``occupancy_type`` column, using the
-    occupancy-to-units mapping from Lochhead et al. (2026, Table 3).
+    filled from an occupancy-class column, using the occupancy-to-units
+    mapping from Lochhead et al. (2026, Table 3). That mapping is keyed on
+    the NSI occupancy vocabulary, so the column has to carry it: a column
+    holding a coarsened class or a raw source code matches no key and
+    imputes nothing.
+
+    Parameters
+    ----------
+    column : str, optional
+        Occupancy-class column to read. Defaults to the first of
+        ``occupancy_type_building_nsi``, ``occupancy_type``,
+        ``purpose_subgroup``, ``use_subgroup`` present on the curated
+        frame. A named column that is absent is skipped, like a missing
+        default, rather than raising.
     """
     from openplaces.io.harmonizer.attributes import _OCC_UNITS
 
@@ -62,16 +89,13 @@ def impute_n_dwellings(state: CurateState) -> CurateState:
 
     null_mask = curated['n_dwellings'].isna()
     if null_mask.any():
-        subgroup_col = next(
-            (
-                c
-                for c in curated.columns
-                if c.startswith('use_subgroup')
-                or c.startswith('purpose_subgroup')
-                or c.startswith('occupancy_type')
-            ),
-            None,
-        )
+        candidates = (column,) if column else _DWELLING_CLASS_COLUMNS
+        subgroup_col = next((c for c in candidates if c in curated.columns), None)
+        if subgroup_col is None and state.verbose:
+            print(
+                '  impute_n_dwellings: none of '
+                f'{", ".join(candidates)} present; skipping.'
+            )
         if subgroup_col is not None:
             inferred = curated.loc[null_mask, subgroup_col].map(_OCC_UNITS)
             curated.loc[null_mask, 'n_dwellings'] = inferred
