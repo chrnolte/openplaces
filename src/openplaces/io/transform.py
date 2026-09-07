@@ -374,7 +374,7 @@ def apply_transformation(
     # A recipe is written for the full source schema; a particular file (or a
     # focused test frame) may legitimately lack some of those columns. Skip a
     # transformation whose declared input column(s) are entirely absent rather
-    # than failing the whole run — mirroring apply_legacy_columns and the
+    # than failing the whole run - mirroring apply_legacy_columns and the
     # aggregate handler, which already tolerate missing inputs.
     input_cols = config.get('inputs')
     if input_cols is None and 'input' in config:
@@ -675,7 +675,7 @@ def _apply_string(
         pattern = args['pattern']
         result = STRING_OPS[operation](input_series, pattern)
         # Named groups become new columns; merge them into df is the caller's
-        # responsibility — but single-group patterns still return a Series.
+        # responsibility - but single-group patterns still return a Series.
         if result.shape[1] == 1:
             return result.iloc[:, 0]
         raise NotImplementedError(

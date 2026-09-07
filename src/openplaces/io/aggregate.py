@@ -106,7 +106,7 @@ def aggregate_rows_weighted(
     ---------
     ``'mean'`` columns
         Weighted mean per group: ``sum(value * wcol) / sum(wcol * value.notnull())``.
-        *wcol* should reflect physical overlap magnitude (e.g. ``area_ha``) —
+        *wcol* should reflect physical overlap magnitude (e.g. ``area_ha``) -
         weight is normalized within each group implicitly by the division.
     ``'sum'`` columns
         Fraction-weighted (apportioned) sum per group: ``sum(value * wcol)``,
@@ -115,7 +115,7 @@ def aggregate_rows_weighted(
         ``fraction_of_old``, which sums to 1.0 per source row) so that
         summing a value across every group sharing a source recovers exactly
         that source's original total. Passing a non-normalized weight (e.g.
-        raw ``area_ha``) for a 'sum' column silently over- or under-counts —
+        raw ``area_ha``) for a 'sum' column silently over- or under-counts -
         this is a caller responsibility, easy to get backwards. Because
         'mean' and 'sum' columns typically need *different* weight columns,
         call this function once per weight column (on the relevant column
@@ -124,7 +124,7 @@ def aggregate_rows_weighted(
     Parameters
     ----------
     df : pd.DataFrame
-        Input rows, one per (target, source) link — e.g. one row per
+        Input rows, one per (target, source) link - e.g. one row per
         crosswalk (parcel_id_new, parcel_id_old) pair, with value columns to
         aggregate plus *wcol*.
     by : str or list of str
@@ -228,7 +228,7 @@ def _strip_save_admin_level(recipe):
     """Return a shallow copy of recipe with save_to.admin_level removed.
 
     Without an explicit save_to.admin_level, get_output_path resolves to the
-    process-level path — the intermediate per-chunk file written by
+    process-level path - the intermediate per-chunk file written by
     TableIngester in aggregate mode.
     """
     temp = dict(recipe)
@@ -507,7 +507,7 @@ def aggregate_files(
         may differ from the intended aggregation target.
     output_dir : str, optional
         Directory for the aggregated output files (e.g. ``'share'``).
-        Does not affect where intermediate input files are looked up — those
+        Does not affect where intermediate input files are looked up - those
         are always resolved from the recipe's original ``save_to.data_dir``.
         Uses the recipe default if omitted.
     admin_ids_to_save : str, AdminId, or list, optional
@@ -532,7 +532,7 @@ def aggregate_files(
         recipe = get_recipe_by_id(recipe)
 
     # temp_recipe resolves intermediate (process-level) paths using the
-    # recipe's original data_dir — output_dir must not bleed into this.
+    # recipe's original data_dir - output_dir must not bleed into this.
     process_admin_level = get_process_admin_level(recipe)
     temp_recipe = _strip_save_admin_level(recipe)
 
@@ -602,8 +602,8 @@ def aggregate_to_admin_level(
 ):
     """Aggregate per-process-unit intermediate files into save-level files.
 
-    Wrapper around :func:`aggregate` that reads the save level from the
-    recipe's ``save_to.admin_level`` field.
+    Wrapper around :func:`aggregate_files` that reads the save level from
+    the recipe's ``save_to.admin_level`` field.
 
     Parameters
     ----------
@@ -619,7 +619,7 @@ def aggregate_to_admin_level(
         If True, do not delete the intermediate files after aggregation.
     combined : bool
         If True, write the aggregated output as a single geoparquet file.
-        Passed through to :func:`aggregate`.
+        Passed through to :func:`aggregate_files`.
     verbose : bool
         If True, print a summary line for each aggregated file.
     """
@@ -789,7 +789,7 @@ def read_partition_coverage(path) -> set[str]:
     """Return the partition ids recorded in an aggregated parquet's footer.
 
     Reads the ``openplaces:partitions`` key from the Parquet file-level
-    (footer) metadata written by :func:`aggregate_partitions` — no rows are
+    (footer) metadata written by :func:`aggregate_partitions` - no rows are
     scanned. Returns an empty set when the file is missing or carries no such
     key (e.g. files written before this metadata was introduced).
 
