@@ -291,15 +291,21 @@ def get_elevation_datum(
     if not 0.0 <= quantile <= 1.0:
         raise ValueError(f'quantile must be in [0, 1], got {quantile!r}.')
 
-    ids = resolve_dem_admin_ids(gdf, elevation_recipe, admin_id_column).unique()
+    ids = resolve_dem_admin_ids(gdf, elevation_recipe, admin_id_column)
+    id_values = ids.to_numpy()
 
     values = []
-    for admin_id in ids:
+    for admin_id in pd.unique(id_values):
+        # Only the rows this tile covers. Reading the whole scene's bounds
+        # out of every tile is boundless, so each read allocates the full
+        # multi-county window regardless of overlap: a 45-county scene
+        # against 10 m tiles asks for roughly 12 GB on the first tile.
+        unit = gdf.iloc[np.flatnonzero(id_values == admin_id)]
         dem_path = Path(get_dataset(elevation_recipe, admin_id=admin_id))
         if not dem_path.exists():
             _ingest_missing_dem(elevation_recipe, admin_id, dem_path, silent=True)
         with rasterio.open(dem_path) as src:
-            bounds = gdf.to_crs(src.crs).total_bounds
+            bounds = unit.to_crs(src.crs).total_bounds
             window = rasterio.windows.from_bounds(*bounds, transform=src.transform)
             band = src.read(1, window=window, masked=True, boundless=True)
         finite = np.asarray(band.compressed(), dtype=float)

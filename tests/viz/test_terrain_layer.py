@@ -622,3 +622,45 @@ def test_drop_corridors_accepts_threshold_overrides():
                 silent=True,
             )
     assert len(default.layer.table) == 1
+
+
+def test_show_value_terrain_layer_elevation_column_honors_the_datum():
+    """A column-based ground must reference and clamp like a DEM one.
+
+    Both `elevation_recipe` branches subtract `elevation_datum` and clamp
+    at the ground plane before exaggerating. The column path did neither,
+    so a parcel layer on `(elev - datum) * 3` and a building layer on
+    `elev * 3` slid about a kilometer apart.
+    """
+    poly1 = Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
+    poly2 = Polygon([(1, 1), (2, 1), (2, 2), (1, 2)])
+    gdf = gpd.GeoDataFrame(
+        {
+            'land_value_imputed': [100.0, 500.0],
+            'area_m2': [10.0, 10.0],
+            # One above the datum, one below it (clamped to the plane).
+            'elevation': [400.0, 300.0],
+        },
+        geometry=[poly1, poly2],
+        crs='EPSG:4326',
+    )
+
+    with patch('openplaces.viz.terrain.get_entities', return_value=gdf):
+        terrain_layer = show_value_terrain_layer(
+            recipe='dummy_recipe',
+            admin_id='US-MA-SU',
+            value_column='land_value_imputed',
+            area_m2_column='area_m2',
+            elevation_column='elevation',
+            elevation_datum=345.0,
+            terrain_exaggeration=3.0,
+            elevation_scale=1.0,
+            height_clip_percentile=None,
+            silent=True,
+        )
+
+    base_z = [_base_z(geom) for geom in terrain_layer.gdf.geometry]
+    np.testing.assert_allclose(base_z, [(400.0 - 345.0) * 3.0, 0.0])
+    np.testing.assert_allclose(
+        terrain_layer.total_elevation, [165.0 + 10.0, 0.0 + 50.0]
+    )

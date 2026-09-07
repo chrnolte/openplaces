@@ -608,10 +608,19 @@ def show_value_terrain_layer(
         if n_missing_elev and not silent:
             warnings.warn(
                 f'Setting {n_missing_elev} row(s) with missing {elevation_column!r} '
-                'to 0 (sea level).',
+                "to the scene's ground plane (0, or the elevation_datum).",
                 stacklevel=2,
             )
-        contribution = elev.fillna(0).to_numpy(dtype=float) * terrain_exaggeration
+        # Reference to the datum and clamp at the ground plane before
+        # exaggerating, exactly as both elevation_recipe branches do. A
+        # column-based ground that skipped the datum put its layer
+        # `elevation_datum * terrain_exaggeration` above a recipe-based
+        # one meant to stack with it: about a kilometer for a 345 m
+        # datum at 3x.
+        contribution = (
+            np.maximum(elev.fillna(0).to_numpy(dtype=float) - elevation_datum, 0.0)
+            * terrain_exaggeration
+        )
         base_z = base_z + contribution
         extra_z = extra_z + contribution
 

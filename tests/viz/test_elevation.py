@@ -192,3 +192,43 @@ def test_add_z_offset_adds_on_top_of_existing_z():
     result = elevation.add_z_offset(np.array([draped], dtype=object), np.array([10.0]))
     coords = np.asarray(shapely.get_coordinates(result[0], include_z=True))
     np.testing.assert_allclose(coords[:, 2], [11.0, 12.0, 13.0, 14.0, 11.0])
+
+
+def test_get_elevation_datum_reads_only_each_units_own_extent(
+    gradient_raster, monkeypatch
+):
+    """Each DEM tile is read for its own rows, not the whole scene.
+
+    The read is boundless, so a window covering every unit allocates the
+    full multi-county array out of every tile: a 45-county scene against
+    10 m tiles asked for roughly 12 GB on the first one.
+    """
+    windows = []
+    original = rasterio.windows.from_bounds
+
+    def _spy(*args, **kwargs):
+        window = original(*args, **kwargs)
+        windows.append(window)
+        return window
+
+    monkeypatch.setattr(rasterio.windows, 'from_bounds', _spy)
+
+    # Two units far apart, so a scene-wide window is 100x the right one.
+    near = Polygon([(0, 1), (1, 1), (1, 2), (0, 2)])
+    far = Polygon([(100, 101), (101, 101), (101, 102), (100, 102)])
+    gdf = gpd.GeoDataFrame(
+        {'admin3_id': ['US-XX-AA', 'US-XX-BB']},
+        geometry=[near, far],
+        index=pd.Index(['p1', 'p2'], name='parcel_id'),
+        crs='EPSG:32619',
+    )
+
+    with _patch_get_dataset(gradient_raster):
+        elevation.get_elevation_datum(
+            gdf,
+            {'save_to': {'admin_level': 3}},
+            admin_id_column='admin3_id',
+        )
+
+    assert len(windows) == 2
+    assert all(max(w.width, w.height) < 10 for w in windows)
