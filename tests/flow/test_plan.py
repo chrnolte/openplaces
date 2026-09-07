@@ -16,7 +16,9 @@ from openplaces.recipe import get_output_path
 TARGET = 'US_footprint-openplaces-2026'
 SPINE = 'US_footprint-spine-2026'
 NSI = 'US_building-nsi-2026'
-COUNTY = 'US-NC-BR'
+# Brunswick's current id. Its pre-2026 form, 'US-NC-BR', is a string
+# prefix of it and used to select it from the spine by accident.
+COUNTY = 'US-NC-BRU'
 
 
 @pytest.fixture
@@ -101,7 +103,7 @@ def test_plan_columns_and_order(dag, data_root):
 def test_mermaid_full_detail(dag):
     mermaid = dag.to_mermaid(collapse_admin=False)
     assert 'flowchart LR' in mermaid
-    assert 'US_footprint_openplaces_2026_US_NC_BR[' in mermaid
+    assert 'US_footprint_openplaces_2026_US_NC_BRU[' in mermaid
     assert '-->' in mermaid
     for stage in ('ingest', 'harmonize', 'enrich', 'curate'):
         assert f'classDef {stage}' in mermaid
