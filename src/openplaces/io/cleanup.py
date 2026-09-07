@@ -870,7 +870,10 @@ def _node_admins(upstream, admin_id, admin_level: int) -> list:
         node_admin = AdminId(candidate)
         if node_admin.get_level() == save_level and walk_admin.is_parent_of(node_admin):
             finer.append(node_admin)
-    return finer
+    # With nothing on disk there is nothing to reclaim, but the node
+    # itself must still be yielded: `flow.dag` walks this graph to
+    # enumerate jobs, and on a fresh install no output exists yet
+    return finer or [_truncate_admin(admin_id, admin_level)]
 
 
 def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids=None):

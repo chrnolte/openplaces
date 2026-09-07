@@ -546,6 +546,19 @@ def test_finer_saving_upstream_is_expanded_to_its_own_units(data_root):
     assert sorted(row['admin_id'] for row in rows) == in_scope
 
 
+def test_finer_saving_upstream_without_output_keeps_the_walk_admin(data_root):
+    """With nothing written, the node is still yielded once.
+
+    flow.dag walks this graph to enumerate jobs, so a fresh install with
+    no outputs must not lose the node.
+    """
+    recipe = dict(get_recipe_by_id(NSI))
+    save_to = dict(recipe.get('save_to') or {})
+    save_to['admin_level'] = 4
+    recipe['save_to'] = save_to
+    assert [str(a) for a in cl._node_admins(recipe, COUNTY, 3)] == [COUNTY]
+
+
 def _image_cache_frame(rows):
     return pd.DataFrame(
         rows,
