@@ -210,3 +210,69 @@ class TestDryRuns:
             assert counts['changed'] == 0, (
                 f'level {level}: {counts["changed"]:,} identifiers would move'
             )
+
+
+class TestPopulationCoverage:
+    """Every polygon handed to the extractor comes back out weighted."""
+
+    @pytest.fixture
+    def one_unit_dropped(self, tmp_path, monkeypatch):
+        """Three fabricated units, of which the extractor reports two.
+
+        Returns the frame `build_population` writes for level 3.
+        """
+        import geopandas as gpd
+        from shapely.geometry import box
+
+        from openplaces import path as op_path
+        from openplaces.geo import raster as op_raster
+
+        units = ['XX-AA-AA', 'XX-AA-BB', 'XX-AA-CC']
+        polygons = gpd.GeoDataFrame(
+            {'resolved': units, 'geometry': [box(i, 0, i + 1, 1) for i in range(3)]},
+            geometry='geometry',
+            crs='EPSG:4326',
+        )
+        spine = pd.DataFrame({'admin3_id': units, 'name': list('ABC')})
+        stats = pd.DataFrame(
+            # The middle unit is missing outright, not NaN.
+            {'resolved': ['XX-AA-AA', 'XX-AA-CC'], 'sum': [12.0, 34.0]}
+        )
+        raster = tmp_path / 'population.tif'
+        raster.write_bytes(b'')
+        written = tmp_path / 'level3-population.csv'
+
+        monkeypatch.setattr(build, 'resolved_polygons', lambda level: polygons)
+        monkeypatch.setattr(build, '_spine', lambda level: spine)
+        monkeypatch.setattr(build, '_polygon_ids', lambda polygons: {})
+        monkeypatch.setattr(build, 'population_path', lambda level: written)
+        monkeypatch.setattr(
+            build, 'spine_path', lambda level: tmp_path / 'admin-spine-2026_admin3.csv'
+        )
+        monkeypatch.setattr(op_path, 'resolve_raster_path', lambda name: raster)
+        monkeypatch.setattr(
+            op_raster,
+            'zonal_stats_with_exactextract',
+            lambda *args, **kwargs: stats,
+        )
+        return build.build_population(3, verbose=False)
+
+    def test_a_unit_the_extractor_skips_is_still_weighted(self, one_unit_dropped):
+        # Without the reindex the row is absent, so the gap filler hands
+        # it the level median and an uninhabited unit outranks real
+        # towns in the mint.
+        assert set(one_unit_dropped['admin_id']) == {
+            'XX-AA-AA',
+            'XX-AA-BB',
+            'XX-AA-CC',
+        }
+
+    def test_a_skipped_unit_is_weighted_zero_not_null(self, one_unit_dropped):
+        skipped = one_unit_dropped.set_index('admin_id').loc['XX-AA-BB']
+        assert skipped['population'] == 0
+        assert skipped['source'] == 'ghs-pop-e2020'
+
+    def test_the_measured_units_keep_their_sums(self, one_unit_dropped):
+        measured = one_unit_dropped.set_index('admin_id')['population']
+        assert measured['XX-AA-AA'] == 12
+        assert measured['XX-AA-CC'] == 34

@@ -283,11 +283,20 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
             'population': pd.to_numeric(stats[value_column], errors='coerce'),
         }
     )
-    # A polygon exactextract returns nothing for did not fail to be
-    # measured: the raster is global, so no intersecting cell means no
-    # counted people. Dropping the row instead sends it to the gap
-    # filler, which hands an uninhabited unit the median of its level
-    # and lets it win ties against real towns.
+    # Reindex against the polygons that went in. A polygon
+    # exactextract returns no row at all for is absent rather than NaN,
+    # so filling NaN alone cannot reach it: it leaves the table
+    # silently and the gap filler later hands it the median of its
+    # level, which is how two Maine towns were each weighted 26,320.
+    # A polygon that did not fail to be measured is a real zero: the
+    # raster is global, so no intersecting cell means no counted
+    # people, and no clamp up to 1 either.
+    out = (
+        out.set_index('admin_id')
+        .reindex(polygons['resolved'])
+        .rename_axis('admin_id')
+        .reset_index()
+    )
     out['population'] = out['population'].fillna(0).round(0).astype('int64')
     out['source'] = 'ghs-pop-e2020'
     out['geo_id'] = out['admin_id'].map(geo_ids)
