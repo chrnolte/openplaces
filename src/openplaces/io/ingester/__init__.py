@@ -25,13 +25,10 @@ from openplaces.core.schema import AdminId
 from openplaces.geo.link import create_entity_link, get_entity_link_path
 from openplaces.io import (
     delete_data,
-    delete_parquet,
     download,
     find_latest_file_or_gdb,
-    read_parquet,
     release_unused_memory,
     request_headers,
-    save_parquet,
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
@@ -576,60 +573,77 @@ class Ingester:
         merged result to the final output path, and deletes the partials.
         Admin IDs whose data came from a single tile are handled by a simple
         rename rather than a concat.
+
+        Concatenation goes through the shared aggregation core
+        (`io.aggregate._aggregate_to_file`) rather than a local `pd.concat`.
+        The local copy had diverged: it did not union categorical category
+        sets, so a county straddling two tiles whose observed values differ
+        silently lost the categorical dtype that a single-tile county kept,
+        and it skipped `coerce_mixed_object_columns`.
         """
+        from openplaces.io.aggregate import _aggregate_to_file
+
+        # Build the admin-unit-to-tiles map once. Asking the link table per
+        # (admin unit x tile) was O(admins x tiles), roughly three million
+        # lookups on a national run.
+        downloaded_tile_ids = set(self.partition_ids_to_download)
+        tiles_by_admin: dict[str, list[str]] = {}
+        for tile_id, admin_id in self.tile_admin_link.index:
+            if tile_id in downloaded_tile_ids:
+                tiles_by_admin.setdefault(admin_id, []).append(tile_id)
+
         for admin_id in self.admin_ids_to_save:
             final_path = get_output_path(self.recipe, admin_id)
 
             # Tile IDs that were actually downloaded for this admin_id.
-            tile_ids = [
-                tile_id
-                for tile_id in self.partition_ids_to_download
-                if admin_id in self.tile_admin_link.xs(tile_id, level=0).index
+            tile_ids = sorted(set(tiles_by_admin.get(admin_id, [])))
+            existing_tiles = [
+                (tile_id, get_output_path(self.recipe, admin_id, tile_id))
+                for tile_id in tile_ids
             ]
-            output_tile_paths = [
-                get_output_path(self.recipe, admin_id, tile_id) for tile_id in tile_ids
-            ]
-            existing_output_tile_paths = [
-                _path for _path in output_tile_paths if _path.exists()
-            ]
+            existing_tiles = [(t, p) for t, p in existing_tiles if p.exists()]
 
-            if not existing_output_tile_paths:
+            if not existing_tiles:
                 continue
 
-            try:
-                if len(existing_output_tile_paths) == 1:
-                    existing_output_tile_paths[0].replace(final_path)
-                    _geo_partial = existing_output_tile_paths[0].with_stem(
-                        existing_output_tile_paths[0].stem + '_geo'
-                    )
+            if len(existing_tiles) == 1:
+                partial_path = existing_tiles[0][1]
+                try:
+                    partial_path.replace(final_path)
+                    _geo_partial = partial_path.with_stem(partial_path.stem + '_geo')
                     if _geo_partial.exists():
                         _geo_partial.replace(
                             final_path.with_stem(final_path.stem + '_geo')
                         )
-                else:
-                    _geo_path = existing_output_tile_paths[0].with_stem(
-                        existing_output_tile_paths[0].stem + '_geo'
-                    )
-                    gdf_tile_list = [
-                        read_parquet(_path, geom=_geo_path.exists())
-                        for _path in existing_output_tile_paths
-                    ]
-                    gdf_merged = gpd.GeoDataFrame(pd.concat(gdf_tile_list).sort_index())
-                    _warn_registry_type_mismatches(gdf_merged)
-                    save_parquet(gdf_merged, final_path)
-                    for _path in existing_output_tile_paths:
-                        delete_parquet(_path)
-            except PermissionError as e:
-                raise PermissionError(
-                    f'Cannot write to {final_path.name}.\n\n'
-                    '\033[1m→ Close the file in QGIS / ArcGIS / Dropbox sync '
-                    'and re-run.\033[0m'
-                ) from e
+                except PermissionError as e:
+                    raise PermissionError(
+                        f'Cannot write to {final_path.name}.\n\n'
+                        '\033[1m→ Close the file in QGIS / ArcGIS / Dropbox sync '
+                        'and re-run.\033[0m'
+                    ) from e
+                continue
 
-            if self.verbose and len(existing_output_tile_paths) > 1:
+            warned: list[bool] = []
+
+            def _warn_once(df, _warned=warned):
+                # The registry check is about the recipe's own columns, so
+                # one input frame answers it; running it per tile would
+                # repeat the same warning for every tile of every county.
+                if not _warned:
+                    _warned.append(True)
+                    _warn_registry_type_mismatches(df)
+                return df
+
+            _aggregate_to_file(
+                final_path,
+                existing_tiles,
+                transform=_warn_once,
+                verbose=False,
+            )
+
+            if self.verbose:
                 print(
-                    f'Merged {len(existing_output_tile_paths)} '
-                    f'tile partial(s) → {final_path.name}'
+                    f'Merged {len(existing_tiles)} tile partial(s) → {final_path.name}'
                 )
 
     def _join_table_partitions(self):
