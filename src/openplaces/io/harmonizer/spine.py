@@ -766,13 +766,27 @@ def _resolve_geographic_reference(state, link):
 
 
 def _join_largest_overlap(
-    spine_subset: gpd.GeoDataFrame, ref: gpd.GeoDataFrame
+    spine_subset: gpd.GeoDataFrame,
+    ref: gpd.GeoDataFrame,
+    verbose: bool = False,
+    label: str = '',
 ) -> pd.Series:
     """Pass-2 fallback: the reference polygon with the largest intersection area.
 
     Used only for rows whose centroid missed every reference polygon in Pass
     1 (typically a boundary/rounding sliver) -- an identity overlay of the
     row's *actual* geometry, keeping the dominant (largest-area) match.
+
+    Parameters
+    ----------
+    spine_subset : gpd.GeoDataFrame
+        Rows the centroid join left unresolved.
+    ref : gpd.GeoDataFrame
+        Reference layer carrying a '_ref_value' column.
+    verbose : bool, default False
+        Report how many rows had a non-dominant match discarded.
+    label : str, default ''
+        Output column the join fills, named in that report.
     """
     if spine_subset.empty:
         return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
@@ -791,7 +805,14 @@ def _join_largest_overlap(
         return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
 
     overlay = overlay.sort_values('area_intersection_m2', ascending=False)
-    overlay = overlay[~overlay.index.get_level_values(spine_id_name).duplicated()]
+    keep = ~overlay.index.get_level_values(spine_id_name).duplicated()
+    n_dropped = int((~keep).sum())
+    if n_dropped and verbose:
+        print(
+            f'  link_geographic_ids ({label}): {n_dropped:,d} smaller overlap(s) '
+            'discarded; kept the largest-area reference polygon per row.'
+        )
+    overlay = overlay[keep]
     return pd.Series(
         overlay['_ref_value'].to_numpy(),
         index=overlay.index.get_level_values(spine_id_name),
@@ -799,13 +820,27 @@ def _join_largest_overlap(
 
 
 def _join_containing_polygon(
-    spine_subset: gpd.GeoDataFrame, ref: gpd.GeoDataFrame
+    spine_subset: gpd.GeoDataFrame,
+    ref: gpd.GeoDataFrame,
+    verbose: bool = False,
+    label: str = '',
 ) -> pd.Series:
     """Two-pass containing-polygon join for *spine_subset* against *ref*.
 
     Pass 1: point-in-polygon on each row's own centroid (``lat``/``long``).
     Pass 2 (only for Pass-1 misses): dominant-overlap fallback, see
     :func:`_join_largest_overlap`.
+
+    Parameters
+    ----------
+    spine_subset : gpd.GeoDataFrame
+        Spine rows still missing the containing-polygon id.
+    ref : gpd.GeoDataFrame
+        Reference layer carrying a '_ref_value' column.
+    verbose : bool, default False
+        Report how many rows matched more than one reference polygon.
+    label : str, default ''
+        Output column the join fills, named in that report.
     """
     if spine_subset.empty:
         return pd.Series(pd.NA, index=spine_subset.index, dtype=object)
@@ -814,12 +849,24 @@ def _join_containing_polygon(
     joined = gpd.sjoin(
         points, ref[['geometry', '_ref_value']], how='left', predicate='within'
     )
+    n_repeated = int(joined.index.duplicated().sum())
+    if n_repeated and verbose:
+        # The reference is assumed to tile space without overlaps, so a
+        # row matching twice says the reference itself overlaps there.
+        print(
+            f'  link_geographic_ids ({label}): {n_repeated:,d} centroid(s) fell '
+            'in more than one reference polygon; kept the first.'
+        )
     joined = joined[~joined.index.duplicated()]
     result = joined['_ref_value'].reindex(spine_subset.index)
 
     missing = result.index[result.isna()]
     if len(missing):
-        result.update(_join_largest_overlap(spine_subset.loc[missing], ref))
+        result.update(
+            _join_largest_overlap(
+                spine_subset.loc[missing], ref, verbose=verbose, label=label
+            )
+        )
     return result
 
 
@@ -1008,7 +1055,14 @@ def link_geographic_ids(
                         f"'{output_column}'; leaving {len(missing):,} row(s) null."
                     )
             else:
-                computed.update(_join_containing_polygon(spine.loc[missing], ref))
+                computed.update(
+                    _join_containing_polygon(
+                        spine.loc[missing],
+                        ref,
+                        verbose=state.verbose,
+                        label=output_column,
+                    )
+                )
 
         if output_column in spine.columns:
             existing = spine[output_column]

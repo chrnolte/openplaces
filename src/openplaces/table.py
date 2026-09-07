@@ -50,6 +50,47 @@ def add_unique_suffix(s):
     return s
 
 
+def require_unique_index(df, context: str, max_labels: int = 5) -> None:
+    """Raise when the index of *df* carries repeated labels.
+
+    An index-aligned operation (a reindex, a label join, a .loc row
+    selection) either fans rows out or collapses them when a label
+    repeats, and the resulting failure surfaces far from its cause. Call
+    this where such an operation is about to run and duplicates cannot be
+    resolved sensibly.
+
+    Parameters
+    ----------
+    df : pd.DataFrame, gpd.GeoDataFrame, pd.Series, or pd.Index
+        Object whose index must be unique, or the index itself.
+    context : str
+        What is about to run, named in the message (stage, recipe id and
+        admin unit, say), so the cause reads off the traceback.
+    max_labels : int, default 5
+        How many of the repeated labels to list in the message.
+
+    Raises
+    ------
+    ValueError
+        When the index has repeated labels.
+    """
+    index = df if isinstance(df, pd.Index) else df.index
+    if not index.has_duplicates:
+        return
+    repeated = index[index.duplicated(keep=False)]
+    labels = list(dict.fromkeys(repeated.tolist()))
+    shown = ', '.join(repr(label) for label in labels[:max_labels])
+    if len(labels) > max_labels:
+        shown += ', ...'
+    name = index.name if index.name is not None else list(index.names)
+    raise ValueError(
+        f'{context}: index {name!r} carries {len(labels)} repeated '
+        f'label(s) over {len(repeated)} rows: {shown}. An index-aligned '
+        'operation cannot run on repeated labels, so the input has to be '
+        'deduplicated or made unique first.'
+    )
+
+
 def join_nonnull_strings(x):
     """Join non-null values of *x* as strings with ' + '; None when all null."""
     parts = [str(v) for v in x if v is not None and pd.notna(v)]
