@@ -816,11 +816,28 @@ class TableIngester:
                 # which lands on disk as `__index_level_0__` and makes
                 # every later read fail with
                 # `No match for FieldRef.Name(admin4_id)`.
-                index_name = (self.recipe.get('create_index') or {}).get(
-                    'args', {}
-                ).get('new_admin_id_col') or self.recipe.get('set_index')
+                # Every way a recipe can name its index, not just one
+                # indexer's own kwarg: `create_index: {method: prefix}`
+                # carries `name`, and a function indexer takes it in
+                # `args` under either `name` or `new_admin_id_col`.
+                create_index = self.recipe.get('create_index') or {}
+                index_args = create_index.get('args') or {}
+                index_name = (
+                    index_args.get('new_admin_id_col')
+                    or index_args.get('name')
+                    or create_index.get('name')
+                    or self.recipe.get('set_index')
+                )
                 if isinstance(index_name, str) and df.index.name != index_name:
                     df.index.name = index_name
+                # Prune to the columns the recipe names, which the reorder
+                # step below would have done. Returning here with the raw
+                # read's own columns gave the aggregate a set of stray
+                # all-null source columns that no populated chunk carries.
+                if 'columns' in self.recipe:
+                    kept = [c for c in self.recipe['columns'] if c in df]
+                    kept += [c for c in ('geo_id', 'geometry') if c in df]
+                    df = df[kept]
                 if self.verbose:
                     print(f'  query left no rows for {self.table_name}; skipping.')
                 return df
