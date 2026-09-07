@@ -1415,6 +1415,12 @@ def _link_spatial_point(
     ref = get_entities(recipe_id, state.admin_id, geom=True, missing='warn')
     if ref is None or len(ref) == 0:
         raise_if_coverage_complete(recipe_id, state.admin_id)
+        # Record the reference's type even with nothing to link:
+        # reconcile_attributes needs it to name this source's evidence
+        # columns, which it writes as nulls so a zero-coverage unit's
+        # spine carries the same columns as its neighbors'.
+        if entity_type:
+            state.reference_types[recipe_id] = entity_type
         if state.verbose:
             print(
                 f'  Link ({entity_type or "point"}): no {recipe_id} for '
