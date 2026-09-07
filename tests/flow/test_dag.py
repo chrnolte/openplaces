@@ -344,3 +344,38 @@ def test_unknown_region_is_named_in_the_error():
 )
 def test_parse_deliver_config(raw, expected):
     assert parse_deliver_config(raw) is expected
+
+
+def _spine_with_regional_reference(dag_obj, recipe_id):
+    """Copy of a geospine recipe whose only link names an NC-only source."""
+    from copy import deepcopy
+
+    recipe = deepcopy(dag_obj._recipe(recipe_id))
+    recipe['pipeline'] = [
+        {
+            'step': 'link_to_reference',
+            'recipe_id': 'US-NC_parcel-nconemap-2025',
+            'join': 'spatial_overlay',
+        }
+    ]
+    return recipe
+
+
+def test_sidecar_is_skipped_for_a_reference_no_job_produces():
+    """A region-scoped reference has no job outside its region.
+
+    The harmonize step soft-skips it and writes no sidecar, so declaring
+    one made Snakemake reject a spine it considers complete. Testing
+    exclusion alone missed this, because nothing was excluded.
+    """
+    fake_id = 'US_footprint-geospine-2026'
+    in_region = RecipeDAG(TARGET, admin_ids=[COUNTY], deliver=False)
+    in_region._recipes[fake_id] = _spine_with_regional_reference(in_region, fake_id)
+    assert in_region.extra_outputs('harmonize', fake_id, COUNTY) == [
+        get_entity_link_path(fake_id, 'US-NC_parcel-nconemap-2025', COUNTY)
+    ]
+
+    texas_county = 'US-TX-HAR'
+    outside = RecipeDAG(TARGET, admin_ids=[texas_county], deliver=False)
+    outside._recipes[fake_id] = _spine_with_regional_reference(outside, fake_id)
+    assert outside.extra_outputs('harmonize', fake_id, texas_county) == []

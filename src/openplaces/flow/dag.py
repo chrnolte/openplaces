@@ -129,6 +129,7 @@ class RecipeDAG:
     ):
         self.target_recipe_id = target_recipe_id
         self.exclude_recipe_ids = set(exclude_recipe_ids or ())
+        self._produced_paths_cache: set[str] | None = None
         # Kept untruncated: the scope test below compares what was asked for,
         # not what it was narrowed to.
         self.requested_admin_ids = [str(a) for a in (admin_ids or [])]
@@ -523,6 +524,58 @@ class RecipeDAG:
             region=self._delivery_region(recipe_id, admin_id),
         )
 
+    def _produced_paths(self) -> set[str]:
+        """Every primary output file some job in this graph writes."""
+        if self._produced_paths_cache is None:
+            produced: set[str] = set()
+            for node in self._nodes:
+                if node.stage == 'deliver':
+                    continue
+                try:
+                    produced.add(
+                        str(self.output_path(node.stage, node.recipe_id, node.admin_id))
+                    )
+                except Exception:  # noqa: BLE001 - unresolvable, not produced
+                    continue
+            self._produced_paths_cache = produced
+        return self._produced_paths_cache
+
+    def _graph_produces(self, recipe_id: str, admin_id) -> bool:
+        """Whether a job in this graph writes *recipe_id* for *admin_id*.
+
+        Compared on the output file rather than the (recipe, admin) key,
+        because two resolutions of one recipe (admin None and 'US') write
+        the same parquet and only one of them is kept as a node.
+
+        Parameters
+        ----------
+        recipe_id : str
+            The recipe to look for.
+        admin_id : AdminId or str or None
+            The consumer's admin unit; resolved to the producer's own save
+            level the same way the graph did when it was built.
+
+        Returns
+        -------
+        bool
+        """
+        if recipe_id in self.exclude_recipe_ids:
+            return False
+        try:
+            recipe = self._recipe(recipe_id)
+            admins = self._node_admins(recipe_id, admin_id)
+        except Exception:  # noqa: BLE001 - unresolvable, not produced
+            return False
+        produced = self._produced_paths()
+        for unit in admins:
+            try:
+                path = str(get_output_path(recipe, admin_id=unit))
+            except Exception:  # noqa: BLE001
+                continue
+            if path in produced:
+                return True
+        return False
+
     def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
         """Secondary declared outputs of one job.
 
@@ -558,12 +611,15 @@ class RecipeDAG:
             ref_id, _ = _resolve_reference_recipe(
                 step.get('recipe_id'), step.get('entity_type'), node_admin
             )
-            # A reference pruned from this graph (exclude_recipe_ids) has
-            # no job producing it; the harmonize step soft-skips it, so
-            # declaring its sidecar would make Snakemake discard a
-            # finished spine as incomplete (observed 2026-08-28 for a
-            # county Overture does not cover).
-            if ref_id is not None and ref_id not in self.exclude_recipe_ids:
+            # A reference no job in this graph produces cannot yield a
+            # sidecar: the harmonize step soft-skips it and writes none,
+            # so declaring one would make Snakemake discard a finished
+            # spine as incomplete (observed 2026-08-28 for a county
+            # Overture does not cover). Pruning (exclude_recipe_ids) is
+            # one way that happens; a reference scoped to another region,
+            # named by a national spine, is the other, and testing the
+            # graph rather than the exclusion list covers both.
+            if ref_id is not None and self._graph_produces(ref_id, node_admin):
                 paths.append(get_entity_link_path(recipe_id, ref_id, node_admin))
         for entry in recipe.get('entity_links') or []:
             paths.append(
