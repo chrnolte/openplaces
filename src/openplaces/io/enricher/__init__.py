@@ -26,6 +26,7 @@ from openplaces.recipe import (
     get_recipe_by_id,
     get_save_admin_level,
 )
+from openplaces.table import require_unique_index
 from openplaces.timing import get_timer
 
 
@@ -374,6 +375,10 @@ class Enricher:
                 stacklevel=2,
             )
             return
+        # Evidence is written back onto the spine index, so a repeated
+        # label would attach one step's prediction to the wrong row.
+        recipe_id = self.recipe.get('recipe_id', 'recipe')
+        require_unique_index(spine, f'enrich {recipe_id} for {admin_id}')
         evidence = pd.DataFrame(index=spine.index)
 
         state = EnrichState(

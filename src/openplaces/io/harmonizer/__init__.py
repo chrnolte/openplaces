@@ -34,6 +34,7 @@ from openplaces.io.cleanup import (
 )
 from openplaces.io.readers import get_admin, get_admin_ids
 from openplaces.recipe import get_output_path, get_recipe_by_id, saves_geometry
+from openplaces.table import require_unique_index
 from openplaces.timing import get_timer
 
 #: Footer key on a harmonized output's attribute parquet carrying the
@@ -648,6 +649,18 @@ class Harmonizer:
                 state.spine = restored
                 resume_from = checkpoint_index + 1
 
+        recipe_id = self.recipe.get('recipe_id', 'recipe')
+        # Every later step aligns on the entity id, so check it once, as
+        # soon as a spine exists (resolve_spine, load_geospine, or a
+        # restored checkpoint). Repeated labels are refused here rather
+        # than surfacing as a reindex error inside some later step.
+        spine_checked = False
+        if state.spine is not None:
+            require_unique_index(
+                state.spine, f'harmonize {recipe_id} for {admin_id} (checkpoint)'
+            )
+            spine_checked = True
+
         for step_index, step_cfg in enumerate(pipeline):
             if step_index < resume_from:
                 continue
@@ -670,6 +683,12 @@ class Harmonizer:
                 k: v for k, v in step_cfg.items() if k not in ('step', 'checkpoint')
             }
             state = fn(state, **params)
+            if not spine_checked and state.spine is not None:
+                require_unique_index(
+                    state.spine,
+                    f'harmonize {recipe_id} for {admin_id} after {step_name}',
+                )
+                spine_checked = True
             if step_index == checkpoint_index and resume_from == 0:
                 _save_attribute_checkpoint(
                     self.recipe, admin_id, state.spine, chain, verbose=self.verbose

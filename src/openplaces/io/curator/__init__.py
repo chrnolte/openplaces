@@ -24,6 +24,7 @@ from openplaces.recipe import (
     get_recipe_by_id,
     get_save_admin_level,
 )
+from openplaces.table import require_unique_index
 from openplaces.timing import get_timer
 
 
@@ -237,6 +238,12 @@ class Curator:
         # and its geometry is resolved via the entity_recipe chain -- a raw
         # read would find no `_geo` sidecar (or a stale pre-split one).
         curated = get_entities(self.entity_recipe, admin_id, geom=True)
+        # Curate steps merge evidence, vote and impute by entity id, so a
+        # repeated label would silently fan those joins out. Refuse here,
+        # where the recipe and the admin unit can still be named, rather
+        # than deep inside a step's reindex.
+        recipe_id = self.recipe.get('recipe_id', 'recipe')
+        require_unique_index(curated, f'curate {recipe_id} for {admin_id}')
         curated = _coerce_registry_numerics(curated)
         state = CurateState(
             recipe=self.recipe,
