@@ -333,9 +333,10 @@ def match_palette(values, col_name=None, weights=None, threshold=0.5):
         Column name hint; checked first for an exact or substring key match.
     weights : array-like, optional
         Total weight (e.g. row count) for each value in ``values``, in the
-        same order. When provided, coverage is computed as the fraction of
-        total weight that falls in palette-covered categories, making the
-        match robust to many rare/uncovered categories.
+        same order, one per value (a mismatched length raises). When
+        provided, coverage is computed as the fraction of total weight
+        that falls in palette-covered categories, making the match robust
+        to many rare/uncovered categories.
     threshold : float
         Minimum coverage required for a value-based match.
 
@@ -343,15 +344,39 @@ def match_palette(values, col_name=None, weights=None, threshold=0.5):
     -------
     dict or None
         Matching ``{label: color}`` palette, or ``None`` if no good match.
+        None too when there is nothing to match: an all-null column
+        arrives with no labels and no weight.
+
+    Raises
+    ------
+    ValueError
+        If `weights` is given with a different length than `values`.
     """
     str_values = [str(v) for v in values]
+    if weights is not None and len(weights) != len(str_values):
+        raise ValueError(
+            f'weights has {len(weights)} entries for {len(str_values)} values; '
+            'it must carry one weight per value, in the same order.'
+        )
 
     def _coverage(palette):
+        # Nothing to cover (an all-null column reaches here with no
+        # labels at all): report no coverage rather than dividing by
+        # zero, so the caller falls back to its own colors.
+        if not str_values:
+            return 0.0
         palette_keys = set(palette)
         if weights is not None:
             total = sum(weights)
+            if not total:
+                return 0.0
             return (
-                sum(w for v, w in zip(str_values, weights) if v in palette_keys) / total
+                sum(
+                    w
+                    for v, w in zip(str_values, weights, strict=True)
+                    if v in palette_keys
+                )
+                / total
             )
         return sum(1 for v in str_values if v in palette_keys) / len(str_values)
 

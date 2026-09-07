@@ -1,11 +1,13 @@
 """Tests for `resolve_category_colors` and the CSV-backed category palettes."""
 
 import pandas as pd
+import pytest
 
 from openplaces.viz.colors import (
     CATEGORY_COLORS,
     MISSING_LABEL,
     RESERVED_NEUTRAL_COLOR,
+    match_palette,
     resolve_category_colors,
 )
 
@@ -76,3 +78,24 @@ def test_resolve_category_colors_never_returns_none_for_unregistered_column():
     resolved = resolve_category_colors(values, col_name='not_a_registered_column')
     assert resolved
     assert len(set(resolved.values())) == len(resolved)
+
+
+def test_resolve_category_colors_handles_an_all_null_column():
+    """An all-null evidence column must draw as missing, not raise.
+
+    Reachable from the categorical raster shader whenever a map is
+    colored by an evidence column a county has no values for; coverage
+    then divided by a zero total.
+    """
+    values = pd.Series([None, None], dtype='object')
+    # An evidence column: no exact palette key, so the substring branch
+    # runs the coverage test that divided by a zero total weight.
+    resolved = resolve_category_colors(values, col_name='occupancy_type_nsi')
+    assert resolved == {MISSING_LABEL: RESERVED_NEUTRAL_COLOR}
+    assert resolve_category_colors(values) == {MISSING_LABEL: RESERVED_NEUTRAL_COLOR}
+
+
+def test_match_palette_refuses_misaligned_weights():
+    """One weight per value; a shorter sequence silently truncated."""
+    with pytest.raises(ValueError, match='one weight per value'):
+        match_palette(['Single-Family', 'Manufactured Home'], weights=[1])

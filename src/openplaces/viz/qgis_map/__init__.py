@@ -22,15 +22,43 @@ __all__ = [
 ]
 
 
+def _admin3_sidecar_is_stale(path) -> bool:
+    """Whether the admin3 outline sidecar must be rewritten.
+
+    True when it is missing, and also when it predates the `type` column
+    the resolver reads to tell counties from New England towns: the
+    exists-guard alone meant an already-shipped sidecar never refreshed.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        The sidecar to check.
+
+    Returns
+    -------
+    bool
+    """
+    if not path.exists():
+        return True
+    try:
+        import pyarrow.parquet as pq
+
+        return 'type' not in pq.read_schema(path).names
+    except Exception:  # noqa: BLE001 - unreadable, rewrite it
+        return True
+
+
 def ensure_delivery_admin_outlines(recipe, region_id, *, verbose=False):
     """Write county and county-subdivision outlines beside a bundle.
 
     Two aggregate sidecars per delivered region, so the shipped map can
     draw administrative context without referencing this machine's cache:
     `{stem}_admin3_geo.parquet` (the region's counties, from the
-    harmonized admin layer) and `{stem}_admin4_geo.parquet` (their county
-    subdivisions from the census admin4 layer, where any exist). Skips
-    whatever already exists; returns the paths written or found.
+    harmonized admin layer, carrying each unit's `type` so the resolver
+    can label New England's towns correctly) and
+    `{stem}_admin4_geo.parquet` (their county subdivisions from the
+    census admin4 layer, where any exist). Skips whatever is already
+    current; returns the paths written.
     """
     import warnings
 
@@ -44,9 +72,19 @@ def ensure_delivery_admin_outlines(recipe, region_id, *, verbose=False):
     out = []
 
     a3_path = canonical.with_name(f'{canonical.stem}_admin3_geo.parquet')
-    if not a3_path.exists():
+    if _admin3_sidecar_is_stale(a3_path):
         adm = op.get_admin(state, level=3, geom=True)
-        sub = adm.loc[[m for m in members if m in adm.index], ['name', 'geometry']]
+        # Carry the unit's own kind. Level 3 is counties in most states
+        # but towns and cities in New England, and the resolver reads
+        # this column to label the layer; written without it, every
+        # shipped sidecar labeled its towns "Counties". Always written,
+        # null where the layer has none, so the staleness test above
+        # settles rather than rewriting on every call.
+        if 'type' not in adm.columns:
+            adm = adm.assign(type=None)
+        sub = adm.loc[
+            [m for m in members if m in adm.index], ['name', 'type', 'geometry']
+        ]
         sub.to_parquet(a3_path)
         out.append(a3_path)
     a4_path = canonical.with_name(f'{canonical.stem}_admin4_geo.parquet')

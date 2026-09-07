@@ -10,6 +10,7 @@ import warnings
 import contextily as cx
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import requests
 from pyproj import Transformer
@@ -308,6 +309,36 @@ def _default_label_columns(gdf):
     ][:12]
 
 
+def _present(row, column):
+    """One row's value for *column*, or None when it is absent or null.
+
+    Parameters
+    ----------
+    row : pandas.Series
+        One record.
+    column : str
+        Column to read.
+
+    Returns
+    -------
+    object or None
+        The value, or None when the column is missing, null, or an empty
+        string. Truth-testing the value directly cannot do this: a NaN
+        float is truthy, so a missing number reads as present.
+    """
+    if column not in row:
+        return None
+    value = row[column]
+    if value is None or value == '':
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):  # array-like, never "missing"
+        pass
+    return value
+
+
 def _make_label_text(rows, columns):
     texts = []
     for _, row in rows.iterrows():
@@ -535,29 +566,40 @@ def show_building(
             if verbose:
                 print(f'Parcel GID: {_gid}')
 
-            txt_p = f'Parcel ID: {_p_txt["parcel_id_admin3"]}\n'
+            parcel_id = _present(_p_txt, 'parcel_id_admin3')
+            txt_p = f'Parcel ID: {"" if parcel_id is None else parcel_id}\n'
             for var in ['address', 'use_group', 'use_subgroup']:
-                if _p_txt[var]:
-                    txt_p += (
-                        f'{_p_txt[var].title()[:25]}'
-                        + ('...' if len(_p_txt[var].title()) > 25 else '')
-                        + '\n'
-                    )
-            if 'year_built' in _p_txt:
-                txt_p += f'Year built: {int(_p_txt["year_built"]):d}\n'
-            txt_p += f'Value: ${int(_p_txt["value"]):,d}\n'
-            txt_p += f'Improv. value: ${int(_p_txt["improvement_value"]):,d}\n'
-            if 'land_value' in _p_txt:
-                txt_p += f'Land value: ${int(_p_txt["land_value"]):,d}\n'
-            legal_desc = (
-                _p_txt['legal_description']
-                .title()[:50]
-                .replace('|', ' | ')
-                .replace('  ', ' ')
-            )
-            txt_p += 'Legal description:\n  ' + '\n  '.join(
-                textwrap.wrap(legal_desc, 25)
-            )
+                # `if _p_txt[var]` read a missing value as present: a
+                # NaN float is truthy, and .title() raised on a float.
+                text = _present(_p_txt, var)
+                if text is None:
+                    continue
+                text = str(text).title()
+                txt_p += f'{text[:25]}' + ('...' if len(text) > 25 else '') + '\n'
+            # Each of these is absent from some parcel layer, and
+            # four had no presence guard at all, so a layer other than
+            # the MA/NC ones raised after the map was already drawn.
+            for label, var in (
+                ('Year built', 'year_built'),
+                ('Value', 'value'),
+                ('Improv. value', 'improvement_value'),
+                ('Land value', 'land_value'),
+            ):
+                amount = _present(_p_txt, var)
+                if amount is None:
+                    continue
+                if var == 'year_built':
+                    txt_p += f'{label}: {int(amount):d}\n'
+                else:
+                    txt_p += f'{label}: ${int(amount):,d}\n'
+            legal_desc = _present(_p_txt, 'legal_description')
+            if legal_desc is not None:
+                legal_desc = (
+                    str(legal_desc).title()[:50].replace('|', ' | ').replace('  ', ' ')
+                )
+                txt_p += 'Legal description:\n  ' + '\n  '.join(
+                    textwrap.wrap(legal_desc, 25)
+                )
             txt_p_list += [txt_p]
         n_omitted = len(parcel) - N_MAX_PARCEL_TEXT
         if n_omitted > 0:
@@ -586,8 +628,12 @@ def show_building(
         n_max = s['n_max']
         columns = s['columns']
 
+        # Both indexes unnamed made None == None true, and the
+        # membership test then reduced to "does label 0 exist", labeling
+        # an arbitrary unrelated row as the crosshair building.
         location_in_dataset = (
             isinstance(location, gpd.GeoSeries)
+            and location.index.name is not None
             and location.index.name == gdf.index.name
             and location.index[0] in gdf.index
         )
@@ -605,8 +651,12 @@ def show_building(
             bbox_gdf = gdf.cx[long_min:long_max, lat_min:lat_max]
             if not bbox_gdf.empty:
                 if _is_polygon(gdf):
+                    # Drop the parcel's own id rather than carrying it
+                    # in: the two layers commonly share an index name,
+                    # and overlay then suffixes both colliding columns,
+                    # so the lookup by index name below raised KeyError.
                     on_parcel = gpd.overlay(
-                        parcel[['geometry']].iloc[[0]].reset_index(),
+                        parcel[['geometry']].iloc[[0]].reset_index(drop=True),
                         bbox_gdf.reset_index(),
                     )
                     on_parcel['_overlap_m2'] = get_areas(on_parcel, 'm2')
@@ -615,7 +665,7 @@ def show_building(
                     ].sort_values('_overlap_m2', ascending=False)
                 else:
                     on_parcel = gpd.sjoin(
-                        parcel[['geometry']].iloc[[0]],
+                        parcel[['geometry']].iloc[[0]].reset_index(drop=True),
                         bbox_gdf.reset_index(),
                     )
 
@@ -926,6 +976,18 @@ def show_ingested_geometries(
                 linewidth=0.3,
                 alpha=0.5,
             )
+    else:
+        # Lines, geometry collections, or a null first geometry: plot
+        # through geopandas' own dispatch rather than leaving the axes
+        # empty. Falling through both branches left the default (0, 1)
+        # limits, and the basemap below then fetched tiles for a degree
+        # square in the Atlantic off West Africa: a plausible-looking
+        # map of nothing.
+        to_plot = entities
+        if len(entities) > max_plot:
+            print(f'>{max_plot:,d} features to plot. Taking sample.')
+            to_plot = entities.sample(max_plot)
+        to_plot.plot(ax=ax, color=color, linewidth=0.7, alpha=0.7)
 
     if admin is not None:
         admin.boundary.plot(ax=ax, color='black', linewidth=0.25)
@@ -933,11 +995,15 @@ def show_ingested_geometries(
     ax.set_title(title)
     ax.axis('off')
 
-    basemap_provider = basemap_source.split('.')
-    source = cx.providers
-    for part in basemap_provider:
-        source = source[part]
-    cx.add_basemap(ax, crs=entities.crs, source=source, alpha=0.5)
+    # No finite extent (every geometry empty or null): a basemap
+    # would be fetched for the default axis limits, which is a place
+    # the data has nothing to do with.
+    if np.isfinite(entities.total_bounds).all():
+        basemap_provider = basemap_source.split('.')
+        source = cx.providers
+        for part in basemap_provider:
+            source = source[part]
+        cx.add_basemap(ax, crs=entities.crs, source=source, alpha=0.5)
 
     return fig, ax
 

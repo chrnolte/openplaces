@@ -67,6 +67,34 @@ def rule_name(node: StageNode) -> str:
     return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
 
 
+def parse_deliver_config(value) -> bool | None:
+    """Read a `--config deliver=...` value as the DAG's tri-state flag.
+
+    None (the key absent) lets `RecipeDAG` decide from the run's scope;
+    anything else is an explicit override.
+
+    Snakemake types a config value by its literal form, so
+    `deliver=false` arrives as the string 'false' but `deliver=0` arrives
+    as the integer 0. A string-only test skipped the integer form, which
+    then read as None and let an unscoped run ship and overwrite every
+    declared bundle. Everything that is not already a bool is normalized
+    through its string form instead.
+
+    Parameters
+    ----------
+    value : bool, str, int or None
+        The raw config value.
+
+    Returns
+    -------
+    bool or None
+        True/False for an explicit override, None when *value* is None.
+    """
+    if value is None or isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes')
+
+
 class RecipeDAG:
     """Dependency graph of every job needed to build a terminal recipe.
 
@@ -101,6 +129,7 @@ class RecipeDAG:
     ):
         self.target_recipe_id = target_recipe_id
         self.exclude_recipe_ids = set(exclude_recipe_ids or ())
+        self._produced_paths_cache: set[str] | None = None
         # Kept untruncated: the scope test below compares what was asked for,
         # not what it was narrowed to.
         self.requested_admin_ids = [str(a) for a in (admin_ids or [])]
@@ -239,7 +268,14 @@ class RecipeDAG:
             self._nodes.append(node)
             consumer_key = (node.recipe_id, node.admin_id)
             for member in spec['admin_ids']:
-                self._edges.append(((target_recipe_id, member), consumer_key))
+                # Only members this run actually built have a node. A
+                # scoped run that still ships (deliver=true on a few
+                # counties) declares the whole region as members, and
+                # an edge to a job not in the graph is a KeyError in
+                # `to_mermaid`, which indexes its node ids directly.
+                member_key = (target_recipe_id, str(member))
+                if member_key in seen:
+                    self._edges.append((member_key, consumer_key))
 
     @property
     def delivery_node(self):
@@ -488,6 +524,58 @@ class RecipeDAG:
             region=self._delivery_region(recipe_id, admin_id),
         )
 
+    def _produced_paths(self) -> set[str]:
+        """Every primary output file some job in this graph writes."""
+        if self._produced_paths_cache is None:
+            produced: set[str] = set()
+            for node in self._nodes:
+                if node.stage == 'deliver':
+                    continue
+                try:
+                    produced.add(
+                        str(self.output_path(node.stage, node.recipe_id, node.admin_id))
+                    )
+                except Exception:  # noqa: BLE001 - unresolvable, not produced
+                    continue
+            self._produced_paths_cache = produced
+        return self._produced_paths_cache
+
+    def _graph_produces(self, recipe_id: str, admin_id) -> bool:
+        """Whether a job in this graph writes *recipe_id* for *admin_id*.
+
+        Compared on the output file rather than the (recipe, admin) key,
+        because two resolutions of one recipe (admin None and 'US') write
+        the same parquet and only one of them is kept as a node.
+
+        Parameters
+        ----------
+        recipe_id : str
+            The recipe to look for.
+        admin_id : AdminId or str or None
+            The consumer's admin unit; resolved to the producer's own save
+            level the same way the graph did when it was built.
+
+        Returns
+        -------
+        bool
+        """
+        if recipe_id in self.exclude_recipe_ids:
+            return False
+        try:
+            recipe = self._recipe(recipe_id)
+            admins = self._node_admins(recipe_id, admin_id)
+        except Exception:  # noqa: BLE001 - unresolvable, not produced
+            return False
+        produced = self._produced_paths()
+        for unit in admins:
+            try:
+                path = str(get_output_path(recipe, admin_id=unit))
+            except Exception:  # noqa: BLE001
+                continue
+            if path in produced:
+                return True
+        return False
+
     def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
         """Secondary declared outputs of one job.
 
@@ -523,12 +611,15 @@ class RecipeDAG:
             ref_id, _ = _resolve_reference_recipe(
                 step.get('recipe_id'), step.get('entity_type'), node_admin
             )
-            # A reference pruned from this graph (exclude_recipe_ids) has
-            # no job producing it; the harmonize step soft-skips it, so
-            # declaring its sidecar would make Snakemake discard a
-            # finished spine as incomplete (observed 2026-08-28 for a
-            # county Overture does not cover).
-            if ref_id is not None and ref_id not in self.exclude_recipe_ids:
+            # A reference no job in this graph produces cannot yield a
+            # sidecar: the harmonize step soft-skips it and writes none,
+            # so declaring one would make Snakemake discard a finished
+            # spine as incomplete (observed 2026-08-28 for a county
+            # Overture does not cover). Pruning (exclude_recipe_ids) is
+            # one way that happens; a reference scoped to another
+            # region, named by a national spine, is the other, and
+            # testing the graph rather than the list covers both.
+            if ref_id is not None and self._graph_produces(ref_id, node_admin):
                 paths.append(get_entity_link_path(recipe_id, ref_id, node_admin))
         for entry in recipe.get('entity_links') or []:
             paths.append(
@@ -609,7 +700,14 @@ class RecipeDAG:
 
         Every bundle this run delivers -- each depends on its own member
         counties, so targeting them still builds those -- otherwise the
-        per-unit curated files.
+        target recipe's own jobs.
+
+        The non-delivery branch reads the target's jobs out of the graph
+        rather than re-deriving them from the requested scope. A scope
+        coarser than the target's save level (a state id for a
+        county-level curation) is expanded into child nodes when the graph
+        is built, so asking for its output directly raised instead of
+        listing the 121 files the run actually produces.
         """
         if self.delivery_nodes:
             paths: list[Path] = []
@@ -618,10 +716,16 @@ class RecipeDAG:
                     self._delivery_paths(node.recipe_id, node.admin_id).values()
                 )
             return paths
-        return [
-            self.output_path('curate', self.target_recipe_id, admin_id)
-            for admin_id in self.admin_ids
-        ]
+        paths = []
+        seen: set[Path] = set()
+        for node in self._nodes:
+            if node.recipe_id != self.target_recipe_id or node.stage == 'deliver':
+                continue
+            path = self.output_path(node.stage, node.recipe_id, node.admin_id)
+            if path not in seen:
+                seen.add(path)
+                paths.append(path)
+        return paths
 
     def plan(self) -> pd.DataFrame:
         """Preview which jobs would run and why (library-side, stat-only).

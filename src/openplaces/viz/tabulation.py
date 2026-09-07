@@ -53,7 +53,19 @@ def tabulate(
 
     if show_empty_category:
         for col in (x_cat, y_cat):
-            if dc[col].dtype.name != 'category':
+            # A categorical column has to be given the category
+            # before it can be filled. Skipping it made the option a
+            # no-op for the frames curate produces (it casts them),
+            # and the missing rows were then dropped by the groupby and
+            # renormalized away: a frame half of whose rows were missing
+            # reported 50/50 where the truth is 25/25 plus 50 percent
+            # missing.
+            if dc[col].dtype.name == 'category':
+                if dc[col].isna().any():
+                    if _NASTR not in dc[col].cat.categories:
+                        dc[col] = dc[col].cat.add_categories([_NASTR])
+                    dc[col] = dc[col].fillna(_NASTR)
+            else:
                 dc[col] = dc[col].fillna(_NASTR)
 
     if v == 'n':
@@ -177,7 +189,14 @@ def plot_tabulation(
         if set(widths.columns) == {True, False}:
             colors = ['#ff8a8a', '#8fd184']
         else:
-            palette = match_palette(widths.columns, col_name=x_cat, weights=heights)
+            # One weight per x category (the stacked dimension being
+            # colored), not per y bar: `heights` is indexed by the y
+            # categories, and zipping it against the columns silently
+            # truncated to the shorter side, so coverage was computed
+            # from an arbitrary pairing.
+            palette = match_palette(
+                widths.columns, col_name=x_cat, weights=dp.sum(axis=0).to_numpy()
+            )
             if palette is not None:
                 colors = [palette.get(str(c), '#cccccc') for c in widths.columns]
             else:

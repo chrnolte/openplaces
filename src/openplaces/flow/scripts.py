@@ -131,7 +131,7 @@ def get_caller_path_in_code_directory():
         return caller_path.relative_to(cfg.code_root / 'scripts')
     else:
         raise NotImplementedError(
-            'Caller path is not in /notebooks or /scripts: \n\n{caller_path}.'
+            f'Caller path is not in /notebooks or /scripts: \n\n{caller_path}.'
         )
 
 
@@ -356,6 +356,10 @@ def test_script(*args, verbose=False, committed=True):
 
 
 def run_subprocess(command, p={}, verbose=False, ignore_failures=False):
+    # Copy first: `+=` on a list extends it in place, so a caller that
+    # reuses one command list across calls accumulated the previous
+    # call's parameters and its inserted '-u' flag.
+    command = list(command)
     for key, value in p.items():
         if isinstance(value, list):
             value = ','.join([str(v) for v in value])
