@@ -9,6 +9,7 @@ from collections.abc import Sequence
 import geopandas as gpd
 import pandas as pd
 
+from openplaces.core.constants import STRING_SEPARATOR_WITHIN_IDS
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
 from openplaces.recipe import (
@@ -281,7 +282,16 @@ def get_admin(
     if admin_id is not None:
         mask_select = pd.Series(False, index=admin.index)
         for _admin_id_to_get in admin_ids:
-            mask_select |= admin.index.str.startswith(str(_admin_id_to_get))
+            # Containment has to stop at a level boundary. A raw prefix
+            # test lets 'US-NC-WA' (Wake, pre-2026) select 'US-NC-WAR'
+            # (Warren). Tested on the index rather than through
+            # `AdminId.is_parent_or_equal_of` because this runs on every
+            # get_admin() call over a spine of up to a few hundred
+            # thousand ids, where per-row parsing is not affordable.
+            scope = str(_admin_id_to_get)
+            mask_select |= (admin.index == scope) | admin.index.str.startswith(
+                scope + STRING_SEPARATOR_WITHIN_IDS
+            )
         if not mask_select.any():
             raise ValueError(
                 'No admin IDs from reference spine found. Perhaps they have not been '
