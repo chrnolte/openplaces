@@ -662,11 +662,17 @@ def _delete_output_with_receipt(
         source_size, source_mtime = stat.st_size, stat.st_mtime
     except OSError:
         source_size, source_mtime = None, None
-    partitions = (
-        sorted(read_partition_coverage(out_path))
-        if out_path.is_file() and out_path.suffix == '.parquet'
-        else []
-    )
+    partitions: list[str] = []
+    if out_path.is_file() and out_path.suffix == '.parquet':
+        try:
+            partitions = sorted(read_partition_coverage(out_path))
+        except Exception:
+            # A truncated footer must not abort the batch: this runs
+            # inside the stages' cleanup='consumed' hook, where raising
+            # would crash the harmonizer or curator after the unit's own
+            # output was already written. The file is being deleted
+            # anyway, so record no coverage for it.
+            partitions = []
 
     for attempt in (0, 1):
         try:

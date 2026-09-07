@@ -323,6 +323,28 @@ def test_receipt_skip_disabled_by_config(data_root, monkeypatch):
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
 
 
+# Deletion
+
+
+def test_delete_with_receipt_survives_a_truncated_footer(data_root):
+    """A corrupt output is deleted, not raised on.
+
+    The coverage footer was read without a guard, so an output truncated
+    by a killed job raised ArrowInvalid mid-batch and, through the
+    stages' cleanup='consumed' hook, crashed the caller after the unit's
+    own output had been written.
+    """
+    out = _nsi_path()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(b'PAR1 this is not a parquet footer')
+
+    action, _ = cl._delete_output_with_receipt(out, NSI, COUNTY, [])
+
+    assert action == 'deleted'
+    assert not out.exists()
+    assert cl.read_receipt(out)['partitions'] == []
+
+
 # Locks
 
 
