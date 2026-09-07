@@ -1,4 +1,10 @@
-from openplaces.recipe import find_entity_recipe_id, get_recipe_by_id
+import pytest
+
+from openplaces.recipe import (
+    find_entity_recipe_id,
+    get_recipe_by_id,
+    get_recipe_dict,
+)
 
 
 def test_find_entity_recipe_follows_pipeline_stage_order():
@@ -46,3 +52,25 @@ def test_curation_recipe_declares_predecessors():
         # construction years the year_built reconcile ranks above NSI.
         'US-NC_footprint_footprint-ncdps-2023',
     }
+
+
+def test_unknown_stage_is_rejected_at_load(tmp_path):
+    """A misspelled stage must not load as a stage-less recipe.
+
+    'harmonise' used to load without complaint, rank below every ingest
+    recipe in `find_entity_recipe_id`, and surface only when the job it
+    belongs to finally ran.
+    """
+    recipe_file = tmp_path / 'US-XX_parcel-fabricated-2026.yaml'
+    recipe_file.write_text(
+        'admin_id: US-XX\n'
+        'stage: harmonise\n'
+        'entity:\n'
+        '  entity_type: parcel\n'
+        '  source:\n'
+        '    source_id: fabricated\n'
+        '  version: "2026"\n',
+        encoding='utf-8',
+    )
+    with pytest.raises(ValueError, match='not a known openplaces pipeline stage'):
+        get_recipe_dict(recipe_file, 'US-XX')

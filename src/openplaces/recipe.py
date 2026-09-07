@@ -19,6 +19,7 @@ import yaml
 from openplaces.config import cfg
 from openplaces.core.constants import (
     RECIPE_PER_TABLE_KEYS,
+    RECIPE_STAGES,
     RETENTION_CLASSES,
     STANDARD_DIRS,
     STRING_SEPARATOR_BETWEEN_IDS,
@@ -130,6 +131,17 @@ def get_recipe_dict(filepath, *args, **kwargs):
     if 'stage' not in recipe_dict:
         recipe_dict['stage'] = 'ingest'
 
+    # Validated here rather than at the point of use: a typo ('harmonise')
+    # loaded silently, ranked below every ingest recipe in
+    # `find_entity_recipe_id`, and only surfaced when the orchestrated job
+    # eventually ran and argparse rejected the stage name.
+    if recipe_dict['stage'] not in RECIPE_STAGES:
+        stage = recipe_dict['stage']
+        raise ValueError(
+            f"Recipe 'stage' is '{stage}', which is not a known openplaces "
+            'pipeline stage. Valid options:' + '\n- ' + '\n- '.join(RECIPE_STAGES)
+        )
+
     # Ensure that 'admin_id' exists in recipe
     if 'admin_id' not in recipe_dict:
         recipe_dict['admin_id'] = admin_id_arg
@@ -193,7 +205,13 @@ def coverage_is_complete(recipe_id) -> bool:
     """
     try:
         return get_recipe_by_id(recipe_id).get('coverage') == 'complete'
-    except Exception:
+    except OSError:
+        # Only a missing recipe file reads as "no declaration, stay
+        # tolerant". A recipe that exists but fails to load (bad YAML, a
+        # value the schema rejects) must not be swallowed: it would be
+        # reported as tolerant and soft-skipped, which is the exact
+        # outcome this guard exists to prevent, and the caller has
+        # already swallowed the load failure once.
         return False
 
 
@@ -621,12 +639,7 @@ def find_entity_recipe_id(
         recipe_paths_found.extend(glob.glob(str(evidence_recipe_path)))
 
     candidates = []
-    stage_rank = {
-        'ingest': 0,
-        'harmonize': 1,
-        'enrich': 2,
-        'curate': 3,
-    }
+    stage_rank = {stage: rank for rank, stage in enumerate(RECIPE_STAGES)}
 
     for filepath in sorted(set(recipe_paths_found)):
         with open(filepath, encoding='utf-8') as f:
