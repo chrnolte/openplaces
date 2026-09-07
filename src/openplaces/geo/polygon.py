@@ -1038,6 +1038,27 @@ def resolve_overlapping_polygons(
         raise ValueError(
             'At least one of overlap_ratio_threshold or iou_threshold must be set.'
         )
+    # Unpack the dict form {'prefer_higher': col} into a flat
+    # keep=False plus prefer_col. Validate it here, before the early
+    # return below: recipes pass this straight through from
+    # `keep_overlapping_polygons`, and a misspelled column used to fall
+    # through to the area tiebreak, inverting the recipe's intent on a
+    # run that reported success.
+    prefer_col = None
+    if isinstance(keep, dict):
+        if set(keep) != {'prefer_higher'}:
+            raise ValueError(
+                "keep as a dict takes exactly one key, 'prefer_higher'. "
+                f'Got {sorted(keep)}.'
+            )
+        prefer_col = keep['prefer_higher']
+        if prefer_col not in df.columns:
+            raise ValueError(
+                f'prefer_higher column {prefer_col!r} is not in the data. '
+                f'Available columns: {sorted(df.columns)}.'
+            )
+        keep = False
+
     overlaps = find_overlaps(df, iou=True).query(
         ' | '.join(f'({c})' for c in conditions)
     )
@@ -1052,12 +1073,6 @@ def resolve_overlapping_polygons(
 
     if snippet_cols is None:
         snippet_cols = compare_cols[:5]
-
-    # Unpack dict form {'prefer_higher': col} into a flat keep=False + prefer_col.
-    prefer_col = None
-    if isinstance(keep, dict):
-        prefer_col = keep.get('prefer_higher')
-        keep = False
 
     # Sort so that MultiIndex .loc lookups in the loop below don't trigger
     # PerformanceWarning about indexing past lexsort depth.
@@ -1098,7 +1113,7 @@ def resolve_overlapping_polygons(
                 or right_idx in dupes_to_drop
             ):
                 continue
-            if prefer_col is not None and prefer_col in df.columns:
+            if prefer_col is not None:
                 # Keep the polygon with the higher value in prefer_col.
                 # Works with ordered categoricals, numerics, or any comparable
                 # type. Falls through to area tiebreak if values are equal or
