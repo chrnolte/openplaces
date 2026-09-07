@@ -267,8 +267,32 @@ def _aggregate_to_file(
         share a schema.
     verbose : bool
         Print a one-line summary.
+
+    Raises
+    ------
+    ValueError
+        If *final_path* is also one of *inputs*, which would rewrite an
+        input from itself and then delete it.
     """
     input_paths = [p for _, p in inputs]
+    # An output that is also one of its own inputs would be rewritten
+    # from itself and then deleted by the keep_original loop below,
+    # destroying the data it was meant to roll up. This happens when a
+    # roll-up group key equals a partition id (rolling a year-partitioned
+    # recipe up by year), where the roll-up is a no-op anyway. Refuse
+    # rather than write the group under another name: a renamed output
+    # is a file no reader looks for, and the caller's request was
+    # meaningless, not merely misaddressed.
+    if any(Path(p).resolve() == Path(final_path).resolve() for p in input_paths):
+        raise ValueError(
+            f'Refusing to aggregate {final_path.name} into itself: it is both '
+            'an input and the output of this roll-up, so writing it would '
+            'destroy the partition it was built from. This usually means the '
+            'roll-up granularity matches the partition granularity (e.g. '
+            "aggregate_partitions(by='year') on a year-partitioned recipe), "
+            'which has nothing to combine.'
+        )
+
     # Geometry lives either in a `_geo` sidecar (split layout) or in
     # the file itself (combined layout, `save_to: combined: true`).
     # Checking only for the sidecar silently read combined inputs
