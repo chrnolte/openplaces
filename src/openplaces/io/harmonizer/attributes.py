@@ -246,9 +246,9 @@ def _attribute_absent_point_reference(
         return state
 
     spine_id_col = state.spine.index.name
-    # Deliberately column-less apart from the join key: every aggregation
-    # in _attribute_point_reference then finds nothing to do, and the
-    # declared columns are written by its closing null pass.
+    # Deliberately column-less apart from the join key: every
+    # aggregation in _attribute_point_reference then finds nothing to
+    # do, and the declared columns are written by its closing null pass.
     empty = pd.DataFrame({spine_id_col: pd.Series(dtype=object)})
     return _attribute_point_reference(
         state,

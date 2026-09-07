@@ -121,10 +121,10 @@ def test_inherit_from_disagreeing_group_falls_back_and_is_reported(monkeypatch):
 
 
 def test_inherit_from_lat_long_join_on_an_unnamed_spine_index(monkeypatch):
-    # No group_by column on the linked recipe, so inheritance falls back to
-    # the lat/long point join. geopandas names the right-index column
-    # 'index_right' for an unnamed spine index, which the hand-built
-    # `spine.index.name or 'index'` missed: the group-by raised KeyError.
+    # No group_by column on the linked recipe, so inheritance falls
+    # back to the lat/long point join. geopandas names the right-index
+    # column 'index_right' for an unnamed spine index, which the
+    # hand-built spine.index.name or 'index' missed: groupby raised.
     def _boom(*a, **k):
         raise AssertionError('should not need the direct reference')
 

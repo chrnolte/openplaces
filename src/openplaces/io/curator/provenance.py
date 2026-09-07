@@ -42,9 +42,9 @@ from openplaces.core.attribute_registry import (
     PROVENANCE_SOURCE_SUFFIX as SOURCE_SUFFIX,
 )
 
-# Spelled at layer 0 (openplaces.core.provenance) so the harmonize stage,
-# which may not import this module, writes the same marker rather than a
-# second copy of it. Re-exported here, where the rule is documented.
+# Spelled at layer 0 (openplaces.core.provenance) so the harmonize
+# stage, which may not import this module, writes the same marker
+# rather than a second copy. Re-exported here, where it is set out.
 from openplaces.core.provenance import (  # noqa: F401
     IMPUTED_MARKER,
     TOKEN_SEPARATOR,

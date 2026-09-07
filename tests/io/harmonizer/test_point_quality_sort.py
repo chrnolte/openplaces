@@ -30,8 +30,8 @@ def test_quality_sort_is_empty_without_either_column():
 
 
 def test_multipoint_representative_is_the_highest_value_point():
-    # No 'source' column: the surviving 'structure_value' must still sort
-    # descending, so the representative is the larger structure. Sliced
+    # No 'source' column: the surviving 'structure_value' must still
+    # sort descending, so the representative is the larger one. Sliced
     # positionally, the direction paired with it was ascending and the
     # smaller structure represented the footprint.
     linked = pd.DataFrame(

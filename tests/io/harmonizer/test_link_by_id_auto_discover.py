@@ -669,7 +669,7 @@ def test_apply_remap_csvs_noop_without_matching_column():
 
 def test_apply_remap_csvs_gap_fills_instead_of_replacing():
     # Auto-discovery applies one remap per matched source. A sparse
-    # crosswalk (here one code of five rows) must not null out the values
+    # crosswalk (here one code of five rows) must not null out values
     # an earlier, broader source already resolved.
     spine = pd.DataFrame(
         {

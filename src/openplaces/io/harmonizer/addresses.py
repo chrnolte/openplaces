@@ -667,7 +667,8 @@ def impute_postal_city(
             # openplaces filled this cell, so its token says so. The
             # marker is spelled in exactly one place (core.provenance),
             # never assembled by hand here. 'postal_city' above is not
-            # marked: it is the ZIP dataset's own value, read not derived.
+            # marked: that is the ZIP dataset's own value, read not
+            # derived.
             _record_source(spine, city_column, fillable, mark_imputed('zipcodes'))
 
             if address_column in spine.columns:

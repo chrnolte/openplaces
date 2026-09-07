@@ -634,11 +634,12 @@ def _expand_auto_discover(
         (i for i, s in enumerate(sources) if s.get('auto_discover')),
         None,
     )
-    # Keyed by (recipe_id, layer): a bundled additional_layers table and its
-    # host recipe are different tables under one recipe id, so the layer is
-    # part of a source's identity. Comparing a bare recipe id against the
-    # (recipe_id, layer) key the layer loop builds could never match, and a
-    # source listed both explicitly and as a layer was merged twice.
+    # Keyed by (recipe_id, layer): a bundled additional_layers table
+    # and its host recipe are different tables under one recipe id, so
+    # the layer is part of a source's identity. A bare recipe id
+    # compared against the (recipe_id, layer) key the layer loop builds
+    # could never match, so a source listed both explicitly and as a
+    # layer was merged twice.
     existing_ids = {
         (s.get('recipe_id'), s.get('layer'))
         for s in sources
@@ -891,7 +892,7 @@ def _inherit_geographic_ids(
         )
         joined = gpd.sjoin(points, spine[['geometry']], how='inner', predicate='within')
         # geopandas names the right-index column three different ways
-        # (and 'index_right' for an unnamed index, which 'index' misses),
+        # ('index_right' for an unnamed index, which 'index' misses),
         # so resolve it through the shared helper rather than by hand.
         joined = _rename_right_index(joined, spine.index.name, '_spine_id')
         grouped = joined.groupby('_spine_id')

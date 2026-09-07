@@ -260,9 +260,9 @@ def _restore_link(
                 resolved_id, state.admin_id, geom=False, missing='ignore', columns=[]
             )
             if probe is None or len(probe) == 0:
-                # Same rule as the overlay branch above: the geospine run
-                # skipped this link for an expected admin-scoped coverage
-                # gap, so there is nothing to restore. A reference that
+                # Same rule as the overlay branch above: the geospine
+                # run skipped this link for an expected admin-scoped
+                # coverage gap, so nothing is left to restore. One that
                 # declares complete coverage and produced nothing is a
                 # vanished input, not a gap, and escalates.
                 raise_if_coverage_complete(resolved_id, state.admin_id)

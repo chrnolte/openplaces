@@ -490,10 +490,9 @@ def test_point_reference_excludes_flagged_points_from_n_dwellings_sum():
 
 
 def test_spine_without_geometry_source_is_attributed(monkeypatch):
-    # union_spine_sources writes 'source', not 'geometry_source', and adds
-    # no reference-inferred rows. Reading the column before checking that
-    # the inferred-backfill block applies aborted the whole attribution
-    # with a KeyError.
+    # union_spine_sources writes 'source', not 'geometry_source', and
+    # adds no reference-inferred rows. Reading the column before the
+    # block is known to apply aborted the whole attribution.
     spine = gpd.GeoDataFrame(
         {'source': ['massgis']},
         geometry=[box(0, 0, 1, 1)],

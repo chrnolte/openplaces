@@ -136,8 +136,8 @@ def test_expand_auto_discover_skips_an_explicitly_listed_layer(monkeypatch):
 
 
 def test_expand_auto_discover_keeps_a_layer_of_an_explicit_host(monkeypatch):
-    # The host recipe listed without a layer is a different table from its
-    # bundled layer, so the layer is still discovered.
+    # The host recipe listed without a layer is a different table from
+    # its bundled layer, so the layer is still discovered.
     monkeypatch.setattr(
         spine_module, 'find_recipes', lambda *a, **k: pd.DataFrame(columns=_ROW_COLS)
     )

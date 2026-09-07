@@ -322,8 +322,8 @@ def test_aggregate_mode_duplicate_spine_key_still_aggregates_and_warns(monkeypat
 
 
 def test_count_mode_accumulates_across_sources(monkeypatch):
-    # Two transaction sources for one county: the second used to overwrite
-    # the first, so every record the first contributed vanished from
+    # Two transaction sources for one county: the second used to
+    # overwrite the first, so every record the first contributed left
     # n_transactions. A count is a tally of records, not a competing
     # estimate of one quantity, so the two sources add.
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B', 'C']})
@@ -359,8 +359,8 @@ def test_aggregate_mode_accumulates_record_counts(monkeypatch):
 
 
 def test_count_mode_replaces_a_restored_count_on_the_first_write(monkeypatch):
-    # A spine restored mid-pipeline can already carry the column; the run's
-    # first source replaces it rather than adding to a stale tally.
+    # A spine restored mid-pipeline can already carry the column; a
+    # run's first source replaces it, never adding to a stale tally.
     spine = pd.DataFrame({'parcel_id_local': ['A', 'B'], 'n_transactions': [9, 9]})
     ref = pd.DataFrame({'parcel_id_local': ['A']})
     monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
