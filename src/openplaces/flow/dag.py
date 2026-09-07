@@ -140,8 +140,8 @@ class RecipeDAG:
                 target_admin,
                 exclude_recipe_ids=self.exclude_recipe_ids,
             ):
-                # _walk_dag yields a finer-saving recipe at whichever
-                # units it has written (the walk admin when none);
+                # _walk_dag keeps a finer-saving recipe at the walk
+                # admin (expand_finer is off, so no disk is read);
                 # _node_admins re-expands it to its save level here
                 _add(node_id, node_recipe, target_admin)
 

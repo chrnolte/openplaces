@@ -866,7 +866,7 @@ def _node_admins(upstream, admin_id, admin_level: int) -> list:
         return [_truncate_admin(admin_id, admin_level)]
     walk_admin = AdminId(str(admin_id))
     finer = []
-    for candidate in _admin_ids_with_output(upstream):
+    for candidate in _admin_ids_with_output(upstream, under_admin=walk_admin):
         node_admin = AdminId(candidate)
         if node_admin.get_level() == save_level and walk_admin.is_parent_of(node_admin):
             finer.append(node_admin)
@@ -876,14 +876,16 @@ def _node_admins(upstream, admin_id, admin_level: int) -> list:
     return finer or [_truncate_admin(admin_id, admin_level)]
 
 
-def _walk_dag(root_recipe, admin_id, exclude_recipe_ids=None):
+def _walk_dag(root_recipe, admin_id, exclude_recipe_ids=None, expand_finer=False):
     """Yield (recipe_id, recipe, node_admin) for every node upstream of root.
 
     The root itself is not yielded. Each upstream node's admin unit is the
-    walk admin truncated to that recipe's save level; a recipe saving
-    finer than the walk admin is yielded once per finer unit that has an
-    output on disk (see `_node_admins`), except image recipes, which keep
-    the walk admin and are expanded by their own handler.
+    walk admin truncated to that recipe's save level. With
+    *expand_finer*, a recipe saving finer than the walk admin is yielded
+    once per finer unit that has an output on disk (see `_node_admins`),
+    except image recipes, which keep the walk admin and are expanded by
+    their own handler. That expansion reads the disk, so callers that
+    only enumerate recipes (flow.dag) leave it off.
 
     exclude_recipe_ids : set of str, optional
         Forwarded to `get_recipe_dependencies`. An excluded recipe's edges
@@ -914,17 +916,39 @@ def _walk_dag(root_recipe, admin_id, exclude_recipe_ids=None):
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            for node_admin in _node_admins(upstream, admin_id, admin_level):
+            if expand_finer:
+                node_admins = _node_admins(upstream, admin_id, admin_level)
+            else:
+                try:
+                    save_level = get_save_admin_level(upstream)
+                except Exception:
+                    save_level = admin_level
+                node_admins = [_truncate_admin(admin_id, min(save_level, admin_level))]
+            for node_admin in node_admins:
                 yield upstream_id, upstream, node_admin
             pending.append(upstream)
 
 
-def _admin_ids_with_output(recipe) -> list[str]:
-    """Admin IDs that have an output file for a recipe on disk."""
+def _admin_ids_with_output(recipe, under_admin=None) -> list[str]:
+    """Admin IDs that have an output file for a recipe on disk.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe whose outputs to look for.
+    under_admin : str or AdminId, optional
+        Only scan this unit's own subtree. The scan is a recursive glob
+        of the output bucket, so narrowing it matters on a real data
+        root; without it every finer-saving node in a walk would sweep
+        the whole bucket.
+    """
     from openplaces.recipe import _get_save_to
 
     data_dir, _ = _get_save_to(recipe)
     root = Path(cfg.get_dir(data_dir or 'cache'))
+    if under_admin is not None:
+        admin = AdminId(str(under_admin))
+        root = root.joinpath(*admin.levels)
     entity = recipe.get('entity') or recipe.get('dataset')
     if entity is None or not root.is_dir():
         return []
@@ -1009,7 +1033,9 @@ def cleanup(
     for admin_id in admin_ids:
         lock = DataLock(admin_id) if not dry_run else nullcontext()
         with lock:
-            for node_id, node_recipe, node_admin in _walk_dag(recipe, admin_id):
+            for node_id, node_recipe, node_admin in _walk_dag(
+                recipe, admin_id, expand_finer=True
+            ):
                 if stages and node_recipe.get('stage') not in stages:
                     continue
                 rows.extend(
