@@ -264,6 +264,48 @@ def output_conceptually_exists(recipe, admin_id) -> bool:
     return read_receipt(out_path) is not None
 
 
+def _consumer_satisfies(recipe, admin_id, required_partitions=None) -> bool:
+    """True when a consumer counts as complete for reclaiming an input.
+
+    Physical completeness first; a consumer that was itself cleaned up
+    still counts through its own tombstone receipt (the receipt cascade),
+    but only when that receipt records coverage of the partitions the
+    input is required to be in. Falling back to bare existence instead
+    dropped the requirement altogether, so a county input a state
+    aggregate had not consumed yet was deleted with a receipt that then
+    made ingest skip regenerating it.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Consumer recipe ID or loaded recipe dictionary.
+    admin_id : str or AdminId or None
+        Admin unit of the consumer's output.
+    required_partitions : iterable of str, optional
+        Partition or sub-admin IDs the consumer must have consumed.
+    """
+    if is_output_complete(recipe, admin_id, required_partitions=required_partitions):
+        return True
+    if isinstance(recipe, str):
+        try:
+            recipe = get_recipe_by_id(recipe)
+        except Exception:
+            return False
+    try:
+        out_path = get_output_path(recipe, admin_id=admin_id)
+    except Exception:
+        return False
+    receipt = read_receipt(out_path)
+    if receipt is None:
+        return False
+    if required_partitions is None:
+        return True
+    recorded = set(map(str, receipt.get('partitions') or []))
+    if COVERAGE_ALL in recorded:
+        return True
+    return set(map(str, required_partitions)) <= recorded
+
+
 def _path_conceptually_exists(path: Path) -> bool:
     return path.exists() or read_receipt(path) is not None
 
@@ -464,9 +506,9 @@ def _consumers_complete(
             continue
         consumer_admin = _truncate_admin(admin_id, consumer_level)
         required = {str(admin_id)} if consumer_level < node_level else None
-        complete = is_output_complete(
+        complete = _consumer_satisfies(
             consumer_recipe, consumer_admin, required_partitions=required
-        ) or output_conceptually_exists(consumer_recipe, consumer_admin)
+        )
         if not complete:
             blocked_by.append(consumer_id)
             continue

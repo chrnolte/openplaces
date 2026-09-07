@@ -126,6 +126,88 @@ def test_is_output_complete_rejects_truncated_parquet(data_root):
     assert not cl.is_output_complete(NSI, COUNTY)
 
 
+# Coverage of a coarser consumer
+
+
+STATE = 'US-NC'
+OTHER_COUNTY = 'US-NC-CAB'
+
+
+def _write_parquet_with_coverage(path, partitions):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    opio.save_parquet(
+        pd.DataFrame({'geo_id': ['a'], 'value': [1.0]}),
+        path,
+        file_metadata={'openplaces:partitions': json.dumps(list(partitions))},
+    )
+    return path
+
+
+def _coarser_consumer_index(consumer_id, node_id):
+    """Index with one consumer that saves a state-level aggregate."""
+    recipe = dict(get_recipe_by_id(consumer_id))
+    save_to = dict(recipe.get('save_to') or {})
+    save_to['admin_level'] = 2
+    recipe['save_to'] = save_to
+    index = cl._DependencyIndex.__new__(cl._DependencyIndex)
+    index.errors = []
+    index.recipes = {consumer_id: recipe}
+    index._literal = {node_id: {consumer_id}}
+    index._auto_consumers = []
+    index._auto_cache = {}
+    return index
+
+
+def test_coarser_consumer_must_have_consumed_the_county(data_root):
+    """A state aggregate that has not read this county does not free it.
+
+    The coverage requirement used to be ORed with a plain existence
+    check, which re-ran the same test without it, so the requirement
+    never bound and the county was deleted with a receipt that then made
+    ingest skip regenerating it.
+    """
+    index = _coarser_consumer_index(FOOTPRINT_SPINE, NSI)
+    consumer_path = get_output_path(index.recipes[FOOTPRINT_SPINE], admin_id=STATE)
+    _write_parquet_with_coverage(consumer_path, [OTHER_COUNTY])
+    deletable, blocked_by, _ = cl._consumers_complete(NSI, COUNTY, index)
+    assert not deletable
+    assert blocked_by == [FOOTPRINT_SPINE]
+
+    _write_parquet_with_coverage(consumer_path, [OTHER_COUNTY, COUNTY])
+    deletable, _, verified = cl._consumers_complete(NSI, COUNTY, index)
+    assert deletable
+    assert [c['recipe_id'] for c in verified] == [FOOTPRINT_SPINE]
+
+
+def test_cascaded_receipt_must_record_the_county_it_consumed(data_root):
+    """The receipt cascade carries the coverage requirement with it."""
+    index = _coarser_consumer_index(FOOTPRINT_SPINE, NSI)
+    consumer_path = get_output_path(index.recipes[FOOTPRINT_SPINE], admin_id=STATE)
+    cl.write_receipt(
+        consumer_path,
+        {
+            'recipe_id': FOOTPRINT_SPINE,
+            'admin_id': STATE,
+            'partitions': [OTHER_COUNTY],
+            'consumers_verified': [],
+        },
+    )
+    deletable, _, _ = cl._consumers_complete(NSI, COUNTY, index)
+    assert not deletable
+
+    cl.write_receipt(
+        consumer_path,
+        {
+            'recipe_id': FOOTPRINT_SPINE,
+            'admin_id': STATE,
+            'partitions': [OTHER_COUNTY, COUNTY],
+            'consumers_verified': [],
+        },
+    )
+    deletable, _, _ = cl._consumers_complete(NSI, COUNTY, index)
+    assert deletable
+
+
 # Receipt-justified skip (design section 4.3)
 
 
