@@ -1,6 +1,4 @@
 """
-src/openplaces/core/schema.py
-
 Defines AdminId, Entity, EntityType, Dataset, Source, Theme etc.
 """
 
@@ -35,7 +33,7 @@ def synthetic_geometry_pattern(exclude: str | None = None) -> str:
     """Regex matching a reference-derived synthetic geometry_source label.
 
     The harmonizer's infer_spine_additions labels a fallback geometry
-    '{entity_type}.{source}' (e.g. 'parcel.spine' — the parcel boundary
+    '{entity_type}.{source}' (e.g. 'parcel.spine', the parcel boundary
     standing in for an inferred building), whereas a real geometry source is
     a bare label ('obm', 'microsoft'). *exclude* omits the spine's own entity
     type from the match, so only geometries derived from a different entity
@@ -50,7 +48,7 @@ def is_synthetic_geometry(gdf, entity=None) -> pd.Series:
 
     A synthetic fallback geometry (e.g. geometry_source == 'parcel.spine')
     is a different entity's boundary standing in for this row's own real
-    outline (see :func:`synthetic_geometry_pattern`) — not meaningful for
+    outline (see :func:`synthetic_geometry_pattern`), not meaningful for
     size/shape measurements. All-False when geometry_source isn't a column
     on gdf.
 
