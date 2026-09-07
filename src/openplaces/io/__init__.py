@@ -177,20 +177,25 @@ def download(
     if to_path.suffix == '':
         # Assumption: `to_path` refers to a directory
         # Extract filename and add it to `to_path`
+        filename = ''
 
         # Try Content-Disposition header first if response provided
         if response and 'content-disposition' in response.headers:
             content_disp = response.headers['content-disposition']
             if 'filename=' in content_disp:
                 filename_part = content_disp.split('filename=')[1]
-                filename = filename_part.split(';')[0].strip('"\'')
-                to_path /= unquote(filename)
-        else:
-            # Fall back to URL parsing
+                filename = unquote(filename_part.split(';')[0].strip('"\''))
+
+        if not filename:
+            # The fallback fires whenever no name was extracted, not
+            # only when the header was absent: a Content-Disposition
+            # carrying no filename= would otherwise leave `to_path`
+            # pointing at the directory itself, and the suffix sniffing
+            # below would rename that directory.
             parsed = urlparse(from_url)
-            path = unquote(parsed.path)
-            filename = Path(path).name
-            to_path /= filename
+            filename = Path(unquote(parsed.path)).name
+
+        to_path /= filename or 'download'
 
     # If extension is still unknown, sniff from Content-Type then first chunk
     first_chunk = b''
@@ -206,8 +211,13 @@ def download(
         if ext is not None:
             to_path = to_path.with_suffix(ext)
 
-    # Download to temp location first, then move to final destination
-    temp_path = Path(tempfile.gettempdir()) / f'{to_path.name}.part'
+    # Download to temp location first, then move to final destination.
+    # The staging directory is unique per call: keyed on the basename
+    # alone, two concurrent jobs fetching per-county archives that share
+    # a name (parcels.zip) wrote the same file and each moved a
+    # half-written mix into place.
+    temp_dir = Path(tempfile.mkdtemp(prefix='openplaces-download-'))
+    temp_path = temp_dir / f'{to_path.name}.part'
 
     try:
         with open(temp_path, 'wb') as f:
@@ -228,11 +238,10 @@ def download(
         # Move completed download to final destination
         shutil.move(str(temp_path), str(to_path))
 
-    except Exception:
-        # Clean up partial download on any error
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
+    finally:
+        # Removes a partial download on error, and the empty staging
+        # directory on success.
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
     return to_path
 
@@ -331,9 +340,10 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
             tar.extractall(out_dir)
         return out_dir
 
-    if in_path.suffix in {'.bz2', '.tbz2'}:
-        # Handle .tar.bz2 / .tbz2
-        if in_path.stem.endswith('.tar') or in_path.suffix == '.tbz2':
+    if in_path.suffix.lower() in {'.bz2', '.tbz2'}:
+        # Casefolded like the tar.gz test above: uppercase extensions
+        # are routine in county and state archives.
+        if in_path.stem.lower().endswith('.tar') or in_path.suffix.lower() == '.tbz2':
             with tarfile.open(in_path, 'r:bz2') as tar:
                 tar.extractall(out_dir)
         # Handle bare .bz2 (single compressed file)
@@ -349,18 +359,28 @@ def unzip(in_path, out_dir=None, members=None, verbose=True):
 
 
 def _needs_7z(zip_path):
-    """Return True if any entry uses a compression type unsupported by zipfile."""
-    with ZipFile(zip_path, 'r') as z:
-        return any(
-            info.compress_type
-            not in {
-                ZIP_STORED,
-                ZIP_DEFLATED,
-                ZIP_BZIP2,
-                ZIP_LZMA,
-            }
-            for info in z.infolist()
-        )
+    """Return True if Python's zipfile cannot extract the archive.
+
+    Either because zipfile cannot open the container at all (a 7z, rar
+    or bare gz file), or because an entry inside a real zip uses a
+    compression type zipfile cannot deflate. Probing the container
+    first would leave the whole 7z fallback unreachable for the first
+    case, which then failed with a misleading 'not a zip file'.
+    """
+    try:
+        with ZipFile(zip_path, 'r') as z:
+            return any(
+                info.compress_type
+                not in {
+                    ZIP_STORED,
+                    ZIP_DEFLATED,
+                    ZIP_BZIP2,
+                    ZIP_LZMA,
+                }
+                for info in z.infolist()
+            )
+    except BadZipFile:
+        return True
 
 
 def _unzip_standard(in_path, out_dir, members):
@@ -413,7 +433,8 @@ def _unzip_with_7z(in_path, out_dir, verbose=True):
     sz = _find_7z()
     if not sz:
         raise RuntimeError(
-            f'Archive {in_path.name} uses a compression type `zipfile` cannot deflate. '
+            f'Archive {in_path.name} cannot be extracted by `zipfile` (an '
+            'unsupported compression type, or not a zip container at all). '
             'Install 7z: brew install sevenzip (macOS), '
             'winget install 7zip.7zip (Windows), or sudo apt install 7zip (Linux).'
         )
