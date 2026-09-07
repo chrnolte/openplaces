@@ -55,3 +55,19 @@ def test_neither_flag_has_no_area_columns(fn):
     result = fn(gdf1, gdf2, how='intersection')
 
     assert not any(c.startswith('area') or c == 'iou' for c in result)
+
+
+def test_duckdb_failure_warns_before_the_slow_fallback(monkeypatch):
+    """A bug in the DuckDB path must not hide behind a silent rerun."""
+    import openplaces.geo.overlay as overlay_module
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError('simulated DuckDB failure')
+
+    monkeypatch.setattr(overlay_module, '_overlay_polygons_paths', _boom)
+    gdf1, gdf2 = _gdfs()
+
+    with pytest.warns(UserWarning, match='simulated DuckDB failure'):
+        result = overlay_polygons_with_duckdb(gdf1, gdf2, how='intersection')
+
+    assert len(result) == 1

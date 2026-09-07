@@ -11,6 +11,7 @@ import os
 import statistics
 import tempfile
 import time
+import warnings
 from pathlib import Path
 
 import duckdb
@@ -366,9 +367,17 @@ def overlay_polygons_with_duckdb(
                 how=how,
             )
     except Exception as e:
-        if verbose and not silent:
-            print(f'DuckDB spatial join failed or ran out of memory:\n{e}', flush=True)
-            print('Falling back to geopandas overlay...', flush=True)
+        # Warn rather than only printing under `verbose`: this catch
+        # is wide enough to swallow a bug in the DuckDB path, and the
+        # geopandas fallback can take hours on the layers that reach
+        # here, so the reason has to be visible in any run.
+        if not silent:
+            warnings.warn(
+                f'DuckDB spatial join failed or ran out of memory '
+                f'({type(e).__name__}: {e}). Falling back to the '
+                'geopandas overlay, which is far slower.',
+                stacklevel=2,
+            )
         return overlay_polygons(
             layer1=layer1,
             layer2=layer2,
