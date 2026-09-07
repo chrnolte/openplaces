@@ -174,3 +174,13 @@ class TestDeriveCodes:
         result = derive_codes(['Northern Region', 'Southern Region'])
         assert len(result) == 2
         assert all(is_valid_code(code) for code, _ in result.values())
+
+
+class TestGroupCodeLengths:
+    def test_the_loader_is_cached_exactly_once(self):
+        # `@cache` was stacked twice, which caches a cache: harmless but
+        # misleading to anyone reading the decorator for intent.
+        from openplaces.io.admin_codes.anchors import load_group_code_lengths
+
+        inner = load_group_code_lengths.__wrapped__
+        assert not hasattr(inner, '__wrapped__')

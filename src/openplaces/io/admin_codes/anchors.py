@@ -268,7 +268,6 @@ def get_anchor_codes(admin1_id: str) -> dict[str, str]:
 
 
 @cache
-@cache
 def load_group_code_lengths() -> dict[str, int]:
     """Return reviewed code lengths keyed by a group's parent admin id.
 
