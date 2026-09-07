@@ -161,8 +161,9 @@ def has_geometry(gdf):
     # filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
 
     if isinstance(gdf, gpd.GeoDataFrame):
-        warnings.filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
-        return ~gdf['geometry'].is_empty & gdf['geometry'].notna()
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'GeoSeries.notna', UserWarning)
+            return ~gdf['geometry'].is_empty & gdf['geometry'].notna()
     elif isinstance(gdf, gpd.GeoSeries):
         return ~gdf.is_empty & gdf.notna()
     else:
@@ -344,10 +345,12 @@ def crs_is_mea(crs):
                 + str(crs)
             )
 
-    # Still testing whether this makes the warning disappear
-    warnings.filterwarnings('ignore', category=UserWarning)
-    crs_dict = crs.to_dict()
-    warnings.filterwarnings('default', category=UserWarning)
+    # Scope the suppression: a bare filterwarnings('default') does not
+    # restore the caller's filter, it prepends an entry that overrides
+    # whatever the caller had set, for the rest of the process.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=UserWarning)
+        crs_dict = crs.to_dict()
 
     return (crs_dict['proj'] in ['cea', 'aea']) and (crs_dict['units'] == 'm')
 
@@ -375,10 +378,12 @@ def get_lat_long_centroids(gdf, crs='epsg:4326', geom=False):
     if crs != crs_orig:
         gdf = gdf.to_crs(crs)
 
-    # Suppress warnings if centroids are in geographic CRS
-    warnings.filterwarnings('ignore', category=UserWarning)
-    gdf['geometry'] = gdf['geometry'].centroid
-    warnings.filterwarnings('default', category=UserWarning)
+    # Suppress the geographic-CRS centroid warning for this call only:
+    # filterwarnings('default') afterwards would leave a global entry
+    # overriding the caller's own filter rather than restoring it.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=UserWarning)
+        gdf['geometry'] = gdf['geometry'].centroid
 
     gdf['lat'] = gdf.geometry.y
     gdf['long'] = gdf.geometry.x
@@ -1038,6 +1043,27 @@ def resolve_overlapping_polygons(
         raise ValueError(
             'At least one of overlap_ratio_threshold or iou_threshold must be set.'
         )
+    # Unpack the dict form {'prefer_higher': col} into a flat
+    # keep=False plus prefer_col. Validate it here, before the early
+    # return below: recipes pass this straight through from
+    # `keep_overlapping_polygons`, and a misspelled column used to fall
+    # through to the area tiebreak, inverting the recipe's intent on a
+    # run that reported success.
+    prefer_col = None
+    if isinstance(keep, dict):
+        if set(keep) != {'prefer_higher'}:
+            raise ValueError(
+                "keep as a dict takes exactly one key, 'prefer_higher'. "
+                f'Got {sorted(keep)}.'
+            )
+        prefer_col = keep['prefer_higher']
+        if prefer_col not in df.columns:
+            raise ValueError(
+                f'prefer_higher column {prefer_col!r} is not in the data. '
+                f'Available columns: {sorted(df.columns)}.'
+            )
+        keep = False
+
     overlaps = find_overlaps(df, iou=True).query(
         ' | '.join(f'({c})' for c in conditions)
     )
@@ -1052,12 +1078,6 @@ def resolve_overlapping_polygons(
 
     if snippet_cols is None:
         snippet_cols = compare_cols[:5]
-
-    # Unpack dict form {'prefer_higher': col} into a flat keep=False + prefer_col.
-    prefer_col = None
-    if isinstance(keep, dict):
-        prefer_col = keep.get('prefer_higher')
-        keep = False
 
     # Sort so that MultiIndex .loc lookups in the loop below don't trigger
     # PerformanceWarning about indexing past lexsort depth.
@@ -1098,7 +1118,7 @@ def resolve_overlapping_polygons(
                 or right_idx in dupes_to_drop
             ):
                 continue
-            if prefer_col is not None and prefer_col in df.columns:
+            if prefer_col is not None:
                 # Keep the polygon with the higher value in prefer_col.
                 # Works with ordered categoricals, numerics, or any comparable
                 # type. Falls through to area tiebreak if values are equal or
@@ -1180,6 +1200,51 @@ def resolve_overlapping_polygons(
     return df
 
 
+# Shapely type ids for the geometry types an overlay result may keep.
+_POLYGON_TYPE_IDS = (3, 6)  # Polygon, MultiPolygon
+_GEOMETRY_COLLECTION_TYPE_ID = 7
+
+
+def _polygonal_only(gdf):
+    """Reduce each overlay row to the polygonal part of its geometry.
+
+    `gpd.overlay(..., keep_geom_type=False)` returns a
+    GeometryCollection whenever two polygons share an area *and* touch
+    along an edge or at a point: the collection holds the overlap
+    polygon next to a LineString or Point. Filtering the result down to
+    Polygon/MultiPolygon rows would discard that pair entirely, losing a
+    real overlap (and, in identity or union mode, re-emitting the left
+    polygon as fully unmatched). Keep the polygon part instead, and drop
+    only rows that carry no area at all.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Overlay output, possibly holding mixed geometry types.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Rows with a non-empty polygonal geometry, in input order.
+    """
+    geoms = np.asarray(gdf.geometry.values, dtype=object)
+    type_ids = shapely.get_type_id(geoms)
+    collections = type_ids == _GEOMETRY_COLLECTION_TYPE_ID
+    if collections.any():
+        geoms = geoms.copy()
+        for position in np.flatnonzero(collections):
+            parts = shapely.get_parts(geoms[position])
+            polygons = parts[np.isin(shapely.get_type_id(parts), _POLYGON_TYPE_IDS)]
+            geoms[position] = (
+                shapely.union_all(polygons) if len(polygons) else Polygon()
+            )
+        type_ids = shapely.get_type_id(geoms)
+    keep = np.isin(type_ids, _POLYGON_TYPE_IDS) & ~shapely.is_empty(geoms)
+    out = gdf.loc[keep].copy()
+    out.geometry = gpd.GeoSeries(geoms[keep], index=out.index, crs=gdf.crs)
+    return out
+
+
 def _coverage_fractions(piece_intersection, index_name, gdf):
     """Return fraction of each polygon in gdf covered by piece_intersection."""
     frag_area = shapely.area(piece_intersection.geometry.values)
@@ -1232,12 +1297,9 @@ def _unmatched_piece(gdf_self, self_idx, other_idx, other_data_cols, ids):
 
 def _identity_overlay(gdf_left, gdf_right, left_index_name, right_index_name):
     """Fast identity overlay: intersection, unmatched left, leftover left fragments."""
-    piece_intersection = gpd.overlay(
-        gdf_left, gdf_right, how='intersection', keep_geom_type=False
+    piece_intersection = _polygonal_only(
+        gpd.overlay(gdf_left, gdf_right, how='intersection', keep_geom_type=False)
     )
-    piece_intersection = piece_intersection[
-        piece_intersection.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
-    ]
 
     frac = _coverage_fractions(piece_intersection, left_index_name, gdf_left)
     matched_ids = set(piece_intersection[left_index_name].unique())
@@ -1302,12 +1364,9 @@ def _identity_overlay(gdf_left, gdf_right, left_index_name, right_index_name):
 
 def _union_overlay(gdf_left, gdf_right, left_index_name, right_index_name):
     """Fast union overlay: intersection + unmatched both sides + leftover both sides."""
-    piece_intersection = gpd.overlay(
-        gdf_left, gdf_right, how='intersection', keep_geom_type=False
+    piece_intersection = _polygonal_only(
+        gpd.overlay(gdf_left, gdf_right, how='intersection', keep_geom_type=False)
     )
-    piece_intersection = piece_intersection[
-        piece_intersection.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])
-    ]
 
     _TOL = 1e-6
 
@@ -1546,8 +1605,9 @@ def overlay_polygons(
     _gdf2 = _slim(layer2, alias2, idx2, _A2, right_keep)
 
     if how == 'intersection':
-        result = gpd.overlay(_gdf1, _gdf2, how='intersection', keep_geom_type=False)
-        result = result[result.geometry.geom_type.isin(['Polygon', 'MultiPolygon'])]
+        result = _polygonal_only(
+            gpd.overlay(_gdf1, _gdf2, how='intersection', keep_geom_type=False)
+        )
     elif how == 'identity':
         result = _identity_overlay(_gdf1, _gdf2, alias1, alias2)
     else:

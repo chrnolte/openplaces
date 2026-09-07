@@ -418,3 +418,42 @@ def test_warn_on_geo_id_area_mismatch_within_tolerance_does_not_flag():
         flagged = warn_on_geo_id_area_mismatch(crosswalk, new, old, tolerance=0.01)
 
     assert flagged.empty
+
+
+def _duplicate_id_gdf():
+    """Two distinct parcels sharing one id label."""
+    return gpd.GeoDataFrame(
+        {
+            'parcel_id': ['old_dup', 'old_dup'],
+            'geometry': [box(0, 0, 0.001, 0.001), box(0.01, 0, 0.011, 0.001)],
+        },
+        crs='EPSG:4326',
+    ).set_index('parcel_id')
+
+
+def test_duplicate_old_id_raises():
+    # Every stage addresses a parcel by this id, so a repeated label
+    # attaches areas to the wrong pairs and drops a twin from the
+    # unmatched remainder. Which copy a pair means is unrecoverable.
+    old = _duplicate_id_gdf()
+    new = _gdf({'new_dup': box(0, 0, 0.001, 0.001)})
+
+    with pytest.raises(ValueError, match='old_dup'):
+        build_id_or_overlay_crosswalk(new, old, min_overlap_m2=0)
+
+
+def test_area_mismatch_check_rejects_a_duplicate_id():
+    old = _duplicate_id_gdf()
+    new = _gdf({'new_dup': box(0, 0, 0.001, 0.001)})
+    crosswalk = pd.DataFrame(
+        {
+            'parcel_id_old': ['old_dup'],
+            'parcel_id_new': ['new_dup'],
+            'area_ha': [1.0],
+            'match_type': ['geo_id'],
+            'fraction_of_old': [1.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match='old_dup'):
+        warn_on_geo_id_area_mismatch(crosswalk, new, old, silent=True)

@@ -33,12 +33,21 @@ def get_crs(filepath, layer=None):
 
         wkt = json.loads(geo).get('columns', {})
         for col_meta in wkt.values():
-            if 'crs' in col_meta:
-                return CRS.from_user_input(col_meta['crs'])
+            # GeoParquet separates two cases this used to conflate. An
+            # absent `crs` key means OGC:CRS84, so return that rather
+            # than None, which callers pass straight to `to_crs`. An
+            # explicit null (what geopandas writes for a frame with no
+            # CRS) means the data is not georeferenced, so warn and
+            # return None instead of handing None to `from_user_input`,
+            # which raises.
+            crs = col_meta.get('crs', 'OGC:CRS84')
+            if crs is None:
+                break
+            return CRS.from_user_input(crs)
         warnings.warn('No CRS found in input data.')
         return None
     geo_metadata = pyogrio.read_info(filepath, layer=layer)
-    if 'crs' not in geo_metadata:
+    if geo_metadata.get('crs') is None:
         warnings.warn('No CRS found in input data.')
         return None
     return geo_metadata['crs']

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from exactextract import exact_extract
+from rasterio import windows
 from rasterio.features import geometry_mask, rasterize
 from rasterio.mask import mask
 from rasterio.windows import Window, from_bounds
@@ -53,11 +54,16 @@ def compute_vicinity_coverage(
     px_radius : int
         Neighborhood radius, in source-raster pixels.
 
+    Pixels carrying the source raster's nodata value are excluded from
+    both the numerator and the denominator, so the percentage is a share
+    of the observed neighborhood rather than of its full pixel count.
+
     Returns
     -------
     array : numpy.ndarray
-        uint8 array (percent coverage, 0-100; 255 = nodata) for the *bounds*
-        window (halo already cropped off).
+        uint8 array (percent coverage, 0-100; 255 = nodata) for the part
+        of the *bounds* window that lies inside the raster (halo already
+        cropped off, and the window clipped to the raster's own extent).
     transform : affine.Affine
         Transform for `array`.
     crs
@@ -72,17 +78,28 @@ def compute_vicinity_coverage(
         core_window = from_bounds(*bounds, transform=src.transform)
         core_window = core_window.round_lengths().round_offsets()
 
+        # Bounds can reach past the raster (a coastal or border admin
+        # unit whose bounding box includes open water or another
+        # country). Clip the core window to the raster before padding:
+        # left uncliped, its offsets go negative, the crop below reads
+        # from the end of the array, and the output transform would
+        # place that truncated array outside the raster.
+        raster_window = Window(0, 0, src.width, src.height)
+        if not windows.intersect([core_window, raster_window]):
+            raise ValueError(f'bounds {bounds} do not intersect raster {raster_path}.')
+        core_window = core_window.intersection(raster_window)
+
         padded_window = Window(
             core_window.col_off - px_radius,
             core_window.row_off - px_radius,
             core_window.width + 2 * px_radius,
             core_window.height + 2 * px_radius,
         )
-        raster_window = Window(0, 0, src.width, src.height)
         padded_window = padded_window.intersection(raster_window)
 
         arr = src.read(1, window=padded_window).astype(np.float64)
         out_transform = src.window_transform(core_window)
+        nodata = src.nodata
 
         # Where the halo was clipped by the raster's own extent (e.g. a
         # coastal/border admin unit), the padded window is smaller than
@@ -93,12 +110,23 @@ def compute_vicinity_coverage(
 
         crs = src.crs
 
-    valid = (arr >= 0).astype(np.float64)
-    filled = np.where(arr >= 0, arr, 0)
+    # The source is a boolean 0/1 raster, so anything that is not 0 or 1
+    # carries no coverage information: the declared nodata sentinel (255
+    # in the uint8 layers this runs on, which `arr >= 0` read as a
+    # covered pixel and pushed the percentage past 100), NaN, and any
+    # stray negative. Excluding them from both sums leaves the
+    # percentage a share of the neighborhood that was observed.
+    valid_mask = ~np.isnan(arr) & (arr >= 0)
+    if nodata is not None and not np.isnan(nodata):
+        valid_mask &= arr != nodata
+    valid = valid_mask.astype(np.float64)
+    filled = np.where(valid_mask, arr, 0)
 
     num = fftconvolve(filled, kernel, mode='same')
     den = fftconvolve(valid, kernel, mode='same')
-    coverage = np.where(den > 0, num / den * 100, np.nan)
+    coverage = np.full(num.shape, np.nan)
+    np.divide(num, den, out=coverage, where=den > 0)
+    coverage *= 100
 
     core = coverage[
         row_offset : row_offset + round(core_window.height),

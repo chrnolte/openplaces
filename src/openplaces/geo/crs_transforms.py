@@ -132,6 +132,27 @@ def _write_registry_entry(path: Path, entry: dict) -> None:
         raise
 
 
+def _accuracy_sort_key(transformer):
+    """Sort key ranking a pyproj transformer by accuracy, then description.
+
+    Parameters
+    ----------
+    transformer : pyproj.transformer.Transformer
+        One candidate from a `pyproj.transformer.TransformerGroup`.
+
+    Returns
+    -------
+    tuple
+        `(accuracy, description)`, with an unknown accuracy sorted
+        last. PROJ reports an exact operation as accuracy 0.0, which the
+        previous `(t.accuracy or -1) >= 0` test rewrote to infinity and
+        so ranked below every approximate sibling.
+    """
+    accuracy = transformer.accuracy
+    unknown = accuracy is None or accuracy < 0
+    return (float('inf') if unknown else accuracy, transformer.description)
+
+
 def resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
     """Resolve, download, and register the best transform for a CRS pair.
 
@@ -170,12 +191,7 @@ def resolve_crs_transform(source_crs, target_crs='EPSG:4326') -> dict:
             'operation(s) known but unavailable -- check network access).'
         )
 
-    # Sort available transformers by accuracy, breaking ties by description.
-    def _sort_key(t):
-        accuracy = t.accuracy if (t.accuracy or -1) >= 0 else float('inf')
-        return (accuracy, t.description)
-
-    best = min(group.transformers, key=_sort_key)
+    best = min(group.transformers, key=_accuracy_sort_key)
     template = _pipeline_template(best.definition)
 
     # Merge same-template sibling operations. This handles cases where a source

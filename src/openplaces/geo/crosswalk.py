@@ -45,6 +45,37 @@ CROSSWALK_COLUMNS = [
 MIN_CALIBRATION_ROWS = 20
 
 
+def _require_unique_ids(ids, label):
+    """Raise when the id column keying one side of a crosswalk repeats.
+
+    Parameters
+    ----------
+    ids : pandas.Series
+        Id values for one side of the crosswalk.
+    label : str
+        Name of that side, used in the error message.
+
+    Raises
+    ------
+    ValueError
+        When any id occurs more than once. Every stage addresses a parcel
+        by this id, so a repeated label makes the `.loc` area lookups
+        return one row per copy (a length error, or areas attached to the
+        wrong pairs), and the membership test that carries the unmatched
+        remainder forward drops a twin whose sibling matched. Which copy
+        a pair refers to cannot be recovered here.
+    """
+    duplicated = ids.duplicated()
+    if not duplicated.any():
+        return
+    examples = sorted(pd.unique(ids[duplicated].astype(str)))[:5]
+    raise ValueError(
+        f'{int(duplicated.sum())} {label} row(s) repeat an id that keys the '
+        f'crosswalk, for example {examples}. Deduplicate that side before '
+        'building the crosswalk.'
+    )
+
+
 def _id_series(gdf, id_col):
     return gdf.index.to_series(index=gdf.index) if id_col is None else gdf[id_col]
 
@@ -633,11 +664,18 @@ def build_id_or_overlay_crosswalk(
         ``'geo_id_kdtree'``, or ``'overlay'``), ``fraction_of_old``
         (share of *old* parcel's area assigned to this *new* parcel; sums to
         1.0 within each ``parcel_id_old`` group among matched rows).
+
+    Raises
+    ------
+    ValueError
+        When either side repeats a parcel id (`_require_unique_ids`).
     """
     new = new.copy()
     old = old.copy()
     new['parcel_id_new'] = _id_series(new, new_id_col).to_numpy()
     old['parcel_id_old'] = _id_series(old, old_id_col).to_numpy()
+    _require_unique_ids(new['parcel_id_new'], 'new')
+    _require_unique_ids(old['parcel_id_old'], 'old')
     new = _with_geo_id(new, geo_id_col)
     old = _with_geo_id(old, geo_id_col)
     new = _resolve_duplicate_geo_ids(
@@ -860,8 +898,12 @@ def warn_on_geo_id_area_mismatch(
     if matched.empty:
         return matched.assign(ratio=pd.Series(dtype=float))
 
-    new_by_id = new.set_index(_id_series(new, new_id_col))[['geometry']]
-    old_by_id = old.set_index(_id_series(old, old_id_col))[['geometry']]
+    new_ids = _id_series(new, new_id_col)
+    old_ids = _id_series(old, old_id_col)
+    _require_unique_ids(new_ids, 'new')
+    _require_unique_ids(old_ids, 'old')
+    new_by_id = new.set_index(new_ids)[['geometry']]
+    old_by_id = old.set_index(old_ids)[['geometry']]
 
     area_new = get_areas(new_by_id.loc[matched['parcel_id_new']], 'ha').to_numpy()
     area_old = get_areas(old_by_id.loc[matched['parcel_id_old']], 'ha').to_numpy()
