@@ -184,3 +184,11 @@ def test_a_failed_reship_leaves_the_previous_bundle_intact(mock_data_root, monke
     after = read_parquet(paths['canonical'])
     pd.testing.assert_frame_equal(before, after)
     assert list(after.index) == ['a', 'b', 'c', 'd']
+
+
+def test_unknown_region_still_raises_the_registry_error():
+    recipe = _recipe()
+    recipe['share']['delivery'] = {'admin_level': 2, 'regions': ['not-a-region']}
+
+    with pytest.raises(KeyError, match='Unknown region'):
+        delivery_regions(recipe)

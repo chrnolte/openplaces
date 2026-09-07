@@ -117,7 +117,7 @@ def delivery_regions(recipe) -> list[dict]:
         if rows.empty:
             # Ask the registry directly so its own error, which lists
             # what is registered, is the one the caller sees.
-            get_regions(name)
+            rows = get_regions(name)
         anchor = rows.get('region_admin_id', pd.Series(dtype=str))
         anchor = anchor[anchor.astype(str).str.strip().ne('')]
         regions.append(
