@@ -4,8 +4,10 @@ import json
 import os
 import time
 
+import geopandas as gpd
 import pandas as pd
 import pytest
+from shapely.geometry import Point
 
 import openplaces.diagnostics as diagnostics
 import openplaces.io as opio
@@ -120,11 +122,127 @@ def test_is_output_complete_rejects_bad_suffixed_registry_dtype(data_root):
     assert not cl.is_output_complete(NSI, COUNTY)
 
 
+def test_is_output_complete_requires_the_geometry_sidecar(data_root):
+    """A write killed between the two files is not complete.
+
+    save_parquet writes the attribute table first and the '_geo' sidecar
+    second; the attribute half passes every check on its own, so a
+    consumer killed in between counted as complete and its inputs were
+    reclaimed with receipts.
+    """
+    path = _nsi_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = gpd.GeoDataFrame(
+        {'value': [1.0, 2.0]},
+        geometry=[Point(0, 0), Point(1, 1)],
+        crs='EPSG:4326',
+    )
+    opio.save_parquet(frame, path)
+    geo_path = path.with_name(path.stem + '_geo' + path.suffix)
+    assert geo_path.exists()
+    assert cl.is_output_complete(NSI, COUNTY)
+
+    geo_path.unlink()
+    assert not cl.is_output_complete(NSI, COUNTY)
+
+
+def test_is_output_complete_rejects_truncated_geometry_sidecar(data_root):
+    path = _nsi_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame = gpd.GeoDataFrame({'value': [1.0]}, geometry=[Point(0, 0)], crs='EPSG:4326')
+    opio.save_parquet(frame, path)
+    geo_path = path.with_name(path.stem + '_geo' + path.suffix)
+    geo_path.write_bytes(b'PAR1 truncated')
+    assert not cl.is_output_complete(NSI, COUNTY)
+
+
 def test_is_output_complete_rejects_truncated_parquet(data_root):
     path = _nsi_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b'PAR1 this is not a parquet footer')
     assert not cl.is_output_complete(NSI, COUNTY)
+
+
+# Coverage of a coarser consumer
+
+
+STATE = 'US-NC'
+OTHER_COUNTY = 'US-NC-CAB'
+
+
+def _write_parquet_with_coverage(path, partitions):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    opio.save_parquet(
+        pd.DataFrame({'geo_id': ['a'], 'value': [1.0]}),
+        path,
+        file_metadata={'openplaces:partitions': json.dumps(list(partitions))},
+    )
+    return path
+
+
+def _coarser_consumer_index(consumer_id, node_id):
+    """Index with one consumer that saves a state-level aggregate."""
+    recipe = dict(get_recipe_by_id(consumer_id))
+    save_to = dict(recipe.get('save_to') or {})
+    save_to['admin_level'] = 2
+    recipe['save_to'] = save_to
+    index = cl._DependencyIndex.__new__(cl._DependencyIndex)
+    index.errors = []
+    index.recipes = {consumer_id: recipe}
+    index._literal = {node_id: {consumer_id}}
+    index._auto_consumers = []
+    index._auto_cache = {}
+    return index
+
+
+def test_coarser_consumer_must_have_consumed_the_county(data_root):
+    """A state aggregate that has not read this county does not free it.
+
+    The coverage requirement used to be ORed with a plain existence
+    check, which re-ran the same test without it, so the requirement
+    never bound and the county was deleted with a receipt that then made
+    ingest skip regenerating it.
+    """
+    index = _coarser_consumer_index(FOOTPRINT_SPINE, NSI)
+    consumer_path = get_output_path(index.recipes[FOOTPRINT_SPINE], admin_id=STATE)
+    _write_parquet_with_coverage(consumer_path, [OTHER_COUNTY])
+    deletable, blocked_by, _ = cl._consumers_complete(NSI, COUNTY, index)
+    assert not deletable
+    assert blocked_by == [FOOTPRINT_SPINE]
+
+    _write_parquet_with_coverage(consumer_path, [OTHER_COUNTY, COUNTY])
+    deletable, _, verified = cl._consumers_complete(NSI, COUNTY, index)
+    assert deletable
+    assert [c['recipe_id'] for c in verified] == [FOOTPRINT_SPINE]
+
+
+def test_cascaded_receipt_must_record_the_county_it_consumed(data_root):
+    """The receipt cascade carries the coverage requirement with it."""
+    index = _coarser_consumer_index(FOOTPRINT_SPINE, NSI)
+    consumer_path = get_output_path(index.recipes[FOOTPRINT_SPINE], admin_id=STATE)
+    cl.write_receipt(
+        consumer_path,
+        {
+            'recipe_id': FOOTPRINT_SPINE,
+            'admin_id': STATE,
+            'partitions': [OTHER_COUNTY],
+            'consumers_verified': [],
+        },
+    )
+    deletable, _, _ = cl._consumers_complete(NSI, COUNTY, index)
+    assert not deletable
+
+    cl.write_receipt(
+        consumer_path,
+        {
+            'recipe_id': FOOTPRINT_SPINE,
+            'admin_id': STATE,
+            'partitions': [OTHER_COUNTY, COUNTY],
+            'consumers_verified': [],
+        },
+    )
+    deletable, _, _ = cl._consumers_complete(NSI, COUNTY, index)
+    assert deletable
 
 
 # Receipt-justified skip (design section 4.3)
@@ -206,7 +324,121 @@ def test_receipt_skip_disabled_by_config(data_root, monkeypatch):
     assert not cl.receipt_justifies_skip(NSI, COUNTY)
 
 
+# Deletion
+
+
+def test_delete_with_receipt_survives_a_truncated_footer(data_root):
+    """A corrupt output is deleted, not raised on.
+
+    The coverage footer was read without a guard, so an output truncated
+    by a killed job raised ArrowInvalid mid-batch and, through the
+    stages' cleanup='consumed' hook, crashed the caller after the unit's
+    own output had been written.
+    """
+    out = _nsi_path()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(b'PAR1 this is not a parquet footer')
+
+    action, _ = cl._delete_output_with_receipt(out, NSI, COUNTY, [])
+
+    assert action == 'deleted'
+    assert not out.exists()
+    assert cl.read_receipt(out)['partitions'] == []
+
+
+# Dependency index
+
+
+def test_global_node_resolves_consumers_at_their_own_scope():
+    """A node with no admin unit must not make every consumer unresolved.
+
+    admin_id None became '', which raised in AdminId and was swallowed as
+    "unresolved", so level-0 outputs were neither deletable nor
+    receipt-skippable and a deleted global tile was re-ingested on every
+    run. Such a consumer is resolved against its own admin scope instead.
+    """
+    index = cl._dependency_index()
+    consumer = FOOTPRINT_SPINE
+    assert consumer in index._auto_consumers
+    upstreams, unresolved = index._auto_upstreams(consumer, '')
+    assert not unresolved
+    assert (upstreams, unresolved) == index._auto_upstreams(consumer, 'US')
+
+
+# Reprocess supersedes the inputs' receipts
+
+
+def test_reprocess_discards_the_receipts_of_its_inputs(data_root):
+    """A rerun must not skip regenerating an input it is about to read.
+
+    Cleanup deletes an input once its consumers exist, and the receipt
+    it leaves names those consumers. Rerunning a consumer left that
+    receipt standing, so the next ingest skipped the input through it
+    and the rerun then failed reading the missing file.
+    """
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
+    assert cl.receipt_justifies_skip(NSI, COUNTY)
+
+    discarded = cl.discard_input_receipts(FOOTPRINT_SPINE, COUNTY)
+
+    assert _nsi_path() in discarded
+    assert cl.read_receipt(_nsi_path()) is None
+    assert not cl.receipt_justifies_skip(NSI, COUNTY)
+
+
 # Locks
+
+
+def test_data_lock_release_keeps_a_successor_lock(data_root):
+    """Releasing must not unlink a lock somebody else now owns.
+
+    A compact that runs longer than stale_after_s loses exclusion; if it
+    then unlinks unconditionally, it deletes the lock of the job that
+    took over and two destructive runs proceed together.
+    """
+    lock = cl.DataLock(COUNTY, timeout_s=0.1)
+    lock.__enter__()
+    lock.path.write_text('someone-else-token', encoding='utf-8')
+    lock.__exit__(None, None, None)
+    assert lock.path.exists()
+    assert lock.path.read_text(encoding='utf-8') == 'someone-else-token'
+    lock.path.unlink()
+
+
+def test_data_lock_takeover_claims_the_file_by_token(data_root):
+    stale = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=3600.0)
+    stale.__enter__()
+    old = time.time() - 7200
+    os.utime(stale.path, (old, old))
+
+    taker = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=3600.0)
+    with taker:
+        assert taker.token in taker.path.read_text(encoding='utf-8')
+        # The overrun holder no longer owns the file, so its release is
+        # a no-op rather than a deletion
+        stale.__exit__(None, None, None)
+        assert taker.path.exists()
+    assert not taker.path.exists()
+
+
+def test_data_lock_touch_refreshes_the_mtime(data_root):
+    lock = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=0.0)
+    with lock:
+        old = time.time() - 7200
+        os.utime(lock.path, (old, old))
+        lock.touch()
+        assert time.time() - lock.path.stat().st_mtime < 60
+
+
+def test_data_lock_touch_is_rate_limited(data_root):
+    lock = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=3600.0)
+    with lock:
+        old = time.time() - 7200
+        os.utime(lock.path, (old, old))
+        lock.touch()
+        assert lock.path.stat().st_mtime == pytest.approx(old, abs=2)
 
 
 def test_data_lock_exclusive(data_root):
@@ -272,6 +504,64 @@ def test_cleanup_stage_filter(data_root):
         verbose=False,
     )
     assert (report['recipe_id'] != NSI).all()
+
+
+def test_finer_saving_upstream_is_expanded_to_its_own_units(data_root):
+    """A town-level input of a county walk stays reclaimable.
+
+    Such a node used to keep the walk admin, where get_output_path
+    raises on the level mismatch; the exception was swallowed, so the
+    node silently vanished from the report and no cleanup ever reached
+    it. Only units that actually have an output are visited.
+    """
+    recipe = dict(get_recipe_by_id(NSI))
+    save_to = dict(recipe.get('save_to') or {})
+    save_to['admin_level'] = 4
+    recipe['save_to'] = save_to
+
+    in_scope = [f'{COUNTY}-AA', f'{COUNTY}-AB']
+    out_of_scope = 'US-NC-CAB-AA'
+    for town in [*in_scope, out_of_scope]:
+        _write_parquet(get_output_path(recipe, admin_id=town))
+
+    # The walk admin itself has no output at that level at all
+    with pytest.raises(ValueError):
+        get_output_path(recipe, admin_id=COUNTY)
+
+    node_admins = cl._node_admins(recipe, COUNTY, 3, expand_finer=True)
+    assert sorted(str(a) for a in node_admins) == in_scope
+    # The scan is opt-in: without it the node stays at the walk admin
+    assert [str(a) for a in cl._node_admins(recipe, COUNTY, 3)] == [COUNTY]
+
+    rows = []
+    for node_admin in node_admins:
+        rows.extend(
+            cl._cleanup_node(
+                NSI,
+                recipe,
+                node_admin,
+                cl._dependency_index(),
+                include_images=False,
+                aggressive=False,
+                dry_run=True,
+            )
+        )
+    assert sorted(row['admin_id'] for row in rows) == in_scope
+
+
+def test_finer_saving_upstream_without_output_keeps_the_walk_admin(data_root):
+    """With nothing written, the node is still yielded once.
+
+    flow.dag walks this graph to enumerate jobs, so a fresh install with
+    no outputs must not lose the node.
+    """
+    recipe = dict(get_recipe_by_id(NSI))
+    save_to = dict(recipe.get('save_to') or {})
+    save_to['admin_level'] = 4
+    recipe['save_to'] = save_to
+    assert [str(a) for a in cl._node_admins(recipe, COUNTY, 3, expand_finer=True)] == [
+        COUNTY
+    ]
 
 
 def _image_cache_frame(rows):
@@ -342,6 +632,70 @@ def test_delete_image_caches_handles_empty_inventory(monkeypatch, capsys):
     assert not hasattr(diagnostics, 'delete_image_caches')
 
 
+# Matching a file to the recipe that writes it
+
+
+MASSGIS = 'US-MA_parcel-massgis-2025'
+MASSGIS_TOWN = 'US-MA-MI'
+STORIES_ENRICH = 'US_footprint_built-n-stories-brails-2026'
+VICTORIA = 'US-TX-VIC_property-victoriacad-2026'
+
+
+def test_additional_layer_output_matches_its_host_recipe():
+    """A secondary entity's output is not an orphan.
+
+    Its token appears in no recipe ID, so indexing recipe IDs alone left
+    the MassGIS property table matching nothing; orphan GC would unlink a
+    table the recipe still produces and the harmonizer reads.
+    """
+    recipe_id, admin = cl._match_recipe_for_file(
+        f'{MASSGIS_TOWN}_property-massgis-2025'
+    )
+    assert (recipe_id, admin) == (MASSGIS, MASSGIS_TOWN)
+
+
+def test_additional_layer_output_survives_orphan_gc(data_root):
+    layer_path = get_output_path(
+        get_recipe_by_id(MASSGIS), admin_id=MASSGIS_TOWN, layer='property'
+    )
+    _write_parquet(layer_path)
+    old = time.time() - 30 * 86400
+    os.utime(layer_path, (old, old))
+
+    report = cl.compact(delete=('orphans',), dry_run=False)
+    row = report[report['path'] == cl._relative_posix(layer_path)]
+    assert layer_path.exists()
+    assert (row['class'] != 'orphan').all()
+    assert (row['recipe_id'] == MASSGIS).all()
+
+
+def test_enrich_evidence_matches_its_own_recipe():
+    """Evidence is named after the spine, so it matched the spine.
+
+    The trailing dataset is what identifies the enrich recipe; without
+    it the evidence file was judged by the spine's retention class and
+    the spine's consumer set, and `compact(recipes=[enrich_id])` listed
+    nothing at all.
+    """
+    stem = f'{COUNTY}_footprint-spine-2026_built-n-stories-brails-2026'
+    recipe_id, admin = cl._match_recipe_for_file(stem)
+    assert (recipe_id, admin) == (STORIES_ENRICH, COUNTY)
+
+
+def test_suffixed_recipe_wins_over_its_unsuffixed_sibling():
+    recipe_id, _ = cl._match_recipe_for_file(
+        'US-TX-VIC_property-victoriacad-2026_improvement-detail'
+    )
+    assert recipe_id == f'{VICTORIA}_improvement-detail'
+    recipe_id, _ = cl._match_recipe_for_file(VICTORIA)
+    assert recipe_id == VICTORIA
+
+
+def test_geometry_sidecar_matches_its_own_output():
+    recipe_id, _ = cl._match_recipe_for_file(f'{COUNTY}_footprint-spine-2026_geo')
+    assert recipe_id == FOOTPRINT_SPINE
+
+
 # compact()
 
 
@@ -381,6 +735,37 @@ def test_aggressive_keeps_explicit_retention(data_root):
     assert (geospine_rows['action'] == 'kept').all()
     for path in _spine_paths()[2:]:
         assert path.exists()
+
+
+def test_aggressive_keeps_config_protected_recipe(data_root, monkeypatch):
+    """A retention.recipes override survives the aggressive demotion.
+
+    It is the documented way to protect a recipe whose YAML declares no
+    retention of its own, so an aggressive sweep that reads only the
+    YAML deletes exactly what the user pinned.
+    """
+    monkeypatch.setitem(
+        cfg.config,
+        'retention',
+        {'cleanup': {}, 'recipes': {FOOTPRINT_SPINE: 'keep'}},
+    )
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    for curated_id in ('US_footprint-openplaces-2026', 'US_parcel-openplaces-2026'):
+        _write_parquet(get_output_path(get_recipe_by_id(curated_id), admin_id=COUNTY))
+
+    report = cl.cleanup(
+        'US_footprint-openplaces-2026',
+        admin_ids=[COUNTY],
+        aggressive=True,
+        dry_run=False,
+        verbose=False,
+    )
+    rows = report[report['recipe_id'] == FOOTPRINT_SPINE]
+    assert not rows.empty
+    assert (rows['class'] == 'keep').all()
+    assert (rows['action'] == 'kept').all()
+    assert _spine_paths()[0].exists()
 
 
 def test_compact_classification(data_root):

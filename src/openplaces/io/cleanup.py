@@ -32,7 +32,7 @@ import pandas as pd
 from openplaces.config import cfg
 from openplaces.core.attribute_registry import get_data_type
 from openplaces.core.constants import NEVER_DELETE, STANDARD_DIRS
-from openplaces.core.schema import AdminId
+from openplaces.core.schema import AdminId, sanitize
 from openplaces.io import delete_parquet
 from openplaces.io.aggregate import COVERAGE_ALL, read_partition_coverage
 from openplaces.recipe import (
@@ -43,6 +43,7 @@ from openplaces.recipe import (
     get_recipe_retention,
     get_save_admin_level,
     resolve_attribute_name,
+    saves_geometry,
 )
 
 RECEIPT_SUFFIX = '.consumed.json'
@@ -98,6 +99,18 @@ def _cleanup_config() -> dict:
     return (cfg.get('retention') or {}).get('cleanup') or {}
 
 
+def _recipe_retention_override(recipe_id) -> str | None:
+    """Per-recipe retention set in the user's config, if any.
+
+    Mirrors the retention.recipes lookup in
+    :meth:`~openplaces.config.OpenPlacesConfig.retention_for`.
+    """
+    if recipe_id is None:
+        return None
+    recipes = (cfg.get('retention') or {}).get('recipes') or {}
+    return recipes.get(str(recipe_id))
+
+
 # RECEIPTS
 
 
@@ -134,6 +147,61 @@ def discard_receipt(output_path) -> None:
     receipt_path(output_path).unlink(missing_ok=True)
 
 
+def discard_input_receipts(recipe, admin_id=None) -> list[Path]:
+    """Discard the tombstone receipts of one recipe's direct inputs.
+
+    A stage discards its own receipt when reprocessing, but an input's
+    receipt records *this* output as one of the consumers that justified
+    deleting it. Left standing, it makes the next ingest skip
+    regenerating an input the rerun is about to read, which then fails
+    on the missing file. A deliberate rerun supersedes its inputs'
+    receipts the same way it supersedes its own, so the stage
+    entrypoints call this on reprocess.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        The recipe being reprocessed.
+    admin_id : str or AdminId, optional
+        Admin unit being reprocessed; None for a global run.
+
+    Returns
+    -------
+    list of pathlib.Path
+        Output paths whose receipts were removed.
+    """
+    if isinstance(recipe, str):
+        try:
+            recipe = get_recipe_by_id(recipe)
+        except Exception:
+            return []
+    try:
+        edges = get_recipe_dependencies(recipe, admin_id=admin_id)
+    except Exception:
+        return []
+    admin_level = AdminId(str(admin_id)).get_level() if admin_id else 0
+    discarded: list[Path] = []
+    seen: set[str] = set()
+    for edge in edges:
+        upstream_id = edge.upstream_recipe_id
+        if not upstream_id or upstream_id in seen:
+            continue
+        seen.add(upstream_id)
+        try:
+            upstream = get_recipe_by_id(upstream_id)
+        except Exception:
+            continue
+        for node_admin in _node_admins(upstream, admin_id, admin_level):
+            try:
+                out_path = get_output_path(upstream, admin_id=node_admin)
+            except Exception:
+                continue
+            if receipt_path(out_path).exists():
+                discard_receipt(out_path)
+                discarded.append(out_path)
+    return discarded
+
+
 # COMPLETENESS CHECKS
 
 
@@ -165,6 +233,29 @@ def _parquet_schema_ok(path) -> bool:
     return True
 
 
+def _geometry_sidecar_ok(path: Path) -> bool:
+    """True when an output's '_geo' sidecar is present and readable.
+
+    save_parquet writes the attribute table first and the geometry
+    sidecar second, so a job killed between the two leaves an attribute
+    file that passes every check on its own while its geometry is gone.
+    A '_join_id' column exists only to join to that sidecar, which makes
+    it the one unambiguous on-disk signal that the sidecar is owed. An
+    output keyed on 'geo_id' carries no such signal, so a missing
+    sidecar there still goes unnoticed; a sidecar that is present is
+    validated either way.
+    """
+    geo_path = path.with_name(path.stem + '_geo' + path.suffix)
+    if geo_path.exists():
+        return _parquet_schema_ok(geo_path)
+    try:
+        import pyarrow.parquet as pq
+
+        return '_join_id' not in pq.read_schema(path).names
+    except Exception:
+        return False
+
+
 def _required_subadmin_ids(admin_id) -> set[str] | None:
     """Sub-admin (level 4) units of an admin unit, or None when unknown.
 
@@ -185,6 +276,8 @@ def is_output_complete(recipe, admin_id, required_partitions=None) -> bool:
 
     - plain parquet: exists AND the footer is readable AND registry-known
       columns pass the (schema-only) dtype check
+    - split geometry layout: the '_geo' sidecar, which save_parquet writes
+      second, is present and readable (see `_geometry_sidecar_ok`)
     - aggregated/partitioned parquet with a coverage footer: additionally,
       the recorded coverage is a superset of `required_partitions`
     - enrich evidence: coverage covers all sub-admin units, or the
@@ -217,9 +310,12 @@ def is_output_complete(recipe, admin_id, required_partitions=None) -> bool:
         return True
     if not _parquet_schema_ok(out_path):
         return False
+    if saves_geometry(recipe) and not _geometry_sidecar_ok(out_path):
+        return False
     coverage = read_partition_coverage(out_path)
     if not coverage or COVERAGE_ALL in coverage:
-        # No coverage footer (plain output or legacy file) or full coverage
+        # No coverage footer (a plain or legacy file), or full
+        # coverage
         return True
     if required_partitions is not None:
         return set(map(str, required_partitions)) <= coverage
@@ -250,6 +346,48 @@ def output_conceptually_exists(recipe, admin_id) -> bool:
     except Exception:
         return False
     return read_receipt(out_path) is not None
+
+
+def _consumer_satisfies(recipe, admin_id, required_partitions=None) -> bool:
+    """True when a consumer counts as complete for reclaiming an input.
+
+    Physical completeness first; a consumer that was itself cleaned up
+    still counts through its own tombstone receipt (the receipt cascade),
+    but only when that receipt records coverage of the partitions the
+    input is required to be in. Falling back to bare existence instead
+    dropped the requirement altogether, so a county input a state
+    aggregate had not consumed yet was deleted with a receipt that then
+    made ingest skip regenerating it.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Consumer recipe ID or loaded recipe dictionary.
+    admin_id : str or AdminId or None
+        Admin unit of the consumer's output.
+    required_partitions : iterable of str, optional
+        Partition or sub-admin IDs the consumer must have consumed.
+    """
+    if is_output_complete(recipe, admin_id, required_partitions=required_partitions):
+        return True
+    if isinstance(recipe, str):
+        try:
+            recipe = get_recipe_by_id(recipe)
+        except Exception:
+            return False
+    try:
+        out_path = get_output_path(recipe, admin_id=admin_id)
+    except Exception:
+        return False
+    receipt = read_receipt(out_path)
+    if receipt is None:
+        return False
+    if required_partitions is None:
+        return True
+    recorded = set(map(str, receipt.get('partitions') or []))
+    if COVERAGE_ALL in recorded:
+        return True
+    return set(map(str, required_partitions)) <= recorded
 
 
 def _path_conceptually_exists(path: Path) -> bool:
@@ -356,10 +494,16 @@ class _DependencyIndex:
         if key not in self._auto_cache:
             upstream_ids: set[str] = set()
             unresolved = False
+            consumer = self.recipes[consumer_id]
+            # A global node has no admin unit of its own, and '' is not
+            # one either: it raised in AdminId, which marked every
+            # auto-discovering consumer unresolved, so a level-0 output
+            # was neither deletable nor receipt-skippable and a deleted
+            # global tile was re-ingested every run. Resolve such a node
+            # against the consumer's own scope instead.
+            resolve_admin = admin_str or consumer.get('admin_id')
             try:
-                edges = get_recipe_dependencies(
-                    self.recipes[consumer_id], admin_id=admin_str
-                )
+                edges = get_recipe_dependencies(consumer, admin_id=resolve_admin)
             except Exception:
                 edges = []
                 unresolved = True
@@ -399,13 +543,12 @@ def _dependency_index() -> _DependencyIndex:
 
 
 def _truncate_admin(admin_id, level: int) -> AdminId | None:
+    """AdminId.truncate_to_level, tolerating None and a plain string."""
     if admin_id is None:
         return None
     if not isinstance(admin_id, AdminId):
         admin_id = AdminId(admin_id)
-    if level <= 0:
-        return None
-    return AdminId(*admin_id.levels[:level])
+    return admin_id.truncate_to_level(level)
 
 
 def _consumers_complete(
@@ -452,9 +595,9 @@ def _consumers_complete(
             continue
         consumer_admin = _truncate_admin(admin_id, consumer_level)
         required = {str(admin_id)} if consumer_level < node_level else None
-        complete = is_output_complete(
+        complete = _consumer_satisfies(
             consumer_recipe, consumer_admin, required_partitions=required
-        ) or output_conceptually_exists(consumer_recipe, consumer_admin)
+        )
         if not complete:
             blocked_by.append(consumer_id)
             continue
@@ -486,6 +629,24 @@ class DataLock:
     different counties run concurrently; the global lock
     (`.openplaces.lock`) serializes data-root-wide operations like
     compact(). Stale locks (older than `stale_after_s`) are taken over.
+
+    The lock file carries a per-instance owner token, and three rules
+    follow from it. A takeover claims the file by atomic replace and then
+    reads it back, so of two jobs racing on the same stale lock only the
+    one whose token survived proceeds. Release unlinks the file only
+    while it still holds that token, so a job that lost the race, or one
+    that overran, cannot delete its successor's lock. And `touch`
+    refreshes the mtime during a long operation, so exclusion is not lost
+    part way through a compact that runs longer than `stale_after_s`.
+
+    Parameters
+    ----------
+    admin_id : str or AdminId, optional
+        Admin unit to scope the lock to; None takes the global lock.
+    timeout_s : float
+        How long to wait for a held lock before raising TimeoutError.
+    stale_after_s : float
+        Age past which a lock file is treated as abandoned.
     """
 
     def __init__(self, admin_id=None, timeout_s=10.0, stale_after_s=3600.0):
@@ -493,24 +654,56 @@ class DataLock:
         self.path = Path(cfg.data_root) / name
         self.timeout_s = timeout_s
         self.stale_after_s = stale_after_s
-        self._fd = None
+        self.token = f'{os.getpid()}@{socket.gethostname()}:{os.urandom(6).hex()}'
+        self._held = False
+        self._touched_at = 0.0
+
+    @property
+    def _payload(self) -> str:
+        return f'{self.token} {_utc_now_iso()}'
+
+    def _holds_lock(self) -> bool:
+        try:
+            return self.token in self.path.read_text(encoding='utf-8')
+        except OSError:
+            return False
+
+    def _take_over_if_stale(self) -> bool:
+        """Claim an abandoned lock; True when this instance won it."""
+        try:
+            age = time.time() - self.path.stat().st_mtime
+        except OSError:
+            return False  # vanished: the plain create will retry
+        if age <= self.stale_after_s:
+            return False
+        tmp = self.path.with_name(f'{self.path.name}.take{os.getpid()}')
+        try:
+            tmp.write_text(self._payload, encoding='utf-8')
+            os.replace(tmp, self.path)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            return False
+        # Two jobs can replace the same stale lock; the last write wins
+        # and only its owner may proceed
+        return self._holds_lock()
 
     def __enter__(self):
         deadline = time.monotonic() + self.timeout_s
         while True:
             try:
-                self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                payload = f'{os.getpid()}@{socket.gethostname()} {_utc_now_iso()}'
-                os.write(self._fd, payload.encode())
+                fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                try:
+                    os.write(fd, self._payload.encode())
+                finally:
+                    os.close(fd)
+                self._held = True
+                self._touched_at = time.monotonic()
                 return self
             except FileExistsError:
-                try:
-                    age = time.time() - self.path.stat().st_mtime
-                    if age > self.stale_after_s:
-                        self.path.unlink(missing_ok=True)
-                        continue
-                except OSError:
-                    pass
+                if self._take_over_if_stale():
+                    self._held = True
+                    self._touched_at = time.monotonic()
+                    return self
                 if time.monotonic() > deadline:
                     raise TimeoutError(
                         f'Could not acquire lock {self.path}. Another '
@@ -519,12 +712,34 @@ class DataLock:
                     ) from None
                 time.sleep(0.5)
 
+    def touch(self) -> None:
+        """Refresh the lock's mtime so a long operation stays exclusive.
+
+        Rate-limited to a quarter of `stale_after_s`, so callers may call
+        it as often as they like (e.g. once per scanned directory).
+        """
+        if not self._held:
+            return
+        now = time.monotonic()
+        if now - self._touched_at < self.stale_after_s / 4:
+            return
+        try:
+            os.utime(self.path, None)
+        except OSError:
+            return
+        self._touched_at = now
+
     def __exit__(self, *exc):
-        if self._fd is not None:
-            os.close(self._fd)
-            self._fd = None
-        self.path.unlink(missing_ok=True)
+        if self._held and self._holds_lock():
+            self.path.unlink(missing_ok=True)
+        self._held = False
         return False
+
+
+def _touch_lock(lock) -> None:
+    """Refresh a lock's mtime, tolerating the dry-run nullcontext."""
+    if isinstance(lock, DataLock):
+        lock.touch()
 
 
 def _cluster_busy() -> bool:
@@ -580,11 +795,17 @@ def _delete_output_with_receipt(
         source_size, source_mtime = stat.st_size, stat.st_mtime
     except OSError:
         source_size, source_mtime = None, None
-    partitions = (
-        sorted(read_partition_coverage(out_path))
-        if out_path.is_file() and out_path.suffix == '.parquet'
-        else []
-    )
+    partitions: list[str] = []
+    if out_path.is_file() and out_path.suffix == '.parquet':
+        try:
+            partitions = sorted(read_partition_coverage(out_path))
+        except Exception:
+            # A truncated footer must not abort the batch: this runs
+            # inside the stages' cleanup='consumed' hook, where raising
+            # would crash the harmonizer or curator after the unit's own
+            # output was already written. The file is being deleted
+            # anyway, so record no coverage for it.
+            partitions = []
 
     for attempt in (0, 1):
         try:
@@ -620,13 +841,53 @@ def _delete_output_with_receipt(
 # CLEANUP (DAG-SCOPED)
 
 
-def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids=None):
+def _node_admins(upstream, admin_id, admin_level: int, expand_finer=False) -> list:
+    """Admin units at which one upstream recipe's output is reclaimable.
+
+    Normally a single unit: the walk admin truncated to the recipe's save
+    level. A recipe that saves finer than the walk admin (town-level
+    inputs of a county spine) has no output at the walk admin at all, and
+    leaving it there made `get_output_path` raise, which was swallowed:
+    the node vanished from the report and was never reclaimable. With
+    *expand_finer* its finer units are read off disk instead, so only
+    units with something to reclaim are visited; that scan is why a
+    caller not about to delete anything leaves the flag off. Image
+    recipes stay at the walk admin, which is what their own handler
+    expands.
+    """
+    if admin_id is None:
+        return [None]
+    try:
+        save_level = get_save_admin_level(upstream)
+    except Exception:
+        save_level = admin_level
+    if save_level <= admin_level or not expand_finer:
+        return [_truncate_admin(admin_id, min(save_level, admin_level))]
+    entity = upstream.get('entity')
+    if entity is not None and str(entity.entity_type) == 'image':
+        return [_truncate_admin(admin_id, admin_level)]
+    walk_admin = AdminId(str(admin_id))
+    finer = []
+    for candidate in _admin_ids_with_output(upstream, under_admin=walk_admin):
+        node_admin = AdminId(candidate)
+        if node_admin.get_level() == save_level and walk_admin.is_parent_of(node_admin):
+            finer.append(node_admin)
+    # With nothing on disk there is nothing to reclaim, but the node
+    # itself must still be yielded: `flow.dag` walks this graph to
+    # enumerate jobs, and on a fresh install no output exists yet
+    return finer or [_truncate_admin(admin_id, admin_level)]
+
+
+def _walk_dag(root_recipe, admin_id, exclude_recipe_ids=None, expand_finer=False):
     """Yield (recipe_id, recipe, node_admin) for every node upstream of root.
 
     The root itself is not yielded. Each upstream node's admin unit is the
-    walk admin truncated to that recipe's save level; recipes saving finer
-    than the walk admin (e.g. per-town image caches under a county walk)
-    keep the walk admin and are expanded by their handler.
+    walk admin truncated to that recipe's save level. With
+    *expand_finer*, a recipe saving finer than the walk admin is yielded
+    once per finer unit that has an output on disk (see `_node_admins`),
+    except image recipes, which keep the walk admin and are expanded by
+    their own handler. That expansion reads the disk, so callers that
+    only enumerate recipes (flow.dag) leave it off.
 
     exclude_recipe_ids : set of str, optional
         Forwarded to `get_recipe_dependencies`. An excluded recipe's edges
@@ -657,25 +918,33 @@ def _walk_dag(root_recipe, admin_id, index: _DependencyIndex, exclude_recipe_ids
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            try:
-                save_level = get_save_admin_level(upstream)
-            except Exception:
-                save_level = admin_level
-            node_admin = (
-                _truncate_admin(admin_id, min(save_level, admin_level))
-                if admin_id
-                else None
-            )
-            yield upstream_id, upstream, node_admin
+            for node_admin in _node_admins(
+                upstream, admin_id, admin_level, expand_finer=expand_finer
+            ):
+                yield upstream_id, upstream, node_admin
             pending.append(upstream)
 
 
-def _admin_ids_with_output(recipe) -> list[str]:
-    """Admin IDs that have an output file for a recipe on disk."""
+def _admin_ids_with_output(recipe, under_admin=None) -> list[str]:
+    """Admin IDs that have an output file for a recipe on disk.
+
+    Parameters
+    ----------
+    recipe : dict
+        Loaded recipe whose outputs to look for.
+    under_admin : str or AdminId, optional
+        Only scan this unit's own subtree. The scan is a recursive glob
+        of the output bucket, so narrowing it matters on a real data
+        root; without it every finer-saving node in a walk would sweep
+        the whole bucket.
+    """
     from openplaces.recipe import _get_save_to
 
     data_dir, _ = _get_save_to(recipe)
     root = Path(cfg.get_dir(data_dir or 'cache'))
+    if under_admin is not None:
+        admin = AdminId(str(under_admin))
+        root = root.joinpath(*admin.levels)
     entity = recipe.get('entity') or recipe.get('dataset')
     if entity is None or not root.is_dir():
         return []
@@ -760,7 +1029,9 @@ def cleanup(
     for admin_id in admin_ids:
         lock = DataLock(admin_id) if not dry_run else nullcontext()
         with lock:
-            for node_id, node_recipe, node_admin in _walk_dag(recipe, admin_id, index):
+            for node_id, node_recipe, node_admin in _walk_dag(
+                recipe, admin_id, expand_finer=True
+            ):
                 if stages and node_recipe.get('stage') not in stages:
                     continue
                 rows.extend(
@@ -809,7 +1080,13 @@ def _cleanup_node(
     # link sidecars are exactly what `--reprocess attributes` reuses, so
     # deleting them turns the next attribute-only rerun into a full
     # geometry rerun) keeps its declared class even under aggressive.
+    # A per-recipe retention.recipes entry in the user's own config is
+    # the documented protection lever and counts the same way: it is the
+    # only way to protect a recipe whose YAML declares no retention, so
+    # ignoring it here deleted exactly the outputs a user had pinned.
     explicit_retention = (node_recipe.get('save_to') or {}).get('retention')
+    if explicit_retention is None:
+        explicit_retention = _recipe_retention_override(node_id)
     if (
         aggressive
         and data_dir == 'core'
@@ -939,7 +1216,7 @@ def cleanup_consumed_inputs(
 
     Backs the stage entrypoints' cleanup='consumed' hook: after a stage
     finishes an admin unit, each of its direct inputs is deleted iff every
-    consumer in the recipe tree is complete. Safe when called early —
+    consumer in the recipe tree is complete. Safe when called early:
     consumers with no output yet block deletion (e.g. the NSI parquet
     survives the footprint-spine hook until the parcel spine also exists).
     No-op when retention.cleanup.enabled is false.
@@ -978,25 +1255,22 @@ def cleanup_consumed_inputs(
             seen.add(upstream_id)
             try:
                 upstream = get_recipe_by_id(upstream_id)
-                save_level = get_save_admin_level(upstream)
             except Exception:
                 continue
-            node_admin = (
-                _truncate_admin(admin_id, min(save_level, admin_level))
-                if admin_id
-                else None
-            )
-            rows.extend(
-                _cleanup_node(
-                    upstream_id,
-                    upstream,
-                    node_admin,
-                    index,
-                    include_images=include_images,
-                    aggressive=False,
-                    dry_run=False,
+            for node_admin in _node_admins(
+                upstream, admin_id, admin_level, expand_finer=True
+            ):
+                rows.extend(
+                    _cleanup_node(
+                        upstream_id,
+                        upstream,
+                        node_admin,
+                        index,
+                        include_images=include_images,
+                        aggressive=False,
+                        dry_run=False,
+                    )
                 )
-            )
 
     report = pd.DataFrame(rows, columns=_REPORT_COLUMNS)
     if verbose and not report.empty:
@@ -1009,29 +1283,102 @@ def cleanup_consumed_inputs(
 # COMPACT (BUCKET GARBAGE COLLECTOR)
 
 
+def _recipe_id_rest(recipe_id: str) -> list[str]:
+    """Recipe ID parts after the leading admin ID, if it has one."""
+    parts = recipe_id.split('_')
+    try:
+        AdminId(parts[0])
+    except ValueError:
+        return parts
+    return parts[1:]
+
+
+def _layer_output_names(recipe_id: str) -> list[tuple[str, tuple[str, ...]]]:
+    """Return (token, filename parts) of each `additional_layers` output.
+
+    A secondary entity writes its own token, which appears in no recipe
+    ID at all, so it can only be read off the loaded recipe. Without
+    these entries its output matches no recipe and is classed as an
+    orphan while the recipe still produces it.
+    """
+    try:
+        recipe = get_recipe_by_id(recipe_id)
+    except Exception:
+        return []
+    names = []
+    for layer_spec in recipe.get('additional_layers') or []:
+        entity = layer_spec.get('entity')
+        if entity is None:
+            continue
+        filename = (layer_spec.get('save_to') or {}).get('filename')
+        names.append((str(entity), tuple(str(filename).split('_')) if filename else ()))
+    return names
+
+
 @cache
-def _recipe_token_index() -> dict:
-    """Map each recipe's entity/dataset token to its recipe IDs.
+def _recipe_token_index() -> dict[str, list[tuple[str, tuple[str, ...]]]]:
+    """Map each output token to its (recipe ID, filename parts) candidates.
 
     A recipe ID reads {admin}_{token}[_{filename}]; output files read
     {file_admin}_{token}[_{filename}][_{suffix}].parquet, where file_admin
-    may be deeper than the recipe's admin scope.
+    may be deeper than the recipe's admin scope. Entities declared in
+    `additional_layers` are indexed under their own token as well.
+    """
+    index: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
+    for recipe_id in _all_recipe_ids():
+        rest = _recipe_id_rest(recipe_id)
+        if not rest:
+            continue
+        index.setdefault(rest[0], []).append((recipe_id, tuple(rest[1:])))
+        for token, filename_parts in _layer_output_names(recipe_id):
+            index.setdefault(token, []).append((recipe_id, filename_parts))
+    return index
+
+
+@cache
+def _enrich_suffix_index() -> dict[str, list[str]]:
+    """Map an enrich recipe's dataset suffix to its recipe IDs.
+
+    An enrich output is named after the entity recipe it enriches plus
+    its own dataset ({admin}_{entity token}_{dataset}), so the token in
+    its filename is the spine's, never the enrich recipe's own. Matching
+    the trailing dataset instead keeps the evidence file from being
+    judged by the spine's retention and consumer set.
     """
     index: dict[str, list[str]] = {}
     for recipe_id in _all_recipe_ids():
-        parts = recipe_id.split('_')
         try:
-            AdminId(parts[0])
-            token_pos = 1
-        except ValueError:
-            token_pos = 0
-        if len(parts) > token_pos:
-            index.setdefault(parts[token_pos], []).append(recipe_id)
+            recipe = get_recipe_by_id(recipe_id)
+        except Exception:
+            continue
+        if recipe.get('stage') != 'enrich':
+            continue
+        dataset = recipe.get('dataset')
+        if dataset is None:
+            continue
+        index.setdefault(sanitize(str(dataset)), []).append(recipe_id)
     return index
+
+
+def _recipe_admin_covers(recipe_id: str, admin) -> bool:
+    """Whether a recipe's own admin scope covers a file's admin unit."""
+    try:
+        recipe_admin = AdminId(recipe_id.split('_')[0])
+    except ValueError:
+        return True
+    return admin is not None and recipe_admin.is_parent_or_equal_of(admin)
 
 
 def _match_recipe_for_file(stem: str) -> tuple[str | None, str | None]:
     """Match an output filename stem to (recipe_id, admin_id).
+
+    The most specific candidate wins: an enrich evidence file is matched
+    on its trailing dataset before the spine token it is named after, and
+    among token candidates the one whose declared filename parts match
+    the most of the stem. Taking the first candidate instead attributed
+    every sibling `_suffix` recipe's output, and every enrich evidence
+    file, to the primary recipe, which judged it by the wrong retention
+    and the wrong consumer set.
 
     Returns (None, admin) when the stem parses but matches no recipe in
     the current tree (an orphan candidate).
@@ -1043,27 +1390,29 @@ def _match_recipe_for_file(stem: str) -> tuple[str | None, str | None]:
         rest = parts[1:]
     except ValueError:
         rest = parts
+    # A '_geo' sidecar belongs to the output it sits beside
+    if len(rest) > 1 and rest[-1] == 'geo':
+        rest = rest[:-1]
     if not rest:
         return None, None
     admin_str = str(admin) if admin else None
-    for recipe_id in _recipe_token_index().get(rest[0], []):
-        recipe_parts = recipe_id.split('_')
-        try:
-            recipe_admin = AdminId(recipe_parts[0])
-            recipe_rest = recipe_parts[1:]
-        except ValueError:
-            recipe_admin = None
-            recipe_rest = recipe_parts
-        # The recipe's admin scope must cover the file's admin unit
-        if recipe_admin is not None:
-            if admin is None or not recipe_admin.is_parent_or_equal_of(admin):
-                continue
-        # The recipe's filename parts must prefix the file's remaining parts
-        recipe_filename = recipe_rest[1:]
-        if list(rest[1 : 1 + len(recipe_filename)]) != recipe_filename:
+
+    suffix_index = _enrich_suffix_index()
+    for start in range(1, len(rest)):
+        for recipe_id in suffix_index.get('_'.join(rest[start:]), []):
+            if _recipe_admin_covers(recipe_id, admin):
+                return recipe_id, admin_str
+
+    best_id, best_len = None, -1
+    for recipe_id, filename_parts in _recipe_token_index().get(rest[0], []):
+        if not _recipe_admin_covers(recipe_id, admin):
             continue
-        return recipe_id, admin_str
-    return None, admin_str
+        # The recipe's filename parts must prefix the file's own
+        if tuple(rest[1 : 1 + len(filename_parts)]) != filename_parts:
+            continue
+        if len(filename_parts) > best_len:
+            best_id, best_len = recipe_id, len(filename_parts)
+    return best_id, admin_str
 
 
 def _match_recipe_for_path(
@@ -1105,17 +1454,10 @@ def _match_recipe_for_path(
     # subdirectories), so try progressively shorter prefixes
     for length in range(len(dataset_parts), 1, -1):
         token = '-'.join(dataset_parts[:length])
-        for recipe_id in index.get(token, []):
-            recipe_parts = recipe_id.split('_')
-            try:
-                recipe_admin = AdminId(recipe_parts[0])
-            except ValueError:
-                recipe_admin = None
-            if recipe_admin is not None:
-                if dir_admin is None or not recipe_admin.is_parent_or_equal_of(
-                    AdminId(dir_admin)
-                ):
-                    continue
+        for recipe_id, _ in index.get(token, []):
+            dir_admin_id = AdminId(dir_admin) if dir_admin else None
+            if not _recipe_admin_covers(recipe_id, dir_admin_id):
+                continue
             return recipe_id, admin_str
     return None, admin_str
 
@@ -1252,6 +1594,7 @@ def compact(
                     dirnames[:] = []
                     continue
                 seen_dirs.add(current)
+                _touch_lock(lock)
                 owner = _bucket_of(current, roots) or bucket
                 for filename in filenames:
                     path = current / filename
@@ -1289,6 +1632,7 @@ def compact(
                 shared_buckets,
                 include_shared,
                 index,
+                memo,
             )
             row['action'] = rows_action
 
@@ -1368,8 +1712,8 @@ def _classify_file(
     retention = 'keep'
     if recipe is not None:
         # Retention follows the bucket the file actually lives in: a
-        # downloaded archive in 'external' is an input copy protected by
-        # the bucket default, not by the recipe's (cache) output retention
+        # downloaded archive in 'external' is an input copy protected
+        # by the bucket default, not by the recipe's output retention
         from openplaces.recipe import _get_save_to
 
         save_dir, _ = _get_save_to(recipe)
@@ -1406,6 +1750,7 @@ def _compact_action(
     shared_buckets,
     include_shared,
     index,
+    memo: dict | None = None,
 ) -> str:
     cls = row['class']
     path = _resolve_relative(row['path'])
@@ -1415,14 +1760,14 @@ def _compact_action(
         recipe = index.recipes.get(row['recipe_id']) or {}
         entity = recipe.get('entity')
         if entity is not None and str(entity.entity_type) == 'image':
-            # Image caches are deleted per cache with one receipt, not per
-            # tile file; compact only reports them
+            # Image caches are deleted per cache with one receipt,
+            # not per tile file; compact only reports them
             row['blocked_by'] = 'image cache: use cleanup(include_images=True)'
             return 'blocked'
         if dry_run:
             return 'would_delete'
         _, blocked_by, verified = _consumers_complete(
-            row['recipe_id'], row['admin_id'], index
+            row['recipe_id'], row['admin_id'], index, memo=memo
         )
         if blocked_by:
             row['blocked_by'] = ', '.join(blocked_by)

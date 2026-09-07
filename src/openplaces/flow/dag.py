@@ -138,11 +138,11 @@ class RecipeDAG:
             for node_id, node_recipe, node_admin in _walk_dag(
                 target,
                 target_admin,
-                index=None,
                 exclude_recipe_ids=self.exclude_recipe_ids,
             ):
-                # _walk_dag truncates finer-saving recipes to the walk
-                # admin; _node_admins re-expands them to their save level
+                # _walk_dag keeps a finer-saving recipe at the walk
+                # admin (expand_finer is off, so no disk is read);
+                # _node_admins re-expands it to its save level here
                 _add(node_id, node_recipe, target_admin)
 
         # Close the graph over its own declared inputs.

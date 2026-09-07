@@ -29,6 +29,7 @@ from openplaces.io import (
 )
 from openplaces.io.cleanup import (
     cleanup_consumed_inputs,
+    discard_input_receipts,
     discard_receipt,
     receipt_justifies_skip,
 )
@@ -565,7 +566,10 @@ class Harmonizer:
                             f'({missing[0].name}).'
                         )
                 if reprocess:
+                    # A rerun supersedes this output's receipt and its
+                    # inputs' receipts, which name it as a consumer
                     discard_receipt(out_path)
+                    discard_input_receipts(self.recipe, admin_id)
                 if self.verbose:
                     print(f'[harmonize] {admin_id}')
                 self._timer = get_timer(
@@ -593,6 +597,7 @@ class Harmonizer:
             return
         if reprocess:
             discard_receipt(out_path)
+            discard_input_receipts(self.recipe, None)
         if self.verbose:
             print(f'[harmonize] {label}')
         self._timer = get_timer(
