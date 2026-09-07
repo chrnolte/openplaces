@@ -1344,8 +1344,17 @@ def _classify_file(
     if bucket == 'heap':
         row['class'] = 'heap'
         return row
-    if bucket in NEVER_DELETE or bucket in ('logs', 'models', 'reports'):
-        # Protected or user-owned buckets are report-only
+    if (
+        bucket in NEVER_DELETE
+        or bucket in ('logs', 'models', 'reports')
+        or STANDARD_DIRS.get(bucket, {}).get('custom')
+        or bucket not in STANDARD_DIRS
+    ):
+        # Protected or user-owned buckets are report-only. A directory
+        # the user registered themselves (or one this build does not
+        # know at all) holds files no recipe claims, and everything a
+        # recipe does not claim is an orphan below, so without this the
+        # aggressive path deleted the user's own data.
         row['class'] = 'final'
         return row
     if recipe_id is None:

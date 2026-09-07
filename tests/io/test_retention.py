@@ -84,3 +84,25 @@ def test_get_recipe_id_round_trip():
     recipe = get_recipe_by_id('image-googlestreetview-2026')
     assert get_recipe_id(recipe) == 'image-googlestreetview-2026'
     assert get_recipe_id('US_parcel-massgis-2025') == 'US_parcel-massgis-2025'
+
+
+def test_a_custom_directory_is_registered_as_a_keep_bucket(tmp_path, monkeypatch):
+    """A user's own directory is not a bucket cleanup may garbage-collect.
+
+    Registration used to depend on a description being passed, and left
+    out the `retention` key every built-in bucket carries, so a custom
+    bucket had no class to resolve, could not be named in a retention
+    override, and broke the vocabulary check above.
+    """
+    monkeypatch.setitem(cfg.config, 'directories', dict(cfg.config['directories']))
+    name = 'my_scratch'
+    try:
+        cfg.add_custom_directory(name, str(tmp_path / 'scratch'))
+        assert STANDARD_DIRS[name]['retention'] in RETENTION_CLASSES
+        assert STANDARD_DIRS[name]['retention'] == 'keep'
+        assert STANDARD_DIRS[name]['custom'] is True
+        assert cfg.retention_for(name) == 'keep'
+        # The vocabulary check over every registered bucket still holds
+        test_standard_dirs_have_valid_retention()
+    finally:
+        STANDARD_DIRS.pop(name, None)

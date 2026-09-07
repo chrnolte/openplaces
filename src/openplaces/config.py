@@ -1057,6 +1057,11 @@ class OpenPlacesConfig:
         """
         Add a custom directory to configuration.
 
+        The bucket is registered with retention 'keep' and marked custom,
+        which is what keeps cleanup off it: files a user puts in their own
+        directory belong to no recipe, and cleanup classes a file with no
+        recipe as an orphan once it is old enough.
+
         Parameters
         ----------
         name : str
@@ -1077,12 +1082,17 @@ class OpenPlacesConfig:
 
         self.config['directories'][name] = dir_path.resolve()
 
-        if description:
-            STANDARD_DIRS[name] = {
-                'default': path,
-                'description': description,
-                'shared': False,  # Custom dirs default to user-specific
-            }
+        # Registered whether or not a description was given: an
+        # unregistered bucket cannot be named in a retention override
+        # (validation rejects it as unknown) and cleanup has nothing to
+        # read its class from.
+        STANDARD_DIRS[name] = {
+            'default': path,
+            'description': description,
+            'shared': False,  # Custom dirs default to user-specific
+            'retention': 'keep',
+            'custom': True,
+        }
 
     @property
     def data_root(self) -> Path:

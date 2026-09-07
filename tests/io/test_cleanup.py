@@ -10,6 +10,7 @@ import pytest
 import openplaces.diagnostics as diagnostics
 import openplaces.io as opio
 from openplaces.config import cfg
+from openplaces.core.constants import STANDARD_DIRS
 from openplaces.io import cleanup as cl
 from openplaces.recipe import get_output_path, get_recipe_by_id
 
@@ -517,3 +518,41 @@ def test_receipt_written_atomically(data_root):
     leftovers = [p for p in rp.parent.iterdir() if '.tmp' in p.name]
     assert leftovers == []
     assert json.loads(rp.read_text(encoding='utf-8'))['recipe_id'] == NSI
+
+
+def test_compact_never_classes_a_custom_directory_as_an_orphan(data_root):
+    """A user's own bucket is report-only, however old its files are.
+
+    Nothing in it parses as a recipe output, and a file with no recipe
+    is an orphan once `orphan_min_age_days` has passed, so before the
+    bucket was marked custom an aggressive compact deleted the user's
+    own data. Both routes into the scan are covered: naming the bucket,
+    and letting it sit under a scanned one.
+    """
+    name = 'my_scratch'
+    dirs = dict(cfg.config['directories'])
+    # Under the cache root, which is how a custom directory reaches the
+    # scan without being named: _bucket_of attributes it to its own,
+    # most specific, bucket.
+    scratch = data_root / 'data' / 'cache' / 'scratch'
+    dirs[name] = scratch
+    cfg.config['directories'] = dirs
+    cfg.add_custom_directory(name, str(scratch))
+    try:
+        mine = scratch / 'notes.parquet'
+        mine.parent.mkdir(parents=True, exist_ok=True)
+        mine.write_bytes(b'junk')
+        old = time.time() - 30 * 86400
+        os.utime(mine, (old, old))
+
+        for buckets in (('cache',), (name,)):
+            report = cl.compact(buckets=buckets, delete=('orphans',))
+            row = report[report['path'] == cl._relative_posix(mine)]
+            assert len(row) == 1, buckets
+            assert (row['class'] == 'final').all(), buckets
+            assert (row['action'] == 'report').all(), buckets
+
+        cl.compact(buckets=('cache', name), delete=('orphans',), dry_run=False)
+        assert mine.exists()
+    finally:
+        STANDARD_DIRS.pop(name, None)
