@@ -663,7 +663,7 @@ class TableIngester:
         encoding : str, optional
             From the recipe's ``encoding`` key.
         """
-        # `csv_dtype: str` reads every column as text — the robust choice
+        # `csv_dtype: str` reads every column as text, the robust choice
         # for messy flat dumps where a column mixes ints and strings.
         # A dict maps specific columns to dtypes.
         csv_dtype = self.recipe.get('csv_dtype')
