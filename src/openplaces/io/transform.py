@@ -208,10 +208,32 @@ STRING_OPS: dict[str, Callable] = {
 
 
 def _aggregate_cols(cols: list[pd.Series], operation: str, fill_na) -> pd.Series:
-    """Aggregate multiple columns with an operation."""
+    """Aggregate multiple columns row-wise with one operation.
+
+    A row whose inputs are all missing stays missing, as it already does
+    for min, max and mean: a parcel with no assessed value in any input
+    column has an unknown total, not a total of zero. Pass *fill_na* to
+    treat a missing input as a number instead, which fills before the
+    aggregation and so keeps producing a value for such a row.
+
+    Parameters
+    ----------
+    cols : list of pd.Series
+        Columns to aggregate, all sharing an index.
+    operation : str
+        Name of the DataFrame method to apply row-wise ('sum', 'min',
+        'max', 'mean').
+    fill_na : scalar or None
+        Value substituted for missing inputs before aggregating.
+    """
     df_temp = pd.concat(cols, axis=1)
     if fill_na is not None:
         df_temp = df_temp.fillna(fill_na)
+    if operation == 'sum':
+        # sum is the only one of these that treats an all-missing row as
+        # a total rather than as unknown; min_count aligns it with the
+        # other three.
+        return df_temp.sum(axis=1, min_count=1)
     return getattr(df_temp, operation)(axis=1)
 
 
