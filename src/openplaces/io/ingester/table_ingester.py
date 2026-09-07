@@ -610,19 +610,36 @@ class TableIngester:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
                 self.timer.mark('Read compressed file' + timer_suffix, path=data_path)
-            except (RuntimeWarning, Exception):
-                unzip(data_path, self.recipe_heap_dir)
-                data_path = find_latest_file_or_gdb(self.recipe_heap_dir)
-                self.download_partition['data_path'] = data_path
-                if data_path is None:
-                    raise OSError(
-                        f'`geopandas` could not read compressed file:\n\n{data_path}.'
-                        '\n\n'
-                        'Could not find a dataset after unzipping to:\n\n'
-                        f'{self.recipe_heap_dir}'
-                    )
-                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-                self.timer.mark('Read unzipped file' + timer_suffix, path=data_path)
+            except Exception:
+                # `geopandas` cannot read this archive in place, so extract it
+                # and read what came out. The extracted path is cached under
+                # its own key rather than written back over
+                # `download_partition['data_path']`: that entry is shared by
+                # every table in the download partition (and is the sentinel
+                # the "already unzipped" check and the heap cleanup use), so
+                # overwriting it made every later table in the partition read
+                # whatever file this one happened to extract.
+                extracted_paths = self.download_partition.setdefault(
+                    'extracted_data_paths', {}
+                )
+                extracted_path = extracted_paths.get(str(data_path))
+                if extracted_path is None:
+                    unzip(data_path, self.recipe_heap_dir)
+                    extracted_path = find_latest_file_or_gdb(self.recipe_heap_dir)
+                    if extracted_path is None:
+                        raise OSError(
+                            '`geopandas` could not read compressed file:'
+                            f'\n\n{data_path}.\n\n'
+                            'Could not find a dataset after unzipping to:\n\n'
+                            f'{self.recipe_heap_dir}'
+                        )
+                    extracted_paths[str(data_path)] = extracted_path
+                gdf = gpd.read_file(
+                    extracted_path, layer=layer, columns=columns, **kwargs
+                )
+                self.timer.mark(
+                    'Read unzipped file' + timer_suffix, path=extracted_path
+                )
         else:
             raise ValueError(f'Filepath suffix not yet interpreted: {data_path.suffix}')
 
