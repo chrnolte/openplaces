@@ -354,7 +354,18 @@ def _share_spec(recipe):
             'delivered files would carry duplicate column names.'
         )
 
-    sidecars = [c for c in [*columns, *point_columns] if c.endswith(SOURCE_SUFFIX)]
+    # Only a name that duplicates a sidecar this module appends by
+    # itself: a column may legitimately end in `_source` and be an
+    # attribute of its own (`property_source` names how a unit count was
+    # derived), so the test is whether the column it explains is
+    # delivered, plus `geometry_source`, which is always appended.
+    declared = {*columns, *point_columns}
+    sidecars = [
+        c
+        for c in [*columns, *point_columns]
+        if c.endswith(SOURCE_SUFFIX)
+        and (c == f'geometry{SOURCE_SUFFIX}' or c[: -len(SOURCE_SUFFIX)] in declared)
+    ]
     if sidecars:
         raise ValueError(
             f'Recipe {recipe_id!r} names the provenance sidecar(s) '
@@ -589,7 +600,7 @@ def delivery_accuracy_dir(recipe, **kwargs) -> Path:
     recipe : str or dict
         Recipe ID or loaded recipe dictionary.
     **kwargs
-        Passed to :func:`delivery_paths` (``admin_id``, ``admin_level``,
+        Passed to :func:`delivery_paths` (`admin_id`, `admin_level`,
         `output_dir`, `region`) so the directory follows the bundle it
         describes.
 
@@ -701,7 +712,7 @@ def export_delivery(
     Returns
     -------
     dict of str to pathlib.Path
-        The written paths, keyed ``'canonical'``, ``'point'``, ``'geo'``,
+        The written paths, keyed `'canonical'`, `'point'`, `'geo'`,
         `'evidence'` and `'terms'` (the licence notice).
     """
     if isinstance(recipe, str):

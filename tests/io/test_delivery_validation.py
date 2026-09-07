@@ -192,3 +192,14 @@ def test_unknown_region_still_raises_the_registry_error():
 
     with pytest.raises(KeyError, match='Unknown region'):
         delivery_regions(recipe)
+
+
+def test_an_attribute_that_merely_ends_in_source_is_deliverable(mock_data_root):
+    """`property_source` is an attribute, not a sidecar of a shared column."""
+    recipe = _recipe(columns=[*CANONICAL, 'property_source'])
+    _county(recipe, ['a'], admin3_id='US-NC-AL')
+    _county(recipe, ['b'], admin3_id='US-NC-BB')
+
+    canonical = read_parquet(export_delivery(recipe)['canonical'])
+
+    assert 'property_source' in canonical.columns
