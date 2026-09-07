@@ -147,6 +147,61 @@ def discard_receipt(output_path) -> None:
     receipt_path(output_path).unlink(missing_ok=True)
 
 
+def discard_input_receipts(recipe, admin_id=None) -> list[Path]:
+    """Discard the tombstone receipts of one recipe's direct inputs.
+
+    A stage discards its own receipt when reprocessing, but an input's
+    receipt records *this* output as one of the consumers that justified
+    deleting it. Left standing, it makes the next ingest skip
+    regenerating an input the rerun is about to read, which then fails
+    on the missing file. A deliberate rerun supersedes its inputs'
+    receipts the same way it supersedes its own, so the stage
+    entrypoints call this on reprocess.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        The recipe being reprocessed.
+    admin_id : str or AdminId, optional
+        Admin unit being reprocessed; None for a global run.
+
+    Returns
+    -------
+    list of pathlib.Path
+        Output paths whose receipts were removed.
+    """
+    if isinstance(recipe, str):
+        try:
+            recipe = get_recipe_by_id(recipe)
+        except Exception:
+            return []
+    try:
+        edges = get_recipe_dependencies(recipe, admin_id=admin_id)
+    except Exception:
+        return []
+    admin_level = AdminId(str(admin_id)).get_level() if admin_id else 0
+    discarded: list[Path] = []
+    seen: set[str] = set()
+    for edge in edges:
+        upstream_id = edge.upstream_recipe_id
+        if not upstream_id or upstream_id in seen:
+            continue
+        seen.add(upstream_id)
+        try:
+            upstream = get_recipe_by_id(upstream_id)
+        except Exception:
+            continue
+        for node_admin in _node_admins(upstream, admin_id, admin_level):
+            try:
+                out_path = get_output_path(upstream, admin_id=node_admin)
+            except Exception:
+                continue
+            if receipt_path(out_path).exists():
+                discard_receipt(out_path)
+                discarded.append(out_path)
+    return discarded
+
+
 # COMPLETENESS CHECKS
 
 

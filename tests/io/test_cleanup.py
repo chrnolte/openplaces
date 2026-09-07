@@ -364,6 +364,29 @@ def test_global_node_resolves_consumers_at_their_own_scope():
     assert (upstreams, unresolved) == index._auto_upstreams(consumer, 'US')
 
 
+# Reprocess supersedes the inputs' receipts
+
+
+def test_reprocess_discards_the_receipts_of_its_inputs(data_root):
+    """A rerun must not skip regenerating an input it is about to read.
+
+    Cleanup deletes an input once its consumers exist, and the receipt
+    it leaves names those consumers. Rerunning a consumer left that
+    receipt standing, so the next ingest skipped the input through it
+    and the rerun then failed reading the missing file.
+    """
+    for spine_path in _spine_paths():
+        _write_parquet(spine_path)
+    cl.write_receipt(_nsi_path(), _receipt_for_nsi(NSI_CONSUMERS))
+    assert cl.receipt_justifies_skip(NSI, COUNTY)
+
+    discarded = cl.discard_input_receipts(FOOTPRINT_SPINE, COUNTY)
+
+    assert _nsi_path() in discarded
+    assert cl.read_receipt(_nsi_path()) is None
+    assert not cl.receipt_justifies_skip(NSI, COUNTY)
+
+
 # Locks
 
 
