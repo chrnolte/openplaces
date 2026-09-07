@@ -1144,6 +1144,36 @@ def _filter_by_size_limit(
     return near[no_limit | in_range]
 
 
+#: Quality order for picking one representative among several linked
+#: reference points: source label ascending (the ranking baked into the
+#: label), structure value descending (the larger structure wins).
+_POINT_QUALITY_ORDER = {'source': True, 'structure_value': False}
+
+
+def _point_quality_sort(frame: pd.DataFrame) -> tuple[list[str], list[bool]]:
+    """Return the sort columns and directions for a quality ranking.
+
+    Each column keeps its own direction, so a frame carrying only
+    'structure_value' still sorts it descending. Slicing a fixed
+    ascending list positionally instead paired the surviving column with
+    the first direction, which picked the *lowest*-value point as the
+    representative wherever 'source' was absent.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Linked reference points to be ranked.
+
+    Returns
+    -------
+    tuple of (list of str, list of bool)
+        Present sort columns and their ascending flags, both empty when
+        the frame carries neither.
+    """
+    cols = [c for c in _POINT_QUALITY_ORDER if c in frame.columns]
+    return cols, [_POINT_QUALITY_ORDER[c] for c in cols]
+
+
 def _aggregate_multipoint(
     linked: pd.DataFrame,
     spine_id_col: str,
@@ -1186,11 +1216,9 @@ def _aggregate_multipoint(
     n_aggregated = 0
 
     for _fp_id, group in multis.groupby(spine_id_col, sort=False):
-        sort_cols = [c for c in ['source', 'structure_value'] if c in group.columns]
+        sort_cols, sort_ascending = _point_quality_sort(group)
         if sort_cols:
-            group = group.sort_values(
-                sort_cols, ascending=[True, False][: len(sort_cols)]
-            )
+            group = group.sort_values(sort_cols, ascending=sort_ascending)
         rep = group.iloc[0].copy()
 
         if len(group) > 1:
@@ -1550,12 +1578,9 @@ def _link_spatial_point(
         linked = within
 
         # Deduplicate: one spine entity per point (keep highest-quality source first)
-        sort_cols = [c for c in ['source', 'structure_value'] if c in linked.columns]
+        sort_cols, sort_ascending = _point_quality_sort(linked)
         if sort_cols:
-            linked = linked.sort_values(
-                sort_cols,
-                ascending=[True, False][: len(sort_cols)],
-            )
+            linked = linked.sort_values(sort_cols, ascending=sort_ascending)
         if linked.index.duplicated().any():
             linked = linked[~linked.index.duplicated()].copy()
 
