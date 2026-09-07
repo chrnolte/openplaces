@@ -348,6 +348,56 @@ def test_delete_with_receipt_survives_a_truncated_footer(data_root):
 # Locks
 
 
+def test_data_lock_release_keeps_a_successor_lock(data_root):
+    """Releasing must not unlink a lock somebody else now owns.
+
+    A compact that runs longer than stale_after_s loses exclusion; if it
+    then unlinks unconditionally, it deletes the lock of the job that
+    took over and two destructive runs proceed together.
+    """
+    lock = cl.DataLock(COUNTY, timeout_s=0.1)
+    lock.__enter__()
+    lock.path.write_text('someone-else-token', encoding='utf-8')
+    lock.__exit__(None, None, None)
+    assert lock.path.exists()
+    assert lock.path.read_text(encoding='utf-8') == 'someone-else-token'
+    lock.path.unlink()
+
+
+def test_data_lock_takeover_claims_the_file_by_token(data_root):
+    stale = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=3600.0)
+    stale.__enter__()
+    old = time.time() - 7200
+    os.utime(stale.path, (old, old))
+
+    taker = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=3600.0)
+    with taker:
+        assert taker.token in taker.path.read_text(encoding='utf-8')
+        # The overrun holder no longer owns the file, so its release is
+        # a no-op rather than a deletion
+        stale.__exit__(None, None, None)
+        assert taker.path.exists()
+    assert not taker.path.exists()
+
+
+def test_data_lock_touch_refreshes_the_mtime(data_root):
+    lock = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=0.0)
+    with lock:
+        old = time.time() - 7200
+        os.utime(lock.path, (old, old))
+        lock.touch()
+        assert time.time() - lock.path.stat().st_mtime < 60
+
+
+def test_data_lock_touch_is_rate_limited(data_root):
+    lock = cl.DataLock(COUNTY, timeout_s=0.1, stale_after_s=3600.0)
+    with lock:
+        old = time.time() - 7200
+        os.utime(lock.path, (old, old))
+        lock.touch()
+        assert lock.path.stat().st_mtime == pytest.approx(old, abs=2)
+
+
 def test_data_lock_exclusive(data_root):
     with cl.DataLock(COUNTY, timeout_s=0.1):
         with pytest.raises(TimeoutError):
