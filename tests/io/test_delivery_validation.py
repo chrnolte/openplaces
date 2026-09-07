@@ -158,3 +158,29 @@ def test_region_registry_is_read_once_per_call(monkeypatch):
 
     assert len(regions) > 1
     assert calls == [None]
+
+
+def test_a_failed_reship_leaves_the_previous_bundle_intact(mock_data_root, monkeypatch):
+    """Five files from one curation, or the five from the last one."""
+    import openplaces.io.delivery as delivery
+
+    recipe = _recipe()
+    _county(recipe, ['a', 'b'], admin3_id='US-NC-AL')
+    _county(recipe, ['c', 'd'], admin3_id='US-NC-BB')
+    paths = export_delivery(recipe)
+    before = read_parquet(paths['canonical'])
+
+    # A second curation with different rows, and a failure after the
+    # canonical file has been written.
+    _county(recipe, ['e', 'f'], admin3_id='US-NC-AL')
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError('interrupted')
+
+    monkeypatch.setattr(delivery, 'bundle_terms', _explode)
+    with pytest.raises(RuntimeError, match='interrupted'):
+        export_delivery(recipe)
+
+    after = read_parquet(paths['canonical'])
+    pd.testing.assert_frame_equal(before, after)
+    assert list(after.index) == ['a', 'b', 'c', 'd']

@@ -23,6 +23,7 @@ technically canonical than belong in a compact delivery, and that editorial
 choice is the recipe author's.
 """
 
+import os
 import stat
 from pathlib import Path
 
@@ -268,6 +269,16 @@ def _lock(path: Path) -> None:
     """
     if path.exists():
         path.chmod(path.stat().st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+
+
+PARTIAL_SUFFIX = '.partial'
+
+
+def _staged(paths: dict) -> dict:
+    """Return the temporary path each bundle file is written to first."""
+    return {
+        role: path.with_name(path.name + PARTIAL_SUFFIX) for role, path in paths.items()
+    }
 
 
 def share_columns(recipe) -> tuple[list[str], list[str]]:
@@ -652,6 +663,13 @@ def export_delivery(
     The written files are left read-only, since they are what leaves this
     repository; a later call unlocks and rewrites its own outputs.
 
+    Each file is written beside its destination and moved into place only
+    once all five exist, so a run that fails halfway leaves the previously
+    shipped bundle intact. Without that, the canonical, point and geo
+    files came from the new curation while the evidence file and licence
+    notice were left over from the last ship, and the five no longer
+    shared one index.
+
     Every parameter but *recipe* falls back to the recipe's own
     ``share: delivery:`` block, so a fully declared recipe delivers with
     ``export_delivery(recipe_id)``.
@@ -701,8 +719,15 @@ def export_delivery(
             f'{recipe.get("recipe_id", recipe)!r}; nothing to deliver.'
         )
     admin_id_column = f'admin{process_level}_id'
+    # Unlocked up front because the finished files are moved onto these
+    # names, which Windows refuses for a read-only destination.
     for path in paths.values():
         _unlock(path)
+    staged = _staged(paths)
+    # Leftovers from a failed run are cleared here rather than in a
+    # finally clause, so a crash leaves its partial output to inspect.
+    for path in staged.values():
+        path.unlink(missing_ok=True)
 
     # Two read passes rather than one, so the wide evidence columns
     # are never in memory at the same time as the polygons: pooled
@@ -753,7 +778,7 @@ def export_delivery(
     # Sources trail the values they explain, so the table opens on
     # the attributes and the provenance block stays out of the way.
     canonical = pd.DataFrame(pooled[[*canonical_columns, *source_columns]])
-    to_parquet(canonical, paths['canonical'])
+    to_parquet(canonical, staged['canonical'])
 
     point = points_from_coords(
         pooled[
@@ -765,9 +790,9 @@ def export_delivery(
             ]
         ]
     )
-    to_parquet(point, paths['point'], schema_version='1.1.0')
+    to_parquet(point, staged['point'], schema_version='1.1.0')
 
-    to_parquet(pooled[['geometry']], paths['geo'], schema_version='1.1.0')
+    to_parquet(pooled[['geometry']], staged['geo'], schema_version='1.1.0')
 
     # Which copy of each entity survived deduplication, so pass two
     # keeps the matching evidence row rather than an arbitrary one.
@@ -795,11 +820,14 @@ def export_delivery(
 
     evidence = pd.concat(evidence_frames).sort_index()
     evidence_frames.clear()
-    to_parquet(evidence, paths['evidence'])
+    to_parquet(evidence, staged['evidence'])
 
     terms = bundle_terms(recipe, geometry_source)
-    paths['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
+    staged['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
 
+    # Every file exists; only now does the shipped bundle change.
+    for role, path in paths.items():
+        os.replace(staged[role], path)
     for path in paths.values():
         _lock(path)
 
