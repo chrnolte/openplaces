@@ -71,8 +71,17 @@ def _call_with_retry(fn, *, timeout, retries, verbose, label):
     from gdown.exceptions import DownloadError, FileURLRetrievalError
 
     last_exc = None
+    # retries=0 skipped the loop and then raised None, hiding the real
+    # failure behind "exceptions must derive from BaseException".
+    retries = max(1, int(retries))
     for attempt in range(1, retries + 1):
-        with ThreadPoolExecutor(max_workers=1) as pool:
+        # One executor per attempt, shut down without waiting. Used as a
+        # context manager, its __exit__ calls shutdown(wait=True) and
+        # joins the very thread the timeout just abandoned, so the call
+        # hung for the whole stall anyway; and a single shared worker
+        # would queue the retry behind that hung thread.
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
             future = pool.submit(fn)
             try:
                 return future.result(timeout=timeout)
@@ -95,6 +104,8 @@ def _call_with_retry(fn, *, timeout, retries, verbose, label):
                     )
                 if attempt < retries:
                     time.sleep(2**attempt)
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
     raise last_exc
 
 
@@ -223,7 +234,11 @@ def _extract_single_member(zip_path: Path, target_path: Path) -> None:
                 f'{zip_path.name} expected exactly one member, found '
                 f'{len(members)}: {members}'
             )
-        with tempfile.TemporaryDirectory() as tmp:
+        # Staged beside the target, not in the system temp directory:
+        # Path.replace is os.replace, which fails with EXDEV (WinError
+        # 17) whenever the data root sits on another drive or share.
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=target_path.parent) as tmp:
             zf.extract(members[0], tmp)
             Path(tmp, members[0]).replace(target_path)
 

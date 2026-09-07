@@ -10,6 +10,7 @@ import json
 
 import pandas as pd
 import pytest
+import requests
 
 from openplaces.io.scrapers import arcgis_rest_scraper as scraper
 
@@ -29,6 +30,7 @@ def fake_service(monkeypatch):
     state = {
         'total': 0,
         'max_record_count': 2,
+        'object_id_field': 'OBJECTID',
         'fail_offsets': set(),
         'calls': [],
         'retries_seen': [],
@@ -37,7 +39,10 @@ def fake_service(monkeypatch):
 
     def _get_json(url, params, *, timeout, retries, verbose, label):
         if not url.endswith('/query'):
-            return {'maxRecordCount': state['max_record_count']}
+            meta = {'maxRecordCount': state['max_record_count']}
+            if state['object_id_field']:
+                meta['objectIdField'] = state['object_id_field']
+            return meta
         if params.get('returnCountOnly'):
             return {'count': state['total']}
 
@@ -752,3 +757,176 @@ def test_composite_key_is_requested_from_the_service(fake_service):
         label='t',
     )
     assert fake_service['attribute_queries'] == ['PIN,EXTRA,EXTRA'] * 2
+
+
+# Paging order, quoting, staging and retry-budget edge cases
+
+
+def test_feature_pages_are_ordered_by_the_object_id(
+    fake_service, tmp_path, monkeypatch
+):
+    """`resultOffset` paging is only defined against a stable sort.
+
+    Without an ordering clause the service may arrange rows differently
+    per page, so a row served twice can replace one never served, and
+    the count-based completeness check still passes.
+    """
+    fake_service['total'] = 4
+    seen = []
+    real_get_json = scraper._get_json
+
+    def spying_get_json(url, params, **kwargs):
+        seen.append(params)
+        return real_get_json(url, params, **kwargs)
+
+    monkeypatch.setattr(scraper, '_get_json', spying_get_json)
+    scraper.fetch(target_path=tmp_path / 'layer.geojson', layer_url='http://svc/0')
+
+    pages = [p for p in seen if 'resultOffset' in p]
+    assert pages
+    assert all(p['orderByFields'] == 'OBJECTID ASC' for p in pages)
+    counts = [p for p in seen if p.get('returnCountOnly')]
+    assert counts and all('orderByFields' not in p for p in counts)
+
+
+def test_no_order_clause_when_the_layer_reports_no_object_id(
+    fake_service, tmp_path, monkeypatch
+):
+    """A field name is never guessed; the clause is simply omitted."""
+    fake_service['total'] = 2
+    fake_service['object_id_field'] = None
+    seen = []
+    real_get_json = scraper._get_json
+
+    def spying_get_json(url, params, **kwargs):
+        seen.append(params)
+        return real_get_json(url, params, **kwargs)
+
+    monkeypatch.setattr(scraper, '_get_json', spying_get_json)
+    scraper.fetch(target_path=tmp_path / 'layer.geojson', layer_url='http://svc/0')
+
+    pages = [p for p in seen if 'resultOffset' in p]
+    assert pages
+    assert all('orderByFields' not in p for p in pages)
+
+
+def test_attribute_pages_are_ordered_too(
+    bulk_geojson, fake_service, tmp_path, monkeypatch
+):
+    """The attribute-only join pages by offset as well."""
+    fake_service['total'] = 4
+    seen = []
+    real_get_json = scraper._get_json
+
+    def spying_get_json(url, params, **kwargs):
+        seen.append(params)
+        return real_get_json(url, params, **kwargs)
+
+    monkeypatch.setattr(scraper, '_get_json', spying_get_json)
+    scraper.fetch(
+        target_path=tmp_path / 'layer.geojson',
+        layer_url='http://svc/0',
+        bulk_url='http://svc/bulk',
+        attribute_join={'key': 'PIN', 'fields': ['EXTRA']},
+    )
+
+    pages = [
+        p for p in seen if p.get('returnGeometry') == 'false' and 'resultOffset' in p
+    ]
+    assert pages
+    assert all(p['orderByFields'] == 'OBJECTID ASC' for p in pages)
+
+
+def test_resolve_where_escapes_an_apostrophe(monkeypatch):
+    """A county named "Prince George's" must not break its own filter."""
+    monkeypatch.setattr(
+        scraper,
+        'get_admin',
+        lambda *a, **k: pd.DataFrame({'name': ["Prince George's"]}),
+    )
+
+    resolved = scraper._resolve_where(
+        '1=1',
+        admin_id_to_download='US-MD-PG',
+        admin_key_column='name',
+        admin_key_transform=None,
+        where_admin_column='COUNTY',
+    )
+
+    assert resolved == "COUNTY = 'Prince George''s'"
+
+
+def test_failed_attribute_join_leaves_nothing_at_the_target(
+    bulk_geojson, fake_service, tmp_path
+):
+    """A failed join must not leave the un-joined file at the final path.
+
+    The next run's `target_path.exists()` short-circuit would return it,
+    so the joined columns would be silently missing for good.
+    """
+    fake_service['total'] = 1  # only p0 comes back, 25% of 4 features
+    out = tmp_path / 'layer.geojson'
+
+    with pytest.raises(RuntimeError, match='matched only'):
+        scraper.fetch(
+            target_path=out,
+            layer_url='http://svc/0',
+            bulk_url='http://svc/bulk',
+            attribute_join={'key': 'PIN', 'fields': ['EXTRA']},
+        )
+
+    assert not out.exists()
+    assert list(tmp_path.glob('*.part*')) == []
+
+
+def test_failed_join_after_paging_leaves_nothing_at_the_target(
+    fake_service, tmp_path, monkeypatch
+):
+    """Same guarantee on the paging path, which also joins while staged."""
+    fake_service['total'] = 2
+    out = tmp_path / 'layer.geojson'
+
+    def failing_join(path, attribute_join, **kwargs):
+        assert path != out
+        raise RuntimeError('join blew up')
+
+    monkeypatch.setattr(scraper, '_maybe_attribute_join', failing_join)
+
+    with pytest.raises(RuntimeError, match='join blew up'):
+        scraper.fetch(
+            target_path=out,
+            layer_url='http://svc/0',
+            attribute_join={'key': 'PIN', 'fields': ['EXTRA']},
+        )
+
+    assert not out.exists()
+    assert list(tmp_path.glob('*.part*')) == []
+
+
+def test_zero_retries_raises_the_real_error(monkeypatch, tmp_path):
+    """`retries=0` used to raise None, hiding the actual failure."""
+
+    def boom(*args, **kwargs):
+        raise requests.exceptions.ConnectionError('service refused')
+
+    monkeypatch.setattr(scraper.requests, 'get', boom)
+
+    with pytest.raises(requests.exceptions.ConnectionError, match='service refused'):
+        scraper._get_json(
+            'http://svc/0/query',
+            {'f': 'json'},
+            timeout=1,
+            retries=0,
+            verbose=False,
+            label='test',
+        )
+
+    with pytest.raises(requests.exceptions.ConnectionError, match='service refused'):
+        scraper._download_bulk(
+            'http://svc/bulk',
+            tmp_path / 'bulk.geojson',
+            timeout=1,
+            retries=0,
+            verbose=False,
+            label='test',
+        )

@@ -181,10 +181,25 @@ def _resolve_where(
     key = _resolve_admin_key(
         admin_id_to_download, admin_key_column, admin_key_transform
     )
-    admin_clause = f"{where_admin_column} = '{key}'"
+    # A county named "Prince George's" or "O'Brien" closes the string
+    # literal early and aborts that unit's download. SQL escapes a quote
+    # by doubling it, which every ArcGIS backend accepts.
+    escaped = str(key).replace("'", "''")
+    admin_clause = f"{where_admin_column} = '{escaped}'"
     if where and where != '1=1':
         return f'({where}) AND ({admin_clause})'
     return admin_clause
+
+
+def _part_path(target_path: Path) -> Path:
+    """Return the staging path an in-progress download is written to.
+
+    The target's suffix is kept (`layer.part.geojson`, not
+    `layer.geojson.part`) because the attribute join reads the staged
+    file back through a driver chosen by extension, and it now runs
+    before the file is moved into place.
+    """
+    return target_path.with_name(f'{target_path.stem}.part{target_path.suffix}')
 
 
 def _download_bulk(
@@ -195,6 +210,10 @@ def _download_bulk(
     Chunked so a multi-hundred-MB GeoJSON never lands in memory.
     """
     last_exc = None
+    # A caller passing retries=0 skipped the loop entirely and then
+    # raised None, hiding the real failure behind "exceptions must
+    # derive from BaseException". One attempt is the floor.
+    retries = max(1, int(retries))
     for attempt in range(1, retries + 1):
         try:
             _pace(DEFAULT_REQUEST_INTERVAL_S)
@@ -249,6 +268,11 @@ def _fetch_attribute_table(
         'returnGeometry': 'false',
         'f': 'json',
     }
+    meta = _layer_metadata(
+        layer_url, timeout=timeout, retries=retries, verbose=verbose, label=label
+    )
+    order_by = _order_by_fields(meta, fallback_fields=key_fields)
+    page_params = {**params, 'orderByFields': order_by} if order_by else params
     total = _layer_count(
         query_url,
         params,
@@ -261,7 +285,7 @@ def _fetch_attribute_table(
     for offset in range(0, total, page_size):
         page = _get_json(
             query_url,
-            {**params, 'resultOffset': offset, 'resultRecordCount': page_size},
+            {**page_params, 'resultOffset': offset, 'resultRecordCount': page_size},
             timeout=timeout,
             retries=retries,
             verbose=verbose,
@@ -283,6 +307,10 @@ def _get_json(
     url: str, params: dict, *, timeout: float, retries: int, verbose: bool, label: str
 ) -> dict:
     last_exc = None
+    # A caller passing retries=0 skipped the loop entirely and then
+    # raised None, hiding the real failure behind "exceptions must
+    # derive from BaseException". One attempt is the floor.
+    retries = max(1, int(retries))
     for attempt in range(1, retries + 1):
         try:
             _pace(DEFAULT_REQUEST_INTERVAL_S)
@@ -481,14 +509,14 @@ def _normalize_join_key(gdf, attributes, *, key_conv):
     return gdf, attributes, dropped
 
 
-def _layer_page_size(
+def _layer_metadata(
     layer_url: str, *, timeout: float, retries: int, verbose: bool, label: str
-) -> int:
-    """Return the layer's `maxRecordCount`, capped at `DEFAULT_PAGE_SIZE`.
+) -> dict:
+    """Read one layer's own metadata document.
 
-    Some on-prem ArcGIS Server instances report a `maxRecordCount` far above
-    what a single query actually returns; capping keeps requests a
-    predictable size regardless.
+    Fetched once per download and used for both the page size and the
+    paging order, so reading the second costs no extra request against a
+    service this scraper is deliberately gentle with.
     """
     meta = _get_json(
         layer_url,
@@ -498,8 +526,38 @@ def _layer_page_size(
         verbose=verbose,
         label=f'{label}: layer metadata',
     )
+    return meta if isinstance(meta, dict) else {}
+
+
+def _page_size_from_metadata(meta: dict) -> int:
+    """Return the layer's `maxRecordCount`, capped at `DEFAULT_PAGE_SIZE`.
+
+    Some on-prem ArcGIS Server instances report a `maxRecordCount` far above
+    what a single query actually returns; capping keeps requests a
+    predictable size regardless.
+    """
     max_record_count = meta.get('maxRecordCount') or DEFAULT_PAGE_SIZE
     return min(int(max_record_count), DEFAULT_PAGE_SIZE)
+
+
+def _order_by_fields(meta: dict, *, fallback_fields: list | None = None) -> str:
+    """Return the `orderByFields` clause paging must send, if one exists.
+
+    `resultOffset` paging is only well defined against a stable sort: with
+    no ordering clause the service may return a different arrangement per
+    page, so a row served twice can replace one never served at all, and
+    the count-based completeness check still passes. The layer's own
+    object-id field is the safe sort key because it is unique and indexed;
+    *fallback_fields* (the join key, on an attribute-only query) is used
+    when the service does not report one, and an empty string means the
+    caller sends no clause rather than guessing a field name.
+    """
+    object_id_field = meta.get('objectIdField')
+    if object_id_field:
+        return f'{object_id_field} ASC'
+    if fallback_fields:
+        return ','.join(f'{field} ASC' for field in fallback_fields)
+    return ''
 
 
 def _layer_count(
@@ -771,7 +829,7 @@ def fetch(
     if bulk_url:
         # The agency's own export: one request, and the access route it
         # publishes for whole-layer use.
-        part_path = target_path.with_name(target_path.name + '.part')
+        part_path = _part_path(target_path)
         try:
             _download_bulk(
                 bulk_url,
@@ -781,31 +839,39 @@ def fetch(
                 verbose=verbose,
                 label=prefix,
             )
+            # Joined while still staged: a failed join used to leave the
+            # un-joined file at the final path, where the next run's
+            # existence check returned it with the columns missing.
+            _maybe_attribute_join(
+                part_path,
+                attribute_join,
+                default_layer_url=layer_url,
+                join_min_match=join_min_match,
+                timeout=timeout,
+                retries=retries,
+                verbose=verbose,
+                label=prefix,
+            )
         except BaseException:
             part_path.unlink(missing_ok=True)
             raise
         part_path.replace(target_path)
-        _maybe_attribute_join(
-            target_path,
-            attribute_join,
-            default_layer_url=layer_url,
-            join_min_match=join_min_match,
-            timeout=timeout,
-            retries=retries,
-            verbose=verbose,
-            label=prefix,
-        )
         return target_path
 
+    meta = _layer_metadata(
+        layer_url, timeout=timeout, retries=retries, verbose=verbose, label=prefix
+    )
     if page_size is None:
-        page_size = _layer_page_size(
-            layer_url, timeout=timeout, retries=retries, verbose=verbose, label=prefix
-        )
+        page_size = _page_size_from_metadata(meta)
     page_size = max(1, int(page_size))
     query_url = f'{layer_url.rstrip("/")}/query'
     params = {'where': where, 'outFields': out_fields, 'f': 'geojson'}
     if extra_params:
         params.update(extra_params)
+    # Ordering is what makes resultOffset paging mean anything; see
+    # _order_by_fields. Kept off the count query, which needs no sort.
+    order_by = params.get('orderByFields') or _order_by_fields(meta)
+    page_params = {**params, 'orderByFields': order_by} if order_by else params
 
     total = _layer_count(
         query_url,
@@ -822,7 +888,7 @@ def fetch(
     # memory was ~2x the output in a single allocation; a 250k-parcel
     # layer with polygon geometry runs to hundreds of MB. Writing per
     # feature keeps peak at one page.
-    part_path = target_path.with_name(target_path.name + '.part')
+    part_path = _part_path(target_path)
     n_written = 0
     skipped: list[int] = []
     try:
@@ -831,7 +897,7 @@ def fetch(
             for offset in range(0, total, page_size):
                 batch = _fetch_range(
                     query_url,
-                    params,
+                    page_params,
                     offset,
                     min(page_size, total - offset),
                     timeout=timeout,
@@ -873,22 +939,26 @@ def fetch(
             'a known-incomplete extract.'
         )
 
+    try:
+        _maybe_attribute_join(
+            part_path,
+            attribute_join,
+            default_layer_url=layer_url,
+            join_min_match=join_min_match,
+            timeout=timeout,
+            retries=retries,
+            verbose=verbose,
+            label=prefix,
+        )
+    except BaseException:
+        part_path.unlink(missing_ok=True)
+        raise
+
     part_path.replace(target_path)
     if verbose:
         _log(f'{prefix}: wrote {n_written} features -> {target_path.name}')
         if skipped:
             _log(f'{prefix}: {len(skipped)} record(s) skipped as unfetchable')
-
-    _maybe_attribute_join(
-        target_path,
-        attribute_join,
-        default_layer_url=layer_url,
-        join_min_match=join_min_match,
-        timeout=timeout,
-        retries=retries,
-        verbose=verbose,
-        label=prefix,
-    )
     return target_path
 
 

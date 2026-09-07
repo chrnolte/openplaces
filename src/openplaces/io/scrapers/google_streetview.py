@@ -67,6 +67,8 @@ from requests.adapters import HTTPAdapter, Retry
 from shapely.geometry import Polygon
 from tqdm import tqdm
 
+from openplaces.io import request_headers
+
 from .types import AssetInventory, ImageSet
 from .types import Image as ScrapedImage
 
@@ -197,7 +199,10 @@ class GoogleStreetview:
                 'key': api_key,
             }
             response = requests.get(
-                BASE_API_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
+                BASE_API_URL,
+                params=params,
+                timeout=REQUESTS_TIMEOUT_VAL,
+                headers=request_headers(),
             )
 
             data = response.json()
@@ -661,7 +666,10 @@ class GoogleStreetview:
         for attempt in range(1, API_REQUEST_MAX_ATTEMPTS + 1):
             try:
                 response = requests.get(
-                    BASE_API_URL, params=params, timeout=REQUESTS_TIMEOUT_VAL
+                    BASE_API_URL,
+                    params=params,
+                    timeout=REQUESTS_TIMEOUT_VAL,
+                    headers=request_headers(),
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -759,6 +767,7 @@ class GoogleStreetview:
                 params=params,
                 proxies=None,
                 timeout=REQUESTS_TIMEOUT_VAL,
+                headers=request_headers(),
             )
             response.raise_for_status()
 
@@ -1027,7 +1036,11 @@ class GoogleStreetview:
         response = None
         for attempt in range(1, max_attempts + 1):
             try:
-                response = requests.get(request_url, timeout=REQUESTS_TIMEOUT_VAL)
+                response = requests.get(
+                    request_url,
+                    timeout=REQUESTS_TIMEOUT_VAL,
+                    headers=request_headers(),
+                )
             except requests.RequestException:
                 if attempt == max_attempts:
                     raise
@@ -1231,16 +1244,19 @@ class GoogleStreetview:
         list[PIL.Image.Image]
             List of downloaded tile images.
         """
-        session = requests.Session()
-        session.mount('https://', HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY))
         tiles = []
-        for url in urls:
-            response = session.get(url)
-            if not response.ok:
-                raise ConnectionError(
-                    f'Tile download failed (HTTP {response.status_code}): {url}'
-                )
-            tiles.append(PIL.Image.open(BytesIO(response.content)))
+        # Closed on the way out, and identified: see
+        # openplaces.io.request_headers.
+        with requests.Session() as session:
+            session.mount('https://', HTTPAdapter(max_retries=REQUESTS_RETRY_STRATEGY))
+            session.headers.update(request_headers())
+            for url in urls:
+                response = session.get(url)
+                if not response.ok:
+                    raise ConnectionError(
+                        f'Tile download failed (HTTP {response.status_code}): {url}'
+                    )
+                tiles.append(PIL.Image.open(BytesIO(response.content)))
 
         return tiles
 
@@ -1330,7 +1346,10 @@ class GoogleStreetview:
         b64_string += '=' * ((4 - len(b64_string) % 4) % 4)
         data = b64_string.replace('-', '+').replace('_', '/')
         data = base64.b64decode(data)
-        return np.array(data)
+        # np.array() on a bytes object yields a 0-d |S<n> array, which
+        # cannot be indexed byte-wise; frombuffer gives the byte vector
+        # the header and plane parsers expect.
+        return np.frombuffer(data, dtype=np.uint8)
 
     def _parse_dmap_header(self, depth_map: np.ndarray) -> dict[str, int]:
         """
@@ -1431,7 +1450,8 @@ class GoogleStreetview:
                 if plane_idx > 0:
                     plane = planes[plane_idx]
                     depth = np.abs(
-                        plane['d'](
+                        plane['d']
+                        / (
                             ray_dir[0] * plane['n'][0]
                             + ray_dir[1] * plane['n'][1]
                             + ray_dir[2] * plane['n'][2]
