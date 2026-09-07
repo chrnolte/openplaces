@@ -42,6 +42,40 @@ from openplaces.table import (  # noqa: F401
 )
 
 
+def _delete_parquet_pair(path) -> None:
+    """Delete an attribute parquet and its `_geo` sidecar.
+
+    Uses `delete_data` rather than `io.delete_parquet`, which unlinks
+    bare: the deletions here should also clean up an emptied directory
+    and report a locked file. The sidecar goes first so the attribute
+    file is the one that triggers that cleanup.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Attribute parquet path.
+    """
+    geo_path = path.with_stem(path.stem + '_geo')
+    if geo_path.exists():
+        delete_data(geo_path)
+    delete_data(path)
+
+
+def _has_geometry(path) -> bool:
+    """True if *path* carries geometry, in a `_geo` sidecar or in itself.
+
+    Parameters
+    ----------
+    path : pathlib.Path
+        Attribute parquet path.
+    """
+    if not path.exists():
+        return False
+    if path.with_stem(path.stem + '_geo').exists():
+        return True
+    return 'geometry' in parquet_columns(path)
+
+
 def _has_default_index(df) -> bool:
     """True if *df* has a default, unnamed RangeIndex (0..n-1, step 1)."""
     idx = df.index
@@ -72,7 +106,7 @@ def aggregate_rows_weighted(
     ---------
     ``'mean'`` columns
         Weighted mean per group: ``sum(value * wcol) / sum(wcol * value.notnull())``.
-        *wcol* should reflect physical overlap magnitude (e.g. ``area_ha``) —
+        *wcol* should reflect physical overlap magnitude (e.g. ``area_ha``) -
         weight is normalized within each group implicitly by the division.
     ``'sum'`` columns
         Fraction-weighted (apportioned) sum per group: ``sum(value * wcol)``,
@@ -81,7 +115,7 @@ def aggregate_rows_weighted(
         ``fraction_of_old``, which sums to 1.0 per source row) so that
         summing a value across every group sharing a source recovers exactly
         that source's original total. Passing a non-normalized weight (e.g.
-        raw ``area_ha``) for a 'sum' column silently over- or under-counts —
+        raw ``area_ha``) for a 'sum' column silently over- or under-counts -
         this is a caller responsibility, easy to get backwards. Because
         'mean' and 'sum' columns typically need *different* weight columns,
         call this function once per weight column (on the relevant column
@@ -90,7 +124,7 @@ def aggregate_rows_weighted(
     Parameters
     ----------
     df : pd.DataFrame
-        Input rows, one per (target, source) link — e.g. one row per
+        Input rows, one per (target, source) link - e.g. one row per
         crosswalk (parcel_id_new, parcel_id_old) pair, with value columns to
         aggregate plus *wcol*.
     by : str or list of str
@@ -148,7 +182,15 @@ def aggregate_rows_weighted(
 
     weighted_mean_cols = [c for c, f in agg_cols.items() if f == 'mean']
     weighted_sum_cols = [c for c, f in agg_cols.items() if f == 'sum']
-    plain_cols = {c: f for c, f in agg_cols.items() if f not in ('mean', 'sum')}
+    # Registry names ('join_nonnull') are resolved to the callables
+    # groupby.agg needs. aggregate_rows resolves them on its own path, but
+    # not for the entries of a dict it is handed, so an unresolved name
+    # reached pandas and raised AttributeError.
+    plain_cols = {
+        c: (_agg_func_for(resolve_attribute_name(c), f) if isinstance(f, str) else f)
+        for c, f in agg_cols.items()
+        if f not in ('mean', 'sum')
+    }
 
     group_keys = df[by] if isinstance(by, str) else [df[c] for c in by_cols]
     w = pd.to_numeric(df[wcol], errors='coerce')
@@ -170,11 +212,11 @@ def aggregate_rows_weighted(
         parts.append(df[weighted_sum_cols].mul(w, axis=0).groupby(group_keys).sum())
 
     if plain_cols:
-        plain_result = aggregate_rows(
-            df[[*by_cols, *plain_cols]], by, aggregation_function=plain_cols
-        )
-        if plain_result is not None:
-            parts.append(plain_result)
+        # Grouped here rather than through aggregate_rows, which keeps only
+        # columns the attribute registry knows and so silently dropped a
+        # dict-declared column that is not registered, the opposite of what
+        # this function's dict contract promises.
+        parts.append(df.groupby(group_keys)[list(plain_cols)].agg(plain_cols))
 
     if not parts:
         return None
@@ -186,7 +228,7 @@ def _strip_save_admin_level(recipe):
     """Return a shallow copy of recipe with save_to.admin_level removed.
 
     Without an explicit save_to.admin_level, get_output_path resolves to the
-    process-level path — the intermediate per-chunk file written by
+    process-level path - the intermediate per-chunk file written by
     TableIngester in aggregate mode.
     """
     temp = dict(recipe)
@@ -267,15 +309,41 @@ def _aggregate_to_file(
         share a schema.
     verbose : bool
         Print a one-line summary.
+
+    Raises
+    ------
+    ValueError
+        If *final_path* is also one of *inputs*, which would rewrite an
+        input from itself and then delete it.
     """
     input_paths = [p for _, p in inputs]
+    # An output that is also one of its own inputs would be rewritten
+    # from itself and then deleted by the keep_original loop below,
+    # destroying the data it was meant to roll up. This happens when a
+    # roll-up group key equals a partition id (rolling a year-partitioned
+    # recipe up by year), where the roll-up is a no-op anyway. Refuse
+    # rather than write the group under another name: a renamed output
+    # is a file no reader looks for, and the caller's request was
+    # meaningless, not merely misaddressed.
+    if any(Path(p).resolve() == Path(final_path).resolve() for p in input_paths):
+        raise ValueError(
+            f'Refusing to aggregate {final_path.name} into itself: it is both '
+            'an input and the output of this roll-up, so writing it would '
+            'destroy the partition it was built from. This usually means the '
+            'roll-up granularity matches the partition granularity (e.g. '
+            "aggregate_partitions(by='year') on a year-partitioned recipe), "
+            'which has nothing to combine.'
+        )
+
     # Geometry lives either in a `_geo` sidecar (split layout) or in
     # the file itself (combined layout, `save_to: combined: true`).
     # Checking only for the sidecar silently read combined inputs
     # without their geometry, writing a geometry-less aggregate.
-    has_geo = input_paths[0].with_stem(input_paths[0].stem + '_geo').exists() or (
-        'geometry' in parquet_columns(input_paths[0])
-    )
+    # Decided per input: a chunk written without geometry beside chunks
+    # that carry it used to make the whole aggregate geometry-less (when
+    # the bare chunk came first) or raise (when it came later).
+    input_has_geo = {p: _has_geometry(p) for p in input_paths}
+    has_geo = any(input_has_geo.values())
 
     try:
         dfs = []
@@ -283,9 +351,9 @@ def _aggregate_to_file(
         # legacy replace_by path reloads and drops only the rows being replaced
         # so a partial re-run doesn't discard prior chunks.
         if how == 'union' and final_path.exists():
-            dfs.append(read_parquet(final_path, geom=has_geo))
+            dfs.append(read_parquet(final_path, geom=_has_geometry(final_path)))
         elif replace_by is not None and final_path.exists():
-            existing_df = read_parquet(final_path, geom=has_geo)
+            existing_df = read_parquet(final_path, geom=_has_geometry(final_path))
             replaced_ids = {input_id for input_id, _ in inputs}
             if replace_by in existing_df.columns:
                 existing_df = existing_df[~existing_df[replace_by].isin(replaced_ids)]
@@ -296,7 +364,7 @@ def _aggregate_to_file(
 
         new_dfs = []
         for input_id, p in inputs:
-            df = read_parquet(p, geom=has_geo)
+            df = read_parquet(p, geom=input_has_geo[p])
             if (
                 replace_by is not None
                 and replace_by not in df.columns
@@ -372,7 +440,14 @@ def _aggregate_to_file(
                 merged = merged.drop_duplicates()
         merged = merged.reset_index(drop=True) if reset_index else merged.sort_index()
         if has_geo:
-            merged = gpd.GeoDataFrame(merged, crs=dfs[0].crs)
+            # The CRS comes from whichever frame carried geometry: with a
+            # mixed batch the first frame may have none.
+            crs = next(
+                (df.crs for df in dfs if getattr(df, 'crs', None) is not None), None
+            )
+            if 'geometry' in merged.columns:
+                merged['geometry'] = gpd.GeoSeries(merged['geometry'], crs=crs)
+            merged = gpd.GeoDataFrame(merged, crs=crs)
 
         for col, (cats, ordered) in cat_meta.items():
             if col in merged.columns:
@@ -397,13 +472,8 @@ def _aggregate_to_file(
             pass
 
     if not keep_original:
-        # geo companion first so the attribute file triggers the empty-directory
-        # cleanup on its turn.
         for _input_id, p in inputs:
-            geo_path = p.with_stem(p.stem + '_geo')
-            if geo_path.exists():
-                delete_data(geo_path)
-            delete_data(p)
+            _delete_parquet_pair(p)
 
     if verbose:
         print(f'Aggregated {len(input_paths)} chunk(s) -> {final_path.name}')
@@ -437,7 +507,7 @@ def aggregate_files(
         may differ from the intended aggregation target.
     output_dir : str, optional
         Directory for the aggregated output files (e.g. ``'share'``).
-        Does not affect where intermediate input files are looked up — those
+        Does not affect where intermediate input files are looked up - those
         are always resolved from the recipe's original ``save_to.data_dir``.
         Uses the recipe default if omitted.
     admin_ids_to_save : str, AdminId, or list, optional
@@ -462,7 +532,7 @@ def aggregate_files(
         recipe = get_recipe_by_id(recipe)
 
     # temp_recipe resolves intermediate (process-level) paths using the
-    # recipe's original data_dir — output_dir must not bleed into this.
+    # recipe's original data_dir - output_dir must not bleed into this.
     process_admin_level = get_process_admin_level(recipe)
     temp_recipe = _strip_save_admin_level(recipe)
 
@@ -532,8 +602,8 @@ def aggregate_to_admin_level(
 ):
     """Aggregate per-process-unit intermediate files into save-level files.
 
-    Wrapper around :func:`aggregate` that reads the save level from the
-    recipe's ``save_to.admin_level`` field.
+    Wrapper around :func:`aggregate_files` that reads the save level from
+    the recipe's ``save_to.admin_level`` field.
 
     Parameters
     ----------
@@ -549,7 +619,7 @@ def aggregate_to_admin_level(
         If True, do not delete the intermediate files after aggregation.
     combined : bool
         If True, write the aggregated output as a single geoparquet file.
-        Passed through to :func:`aggregate`.
+        Passed through to :func:`aggregate_files`.
     verbose : bool
         If True, print a summary line for each aggregated file.
     """
@@ -672,10 +742,7 @@ def join_partitions_by_index(
 
         if not keep_original:
             for p in partition_paths:
-                geo_path = p.with_stem(p.stem + '_geo')
-                if geo_path.exists():
-                    delete_data(geo_path)
-                delete_data(p)
+                _delete_parquet_pair(p)
 
 
 def _legacy_upgrader(recipe):
@@ -689,8 +756,14 @@ def _legacy_upgrader(recipe):
     from openplaces.io.transform import apply_legacy_columns, apply_transformations
 
     def upgrade(df):
+        # Only a frame that actually carries a legacy column name needs the
+        # transformations re-run: a freshly ingested partition already had
+        # them applied, and a non-idempotent step (a prefix, a concat) would
+        # apply a second time on every roll-up.
+        renames = recipe.get('legacy_columns') or {}
+        is_legacy = any(old in df.columns for old in renames)
         df = apply_legacy_columns(df, recipe)
-        if recipe.get('legacy_columns') and recipe.get('transformations'):
+        if is_legacy and recipe.get('transformations'):
             df = apply_transformations(df, recipe, silent=True)
         return df
 
@@ -716,7 +789,7 @@ def read_partition_coverage(path) -> set[str]:
     """Return the partition ids recorded in an aggregated parquet's footer.
 
     Reads the ``openplaces:partitions`` key from the Parquet file-level
-    (footer) metadata written by :func:`aggregate_partitions` — no rows are
+    (footer) metadata written by :func:`aggregate_partitions` - no rows are
     scanned. Returns an empty set when the file is missing or carries no such
     key (e.g. files written before this metadata was introduced).
 
@@ -763,7 +836,14 @@ def _existing_partition_ids(recipe, admin_id) -> list[str]:
     Fallback for recipes without a declared partition range (no
     'download_by': 'partition'), e.g. scraped checkpoint partitions: globs the
     files next to the recipe's bare output path and extracts the partition
-    suffix, skipping the aggregated 'all' file and '_geo' sidecars.
+    suffix.
+
+    Skipped: geometry sidecars, and any sibling that records its own
+    partition coverage in its footer, which marks it as a previous
+    roll-up's output rather than a partition. A sibling that is neither,
+    but shares the stem for some other reason (a differently suffixed
+    product of another stage), is still indistinguishable from a
+    partition by name alone.
     """
     base = get_output_path(recipe, admin_id)
     if not base.parent.exists():
@@ -771,7 +851,11 @@ def _existing_partition_ids(recipe, admin_id) -> list[str]:
     pids = []
     for p in sorted(base.parent.glob(base.stem + '_*' + base.suffix)):
         pid = p.stem[len(base.stem) + 1 :]
-        if pid == 'all' or pid.endswith('_geo'):
+        if pid == 'all' or pid.endswith(('_geo', '_geo_simplified')):
+            continue
+        # Merging a previous roll-up back in would duplicate every row it
+        # already holds, and deleting it as an original would discard it.
+        if read_partition_coverage(p):
             continue
         pids.append(pid)
     return pids
