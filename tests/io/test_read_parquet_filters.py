@@ -123,3 +123,11 @@ def test_split_geometry_read_without_a_join_column_raises(tmp_path):
     pd.DataFrame({'value': [1]}).to_parquet(path, index=False)
     with pytest.raises(ValueError, match='Could not identify column'):
         read_parquet(path, geom=True)
+
+
+def test_a_single_column_name_is_accepted_as_a_string(tmp_path):
+    # Appending the join id to a bare string would unpack it into its
+    # characters, so it is widened to a list before either branch.
+    path = _write_split(tmp_path)
+    out = read_parquet(path, geom=True, columns='value')
+    assert sorted(out.columns) == ['geometry', 'value']

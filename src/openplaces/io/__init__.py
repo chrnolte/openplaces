@@ -996,6 +996,12 @@ def read_parquet(
 
     import pyarrow.parquet as pq
 
+    # A single column name is widened here, before either branch can
+    # append the join id or the geometry column to it and unpack the
+    # string into its characters.
+    if isinstance(kwargs.get('columns'), str):
+        kwargs['columns'] = [kwargs['columns']]
+
     # A combined file (save_parquet(..., combined=True)) has geometry baked
     # into the same file as the attributes -- no `_geo` sidecar, no join-id
     # column. Detected via a cheap schema-only peek, before deciding whether
