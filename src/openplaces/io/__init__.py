@@ -599,7 +599,15 @@ def to_parquet(
         pyarrow.parquet.read_metadata() without scanning rows. Only supported
         for plain (non-geo) DataFrames; ignored for GeoDataFrames.
     **kwargs
-        Additional arguments passed to to_parquet()
+        Additional arguments passed to to_parquet(). When file_metadata is
+        given the write goes through pyarrow directly, which accepts none of
+        pandas' keywords: only index is honored there, and anything else
+        raises rather than being dropped.
+
+    Raises
+    ------
+    TypeError
+        If file_metadata is combined with a keyword other than index.
     """
     if isinstance(filepath, str):
         filepath = Path(filepath)
@@ -616,7 +624,18 @@ def to_parquet(
     elif file_metadata:
         import pyarrow.parquet as pq
 
-        table = pyarrow.Table.from_pandas(df)
+        # pq.write_table takes none of pandas' to_parquet keywords, so a
+        # dropped index=False wrote an index level column here and not
+        # on the branch below: the same call produced two schemas.
+        index = kwargs.pop('index', None)
+        if kwargs:
+            raise TypeError(
+                'to_parquet() cannot pass '
+                + ', '.join(sorted(kwargs))
+                + ' through with file_metadata; only `index` is honored '
+                'on the footer-metadata path.'
+            )
+        table = pyarrow.Table.from_pandas(df, preserve_index=index)
         merged = dict(table.schema.metadata or {})
         merged.update(
             {
@@ -639,7 +658,8 @@ def to_csv(
 ) -> None:
     """Save dataframe as CSV file.
 
-    Automatically drops 'geometry' column if present.
+    Automatically drops the active geometry column if present, under
+    whatever name the frame gives it.
 
     Parameters
     ----------
@@ -657,9 +677,12 @@ def to_csv(
 
     filepath.parent.mkdir(parents=True, exist_ok=True)
 
-    # Drop geometry if present
+    # Drop geometry if present. The active geometry column is not
+    # always named 'geometry', and it can also be unset entirely.
     if isinstance(df, gpd.GeoDataFrame):
-        df = df.drop(columns='geometry')
+        geometry_column = df.active_geometry_name
+        if geometry_column is not None and geometry_column in df.columns:
+            df = df.drop(columns=geometry_column)
 
     df.to_csv(filepath, index=index, **kwargs)
 
