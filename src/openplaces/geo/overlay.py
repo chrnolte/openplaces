@@ -78,7 +78,7 @@ def overlay_admin_ids(
             admin_id, admin_level, recipe=admin_recipe, columns=[], geom=True
         )
     else:
-        admin = admin_geometries.to_frame()
+        admin = admin_geometries.rename('geometry').to_frame()
 
     # Cast admin index to pd.Categorical to later save space in the joined column
     admin.index = pd.Index(pd.Categorical(admin.index), name=admin.index.name)
@@ -91,6 +91,17 @@ def overlay_admin_ids(
     timer.mark('Admin overlay: get centroids')
 
     gdf_sjoin = gpd.sjoin(gdf_centroids, admin[['geometry']], how='left')
+    if len(gdf_sjoin) > len(gdf_centroids):
+        # A centroid landing exactly on the line between two admin units
+        # matches both, so the join returns more rows than it was given
+        # and the positional assignment below would raise. Admin units
+        # tile space, so the extra match is a boundary artifact rather
+        # than a real alternative: keep one, picked by admin id so the
+        # choice does not depend on join order.
+        gdf_sjoin = gdf_sjoin.sort_values(admin.index.name, kind='stable')
+        gdf_sjoin = gdf_sjoin[~gdf_sjoin.index.duplicated(keep='first')].reindex(
+            gdf_centroids.index
+        )
     gdf[admin.index.name] = gdf_sjoin[admin.index.name].values
     del gdf_sjoin
     timer.mark('Admin overlay: spatial join')
@@ -98,14 +109,21 @@ def overlay_admin_ids(
     if include_overlays:
         mask = gdf[admin.index.name].isnull()
         if mask.any():
+            gdf_overlay = gpd.overlay(
+                gdf[mask][['geometry']].reset_index(),
+                admin[['geometry']].reset_index(),
+            )
+            # A polygon straddling a boundary yields one piece per admin
+            # unit it touches, and two rows sharing an index label make
+            # the assignment below raise. Keep the unit holding the
+            # largest share of the polygon.
+            gdf_overlay['_piece_area'] = shapely.area(gdf_overlay.geometry.values)
             gdf_overlay = (
-                gpd.overlay(
-                    gdf[mask][['geometry']].reset_index(),
-                    admin[['geometry']].reset_index(),
-                )
-                .drop(columns='geometry')
+                gdf_overlay.sort_values('_piece_area', ascending=False, kind='stable')
+                .drop(columns=['geometry', '_piece_area'])
                 .set_index(gdf.index.name)
             )
+            gdf_overlay = gdf_overlay[~gdf_overlay.index.duplicated(keep='first')]
             gdf.loc[mask, admin.index.name] = gdf_overlay[admin.index.name]
             del gdf_overlay
             timer.mark('Admin overlay: spatial overlay')
