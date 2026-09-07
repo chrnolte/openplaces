@@ -190,7 +190,7 @@ def _read_vintage_names(recipe_id: str | None) -> dict[str, str]:
     """
     if recipe_id is None:
         return {}
-    from openplaces.api import get_entities
+    from openplaces.io.readers import get_entities
     from openplaces.recipe import get_recipe_by_id
 
     recipe = get_recipe_by_id(recipe_id)

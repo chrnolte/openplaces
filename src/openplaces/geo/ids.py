@@ -439,7 +439,13 @@ def add_ubid_index(
     """
 
     gdf = gdf.copy()
-    gdf.index = pd.Index(get_ubids(gdf, duplicates=duplicates), name=name)
+    ubids = get_ubids(gdf, duplicates=duplicates)
+    # `duplicates='drop'` drops entries from the UBID series, so keep
+    # only the rows that survived rather than assigning a shorter index
+    # to the full frame, which raises a length mismatch.
+    if len(ubids) != len(gdf):
+        gdf = gdf.loc[ubids.index]
+    gdf.index = pd.Index(ubids, name=name)
     if gdf.index.duplicated().any():
         raise ValueError(
             'Unhandled duplicates found in `ubid` index. '
@@ -1080,7 +1086,18 @@ def _resolve_instruction(admin_unit_id, instruction, kind):
     while aid:
         if aid in links.index:
             row = links.loc[aid]
-            return row.get(f'pattern_{kind}'), row.get(f'conv_{kind}') or 'simple', None
+            # An absent conv stays absent: `convert_parcel_id` then
+            # applies the row's pattern and joins the groups with '|',
+            # which is not what a 'simple' fallback would do. The old
+            # `or 'simple'` said the opposite and only behaved because
+            # the missing value arrives as a truthy float NaN; it would
+            # raise on a pd.NA.
+            conv = row.get(f'conv_{kind}')
+            return (
+                row.get(f'pattern_{kind}'),
+                None if pd.isna(conv) else conv,
+                None,
+            )
         aid = aid.rsplit('-', 1)[0] if '-' in aid else None
     return None, 'simple', None
 
