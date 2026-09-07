@@ -364,11 +364,23 @@ def score_classification(
         n_called = int(called.sum())
         recall = n_correct / scored.sum() if scored.sum() else None
         precision = int((truth[called] == cls).sum()) / n_called if n_called else None
-        f1 = (
-            2 * precision * recall / (precision + recall)
-            if precision and recall
-            else None
-        )
+        # A real zero is a score, not a missing measurement. Testing the
+        # floats for truthiness collapsed the two, so a class we got
+        # entirely wrong reported None (NaN), and
+        # compare_classifications_paired's np.isfinite filter then dropped
+        # every bootstrap draw of it, leaving the regression gate blind to
+        # exactly the collapse it exists to catch. F1 is undefined only
+        # where precision and recall are both undefined: no truth support
+        # and nothing predicted.
+        if precision is None and recall is None:
+            f1 = None
+        else:
+            # sklearn's zero_division convention: an undefined half
+            # counts as 0 once the other half is measurable, because a
+            # class we found none of, or predicted only wrongly, scored
+            # zero rather than went unmeasured.
+            hit = (precision or 0.0, recall or 0.0)
+            f1 = 2 * hit[0] * hit[1] / sum(hit) if sum(hit) else 0.0
         records.append(
             {
                 'class': cls,
@@ -902,14 +914,17 @@ class ValidationContext:
         count_col = self.dwelling_count_column
         if count_col and count_col in linked.columns:
             dwellings = pd.to_numeric(linked[count_col], errors='coerce')
-            values['overture'] = pd.Series(
-                [
-                    'Multi-Family' if n >= 2 else 'Single-Family'
-                    for n in dwellings.fillna(0)
-                ],
-                index=linked.index,
-                dtype=object,
-            )
+            # No dwelling record is not a count of zero. Filling it made
+            # "Overture never saw this entity" indistinguishable from
+            # "Overture saw one dwelling", so the source was credited and
+            # penalized for a Single-Family it never asserted. Absent
+            # evidence stays missing, and score_classification's
+            # predicted.notna() gate excludes it from this source's score.
+            implied = pd.Series(None, index=linked.index, dtype=object)
+            observed = dwellings.notna()
+            implied[observed & (dwellings >= 2)] = 'Multi-Family'
+            implied[observed & (dwellings < 2)] = 'Single-Family'
+            values['overture'] = implied
         return values
 
     def score_sources(self, linked):
