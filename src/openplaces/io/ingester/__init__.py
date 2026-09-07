@@ -1685,20 +1685,46 @@ class Ingester:
             raise NotImplementedError(
                 'Either an `entity` or a `dataset` must be defined in the recipe.'
             )
+        # Both directories are keyed on the same unit, so the "already
+        # downloaded" and "already unzipped" checks agree about which
+        # partition a file on disk belongs to.
+        #
+        # That unit is the partition's own download unit. A national recipe
+        # whose source ships one file per state (`download_by:
+        # {admin_level: 2}`) keeps each under that state's directory;
+        # building the path from the recipe's `admin_id` sent every
+        # partition to the country-level path, so only one state's file
+        # could ever be found, and a recipe with a fixed
+        # `uncompressed_file_name` resolved to one heap path shared by
+        # every state, where a leftover extraction satisfied the next
+        # state's skip check and it processed the previous state's data.
+        #
+        # A `download_by.partition_key_transformation` is the exception: it
+        # deliberately maps several download units onto one download (NSI's
+        # New England towns each resolve to their county's file). Keying on
+        # the town hid the sibling's copy and re-fetched the same
+        # multi-hundred-MB file once per town, about 1,500 fetches across
+        # New England. Those recipes keep their files in the recipe's own
+        # directory, where the resolved file name is what tells the
+        # partitions apart.
+        shares_download_across_units = bool(
+            (self.recipe.get('download_by') or {}).get('partition_key_transformation')
+        )
+        partition_admin_id = (
+            self.recipe.get('admin_id')
+            if shares_download_across_units
+            else (
+                self.download_partition.get('admin_id_to_download')
+                or self.recipe.get('admin_id')
+            )
+        )
         self.recipe_heap_dir = heap_dir(
-            self.recipe.get('admin_id'),
+            partition_admin_id,
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )
-        # The partition's own admin unit, not the recipe's. A national
-        # recipe whose source ships one file per state
-        # (`download_by: {admin_level: 2}`) keeps each under that state's
-        # external directory; building the path from the recipe's
-        # `admin_id` instead sent every partition to the country-level
-        # path, so only one state's file could ever be found.
         self.recipe_external_dir = external_dir(
-            self.download_partition.get('admin_id_to_download')
-            or self.recipe.get('admin_id'),
+            partition_admin_id,
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )
