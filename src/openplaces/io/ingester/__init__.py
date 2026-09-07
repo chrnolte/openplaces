@@ -13,6 +13,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow as pa
 
 from openplaces.config import cfg
 from openplaces.core.attribute_registry import load_registry as _load_attr_registry
@@ -25,13 +26,10 @@ from openplaces.core.schema import AdminId
 from openplaces.geo.link import create_entity_link, get_entity_link_path
 from openplaces.io import (
     delete_data,
-    delete_parquet,
     download,
     find_latest_file_or_gdb,
-    read_parquet,
     release_unused_memory,
     request_headers,
-    save_parquet,
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
@@ -112,6 +110,15 @@ def _transform_partition_key(value, spec: dict) -> str:
     value = str(value)
     operation = spec.get('operation')
     args = spec.get('args') or []
+    # Each operation's arity, checked before indexing: a short `args` list
+    # otherwise raised a bare IndexError naming neither the recipe key nor
+    # the operation that wanted more arguments.
+    arity = {'substring': 2, 'zfill': 1, 'add_prefix': 1, 'add_suffix': 1}
+    if operation in arity and len(args) < arity[operation]:
+        raise ValueError(
+            f"partition_key_transformation operation '{operation}' needs "
+            f'{arity[operation]} argument(s), got {args!r}.'
+        )
     if operation == 'substring':
         return value[args[0] : args[1]]
     if operation == 'zfill':
@@ -263,12 +270,14 @@ class Ingester:
 
     @property
     def _process_level(self):
-        """Max admin level across download_by and process_by."""
-        level = self.recipe['admin_id'].get_level()
-        for by in ('download_by', 'process_by'):
-            if by in self.recipe and 'admin_level' in self.recipe[by]:
-                level = max(level, self.recipe[by]['admin_level'])
-        return level
+        """Max admin level across download_by and process_by.
+
+        Delegated rather than recomputed: the local copy omitted the
+        deprecated `cache_by: admin_level` term, so on a recipe still
+        carrying it `_is_aggregate_mode` and
+        `_resolve_admin_ids_to_process` disagreed about the level.
+        """
+        return get_process_admin_level(self.recipe)
 
     @staticmethod
     def _make_temp_recipe(recipe):
@@ -401,7 +410,7 @@ class Ingester:
                 # camera configuration only and produces no output.
                 if self.verbose:
                     print(
-                        f'{self.recipe_id}: imagery is fetched on the fly '
+                        f'{self._recipe_id()}: imagery is fetched on the fly '
                         'during enrichment; nothing to ingest.'
                     )
                 return
@@ -567,60 +576,77 @@ class Ingester:
         merged result to the final output path, and deletes the partials.
         Admin IDs whose data came from a single tile are handled by a simple
         rename rather than a concat.
+
+        Concatenation goes through the shared aggregation core
+        (`io.aggregate._aggregate_to_file`) rather than a local `pd.concat`.
+        The local copy had diverged: it did not union categorical category
+        sets, so a county straddling two tiles whose observed values differ
+        silently lost the categorical dtype that a single-tile county kept,
+        and it skipped `coerce_mixed_object_columns`.
         """
+        from openplaces.io.aggregate import _aggregate_to_file
+
+        # Build the admin-unit-to-tiles map once. Asking the link table per
+        # (admin unit x tile) was O(admins x tiles), roughly three million
+        # lookups on a national run.
+        downloaded_tile_ids = set(self.partition_ids_to_download)
+        tiles_by_admin: dict[str, list[str]] = {}
+        for tile_id, admin_id in self.tile_admin_link.index:
+            if tile_id in downloaded_tile_ids:
+                tiles_by_admin.setdefault(admin_id, []).append(tile_id)
+
         for admin_id in self.admin_ids_to_save:
             final_path = get_output_path(self.recipe, admin_id)
 
             # Tile IDs that were actually downloaded for this admin_id.
-            tile_ids = [
-                tile_id
-                for tile_id in self.partition_ids_to_download
-                if admin_id in self.tile_admin_link.xs(tile_id, level=0).index
+            tile_ids = sorted(set(tiles_by_admin.get(admin_id, [])))
+            existing_tiles = [
+                (tile_id, get_output_path(self.recipe, admin_id, tile_id))
+                for tile_id in tile_ids
             ]
-            output_tile_paths = [
-                get_output_path(self.recipe, admin_id, tile_id) for tile_id in tile_ids
-            ]
-            existing_output_tile_paths = [
-                _path for _path in output_tile_paths if _path.exists()
-            ]
+            existing_tiles = [(t, p) for t, p in existing_tiles if p.exists()]
 
-            if not existing_output_tile_paths:
+            if not existing_tiles:
                 continue
 
-            try:
-                if len(existing_output_tile_paths) == 1:
-                    existing_output_tile_paths[0].replace(final_path)
-                    _geo_partial = existing_output_tile_paths[0].with_stem(
-                        existing_output_tile_paths[0].stem + '_geo'
-                    )
+            if len(existing_tiles) == 1:
+                partial_path = existing_tiles[0][1]
+                try:
+                    partial_path.replace(final_path)
+                    _geo_partial = partial_path.with_stem(partial_path.stem + '_geo')
                     if _geo_partial.exists():
                         _geo_partial.replace(
                             final_path.with_stem(final_path.stem + '_geo')
                         )
-                else:
-                    _geo_path = existing_output_tile_paths[0].with_stem(
-                        existing_output_tile_paths[0].stem + '_geo'
-                    )
-                    gdf_tile_list = [
-                        read_parquet(_path, geom=_geo_path.exists())
-                        for _path in existing_output_tile_paths
-                    ]
-                    gdf_merged = gpd.GeoDataFrame(pd.concat(gdf_tile_list).sort_index())
-                    _warn_registry_type_mismatches(gdf_merged)
-                    save_parquet(gdf_merged, final_path)
-                    for _path in existing_output_tile_paths:
-                        delete_parquet(_path)
-            except PermissionError as e:
-                raise PermissionError(
-                    f'Cannot write to {final_path.name}.\n\n'
-                    '\033[1m→ Close the file in QGIS / ArcGIS / Dropbox sync '
-                    'and re-run.\033[0m'
-                ) from e
+                except PermissionError as e:
+                    raise PermissionError(
+                        f'Cannot write to {final_path.name}.\n\n'
+                        '\033[1m→ Close the file in QGIS / ArcGIS / Dropbox sync '
+                        'and re-run.\033[0m'
+                    ) from e
+                continue
 
-            if self.verbose and len(existing_output_tile_paths) > 1:
+            warned: list[bool] = []
+
+            def _warn_once(df, _warned=warned):
+                # The registry check is about the recipe's own columns, so
+                # one input frame answers it; running it per tile would
+                # repeat the same warning for every tile of every county.
+                if not _warned:
+                    _warned.append(True)
+                    _warn_registry_type_mismatches(df)
+                return df
+
+            _aggregate_to_file(
+                final_path,
+                existing_tiles,
+                transform=_warn_once,
+                verbose=False,
+            )
+
+            if self.verbose:
                 print(
-                    f'Merged {len(existing_output_tile_paths)} '
-                    f'tile partial(s) → {final_path.name}'
+                    f'Merged {len(existing_tiles)} tile partial(s) → {final_path.name}'
                 )
 
     def _join_table_partitions(self):
@@ -763,14 +789,28 @@ class Ingester:
             # re-mint this was a quiet no-op that reported success; a
             # recycled or retired identifier then cost a full run that
             # looked fine while doing nothing.
-            requested = ', '.join(str(a) for a in self.admin_ids)
-            raise ValueError(
-                f'None of the requested admin ids ({requested}) resolve '
-                f'to a unit at save level {save_level} within '
-                f'{self.recipe.get("admin_id")!r}. A re-mint may have '
-                'renamed them; resolve the old id through '
-                'admin_codes.audit.resolve_identifier.'
-            )
+            #
+            # A unit the spine knows but that has no children at the save
+            # level is a different case: legitimately empty scope, not a
+            # renamed id. 83 of the 263 spine countries carry no admin3
+            # rows, so a global recipe asked for one of them should do
+            # nothing quietly rather than abort the run.
+            unresolved = [
+                admin_id
+                for admin_id in self.admin_ids
+                if not self._admin_id_is_in_spine(admin_id)
+            ]
+            if unresolved:
+                requested = ', '.join(str(a) for a in unresolved)
+                scope = self.recipe.get('admin_id')
+                scope_text = repr(str(scope)) if scope and scope.levels else 'the world'
+                raise ValueError(
+                    f'None of the requested admin ids ({requested}) resolve '
+                    f'to a unit at save level {save_level} within '
+                    f'{scope_text}. A re-mint may have '
+                    'renamed them; resolve the old id through '
+                    'admin_codes.audit.resolve_identifier.'
+                )
 
         if not reprocess:
             # Skip if the output exists, or a tombstone receipt records its
@@ -788,6 +828,33 @@ class Ingester:
             ]
 
         return admin_ids_to_save
+
+    def _admin_id_is_in_spine(self, admin_id) -> bool:
+        """Is a requested admin unit itself present in the admin spine?
+
+        Asked at the requested unit's own level, which is what separates a
+        retired or renamed identifier from a unit that is simply childless
+        at the level a recipe saves to.
+
+        Parameters
+        ----------
+        admin_id : AdminId
+            The requested unit. Level 0 (global) is always present.
+
+        Returns
+        -------
+        bool
+            False when the spine cannot be read at that level either, so
+            an unreadable spine keeps the louder of the two outcomes.
+        """
+        level = admin_id.get_level()
+        if level == 0:
+            return True
+        try:
+            spine_ids = get_admin(self.recipe['admin_id'], level).index
+        except (FileNotFoundError, KeyError, ValueError):
+            return False
+        return str(admin_id) in {str(spine_id) for spine_id in spine_ids}
 
     def _resolve_admin_ids_to_save(self, reprocess):
         """Create list of admin_ids for which to create output files
@@ -848,8 +915,11 @@ class Ingester:
             present = set(
                 pd.read_parquet(save_path, columns=[process_col])[process_col].unique()
             )
-        except Exception:
-            return False  # Column absent (pre-stamp file): leave as-is
+        except (ValueError, KeyError, pa.ArrowInvalid):
+            # Column absent (a pre-stamp file): leave as-is. Narrow, so a
+            # locked or unreadable parquet raises instead of reading as
+            # "complete" and silently skipping the rebuild.
+            return False
 
         return not expected.issubset(present)
 
@@ -876,8 +946,9 @@ class Ingester:
                 admin_ids_to_process = self.admin_ids_to_save
             else:
                 raise ValueError(
-                    'Error not captured self.admin_ids_to_save ='
-                    + self.admin_ids_to_save
+                    'A recipe processed at admin level 0 saves either '
+                    'globally or not at all, but admin_ids_to_save is '
+                    f'{self.admin_ids_to_save}.'
                 )
         elif self._is_aggregate_mode:
             # save_to is coarser than process_by: expand save-level IDs
@@ -951,7 +1022,10 @@ class Ingester:
             spec = dict(crosswalk)
             spec['admin_id'] = str(self.recipe['admin_id'])
             covered = set(get_crosswalk(spec, flip=True).iloc[:, 0])
-        except Exception:  # noqa: BLE001 - absent sidecar is not fatal here
+        except (FileNotFoundError, KeyError, ValueError):
+            # An absent or unreadable sidecar is not fatal here: the scope
+            # is an optimization and `process()` reports a real mismatch.
+            # Narrow, so an unexpected failure is not read as "unscoped".
             return admin_ids_to_process
         # Compare as strings: AdminId does not hash equal to its own
         # string form, so membership against the crosswalk's raw column
@@ -995,8 +1069,9 @@ class Ingester:
                 admin_ids_to_download = []
             else:
                 raise ValueError(
-                    'Error not captured self.admin_ids_to_download ='
-                    + self.admin_ids_to_download
+                    'A recipe downloaded at admin level 0 has one global '
+                    'download, but admin_ids_to_process is '
+                    f'{self.admin_ids_to_process}.'
                 )
 
         else:
@@ -1118,7 +1193,7 @@ class Ingester:
         )
         if not tile_admin_link_path.exists():
             raise ValueError(
-                'File linking {tile_recipe_id} and {admin_recipe_id} not found:\n\n'
+                f'File linking {tile_recipe_id} and {admin_recipe_id} not found:\n\n'
                 + str(tile_admin_link_path)
                 + '\n\nDid you process the overlay?'
             )
@@ -1445,21 +1520,6 @@ class Ingester:
             else:
                 if placeholder.startswith('admin'):
                     _partition_key = self._get_admin_partition_key(placeholder)
-                    # download_by.partition_key_transformation reshapes a
-                    # resolved key before it enters the URL/filename. The
-                    # motivating case: New England towns' admin3_id_admin1
-                    # is the 10-digit COUSUB GEOID whose first five digits
-                    # are the county FIPS a county-keyed API (NSI) wants;
-                    # a substring makes every town of one county resolve
-                    # to the same download, which the filename cache then
-                    # fetches once. A no-op for units whose key already
-                    # has the target shape (a county's own 5-digit FIPS).
-                    _pkt = (self.recipe.get('download_by') or {}).get(
-                        'partition_key_transformation'
-                    ) or {}
-                    _spec = _pkt.get(placeholder)
-                    if _spec:
-                        _partition_key = _transform_partition_key(_partition_key, _spec)
                 elif (
                     self.recipe.get('download_by')
                     and self.recipe['download_by'].get('partition') == placeholder
@@ -1471,6 +1531,25 @@ class Ingester:
                         f'Placeholder: `{placeholder}`, '
                         f'`download_by`: `{self.recipe["download_by"]}`'
                     )
+
+                # download_by.partition_key_transformation reshapes a
+                # resolved key before it enters the URL/filename. The
+                # motivating case: New England towns' admin3_id_admin1 is
+                # the 10-digit COUSUB GEOID whose first five digits are
+                # the county FIPS a county-keyed API (NSI) wants; a
+                # substring makes every town of one county resolve to the
+                # same download, which the filename cache then fetches
+                # once. A no-op for units whose key already has the target
+                # shape (a county's own 5-digit FIPS). Applied to every
+                # placeholder, not only `admin*` ones: the documented
+                # `year` case was silently ignored and the URL was built
+                # from the untransformed key.
+                _pkt = (self.recipe.get('download_by') or {}).get(
+                    'partition_key_transformation'
+                ) or {}
+                _spec = _pkt.get(placeholder)
+                if _spec:
+                    _partition_key = _transform_partition_key(_partition_key, _spec)
 
                 self.download_partition['partition_key_dict'][placeholder] = (
                     _partition_key
@@ -1524,7 +1603,7 @@ class Ingester:
                         f'placeholders in download URL:\n{placeholders_in_url}'
                     )
         elif source.download_url_source is not None:
-            if not self.recipe['download_by']:
+            if not self.recipe.get('download_by'):
                 raise ValueError(
                     '`download_url_source` was provided, but '
                     '`download_by` is not defined.'
@@ -1615,20 +1694,46 @@ class Ingester:
             raise NotImplementedError(
                 'Either an `entity` or a `dataset` must be defined in the recipe.'
             )
+        # Both directories are keyed on the same unit, so the "already
+        # downloaded" and "already unzipped" checks agree about which
+        # partition a file on disk belongs to.
+        #
+        # That unit is the partition's own download unit. A national recipe
+        # whose source ships one file per state (`download_by:
+        # {admin_level: 2}`) keeps each under that state's directory;
+        # building the path from the recipe's `admin_id` sent every
+        # partition to the country-level path, so only one state's file
+        # could ever be found, and a recipe with a fixed
+        # `uncompressed_file_name` resolved to one heap path shared by
+        # every state, where a leftover extraction satisfied the next
+        # state's skip check and it processed the previous state's data.
+        #
+        # A `download_by.partition_key_transformation` is the exception: it
+        # deliberately maps several download units onto one download (NSI's
+        # New England towns each resolve to their county's file). Keying on
+        # the town hid the sibling's copy and re-fetched the same
+        # multi-hundred-MB file once per town, about 1,500 fetches across
+        # New England. Those recipes keep their files in the recipe's own
+        # directory, where the resolved file name is what tells the
+        # partitions apart.
+        shares_download_across_units = bool(
+            (self.recipe.get('download_by') or {}).get('partition_key_transformation')
+        )
+        partition_admin_id = (
+            self.recipe.get('admin_id')
+            if shares_download_across_units
+            else (
+                self.download_partition.get('admin_id_to_download')
+                or self.recipe.get('admin_id')
+            )
+        )
         self.recipe_heap_dir = heap_dir(
-            self.recipe.get('admin_id'),
+            partition_admin_id,
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )
-        # The partition's own admin unit, not the recipe's. A national
-        # recipe whose source ships one file per state
-        # (`download_by: {admin_level: 2}`) keeps each under that state's
-        # external directory; building the path from the recipe's
-        # `admin_id` instead sent every partition to the country-level
-        # path, so only one state's file could ever be found.
         self.recipe_external_dir = external_dir(
-            self.download_partition.get('admin_id_to_download')
-            or self.recipe.get('admin_id'),
+            partition_admin_id,
             self.recipe.get('entity'),
             self.recipe.get('dataset'),
         )
@@ -1654,8 +1759,11 @@ class Ingester:
                 downloaded_path = self.recipe_external_dir / compressed_file_name
             elif uncompressed_file_name is not None:
                 downloaded_path = self.recipe_external_dir / uncompressed_file_name
-            elif 'download_url' in self.download_partition:
-                # Try to extract filename from URL
+            elif self.download_partition.get('download_url'):
+                # Try to extract filename from URL. `download_url` is present
+                # but None whenever the source declares no URL at all (a
+                # manually placed file, or a browser-driven scraper), which
+                # `re.search` cannot take.
                 re_match = re.search(
                     REGEX_FILENAME_IN_URL, self.download_partition['download_url']
                 )
@@ -1681,7 +1789,7 @@ class Ingester:
                             'Others:\n\n'
                             + '\n'.join([x for x in filepaths if x != downloaded_path])
                         )
-                elif 'download_url' in self.download_partition:
+                elif self.download_partition.get('download_url'):
                     # No existing file matches the wildcard pattern (nothing
                     # downloaded yet). Save under the concrete filename from
                     # the resolved download URL instead of the literal
@@ -2132,8 +2240,11 @@ class Ingester:
         # For spatial-mask chunking, load admin geometries once and derive
         # the bounding box before creating any TableIngester.
         bbox = None
-        if process_in_chunks and 'use_spatial_mask' in self.recipe.get(
-            'process_by', {}
+        # Truthiness, not key presence: `use_spatial_mask: false` was read
+        # as "masked" here and as "not masked" by the TableIngester, which
+        # gave a bbox-clipped read whose out-of-unit rows were never dropped.
+        if process_in_chunks and (self.recipe.get('process_by') or {}).get(
+            'use_spatial_mask'
         ):
             if self.verbose:
                 print('Reading with bounding box. This can be slow.')

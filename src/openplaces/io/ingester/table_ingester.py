@@ -314,6 +314,15 @@ class TableIngester:
         reverse_crosswalk = self.download_partition['admin_id_crosswalk_reverse']
 
         admin_id_to_process = self.processing_chunk['admin_id_to_process']
+        if admin_id_to_process not in reverse_crosswalk.index:
+            # The reverse crosswalk records no scope of its own (unlike the
+            # forward one), so an admin unit a scoped sidecar does not cover
+            # reached `.loc` and raised a bare KeyError naming only the id.
+            raise KeyError(
+                f"{admin_id_to_process} has no code in this recipe's "
+                'process_by.admin_id_crosswalk, so no file name can be '
+                'built for it.'
+            )
         raw_code = reverse_crosswalk.loc[admin_id_to_process]
 
         pattern = file_pattern.replace(
@@ -418,14 +427,43 @@ class TableIngester:
         if admin_ids_in_tile and _admin_level_of(admin_id) == 0:
             admin_id = list(admin_ids_in_tile)
 
-        admin_geometries = get_admin(
-            admin_id,
-            admin_specs['admin_level'],
-            recipe=admin_specs.get('admin_recipe_id'),
-            geom=True,
-        )['geometry']
+        def _read_admin_geometries(requested):
+            return get_admin(
+                requested,
+                admin_specs['admin_level'],
+                recipe=admin_specs.get('admin_recipe_id'),
+                geom=True,
+            )['geometry']
+
+        admin_geometries = _read_admin_geometries(admin_id)
 
         if admin_ids_in_tile:
+            # `get_admin` resolves a single output file per call, keyed on
+            # the deepest id it was asked for, so a tile spanning two
+            # states came back with only the first state's units. The rest
+            # then got null geometry, the left join gave their buildings no
+            # admin id, and their county files were never written. Ask
+            # again for whatever is still missing: each round resolves at
+            # least one more file, or stops.
+            missing = [
+                aid for aid in admin_ids_in_tile if aid not in admin_geometries.index
+            ]
+            while missing:
+                more = _read_admin_geometries(missing)
+                found = [aid for aid in missing if aid in more.index]
+                if not found:
+                    warnings.warn(
+                        f'{len(missing)} admin unit(s) in this tile have no '
+                        f'geometry at level {admin_specs["admin_level"]} and '
+                        'will contribute no rows: ' + ', '.join(sorted(missing)[:5])
+                    )
+                    break
+                admin_geometries = gpd.GeoSeries(
+                    pd.concat([admin_geometries, more.loc[found]]),
+                    crs=admin_geometries.crs,
+                )
+                missing = [aid for aid in missing if aid not in found]
+
             admin_geometries = admin_geometries.loc[
                 [aid for aid in admin_ids_in_tile if aid in admin_geometries.index]
             ]
@@ -533,96 +571,73 @@ class TableIngester:
                 path=data_path,
             )
         elif suffix in PANDAS_EXTENSIONS:
-            # `csv_dtype: str` reads every column as text — the robust choice
-            # for messy flat dumps where a column mixes ints and strings.
-            # A dict maps specific columns to dtypes.
-            csv_dtype = self.recipe.get('csv_dtype')
-            if csv_dtype == 'str':
-                dtype = str
-            elif isinstance(csv_dtype, dict):
-                dtype = csv_dtype
-            else:
-                dtype = None
-
-            if self.recipe.get('fixed_width'):
-                gdf = self._read_fixed_width(
-                    data_path, dtype, encoding=kwargs.get('encoding')
-                )
-            elif suffix == '.json':
-                # Flattened rather than read directly, because these APIs
-                # nest: IBGE returns a municipality's state four levels
-                # down at `microrregiao.mesorregiao.UF.sigla`.
-                # `json_normalize` turns that into a dotted column name a
-                # recipe can map like any other. `record_path` selects the
-                # list of records when it is not the top-level object.
-                with open(data_path, encoding='utf-8') as handle:
-                    payload = json.load(handle)
-                gdf = pd.json_normalize(
-                    payload, record_path=self.recipe.get('record_path')
-                )
-                if dtype is not None:
-                    gdf = gdf.astype(dtype)
-            elif suffix in {'.xlsx', '.xls'}:
-                header = self.recipe.get('header', 'infer')
-                gdf = pd.read_excel(
-                    data_path,
-                    sheet_name=self.recipe.get('sheet_name', 0),
-                    header=None if header in (None, 'none') else header,
-                    names=self.recipe.get('names'),
-                    dtype=dtype,
-                )
-            else:
-                # low_memory=False avoids per-chunk dtype inference (the source
-                # of mixed-type object columns that then fail Parquet writes).
-                read_kwargs = {
-                    'delimiter': self.recipe.get('delimiter', ','),
-                    'low_memory': False,
-                }
-                if dtype is not None:
-                    read_kwargs['dtype'] = dtype
-                # The recipe's `encoding` key is read into `kwargs` above
-                # (used directly by the `.gdb`/geopandas/fixed_width
-                # branches) but was not previously forwarded here, so a
-                # plain non-UTF-8 flat file (e.g. a UTF-16 export) failed
-                # to decode regardless of a declared `encoding:`.
-                if kwargs.get('encoding'):
-                    read_kwargs['encoding'] = kwargs['encoding']
-                gdf = pd.read_csv(data_path, usecols=columns, **read_kwargs)
-
-            # `fids` (built by `_prepare_table_fid_filter` from a plain read
-            # of this same file, so its index is this file's own 0-based
-            # row order) was silently ignored here: none of the three
-            # sub-branches above ever look at `kwargs`, so a chunked
-            # `process_by.admin_id_column` recipe backed by a flat file
-            # (csv/xlsx/fixed-width) wrote the *entire* file under every
-            # single admin unit's output instead of that unit's rows only.
-            # Row order is unchanged by `usecols`/dtype selection, so a
-            # positional `.iloc` on the freshly-read frame is exactly the
-            # same row set the crosswalk built the FID filter from.
             if 'fids' in kwargs:
-                gdf = gdf.iloc[kwargs['fids']]
-
-            self.timer.mark(
-                'Read data table' + timer_suffix,
-                path=data_path,
-            )
+                # A `process_by.admin_id_column` recipe re-enters this branch
+                # once per admin unit with the same file and the same
+                # columns, differing only in which rows it keeps. Parsing the
+                # whole file every time made a statewide roll (New York
+                # ORPTS: 62 counties over a multi-GB file) pay the parse 62
+                # times. Cache the parsed frame on the download partition and
+                # slice it instead; only one entry is kept, so moving on to
+                # another file or table releases the previous frame.
+                cache_key = (self.table_name, str(data_path), tuple(columns or ()))
+                cached = self.download_partition.get('flat_table_cache')
+                if cached is None or cached[0] != cache_key:
+                    cached = (
+                        cache_key,
+                        self._read_flat_table(
+                            data_path, columns, kwargs.get('encoding')
+                        ),
+                    )
+                    self.download_partition['flat_table_cache'] = cached
+                    self.timer.mark('Read data table' + timer_suffix, path=data_path)
+                # `fids` (built by `_prepare_table_fid_filter` from a plain
+                # read of this same file, so its index is this file's own
+                # 0-based row order) is applied positionally: row order is
+                # unchanged by `usecols`/dtype selection, so `.iloc` selects
+                # exactly the rows the crosswalk built the filter from.
+                # De-duplicated because a crosswalk mapping one raw code to
+                # two admin units repeats a position, which would otherwise
+                # write the same source row twice.
+                fids = list(dict.fromkeys(kwargs['fids']))
+                gdf = cached[1].iloc[fids].copy()
+            else:
+                gdf = self._read_flat_table(data_path, columns, kwargs.get('encoding'))
+                self.timer.mark('Read data table' + timer_suffix, path=data_path)
         elif suffix in ZIP_EXTENSIONS:
             try:
                 gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
                 self.timer.mark('Read compressed file' + timer_suffix, path=data_path)
-            except (RuntimeWarning, Exception):
-                unzip(data_path, self.recipe_heap_dir)
-                data_path = find_latest_file_or_gdb(self.recipe_heap_dir)
-                self.download_partition['data_path'] = data_path
-                if data_path is None:
-                    raise OSError(
-                        f'`geopandas` could not read compressed file:\n\n{data_path}.'
-                        '\n\n'
-                        'Could not find a dataset after unzipping to:\n\n'
-                        f'{self.recipe_heap_dir}'
-                    )
-                gdf = gpd.read_file(data_path, layer=layer, columns=columns, **kwargs)
-                self.timer.mark('Read unzipped file' + timer_suffix, path=data_path)
+            except Exception:
+                # `geopandas` cannot read this archive in place, so extract it
+                # and read what came out. The extracted path is cached under
+                # its own key rather than written back over
+                # `download_partition['data_path']`: that entry is shared by
+                # every table in the download partition (and is the sentinel
+                # the "already unzipped" check and the heap cleanup use), so
+                # overwriting it made every later table in the partition read
+                # whatever file this one happened to extract.
+                extracted_paths = self.download_partition.setdefault(
+                    'extracted_data_paths', {}
+                )
+                extracted_path = extracted_paths.get(str(data_path))
+                if extracted_path is None:
+                    unzip(data_path, self.recipe_heap_dir)
+                    extracted_path = find_latest_file_or_gdb(self.recipe_heap_dir)
+                    if extracted_path is None:
+                        raise OSError(
+                            '`geopandas` could not read compressed file:'
+                            f'\n\n{data_path}.\n\n'
+                            'Could not find a dataset after unzipping to:\n\n'
+                            f'{self.recipe_heap_dir}'
+                        )
+                    extracted_paths[str(data_path)] = extracted_path
+                gdf = gpd.read_file(
+                    extracted_path, layer=layer, columns=columns, **kwargs
+                )
+                self.timer.mark(
+                    'Read unzipped file' + timer_suffix, path=extracted_path
+                )
         else:
             raise ValueError(f'Filepath suffix not yet interpreted: {data_path.suffix}')
 
@@ -630,6 +645,77 @@ class TableIngester:
             'default', 'received a polygon with more than 100 parts'
         )
         return gdf
+
+    def _read_flat_table(self, data_path, columns, encoding):
+        """Read one flat (non-spatial) source file in full.
+
+        Covers the fixed-width, JSON, spreadsheet, and delimited-text
+        layouts a recipe can declare. Row filtering is the caller's job:
+        this returns every row of the file, so a chunked recipe can parse
+        once per download partition and slice per admin unit.
+
+        Parameters
+        ----------
+        data_path : Path
+            File to read.
+        columns : list, optional
+            Column names to read, where the layout supports selection.
+        encoding : str, optional
+            From the recipe's ``encoding`` key.
+        """
+        # `csv_dtype: str` reads every column as text, the robust choice
+        # for messy flat dumps where a column mixes ints and strings.
+        # A dict maps specific columns to dtypes.
+        csv_dtype = self.recipe.get('csv_dtype')
+        if csv_dtype == 'str':
+            dtype = str
+        elif isinstance(csv_dtype, dict):
+            dtype = csv_dtype
+        else:
+            dtype = None
+
+        suffix = data_path.suffix.lower()
+
+        if self.recipe.get('fixed_width'):
+            return self._read_fixed_width(data_path, dtype, encoding=encoding)
+
+        if suffix == '.json':
+            # Flattened rather than read directly, because these APIs
+            # nest: IBGE returns a municipality's state four levels
+            # down at `microrregiao.mesorregiao.UF.sigla`.
+            # `json_normalize` turns that into a dotted column name a
+            # recipe can map like any other. `record_path` selects the
+            # list of records when it is not the top-level object.
+            with open(data_path, encoding='utf-8') as handle:
+                payload = json.load(handle)
+            df = pd.json_normalize(payload, record_path=self.recipe.get('record_path'))
+            return df.astype(dtype) if dtype is not None else df
+
+        if suffix in {'.xlsx', '.xls'}:
+            header = self.recipe.get('header', 'infer')
+            return pd.read_excel(
+                data_path,
+                sheet_name=self.recipe.get('sheet_name', 0),
+                header=None if header in (None, 'none') else header,
+                names=self.recipe.get('names'),
+                dtype=dtype,
+            )
+
+        # low_memory=False avoids per-chunk dtype inference (the source
+        # of mixed-type object columns that then fail Parquet writes).
+        read_kwargs = {
+            'delimiter': self.recipe.get('delimiter', ','),
+            'low_memory': False,
+        }
+        if dtype is not None:
+            read_kwargs['dtype'] = dtype
+        # The recipe's `encoding` key is used directly by the `.gdb`,
+        # geopandas and fixed-width branches but was not previously
+        # forwarded here, so a plain non-UTF-8 flat file (e.g. a UTF-16
+        # export) failed to decode regardless of a declared `encoding:`.
+        if encoding:
+            read_kwargs['encoding'] = encoding
+        return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
     def _read_fixed_width(self, data_path, dtype, encoding=None):
         """Read a fixed-width flat file using the recipe's ``fixed_width`` layout.
@@ -730,11 +816,30 @@ class TableIngester:
                 # which lands on disk as `__index_level_0__` and makes
                 # every later read fail with
                 # `No match for FieldRef.Name(admin4_id)`.
-                index_name = (self.recipe.get('create_index') or {}).get(
-                    'args', {}
-                ).get('new_admin_id_col') or self.recipe.get('set_index')
+                # Every way a recipe can name its index, not just one
+                # indexer's own kwarg: `create_index: {method: prefix}`
+                # carries `name`, and a function indexer takes it in
+                # `args` under either `name` or `new_admin_id_col`.
+                create_index = self.recipe.get('create_index') or {}
+                index_args = create_index.get('args') or {}
+                index_name = (
+                    index_args.get('new_admin_id_col')
+                    or index_args.get('name')
+                    or create_index.get('name')
+                    or self.recipe.get('set_index')
+                )
                 if isinstance(index_name, str) and df.index.name != index_name:
                     df.index.name = index_name
+                # Prune to the columns the recipe names, which the reorder
+                # step below would have done. Returning here with the raw
+                # read's own columns gave the aggregate a set of stray
+                # all-null source columns that no populated chunk carries.
+                if 'columns' in self.recipe and not self.recipe.get(
+                    'keep_unnamed_columns'
+                ):
+                    kept = [c for c in self.recipe['columns'] if c in df]
+                    kept += [c for c in ('geo_id', 'geometry') if c in df]
+                    df = df[kept]
                 if self.verbose:
                     print(f'  query left no rows for {self.table_name}; skipping.')
                 return df
@@ -976,8 +1081,12 @@ class TableIngester:
             # above is given only this unit's geometry, so those rows come
             # back with a null admin id: drop them, or they are written into
             # this unit's output file (31k of 50k rows for a coastal county).
-            if use_spatial_mask and _new_cols:
-                _admin_col = _new_cols[0]
+            # Keyed on the admin layer's own index name, not on whichever
+            # columns the overlay added: `overlay_admin_ids` writes that
+            # column in place, so a recipe that already maps or derives it
+            # added no column at all and the drop never ran.
+            _admin_col = admin_geometries.index.name
+            if use_spatial_mask and _admin_col in df.columns:
                 df = df[df[_admin_col].notna()]
 
         # Set index
@@ -1313,11 +1422,22 @@ class TableIngester:
 
         if split_dataset_by_admin:
             admin_id_col = f'admin{admin_level}_id'
+            if admin_id_col not in gdf and gdf.empty:
+                # An empty chunk has nothing to split and no column to
+                # report missing: the crosswalk join and the admin overlay
+                # both skip an empty frame, so a `query` that excludes a
+                # whole partition by design (New England in
+                # `US_admin-census-2025_admin4`) arrived here without the
+                # column, raised, and then raised a second, more confusing
+                # error while building the message.
+                if self.verbose:
+                    print(f'  no rows to save for {self.table_name}.')
+                return
             if admin_id_col not in gdf:
                 raise ValueError(
                     f"Recipe says 'save_to: admin_level: {admin_level}', but column "
                     f"'{admin_id_col}' does not exist in DataFrame:\n\n"
-                    + str(gdf.sample(1).T)
+                    + str(gdf.head(1).T)
                 )
             admin_ids_in_data = sorted(set(gdf[admin_id_col].dropna()))
             admin_ids_to_save_expected = [
