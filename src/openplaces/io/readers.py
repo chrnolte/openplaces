@@ -551,6 +551,10 @@ def get_entities(
     if layer is not None:
         recipe = get_table_recipe(recipe, layer)
 
+    # Kept separate from the derived 'all' below: a partition the caller
+    # named applies to a predecessor recipe too, one this recipe's own
+    # aggregate_by implies does not.
+    requested_partition_id = partition_id
     if partition_id is None and (recipe.get('aggregate_by') or {}).get('single_file'):
         partition_id = 'all'
 
@@ -630,8 +634,25 @@ def get_entities(
     elif len(frames) == 1:
         data = frames[0]
     else:
-        ignore_index = all(isinstance(frame.index, pd.RangeIndex) for frame in frames)
+        # Renumbering is safe only when nothing later joins by index.
+        # The geometry chain joins on exactly this index, so renumbering
+        # a RangeIndex-saved attribute recipe silently gave each row the
+        # geometry that happens to sit at its new position.
+        ignore_index = geometry_recipe is None and all(
+            isinstance(frame.index, pd.RangeIndex) for frame in frames
+        )
         data = pd.concat(frames, ignore_index=ignore_index)
+        if geometry_recipe is not None and not data.index.is_unique:
+            # Reported rather than refused: a read that only wants the
+            # attributes still works, and the pipeline stage entries are
+            # where an entity id is guaranteed unique.
+            warnings.warn(
+                f'{get_recipe_id(recipe)} output files repeat index labels '
+                f'across admin units, so the geometry joined from '
+                f'{get_recipe_id(geometry_recipe)} cannot be attributed to '
+                'the right rows. Give the recipe a unique entity id.',
+                stacklevel=2,
+            )
         if geom:
             data = gpd.GeoDataFrame(data, crs=frames[0].crs)
 
@@ -643,19 +664,47 @@ def get_entities(
             geometry_recipe,
             admin_id=admin_id,
             geom=requested_geom,
+            layer=layer,
+            partition_id=requested_partition_id,
             missing=missing,
             bbox=bbox,
         )
-        geometry = predecessor['geometry']
-        if geometry.index.duplicated().any():
-            geometry = geometry[~geometry.index.duplicated()]
-        data = gpd.GeoDataFrame(data.join(geometry, how='left'), crs=predecessor.crs)
-        # A bbox read of a geometry-bearing recipe returns only the rows
-        # inside the box (the attributes join onto the filtered geometry);
-        # match that here rather than keeping out-of-box rows with null
-        # geometry.
-        if bbox is not None:
-            data = data[data.geometry.notna()]
+        # `columns` is deliberately not forwarded even though only the
+        # geometry is wanted: a split attribute plus `_geo` pair is joined
+        # through a `_join_id`/`geo_id` column read from the attribute
+        # file, and a narrowed read drops the very column that join needs.
+        if 'geometry' not in predecessor:
+            # The predecessor's own files were missing and `missing` let
+            # that pass, so there is no geometry to join. Honor the same
+            # policy here rather than raising KeyError, and keep the result
+            # a GeoDataFrame so a caller can ask and be told.
+            message = (
+                f'{get_recipe_id(geometry_recipe)} returned no geometry for '
+                f'{admin_id}, so {get_recipe_id(recipe)} is returned with an '
+                'empty geometry column.'
+            )
+            if missing == 'raise':
+                raise FileNotFoundError(message)
+            if missing == 'warn':
+                warnings.warn(message, stacklevel=2)
+            data = gpd.GeoDataFrame(
+                data,
+                geometry=gpd.GeoSeries([None] * len(data), index=data.index),
+                crs=getattr(predecessor, 'crs', None),
+            )
+        else:
+            geometry = predecessor['geometry']
+            if geometry.index.duplicated().any():
+                geometry = geometry[~geometry.index.duplicated()]
+            data = gpd.GeoDataFrame(
+                data.join(geometry, how='left'), crs=predecessor.crs
+            )
+            # A bbox read of a geometry-bearing recipe returns only the
+            # rows inside the box (the attributes join onto the filtered
+            # geometry); match that here rather than keeping out-of-box
+            # rows with null geometry.
+            if bbox is not None:
+                data = data[data.geometry.notna()]
         geom = requested_geom
 
     # A requested admin_id finer than the recipe's save level (e.g. a town
