@@ -41,6 +41,47 @@ def _parse_currency(x: pd.Series) -> pd.Series:
     return pd.to_numeric(values, errors='coerce')
 
 
+def _to_string_series(x: pd.Series) -> pd.Series:
+    """Render a column as strings without float or missing-value artifacts.
+
+    An id column that became float64 because some rows were blank renders
+    as '001.0' under a plain astype(str), which survives into every id
+    assembled from it and never matches the source's own. Whole-numbered
+    floats therefore go through a nullable integer first. Missing values
+    stay missing rather than becoming the text 'nan'.
+
+    Parameters
+    ----------
+    x : pd.Series
+        Column to render.
+    """
+    if pd.api.types.is_float_dtype(x):
+        finite = x.dropna()
+        if len(finite) == 0 or ((finite % 1) == 0).all():
+            x = x.astype('Int64')
+    return x.astype('string')
+
+
+def _concat_columns(cols: list[pd.Series], sep: str = '') -> pd.Series:
+    """Join columns row-wise into one string column.
+
+    Returns a Series even for a zero-row frame, where DataFrame.agg
+    returns an empty DataFrame and the caller's column assignment fails.
+
+    Parameters
+    ----------
+    cols : list of pd.Series
+        Columns to join, in order. Missing values contribute an empty
+        string, so a row missing one part still yields the other parts.
+    sep : str
+        Separator placed between the parts.
+    """
+    frame = pd.concat([_to_string_series(c).fillna('') for c in cols], axis=1)
+    if frame.empty:
+        return pd.Series([], index=frame.index, dtype=object)
+    return frame.agg(sep.join, axis=1)
+
+
 def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
     """Expand a 2-digit year to 4 digits using the POSIX ``%y`` convention.
 
@@ -49,7 +90,11 @@ def _resolve_century(x: pd.Series, pivot: int = 68) -> pd.Series:
     rule (default pivot 68: 00-68 -> 2000-2068, 69-99 -> 1969-1999).
     """
     values = pd.to_numeric(x, errors='coerce')
-    century = pd.Series(np.where(values <= pivot, 2000, 1900), index=values.index)
+    # A nullable ('Int64') input makes the comparison a BooleanArray whose
+    # NA np.where cannot evaluate; missing years take either branch, since
+    # values + century is missing regardless.
+    below_pivot = (values <= pivot).fillna(False)
+    century = pd.Series(np.where(below_pivot, 2000, 1900), index=values.index)
     return values.where(values >= 100, values + century)
 
 
@@ -106,12 +151,15 @@ CONDITIONAL_OPS: dict[str, Callable] = {
 DATETIME_OPS: dict[str, Callable] = {
     'year': lambda x: x.dt.year,
     'month': lambda x: x.dt.month,
-    'year_month': lambda x: x.dt.month + '-' + x.dt.month,
+    'year_month': lambda x: x.dt.strftime('%Y-%m'),
     'day': lambda x: x.dt.day,
     'dayofyear': lambda x: x.dt.dayofyear,
     'quarter': lambda x: x.dt.quarter,
+    # Formatted through strftime rather than astype(str) on the numeric
+    # parts, which render as '2020.0-4.0' in any partition holding a NaT
+    # and would give one quarter two keys.
     'year_quarter': lambda x: (
-        x.dt.year.astype(str) + '-' + x.dt.month.sub(1).floordiv(3).add(1).astype(str)
+        x.dt.strftime('%Y') + '-' + x.dt.quarter.astype('Int64').astype(str)
     ),
     'year_continuous': lambda x: x.dt.year + x.dt.dayofyear.div(365),
 }
@@ -148,9 +196,7 @@ STRING_OPS: dict[str, Callable] = {
     'strip': lambda x: x.str.strip(),
     'lstrip': lambda x, chars=None: x.str.lstrip(chars),
     'replace': lambda x, old, new: x.str.replace(old, new, regex=False),
-    'concat': lambda cols, sep='': pd.concat(
-        [c.fillna('').astype(str) for c in cols], axis=1
-    ).agg(sep.join, axis=1),
+    'concat': _concat_columns,
     'add_prefix': lambda x, prefix: prefix + x.astype(str),
     'add_suffix': lambda x, suffix: x.astype(str) + suffix,
     'split_take': lambda x, sep, index=0: x.str.split(sep).str[index],
@@ -370,10 +416,10 @@ def apply_transformation(
             df[output_col] = _apply_conditional(df, config)
 
         elif transform_type == 'datetime':
-            df[output_col] = _apply_datetime(df, config)
+            df[output_col] = _apply_datetime(df, config, silent)
 
         elif transform_type == 'string':
-            df[output_col] = _apply_string(df, config)
+            df[output_col] = _apply_string(df, config, silent)
 
         elif transform_type == 'expression':
             df[output_col] = _apply_expression(df, config)
@@ -513,21 +559,36 @@ def _apply_conditional(
 
 
 def _apply_datetime(
-    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    config: dict[str, Any],
+    silent: bool = False,
 ) -> pd.Series:
-    """Apply datetime extraction operation."""
+    """Apply datetime extraction operation.
+
+    Parameters
+    ----------
+    df : pd.DataFrame or gpd.GeoDataFrame
+        Frame holding the input column.
+    config : dict
+        Transformation configuration ('operation', 'input').
+    silent : bool
+        Suppress the conversion warning.
+    """
     operation = config['operation']
     input_col = config['input']
 
     if operation not in DATETIME_OPS:
         raise ValueError(f'Unknown datetime operation: {operation}')
 
-    # Ensure column is datetime type
+    # Ensure column is datetime type. Unparsable values become NaT, as in
+    # the unary to_datetime op: one leaked header label in a source file
+    # would otherwise abort the whole partition.
     if not pd.api.types.is_datetime64_any_dtype(df[input_col]):
-        warnings.warn(
-            f"Column '{input_col}' is not datetime type, attempting conversion"
-        )
-        input_series = pd.to_datetime(df[input_col])
+        if not silent:
+            warnings.warn(
+                f"Column '{input_col}' is not datetime type, attempting conversion"
+            )
+        input_series = pd.to_datetime(df[input_col], errors='coerce')
     else:
         input_series = df[input_col]
 
@@ -535,9 +596,21 @@ def _apply_datetime(
 
 
 def _apply_string(
-    df: pd.DataFrame | gpd.GeoDataFrame, config: dict[str, Any]
+    df: pd.DataFrame | gpd.GeoDataFrame,
+    config: dict[str, Any],
+    silent: bool = False,
 ) -> pd.Series:
-    """Apply string operation to column(s)."""
+    """Apply string operation to column(s).
+
+    Parameters
+    ----------
+    df : pd.DataFrame or gpd.GeoDataFrame
+        Frame holding the input column(s).
+    config : dict
+        Transformation configuration ('operation', 'input'/'inputs', 'args').
+    silent : bool
+        Suppress the conversion warning.
+    """
     operation = config['operation']
 
     if operation not in STRING_OPS:
@@ -565,8 +638,11 @@ def _apply_string(
 
     # Ensure column is string type
     if not pd.api.types.is_string_dtype(input_series):
-        warnings.warn(f"Column '{input_col}' is not string type, attempting conversion")
-        input_series = input_series.astype(str)
+        if not silent:
+            warnings.warn(
+                f"Column '{input_col}' is not string type, attempting conversion"
+            )
+        input_series = _to_string_series(input_series)
 
     # Get additional arguments if any
     args = config.get('args', {})
@@ -734,8 +810,13 @@ def _apply_remap_file(
 def _apply_remap_conditional(
     series: pd.Series, conditions: list[dict], default: Any = None
 ) -> pd.Series:
-    """Apply conditional logic for remapping."""
-    result = pd.Series(default, index=series.index)
+    """Apply conditional logic for remapping.
+
+    The result is object-dtype from the start: with no *default* the seed
+    is all-NaN, which pandas would otherwise type float64 and then refuse
+    to hold the (typically string) condition outputs.
+    """
+    result = pd.Series(default, index=series.index, dtype=object)
 
     for cond in conditions:
         condition_type = cond['condition']
