@@ -30,6 +30,7 @@ from openplaces.io import (
     find_latest_file_or_gdb,
     release_unused_memory,
     request_headers,
+    save_parquet,
     unzip,
 )
 from openplaces.io.aggregate import aggregate_to_admin_level
@@ -456,9 +457,39 @@ class Ingester:
             self.timer.mark('Aggregate')
 
             self._create_entity_links(reprocess)
+
+            self._record_units_the_source_does_not_cover()
         finally:
             if self._owns_timer:
                 self.timer.finish()
+
+    def _record_units_the_source_does_not_cover(self):
+        """Write an empty table for a unit the source has no data for.
+
+        A soft skip means the source does not publish this unit (the
+        fmv parcel source has not published Tyrrell County, so all
+        three of its table partitions report 'not published'). The
+        ingest then succeeds, exits 0 and writes nothing, which is
+        indistinguishable from a failed job to an orchestrator: it
+        demands the declared output and fails the job, and everything
+        downstream of it. Recording the empty answer is the honest
+        form, and it matches what the harmonize stage does for a unit
+        whose pipeline resolves no spine.
+
+        Only reached after a run that raised nothing: a real failure
+        propagates, so an output still missing here is an absence in
+        the source rather than an error.
+        """
+        for admin_id in self.admin_ids_to_save or []:
+            out_path = get_output_path(self.recipe, admin_id)
+            if out_path.exists():
+                continue
+            if self.verbose:
+                print(f'{admin_id}: not covered by the source; saved an empty table.')
+            empty = gpd.GeoDataFrame(
+                {'geometry': gpd.GeoSeries([], dtype='geometry')}, crs=cfg.crs
+            )
+            save_parquet(empty, out_path)
 
     def _create_entity_links(self, reprocess=False):
         """Persist the n:m entity links declared under `entity_links`.
