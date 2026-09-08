@@ -82,36 +82,3 @@ def test_a_genuine_multi_overlap_is_untouched():
     assert len(crosswalk) == 2
     assert set(crosswalk['link']) == {'multi-parcel footprint'}
     assert crosswalk['fraction_of_largest'].max() == pytest.approx(1.0)
-
-
-def test_an_all_null_companion_row_is_dropped():
-    """A populated row plus a null twin is not a conflict.
-
-    Seven counties produce the same pair twice, once with every measure
-    populated and once with all of them NaN. The null row says nothing
-    about the overlap, so it loses to its informative sibling.
-    """
-    overlay = _overlay(
-        [
-            ('8764CFH4+C5H', 'parcel-a', 778.948158, 7.941888, 0.010196),
-            ('8764CFH4+C5H', 'parcel-a', None, None, None),
-        ]
-    )
-
-    crosswalk = _build_crosswalk(overlay, 'footprint_id', 0.0, 0.0)
-
-    assert len(crosswalk) == 1
-    assert crosswalk['area_intersection_m2'].iloc[0] == pytest.approx(778.948158)
-
-
-def test_two_null_rows_for_one_pair_still_raise():
-    """With no informative sibling there is nothing to prefer."""
-    overlay = _overlay(
-        [
-            ('8764CFH4+C5H', 'parcel-a', None, None, 1.0),
-            ('8764CFH4+C5H', 'parcel-a', None, None, 2.0),
-        ]
-    )
-
-    with pytest.raises(ValueError, match='repeated label'):
-        _build_crosswalk(overlay, 'footprint_id', 0.0, 0.0)

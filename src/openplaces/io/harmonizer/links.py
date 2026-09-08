@@ -551,15 +551,6 @@ def _link_spatial_overlay(
     return state
 
 
-_OVERLAY_MEASURE_COLS = (
-    'area_spine_m2',
-    'area_ref_m2',
-    'iou',
-    'area_intersection_m2',
-    'link',
-)
-
-
 def _build_crosswalk(
     footprints_on_ref,
     spine_id_col: str,
@@ -587,26 +578,6 @@ def _build_crosswalk(
     # information. Anything that survives this is a pair whose rows
     # actually disagree, which is the case worth refusing.
     footprints_on_ref = footprints_on_ref[~footprints_on_ref.duplicated(keep='first')]
-
-    # A second shape reaches here in 7 of the 86 counties: the same pair
-    # as one populated row plus an all-null companion, every measure
-    # column NaN (Pender NC 96 pairs, San Patricio TX 19, Webb TX 7).
-    # The null row states nothing about the overlap, so where an
-    # informative sibling exists it is dropped. Two *populated* rows that
-    # disagree are a real conflict and still reach the guard below,
-    # which is the case worth refusing.
-    measures = [c for c in _OVERLAY_MEASURE_COLS if c in footprints_on_ref.columns]
-    if measures and footprints_on_ref.index.duplicated(keep=False).any():
-        informative = footprints_on_ref[measures].notna().any(axis=1)
-        has_informative = informative.groupby(
-            level=list(range(footprints_on_ref.index.nlevels))
-        ).transform('any')
-        footprints_on_ref = footprints_on_ref[
-            informative
-            | ~has_informative
-            | ~footprints_on_ref.index.duplicated(keep=False)
-        ]
-
     require_unique_index(
         footprints_on_ref.index, f'link_to_reference crosswalk on {spine_id_col}'
     )
