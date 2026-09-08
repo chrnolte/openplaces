@@ -165,7 +165,11 @@ rule all:
 
 
 for node in dag.nodes():
-    _out = str(dag.output_path(node.stage, node.recipe_id, node.admin_id))
+    # The region is part of a delivery job's identity: several declared
+    # regions can roll up to one admin unit, and the unit alone then
+    # names no single bundle.
+    _job = (node.stage, node.recipe_id, node.admin_id, node.region)
+    _out = str(dag.output_path(*_job))
     _retention = dag.retention(node.stage, node.recipe_id, node.admin_id)
     # Deliberately NOT temp(). `until_consumed` is openplaces' own
     # retention class, cleaned up by `io.cleanup` which knows an output is
@@ -192,16 +196,15 @@ for node in dag.nodes():
         # every CHEER build.
         unlock_delivery(
             node.recipe_id,
-            region=dag.delivery_region(node.recipe_id, node.admin_id),
+            region=dag.delivery_region(node.recipe_id, node.admin_id, node.region),
         )
-    _job = (node.stage, node.recipe_id, node.admin_id)
     _extra = [str(p) for p in dag.extra_outputs(*_job)]
     _inputs = [str(p) for p in dag.input_paths(*_job)]
     # A deliver job is addressed by region, not by admin unit: that is
     # what run_stage forwards to export_delivery. Every other stage takes
     # the admin unit it processes.
     if node.stage == 'deliver':
-        _stage_arg = dag.delivery_region(node.recipe_id, node.admin_id)
+        _stage_arg = dag.delivery_region(node.recipe_id, node.admin_id, node.region)
     else:
         _stage_arg = node.admin_id
     _admin_arg = f' {_stage_arg}' if _stage_arg else ''

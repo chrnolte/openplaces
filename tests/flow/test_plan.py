@@ -88,6 +88,7 @@ def test_plan_columns_and_order(dag, data_root):
         'stage',
         'recipe_id',
         'admin_id',
+        'region',
         'output',
         'exists',
         'size_mb',

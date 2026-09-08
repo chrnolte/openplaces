@@ -1,9 +1,11 @@
 """Tests for RecipeDAG against the committed CHEER recipe tree."""
 
+from copy import copy
+
 import pytest
 
 from openplaces.flow import RecipeDAG
-from openplaces.flow.dag import parse_deliver_config
+from openplaces.flow.dag import node_key, parse_deliver_config, rule_name
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.delivery import (
     delivery_members,
@@ -160,19 +162,21 @@ def test_delivery_edges_let_plan_propagate(shipping_dag):
     county still declares the whole region as members, and an edge to a
     job the graph does not contain is a KeyError in `to_mermaid`.
     """
-    consumer = (TARGET, 'US-NC')
+    consumer = (TARGET, 'US-NC', REGION)
     upstreams = {up for up, down in shipping_dag._edges if down == consumer}
-    node_keys = {(node.recipe_id, node.admin_id) for node in shipping_dag.nodes()}
+    node_keys = {node_key(node) for node in shipping_dag.nodes()}
     members = set(delivery_members(TARGET, region=REGION))
     assert upstreams == {
-        (TARGET, member) for member in members if (TARGET, member) in node_keys
+        (TARGET, member, None)
+        for member in members
+        if (TARGET, member, None) in node_keys
     }
     assert upstreams
 
 
 def test_every_edge_names_a_node_in_the_graph(shipping_dag):
     """An edge to a missing job made to_mermaid raise instead of drawing."""
-    node_keys = {(node.recipe_id, node.admin_id) for node in shipping_dag.nodes()}
+    node_keys = {node_key(node) for node in shipping_dag.nodes()}
     for upstream, consumer in shipping_dag._edges:
         assert upstream in node_keys, upstream
         assert consumer in node_keys, consumer
@@ -379,3 +383,57 @@ def test_sidecar_is_skipped_for_a_reference_no_job_produces():
     outside = RecipeDAG(TARGET, admin_ids=[texas_county], deliver=False)
     outside._recipes[fake_id] = _spine_with_regional_reference(outside, fake_id)
     assert outside.extra_outputs('harmonize', fake_id, texas_county) == []
+
+
+def test_sibling_regions_on_one_admin_unit_get_their_own_nodes(dag):
+    """Two declared regions can roll up to the same admin unit.
+
+    The recipe ships an eastern and a western North Carolina bundle, and
+    two Boston ones. Keyed on (recipe, admin unit) alone the two nodes
+    are the same node: the rule name collided and the region resolver
+    returned the first match, so the second region never shipped.
+    """
+    # An unscoped run covers every declared region. Built from the
+    # county fixture's graph rather than a state-wide one, whose node
+    # expansion is far too slow for a test.
+    unscoped = copy(dag)
+    unscoped.requested_admin_ids = []
+    nodes = unscoped._build_delivery_nodes(None)
+
+    by_region = {node.region: node for node, _ in nodes}
+    assert {'cheer-eastern-nc', 'western-nc'} <= set(by_region)
+    assert {'boston-inner-core', 'boston-outer-rings'} <= set(by_region)
+    assert by_region['cheer-eastern-nc'].admin_id == 'US-NC'
+    assert by_region['western-nc'].admin_id == 'US-NC'
+    assert by_region['boston-inner-core'].admin_id == 'US-MA'
+    assert by_region['boston-outer-rings'].admin_id == 'US-MA'
+
+    # One rule name per region, and each node resolves to its own region.
+    rule_names = [rule_name(node) for node, _ in nodes]
+    assert len(set(rule_names)) == len(nodes)
+    for node, spec in nodes:
+        assert (
+            unscoped.delivery_region(node.recipe_id, node.admin_id, node.region)
+            == spec['region_id']
+        )
+        assert node_key(node) not in {
+            node_key(other) for other, _ in nodes if other is not node
+        }
+
+
+def test_a_run_scoped_to_one_region_ships_only_that_region(shipping_dag):
+    """A Brunswick County run must not also ship the western bundle."""
+    assert [node.region for node, _ in shipping_dag.delivery_nodes] == [REGION]
+    assert shipping_dag.target_paths() == list(
+        delivery_paths(TARGET, region=REGION).values()
+    )
+
+
+def test_the_region_names_the_bundle_a_deliver_node_writes(shipping_dag):
+    """Resolution goes through the node's own region, not its admin unit."""
+    node = shipping_dag.delivery_nodes[0][0]
+    assert (
+        shipping_dag.output_path(node.stage, node.recipe_id, node.admin_id, node.region)
+        == delivery_paths(TARGET, region=REGION)['canonical']
+    )
+    assert 'western-nc' not in rule_name(node)

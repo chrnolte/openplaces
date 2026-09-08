@@ -46,11 +46,19 @@ _STAGE_COLORS = {
 
 @dataclass(frozen=True)
 class StageNode:
-    """One orchestrated job: a (stage, recipe, admin unit) triple."""
+    """One orchestrated job: a (stage, recipe, admin unit, region) tuple.
+
+    `region` is set on 'deliver' jobs only. It is part of a delivery
+    job's identity because two declared regions can roll up to the same
+    admin unit (the footprint recipe ships both an eastern and a western
+    North Carolina bundle, and two Boston ones): keyed on the unit alone
+    the two nodes are indistinguishable, so the second never shipped.
+    """
 
     stage: str
     recipe_id: str
     admin_id: str | None
+    region: str | None = None
 
 
 def rule_name(node: StageNode) -> str:
@@ -64,7 +72,29 @@ def rule_name(node: StageNode) -> str:
     stale identifier survived a repository-wide sweep of the real ones.
     """
     raw = f'{node.stage}_{node.recipe_id}_{node.admin_id or "global"}'
+    # Sibling regions on one admin unit would otherwise share a rule
+    # name, and Snakemake keeps only the last rule of a given name.
+    if node.region:
+        raw += f'_{node.region}'
     return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
+
+
+def node_key(node: StageNode) -> tuple:
+    """Identity of one job: (recipe, admin unit, region).
+
+    The stage is not part of it, because a recipe has exactly one, and
+    the region is None everywhere except a delivery job.
+
+    Parameters
+    ----------
+    node : StageNode
+        The job.
+
+    Returns
+    -------
+    tuple
+    """
+    return (node.recipe_id, node.admin_id, node.region)
 
 
 def parse_deliver_config(value) -> bool | None:
@@ -148,12 +178,12 @@ class RecipeDAG:
         ] or [None]
 
         self._nodes: list[StageNode] = []
-        seen: set[tuple[str, str | None]] = set()
+        seen: set[tuple] = set()
 
         def _add(recipe_id, recipe, walk_admin):
             for node_admin in self._node_admins(recipe_id, walk_admin):
                 admin_str = str(node_admin) if node_admin is not None else None
-                key = (recipe_id, admin_str)
+                key = (recipe_id, admin_str, None)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -233,7 +263,7 @@ class RecipeDAG:
                     admin_str = (
                         str(upstream_admin) if upstream_admin is not None else None
                     )
-                    key = (upstream_id, admin_str)
+                    key = (upstream_id, admin_str, None)
                     if key in seen:
                         continue
                     added = StageNode(
@@ -252,7 +282,7 @@ class RecipeDAG:
         self._edges: list[tuple[tuple, tuple]] = []
         edge_seen: set[tuple] = set()
         for node in self._nodes:
-            consumer_key = (node.recipe_id, node.admin_id)
+            consumer_key = node_key(node)
             for upstream_key in self._upstream_keys(node, seen):
                 edge = (upstream_key, consumer_key)
                 if edge not in edge_seen:
@@ -266,14 +296,14 @@ class RecipeDAG:
         self.delivery_nodes = self._build_delivery_nodes(deliver)
         for node, spec in self.delivery_nodes:
             self._nodes.append(node)
-            consumer_key = (node.recipe_id, node.admin_id)
+            consumer_key = node_key(node)
             for member in spec['admin_ids']:
                 # Only members this run actually built have a node. A
                 # scoped run that still ships (deliver=true on a few
                 # counties) declares the whole region as members, and
                 # an edge to a job not in the graph is a KeyError in
                 # `to_mermaid`, which indexes its node ids directly.
-                member_key = (target_recipe_id, str(member))
+                member_key = (target_recipe_id, str(member), None)
                 if member_key in seen:
                     self._edges.append((member_key, consumer_key))
 
@@ -359,7 +389,15 @@ class RecipeDAG:
                 )
             if ship:
                 nodes.append(
-                    (StageNode('deliver', self.target_recipe_id, str(admin_id)), spec)
+                    (
+                        StageNode(
+                            'deliver',
+                            self.target_recipe_id,
+                            str(admin_id),
+                            spec['region_id'],
+                        ),
+                        spec,
+                    )
                 )
         return nodes
 
@@ -429,7 +467,7 @@ class RecipeDAG:
             return []
 
     def _upstream_keys(self, node: StageNode, node_keys: set[tuple]):
-        """Yield (recipe_id, admin_str) keys of a node's in-DAG upstreams."""
+        """Yield the node keys of one job's in-DAG upstreams."""
         node_admin = AdminId(node.admin_id) if node.admin_id else None
         try:
             edges = get_recipe_dependencies(
@@ -461,6 +499,7 @@ class RecipeDAG:
                 key = (
                     upstream_id,
                     str(upstream_admin) if upstream_admin is not None else None,
+                    None,
                 )
                 if key in node_keys:
                     yield key
@@ -473,35 +512,67 @@ class RecipeDAG:
         """The jobs of one pipeline stage."""
         return [node for node in self._nodes if node.stage == stage]
 
-    def output_path(self, stage: str, recipe_id: str, admin_id=None) -> Path:
-        """The primary output parquet of one job."""
+    def output_path(
+        self, stage: str, recipe_id: str, admin_id=None, region=None
+    ) -> Path:
+        """The primary output parquet of one job.
+
+        Pass *region* for a delivery job whose recipe declares several
+        regions rolling up to the same admin unit; without it they
+        cannot be told apart.
+        """
         if stage == 'deliver':
-            return self._delivery_paths(recipe_id, admin_id)['canonical']
+            return self._delivery_paths(recipe_id, admin_id, region)['canonical']
         return get_output_path(
             self._recipe(recipe_id), admin_id=self._node_admin(recipe_id, admin_id)
         )
 
-    def _delivery_region(self, recipe_id: str, admin_id=None) -> str | None:
-        """The declared region whose bundle lands on *admin_id*.
+    def _delivery_region(
+        self, recipe_id: str, admin_id=None, region=None
+    ) -> str | None:
+        """The declared region a deliver job ships.
 
-        A deliver node is told apart from its siblings by the admin unit it
-        covers, so that unit is what names the region here -- the reverse of
-        `delivery_admin_id`.
+        *region* is the answer when given: a deliver node carries its own
+        region id, because several declared regions can roll up to one
+        admin unit and the unit alone then names no single bundle. When
+        it is not given, this graph's own delivery nodes disambiguate,
+        and the declared regions are scanned only as a last resort.
         """
         from openplaces.io.delivery import delivery_admin_id, delivery_regions
 
+        if region is not None:
+            return region
         recipe = self._recipe(recipe_id)
         regions = delivery_regions(recipe)
         if len(regions) <= 1:
             return regions[0]['region_id'] if regions else None
-        for spec in regions:
-            if str(delivery_admin_id(recipe, region=spec['region_id'])) == str(
-                admin_id
-            ):
-                return spec['region_id']
+        in_graph = {
+            node.region
+            for node, _ in getattr(self, 'delivery_nodes', [])
+            if node.recipe_id == recipe_id and str(node.admin_id) == str(admin_id)
+        }
+        if len(in_graph) == 1:
+            return next(iter(in_graph))
+        if len(in_graph) > 1:
+            raise ValueError(
+                f'{recipe_id!r} ships {len(in_graph)} regions on {admin_id!r} '
+                f'({", ".join(sorted(in_graph))}); name the one you mean.'
+            )
+        matches = [
+            spec['region_id']
+            for spec in regions
+            if str(delivery_admin_id(recipe, region=spec['region_id'])) == str(admin_id)
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            raise ValueError(
+                f'{recipe_id!r} declares {len(matches)} regions on {admin_id!r} '
+                f'({", ".join(sorted(matches))}); name the one you mean.'
+            )
         raise KeyError(f'No delivery region of {recipe_id!r} covers {admin_id!r}.')
 
-    def delivery_region(self, recipe_id: str, admin_id=None) -> str | None:
+    def delivery_region(self, recipe_id: str, admin_id=None, region=None) -> str | None:
         """The region a deliver node ships, for callers outside this class.
 
         An orchestrator has to name the region for anything it does to a
@@ -509,9 +580,9 @@ class RecipeDAG:
         of all, which otherwise asks a multi-region recipe for "the"
         region and gets the deliberate refusal to guess.
         """
-        return self._delivery_region(recipe_id, admin_id)
+        return self._delivery_region(recipe_id, admin_id, region)
 
-    def _delivery_paths(self, recipe_id: str, admin_id=None) -> dict:
+    def _delivery_paths(self, recipe_id: str, admin_id=None, region=None) -> dict:
         """The four bundle files, straight from the writer's own resolver.
 
         Declaring the orchestrator's expected outputs and writing the actual
@@ -521,7 +592,7 @@ class RecipeDAG:
 
         return delivery_paths(
             self._recipe(recipe_id),
-            region=self._delivery_region(recipe_id, admin_id),
+            region=self._delivery_region(recipe_id, admin_id, region),
         )
 
     def _produced_paths(self) -> set[str]:
@@ -576,7 +647,9 @@ class RecipeDAG:
                 return True
         return False
 
-    def extra_outputs(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
+    def extra_outputs(
+        self, stage: str, recipe_id: str, admin_id=None, region=None
+    ) -> list[Path]:
         """Secondary declared outputs of one job.
 
         Every harmonize `link_to_reference` step persists an n:m link
@@ -593,7 +666,7 @@ class RecipeDAG:
             # bundle -- so omitting it made `rule all` demand a file no
             # rule declared, and every delivery run died at planning with
             # "Missing input files for rule all".
-            bundle = self._delivery_paths(recipe_id, admin_id)
+            bundle = self._delivery_paths(recipe_id, admin_id, region)
             return [bundle[role] for role in ('point', 'geo', 'evidence', 'terms')]
         recipe = self._recipe(recipe_id)
         paths: list[Path] = []
@@ -627,7 +700,9 @@ class RecipeDAG:
             )
         return paths
 
-    def input_paths(self, stage: str, recipe_id: str, admin_id=None) -> list[Path]:
+    def input_paths(
+        self, stage: str, recipe_id: str, admin_id=None, region=None
+    ) -> list[Path]:
         """The input files of one job: upstream outputs plus link sidecars."""
         recipe = self._recipe(recipe_id)
         if stage == 'deliver':
@@ -639,7 +714,7 @@ class RecipeDAG:
             return [
                 get_output_path(recipe, admin_id=member)
                 for member in delivery_members(
-                    recipe, region=self._delivery_region(recipe_id, admin_id)
+                    recipe, region=self._delivery_region(recipe_id, admin_id, region)
                 )
             ]
         node_admin = self._node_admin(recipe_id, admin_id)
@@ -713,7 +788,9 @@ class RecipeDAG:
             paths: list[Path] = []
             for node, _ in self.delivery_nodes:
                 paths.extend(
-                    self._delivery_paths(node.recipe_id, node.admin_id).values()
+                    self._delivery_paths(
+                        node.recipe_id, node.admin_id, node.region
+                    ).values()
                 )
             return paths
         paths = []
@@ -745,9 +822,11 @@ class RecipeDAG:
         """
         rows: dict[tuple, dict] = {}
         for node in self._nodes:
-            key = (node.recipe_id, node.admin_id)
+            key = node_key(node)
             try:
-                out_path = self.output_path(node.stage, node.recipe_id, node.admin_id)
+                out_path = self.output_path(
+                    node.stage, node.recipe_id, node.admin_id, node.region
+                )
             except Exception:
                 out_path = None
             exists = out_path is not None and out_path.exists()
@@ -762,7 +841,9 @@ class RecipeDAG:
             else:
                 out_mtime = out_path.stat().st_mtime
                 try:
-                    inputs = self.input_paths(node.stage, node.recipe_id, node.admin_id)
+                    inputs = self.input_paths(
+                        node.stage, node.recipe_id, node.admin_id, node.region
+                    )
                 except Exception:
                     inputs = []
                 if any(p.exists() and p.stat().st_mtime > out_mtime for p in inputs):
@@ -771,6 +852,7 @@ class RecipeDAG:
                 'stage': node.stage,
                 'recipe_id': node.recipe_id,
                 'admin_id': node.admin_id,
+                'region': node.region,
                 'output': _relative_posix(out_path) if out_path else None,
                 'exists': exists,
                 'size_mb': size_mb,
@@ -861,7 +943,7 @@ class RecipeDAG:
         groups: dict[tuple, dict] = {}
         for node in self._nodes:
             info = groups.setdefault(
-                _group((node.recipe_id, node.admin_id)),
+                _group(node_key(node)),
                 {'stage': node.stage, 'admins': set()},
             )
             if node.admin_id:
@@ -871,6 +953,8 @@ class RecipeDAG:
         used: set[str] = set()
         for group in groups:
             raw = f'{group[0]}_{group[1] or "all"}'
+            if len(group) > 2 and group[2]:
+                raw += f'_{group[2]}'
             gid = re.sub(r'[^0-9a-zA-Z_]', '_', raw)
             while gid in used:
                 gid += '_'
@@ -899,6 +983,8 @@ class RecipeDAG:
             label = group[0]
             if not collapse_admin and group[1]:
                 label += f'<br/>{group[1]}'
+                if len(group) > 2 and group[2]:
+                    label += f'<br/>{group[2]}'
             elif collapse_admin and len(info['admins']) > 1:
                 label += f'<br/>({len(info["admins"])} admin units)'
             lines.append(f'    {ids[group]}["{label}"]')
