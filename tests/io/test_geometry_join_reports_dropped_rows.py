@@ -48,7 +48,11 @@ def _setup(monkeypatch, tmp_path, geometry_labels):
     monkeypatch.setattr(readers, 'get_recipe_by_id', lambda rid: geometry_recipe)
     monkeypatch.setattr(readers, 'get_save_admin_level', lambda recipe: 0)
     monkeypatch.setattr(
-        readers, '_get_output_admin_ids', lambda recipe, admin_id: ([admin_id], [])
+        readers,
+        '_get_output_admin_ids',
+        # (files to read, requests finer than the save level, units asked
+        # for whole)
+        lambda recipe, admin_id: ([admin_id], [], [admin_id]),
     )
     monkeypatch.setattr(
         readers, 'get_output_path', lambda recipe, *a, **k: paths[id(recipe)]

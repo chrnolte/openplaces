@@ -2,6 +2,7 @@
 
 import pytest
 
+from openplaces.core.schema import AdminId
 from openplaces.io.readers import get_admin
 
 
@@ -26,3 +27,14 @@ class TestGetAdminSelectionIsLevelBounded:
         admin = get_admin(level=3, admin_id='US-NC', silent=True)
         assert 'US-NC-WAR' in admin.index
         assert 'US-NC-WAK' in admin.index
+
+    def test_the_empty_scope_still_selects_the_world(self):
+        """Level 0 is the planet, so it covers every unit.
+
+        A global recipe passes its own empty admin_id down to the
+        selection below, where the level-boundary test above matches
+        nothing: the separator it appends cannot start any id. Before
+        this case was restored, every global recipe resolved to no rows.
+        """
+        admin = get_admin(level=1, admin_id=AdminId(), silent=True)
+        assert 'US' in admin.index

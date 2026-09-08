@@ -325,6 +325,12 @@ def get_admin(
             # get_admin() call over a spine of up to a few hundred
             # thousand ids, where per-row parsing is not affordable.
             scope = str(_admin_id_to_get)
+            if not scope:
+                # Level 0 is the planet and covers every unit. The
+                # separator test below would match nothing for it, so a
+                # global recipe would resolve to no rows at all.
+                mask_select = pd.Series(True, index=admin.index)
+                break
             mask_select |= (admin.index == scope) | admin.index.str.startswith(
                 scope + STRING_SEPARATOR_WITHIN_IDS
             )
