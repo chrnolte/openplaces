@@ -18,6 +18,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
+from openplaces.config import cfg
 from openplaces.core.attribute_registry import (
     PROVENANCE_SOURCE_SUFFIX as _PROVENANCE_SUFFIX,
 )
@@ -700,7 +701,7 @@ class Harmonizer:
                 )
 
         if state.spine is None:
-            warnings.warn(f'Pipeline for {admin_id} produced no spine; nothing saved.')
+            self._save_empty_spine(admin_id)
             return
 
         # Restore the spine's original index name if resolve_spine renamed it to
@@ -751,6 +752,34 @@ class Harmonizer:
             simplified_geometry=state.simplified_geometry,
             file_metadata=file_metadata,
         )
+
+    def _save_empty_spine(self, admin_id):
+        """Record that this admin unit has nothing to build from.
+
+        A recipe can legitimately resolve no spine in a unit:
+        US_property-spine-2026 has sources in 4 of the 86 CHEER counties.
+        Writing nothing at all made that indistinguishable from a failed
+        job, because an orchestrator demands the declared output and
+        fails the graph, and everything downstream of it, on a job that
+        exited 0. Recording the empty answer is the honest form, and
+        consumers already take the same branch for it as for a missing
+        file: link_by_id skips a reference whose key column is absent,
+        and an empty table has no columns at all.
+
+        Parameters
+        ----------
+        admin_id : AdminId
+            The unit whose pipeline produced no spine.
+        """
+        warnings.warn(
+            f'Pipeline for {admin_id} produced no spine; saved an empty table.'
+        )
+        empty = gpd.GeoDataFrame(
+            {'geometry': gpd.GeoSeries([], dtype='geometry')}, crs=cfg.crs
+        )
+        if not saves_geometry(self.recipe):
+            empty = pd.DataFrame(empty.drop(columns='geometry'))
+        save_parquet(empty, get_output_path(self.recipe, admin_id))
 
     def show_random_entity(self):
         """Plot a random entity from the first configured admin unit.
