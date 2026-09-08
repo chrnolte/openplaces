@@ -563,12 +563,21 @@ def _build_crosswalk(
     the sliver trimming and link labeling can never diverge between them.
     Tolerates a geometry-free overlay (the reloaded sidecar).
     """
-    # A repeated (spine id, reference id) pair says the spine carried
-    # the same label twice: a real multi-overlap pairs one spine id
-    # with several distinct reference ids, never twice with the same
-    # one. Left alone, the two copies of one entity go down the multi
-    # branch, compete on area, and the smaller is trimmed as a
-    # neighbor.
+    # A repeated (spine id, reference id) pair is not a real overlap: a
+    # genuine multi-overlap pairs one spine id with several *distinct*
+    # reference ids, never twice with the same one. Left alone, the
+    # copies go down the multi branch, compete on area, and one is
+    # trimmed as a neighbor.
+    #
+    # Measured over the 2026-09-08 rebuild, every such pair was an exact
+    # duplicate row, identical in every column including the
+    # intersection area, in 2 to 32 copies (Wake NC: 386 pairs over
+    # 1,886 rows; Harris TX: 3 over 6). Dropping exact copies is
+    # therefore lossless, and it has to happen before the guard, which
+    # otherwise fails a third of the counties on rows that carry no
+    # information. Anything that survives this is a pair whose rows
+    # actually disagree, which is the case worth refusing.
+    footprints_on_ref = footprints_on_ref[~footprints_on_ref.duplicated(keep='first')]
     require_unique_index(
         footprints_on_ref.index, f'link_to_reference crosswalk on {spine_id_col}'
     )
