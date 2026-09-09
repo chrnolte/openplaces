@@ -24,6 +24,7 @@ __all__ = [
     'APPORTIONED_VALUE_COLUMNS',
     'PROPORTIONAL_SPLIT_COLUMNS',
     'WHOLE_VALUE_COLUMNS',
+    'NegativeReferenceValueError',
     'ValueOverAllocationError',
     'apportion_reference_values',
 ]
@@ -329,6 +330,17 @@ class ValueOverAllocationError(AssertionError):
     """
 
 
+class NegativeReferenceValueError(AssertionError):
+    """A linked reference holds a negative value for a money column.
+
+    The conservation check assumes non-negative references: a negative
+    share that lands on a masked entity leaves the allocated total while
+    staying in the source total, which reads as over-allocation and sends
+    a reader hunting for a duplicated link that does not exist. A negative
+    assessed value is not a value; treat it as unknown upstream.
+    """
+
+
 def _assert_not_over_allocated(
     result: pd.DataFrame,
     *,
@@ -376,6 +388,16 @@ def _assert_not_over_allocated(
             continue  # not money, and not divided
         allocated = pd.to_numeric(result[col], errors='coerce')
         source = pd.to_numeric(available[col], errors='coerce')
+        negative = source < 0
+        if negative.any():
+            raise NegativeReferenceValueError(
+                f"'{col}': {int(negative.sum()):,} of "
+                f'{int(source.notna().sum()):,} linked references hold a '
+                f'negative value (min {source.min():,.2f}). A negative '
+                'assessed value is not a value and the conservation check '
+                'assumes non-negative references; treat it as unknown '
+                "upstream (curate step 'null_out_of_range')."
+            )
         if col in WHOLE_VALUE_COLUMNS and dominant_ref is not None:
             per_ref = allocated.groupby(dominant_ref.reindex(allocated.index)).sum()
             source_per_ref = source.reindex(per_ref.index)

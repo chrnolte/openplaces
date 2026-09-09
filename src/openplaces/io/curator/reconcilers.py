@@ -375,6 +375,70 @@ def suppress_where(
     return state
 
 
+@_register('null_out_of_range')
+def null_out_of_range(
+    state: CurateState,
+    columns: str | list[str],
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> CurateState:
+    """Treat a value outside inclusive plausibility bounds as unknown.
+
+    A validity gate on the value itself, the sibling of ``suppress_where``
+    (which gates on another column). An out-of-range value is nulled and
+    its provenance sidecar cleared, so imputation may fill and mark it
+    rather than a sentinel shipping as a figure.
+
+    The motivating case is an assessor source that computes improvement
+    value as total minus land. Where assessed land exceeds the taxable
+    total (a use-value deferral) the difference is negative, and a
+    negative assessed value is not an assessment. Downstream, the
+    apportionment conservation check assumes non-negative references, so
+    a negative that survives here surfaces there as a misleading
+    "over-allocated" error rather than as what it is.
+
+    Parameters
+    ----------
+    columns : str or list of str
+        Column(s) to validate. An absent column is skipped.
+    minimum : float, optional
+        Inclusive lower bound; None leaves it unbounded.
+    maximum : float, optional
+        Inclusive upper bound; None leaves it unbounded.
+    """
+    import numpy as np
+
+    from openplaces.io.curator.provenance import source_column
+
+    if minimum is None and maximum is None:
+        raise ValueError('null_out_of_range needs a minimum, a maximum, or both.')
+    curated = state.curated
+    for column in [columns] if isinstance(columns, str) else list(columns):
+        if column not in curated.columns:
+            continue
+        numeric = pd.to_numeric(curated[column], errors='coerce')
+        mask = pd.Series(False, index=curated.index)
+        if minimum is not None:
+            mask |= numeric.lt(float(minimum))
+        if maximum is not None:
+            mask |= numeric.gt(float(maximum))
+        mask &= numeric.notna()
+        if mask.any():
+            curated.loc[mask, column] = np.nan
+            side = source_column(column)
+            if side in curated.columns:
+                # A null cell has no source.
+                curated[side] = curated[side].astype(object)
+                curated.loc[mask, side] = pd.NA
+        if state.verbose:
+            print(
+                f'  null_out_of_range: {int(mask.sum()):,} {column!r} value(s) '
+                f'outside [{minimum}, {maximum}] treated as unknown.'
+            )
+    state.curated = curated
+    return state
+
+
 def _summarize_conflicts(
     present: list[tuple[str, pd.Series]],
     index: pd.Index,

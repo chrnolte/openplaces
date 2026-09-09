@@ -64,6 +64,17 @@ pipeline:
     column: parcel_id_assessor
     values: [WATER, ROW]
 
+  # An assessed value is never negative. NC OneMap computes improvement
+  # as total minus land, which goes negative wherever assessed land
+  # exceeds the taxable total (use-value deferral): 6,845 of Duplin
+  # County's 43,425 parcels, -984.6M in total, measured 2026-09-09. A
+  # negative here is unknown, not a figure, and the apportionment
+  # conservation check downstream assumes non-negative references. Runs
+  # before any imputation so the estimate can fill and mark it.
+  - step: null_out_of_range
+    columns: [improvement_value, land_value, total_value]
+    minimum: 0
+
   # Impute parcel occupancy group from the modal NSI building group per assessor use code.
   - step: impute_from_group_statistic
     group_column: use_group_combined
