@@ -551,6 +551,44 @@ def _link_spatial_overlay(
     return state
 
 
+def _superseded_by_consolidation(
+    index,
+    spine_id_col: str,
+    superseded_spine_ids: set,
+    consolidated_pids: set,
+):
+    """Rows a condo-cluster consolidation replaces.
+
+    A consolidation supersedes every link to a parcel it absorbed, and
+    every link from a spine row it replaced. The three copies of those
+    links (the crosswalk, the overlay, and the sidecar on disk) have to
+    agree on that. They did not: the crosswalk filtered by parcel while
+    the other two filtered by spine id, so a parcel joining a cluster
+    whose old footprint was not itself superseded kept its
+    pre-consolidation overlap beside the new 'condo cluster' link, and
+    those copies carried the pair twice.
+
+    Parameters
+    ----------
+    index : pandas.MultiIndex
+        A (spine id, parcel id) index.
+    spine_id_col : str
+        Name of the spine id level.
+    superseded_spine_ids : set
+        Spine rows the consolidation replaced.
+    consolidated_pids : set
+        Parcels the consolidation absorbed.
+
+    Returns
+    -------
+    numpy.ndarray
+        Boolean mask, True where the row is superseded.
+    """
+    return index.get_level_values(spine_id_col).isin(
+        superseded_spine_ids
+    ) | index.get_level_values('parcel_id').isin(consolidated_pids)
+
+
 def _build_crosswalk(
     footprints_on_ref,
     spine_id_col: str,
@@ -3592,7 +3630,6 @@ def consolidate_condo_cluster_footprints(
     new_rows = []
     crosswalk_additions = []
     superseded_spine_ids: set = set()
-    superseded_pair_mask = pd.Series(False, index=crosswalk.index)
     consolidated_pids: set = set()
 
     for idxs in merge_groups.values():
@@ -3618,9 +3655,7 @@ def consolidate_condo_cluster_footprints(
                     'area_intersection_m2': area_m2,
                 }
             )
-        linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
         superseded_spine_ids.update(ev['linked_spine_ids'])
-        superseded_pair_mask |= linked_mask
         consolidated_pids.update(cluster_pids)
 
     if not new_rows:
@@ -3635,8 +3670,11 @@ def consolidate_condo_cluster_footprints(
     additions_df = pd.DataFrame(crosswalk_additions).set_index(
         [spine_id_col, 'parcel_id']
     )
+    superseded = _superseded_by_consolidation(
+        crosswalk.index, spine_id_col, superseded_spine_ids, consolidated_pids
+    )
     state.crosswalks[recipe_id] = pd.concat(
-        [crosswalk[~superseded_pair_mask], additions_df]
+        [crosswalk[~superseded], additions_df]
     ).sort_index()
 
     overlay = state.overlays.get(recipe_id)
@@ -3651,9 +3689,9 @@ def consolidate_condo_cluster_footprints(
         # nothing downstream could tell it from a conflict, and the
         # uniqueness guard failed 7 of the 86 CHEER counties on it
         # (Carteret NC 488 pairs, Pender NC 96, Webb TX 7).
-        overlay_superseded = overlay.index.get_level_values(spine_id_col).isin(
-            superseded_spine_ids
-        ) | overlay.index.get_level_values('parcel_id').isin(consolidated_pids)
+        overlay_superseded = _superseded_by_consolidation(
+            overlay.index, spine_id_col, superseded_spine_ids, consolidated_pids
+        )
         state.overlays[recipe_id] = pd.concat(
             [overlay.loc[~overlay_superseded], additions_df[['area_intersection_m2']]]
         ).sort_index()
@@ -3692,13 +3730,11 @@ def consolidate_condo_cluster_footprints(
             # 'condo cluster' link -- and failed every recipe that
             # reloads the sidecar rather than recomputing the overlay.
             kept = existing.loc[
-                ~(
-                    existing.index.get_level_values(spine_id_col).isin(
-                        superseded_spine_ids
-                    )
-                    | existing.index.get_level_values('parcel_id').isin(
-                        consolidated_pids
-                    )
+                ~_superseded_by_consolidation(
+                    existing.index,
+                    spine_id_col,
+                    superseded_spine_ids,
+                    consolidated_pids,
                 )
             ]
             merged = pd.concat(
