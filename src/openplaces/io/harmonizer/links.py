@@ -3593,6 +3593,7 @@ def consolidate_condo_cluster_footprints(
     crosswalk_additions = []
     superseded_spine_ids: set = set()
     superseded_pair_mask = pd.Series(False, index=crosswalk.index)
+    consolidated_pids: set = set()
 
     for idxs in merge_groups.values():
         cluster_pids = sum((cluster_pid_lists[i] for i in idxs), [])
@@ -3620,6 +3621,7 @@ def consolidate_condo_cluster_footprints(
         linked_mask = crosswalk.index.get_level_values('parcel_id').isin(cluster_pids)
         superseded_spine_ids.update(ev['linked_spine_ids'])
         superseded_pair_mask |= linked_mask
+        consolidated_pids.update(cluster_pids)
 
     if not new_rows:
         return state
@@ -3639,9 +3641,19 @@ def consolidate_condo_cluster_footprints(
 
     overlay = state.overlays.get(recipe_id)
     if overlay is not None:
+        # Supersede the overlay by the same rule as the crosswalk above,
+        # which drops every row for a consolidated parcel. Filtering on
+        # the spine id alone kept the pre-consolidation geometric row
+        # wherever its footprint was not itself superseded, so the
+        # overlay -- and the sidecar written from it -- carried that pair
+        # twice: once as the old overlap and once as the new 'condo
+        # cluster' link. That is a genuine pair of different records, so
+        # nothing downstream could tell it from a conflict, and the
+        # uniqueness guard failed 7 of the 86 CHEER counties on it
+        # (Carteret NC 488 pairs, Pender NC 96, Webb TX 7).
         overlay_superseded = overlay.index.get_level_values(spine_id_col).isin(
             superseded_spine_ids
-        )
+        ) | overlay.index.get_level_values('parcel_id').isin(consolidated_pids)
         state.overlays[recipe_id] = pd.concat(
             [overlay.loc[~overlay_superseded], additions_df[['area_intersection_m2']]]
         ).sort_index()
@@ -3672,9 +3684,21 @@ def consolidate_condo_cluster_footprints(
             existing = pd.read_parquet(sidecar_path).set_index(
                 [spine_id_col, 'parcel_id']
             )
+            # Same supersession rule as the crosswalk and the overlay:
+            # by consolidated parcel, not by spine id alone. This is the
+            # copy that reaches disk, so filtering it more narrowly than
+            # the crosswalk is what put a pair in the sidecar twice --
+            # once as its pre-consolidation overlap and once as the new
+            # 'condo cluster' link -- and failed every recipe that
+            # reloads the sidecar rather than recomputing the overlay.
             kept = existing.loc[
-                ~existing.index.get_level_values(spine_id_col).isin(
-                    superseded_spine_ids
+                ~(
+                    existing.index.get_level_values(spine_id_col).isin(
+                        superseded_spine_ids
+                    )
+                    | existing.index.get_level_values('parcel_id').isin(
+                        consolidated_pids
+                    )
                 )
             ]
             merged = pd.concat(
