@@ -173,6 +173,12 @@ def join_temporal_snapshot(
     prefix : str, optional
         Prepended to each attached column's name (default ``''``).
     """
+    # Validate the request before reading the reference, so a recipe
+    # error is reported as one rather than as a missing data file.
+    if direction not in ('backward', 'forward', 'exact'):
+        raise ValueError(f'Unknown direction: {direction!r}')
+    if direction == 'exact' and offset_years is None:
+        raise ValueError("direction='exact' requires offset_years.")
     curated = state.curated
 
     active_mask = pd.Series(True, index=curated.index)
@@ -197,8 +203,6 @@ def join_temporal_snapshot(
     ref = ref.dropna(subset=[join_key, vintage_column])
 
     if direction == 'exact':
-        if offset_years is None:
-            raise ValueError("direction='exact' requires offset_years.")
         ref = ref.drop_duplicates(subset=[join_key, vintage_column])
         active['_target_year'] = active[date_column] + offset_years
         merged = active.merge(
@@ -220,8 +224,6 @@ def join_temporal_snapshot(
             direction=direction,
         )
         merged.index = active_sorted.index
-    else:
-        raise ValueError(f'Unknown direction: {direction!r}')
 
     matched = merged[vintage_column].notna()
     matched_index = merged.index[matched]
