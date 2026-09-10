@@ -65,12 +65,17 @@ pipeline:
   - step: count_parcels_per_document
     parcel_column: parcel_id_assessor
 
-  # Graded values, never booleans. The arm's-length confidence maps
-  # each source's own vocabulary to 0 (a transfer the source says is
-  # not a market sale), 1 (a sale the source examined and qualified),
-  # or a value between for the qualified-but-excluded and pending
-  # cases. A value the mapping does not name stays missing, so a new
-  # source's labels are noticed rather than silently graded.
+  # Graded values, never booleans. The arm's-length confidence carries
+  # only the resolution the source does: Florida's 34 labels are two
+  # "Qualified arm's length" (differing in how qualification was
+  # established, which is provenance, not confidence), about 24 kinds
+  # of "Disqualified" (kinds, not degrees), and a small middle. So the
+  # scale is 0, 0.7 and 1, and a further level would have to name the
+  # label that justifies it. "Pending" and "Removed" are absence of
+  # evidence, not weak evidence: they are left missing, never a low
+  # number that survives a > 0 filter and fails a >= 0.5 one. This is
+  # one source's own qualification, one component of a consumer's
+  # arm's-length rule, and is not that rule.
   - step: derive_indicators
     indicators:
       - output: sale_arms_length_confidence
@@ -80,21 +85,10 @@ pipeline:
           # Florida DOR SDF (US-FL_transaction-fldor-2026)
           "Qualified arm's length - deed/instrument examination": 1.0
           "Qualified arm's length - documented evidence": 1.0
-          "Qualified - single parcel crossing county lines": 1.0
-          "Qualified - multiple parcels with multiple parcel IDs": 0.9
           "Qualified but excluded - physical/legal characteristics changed after transfer": 0.7
           "Qualified but excluded - legal characteristics changed after transfer": 0.7
-          "Pending - recorded/discovered in previous 90 days, qualification decision pending": 0.5
-          "Pending - unable to process because of transfer instrument errors": 0.5
-          "Removed - not currently accepted": 0.2
-          "Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)": 0.2
-          "Disqualified - allocated price as part of a package or bulk transaction": 0.2
-          "Disqualified - abnormal time between contract and sale date": 0.2
-          "Disqualified - atypical market exposure or motivation/knowledge of participants": 0.1
-          "Disqualified - atypical amounts of personal property": 0.1
-          "Disqualified - atypical costs of sale": 0.1
-          "Disqualified - significantly influenced by non-market financing or lease assumption": 0.1
-          "Disqualified - consideration differs from documentary stamps": 0.1
+          "Qualified - multiple parcels with multiple parcel IDs": 0.7
+          "Qualified - single parcel crossing county lines": 0.7
           "Disqualified - transfer to/from financial institution or in lieu of foreclosure": 0.0
           "Disqualified - corrective/quit claim/tax deed or minimal stamps": 0.0
           "Disqualified - cemetery lots or parcels": 0.0
@@ -107,10 +101,63 @@ pipeline:
           "Disqualified - contract or agreement for deed": 0.0
           "Disqualified - transfer between relatives or corporate affiliates": 0.0
           "Disqualified - trade or exchange of land": 0.0
+          "Disqualified - abnormal time between contract and sale date": 0.0
           "Disqualified - incomplete or unbuilt common property": 0.0
           "Disqualified - satisfied payment in full of prior property contract": 0.0
+          "Disqualified - atypical amounts of personal property": 0.0
+          "Disqualified - atypical costs of sale": 0.0
+          "Disqualified - atypical market exposure or motivation/knowledge of participants": 0.0
           "Disqualified - forced transfer or under duress": 0.0
+          "Disqualified - consideration differs from documentary stamps": 0.0
+          "Disqualified - significantly influenced by non-market financing or lease assumption": 0.0
+          "Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)": 0.0
           "Disqualified - mortgage fraud per law enforcement notification": 0.0
+          "Disqualified - allocated price as part of a package or bulk transaction": 0.0
+      # The two 0.7 groups are different problems a consumer treats
+      # differently: a parcel that changed between assessment and sale
+      # is a target problem, a deed covering several parcels an area
+      # problem the aggregation below solves. The group carries that
+      # distinction the scale cannot; pending and removed are named
+      # here so a consumer can see why the confidence is missing.
+      - output: sale_qualification_group
+        type: value_map
+        column: sale_qualification_code
+        mapping:
+          "Qualified arm's length - deed/instrument examination": qualified
+          "Qualified arm's length - documented evidence": qualified
+          "Qualified but excluded - physical/legal characteristics changed after transfer": qualified_parcel_changed
+          "Qualified but excluded - legal characteristics changed after transfer": qualified_parcel_changed
+          "Qualified - multiple parcels with multiple parcel IDs": qualified_multi_parcel
+          "Qualified - single parcel crossing county lines": qualified_multi_parcel
+          "Pending - recorded/discovered in previous 90 days, qualification decision pending": pending
+          "Pending - unable to process because of transfer instrument errors": pending
+          "Removed - not currently accepted": removed
+          # Listed rather than defaulted, so a row with no code at all
+          # stays missing instead of reading as disqualified.
+          "Disqualified - transfer to/from financial institution or in lieu of foreclosure": disqualified
+          "Disqualified - corrective/quit claim/tax deed or minimal stamps": disqualified
+          "Disqualified - cemetery lots or parcels": disqualified
+          "Disqualified - reservation of occupancy over 90 days (life estate)": disqualified
+          "Disqualified - conveys less than 100% undivided interest": disqualified
+          "Disqualified - transfer to/from religious/charitable/benevolent entity": disqualified
+          "Disqualified - transfer to/from government agency": disqualified
+          "Disqualified - transfer to/from bankruptcy trustee/administrator/executor/guardian/receiver": disqualified
+          "Disqualified - transfer to/from utility company": disqualified
+          "Disqualified - contract or agreement for deed": disqualified
+          "Disqualified - transfer between relatives or corporate affiliates": disqualified
+          "Disqualified - trade or exchange of land": disqualified
+          "Disqualified - abnormal time between contract and sale date": disqualified
+          "Disqualified - incomplete or unbuilt common property": disqualified
+          "Disqualified - satisfied payment in full of prior property contract": disqualified
+          "Disqualified - atypical amounts of personal property": disqualified
+          "Disqualified - atypical costs of sale": disqualified
+          "Disqualified - atypical market exposure or motivation/knowledge of participants": disqualified
+          "Disqualified - forced transfer or under duress": disqualified
+          "Disqualified - consideration differs from documentary stamps": disqualified
+          "Disqualified - significantly influenced by non-market financing or lease assumption": disqualified
+          "Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)": disqualified
+          "Disqualified - mortgage fraud per law enforcement notification": disqualified
+          "Disqualified - allocated price as part of a package or bulk transaction": disqualified
       # Every row of the spine is a recorded deed today; an assessor's
       # last-sale field, when a source contributes one, maps to
       # 'assessor_last_sale' here.
