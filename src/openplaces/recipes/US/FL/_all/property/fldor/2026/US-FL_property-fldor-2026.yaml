@@ -221,3 +221,13 @@ columns_to_categorical:
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
+
+# Integrate each county's per-year files into one dataset-wide _all.parquet
+# and delete them; the file's footer records the ingested years so re-runs
+# skip them. Matches US-FL_transaction-fldor-2026's convention: each row
+# keeps its own tax_year, so the combined file is a long panel keyed by
+# (parcel_id_assessor, tax_year) rather than a single collapsed snapshot,
+# letting a downstream temporal join pick the vintage valid at a given date
+# with a plain get_entities() call (no explicit partition_id).
+aggregate_by:
+  single_file: true
