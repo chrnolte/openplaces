@@ -26,6 +26,9 @@ from openplaces.recipe import (
 )
 from openplaces.timing import get_timer
 
+# Entity types with no geometry of their own.
+_NON_SPATIAL_ENTITY_TYPES = frozenset({'transaction', 'property', 'person'})
+
 
 @dataclass
 class CurateState:
@@ -236,7 +239,12 @@ class Curator:
         # a split (attribute-only) spine declares save_to: geometry: false
         # and its geometry is resolved via the entity_recipe chain -- a raw
         # read would find no `_geo` sidecar (or a stale pre-split one).
-        curated = get_entities(self.entity_recipe, admin_id, geom=True)
+        #
+        # geom=True only for spatial entity types; transaction/property
+        # spines have no geometry to load.
+        entity_type = str(getattr(self.entity_recipe.get('entity'), 'entity_type', ''))
+        wants_geom = entity_type not in _NON_SPATIAL_ENTITY_TYPES
+        curated = get_entities(self.entity_recipe, admin_id, geom=wants_geom)
         curated = _coerce_registry_numerics(curated)
         state = CurateState(
             recipe=self.recipe,
