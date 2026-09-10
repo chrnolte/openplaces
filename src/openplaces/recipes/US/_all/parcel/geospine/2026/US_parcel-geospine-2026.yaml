@@ -160,14 +160,22 @@ pipeline:
   # matched 117 of them. On the punctuation-free key the same seven match
   # 189,566 of 195,245 (97.1%).
   #
-  # Second, not first, and this ordering is the safety: the key is
-  # deliberately lossier (it cannot tell `1-23` from `12-3`), so it only
-  # ever fills what the standardized key left behind.
+  # Second, not first, and `fill_only` is the safety, not the ordering:
+  # the key is deliberately lossier (it cannot tell `1-23` from `12-3`),
+  # so it must only fill what the standardized key left behind. Ordering
+  # alone did not guarantee that: link_by_id's write rule overwrites
+  # outright once a reference covers half the spine, and this key
+  # matches best exactly where it is least trustworthy. In Carteret
+  # County 97% of parcels share their punctuation-free key with others
+  # (groups of up to 335), and without fill_only this pass replaced
+  # every parcel's own improvement value with one arbitrary row's,
+  # putting the county at 31 times its source total (2026-09-09).
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
     spine_key: parcel_id_alnum
     ref_key: parcel_id_alnum
+    fill_only: true
     track_provenance:
       - use_group
       - improvement_value
@@ -186,6 +194,7 @@ pipeline:
     entity_type: parcel
     spine_key: parcel_id_alnum
     ref_key: parcel_id_alnum_pin
+    fill_only: true
     track_provenance:
       - use_group
       - improvement_value

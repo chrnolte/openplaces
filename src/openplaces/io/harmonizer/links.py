@@ -2370,6 +2370,7 @@ def link_by_id(
     ref_sort_by: str | None = None,
     ref_sort_ascending: bool = True,
     track_provenance: list[str] | None = None,
+    fill_only: bool = False,
     _protect_own_columns: set[str] | None = None,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
@@ -2511,6 +2512,16 @@ def link_by_id(
     ref_sort_ascending : bool, default True
         Sort direction for *ref_sort_by* (``False`` so ``'first'`` picks the
         most recent row when sorting by a date column).
+    fill_only : bool, optional
+        Never overwrite a value the spine already holds; only fill gaps
+        (default False). Set this on a pass whose key is lossier than the
+        one before it. The default write rule overwrites outright once a
+        reference covers half the spine, and a lossy key is most
+        dangerous exactly where it matches best: in Carteret County NC
+        97% of parcels share their punctuation-free key with others, in
+        groups of up to 335, so the second pass replaced every parcel's
+        own improvement value with one arbitrary row's, and the county's
+        total came out 31 times its source (measured 2026-09-09).
     track_provenance : list of str, optional
         Output column names (post-rename, post-suffix base names) to record
         per-cell source provenance for via :func:`_write_prioritized`'s
@@ -2587,6 +2598,7 @@ def link_by_id(
                 ref_sort_by=ref_sort_by,
                 ref_sort_ascending=ref_sort_ascending,
                 track_provenance=track_provenance,
+                fill_only=fill_only,
                 _protect_own_columns=protect_columns,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
@@ -2687,6 +2699,8 @@ def link_by_id(
                 spine,
                 name,
                 skey.map(mapper),
+                # A lossy key must only fill what a precise one left.
+                majority_coverage=float('inf') if fill_only else 0.5,
                 provenance_token=token if out_name in provenance_cols else None,
             )
         matched = int(skey.isin(set(rkey.dropna())).sum())
@@ -2792,6 +2806,24 @@ def link_by_id(
             agg_series = grouped_col.agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
             new_vals = skey.map(mapper)
+            if fname == 'sum':
+                # A group total stamped onto every spine row sharing the
+                # key multiplies it by the number of rows: in Carteret
+                # County NC 97% of parcels share their punctuation-free
+                # key (groups of up to 335), and the county's improvement
+                # value came out 31 times its source. A sum belongs to one
+                # spine row; where the key cannot say which, assign none.
+                shared = skey.duplicated(keep=False) & skey.notna()
+                if shared.any():
+                    warnings.warn(
+                        f'link_by_id (aggregate): {name!r} is a sum over '
+                        f'{ref_key!r}, and {int(shared.sum()):,} spine rows '
+                        f'share their {spine_key!r} with others; the sum is '
+                        'not assigned to them, since stamping it on each '
+                        'would count it once per row.',
+                        stacklevel=2,
+                    )
+                    new_vals = new_vals.mask(shared)
             if (
                 _protect_own_columns
                 and out_name in _protect_own_columns
@@ -2802,6 +2834,8 @@ def link_by_id(
                 spine,
                 name,
                 new_vals,
+                # A lossy key must only fill what a precise one left.
+                majority_coverage=float('inf') if fill_only else 0.5,
                 provenance_token=token if out_name in provenance_cols else None,
             )
         count_col = count_as or 'n_records_per_key'
