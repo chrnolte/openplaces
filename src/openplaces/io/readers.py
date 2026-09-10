@@ -8,7 +8,9 @@ from collections.abc import Sequence
 
 import geopandas as gpd
 import pandas as pd
+import pyarrow.parquet as pq
 
+from openplaces.core.attribute_registry import load_registry
 from openplaces.core.constants import STRING_SEPARATOR_WITHIN_IDS
 from openplaces.core.schema import AdminId
 from openplaces.io import read_parquet
@@ -19,6 +21,7 @@ from openplaces.recipe import (
     get_recipe_id,
     get_save_admin_level,
     get_table_recipe,
+    resolve_attribute_name,
     saves_geometry,
 )
 from openplaces.utils import format_list
@@ -825,6 +828,91 @@ def get_entities(
     data.attrs['openplaces_missing_paths'] = [str(path) for path in missing_paths]
     data.attrs['openplaces_partition_ids'] = sorted(partition_ids)
     return data
+
+
+def describe_recipe(recipe, admin_id=None, layer=None, partition_id=None):
+    """Describe a recipe's output columns without reading its data.
+
+    Reads the parquet schema of one output file, so a consumer can check
+    what a recipe supplies across a whole state at the cost of a footer
+    read per unit rather than a table read. Each column is joined to the
+    attribute registry through :func:`openplaces.recipe.resolve_attribute_name`,
+    so a provenance-suffixed evidence column (``elevation_fmv2026``)
+    reports its registered base attribute, unit, data type and default
+    aggregation.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Recipe id or loaded recipe.
+    admin_id : str or AdminId, optional
+        Unit whose output file to describe. Defaults to the recipe's own
+        admin id. When the unit is finer than the recipe's save level,
+        the file covering it is described.
+    layer : str, optional
+        Secondary layer defined in ``additional_layers``.
+    partition_id : str, optional
+        Explicit partition value to read.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per column, indexed by column name: ``arrow_type`` (the
+        stored type), ``attribute`` (the registered base name, or None),
+        and the registry's ``data_type``, ``unit``, ``aggregation`` and
+        ``stage`` for it. The frame's ``attrs`` carry ``recipe_id``,
+        ``admin_id``, ``path`` and ``n_rows``.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the unit's output file does not exist.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    if layer is not None:
+        recipe = get_table_recipe(recipe, layer)
+    if partition_id is None and (recipe.get('aggregate_by') or {}).get('single_file'):
+        partition_id = 'all'
+    output_admin_ids, _finer, _whole = _get_output_admin_ids(recipe, admin_id)
+    if len(output_admin_ids) != 1:
+        raise ValueError(
+            f'describe_recipe describes one output file; {admin_id!r} resolves '
+            f'to {len(output_admin_ids)} for {get_recipe_id(recipe)}.'
+        )
+    output_admin_id = output_admin_ids[0]
+    path = get_output_path(recipe, output_admin_id, partition_id=partition_id)
+    if not path.exists():
+        raise FileNotFoundError(f'Recipe output file does not exist: {path}')
+    metadata = pq.read_metadata(path)
+    schema = pq.read_schema(path)
+    registry = load_registry()
+    rows = []
+    for field in schema:
+        attribute = resolve_attribute_name(field.name)
+        if attribute not in registry.index:
+            attribute = None
+        entry = registry.loc[attribute] if attribute is not None else None
+        rows.append(
+            {
+                'column': field.name,
+                'arrow_type': str(field.type),
+                'attribute': attribute,
+                'data_type': None if entry is None else entry['data_type'],
+                'unit': None if entry is None else entry['unit'],
+                'aggregation': None if entry is None else entry['aggregation'],
+                'stage': None if entry is None else entry['stage'],
+            }
+        )
+    described = pd.DataFrame(rows).set_index('column').astype(object)
+    described = described.where(described.notna(), None)
+    described.attrs.update(
+        recipe_id=get_recipe_id(recipe),
+        admin_id=None if output_admin_id is None else str(output_admin_id),
+        path=str(path),
+        n_rows=metadata.num_rows,
+    )
+    return described
 
 
 def get_dataset(recipe, admin_id=None, partition_id=None, geom=False):

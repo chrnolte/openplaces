@@ -74,3 +74,18 @@ def test_aggregate_rows_keeps_unregistered_source_sidecar():
     assert 'year_built_source' in out.columns
     assert out.loc['a', 'year_built_source'] == 'countyx'
     assert out.loc['b', 'year_built_source'] == 'countyy'
+
+
+def test_a_reference_version_is_a_provenance_suffix():
+    # The crosswalk enrichment names its evidence columns by the reference
+    # recipe's version (`fmv2026`), so a consumer asking what a column
+    # measures must get the registered base back.
+    assert resolve_attribute_name('wetland_share_fmv2026') == 'wetland_share'
+    assert resolve_attribute_name('elevation_fmv2026') == 'elevation'
+
+
+def test_a_bare_year_version_is_not_a_suffix():
+    # `_2026` would strip from any unregistered name ending in a year.
+    assert resolve_attribute_name('something_unregistered_2026') == (
+        'something_unregistered_2026'
+    )

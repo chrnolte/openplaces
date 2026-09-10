@@ -265,6 +265,45 @@ class AdminId:
         return AdminId(*self.levels[:level])
 
 
+def admin_ancestor(admin_id: 'str | AdminId', level: int) -> 'str | None':
+    """Return the ancestor of *admin_id* at *level*, as a string.
+
+    The accessor a consumer should use instead of splitting an id on its
+    separator and keeping a prefix: the separator, the level widths and
+    the level numbering are the hub's to change, and a consumer that
+    reads an identifier's shape breaks with them.
+
+    Parameters
+    ----------
+    admin_id : str or AdminId
+        The unit whose ancestor is wanted.
+    level : int
+        Admin level of the ancestor: 1 is the country, 2 the state or
+        region, 3 the county or district. Level 0 is the planet and
+        returns None, since it has no id.
+
+    Returns
+    -------
+    str or None
+        The ancestor's id; *admin_id* itself when *level* equals its own
+        level; None for level 0 or for a level deeper than the unit has.
+
+    Examples
+    --------
+    >>> admin_ancestor('US-NC-WAR', 2)
+    'US-NC'
+    >>> admin_ancestor('US-NC-WAR', 3)
+    'US-NC-WAR'
+    >>> admin_ancestor('US-NC', 3) is None
+    True
+    """
+    unit = AdminId(admin_id) if isinstance(admin_id, str) else admin_id
+    if level > unit.get_level():
+        return None
+    ancestor = unit.truncate_to_level(level)
+    return None if ancestor is None else str(ancestor)
+
+
 def admin_scope_covers(
     scope: 'str | AdminId | None', admin_id: 'str | AdminId | None'
 ) -> bool:

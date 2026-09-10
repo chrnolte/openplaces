@@ -513,8 +513,23 @@ def iter_entity_sources() -> frozenset:
     dataset's own source id. Used to auto-generate the provenance suffix
     vocabulary so adding a new source needs no hardcoded list edits.
     """
+    return frozenset(
+        (entity, source) for entity, source, _v in iter_entity_source_versions()
+    )
+
+
+@cache
+def iter_entity_source_versions() -> frozenset:
+    """Return ``(entity_type, source_id, version)`` triples across all entity recipes.
+
+    The scan behind :func:`iter_entity_sources`, kept separately because
+    the provenance suffix vocabulary needs the version as well: the
+    crosswalk enrichment names its evidence columns by the reference
+    recipe's *version* (``wetland_share_fmv2026``), since a version names
+    the data product where a source id names who produced it.
+    """
     root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
-    pairs: set[tuple[str, str | None]] = set()
+    pairs: set[tuple[str, str | None, str | None]] = set()
     for filepath in root.rglob('*.yaml'):
         parts = filepath.stem.split('_')
         try:
@@ -534,7 +549,8 @@ def iter_entity_sources() -> frozenset:
                 source_id = DataSet(parts[1]).source.source_id
             except (ValueError, IndexError):
                 pass
-        pairs.add((str(entity.entity_type), source_id))
+        version = None if entity.version is None else str(entity.version)
+        pairs.add((str(entity.entity_type), source_id, version))
     return frozenset(pairs)
 
 
@@ -551,7 +567,13 @@ def provenance_suffixes() -> tuple[tuple[str, str], ...]:
     extends this automatically.
     """
     suffixes: dict[str, str] = {}
-    for entity, source in iter_entity_sources():
+    for entity, source, version in iter_entity_source_versions():
+        # A version that is not a bare year is a data-product name
+        # (`fmv2026`), which the crosswalk enrichment uses as its suffix.
+        # A bare year is left out: `_2026` would strip from any
+        # unregistered column that happens to end in a year.
+        if version and not version.isdigit():
+            suffixes.setdefault(f'_{version}', version)
         if source is None:
             continue
         if entity == 'parcel':

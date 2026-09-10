@@ -28,6 +28,16 @@ _SOURCES = {
     'compact': 'openplaces.io.cleanup:compact',
     'inspect_table': 'openplaces.utils:inspect_table',
     'export_qgis_map': 'openplaces.viz.qgis_map:export_qgis_map',
+    # For connectors (spokes), which may read the hub only through this
+    # module: the attribute registry and how a column name resolves to
+    # it, admin containment and ancestry, and a recipe's columns
+    # without reading its data.
+    'get_attribute_registry': 'openplaces.core.attribute_registry:load_registry',
+    'get_agg_func': 'openplaces.core.attribute_registry:get_agg_func',
+    'resolve_attribute_name': 'openplaces.recipe:resolve_attribute_name',
+    'admin_scope_covers': 'openplaces.core.schema:admin_scope_covers',
+    'get_admin_ancestor': 'openplaces.core.schema:admin_ancestor',
+    'describe_recipe': 'openplaces.io.readers:describe_recipe',
 }
 
 __all__ = list(_SOURCES)
