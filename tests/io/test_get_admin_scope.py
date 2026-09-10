@@ -3,7 +3,7 @@
 import pytest
 
 from openplaces.core.schema import AdminId
-from openplaces.io.readers import get_admin
+from openplaces.io.readers import get_admin, get_admin_ids
 
 
 class TestGetAdminSelectionIsLevelBounded:
@@ -38,3 +38,27 @@ class TestGetAdminSelectionIsLevelBounded:
         """
         admin = get_admin(level=1, admin_id=AdminId(), silent=True)
         assert 'US' in admin.index
+
+
+class TestAnEmptyScopeIsAnAnswer:
+    """A unit with nothing below it at the requested level.
+
+    Antarctica has no second-level units and an Andorran parish no
+    third-level ones. A per-unit harmonize run of the world admin spine
+    asks for exactly those, and both raised, which stopped the whole
+    level-2 and level-3 rebuild under the orchestrator.
+    """
+
+    def test_no_unit_at_the_level_raises_by_default(self):
+        with pytest.raises(ValueError, match='No admin IDs'):
+            get_admin(level=2, admin_id='AQ', silent=True)
+
+    def test_allow_empty_returns_an_empty_table(self):
+        admin = get_admin(level=2, admin_id='AQ', silent=True, allow_empty=True)
+        assert len(admin) == 0
+
+    def test_allow_empty_returns_an_empty_id_list(self):
+        assert get_admin_ids(3, 'AD-AL', allow_empty=True) == []
+
+    def test_allow_empty_changes_nothing_for_a_populated_scope(self):
+        assert 'US-NC-WAK' in get_admin_ids(3, 'US-NC', allow_empty=True)

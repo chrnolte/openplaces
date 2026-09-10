@@ -94,6 +94,7 @@ def get_admin(
     columns=None,
     all_columns=False,
     silent=True,
+    allow_empty=False,
 ):
     """Get admin units of any administrative level
 
@@ -119,6 +120,14 @@ def get_admin(
         If True, returns not only the most important columns
     silent : bool
         Silence warnings
+    allow_empty : bool
+        If True, a scope that selects no unit at `level` returns an
+        empty table instead of raising. A country with no second-level
+        units (Antarctica) or a region with no third-level ones (an
+        Andorran parish) is a legitimate empty answer to "which units
+        sit at this level within X", which is the question a per-unit
+        harmonize run asks. The default raises, because a caller who
+        names one unit and gets nothing has usually misspelled it.
     """
 
     if level is not None and level < 1:
@@ -334,7 +343,7 @@ def get_admin(
             mask_select |= (admin.index == scope) | admin.index.str.startswith(
                 scope + STRING_SEPARATOR_WITHIN_IDS
             )
-        if not mask_select.any():
+        if not mask_select.any() and not allow_empty:
             raise ValueError(
                 'No admin IDs from reference spine found. Perhaps they have not been '
                 f'defined at level {level} for `admin_id`: {format_list(admin_ids)}?'
@@ -397,13 +406,27 @@ def get_admin(
     return admin[non_empty_columns]
 
 
-def get_admin_ids(admin_level, admin_id=None, admin_recipe=None):
-    """Get list of administrative unit IDs"""
+def get_admin_ids(admin_level, admin_id=None, admin_recipe=None, allow_empty=False):
+    """Get list of administrative unit IDs
+
+    Parameters
+    ----------
+    admin_level : int
+        Admin level of the ids to return.
+    admin_id : str, list, or AdminId, optional
+        Scope; None selects the whole level.
+    admin_recipe : str, optional
+        Admin recipe id to read the units from.
+    allow_empty : bool
+        Return an empty list, rather than raise, when no unit sits at
+        `admin_level` within `admin_id`. See `get_admin`.
+    """
     admin_ids = get_admin(
         admin_id,
         admin_level,
         columns=[],
         recipe=get_recipe_by_id(admin_recipe) if admin_recipe is not None else None,
+        allow_empty=allow_empty,
     ).index.tolist()
     return sorted(admin_ids)
 

@@ -58,7 +58,11 @@ def discover_sources(state: HarmonizeState) -> HarmonizeState:
     # Scoped to the unit being processed rather than the whole world:
     # a reader who wants one town should not pay for a global layer.
     # `state.admin_id` is None only for a deliberately global run.
-    all_admin_ids = get_admin_ids(admin_level, state.admin_id)
+    # A unit with nothing below it at this level (Antarctica at level
+    # 2, an Andorran parish at level 3) is an empty assignment, not an
+    # error: the harmonizer then writes an empty spine for it, and the
+    # rest of the world-level run proceeds.
+    all_admin_ids = get_admin_ids(admin_level, state.admin_id, allow_empty=True)
     assignment: dict[str, list[str]] = {}
     unassigned: list[str] = []
     for aid in all_admin_ids:

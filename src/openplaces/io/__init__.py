@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import warnings
 from pathlib import Path
 from urllib.parse import unquote, urlparse
@@ -1139,6 +1140,12 @@ class DataDeletionError(OSError):
     """
 
 
+# How long delete_data keeps trying to remove a geodatabase a sync app is
+# still holding: five attempts, three seconds apart.
+_GDB_DELETE_ATTEMPTS = 5
+_GDB_DELETE_RETRY_SECONDS = 3.0
+
+
 def _deletion_interrupted_error(path: Path, *, is_dir: bool) -> DataDeletionError:
     """Build a DataDeletionError naming *path* with a clickable file link.
 
@@ -1185,14 +1192,27 @@ def delete_data(data_path, delete_empty_parent_dirs=True):
         )
 
     if data_path.suffix == '.gdb':
-        try:
-            shutil.rmtree(data_path)
-        except OSError as error:
-            raise _deletion_interrupted_error(data_path, is_dir=True) from error
-        # rmtree can stop partway when a lock is released mid-walk; confirm the
-        # directory is actually gone so a partial geodatabase is never reused.
-        if data_path.exists():
-            raise _deletion_interrupted_error(data_path, is_dir=True)
+        # A sync app indexing a freshly extracted geodatabase holds a
+        # handle on it for a few seconds, and rmtree then fails on the
+        # directory itself after removing its contents. Try again a few
+        # times before giving up: the handle is released on its own, and
+        # an orchestrator job has no one to pause the app and re-run.
+        for attempt in range(_GDB_DELETE_ATTEMPTS):
+            try:
+                shutil.rmtree(data_path)
+            except OSError as error:
+                if attempt == _GDB_DELETE_ATTEMPTS - 1:
+                    raise _deletion_interrupted_error(data_path, is_dir=True) from error
+                time.sleep(_GDB_DELETE_RETRY_SECONDS)
+                continue
+            # rmtree can stop partway when a lock is released mid-walk;
+            # confirm the directory is actually gone so a partial
+            # geodatabase is never reused.
+            if not data_path.exists():
+                break
+            if attempt == _GDB_DELETE_ATTEMPTS - 1:
+                raise _deletion_interrupted_error(data_path, is_dir=True)
+            time.sleep(_GDB_DELETE_RETRY_SECONDS)
 
     elif data_path.suffix == '.shp':
         for shapefile_extension in SHAPEFILE_EXTENSIONS:

@@ -14,7 +14,7 @@ import geopandas as gpd
 import pandas as pd
 from pyogrio.errors import DataSourceError
 
-from openplaces.config import cfg
+from openplaces.config import can_prompt, cfg
 from openplaces.core.attribute_registry import get_null_placeholder
 from openplaces.core.constants import (
     GEOPANDAS_EXTENSIONS,
@@ -544,6 +544,17 @@ class TableIngester:
                         'This usually means the .gdb folder is locked by a file sync '
                         'app (e.g. Dropbox) or was only partially deleted.\n'
                     )
+                    # An orchestrator job has no one to answer, and a
+                    # bare input() there dies with an EOFError that
+                    # names none of this. `can_prompt` is the same test
+                    # the terms-consent gate uses.
+                    if not can_prompt():
+                        raise RuntimeError(
+                            f'Cannot read {data_path}: permission denied, and '
+                            'this run cannot ask whether to delete it. Remove '
+                            'the folder manually (or run once interactively) '
+                            'and re-run.'
+                        ) from e
                     answer = input('Try to delete it now? [y/n] ').strip().lower()
                     if answer == 'y':
                         try:

@@ -11,6 +11,12 @@ import openplaces.io as opio
 from openplaces.io import DataDeletionError, _deletion_interrupted_error
 
 
+@pytest.fixture(autouse=True)
+def no_retry_wait(monkeypatch):
+    # The retry is real; waiting for it is not what these tests measure.
+    monkeypatch.setattr(opio, '_GDB_DELETE_RETRY_SECONDS', 0)
+
+
 def test_deletion_error_message_has_path_and_clickable_link(tmp_path):
     target = tmp_path / 'NC_Parcels_all.gdb'
     target.mkdir()
@@ -46,6 +52,46 @@ def test_delete_gdb_permission_error_raises(monkeypatch, tmp_path):
 
     with pytest.raises(DataDeletionError, match='Interrupted while deleting'):
         opio.delete_data(gdb, delete_empty_parent_dirs=False)
+
+
+def test_delete_gdb_retries_while_a_sync_app_holds_the_handle(monkeypatch, tmp_path):
+    # Dropbox indexing a fresh extraction releases its handle within
+    # seconds; the first attempts fail, a later one succeeds, and the
+    # caller never sees the transient lock.
+    gdb = tmp_path / 'parcels.gdb'
+    gdb.mkdir()
+    (gdb / 'a00000001.gdbtable').write_bytes(b'data')
+    real_rmtree = opio.shutil.rmtree
+    calls = []
+
+    def _locked_twice(path, *args, **kwargs):
+        calls.append(path)
+        if len(calls) <= 2:
+            raise PermissionError('file locked by sync app')
+        real_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(opio.shutil, 'rmtree', _locked_twice)
+
+    opio.delete_data(gdb, delete_empty_parent_dirs=False)
+
+    assert not gdb.exists()
+    assert len(calls) == 3
+
+
+def test_delete_gdb_gives_up_after_the_last_attempt(monkeypatch, tmp_path):
+    gdb = tmp_path / 'parcels.gdb'
+    gdb.mkdir()
+    calls = []
+
+    def _locked(*args, **kwargs):
+        calls.append(1)
+        raise PermissionError('file locked by sync app')
+
+    monkeypatch.setattr(opio.shutil, 'rmtree', _locked)
+
+    with pytest.raises(DataDeletionError):
+        opio.delete_data(gdb, delete_empty_parent_dirs=False)
+    assert len(calls) == opio._GDB_DELETE_ATTEMPTS
 
 
 def test_delete_gdb_partial_leftover_raises(monkeypatch, tmp_path):
