@@ -40,11 +40,11 @@ uncompressed_file_name: "building.{tile_id}.gpkg"
 download_by:
   partition: tile_id
   tile_recipe_id: tile-obm-2025
-  # Which tile<->admin crosswalk to read. The tile grid is global and
-  # builds its crosswalks against the nationally-saved census layer; the
-  # overlay below uses the harmonized per-state reference, which a global
-  # recipe cannot cheaply link to.
-  tile_admin_recipe_id: US_admin-census-2025_admin3
+  # Which admin layer selects a unit's tiles. The link is built per
+  # state from that state's file and the tile grid when first needed,
+  # so the same harmonized reference the overlay below uses serves here
+  # too, and a county build waits on its own state's admin file only.
+  tile_admin_recipe_id: admin-openplaces-2026_admin3
 
 # Layer that identifies third-level admin subdivisions (Level 2 in GADM)
 layer: building

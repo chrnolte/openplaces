@@ -41,24 +41,30 @@ def test_world_admin_layers_have_no_global_job(monkeypatch):
     admin2 = _admin_nodes(dag, 'admin-openplaces-2026_admin2')
     admin3 = _admin_nodes(dag, 'admin-openplaces-2026_admin3')
     assert all(n.admin_id is not None for n in admin2 + admin3)
-    assert {n.admin_id for n in admin2} == {'AQ', 'US'}
-    assert {n.admin_id for n in admin3} == {'US-DE', 'US-TX'}
+    # A global consumer of either layer would get one job per unit at
+    # the layer's save level; since the tile grid stopped consuming
+    # them, a county graph holds only the county's own state.
+    assert [str(a) for a in dag._node_admins('admin-openplaces-2026_admin2', None)] == [
+        'AQ',
+        'US',
+    ]
+    assert {n.admin_id for n in admin3} == {'US-TX'}
 
 
-def test_a_global_consumer_lists_every_per_unit_file_as_input(monkeypatch):
+def test_a_global_consumer_expands_to_the_units_of_its_scope(monkeypatch):
     import openplaces.io.readers as readers
 
     monkeypatch.setattr(
         readers,
         'get_admin_ids',
-        lambda level, admin_id=None, **kwargs: ['AQ', 'US'] if level == 1 else [],
+        lambda level, admin_id=None, **kwargs: ['US-DE', 'US-TX'] if level == 2 else [],
     )
     dag = RecipeDAG(TARGET, admin_ids=['US-TX-KEY'], deliver=False)
-    inputs = [str(p) for p in dag.input_paths('ingest', 'tile-obm-2025', None)]
-    assert any('AQ_admin-openplaces-2026_admin2' in p for p in inputs)
-    assert any('US_admin-openplaces-2026_admin2' in p for p in inputs)
-    # The unwritten global file is not among them.
-    assert 'admin-openplaces-2026_admin2.parquet' not in {Path(p).name for p in inputs}
+    expanded = dag._node_admins('admin-openplaces-2026_admin3', None)
+    assert [str(a) for a in expanded] == ['US-DE', 'US-TX']
+    # The tile grid itself consumes no admin layer any more.
+    inputs = [Path(p).name for p in dag.input_paths('ingest', 'tile-obm-2025', None)]
+    assert not any('admin' in name for name in inputs)
 
 
 def test_a_truly_global_recipe_still_resolves_to_one_job():

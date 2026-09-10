@@ -1225,17 +1225,27 @@ class Ingester:
         )
 
         tile_recipe_id = self.recipe['download_by']['tile_recipe_id']
-        tiles_path = get_output_path(get_recipe_by_id(tile_recipe_id))
-        tile_admin_link_path = tiles_path.with_name(
-            tiles_path.stem + f'_{admin_recipe_id}.parquet'
-        )
-        if not tile_admin_link_path.exists():
-            raise ValueError(
-                f'File linking {tile_recipe_id} and {admin_recipe_id} not found:\n\n'
-                + str(tile_admin_link_path)
-                + '\n\nDid you process the overlay?'
+        # One link per admin unit at the admin recipe's save level, built
+        # from that unit's polygons and the global tile grid the first
+        # time it is needed and reused after. A county build asks for its
+        # own state's link, never for a crosswalk of the whole world.
+        from openplaces.geo.link import ensure_scoped_tile_link
+
+        level = get_save_admin_level(get_recipe_by_id(admin_recipe_id))
+        units = list(
+            dict.fromkeys(
+                str(AdminId(str(aid)).truncate_to_level(level))
+                for aid in self.admin_ids_to_save
             )
-        self.tile_admin_link = pd.read_parquet(tile_admin_link_path)
+        )
+        self.tile_admin_link = pd.concat(
+            [
+                ensure_scoped_tile_link(
+                    tile_recipe_id, admin_recipe_id, unit, verbose=self.verbose
+                )
+                for unit in units
+            ]
+        )
 
         # Level 0 = tile index, level 1 = admin index (overlay_polygons order)
         admin_ids_set = set(self.admin_ids_to_save)

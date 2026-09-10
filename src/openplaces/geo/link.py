@@ -4,10 +4,12 @@ link.py
 Entity linking: create ID linkages between two spatial entity datasets.
 """
 
+import os
+
 from openplaces.core.schema import ENTITY_LINK_ORDER, AdminId
 from openplaces.geo.overlay import overlay_polygons_with_duckdb
 from openplaces.geo.polygon import overlay_polygons
-from openplaces.io import save_parquet
+from openplaces.io import read_parquet, save_parquet, to_parquet
 from openplaces.recipe import (
     get_output_path,
     get_recipe_by_id,
@@ -140,3 +142,97 @@ def create_entity_link(entity1_recipe_id, entity2_recipe_id, save=True, **kwargs
         save_parquet(entity1_entity2_link, entity1_entity2_link_path)
 
     return entity1_entity2_link
+
+
+def get_scoped_tile_link_path(tile_recipe_id, admin_recipe_id, admin_id):
+    """Path of the tile-admin link for one admin unit's own file.
+
+    A tile grid is global, but the question a download asks is local:
+    which tiles touch this county. The link therefore lives beside the
+    admin unit's file, as ``<admin_unit_stem>_<tile_recipe_id>.parquet``,
+    and is built from that unit's polygons alone. A county build then
+    needs its own state's admin file and the tile grid, never the world.
+
+    Parameters
+    ----------
+    tile_recipe_id : str
+        The tile grid recipe (``tile-obm-2025``).
+    admin_recipe_id : str
+        The admin layer recipe whose units the tiles are linked to.
+    admin_id : str or AdminId
+        Any unit at or below the admin recipe's save level; truncated to
+        the save level, which is the file the link sits beside.
+    """
+    admin_recipe = get_recipe_by_id(admin_recipe_id)
+    if not isinstance(admin_id, AdminId):
+        admin_id = AdminId(str(admin_id))
+    level = get_save_admin_level(admin_recipe)
+    unit = admin_id.truncate_to_level(level) if level > 0 else None
+    admin_path = get_output_path(admin_recipe, admin_id=unit)
+    return admin_path.with_name(f'{admin_path.stem}_{tile_recipe_id}.parquet')
+
+
+def _input_stamp(path) -> str:
+    stat = os.stat(path)
+    return f'{stat.st_size}:{int(stat.st_mtime)}'
+
+
+def ensure_scoped_tile_link(
+    tile_recipe_id, admin_recipe_id, admin_id, reprocess=False, verbose=False
+):
+    """Return the tile-admin link for one admin unit, building it if needed.
+
+    The link is an intersection of the global tile grid with the unit's
+    admin polygons, keyed ``(tile_id, admin_id)``. It is rebuilt when
+    absent, when *reprocess* is set, or when its footer says it was built
+    from a tile grid or admin file other than the ones on disk now (size
+    and modification time), so a re-ingested layer is never paired with
+    a stale crosswalk.
+
+    Parameters
+    ----------
+    tile_recipe_id : str
+        The tile grid recipe.
+    admin_recipe_id : str
+        The admin layer recipe.
+    admin_id : str or AdminId
+        Any unit at or below the admin recipe's save level.
+    reprocess : bool
+        Rebuild even when the stored link is current.
+    verbose : bool
+        Report a rebuild.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexed by ``(tile_id, admin_id)``.
+    """
+    admin_recipe = get_recipe_by_id(admin_recipe_id)
+    if not isinstance(admin_id, AdminId):
+        admin_id = AdminId(str(admin_id))
+    level = get_save_admin_level(admin_recipe)
+    unit = admin_id.truncate_to_level(level) if level > 0 else None
+    tiles_path = get_output_path(get_recipe_by_id(tile_recipe_id))
+    admin_path = get_output_path(admin_recipe, admin_id=unit)
+    for path in (tiles_path, admin_path):
+        if not path.exists():
+            raise FileNotFoundError(
+                f'Cannot link {tile_recipe_id} to {admin_recipe_id} for '
+                f'{unit}: {path} does not exist.'
+            )
+    link_path = get_scoped_tile_link_path(tile_recipe_id, admin_recipe_id, admin_id)
+    stamps = {
+        'tile_input': _input_stamp(tiles_path),
+        'admin_input': _input_stamp(admin_path),
+    }
+    if link_path.exists() and not reprocess:
+        from openplaces.io.aggregate import read_file_metadata
+
+        stored = read_file_metadata(link_path)
+        if all(stored.get(k) == v for k, v in stamps.items()):
+            return read_parquet(link_path)
+    if verbose:
+        print(f'  Linking {tile_recipe_id} to {admin_recipe_id} for {unit}.')
+    link = overlay_polygons_with_duckdb(tiles_path, admin_path, verbose=False)
+    to_parquet(link, link_path, file_metadata=stamps)
+    return link

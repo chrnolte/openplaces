@@ -1,6 +1,7 @@
 """Tests for RecipeDAG against the committed CHEER recipe tree."""
 
 from copy import copy
+from pathlib import Path
 
 import pytest
 
@@ -200,27 +201,22 @@ def test_admin_and_tile_link_nodes_and_edges(dag):
     assert by_id['US_admin-census-2025_admin2'].stage == 'ingest'
     edge_ids = {(up[0], down[0]) for up, down in dag._edges}
     assert ('US_admin-census-2025_admin2', 'US_admin-census-2025_admin3') in edge_ids
-    # The tile grid consumes the admin layers declared under entity_links,
-    # and those name the harmonized reference rather than a raw census
-    # vintage: these crosswalks decide which tiles a unit's download
-    # pulls, so a layer keyed on superseded identifiers sends the wrong
-    # tiles to the wrong unit.
-    assert ('admin-openplaces-2026_admin3', 'tile-obm-2025') in edge_ids
+    # The tile grid is a plain global ingest: it consumes no admin layer.
+    # Tile-to-admin links are built per admin unit when a download first
+    # needs them, so a county build never waits on the world.
+    assert not any(down == 'tile-obm-2025' for _up, down in edge_ids)
 
 
-def test_tile_entity_links_extra_outputs(dag):
-    extras = dag.extra_outputs('ingest', 'tile-obm-2025')
-    assert (
-        get_entity_link_path('tile-obm-2025', 'admin-openplaces-2026_admin3') in extras
-    )
-    assert len(extras) == 5
+def test_tile_grid_declares_no_link_sidecars(dag):
+    assert dag.extra_outputs('ingest', 'tile-obm-2025') == []
 
 
-def test_footprint_inputs_include_tile_admin_link(dag):
-    inputs = dag.input_paths('ingest', 'footprint-obm-2025', COUNTY)
-    assert (
-        get_entity_link_path('tile-obm-2025', 'admin-openplaces-2026_admin3') in inputs
-    )
+def test_footprint_inputs_are_its_state_admin_file_and_the_tile_grid(dag):
+    inputs = {str(p) for p in dag.input_paths('ingest', 'footprint-obm-2025', COUNTY)}
+    names = {Path(p).name for p in inputs}
+    assert 'US-NC_admin-openplaces-2026_admin3.parquet' in names
+    assert 'tile-obm-2025.parquet' in names
+    assert 'admin-openplaces-2026_admin3.parquet' not in names
 
 
 def test_placeslab_present_by_default(dag):

@@ -29,7 +29,7 @@ add_tile_utm_derivatives:
   tile_id_col: tile_id
   tile_type: sentinel
 
-entity_links:
-  - recipe_id: admin-openplaces-2026_admin2
-  - recipe_id: admin-openplaces-2026_admin3
-  - recipe_id: admin-openplaces-2026_admin4
+# Tile-to-admin links are not declared here. They are built per
+# admin unit, from that unit's own file and this grid, the first
+# time a download needs them (geo.link.ensure_scoped_tile_link),
+# so a county build never waits on the world admin layers.

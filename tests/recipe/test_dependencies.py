@@ -115,26 +115,23 @@ def test_admin3_create_index_declares_admin2_edge():
     assert by_kind.get('admin2_recipe_id') == {'US_admin-census-2021_admin2'}
 
 
-def test_tile_entity_links_declare_admin_edges():
-    """Every recipe named in `entity_links` becomes an edge.
+def test_tile_grid_declares_no_admin_edges():
+    """A tile grid is a plain global ingest with no admin dependency.
 
-    Checked against what the recipe declares rather than a literal list:
-    this test pinned the 2021 census vintage until the tile grid moved to
-    2025, which is a change in the tree, not in what this function
-    derives. What the assertion is really for is that all of them arrive
-    and that they are admin layers - a persisted tile-to-admin crosswalk
-    keyed on GADM identifiers is data openplaces cannot ship.
+    Tile-to-admin links used to be declared under `entity_links` and
+    built once, globally, over every admin unit in the world, which
+    made a single county's build wait on the world admin layers. They
+    are now built per admin unit when a download first needs them
+    (geo.link.ensure_scoped_tile_link), keyed on whichever harmonized
+    layer the consumer names, so nothing here may reintroduce the
+    global edge. Keying on openplaces' own layers rather than GADM is
+    still the rule: a persisted crosswalk on GADM identifiers is data
+    openplaces cannot ship.
     """
-    recipe_id = 'tile-obm-2025'
-    recipe = get_recipe_by_id(recipe_id)
-    declared = {link['recipe_id'] for link in recipe['entity_links']}
-    assert declared, 'the tile recipe declares no entity_links'
-    assert all('admin' in upstream for upstream in declared), declared
-
-    edges = get_recipe_dependencies(recipe_id)
-    assert declared <= _upstream_ids(edges)
-    steps = {e.step for e in edges if e.kind == 'recipe_id'}
-    assert 'entity_links' in steps
+    recipe = get_recipe_by_id('tile-obm-2025')
+    assert not recipe.get('entity_links')
+    upstreams = {e.upstream_recipe_id for e in get_recipe_dependencies(recipe)}
+    assert not any('admin' in (u or '') for u in upstreams), upstreams
 
 
 def test_reference_parcel_recipe_id_is_a_real_edge():
