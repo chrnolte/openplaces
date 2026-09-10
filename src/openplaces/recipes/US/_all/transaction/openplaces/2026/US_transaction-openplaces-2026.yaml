@@ -1,0 +1,136 @@
+# Recipe: canonical openplaces transaction dataset, one row per sale.
+#
+# Curates the harmonized transaction spine into what every transaction
+# consumer needs and none should rebuild: the recorded document behind
+# each row, one row per document with the parcels it covered counted and
+# their areas summed, and graded sale-quality values a consumer
+# thresholds for itself. The hub grades; the consumer sets the cutoff.
+# Nothing here removes a sale: a hedonic panel, a vacant-land model and
+# a price index each want a different sample, and a row filtered here
+# is a row none of them can reconsider.
+#
+# The Florida single-family panel (US-FL_transaction-openplaces-2026)
+# is the filtered product for one use; this recipe is the evidence
+# every such product can start from.
+
+description: >-
+  Recorded sales as one row per deed, with the parcels each covered
+  counted and graded sale-quality values for a consumer to threshold.
+
+stage: curate
+admin_id: US
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+entity_recipe: US_transaction-spine-2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: share
+
+pipeline:
+  # A source published as overlapping rolling windows lists the same
+  # recorded document twice. Same key, same row: keep one.
+  - step: dedup_transactions
+    key_columns:
+      - parcel_id_assessor
+      - sale_year
+      - sale_month
+      - price
+      - sale_book
+      - sale_page
+      - sale_clerk_instrument
+
+  # The deed behind each row, spelled per source: Florida records a
+  # clerk instrument number for newer sales and an official-record book
+  # and page for older ones. Another source adds its own candidate here.
+  - step: derive_document_id
+    candidates:
+      - [sale_clerk_instrument]
+      - [sale_book, sale_page]
+
+  # How many parcels the deed covered, on every row, so the count
+  # survives the aggregation below and a consumer can tell an
+  # aggregated row from a single-parcel one. On Lake County FL this
+  # agrees with the source's own multi-parcel flag on 80,488 rows and
+  # finds 32,972 more rows the flag misses.
+  - step: count_parcels_per_document
+    parcel_column: parcel_id_assessor
+
+  # Graded values, never booleans. The arm's-length confidence maps
+  # each source's own vocabulary to 0 (a transfer the source says is
+  # not a market sale), 1 (a sale the source examined and qualified),
+  # or a value between for the qualified-but-excluded and pending
+  # cases. A value the mapping does not name stays missing, so a new
+  # source's labels are noticed rather than silently graded.
+  - step: derive_indicators
+    indicators:
+      - output: sale_arms_length_confidence
+        type: value_map
+        column: sale_qualification_code
+        mapping:
+          # Florida DOR SDF (US-FL_transaction-fldor-2026)
+          "Qualified arm's length - deed/instrument examination": 1.0
+          "Qualified arm's length - documented evidence": 1.0
+          "Qualified - single parcel crossing county lines": 1.0
+          "Qualified - multiple parcels with multiple parcel IDs": 0.9
+          "Qualified but excluded - physical/legal characteristics changed after transfer": 0.7
+          "Qualified but excluded - legal characteristics changed after transfer": 0.7
+          "Pending - recorded/discovered in previous 90 days, qualification decision pending": 0.5
+          "Pending - unable to process because of transfer instrument errors": 0.5
+          "Removed - not currently accepted": 0.2
+          "Disqualified - other (duplicate recordings, rehabbed sales; requires DOR approval)": 0.2
+          "Disqualified - allocated price as part of a package or bulk transaction": 0.2
+          "Disqualified - abnormal time between contract and sale date": 0.2
+          "Disqualified - atypical market exposure or motivation/knowledge of participants": 0.1
+          "Disqualified - atypical amounts of personal property": 0.1
+          "Disqualified - atypical costs of sale": 0.1
+          "Disqualified - significantly influenced by non-market financing or lease assumption": 0.1
+          "Disqualified - consideration differs from documentary stamps": 0.1
+          "Disqualified - transfer to/from financial institution or in lieu of foreclosure": 0.0
+          "Disqualified - corrective/quit claim/tax deed or minimal stamps": 0.0
+          "Disqualified - cemetery lots or parcels": 0.0
+          "Disqualified - reservation of occupancy over 90 days (life estate)": 0.0
+          "Disqualified - conveys less than 100% undivided interest": 0.0
+          "Disqualified - transfer to/from religious/charitable/benevolent entity": 0.0
+          "Disqualified - transfer to/from government agency": 0.0
+          "Disqualified - transfer to/from bankruptcy trustee/administrator/executor/guardian/receiver": 0.0
+          "Disqualified - transfer to/from utility company": 0.0
+          "Disqualified - contract or agreement for deed": 0.0
+          "Disqualified - transfer between relatives or corporate affiliates": 0.0
+          "Disqualified - trade or exchange of land": 0.0
+          "Disqualified - incomplete or unbuilt common property": 0.0
+          "Disqualified - satisfied payment in full of prior property contract": 0.0
+          "Disqualified - forced transfer or under duress": 0.0
+          "Disqualified - mortgage fraud per law enforcement notification": 0.0
+      # Every row of the spine is a recorded deed today; an assessor's
+      # last-sale field, when a source contributes one, maps to
+      # 'assessor_last_sale' here.
+      - output: sale_record_kind
+        type: value_map
+        column: sale_qualification_code
+        mapping: {}
+        default: deed
+      # Price over the assessed value the spine linked from the parcel
+      # (land plus improvement); missing where either is.
+      - output: sale_price_to_assessed_ratio
+        type: ratio
+        numerator: price
+        denominator: [land_value, improvement_value]
+
+  # One row per deed. Areas and counts are summed and the other columns
+  # taken from the representative parcel, per the registry's rule for
+  # each column; the price was never wrong, the denominator was.
+  - step: aggregate_multi_parcel_sales
+
+  - step: cast_categoricals
+
+  - step: order_columns
