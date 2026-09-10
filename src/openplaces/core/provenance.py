@@ -19,6 +19,50 @@ import pandas as pd
 # separator joining it to the route token it qualifies.
 IMPUTED_MARKER = 'imputed'
 TOKEN_SEPARATOR = '+'
+# A connector (a spoke package writing evidence back into the hub) names
+# itself and its model in one route token, joined by this separator:
+# `openplaces-valuation:et_v2`. The `+` grammar then qualifies it like
+# any other route (`openplaces-valuation:et_v2+imputed`), so readers
+# that split on `+` need no knowledge of connectors.
+CONNECTOR_SEPARATOR = ':'
+
+
+def connector_token(connector: str, model: str | None = None) -> str:
+    """Return the route token for a value a connector produced.
+
+    Decided once here rather than per connector, so every spoke spells
+    its provenance the same way and the hub can tell a connector's token
+    from a source's. The connector name is its distribution name
+    (``openplaces-valuation``); the model part is the connector's own
+    identifier for the specification that produced the value.
+
+    Parameters
+    ----------
+    connector : str
+        The connector's distribution name.
+    model : str, optional
+        The connector's identifier for the producing model. Omitted for
+        a connector with a single output.
+
+    Returns
+    -------
+    str
+        ``{connector}:{model}``, or ``{connector}`` alone.
+
+    Raises
+    ------
+    ValueError
+        If either part contains a token separator.
+    """
+    for part in (connector, model):
+        if part and (TOKEN_SEPARATOR in part or CONNECTOR_SEPARATOR in part):
+            raise ValueError(
+                f'{part!r} may not contain {TOKEN_SEPARATOR!r} or '
+                f'{CONNECTOR_SEPARATOR!r}, which the token grammar reserves.'
+            )
+    if not connector:
+        raise ValueError('A connector token needs a connector name.')
+    return f'{connector}{CONNECTOR_SEPARATOR}{model}' if model else connector
 
 
 def mark_imputed(token) -> str:
