@@ -50,6 +50,13 @@ from pathlib import Path
 from openplaces.config import cfg
 from openplaces.flow import RecipeDAG
 from openplaces.flow.dag import parse_deliver_config, rule_name
+from openplaces.flow.sync import exclude_bookkeeping_from_sync
+
+# A run writes tens of thousands of small bookkeeping files (job
+# metadata under .snakemake, benchmarks and stage timers under the
+# cache's _logs tree). Inside a synced folder every one is uploaded, so
+# mark those folders for the sync client to skip before the first job.
+exclude_bookkeeping_from_sync(Path.cwd(), cfg.get_dir('cache'))
 
 TARGET = config.get('recipe', 'US_footprint-cheer-2026')
 ADMIN_IDS = config.get('admin_ids', [])
