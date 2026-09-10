@@ -1,0 +1,187 @@
+# Recipe: Huntingdon County, PA parcel roll with CAMA attributes.
+#
+# Source: the county Mapping Department's ArcGIS Online feature layer
+# "ParcelsWithCAMA" (service `Property_Lines`, layer 1, org id
+# liWtJPxLI3mlx8pH, item abb199124cbb4b6b8808afaf3eb4b62a, owner
+# DirectorHCMD). Found 2026-08-27 by ArcGIS item search; the Hub
+# dataset index and the county's hub site
+# (huntingdon-county-mapping-department-huntingdonco.hub.arcgis.com)
+# point at the same service. Huntingdon is NOT one of the 39 counties
+# in the PASDA statewide layer (US-PA_parcel-pasda-2026), so this is
+# the county's only parcel geometry source in the repo.
+#
+# Rejected alternatives: the `wharcgisdeveloper` copy
+# (services6.arcgis.com, 29,749 rows) and the `richendrfer` copy
+# (30,016 rows) are third-party re-uploads of the same layer with no
+# provenance; the `PA_AgMaps_Admin` item points at this very service
+# (layer 0, an older view). The county hub's "Sales" page offers paid
+# GIS products under a signed license agreement; that channel is not
+# used here, only the layer the county itself publishes as public.
+#
+# VALIDATED (Phase 2): extent reprojected from EPSG:2272 covers 100%
+# of the US-PA-HU admin polygon; 30,114 features live
+# (`returnCountOnly`), 30,097 distinct TAXIDNUM server-side. The
+# Municipal_Boundaries sibling service holds exactly the county's 48
+# municipalities, matching the admin4 spine.
+#
+# BULK VS REST (Phase 3): the Hub GeoJSON export was already built
+# (HTTP 200, ~72 MB, EPSG:4326) and reconciles with the live layer:
+# 30,111 rows vs 30,114; Sale_Price > 0 on 26,242 vs 26,252;
+# Land_Value > 0 on 29,064 vs 29,062; Year_Built > 0 on 20,884 vs
+# 20,884. Differences are snapshot lag, not a missing join.
+#
+# SCHEMA (Phase 4), measured on the full export unless noted:
+#   - TAXIDNUM (`99-99-99.9` style, 30,094 distinct / 30,111 rows,
+#     never null) is the assessor's map-sheet-parcel key and the
+#     shape the bundled parcel_id_links row for US-PA-HU expects.
+#     PIN and Tax_Map are the same value on 99.6% / 99.3% of rows
+#     and are not mapped. P_ID / Parcel_ID (a CAMA integer id, equal
+#     on 98.5% of rows) are left unmapped: an integer arriving via
+#     GeoJSON would violate the registry's string type.
+#   - Property_1 / Property_3 are the assessor's class code and label
+#     (R Residential, A Agriculture, V Vacant Land/Lot, C Commercial,
+#     GX government-exempt, CX/RX/VX/AX exempt variants), mapped to
+#     use_group_code / use_group. Property_T / Primary__1 are the
+#     finer class code and its label ("Residential w/Building -
+#     Private", "Vacant Land - Less than 10 acres", ...), mapped to
+#     use_subgroup_code / use_subgroup. LANDUSE is a 4-character
+#     truncation of Property_3 and is not mapped.
+#   - Sale_Date is a plain `M/D/YYYY` string (28,826 parse), preferred
+#     over SaleDate2, which is an Esri date and lands as epoch
+#     milliseconds through GeoJSON. Exactly 11 rows carry the
+#     placeholder `1/1/1900`; nulled before parsing, price kept.
+#   - Year_Built uses 1600 as its "not recorded" placeholder on 7,382
+#     rows (plus 0 on the rest); 1600 is nulled here, 0 by the
+#     registry's null_placeholder. Two rows read 1648 / 1695.
+#   - Living_Are is finished living area in sqft (18,936 rows > 0) and
+#     maps to area_sqft. First/Second/Third floor areas, perimeter
+#     and the coded roof / foundation / basement / heating / condition
+#     fields are CAMA detail with no published decoder; only the ones
+#     with a registry home and readable values (Bedroom_Co, the
+#     Heating_No label) are mapped, the numeric codes are left out.
+#   - Acres (assessor acreage, 24,175 rows > 0) equals CAMA_ACRES; the
+#     GIS-computed MAP_ACRES is redundant with the geometry.
+#   - Owner_Ad_1 is the mailing street line (or PO box) and Owner_Ad_2
+#     the "City ST ZIP" line on ~93% of rows; Owner_Ad_3/4 are
+#     continuation lines on 6% / 3%. Owner_Addr (25%) is a name-shaped
+#     "care of" line, not an address, and is not mapped.
+#   - Property_A is the situs street address (75% non-blank);
+#     Property_C (situs city) is populated on 0.1% and Property_Z
+#     (ZIP) is all zero, so neither is mapped.
+#   - DIST is the assessor's 55 tax-district codes (Huntingdon
+#     Borough has five wards) and City_Name the municipality name;
+#     DIST maps to tax_district, City_Name to city.
+#   - DATE_ is the record's map-edit date but reads 3000-03-01 on 45%
+#     of rows; not mapped.
+#
+# ASSESSED VALUES ARE NOT MARKET VALUES. Huntingdon County assesses on
+# an old base year with a predetermined ratio below 100%: STEB's 2024
+# common level ratio for the county is 12.58 (Pa. Bulletin vol. 55
+# no. 27, effective 2025-07-01 to 2026-06-30), so a market estimate
+# is roughly assessed value / 0.1258. Mean Land_Value on this roll is
+# ~$3,100. No pipeline step rescales this; any value shown for this
+# county is the assessed figure.
+#
+# LICENSE: the item declares no licenseInfo and no accessInformation;
+# the hub site carries only a "not legally recorded or of survey
+# quality" disclaimer. The county's paid data channel comes with a
+# license agreement, but that document was not found online and does
+# not govern the public layer. Recorded as unknown.
+
+description: >-
+  Huntingdon County, PA parcels with CAMA: assessed values, class codes,
+  year built, living area, owner, situs, most recent sale.
+
+notes: >-
+  Assessed values are on a pre-reassessment base with a 2024 STEB common
+  level ratio of 12.58; divide by 0.1258 for an approximate market value.
+  Sale_Date placeholder 1/1/1900 and Year_Built placeholder 1600 are nulled.
+
+admin_id: US-PA-HU
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: huntingdonco
+    portal_url: "https://huntingdonco.maps.arcgis.com/home/item.html?id=abb199124cbb4b6b8808afaf3eb4b62a"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/abb199124cbb4b6b8808afaf3eb4b62a_1/downloads/data?format=geojson&spatialRefId=4326"
+    license: "unknown (no terms on the item or the county hub site)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "huntingdon_parcels_cama.geojson"
+
+columns:
+  parcel_id_assessor: TAXIDNUM
+  address: Property_A
+  city: City_Name
+  tax_district: DIST
+  school_district_name: School_Nam
+  use_group_code: Property_1
+  use_group: Property_3
+  use_subgroup_code: Property_T
+  use_subgroup: Primary__1
+  year_built: Year_Built
+  area_sqft: Living_Are
+  n_bedrooms: Bedroom_Co
+  heating_type: Heating_No
+  area_assessed_ac: Acres
+  land_value: Land_Value
+  improvement_value: Improvemen
+  total_value: Total_Valu
+  clean_and_green: Clean___Gr
+  last_sale_date: Sale_Date
+  last_sale_price: Sale_Price
+  owner_name: Owner_Name
+  owner_address: Owner_Ad_1
+  owner_address_2: Owner_Ad_2
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [Deed_Book, Deed_Page]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+
+  # Placeholder sale date, nulled before parsing (11 rows).
+  - type: unary
+    operation: null_if_equal
+    input: last_sale_date
+    args:
+      value: "1/1/1900"
+    output: last_sale_date
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+
+  # 1600 is the assessor's "not recorded" year (7,382 rows).
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    args:
+      value: 1600
+    output: year_built
+
+  # lot_size's canonical unit is sqft; the source gives acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: area_assessed_ac
+    output: lot_size
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - use_subgroup
+  - use_subgroup_code
+  - tax_district
+  - heating_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

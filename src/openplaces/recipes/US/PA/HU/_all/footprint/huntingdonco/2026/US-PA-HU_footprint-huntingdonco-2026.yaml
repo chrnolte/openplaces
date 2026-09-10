@@ -1,0 +1,71 @@
+# Recipe: Huntingdon County, PA building footprints drawn by the county
+# Mapping Department.
+#
+# Source: layer 1 `HuntingdonVector.GISADMIN.BuildingFootprints_19` of
+# the county's ArcGIS Online service `Parcel_Viewer_Layer` (org id
+# liWtJPxLI3mlx8pH, item 304b6cf9dd9d41bebc64fea5bb105f18), the
+# footprint layer behind the county's public Tax Parcel Viewer. Found
+# 2026-08-27 as a sibling layer of the parcel service
+# (US-PA-HU_parcel-huntingdonco-2026). 55,216 polygons live, every
+# one carrying the assessor's TAXIDNUM of the parcel it sits on.
+#
+# WHY A COUNTY FOOTPRINT RECIPE. The national footprint spine
+# (US_footprint-geospine-2026) resolves OBM and Microsoft first and
+# then auto-discovers footprint ingest recipes scoped below its own
+# admin_id, most-specific first. A county-drawn layer keyed to the
+# assessor roll is a better outline than either global layer for
+# this county, and it corroborates the parcel link on the key rather
+# than on geometry alone.
+#
+# SCHEMA. The layer is an edit-tracking layer: `status` is one of
+# existing / new / changed / demolished (342 / 24 / 16 / 18 per 400
+# sampled), so demolished outlines are dropped at ingest with the
+# `query` below rather than folded into the spine. `outline_id` is the
+# county's own integer id; `area` is the county's computed area in
+# square feet and is redundant with the geometry. MCN, School_Nam,
+# Clean___Gr, Property_1 and Primary__1 are the parcel roll's fields
+# copied onto the footprint; the parcel recipe carries them, so they
+# are not repeated here.
+#
+# BULK VS REST. The Hub GeoJSON export for this layer had never been
+# requested before 2026-08-27 and answered 404 / 202 "Pending" while
+# it built; the ingest waits for the built file rather than paging
+# the layer (28 requests of 2,000). A 404 on a later ingest means the
+# cache is rebuilding, not that the layer is gone.
+#
+# LICENSE: same footing as the parcel layer, no terms on the item or
+# the county hub site; unknown.
+
+description: >-
+  Huntingdon County, PA building footprints drawn by the county Mapping
+  Department, each keyed to its parcel's assessor id.
+
+admin_id: US-PA-HU
+
+entity:
+  entity_type: footprint
+  source:
+    source_id: huntingdonco
+    portal_url: "https://huntingdonco.maps.arcgis.com/home/item.html?id=304b6cf9dd9d41bebc64fea5bb105f18"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/304b6cf9dd9d41bebc64fea5bb105f18_1/downloads/data?format=geojson&spatialRefId=4326"
+    license: "unknown (no terms on the item or the county hub site)"
+    terms_url: null
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "huntingdon_building_footprints.geojson"
+
+# Demolished outlines are kept by the county for edit history only.
+query: "status != 'demolished'"
+
+columns:
+  parcel_id_assessor: TAXIDNUM
+
+# Function to give the GeoDataFrame an index
+create_index:
+  function: "openplaces.geo.ids.add_openlocationcode_index"
+  args:
+    name: footprint_id
+
+save_to:
+  data_dir: core
