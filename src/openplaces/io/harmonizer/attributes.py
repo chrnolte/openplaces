@@ -1712,12 +1712,26 @@ def summarize_footprint_morphology(
             clipped = clipped[clipped >= min_overlap_m2]
             in_parcel_sum = clipped.groupby(level=0).sum().reindex(spine.index)
 
-    spine['n_footprints_per_parcel'] = n_fp.fillna(0).astype('int64')
+    # A parcel with no footprints has zero footprint area, not an
+    # unknown one: the count below says 0 for it, and an area sum that
+    # said null for the same parcel disagreed with the count (measured
+    # on Lake County FL, 2026-09-08: null on 98.1% of footprint-less
+    # parcels). A vacant-land analysis selects exactly those rows, so
+    # the null emptied its design matrix. A parcel that does have
+    # footprints but no clipped overlap above the floor keeps null,
+    # which is the unknown the null was meant for.
+    n_fp = n_fp.fillna(0).astype('int64')
+    n_primary = n_primary.fillna(0).astype('int64')
+    sum_a = sum_a.mask((n_fp == 0) & sum_a.isna(), 0.0)
+    in_parcel_sum = in_parcel_sum.mask((n_fp == 0) & in_parcel_sum.isna(), 0.0)
+    sum_a_primary = sum_a_primary.mask((n_primary == 0) & sum_a_primary.isna(), 0.0)
+
+    spine['n_footprints_per_parcel'] = n_fp
     spine['n_small_elongated_footprints_per_parcel'] = n_se.fillna(0).astype('int64')
     spine['max_footprint_area_m2'] = max_a
     spine['footprint_area_m2_dominant'] = sum_a
     spine['footprint_area_m2_in_parcel'] = in_parcel_sum
-    spine['n_primary_footprints_per_parcel'] = n_primary.fillna(0).astype('int64')
+    spine['n_primary_footprints_per_parcel'] = n_primary
     spine['footprint_area_m2_primary'] = sum_a_primary
     spine['max_dwellings_per_footprint'] = max_dwellings.fillna(0).astype('int64')
     spine['max_parcels_per_footprint'] = max_span.fillna(0).astype('int64')

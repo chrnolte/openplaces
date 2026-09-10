@@ -381,7 +381,9 @@ def test_dominant_sum_vs_clipped_coverage_sum_diverge_on_a_straddling_footprint(
     assert state.spine.loc['A', 'footprint_area_m2_dominant'] == pytest.approx(
         100.0, rel=1e-2
     )
-    assert pd.isna(state.spine.loc['B', 'footprint_area_m2_dominant'])
+    # B is no footprint's dominant parcel, so its dominant sum is zero,
+    # agreeing with its count of zero (a null would say unknown).
+    assert state.spine.loc['B', 'footprint_area_m2_dominant'] == 0.0
 
     # Clipped area correctly split between both touching parcels.
     assert state.spine.loc['A', 'footprint_area_m2_in_parcel'] == pytest.approx(
@@ -428,4 +430,26 @@ def test_in_parcel_sum_excludes_a_sub_floor_sliver_on_a_non_dominant_parcel(
         100.0, rel=1e-2
     )
     # C only overlaps a 0.5 x 10 = 5 m2 sliver, below the 10 m2 floor.
-    assert pd.isna(state.spine.loc['C', 'footprint_area_m2_in_parcel'])
+    # The floor says that is no footprint, so the count is 0 and the
+    # area agrees at 0.0 rather than reading as unknown.
+    assert state.spine.loc['C', 'n_footprints_per_parcel'] == 0
+    assert state.spine.loc['C', 'footprint_area_m2_in_parcel'] == 0.0
+
+
+def test_parcel_with_no_footprints_has_zero_area_not_unknown(monkeypatch):
+    # The count says 0 for a parcel with no footprints; the area sums
+    # must agree. Measured on Lake County FL (2026-09-08), the sum was
+    # null on 98.1% of footprint-less parcels, and a vacant-land analysis
+    # selects exactly those rows. B has a footprint, A has none.
+    state = _parcel_spine_m(['A', 'B'], [box(0, 0, 10, 10), box(20, 0, 30, 10)])
+    footprints = _footprints([{'parcel_id': 'B', 'geometry': box(22, 2, 28, 8)}])
+    monkeypatch.setattr(readers, 'get_entities', lambda *a, **k: footprints)
+    state = attrs.summarize_footprint_morphology(state, footprint_recipe_id='fp')
+    for column in (
+        'footprint_area_m2_dominant',
+        'footprint_area_m2_in_parcel',
+        'footprint_area_m2_primary',
+    ):
+        assert state.spine.loc['A', column] == 0.0, column
+        assert state.spine.loc['B', column] > 0.0, column
+    assert state.spine.loc['A', 'n_footprints_per_parcel'] == 0

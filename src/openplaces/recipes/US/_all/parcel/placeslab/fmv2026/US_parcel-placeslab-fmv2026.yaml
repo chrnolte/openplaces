@@ -23,6 +23,13 @@ admin_id: US
 # canonical parcel spine.
 exclude_from_auto_discover: true
 
+# The predictions table carries the previous model's outputs as well
+# as its inputs (`land_value_per_ha_log_region_nb_2010` and the
+# `aoa` area-of-applicability columns in the column-notes sidecar).
+# They exist for parity checks against that model. A valuation
+# connector must never let one into a predictor set: a model fit on
+# its predecessor's prediction reproduces it rather than the market.
+
 entity:
   entity_type: parcel
   source:

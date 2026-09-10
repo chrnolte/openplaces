@@ -35,9 +35,12 @@ rd_dist_pvd,paved_road_distance,,Minimum distance to nearest paved road,m,,mean,
 p_bld_fp_1000,building_footprint_share,1000m,Share of area within a radius covered by building footprints,fraction (0-1),%,mean,MS Building Footprints
 p_bld_fp_500,building_footprint_share,500m,Share of area within a radius covered by building footprints,fraction (0-1),%,mean,MS Building Footprints
 p_bld_fp_5000,building_footprint_share,5000m,Share of area within a radius covered by building footprints,fraction (0-1),%,mean,MS Building Footprints
+m2_bld_fp,footprint_area_m2_in_parcel,,"Building footprint area clipped to the parcel boundary (Microsoft footprints, ca. 2019)",m2,,sum,Microsoft
+n_bld_fp,n_footprints_per_parcel,,"Count of building footprints overlapping the parcel (Microsoft footprints, ca. 2019)",,,sum,Microsoft
+f_soil_farmlandofuniqueimportance,soil_farmland_unique_share,,Share classified as farmland of unique importance soil,fraction (0-1),,mean,SSURGO
 p_e,conservation_easement_share,,Share of parcel area under a conservation easement,fraction (0-1),%,mean,Protection layers (varies by state)
 p_prot_2010_5000,protected_land_share,2010_5000m,"Share of area under fee/easement protection, given year and radius",fraction (0-1),%,mean,PAD-US/NCED/NEPOS/COMaP
-ct_p,conservation_transaction_share,,Share of parcel area overlapping a public land acquisition,fraction (0-1),,mean,Conservation Almanac
+ct_p,public_land_acquisition_share,,Share of parcel area overlapping a public land acquisition,fraction (0-1),,mean,Conservation Almanac
 hh_inc_med_bg_2012-2016,household_income_median,block_group_2012_2016,Median household income,USD,,mean,NHGIS (ACS)
 p_black_bg_2012-2016,population_black_share,block_group_2012_2016,Population share: Black/African-American,fraction (0-1),,mean,NHGIS (ACS)
 p_native_bg_2012-2016,population_native_american_share,block_group_2012_2016,Population share: American Indian/Alaska Native,fraction (0-1),,mean,NHGIS (ACS)

@@ -176,11 +176,13 @@ protected_land_share,"Share of area under fee/easement protection, given year an
 soil_farmland_local_share,Share classified as locally-important farmland soil,fraction (0-1),float,mean,,,enrich
 soil_farmland_prime_share,Share classified as prime farmland soil,fraction (0-1),float,mean,,,enrich
 soil_farmland_statewide_share,Share classified as statewide-important farmland soil,fraction (0-1),float,mean,,,enrich
+soil_farmland_unique_share,Share classified as farmland of unique importance soil (the fourth NRCS class),fraction (0-1),float,mean,,,enrich
 land_cover_barren_share,Land cover share: barren,fraction (0-1),float,mean,,,enrich
 land_cover_cropland_share,Land cover share: cultivated cropland,fraction (0-1),float,mean,,,enrich
 land_cover_forest_deciduous_share,Land cover share: deciduous forest,fraction (0-1),float,mean,,,enrich
 land_cover_forest_evergreen_share,Land cover share: evergreen forest,fraction (0-1),float,mean,,,enrich
 land_cover_forest_mixed_share,Land cover share: mixed forest,fraction (0-1),float,mean,,,enrich
+land_cover_forest_share,"Land cover share: all forest, the sum of the deciduous, evergreen and mixed shares",fraction (0-1),float,mean,,,enrich
 land_cover_grassland_share,Land cover share: grassland/herbaceous,fraction (0-1),float,mean,,,enrich
 land_cover_pasture_share,Land cover share: pasture/hay,fraction (0-1),float,mean,,,enrich
 land_cover_shrubland_share,Land cover share: shrub/scrub,fraction (0-1),float,mean,,,enrich
