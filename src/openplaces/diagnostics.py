@@ -15,6 +15,7 @@ import yaml
 
 from openplaces.core.constants import ESCAPE_DIR, STRING_SEPARATOR_WITHIN_IDS
 from openplaces.core.schema import AdminId, sanitize
+from openplaces.path import recipe_roots
 
 
 def find_recipes(
@@ -81,10 +82,9 @@ def _recipe_index() -> pd.DataFrame:
     recipe on disk must call ``_recipe_index.cache_clear()`` (or restart)
     to see it.
     """
-    recipes_root = Path(__file__).parent / 'recipes'
-
     rows = []
-    for yaml_path in sorted(recipes_root.rglob('*.yaml')):
+    yaml_paths = [p for root in recipe_roots() for p in root.rglob('*.yaml')]
+    for yaml_path in sorted(yaml_paths):
         try:
             with open(yaml_path, encoding='utf-8') as f:
                 data = yaml.safe_load(f)

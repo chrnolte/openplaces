@@ -33,7 +33,7 @@ from openplaces.core.schema import (
     cast_dataset_or_entity,
     sanitize,
 )
-from openplaces.path import OpenPlacesReference, path, recipe_path
+from openplaces.path import OpenPlacesReference, path, recipe_path, recipe_roots
 
 
 def get_recipe(*args, **kwargs):
@@ -528,9 +528,8 @@ def iter_entity_source_versions() -> frozenset:
     recipe's *version* (``wetland_share_fmv2026``), since a version names
     the data product where a source id names who produced it.
     """
-    root = cfg.code_root.joinpath('src', 'openplaces', 'recipes')
     pairs: set[tuple[str, str | None, str | None]] = set()
-    for filepath in root.rglob('*.yaml'):
+    for filepath in (f for root in recipe_roots() for f in root.rglob('*.yaml')):
         parts = filepath.stem.split('_')
         try:
             AdminId(parts[0])

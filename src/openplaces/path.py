@@ -3,8 +3,11 @@ Standardized path generation for `openplaces` data files.
 """
 
 import fnmatch
+import importlib.metadata
 import inspect
+import warnings
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from openplaces.config import cfg
@@ -26,6 +29,7 @@ __all__ = [
     'reports_path',
     'code_path',
     'recipe_path',
+    'recipe_roots',
     'spine_path',
     'OpenPlacesReference',
 ]
@@ -36,6 +40,63 @@ __all__ = [
 # `io.admin_codes.registry` imports `spine_path` from here, so its
 # established import path keeps working.
 SPINE_DIR = Path(__file__).parent / 'recipes' / '_all' / 'admin' / 'spine' / '2026'
+
+# The recipes that ship with `openplaces`. Other packages contribute
+# their own directory through the `openplaces.recipes` entry-point
+# group (see `recipe_roots`).
+BUNDLED_RECIPES_DIR = Path(__file__).parent / 'recipes'
+RECIPES_ENTRY_POINT_GROUP = 'openplaces.recipes'
+
+
+def _external_recipe_roots() -> list[Path]:
+    """Recipe directories contributed by installed packages.
+
+    Each `openplaces.recipes` entry point names a path, or a callable
+    returning one. A broken entry point is reported and skipped rather
+    than raised, so one misinstalled package cannot take the bundled
+    recipes down with it.
+    """
+    roots = []
+    for entry_point in importlib.metadata.entry_points(group=RECIPES_ENTRY_POINT_GROUP):
+        try:
+            target = entry_point.load()
+            root = Path(target() if callable(target) else target)
+        except Exception as exc:  # noqa: BLE001 - any failure is a skip
+            warnings.warn(
+                f'Recipe entry point {entry_point.name!r} ({entry_point.value}) '
+                f'could not be loaded and is ignored: {exc}',
+                stacklevel=2,
+            )
+            continue
+        if not root.is_dir():
+            warnings.warn(
+                f'Recipe entry point {entry_point.name!r} names {root}, which '
+                'is not a directory, and is ignored.',
+                stacklevel=2,
+            )
+            continue
+        roots.append(root)
+    return roots
+
+
+@cache
+def recipe_roots() -> tuple[Path, ...]:
+    """Every directory recipes are read from, bundled first.
+
+    The bundled directory wins on a name collision, so an external
+    package cannot shadow a recipe that ships with `openplaces`; it can
+    only add. External roots come from the `openplaces.recipes`
+    entry-point group, in installation order. Cached for the process,
+    like the recipe index itself.
+    """
+    roots = [BUNDLED_RECIPES_DIR]
+    for root in _external_recipe_roots():
+        if root.resolve() not in {r.resolve() for r in roots}:
+            roots.append(root)
+    return tuple(roots)
+
+
+RECIPE_EXTENSIONS = ('.yaml', '.csv', '.xlsx', '.xls')
 
 
 class OpenPlacesPath(type(Path())):
@@ -289,11 +350,14 @@ def spine_path(level: int) -> Path:
     return SPINE_DIR / f'admin-spine-2026_admin{level}.csv'
 
 
-def recipe_path(
-    *args,
-    root=cfg.code_root.joinpath('src', 'openplaces', 'recipes'),
-    **kwargs,
-):
+def recipe_path(*args, root=None, **kwargs):
+    """Path of a recipe file, searched across every recipe root.
+
+    With no *root*, the first root (bundled first, then each external
+    package's directory) holding the file wins, and a file no root holds
+    resolves under the bundled directory so the error names the expected
+    place. Pass *root* to address one directory explicitly.
+    """
     # Get integer position of `filename` argument in OpenPlacesReference
     pos_filename = list(inspect.signature(OpenPlacesReference).parameters.keys()).index(
         'filename'
@@ -317,7 +381,20 @@ def recipe_path(
     if isinstance(filename, str) and '.' not in filename:
         filename += '.yaml'
 
-    return path(*args, filename=filename, root=root, default_extension='yaml', **kwargs)
+    if root is not None:
+        return path(
+            *args, filename=filename, root=root, default_extension='yaml', **kwargs
+        )
+    candidates = [
+        path(*args, filename=filename, root=r, default_extension='yaml', **kwargs)
+        for r in recipe_roots()
+    ]
+    for candidate in candidates:
+        if candidate.exists() or any(
+            candidate.with_suffix(ext).exists() for ext in RECIPE_EXTENSIONS
+        ):
+            return candidate
+    return candidates[0]
 
 
 def path_matches_pattern(path: str, pattern: str) -> bool:

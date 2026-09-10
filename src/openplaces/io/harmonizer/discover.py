@@ -18,6 +18,7 @@ import yaml
 from openplaces.core.schema import admin_scope_covers
 from openplaces.io.harmonizer import HarmonizeState, _register
 from openplaces.io.readers import get_admin_ids, get_entities
+from openplaces.path import recipe_roots
 
 
 @_register('discover_sources', phase='geometry')
@@ -99,11 +100,16 @@ def _scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dic
         Glob pattern matched against the recipe filename stem. Defaults to
         '*' (all files). A .yaml extension is appended automatically.
     """
-    recipes_root = Path(__file__).parent.parent.parent / 'recipes'
-    pattern = str(
-        recipes_root / '**' / entity_type / '*' / '*' / f'{filename_glob}.yaml'
+    found = sorted(
+        match
+        for recipes_root in recipe_roots()
+        for match in glob.glob(
+            str(
+                recipes_root / '**' / entity_type / '*' / '*' / f'{filename_glob}.yaml'
+            ),
+            recursive=True,
+        )
     )
-    found = sorted(glob.glob(pattern, recursive=True))
 
     sources: list[dict] = []
     for rp in found:
