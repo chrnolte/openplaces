@@ -1,0 +1,181 @@
+# Recipe: canonical openplaces FL transaction dataset (Polk + Lake County).
+#
+# Curates the harmonized FL transaction spine (SDF sales) into a canonical
+# sale record with the parcel attributes valid at the time of sale attached,
+# for hedonic land/structure value estimation. Ports the logic already
+# validated by hand in
+# notebooks/04_enrich/transactions/enrich_transactions_with_properties_FL.ipynb
+# onto the recipe/step system instead of a one-off notebook.
+#
+# DRAFT: implemented and runs end to end (op.curate), not yet reviewed.
+# See plans/fl-transaction-property-temporal-curate.md.
+
+description: >-
+  Canonical FL DOR SDF sales (Polk, Lake County): deduplicated arm's-length
+  transactions with the NAL property snapshot valid at time of sale, and a
+  verified-single-family flag for hedonic land/structure value estimation.
+
+stage: curate
+admin_id: US-FL
+
+entity:
+  entity_type: transaction
+  source:
+    source_id: openplaces
+    license: "derived; inherits the terms of this recipe's inputs"
+    redistribution_restricted: null
+  version: 2026
+
+# The harmonized spine (union of every state's transaction sources).
+# Unmodified by this recipe: the temporal join below is the piece its own
+# header names as "a future canonical transaction curation recipe".
+entity_recipe: US_transaction-spine-2026
+
+process_by:
+  admin_level: 3
+
+save_to:
+  data_dir: share
+
+pipeline:
+  # Lake County adds dashes to parcel_id_assessor starting 2022;
+  # parcel_id_local doesn't fix this either (0% match across the boundary
+  # either way), so every step below keys on parcel_id_assessor stripped
+  # of punctuation instead.
+  - step: normalize_id_column
+    column: parcel_id_assessor
+
+  # SDF is a rolling window, so the same sale can appear in two adjacent
+  # year-files. transaction_id_source can't detect this (county-assigned,
+  # not unique statewide); the composite key below identifies the
+  # underlying document instead.
+  - step: dedup_transactions
+    key_columns:
+      - parcel_id_assessor
+      - sale_year
+      - sale_month
+      - price
+      - sale_book
+      - sale_page
+      - sale_clerk_instrument
+
+  # Keep only sales the DOR examiner marked qualified arm's length.
+  - step: keep_by_value
+    column: sale_qualification_code
+    values:
+      - "Qualified arm's length - deed/instrument examination"
+      - "Qualified arm's length - documented evidence"
+
+  # A second, genuinely different document at the same price within a
+  # month is usually the other leg of a double closing (e.g. a broker
+  # pass-through), not an independent sale, so keeping both double-counts
+  # one transaction. Distinct from dedup_transactions (same document
+  # recorded twice) and from the qualification filter above (which only
+  # catches related-party sales the examiner flagged). Threshold and
+  # exact-price requirement checked against real data; see the PR.
+  - step: collapse_double_closings
+    key_column: parcel_id_assessor
+    max_gap_months: 1
+    keep: last
+
+  # Sales from before the property data's own start year can never match
+  # a property record.
+  - step: filter_numeric_at_least
+    column: sale_year
+    min: 2016
+
+  # Property match (two steps): attach the property record valid at time
+  # of sale. use_group_code isn't attached (it would overwrite the
+  # transaction's own copy, which the vote below reads); property has no
+  # plain sale_vacant column either (only last_sale_vacant/_2, a different
+  # concept).
+  #
+  # Same year, else nearest prior year.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    direction: backward
+    match_type_column: property_match_type
+    columns: [tax_year, year_built, living_area_sqft, area_sqft, market_value, land_value, n_dwellings, n_buildings]
+
+  # Nearest later year, only for sales already improved at sale time: a
+  # pure land sale must not inherit a later year's improved state.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    direction: forward
+    only_unmatched: true
+    restrict_to: {column: sale_vacant, equals: "Improved property"}
+    match_type_column: property_match_type
+    columns: [tax_year, year_built, living_area_sqft, area_sqft, market_value, land_value, n_dwellings, n_buildings]
+
+  # Single-family verification lookup, unrelated to the property match
+  # above: the exact next year, feeding the vote below only.
+  - step: join_temporal_snapshot
+    recipe_id: US-FL_property-fldor-2026
+    join_key: parcel_id_assessor
+    date_column: sale_year
+    vintage_column: tax_year
+    offset_years: 1
+    direction: exact
+    prefix: next_year_
+    columns: [use_group_code, n_dwellings, homestead_applicant_status]
+
+  # Two decisions: already Single Family at sale time needs no more
+  # evidence; a Vacant Residential parcel sold as already improved is
+  # ambiguous and needs next year's homestead/use-code/dwelling-count to
+  # confirm. Everything else wins neither and is left missing, which the
+  # keep_by_value filter below relies on. Values are the decoded labels
+  # ingest produces, not raw FL DOR codes; homestead_applicant_status is a
+  # letter code (O/H/W), not numeric.
+  - step: resolve_by_vote
+    target: verified_single_family
+    preserve_base: false
+    decisions:
+      - class: true
+        min_score: 1
+        source: sdf
+        indicators:
+          - {type: equals, column: use_group_code, value: 'Single Family'}
+      - class: true
+        min_score: 3
+        source: next_year_property
+        require:
+          - {type: equals, column: use_group_code, value: 'Vacant Residential'}
+          - {type: equals, column: sale_vacant, value: 'Improved property'}
+        indicators:
+          - {type: in_set, column: next_year_homestead_applicant_status, values: [O, H, W]}
+          - {type: equals, column: next_year_use_group_code, value: 'Single Family'}
+          - {type: equals, column: next_year_n_dwellings, value: 1}
+
+  # Keep only confirmed single-family sales.
+  - step: keep_by_value
+    column: verified_single_family
+    values: [true]
+
+  # Final pass: drop rows marked single-family but recorded with more
+  # than one dwelling. Missing n_dwellings is left alone.
+  - step: exclude_numeric_above
+    column: n_dwellings
+    max: 1
+
+  # A qualified arm's-length sale can still be flagged as sharing its
+  # book/page with another parcel's sale, so the recorded price may not
+  # be for this parcel alone. Distinct from the qualification-code-5
+  # exclusion above (a different flag).
+  - step: exclude_by_value
+    column: sale_multi_parcel
+    values:
+      - "Multiple parcel transaction denoted by matching official record book and page number"
+
+  - step: cast_categoricals
+
+  - step: order_columns
+
+  # Panel-shaped for easy inspection: each parcel's sales in date order.
+  - step: sort_rows
+    by: [parcel_id_assessor, sale_year, sale_month]
