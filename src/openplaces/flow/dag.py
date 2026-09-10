@@ -425,10 +425,39 @@ class RecipeDAG:
         boundaries on disk; when they are not ingested yet, the recipe's
         jobs are omitted with a warning (ingest admin data first).
         """
-        if admin_id is None:
-            return [None]
-        admin_id = AdminId(str(admin_id))
         recipe = self._recipe(recipe_id)
+        if admin_id is None:
+            # A global consumer reads every file a per-unit-saving
+            # upstream writes, so its jobs are one per unit at the
+            # upstream's save level. Resolving it to a single global
+            # job derived an output (`_all/.../admin2.parquet`) that no
+            # recipe ever writes: the job "completed" with its output
+            # missing, and every county chain behind the tile grid that
+            # consumes the world admin layers was blocked.
+            save_level = get_save_admin_level(recipe)
+            if save_level <= 0:
+                return [None]
+            scope = recipe.get('admin_id')
+            scope_str = str(scope) if scope and str(scope) not in ('', 'None') else None
+            try:
+                from openplaces.io.readers import get_admin_ids
+
+                return [
+                    AdminId(unit)
+                    for unit in get_admin_ids(
+                        save_level, admin_id=scope_str, allow_empty=True
+                    )
+                ]
+            except Exception:
+                import warnings
+
+                warnings.warn(
+                    f'Cannot expand {recipe_id} to admin level {save_level} '
+                    'for a global consumer (admin boundaries not ingested '
+                    'yet); its jobs are omitted from the DAG.'
+                )
+                return []
+        admin_id = AdminId(str(admin_id))
 
         # A recipe scoped to one region has no jobs outside it. Named
         # explicitly by a national recipe -- `US_footprint-openplaces-2026`
