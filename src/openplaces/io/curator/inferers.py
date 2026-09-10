@@ -247,8 +247,32 @@ def _derive_cohort_threshold(state: CurateState, spec: dict) -> pd.Series | None
     return values / threshold
 
 
+def _derive_value_map(state: CurateState, spec: dict) -> pd.Series | None:
+    """Map one column's values through a recipe-supplied table.
+
+    The per-source half of a source-neutral indicator: a source's own
+    vocabulary (Florida's twelve sale qualification labels) is graded
+    into a value every consumer reads the same way (an arm's-length
+    confidence from 0 to 1). The mapping lives in the recipe, since it
+    is a statement about that source; a value the mapping does not name
+    takes ``default``, or stays missing.
+    """
+    curated = state.curated
+    column = spec['column']
+    if column not in curated.columns:
+        return None
+    mapping = spec['mapping']
+    values = curated[column].astype(object)
+    mapped = values.map(mapping)
+    default = spec.get('default')
+    if default is not None:
+        mapped = mapped.where(values.isin(list(mapping)), default)
+    return mapped
+
+
 _INDICATOR_DERIVATIONS = {
     'ruleset_class': _derive_ruleset_class,
+    'value_map': _derive_value_map,
     'pooled_vote': _derive_pooled_vote,
     'ratio': _derive_ratio,
     'shape_metric': _derive_shape_metric,
@@ -278,6 +302,12 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
 
     Supported ``type`` values:
 
+    - ``value_map``: map ``column`` through a recipe-supplied ``mapping``
+      (value to value), with an optional ``default`` for values the
+      mapping does not name. The per-source half of a source-neutral
+      indicator: a source's vocabulary graded into a value a consumer can
+      threshold (a sale's arm's-length confidence from the source's
+      qualification labels).
     - ``ruleset_class``: classify ``column`` through an ordered ruleset CSV
       (``ruleset``), first match wins; unmatched rows are missing. With
       ``reviewed_only`` true, only rows whose winning rule is marked reviewed

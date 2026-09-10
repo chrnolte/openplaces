@@ -8,6 +8,7 @@ import pandas as pd
 
 from openplaces.io.curator import CurateState, _register
 from openplaces.io.readers import get_entities
+from openplaces.table import aggregate_rows
 
 _NON_ALNUM = re.compile(r'[^0-9A-Za-z]')
 
@@ -247,5 +248,167 @@ def join_temporal_snapshot(
         print(
             f'  join_temporal_snapshot ({recipe_id}, {direction}): '
             f'matched {int(matched.sum()):,} / {len(active):,} active rows'
+        )
+    return state
+
+
+@_register('derive_document_id')
+def derive_document_id(
+    state: CurateState,
+    candidates: list,
+    output: str = 'sale_document_id',
+    separator: str = '/',
+) -> CurateState:
+    """Name the recorded document (deed) behind each sale row.
+
+    A deed covering several parcels is published once per parcel, and a
+    consumer that treats each row as a sale counts one transfer several
+    times. The document identifier is what lets the rows be recognized
+    as one sale (:func:`count_parcels_per_document`,
+    :func:`aggregate_multi_parcel_sales`), and every source spells it
+    differently, which is why it is assembled here once rather than in
+    every consumer.
+
+    Parameters
+    ----------
+    candidates : list of list of str
+        Column groups to try in order; the first whose columns are all
+        present on a row names its document. Florida supplies a clerk
+        instrument number for newer sales and an official-record book
+        and page for older ones, so ``[[sale_clerk_instrument],
+        [sale_book, sale_page]]``. Values are stripped of punctuation
+        and joined by *separator*.
+    output : str, optional
+        Column written (default ``sale_document_id``). Missing where no
+        candidate is complete.
+    separator : str, optional
+        Joins a multi-column candidate.
+    """
+    curated = state.curated
+    document = pd.Series(pd.NA, index=curated.index, dtype='string')
+    for group in candidates:
+        columns = [group] if isinstance(group, str) else list(group)
+        if any(c not in curated.columns for c in columns):
+            continue
+        parts = [
+            _normalized(curated[c]).astype('string').where(curated[c].notna())
+            for c in columns
+        ]
+        complete = pd.concat(parts, axis=1).notna().all(axis=1)
+        joined = parts[0]
+        for part in parts[1:]:
+            joined = joined + separator + part
+        document = document.where(document.notna() | ~complete, joined)
+    curated[output] = document
+    state.curated = curated
+    if state.verbose:
+        print(
+            f'  derive_document_id: {int(document.notna().sum()):,} of '
+            f'{len(curated):,} rows name a document'
+        )
+    return state
+
+
+@_register('count_parcels_per_document')
+def count_parcels_per_document(
+    state: CurateState,
+    parcel_column: str,
+    document_column: str = 'sale_document_id',
+    output: str = 'n_parcels_per_sale',
+) -> CurateState:
+    """Count the distinct parcels each recorded document covered.
+
+    Written on every row, so a consumer can tell a multi-parcel sale from
+    a single-parcel one before or after :func:`aggregate_multi_parcel_sales`
+    has collapsed it. Run after the source's duplicate rows are removed
+    (:func:`dedup_transactions`), or a document listed twice for the same
+    parcel counts as two.
+
+    Parameters
+    ----------
+    parcel_column : str
+        Column identifying the parcel a row is about.
+    document_column : str, optional
+        Column naming the document (default ``sale_document_id``).
+    output : str, optional
+        Column written (default ``n_parcels_per_sale``). Missing where
+        the document is.
+    """
+    curated = state.curated
+    if document_column not in curated.columns or parcel_column not in curated.columns:
+        return state
+    counts = curated.groupby(document_column, dropna=True)[parcel_column].nunique()
+    curated[output] = curated[document_column].map(counts).astype('float')
+    state.curated = curated
+    return state
+
+
+@_register('aggregate_multi_parcel_sales')
+def aggregate_multi_parcel_sales(
+    state: CurateState,
+    document_column: str = 'sale_document_id',
+    weight_column: str | None = None,
+    count_column: str = 'n_parcels_per_sale',
+) -> CurateState:
+    """Emit one row per recorded document instead of one per parcel.
+
+    The rows of a multi-parcel deed are right about the price and wrong
+    about the area: the source repeats one price on every parcel the
+    deed covered. Grouped by document, the parcels become one observation
+    whose extensive columns (an area, a count) are summed and whose
+    other columns are taken from the row with the largest *weight_column*
+    (the registry's aggregation rule decides which is which, through
+    :func:`openplaces.table.aggregate_rows`). The price was never wrong;
+    the denominator was.
+
+    Rows with no document id, or alone on theirs, are kept as they are.
+    The aggregated row keeps the index label of its heaviest member, so
+    the entity id stays a real row's id, and *count_column* (written by
+    :func:`count_parcels_per_document`) says how many rows it stands
+    for. A column the registry does not know cannot be aggregated and is
+    left missing on the aggregated rows.
+
+    Parameters
+    ----------
+    document_column : str, optional
+        Column naming the document (default ``sale_document_id``).
+    weight_column : str, optional
+        Column whose largest value picks the representative row for
+        first-aggregated columns (a parcel area). Input order without it.
+    count_column : str, optional
+        Column holding the parcels-per-document count, kept as the
+        representative member's value (default ``n_parcels_per_sale``).
+    """
+    curated = state.curated
+    if document_column not in curated.columns:
+        return state
+    has_document = curated[document_column].notna()
+    shared = has_document & curated[document_column].duplicated(keep=False)
+    if not shared.any():
+        return state
+    members = curated.loc[shared].copy()
+    if weight_column is not None and weight_column in members.columns:
+        members = members.sort_values(weight_column, ascending=False)
+    # The representative row's label, taken before the registry-driven
+    # aggregation, which keeps only columns the registry knows.
+    label = members.index.to_series().groupby(members[document_column]).first()
+    aggregated = aggregate_rows(
+        members,
+        by=document_column,
+        aggregation_function={count_column: 'first'},
+    )
+    aggregated[document_column] = aggregated.index
+    aggregated.index = pd.Index(
+        label.reindex(aggregated.index).to_numpy(), name=curated.index.name
+    )
+    kept = curated.loc[~shared]
+    result = pd.concat([kept, aggregated.reindex(columns=kept.columns)])
+    # Back in input order, so the step is stable under a later sort.
+    result = result.loc[curated.index[curated.index.isin(result.index)]]
+    state.curated = result
+    if state.verbose:
+        print(
+            f'  aggregate_multi_parcel_sales: {int(shared.sum()):,} rows on '
+            f'{len(aggregated):,} multi-parcel documents became one row each'
         )
     return state

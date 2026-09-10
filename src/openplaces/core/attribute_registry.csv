@@ -72,6 +72,22 @@ grantor,Grantor (seller) name as recorded,,string,first,,transaction,
 grantee,Grantee (buyer) name as recorded,,string,first,,transaction,
 price,Transaction price,USD,float,first,,transaction,
 price_raw,Transaction price as provided by the source,,string,first,,transaction,
+sale_year,Year of the recorded sale,,float,first,,transaction,
+sale_month,Month of the recorded sale,,float,first,,transaction,
+sale_book,Official-record book of the recorded sale,,string,first,,transaction,
+sale_page,Official-record page of the recorded sale,,string,first,,transaction,
+sale_clerk_instrument,Clerk instrument number of the recorded sale,,string,first,,transaction,
+sale_qualification_code,The source's qualification of the sale (arm's length or a disqualification reason),,categorical,first,,transaction,
+sale_multi_parcel,The source's flag that the sale covered several parcels,,categorical,first,,transaction,
+sale_vacant,Vacant or improved indicator at the sale,,categorical,first,,transaction,
+sale_change_code,The source's code for a change to the sale record,,categorical,first,,transaction,
+transaction_id_source,The source's own identifier for the sale record,,string,first,,transaction,
+sale_document_id,"Identifier of the recorded document (deed) behind the sale, spelled per source: a clerk instrument number, else book and page. Rows sharing it are one sale.",,string,first,,transaction,curate
+n_parcels_per_sale,Number of parcels the recorded document covered,,float,first,,transaction,curate
+sale_arms_length_confidence,"Graded confidence that the sale was at arm's length, 0 to 1, from the signals the source supplies; a consumer sets its own cutoff",fraction (0-1),float,first,,transaction,curate
+sale_record_kind,Whether the record is a recorded deed or an assessor's last-sale field,,categorical,first,,transaction,curate
+sale_price_to_assessed_ratio,Sale price over the assessed total value at the time of sale,,float,first,,transaction,curate
+single_family_sales_disclosure_share,"Share of single-family sales in the entity's admin unit with a disclosed price, a value for a consumer to threshold",fraction (0-1),float,first,,transaction,curate
 parcel_id,Parcel identifier,,string,first,,parcel,
 parcel_id_all,All overlapping parcel identifiers (pipe-joined; dominant parcel first by descending intersection area; missing when identical to parcel_id),,string,first,,parcel,curate
 parcel_id_admin2,Parcel identifier unique within its admin-2 unit,,string,first,,parcel,
