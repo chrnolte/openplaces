@@ -231,6 +231,23 @@ def _sort_key(col: str, index_of: dict[str, int]) -> tuple:
     return (float(fields[0]), fields, index_of[col])
 
 
+@_register('sort_rows')
+def sort_rows(state: CurateState, by: list[str]) -> CurateState:
+    """Sort rows by *by*, ascending.
+
+    Parameters
+    ----------
+    by : list of str
+        Columns to sort by, in order. Missing columns are ignored.
+    """
+    curated = state.curated
+    columns = [c for c in by if c in curated.columns]
+    if not columns:
+        return state
+    state.curated = curated.sort_values(columns).reset_index(drop=True)
+    return state
+
+
 @_register('order_columns')
 def order_columns(
     state: CurateState,
