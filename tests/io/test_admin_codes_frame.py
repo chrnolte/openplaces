@@ -187,6 +187,50 @@ class TestPinning:
         assert out.index[0].startswith('US-MA-')
 
 
+class TestSharedSourceCode:
+    """A source code two siblings share cannot pin either of them."""
+
+    @pytest.fixture
+    def two_pinned_siblings(self, monkeypatch):
+        # A fabricated parent whose two units the spine records under
+        # distinct names and distinct source codes.
+        pins = {('XX-AA', 'Alpha'): 'AL', ('XX-AA', 'Bravo'): 'BR'}
+        by_external = {('XX-AA', '101'): 'AL', ('XX-AA', '202'): 'BR'}
+        monkeypatch.setattr(
+            frame_module,
+            'load_registry',
+            lambda level, sep: (pins, by_external, {'XX-AA': ('AL', 'BR')}),
+        )
+        monkeypatch.setattr(frame_module, 'load_group_code_lengths', lambda: {})
+
+    def assign_pinned(self, names, codes):
+        return assign_admin_ids(
+            frame(['XX-AA', 'XX-AA'], names, admin3_id_admin1=codes),
+            new_admin_id_col='admin3_id',
+            parent_admin_id_col='admin2_id',
+        )
+
+    def test_a_copied_code_falls_back_to_the_names(self, two_pinned_siblings):
+        # The source gives Bravo the code it records for Alpha, as GADM
+        # 4.1 does for two Philippine provinces. Pinning on the code
+        # would put both rows on AL.
+        out = self.assign_pinned(['Alpha', 'Bravo'], ['101', '101'])
+        assert dict(zip(out['name'], out.index)) == {
+            'Alpha': 'XX-AA-AL',
+            'Bravo': 'XX-AA-BR',
+        }
+        assert (out['admin3_id_source'] == 'pinned').all()
+
+    def test_a_unique_code_still_pins_a_renamed_unit(self, two_pinned_siblings):
+        # Bravo arrives under a name the spine does not record, so only
+        # its unambiguous source code can keep it on its recorded code.
+        out = self.assign_pinned(['Alpha', 'Bravo Renamed'], ['101', '202'])
+        assert dict(zip(out['name'], out.index)) == {
+            'Alpha': 'XX-AA-AL',
+            'Bravo Renamed': 'XX-AA-BR',
+        }
+
+
 class TestReviewedGroupLength:
     """A reviewed length may not split a group's width in two."""
 

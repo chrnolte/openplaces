@@ -207,9 +207,16 @@ def assign_admin_ids(
         # spine's code while the row whose GEOID the spine actually
         # records was minted afresh, 496 times over in the 2025 county
         # subdivisions.
+        # A source code two incoming rows share identifies neither of
+        # them, the rule load_registry already applies to the spine's
+        # side. Both rows fall back to their names instead. GADM 4.1
+        # copies Pangasinan's CC_1 onto Zambales, and pinning both on
+        # it put two provinces on one id.
+        row_externals = externals[rows.index]
+        shared = set(row_externals[row_externals.duplicated() & (row_externals != '')])
         pinned_rows = {}
-        for idx, external in externals[rows.index].items():
-            if not external:
+        for idx, external in row_externals.items():
+            if not external or external in shared:
                 continue
             code = by_external.get((parent, str(external)))
             if code is not None:
