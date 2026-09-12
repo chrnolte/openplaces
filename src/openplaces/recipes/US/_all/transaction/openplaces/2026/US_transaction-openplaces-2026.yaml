@@ -207,12 +207,17 @@ pipeline:
       - output: sale_nominal_price_floor
         type: nominal_floor
         column: price
+      # Restricted on the sale record's own decoded use label: Florida's
+      # SDF carries the DOR use code decoded to 'Single Family', and the
+      # parcel link's `use_group` is empty for Florida (the DOR code has
+      # no crosswalk into the hub vocabulary yet). When it does, this
+      # should read `use_group`.
       - output: single_family_sales_disclosure_share
         type: group_share
         column: price
         predicate: above
         threshold_column: sale_nominal_price_floor
-        restrict: {column: use_group, equals: Single Family}
+        restrict: {column: use_group_code, equals: Single Family}
 
   # One row per deed. Areas and counts are summed and the other columns
   # taken from the representative parcel, per the registry's rule for
