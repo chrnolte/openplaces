@@ -452,7 +452,7 @@ class Ingester:
 
             self._aggregate_to()
 
-            self._aggregate_partitions()
+            self._aggregate_partitions(reprocess)
 
             self.timer.mark('Aggregate')
 
@@ -726,7 +726,7 @@ class Ingester:
                 verbose=self.verbose,
             )
 
-    def _aggregate_partitions(self):
+    def _aggregate_partitions(self, reprocess=False):
         """Roll up partition outputs per the recipe's `aggregate_by` block.
 
         For partitioned recipes that declare `aggregate_by`, concatenate the
@@ -734,6 +734,16 @@ class Ingester:
         ``single_file: true``) or into per-group files (e.g. the 12 months of
         each year into one per-year file, with ``partition: year``). Delegates
         to `aggregate_partitions`.
+
+        A reprocess of every partition replaces the combined file. The
+        default ``union`` merge keeps rows the new batch does not repeat
+        exactly, so a reprocess that changed a value (a re-keyed
+        ``parcel_id_local``) appended a second copy of every row: Orange
+        County FL's sales file doubled to 3.1M rows on 2026-09-12, and
+        the curate step's dedup then kept the stale first copies. A
+        reprocess of only some partitions cannot be merged safely either
+        way and is refused, since ``replace`` would narrow the file to
+        those partitions and ``union`` would duplicate them.
         """
         agg = self.recipe.get('aggregate_by')
         if not agg or not (agg.get('single_file') or 'partition' in agg):
@@ -741,11 +751,23 @@ class Ingester:
 
         from openplaces.io.aggregate import aggregate_partitions
 
+        how = agg.get('how', 'union')
+        if reprocess:
+            if getattr(self, 'partition_ids', None) is None:
+                how = 'replace'
+            elif how == 'union':
+                raise ValueError(
+                    f'{get_recipe_id(self.recipe)}: reprocessing some partitions '
+                    'of a recipe that aggregates them into one file would leave '
+                    'stale rows beside the new ones (union) or drop the other '
+                    'partitions (replace). Reprocess every partition instead.'
+                )
+
         aggregate_partitions(
             self.recipe,
             by=agg.get('partition', 'year'),
             single_file=agg.get('single_file', False),
-            how=agg.get('how', 'union'),
+            how=how,
             keep_original=agg.get('keep_partitions', False),
             verbose=self.verbose,
         )
