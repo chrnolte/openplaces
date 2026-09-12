@@ -1665,10 +1665,10 @@ US,18029,US-IN-DR,Dearborn,parcel,auto,apn,Ignored,simple,0.938,30995.0,31231.0
 US,18029,US-IN-DR,Dearborn,tax,auto,apn,Ignored,simple,0.938,30995.0,31231.0
 US,18031,US-IN-DC,Decatur,parcel,auto,apn,Ignored,simple,0.954,17678.0,17605.0
 US,18031,US-IN-DC,Decatur,tax,auto,apn,Ignored,simple,0.954,17678.0,17605.0
-US,18033,US-IN-DE,DeKalb,parcel,auto,apn,Ignored,simple,0.965,30161.0,30812.0
-US,18033,US-IN-DE,DeKalb,tax,auto,apn,Ignored,simple,0.965,30161.0,30812.0
-US,18035,US-IN-DL,Delaware,parcel,auto,apn2,Dx,string_lengths: 2 2 2 3 3 3 3 & skip_empty: 1,0.895,59895.0,59104.0
-US,18035,US-IN-DL,Delaware,tax,auto,apn,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,0.895,59895.0,59104.0
+US,18033,US-IN-DK,DeKalb,parcel,auto,apn,Ignored,simple,0.965,30161.0,30812.0
+US,18033,US-IN-DK,DeKalb,tax,auto,apn,Ignored,simple,0.965,30161.0,30812.0
+US,18035,US-IN-DE,Delaware,parcel,auto,apn2,Dx,string_lengths: 2 2 2 3 3 3 3 & skip_empty: 1,0.895,59895.0,59104.0
+US,18035,US-IN-DE,Delaware,tax,auto,apn,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,0.895,59895.0,59104.0
 US,18037,US-IN-DU,Dubois,parcel,auto,apn,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,0.95,33819.0,35091.0
 US,18037,US-IN-DU,Dubois,tax,auto,apn,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,0.95,33819.0,35091.0
 US,18039,US-IN-EL,Elkhart,parcel,auto,apn,Dx-Dx-Dx-Dx-Dx.Dx-Dx,skip_empty: 1,0.945,88812.0,87156.0
@@ -2549,16 +2549,16 @@ US,22087,US-LA-SB,St. Bernard,parcel,auto,apn,Ignored,simple,0.929,22733.0,24473
 US,22087,US-LA-SB,St. Bernard,tax,auto,apn,Sx,keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.929,22733.0,24473.0
 US,22089,US-LA-SC,St. Charles,parcel,manual,apn,Ignored,simple,,,
 US,22089,US-LA-SC,St. Charles,tax,manual,apn,Ignored,simple,,,
-US,22093,US-LA-SJ,St. James,parcel,auto,apn,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,0.976,10178.0,10051.0
-US,22093,US-LA-SJ,St. James,tax,auto,apn,Dx,,0.976,10178.0,10051.0
-US,22095,US-LA-JB,St. John the Baptist,parcel,auto,apn,Ignored,simple,0.763,26782.0,24454.0
-US,22095,US-LA-JB,St. John the Baptist,tax,auto,apn,Ignored,simple,0.763,26782.0,24454.0
+US,22093,US-LA-JS,St. James,parcel,auto,apn,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,0.976,10178.0,10051.0
+US,22093,US-LA-JS,St. James,tax,auto,apn,Dx,,0.976,10178.0,10051.0
+US,22095,US-LA-SJ,St. John the Baptist,parcel,auto,apn,Ignored,simple,0.763,26782.0,24454.0
+US,22095,US-LA-SJ,St. John the Baptist,tax,auto,apn,Ignored,simple,0.763,26782.0,24454.0
 US,22097,US-LA-SL,St. Landry,parcel,auto,apn,Ignored,simple,0.756,59833.0,59553.0
 US,22097,US-LA-SL,St. Landry,tax,auto,apn,Ignored,simple,0.756,59833.0,59553.0
-US,22099,US-LA-MA,St. Martin,parcel,auto,apn,Sx(-)Dx,skip_empty: 1,0.985,38128.0,40977.0
-US,22099,US-LA-MA,St. Martin,tax,auto,apn,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,0.985,38128.0,40977.0
-US,22101,US-LA-SM,St. Mary,parcel,auto,apn,Ignored,simple,0.979,42450.0,51434.0
-US,22101,US-LA-SM,St. Mary,tax,auto,apn,Ignored,simple,0.979,42450.0,51434.0
+US,22099,US-LA-SM,St. Martin,parcel,auto,apn,Sx(-)Dx,skip_empty: 1,0.985,38128.0,40977.0
+US,22099,US-LA-SM,St. Martin,tax,auto,apn,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,0.985,38128.0,40977.0
+US,22101,US-LA-MA,St. Mary,parcel,auto,apn,Ignored,simple,0.979,42450.0,51434.0
+US,22101,US-LA-MA,St. Mary,tax,auto,apn,Ignored,simple,0.979,42450.0,51434.0
 US,22103,US-LA-ST,St. Tammany,parcel,auto,apn,Ignored,simple,0.948,117072.0,143849.0
 US,22103,US-LA-ST,St. Tammany,tax,auto,apn,Ignored,simple,0.948,117072.0,143849.0
 US,22105,US-LA-TA,Tangipahoa,parcel,auto,apn,Dx,keep_length: 1 & skip_empty: 1,0.805,71919.0,68596.0
@@ -3033,8 +3033,8 @@ US,2301733315,US-ME-HIR,Hiram,parcel,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_afte
 US,2301733315,US-ME-HIR,Hiram,tax,auto,apn,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 0_1|- 2|- & merge_after: 2_0 & skip_empty: 1,0.869,1478.0,1410.0
 US,2301741365,US-ME-LOV,Lovell,parcel,auto,apn,Dx_Sx[- ]Sx,split_groups: 0|5 2|- & drop_cols: 0_0 & keep_length: 0 & skip_empty: 1,0.883,1924.0,1821.0
 US,2301741365,US-ME-LOV,Lovell,tax,auto,apn,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|. 2_0|- & drop_cols: 1 & skip_empty: 1,0.883,1924.0,1821.0
-US,2301742835,US-ME-MAG,Magalloway,parcel,auto,apn,Ignored,simple,0.0,144.0,0.0
-US,2301742835,US-ME-MAG,Magalloway,tax,auto,apn,Empty,,0.0,144.0,0.0
+US,2301742835,US-ME-MAY,Magalloway,parcel,auto,apn,Ignored,simple,0.0,144.0,0.0
+US,2301742835,US-ME-MAY,Magalloway,tax,auto,apn,Empty,,0.0,144.0,0.0
 US,2301746105,US-ME-MLT,Milton,parcel,auto,apn,Dx(.-Dx.-Dx),merge_after: 0 & skip_empty: 1,0.031,225.0,238.0
 US,2301746105,US-ME-MLT,Milton,tax,auto,apn,A4 M:Sx B:(Sx)( L:(Sx)),merge_after: 1 0,0.031,225.0,238.0
 US,2301749275,US-ME-NEY,Newry,parcel,auto,apn,Sx-Sx(-Sx)(-Sx),split_groups: 1|2 & skip_empty: 1,0.876,1426.0,3432.0
@@ -3133,8 +3133,8 @@ US,2301955680,US-ME-ORR,Orrington,parcel,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx)
 US,2301955680,US-ME-ORR,Orrington,tax,auto,apn,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- & skip_empty: 1,0.929,2085.0,2116.0
 US,2301957150,US-ME-PAT,Patten,parcel,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 1 & skip_empty: 1,0.874,755.0,752.0
 US,2301957150,US-ME-PAT,Patten,tax,auto,apn,A4 M:Sx( B:Sx) L:Sx,split_groups: 0|- 1|- 2|- & merge_after: 0_0 2_0 & skip_empty: 1,0.874,755.0,752.0
-US,2301957936,US-ME-PII,Penobscot Indian Island,parcel,auto,apn,Useless,,0.0,48.0,0.0
-US,2301957936,US-ME-PII,Penobscot Indian Island,tax,auto,apn,Empty,,0.0,48.0,0.0
+US,2301957936,US-ME-PEI,Penobscot Indian Island,parcel,auto,apn,Useless,,0.0,48.0,0.0
+US,2301957936,US-ME-PEI,Penobscot Indian Island,tax,auto,apn,Empty,,0.0,48.0,0.0
 US,2301960790,US-ME-PRE,Prentiss,parcel,auto,apn,Ignored,simple,0.0,488.0,440.0
 US,2301960790,US-ME-PRE,Prentiss,tax,auto,apn,Ignored,simple,0.0,488.0,440.0
 US,2301967160,US-ME-SES,Seboeis,parcel,auto,apn,Ignored,simple,0.0,70.0,0.0
@@ -3327,8 +3327,8 @@ US,2302941610,US-ME-LUB,Lubec,parcel,auto,apn,Sx-Sx-Sx(-Sx),skip_empty: 1,0.902,
 US,2302941610,US-ME-LUB,Lubec,tax,auto,apn,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 1|- 1_1|- & skip_empty: 1,0.902,1875.0,1871.0
 US,2302941960,US-ME-MAC,Machias,parcel,auto,apn,Sx-Sx-Sx(-Sx),skip_empty: 1,0.91,1145.0,1210.0
 US,2302941960,US-ME-MAC,Machias,tax,auto,apn,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- 2_1|- & skip_empty: 1,0.91,1145.0,1210.0
-US,2302942100,US-ME-MCH,Machiasport,parcel,auto,apn,Dx_Sx[- ]Sx,split_groups: 0|5 2|- & drop_cols: 0_0 & keep_length: 0 & skip_empty: 1,0.929,1075.0,1107.0
-US,2302942100,US-ME-MCH,Machiasport,tax,auto,apn,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1,0.929,1075.0,1107.0
+US,2302942100,US-ME-MAT,Machiasport,parcel,auto,apn,Dx_Sx[- ]Sx,split_groups: 0|5 2|- & drop_cols: 0_0 & keep_length: 0 & skip_empty: 1,0.929,1075.0,1107.0
+US,2302942100,US-ME-MAT,Machiasport,tax,auto,apn,A4 A:Sx A:(Sx)( A:(Sx))( (A:)(Sx)),split_groups: 0|- 1|- 3|- & skip_empty: 1,0.929,1075.0,1107.0
 US,2302943640,US-ME-MAR,Marshfield,parcel,auto,apn,Dx_Sx[- ]Sx,split_groups: 2|- 2_1|- & drop_cols: 0 & skip_empty: 1,0.888,427.0,455.0
 US,2302943640,US-ME-MAR,Marshfield,tax,auto,apn,A4 M:Sx( B:Sx) L:Sx,split_groups: 2|- & skip_empty: 1,0.888,427.0,455.0
 US,2302944760,US-ME-MES,Meddybemps,parcel,auto,apn,(D5_)Dx-Dx-Dx,skip_empty: 1,0.888,178.0,233.0
@@ -4355,14 +4355,14 @@ US,2616332020,US-MI-WA-GB,Gibraltar,parcel,auto,apn,Ignored,simple,0.866,1647.0,
 US,2616332020,US-MI-WA-GB,Gibraltar,tax,auto,apn,Ignored,simple,0.866,1647.0,2127.0
 US,2616335420,US-MI-WA-GI,Grosse Ile,parcel,auto,apn,Ignored,simple,0.73,5744.0,4852.0
 US,2616335420,US-MI-WA-GI,Grosse Ile,tax,auto,apn,Ignored,simple,0.73,5744.0,4852.0
-US,2616335480,US-MI-WA-GR,Grosse Pointe,parcel,auto,apn,Dx,keep_length: 1 & skip_empty: 1,0.95,2110.0,3350.0
-US,2616335480,US-MI-WA-GR,Grosse Pointe,tax,auto,apn,Ignored,simple,0.95,2110.0,3350.0
+US,2616335480,US-MI-WA-GS,Grosse Pointe,parcel,auto,apn,Dx,keep_length: 1 & skip_empty: 1,0.95,2110.0,3350.0
+US,2616335480,US-MI-WA-GS,Grosse Pointe,tax,auto,apn,Ignored,simple,0.95,2110.0,3350.0
 US,2616335520,US-MI-WA-GO,Grosse Pointe Farms,parcel,auto,apn,Dx,,0.97,4234.0,4218.0
 US,2616335520,US-MI-WA-GO,Grosse Pointe Farms,tax,auto,apn,Ignored,simple,0.97,4234.0,4218.0
-US,2616335540,US-MI-WA-GP,Grosse Pointe Park,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.978,4240.0,4271.0
-US,2616335540,US-MI-WA-GP,Grosse Pointe Park,tax,auto,apn,Ignored,simple,0.978,4240.0,4271.0
-US,2616335580,US-MI-WA-GS,Grosse Pointe Woods,parcel,auto,apn,Ignored,simple,0.975,6854.0,7059.0
-US,2616335580,US-MI-WA-GS,Grosse Pointe Woods,tax,auto,apn,Ignored,simple,0.975,6854.0,7059.0
+US,2616335540,US-MI-WA-GR,Grosse Pointe Park,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 & merge_after: 0 0 & skip_empty: 1,0.978,4240.0,4271.0
+US,2616335540,US-MI-WA-GR,Grosse Pointe Park,tax,auto,apn,Ignored,simple,0.978,4240.0,4271.0
+US,2616335580,US-MI-WA-GP,Grosse Pointe Woods,parcel,auto,apn,Ignored,simple,0.975,6854.0,7059.0
+US,2616335580,US-MI-WA-GP,Grosse Pointe Woods,tax,auto,apn,Ignored,simple,0.975,6854.0,7059.0
 US,2616336280,US-MI-WA-HA,Hamtramck,parcel,auto,apn,Ignored,simple,0.96,6667.0,13314.0
 US,2616336280,US-MI-WA-HA,Hamtramck,tax,auto,apn,Ignored,simple,0.96,6667.0,13314.0
 US,2616336700,US-MI-WA-HW,Harper Woods,parcel,auto,apn,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,0.989,5582.0,6049.0
@@ -4379,14 +4379,14 @@ US,2616349000,US-MI-WA-LI,Livonia,parcel,auto,apn,Dx,split_groups: 0|16 & drop_c
 US,2616349000,US-MI-WA-LI,Livonia,tax,auto,apn,Ignored,simple,0.915,37514.0,40594.0
 US,2616352940,US-MI-WA-ME,Melvindale,parcel,auto,apn,Dx(.-Dx.-Dx),keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.923,4461.0,4636.0
 US,2616352940,US-MI-WA-ME,Melvindale,tax,auto,apn,Sx Sx Sx Sx( Sx Sx Sx),keep_length: 1 2 3 4 5 & merge_after: 0 0 0 0 0 & skip_empty: 1,0.923,4461.0,4636.0
-US,2616358980,US-MI-WA-NO,Northville city,parcel,auto,apn,Ignored,simple,0.0,1138.0,0.0
-US,2616358980,US-MI-WA-NO,Northville city,tax,auto,apn,Empty,,0.0,1138.0,0.0
-US,2616359000,US-MI-WA-NR,Northville,parcel,auto,apn,Dx,,0.817,4582.0,11854.0
-US,2616359000,US-MI-WA-NR,Northville,tax,auto,apn,Ignored,simple,0.817,4582.0,11854.0
-US,2616365060,US-MI-WA-PL,Plymouth city,parcel,auto,apn,Ignored,simple,0.0,3448.0,0.0
-US,2616365060,US-MI-WA-PL,Plymouth city,tax,auto,apn,Empty,,0.0,3448.0,0.0
-US,2616365080,US-MI-WA-PY,Plymouth,parcel,auto,apn,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,0.749,8554.0,12365.0
-US,2616365080,US-MI-WA-PY,Plymouth,tax,auto,apn,Ignored,simple,0.749,8554.0,12365.0
+US,2616358980,US-MI-WA-NR,Northville city,parcel,auto,apn,Ignored,simple,0.0,1138.0,0.0
+US,2616358980,US-MI-WA-NR,Northville city,tax,auto,apn,Empty,,0.0,1138.0,0.0
+US,2616359000,US-MI-WA-NO,Northville,parcel,auto,apn,Dx,,0.817,4582.0,11854.0
+US,2616359000,US-MI-WA-NO,Northville,tax,auto,apn,Ignored,simple,0.817,4582.0,11854.0
+US,2616365060,US-MI-WA-PY,Plymouth city,parcel,auto,apn,Ignored,simple,0.0,3448.0,0.0
+US,2616365060,US-MI-WA-PY,Plymouth city,tax,auto,apn,Empty,,0.0,3448.0,0.0
+US,2616365080,US-MI-WA-PL,Plymouth,parcel,auto,apn,Dx,split_groups: 0|14 & drop_cols: 0_1 & skip_empty: 1,0.749,8554.0,12365.0
+US,2616365080,US-MI-WA-PL,Plymouth,tax,auto,apn,Ignored,simple,0.749,8554.0,12365.0
 US,2616367625,US-MI-WA-RE,Redford,parcel,auto,apn,Ignored,simple,0.814,22279.0,23194.0
 US,2616367625,US-MI-WA-RE,Redford,tax,auto,apn,Ignored,simple,0.814,22279.0,23194.0
 US,2616368760,US-MI-WA-RR,River Rouge,parcel,auto,apn,Ignored,simple,0.977,3879.0,4014.0
@@ -4817,10 +4817,10 @@ US,29059,US-MO-DA,Dallas,parcel,auto,apn,Ignored,simple,0.992,13058.0,13028.0
 US,29059,US-MO-DA,Dallas,tax,auto,apn,Ignored,simple,0.992,13058.0,13028.0
 US,29061,US-MO-DV,Daviess,parcel,auto,apn,Ignored,simple,0.958,10771.0,10442.0
 US,29061,US-MO-DV,Daviess,tax,auto,apn,Ignored,simple,0.958,10771.0,10442.0
-US,29063,US-MO-DE,DeKalb,parcel,auto,apn,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1,0.993,7261.0,7510.0
-US,29063,US-MO-DE,DeKalb,tax,auto,apn,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1,0.993,7261.0,7510.0
-US,29065,US-MO-DN,Dent,parcel,auto,apn,Ignored,simple,0.822,11953.0,10936.0
-US,29065,US-MO-DN,Dent,tax,auto,apn,Ignored,simple,0.822,11953.0,10936.0
+US,29063,US-MO-DK,DeKalb,parcel,auto,apn,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1,0.993,7261.0,7510.0
+US,29063,US-MO-DK,DeKalb,tax,auto,apn,Dx-Dx-Dx-Dx-Dx-Dx(-Dx)(.Dx)(.Dx),split_groups: 6|3 & drop_cols: 0 & skip_empty: 1,0.993,7261.0,7510.0
+US,29065,US-MO-DE,Dent,parcel,auto,apn,Ignored,simple,0.822,11953.0,10936.0
+US,29065,US-MO-DE,Dent,tax,auto,apn,Ignored,simple,0.822,11953.0,10936.0
 US,29067,US-MO-DO,Douglas,parcel,auto,apn,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1,0.764,13148.0,11504.0
 US,29067,US-MO-DO,Douglas,tax,auto,apn,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1,0.764,13148.0,11504.0
 US,29069,US-MO-DU,Dunklin,parcel,auto,apn,Unrecognized,,0.995,21165.0,21571.0
@@ -4937,16 +4937,16 @@ US,29179,US-MO-RE,Reynolds,parcel,auto,apn,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1
 US,29179,US-MO-RE,Reynolds,tax,auto,apn,Sx-Sx.Sx-Sx-Sx-Sx-Sx.Sx,skip_empty: 1,0.641,12457.0,10599.0
 US,29181,US-MO-RI,Ripley,parcel,auto,apn,Ignored,simple,0.945,10816.0,11270.0
 US,29181,US-MO-RI,Ripley,tax,auto,apn,Ignored,simple,0.945,10816.0,11270.0
-US,29183,US-MO-CS,St. Charles,parcel,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.987,156086.0,163725.0
-US,29183,US-MO-CS,St. Charles,tax,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.987,156086.0,163725.0
-US,29185,US-MO-SC,St. Clair,parcel,auto,apn,Ignored,simple,0.989,10922.0,11302.0
-US,29185,US-MO-SC,St. Clair,tax,auto,apn,Ignored,simple,0.989,10922.0,11302.0
+US,29183,US-MO-SC,St. Charles,parcel,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.987,156086.0,163725.0
+US,29183,US-MO-SC,St. Charles,tax,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.987,156086.0,163725.0
+US,29185,US-MO-LR,St. Clair,parcel,auto,apn,Ignored,simple,0.989,10922.0,11302.0
+US,29185,US-MO-LR,St. Clair,tax,auto,apn,Ignored,simple,0.989,10922.0,11302.0
 US,29186,US-MO-SG,Ste. Genevieve,parcel,auto,apn,Ignored,simple,0.0,3550.0,18538.0
 US,29186,US-MO-SG,Ste. Genevieve,tax,auto,apn,Ignored,simple,0.0,3550.0,18538.0
 US,29187,US-MO-SF,St. Francois,parcel,auto,apn,Ignored,simple,0.988,39966.0,40471.0
 US,29187,US-MO-SF,St. Francois,tax,auto,apn,Ignored,simple,0.988,39966.0,40471.0
-US,29189,US-MO-ST,St. Louis county,parcel,auto,apn,Sx(-)Dx,skip_empty: 1,0.99,372940.0,399232.0
-US,29189,US-MO-ST,St. Louis county,tax,auto,apn,Sx( )-Sx-Sx-Sx-Sx-( Sx),keep_length: 2 3 4 & merge_after: 0 0 0 0 0 & skip_empty: 1,0.99,372940.0,399232.0
+US,29189,US-MO-SL,St. Louis county,parcel,auto,apn,Sx(-)Dx,skip_empty: 1,0.99,372940.0,399232.0
+US,29189,US-MO-SL,St. Louis county,tax,auto,apn,Sx( )-Sx-Sx-Sx-Sx-( Sx),keep_length: 2 3 4 & merge_after: 0 0 0 0 0 & skip_empty: 1,0.99,372940.0,399232.0
 US,29195,US-MO-SA,Saline,parcel,auto,apn,Ignored,simple,0.994,15827.0,18038.0
 US,29195,US-MO-SA,Saline,tax,auto,apn,Ignored,simple,0.994,15827.0,18038.0
 US,29197,US-MO-SY,Schuyler,parcel,auto,apn,Ignored,simple,0.992,4131.0,4207.0
@@ -4983,8 +4983,8 @@ US,29227,US-MO-WO,Worth,parcel,auto,apn,Ignored,simple,0.978,2032.0,3266.0
 US,29227,US-MO-WO,Worth,tax,auto,apn,Ignored,simple,0.978,2032.0,3266.0
 US,29229,US-MO-WR,Wright,parcel,auto,apn,Ignored,simple,0.831,13654.0,13177.0
 US,29229,US-MO-WR,Wright,tax,auto,apn,Ignored,simple,0.831,13654.0,13177.0
-US,29510,US-MO-SL,St. Louis city,parcel,auto,apn,Dx,split_groups: 0|1 0_1|6 & drop_cols: 0_0 & skip_empty: 1,0.994,126689.0,137074.0
-US,29510,US-MO-SL,St. Louis city,tax,auto,apn,Sx-Sx,split_groups: 1|-1 & drop_cols: 1_1 & skip_empty: 1,0.994,126689.0,137074.0
+US,29510,US-MO-ST,St. Louis city,parcel,auto,apn,Dx,split_groups: 0|1 0_1|6 & drop_cols: 0_0 & skip_empty: 1,0.994,126689.0,137074.0
+US,29510,US-MO-ST,St. Louis city,tax,auto,apn,Sx-Sx,split_groups: 1|-1 & drop_cols: 1_1 & skip_empty: 1,0.994,126689.0,137074.0
 US,30001,US-MT-BE,Beaverhead,parcel,auto,apn,Dx,,0.977,15797.0,17384.0
 US,30001,US-MT-BE,Beaverhead,tax,auto,apn,Ignored,simple,0.977,15797.0,17384.0
 US,30003,US-MT-BH,Big Horn,parcel,auto,apn,Ignored,simple,0.963,15048.0,17901.0
@@ -5937,16 +5937,16 @@ US,35061,US-NM-VA,Valencia,parcel,manual,apn,Ignored,simple,,,
 US,35061,US-NM-VA,Valencia,tax,manual,apn,Ignored,simple,,,
 US,3600101000,US-NY-AL-AL,Albany,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.997,28032.0,29721.0
 US,3600101000,US-NY-AL-AL,Albany,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.997,28032.0,29721.0
-US,3600106211,US-NY-AL-BE,Berne,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.99,2075.0,2095.0
-US,3600106211,US-NY-AL-BE,Berne,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,2075.0,2095.0
-US,3600106354,US-NY-AL-BT,Bethlehem,parcel,manual,apn,Dx( Dx),string_lengths: 3 3 4 3 3 4,,,
-US,3600106354,US-NY-AL-BT,Bethlehem,tax,manual,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),,,,
-US,3600116694,US-NY-AL-CO,Coeymans,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.987,2971.0,3048.0
-US,3600116694,US-NY-AL-CO,Coeymans,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.987,2971.0,3048.0
+US,3600106211,US-NY-AL-BR,Berne,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.99,2075.0,2095.0
+US,3600106211,US-NY-AL-BR,Berne,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,2075.0,2095.0
+US,3600106354,US-NY-AL-BE,Bethlehem,parcel,manual,apn,Dx( Dx),string_lengths: 3 3 4 3 3 4,,,
+US,3600106354,US-NY-AL-BE,Bethlehem,tax,manual,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),,,,
+US,3600116694,US-NY-AL-CY,Coeymans,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.987,2971.0,3048.0
+US,3600116694,US-NY-AL-CY,Coeymans,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.987,2971.0,3048.0
 US,3600116749,US-NY-AL-CH,Cohoes,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.994,5073.0,5240.0
 US,3600116749,US-NY-AL-CH,Cohoes,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,5073.0,5240.0
-US,3600117343,US-NY-AL-CL,Colonie,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.993,31660.0,32441.0
-US,3600117343,US-NY-AL-CL,Colonie,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.993,31660.0,32441.0
+US,3600117343,US-NY-AL-CO,Colonie,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.993,31660.0,32441.0
+US,3600117343,US-NY-AL-CO,Colonie,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.993,31660.0,32441.0
 US,3600130532,US-NY-AL-GI,Green Island,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,1.0,857.0,878.0
 US,3600130532,US-NY-AL-GI,Green Island,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,1.0,857.0,878.0
 US,3600131104,US-NY-AL-GU,Guilderland,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.988,12533.0,12842.0
@@ -5961,20 +5961,20 @@ US,3600178674,US-NY-AL-WA,Watervliet,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 
 US,3600178674,US-NY-AL-WA,Watervliet,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.991,2761.0,2807.0
 US,3600179851,US-NY-AL-WE,Westerlo,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,2106.0,2110.0
 US,3600179851,US-NY-AL-WE,Westerlo,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,2106.0,2110.0
-US,3600301209,US-NY-AE-AF,Alfred,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.909,1223.0,1294.0
-US,3600301209,US-NY-AE-AF,Alfred,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.909,1223.0,1294.0
+US,3600301209,US-NY-AE-AL,Alfred,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.909,1223.0,1294.0
+US,3600301209,US-NY-AE-AL,Alfred,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.909,1223.0,1294.0
 US,3600301319,US-NY-AE-AE,Allen,parcel,auto,apn,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,0.909,659.0,629.0
 US,3600301319,US-NY-AE-AE,Allen,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.909,659.0,629.0
 US,3600301429,US-NY-AE-AA,Alma,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.91,1081.0,1039.0
 US,3600301429,US-NY-AE-AA,Alma,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.91,1081.0,1039.0
-US,3600301451,US-NY-AE-AL,Almond,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.877,1250.0,1160.0
-US,3600301451,US-NY-AE-AL,Almond,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.877,1250.0,1160.0
+US,3600301451,US-NY-AE-AO,Almond,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.877,1250.0,1160.0
+US,3600301451,US-NY-AE-AO,Almond,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.877,1250.0,1160.0
 US,3600302011,US-NY-AE-AM,Amity,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.924,1467.0,1429.0
 US,3600302011,US-NY-AE-AM,Amity,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.924,1467.0,1429.0
-US,3600302154,US-NY-AE-AD,Andover,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.953,1332.0,1367.0
-US,3600302154,US-NY-AE-AD,Andover,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.953,1332.0,1367.0
-US,3600302187,US-NY-AE-AN,Angelica,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,1204.0,1215.0
-US,3600302187,US-NY-AE-AN,Angelica,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,1204.0,1215.0
+US,3600302154,US-NY-AE-AN,Andover,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.953,1332.0,1367.0
+US,3600302154,US-NY-AE-AN,Andover,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.953,1332.0,1367.0
+US,3600302187,US-NY-AE-AG,Angelica,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,1204.0,1215.0
+US,3600302187,US-NY-AE-AG,Angelica,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,1204.0,1215.0
 US,3600305573,US-NY-AE-BE,Belfast,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.949,1229.0,1212.0
 US,3600305573,US-NY-AE-BE,Belfast,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.949,1229.0,1212.0
 US,3600306717,US-NY-AE-BI,Birdsall,parcel,auto,apn,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,0.96,606.0,611.0
@@ -5995,10 +5995,10 @@ US,3600327705,US-NY-AE-FR,Friendship,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),s
 US,3600327705,US-NY-AE-FR,Friendship,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.93,1375.0,1339.0
 US,3600328563,US-NY-AE-GE,Genesee,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.918,1240.0,1210.0
 US,3600328563,US-NY-AE-GE,Genesee,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.918,1240.0,1210.0
-US,3600329905,US-NY-AE-GA,Granger,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.856,679.0,611.0
-US,3600329905,US-NY-AE-GA,Granger,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.856,679.0,611.0
-US,3600330994,US-NY-AE-GR,Grove,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.923,742.0,708.0
-US,3600330994,US-NY-AE-GR,Grove,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.923,742.0,708.0
+US,3600329905,US-NY-AE-GR,Granger,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.856,679.0,611.0
+US,3600329905,US-NY-AE-GR,Granger,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.856,679.0,611.0
+US,3600330994,US-NY-AE-GO,Grove,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.923,742.0,708.0
+US,3600330994,US-NY-AE-GO,Grove,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.923,742.0,708.0
 US,3600336112,US-NY-AE-HU,Hume,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,1193.0,1199.0
 US,3600336112,US-NY-AE-HU,Hume,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,1193.0,1199.0
 US,3600337297,US-NY-AE-IN,Independence,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.955,802.0,856.0
@@ -6025,16 +6025,16 @@ US,36005,US-NY-BR,Bronx,parcel,auto,apn,Dx,split_groups: 0|1 & drop_cols: 0_0 & 
 US,36005,US-NY-BR,Bronx,tax,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),merge_after: 4 3 2 1 0 & skip_empty: 1,0.998,88363.0,171033.0
 US,3600704429,US-NY-BO-BA,Barker,parcel,auto,apn,Ignored,simple,0.972,1727.0,1762.0
 US,3600704429,US-NY-BO-BA,Barker,tax,auto,apn,Ignored,simple,0.972,1727.0,1762.0
-US,3600706607,US-NY-BO-BN,Binghamton city,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.991,15717.0,15851.0
-US,3600706607,US-NY-BO-BN,Binghamton city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,15717.0,15851.0
-US,3600706618,US-NY-BO-BI,Binghamton town,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.968,2856.0,2921.0
-US,3600706618,US-NY-BO-BI,Binghamton town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,2856.0,2921.0
+US,3600706607,US-NY-BO-BI,Binghamton city,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.991,15717.0,15851.0
+US,3600706607,US-NY-BO-BI,Binghamton city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,15717.0,15851.0
+US,3600706618,US-NY-BO-BN,Binghamton town,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.968,2856.0,2921.0
+US,3600706618,US-NY-BO-BN,Binghamton town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,2856.0,2921.0
 US,3600715110,US-NY-BO-CH,Chenango,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.986,5317.0,5374.0
 US,3600715110,US-NY-BO-CH,Chenango,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,5317.0,5374.0
-US,3600717046,US-NY-BO-CL,Colesville,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.962,2890.0,2933.0
-US,3600717046,US-NY-BO-CL,Colesville,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.962,2890.0,2933.0
-US,3600717772,US-NY-BO-CO,Conklin,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.981,2852.0,2863.0
-US,3600717772,US-NY-BO-CO,Conklin,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,2852.0,2863.0
+US,3600717046,US-NY-BO-CO,Colesville,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.962,2890.0,2933.0
+US,3600717046,US-NY-BO-CO,Colesville,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.962,2890.0,2933.0
+US,3600717772,US-NY-BO-CN,Conklin,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.981,2852.0,2863.0
+US,3600717772,US-NY-BO-CN,Conklin,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,2852.0,2863.0
 US,3600720588,US-NY-BO-DI,Dickinson,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.988,2188.0,2287.0
 US,3600720588,US-NY-BO-DI,Dickinson,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,2188.0,2287.0
 US,3600725604,US-NY-BO-FE,Fenton,parcel,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.975,3139.0,3182.0
@@ -6057,16 +6057,16 @@ US,3600777255,US-NY-BO-VE,Vestal,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_
 US,3600777255,US-NY-BO-VE,Vestal,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,9190.0,9210.0
 US,3600782535,US-NY-BO-WI,Windsor,parcel,auto,apn,Ignored,simple,0.961,4167.0,4175.0
 US,3600782535,US-NY-BO-WI,Windsor,tax,auto,apn,Ignored,simple,0.961,4167.0,4175.0
-US,3600901297,US-NY-CT-AE,Allegany town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.991,2979.0,3198.0
-US,3600901297,US-NY-CT-AE,Allegany town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2979.0,3198.0
-US,3600901308,US-NY-CT-AL,Allegany,parcel,auto,apn,Ignored,simple,0.0,71.0,0.0
-US,3600901308,US-NY-CT-AL,Allegany,tax,auto,apn,Empty,,0.0,71.0,0.0
+US,3600901297,US-NY-CT-AL,Allegany town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.991,2979.0,3198.0
+US,3600901297,US-NY-CT-AL,Allegany town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2979.0,3198.0
+US,3600901308,US-NY-CT-AE,Allegany,parcel,auto,apn,Ignored,simple,0.0,71.0,0.0
+US,3600901308,US-NY-CT-AE,Allegany,tax,auto,apn,Empty,,0.0,71.0,0.0
 US,3600902759,US-NY-CT-AS,Ashford,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.982,1475.0,1535.0
 US,3600902759,US-NY-CT-AS,Ashford,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.982,1475.0,1535.0
-US,3600912661,US-NY-CT-CR,Carrollton,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,1014.0,1158.0
-US,3600912661,US-NY-CT-CR,Carrollton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1014.0,1158.0
-US,3600913035,US-NY-CT-CA,Cattaraugus,parcel,auto,apn,Ignored,simple,0.0,2.0,0.0
-US,3600913035,US-NY-CT-CA,Cattaraugus,tax,auto,apn,Empty,,0.0,2.0,0.0
+US,3600912661,US-NY-CT-CA,Carrollton,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,1014.0,1158.0
+US,3600912661,US-NY-CT-CA,Carrollton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1014.0,1158.0
+US,3600913035,US-NY-CT-CT,Cattaraugus,parcel,auto,apn,Ignored,simple,0.0,2.0,0.0
+US,3600913035,US-NY-CT-CT,Cattaraugus,tax,auto,apn,Empty,,0.0,2.0,0.0
 US,3600916903,US-NY-CT-CL,Coldspring,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.996,699.0,816.0
 US,3600916903,US-NY-CT-CL,Coldspring,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.996,699.0,816.0
 US,3600917684,US-NY-CT-CO,Conewango,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.964,859.0,967.0
@@ -6097,14 +6097,14 @@ US,3600942840,US-NY-CT-LV,Little Valley,parcel,auto,apn,Dx,string_lengths: 3 3 4
 US,3600942840,US-NY-CT-LV,Little Valley,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.989,1127.0,1179.0
 US,3600943896,US-NY-CT-LY,Lyndon,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.983,781.0,789.0
 US,3600943896,US-NY-CT-LY,Lyndon,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.983,781.0,789.0
-US,3600944237,US-NY-CT-MC,Machias,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,1677.0,1733.0
-US,3600944237,US-NY-CT-MC,Machias,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1677.0,1733.0
-US,3600945161,US-NY-CT-MA,Mansfield,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.989,1026.0,1053.0
-US,3600945161,US-NY-CT-MA,Mansfield,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.989,1026.0,1053.0
-US,3600949462,US-NY-CT-NA,Napoli,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.996,1188.0,1226.0
-US,3600949462,US-NY-CT-NA,Napoli,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.996,1188.0,1226.0
-US,3600949880,US-NY-CT-NE,New Albion,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.994,1276.0,1335.0
-US,3600949880,US-NY-CT-NE,New Albion,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,1276.0,1335.0
+US,3600944237,US-NY-CT-MA,Machias,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,1677.0,1733.0
+US,3600944237,US-NY-CT-MA,Machias,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1677.0,1733.0
+US,3600945161,US-NY-CT-MN,Mansfield,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.989,1026.0,1053.0
+US,3600945161,US-NY-CT-MN,Mansfield,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.989,1026.0,1053.0
+US,3600949462,US-NY-CT-NP,Napoli,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.996,1188.0,1226.0
+US,3600949462,US-NY-CT-NP,Napoli,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.996,1188.0,1226.0
+US,3600949880,US-NY-CT-NA,New Albion,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.994,1276.0,1335.0
+US,3600949880,US-NY-CT-NA,New Albion,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,1276.0,1335.0
 US,3600954523,US-NY-CT-OS,Oil Springs,parcel,auto,apn,Ignored,simple,0.0,1.0,0.0
 US,3600954523,US-NY-CT-OS,Oil Springs,tax,auto,apn,Empty,,0.0,1.0,0.0
 US,3600954716,US-NY-CT-OL,Olean city,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.998,6400.0,6517.0
@@ -6113,10 +6113,10 @@ US,3600954727,US-NY-CT-OE,Olean town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 
 US,3600954727,US-NY-CT-OE,Olean town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1385.0,1450.0
 US,3600955783,US-NY-CT-OT,Otto,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.961,718.0,817.0
 US,3600955783,US-NY-CT-OT,Otto,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.961,718.0,817.0
-US,3600957298,US-NY-CT-PE,Perrysburg,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,961.0,1062.0
-US,3600957298,US-NY-CT-PE,Perrysburg,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,961.0,1062.0
-US,3600957331,US-NY-CT-PR,Persia,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.975,1172.0,1323.0
-US,3600957331,US-NY-CT-PR,Persia,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.975,1172.0,1323.0
+US,3600957298,US-NY-CT-PR,Perrysburg,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.986,961.0,1062.0
+US,3600957298,US-NY-CT-PR,Perrysburg,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,961.0,1062.0
+US,3600957331,US-NY-CT-PE,Persia,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.975,1172.0,1323.0
+US,3600957331,US-NY-CT-PE,Persia,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.975,1172.0,1323.0
 US,3600959509,US-NY-CT-PO,Portville,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.995,2047.0,2099.0
 US,3600959509,US-NY-CT-PO,Portville,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.995,2047.0,2099.0
 US,3600960587,US-NY-CT-RA,Randolph,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.968,1370.0,1494.0
@@ -6153,20 +6153,20 @@ US,3601143071,US-NY-CA-LO,Locke,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & s
 US,3601143071,US-NY-CA-LO,Locke,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.973,890.0,926.0
 US,3601146602,US-NY-CA-ME,Mentz,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.557,1112.0,689.0
 US,3601146602,US-NY-CA-ME,Mentz,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.557,1112.0,689.0
-US,3601148131,US-NY-CA-MO,Montezuma,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.98,658.0,703.0
-US,3601148131,US-NY-CA-MO,Montezuma,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.98,658.0,703.0
-US,3601148307,US-NY-CA-MR,Moravia,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,1425.0,1463.0
-US,3601148307,US-NY-CA-MR,Moravia,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.97,1425.0,1463.0
+US,3601148131,US-NY-CA-MN,Montezuma,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.98,658.0,703.0
+US,3601148131,US-NY-CA-MN,Montezuma,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.98,658.0,703.0
+US,3601148307,US-NY-CA-MO,Moravia,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,1425.0,1463.0
+US,3601148307,US-NY-CA-MO,Moravia,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.97,1425.0,1463.0
 US,3601151198,US-NY-CA-NI,Niles,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,1238.0,1264.0
 US,3601151198,US-NY-CA-NI,Niles,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.97,1238.0,1264.0
 US,3601155871,US-NY-CA-OW,Owasco,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.969,2040.0,2060.0
 US,3601155871,US-NY-CA-OW,Owasco,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.969,2040.0,2060.0
 US,3601165816,US-NY-CA-SC,Scipio,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,1049.0,1091.0
 US,3601165816,US-NY-CA-SC,Scipio,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.97,1049.0,1091.0
-US,3601166278,US-NY-CA-SE,Sempronius,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.975,692.0,704.0
-US,3601166278,US-NY-CA-SE,Sempronius,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.975,692.0,704.0
-US,3601166443,US-NY-CA-SN,Sennett,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.971,1841.0,1892.0
-US,3601166443,US-NY-CA-SN,Sennett,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.971,1841.0,1892.0
+US,3601166278,US-NY-CA-SM,Sempronius,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.975,692.0,704.0
+US,3601166278,US-NY-CA-SM,Sempronius,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.975,692.0,704.0
+US,3601166443,US-NY-CA-SE,Sennett,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.971,1841.0,1892.0
+US,3601166443,US-NY-CA-SE,Sennett,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.971,1841.0,1892.0
 US,3601170376,US-NY-CA-SP,Springport,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.979,1270.0,1378.0
 US,3601170376,US-NY-CA-SP,Springport,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.979,1270.0,1378.0
 US,3601171146,US-NY-CA-ST,Sterling,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.962,2469.0,2515.0
@@ -6183,38 +6183,38 @@ US,3601302605,US-NY-CH-AR,Arkwright,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3
 US,3601302605,US-NY-CH-AR,Arkwright,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.975,1010.0,1227.0
 US,3601311451,US-NY-CH-BU,Busti,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.921,6342.0,6580.0
 US,3601311451,US-NY-CH-BU,Busti,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.921,6342.0,6580.0
-US,3601312639,US-NY-CH-CR,Carroll,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.961,1971.0,2072.0
-US,3601312639,US-NY-CH-CR,Carroll,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.961,1971.0,2072.0
-US,3601313035,US-NY-CH-CA,Cattaraugus,parcel,auto,apn,Ignored,simple,0.0,1.0,0.0
-US,3601313035,US-NY-CH-CA,Cattaraugus,tax,auto,apn,Empty,,0.0,1.0,0.0
-US,3601313860,US-NY-CH-CH,Charlotte,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.948,1144.0,1310.0
-US,3601313860,US-NY-CH-CH,Charlotte,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.948,1144.0,1310.0
-US,3601314069,US-NY-CH-CU,Chautauqua,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.96,5439.0,6502.0
-US,3601314069,US-NY-CH-CU,Chautauqua,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.96,5439.0,6502.0
+US,3601312639,US-NY-CH-CA,Carroll,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.961,1971.0,2072.0
+US,3601312639,US-NY-CH-CA,Carroll,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.961,1971.0,2072.0
+US,3601313035,US-NY-CH-CT,Cattaraugus,parcel,auto,apn,Ignored,simple,0.0,1.0,0.0
+US,3601313035,US-NY-CH-CT,Cattaraugus,tax,auto,apn,Empty,,0.0,1.0,0.0
+US,3601313860,US-NY-CH-CR,Charlotte,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.948,1144.0,1310.0
+US,3601313860,US-NY-CH-CR,Charlotte,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.948,1144.0,1310.0
+US,3601314069,US-NY-CH-CH,Chautauqua,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.96,5439.0,6502.0
+US,3601314069,US-NY-CH-CH,Chautauqua,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.96,5439.0,6502.0
 US,3601314072,US-NY-CH-CL,Chautauqua Lake,parcel,auto,apn,Ignored,simple,0.0,17.0,0.0
 US,3601314072,US-NY-CH-CL,Chautauqua Lake,tax,auto,apn,Empty,,0.0,17.0,0.0
 US,3601315198,US-NY-CH-CC,Cherry Creek,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.932,1026.0,1171.0
 US,3601315198,US-NY-CH-CC,Cherry Creek,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.932,1026.0,1171.0
 US,3601316595,US-NY-CH-CY,Clymer,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.931,1039.0,1175.0
 US,3601316595,US-NY-CH-CY,Clymer,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.931,1039.0,1175.0
-US,3601321105,US-NY-CH-DN,Dunkirk city,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.939,6209.0,6057.0
-US,3601321105,US-NY-CH-DN,Dunkirk city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.939,6209.0,6057.0
-US,3601321116,US-NY-CH-DU,Dunkirk town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.934,1045.0,1084.0
-US,3601321116,US-NY-CH-DU,Dunkirk town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.934,1045.0,1084.0
+US,3601321105,US-NY-CH-DU,Dunkirk city,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.939,6209.0,6057.0
+US,3601321105,US-NY-CH-DU,Dunkirk city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.939,6209.0,6057.0
+US,3601321116,US-NY-CH-DN,Dunkirk town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.934,1045.0,1084.0
+US,3601321116,US-NY-CH-DN,Dunkirk town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.934,1045.0,1084.0
 US,3601323976,US-NY-CH-EE,Ellery,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.952,3831.0,4099.0
 US,3601323976,US-NY-CH-EE,Ellery,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.952,3831.0,4099.0
-US,3601323998,US-NY-CH-EI,Ellicott,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.959,6834.0,6949.0
-US,3601323998,US-NY-CH-EI,Ellicott,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.959,6834.0,6949.0
-US,3601324053,US-NY-CH-EL,Ellington,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.962,1119.0,1330.0
-US,3601324053,US-NY-CH-EL,Ellington,tax,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.962,1119.0,1330.0
+US,3601323998,US-NY-CH-EL,Ellicott,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.959,6834.0,6949.0
+US,3601323998,US-NY-CH-EL,Ellicott,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.959,6834.0,6949.0
+US,3601324053,US-NY-CH-EI,Ellington,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.962,1119.0,1330.0
+US,3601324053,US-NY-CH-EI,Ellington,tax,auto,apn,D3.D2-D1-Dx(.Dx D2),skip_empty: 1,0.962,1119.0,1330.0
 US,3601327606,US-NY-CH-FC,French Creek,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.922,948.0,1171.0
 US,3601327606,US-NY-CH-FC,French Creek,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.922,948.0,1171.0
 US,3601328838,US-NY-CH-GE,Gerry,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.946,1258.0,1508.0
 US,3601328838,US-NY-CH-GE,Gerry,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,1258.0,1508.0
-US,3601332050,US-NY-CH-HN,Hanover,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.98,4926.0,5149.0
-US,3601332050,US-NY-CH-HN,Hanover,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,4926.0,5149.0
-US,3601332248,US-NY-CH-HA,Harmony,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.929,1515.0,1646.0
-US,3601332248,US-NY-CH-HA,Harmony,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.929,1515.0,1646.0
+US,3601332050,US-NY-CH-HA,Hanover,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.98,4926.0,5149.0
+US,3601332050,US-NY-CH-HA,Hanover,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,4926.0,5149.0
+US,3601332248,US-NY-CH-HR,Harmony,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.929,1515.0,1646.0
+US,3601332248,US-NY-CH-HR,Harmony,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.929,1515.0,1646.0
 US,3601338264,US-NY-CH-JA,Jamestown,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.981,14572.0,14604.0
 US,3601338264,US-NY-CH-JA,Jamestown,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,14572.0,14604.0
 US,3601339507,US-NY-CH-KI,Kiantone,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.957,1135.0,1236.0
@@ -6225,16 +6225,16 @@ US,3601352155,US-NY-CH-NH,North Harmony,parcel,auto,apn,Dx,string_lengths: 3 3 4
 US,3601352155,US-NY-CH-NH,North Harmony,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.969,2444.0,2716.0
 US,3601358926,US-NY-CH-PL,Poland,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.958,1463.0,1664.0
 US,3601358926,US-NY-CH-PL,Poland,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.958,1463.0,1664.0
-US,3601358981,US-NY-CH-PM,Pomfret,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.976,6169.0,6461.0
-US,3601358981,US-NY-CH-PM,Pomfret,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,6169.0,6461.0
-US,3601359421,US-NY-CH-PO,Portland,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.96,2947.0,3178.0
-US,3601359421,US-NY-CH-PO,Portland,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.96,2947.0,3178.0
+US,3601358981,US-NY-CH-PO,Pomfret,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.976,6169.0,6461.0
+US,3601358981,US-NY-CH-PO,Pomfret,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,6169.0,6461.0
+US,3601359421,US-NY-CH-PR,Portland,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.96,2947.0,3178.0
+US,3601359421,US-NY-CH-PR,Portland,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.96,2947.0,3178.0
 US,3601361885,US-NY-CH-RI,Ripley,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.93,2062.0,2229.0
 US,3601361885,US-NY-CH-RI,Ripley,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.93,2062.0,2229.0
-US,3601366916,US-NY-CH-SE,Sheridan,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.948,2176.0,2336.0
-US,3601366916,US-NY-CH-SE,Sheridan,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.948,2176.0,2336.0
-US,3601366960,US-NY-CH-SH,Sherman,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.947,1126.0,1254.0
-US,3601366960,US-NY-CH-SH,Sherman,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.947,1126.0,1254.0
+US,3601366916,US-NY-CH-SH,Sheridan,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.948,2176.0,2336.0
+US,3601366916,US-NY-CH-SH,Sheridan,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.948,2176.0,2336.0
+US,3601366960,US-NY-CH-SE,Sherman,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.947,1126.0,1254.0
+US,3601366960,US-NY-CH-SE,Sherman,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.947,1126.0,1254.0
 US,3601371476,US-NY-CH-ST,Stockton,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.946,1982.0,2154.0
 US,3601371476,US-NY-CH-ST,Stockton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,1982.0,2154.0
 US,3601377530,US-NY-CH-VI,Villenova,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.93,1029.0,1109.0
@@ -6251,10 +6251,10 @@ US,3601512947,US-NY-CE-CA,Catlin,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_
 US,3601512947,US-NY-CE-CA,Catlin,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1391.0,1470.0
 US,3601515077,US-NY-CE-CH,Chemung,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.995,1462.0,1501.0
 US,3601515077,US-NY-CE-CH,Chemung,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.995,1462.0,1501.0
-US,3601524229,US-NY-CE-EM,Elmira city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,9671.0,9588.0
-US,3601524229,US-NY-CE-EM,Elmira city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,9671.0,9588.0
-US,3601524240,US-NY-CE-EL,Elmira town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,3759.0,3798.0
-US,3601524240,US-NY-CE-EL,Elmira town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,3759.0,3798.0
+US,3601524229,US-NY-CE-EL,Elmira city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,9671.0,9588.0
+US,3601524229,US-NY-CE-EL,Elmira city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,9671.0,9588.0
+US,3601524240,US-NY-CE-EM,Elmira town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,3759.0,3798.0
+US,3601524240,US-NY-CE-EM,Elmira town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,3759.0,3798.0
 US,3601524636,US-NY-CE-ER,Erin,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,1233.0,1263.0
 US,3601524636,US-NY-CE-ER,Erin,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,1233.0,1263.0
 US,3601535705,US-NY-CE-HO,Horseheads,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,8335.0,8461.0
@@ -6287,10 +6287,10 @@ US,3601749957,US-NY-CN-NB,New Berlin,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),s
 US,3601749957,US-NY-CN-NB,New Berlin,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.838,1880.0,1763.0
 US,3601753297,US-NY-CN-NN,North Norwich,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.865,1120.0,1092.0
 US,3601753297,US-NY-CN-NN,North Norwich,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.865,1120.0,1092.0
-US,3601753979,US-NY-CN-NR,Norwich city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,2556.0,2547.0
-US,3601753979,US-NY-CN-NR,Norwich city,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.976,2556.0,2547.0
-US,3601753990,US-NY-CN-NO,Norwich town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.88,2215.0,2208.0
-US,3601753990,US-NY-CN-NO,Norwich town,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.88,2215.0,2208.0
+US,3601753979,US-NY-CN-NO,Norwich city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.976,2556.0,2547.0
+US,3601753979,US-NY-CN-NO,Norwich city,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.976,2556.0,2547.0
+US,3601753990,US-NY-CN-NR,Norwich town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.88,2215.0,2208.0
+US,3601753990,US-NY-CN-NR,Norwich town,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.88,2215.0,2208.0
 US,3601755717,US-NY-CN-OT,Otselic,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.828,885.0,845.0
 US,3601755717,US-NY-CN-OT,Otselic,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.828,885.0,845.0
 US,3601755959,US-NY-CN-OX,Oxford,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.846,2712.0,2532.0
@@ -6305,10 +6305,10 @@ US,3601759817,US-NY-CN-PR,Preston,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip
 US,3601759817,US-NY-CN-PR,Preston,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.863,853.0,820.0
 US,3601766894,US-NY-CN-SH,Sherburne,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.876,2182.0,2135.0
 US,3601766894,US-NY-CN-SH,Sherburne,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.876,2182.0,2135.0
-US,3601768055,US-NY-CN-SI,Smithville,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.786,1202.0,1109.0
-US,3601768055,US-NY-CN-SI,Smithville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.786,1202.0,1109.0
-US,3601768110,US-NY-CN-SM,Smyrna,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.848,1161.0,1166.0
-US,3601768110,US-NY-CN-SM,Smyrna,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.848,1161.0,1166.0
+US,3601768055,US-NY-CN-SM,Smithville,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.786,1202.0,1109.0
+US,3601768055,US-NY-CN-SM,Smithville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.786,1202.0,1109.0
+US,3601768110,US-NY-CN-SY,Smyrna,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.848,1161.0,1166.0
+US,3601768110,US-NY-CN-SY,Smyrna,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.848,1161.0,1166.0
 US,3601901583,US-NY-CL-AL,Altona,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.99,1851.0,1957.0
 US,3601901583,US-NY-CL-AL,Altona,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.99,1851.0,1957.0
 US,3601903221,US-NY-CL-AS,Au Sable,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.998,1650.0,1697.0
@@ -6373,18 +6373,18 @@ US,3602142917,US-NY-CO-LI,Livingston,parcel,auto,apn,Empty,,0.0,1904.0,1982.0
 US,3602142917,US-NY-CO-LI,Livingston,tax,auto,apn,Ignored,simple,0.0,1904.0,1982.0
 US,3602150452,US-NY-CO-NL,New Lebanon,parcel,auto,apn,Empty,,0.0,1495.0,1524.0
 US,3602150452,US-NY-CO-NL,New Lebanon,tax,auto,apn,Ignored,simple,0.0,1495.0,1524.0
-US,3602171443,US-NY-CO-SO,Stockport,parcel,auto,apn,Empty,,0.0,1238.0,1257.0
-US,3602171443,US-NY-CO-SO,Stockport,tax,auto,apn,Ignored,simple,0.0,1238.0,1257.0
-US,3602171850,US-NY-CO-ST,Stuyvesant,parcel,auto,apn,Empty,,0.0,1069.0,1106.0
-US,3602171850,US-NY-CO-ST,Stuyvesant,tax,auto,apn,Ignored,simple,0.0,1069.0,1106.0
+US,3602171443,US-NY-CO-ST,Stockport,parcel,auto,apn,Empty,,0.0,1238.0,1257.0
+US,3602171443,US-NY-CO-ST,Stockport,tax,auto,apn,Ignored,simple,0.0,1238.0,1257.0
+US,3602171850,US-NY-CO-SU,Stuyvesant,parcel,auto,apn,Empty,,0.0,1069.0,1106.0
+US,3602171850,US-NY-CO-SU,Stuyvesant,tax,auto,apn,Ignored,simple,0.0,1069.0,1106.0
 US,3602173077,US-NY-CO-TA,Taghkanic,parcel,auto,apn,Empty,,0.0,1265.0,1242.0
 US,3602173077,US-NY-CO-TA,Taghkanic,tax,auto,apn,Ignored,simple,0.0,1265.0,1242.0
 US,3602315748,US-NY-CR-CI,Cincinnatus,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,696.0,708.0
 US,3602315748,US-NY-CR-CI,Cincinnatus,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.97,696.0,708.0
-US,3602318388,US-NY-CR-CR,Cortland,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.994,4918.0,5004.0
-US,3602318388,US-NY-CR-CR,Cortland,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.994,4918.0,5004.0
-US,3602318421,US-NY-CR-CO,Cortlandville,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.953,3935.0,4085.0
-US,3602318421,US-NY-CR-CO,Cortlandville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.953,3935.0,4085.0
+US,3602318388,US-NY-CR-CO,Cortland,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.994,4918.0,5004.0
+US,3602318388,US-NY-CR-CO,Cortland,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.994,4918.0,5004.0
+US,3602318421,US-NY-CR-CR,Cortlandville,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.953,3935.0,4085.0
+US,3602318421,US-NY-CR-CR,Cortlandville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.953,3935.0,4085.0
 US,3602319499,US-NY-CR-CU,Cuyler,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.972,709.0,748.0
 US,3602319499,US-NY-CR-CU,Cuyler,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.972,709.0,748.0
 US,3602327496,US-NY-CR-FR,Freetown,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.988,575.0,604.0
@@ -6419,10 +6419,10 @@ US,3602516793,US-NY-DE-CO,Colchester,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),s
 US,3602516793,US-NY-DE-CO,Colchester,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.987,2953.0,2977.0
 US,3602519763,US-NY-DE-DA,Davenport,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,2031.0,2027.0
 US,3602519763,US-NY-DE-DA,Davenport,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.977,2031.0,2027.0
-US,3602520137,US-NY-DE-DL,Delhi,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,2167.0,2243.0
-US,3602520137,US-NY-DE-DL,Delhi,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.997,2167.0,2243.0
-US,3602520357,US-NY-DE-DE,Deposit,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,1523.0,1564.0
-US,3602520357,US-NY-DE-DE,Deposit,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,1523.0,1564.0
+US,3602520137,US-NY-DE-DE,Delhi,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,2167.0,2243.0
+US,3602520137,US-NY-DE-DE,Delhi,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.997,2167.0,2243.0
+US,3602520357,US-NY-DE-DP,Deposit,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,1523.0,1564.0
+US,3602520357,US-NY-DE-DP,Deposit,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,1523.0,1564.0
 US,3602527232,US-NY-DE-FR,Franklin,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.987,2155.0,2202.0
 US,3602527232,US-NY-DE-FR,Franklin,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.987,2155.0,2202.0
 US,3602531698,US-NY-DE-HM,Hamden,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.989,1398.0,1480.0
@@ -6477,22 +6477,22 @@ US,3602758156,US-NY-DU-PP,Pine Plains,parcel,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1
 US,3602758156,US-NY-DU-PP,Pine Plains,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.998,1652.0,1685.0
 US,3602758695,US-NY-DU-PV,Pleasant Valley,parcel,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.998,3424.0,3520.0
 US,3602758695,US-NY-DU-PV,Pleasant Valley,tax,auto,apn,Ignored,simple,0.998,3424.0,3520.0
-US,3602759641,US-NY-DU-PO,Poughkeepsie city,parcel,auto,apn,Ignored,simple,0.995,7454.0,8270.0
-US,3602759641,US-NY-DU-PO,Poughkeepsie city,tax,auto,apn,Ignored,simple,0.995,7454.0,8270.0
-US,3602759652,US-NY-DU-PG,Poughkeepsie town,parcel,auto,apn,Ignored,simple,0.997,12305.0,13209.0
-US,3602759652,US-NY-DU-PG,Poughkeepsie town,tax,auto,apn,Ignored,simple,0.997,12305.0,13209.0
-US,3602760905,US-NY-DU-RE,Red Hook,parcel,auto,apn,Ignored,simple,0.996,4222.0,4358.0
-US,3602760905,US-NY-DU-RE,Red Hook,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.996,4222.0,4358.0
-US,3602761357,US-NY-DU-RH,Rhinebeck,parcel,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.996,3803.0,3877.0
-US,3602761357,US-NY-DU-RH,Rhinebeck,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.996,3803.0,3877.0
+US,3602759641,US-NY-DU-PG,Poughkeepsie city,parcel,auto,apn,Ignored,simple,0.995,7454.0,8270.0
+US,3602759641,US-NY-DU-PG,Poughkeepsie city,tax,auto,apn,Ignored,simple,0.995,7454.0,8270.0
+US,3602759652,US-NY-DU-PO,Poughkeepsie town,parcel,auto,apn,Ignored,simple,0.997,12305.0,13209.0
+US,3602759652,US-NY-DU-PO,Poughkeepsie town,tax,auto,apn,Ignored,simple,0.997,12305.0,13209.0
+US,3602760905,US-NY-DU-RH,Red Hook,parcel,auto,apn,Ignored,simple,0.996,4222.0,4358.0
+US,3602760905,US-NY-DU-RH,Red Hook,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.996,4222.0,4358.0
+US,3602761357,US-NY-DU-RI,Rhinebeck,parcel,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.996,3803.0,3877.0
+US,3602761357,US-NY-DU-RI,Rhinebeck,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.996,3803.0,3877.0
 US,3602770662,US-NY-DU-ST,Stanford,parcel,auto,apn,Sx-Sx-Sx-Sx,split_groups: 2|1 3|1 & skip_empty: 1,0.993,2159.0,2196.0
 US,3602770662,US-NY-DU-ST,Stanford,tax,auto,apn,Sx-Sx-Sx-Sx,split_groups: 2|1 3|1 & skip_empty: 1,0.993,2159.0,2196.0
 US,3602776166,US-NY-DU-UV,Union Vale,parcel,auto,apn,Sx-Sx-Sx-Sx,skip_empty: 1,0.966,2045.0,2035.0
 US,3602776166,US-NY-DU-UV,Union Vale,tax,auto,apn,Sx-Sx-Sx-Sx,split_groups: 2|. 2_1|. & skip_empty: 1,0.966,2045.0,2035.0
-US,3602778157,US-NY-DU-WP,Wappinger,parcel,auto,apn,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1,0.996,8355.0,9788.0
-US,3602778157,US-NY-DU-WP,Wappinger,tax,auto,apn,Sx-Sx-Sx-Sx,skip_empty: 1,0.996,8355.0,9788.0
-US,3602778388,US-NY-DU-WA,Washington,parcel,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.993,2342.0,2467.0
-US,3602778388,US-NY-DU-WA,Washington,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.993,2342.0,2467.0
+US,3602778157,US-NY-DU-WA,Wappinger,parcel,auto,apn,Sx-Sx-Sx-Sx,drop_cols: 3 & skip_empty: 1,0.996,8355.0,9788.0
+US,3602778157,US-NY-DU-WA,Wappinger,tax,auto,apn,Sx-Sx-Sx-Sx,skip_empty: 1,0.996,8355.0,9788.0
+US,3602778388,US-NY-DU-WS,Washington,parcel,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.993,2342.0,2467.0
+US,3602778388,US-NY-DU-WS,Washington,tax,auto,apn,Sx-Sx-Sx-Sx,keep_length: 1 2 3 & merge_after: 0 0 0 & skip_empty: 1,0.993,2342.0,2467.0
 US,3602901099,US-NY-ER-AL,Alden,parcel,manual,apn,^([0-9]{6})([0-9]{3})([0-9]{2})([0-9]{5})([0-9]{3})([1-9]*)0*?$,drop_cols: 0 & skip_empty: 1,,,
 US,3602901099,US-NY-ER-AL,Alden,tax,manual,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,,,
 US,3602902000,US-NY-ER-AM,Amherst,parcel,manual,apn,Sx,string_lengths: 6 3 2 5 3 1 1 1 & merge_after: 5 5 & skip_empty: 1,,,
@@ -6543,12 +6543,12 @@ US,3602955277,US-NY-ER-OP,Orchard Park,parcel,auto,apn,Dx,split_groups: 0|6 0_1|
 US,3602955277,US-NY-ER-OP,Orchard Park,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.937,11819.0,12319.0
 US,3602965277,US-NY-ER-SA,Sardinia,parcel,auto,apn,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.747,1749.0,1800.0
 US,3602965277,US-NY-ER-SA,Sardinia,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.747,1749.0,1800.0
-US,3602974166,US-NY-ER-TO,Tonawanda city,parcel,auto,apn,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.969,6395.0,6441.0
-US,3602974166,US-NY-ER-TO,Tonawanda city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.969,6395.0,6441.0
-US,3602975000,US-NY-ER-TA,Tonawanda town,parcel,manual,apn,^([0-9]{6})([0-9]{3})([0-9]{2})([0-9]{5})([0-9]{3})([1-9]*)0*?$,drop_cols: 0 & skip_empty: 1,,,
-US,3602975000,US-NY-ER-TA,Tonawanda town,tax,manual,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,,,
-US,3602975011,US-NY-ER-TN,Tonawanda,parcel,auto,apn,Ignored,simple,0.0,1.0,0.0
-US,3602975011,US-NY-ER-TN,Tonawanda,tax,auto,apn,Empty,,0.0,1.0,0.0
+US,3602974166,US-NY-ER-TN,Tonawanda city,parcel,auto,apn,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.969,6395.0,6441.0
+US,3602974166,US-NY-ER-TN,Tonawanda city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.969,6395.0,6441.0
+US,3602975000,US-NY-ER-TO,Tonawanda town,parcel,manual,apn,^([0-9]{6})([0-9]{3})([0-9]{2})([0-9]{5})([0-9]{3})([1-9]*)0*?$,drop_cols: 0 & skip_empty: 1,,,
+US,3602975000,US-NY-ER-TO,Tonawanda town,tax,manual,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,,,
+US,3602975011,US-NY-ER-TA,Tonawanda,parcel,auto,apn,Ignored,simple,0.0,1.0,0.0
+US,3602975011,US-NY-ER-TA,Tonawanda,tax,auto,apn,Empty,,0.0,1.0,0.0
 US,3602977871,US-NY-ER-WA,Wales,parcel,auto,apn,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.71,1492.0,1580.0
 US,3602977871,US-NY-ER-WA,Wales,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.71,1492.0,1580.0
 US,3602980918,US-NY-ER-WS,West Seneca,parcel,auto,apn,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.935,18559.0,19250.0
@@ -6585,20 +6585,20 @@ US,3603173891,US-NY-ES-TI,Ticonderoga,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),
 US,3603173891,US-NY-ES-TI,Ticonderoga,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,3289.0,3375.0
 US,3603180775,US-NY-ES-WE,Westport,parcel,auto,apn,Ignored,simple,0.995,1333.0,1405.0
 US,3603180775,US-NY-ES-WE,Westport,tax,auto,apn,Ignored,simple,0.995,1333.0,1405.0
-US,3603182271,US-NY-ES-WL,Willsboro,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,2176.0,2231.0
-US,3603182271,US-NY-ES-WL,Willsboro,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,2176.0,2231.0
-US,3603182315,US-NY-ES-WI,Wilmington,parcel,auto,apn,Ignored,simple,0.98,1349.0,1368.0
-US,3603182315,US-NY-ES-WI,Wilmington,tax,auto,apn,Ignored,simple,0.98,1349.0,1368.0
+US,3603182271,US-NY-ES-WI,Willsboro,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,2176.0,2231.0
+US,3603182271,US-NY-ES-WI,Willsboro,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,2176.0,2231.0
+US,3603182315,US-NY-ES-WL,Wilmington,parcel,auto,apn,Ignored,simple,0.98,1349.0,1368.0
+US,3603182315,US-NY-ES-WL,Wilmington,tax,auto,apn,Ignored,simple,0.98,1349.0,1368.0
 US,3603304319,US-NY-FR-BA,Bangor,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,1361.0,1439.0
 US,3603304319,US-NY-FR-BA,Bangor,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,1361.0,1439.0
 US,3603305716,US-NY-FR-BE,Bellmont,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2124.0,2183.0
 US,3603305716,US-NY-FR-BE,Bellmont,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2124.0,2183.0
 US,3603307278,US-NY-FR-BO,Bombay,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,917.0,954.0
 US,3603307278,US-NY-FR-BO,Bombay,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,917.0,954.0
-US,3603307839,US-NY-FR-BR,Brandon,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.98,849.0,867.0
-US,3603307839,US-NY-FR-BR,Brandon,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,849.0,867.0
-US,3603308213,US-NY-FR-BI,Brighton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,1081.0,1102.0
-US,3603308213,US-NY-FR-BI,Brighton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,1081.0,1102.0
+US,3603307839,US-NY-FR-BN,Brandon,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.98,849.0,867.0
+US,3603307839,US-NY-FR-BN,Brandon,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,849.0,867.0
+US,3603308213,US-NY-FR-BR,Brighton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,1081.0,1102.0
+US,3603308213,US-NY-FR-BR,Brighton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,1081.0,1102.0
 US,3603311165,US-NY-FR-BU,Burke,parcel,auto,apn,Ignored,simple,0.989,1087.0,1140.0
 US,3603311165,US-NY-FR-BU,Burke,tax,auto,apn,Ignored,simple,0.989,1087.0,1140.0
 US,3603313992,US-NY-FR-CH,Chateaugay,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,1529.0,1674.0
@@ -6639,10 +6639,10 @@ US,3603524603,US-NY-FU-EP,Ephratah,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),ski
 US,3603524603,US-NY-FU-EP,Ephratah,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.996,1269.0,1333.0
 US,3603529443,US-NY-FU-GL,Gloversville,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.998,5856.0,5913.0
 US,3603529443,US-NY-FU-GL,Gloversville,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.998,5856.0,5913.0
-US,3603538781,US-NY-FU-JO,Johnstown city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,3639.0,3662.0
-US,3603538781,US-NY-FU-JO,Johnstown city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,3639.0,3662.0
-US,3603538792,US-NY-FU-JH,Johnstown town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,4253.0,4384.0
-US,3603538792,US-NY-FU-JH,Johnstown town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,4253.0,4384.0
+US,3603538781,US-NY-FU-JH,Johnstown city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,3639.0,3662.0
+US,3603538781,US-NY-FU-JH,Johnstown city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,3639.0,3662.0
+US,3603538792,US-NY-FU-JO,Johnstown town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,4253.0,4384.0
+US,3603538792,US-NY-FU-JO,Johnstown town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,4253.0,4384.0
 US,3603546217,US-NY-FU-MA,Mayfield,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.987,4018.0,4101.0
 US,3603546217,US-NY-FU-MA,Mayfield,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.987,4018.0,4101.0
 US,3603551407,US-NY-FU-NO,Northampton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2498.0,2923.0
@@ -6653,18 +6653,18 @@ US,3603557353,US-NY-FU-PE,Perth,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_e
 US,3603557353,US-NY-FU-PE,Perth,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.987,1736.0,1785.0
 US,3603571784,US-NY-FU-ST,Stratford,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.982,1117.0,1136.0
 US,3603571784,US-NY-FU-ST,Stratford,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.982,1117.0,1136.0
-US,3603700474,US-NY-GE-AL,Alabama,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.997,1069.0,1130.0
-US,3603700474,US-NY-GE-AL,Alabama,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,1069.0,1130.0
-US,3603701165,US-NY-GE-AE,Alexander,parcel,auto,apn,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,0.883,1522.0,1451.0
-US,3603701165,US-NY-GE-AE,Alexander,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.883,1522.0,1451.0
+US,3603700474,US-NY-GE-AA,Alabama,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.997,1069.0,1130.0
+US,3603700474,US-NY-GE-AA,Alabama,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,1069.0,1130.0
+US,3603701165,US-NY-GE-AL,Alexander,parcel,auto,apn,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,0.883,1522.0,1451.0
+US,3603701165,US-NY-GE-AL,Alexander,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.883,1522.0,1451.0
 US,3603704715,US-NY-GE-BA,Batavia city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,5537.0,5531.0
 US,3603704715,US-NY-GE-BA,Batavia city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,5537.0,5531.0
 US,3603704726,US-NY-GE-BT,Batavia town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.902,3089.0,3094.0
 US,3603704726,US-NY-GE-BT,Batavia town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.902,3089.0,3094.0
-US,3603706057,US-NY-GE-BR,Bergen,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.978,1538.0,1667.0
-US,3603706057,US-NY-GE-BR,Bergen,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,1538.0,1667.0
-US,3603706266,US-NY-GE-BE,Bethany,parcel,auto,apn,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,0.9,1049.0,1017.0
-US,3603706266,US-NY-GE-BE,Bethany,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.9,1049.0,1017.0
+US,3603706057,US-NY-GE-BE,Bergen,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.978,1538.0,1667.0
+US,3603706057,US-NY-GE-BE,Bergen,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,1538.0,1667.0
+US,3603706266,US-NY-GE-BH,Bethany,parcel,auto,apn,Dx.(A1)-Dx-Dx(.Dx Dx),merge_after: 4 & skip_empty: 1,0.9,1049.0,1017.0
+US,3603706266,US-NY-GE-BH,Bethany,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.9,1049.0,1017.0
 US,3603711572,US-NY-GE-BY,Byron,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.988,1338.0,1352.0
 US,3603711572,US-NY-GE-BY,Byron,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,1338.0,1352.0
 US,3603719719,US-NY-GE-DA,Darien,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.892,1702.0,1837.0
@@ -7043,10 +7043,10 @@ US,3606539804,US-NY-OE-KI,Kirkland,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),ski
 US,3606539804,US-NY-OE-KI,Kirkland,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.962,3546.0,3562.0
 US,3606541762,US-NY-OE-LE,Lee,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.96,3172.0,3168.0
 US,3606541762,US-NY-OE-LE,Lee,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.96,3172.0,3168.0
-US,3606545535,US-NY-OE-MR,Marcy,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,2855.0,2888.0
-US,3606545535,US-NY-OE-MR,Marcy,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.946,2855.0,2888.0
-US,3606545755,US-NY-OE-MA,Marshall,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,1145.0,1180.0
-US,3606545755,US-NY-OE-MA,Marshall,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,1145.0,1180.0
+US,3606545535,US-NY-OE-MA,Marcy,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,2855.0,2888.0
+US,3606545535,US-NY-OE-MA,Marcy,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.946,2855.0,2888.0
+US,3606545755,US-NY-OE-MR,Marshall,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,1145.0,1180.0
+US,3606545755,US-NY-OE-MR,Marshall,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.946,1145.0,1180.0
 US,3606550309,US-NY-OE-NH,New Hartford,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.967,8921.0,9200.0
 US,3606550309,US-NY-OE-NH,New Hartford,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.967,8921.0,9200.0
 US,3606556330,US-NY-OE-PA,Paris,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.961,2152.0,2135.0
@@ -7063,10 +7063,10 @@ US,3606575280,US-NY-OE-TR,Trenton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip
 US,3606575280,US-NY-OE-TR,Trenton,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.948,2339.0,2380.0
 US,3606576540,US-NY-OE-UT,Utica,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,21533.0,21618.0
 US,3606576540,US-NY-OE-UT,Utica,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,21533.0,21618.0
-US,3606577123,US-NY-OE-VR,Vernon,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,2463.0,2522.0
-US,3606577123,US-NY-OE-VR,Vernon,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,2463.0,2522.0
-US,3606577178,US-NY-OE-VE,Verona,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.966,3404.0,3441.0
-US,3606577178,US-NY-OE-VE,Verona,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.966,3404.0,3441.0
+US,3606577123,US-NY-OE-VE,Vernon,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,2463.0,2522.0
+US,3606577123,US-NY-OE-VE,Vernon,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.974,2463.0,2522.0
+US,3606577178,US-NY-OE-VR,Verona,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.966,3404.0,3441.0
+US,3606577178,US-NY-OE-VR,Verona,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.966,3404.0,3441.0
 US,3606577486,US-NY-OE-VI,Vienna,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.962,4114.0,4098.0
 US,3606577486,US-NY-OE-VI,Vienna,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.962,4114.0,4098.0
 US,3606579862,US-NY-OE-WS,Western,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.944,1329.0,1330.0
@@ -7119,12 +7119,12 @@ US,3606776760,US-NY-ON-VB,Van Buren,parcel,auto,apn,Ignored,simple,0.99,5309.0,6
 US,3606776760,US-NY-ON-VB,Van Buren,tax,auto,apn,Ignored,simple,0.99,5309.0,6001.0
 US,3606908378,US-NY-OA-BR,Bristol,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.981,1428.0,1499.0
 US,3606908378,US-NY-OA-BR,Bristol,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,1428.0,1499.0
-US,3606912100,US-NY-OA-CA,Canadice,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,1313.0,1349.0
-US,3606912100,US-NY-OA-CA,Canadice,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.97,1313.0,1349.0
+US,3606912100,US-NY-OA-CD,Canadice,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.97,1313.0,1349.0
+US,3606912100,US-NY-OA-CD,Canadice,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.97,1313.0,1349.0
 US,3606912144,US-NY-OA-CN,Canandaigua city,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.982,3647.0,3942.0
 US,3606912144,US-NY-OA-CN,Canandaigua city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.982,3647.0,3942.0
-US,3606912155,US-NY-OA-CD,Canandaigua town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.978,4730.0,4963.0
-US,3606912155,US-NY-OA-CD,Canandaigua town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,4730.0,4963.0
+US,3606912155,US-NY-OA-CA,Canandaigua town,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.978,4730.0,4963.0
+US,3606912155,US-NY-OA-CA,Canandaigua town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,4730.0,4963.0
 US,3606921699,US-NY-OA-EB,East Bloomfield,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.959,1759.0,1804.0
 US,3606921699,US-NY-OA-EB,East Bloomfield,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.959,1759.0,1804.0
 US,3606925406,US-NY-OA-FA,Farmington,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.985,4443.0,4828.0
@@ -7171,20 +7171,20 @@ US,3607131907,US-NY-OR-HA,Hamptonburgh,parcel,auto,apn2,Dx,split_groups: 0|6 0_1
 US,3607131907,US-NY-OR-HA,Hamptonburgh,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.782,2339.0,2312.0
 US,3607134550,US-NY-OR-HI,Highlands,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.713,1944.0,2179.0
 US,3607134550,US-NY-OR-HI,Highlands,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.713,1944.0,2179.0
-US,3607147042,US-NY-OR-MD,Middletown,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.782,7452.0,8704.0
-US,3607147042,US-NY-OR-MD,Middletown,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.782,7452.0,8704.0
-US,3607147713,US-NY-OR-MI,Minisink,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.759,2046.0,2033.0
-US,3607147713,US-NY-OR-MI,Minisink,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.759,2046.0,2033.0
-US,3607147999,US-NY-OR-MO,Monroe,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.81,7462.0,13010.0
-US,3607147999,US-NY-OR-MO,Monroe,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.81,7462.0,13010.0
-US,3607148153,US-NY-OR-MN,Montgomery,parcel,manual,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,,,
-US,3607148153,US-NY-OR-MN,Montgomery,tax,manual,apn,Sx-Sx-Sx(.Sx),skip_empty: 1,,,
+US,3607147042,US-NY-OR-MI,Middletown,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.782,7452.0,8704.0
+US,3607147042,US-NY-OR-MI,Middletown,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.782,7452.0,8704.0
+US,3607147713,US-NY-OR-MS,Minisink,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.759,2046.0,2033.0
+US,3607147713,US-NY-OR-MS,Minisink,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.759,2046.0,2033.0
+US,3607147999,US-NY-OR-MN,Monroe,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.81,7462.0,13010.0
+US,3607147999,US-NY-OR-MN,Monroe,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.81,7462.0,13010.0
+US,3607148153,US-NY-OR-MO,Montgomery,parcel,manual,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,,,
+US,3607148153,US-NY-OR-MO,Montgomery,tax,manual,apn,Sx-Sx-Sx(.Sx),skip_empty: 1,,,
 US,3607148857,US-NY-OR-MH,Mount Hope,parcel,manual,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,,,
 US,3607148857,US-NY-OR-MH,Mount Hope,tax,manual,apn,Sx-Sx-Sx(.Sx),skip_empty: 1,,,
-US,3607150034,US-NY-OR-NE,Newburgh city,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.845,6409.0,6953.0
-US,3607150034,US-NY-OR-NE,Newburgh city,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.845,6409.0,6953.0
-US,3607150045,US-NY-OR-NB,Newburgh town,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.841,12052.0,13287.0
-US,3607150045,US-NY-OR-NB,Newburgh town,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.841,12052.0,13287.0
+US,3607150034,US-NY-OR-NB,Newburgh city,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.845,6409.0,6953.0
+US,3607150034,US-NY-OR-NB,Newburgh city,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.845,6409.0,6953.0
+US,3607150045,US-NY-OR-NE,Newburgh town,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.841,12052.0,13287.0
+US,3607150045,US-NY-OR-NE,Newburgh town,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.841,12052.0,13287.0
 US,3607150848,US-NY-OR-NW,New Windsor,parcel,auto,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,0.881,7882.0,9621.0
 US,3607150848,US-NY-OR-NW,New Windsor,tax,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.881,7882.0,9621.0
 US,3607159388,US-NY-OR-PJ,Port Jervis,parcel,manual,apn2,Dx,split_groups: 0|6 0_1|3 0_1_1|2 0_1_1_1|5 0_1_1_1_1|3 0_1_1_1_1_1|1 0_1_1_1_1_1_1|1 & drop_cols: 0_0 & skip_empty: 1,,,
@@ -7247,10 +7247,10 @@ US,3607555574,US-NY-OS-OS,Oswego city,parcel,auto,apn,Ignored,simple,0.998,6851.
 US,3607555574,US-NY-OS-OS,Oswego city,tax,auto,apn,Ignored,simple,0.998,6851.0,7019.0
 US,3607555585,US-NY-OS-OW,Oswego town,parcel,auto,apn,Ignored,simple,0.992,2162.0,2239.0
 US,3607555585,US-NY-OS-OW,Oswego town,tax,auto,apn,Ignored,simple,0.992,2162.0,2239.0
-US,3607556154,US-NY-OS-PL,Palermo,parcel,auto,apn,Ignored,simple,0.986,1863.0,1891.0
-US,3607556154,US-NY-OS-PL,Palermo,tax,auto,apn,Ignored,simple,0.986,1863.0,1891.0
-US,3607556352,US-NY-OS-PA,Parish,parcel,auto,apn,Ignored,simple,0.993,1451.0,1483.0
-US,3607556352,US-NY-OS-PA,Parish,tax,auto,apn,Ignored,simple,0.993,1451.0,1483.0
+US,3607556154,US-NY-OS-PA,Palermo,parcel,auto,apn,Ignored,simple,0.986,1863.0,1891.0
+US,3607556154,US-NY-OS-PA,Palermo,tax,auto,apn,Ignored,simple,0.986,1863.0,1891.0
+US,3607556352,US-NY-OS-PR,Parish,parcel,auto,apn,Ignored,simple,0.993,1451.0,1483.0
+US,3607556352,US-NY-OS-PR,Parish,tax,auto,apn,Ignored,simple,0.993,1451.0,1483.0
 US,3607560873,US-NY-OS-RE,Redfield,parcel,auto,apn,Ignored,simple,0.965,1294.0,1266.0
 US,3607560873,US-NY-OS-RE,Redfield,tax,auto,apn,Ignored,simple,0.965,1294.0,1266.0
 US,3607561533,US-NY-OS-RI,Richland,parcel,auto,apn,Ignored,simple,0.987,3322.0,3374.0
@@ -7293,10 +7293,10 @@ US,3607748494,US-NY-OT-MO,Morris,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty:
 US,3607748494,US-NY-OT-MO,Morris,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1235.0,1263.0
 US,3607750485,US-NY-OT-NL,New Lisbon,parcel,auto,apn,Ignored,simple,0.995,1063.0,1096.0
 US,3607750485,US-NY-OT-NL,New Lisbon,tax,auto,apn,Ignored,simple,0.995,1063.0,1096.0
-US,3607754881,US-NY-OT-OE,Oneonta city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.999,3510.0,3579.0
-US,3607754881,US-NY-OT-OE,Oneonta city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.999,3510.0,3579.0
-US,3607754892,US-NY-OT-ON,Oneonta town,parcel,auto,apn,Ignored,simple,0.995,2587.0,2617.0
-US,3607754892,US-NY-OT-ON,Oneonta town,tax,auto,apn,Ignored,simple,0.995,2587.0,2617.0
+US,3607754881,US-NY-OT-ON,Oneonta city,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.999,3510.0,3579.0
+US,3607754881,US-NY-OT-ON,Oneonta city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.999,3510.0,3579.0
+US,3607754892,US-NY-OT-OE,Oneonta town,parcel,auto,apn,Ignored,simple,0.995,2587.0,2617.0
+US,3607754892,US-NY-OT-OE,Oneonta town,tax,auto,apn,Ignored,simple,0.995,2587.0,2617.0
 US,3607755629,US-NY-OT-OT,Otego,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.992,1841.0,1876.0
 US,3607755629,US-NY-OT-OT,Otego,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.992,1841.0,1876.0
 US,3607755695,US-NY-OT-OS,Otsego,parcel,auto,apn,Ignored,simple,0.992,2795.0,2879.0
@@ -7355,10 +7355,10 @@ US,3608361148,US-NY-RE-RE,Rensselaer,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),s
 US,3608361148,US-NY-RE-RE,Rensselaer,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.948,3020.0,3204.0
 US,3608365013,US-NY-RE-SL,Sand Lake,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.858,4214.0,4022.0
 US,3608365013,US-NY-RE-SL,Sand Lake,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.858,4214.0,4022.0
-US,3608365486,US-NY-RE-SC,Schaghticoke,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.868,3858.0,3715.0
-US,3608365486,US-NY-RE-SC,Schaghticoke,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.868,3858.0,3715.0
-US,3608365541,US-NY-RE-SH,Schodack,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.9,6074.0,5908.0
-US,3608365541,US-NY-RE-SH,Schodack,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.9,6074.0,5908.0
+US,3608365486,US-NY-RE-SH,Schaghticoke,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.868,3858.0,3715.0
+US,3608365486,US-NY-RE-SH,Schaghticoke,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.868,3858.0,3715.0
+US,3608365541,US-NY-RE-SC,Schodack,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.9,6074.0,5908.0
+US,3608365541,US-NY-RE-SC,Schodack,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.9,6074.0,5908.0
 US,3608371102,US-NY-RE-ST,Stephentown,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.818,1901.0,1793.0
 US,3608371102,US-NY-RE-ST,Stephentown,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.818,1901.0,1793.0
 US,3608375484,US-NY-RE-TR,Troy,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.979,13040.0,13469.0
@@ -7379,10 +7379,10 @@ US,3608907938,US-NY-SL-BR,Brasher,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip
 US,3608907938,US-NY-SL-BR,Brasher,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.992,1981.0,2009.0
 US,3608912342,US-NY-SL-CA,Canton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,3833.0,3948.0
 US,3608912342,US-NY-SL-CA,Canton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,3833.0,3948.0
-US,3608915792,US-NY-SL-CL,Clare,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.963,191.0,203.0
-US,3608915792,US-NY-SL-CL,Clare,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.963,191.0,203.0
-US,3608916287,US-NY-SL-CI,Clifton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1064.0,1069.0
-US,3608916287,US-NY-SL-CI,Clifton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1064.0,1069.0
+US,3608915792,US-NY-SL-CR,Clare,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.963,191.0,203.0
+US,3608915792,US-NY-SL-CR,Clare,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.963,191.0,203.0
+US,3608916287,US-NY-SL-CL,Clifton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1064.0,1069.0
+US,3608916287,US-NY-SL-CL,Clifton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1064.0,1069.0
 US,3608917409,US-NY-SL-CO,Colton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,1877.0,1910.0
 US,3608917409,US-NY-SL-CO,Colton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,1877.0,1910.0
 US,3608920038,US-NY-SL-DK,De Kalb,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.986,1523.0,1606.0
@@ -7457,10 +7457,10 @@ US,3609128112,US-NY-SA-GA,Galway,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_
 US,3609128112,US-NY-SA-GA,Galway,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.993,2748.0,2755.0
 US,3609130444,US-NY-SA-GR,Greenfield,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.992,3910.0,3982.0
 US,3609130444,US-NY-SA-GR,Greenfield,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.992,3910.0,3982.0
-US,3609131269,US-NY-SA-HA,Hadley,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.995,1545.0,1580.0
-US,3609131269,US-NY-SA-HA,Hadley,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.995,1545.0,1580.0
-US,3609131489,US-NY-SA-HL,Halfmoon,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,8510.0,8812.0
-US,3609131489,US-NY-SA-HL,Halfmoon,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.994,8510.0,8812.0
+US,3609131269,US-NY-SA-HD,Hadley,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.995,1545.0,1580.0
+US,3609131269,US-NY-SA-HD,Hadley,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.995,1545.0,1580.0
+US,3609131489,US-NY-SA-HA,Halfmoon,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,8510.0,8812.0
+US,3609131489,US-NY-SA-HA,Halfmoon,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.994,8510.0,8812.0
 US,3609144743,US-NY-SA-MA,Malta,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.994,6265.0,6389.0
 US,3609144743,US-NY-SA-MA,Malta,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.994,6265.0,6389.0
 US,3609146360,US-NY-SA-ME,Mechanicville,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.999,1478.0,1566.0
@@ -7501,10 +7501,10 @@ US,3609510154,US-NY-SH-BR,Broome,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.99
 US,3609510154,US-NY-SH-BR,Broome,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.994,1301.0,1320.0
 US,3609512452,US-NY-SH-CA,Carlisle,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,1093.0,1116.0
 US,3609512452,US-NY-SH-CA,Carlisle,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,1093.0,1116.0
-US,3609516639,US-NY-SH-CB,Cobleskill,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,2441.0,2454.0
-US,3609516639,US-NY-SH-CB,Cobleskill,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,2441.0,2454.0
-US,3609517651,US-NY-SH-CO,Conesville,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.995,1305.0,1329.0
-US,3609517651,US-NY-SH-CO,Conesville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.995,1305.0,1329.0
+US,3609516639,US-NY-SH-CO,Cobleskill,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,2441.0,2454.0
+US,3609516639,US-NY-SH-CO,Cobleskill,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,2441.0,2454.0
+US,3609517651,US-NY-SH-CN,Conesville,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.995,1305.0,1329.0
+US,3609517651,US-NY-SH-CN,Conesville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.995,1305.0,1329.0
 US,3609524724,US-NY-SH-ES,Esperance,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,1090.0,1116.0
 US,3609524724,US-NY-SH-ES,Esperance,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.978,1090.0,1116.0
 US,3609527826,US-NY-SH-FU,Fulton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.972,1473.0,1465.0
@@ -7527,10 +7527,10 @@ US,3609572070,US-NY-SH-SU,Summit,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_
 US,3609572070,US-NY-SH-SU,Summit,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.985,1402.0,1430.0
 US,3609583195,US-NY-SH-WR,Wright,parcel,auto,apn,Dx(.-Dx.-Dx),skip_empty: 1,0.972,965.0,968.0
 US,3609583195,US-NY-SH-WR,Wright,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.972,965.0,968.0
-US,3609712914,US-NY-SY-CT,Catharine,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1140.0,1152.0
-US,3609712914,US-NY-SY-CT,Catharine,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1140.0,1152.0
-US,3609713112,US-NY-SY-CA,Cayuta,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1,0.086,421.0,451.0
-US,3609713112,US-NY-SY-CA,Cayuta,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1,0.086,421.0,451.0
+US,3609712914,US-NY-SY-CA,Catharine,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1140.0,1152.0
+US,3609712914,US-NY-SY-CA,Catharine,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.977,1140.0,1152.0
+US,3609713112,US-NY-SY-CY,Cayuta,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1,0.086,421.0,451.0
+US,3609713112,US-NY-SY-CY,Cayuta,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),split_groups: 0|6 & drop_cols: 0_0 & skip_empty: 1,0.086,421.0,451.0
 US,3609720676,US-NY-SY-DI,Dix,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,2182.0,2276.0
 US,3609720676,US-NY-SY-DI,Dix,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,2182.0,2276.0
 US,3609733073,US-NY-SY-HE,Hector,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,3685.0,3703.0
@@ -7581,10 +7581,10 @@ US,3610112991,US-NY-ST-CT,Caton,parcel,auto,apn,Ignored,simple,0.94,1319.0,1312.
 US,3610112991,US-NY-ST-CT,Caton,tax,auto,apn,Ignored,simple,0.94,1319.0,1312.0
 US,3610116738,US-NY-ST-CH,Cohocton,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.839,1951.0,1863.0
 US,3610116738,US-NY-ST-CH,Cohocton,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.839,1951.0,1863.0
-US,3610118256,US-NY-ST-CR,Corning city,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.985,4221.0,4256.0
-US,3610118256,US-NY-ST-CR,Corning city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,4221.0,4256.0
-US,3610118267,US-NY-ST-CO,Corning town,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.931,3255.0,3240.0
-US,3610118267,US-NY-ST-CO,Corning town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.931,3255.0,3240.0
+US,3610118256,US-NY-ST-CO,Corning city,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.985,4221.0,4256.0
+US,3610118256,US-NY-ST-CO,Corning city,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,4221.0,4256.0
+US,3610118267,US-NY-ST-CR,Corning town,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.931,3255.0,3240.0
+US,3610118267,US-NY-ST-CR,Corning town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.931,3255.0,3240.0
 US,3610119675,US-NY-ST-DA,Dansville,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.858,1353.0,1300.0
 US,3610119675,US-NY-ST-DA,Dansville,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.858,1353.0,1300.0
 US,3610124647,US-NY-ST-ER,Erwin,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.952,3170.0,3206.0
@@ -7595,12 +7595,12 @@ US,3610130741,US-NY-ST-GR,Greenwood,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_emp
 US,3610130741,US-NY-ST-GR,Greenwood,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.7,824.0,733.0
 US,3610132567,US-NY-ST-HA,Hartsville,parcel,auto,apn,Ignored,simple,0.808,619.0,576.0
 US,3610132567,US-NY-ST-HA,Hartsville,tax,auto,apn,Ignored,simple,0.808,619.0,576.0
-US,3610135661,US-NY-ST-HR,Hornby,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,,0.864,1059.0,1010.0
-US,3610135661,US-NY-ST-HR,Hornby,tax,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,,0.864,1059.0,1010.0
+US,3610135661,US-NY-ST-HN,Hornby,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,,0.864,1059.0,1010.0
+US,3610135661,US-NY-ST-HN,Hornby,tax,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,,0.864,1059.0,1010.0
 US,3610135672,US-NY-ST-HO,Hornell,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.966,3711.0,3721.0
 US,3610135672,US-NY-ST-HO,Hornell,tax,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.966,3711.0,3721.0
-US,3610135683,US-NY-ST-HN,Hornellsville,parcel,auto,apn,Ignored,simple,0.865,2441.0,2397.0
-US,3610135683,US-NY-ST-HN,Hornellsville,tax,auto,apn,Ignored,simple,0.865,2441.0,2397.0
+US,3610135683,US-NY-ST-HR,Hornellsville,parcel,auto,apn,Ignored,simple,0.865,2441.0,2397.0
+US,3610135683,US-NY-ST-HR,Hornellsville,tax,auto,apn,Ignored,simple,0.865,2441.0,2397.0
 US,3610135837,US-NY-ST-HW,Howard,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.847,1285.0,1244.0
 US,3610135837,US-NY-ST-HW,Howard,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.847,1285.0,1244.0
 US,3610138319,US-NY-ST-JA,Jasper,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.747,987.0,901.0
@@ -7621,10 +7621,10 @@ US,3610175737,US-NY-ST-TU,Tuscarora,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_emp
 US,3610175737,US-NY-ST-TU,Tuscarora,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.948,897.0,901.0
 US,3610176496,US-NY-ST-UR,Urbana,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.826,2152.0,2015.0
 US,3610176496,US-NY-ST-UR,Urbana,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.826,2152.0,2015.0
-US,3610178861,US-NY-ST-WY,Wayland,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.91,2406.0,2335.0
-US,3610178861,US-NY-ST-WY,Wayland,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.91,2406.0,2335.0
-US,3610178883,US-NY-ST-WA,Wayne,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.809,1699.0,1578.0
-US,3610178883,US-NY-ST-WA,Wayne,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.809,1699.0,1578.0
+US,3610178861,US-NY-ST-WA,Wayland,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.91,2406.0,2335.0
+US,3610178861,US-NY-ST-WA,Wayland,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.91,2406.0,2335.0
+US,3610178883,US-NY-ST-WY,Wayne,parcel,auto,apn,(D5_)Dx.Dx-Dx-Dx.Dx,skip_empty: 1,0.809,1699.0,1578.0
+US,3610178883,US-NY-ST-WY,Wayne,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.809,1699.0,1578.0
 US,3610181105,US-NY-ST-WU,West Union,parcel,auto,apn,Ignored,simple,0.697,591.0,536.0
 US,3610181105,US-NY-ST-WU,West Union,tax,auto,apn,Ignored,simple,0.697,591.0,536.0
 US,3610181457,US-NY-ST-WH,Wheeler,parcel,auto,apn,Ignored,simple,0.948,979.0,992.0
@@ -7717,10 +7717,10 @@ US,3611139738,US-NY-UL-KN,Kingston town,parcel,auto,apn,Dx,string_lengths: 3 3 4
 US,3611139738,US-NY-UL-KN,Kingston town,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.931,664.0,664.0
 US,3611142994,US-NY-UL-LL,Lloyd,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.961,4312.0,4439.0
 US,3611142994,US-NY-UL-LL,Lloyd,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.961,4312.0,4439.0
-US,3611145458,US-NY-UL-MA,Marbletown,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.942,3888.0,3854.0
-US,3611145458,US-NY-UL-MA,Marbletown,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.942,3888.0,3854.0
-US,3611145722,US-NY-UL-MR,Marlborough,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.965,3806.0,3830.0
-US,3611145722,US-NY-UL-MR,Marlborough,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.965,3806.0,3830.0
+US,3611145458,US-NY-UL-MR,Marbletown,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.942,3888.0,3854.0
+US,3611145458,US-NY-UL-MR,Marbletown,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.942,3888.0,3854.0
+US,3611145722,US-NY-UL-MA,Marlborough,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.965,3806.0,3830.0
+US,3611145722,US-NY-UL-MA,Marlborough,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.965,3806.0,3830.0
 US,3611150562,US-NY-UL-NP,New Paltz,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.982,3872.0,4262.0
 US,3611150562,US-NY-UL-NP,New Paltz,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.982,3872.0,4262.0
 US,3611154749,US-NY-UL-OL,Olive,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.977,3095.0,3155.0
@@ -7733,10 +7733,10 @@ US,3611163737,US-NY-UL-RS,Rosendale,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3
 US,3611163737,US-NY-UL-RS,Rosendale,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.911,2962.0,2809.0
 US,3611165299,US-NY-UL-SA,Saugerties,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.942,9661.0,9578.0
 US,3611165299,US-NY-UL-SA,Saugerties,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.942,9661.0,9578.0
-US,3611166597,US-NY-UL-SH,Shandaken,parcel,manual,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,,,
-US,3611166597,US-NY-UL-SH,Shandaken,tax,manual,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,,,
-US,3611166674,US-NY-UL-SW,Shawangunk,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.985,4639.0,4688.0
-US,3611166674,US-NY-UL-SW,Shawangunk,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.985,4639.0,4688.0
+US,3611166597,US-NY-UL-SN,Shandaken,parcel,manual,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,,,
+US,3611166597,US-NY-UL-SN,Shandaken,tax,manual,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,,,
+US,3611166674,US-NY-UL-SH,Shawangunk,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.985,4639.0,4688.0
+US,3611166674,US-NY-UL-SH,Shawangunk,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.985,4639.0,4688.0
 US,3611175935,US-NY-UL-UL,Ulster,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.95,5307.0,5417.0
 US,3611175935,US-NY-UL-UL,Ulster,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.95,5307.0,5417.0
 US,3611178828,US-NY-UL-WA,Wawarsing,parcel,auto,apn,Dx,string_lengths: 3 3 4 3 3 & skip_empty: 1,0.979,6139.0,6452.0
@@ -7779,10 +7779,10 @@ US,3611526715,US-NY-WS-FA,Fort Ann,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx
 US,3611526715,US-NY-WS-FA,Fort Ann,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.996,3144.0,3253.0
 US,3611526781,US-NY-WS-FE,Fort Edward,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,2767.0,2881.0
 US,3611526781,US-NY-WS-FE,Fort Edward,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.997,2767.0,2881.0
-US,3611530037,US-NY-WS-GA,Granville,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,3533.0,3539.0
-US,3611530037,US-NY-WS-GA,Granville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.991,3533.0,3539.0
-US,3611530686,US-NY-WS-GR,Greenwich,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2550.0,2586.0
-US,3611530686,US-NY-WS-GR,Greenwich,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.991,2550.0,2586.0
+US,3611530037,US-NY-WS-GR,Granville,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,3533.0,3539.0
+US,3611530037,US-NY-WS-GR,Granville,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.991,3533.0,3539.0
+US,3611530686,US-NY-WS-GE,Greenwich,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.991,2550.0,2586.0
+US,3611530686,US-NY-WS-GE,Greenwich,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.991,2550.0,2586.0
 US,3611531885,US-NY-WS-HM,Hampton,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.997,743.0,775.0
 US,3611531885,US-NY-WS-HM,Hampton,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.997,743.0,775.0
 US,3611532457,US-NY-WS-HA,Hartford,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.996,1356.0,1396.0
@@ -7851,36 +7851,36 @@ US,3611949011,US-NY-WE-MP,Mount Pleasant,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx
 US,3611949011,US-NY-WE-MP,Mount Pleasant,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.853,13323.0,16262.0
 US,3611949121,US-NY-WE-MV,Mount Vernon,parcel,auto,apn,Ignored,simple,0.986,10815.0,11191.0
 US,3611949121,US-NY-WE-MV,Mount Vernon,tax,auto,apn,Ignored,simple,0.986,10815.0,11191.0
-US,3611950078,US-NY-WE-NE,New Castle,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.978,5999.0,6725.0
-US,3611950078,US-NY-WE-NE,New Castle,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.978,5999.0,6725.0
+US,3611950078,US-NY-WE-NC,New Castle,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.978,5999.0,6725.0
+US,3611950078,US-NY-WE-NC,New Castle,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.978,5999.0,6725.0
 US,3611950617,US-NY-WE-NR,New Rochelle,parcel,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 4|. & skip_empty: 1,0.981,14626.0,16085.0
 US,3611950617,US-NY-WE-NR,New Rochelle,tax,auto,apn,Sx-Sx-Sx(.Sx),skip_empty: 1,0.981,14626.0,16085.0
-US,3611951693,US-NY-WE-NC,North Castle,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,4715.0,4815.0
-US,3611951693,US-NY-WE-NC,North Castle,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.985,4715.0,4815.0
+US,3611951693,US-NY-WE-NO,North Castle,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,4715.0,4815.0
+US,3611951693,US-NY-WE-NO,North Castle,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.985,4715.0,4815.0
 US,3611953517,US-NY-WE-NS,North Salem,parcel,auto,apn,Ignored,simple,0.975,2256.0,2454.0
 US,3611953517,US-NY-WE-NS,North Salem,tax,auto,apn,Ignored,simple,0.975,2256.0,2454.0
 US,3611955541,US-NY-WE-OS,Ossining,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,7974.0,10174.0
 US,3611955541,US-NY-WE-OS,Ossining,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,7974.0,10174.0
-US,3611956979,US-NY-WE-PK,Peekskill,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,4462.0,6415.0
-US,3611956979,US-NY-WE-PK,Peekskill,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,4462.0,6415.0
-US,3611957012,US-NY-WE-PE,Pelham,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,3456.0,3704.0
-US,3611957012,US-NY-WE-PE,Pelham,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.99,3456.0,3704.0
+US,3611956979,US-NY-WE-PE,Peekskill,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,4462.0,6415.0
+US,3611956979,US-NY-WE-PE,Peekskill,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,4462.0,6415.0
+US,3611957012,US-NY-WE-PL,Pelham,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,3456.0,3704.0
+US,3611957012,US-NY-WE-PL,Pelham,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.99,3456.0,3704.0
 US,3611959685,US-NY-WE-PR,Pound Ridge,parcel,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,0.983,2478.0,2485.0
 US,3611959685,US-NY-WE-PR,Pound Ridge,tax,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,0.983,2478.0,2485.0
-US,3611964309,US-NY-WE-RY,Rye city,parcel,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.986,4459.0,4939.0
-US,3611964309,US-NY-WE-RY,Rye city,tax,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.986,4459.0,4939.0
-US,3611964320,US-NY-WE-RE,Rye town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,10153.0,11284.0
-US,3611964320,US-NY-WE-RE,Rye town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,10153.0,11284.0
+US,3611964309,US-NY-WE-RE,Rye city,parcel,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.986,4459.0,4939.0
+US,3611964309,US-NY-WE-RE,Rye city,tax,auto,apn,Sx-Sx-Sx-Sx(-Sx-Sx.Sx),skip_empty: 1,0.986,4459.0,4939.0
+US,3611964320,US-NY-WE-RY,Rye town,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,10153.0,11284.0
+US,3611964320,US-NY-WE-RY,Rye town,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.988,10153.0,11284.0
 US,3611965442,US-NY-WE-SC,Scarsdale,parcel,auto,apn,Ignored,simple,0.992,5816.0,5948.0
 US,3611965442,US-NY-WE-SC,Scarsdale,tax,auto,apn,Ignored,simple,0.992,5816.0,5948.0
 US,3611968308,US-NY-WE-SO,Somers,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.976,6664.0,9331.0
 US,3611968308,US-NY-WE-SO,Somers,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.976,6664.0,9331.0
 US,3611981677,US-NY-WE-WP,White Plains,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.979,9789.0,14075.0
 US,3611981677,US-NY-WE-WP,White Plains,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.979,9789.0,14075.0
-US,3611984000,US-NY-WE-YN,Yonkers,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,32815.0,36504.0
-US,3611984000,US-NY-WE-YN,Yonkers,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.993,32815.0,36504.0
-US,3611984077,US-NY-WE-YO,Yorktown,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,12178.0,14398.0
-US,3611984077,US-NY-WE-YO,Yorktown,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,12178.0,14398.0
+US,3611984000,US-NY-WE-YO,Yonkers,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.993,32815.0,36504.0
+US,3611984000,US-NY-WE-YO,Yonkers,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),drop_cols: 5 6 & skip_empty: 1,0.993,32815.0,36504.0
+US,3611984077,US-NY-WE-YR,Yorktown,parcel,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,12178.0,14398.0
+US,3611984077,US-NY-WE-YR,Yorktown,tax,auto,apn,Dx.(Dx)-(Dx)-Dx(.Dx)(-Sx)( Sx),skip_empty: 1,0.981,12178.0,14398.0
 US,3612102418,US-NY-WY-AR,Arcade,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,1982.0,2054.0
 US,3612102418,US-NY-WY-AR,Arcade,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.968,1982.0,2054.0
 US,3612103012,US-NY-WY-AT,Attica,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.984,1893.0,1960.0
@@ -7921,10 +7921,10 @@ US,3612338044,US-NY-YA-IT,Italy,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_e
 US,3612338044,US-NY-YA-IT,Italy,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.99,1082.0,1126.0
 US,3612338583,US-NY-YA-JE,Jerusalem,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,3417.0,3462.0
 US,3612338583,US-NY-YA-JE,Jerusalem,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.98,3417.0,3462.0
-US,3612347020,US-NY-YA-MI,Middlesex,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,1274.0,1293.0
-US,3612347020,US-NY-YA-MI,Middlesex,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,1274.0,1293.0
-US,3612347504,US-NY-YA-ML,Milo,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.971,3450.0,3529.0
-US,3612347504,US-NY-YA-ML,Milo,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.971,3450.0,3529.0
+US,3612347020,US-NY-YA-MD,Middlesex,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,1274.0,1293.0
+US,3612347020,US-NY-YA-MD,Middlesex,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.985,1274.0,1293.0
+US,3612347504,US-NY-YA-MI,Milo,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.971,3450.0,3529.0
+US,3612347504,US-NY-YA-MI,Milo,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.971,3450.0,3529.0
 US,3612359597,US-NY-YA-PO,Potter,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,979.0,1019.0
 US,3612359597,US-NY-YA-PO,Potter,tax,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.978,979.0,1019.0
 US,3612370816,US-NY-YA-ST,Starkey,parcel,auto,apn,Dx.(Dx)-Dx-Dx(.(Dx)(/Sx)),skip_empty: 1,0.981,1902.0,1930.0
@@ -10361,8 +10361,8 @@ US,51029,US-VA-BC,Buckingham,parcel,auto,apn,Sx-Sx(-Sx)(-Sx),split_groups: 1|2 &
 US,51029,US-VA-BC,Buckingham,tax,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-Sx),merge_after: 4 3 2 & skip_empty: 1,0.794,13959.0,13517.0
 US,51031,US-VA-CM,Campbell,parcel,auto,apn2,Sx-Sx-Sx(-Sx),skip_empty: 1,0.965,36177.0,38100.0
 US,51031,US-VA-CM,Campbell,tax,auto,apn,Sx-Sx-Sx(-Sx),skip_empty: 1,0.965,36177.0,38100.0
-US,51033,US-VA-CR,Caroline,parcel,auto,apn,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,0.844,24702.0,22236.0
-US,51033,US-VA-CR,Caroline,tax,auto,apn,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,0.844,24702.0,22236.0
+US,51033,US-VA-CA,Caroline,parcel,auto,apn,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,0.844,24702.0,22236.0
+US,51033,US-VA-CA,Caroline,tax,auto,apn,Sx-Sx(-Sx)(-Sx),merge_after: 2 & max_length: 2|5 & skip_empty: 1,0.844,24702.0,22236.0
 US,51035,US-VA-CO,Carroll,parcel,auto,apn,Sx-Sx-Sx(-Sx),merge_after: 2 1 0,0.871,33594.0,33418.0
 US,51035,US-VA-CO,Carroll,tax,auto,apn,Ignored,simple,0.871,33594.0,33418.0
 US,51036,US-VA-CS,Charles City,parcel,manual,apn,"^([0-9A-Z-,]+)$",skip_empty: 1 & split_groups: 0|- 0_1|- 0_1_1|- 0_1_1_1|-,,,
@@ -10391,10 +10391,10 @@ US,51063,US-VA-FO,Floyd,parcel,auto,apn,Sx (Dx Sx) Sx,skip_empty: 1,0.994,14687.
 US,51063,US-VA-FO,Floyd,tax,auto,apn,Sx-Sx(-Sx)(-Sx),skip_empty: 1,0.994,14687.0,14895.0
 US,51065,US-VA-FL,Fluvanna,parcel,auto,apn,Sx (Dx Sx) Sx,skip_empty: 1,0.957,16352.0,16348.0
 US,51065,US-VA-FL,Fluvanna,tax,auto,apn,Sx Sx  Sx(  Sx),skip_empty: 1,0.957,16352.0,16348.0
-US,51067,US-VA-FR,Franklin county,parcel,auto,apn,Ignored,simple,0.943,43104.0,42855.0
-US,51067,US-VA-FR,Franklin county,tax,auto,apn,Ignored,simple,0.943,43104.0,42855.0
-US,51069,US-VA-FE,Frederick,parcel,auto,apn,Ignored,simple,0.964,46775.0,48038.0
-US,51069,US-VA-FE,Frederick,tax,auto,apn,Ignored,simple,0.964,46775.0,48038.0
+US,51067,US-VA-FN,Franklin county,parcel,auto,apn,Ignored,simple,0.943,43104.0,42855.0
+US,51067,US-VA-FN,Franklin county,tax,auto,apn,Ignored,simple,0.943,43104.0,42855.0
+US,51069,US-VA-FR,Frederick,parcel,auto,apn,Ignored,simple,0.964,46775.0,48038.0
+US,51069,US-VA-FR,Frederick,tax,auto,apn,Ignored,simple,0.964,46775.0,48038.0
 US,51071,US-VA-GI,Giles,parcel,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. & keep_length: 1_1 & merge_after: 1_0 & skip_empty: 1,0.949,14185.0,14277.0
 US,51071,US-VA-GI,Giles,tax,auto,apn,Sx (Dx Sx) Sx,skip_empty: 1,0.949,14185.0,14277.0
 US,51073,US-VA-GL,Gloucester,parcel,auto,apn2,Ignored,simple,0.977,24827.0,24847.0
@@ -10451,10 +10451,10 @@ US,51125,US-VA-NE,Nelson,parcel,auto,apn,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 
 US,51125,US-VA-NE,Nelson,tax,auto,apn,Sx (Dx Sx) Sx,skip_empty: 1,0.757,17461.0,16508.0
 US,51127,US-VA-NK,New Kent,parcel,auto,apn,Ignored,simple,0.681,17555.0,13776.0
 US,51127,US-VA-NK,New Kent,tax,auto,apn,Ignored,simple,0.681,17555.0,13776.0
-US,51131,US-VA-NR,Northampton,parcel,manual,apn,Sx-Sx-Sx-Sx,,,,
-US,51131,US-VA-NR,Northampton,tax,manual,apn,^([0-9A-Z]+)/ ([0-9A-Z]+) ([0-9A-Z]+)/ ([0-9A-Z-]+)/ /$,,,,
-US,51133,US-VA-NH,Northumberland,parcel,auto,apn,Ignored,simple,0.59,22774.0,19135.0
-US,51133,US-VA-NH,Northumberland,tax,auto,apn,Ignored,simple,0.59,22774.0,19135.0
+US,51131,US-VA-NH,Northampton,parcel,manual,apn,Sx-Sx-Sx-Sx,,,,
+US,51131,US-VA-NH,Northampton,tax,manual,apn,^([0-9A-Z]+)/ ([0-9A-Z]+) ([0-9A-Z]+)/ ([0-9A-Z-]+)/ /$,,,,
+US,51133,US-VA-NR,Northumberland,parcel,auto,apn,Ignored,simple,0.59,22774.0,19135.0
+US,51133,US-VA-NR,Northumberland,tax,auto,apn,Ignored,simple,0.59,22774.0,19135.0
 US,51135,US-VA-NT,Nottoway,parcel,auto,apn2,Sx( )(Sx)( )(Sx) ( )(Sx),split_groups: 1|- & skip_empty: 1,0.579,15833.0,11780.0
 US,51135,US-VA-NT,Nottoway,tax,auto,apn,Sx (Dx Sx) Sx,skip_empty: 1,0.579,15833.0,11780.0
 US,51137,US-VA-OR,Orange,parcel,auto,apn,Sx,string_lengths: 3 2 2 2 4 1 & skip_empty: 1,0.877,21550.0,20727.0
@@ -10477,14 +10477,14 @@ US,51155,US-VA-PU,Pulaski,parcel,auto,apn,Sx Sx Sx Sx( Sx Sx Sx)|Sx-Sx-Sx-Sx,ski
 US,51155,US-VA-PU,Pulaski,tax,auto,apn,Sx-Sx-Sx-Sx,skip_empty: 1,0.854,26389.0,23021.0
 US,51157,US-VA-RP,Rappahannock,parcel,auto,apn,Sx-Sx(-Sx)(-Sx),skip_empty: 1,0.826,6510.0,6281.0
 US,51157,US-VA-RP,Rappahannock,tax,auto,apn,Sx( )(Sx)( )(Sx) ( )(Sx),skip_empty: 1,0.826,6510.0,6281.0
-US,51159,US-VA-RI,Richmond county,parcel,manual,apn,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",skip_empty: 1,,,
-US,51159,US-VA-RI,Richmond county,tax,manual,apn,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",skip_empty: 1,,,
-US,51161,US-VA-RO,Roanoke county,parcel,auto,apn,Ignored,simple,1.0,45088.0,45958.0
-US,51161,US-VA-RO,Roanoke county,tax,auto,apn,Ignored,simple,1.0,45088.0,45958.0
-US,51163,US-VA-RB,Rockbridge,parcel,auto,apn,Ignored,simple,0.592,26843.0,18620.0
-US,51163,US-VA-RB,Rockbridge,tax,auto,apn,Sx (Dx Sx) Sx,merge_after: 0 0 0 & skip_empty: 1,0.592,26843.0,18620.0
-US,51165,US-VA-RK,Rockingham,parcel,auto,apn,Ignored,simple,0.987,47757.0,48833.0
-US,51165,US-VA-RK,Rockingham,tax,auto,tax_id,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1,0.987,47757.0,48833.0
+US,51159,US-VA-RH,Richmond county,parcel,manual,apn,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",skip_empty: 1,,,
+US,51159,US-VA-RH,Richmond county,tax,manual,apn,"^([0-9A-Z]{1,4})[\(|-]([0-9A-Z]{1,3})[\)|-]?([0-9A-Z]{1,3})?-?&?([0-9A-Z]{1,3})?$",skip_empty: 1,,,
+US,51161,US-VA-RN,Roanoke county,parcel,auto,apn,Ignored,simple,1.0,45088.0,45958.0
+US,51161,US-VA-RN,Roanoke county,tax,auto,apn,Ignored,simple,1.0,45088.0,45958.0
+US,51163,US-VA-RK,Rockbridge,parcel,auto,apn,Ignored,simple,0.592,26843.0,18620.0
+US,51163,US-VA-RK,Rockbridge,tax,auto,apn,Sx (Dx Sx) Sx,merge_after: 0 0 0 & skip_empty: 1,0.592,26843.0,18620.0
+US,51165,US-VA-RC,Rockingham,parcel,auto,apn,Ignored,simple,0.987,47757.0,48833.0
+US,51165,US-VA-RC,Rockingham,tax,auto,tax_id,Dx,split_groups: 0|6 0_1|6 1_0|5 & skip_empty: 1,0.987,47757.0,48833.0
 US,51167,US-VA-RU,Russell,parcel,auto,apn,Dx,,0.502,32774.0,23314.0
 US,51167,US-VA-RU,Russell,tax,auto,tax_id,Dx,split_groups: 0|6 0_1|6 0_1_1|4 0_1_1_1|6 & skip_empty: 1,0.502,32774.0,23314.0
 US,51169,US-VA-SC,Scott,parcel,manual,apn,Dx,skip_empty: 1,,,
@@ -10523,8 +10523,8 @@ US,51520,US-VA-BI,Bristol,parcel,auto,apn,Ignored,simple,0.571,13091.0,9935.0
 US,51520,US-VA-BI,Bristol,tax,auto,apn,Ignored,simple,0.571,13091.0,9935.0
 US,51530,US-VA-BV,Buena Vista,parcel,auto,apn,Ignored,simple,0.808,3849.0,3497.0
 US,51530,US-VA-BV,Buena Vista,tax,auto,apn,Ignored,simple,0.808,3849.0,3497.0
-US,51540,US-VA-CA,Charlottesville,parcel,auto,apn,Ignored,simple,0.998,13690.0,15607.0
-US,51540,US-VA-CA,Charlottesville,tax,auto,apn,Ignored,simple,0.998,13690.0,15607.0
+US,51540,US-VA-CR,Charlottesville,parcel,auto,apn,Ignored,simple,0.998,13690.0,15607.0
+US,51540,US-VA-CR,Charlottesville,tax,auto,apn,Ignored,simple,0.998,13690.0,15607.0
 US,51550,US-VA-CE,Chesapeake,parcel,auto,apn,Dx,split_groups: 0|16 & drop_cols: 0_1,0.978,85329.0,89344.0
 US,51550,US-VA-CE,Chesapeake,tax,auto,apn,Dx,,0.978,85329.0,89344.0
 US,51570,US-VA-CN,Colonial Heights,parcel,auto,apn,Sx,split_groups: 0|13 & drop_cols: 0_1 & skip_empty: 1,0.975,7599.0,7587.0
@@ -10539,10 +10539,10 @@ US,51600,US-VA-FI,Fairfax city,parcel,auto,apn,Ignored,simple,0.969,7406.0,9365.
 US,51600,US-VA-FI,Fairfax city,tax,auto,apn,Ignored,simple,0.969,7406.0,9365.0
 US,51610,US-VA-FC,Falls Church,parcel,auto,apn,Ignored,simple,0.984,3424.0,4823.0
 US,51610,US-VA-FC,Falls Church,tax,auto,apn,Ignored,simple,0.984,3424.0,4823.0
-US,51620,US-VA-FN,Franklin city,parcel,auto,apn,Ignored,simple,0.588,4952.0,3787.0
-US,51620,US-VA-FN,Franklin city,tax,auto,apn,Sx Sx Sx( Sx)( Sx),merge_after: 0 0 0 & skip_empty: 1,0.588,4952.0,3787.0
-US,51630,US-VA-FD,Fredericksburg,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.98,8329.0,9043.0
-US,51630,US-VA-FD,Fredericksburg,tax,auto,apn,Sx-Sx-Sx(-Sx),skip_empty: 1,0.98,8329.0,9043.0
+US,51620,US-VA-FK,Franklin city,parcel,auto,apn,Ignored,simple,0.588,4952.0,3787.0
+US,51620,US-VA-FK,Franklin city,tax,auto,apn,Sx Sx Sx( Sx)( Sx),merge_after: 0 0 0 & skip_empty: 1,0.588,4952.0,3787.0
+US,51630,US-VA-FE,Fredericksburg,parcel,auto,apn,Sx-Sx-Sx,skip_empty: 1,0.98,8329.0,9043.0
+US,51630,US-VA-FE,Fredericksburg,tax,auto,apn,Sx-Sx-Sx(-Sx),skip_empty: 1,0.98,8329.0,9043.0
 US,51640,US-VA-GA,Galax,parcel,auto,apn,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1,0.93,3726.0,4088.0
 US,51640,US-VA-GA,Galax,tax,auto,tax_id,Sx( )-( )(Sx)( - Sx)(-Sx)( Sx),no_conv: 1,0.93,3726.0,4088.0
 US,51650,US-VA-HM,Hampton,parcel,manual,apn,Ignored,simple,,,
@@ -10575,10 +10575,10 @@ US,51740,US-VA-PO,Portsmouth,parcel,auto,apn,Dx,split_groups: 0|16 & drop_cols: 
 US,51740,US-VA-PO,Portsmouth,tax,auto,apn,Dx,keep_length: 1 & skip_empty: 1,0.997,34205.0,36143.0
 US,51750,US-VA-RA,Radford,parcel,auto,apn,Ignored,simple,0.266,10112.0,5322.0
 US,51750,US-VA-RA,Radford,tax,auto,apn,Ignored,simple,0.266,10112.0,5322.0
-US,51760,US-VA-RC,Richmond city,parcel,manual,apn,Sx,string_lengths: 1 3 4 3 & skip_empty: 1,,,
-US,51760,US-VA-RC,Richmond city,tax,manual,apn,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,,,
-US,51770,US-VA-RN,Roanoke city,parcel,auto,apn,Ignored,simple,0.996,44315.0,44321.0
-US,51770,US-VA-RN,Roanoke city,tax,auto,apn,Sx,skip_empty: 1,0.996,44315.0,44321.0
+US,51760,US-VA-RI,Richmond city,parcel,manual,apn,Sx,string_lengths: 1 3 4 3 & skip_empty: 1,,,
+US,51760,US-VA-RI,Richmond city,tax,manual,apn,Sx-Sx-Sx(-Sx)(-Sx),skip_empty: 1,,,
+US,51770,US-VA-RO,Roanoke city,parcel,auto,apn,Ignored,simple,0.996,44315.0,44321.0
+US,51770,US-VA-RO,Roanoke city,tax,auto,apn,Sx,skip_empty: 1,0.996,44315.0,44321.0
 US,51775,US-VA-SL,Salem,parcel,auto,apn2,Sx-[S.]x(-Sx)(-Sx)(-S.x),split_groups: 1|. 3|. & skip_empty: 1,0.98,10457.0,10531.0
 US,51775,US-VA-SL,Salem,tax,auto,apn,Sx-[S.]x(-Sx)(-Sx)(-S.x),skip_empty: 1,0.98,10457.0,10531.0
 US,51790,US-VA-SA,Staunton,parcel,auto,apn,Ignored,simple,0.994,11351.0,11622.0
