@@ -197,3 +197,52 @@ def test_double_closing_can_be_flagged_instead_of_dropped():
     )
     assert len(state.curated) == 3
     assert state.curated['earlier_leg'].tolist() == [1, 0, 0]
+
+
+def test_nominal_floor_is_the_largest_low_price_mass_point():
+    # Florida: 100 dollars on a third of rows, 0 on a tenth, real prices
+    # spread above. 1,000 appears a few times but not enough to count.
+    real = list(range(20000, 320000, 1000))  # 300 spread prices
+    prices = [100.0] * 150 + [0.0] * 50 + [1000.0] * 2 + [float(x) for x in real]
+    df = pd.DataFrame({'price': prices})
+    state = derive_indicators(
+        _state(df),
+        indicators=[{'output': 'floor', 'type': 'nominal_floor', 'column': 'price'}],
+    )
+    assert state.curated['floor'].unique().tolist() == [100.0]
+
+
+def test_nominal_floor_is_zero_when_only_zero_repeats():
+    prices = [0.0] * 200 + [float(x) for x in range(5000, 305000, 1000)]
+    state = derive_indicators(
+        _state(pd.DataFrame({'price': prices})),
+        indicators=[{'output': 'floor', 'type': 'nominal_floor', 'column': 'price'}],
+    )
+    assert state.curated['floor'].unique().tolist() == [0.0]
+
+
+def test_disclosure_share_reads_the_detected_floor():
+    prices = (
+        [100.0] * 150
+        + [0.0] * 50
+        + [500.0, 250000.0]
+        + [float(x) for x in range(20000, 320000, 1000)]
+    )
+    df = pd.DataFrame({'price': prices, 'use_group': 'Single Family'})
+    state = derive_indicators(
+        _state(df),
+        indicators=[
+            {'output': 'floor', 'type': 'nominal_floor', 'column': 'price'},
+            {
+                'output': 'share',
+                'type': 'group_share',
+                'column': 'price',
+                'predicate': 'above',
+                'threshold_column': 'floor',
+                'restrict': {'column': 'use_group', 'equals': 'Single Family'},
+            },
+        ],
+    )
+    # 302 of 502 sales sit above the 100 dollar floor; the 500 dollar
+    # sale counts as disclosed, which a round 1,000 floor would lose.
+    assert state.curated['share'].iloc[0] == pytest.approx(302 / 502)

@@ -298,7 +298,13 @@ def _derive_group_share(state: CurateState, spec: dict) -> pd.Series | None:
     elif predicate == 'notnull':
         met = values.notna()
     elif predicate == 'above':
-        met = values.notna() & (values > float(spec['threshold']))
+        if 'threshold_column' in spec:
+            threshold = pd.to_numeric(
+                curated[spec['threshold_column']], errors='coerce'
+            )
+        else:
+            threshold = float(spec['threshold'])
+        met = values.notna() & (values > threshold)
     else:
         raise ValueError(f'Unknown group_share predicate: {predicate!r}')
     restrict = spec.get('restrict')
@@ -320,10 +326,73 @@ def _derive_group_share(state: CurateState, spec: dict) -> pd.Series | None:
     return groups.map(share).astype(float)
 
 
+def _derive_nominal_floor(state: CurateState, spec: dict) -> pd.Series | None:
+    """The price below which a source's values are a recording convention.
+
+    A recorder's nominal consideration is not a price: Florida stamps
+    100 dollars on a non-market transfer and North Carolina records 0.
+    Which value a source uses is the recorder's choice, so it is read
+    off the data rather than assumed. A nominal value is a mass point:
+    a single price carrying at least ``min_share`` of all rows (default
+    5%) and at least ``isolation`` times (default 20) the rows of every
+    other price within ten percent of it. The floor is the largest mass
+    point at or below ``cap`` (default 5,000), or 0 when there is none,
+    written on every row of the group (the whole table without
+    ``group_column``), so a consumer can read what "disclosed" meant
+    for this source.
+
+    The share is what tells a convention from a cluster, and it is set
+    high on purpose. Measured 2026-09-12 across every ingested source
+    with a price: Florida's SDF sales (1.9M rows) and last sales (10.7M
+    parcels) carry 11% to 88% of their rows at 0 and 4% to 28% at 100,
+    both 0% arm's length; Currituck, Nash and Wilson NC and Wisconsin's
+    RETR carry 13% to 46% at 0 and nothing else. Real cheap sales also
+    cluster on round numbers, but thinly: Polk County's 700 dollar
+    spike is 0.6% of rows and 69% arm's length, Wilson's 1,000 dollar
+    spike 0.5%. A 0.5% share would have called those conventions and
+    hidden real sales; at 5% only the recorder's own value qualifies.
+    """
+    curated = state.curated
+    column = spec['column']
+    if column not in curated.columns:
+        return None
+    values = pd.to_numeric(curated[column], errors='coerce')
+    group_column = spec.get('group_column')
+    if group_column is not None and group_column not in curated.columns:
+        return None
+    groups = (
+        curated[group_column]
+        if group_column is not None
+        else pd.Series('all', index=curated.index)
+    )
+    cap = float(spec.get('cap', 5000))
+    min_share = float(spec.get('min_share', 0.05))
+    isolation = float(spec.get('isolation', 20))
+
+    def floor_of(group_values: pd.Series) -> float:
+        low = group_values[(group_values >= 0) & (group_values <= cap)]
+        if low.empty:
+            return 0.0
+        counts = low.value_counts()
+        floor = 0.0
+        for value, count in counts.items():
+            if count < min_share * len(group_values):
+                break  # value_counts is sorted descending
+            near = low[(low > value * 0.9 - 1) & (low < value * 1.1 + 1)]
+            neighbors = len(near) - count
+            if neighbors * isolation <= count:
+                floor = max(floor, float(value))
+        return floor
+
+    floors = values.groupby(groups).apply(floor_of)
+    return groups.map(floors).astype(float)
+
+
 _INDICATOR_DERIVATIONS = {
     'ruleset_class': _derive_ruleset_class,
     'value_map': _derive_value_map,
     'group_share': _derive_group_share,
+    'nominal_floor': _derive_nominal_floor,
     'pooled_vote': _derive_pooled_vote,
     'ratio': _derive_ratio,
     'shape_metric': _derive_shape_metric,
@@ -362,9 +431,13 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
     - ``group_share``: the share of the row's ``group_column`` cohort (the
       whole table when omitted, which is the admin unit being curated)
       whose ``column`` meets ``predicate`` (``positive``, ``notnull``, or
-      ``above`` a ``threshold``),
+      ``above`` a ``threshold``, or a per-row ``threshold_column``),
       optionally counting only rows where ``restrict: {column, equals}``
       holds; every row of the group receives the share.
+    - ``nominal_floor``: the largest mass point of ``column`` at or below
+      ``cap`` (a value carrying ``min_share`` of the rows and ``isolation``
+      times its neighbors), per ``group_column`` or for the whole table:
+      the recorder's nominal consideration, read off the data.
     - ``ruleset_class``: classify ``column`` through an ordered ruleset CSV
       (``ruleset``), first match wins; unmatched rows are missing. With
       ``reviewed_only`` true, only rows whose winning rule is marked reviewed

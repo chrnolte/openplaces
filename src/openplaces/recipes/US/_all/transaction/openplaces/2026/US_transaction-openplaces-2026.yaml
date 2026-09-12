@@ -182,24 +182,36 @@ pipeline:
     max_gap_months: 1
     output: sale_double_closing_earlier_leg
 
-  # The share of a county's single-family sales with a disclosed price,
-  # on every row: a full-disclosure state reads near 1, a county whose
-  # assessor withholds prices near 0, and a consumer sets the cutoff
-  # below which it will not fit there at all. Disclosed means above
-  # 1,000 dollars. On Lake County FL (597,666 rows) 33.9% of sales are
-  # priced exactly 0 or 100, the documentary-stamp convention for a
-  # non-market transfer; 0.2% sit between 101 and 1,000, three quarters
-  # of them disqualified as minimal stamps; and the 0.7% between 1,001
-  # and 5,000 are four fifths vacant land, which is a real price for a
-  # cheap lot, not a fee. The county is the unit being curated, so the
-  # group is the table.
+  # A recorder's nominal consideration is not a price, and which value
+  # it uses is the recorder's choice: Florida stamps 100 dollars on a
+  # non-market transfer, North Carolina and Wisconsin record 0. The
+  # floor is read off the county's own sales as the largest low-price
+  # mass point (a value carrying 5% of all rows and 20 times its
+  # neighbors), so a consumer can see what "disclosed" meant here.
+  # Measured 2026-09-12: Florida's 1.9M SDF sales and 10.7M last sales
+  # have mass points at 0 (11%) and 100 (24%), both 0% arm's length,
+  # and the 101 to 1,000 band is 28% to 61% arm's length, so the floor
+  # sits at the convention itself, not a round number above it.
+  # Currituck, Nash and Wilson NC and Wisconsin have 0 alone. The 5%
+  # is what keeps real cheap sales that cluster on round numbers out
+  # of the floor: Polk's 700 dollar spike is 0.6% of rows and 69%
+  # arm's length.
+  #
+  # The disclosure share is then the share of the county's single-family
+  # sales priced above that floor, on every row: a full-disclosure
+  # state reads near 1, a county whose assessor withholds prices near 0,
+  # and a consumer sets the cutoff below which it will not fit there.
+  # The county is the unit being curated, so the group is the table.
   - step: derive_indicators
     indicators:
+      - output: sale_nominal_price_floor
+        type: nominal_floor
+        column: price
       - output: single_family_sales_disclosure_share
         type: group_share
         column: price
         predicate: above
-        threshold: 1000
+        threshold_column: sale_nominal_price_floor
         restrict: {column: use_group, equals: Single Family}
 
   # One row per deed. Areas and counts are summed and the other columns
