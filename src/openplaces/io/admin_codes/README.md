@@ -20,30 +20,49 @@ for the package to work.** It exists so those files can be reproduced.
 | `frame.py` | mints a whole DataFrame; handles pinning and duplicates |
 | `anchors.py` | published codes and reviewed overrides |
 | `registry.py` | reads the committed spine |
-| `audit.py` | invariants, and `resolve_identifier` |
+| `audit.py` | invariants the spine must satisfy |
 | `coverage.py` | how much of the world is covered |
 | `build.py` | rebuilds the population weights and re-mints |
 
-## The one rule that matters
+## Only the present spine
 
-A re-mint **recycles** identifiers: a string survives and names a
-*different* unit. `US-NC-HY` was Hyde and is now Haywood.
+The spine is the registry of record, and only its current version is
+kept. There are no snapshots of earlier vintages and no old-to-new
+tables: a re-mint rewrites the spine in place, and nothing resolves a
+retired identifier.
 
-> Never migrate an identifier by string substitution. Always go through
-> `audit.resolve_identifier`, which looks the old id up by name in the
-> superseded snapshot and returns where that *unit* lives today.
+A re-mint can **recycle** identifiers: a string survives and names a
+*different* unit. `US-NC-HY` was Hyde and is now Haywood. So a file keyed
+on admin ids that outlives a re-mint is regenerated from its source's
+own codes (a FIPS, a DANE or INSEE code, the unit's name within its
+parent), never migrated by string substitution. For data files that
+carry the national code beside the id, `rekey.rekey_files` is that
+regeneration: it joins the code to the present spine and rewrites the id
+column in place, footers and read-only bits intact.
 
-`resolve_identifier` deliberately has no "this id is already live, keep
-it" shortcut, because that shortcut is what silently returns the wrong
-place. Four separate bugs during the 2026 rebuild came from taking it,
-the last inside `build.resolve_stale_references` itself.
+```python
+from openplaces.io.admin_codes.rekey import rekey_files
+rekey_files(4, 'US', 'census_subdivision_id', apply=False)   # report
+rekey_files(4, 'US', 'census_subdivision_id', apply=True)    # rewrite
+```
 
-The same recycling makes one case undecidable from the identifier alone:
-a sidecar cell holding an id that is live *and* used to name another
-unit may predate the re-mint (stale) or postdate it (correct as written),
-and the superseded snapshot keeps one past name per id with no vintage.
-`resolve_stale_references` rewrites only retired ids and raises on
-recycled ones; regenerate such a file from its source's own codes.
+Recipes are keyed on admin ids too, through their directory and
+`admin_id:` field. After a re-mint, check each county-scoped recipe's
+path against the spine by the county's name; a recipe under a retired
+or recycled id is moved to the unit's present id.
+
+## What the spine may carry
+
+Only values its sources allow to be published. A unit's national code
+(`admin{N}_id_admin1`) is kept only for the countries and levels listed
+in `admin-spine-2026_code-sources.csv`, each naming the license-clean
+recipe that supplies it. GADM's codes, alternative names and
+native-script names were removed on 2026-09-11, because GADM does not
+allow redistribution. `tests/io/test_admin_spine_provenance.py` holds
+the line.
+
+None of these columns takes part in the mint, which runs with pinning
+off, so removing them moved no identifier.
 
 ## Rebuilding the spine
 
@@ -62,9 +81,12 @@ for level in (2, 3, 4):
     build.build_population(level)
 
 # 2. Override where the global admin geometry lacks a country's units.
+#    New England towns are level 3 and come from each state's own
+#    layer; the national admin4 layer excludes them. The full table is
+#    population-overrides.csv, which rebuild.rebuild_spine reads.
 for state in ('US-CT', 'US-MA', 'US-ME', 'US-NH', 'US-RI', 'US-VT'):
     build.build_population_from_entity(
-        'US_admin-census-2025_admin4', state, level=3,
+        f'{state}_admin-census-2025_admin3', state, level=3,
         # Connecticut renumbered its counties into planning regions in
         # 2022, so join on state + subdivision, not the whole GEOID.
         key=lambda g: f'{g[:2]}{g[-5:]}',
@@ -84,17 +106,16 @@ for recipe, country in [
 build.fill_population_gaps(3)
 build.fill_population_gaps(4)
 
-# 4-6. Repeat until the mint stops moving (two or three passes).
+# 4-5. Repeat until the mint stops moving (two or three passes).
 build.repair_zero_weights()
 build.remint_spine(apply=True, backup_dir=...)   # outside the package
-build.resolve_stale_references(apply=True)
 ```
 
 ## Why each step is shaped the way it is
 
 Each of these was a bug before it was a rule.
 
-**Resolve geometry rows by name, never by "the id is live".** The admin
+**Place geometry rows by name, never by "the id is live".** The admin
 geometry carries more than one identifier vintage at once. Its `JP-TO`
 row names Tokyo; the live `JP-TO` is Tokushima. Trusting the id credits
 Tokyo's 13.7 million people to a town of 720,000.
@@ -133,5 +154,5 @@ audit_spine(levels=(2, 3, 4))     # format, orphans, duplicates, widths
 ```
 
 `pytest tests/io/test_admin_codes_build.py` asserts the invariants that
-matter: every unit weighted, none weighted zero, nothing referencing a
-retired identifier, and the mint being a fixed point.
+matter: every unit weighted, none weighted zero, and the mint being a
+fixed point.

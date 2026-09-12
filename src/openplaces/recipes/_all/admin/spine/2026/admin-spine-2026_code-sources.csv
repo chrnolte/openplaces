@@ -1,0 +1,14 @@
+admin1_id,level,recipe_id,scheme
+US,2,US_admin-census-2025_admin2,Census state and county FIPS
+US,3,US_admin-census-2025_admin3,Census county FIPS or county subdivision GEOID
+US,4,US_admin-census-2025_admin4,Census county subdivision or place GEOID
+CO,2,CO_admin-dane-2025_admin2,DANE department code
+CO,3,CO_admin-dane-2025_admin3,DANE municipality code
+GB,2,GB_admin-ons-2024_admin2,ONS country code
+GB,3,GB_admin-ons-2024_admin3,ONS county or unitary authority code
+GB,4,GB_admin-ons-2024_admin4,ONS local authority district code
+FR,4,FR_admin-gisco-2024_admin4,LAU code (INSEE commune)
+DE,4,DE_admin-gisco-2024_admin4,LAU code (Gemeindeschluessel)
+BR,3,BR_admin-ibge-2026_admin3,IBGE municipality code
+PH,2,PH_admin-psa-2026_admin3,PSGC province code (from each municipality's provinceCode)
+PH,3,PH_admin-psa-2026_admin3,PSGC municipality code

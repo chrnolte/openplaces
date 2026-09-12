@@ -1750,6 +1750,97 @@ def generate_admin_ids(
     return admin
 
 
+#: Spine columns a redistribution-restricted source may not fill: its
+#: alternative and native-script spellings. Its own codes are matched
+#: by pattern in `_publishable_spine_columns`.
+_RESTRICTED_SPINE_COLUMNS = ('name_original', 'name_alternatives')
+
+
+def _redistribution_restricted(recipe) -> bool:
+    """Return True when a recipe's source may not be redistributed.
+
+    Parameters
+    ----------
+    recipe : dict
+        A loaded recipe. One carrying no source counts as open.
+
+    Returns
+    -------
+    bool
+        The source's `redistribution_restricted` flag.
+    """
+    entity = recipe.get('entity') or recipe.get('dataset') or {}
+    source = getattr(entity, 'source', None)
+    if source is None and isinstance(entity, dict):
+        source = entity.get('source')
+    if isinstance(source, dict):
+        return bool(source.get('redistribution_restricted'))
+    return bool(getattr(source, 'redistribution_restricted', False))
+
+
+def _publishable_spine_columns(frame, level, restricted):
+    """Drop the columns a restricted source may not put into the spine.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        An admin recipe's output, indexed by admin id.
+    level : int
+        Admin level of the spine being updated.
+    restricted : bool
+        Whether the recipe's source forbids redistribution.
+
+    Returns
+    -------
+    pandas.DataFrame
+        `frame` itself for an open source; otherwise a copy without the
+        source's own codes and its alternative and native-script names.
+    """
+    if not restricted:
+        return frame
+    drop = [
+        c
+        for c in frame.columns
+        if c in _RESTRICTED_SPINE_COLUMNS
+        or re.fullmatch(rf'admin{level}_id_admin[0-9]', c)
+    ]
+    return frame.drop(columns=drop)
+
+
+def _register_code_source(level, recipe_id, admin_ids):
+    """Record which recipe supplies the national codes of each country.
+
+    `admin-spine-2026_code-sources.csv` names, per country and level,
+    the recipe the spine's `admin{level}_id_admin1` codes come from, and
+    `tests/io/test_admin_spine_provenance.py` refuses a code with no row
+    there. Registering in the step that copies the codes keeps a new
+    country's provenance in the same change as its codes.
+
+    Parameters
+    ----------
+    level : int
+        Admin level whose codes were copied.
+    recipe_id : str
+        Recipe the codes came from.
+    admin_ids : iterable of str
+        Units that received a code.
+    """
+    path = recipe_path(None, 'admin-spine-2026', filename='code-sources.csv')
+    table = (
+        pd.read_csv(path, dtype=str, keep_default_na=False)
+        if path.exists()
+        else pd.DataFrame(columns=['admin1_id', 'level', 'recipe_id', 'scheme'])
+    )
+    countries = {str(a).split(STRING_SEPARATOR_WITHIN_IDS, 1)[0] for a in admin_ids}
+    for country in sorted(countries):
+        row = (table['admin1_id'] == country) & (table['level'] == str(level))
+        if row.any():
+            table.loc[row, 'recipe_id'] = recipe_id
+        else:
+            table.loc[len(table)] = [country, str(level), recipe_id, '']
+    table.to_csv(path, index=False, encoding='utf-8', lineterminator='\n')
+
+
 def update_admin_spine(level, admin_recipe_id, test, silent=False):
     """Update the `openplaces` admin spine with admin recipe info
 
@@ -1779,6 +1870,13 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
     # against a stale, superseded admin_id a false negative.
     admin_local = pd.read_parquet(
         get_output_path(admin_recipe, admin_id=admin_recipe['admin_id'])
+    )
+    # A source that may not be redistributed contributes identity only:
+    # which units exist and what they are called. Its own codes and its
+    # alternative and native-script spellings stay out of the spine,
+    # which ships with the package. GADM is the case in point.
+    admin_local = _publishable_spine_columns(
+        admin_local, level, _redistribution_restricted(admin_recipe)
     )
 
     if admin_id_prefix:
@@ -1887,17 +1985,22 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
     if admin_id_columns:
         # Keep the first one of the sorted columns (should be highest
         # official ID, one used by the country, over one used by state)
-        new_admin_spine.loc[admin_local.index, admin_id_columns[0]] = admin_local[
-            admin_id_columns[0]
-        ]
+        codes = admin_local[admin_id_columns[0]]
+        new_admin_spine.loc[admin_local.index, admin_id_columns[0]] = codes
+        if not test:
+            coded = codes.notna() & (codes.astype(str).str.strip() != '')
+            _register_code_source(
+                level, admin_recipe_id, admin_local.index[coded.to_numpy()]
+            )
 
-    # Write
+    # Write in the same byte-exact form as `build.remint_spine`: no BOM,
+    # and LF on every platform, so either writer reproduces the file.
     admin_recipe_path = recipe_path(
         None,
         'admin-spine-2026',
         filename=f'admin{level}' + ('_test' if test else '') + '.csv',
     )
-    new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8-sig')
+    new_admin_spine.to_csv(admin_recipe_path, encoding='utf-8', lineterminator='\n')
 
 
 def context_layers(admin_id):
