@@ -71,6 +71,33 @@ class TestAdminIdLevelValidation:
         assert str(AdminId('US-MN-LO-X157')) == 'US-MN-LO-X157'
 
 
+class TestEntityDefinitions:
+    """Every entity type says what one of its rows is.
+
+    Parcels, footprints, buildings, dwellings, properties and
+    transactions are easy to confound (a condo unit is a property, not a
+    building; a townhome row is one footprint but several buildings), so
+    the definition is part of the schema rather than folklore.
+    """
+
+    def test_every_entity_type_has_a_definition(self):
+        from openplaces.core.schema import ENTITY_DEFINITIONS, ENTITY_TYPES
+
+        assert set(ENTITY_DEFINITIONS) == set(ENTITY_TYPES)
+        assert all(
+            isinstance(text, str) and text.strip()
+            for text in ENTITY_DEFINITIONS.values()
+        )
+
+    def test_the_easily_confounded_entities_say_how_they_differ(self):
+        from openplaces.core.schema import ENTITY_DEFINITIONS
+
+        assert 'condominium unit is one property' in ENTITY_DEFINITIONS['property']
+        assert 'condominium building' in ENTITY_DEFINITIONS['building']
+        assert 'one dwelling per unit' in ENTITY_DEFINITIONS['dwelling']
+        assert 'townhome' in ENTITY_DEFINITIONS['footprint']
+
+
 class TestSourceTerms:
     """The license fields a recipe records after checking a source's terms."""
 

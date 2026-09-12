@@ -129,10 +129,20 @@ Dataset description and source
 
          Whether the terms restrict redistributing the data or its derivatives.
 
-         Unset means not yet checked, which is not the same as ``false``. This
-         is the one licensing fact stored as a boolean rather than free text,
+         Unset means not yet checked, which is not the same as ``false``. It is
+         one of two licensing facts stored as booleans rather than free text,
          so recipes carrying restricted sources can be listed without parsing
          :attr:`license`.
+
+      .. attribute:: resale_restricted
+
+         Whether the terms forbid selling the data while permitting free
+         sharing (such as a "not to be resold" clause common in county assessor
+         downloads). This restriction is distinct from
+         :attr:`redistribution_restricted`, which governs sharing, and delivery
+         bundle terms notices report it in a separate section. When applicable,
+         quote the clause in :attr:`license`. Leaving this field unset indicates
+         it has not yet been checked.
 
    .. attribute:: version
 

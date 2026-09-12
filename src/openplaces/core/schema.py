@@ -28,6 +28,40 @@ ENTITY_TYPES = [
     'transaction',
 ]
 
+#: What one row of each entity type is. Kept beside ENTITY_TYPES (a plain
+#: list, which the docs build reads with ast.literal_eval) so the two
+#: cannot drift; a test pins that every type has a definition. The
+#: stages keep these apart: harmonize builds each entity's core table
+#: with minimal redundancy (deriving a preliminary column only where an
+#: enrich step needs it to choose its rows), enrich adds external
+#: evidence to an entity, and curate assembles one dataset per entity
+#: type (AGENTS.md, "Entity model and stage roles").
+ENTITY_DEFINITIONS = {
+    'admin': 'One administrative unit (country, state, county, municipality).',
+    'building': (
+        'One structure. A townhome row drawn as a single footprint is several '
+        'buildings; a condominium building holding many units is one building.'
+    ),
+    'dwelling': (
+        'One housing unit. A single-family home is one dwelling; a '
+        'multi-family building is one dwelling per unit.'
+    ),
+    'footprint': (
+        'One building outline polygon. It may cover one building or several '
+        '(a townhome row).'
+    ),
+    'image': 'Imagery of one entity (satellite, street view), keyed by its id.',
+    'parcel': 'One unit of land as the cadastre draws it.',
+    'person': 'One person or organization named in a record (e.g. an owner).',
+    'property': (
+        'One unit of ownership as a tax roll records it: what a sale conveys. '
+        'A single-family home on its lot is one property; a condominium unit '
+        'is one property.'
+    ),
+    'tile': 'One cell of a spatial tiling grid.',
+    'transaction': 'One recorded sale or conveyance.',
+}
+
 
 def synthetic_geometry_pattern(exclude: str | None = None) -> str:
     """Regex matching a reference-derived synthetic geometry_source label.

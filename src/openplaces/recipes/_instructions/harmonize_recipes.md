@@ -69,7 +69,11 @@ reduced per key by its own `aggregation_function`. Without the key, the
 property spine unioned Victoria County TX's roll and its components
 into 100,112 "properties" where the roll has 53,405. Unlike
 `exclude_from_auto_discover`, the key keeps the table in the parcel
-join.
+join. The property spine joins it onto the properties of the roll it
+names (`link_by_id` with `supplements_only: true`, `count_as: false`),
+which is where its attributes belong; parcels and footprints get them in
+curate, aggregated from properties (AGENTS.md, "Entity model and stage
+roles").
 
 **Order is a dependency, not a preference.** The property spine depends only on
 property ingests; the footprint spine additionally on parcel *ingests* and the

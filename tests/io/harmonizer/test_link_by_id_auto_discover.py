@@ -209,6 +209,86 @@ def test_find_admin_scoped_recipe_ids_keeps_a_supplement(monkeypatch):
     ]
 
 
+_ROLL = 'US-XX-YY_property-roll-2026'
+
+
+def _match(recipe_id, supplements=None, aggregation_function=None):
+    return {
+        'recipe_id': recipe_id,
+        'layer': None,
+        'key': 'parcel_id_local',
+        'aggregation_function': aggregation_function,
+        'supplements': supplements,
+    }
+
+
+def test_select_supplements_keeps_only_supplements_of_spine_sources():
+    matches = [
+        _match(_ROLL),
+        _match(f'{_ROLL}_improvement-detail', supplements=_ROLL),
+        _match('US-XX-YY_property-other-2026_detail', supplements='elsewhere'),
+    ]
+
+    kept = links._select_supplements(matches, {_ROLL})
+
+    assert [m['recipe_id'] for m in kept] == [f'{_ROLL}_improvement-detail']
+
+
+def test_supplements_only_joins_detail_columns_onto_their_roll(monkeypatch):
+    """A detail table lands on the properties it describes, and only there.
+
+    Two components on property 'a' sum their area and keep the earliest
+    year; the roll itself and a stray supplement are never loaded, and
+    count_as=False leaves no record-count column behind.
+    """
+    detail = f'{_ROLL}_improvement-detail'
+    matches = [
+        _match(_ROLL),
+        _match(
+            detail,
+            supplements=_ROLL,
+            aggregation_function={'area_sqft': 'sum', 'year_built': 'min'},
+        ),
+        _match('US-XX-YY_property-other-2026_detail', supplements='elsewhere'),
+    ]
+    frames = {
+        detail: pd.DataFrame(
+            {
+                'parcel_id_local': ['a', 'a', 'b'],
+                'area_sqft': [100.0, 50.0, 70.0],
+                'year_built': [1990.0, 1980.0, 2000.0],
+            }
+        )
+    }
+
+    def _get_entities(recipe_id, *args, **kwargs):
+        assert recipe_id in frames, f'{recipe_id} should not be loaded'
+        return frames[recipe_id]
+
+    monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
+    monkeypatch.setattr(links, 'get_entities', _get_entities)
+    monkeypatch.setattr(links, 'restrict_to_admin_by_name', lambda df, *a: df)
+    monkeypatch.setattr(links, '_apply_remap_csvs', lambda state, recipe_id: state)
+
+    state = _state('US-XX-YY', spine=pd.DataFrame({'parcel_id_local': ['a', 'b', 'c']}))
+    state.metadata['spine_source_recipe_ids'] = {_ROLL}
+
+    state = links.link_by_id(
+        state,
+        auto_discover=True,
+        entity_type='property',
+        supplements_only=True,
+        count_as=False,
+    )
+
+    spine = state.spine.set_index('parcel_id_local')
+    assert spine.loc['a', 'area_sqft'] == 150.0
+    assert spine.loc['a', 'year_built'] == 1980.0
+    assert spine.loc['b', 'area_sqft'] == 70.0
+    assert pd.isna(spine.loc['c', 'area_sqft'])
+    assert 'n_records_per_key' not in spine.columns
+
+
 def test_write_prioritized_new_column_is_written_directly():
     spine = pd.DataFrame(index=['a', 'b'])
     new_vals = pd.Series([1.0, 2.0], index=['a', 'b'])

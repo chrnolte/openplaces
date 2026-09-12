@@ -64,3 +64,21 @@ def test_a_supplement_is_still_found_by_its_filename():
         silent=True,
     )
     assert found == 'US-TX-VIC_property-victoriacad-2026_improvement-detail'
+
+
+def test_the_property_spine_joins_supplements_as_columns_only():
+    # Skipped by the union (no rows), joined by link_by_id (columns), and
+    # with no record-count column: the property is where these attributes
+    # live, once.
+    from openplaces.recipe import get_recipe_by_id
+
+    steps = get_recipe_by_id('US_property-spine-2026')['pipeline']
+    union = next(i for i, s in enumerate(steps) if s['step'] == 'union_spine_sources')
+    join = next(
+        i
+        for i, s in enumerate(steps)
+        if s['step'] == 'link_by_id' and s.get('supplements_only')
+    )
+    assert join > union
+    assert steps[join]['entity_type'] == 'property'
+    assert steps[join]['count_as'] is False
