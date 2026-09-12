@@ -25,10 +25,7 @@ from openplaces.io.admin_codes.anchors import (
     normalize_name,
 )
 from openplaces.io.admin_codes.assign import assign_codes, rank_score
-from openplaces.io.admin_codes.audit import (
-    audit_spine,
-    resolve_identifier,
-)
+from openplaces.io.admin_codes.audit import audit_spine
 from openplaces.io.admin_codes.candidates import (
     CODE_PATTERN,
     Candidate,
@@ -64,7 +61,6 @@ __all__ = [
     'LanguagePack',
     'assign_admin_ids',
     'audit_spine',
-    'resolve_identifier',
     'assign_codes',
     'derive_codes',
     'intuitive_codes',

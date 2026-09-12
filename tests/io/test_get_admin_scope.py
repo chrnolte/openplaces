@@ -9,10 +9,10 @@ from openplaces.io.readers import get_admin, get_admin_ids
 class TestGetAdminSelectionIsLevelBounded:
     """A mixed-width sibling must not be selected by a shorter id.
 
-    'US-NC-WA' is Wake County's pre-2026 id, superseded when North
-    Carolina widened to three-character codes, and 'US-NC-WAR' is Warren
-    County's current one. Both are real entries in the admin spine, and
-    the first is a plain string prefix of the second.
+    'US-NC-WA' was Wake County's id before North Carolina widened to
+    three-character codes, and 'US-NC-WAR' is Warren County's current
+    one. The first is a plain string prefix of the second and names no
+    unit today.
     """
 
     def test_a_shorter_sibling_id_selects_nothing(self):
@@ -38,6 +38,33 @@ class TestGetAdminSelectionIsLevelBounded:
         """
         admin = get_admin(level=1, admin_id=AdminId(), silent=True)
         assert 'US' in admin.index
+
+
+class TestAWholeLevelWithGeometry:
+    """A whole level with geometry reads the recipe's whole scope.
+
+    The spine rebuild asks exactly this, to weight every unit. The
+    default geometry recipe is chosen after the one place that bound
+    `admin_ids` from a recipe, so the call raised UnboundLocalError
+    instead of resolving every file the recipe wrote.
+    """
+
+    def test_the_whole_recipe_scope_is_requested(self, monkeypatch):
+        from openplaces.io import readers
+
+        seen = []
+
+        class Resolved(Exception):
+            pass
+
+        def record(recipe, admin_id):
+            seen.append(admin_id)
+            raise Resolved
+
+        monkeypatch.setattr(readers, '_get_output_admin_ids', record)
+        with pytest.raises(Resolved):
+            get_admin(level=2, geom=True, silent=True)
+        assert seen == [None]
 
 
 class TestAnEmptyScopeIsAnAnswer:

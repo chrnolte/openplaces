@@ -1,6 +1,4 @@
-"""Checks an identifier set must pass, and the safe way to repair references.
-
-Two jobs that were learned the hard way and are easy to get wrong again.
+"""Checks an identifier set must pass.
 
 :func:`audit_spine` states the invariants: format, hierarchy, uniqueness,
 one code width per parent, and -- the one that matters most -- that
@@ -12,15 +10,11 @@ spine by construction and would not move on a derivation regression
 population weights the mint used, the derived run is the same computation
 as the re-mint and must reproduce every code; unweighted it is a floor.
 
-:func:`resolve_identifier` is the only safe way to point an old reference
-at a live unit. Identifiers get *recycled*: US-NC-HD named Hyde and now
-names Hertford. So an id may not be treated as a stable string, and an id
-that looks live may still be the wrong unit. Resolution goes through the
-name, scoped to the unit's own resolved parent, and refuses to guess when
-the name is ambiguous.
+Only the present spine is audited, because it is the only one kept.
+There is no record of earlier identifiers to resolve a retired one
+against: a file keyed on admin ids that outlives a re-mint is regenerated
+from its source's own codes.
 """
-
-from functools import lru_cache
 
 import pandas as pd
 
@@ -31,14 +25,9 @@ from openplaces.io.admin_codes.registry import spine_path
 LEVELS = (2, 3, 4)
 
 
-def _read(level, superseded=False):
-    name = (
-        f'admin-spine-2026_superseded-admin{level}.csv'
-        if superseded
-        else f'admin-spine-2026_admin{level}.csv'
-    )
+def _read(level):
     return pd.read_csv(
-        spine_path(level).with_name(name),
+        spine_path(level),
         dtype=str,
         keep_default_na=False,
         encoding='utf-8',
@@ -138,78 +127,3 @@ def audit_spine(levels=LEVELS, reproduce=True, weights=None):
             }
         )
     return pd.DataFrame(rows).set_index('level')
-
-
-@lru_cache(maxsize=1)
-def _resolution_tables():
-    """Live units by (parent, name) and by (state, name), plus past names."""
-    children, state_scope, past_names = {}, {}, {}
-    for level in LEVELS:
-        column = f'admin{level}_id'
-        live = _read(level)
-        for admin_id, name in zip(live[column], live['name']):
-            name = name.strip()
-            if not name:
-                continue
-            children.setdefault((admin_id.rsplit('-', 1)[0], name), []).append(admin_id)
-            scope = '-'.join(admin_id.split('-')[:2])
-            state_scope.setdefault((scope, name), []).append(admin_id)
-        for admin_id, name in zip(
-            *(lambda f: (f[column], f['name']))(_read(level, superseded=True))
-        ):
-            if name.strip():
-                past_names.setdefault(admin_id, name.strip())
-    return children, state_scope, past_names
-
-
-def resolve_identifier(admin_id, past_names=None):
-    """Point an identifier from an earlier vintage at the live unit.
-
-    Parameters
-    ----------
-    admin_id : str
-        The identifier as some committed file records it.
-    past_names : mapping of str to str, optional
-        Additional id-to-name knowledge, e.g. read from another branch's
-        spine. Merged over the superseded spine shipped beside the live
-        one.
-
-    Returns
-    -------
-    str or None
-        The live identifier for that unit, or None when the unit cannot be
-        named or its name is ambiguous within its parent.
-
-    Notes
-    -----
-    Deliberately has no "already live" shortcut. An identifier that exists
-    in the current spine may name a *different* unit than it did before --
-    that is what recycling means -- so every identifier is resolved
-    through its name, and the parent is resolved first by the same rule.
-    Returning None is correct behaviour: an ambiguous reference must be
-    left alone, never guessed at.
-    """
-    children, state_scope, known = _resolution_tables()
-    names = {**known, **(past_names or {})}
-
-    def step(current):
-        name = names.get(current)
-        if not name:
-            return None
-        parent_before = current.rsplit('-', 1)[0]
-        parent = parent_before if '-' not in parent_before else step(parent_before)
-        if parent is not None:
-            hits = children.get((parent, name), [])
-            if len(hits) == 1:
-                return hits[0]
-        # Widen to the state when the parent does not settle it -- either
-        # the parent's whole level is gone (New England's counties) or the
-        # parent itself no longer resolves, which is the same situation
-        # seen from one level down. The state prefix is readable straight
-        # off the identifier, so this does not depend on the parent at
-        # all; a unique match is still required.
-        scope = '-'.join(current.split('-')[:2])
-        hits = state_scope.get((scope, name), [])
-        return hits[0] if len(hits) == 1 else None
-
-    return step(admin_id)

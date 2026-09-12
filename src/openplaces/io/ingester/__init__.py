@@ -843,8 +843,8 @@ class Ingester:
                     f'None of the requested admin ids ({requested}) resolve '
                     f'to a unit at save level {save_level} within '
                     f'{scope_text}. A re-mint may have '
-                    'renamed them; resolve the old id through '
-                    'admin_codes.audit.resolve_identifier.'
+                    'renamed them; look the unit up in the current spine '
+                    'by its name or national code.'
                 )
 
         if not reprocess:

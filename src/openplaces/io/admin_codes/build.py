@@ -19,19 +19,18 @@ Order matters, and the reasons are not obvious:
 4. :func:`repair_zero_weights` -- replace any zero, which is why this runs
    after the fill rather than inside it.
 5. :func:`remint_spine` -- re-derive every identifier against the weights.
-6. :func:`resolve_stale_references` -- move committed sidecars onto the
-   identifiers the re-mint produced.
 
-Repeat 4-6 until :func:`remint_spine` reports no change; the mint is a
+Repeat 4-5 until :func:`remint_spine` reports no change; the mint is a
 fixed point and converges in two or three passes.
 
 Notes
 -----
-A re-mint **recycles** identifiers: a string survives and names a
-different unit. Never migrate an identifier by string substitution --
-always go through
-:func:`openplaces.io.admin_codes.audit.resolve_identifier`, which follows
-the unit rather than the string.
+Only the present spine is kept. A re-mint rewrites it in place and
+records nothing about the identifiers it replaced, so a file keyed on
+admin ids that outlives a re-mint is regenerated from its source's own
+codes. It is never migrated by string substitution: a re-mint
+**recycles** identifiers, and a string that survives may name a
+different unit.
 """
 
 from __future__ import annotations
@@ -42,7 +41,6 @@ from pathlib import Path
 import pandas as pd
 
 from openplaces.config import cfg
-from openplaces.io.admin_codes.audit import resolve_identifier
 from openplaces.io.admin_codes.frame import assign_admin_ids
 from openplaces.io.admin_codes.registry import spine_path
 
@@ -124,9 +122,10 @@ def resolved_polygons(level):
     Resolving is not the same as reading the geometry layer's own
     identifier column: that layer holds several identifier vintages at
     once, so a row labelled ``JP-TO`` may be Tokyo while the live
-    ``JP-TO`` is Tokushima. Each row is resolved through its own name
-    instead, and everything that needs to say which shape belongs to
-    which unit goes through here, so no two callers can disagree.
+    ``JP-TO`` is Tokushima. Each row is placed through its own name
+    instead, against the present spine alone, and everything that needs
+    to say which shape belongs to which unit goes through here, so no
+    two callers can disagree.
 
     Deliberately raster-free. Verifying that a weight still belongs to
     its unit is a question about geometry and identity only, and an
@@ -154,6 +153,19 @@ def resolved_polygons(level):
     live_name = dict(zip(spine[column], spine['name']))
     skip = GEOMETRY_MISMATCHED.get(level, ())
 
+    # Live units by name, within their parent and within their state:
+    # the two scopes a geometry row can be placed in without knowing
+    # any identifier the spine no longer issues.
+    by_parent, by_state = {}, {}
+    for admin_id, name in live_name.items():
+        name = name.strip()
+        if not name:
+            continue
+        parent = admin_id.rsplit('-', 1)[0]
+        state = '-'.join(admin_id.split('-')[:2])
+        by_parent.setdefault((parent, name), []).append(admin_id)
+        by_state.setdefault((state, name), []).append(admin_id)
+
     gdf = op.get_admin(level=level, geom=True).reset_index()
     gdf = gdf[[column, 'name', 'geometry']]
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
@@ -166,11 +178,33 @@ def resolved_polygons(level):
             return admin_id
         if not geom_name:
             return admin_id if admin_id in live else None
-        got = resolve_identifier(admin_id, past_names={admin_id: geom_name})
-        return got if got in live else None
+        # The row's id names another unit today, or none. Place it by
+        # its own name under its parent, then within its state, and
+        # only where exactly one live unit carries that name.
+        parent = admin_id.rsplit('-', 1)[0]
+        state = '-'.join(admin_id.split('-')[:2])
+        for hits in (
+            by_parent.get((parent, geom_name), []),
+            by_state.get((state, geom_name), []),
+        ):
+            if len(hits) == 1:
+                return hits[0]
+        return None
 
     gdf['resolved'] = [to_live(a, n) for a, n in zip(gdf[column], gdf['name'])]
-    gdf = gdf[gdf['resolved'].notna()].drop_duplicates(subset=['resolved'])
+    gdf = gdf[gdf['resolved'].notna()]
+    # Where two rows land on one unit, the row that carries the unit's
+    # own id wins over one placed by name, whatever the file order: a
+    # layer can hold a row for a unit the spine does not have that
+    # shares a live sibling's name.
+    exact = gdf['resolved'].to_numpy() == gdf[column].to_numpy()
+    gdf = (
+        gdf.assign(_exact=exact)
+        .sort_values('_exact', ascending=False, kind='stable')
+        .drop_duplicates(subset=['resolved'])
+        .drop(columns='_exact')
+        .sort_index()
+    )
     _RESOLVED_POLYGONS[level] = gdf[['resolved', 'geometry']]
     return _RESOLVED_POLYGONS[level]
 
@@ -220,6 +254,16 @@ def _write_population(level, frame, replacing=None):
     if 'geo_id' not in frame.columns:
         frame = frame.assign(geo_id='')
     frame['geo_id'] = frame['geo_id'].fillna('')
+    # A table weighting one unit twice cannot be mapped onto the spine,
+    # so the mint could not be reproduced from it. An identical copy is
+    # dropped; two different weights for one unit are refused.
+    frame = frame.drop_duplicates()
+    if frame['admin_id'].duplicated().any():
+        repeated = sorted(set(frame.loc[frame['admin_id'].duplicated(), 'admin_id']))
+        raise ValueError(
+            f'level {level}: {len(repeated)} admin id(s) weighted twice, '
+            f'e.g. {repeated[:5]}'
+        )
     frame.sort_values('admin_id').to_csv(
         path, index=False, encoding='utf-8', lineterminator='\n'
     )
@@ -233,9 +277,8 @@ def build_population(level, raster=DEFAULT_RASTER, verbose=True):
     it the polygon covers, so a unit smaller than one cell still receives
     a proportionate share rather than zero.
 
-    Every geometry row is resolved through
-    :func:`~openplaces.io.admin_codes.audit.resolve_identifier` using the
-    row's **own name**, with no "this id is already live" shortcut. The
+    Every geometry row is placed through :func:`resolved_polygons` using
+    the row's **own name**, with no "this id is already live" shortcut. The
     admin geometry carries more than one identifier vintage at once, and
     an id may since have been reissued: the geometry row ``JP-TO`` names
     Tokyo while the live ``JP-TO`` is Tokushima. Taking the shortcut
@@ -640,10 +683,8 @@ def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
     descendants reparented -- spine and population sidecars alike --
     before the next level is minted.
 
-    Outgoing identifiers are appended to the superseded snapshots first.
-    That file is the only bridge
-    :func:`~openplaces.io.admin_codes.audit.resolve_identifier` has from a
-    retired id to the live unit.
+    Only the present spine is written. The identifiers a re-mint
+    replaces are not recorded anywhere.
 
     Parameters
     ----------
@@ -662,18 +703,13 @@ def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
         Per level: ``units``, ``changed``, ``recycled``.
     """
     levels = sorted(levels)
-    directory = spine_path(2).parent
     spines = {level: _spine(level) for level in levels}
     populations = {level: pd.read_csv(population_path(level)) for level in levels}
 
     if apply and backup_dir is not None:
         backup_dir.mkdir(parents=True, exist_ok=True)
         for level in levels:
-            for path in (
-                spine_path(level),
-                population_path(level),
-                directory / f'admin-spine-2026_superseded-admin{level}.csv',
-            ):
+            for path in (spine_path(level), population_path(level)):
                 shutil.copy2(path, backup_dir / path.name)
 
     report = {}
@@ -681,6 +717,12 @@ def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
         column = f'admin{level}_id'
         parent_column = f'admin{level - 1}_id'
         spine = spines[level]
+        # A row for a unit the spine no longer names weighs nothing in
+        # the mint, and re-keying it below can land it on a live id,
+        # which is how the level-4 table came to weight 16 units twice.
+        populations[level] = populations[level][
+            populations[level]['admin_id'].isin(set(spine[column]))
+        ]
         weights = dict(
             zip(populations[level]['admin_id'], populations[level]['population'])
         )
@@ -724,23 +766,18 @@ def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
         if not apply:
             continue
 
-        superseded = directory / f'admin-spine-2026_superseded-admin{level}.csv'
-        archive = pd.read_csv(
-            superseded, dtype=str, keep_default_na=False, encoding='utf-8-sig'
-        )
-        outgoing = spine[~spine[column].isin(set(minted[column]))]
-        outgoing = outgoing[~outgoing[column].isin(set(archive[column]))]
-        pd.concat([archive, outgoing[archive.columns]], ignore_index=True).to_csv(
-            superseded, index=False, encoding='utf-8-sig'
-        )
-
+        # One byte-exact form on every platform: no BOM, and LF rather
+        # than the platform default, which is CRLF on Windows and made a
+        # re-mint rewrite every line of a file it barely changed.
         minted.drop(columns=[parent_column, 'population', '_previous']).to_csv(
-            spine_path(level), index=False, encoding='utf-8'
+            spine_path(level), index=False, encoding='utf-8', lineterminator='\n'
         )
         populations[level]['admin_id'] = populations[level]['admin_id'].map(
             lambda i, m=mapping: m.get(i, i)
         )
-        populations[level].to_csv(population_path(level), index=False, encoding='utf-8')
+        populations[level].to_csv(
+            population_path(level), index=False, encoding='utf-8', lineterminator='\n'
+        )
 
         for lower in [x for x in levels if x > level]:
             depth = lower - level
@@ -759,160 +796,3 @@ def remint_spine(levels=LEVELS, apply=False, backup_dir=None, verbose=True):
             )
 
     return report
-
-
-class AmbiguousReferenceError(ValueError):
-    """A committed sidecar holds a recycled id the data cannot disambiguate.
-
-    Raised by :func:`resolve_stale_references` when a cell names an
-    identifier that is live today *and* named a different unit before a
-    re-mint. Such a cell may mean either unit, and the superseded
-    snapshot records only one past name per id, with no vintage, so no
-    rewrite can be justified from the identifier alone. The fix is to
-    regenerate the file from its source's own codes.
-    """
-
-
-def resolve_stale_references(apply=False, verbose=True, on_ambiguous='raise'):
-    """Move committed sidecars onto the identifiers the re-mint produced.
-
-    Only files *keyed* to a live admin id are rewritten. The superseded
-    snapshots, the old-to-new migration tables and the published ISO and
-    prior-code tables all legitimately hold retired identifiers.
-
-    Every value goes through
-    :func:`~openplaces.io.admin_codes.audit.resolve_identifier` rather
-    than a string substitution, because a re-mint recycles: an id can
-    survive and name a different unit. There is deliberately no "the id
-    is already live, keep it" shortcut; that shortcut once left every
-    cell that meant Konin pointing at Kolo, which now holds Konin's old
-    id.
-
-    Only a *retired* identifier is rewritten, since a string the spine no
-    longer issues can only mean the unit it used to name. A *recycled*
-    identifier, one that is live and resolves by its past name to a
-    different live unit, is ambiguous: the cell may predate the re-mint
-    and mean the old unit, or postdate it and be correct as written. The
-    per-state crosswalks hold both kinds in one file (Tennessee's carries
-    US-TN-MA on both a Maury row and a McNairy row), so a blind rewrite
-    would corrupt as many cells as it repaired. Those cells are never
-    rewritten; see `on_ambiguous`.
-
-    Parameters
-    ----------
-    apply : bool, optional
-        Write. Default False reports what would change.
-    verbose : bool, optional
-        Print per-file counts, and every ambiguous cell.
-    on_ambiguous : {'raise', 'report'}, optional
-        What to do when a recycled id is found. 'raise' (the default)
-        raises :class:`AmbiguousReferenceError` before anything is
-        written, so a dry run cannot report a clean tree that is not.
-        'report' lists them and leaves them as they are.
-
-    Returns
-    -------
-    int
-        Cells rewritten.
-
-    Raises
-    ------
-    AmbiguousReferenceError
-        If a recycled identifier is found and `on_ambiguous` is 'raise'.
-    """
-    if on_ambiguous not in ('raise', 'report'):
-        raise ValueError(
-            f"on_ambiguous must be 'raise' or 'report', not {on_ambiguous!r}"
-        )
-
-    # The recipes root is three directories above the spine's
-    # `_all/admin/spine/<version>` folder. `recipe_path()` with no
-    # arguments resolves to `recipes/_all`, and rooting the walk there
-    # once made this sweep scan no per-state crosswalk at all: every
-    # one of them lives under a country or state directory, and the
-    # regions file was looked up at `_all/_all/...` and skipped as
-    # missing.
-    spine_dir = spine_path(2).parent
-    root = spine_dir.parents[3]
-    live = set()
-    for level in (1, *LEVELS):
-        frame = pd.read_csv(spine_path(level), dtype=str, keep_default_na=False)
-        column = f'admin{level}_id'
-        live |= set(frame.loc[frame[column].str.strip() != '', column])
-
-    cache = {}
-
-    def to_live(value):
-        # Every id is resolved through its past name, live or not; the
-        # ambiguity of a live one is decided below, from the result.
-        value = str(value).strip()
-        if not value:
-            return value
-        if value not in cache:
-            got = resolve_identifier(value)
-            cache[value] = got if got in live else value
-        return cache[value]
-
-    targets = [root / '_all/admin/regions/2026/admin-regions-2026.csv']
-    targets += [p for p in root.rglob('*crosswalk*.csv') if p.parent != spine_dir]
-
-    total = 0
-    ambiguous = []
-    pending = []
-    for path in targets:
-        if not path.exists():
-            continue
-        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
-        columns = [
-            c
-            for c in frame.columns
-            if c.endswith('_id') and ('admin' in c or c == 'region_admin_id')
-        ]
-        changed = 0
-        for column in columns:
-            current = frame[column].str.strip()
-            updated = current.map(to_live)
-            moved = updated != current
-            # A live id that resolves elsewhere is recycled: the cell
-            # may mean either unit, and nothing in the id says which.
-            recycled = moved & current.isin(live)
-            ambiguous += [
-                (path.relative_to(root).as_posix(), column, old, new)
-                for old, new in zip(current[recycled], updated[recycled])
-            ]
-            updated = updated.where(~recycled, frame[column])
-            changed += int((updated != frame[column]).sum())
-            frame[column] = updated
-        if changed:
-            total += changed
-            if verbose:
-                print(f'{changed:>5} in {path.relative_to(root)}')
-            pending.append((path, frame))
-
-    if ambiguous:
-        lines = [
-            f'{f}: {c} {old} is live today, but the unit it named before '
-            f'the re-mint is now {new}'
-            for f, c, old, new in ambiguous
-        ]
-        if on_ambiguous == 'raise':
-            raise AmbiguousReferenceError(
-                f'{len(ambiguous)} cell(s) name a recycled identifier that may '
-                'mean either its old or its current unit. Regenerate the files '
-                "from their source codes, or pass on_ambiguous='report' to "
-                'leave them and rewrite only retired identifiers.\n'
-                + '\n'.join(f'  {line}' for line in lines)
-            )
-        if verbose:
-            print(
-                f'{len(ambiguous)} ambiguous cell(s) name a recycled id and were '
-                'not rewritten; regenerate these files from source:'
-            )
-            for line in lines:
-                print(f'  {line}')
-    if apply:
-        for path, frame in pending:
-            frame.to_csv(path, index=False, encoding='utf-8')
-    if verbose:
-        print(f'total cell rewrites: {total:,}')
-    return total

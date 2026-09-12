@@ -237,7 +237,14 @@ def get_admin(
         # single deepest id returned the first state's rows and left
         # every other requested state as spine-only rows with null
         # geometry, silently at the default `silent=True`.
-        recipe_output_admin_ids = _get_output_admin_ids(recipe, admin_ids)[0]
+        # With no admin_id the request is the recipe's whole scope,
+        # which `_get_output_admin_ids` reads off the recipe when
+        # handed None. `admin_ids` is bound only when an admin_id was
+        # given: the default geometry recipe is picked after the one
+        # place that binds it from a recipe.
+        recipe_output_admin_ids = _get_output_admin_ids(
+            recipe, admin_ids if admin_id is not None else None
+        )[0]
         recipe_parquet_paths = [
             get_output_path(recipe, output_admin_id)
             for output_admin_id in recipe_output_admin_ids
