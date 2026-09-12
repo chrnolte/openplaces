@@ -394,6 +394,18 @@ src/openplaces/recipes/{admin_id_path}/{entity_type_or_theme_path}/{source}/{ver
 
 A recipe ID encodes its parts: `{admin_id}_{entity_type_or_theme}-{source}-{version}[_{filename}]`, e.g. `US-MA_parcel-massgis-2025`.
 
+**Recipe roots.** The bundled tree is one root; an installed package can
+contribute another through the `openplaces.recipes` entry-point group
+(`path.recipe_roots()`, bundled first, bundled wins on a name collision).
+Recipe lookup, the recipe index, source discovery and the suffix vocabulary
+read every root, so a recipe in a package is found exactly like a bundled
+one. Because auto-discovery then picks the most specific recipe *whatever
+roots are installed*, every attribute table `to_parquet` writes records the
+roots it was built from in its footer (`openplaces:recipe_roots`: bundled
+version or checkout commit, plus each package's distribution and version),
+and a delivery's terms notice lists them under "Recipes". Without that
+record, "the best source available at build time" is not reproducible.
+
 Key recipe fields:
 - `admin_id` — geographic scope
 - `entity` or `dataset` — what is being ingested

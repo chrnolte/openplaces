@@ -617,6 +617,19 @@ def to_parquet(
 
     df = _categoricals_to_string(df)
 
+    if not isinstance(df, gpd.GeoDataFrame) and set(kwargs) <= {'index'}:
+        # Every attribute table records which recipe roots the build
+        # read from (bundled, at which version or commit, plus any
+        # installed recipe package): auto-discovery picks the most
+        # specific recipe those roots hold, so a file is not
+        # reproducible without them. Geometry sidecars are written by
+        # geopandas, which takes no footer, and stay as they are.
+        from openplaces.path import RECIPE_ROOTS_METADATA_KEY, recipe_roots_footer
+
+        file_metadata = {
+            RECIPE_ROOTS_METADATA_KEY: recipe_roots_footer(),
+            **(file_metadata or {}),
+        }
     if isinstance(df, gpd.GeoDataFrame):
         with warnings.catch_warnings():
             kwargs.setdefault('write_covering_bbox', True)

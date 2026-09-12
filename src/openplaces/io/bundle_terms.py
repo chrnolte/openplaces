@@ -409,6 +409,20 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         )
     lines.append('')
 
+    # Which recipe roots the build read from. Auto-discovery takes the
+    # most specific recipe those roots hold, so the roots and their
+    # versions are part of what produced this bundle.
+    from openplaces.path import recipe_root_records
+
+    lines += ['Recipes', '-' * 70]
+    for record in recipe_root_records():
+        version = record.get('version') or 'unversioned'
+        if record.get('commit'):
+            version = f'{version} at commit {record["commit"]}'
+        distribution = record.get('distribution') or record['provider']
+        lines.append(f'{distribution} {version}')
+        lines.append(f'{" " * 8}{record["root"]}')
+    lines.append('')
     if terms.get('restricted'):
         lines += [
             'Redistribution restricted',
