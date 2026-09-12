@@ -59,7 +59,9 @@ def load_registry(level: int, id_separator: str = '-'):
     -------
     tuple of (dict, dict, dict)
         ``pins`` maps (parent id, name) to the code that unit already
-        holds. ``by_external`` maps (parent id, source code) the same way,
+        holds, and (parent id, name, type) likewise, for siblings that
+        share a name. ``by_external`` maps (parent id, source code) the
+        same way,
         for the units a name cannot identify: those with no name at all,
         and those sharing a name with a sibling. ``issued`` maps a parent
         id to every code the spine records under it, including those
@@ -80,26 +82,29 @@ def load_registry(level: int, id_separator: str = '-'):
     codes = frame[column].str.rsplit(id_separator, n=1).str[1]
     externals = external_codes(frame, level)
 
-    aliases = (
-        frame['name_alternatives']
-        if 'name_alternatives' in frame
-        else pd.Series([''] * len(frame), index=frame.index)
-    )
+    blank = pd.Series([''] * len(frame), index=frame.index)
+    aliases = frame['name_alternatives'] if 'name_alternatives' in frame else blank
+    kinds = frame['type'] if 'type' in frame else blank
 
-    pins: dict[tuple[str, str], str | None] = {}
+    pins: dict[tuple[str, ...], str | None] = {}
     by_external: dict[tuple[str, str], str | None] = {}
     issued: dict[str, set[str]] = {}
-    rows = list(zip(parents, codes, frame['name'], externals, aliases))
+    rows = list(zip(parents, codes, frame['name'], externals, aliases, kinds))
 
-    for parent, code, name, external, _ in rows:
+    for parent, code, name, external, _, kind in rows:
         issued.setdefault(parent, set()).add(code)
         name = str(name).strip()
         if name:
             key = (parent, name)
             # A name duplicated under one parent identifies nothing, so
-            # neither row is pinned by it; the source code below is what
-            # tells them apart.
+            # neither row is pinned by it; the source code or the name
+            # with its type is what tells them apart.
             pins[key] = None if key in pins else code
+            # Consulted only where the name alone identifies nothing:
+            # Minsk the region and Minsk the city share one name and
+            # carry no license-clean code.
+            typed = (parent, name, str(kind).strip())
+            pins[typed] = None if typed in pins else code
         if external:
             key = (parent, external)
             by_external[key] = None if key in by_external else code
@@ -109,7 +114,7 @@ def load_registry(level: int, id_separator: str = '-'):
     # what keeps a source that switches romanisation -- Esfahan to
     # Isfahan, Kordestan to Kurdistan -- from minting a new unit for one
     # that already exists.
-    for parent, code, name, _, alias in rows:
+    for parent, code, name, _, alias, _ in rows:
         for spelling in str(alias).split('|'):
             spelling = spelling.strip()
             if spelling and spelling != str(name).strip():

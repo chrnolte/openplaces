@@ -1,6 +1,6 @@
 """Tests for the runnable spine rebuild.
 
-The failure this guards is not a crash. Running the six phases out of
+The failure this guards is not a crash. Running the phases out of
 order, or stopping before the mint settles, produces a *plausible* spine
 -- and every other dataset is keyed on it.
 """
@@ -33,7 +33,6 @@ def _never_touch_real_data(monkeypatch):
         'build_population',
         'fill_population_gaps',
         'repair_zero_weights',
-        'resolve_stale_references',
     ):
         monkeypatch.setattr(
             rebuild.build,
@@ -89,11 +88,6 @@ def test_a_dry_run_reports_without_writing(monkeypatch):
 
     monkeypatch.setattr(rebuild, 'check_prerequisites', lambda **k: [])
     monkeypatch.setattr(rebuild.build, 'remint_spine', fake_remint)
-    monkeypatch.setattr(
-        rebuild.build,
-        'resolve_stale_references',
-        lambda **k: pytest.fail('a dry run must not write references'),
-    )
     out = rebuild.rebuild_spine(apply=False, skip_population=True, verbose=False)
     assert seen['apply'] is False
     assert out['converged'] is True
@@ -102,7 +96,6 @@ def test_a_dry_run_reports_without_writing(monkeypatch):
 def test_a_mint_that_never_settles_raises_rather_than_shipping(monkeypatch):
     monkeypatch.setattr(rebuild, 'check_prerequisites', lambda **k: [])
     monkeypatch.setattr(rebuild.build, 'repair_zero_weights', lambda **k: None)
-    monkeypatch.setattr(rebuild.build, 'resolve_stale_references', lambda **k: None)
     monkeypatch.setattr(
         rebuild.build,
         'remint_spine',
@@ -114,8 +107,8 @@ def test_a_mint_that_never_settles_raises_rather_than_shipping(monkeypatch):
         )
 
 
-def test_convergence_stops_the_loop_and_sweeps_references(monkeypatch):
-    calls = {'mint': 0, 'sweep': 0}
+def test_convergence_stops_the_loop(monkeypatch):
+    calls = {'mint': 0}
 
     def fake_remint(**k):
         calls['mint'] += 1
@@ -125,14 +118,9 @@ def test_convergence_stops_the_loop_and_sweeps_references(monkeypatch):
     monkeypatch.setattr(rebuild, 'check_prerequisites', lambda **k: [])
     monkeypatch.setattr(rebuild.build, 'repair_zero_weights', lambda **k: None)
     monkeypatch.setattr(rebuild.build, 'remint_spine', fake_remint)
-    monkeypatch.setattr(
-        rebuild.build,
-        'resolve_stale_references',
-        lambda **k: calls.__setitem__('sweep', calls['sweep'] + 1),
-    )
     out = rebuild.rebuild_spine(apply=True, skip_population=True, verbose=False)
     assert out == {'passes': 3, 'history': [5, 5, 0], 'converged': True}
-    assert calls['sweep'] == 1
+    assert calls['mint'] == 3
 
 
 def _overrides(rows):

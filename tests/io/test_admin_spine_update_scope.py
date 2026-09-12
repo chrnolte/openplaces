@@ -66,3 +66,75 @@ def test_the_recipe_still_owns_its_own_slice(spine_update):
     updated = spine_update()
     assert WAKE_TOWN in updated.index
     assert NEW_WAKE_TOWN in updated.index
+
+
+def test_the_spine_is_written_byte_exact(spine_update, tmp_path):
+    # The same form `build.remint_spine` writes, so whichever writer ran
+    # last, the committed file reads the same on every platform.
+    spine_update()
+    raw = (tmp_path / 'admin4_test.csv').read_bytes()
+    assert not raw.startswith(b'\xef\xbb\xbf')
+    assert b'\r\n' not in raw
+
+
+class TestRestrictedSources:
+    """A source that may not be redistributed contributes identity only."""
+
+    FRAME = pd.DataFrame(
+        {
+            'name': ['Alpha'],
+            'type': ['District'],
+            'name_original': ['Alpha (native script)'],
+            'name_alternatives': ['Alfa'],
+            'admin3_id_admin1': ['101'],
+        },
+        index=pd.Index(['XX-AA-AL'], name='admin3_id'),
+    )
+
+    def test_its_codes_and_spellings_are_dropped(self):
+        kept = admin_module._publishable_spine_columns(self.FRAME, 3, True)
+        assert list(kept.columns) == ['name', 'type']
+
+    def test_an_open_source_is_passed_through(self):
+        frame = self.FRAME
+        assert admin_module._publishable_spine_columns(frame, 3, False) is frame
+
+    def test_the_flag_is_read_from_the_recipe_source(self):
+        from openplaces.recipe import get_recipe_by_id
+
+        assert admin_module._redistribution_restricted(
+            get_recipe_by_id('admin-gadm-4~1_admin2')
+        )
+        assert not admin_module._redistribution_restricted(
+            get_recipe_by_id('CO_admin-dane-2025_admin2')
+        )
+        assert not admin_module._redistribution_restricted({'admin_id': 'XX'})
+
+
+def test_copied_codes_register_their_source(monkeypatch, tmp_path):
+    # A new country's codes arrive with the row that names their source,
+    # which is what the provenance test checks every code against.
+    path = tmp_path / 'code-sources.csv'
+    path.write_text(
+        'admin1_id,level,recipe_id,scheme\nXX,3,XX_admin-old-2020_admin3,a code\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setattr(admin_module, 'recipe_path', lambda *a, **k: path)
+    admin_module._register_code_source(
+        3, 'XX_admin-new-2026_admin3', ['XX-AA-AL', 'YY-BB-BR']
+    )
+    table = pd.read_csv(path, dtype=str, keep_default_na=False)
+    assert table.to_dict('records') == [
+        {
+            'admin1_id': 'XX',
+            'level': '3',
+            'recipe_id': 'XX_admin-new-2026_admin3',
+            'scheme': 'a code',
+        },
+        {
+            'admin1_id': 'YY',
+            'level': '3',
+            'recipe_id': 'XX_admin-new-2026_admin3',
+            'scheme': '',
+        },
+    ]

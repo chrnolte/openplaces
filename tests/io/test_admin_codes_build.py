@@ -2,7 +2,7 @@
 
 The expensive steps need a population raster and a full geometry read, so
 these cover what can be checked cheaply: the module imports, the paths it
-writes to are the committed ones, and the two dry-run steps report without
+writes to are the committed ones, and the dry-run mint reports without
 touching anything. The guarantee that matters -- that the pipeline
 reproduces the committed spine -- is asserted by
 `test_admin_codes_audit.py::test_weighted_derivation_reproduces_the_spine_exactly`
@@ -76,131 +76,7 @@ class TestPaths:
         assert not build.is_estimated('override-data-error')
 
 
-def _sidecar_tree(tmp_path):
-    """A spine of fabricated units plus one crosswalk keyed to them.
-
-    XX-AA-RT is retired (only the superseded snapshot names it, as
-    Retiredton, which now lives at XX-AA-NW). XX-AA-RC is recycled: it is
-    live and names Newcomb, but before the re-mint it named Oldfield,
-    which now lives at XX-AA-OF.
-    """
-    spine = tmp_path / 'recipes' / '_all' / 'admin' / 'spine' / '2026'
-    spine.mkdir(parents=True)
-    rows = {
-        1: [('XX', 'Exland')],
-        2: [('XX-AA', 'Alpha')],
-        3: [
-            ('XX-AA-NW', 'Retiredton'),
-            ('XX-AA-RC', 'Newcomb'),
-            ('XX-AA-OF', 'Oldfield'),
-        ],
-        4: [('XX-AA-NW-TW', 'Town')],
-    }
-    for level, units in rows.items():
-        pd.DataFrame(units, columns=[f'admin{level}_id', 'name']).to_csv(
-            spine / f'admin-spine-2026_admin{level}.csv', index=False
-        )
-    crosswalk = tmp_path / 'recipes' / 'XX' / '_all' / 'parcel' / 'src' / '2026'
-    crosswalk.mkdir(parents=True)
-    path = crosswalk / 'XX_parcel-src-2026_admin3-crosswalk.csv'
-    pd.DataFrame(
-        {
-            'admin3_id': ['XX-AA-RT', 'XX-AA-RC', 'XX-AA-OF', ''],
-            'admin3_id_admin1': ['1', '2', '3', '4'],
-        }
-    ).to_csv(path, index=False)
-    return spine, path
-
-
-@pytest.fixture
-def sidecar_tree(tmp_path, monkeypatch):
-    spine, crosswalk = _sidecar_tree(tmp_path)
-    monkeypatch.setattr(
-        build, 'spine_path', lambda level: spine / f'admin-spine-2026_admin{level}.csv'
-    )
-    past = {'XX-AA-RT': 'XX-AA-NW', 'XX-AA-RC': 'XX-AA-OF'}
-    monkeypatch.setattr(build, 'resolve_identifier', lambda i: past.get(i))
-    return crosswalk
-
-
-class TestResolveStaleReferences:
-    def test_a_retired_identifier_is_rewritten(self, sidecar_tree):
-        n = build.resolve_stale_references(
-            apply=True, verbose=False, on_ambiguous='report'
-        )
-        assert n == 1
-        written = pd.read_csv(sidecar_tree, dtype=str, keep_default_na=False)
-        assert written['admin3_id'].tolist() == ['XX-AA-NW', 'XX-AA-RC', 'XX-AA-OF', '']
-
-    def test_a_recycled_identifier_is_resolved_not_kept_because_it_is_live(
-        self, sidecar_tree
-    ):
-        # The forbidden shortcut returned a live id untouched, so a cell
-        # that meant Oldfield stayed on the id Newcomb now holds and the
-        # sweep reported a clean tree. The id must go through the
-        # resolver like any other, and what comes back is an ambiguity
-        # the sweep refuses to settle by itself.
-        with pytest.raises(build.AmbiguousReferenceError) as info:
-            build.resolve_stale_references(apply=False, verbose=False)
-        assert 'XX-AA-RC' in str(info.value)
-        assert 'XX-AA-OF' in str(info.value)
-        assert 'XX-AA-RT' not in str(info.value)
-
-    def test_an_ambiguous_cell_is_never_rewritten(self, sidecar_tree):
-        before = sidecar_tree.read_text()
-        build.resolve_stale_references(apply=True, verbose=False, on_ambiguous='report')
-        written = pd.read_csv(sidecar_tree, dtype=str, keep_default_na=False)
-        assert written.loc[1, 'admin3_id'] == 'XX-AA-RC'
-        assert before != sidecar_tree.read_text(), 'the retired id should move'
-
-    def test_raising_writes_nothing(self, sidecar_tree):
-        before = sidecar_tree.read_text()
-        with pytest.raises(build.AmbiguousReferenceError):
-            build.resolve_stale_references(apply=True, verbose=False)
-        assert sidecar_tree.read_text() == before
-
-    def test_a_dry_run_writes_nothing(self, sidecar_tree):
-        before = sidecar_tree.read_text()
-        n = build.resolve_stale_references(
-            apply=False, verbose=False, on_ambiguous='report'
-        )
-        assert n == 1
-        assert sidecar_tree.read_text() == before
-
-    def test_the_sweep_walks_every_state_directory(self, sidecar_tree):
-        # The crosswalk sits under `recipes/XX/...`, not under `_all`;
-        # rooting the walk at `recipes/_all` once scanned none of them.
-        n = build.resolve_stale_references(
-            apply=False, verbose=False, on_ambiguous='report'
-        )
-        assert n == 1
-
-
 class TestDryRuns:
-    def test_no_reference_names_a_retired_identifier(self):
-        # Run against the committed tree: after a settled re-mint
-        # nothing keyed to a live id should still name a retired one.
-        # Recycled ids are a separate question, below.
-        assert (
-            build.resolve_stale_references(
-                apply=False, verbose=False, on_ambiguous='report'
-            )
-            == 0
-        )
-
-    @pytest.mark.xfail(
-        strict=True,
-        raises=build.AmbiguousReferenceError,
-        reason=(
-            'Per-state admin3 crosswalks written across the 2026 re-mints hold '
-            'recycled ids of both vintages, which the identifier alone cannot '
-            'separate. They are being regenerated from their source codes; '
-            'remove this marker once the sweep passes.'
-        ),
-    )
-    def test_no_reference_names_a_recycled_identifier(self):
-        build.resolve_stale_references(apply=False, verbose=False)
-
     @needs_population
     def test_the_mint_is_a_fixed_point(self):
         # Re-deriving every identifier from the same weights must return

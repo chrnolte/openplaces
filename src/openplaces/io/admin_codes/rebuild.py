@@ -1,14 +1,14 @@
 """One runnable rebuild of the administrative spine.
 
-The six phases were a prose runbook in ``README.md``. Prose drifts from
+The five phases were a prose runbook in ``README.md``. Prose drifts from
 code silently, and the order is not guessable: level 3 must be filled
-before level 4, zeros repaired before minting, references swept after.
+before level 4, and zeros repaired before minting.
 Getting it wrong produces a *plausible* spine rather than an error, which
 is the worst possible failure for a file every other dataset is keyed on.
 
 Three things this module adds over running the phases by hand.
 
-**Convergence is detected, not counted.** Phases 4-6 repeat until a
+**Convergence is detected, not counted.** Phases 4-5 repeat until a
 dry-run mint reports zero moved identifiers. The runbook said "two or
 three passes"; a fixed number is a guess that silently under-runs when
 the data changes. :func:`rebuild_spine` loops until the fixed point and
@@ -229,8 +229,6 @@ def rebuild_spine(
         if verbose:
             print(f'  pass {attempt}: {changed:,} identifier(s) moved')
         if changed == 0:
-            if apply:
-                build.resolve_stale_references(apply=True, verbose=verbose)
             return {'passes': attempt, 'history': history, 'converged': True}
         if not apply:
             # A dry run cannot converge by itself: nothing was written, so

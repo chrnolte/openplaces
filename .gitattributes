@@ -9,6 +9,10 @@
 *.yaml text eol=lf
 *.json text eol=lf
 
+# The admin spine is written byte-exact (UTF-8, no BOM, LF) by both of
+# its writers, so a rebuild on any platform reproduces the committed file
+src/openplaces/recipes/_all/admin/spine/**/*.csv text eol=lf
+
 # Files that are binary and don't need auto-detection of text
 *.png binary
 *.jpg binary

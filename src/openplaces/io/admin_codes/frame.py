@@ -114,6 +114,7 @@ def assign_admin_ids(
     lengths=None,
     pin_to_spine=True,
     verbose=False,
+    type_col='type',
 ):
     """Build a unique admin id for every row, grouped by parent unit.
 
@@ -151,6 +152,11 @@ def assign_admin_ids(
         level from scratch, which is a deliberate migration, not a rerun.
     verbose : bool, optional
         Print a per-rule summary of how the codes were derived.
+    type_col : str, optional
+        Column holding the unit type, e.g. 'Region' or 'City'. Where
+        siblings share a name, the name and type together pin a row to
+        the spine when the pair is unique on both sides. Ignored when
+        the column is absent. Default 'type'.
 
     Returns
     -------
@@ -221,6 +227,24 @@ def assign_admin_ids(
             code = by_external.get((parent, str(external)))
             if code is not None:
                 pinned_rows[idx] = code
+        # A name two siblings share identifies neither of them, but the
+        # name with its type may: Minsk the region and Minsk the city.
+        # Only a pair unique on both sides pins, so no two rows can
+        # claim one code.
+        if type_col is not None and type_col in admin:
+            kinds = admin.loc[rows.index, type_col].astype('string').fillna('')
+            pairs = pd.Series(
+                list(zip(rows, kinds.str.strip())), index=rows.index, dtype=object
+            )
+            repeated = set(pairs[pairs.duplicated()])
+            for idx, pair in pairs.items():
+                if not pair[0] or pair[0] in held or idx in pinned_rows:
+                    continue
+                if pair in repeated:
+                    continue
+                code = pins.get((parent, *pair))
+                if code is not None and code not in pinned_rows.values():
+                    pinned_rows[idx] = code
         # A code a row has claimed on its source code is no longer
         # available to its name, or a same-named sibling would take it
         # a second time.
