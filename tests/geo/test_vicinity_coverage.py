@@ -63,3 +63,35 @@ def test_nodata_is_excluded_from_the_neighborhood(tmp_path):
     assert array[10, 2] == 100  # deep in the covered half
     assert array[10, 12] == 0  # deep in the observed-but-uncovered band
     assert array[10, 18] == 255  # nothing observed nearby at all
+
+
+def test_convolution_noise_cannot_wrap_the_percentage(tmp_path, monkeypatch):
+    """The FFT returns integer counts with noise of either sign.
+
+    On the Linux CI runner the noise made an unobserved neighborhood's
+    denominator 1e-13 instead of 0 and its numerator slightly negative,
+    and the ratio wrapped through the uint8 cast to 248. Inject the
+    worst case on every platform: a tiny negative numerator and a tiny
+    positive denominator where nothing was observed.
+    """
+    import openplaces.geo.raster as raster_module
+
+    data = np.full((20, 20), 255, dtype='uint8')
+    data[:, :10] = 1
+    path = _write_raster(tmp_path / 'noisy.tif', data, 255, 'uint8')
+    real = raster_module.fftconvolve
+    calls = []
+
+    def noisy(a, kernel, mode='same'):
+        out = real(a, kernel, mode=mode)
+        calls.append(1)
+        noise = -1e-13 if len(calls) % 2 else 1e-13
+        return np.where(out == 0, noise, out)
+
+    monkeypatch.setattr(raster_module, 'fftconvolve', noisy)
+    array, _, _ = compute_vicinity_coverage(path, (0, 0, 20, 20), px_radius=2)
+
+    observed = array[array != 255]
+    assert observed.max() <= 100
+    assert array[10, 2] == 100
+    assert array[10, 18] == 255

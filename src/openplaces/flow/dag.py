@@ -79,6 +79,21 @@ def rule_name(node: StageNode) -> str:
     return re.sub(r'[^0-9a-zA-Z_-]', '_', raw)
 
 
+def primary_output_path(recipe, admin_id=None):
+    """The file a recipe's job writes for one admin unit.
+
+    A recipe whose `aggregate_by: single_file` folds its partitions into
+    one `_all` file per unit writes that file and nothing else, so the
+    graph must name it the way `get_entities` reads it. Without this the
+    job was scheduled against a file no run produces, and "completed"
+    with its output missing.
+    """
+    partition_id = None
+    if (recipe.get('aggregate_by') or {}).get('single_file'):
+        partition_id = 'all'
+    return get_output_path(recipe, admin_id=admin_id, partition_id=partition_id)
+
+
 def node_key(node: StageNode) -> tuple:
     """Identity of one job: (recipe, admin unit, region).
 
@@ -552,7 +567,7 @@ class RecipeDAG:
         """
         if stage == 'deliver':
             return self._delivery_paths(recipe_id, admin_id, region)['canonical']
-        return get_output_path(
+        return primary_output_path(
             self._recipe(recipe_id), admin_id=self._node_admin(recipe_id, admin_id)
         )
 
@@ -669,7 +684,7 @@ class RecipeDAG:
         produced = self._produced_paths()
         for unit in admins:
             try:
-                path = str(get_output_path(recipe, admin_id=unit))
+                path = str(primary_output_path(recipe, admin_id=unit))
             except Exception:  # noqa: BLE001
                 continue
             if path in produced:
@@ -763,7 +778,7 @@ class RecipeDAG:
             try:
                 upstream = self._recipe(upstream_id)
                 for upstream_admin in self._node_admins(upstream_id, node_admin):
-                    paths.append(get_output_path(upstream, admin_id=upstream_admin))
+                    paths.append(primary_output_path(upstream, admin_id=upstream_admin))
                 if upstream.get('stage') == 'harmonize' or upstream.get('entity_links'):
                     upstream_stage = upstream.get('stage', 'ingest')
                     paths.extend(

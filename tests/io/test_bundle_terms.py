@@ -237,6 +237,57 @@ def test_private_sharing_reads_as_satisfied_only_where_nothing_restricts_it(term
     assert 'decision for you as the distributor' in notice
 
 
+def _fabricated_source_terms(monkeypatch, **overrides):
+    """Terms for one fabricated source, bypassing the recipe walk.
+
+    No committed recipe records a no-resale clause yet, so the contract
+    is pinned on a made-up source rather than on a real county.
+    """
+    import openplaces.io.bundle_terms as module
+
+    entry = {
+        'source_id': 'examplepa',
+        'recipe_id': 'US-XX-YY_property-examplepa-2026',
+        'license': 'free download; not to be resold without prior consent',
+        'terms_url': 'https://example.org/terms',
+        'portal_url': None,
+        'redistribution_restricted': False,
+        'resale_restricted': True,
+        **overrides,
+    }
+    monkeypatch.setattr(
+        module, '_source_terms', lambda recipe: {module._terms_key(entry): entry}
+    )
+    monkeypatch.setattr(module, '_catalog_terms', lambda: {})
+    return bundle_terms(RECIPE, None)
+
+
+def test_a_resale_restricted_source_is_reported_apart_from_redistribution(
+    monkeypatch,
+):
+    """A no-resale clause forbids selling, not sharing.
+
+    Filing it under "Redistribution restricted" would tell the reader
+    they may not pass the bundle on at all, which the clause does not say.
+    """
+    terms = _fabricated_source_terms(monkeypatch)
+
+    assert [e['source_id'] for e in terms['resale_restricted']] == ['examplepa']
+    assert terms['restricted'] == []
+
+    notice = format_notice(RECIPE, terms)
+    assert 'Resale restricted' in notice
+    assert 'examplepa' in notice.split('Resale restricted')[1]
+    assert 'Redistribution restricted' not in notice
+
+
+def test_a_source_without_a_resale_clause_adds_no_resale_section(monkeypatch):
+    terms = _fabricated_source_terms(monkeypatch, resale_restricted=None)
+
+    assert terms['resale_restricted'] == []
+    assert 'Resale restricted' not in format_notice(RECIPE, terms)
+
+
 def test_a_restricted_source_replaces_that_sentence_with_a_pointer():
     composition = _COMPOSITION + ['parcel.edgecombecounty'] * 40
     notice = format_notice(RECIPE, bundle_terms(RECIPE, pd.Series(composition)))

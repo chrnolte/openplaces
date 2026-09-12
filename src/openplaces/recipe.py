@@ -747,6 +747,13 @@ def find_entity_recipe_id(
         recipe_stage = recipe_data.get('stage') or 'ingest'
         if stage is not None and recipe_stage != stage:
             continue
+        # A supplement details another recipe's entities and is never
+        # "the" recipe for them. Without this skip it won the final
+        # tie-break on its longer filename: Victoria TX's property
+        # ingest resolved to its improvement-detail table, not its roll.
+        # Asking for it by filename still finds it.
+        if filename is None and recipe_data.get('supplements'):
+            continue
         entity = recipe_data.get('entity') or {}
         if entity.get('entity_type') != entity_type:
             continue
@@ -815,6 +822,12 @@ _RECIPE_ID_KEY_REGEX = re.compile(r'(^|_)recipe_id$')
 # the single best match.
 _MULTI_DISCOVER_STEPS = ('resolve_spine', 'link_by_id', 'union_spine_sources')
 
+# The multi-discover steps that build a spine from their sources. A
+# recipe declaring `supplements:` is never one of their inputs (the
+# harmonizer's _expand_auto_discover skips it); link_by_id still joins
+# it, so it stays an input there.
+_SPINE_BUILDING_STEPS = ('resolve_spine', 'union_spine_sources')
+
 
 @cache
 def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
@@ -853,6 +866,7 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
             'admin_id': admin_id_str,
             'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
             'version': version,
+            'supplements': str(row.get('supplements') or ''),
         }
         if key not in best or version_sort_key(version) > version_sort_key(
             best[key]['version']
@@ -1025,6 +1039,8 @@ def get_recipe_dependencies(
             # empty result means the step legitimately has no source here
             recipe_admin_str = str(recipe.get('admin_id') or '')
             for src in _scan_ingest_recipe_ids(entity_type):
+                if src.get('supplements') and step_name in _SPINE_BUILDING_STEPS:
+                    continue
                 # Containment by level, mirroring the harmonizer: a raw
                 # prefix test would make the pre-2026 'US-NC-WA' (Wake)
                 # a dependency of 'US-NC-WAR' (Warren).

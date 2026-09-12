@@ -76,11 +76,15 @@ pipeline:
   # generalization of 'attributes' for this 1:1-per-key case too; see
   # link_by_id's own docstring). A no-op for MA rows (parcel_id_local is
   # null there).
+  # `area_ha` rides along on every parcel link so that a deed covering
+  # several parcels can sum their areas when the curate stage folds
+  # its rows into one sale; without it the price would sit over one
+  # parcel's area, the defect the aggregation exists to remove.
   - step: link_by_id
     auto_discover: true
     entity_type: parcel
     columns: [use_group, use_subgroup, land_value, improvement_value,
-              year_built, n_dwellings]
+              year_built, n_dwellings, area_ha]
 
   # MA: no parcel_id_local on the transaction side; join by address instead.
   # Two passes, most specific first -- link_by_id's existing column-priority
@@ -90,20 +94,34 @@ pipeline:
   # recipe_id is the harmonized parcel spine, not the raw massgis ingest
   # recipe -- address_id_local(_city) only exists once derive_address_id_local
   # has run there.
+  # The parcel spine by the standardized parcel id, filling only what
+  # the county roll above left (its own values win). This is the link
+  # that reaches a source with no addresses, and the only one that
+  # carries `area_ha`, which the roll does not have: Florida's SDF
+  # names its parcel and nothing else, and on Lake County 97.6% of its
+  # keys are in the parcel spine.
+  - step: link_by_id
+    recipe_id: US_parcel-spine-2026
+    mode: attributes
+    spine_key: parcel_id_local
+    ref_key: parcel_id_local
+    fill_only: true
+    columns: [use_group, use_subgroup, land_value, improvement_value,
+              year_built, n_dwellings, area_ha]
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
     spine_key: address_id_local_city
     ref_key: address_id_local_city
     columns: [use_group, use_subgroup, land_value, improvement_value,
-              year_built, n_dwellings]
+              year_built, n_dwellings, area_ha]
   - step: link_by_id
     recipe_id: US_parcel-spine-2026
     mode: attributes
     spine_key: address_id_local
     ref_key: address_id_local
     columns: [use_group, use_subgroup, land_value, improvement_value,
-              year_built, n_dwellings]
+              year_built, n_dwellings, area_ha]
 
   # A multi-unit deed sale's address_number (e.g. '704-706', a duplex) never
   # matches a parcel's own single-number address_id_local key via the two
@@ -114,4 +132,4 @@ pipeline:
   - step: link_address_ranges
     recipe_id: US_parcel-spine-2026
     columns: [use_group, use_subgroup, land_value, improvement_value,
-              year_built, n_dwellings]
+              year_built, n_dwellings, area_ha]

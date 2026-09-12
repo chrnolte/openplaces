@@ -70,6 +70,7 @@ def _terms_key(entry: dict) -> tuple:
         entry['terms_url'],
         entry['portal_url'],
         entry['redistribution_restricted'],
+        entry['resale_restricted'],
     )
 
 
@@ -82,6 +83,7 @@ def _blank_entry(source_id: str) -> dict:
         'terms_url': None,
         'portal_url': None,
         'redistribution_restricted': None,
+        'resale_restricted': None,
     }
 
 
@@ -138,6 +140,7 @@ def _source_terms(recipe) -> dict[tuple, dict]:
                 'redistribution_restricted': getattr(
                     source, 'redistribution_restricted', None
                 ),
+                'resale_restricted': getattr(source, 'resale_restricted', None),
             }
             terms.setdefault(_terms_key(entry), entry)
     return terms
@@ -197,6 +200,7 @@ def _catalog_terms() -> dict[str, list[dict]]:
             'terms_url': source.get('terms_url'),
             'portal_url': source.get('portal_url'),
             'redistribution_restricted': source.get('redistribution_restricted'),
+            'resale_restricted': source.get('resale_restricted'),
         }
         # First recipe wins per distinct set of terms: several
         # versions of one source record the same terms, and a later
@@ -233,6 +237,8 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
         ``attribution`` -- sources that must be credited.
         ``restricted`` -- sources whose recipe records
         `redistribution_restricted`.
+        ``resale_restricted`` -- sources whose recipe records
+        `resale_restricted`: selling is forbidden, free sharing is not.
         ``unrecorded`` -- sources whose terms nobody has checked yet.
         ``unknown_share`` -- the share of the bundle's geometry whose
         source the bundle itself does not record.
@@ -299,10 +305,13 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
 
     share_alike: dict[str, float] = {}
     attribution, restricted, unrecorded = [], [], []
+    resale_restricted = []
     counted: set[tuple[str, str]] = set()
     for entry in sources:
         if entry['redistribution_restricted']:
             restricted.append(entry)
+        if entry.get('resale_restricted'):
+            resale_restricted.append(entry)
         license_text = entry['license']
         if not license_text:
             unrecorded.append(entry)
@@ -324,6 +333,7 @@ def bundle_terms(recipe, geometry_source=None) -> dict:
         'share_alike': share_alike,
         'attribution': attribution,
         'restricted': restricted,
+        'resale_restricted': resale_restricted,
         'unrecorded': unrecorded,
         'unknown_share': unknown_share,
     }
@@ -407,6 +417,23 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
             'Read each one before passing this bundle on.',
         ]
         for entry in terms['restricted']:
+            url = entry['terms_url'] or entry['portal_url'] or ''
+            license_text = entry['license'] or _UNRECORDED
+            lines.append(f'  {entry["source_id"]}: {license_text}  {url}')
+        lines.append('')
+
+    if terms.get('resale_restricted'):
+        # Its own section, not a line under "Redistribution restricted":
+        # a no-resale clause leaves free sharing alone, and filing it as
+        # a redistribution restriction would overstate it.
+        lines += [
+            'Resale restricted',
+            '-' * 70,
+            'The terms recorded for these sources forbid selling their data.',
+            'Sharing this bundle at no charge is not what these clauses',
+            'restrict; charging for it is. Read each one before you do.',
+        ]
+        for entry in terms['resale_restricted']:
             url = entry['terms_url'] or entry['portal_url'] or ''
             license_text = entry['license'] or _UNRECORDED
             lines.append(f'  {entry["source_id"]}: {license_text}  {url}')

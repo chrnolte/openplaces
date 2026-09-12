@@ -1950,6 +1950,7 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                 'layer': None,
                 'key': 'parcel_id_local',
                 'aggregation_function': recipe.get('aggregation_function'),
+                'supplements': recipe.get('supplements'),
             }
         )
         for layer_spec in recipe.get('additional_layers') or []:
@@ -1961,9 +1962,27 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                     'layer': str(layer_spec['entity'].entity_type),
                     'key': layer_spec.get('layer_key', 'parcel_id_local'),
                     'aggregation_function': layer_spec.get('aggregation_function'),
+                    'supplements': None,
                 }
             )
     return matches
+
+
+def _select_supplements(matches: list[dict], spine_source_ids: set[str]) -> list[dict]:
+    """Keep the matches that supplement one of the spine's own sources.
+
+    A supplement (a recipe declaring ``supplements: <recipe_id>``) details
+    the entities of the recipe it names, e.g. a roll's improvement-detail
+    member. Joined onto a spine built from that roll, its columns land on
+    the entity they describe. A supplement of a roll this spine did not
+    load has nothing to attach to here, and a roll itself is already the
+    spine's rows, so neither is joined.
+    """
+    return [
+        match
+        for match in matches
+        if match.get('supplements') and match['supplements'] in spine_source_ids
+    ]
 
 
 def _apply_remap_csvs(state: HarmonizeState, recipe_id: str) -> HarmonizeState:
@@ -2364,13 +2383,14 @@ def link_by_id(
     columns: list[str] | dict[str, str] | None = None,
     aggregation_function: dict[str, str] | None = None,
     suffix: str | None = None,
-    count_as: str | None = None,
+    count_as: str | bool | None = None,
     flag_as: str | None = 'is_transacted',
     layer: str | None = None,
     ref_sort_by: str | None = None,
     ref_sort_ascending: bool = True,
     track_provenance: list[str] | None = None,
     fill_only: bool = False,
+    supplements_only: bool = False,
     _protect_own_columns: set[str] | None = None,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
@@ -2495,7 +2515,9 @@ def link_by_id(
         ``count_as > 0`` and not worth persisting). A count column written
         by more than one source in a run (every auto-discovered match
         shares one *count_as*) accumulates across them rather than being
-        overwritten by the last; see :func:`_accumulate_count`.
+        overwritten by the last; see :func:`_accumulate_count`. In
+        ``'aggregate'`` mode, ``count_as=False`` writes no count column at
+        all, for a join that should add only its attributes.
     layer : str, optional
         Secondary layer (entity type or full entity string) of an
         ``additional_layers`` entity to load from *recipe_id*, e.g. the
@@ -2530,6 +2552,13 @@ def link_by_id(
         attribute. In ``auto_discover`` mode, forwarded unchanged to every
         discovered match, each stamping its own ``source_id`` (see
         :func:`~openplaces.recipe.source_id_from_recipe_id`) as the token.
+    supplements_only : bool, optional
+        ``auto_discover`` mode only. Join only the discovered recipes that
+        declare ``supplements:`` for one of this spine's own sources
+        (``state.metadata['spine_source_recipe_ids']``), never a roll or an
+        unrelated table (default False). This is how a property spine
+        receives its rolls' detail tables as columns on the properties they
+        describe, without re-joining the rolls onto themselves.
     """
     if auto_discover:
         # A standalone roll that is also one of the spine's own geometry
@@ -2549,7 +2578,10 @@ def link_by_id(
         has_geometry_source = (
             state.spine is not None and 'geometry_source' in state.spine.columns
         )
-        for match in _discover_link_sources(state, entity_type):
+        matches = _discover_link_sources(state, entity_type)
+        if supplements_only:
+            matches = _select_supplements(matches, spine_source_ids)
+        for match in matches:
             match_columns = columns or list(
                 get_attributes(match['layer'] or entity_type).index
             )
@@ -2813,7 +2845,16 @@ def link_by_id(
                 # key (groups of up to 335), and the county's improvement
                 # value came out 31 times its source. A sum belongs to one
                 # spine row; where the key cannot say which, assign none.
-                shared = skey.duplicated(keep=False) & skey.notna()
+                # Only where a sum happened, though: a reference key held
+                # by one row was not summed, and its value is that row's,
+                # so every spine row that names it may carry it. That is
+                # the transaction spine's case, several sales of one
+                # parcel each carrying the parcel's value (Lake County
+                # FL, 2026-09-12: 572,120 of 597,666 sales withheld
+                # before this distinction, every parcel value lost).
+                group_sizes = grouped.size()
+                summed = skey.map(group_sizes).fillna(0) > 1
+                shared = skey.duplicated(keep=False) & skey.notna() & summed
                 if shared.any():
                     warnings.warn(
                         f'link_by_id (aggregate): {name!r} is a sum over '
@@ -2838,15 +2879,22 @@ def link_by_id(
                 majority_coverage=float('inf') if fill_only else 0.5,
                 provenance_token=token if out_name in provenance_cols else None,
             )
-        count_col = count_as or 'n_records_per_key'
-        gsize = grouped.size()
-        mapper = gsize.to_dict() if gsize.empty else gsize
-        _accumulate_count(state, spine, count_col, skey.map(mapper))
+        # count_as=False asks for the attributes alone: a spine receiving
+        # a detail table's columns has no use for a count of its rows,
+        # and an unneeded column is redundancy in harmonize.
+        if count_as is False:
+            count_col = None
+        else:
+            count_col = count_as or 'n_records_per_key'
+            gsize = grouped.size()
+            mapper = gsize.to_dict() if gsize.empty else gsize
+            _accumulate_count(state, spine, count_col, skey.map(mapper))
         if state.verbose:
             matched = skey.isin(set(rkey.dropna())).sum()
             print(
                 f'  Link by id (aggregate): {matched:,d}/{len(spine):,d} spine '
-                f'rows matched {recipe_id} ({len(pairs)} columns, {count_col})'
+                f'rows matched {recipe_id} '
+                f'({len(pairs)} columns, {count_col or "no count"})'
             )
     else:
         raise ValueError(

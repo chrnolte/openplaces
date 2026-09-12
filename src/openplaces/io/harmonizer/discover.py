@@ -128,6 +128,10 @@ def _scan_ingest_recipes(entity_type: str, filename_glob: str = '*') -> list[dic
         # any gap the current vintage did not cover.
         if data.get('exclude_from_auto_discover'):
             continue
+        # A supplement details another recipe's entities (see
+        # spine._expand_auto_discover) and is never the source to pick.
+        if data.get('supplements'):
+            continue
         entity = data.get('entity') or {}
         raw_admin_id = data.get('admin_id')
         admin_id_str = (

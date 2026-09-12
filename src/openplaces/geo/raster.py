@@ -122,11 +122,19 @@ def compute_vicinity_coverage(
     valid = valid_mask.astype(np.float64)
     filled = np.where(valid_mask, arr, 0)
 
-    num = fftconvolve(filled, kernel, mode='same')
-    den = fftconvolve(valid, kernel, mode='same')
+    # Both convolutions are integer counts (0/1 inputs, a 0/1 kernel),
+    # and the FFT returns them with floating-point noise of either sign.
+    # Rounded, a neighborhood with nothing observed has a denominator of
+    # exactly zero rather than 1e-13, and a numerator of exactly zero
+    # rather than -1e-13; unrounded, the ratio could reach any magnitude
+    # and a negative one wrapped through the unsigned cast below (248 on
+    # the Linux CI runner, where the noise fell the other way than on
+    # the machine the test was written on).
+    num = np.rint(fftconvolve(filled, kernel, mode='same'))
+    den = np.rint(fftconvolve(valid, kernel, mode='same'))
     coverage = np.full(num.shape, np.nan)
     np.divide(num, den, out=coverage, where=den > 0)
-    coverage *= 100
+    coverage = np.clip(coverage * 100, 0, 100)
 
     core = coverage[
         row_offset : row_offset + round(core_window.height),

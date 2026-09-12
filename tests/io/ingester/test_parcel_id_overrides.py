@@ -126,3 +126,35 @@ def test_tax_and_parcel_side_conversions_agree_for_oneida_and_vilas():
     )['parcel_id_local'].iloc[0]
 
     assert tax_key == parcel_key == 'SC|612|10'
+
+
+def test_orange_county_sales_ids_drop_the_default_switch():
+    """Orange County FL writes its 15-digit DOR parcel id in two orders.
+
+    The parcel layer writes section, township, range (`012433...`) and
+    the default conversion switches the first and third groups, so the
+    parcel spine's key reads `33|24|1|4`. The DOR sales file writes the
+    same id range-first (`332401...`), so the same conversion put the
+    sales key at `1|24|33|4` and 12.6% of Orange's sales found their
+    parcel. The sales side needs the same split without the switch:
+    88.2% then match (2026-09-12).
+    """
+    from openplaces.geo.ids import convert_parcel_id
+
+    ti = _ingester('US-FL', Entity('transaction', 'fldor', '2026'))
+    overrides = ti._load_parcel_id_overrides('parcel')
+    assert overrides['US-FL-OR'] == {
+        'pattern': 'Dx',
+        'conv': 'string_lengths: 2 2 2 4 2 3 & skip_empty: 1',
+    }
+    parcel_side = convert_parcel_id(
+        pd.Series(['012027000000005']),
+        pattern='Dx',
+        conv_code='string_lengths: 2 2 2 4 2 3 & switch: 0|2 & skip_empty: 1',
+    )
+    sales_side = convert_parcel_id(
+        pd.Series(['272001000000005']),
+        pattern=overrides['US-FL-OR']['pattern'],
+        conv_code=overrides['US-FL-OR']['conv'],
+    )
+    assert parcel_side.iloc[0] == sales_side.iloc[0] == '27|20|1|5'

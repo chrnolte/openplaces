@@ -299,19 +299,22 @@ def test_ref_sort_by_picks_most_recent_for_first_aggregation(monkeypatch):
     assert state.spine['last_sale_price'].iloc[0] == 400
 
 
-def test_aggregate_mode_duplicate_spine_key_warns_and_withholds_a_sum(monkeypatch):
+def test_aggregate_mode_duplicate_spine_key_warns_and_keeps_an_unsummed_value(
+    monkeypatch,
+):
     # mode='aggregate' aggregates the *reference* side (see
     # test_aggregate_mode_reduces_many_to_one). A duplicate on the *spine*
-    # side is surfaced, and a summed column is withheld from the rows that
-    # share the key: stamping one group total onto each of them counts it
-    # once per row. This test used to pin the broadcast as the expected
-    # result; in Carteret County NC, where 97% of parcels share their
-    # punctuation-free key in groups of up to 335, that broadcast put the
-    # county's improvement value at 31 times its source (2026-09-09).
+    # side is surfaced. The reference holds one row per key here, so no
+    # sum happened and the value is that row's own: every spine row that
+    # names the key may carry it. This is the transaction spine, several
+    # sales of one parcel each carrying the parcel's value. A withheld
+    # value is the other case, a key several reference rows were summed
+    # over (test_link_by_id_aggregate_shared_keys), and for a day this
+    # test pinned the withholding on both, which lost every parcel
+    # value on Lake County FL's 597,666 sales (2026-09-12).
     spine = pd.DataFrame({'parcel_id_admin2': ['A', 'A', 'B']})
     ref = pd.DataFrame({'parcel_id_admin2': ['A', 'B'], 'land_value': [100.0, 50.0]})
     monkeypatch.setattr(links, 'get_entities', lambda *a, **k: ref)
-
     with pytest.warns(UserWarning, match="'parcel_id_admin2' is not unique"):
         state = links.link_by_id(
             _state(spine),
@@ -321,10 +324,7 @@ def test_aggregate_mode_duplicate_spine_key_warns_and_withholds_a_sum(monkeypatc
             ref_key='parcel_id_admin2',
             columns=['land_value'],
         )
-
-    values = state.spine['land_value']
-    assert pd.isna(values.iloc[0]) and pd.isna(values.iloc[1])
-    assert values.iloc[2] == 50.0
+    assert state.spine['land_value'].tolist() == [100.0, 100.0, 50.0]
 
 
 def test_count_mode_accumulates_across_sources(monkeypatch):

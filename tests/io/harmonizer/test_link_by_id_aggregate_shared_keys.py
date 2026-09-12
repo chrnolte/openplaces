@@ -109,3 +109,39 @@ def test_fill_only_never_overwrites_even_at_full_coverage(linked):
     assert values['u1'] == 100.0
     assert values['u2'] == 200.0
     assert values['v1'] == 400.0
+
+
+def test_a_value_that_was_not_summed_is_stamped_on_every_sale_of_its_parcel(
+    monkeypatch,
+):
+    # The transaction spine: three sales of parcel p1 and one of p2, and
+    # a parcel reference with one row per parcel. Nothing was summed, so
+    # each sale carries its parcel's value; withholding here lost every
+    # parcel value on Lake County FL (2026-09-12).
+    sales = gpd.GeoDataFrame(
+        {
+            'parcel_id_local': ['p1', 'p1', 'p1', 'p2'],
+            'geometry': [Point(i, i) for i in range(4)],
+        },
+        index=pd.Index(['s1', 's2', 's3', 's4'], name='transaction_id'),
+        crs='epsg:4326',
+    )
+    parcels = pd.DataFrame(
+        {'parcel_id_local': ['p1', 'p2'], 'improvement_value': [300.0, 50.0]},
+        index=pd.Index(['p1', 'p2'], name='parcel_id'),
+    )
+    monkeypatch.setattr(
+        'openplaces.io.harmonizer.links.get_entities', lambda *a, **k: parcels
+    )
+    state = _State(sales)
+    state.recipe = {'recipe_id': 'US_transaction-spine-2026', 'admin_id': AdminId('US')}
+    with pytest.warns(UserWarning, match='not unique'):
+        state = link_by_id(
+            state,
+            recipe_id='US-FL_parcel-floridagio-2026',
+            mode='aggregate',
+            spine_key='parcel_id_local',
+            ref_key='parcel_id_local',
+            columns=['improvement_value'],
+        )
+    assert state.spine['improvement_value'].tolist() == [300.0, 300.0, 300.0, 50.0]

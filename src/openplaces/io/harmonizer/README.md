@@ -21,6 +21,17 @@ prepared references from those persisted tables -- never from a new
 spatial computation. A stale or missing sidecar raises with instructions
 to rerun the geospine (fail closed).
 
+**Scope: the core structure, with minimal redundancy.** Harmonize builds
+each entity's spine and the keys between entities. An attribute lands
+once, on the entity it describes (`core/schema.ENTITY_DEFINITIONS`):
+a property's room counts on the property spine, not also on parcels.
+A preliminary derived column (an early `occupancy_type`) is allowed
+only where an enrich step needs it to choose its rows; none does yet.
+Enrichment adds external evidence to an entity; curation assembles one
+dataset per entity type and does the cross-entity aggregation. See
+AGENTS.md, "Entity model and stage roles", for the full rule and the one
+known exception still to migrate (the parcel geospine's property join).
+
 Entry points: `harmonize(recipe, admin_ids, ...)` in `__init__.py`.
 
 ---
