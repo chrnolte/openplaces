@@ -166,12 +166,6 @@ pipeline:
         column: sale_qualification_code
         mapping: {}
         default: deed
-      # Price over the assessed value the spine linked from the parcel
-      # (land plus improvement); missing where either is.
-      - output: sale_price_to_assessed_ratio
-        type: ratio
-        numerator: price
-        denominator: [land_value, improvement_value]
 
   # A second document for the same parcel at the same price within a
   # month is usually the other leg of a double closing. Whether to
@@ -223,6 +217,17 @@ pipeline:
   # taken from the representative parcel, per the registry's rule for
   # each column; the price was never wrong, the denominator was.
   - step: aggregate_multi_parcel_sales
+
+  # Price over the assessed value of everything the deed conveyed, so
+  # it comes after the aggregation: a multi-parcel deed's price over
+  # one parcel's assessed value was the defect the aggregation removes,
+  # and land and improvement values sum across the deed's parcels.
+  - step: derive_indicators
+    indicators:
+      - output: sale_price_to_assessed_ratio
+        type: ratio
+        numerator: price
+        denominator: [land_value, improvement_value]
 
   - step: cast_categoricals
 
