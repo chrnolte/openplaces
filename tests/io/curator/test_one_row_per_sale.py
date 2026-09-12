@@ -155,7 +155,7 @@ def test_group_share_is_the_countys_disclosure_rate_on_every_row():
     df = pd.DataFrame(
         {
             'use_group': ['Single Family'] * 4 + ['Commercial'],
-            'price': [100.0, None, 0.0, 250000.0, 1.0],
+            'price': [100.0, None, 1000.0, 250000.0, 1.0],
         }
     )
     state = derive_indicators(
@@ -165,15 +165,17 @@ def test_group_share_is_the_countys_disclosure_rate_on_every_row():
                 'output': 'single_family_sales_disclosure_share',
                 'type': 'group_share',
                 'column': 'price',
-                'predicate': 'positive',
+                'predicate': 'above',
+                'threshold': 1000,
                 'restrict': {'column': 'use_group', 'equals': 'Single Family'},
             }
         ],
     )
     share = state.curated['single_family_sales_disclosure_share']
-    # Two of four single-family sales carry a positive price; the
-    # commercial row reads the same county share.
-    assert share.tolist() == pytest.approx([0.5] * 5)
+    # One of four single-family sales is priced above the 1,000 dollar
+    # floor (100 and 1,000 are nominal); the commercial row reads the
+    # same county share.
+    assert share.tolist() == pytest.approx([0.25] * 5)
 
 
 def test_double_closing_can_be_flagged_instead_of_dropped():

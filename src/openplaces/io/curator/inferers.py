@@ -278,7 +278,8 @@ def _derive_group_share(state: CurateState, spec: dict) -> pd.Series | None:
     the county discloses prices at all, which no single sale can say. A
     plain groupby over an id column the row already carries, never a
     spatial operation. ``predicate`` is ``positive`` (default: not
-    missing and greater than zero) or ``notnull``; ``restrict`` limits
+    missing and greater than zero), ``notnull``, or ``above`` a
+    ``threshold``; ``restrict`` limits
     both numerator and denominator to rows where a column equals a value
     (the single-family sales), and rows outside it get the group's share
     all the same, so a consumer can read it on any row.
@@ -296,6 +297,8 @@ def _derive_group_share(state: CurateState, spec: dict) -> pd.Series | None:
         met = values.notna() & (values > 0)
     elif predicate == 'notnull':
         met = values.notna()
+    elif predicate == 'above':
+        met = values.notna() & (values > float(spec['threshold']))
     else:
         raise ValueError(f'Unknown group_share predicate: {predicate!r}')
     restrict = spec.get('restrict')
@@ -358,7 +361,8 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       qualification labels).
     - ``group_share``: the share of the row's ``group_column`` cohort (the
       whole table when omitted, which is the admin unit being curated)
-      whose ``column`` meets ``predicate`` (``positive`` or ``notnull``),
+      whose ``column`` meets ``predicate`` (``positive``, ``notnull``, or
+      ``above`` a ``threshold``),
       optionally counting only rows where ``restrict: {column, equals}``
       holds; every row of the group receives the share.
     - ``ruleset_class``: classify ``column`` through an ordered ruleset CSV
