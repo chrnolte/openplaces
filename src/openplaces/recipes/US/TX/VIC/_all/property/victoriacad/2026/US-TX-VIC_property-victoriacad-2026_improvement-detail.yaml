@@ -120,6 +120,13 @@ aggregation_function:
   area_sqft: sum
   year_built: min
 
+# Details the properties of the roll rather than being a roll itself:
+# link_by_id joins these rows onto parcels (aggregated as above), and
+# the property spine's union skips them, so a building component is
+# never counted as a property. Before this key the Victoria property
+# spine held 100,112 rows, the roll's 53,405 plus these 46,707.
+supplements: US-TX-VIC_property-victoriacad-2026
+
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

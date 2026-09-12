@@ -40,7 +40,8 @@ def find_recipes(
     pd.DataFrame
         Columns: ``admin_id``, ``stage``, ``entity_type``, ``source_id``,
         ``version``, ``n_companion_files``, ``exclude_from_auto_discover``,
-        ``level``, ``recipe_id``, ``filename_suffix``. Sorted by admin_id
+        ``supplements``, ``level``, ``recipe_id``, ``filename_suffix``.
+        Sorted by admin_id
         then source_id. Global recipes have an empty string for
         ``admin_id``. ``level`` is the admin level the recipe's own output
         targets (parsed from its filename, e.g. `4` for ``..._admin4.yaml``)
@@ -55,7 +56,11 @@ def find_recipes(
         ``recipe_id`` distinguishing a sibling recipe that otherwise shares
         the same admin_id/entity_type/source_id/version (e.g. two flat
         files bundled in the same source ZIP) -- empty string for a
-        recipe with no such suffix.
+        recipe with no such suffix. ``supplements`` is the recipe id a
+        supplementary table declares it details (an improvement-detail
+        table beside its appraisal roll), empty string for a recipe that
+        is a source of entities in its own right. Spine discovery skips
+        supplements; link discovery keeps them.
     """
     index = _recipe_index()
     if index.empty:
@@ -146,6 +151,7 @@ def _recipe_index() -> pd.DataFrame:
                 'exclude_from_auto_discover': bool(
                     data.get('exclude_from_auto_discover', False)
                 ),
+                'supplements': str(data.get('supplements') or ''),
                 'level': level,
                 'recipe_id': recipe_id,
                 'filename_suffix': filename_suffix,
@@ -162,6 +168,7 @@ def _recipe_index() -> pd.DataFrame:
             'version',
             'n_companion_files',
             'exclude_from_auto_discover',
+            'supplements',
             'level',
             'recipe_id',
             'filename_suffix',

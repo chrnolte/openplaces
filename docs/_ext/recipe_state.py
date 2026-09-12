@@ -59,11 +59,12 @@ class RecipeState(Directive):
         recorded = state.n_terms_recorded
         share = 100 * recorded / state.n_recipes if state.n_recipes else 0
         lines += [
-            f'{recorded} of {state.n_recipes} recipes ({share:.0f}%) record the terms',
-            f'their source publishes under, and {state.n_restricted} are marked as',
-            'restricting redistribution. An unrecorded source is one nobody has',
-            'checked yet, which is not the same as an unrestricted one -- see the',
-            ':ref:`recipe writing guide <writing_recipes>`.',
+            f'{recorded} of {state.n_recipes} recipes ({share:.0f}%) record their',
+            f'source terms. Of these, {state.n_restricted} restrict redistribution',
+            f'and {state.n_resale_restricted} prohibit resale while allowing free',
+            'sharing. Unrecorded sources indicate terms that have not yet been',
+            'verified, rather than unrestricted terms (see the',
+            ':ref:`recipe writing guide <writing_recipes>`).',
             '',
         ]
 

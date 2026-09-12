@@ -112,6 +112,21 @@ terms or license page, set `license: 'unknown'` and
 open-data portals genuinely have no formal terms page, and recording that is
 a real answer, not an empty field.
 
+A clause that forbids *selling* the data but not sharing it (a "not to be
+resold" condition, common on county assessor downloads) is not a
+redistribution restriction. Record it as `resale_restricted: true`, keep
+`redistribution_restricted` for what the terms say about sharing, and quote
+the clause in `license`. A delivery bundle's terms notice reports the two
+in separate sections.
+
+```yaml
+source:
+  source_id: examplepa
+  license: "free download; 'not to be resold without prior consent'"
+  redistribution_restricted: false
+  resale_restricted: true
+```
+
 A source with unusually restrictive terms (non-commercial only, no
 redistribution without permission, no bulk caching) is not a reason to skip
 the recipe. It is a reason to write the restriction down, so the next person

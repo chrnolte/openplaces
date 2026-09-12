@@ -59,6 +59,22 @@ of the recipe's `admin_id`. Adding a county recipe therefore changes the spine
 for that county automatically — and invalidates everything downstream. Mark a
 reference-only source `exclude_from_auto_discover: true`.
 
+**A table that details another recipe's entities declares
+`supplements: <that recipe's id>`.** An improvement-detail table beside
+its appraisal roll is the case: one row per building component, keyed
+to the roll's property. Spine discovery (`resolve_spine`,
+`union_spine_sources`) and single-recipe resolution skip it, so its rows
+never become entities; `link_by_id`'s auto-discovery still joins it,
+reduced per key by its own `aggregation_function`. Without the key, the
+property spine unioned Victoria County TX's roll and its components
+into 100,112 "properties" where the roll has 53,405. Unlike
+`exclude_from_auto_discover`, the key keeps the table in the parcel
+join. The property spine joins it onto the properties of the roll it
+names (`link_by_id` with `supplements_only: true`, `count_as: false`),
+which is where its attributes belong; parcels and footprints get them in
+curate, aggregated from properties (AGENTS.md, "Entity model and stage
+roles").
+
 **Order is a dependency, not a preference.** The property spine depends only on
 property ingests; the footprint spine additionally on parcel *ingests* and the
 property spine; the parcel spine on both spines. Derive the order from

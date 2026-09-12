@@ -48,6 +48,23 @@ pipeline:
       - auto_discover: true
         entity_type: property
 
+  # A roll's detail tables (recipes declaring `supplements:`, e.g. an
+  # improvement-detail member with one row per building component) are
+  # not properties, so the union above skips them. Their attributes
+  # describe properties, though, so this is where they land: joined
+  # onto the properties of the roll each one names, reduced per
+  # property by the table's own aggregation_function. Only supplements
+  # of rolls loaded above are joined, and no record count is written
+  # (count_as: false), so the step adds nothing but those attributes.
+  # Parcels and footprints get them in curate, aggregated from
+  # properties, not by copying them here (AGENTS.md, "Entity model and
+  # stage roles").
+  - step: link_by_id
+    auto_discover: true
+    entity_type: property
+    supplements_only: true
+    count_as: false
+
   # Standardize each unit's own address independently -- the whole point of
   # this spine: "21 Sample Ave #2" and "19 Sample Ave #1" are two distinct,
   # correct addresses on the same land parcel, not a collapse candidate.

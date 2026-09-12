@@ -80,7 +80,11 @@ repository.
   `redistribution_restricted: true`) so `bundle_terms` reports it and the
   usage-profile gate (below) can act on it. A recipe that reads as though
   the source were open is the failure mode; a recipe that says plainly
-  what the terms are is not.
+  what the terms are is not. A no-resale clause ("not to be resold",
+  common on county assessor downloads) is a different fact: it forbids
+  selling, not sharing. Record it as `resale_restricted: true`, which
+  the notice reports in its own section, and leave
+  `redistribution_restricted` to describe sharing.
 - **When in doubt, hold the file, do not delete it.** The question is
   institutional, the answer is not an agent's to assume, and the cost of
   waiting is a file that sits uncommitted for a while. Say so in the
@@ -326,6 +330,58 @@ Four key identifiers form the naming system used throughout the codebase:
 - **`Entity`** — a data entity defined by `entity_type` + `source` + `version`, e.g. `Entity('parcel', 'massgis', '2025')`. String form: `'parcel-massgis-2025'`. Valid entity types are in `ENTITY_TYPES` (parcel, building, footprint, property, transaction, admin, ...).
 - **`DataSet`** — a non-entity dataset defined by `Theme` + `source` + `version`, e.g. `DataSet('land-elevation', 'usgs', '3dep')`. Themes are hierarchical, separated by `-`, with the top level constrained to `TOP_LEVEL_THEMES` (land, landcover, water, built, people, risk, ...).
 - **`Source`** — a data source with download URL(s), portal URL, DOI, etc.
+
+### Entity model and stage roles (`core/schema.ENTITY_DEFINITIONS`)
+
+**One row of each entity type means one thing, and these are easy to
+confound.** `ENTITY_DEFINITIONS` holds the authoritative text (a test pins
+that every type has one); in short:
+
+| entity | one row is | worked cases |
+|---|---|---|
+| `parcel` | a unit of land as the cadastre draws it | |
+| `footprint` | a building outline polygon | a townhome row is one footprint |
+| `building` | one structure | a townhome row is several buildings; a condo building is one |
+| `dwelling` | one housing unit | single-family: one; multi-family: one per unit |
+| `property` | one unit of ownership, what a sale conveys | a condo unit is one; a house on its lot is one |
+| `transaction` | one recorded sale | |
+
+A recipe's rows must be the entity its `entity_type` names. **A tax roll's
+rows are properties**, condo rows included: a roll or CAMA table is one
+`property` recipe, never split by a condo flag, and a table whose rows are
+*details* of those properties (one row per building component) declares
+`supplements: <roll id>` so that it adds columns to them, never rows.
+
+The stages divide the work, and **harmonize keeps redundancy minimal**:
+
+- **Harmonize** builds each entity's core table (its spine) and the keys
+  that relate entities. An attribute lands once, on the entity it
+  describes. Do not copy heavy or wide columns onto another entity here:
+  a property's bedrooms belong on the property spine, not also on every
+  parcel. Harmonize *may* derive a small number of preliminary columns
+  or filters, but only as far as an enrich step needs them to choose
+  what to run on: a preliminary `occupancy_type` so an imagery step
+  runs on residential footprints only, not a reconciled value that
+  curate will decide. No enrich step selects rows by attribute today
+  (they subset by admin unit only), so this is an open path, not a
+  used one; when one is added, the column it selects on is the
+  justification for deriving it here, and it stays labeled preliminary.
+- **Enrich** adds evidence from external sources to any entity, keyed by
+  that entity (imagery predictions, raster statistics, reference
+  inventories).
+- **Curate** assembles one dataset per entity type (parcels, footprints,
+  buildings, dwellings, properties, transactions), aggregating or
+  translating from the others where needed: a footprint's bedrooms come
+  from summing its properties' in a curate recipe, not from a
+  harmonize-time copy.
+
+Known debt, not yet migrated: the parcel geospine's
+`link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
+still copies every property recipe's registry columns onto parcels in the
+geometry phase. Moving that to curate changes shipped outputs, so it is a
+planned migration (see
+`plans/florida-county-property-appraiser-bedrooms-bathrooms.md`), not a
+precedent to extend. New attributes follow the rule above.
 
 ### Recipes (`recipe.py`, `src/openplaces/recipes/`)
 
@@ -854,7 +910,8 @@ Unlike consent there is no forbidden recipe-side lever, because
 recording a requirement states a fact about the source rather than
 deciding anything for the user. Restrictions on the redistribution/fee
 axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
-`redistribution_restricted` and `io/bundle_terms.py` cover those -- and
+`redistribution_restricted`, `resale_restricted` and
+`io/bundle_terms.py` cover those -- and
 a blanket ban on automated access is expressed by having no
 `download_url` at all, not by a requirement.
 

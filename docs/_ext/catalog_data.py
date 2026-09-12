@@ -333,6 +333,9 @@ class CatalogState:
         Recipes whose source records a `license` value.
     n_restricted : int
         Recipes whose source is marked `redistribution_restricted: true`.
+    n_resale_restricted : int
+        Recipes whose source is marked `resale_restricted: true` (a
+        no-resale clause distinct from redistribution restrictions).
     """
 
     n_recipes: int
@@ -344,6 +347,7 @@ class CatalogState:
     coverage: list[Coverage]
     n_terms_recorded: int
     n_restricted: int
+    n_resale_restricted: int = 0
 
 
 def summarize(entries: list[tuple[str, str, Path, dict]] | None = None) -> CatalogState:
@@ -371,6 +375,7 @@ def summarize(entries: list[tuple[str, str, Path, dict]] | None = None) -> Catal
     country_units: dict[str, dict[int, set[str]]] = {}
     n_terms_recorded = 0
     n_restricted = 0
+    n_resale_restricted = 0
 
     for admin_id, _recipe_id, _path, recipe in entries:
         by_stage[stage_of(recipe)] = by_stage.get(stage_of(recipe), 0) + 1
@@ -386,6 +391,8 @@ def summarize(entries: list[tuple[str, str, Path, dict]] | None = None) -> Catal
             n_terms_recorded += 1
         if source.get('redistribution_restricted') is True:
             n_restricted += 1
+        if source.get('resale_restricted') is True:
+            n_resale_restricted += 1
 
         country = 'Global' if admin_id == 'Global' else admin_id.split('-')[0]
         country_recipes[country] = country_recipes.get(country, 0) + 1
@@ -425,6 +432,7 @@ def summarize(entries: list[tuple[str, str, Path, dict]] | None = None) -> Catal
         coverage=coverage,
         n_terms_recorded=n_terms_recorded,
         n_restricted=n_restricted,
+        n_resale_restricted=n_resale_restricted,
     )
 
 
@@ -720,6 +728,7 @@ def format_overview(state: CatalogState | None = None) -> str:
         f'  license recorded          {recorded:>5} of {state.n_recipes}'
         f' ({share:.0f}%)',
         f'  redistribution restricted {state.n_restricted:>5}',
+        f'  resale restricted         {state.n_resale_restricted:>5}',
         '',
     ]
     return '\n'.join(lines)
