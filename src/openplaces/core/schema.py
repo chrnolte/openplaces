@@ -582,6 +582,10 @@ class Source:
     # The one fact worth querying on directly, without parsing free
     # text. None = not yet checked; True/False = checked, either way.
     redistribution_restricted: bool | None = None
+    # A no-resale clause ("not to be resold"): selling the data is
+    # forbidden, sharing it free of charge is not, so it is a different
+    # fact from redistribution_restricted. None = not yet checked.
+    resale_restricted: bool | None = None
     # Access-eligibility conditions from the terms, set deliberately by
     # a person who read them -- never inferred from `license` text.
     usage_requirement: UsageRequirement | None = None
@@ -599,6 +603,7 @@ class Source:
         license: str = None,
         terms_url: str = None,
         redistribution_restricted: bool = None,
+        resale_restricted: bool = None,
         usage_requirement: dict | UsageRequirement | None = None,
     ):
         """Initialize Source with metadata and download configurations.
@@ -632,6 +637,12 @@ class Source:
             Whether the terms restrict redistributing the data or its
             derivatives. None means not yet checked, which is not the same
             as False.
+        resale_restricted : bool, optional
+            Whether the terms forbid selling the data (a "not to be
+            resold" clause, common on county assessor downloads) while
+            leaving free sharing alone. Recorded apart from
+            `redistribution_restricted`, which describes sharing. None
+            means not yet checked.
         usage_requirement : dict or UsageRequirement, optional
             Access-eligibility conditions the terms place on who may
             download this source (see `UsageRequirement`). A plain dict,
@@ -667,6 +678,7 @@ class Source:
         self.license = license
         self.terms_url = terms_url
         self.redistribution_restricted = redistribution_restricted
+        self.resale_restricted = resale_restricted
         if isinstance(usage_requirement, dict):
             usage_requirement = UsageRequirement(**usage_requirement)
         self.usage_requirement = usage_requirement

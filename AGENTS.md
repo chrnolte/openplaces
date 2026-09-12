@@ -80,7 +80,11 @@ repository.
   `redistribution_restricted: true`) so `bundle_terms` reports it and the
   usage-profile gate (below) can act on it. A recipe that reads as though
   the source were open is the failure mode; a recipe that says plainly
-  what the terms are is not.
+  what the terms are is not. A no-resale clause ("not to be resold",
+  common on county assessor downloads) is a different fact: it forbids
+  selling, not sharing. Record it as `resale_restricted: true`, which
+  the notice reports in its own section, and leave
+  `redistribution_restricted` to describe sharing.
 - **When in doubt, hold the file, do not delete it.** The question is
   institutional, the answer is not an agent's to assume, and the cost of
   waiting is a file that sits uncommitted for a while. Say so in the
@@ -854,7 +858,8 @@ Unlike consent there is no forbidden recipe-side lever, because
 recording a requirement states a fact about the source rather than
 deciding anything for the user. Restrictions on the redistribution/fee
 axis (NHGIS, Shovels, Edgecombe, GADM) stay out of this mechanism --
-`redistribution_restricted` and `io/bundle_terms.py` cover those -- and
+`redistribution_restricted`, `resale_restricted` and
+`io/bundle_terms.py` cover those -- and
 a blanket ban on automated access is expressed by having no
 `download_url` at all, not by a requirement.
 

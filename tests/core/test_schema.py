@@ -98,6 +98,21 @@ class TestSourceTerms:
         source = Source(**{'source_id': 'example', 'license': 'public-domain'})
         assert source.license == 'public-domain'
 
+    def test_a_no_resale_clause_is_its_own_fact(self):
+        # "Not to be resold" forbids selling, not sharing: recorded apart
+        # from redistribution_restricted, and unchecked by default.
+        assert Source('example').resale_restricted is None
+        source = Source(
+            **{
+                'source_id': 'examplepa',
+                'license': 'free download; not to be resold without consent',
+                'redistribution_restricted': False,
+                'resale_restricted': True,
+            }
+        )
+        assert source.resale_restricted is True
+        assert source.redistribution_restricted is False
+
 
 class TestUsageRequirement:
     """Access-eligibility conditions recorded on a source's terms."""
