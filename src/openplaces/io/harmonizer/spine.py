@@ -628,6 +628,13 @@ def _expand_auto_discover(
     entity types like ``property`` that, today, have no standalone ingest
     recipe anywhere and would otherwise never resolve. These are appended
     after the standalone recipes, in their own (unordered) discovery order.
+
+    A recipe declaring ``supplements: <recipe_id>`` is skipped. It details
+    another recipe's entities (an improvement-detail table beside its
+    appraisal roll, one row per building component) and reaches them
+    through ``link_by_id``; as a spine source every one of its rows would
+    become an entity. Victoria County TX's property spine held 100,112
+    rows, its roll's 53,405 plus 46,707 components, before this skip.
     """
     from openplaces.recipe import find_additional_layer_recipes
 
@@ -662,6 +669,10 @@ def _expand_auto_discover(
     ranked: list[tuple[int, str, dict]] = []
     for _, row in df.iterrows():
         if row['exclude_from_auto_discover']:
+            continue
+        if row.get('supplements'):
+            # Adds columns to another recipe's entities, never rows to
+            # a spine (see the docstring).
             continue
         rid_str = row['admin_id']
         # Containment by level, not by string prefix: a recipe scoped to

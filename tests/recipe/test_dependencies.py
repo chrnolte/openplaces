@@ -198,6 +198,50 @@ def test_auto_discovered_edges_stop_at_a_level_boundary(monkeypatch):
     assert _upstream_ids(edges) == {'US-NC-WAR_parcel-warrenco-2026'}
 
 
+def test_supplement_is_an_input_of_link_by_id_but_not_of_a_spine(monkeypatch):
+    """A `supplements:` table feeds link_by_id, never a spine's union."""
+    import openplaces.recipe as recipe_module
+    from openplaces.core.schema import AdminId, Entity
+
+    roll = 'US-TX-VIC_property-roll-2026'
+    detail = f'{roll}_improvement-detail'
+    scanned = tuple(
+        {
+            'recipe_id': rid,
+            'admin_id': 'US-TX-VIC',
+            'specificity': 3,
+            'version': '2026',
+            'supplements': supplements,
+        }
+        for rid, supplements in [(roll, ''), (detail, roll)]
+    )
+    monkeypatch.setattr(
+        recipe_module, '_scan_ingest_recipe_ids', lambda entity_type: scanned
+    )
+    monkeypatch.setattr(
+        recipe_module, 'find_additional_layer_recipes', lambda *a, **k: []
+    )
+    admin_id = AdminId('US-TX-VIC')
+    discover = {'auto_discover': True, 'entity_type': 'property'}
+
+    spine = {
+        'admin_id': AdminId('US'),
+        'entity': Entity('property', 'spine', '2026'),
+        'pipeline': [{'step': 'union_spine_sources', 'sources': [discover]}],
+    }
+    link = {
+        'admin_id': AdminId('US'),
+        'entity': Entity('parcel', 'geospine', '2026'),
+        'pipeline': [{'step': 'link_by_id', 'mode': 'aggregate', **discover}],
+    }
+
+    assert _upstream_ids(get_recipe_dependencies(spine, admin_id=admin_id)) == {roll}
+    assert _upstream_ids(get_recipe_dependencies(link, admin_id=admin_id)) == {
+        roll,
+        detail,
+    }
+
+
 def test_top_level_recipe_id_key_is_an_edge():
     # `reference_building_recipe_id` is declared at the recipe root, where
     # the nested *recipe_id walk never looked; without an edge the enrich

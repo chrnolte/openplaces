@@ -132,3 +132,48 @@ def test_empty_source_is_dropped_but_others_still_load(monkeypatch):
 
     assert len(state.spine) == 1
     assert state.spine['source'].iloc[0] == 'b'
+
+
+def test_supplement_recipe_adds_no_rows(monkeypatch):
+    # A detail table beside its roll (one row per building component)
+    # details the roll's properties. Unioning it counted every component
+    # as a property: Victoria TX's spine held the roll's 53,405 rows plus
+    # its 46,707 components.
+    _mock_discovery(
+        monkeypatch,
+        [
+            {
+                'admin_id': 'US-TX-VIC',
+                'source_id': 'roll',
+                'version': '1',
+                'entity_type': 'property',
+                'exclude_from_auto_discover': False,
+                'supplements': '',
+            },
+            {
+                'admin_id': 'US-TX-VIC',
+                'source_id': 'detail',
+                'version': '1',
+                'entity_type': 'property',
+                'exclude_from_auto_discover': False,
+                'supplements': 'US-TX-VIC_property-roll-1',
+            },
+        ],
+    )
+    frames = {
+        'US-TX-VIC_property-roll-1': pd.DataFrame({'parcel_id_local': ['a', 'b']}),
+        'US-TX-VIC_property-detail-1': pd.DataFrame(
+            {'parcel_id_local': ['a', 'a', 'b']}
+        ),
+    }
+    monkeypatch.setattr(
+        spine_module, 'get_entities', lambda recipe_id, *a, **k: frames[recipe_id]
+    )
+
+    state = spine_module.union_spine_sources(
+        _state('US-TX-VIC'),
+        sources=[{'auto_discover': True, 'entity_type': 'property'}],
+    )
+
+    assert len(state.spine) == 2
+    assert set(state.spine['source']) == {'roll'}

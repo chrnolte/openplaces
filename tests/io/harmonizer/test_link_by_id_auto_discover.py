@@ -184,6 +184,31 @@ def test_find_admin_scoped_recipe_ids_skips_excluded_recipe(monkeypatch):
     assert ids == ['US-MA_parcel-massgis-2025']
 
 
+def test_find_admin_scoped_recipe_ids_keeps_a_supplement(monkeypatch):
+    # `supplements:` keeps a detail table out of spines, never out of
+    # the join that carries its columns onto the parcel.
+    rows = pd.DataFrame(
+        [
+            _recipe_row('US-TX-VIC', 'victoriacad', '2026'),
+            _recipe_row(
+                'US-TX-VIC',
+                'victoriacad',
+                '2026',
+                'improvement-detail',
+                supplements='US-TX-VIC_parcel-victoriacad-2026',
+            ),
+        ]
+    )
+    monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
+
+    ids = links._find_admin_scoped_recipe_ids(_state('US-TX-VIC'), 'parcel')
+
+    assert ids == [
+        'US-TX-VIC_parcel-victoriacad-2026',
+        'US-TX-VIC_parcel-victoriacad-2026_improvement-detail',
+    ]
+
+
 def test_write_prioritized_new_column_is_written_directly():
     spine = pd.DataFrame(index=['a', 'b'])
     new_vals = pd.Series([1.0, 2.0], index=['a', 'b'])
