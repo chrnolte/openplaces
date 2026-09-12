@@ -86,6 +86,7 @@ sale_document_id,"Identifier of the recorded document (deed) behind the sale, sp
 n_parcels_per_sale,Number of parcels the recorded document covered,,float,first,,transaction,curate
 sale_arms_length_confidence,"Graded confidence that the sale was at arm's length, 0 to 1, from the signals the source supplies; a consumer sets its own cutoff",fraction (0-1),float,first,,transaction,curate
 sale_qualification_group,"The source's qualification of the sale as a group: qualified, qualified_parcel_changed, qualified_multi_parcel, pending, removed, disqualified",,categorical,first,,transaction,curate
+sale_double_closing_earlier_leg,"1 where a second recorded document for the same parcel at the same price within a month follows this one (the earlier leg of a double closing), else 0; a consumer filters on it",,float,first,,transaction,curate
 sale_record_kind,Whether the record is a recorded deed or an assessor's last-sale field,,categorical,first,,transaction,curate
 sale_price_to_assessed_ratio,Sale price over the assessed total value at the time of sale,,float,first,,transaction,curate
 single_family_sales_disclosure_share,"Share of single-family sales in the entity's admin unit with a disclosed price, a value for a consumer to threshold",fraction (0-1),float,first,,transaction,curate

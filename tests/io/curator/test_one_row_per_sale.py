@@ -149,3 +149,49 @@ def test_value_map_without_default_leaves_unnamed_values_missing():
     )
     assert state.curated['sale_record_kind'].tolist()[0] == 'deed'
     assert pd.isna(state.curated['sale_record_kind'].tolist()[1])
+
+
+def test_group_share_is_the_countys_disclosure_rate_on_every_row():
+    df = pd.DataFrame(
+        {
+            'use_group': ['Single Family'] * 4 + ['Commercial'],
+            'price': [100.0, None, 0.0, 250000.0, 1.0],
+        }
+    )
+    state = derive_indicators(
+        _state(df),
+        indicators=[
+            {
+                'output': 'single_family_sales_disclosure_share',
+                'type': 'group_share',
+                'column': 'price',
+                'predicate': 'positive',
+                'restrict': {'column': 'use_group', 'equals': 'Single Family'},
+            }
+        ],
+    )
+    share = state.curated['single_family_sales_disclosure_share']
+    # Two of four single-family sales carry a positive price; the
+    # commercial row reads the same county share.
+    assert share.tolist() == pytest.approx([0.5] * 5)
+
+
+def test_double_closing_can_be_flagged_instead_of_dropped():
+    from openplaces.io.curator.transactions import collapse_double_closings
+
+    df = pd.DataFrame(
+        {
+            'parcel_id_assessor': ['A', 'A', 'B'],
+            'sale_year': [2020, 2020, 2020],
+            'sale_month': [3, 4, 3],
+            'price': [100000.0, 100000.0, 50000.0],
+            'sale_book': ['1', '2', '3'],
+            'sale_page': ['1', '1', '1'],
+        },
+        index=pd.Index(['t1', 't2', 't3'], name='transaction_id'),
+    )
+    state = collapse_double_closings(
+        _state(df), key_column='parcel_id_assessor', output='earlier_leg'
+    )
+    assert len(state.curated) == 3
+    assert state.curated['earlier_leg'].tolist() == [1, 0, 0]

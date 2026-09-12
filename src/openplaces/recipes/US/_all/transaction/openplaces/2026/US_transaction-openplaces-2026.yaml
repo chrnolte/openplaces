@@ -173,6 +173,28 @@ pipeline:
         numerator: price
         denominator: [land_value, improvement_value]
 
+  # A second document for the same parcel at the same price within a
+  # month is usually the other leg of a double closing. Whether to
+  # count it is a consumer's call, so the earlier leg is flagged here
+  # and dropped only in a filtered product.
+  - step: collapse_double_closings
+    key_column: parcel_id_assessor
+    max_gap_months: 1
+    output: sale_double_closing_earlier_leg
+
+  # The share of a county's single-family sales that carry a price, on
+  # every row: a full-disclosure state reads near 1, a county whose
+  # assessor withholds prices near 0, and a consumer sets the cutoff
+  # below which it will not fit there at all. The county is the unit
+  # being curated, so the group is the table.
+  - step: derive_indicators
+    indicators:
+      - output: single_family_sales_disclosure_share
+        type: group_share
+        column: price
+        predicate: positive
+        restrict: {column: use_group, equals: Single Family}
+
   # One row per deed. Areas and counts are summed and the other columns
   # taken from the representative parcel, per the registry's rule for
   # each column; the price was never wrong, the denominator was.

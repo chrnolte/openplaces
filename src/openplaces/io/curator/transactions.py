@@ -49,8 +49,9 @@ def collapse_double_closings(
     key_column: str,
     max_gap_months: int = 1,
     keep: str = 'last',
+    output: str | None = None,
 ) -> CurateState:
-    """Drop the earlier leg of a double closing.
+    """Drop, or flag, the earlier leg of a double closing.
 
     Two genuinely different recorded documents for the same entity,
     close together in time and at an identical price, most likely
@@ -73,6 +74,13 @@ def collapse_double_closings(
         Which leg survives. Only 'last' (the later sale) is implemented,
         matching the rationale that the later leg reflects who actually
         ended up owning the property.
+    output : str, optional
+        Write the judgment instead of acting on it: the named column
+        gets 1 on an earlier leg and 0 elsewhere, and no row is dropped.
+        Whether two documents a month apart at one price are one sale
+        is a judgment a consumer may want to make with its own gap and
+        price tolerance, so the canonical entity carries the flag and a
+        filtered product drops the row.
     """
     if keep != 'last':
         raise NotImplementedError("collapse_double_closings only supports keep='last'.")
@@ -108,6 +116,14 @@ def collapse_double_closings(
     position = pd.Series(range(len(df)), index=df.index)
     drop_index = df.index[position[is_later_leg].to_numpy() - 1]
 
+    if output is not None:
+        flag = pd.Series(0, index=curated.index, dtype='int64')
+        flag.loc[drop_index] = 1
+        curated[output] = flag
+        state.curated = curated
+        if state.verbose:
+            print(f'  collapse_double_closings: flagged {len(drop_index):,} rows')
+        return state
     state.curated = curated.drop(index=drop_index)
     if state.verbose:
         print(f'  collapse_double_closings: dropped {len(drop_index):,} rows')

@@ -270,9 +270,57 @@ def _derive_value_map(state: CurateState, spec: dict) -> pd.Series | None:
     return mapped
 
 
+def _derive_group_share(state: CurateState, spec: dict) -> pd.Series | None:
+    """Share of a row's group whose ``column`` meets ``predicate``.
+
+    The context a row cannot supply about itself, as a value: the share
+    of single-family sales in a county that carry a price says whether
+    the county discloses prices at all, which no single sale can say. A
+    plain groupby over an id column the row already carries, never a
+    spatial operation. ``predicate`` is ``positive`` (default: not
+    missing and greater than zero) or ``notnull``; ``restrict`` limits
+    both numerator and denominator to rows where a column equals a value
+    (the single-family sales), and rows outside it get the group's share
+    all the same, so a consumer can read it on any row.
+    """
+    curated = state.curated
+    group_column = spec.get('group_column')
+    column = spec['column']
+    if column not in curated.columns:
+        return None
+    if group_column is not None and group_column not in curated.columns:
+        return None
+    values = pd.to_numeric(curated[column], errors='coerce')
+    predicate = spec.get('predicate', 'positive')
+    if predicate == 'positive':
+        met = values.notna() & (values > 0)
+    elif predicate == 'notnull':
+        met = values.notna()
+    else:
+        raise ValueError(f'Unknown group_share predicate: {predicate!r}')
+    restrict = spec.get('restrict')
+    in_scope = pd.Series(True, index=curated.index)
+    if restrict:
+        if restrict['column'] not in curated.columns:
+            return None
+        in_scope = curated[restrict['column']].astype(object) == restrict['equals']
+    # No group column: the whole table is one group, which is the county
+    # when the curate stage runs one admin unit at a time.
+    groups = (
+        curated[group_column]
+        if group_column is not None
+        else pd.Series('all', index=curated.index)
+    )
+    counted = met[in_scope].groupby(groups[in_scope]).sum()
+    total = in_scope.groupby(groups).sum()
+    share = counted.reindex(total.index).fillna(0) / total.where(total > 0)
+    return groups.map(share).astype(float)
+
+
 _INDICATOR_DERIVATIONS = {
     'ruleset_class': _derive_ruleset_class,
     'value_map': _derive_value_map,
+    'group_share': _derive_group_share,
     'pooled_vote': _derive_pooled_vote,
     'ratio': _derive_ratio,
     'shape_metric': _derive_shape_metric,
@@ -308,6 +356,11 @@ def derive_indicators(state: CurateState, indicators: list[dict]) -> CurateState
       indicator: a source's vocabulary graded into a value a consumer can
       threshold (a sale's arm's-length confidence from the source's
       qualification labels).
+    - ``group_share``: the share of the row's ``group_column`` cohort (the
+      whole table when omitted, which is the admin unit being curated)
+      whose ``column`` meets ``predicate`` (``positive`` or ``notnull``),
+      optionally counting only rows where ``restrict: {column, equals}``
+      holds; every row of the group receives the share.
     - ``ruleset_class``: classify ``column`` through an ordered ruleset CSV
       (``ruleset``), first match wins; unmatched rows are missing. With
       ``reviewed_only`` true, only rows whose winning rule is marked reviewed
