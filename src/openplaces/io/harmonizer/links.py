@@ -2845,7 +2845,16 @@ def link_by_id(
                 # key (groups of up to 335), and the county's improvement
                 # value came out 31 times its source. A sum belongs to one
                 # spine row; where the key cannot say which, assign none.
-                shared = skey.duplicated(keep=False) & skey.notna()
+                # Only where a sum happened, though: a reference key held
+                # by one row was not summed, and its value is that row's,
+                # so every spine row that names it may carry it. That is
+                # the transaction spine's case, several sales of one
+                # parcel each carrying the parcel's value (Lake County
+                # FL, 2026-09-12: 572,120 of 597,666 sales withheld
+                # before this distinction, every parcel value lost).
+                group_sizes = grouped.size()
+                summed = skey.map(group_sizes).fillna(0) > 1
+                shared = skey.duplicated(keep=False) & skey.notna() & summed
                 if shared.any():
                     warnings.warn(
                         f'link_by_id (aggregate): {name!r} is a sum over '
