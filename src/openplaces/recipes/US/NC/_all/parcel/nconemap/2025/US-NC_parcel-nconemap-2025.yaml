@@ -106,7 +106,7 @@ columns_to_categorical:
 # US_parcel_id-overrides.csv rather than by changing the default here --
 # see the rows scoped to `source_id: nconemap` (US-NC-CAB, US-NC-CHE,
 # US-NC-COL, US-NC-CRA, US-NC-CUM, US-NC-PAM), and the note in
-# US-NC-CRA_parcel-cravencounty-2026.yaml.
+# US-NC-CRA_property-cravencounty-2026.yaml.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

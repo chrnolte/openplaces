@@ -86,17 +86,41 @@ columns:
   # Structure detail, measured on this layer: rooms 65.6%, bedrooms
   # 65.5%, full baths 65.0%, heating 65.5%, effective year 32.3%.
   #
-  # R_BASEMENT (57.7% populated) is a foundation type (CRAWL / NONE /
-  # ...), not a flag, so it does not belong in has_basement. It is left
-  # unmapped here only because its home attribute, `foundation_type`,
-  # is being added on the cheer-inventory-enrichment branch rather than
-  # this one; map it once that lands, together with the CRAWL/NONE ->
-  # code crosswalk that attribute's vocabulary implies.
+  # Building features, MEASURED 2026-09-13 in memory (residential =
+  # PROPTYPE D-Dwelling, 33,277 rows): living_area_sqft (R_SQFT, the
+  # same value as area_sqft, median 1,604) 99.9%, exterior wall
+  # (R_S_TYPE, 15 values) 99.8%, style (R_S_STYLE, 13) 99.9%, heating
+  # fuel (R_HEATFUEL, 8) 95.4%, has_central_air 99.6% (28,413 true,
+  # 4,728 false), has_basement 83.8% (204 true), effective year
+  # 45.4%, remodel year (R_REMOD_YR) 7.7%, frontage_ft 49.0% (median
+  # 85). building_area_sqft is C_SQFT, the commercial section's area:
+  # 5.5% of rows; on the 170 parcels that also carry a residential
+  # area it covers the commercial part only.
+  #
+  # R_BASEMENT (FULL / PART / CRAWL / NONE) is foundation_description
+  # in the county's words: 83.8% of residential rows (NONE 77.0%,
+  # CRAWL 6.2%, FULL and PART 0.6%). NONE says only that there is no
+  # basement or crawl space, not which foundation. It also sets
+  # has_basement (FULL, PART true; CRAWL, NONE false). R_SYSTEM
+  # (FHA, Heat & A/C, ...) is the system behind
+  # R_HEATING and is left unmapped; R_ATTIC is filled on 12 rows.
+  #
+  # Baths: R_FULLBATH is the full count and R_HALFBATH the half count
+  # (16.6% of rows, 26.0% of rows with a full bath). n_bathrooms folds
+  # them as full + 0.5 x half below.
   n_rooms: R_ROOMS
   n_bedrooms: R_BEDROOMS
   n_bathrooms: R_FULLBATH
+  n_half_bathrooms: R_HALFBATH
   heating_type: R_HEATING
+  heating_fuel: R_HEATFUEL
+  exterior_wall: R_S_TYPE
+  building_style: R_S_STYLE
+  foundation_description: R_BASEMENT
+  building_area_sqft: C_SQFT
+  frontage_ft: LANDWIDTH
   effective_year_built: R_EFF_YR
+  renovation_year: R_REMOD_YR
   last_sale_date: SALEDATE
   last_sale_price: SALEPRICE
   last_sale_qualification_code: SALECODE
@@ -111,9 +135,92 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # R_SQFT is the finished residential area: area_sqft keeps it as
+  # before and living_area_sqft carries the same value under the
+  # name that says so.
+  - type: expression
+    expression: "area_sqft * 1"
+    inputs: [area_sqft]
+    output: living_area_sqft
+  # The area and width fields hold 0 where nothing was recorded.
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: 0}
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: building_area_sqft
+    args: {value: 0}
+    output: building_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: frontage_ft
+    args: {value: 0}
+    output: frontage_ft
+  # LANDWIDTH is street frontage only where the land is priced by the
+  # front foot (LANDTYPE 'F-Front Foot'); on the few gross, square
+  # foot and acreage rows it is a width of unstated meaning.
+  - type: remap
+    input: LANDTYPE
+    mapping: {"F-Front Foot": 1}
+    output: front_foot_land
+  - type: expression
+    expression: "frontage_ft * front_foot_land"
+    inputs: [frontage_ft, front_foot_land]
+    output: frontage_ft
+  # R_BASEMENT (now foundation_description) is blank on rows without
+  # a dwelling: strip it and null the blank.
+  - type: string
+    operation: strip
+    input: foundation_description
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+  # It records the basement explicitly (FULL / PART / CRAWL / NONE):
+  # a crawl space is not a basement.
+  - type: remap
+    input: foundation_description
+    mapping:
+      "FULL": true
+      "PART": true
+      "CRAWL": false
+      "NONE": false
+    output: has_basement
+  # R_HEATING states AC presence or absence for every value.
+  - type: remap
+    input: heating_type
+    mapping:
+      "CENTRAL WITH A/C": true
+      "CENTRAL NO A/C": false
+      "NO CENTRAL": false
+      "NONE": false
+    output: has_central_air
+
+drop_columns:
+  - half_bathroom_equivalent
+  - front_foot_land
 
 columns_to_categorical:
   - heating_type
+  - heating_fuel
+  - exterior_wall
+  - building_style
+  - foundation_description
   - use_group
   - use_subgroup
   - tax_neighborhood_code

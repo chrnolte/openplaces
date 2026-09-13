@@ -60,6 +60,19 @@ def test_single_best_property_recipe_is_the_roll(county, source_id):
     assert found == f'US-TX-{county}_property-{source_id}-2026'
 
 
+def test_craven_building_cards_supplement_the_property_roll():
+    # Craven's county CSV is its property roll (a parcel recipe until
+    # 2026-09-12); the building cards detail its properties, and parcel
+    # geometry stays with NC OneMap.
+    roll = 'US-NC-CRA_property-cravencounty-2026'
+    by_id = find_recipes('property', stage='ingest').set_index('recipe_id')
+    assert by_id.loc[f'{roll}_building-cards', 'supplements'] == roll
+    found = find_entity_recipe_id('US-NC-CRA', 'property', stage='ingest', silent=True)
+    assert found == roll
+    parcel = find_entity_recipe_id('US-NC-CRA', 'parcel', stage='ingest', silent=True)
+    assert parcel == 'US-NC_parcel-nconemap-2025'
+
+
 def test_a_supplement_is_still_found_by_its_filename():
     # `filename` is the recipe id's trailing `_{filename}` part.
     found = find_entity_recipe_id(
