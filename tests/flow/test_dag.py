@@ -184,10 +184,15 @@ def test_every_edge_names_a_node_in_the_graph(shipping_dag):
     assert shipping_dag.to_mermaid(collapse_admin=False).startswith('%%{init:')
 
 
+TEAM_REGION = f'{REGION}.team'
+
+
 def test_target_paths_are_the_bundle_when_shipping(shipping_dag):
-    assert shipping_dag.target_paths() == list(
-        delivery_paths(TARGET, region=REGION).values()
-    )
+    # The region's bundle, then its team twin's (declared in team_regions).
+    assert shipping_dag.target_paths() == [
+        *delivery_paths(TARGET, region=REGION).values(),
+        *delivery_paths(TARGET, region=TEAM_REGION).values(),
+    ]
 
 
 def test_deliver_false_suppresses_the_bundle():
@@ -284,9 +289,13 @@ def test_regions_are_declared_and_disjoint():
     """
     from openplaces.io.readers import get_region_admin_ids
 
-    regions = {spec['region_id']: spec for spec in delivery_regions(TARGET)}
+    specs = delivery_regions(TARGET)
+    regions = {s['region_id']: s for s in specs if s['audience'] == 'public'}
     for region_id, spec in regions.items():
         assert spec['admin_ids'] == get_region_admin_ids(region_id)
+    # A team twin ships its base region's members, not a region of its own.
+    for twin in (s for s in specs if s['audience'] == 'team'):
+        assert twin['admin_ids'] == regions[twin['base_region_id']]['admin_ids']
     assert {'cheer-eastern-nc', 'cheer-coastal-tx'} <= set(regions)
     assert len(regions['cheer-eastern-nc']['admin_ids']) == 44
     assert len(regions['cheer-coastal-tx']['admin_ids']) == 42
@@ -303,7 +312,14 @@ def test_forced_delivery_ships_only_the_region_the_run_touches(shipping_dag):
     Both bundles sit at admin level 2, so a bare level comparison would put
     both in scope; only the containment test tells them apart.
     """
-    assert [node.admin_id for node, _ in shipping_dag.delivery_nodes] == ['US-NC']
+    public = [
+        node.admin_id
+        for node, spec in shipping_dag.delivery_nodes
+        if spec['audience'] == 'public'
+    ]
+    assert public == ['US-NC']
+    # Its team twin ships with it; Texas has none and stays out.
+    assert {node.admin_id for node, _ in shipping_dag.delivery_nodes} == {'US-NC'}
 
 
 def test_state_scope_ships_that_state_alone():
@@ -419,10 +435,12 @@ def test_sibling_regions_on_one_admin_unit_get_their_own_nodes(dag):
 
 def test_a_run_scoped_to_one_region_ships_only_that_region(shipping_dag):
     """A Brunswick County run must not also ship the western bundle."""
-    assert [node.region for node, _ in shipping_dag.delivery_nodes] == [REGION]
-    assert shipping_dag.target_paths() == list(
-        delivery_paths(TARGET, region=REGION).values()
-    )
+    regions = [node.region for node, _ in shipping_dag.delivery_nodes]
+    assert regions == [REGION, TEAM_REGION]
+    assert shipping_dag.target_paths() == [
+        *delivery_paths(TARGET, region=REGION).values(),
+        *delivery_paths(TARGET, region=TEAM_REGION).values(),
+    ]
 
 
 def test_the_region_names_the_bundle_a_deliver_node_writes(shipping_dag):

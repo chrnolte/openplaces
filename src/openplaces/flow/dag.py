@@ -328,14 +328,19 @@ class RecipeDAG:
 
         Kept so callers written against the one-region model still work;
         a recipe shipping several regions has no single node, and reading
-        this raises rather than silently returning one of them.
+        this raises rather than silently returning one of them. A region's
+        team twin (see `io.delivery.delivery_regions`) is not counted: it
+        is only ever reached by naming it.
         """
-        if len(self.delivery_nodes) > 1:
+        public = [
+            node for node, spec in self.delivery_nodes if spec.get('audience') != 'team'
+        ]
+        if len(public) > 1:
             raise ValueError(
-                f'{self.target_recipe_id!r} builds {len(self.delivery_nodes)} '
+                f'{self.target_recipe_id!r} builds {len(public)} '
                 f'delivery nodes; use .delivery_nodes.'
             )
-        return self.delivery_nodes[0][0] if self.delivery_nodes else None
+        return public[0] if public else None
 
     def _delivery_members(self) -> list[str]:
         """Process-level admin units the target recipe's bundles pool.
@@ -590,11 +595,18 @@ class RecipeDAG:
         regions = delivery_regions(recipe)
         if len(regions) <= 1:
             return regions[0]['region_id'] if regions else None
+        # A team twin shares its region's admin unit, but is only ever
+        # shipped by name: asked by unit alone, the public bundle is meant.
+        team_ids = {
+            spec['region_id'] for spec in regions if spec.get('audience') == 'team'
+        }
         in_graph = {
             node.region
             for node, _ in getattr(self, 'delivery_nodes', [])
             if node.recipe_id == recipe_id and str(node.admin_id) == str(admin_id)
         }
+        if len(in_graph) > 1 and len(in_graph - team_ids) == 1:
+            in_graph -= team_ids
         if len(in_graph) == 1:
             return next(iter(in_graph))
         if len(in_graph) > 1:
@@ -607,6 +619,8 @@ class RecipeDAG:
             for spec in regions
             if str(delivery_admin_id(recipe, region=spec['region_id'])) == str(admin_id)
         ]
+        if len(matches) > 1 and len(set(matches) - team_ids) == 1:
+            matches = [match for match in matches if match not in team_ids]
         if len(matches) == 1:
             return matches[0]
         if matches:

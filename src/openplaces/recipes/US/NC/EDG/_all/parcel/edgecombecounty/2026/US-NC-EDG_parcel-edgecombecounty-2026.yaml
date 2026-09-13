@@ -34,6 +34,11 @@ entity:
     license: "no resale; signed agreement and fee for the shapefile product"
     terms_url: "https://www.edgecombecountync.gov/businesses/tax_assessor/map_downloads.php"
     redistribution_restricted: true
+    # Decided by the user 2026-09-13: may be shared within the research
+    # team (the terms page states only a resale waiver for the paid
+    # shapefile), never published. Team bundles carry its values; every
+    # other bundle withholds them (io.redaction).
+    team_sharing_permitted: true
     portal_url: "https://www.edgecombecountync.gov/businesses/tax_assessor/map_downloads.php"
     download_url_scraper: arcgis_rest_scraper
   version: "2026"
