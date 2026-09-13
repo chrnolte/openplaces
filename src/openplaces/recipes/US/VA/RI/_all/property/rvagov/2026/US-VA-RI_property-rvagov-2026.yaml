@@ -1,0 +1,296 @@
+# Recipe: City of Richmond, VA assessor's public data set (City
+# Assessor of Real Estate).
+#
+# SOURCE. The "Public Data Set" linked from
+# https://www.rva.gov/assessor-real-estate/data-request (through
+# /media/51756): one Excel sheet, PUBLIC_DATA_SET_2026-05-26, 76,976
+# rows by 80 columns, 32.4 MB, assessment date 2026-01-01 on 76,700
+# rows. The page says files are updated "on or about the 15th of each
+# month"; on 2026-09-13 it still linked this May file, so the URL is
+# pinned to it. source_id rvagov: the publisher is the City, whose
+# domain is rva.gov (Richmond County, US-VA-RH, is a different unit).
+#
+# PRIVACY. The sheet carries OWNER1, OWNER2, MAIL_* and ASSOC_NAME
+# columns, the parcel's street address (PARCEL_LOCATION*) and
+# LEGAL_DESC. None is mapped, so none survives ingest. The reader
+# still loads the whole sheet (the Excel reader has no column
+# selection).
+#
+# WHAT ONE ROW IS. One assessed property: PIN is unique (76,976), a
+# condominium unit included. GIS_ID (71,948 distinct) is the parcel;
+# condo units share their building's GIS_ID. PID is an internal
+# sequence number and is not used.
+#
+# KEYS. GIS_ID equals VGIN's PARCELID and feeds parcel_id_local (the
+# parcel key); PIN equals VGIN's PTM_ID and is property_id_assessor.
+# MEASURED 2026-09-13 against the VGIN 2026 layer: 99.84% of the
+# 71,948 GIS_IDs are VGIN keys (99.88% of residential rows) and 99.95%
+# of VGIN's 71,866 Richmond keys are GIS_IDs; PIN against PTM_ID
+# 99.65% / 99.96%. Both sides declare `conv: simple`.
+#
+# MAPPED (the City's own codes and words).
+#   NBHD           tax_neighborhood_code (114 codes, 100% filled)
+#   PRIMARY_USE    use_group_code ("120 - R Two Story" ...);
+#                  n_dwellings from it: single-family classes 110,
+#                  115, 120, 130, 150 read 1, 155 (single family with
+#                  an extra living unit) 2, two-family 160/161 2,
+#                  three-family 170/171 3, four-family 180/181 4,
+#                  condominium units 210-212 1; apartment and other
+#                  classes stay null; has_accessory_dwelling true on
+#                  155, null elsewhere
+#   STYLE          building_style (story class plus an age band)
+#   STORIES        n_stories (text; "1.5+1"-style values and 0 null)
+#   YEAR_BUILT     year_built (outside 1700 to 2026 nulled; 1900 is
+#                  common and kept, since it is not provably a
+#                  placeholder)
+#   CONDITION      condition (AV, G, VG, F, EX, P, A, VP)
+#   LIVING_AREA    living_area_sqft (0 nulled)
+#   BED_COUNT      n_bedrooms
+#   BATH_COUNT     full baths; n_bathrooms = full + 0.5 x half
+#   HALF_BATH_COUNT n_half_bathrooms
+#   HVAC           "<heat> - <cooling>": heating_type is the heat part
+#                  (blank and Undefined null); has_central_air true on
+#                  "Central air" and "Forced Cool Air", false on
+#                  "None", "Mini Split" and "Evaporative system",
+#                  null on "Package unit" and single-part values
+#   LAND_ADJ_1..8_CODE  land adjustments, sparse; presence means an
+#                  adjustment was applied, absence is not "no":
+#                  has_waterfront true on "8 - Waterfront",
+#                  view_rating "A - Waterview", topography "6 - Topo"
+#                  or "B - Topography"
+#   LEGAL_AC       area_assessed_ac
+#   FRONTAGE       frontage_ft (DEPTH has no registry home)
+#   ZONING         zoning_code
+#   ASSSESS_*_VALUE_1   land_value, improvement_value, total_value
+#                  (assessment 1 is the current one)
+#   ASSESSMENT_DATE_1   tax_year (its year)
+# The four room fields carry 0 on every row without a dwelling card
+# (commercial, vacant). Where bedrooms, full and half baths are all 0
+# the room counts are nulled, so a vacant lot does not read as a
+# 0-bedroom dwelling; a row with a bath and 0 bedrooms keeps its 0.
+# NOT MAPPED: PROP_TYPE, PROP_TYPE_2 and MODEL (coarser classes of the
+# same use), PROP_SF (lot square feet, the same area as LEGAL_AC),
+# districts, exemption and older assessments, "C - No sewer or water"
+# (38 adjustment codes, too sparse for sewer_type).
+#
+# RESIDENTIAL. PRIMARY_USE codes marked " - R " less vacant, park,
+# island, parking and garage codes (101, 102, 105, 106, 190): 63,669
+# rows. MEASURED 2026-09-13 on them: n_bedrooms 97.1% (> 0 on 91.1%;
+# apartment classes carry 0), n_bathrooms 97.0% (37.9% end in .5),
+# n_half_bathrooms > 0 on 40.5%, n_stories 95.6%, year_built 99.2%
+# (median 1948), n_dwellings 96.3%, living_area_sqft 99.0% (median
+# 1,577), building_style 99.3%, condition 99.1%, heating_type 97.0%,
+# has_central_air 96.9% (true 80.4%), frontage_ft > 0 on 89.9%,
+# tax_neighborhood_code 100%, zoning_code 98.9%, values 99.4 to
+# 99.8%; has_waterfront 0.2%, view_rating 0.3%, topography 0.4%,
+# has_accessory_dwelling 0.2%. No total room count is published.
+#
+# TERMS. The data-request page says only "This data can be accessed
+# free of charge in Excel format below"; no licence or reuse terms on
+# the page or in the file (read 2026-09-13). No consent gate.
+
+description: >-
+  City of Richmond, VA assessor public data set (Excel): one row per PIN
+  with use, rooms, baths, stories, year built, living area, HVAC and
+  values.
+
+admin_id: US-VA-RI
+
+entity:
+  entity_type: property
+  source:
+    source_id: rvagov
+    license: "unknown (free download; no licence or reuse terms stated)"
+    terms_url: "https://www.rva.gov/assessor-real-estate/data-request"
+    redistribution_restricted: null
+    portal_url: "https://www.rva.gov/assessor-real-estate/data-request"
+    download_url: "https://www.rva.gov/sites/default/files/2026-05/Assessor_Public_Data_Set_2026-05-26.xlsx"
+  version: 2026
+
+uncompressed_file_name: "Assessor_Public_Data_Set_2026-05-26.xlsx"
+
+process_by:
+  admin_level: 3
+
+# Ids as text, or the reader types them as numbers.
+csv_dtype:
+  PIN: str
+  GIS_ID: str
+
+columns:
+  parcel_id_assessor: GIS_ID
+  property_id_assessor: PIN
+  tax_neighborhood_code: NBHD
+  use_group_code: PRIMARY_USE
+  building_style: STYLE
+  n_stories: STORIES
+  year_built: YEAR_BUILT
+  condition: CONDITION
+  living_area_sqft: LIVING_AREA
+  n_bedrooms: BED_COUNT
+  n_bathrooms: BATH_COUNT
+  n_half_bathrooms: HALF_BATH_COUNT
+  area_assessed_ac: LEGAL_AC
+  frontage_ft: FRONTAGE
+  zoning_code: ZONING
+  land_value: ASSSESS_LAND_VALUE_1
+  improvement_value: ASSSESS_IMP_VALUE_1
+  total_value: ASSSESS_TOTAL_VALUE_1
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: expression
+    expression: "n_stories.where(n_stories > 0)"
+    inputs: [n_stories]
+    output: n_stories
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 0)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+  # Room counts only where the row records a room; see MAPPED.
+  - type: expression
+    expression: "(n_bedrooms > 0) | (n_bathrooms > 0) | (n_half_bathrooms > 0)"
+    inputs: [n_bedrooms, n_bathrooms, n_half_bathrooms]
+    output: has_rooms
+  - type: expression
+    expression: "n_bedrooms.where(has_rooms)"
+    inputs: [n_bedrooms, has_rooms]
+    output: n_bedrooms
+  - type: expression
+    expression: "n_bathrooms.where(has_rooms)"
+    inputs: [n_bathrooms, has_rooms]
+    output: n_bathrooms
+  - type: expression
+    expression: "n_half_bathrooms.where(has_rooms)"
+    inputs: [n_half_bathrooms, has_rooms]
+    output: n_half_bathrooms
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  - type: remap_pattern
+    input: use_group_code
+    patterns:
+      - pattern: '1(10|15|20|30|50) '
+        value: 1
+      - pattern: '155 '
+        value: 2
+      - pattern: '16[01] '
+        value: 2
+      - pattern: '17[01] '
+        value: 3
+      - pattern: '18[01] '
+        value: 4
+      - pattern: '21[012] '
+        value: 1
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: remap_pattern
+    input: use_group_code
+    patterns:
+      - pattern: '155 '
+        value: true
+    output: has_accessory_dwelling
+  - type: string
+    operation: split_take
+    input: HVAC
+    args: {sep: " - ", index: 0}
+    output: heating_type
+  - type: string
+    operation: extract_named
+    input: heating_type
+    args:
+      pattern: '^\s*(?P<v>(?!Undefined\s*$)\S.*?)\s*$'
+    output: heating_type
+  - type: string
+    operation: split_take
+    input: HVAC
+    args: {sep: " - ", index: 1}
+    output: cooling_type
+  - type: remap
+    input: cooling_type
+    mapping:
+      "Central air": true
+      "Forced Cool Air": true
+      "None": false
+      "Mini Split": false
+      "Evaporative system": false
+    output: has_central_air
+  - type: string
+    operation: concat
+    inputs:
+      - LAND_ADJ_1_CODE
+      - LAND_ADJ_2_CODE
+      - LAND_ADJ_3_CODE
+      - LAND_ADJ_4_CODE
+      - LAND_ADJ_5_CODE
+      - LAND_ADJ_6_CODE
+      - LAND_ADJ_7_CODE
+      - LAND_ADJ_8_CODE
+    args: {sep: "|"}
+    output: land_adjustments
+  - type: remap_conditional
+    input: land_adjustments
+    conditions:
+      - condition: contains
+        value: "8 - Waterfront"
+        output: true
+    output: has_waterfront
+  - type: remap_conditional
+    input: land_adjustments
+    conditions:
+      - condition: contains
+        value: "A - Waterview"
+        output: "A - Waterview"
+    output: view_rating
+  - type: remap_conditional
+    input: land_adjustments
+    conditions:
+      - condition: contains
+        value: "6 - Topo"
+        output: "6 - Topo"
+      - condition: contains
+        value: "B - Topography"
+        output: "B - Topography"
+    output: topography
+  - type: datetime
+    operation: year
+    input: ASSESSMENT_DATE_1
+    output: tax_year
+
+drop_columns:
+  - has_rooms
+  - half_bathroom_equivalent
+  - cooling_type
+  - land_adjustments
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - zoning_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # The bundled conversion for US-VA-RI is written for the PIN and
+  # matches no GIS_ID; the VGIN 2026 recipe declares the same conv.
+  instruction:
+    US-VA-RI:
+      conv: simple
+
+save_to:
+  data_dir: cache

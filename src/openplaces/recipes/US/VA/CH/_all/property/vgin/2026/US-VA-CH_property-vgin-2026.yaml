@@ -1,0 +1,288 @@
+# Recipe: Chesterfield County, VA assessment table, as published in
+# VGIN's 2026 Q2 "Local Schema Tables".
+#
+# SOURCE. VGIN (Virginia Geographic Information Network, VDEM)
+# "Virginia Parcels: Local Schema Tables", 2026 Q2: ArcGIS Online item
+# 523d89ebf23d4d84957f9fe5b9158bd9, a zipped file geodatabase
+# (Virginia_Parcels_LocalSchemas.zip, 362,956,101 bytes) with one
+# table per locality holding the attributes the locality submitted
+# with its parcels. This recipe reads TBL_Chesterfield_County: 149,347
+# rows, 83 fields, the county's CAMA (Assessment 2026 on 149,192
+# rows). source_id vgin: VGIN publishes the table, from the county's
+# data. Read 2026-09-13.
+#
+# ONE DOWNLOAD. The tables are not layers of the statewide parcel
+# geodatabase (US-VA_parcel-vgin-2026 has one layer, VA_Parcels), so
+# this is its own 363 MB download, fetched once for this recipe. The
+# ingester keys a download's directory on the recipe's admin unit and
+# entity, so a second locality's table read by its own recipe would
+# download the same zip again; gathering several tables under one
+# statewide recipe would need a per-unit `layer`, which the ingester
+# does not take.
+#
+# The county's own layer (Cadastral/FeatureServer/3) is frozen at the
+# 2024 assessment; this table is the 2026 one.
+#
+# PRIVACY. The table carries OwnerName, OwnerAddre, OwnerCity,
+# OwnerState, OwnerZip and the situs address (HouseNum, StreetName,
+# Address, Zip ...). None is mapped, so none survives ingest.
+#
+# WHAT ONE ROW IS. One assessed account, joined 1:1 to a VGIN polygon
+# on VGIN_QPID (149,347 distinct over 149,347 rows, the same count as
+# VGIN's Chesterfield polygons). Condominium units are rows of their
+# own on the building's GPIN (UseCode CD, CN). TaxID does not tell
+# them apart: 279 TaxIDs repeat over 5,511 rows (all but ten CD and CN
+# rows are in such groups, of up to 16 rows), and the rows of a group
+# carry different values, so each is kept. 155 rows with TaxID 0
+# (holes, overlaps, Assessment 0, no building data) are not accounts
+# and are dropped by `query`.
+#
+# KEYS. GPIN equals VGIN's PARCELID and feeds parcel_id_local (the
+# parcel key; condo units share it). VGIN_QPID is parcel_id_admin2,
+# as on the VGIN parcel recipe, and matches one polygon per row.
+# TaxID is property_id_assessor, the county's account id as
+# published, with the repeats above. MEASURED 2026-09-13 against the
+# VGIN 2026 layer: every GPIN is a VGIN key (100.00%, residential rows
+# too) and 99.92% of VGIN's 144,079 Chesterfield keys are GPINs; every
+# VGIN_QPID is a VGIN polygon's (the 155 dropped rows are the rest);
+# TaxID against PTM_ID 100.00% / 100.00%.
+#
+# CODES. The county's code decoders sit on chesterfield.gov behind a
+# Cloudflare challenge the identified client cannot pass, so codes
+# stay as published: UseCode (SD, TH, TN, CD, CN, DU residential;
+# numeric codes commercial, vacant, exempt), Style (TR, TS, CL ...),
+# Constructi (WF ...), Foundation (BB, CS, BR ...), ExteriorFi (VY,
+# WD, BR ...), Roof (CS ...), WaterConne and SewerConne (C, N, A).
+#
+# MAPPED.
+#   UseCode        use_group_code
+#   Neighborho     tax_neighborhood_code
+#   YearBuilt      year_built (outside 1700 to 2026 nulled)
+#   Stories        n_stories (0 nulled; 1.5, 1.75, 2.5 kept)
+#   Style          building_style
+#   Constructi     construction_description
+#   Foundation     foundation_description
+#   ExteriorFi     exterior_wall
+#   Roof           roof_material (about 40 rows hold a number)
+#   Rooms          n_rooms
+#   Bedrooms       n_bedrooms
+#   FullBath       full baths; n_bathrooms = full + 0.5 x half
+#   HalfBath       n_half_bathrooms
+#   FinishedAr     living_area_sqft (0 nulled)
+#   FinishBase     basement_finished_area_sqft (text, cast)
+#   UnfinishBa     with FinishBase, basement_area_sqft
+#   Basement       has_basement: true where the basement area is
+#                  above 0, false where it is 0, null where the row
+#                  has no residential card (Basement blank). Code I
+#                  (no area on 112,467 of 112,554 rows) is the
+#                  no-basement pattern; D, E, F and G carry an area
+#   WaterConne     water_source; SewerConne sewer_type (codes)
+#   FairMarket     land_value (TotalAsses = FairMarket + Improvemen
+#                  on 99.6% of rows); Improvemen improvement_value;
+#                  TotalAsses total_value
+#   Assessment     tax_year (0 nulled)
+#   DeededAcre     area_assessed_ac (0 on 85% of rows, nulled)
+#   SalePrice      last_sale_price (0 nulled); SaleDate last_sale_date
+# The room fields carry 0 on rows without a residential card; where
+# rooms, bedrooms, full and half baths are all 0 the counts are
+# nulled.
+# NOT MAPPED, with reasons: HeatType (code 2 on 122,661 of 127,736
+# filled rows; the county's 2024 layer spread the same houses over
+# seven codes, so this is a collapsed or different field), AC (codes
+# 0 to 7, meaning undocumented, not a yes/no), Chimney (61 three-
+# character codes, undocumented), FinishedBa (percent finished),
+# LandUseVal (land-use value, 0.4% filled), Well, Septic, GasConnect,
+# ElectConne, PavedStree, CurbGutter, CornerLot (no second registry
+# home), LowerLevel and Additional (declared, empty). No dwelling-unit
+# count, quality grade, condition or garage field is published.
+#
+# RESIDENTIAL. UseCode SD, TH, TN, CD, CN or DU: the only codes whose
+# rows carry bedrooms (share with bedrooms > 0 is 0.999 to 1.000 for
+# them and at most 0.004 for any numeric code).
+# 127,719 of the 149,192 rows kept. MEASURED 2026-09-13 on them:
+# n_rooms (median 7), n_bedrooms (median 4), n_bathrooms (61.0% end
+# in .5), n_stories, year_built (median 1990) and living_area_sqft
+# (median 2,048) 100%; n_half_bathrooms > 0 on 63.2%; has_basement
+# filled 100%, true 11.9%; building_style, construction_description,
+# foundation_description, exterior_wall and roof_material 100%;
+# water_source and sewer_type 99.9%; tax_neighborhood_code 100%
+# (1,896 codes); values 99.8 to 99.9%; area_assessed_ac 15.0%;
+# last_sale_price 75.9%.
+#
+# TERMS. The item licence (read 2026-09-13), the same text as the
+# parcel item's: "The Virginia Base Data layers are intended for
+# cartographic use and spatial analysis only, and not for use as a
+# legal description. ... all warranties ... are hereby expressly
+# disclaimed." A disclaimer: no redistribution, resale or
+# commercial-use clause, no consent gate. The county's own terms page
+# could not be read (Cloudflare challenge).
+
+description: >-
+  Chesterfield County, VA assessment table from VGIN's 2026 Q2 local schema
+  tables: rooms, baths, stories, year built, living area, materials,
+  utilities and values.
+
+admin_id: US-VA-CH
+
+entity:
+  entity_type: property
+  source:
+    source_id: vgin
+    license: >-
+      VGIN disclaimer: "intended for cartographic use and spatial analysis
+      only, and not for use as a legal description"; warranties disclaimed.
+      No redistribution, resale or commercial-use clause.
+    terms_url: "https://www.arcgis.com/home/item.html?id=523d89ebf23d4d84957f9fe5b9158bd9"
+    redistribution_restricted: false
+    portal_url: "https://vgin.vdem.virginia.gov/pages/parcels"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/523d89ebf23d4d84957f9fe5b9158bd9/data"
+  version: 2026
+
+compressed_file_name: "Virginia_Parcels_LocalSchemas.zip"
+uncompressed_file_name: "Virginia_Parcel_Dataset_LocalSchemas_2026Q2.gdb"
+layer: TBL_Chesterfield_County
+
+process_by:
+  admin_level: 3
+
+# Blank text fields hold a single space.
+null_value_strings:
+  - " "
+
+columns:
+  parcel_id_assessor: GPIN
+  property_id_assessor: TaxID
+  parcel_id_admin2: VGIN_QPID
+  use_group_code: UseCode
+  tax_neighborhood_code: Neighborho
+  year_built: YearBuilt
+  n_stories: Stories
+  building_style: Style
+  construction_description: Constructi
+  foundation_description: Foundation
+  exterior_wall: ExteriorFi
+  roof_material: Roof
+  n_rooms: Rooms
+  n_bedrooms: Bedrooms
+  n_bathrooms: FullBath
+  n_half_bathrooms: HalfBath
+  living_area_sqft: FinishedAr
+  basement_finished_area_sqft: FinishBase
+  water_source: WaterConne
+  sewer_type: SewerConne
+  land_value: FairMarket
+  improvement_value: Improvemen
+  total_value: TotalAsses
+  tax_year: Assessment
+  area_assessed_ac: DeededAcre
+  last_sale_price: SalePrice
+  last_sale_date: SaleDate
+
+# TaxID 0 rows are holes and overlaps; see WHAT ONE ROW IS.
+query: "property_id_assessor != 0"
+
+transformations:
+  # Both ids are stored as float64 integers of at most 15 digits.
+  - type: expression
+    expression: "property_id_assessor.astype('Int64').astype('string')"
+    inputs: [property_id_assessor]
+    output: property_id_assessor
+  - type: expression
+    expression: "parcel_id_admin2.astype('Int64').astype('string')"
+    inputs: [parcel_id_admin2]
+    output: parcel_id_admin2
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: expression
+    expression: "n_stories.where(n_stories > 0)"
+    inputs: [n_stories]
+    output: n_stories
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 0)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+  - type: expression
+    expression: "tax_year.where(tax_year > 0)"
+    inputs: [tax_year]
+    output: tax_year
+  - type: expression
+    expression: "area_assessed_ac.where(area_assessed_ac > 0)"
+    inputs: [area_assessed_ac]
+    output: area_assessed_ac
+  - type: expression
+    expression: "last_sale_price.where(last_sale_price > 0)"
+    inputs: [last_sale_price]
+    output: last_sale_price
+  - type: unary
+    operation: to_datetime
+    input: last_sale_date
+    output: last_sale_date
+  # Room counts only where the row records a room; see MAPPED.
+  - type: expression
+    expression: >-
+      (n_rooms > 0) | (n_bedrooms > 0) | (n_bathrooms > 0)
+      | (n_half_bathrooms > 0)
+    inputs: [n_rooms, n_bedrooms, n_bathrooms, n_half_bathrooms]
+    output: has_rooms
+  - type: expression
+    expression: "n_rooms.where(has_rooms)"
+    inputs: [n_rooms, has_rooms]
+    output: n_rooms
+  - type: expression
+    expression: "n_bedrooms.where(has_rooms)"
+    inputs: [n_bedrooms, has_rooms]
+    output: n_bedrooms
+  - type: expression
+    expression: "n_bathrooms.where(has_rooms)"
+    inputs: [n_bathrooms, has_rooms]
+    output: n_bathrooms
+  - type: expression
+    expression: "n_half_bathrooms.where(has_rooms)"
+    inputs: [n_half_bathrooms, has_rooms]
+    output: n_half_bathrooms
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # Basement: areas only where the row has a card (Basement filled).
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: aggregate
+    operation: sum
+    inputs: [basement_finished_area_sqft, UnfinishBa]
+    output: basement_area_sqft
+  - type: expression
+    expression: "basement_area_sqft.where(Basement.notna())"
+    inputs: [basement_area_sqft, Basement]
+    output: basement_area_sqft
+  - type: expression
+    expression: "basement_finished_area_sqft.where(Basement.notna())"
+    inputs: [basement_finished_area_sqft, Basement]
+    output: basement_finished_area_sqft
+  - type: expression
+    expression: "(basement_area_sqft > 0).where(Basement.notna())"
+    inputs: [basement_area_sqft, Basement]
+    output: has_basement
+
+drop_columns:
+  - has_rooms
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - use_group_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

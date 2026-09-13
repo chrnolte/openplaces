@@ -1,0 +1,147 @@
+# Recipe: Fairfax County, VA real estate parcels roll (Department of
+# Tax Administration), the roll its dwelling, additions and land
+# tables supplement.
+#
+# SOURCE. "Real Estate - Parcels Data" on the County GIS open-data
+# Hub (OpenData_A6 layer 1), bulk CSV export, 370,485 rows, 58.9 MB,
+# read 2026-09-13. TAXYR is 2027 on every row (the current roll). The
+# CAMA system is Tyler iasWorld; its tables carry _DESC decodes.
+#
+# WHAT ONE ROW IS. One assessment parcel, keyed PARID. Condominium
+# units are their own PARID. 369,626 distinct PARIDs: 652 PARIDs
+# repeat (546 twice, up to 12 times), almost all commercial land uses,
+# and the repeats differ only in LOCATION_DESC, STREET1_DESC,
+# UTIL*_DESC, ZONING_DESC or LIVUNIT (no row is an exact duplicate).
+# The first row per PARID is kept (`drop_duplicates`).
+#
+# KEY. PARID equals VGIN's PTM_ID with no transformation (the tax-map
+# form keeps its internal double space), not VGIN's PARCELID. The
+# VGIN 2026 recipe points Fairfax's parcel_id_local at PTM_ID with
+# the same `conv: simple` declared here. MEASURED 2026-09-13 against
+# the VGIN 2026 layer: 99.83% of the roll's 369,626 PARIDs are VGIN
+# keys (99.93% of residential rows) and 99.99% of VGIN's 369,019
+# Fairfax polygons carry a roll PARID. Through VGIN's PARCELID, the
+# only key before, the match was 0.00%. The dwelling, additions and
+# land tables' PARIDs are all in the roll (100.00%).
+#
+# MAPPED.
+#   LIVUNIT        n_dwellings (0 on vacant and commercial parcels is
+#                  kept as a zero)
+#   LUC_DESC       use_group_code (land-use words, trailing spaces cut)
+#   ZONING_DESC    zoning_code
+#   UTIL1_DESC     water_source ("Water connected", "... available",
+#                  "... not available")
+#   UTIL2_DESC     sewer_type (same pattern for sewer)
+#   LOCATION_DESC  has_waterfront: true where the lot class names a
+#                  waterfront (WATERFRONT or WATER FRONT), else null;
+#                  view_rating: the lot class where it names a view
+#                  (GOOD VIEW, AVERAGE VIEW, FAIR WATERVIEW ...). It is
+#                  a lot-quality class, so absence is not "no".
+#   TAXYR          tax_year
+# NOT MAPPED: UTIL3_DESC (gas connection, no registry home),
+# STREET1_DESC (paved or not, no home), the rest of LOCATION_DESC
+# (lot quality, cul-de-sac, golf course).
+#
+# RESIDENTIAL. LUC_DESC starting with Single-family (detached,
+# semidetached, in commercial or industrial zones), Townhouse in
+# (ownership, condominium or rental development), Garden Style
+# condominium, Multiplex in condominium, Medium or High rise
+# apartments condo, Duplex, or Two or more Single-family:
+# 338,959 of the 369,626 PARIDs. MEASURED 2026-09-13 on them:
+# n_dwellings 99.3%, water_source 99.9%, sewer_type 100%, zoning_code
+# 100%, has_waterfront true 0.7%, view_rating 0.9%. Rooms, baths,
+# stories, materials and areas come from the supplements (see their
+# headers for coverage on the same parcels).
+#
+# TERMS (read 2026-09-13). The four tables' items name
+# https://www.fairfaxcounty.gov/maps/disclaimer as their licence:
+# "Copyright by Fairfax County. Except as provided herein, all rights
+# are reserved. Authorization to reproduce material for internal or
+# personal use by any user of this information is granted by Fairfax
+# County, the copyright owner." The licence of the OpenData_A7 service
+# (item 4a24fdc7d73e45719123ea7db0aee80f) adds: "However, no part of
+# this material may be published or reproduced by any means for
+# commercial sale or use without prior written permission of Fairfax
+# County." Only internal or personal reproduction is granted, so
+# redistribution is restricted; commercial sale needs permission
+# (resale_restricted) and commercial use needs permission
+# (usage_requirement non_commercial). The delivery code withholds
+# these values from public bundles. Approved for use by the user
+# 2026-09-13 on these terms. No click-through or consent gate.
+
+description: >-
+  Fairfax County, VA real estate parcels roll (Tax Administration, Hub CSV):
+  one row per PARID, with land use, dwelling units, utilities and zoning.
+
+admin_id: US-VA-FA
+
+entity:
+  entity_type: property
+  source:
+    source_id: fairfaxcounty
+    license: >-
+      Fairfax County copyright: reproduction "for internal or personal use"
+      is granted; "no part of this material may be published or reproduced
+      by any means for commercial sale or use without prior written
+      permission of Fairfax County."
+    terms_url: "https://www.fairfaxcounty.gov/maps/disclaimer"
+    redistribution_restricted: true
+    resale_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=7607cf5046c5495183251d1c9dba0014"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/7607cf5046c5495183251d1c9dba0014_1/downloads/data?format=csv&spatialRefId=4326"
+  version: 2026
+
+uncompressed_file_name: "fairfax_real_estate_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PARID: str
+
+columns:
+  parcel_id_assessor: PARID
+  n_dwellings: LIVUNIT
+  use_group_code: LUC_DESC
+  zoning_code: ZONING_DESC
+  water_source: UTIL1_DESC
+  sewer_type: UTIL2_DESC
+  tax_year: TAXYR
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  - type: string
+    operation: strip
+    input: use_group_code
+    output: use_group_code
+  - type: remap_conditional
+    input: LOCATION_DESC
+    conditions:
+      - condition: regex
+        pattern: "WATER ?FRONT"
+        output: true
+    output: has_waterfront
+  - type: string
+    operation: extract_named
+    input: LOCATION_DESC
+    args:
+      pattern: '(?i)^(?P<v>.*VIEW.*)$'
+    output: view_rating
+
+columns_to_categorical:
+  - use_group_code
+  - zoning_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Same conversion as the VGIN 2026 recipe's PTM_ID key here.
+  instruction:
+    US-VA-FA:
+      conv: simple
+
+save_to:
+  data_dir: cache

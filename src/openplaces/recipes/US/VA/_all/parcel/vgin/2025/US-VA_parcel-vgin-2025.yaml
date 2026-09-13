@@ -1,4 +1,12 @@
 # Recipe to import the parcel database of the state of Virginia, US
+#
+# NOTE (2026-09-13): the download URL below is not versioned. It now
+# serves VGIN's 2026 Q2 release (file dated 2026-07-01), so a fresh
+# download no longer reproduces the 2025 edition. In the 2025
+# shapefile VGIN_QPID lost its last digit (Fairfax: 36,875 values over
+# 368,742 parcels), so parcel_id_admin2 is not unique here, and this
+# recipe declares no parcel_id_local. US-VA_parcel-vgin-2026 reads the
+# 2026 geodatabase instead, where VGIN_QPID is whole.
 
 description: >-
   Virginia statewide parcel database from the Virginia Geographic Information Network

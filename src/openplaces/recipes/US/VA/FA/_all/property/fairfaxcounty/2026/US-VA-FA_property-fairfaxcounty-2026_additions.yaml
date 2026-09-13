@@ -1,0 +1,154 @@
+# Recipe: Fairfax County, VA dwelling additions table (Tax
+# Administration). Supplement of US-VA-FA_property-fairfaxcounty-2026;
+# see that recipe for the terms and the join key.
+#
+# SOURCE. "Real Estate - Dwelling Addition Data" on the County GIS
+# open-data Hub (OpenData_A4 layer 1), bulk CSV export, 1,512,167
+# rows, 71.7 MB, read 2026-09-13 (iasWorld ADDN). The export trailed
+# the live layer by 1,194 rows (0.08%), snapshot lag.
+#
+# WHAT ONE ROW IS. One addition line (LLINE) of a dwelling: a
+# footprint AREA with up to four stacked level descriptions
+# (LOWER_DESC, FIRST_DESC, SECOND_DESC, THIRD_DESC), e.g. a garage on
+# the first level with a finished room above it. 340,191 PARIDs.
+#
+# MAPPED. The four levels are joined and matched per line; AREA is
+# the line's footprint, so it counts once per line.
+#   ATTACHED GARAGE        has_garage true and garage_area_sqft
+#   CARPORT                has_carport true
+#   porch codes            porch_area_sqft: Open Porch or Portico,
+#                          Screened Porch, ENCLOSED PORCH, Two Story
+#                          and Split Foyer Colonial Porch, CONDO
+#                          ENCLOSED PORCH, Unfinished Enclosed Porch
+#   deck and patio codes   deck_area_sqft: Wood Deck, COMPOSITE
+#                          MATERIAL DECK, Concrete Deck, Elevated
+#                          Concrete Deck, Deck, PATIO, Wood Patio
+# Flags are true where a line says so and null elsewhere: no
+# detached garage or outbuilding table is public, so a parcel without
+# an attached-garage line may still have a garage. Areas and flags
+# reduce per parcel by sum and max.
+# NOT MAPPED: Balcony, Overhang, Area Over or Dorm room, wall
+# materials (Frame, Brick), BASEMENT FULL, attached shed, workshop,
+# greenhouse, gazebo and pool house lines (no registry home, or a
+# count the table does not give). There is no pool code.
+#
+# MEASURED 2026-09-13, reduced per parcel, share of the roll's 338,959
+# residential parcels: has_garage true and garage_area_sqft 35.6%
+# (median 462 sq ft), has_carport 4.7%, porch_area_sqft 42.0%
+# (median 138), deck_area_sqft 70.6% (median 280). Every addition
+# PARID is in the roll.
+
+description: >-
+  Fairfax County, VA dwelling additions table (Tax Administration, Hub CSV):
+  attached garage, carport, porch and deck areas per addition line.
+
+admin_id: US-VA-FA
+
+entity:
+  entity_type: property
+  source:
+    source_id: fairfaxcounty
+    # Same terms as the roll; see its TERMS note.
+    license: >-
+      Fairfax County copyright: reproduction "for internal or personal use"
+      is granted; "no part of this material may be published or reproduced
+      by any means for commercial sale or use without prior written
+      permission of Fairfax County."
+    terms_url: "https://www.fairfaxcounty.gov/maps/disclaimer"
+    redistribution_restricted: true
+    resale_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=26cc94900f8a454482638cd833978da9"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/26cc94900f8a454482638cd833978da9_1/downloads/data?format=csv&spatialRefId=4326"
+  version: 2026
+
+uncompressed_file_name: "fairfax_real_estate_additions.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PARID: str
+
+columns:
+  parcel_id_assessor: PARID
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [LOWER_DESC, FIRST_DESC, SECOND_DESC, THIRD_DESC]
+    args: {sep: "|"}
+    output: addition_levels
+  - type: remap_conditional
+    input: addition_levels
+    conditions:
+      - condition: contains
+        value: "ATTACHED GARAGE"
+        output: 1
+    output: is_garage
+  - type: remap_conditional
+    input: addition_levels
+    conditions:
+      - condition: regex
+        pattern: "(?i)porch|portico"
+        output: 1
+    output: is_porch
+  - type: remap_conditional
+    input: addition_levels
+    conditions:
+      - condition: regex
+        pattern: "(?i)deck|patio"
+        output: 1
+    output: is_deck
+  - type: remap_conditional
+    input: addition_levels
+    conditions:
+      - condition: contains
+        value: "CARPORT"
+        output: true
+    output: has_carport
+  - type: remap
+    input: is_garage
+    mapping:
+      1: true
+    output: has_garage
+  - type: expression
+    expression: "AREA.where(is_garage == 1)"
+    inputs: [AREA, is_garage]
+    output: garage_area_sqft
+  - type: expression
+    expression: "AREA.where(is_porch == 1)"
+    inputs: [AREA, is_porch]
+    output: porch_area_sqft
+  - type: expression
+    expression: "AREA.where(is_deck == 1)"
+    inputs: [AREA, is_deck]
+    output: deck_area_sqft
+
+drop_columns:
+  - addition_levels
+  - is_garage
+  - is_porch
+  - is_deck
+
+aggregation_function:
+  has_garage: max
+  garage_area_sqft: sum
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+
+supplements: US-VA-FA_property-fairfaxcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Same conversion as the roll, so both keys agree.
+  instruction:
+    US-VA-FA:
+      conv: simple
+
+save_to:
+  data_dir: cache
+  filename: additions
