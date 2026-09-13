@@ -63,11 +63,11 @@ MAPS = [
     ),
     ('parcel', ('ingest',), None, 'Parcels', 'recipe_coverage_parcel'),
     (
-        'footprint',
-        ('harmonize', 'curate'),
-        'US',
-        'Footprints linked to parcels · harmonize / curate · US only',
-        'recipe_coverage_footprint_parcel_linked',
+        'property',
+        ('ingest',),
+        None,
+        'Properties (tax rolls and CAMA tables)',
+        'recipe_coverage_property',
     ),
 ]
 
@@ -86,9 +86,29 @@ def _level_edgecolor(level: int) -> str:
     return _LEVEL_EDGECOLORS.get(level, '#303030')
 
 
+def _tracked_recipe_ids() -> frozenset[str]:
+    """Recipe ids of the YAML files git tracks under the recipe tree.
+
+    The catalog describes the committed tree. A recipe held locally and
+    git-ignored (a restricted source under review) still loads, and a
+    country-scoped one would shade a whole country on a published map.
+    """
+    import subprocess
+
+    listed = subprocess.run(
+        ['git', 'ls-files', 'src/openplaces/recipes'],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    return frozenset(Path(f).stem for f in listed if f.endswith('.yaml'))
+
+
 def _select(entity_type: str, stages: tuple[str, ...], admin_prefix: str | None):
     df = find_recipes(entity_type)
     df = df[df['stage'].isin(stages)]
+    df = df[df['recipe_id'].isin(_tracked_recipe_ids())]
     if admin_prefix is not None:
         prefix = f'{admin_prefix}-'
         df = df[

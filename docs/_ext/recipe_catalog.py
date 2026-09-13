@@ -141,6 +141,12 @@ _INGEST_MAPS = (
         'Buildings',
     ),
     ('recipe_coverage_parcel', 'Map of parcel recipe coverage', 'Parcels'),
+    (
+        'recipe_coverage_property',
+        'Map of property recipe coverage',
+        'Properties (tax rolls and CAMA tables, with room counts where the '
+        'source publishes them)',
+    ),
 )
 
 
@@ -165,7 +171,7 @@ class RecipeCoverage(Directive):
     def run(self) -> list[nodes.Node]:
         lines = headline_lines(summarize())
         lines += [
-            'The three maps below cover **data ingestion** recipes -- the',
+            'The four maps below cover **data ingestion** recipes -- the',
             "recipes that download and structure each entity type's raw",
             'source data, one entity type at a time. Maps are stacked full',
             'width, cropped to the covered area, so coverage stays legible',
@@ -181,21 +187,6 @@ class RecipeCoverage(Directive):
                 f'   {caption}',
                 '',
             ]
-
-        lines += [
-            'Ingested footprints and parcels are then linked together in',
-            '``harmonize`` and ``curate``. The map below is that linked',
-            "entity's recipe coverage -- US only for now -- rather than",
-            'ingestion; note that a country-scoped recipe colors the whole',
-            'country, which is coarser than the counties actually curated.',
-            '',
-            '.. figure:: /_static/images/recipe_coverage_footprint_parcel_linked.png',
-            '   :width: 100%',
-            '   :alt: Map of footprints linked to parcels, harmonize/curate',
-            '',
-            '   Footprints linked to parcels (harmonize / curate, US only)',
-            '',
-        ]
 
         node = nodes.section()
         node.document = self.state.document
