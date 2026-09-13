@@ -1,0 +1,92 @@
+# Recipe: Lucas County, OH auditor roll (AREIS_Info, GENERAL table).
+#
+# NEEDS A READER: the source is a Microsoft Access .mdb, and the
+# ingester has no branch for the .mdb suffix (TableIngester raises
+# "Filepath suffix not yet interpreted"). The recipe is written against
+# the measured schema so it runs once an Access reader exists; it has
+# not been ingested. The schema and every figure below were read with
+# the access_parser package outside the ingester.
+#
+# Source: the Lucas County Auditor's public ArcGIS Online item
+# "AREIS_Info" (updated weekly; the zip holds AREIS_Info.mdb, 37
+# tables). The auditor's nightly copy on lucapps.co.lucas.oh.us sits
+# behind an account registration and is deliberately not used. This
+# item is ungated. Tables: GENERAL (this recipe), RESIDENTIAL and
+# CONDOMINIUM (the two room-count supplements), lookup tables
+# (STORY_LV, HVAC_LV, ...), SALES, MAILING and others. MAILING and the
+# Owner field of GENERAL are never read.
+#
+# Row shape, measured on the copy dated 2026-09-07: GENERAL holds
+# 204,794 rows, one per distinct Parcel. One row is one property.
+#
+# Columns. Landuse is the Ohio DTE land-use code (3 digits on every
+# row). Land, Bldg and Total are above zero on 96.0%, 82.8% and 98.5%
+# of rows. Acres is above zero on only 16.1% and Certyr is 0 on 90%
+# of rows, so neither is mapped.
+#
+# Join key. Parcel is 7 digits and matches OGRIP's LocalParcelID as
+# shipped on 196 of 200 sampled roll ids and 199 of 200 sampled
+# RESIDENTIAL ids, measured against the live OGRIP layer on a random
+# sample. No transformation is needed.
+
+description: >-
+  Lucas County, OH auditor roll (AREIS_Info GENERAL table): land-use
+  code, land, building and total value and situs per property.
+
+admin_id: US-OH-LU
+
+entity:
+  entity_type: property
+  source:
+    source_id: lucascounty
+    # Checked 2026-09-12. The item's licenseInfo is a disclaimer: not
+    # for conveyances, not a survey, no warranty, and "any user of this
+    # information accepts the same as is, with all faults ... and
+    # agrees to hold Lucas County, and all its agents, harmless". No
+    # resale or redistribution clause and no fee on this copy.
+    license: >-
+      unknown (as-is, with all faults; user agrees to hold Lucas County
+      harmless)
+    terms_url: "https://www.arcgis.com/home/item.html?id=8e00e957fcc04a81aac77e8bfc17b2dc"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=8e00e957fcc04a81aac77e8bfc17b2dc"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/8e00e957fcc04a81aac77e8bfc17b2dc/data"
+  version: "2026"
+
+compressed_file_name: "AREIS_Info.zip"
+uncompressed_file_name: "AREIS_Info.mdb"
+layer: GENERAL
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel
+  use_group_code: Landuse
+  land_value: Land
+  improvement_value: Bldg
+  total_value: Total
+  address_number: StreetNumber
+  city: City
+  postal_code: Zip
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [Direction, Address, AdrSuf]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+
+columns_to_categorical:
+  - use_group_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

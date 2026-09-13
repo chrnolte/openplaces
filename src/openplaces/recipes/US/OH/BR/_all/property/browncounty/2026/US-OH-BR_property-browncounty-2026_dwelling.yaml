@@ -1,0 +1,221 @@
+# Recipe: Brown County, OH auditor roll, ISSG Parcel Dwelling table.
+# Supplement of US-OH-BR_property-browncounty-2026; see that recipe
+# for the source and the join key.
+#
+# Row shape (2025): 17,119 cards over 16,786 parcels, one row per
+# dwelling card; 99.94% of card keys are on the roll. Of the 11,446
+# live land-use 510 properties, 90.1% have bedrooms above 0, 98.0%
+# baths, 96.6% rooms and 98.2% stories. Bed_Rooms is 0 on 13.7% of
+# cards and manufactured homes on real property are cards of type
+# '4-MH REAL PROPERTY'. Story_Height reads 0 on 751 cards.
+#
+# The ISSG dwelling layout is the same in every ISSG county:
+# Bed_Rooms, Full_Baths, Half_Baths, Total_Rooms and Story_Height
+# (decimal). XML delivers every attribute as text, so each count is
+# cast to a number. Extra_Fixtures counts extra plumbing fixtures, not
+# baths, and Plumbing is a category; neither is mapped. n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces;
+# Fireplace_Stacks is not read), Year_Remodeled (renovation_year; 0
+# reads null), Year_Effective (effective_year_built; 0 reads null),
+# Grade (quality_grade, e.g. 'C+2'), Condition (condition, e.g.
+# 'AV-AVERAGE') and Type (building_style, e.g. '1-SINGLE FAMILY').
+# Years take the latest card, codes the first. Well_Septic and RecRoom
+# are empty; Plumbing (normal or none) is not read.
+# MEASURED 2026-09-13 on the 11,446 live land-use 510 properties:
+# living area > 0 on 98.4% (median 1,562 sqft), fireplaces > 0 on
+# 22.6%, a remodel year on 2.8%, an effective year on 76.5%, grade,
+# condition and style on 98.6% each (35 grades; AV-AVERAGE on 65.4%).
+#
+# year_built (added 2026-09-13): Year_Built, earliest card. 0 (25.0%
+# of cards, year unknown) and five cards before 1700 read null.
+# n_dwellings: Units_Designed + Units_Converted (the layout's "units
+# in the initial dwelling design" plus "units converted from" it),
+# summed over the residential dwelling cards; apartments valued as
+# commercial buildings are not dwelling cards and are not counted.
+# Designed alone matches Type (154 of 158 duplex cards read 2); on
+# parcels with cards the sum is 2 on 92.4% of land use 520 and 3 on
+# 89.3% of 530.
+# MEASURED 2026-09-13 on the 11,446 live land-use 510 properties:
+# year_built on 78.2% (median 1989); n_dwellings on 98.6%, equal to
+# 1 on 97.8%.
+
+description: >-
+  Brown County, OH ISSG Parcel Dwelling table: rooms, bedrooms, full
+  and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-BR
+
+entity:
+  entity_type: property
+  source:
+    source_id: browncounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://realestate.browncountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://realestate.browncountyauditor.org/property-data-downloads"
+    download_url: "https://realestate.browncountyauditor.org/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Dwelling.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Story_Height
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  renovation_year: Year_Remodeled
+  effective_year_built: Year_Effective
+  year_built: Year_Built
+  n_dwellings: Units_Designed
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # year_built: null any year outside 1700 to 2026 (0 is already
+  # nulled by the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1700
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args:
+      threshold: 2026
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_after_min
+      - year_before_max
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping:
+      1: 1
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_built
+      - year_valid
+    output: year_built
+  # n_dwellings = Units_Designed + Units_Converted.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: Units_Converted
+    output: units_converted
+  - type: aggregate
+    operation: sum
+    inputs:
+      - n_dwellings
+      - units_converted
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+  - units_converted
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  year_built: min
+  n_dwellings: sum
+  quality_grade: first
+  condition: first
+  building_style: first
+
+supplements: US-OH-BR_property-browncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

@@ -1,0 +1,130 @@
+# Recipe: Huron County, OH auditor roll, ISSG Parcel Improvement table.
+# Supplement of US-OH-HU_property-huroncounty-2026; see that recipe for
+# the source and the join key.
+#
+# One row per detached improvement on a card. Type is
+# 'CODE-DESCRIPTION'; Multiplier is 'the number of identical
+# improvements represented by this item'.
+#
+# The table mixes residential and farm outbuildings (letter codes, and
+# 499.xxx and 90x.xxx extra-feature codes) with commercial cost-code
+# buildings (3xx.xxx to 8xx.xxx, CBD).
+#
+# n_outbuildings counts rows whose Type names a structure (garage, shed,
+# barn, lean-to, pole or utility or storage building, shelter, gazebo,
+# cabin, shop, stable, quonset, a house such as a milk, poultry, pump or
+# bath house, crib, silo, grain bin, granary, coop, kennel, carport,
+# greenhouse, hoop building), times Multiplier. Not counted: commercial
+# cost codes other than 499.xxx, the attached garage codes 499.026 to
+# 499.029 and any ATTACHED item, CBD, market and less-land rows, COMM,
+# tourist cabins, guard houses, regulator stations, mobile homes and
+# their storage, pools, restrooms, press boxes, towers and dwellings.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere: has_pool (in-ground, above-ground and other POOL rows),
+# has_garage (any GARAGE or GAR row except commercial ones) and
+# has_carport (CARPORT rows, enclosed included). has_garage and
+# has_carport are also set by _features. Dwelling rows (DW-DWELLING SV,
+# 510.xxx) may be the parcel's only dwelling, so no accessory dwelling
+# flag is read.
+#
+# MEASURED 2026-09-13 on 2025: 47,084 rows over 18,411 parcels, keys
+# 99.87% in the roll. On the 10,924 live land-use 510 properties: an
+# improvement row on 60.9%; n_outbuildings > 0 on 58.6% (median 1); pool
+# 2.6%; garage 36.8%; carport 1.5%.
+
+description: >-
+  Huron County, OH ISSG Parcel Improvement table: outbuilding count and
+  pool, detached garage and carport flags per property.
+
+admin_id: US-OH-HU
+
+entity:
+  entity_type: property
+  source:
+    source_id: huroncounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (property-line disclaimer only; no terms on the extract)"
+    redistribution_restricted: null
+    portal_url: "https://huroncountyauditor.org/"
+    download_url: "https://huron-auditor-public.issg.io/api/Document/PublicRecords.zip?e=t0YMq1"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Improvement.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  # Later patterns win: structures first, then exclusions.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|\\bGAR\\b|SHED|BARN|LEAN|BLDG|BDG)", value: 1}
+      - {pattern: ".*(BUILDING|SHELTER|SHLTR|GAZEBO|CABIN|COTTAGE|SHOP)", value: 1}
+      - {pattern: ".*(STABLE|QUONSET|QUNST|HOUSE|HSE|\\bHS\\b|CRIB|SILO)", value: 1}
+      - {pattern: ".*(\\bBIN\\b|GRANARY|GRNRY|COOP|KENNEL|CARPORT|STAVE)", value: 1}
+      - {pattern: ".*(GREEN|STORAGE|STRG|HANGER|PRLR|PARLOR|PAVIL|POLE)", value: 1}
+      - {pattern: "(?!499\\.)[3-8]\\d\\d\\.\\d+-", value: 0}
+      - {pattern: "499\\.02[6-9]-", value: 0}
+      - {pattern: "(CBD|MKT|LES)", value: 0}
+      - {pattern: ".*(COMM|TOURIST|GUARD|REG |MOBILE HOME|MH )", value: 0}
+      - {pattern: ".*(POOL|RESTROOM|RR BLDG|PRESS BOX|TOWER|DWELLING)", value: 0}
+      - {pattern: ".*(\\bMH\\b|ATTACHED)", value: 0}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|\\bGAR\\b)", value: true}
+      - {pattern: "(?!499\\.)[3-8]\\d\\d\\.\\d+-", value: null}
+      - {pattern: ".*COMM", value: null}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+
+supplements: US-OH-HU_property-huroncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

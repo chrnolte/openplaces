@@ -1,0 +1,66 @@
+# Recipe: Lorain County, OH auditor roll, ISSG
+# Parcel_Dwelling_Custom_Field table. Supplement of
+# US-OH-LO_property-loraincounty-2026; see that recipe for the
+# source, its terms and the join key.
+#
+# One row per answer to a county-defined question about a dwelling
+# card (Question, Answer; Answer_Number orders multi-answer fields).
+# Lorain defines one question, 'Exterior Walls', a multi-value
+# selection; the query keeps it, so a question the county adds later
+# is not read by mistake. exterior_wall keeps the source's words (e.g.
+# 'Vinyl Siding', 'Brick') and takes the first answer per property.
+#
+# MEASURED 2026-09-13: 115,194 answers over 113,601 parcels, keys
+# 99.59% in the roll; exterior_wall on 99.5% of the 89,855 live
+# land-use 510 properties (Vinyl Siding 62,170, Wood Siding 12,331,
+# Aluminum Siding 9,122, Brick 5,014, Stucco Siding 360, Other 164,
+# Concrete Block 135, Stone 74).
+
+description: >-
+  Lorain County, OH ISSG Parcel_Dwelling_Custom_Field table: exterior
+  wall material per property, in the source's words.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel_Dwelling_Custom_Field
+
+process_by:
+  admin_level: 3
+
+query: "Question == 'Exterior Walls'"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  exterior_wall: Answer
+
+columns_to_categorical:
+  - exterior_wall
+
+aggregation_function:
+  exterior_wall: first
+
+supplements: US-OH-LO_property-loraincounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: custom-field

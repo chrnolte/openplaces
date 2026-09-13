@@ -1,0 +1,220 @@
+# Recipe: Shelby County, OH auditor roll, ISSG Parcel Dwelling table.
+# Supplement of US-OH-SH_property-shelbycounty-2026; see that recipe
+# for the source and the join key.
+#
+# Row shape (2025): 17,136 cards over 17,010 parcels, one row per
+# dwelling card (one parcel has 52). 99.7% of the 14,254 live land-use
+# 510 properties have a card with bedrooms. Heating appears only as
+# free text in the dwelling Notes and is not mapped.
+#
+# The ISSG dwelling layout is the same in every ISSG county:
+# Bed_Rooms, Full_Baths, Half_Baths, Total_Rooms and Story_Height
+# (decimal). XML delivers every attribute as text, so each count is
+# cast to a number. Extra_Fixtures counts extra plumbing fixtures, not
+# baths, and Plumbing is a category; neither is mapped. n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces;
+# Fireplace_Stacks is not read), Year_Remodeled (renovation_year; 0
+# reads null), Year_Effective (effective_year_built), Grade
+# (quality_grade, e.g. 'C+'), Condition (condition, e.g. 'A-AVERAGE')
+# and Type (building_style, e.g. '1-CONVENTIONAL'). Years take the
+# latest card, codes the first. Well_Septic and RecRoom are empty.
+# MEASURED 2026-09-13 on the 14,254 live land-use 510 properties:
+# living area > 0 on 99.8% (median 1,720 sqft), fireplaces > 0 on
+# 12.4%, a remodel year on 4.2%, effective year, grade, condition and
+# style on 99.8% each (A-AVERAGE on 91.0%).
+#
+# year_built (added 2026-09-13): Year_Built, earliest card. 0 on
+# 0.02% of cards reads null; 1900 is on 2,318 cards (11.4% of 510
+# properties), a placeholder-like "old" value kept as given.
+# n_dwellings: Units_Designed + Units_Converted (the layout's "units
+# in the initial dwelling design" plus "units converted from" it),
+# summed over the residential dwelling cards; apartments valued as
+# commercial buildings are not dwelling cards and are not counted.
+# On parcels with cards the sum is 2 on 98.3% of land use 520 and 3
+# on 100% of 530.
+# MEASURED 2026-09-13 on the 14,254 live land-use 510 properties:
+# year_built on 99.8% (median 1970); n_dwellings on 99.8%, equal to
+# 1 on 99.5%.
+
+description: >-
+  Shelby County, OH ISSG Parcel Dwelling table: rooms, bedrooms, full
+  and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-SH
+
+entity:
+  entity_type: property
+  source:
+    source_id: shelbycounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms stated on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://realestate.shelbycountyauditors.com/property-data-downloads"
+    download_url: "https://shelby-auditor-public.issg.io/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Dwelling.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Story_Height
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  renovation_year: Year_Remodeled
+  effective_year_built: Year_Effective
+  year_built: Year_Built
+  n_dwellings: Units_Designed
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # year_built: null any year outside 1700 to 2026 (0 is already
+  # nulled by the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1700
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args:
+      threshold: 2026
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_after_min
+      - year_before_max
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping:
+      1: 1
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_built
+      - year_valid
+    output: year_built
+  # n_dwellings = Units_Designed + Units_Converted.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: Units_Converted
+    output: units_converted
+  - type: aggregate
+    operation: sum
+    inputs:
+      - n_dwellings
+      - units_converted
+    output: n_dwellings
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 2}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+  - units_converted
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  year_built: min
+  n_dwellings: sum
+  quality_grade: first
+  condition: first
+  building_style: first
+
+supplements: US-OH-SH_property-shelbycounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

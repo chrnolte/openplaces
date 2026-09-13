@@ -1,0 +1,111 @@
+# Recipe: Muskingum County, OH auditor roll, ISSG Parcel
+# Characteristic table. Supplement of
+# US-OH-MU_property-muskingumcounty-2026; see that recipe for the
+# unlinked endpoint, the terms and the key.
+#
+# One row per parcel characteristic, several per parcel (all tax year
+# 2025; the query keeps the latest year). Type is the category
+# (Public Utilities, Topography) and Characteristic the value; the
+# values do not repeat across categories, so each output reads
+# Characteristic alone.
+#
+#   sewer_type    Sewer, Septic, All
+#   water_source  Water, Well, All
+#   topography    STREET LEVEL, ROLLING, FLAT, ABOVE STREET, STEEP,
+#                 BELOW STREET
+# All is the source's "all public utilities" and is kept as All in
+# both utility columns. Electricity, Gas and 'None' (no public
+# utilities, which says nothing about a private well or septic) are
+# not read. Codes keep the source's words and case; the first listed
+# value per parcel is taken. The dwelling table's Well Septic field
+# (on about half the cards) is not read: these two columns come from
+# this table only.
+#
+# MEASURED 2026-09-13: 223,415 rows over 60,312 parcels, keys 97.36%
+# in the roll. On the 16,394 live land-use 510 properties:
+# sewer_type 92.2% (All 11,067, Septic 3,744, Sewer 308);
+# water_source 93.7% (All 11,071, Water 3,553, Well 729); topography
+# 99.8% (ROLLING 8,652, FLAT 7,090, STREET LEVEL 488, ABOVE STREET
+# 81, BELOW STREET 28, STEEP 22).
+
+description: >-
+  Muskingum County, OH ISSG Parcel Characteristic table: sewer, water
+  supply and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-MU
+
+entity:
+  entity_type: property
+  source:
+    source_id: muskingumcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to
+      indemnify Muskingum County)
+    terms_url: "https://www.muskingumcountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://www.muskingumcountyauditor.org/"
+    download_url: "https://www.muskingumcountyauditor.org/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Characteristic.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number
+
+transformations:
+  - type: remap
+    input: Characteristic
+    mapping:
+      Sewer: Sewer
+      Septic: Septic
+      All: All
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping:
+      Water: Water
+      Well: Well
+      All: All
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      STREET LEVEL: STREET LEVEL
+      ROLLING: ROLLING
+      FLAT: FLAT
+      ABOVE STREET: ABOVE STREET
+      STEEP: STEEP
+      BELOW STREET: BELOW STREET
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-MU_property-muskingumcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

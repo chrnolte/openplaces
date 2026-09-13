@@ -1,0 +1,80 @@
+# Recipe: Huron County, OH auditor roll (ISSG extract, Parcel table).
+#
+# The tables are XML (one element per row, fields as attributes),
+# which the ingester's XML branch reads as text. The recipe has not
+# been ingested. The ingester's own reader and
+# _preprocess_recipe_data were run on the extract on 2026-09-12.
+#
+# Source: the 'Huron County Extract' link on the auditor's home page,
+# ISSG's public document host (213 MB zip of 61 XML tables). A HEAD
+# request returns 404; a GET works. The ExtractXML.zip name used by
+# other ISSG counties returns 500 here; only this PublicRecords.zip
+# link works.
+#
+# Three recipes read this extract, in the ISSG layout of Lorain's and
+# Belmont's recipes: this roll (Parcel.xml), _appraisal (Parcel
+# Appraisal.xml: land use and appraised values) and _dwelling (Parcel
+# Dwelling.xml).
+#
+# Row shape, measured on the extract dated 2026-09-12: the tables
+# stack three tax years (Parcel.xml: 2023 44,668, 2024 44,708, 2025
+# 44,789 rows). The query keeps the latest tax year and the live
+# parcels: 39,742 in 2025.
+# One row is one property. The owner, taxpayer, lender and escrow
+# attributes of Parcel.xml are never mapped.
+#
+# Join key. Parcel_Number_U is the unformatted 15-character id
+# (Parcel_Number is '99-9999-99-999-9999' and variants with a letter).
+# It matches OGRIP's LocalParcelID on 98 of 100 sampled live ids, and
+# the formatted form on 0, measured against the live OGRIP layer on a
+# random sample. No transformation. 12.3% of ids start with 0;
+# reading as text keeps it.
+
+description: >-
+  Huron County, OH auditor roll (ISSG extract, Parcel XML table):
+  live parcels with tax year and acreage.
+
+admin_id: US-OH-HU
+
+entity:
+  entity_type: property
+  source:
+    source_id: huroncounty
+    # Checked 2026-09-12: the auditor site carries only a note that
+    # property lines are not legal boundaries. There is no terms page,
+    # gate or fee on the extract.
+    license: "unknown (property-line disclaimer only; no terms on the extract)"
+    redistribution_restricted: null
+    portal_url: "https://huroncountyauditor.org/"
+    download_url: "https://huron-auditor-public.issg.io/api/Document/PublicRecords.zip?e=t0YMq1"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Retired == 'NO' and tax_year == tax_year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  tax_year: Tax_Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

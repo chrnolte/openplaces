@@ -1,0 +1,91 @@
+# Recipe: Erie County, OH auditor roll, ISSG Parcel Land table.
+# Supplement of US-OH-ER_property-eriecounty-2026; see that recipe for
+# the source and the join key.
+#
+# One row per land line of a parcel. Label says how Dim1 and Dim2 are
+# read; on 'Effective - Frontage / Depth' lines Dim1 is the effective
+# street frontage in feet and Dim2 the depth. frontage_ft sums Dim1 over
+# the parcel's F-FRONT LOT [DEPTHA] lines with that label; R-REAR LOT
+# lines carry the same label and add nothing. A parcel with no front-lot
+# line stays null.
+#
+# MEASURED 2026-09-13: 68,012 land lines over 45,984 parcels, keys
+# 99.90% in the roll; frontage_ft on 68.4% of the 25,796 live land-use
+# 510 properties (median 65 ft, p99 183 ft).
+
+description: >-
+  Erie County, OH ISSG Parcel Land table: effective street frontage in
+  feet from front-lot land lines, per parcel.
+
+admin_id: US-OH-ER
+
+entity:
+  entity_type: property
+  source:
+    source_id: eriecounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.eriecounty.oh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.eriecounty.oh.gov/"
+    download_url: "https://auditor.eriecounty.oh.gov/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel Land.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Dim1
+    output: land_dim1
+  # 1 on front-lot lines measured by frontage; others null.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "F-", value: 1}
+    output: front_row
+  - type: remap
+    input: Label
+    mapping:
+      "Effective - Frontage / Depth": 1
+    output: frontage_row
+  - type: unary
+    operation: to_numeric
+    input: front_row
+    output: front_row
+  - type: binary
+    operation: multiply
+    inputs: [land_dim1, front_row]
+    output: front_dim1
+  - type: binary
+    operation: multiply
+    inputs: [front_dim1, frontage_row]
+    output: frontage_ft
+
+drop_columns:
+  - land_dim1
+  - front_row
+  - frontage_row
+  - front_dim1
+
+aggregation_function:
+  frontage_ft: sum
+
+supplements: US-OH-ER_property-eriecounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

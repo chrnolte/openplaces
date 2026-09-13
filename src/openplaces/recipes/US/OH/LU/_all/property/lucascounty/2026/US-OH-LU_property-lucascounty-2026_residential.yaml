@@ -1,0 +1,133 @@
+# Recipe: Lucas County, OH auditor roll, RESIDENTIAL table. Supplement
+# of US-OH-LU_property-lucascounty-2026; see that recipe for the
+# source, its terms and the join key.
+#
+# NEEDS A READER: .mdb, as the roll's header explains. Not ingested.
+#
+# Row shape, measured on the copy dated 2026-09-07: 173,521 rows over
+# 173,176 Parcels. 345 parcels carry more than one row, told apart by
+# SubPar, so the counts are summed per parcel. Every one of the
+# 129,664 land-use 510-530 properties has a row, with BedRms above
+# zero on 99.95% and FullBath on 99.93%. Condominium units (land use
+# 550) are almost all in CONDOMINIUM instead (the _condominium
+# supplement). 32,446 rows are zero-filled (Stories 0), mostly on
+# vacant residential parcels; their counts read 0.
+#
+# Baths: FullBath and HalfBath are separate counts; n_bathrooms folds
+# full + 0.5 x half.
+#
+# Stories is a code, decoded by the STORY_LV table in the same
+# database: 1 one story, 2 one story with attic, 3 bi-level, 4 multi
+# level, 5 one and one half, 6 two, 7 two and one half, 8 three, 9.4
+# to 9.9 four to nine stories. The remap sends each code to the
+# height its STORY_LV label names. Bi-level and multi level name no
+# height and stay null, as does 0. Codes present here: 1 (51,066
+# rows), 6 (48,849), 0 (32,446), 2 (19,207), 5 (16,178), 4 (3,608),
+# 3 (2,065), 8 (68), 7 (34). Access stores the 9.x codes as single-
+# precision floats (9.4 reads 9.3999996), so a reader must round
+# them to one decimal before this map can match; none occur here.
+#
+# Also on this table, not mapped: TLA and Sfla1-3 (living area),
+# YearBlt, HVAC (code, HVAC_LV), Grade, Cond, Occupancy.
+
+description: >-
+  Lucas County, OH AREIS RESIDENTIAL table: rooms, bedrooms, full and
+  half baths and decoded story height, summed to the property.
+
+admin_id: US-OH-LU
+
+entity:
+  entity_type: property
+  source:
+    source_id: lucascounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, with all faults; user agrees to hold Lucas County
+      harmless)
+    terms_url: "https://www.arcgis.com/home/item.html?id=8e00e957fcc04a81aac77e8bfc17b2dc"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=8e00e957fcc04a81aac77e8bfc17b2dc"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/8e00e957fcc04a81aac77e8bfc17b2dc/data"
+  version: "2026"
+
+compressed_file_name: "AREIS_Info.zip"
+uncompressed_file_name: "AREIS_Info.mdb"
+layer: RESIDENTIAL
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel
+  n_rooms: Rooms
+  n_bedrooms: BedRms
+  n_bathrooms: FullBath
+  n_half_bathrooms: HalfBath
+  n_stories: Stories
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: remap
+    input: n_stories
+    mapping:
+      1.0: 1.0
+      2.0: 1.0
+      5.0: 1.5
+      6.0: 2.0
+      7.0: 2.5
+      8.0: 3.0
+      9.4: 4.0
+      9.5: 5.0
+      9.6: 6.0
+      9.7: 7.0
+      9.8: 8.0
+      9.9: 9.0
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+
+supplements: US-OH-LU_property-lucascounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: residential

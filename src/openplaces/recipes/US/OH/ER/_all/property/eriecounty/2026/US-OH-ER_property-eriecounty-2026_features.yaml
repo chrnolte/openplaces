@@ -1,0 +1,153 @@
+# Recipe: Erie County, OH auditor roll, ISSG Parcel Dwelling Feature
+# table. Supplement of US-OH-ER_property-eriecounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per sketched feature attached to a dwelling card. Type is
+# 'CODE-DESCRIPTION'; Area is the feature's area in sqft. Capacity ('car
+# capacity of garage') is almost never set and is not read. Read here,
+# by code:
+#   garages   FRGAR frame attached, BRGAR brick attached (the
+#             source spells it 'GARGE'), BGAR basement garage
+#   carports  CARP attached carport
+#   porches   OFP, EFP, OBP, EBP (open or enclosed, frame or
+#             brick)
+#   decks     WDDK wood deck, P attached patio
+# Stoops, covers and canopies, overhangs, balconies, breezeways, bay
+# windows, basement entries, sheds, gazebos, attics and the attached
+# pool enclosure (POOLENC) are not read.
+#
+# garage_type keeps the source's Type text on garage rows. has_garage
+# and has_carport are true where such a feature is recorded and null
+# elsewhere: the table lists features present, never absent ones.
+# Detached garages and carports are Parcel Improvement rows (see
+# _improvements), which sets the same two flags; garage_area_sqft counts
+# the garages listed here only.
+#
+# MEASURED 2026-09-13: 103,407 feature rows over 30,012 parcels, keys
+# 100.00% in the roll. On the 25,796 live land-use 510 properties: a
+# feature row on 98.5%; an attached or basement garage on 53.5% (FRGAR
+# 12,367, BRGAR 1,138, BGAR 296; garage area > 0 on 52.4%); porch area >
+# 0 on 71.8%; deck or patio area > 0 on 68.4%; carport 1.4%.
+
+description: >-
+  Erie County, OH ISSG Parcel Dwelling Feature table: attached garage,
+  carport, porch and deck features per property.
+
+admin_id: US-OH-ER
+
+entity:
+  entity_type: property
+  source:
+    source_id: eriecounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.eriecounty.oh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.eriecounty.oh.gov/"
+    download_url: "https://auditor.eriecounty.oh.gov/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel Dwelling Feature.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: feature_area
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(FRGAR|BRGAR|BGAR)-", value: 1}
+    default: 0
+    output: garage_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(OFP|EFP|OBP|EBP)-", value: 1}
+    default: 0
+    output: porch_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(P|WDDK)-", value: 1}
+    default: 0
+    output: deck_row
+  - type: unary
+    operation: to_numeric
+    input: garage_row
+    output: garage_row
+  - type: unary
+    operation: to_numeric
+    input: porch_row
+    output: porch_row
+  - type: unary
+    operation: to_numeric
+    input: deck_row
+    output: deck_row
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, garage_row]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, porch_row]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, deck_row]
+    output: deck_area_sqft
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(FRGAR|BRGAR|BGAR)-", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "CARP-", value: true}
+    output: has_carport
+  # The garage codes found in the extract, kept verbatim; any other
+  # Type leaves garage_type null.
+  - type: remap
+    input: Type
+    mapping:
+      "FRGAR-FR ATTCH GARAGE": "FRGAR-FR ATTCH GARAGE"
+      "BRGAR-BR ATTCH GARGE": "BRGAR-BR ATTCH GARGE"
+      "BGAR-BASEMENT GARAGE": "BGAR-BASEMENT GARAGE"
+    output: garage_type
+
+drop_columns:
+  - feature_area
+  - garage_row
+  - porch_row
+  - deck_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-ER_property-eriecounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: features

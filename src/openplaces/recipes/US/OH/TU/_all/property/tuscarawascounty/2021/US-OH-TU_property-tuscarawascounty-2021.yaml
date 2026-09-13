@@ -1,0 +1,97 @@
+# Recipe: Tuscarawas County, OH auditor roll (ISSG extract, Parcel
+# table).
+#
+# The tables are XML (one element per row, fields as attributes),
+# which the ingester's XML branch reads as text. The recipe has not
+# been ingested. Its preprocessing was checked by reading the XML as
+# text and running the ingester's own _preprocess_recipe_data on the
+# result.
+#
+# Source: the county GIS office's anonymous FTP.
+# GIS/Public/ExtractXML.zip (203 MB, dated 2022-05-17) is ISSG's full
+# CAMA and tax extract as XML for TAX YEAR 2021, which is why this
+# recipe is version 2021. The current files on the same FTP
+# (ISSG/ExtractExcel.zip, 2026-09-09) are the condensed Excel, which
+# has no room fields; the auditor's site offers no download page
+# (/property-data-downloads returns 404, /api/Document/Extract*.zip
+# returns 500). The FTP page also links a Dropbox folder of GIS files,
+# not checked.
+#
+# NEEDS FTP: openplaces.io.download fetches with requests, which has
+# no ftp:// scheme, so the ingester cannot fetch this URL as written.
+# A person can place the zip in the recipe's external folder, or the
+# downloader can gain FTP support.
+#
+# Three recipes read this extract, in the ISSG layout of Lorain's and
+# Belmont's recipes: this roll (Parcel.xml), _appraisal (Parcel
+# Appraisal.xml: land use and appraised values) and _dwelling (Parcel
+# Dwelling.xml).
+#
+# Row shape, measured on that file: Parcel.xml holds 72,447 rows, all
+# tax year 2021, one per parcel; Retired is 'YES' on 8,784, and the
+# query keeps the 63,663 live parcels. 99.7% of the 2021 dwelling
+# parcel ids are still in the county's 2026 condensed Excel
+# (inventory).
+# One row is one property. The owner, taxpayer, lender and escrow
+# attributes of Parcel.xml are never mapped.
+#
+# Join key. Unlike most ISSG counties, OGRIP keeps Tuscarawas's
+# formatted id: Parcel_Number ('99-99999-999') matches OGRIP's
+# LocalParcelID on 93 of 100 sampled live ids, while Parcel_Number_U
+# and the separator-stripped form match 0 of 100, measured against the
+# live OGRIP layer on a random sample. parcel_id_assessor is
+# Parcel_Number, untransformed.
+
+description: >-
+  Tuscarawas County, OH auditor roll (ISSG extract, Parcel XML table):
+  live parcels with tax year and acreage.
+
+admin_id: US-OH-TU
+
+entity:
+  entity_type: property
+  source:
+    source_id: tuscarawascounty
+    # Checked 2026-09-12: the auditor's ISSG /Disclaimer says the data
+    # is 'as is', for reference only, with no liability, that the user
+    # indemnifies the county, and that 'data can also quickly become
+    # out-of-age'. No resale or redistribution clause. The FTP is
+    # anonymous, with no gate.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.co.tuscarawas.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "ftp://gis.co.tuscarawas.oh.us/GIS/"
+    download_url: "ftp://gis.co.tuscarawas.oh.us/GIS/Public/ExtractXML.zip"
+  version: "2021"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Retired == 'NO'"
+
+columns:
+  parcel_id_assessor: Parcel_Number
+  tax_year: Tax_Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

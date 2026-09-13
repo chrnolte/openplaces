@@ -1,0 +1,76 @@
+# Recipe: Seneca County, OH auditor roll, ISSG Parcel Appraisal table.
+# Supplement of US-OH-SE_property-senecacounty-2026; see that recipe
+# for the source and the join key.
+#
+# One row per parcel and tax year; the query keeps the latest year.
+# Land_Use_Code is the Ohio DTE land-use code; Land_Use (its
+# description) and Class (its broad group) are not mapped.
+# Total_Appraised_Land and Total_Appraised_Improvement are the
+# appraised values. Retired parcels are in this table too and join to
+# nothing on the roll.
+# Neighborhood is the assessor's valuation neighborhood
+# (tax_neighborhood_code, 413 values over the two years), on 100% of
+# the 11,009 live land-use 510 properties (measured 2026-09-13).
+
+description: >-
+  Seneca County, OH ISSG Parcel Appraisal table: land-use code and
+  appraised land and improvement value per property.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Appraisal.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  use_group_code: Land_Use_Code
+  land_value: Total_Appraised_Land
+  improvement_value: Total_Appraised_Improvement
+  tax_neighborhood_code: Neighborhood
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+
+columns_to_categorical:
+  - use_group_code
+
+aggregation_function:
+  land_value: sum
+  improvement_value: sum
+  tax_neighborhood_code: first
+
+supplements: US-OH-SE_property-senecacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: appraisal

@@ -1,0 +1,91 @@
+# Recipe: Franklin County, OH auditor appraisal roll, Land table.
+# Supplement of US-OH-FR_property-franklincounty-2026; see that recipe
+# for the source, the extract folder and the join key.
+#
+# One row per land line (PARCEL ID, LLINE). LANDTYPE is F (front
+# foot), G (gross), A (acreage), S (square foot) or U (unit).
+# FRONACT is the line's actual street frontage in feet (FRONEFF, the
+# effective frontage after depth and shape, is not read); frontage_ft
+# sums FRONACT over the parcel's lines. It is filled on front-foot
+# lines and on some gross, acreage and square-foot lines; a parcel
+# with no frontage on any line stays null.
+#
+# INFLUADJCODE1-3 are land influence codes. has_waterfront is true
+# where any of them reads 'W - WATERFRONT' and null elsewhere: an
+# influence code records an adjustment, not the absence of water.
+# The roll sets the same flag from its location codes.
+#
+# MEASURED 2026-09-13: 556,179 lines over 488,587 parcels, keys 100%
+# in the roll; FRONACT filled on 222,942 of 224,203 front-foot lines;
+# 1,352 parcels have more than one frontage line. On the 291,801 live
+# land-use 510 properties: frontage_ft on 75.1% (median 60 ft, p99
+# 140 ft); waterfront influence on 198.
+
+description: >-
+  Franklin County, OH auditor Land table: actual street frontage in feet
+  and a waterfront influence flag per parcel.
+
+admin_id: US-OH-FR
+
+entity:
+  entity_type: property
+  source:
+    source_id: franklincounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no-liability disclaimer only; FTP terms page unread)"
+    redistribution_restricted: null
+    portal_url: "https://apps.franklincountyauditor.com/Outside_User_Files/"
+    download_url: "https://apps.franklincountyauditor.com/Outside_User_Files/2026/2026-08-15%20Appraisal/Tab-Delimited.zip"
+  version: "2026"
+
+compressed_file_name: "Tab-Delimited.zip"
+uncompressed_file_name: "Land.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL ID
+  frontage_ft: FRONACT
+
+transformations:
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 0, end: -3}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: frontage_ft
+    output: frontage_ft
+  - type: string
+    operation: concat
+    inputs: [INFLUADJCODE1, INFLUADJCODE2, INFLUADJCODE3]
+    args: {sep: " | "}
+    output: influence_codes
+  - type: remap_pattern
+    input: influence_codes
+    patterns:
+      - {pattern: ".*W - WATERFRONT", value: true}
+    output: has_waterfront
+
+drop_columns:
+  - influence_codes
+
+aggregation_function:
+  frontage_ft: sum
+  has_waterfront: max
+
+supplements: US-OH-FR_property-franklincounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

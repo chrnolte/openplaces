@@ -1,0 +1,95 @@
+# Recipe: Muskingum County, OH auditor roll (ISSG extract, Parcel
+# table).
+#
+# Source: the Muskingum County Auditor's site runs on ISSG Inc's
+# platform. The full CAMA and tax extract downloads from ISSG's
+# standard document endpoint,
+# https://www.muskingumcountyauditor.org/api/Document/PublicRecordsExtract.zip
+# (588 MB, one XLSX workbook per table, dated 2026-09-12), but the
+# county site does not link it: the downloads page other ISSG
+# counties use (/additional-links-property-data-downloads) returns
+# 404 here. Using the unlinked endpoint was approved by the user on
+# 2026-09-12 (relayed by the coordinating session). The other
+# standard ISSG names (ExtractXML.zip, PublicRecordsXML.zip,
+# PublicRecords.zip, PublicRecordsRequest.zip and the SQLite copy)
+# return 500, so no XML copy exists for this county, and the recipe
+# reads the .xlsx tables the ingester already handles, in the layout
+# of the Ottawa recipes (US-OH-OT_property-ottawacounty-2026): this
+# roll (Parcel.xlsx), _appraisal (Parcel Appraisal.xlsx) and _dwelling
+# (Parcel Dwelling.xlsx). XLSX headers use spaces ("Parcel Number").
+#
+# Row shape, measured on that extract: Parcel.xlsx holds 76,855 rows,
+# all tax year 2025; Retired is 'YES' on 17,156, and the query keeps
+# the 59,699 live parcels of the latest tax year. One row is one
+# property. The owner, taxpayer, lender and escrow columns are never
+# mapped.
+#
+# Join key. Parcel Number is the formatted id '99-99-99-99-999'
+# (Parcel Number U, 11 digits, is the same without dashes). Unlike most
+# ISSG counties, OGRIP keeps the formatted form here: Parcel Number
+# matches OGRIP's LocalParcelID on 95 of 100 sampled live ids, while
+# Parcel Number U and the stripped form match 0, measured against the
+# live OGRIP layer on a random sample. OGRIP's own Muskingum ids are
+# mixed (in a sample of 200 non-blank ids, 31 have this formatted
+# shape and many are short codes or names), so the join will not
+# reach every OGRIP parcel. parcel_id_assessor is Parcel Number,
+# untransformed. The bundled conversion for US-OH-MU is 'simple',
+# which strips the dashes on both sides, so the formatted and the
+# unformatted id reduce to the same parcel_id_local.
+
+description: >-
+  Muskingum County, OH auditor roll (ISSG extract, Parcel XLSX table):
+  live parcels of the latest tax year with acreage.
+
+admin_id: US-OH-MU
+
+entity:
+  entity_type: property
+  source:
+    source_id: muskingumcounty
+    # Read 2026-09-12 on the auditor's "Disclaimer and Terms of
+    # Service" page: "provided 'as is' and for reference only", "no
+    # warranties, expressed or implied", "always use the original
+    # recorded documents for legal transactions", no liability, and
+    # "in using the data, users further agree to indemnify, defend,
+    # and hold harmless" the county. No resale, commercial-use or
+    # redistribution clause.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to
+      indemnify Muskingum County)
+    terms_url: "https://www.muskingumcountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://www.muskingumcountyauditor.org/"
+    download_url: "https://www.muskingumcountyauditor.org/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "Retired == 'NO' and tax_year == tax_year.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number
+  tax_year: Tax Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,128 @@
+# Recipe: Seneca County, OH auditor roll, ISSG Parcel Improvement table.
+# Supplement of US-OH-SE_property-senecacounty-2026; see that recipe for
+# the source and the join key.
+#
+# One row per detached improvement on a card. Type is
+# 'CODE-DESCRIPTION'; Multiplier is 'the number of identical
+# improvements represented by this item'.
+#
+# Seneca uses structured codes (RG detached garages, RS sheds, AP pole
+# buildings, AB barns, AG grain bins, AS silos, RP pools, RM mobile
+# homes, ...).
+#
+# n_outbuildings counts rows whose Type names a structure (garage, shed,
+# barn, lean-to, pole or prefabricated building, gazebo, cabin, quonset,
+# a poultry, milk or bath house, crib, granary, silo or stave silo,
+# grain bin, carport, greenhouse, pavilion), times Multiplier. Not
+# counted: commercial, church, school, office, restroom, jail, armory,
+# gym, clubhouse, golf, stadium and venue items, cell-tower and
+# utility-company sheds, gas regulators, mobile homes and park
+# improvements, pools, attached items (an attached garage or milk house)
+# and the pole building dwelling.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere: has_pool (RP liner, vinyl, concrete, fiberglass, gunite and
+# SC commercial pools), has_garage (RG detached and RA attached garages)
+# and has_carport (RC1 carport, SM3 covered patio/carport). has_garage
+# and has_carport are also set by _features. No Type names detached
+# living quarters, so no accessory dwelling flag is read.
+#
+# MEASURED 2026-09-13 on 2025: 47,161 rows over 19,869 parcels, keys
+# 99.93% in the roll. On the 11,009 live land-use 510 properties: an
+# improvement row on 75.7%; n_outbuildings > 0 on 73.6% (median 1); pool
+# 1.7%; garage 42.9%; carport 1.6%.
+
+description: >-
+  Seneca County, OH ISSG Parcel Improvement table: outbuilding count and
+  pool, detached garage and carport flags per property.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Improvement.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  # Later patterns win: structures first, then exclusions.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|\\bGAR\\b|SHED|BARN|LEAN|BLDG|BDG)", value: 1}
+      - {pattern: ".*(BUILDING|SHELTER|SHLTR|GAZEBO|CABIN|COTTAGE|SHOP)", value: 1}
+      - {pattern: ".*(STABLE|QUONSET|QUNST|HOUSE|HSE|\\bHS\\b|CRIB|SILO)", value: 1}
+      - {pattern: ".*(\\bBIN\\b|GRANARY|GRNRY|COOP|KENNEL|CARPORT|STAVE)", value: 1}
+      - {pattern: ".*(GREEN|STORAGE|STRG|HANGER|PRLR|PARLOR|PAVIL|POLE)", value: 1}
+      - {pattern: ".*(COMM|CHURCH|SCHOOL|OFFICE|RESTROOM|TOWER|VENUE)", value: 0}
+      - {pattern: ".*(MOBILE HOME|M\\.H\\.|POOL|ATTACHED|GAS STATION)", value: 0}
+      - {pattern: ".*(ELEC\\. CO|REGULATOR|KIOSK|JAIL|ARMORY|GYMNASIUM)", value: 0}
+      - {pattern: ".*(CLUBHS|GOLF|STADIUM|DWLG)", value: 0}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|\\bGAR\\b)", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+
+supplements: US-OH-SE_property-senecacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

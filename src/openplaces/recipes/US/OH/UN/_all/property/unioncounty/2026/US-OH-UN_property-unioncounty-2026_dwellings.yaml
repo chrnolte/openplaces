@@ -1,0 +1,304 @@
+# Recipe: Union County, OH auditor roll, ARC TB_ARC_Dwellings table.
+# Supplement of US-OH-UN_property-unioncounty-2026; see that recipe
+# for the source, the terms and the join key, and the _floors
+# supplement for the room and bath counts, which ARC keeps per floor.
+#
+# Row shape, measured on the file dated 2026-09-10: 25,040 rows, one
+# per distinct Dwelling ID, on 24,912 Parcels (1.005 per parcel).
+# This table carries the dwelling's Story Height, populated on 94.2%
+# of rows: 2 (10,853), 1 (9,530), 1.5 (1,623), 1.25 (1,160), 1.75
+# (382), 2.25 (29), and a few non-numeric variants ('1+' 61, '2+' 47,
+# '2ND' 7, '+' 4) that to_numeric leaves null rather than guessing.
+# The tallest dwelling on a property gives its n_stories.
+#
+# Building features (added 2026-09-13), codes verbatim: Living Area
+# (living_area_sqft), Basement Area and Basement Finished
+# (basement_area_sqft, basement_finished_area_sqft), Fire Places
+# (n_fireplaces), Remodeled (renovation_year), Grade (quality_grade,
+# 'AA+' to 'E-'), Condition (condition: A average, E excellent, G
+# good, F fair, P poor, U unsound) and Occupancy Building
+# Description (building_style: STANDARD, BI/TRI LEVEL, MOD/MAN,
+# MOBILE HOME, AIRBNB). has_basement reads Basement Percent, recorded
+# on every dwelling (0 where there is none; Slab and Crawl Percent
+# are 0 on every row). has_central_air reads Air Conditioning SqFt,
+# the air-conditioned area, recorded on every dwelling (0 where
+# none); ARC does not name the system. exterior_wall and
+# roof_material join the true Const_* and RoofMaterial_* columns in
+# their own labels ('Alm/Vynl Stone', 'Shingles'). Years take the
+# latest dwelling (year_built the earliest), codes the first.
+# AGE is year_built and AgeYear effective_year_built: the two agree
+# on 94.0% of dwellings, AgeYear is never earlier, and where they
+# differ a remodel year is recorded on 99.9%, so AgeYear is the
+# remodel-adjusted year. Years outside 1700-2026 read null (none
+# occur). HEAP: 1900 on 2,486 dwellings (9.9%) in AGE. Occupancy
+# Description (Single Family, Duplex, Triplex) and Multi-Family
+# (0, 1, 2; undocumented, apparently units beyond the first) are not
+# a unit count, so n_dwellings is not mapped; nor are the
+# manufactured-home fields.
+# MEASURED 2026-09-13 on the 14,779 live land-use 510 properties
+# (88.0% have a dwelling row): living area 88.0% (median 2,053
+# sqft); has_basement true 71.1%, false 16.9%; finished basement > 0
+# 19.5%; has_central_air true 79.4%, false 8.6%; fireplaces > 0
+# 49.8%; remodel year 5.3%; grade and condition 87.9%; exterior wall
+# 77.4%; roof material 87.5% (Shingles on 84.2%); year_built 87.9%
+# (median 2002); effective_year_built 88.0% (median 2002).
+
+description: >-
+  Union County, OH ARC dwellings table: story height, living and
+  basement area, fireplaces, air conditioning, grade, condition and
+  materials per dwelling.
+
+admin_id: US-OH-UN
+
+entity:
+  entity_type: property
+  source:
+    source_id: unioncounty
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (no licence on the portal items; no terms on the download host)"
+    redistribution_restricted: null
+    portal_url: "https://www8.co.union.oh.us/mapunionoh/"
+    download_url: "https://www2.co.union.oh.us/propertyinfofile/TB_ARC_Dwellings.zip"
+  version: "2026"
+
+compressed_file_name: "TB_ARC_Dwellings.zip"
+uncompressed_file_name: "TB_ARC_Dwellings/TB_ARC_Dwellings.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+  n_stories: Story Height
+  living_area_sqft: Living Area
+  basement_area_sqft: Basement Area
+  basement_finished_area_sqft: Basement Finished
+  n_fireplaces: Fire Places
+  renovation_year: Remodeled
+  quality_grade: Grade
+  condition: Condition
+  building_style: Occupancy Building Description
+  year_built: AGE
+  effective_year_built: AgeYear
+
+transformations:
+  # Years outside 1700-2026 read null (0 is nulled by the registry).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_area_sqft
+    output: basement_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  # Basement Percent is recorded on every dwelling, 0 where none.
+  - type: unary
+    operation: to_numeric
+    input: Basement Percent
+    output: basement_percent
+  - type: conditional
+    operation: greater_than
+    input: basement_percent
+    args: {threshold: 0}
+    output: basement_row
+  - type: remap
+    input: basement_row
+    mapping: {0: false, 1: true}
+    output: has_basement
+  # Air-conditioned area, recorded on every dwelling, 0 where none.
+  - type: unary
+    operation: to_numeric
+    input: Air Conditioning SqFt
+    output: ac_area
+  - type: conditional
+    operation: greater_than
+    input: ac_area
+    args: {threshold: 0}
+    output: ac_row
+  - type: remap
+    input: ac_row
+    mapping: {0: false, 1: true}
+    output: has_central_air
+  # Exterior and roof material are True/False columns, several of
+  # which may be true; the true ones are joined by a space.
+  - type: remap
+    input: Const_Wood
+    mapping: {"True": "Wood "}
+    output: wall_wood
+  - type: remap
+    input: Const_Stucco
+    mapping: {"True": "Stucco "}
+    output: wall_stucco
+  - type: remap
+    input: Const_Alm/Vynl
+    mapping: {"True": "Alm/Vynl "}
+    output: wall_vinyl
+  - type: remap
+    input: Const_Conc Blk
+    mapping: {"True": "Conc Blk "}
+    output: wall_block
+  - type: remap
+    input: Const_Metal
+    mapping: {"True": "Metal "}
+    output: wall_metal
+  - type: remap
+    input: Const_Brick
+    mapping: {"True": "Brick "}
+    output: wall_brick
+  - type: remap
+    input: Const_Stone
+    mapping: {"True": "Stone "}
+    output: wall_stone
+  - type: string
+    operation: concat
+    inputs: [wall_wood, wall_stucco, wall_vinyl, wall_block, wall_metal,
+             wall_brick, wall_stone]
+    output: exterior_wall
+  - type: string
+    operation: strip
+    input: exterior_wall
+    output: exterior_wall
+  - type: unary
+    operation: null_if_equal
+    input: exterior_wall
+    args: {value: ""}
+    output: exterior_wall
+  - type: remap
+    input: RoofMaterial_Metal
+    mapping: {"True": "Metal "}
+    output: roof_metal
+  - type: remap
+    input: RoofMaterial_Slt/Tle
+    mapping: {"True": "Slt/Tle "}
+    output: roof_slate
+  - type: remap
+    input: RoofMaterial_Shingles
+    mapping: {"True": "Shingles "}
+    output: roof_shingles
+  - type: remap
+    input: RoofMaterial_Shakes
+    mapping: {"True": "Shakes "}
+    output: roof_shakes
+  - type: remap
+    input: RoofMaterial_Composite
+    mapping: {"True": "Composite "}
+    output: roof_composite
+  - type: string
+    operation: concat
+    inputs: [roof_metal, roof_slate, roof_shingles, roof_shakes,
+             roof_composite]
+    output: roof_material
+  - type: string
+    operation: strip
+    input: roof_material
+    output: roof_material
+  - type: unary
+    operation: null_if_equal
+    input: roof_material
+    args: {value: ""}
+    output: roof_material
+
+drop_columns:
+  - year_after_min
+  - year_before_max
+  - year_valid
+  - basement_percent
+  - basement_row
+  - ac_area
+  - ac_row
+  - wall_wood
+  - wall_stucco
+  - wall_vinyl
+  - wall_block
+  - wall_metal
+  - wall_brick
+  - wall_stone
+  - roof_metal
+  - roof_slate
+  - roof_shingles
+  - roof_shakes
+  - roof_composite
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+  - exterior_wall
+  - roof_material
+
+aggregation_function:
+  n_stories: max
+  living_area_sqft: sum
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  year_built: min
+  effective_year_built: max
+  has_basement: max
+  has_central_air: max
+  quality_grade: first
+  condition: first
+  building_style: first
+  exterior_wall: first
+  roof_material: first
+
+supplements: US-OH-UN_property-unioncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwellings

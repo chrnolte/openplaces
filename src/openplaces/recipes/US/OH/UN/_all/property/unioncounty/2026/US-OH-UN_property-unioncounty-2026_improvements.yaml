@@ -1,0 +1,106 @@
+# Recipe: Union County, OH auditor roll, ARC TB_ARC_OtherImprovements
+# table. Supplement of US-OH-UN_property-unioncounty-2026; see that
+# recipe for the source, the terms and the join key.
+#
+# One row per outbuilding or other improvement (84 codes), with Code,
+# Code Description and Area. n_outbuildings counts rows whose
+# description names a structure (shed, pole or hoop or arena
+# building, lean-to, detached garage, utility building, barn, grain
+# bin, shelter, granary or crib, carport, silo, stable, gazebo, shop,
+# greenhouse, cabin, quonset, kennel, saw mill, or a milk, poultry,
+# hog, pump, pool or bath house, or a coop). Porches, decks, pads,
+# pools, canopies, pergolas, docks, fireplaces, kitchens, fences,
+# paving, towers, offices, storage condominiums and mobile-home items
+# are not counted.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere (the table lists what is present, never what is absent):
+# has_pool (above-ground pool, swimming pool), has_garage (detached
+# garage) and has_carport (carport, enclosed carport). _garages sets
+# has_garage and has_carport too.
+#
+# MEASURED 2026-09-13: 38,358 rows over 14,459 parcels, keys 100% in
+# the roll. On the 14,779 live land-use 510 properties: an
+# improvement row on 40.5%, n_outbuildings > 0 on 33.8% (median 1);
+# pool 3.7%; detached garage 9.9%; carport 0.6%.
+
+description: >-
+  Union County, OH ARC other-improvements table: outbuilding count and
+  pool, detached garage and carport flags per property.
+
+admin_id: US-OH-UN
+
+entity:
+  entity_type: property
+  source:
+    source_id: unioncounty
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (no licence on the portal items; no terms on the download host)"
+    redistribution_restricted: null
+    portal_url: "https://www8.co.union.oh.us/mapunionoh/"
+    download_url: "https://www2.co.union.oh.us/propertyinfofile/TB_ARC_OtherImprovements.zip"
+  version: "2026"
+
+compressed_file_name: "TB_ARC_OtherImprovements.zip"
+uncompressed_file_name: "TB_ARC_OtherImprovements/TB_ARC_OtherImprovements.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+
+transformations:
+  - type: remap_pattern
+    input: Code Description
+    patterns:
+      - {pattern: ".*(Shed|Pole Building|Hoop Building|Arena Building)", value: 1}
+      - {pattern: ".*(Lean-To|Garage Detached|Utility Bldg|Barn)", value: 1}
+      - {pattern: ".*(Grain Bin|Shelter|Granary|Crib|Carport|Silo)", value: 1}
+      - {pattern: ".*(Stable|Gazebo|Shop|Greenhouse|Cabin|Quonset)", value: 1}
+      - {pattern: ".*(Kennel|Saw Mill|Milk House|Poultry House)", value: 1}
+      - {pattern: ".*(Hog House|Pump House|Pool House|Bath House|Coop)", value: 1}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Code Description
+    patterns:
+      - {pattern: "(Pool Above Ground|SwimPool)", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Code Description
+    patterns:
+      - {pattern: "Garage Detached", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Code Description
+    patterns:
+      - {pattern: ".*Carport", value: true}
+    output: has_carport
+
+drop_columns:
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+
+supplements: US-OH-UN_property-unioncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

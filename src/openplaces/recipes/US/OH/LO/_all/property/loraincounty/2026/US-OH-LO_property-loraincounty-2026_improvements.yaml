@@ -1,0 +1,135 @@
+# Recipe: Lorain County, OH auditor roll, ISSG Parcel_Improvement
+# table. Supplement of US-OH-LO_property-loraincounty-2026; see that
+# recipe for the source, its terms and the join key.
+#
+# One row per detached improvement line on a card. Type is
+# 'CODE-GROUP, DESCRIPTION' (159 codes in this extract); a building
+# can carry extra lines for its parts (a pole building's floor, a
+# garage's attic or living quarters, a lean-to's electric or floor).
+# Multiplier ("the number of identical improvements represented by
+# this item") is 1 on every row but is still applied.
+#
+# n_outbuildings counts the base line of each structure: detached
+# frame or masonry garage, shed, barn, stable, quonset, cabin,
+# gazebo, pole building base cost, lean-to base cost, milk house,
+# granary, poultry house, greenhouse, bath or boat house, corn crib,
+# grain bin, detached carport and stave, poured or steel silos.
+# Garage attics, garage living quarters, pole building floors,
+# lean-to add-ons, silo foundations, paving, fencing, pools, decks,
+# patios, porches, canopies, courts, tanks, utility and commercial
+# structures (restroom, guard booth, press box, pumping station) and
+# market adjustments are not counted.
+#
+# Flags, each true where such a line is recorded and null elsewhere
+# (the table lists what is present, never what is absent): has_pool
+# (any POOL line, vinyl lined, concrete or commercial), has_garage
+# (any detached garage line), has_carport (detached carport) and
+# has_accessory_dwelling (detached garage, living quarters, full
+# story). has_garage and has_carport are also set by _features for
+# attached ones.
+#
+# MEASURED 2026-09-13: 111,103 rows over 61,137 parcels, keys 98.87%
+# in the roll. On the 89,855 live land-use 510 properties: an
+# improvement row on 40.5%; n_outbuildings > 0 on 36.2% (median 1);
+# pool 2.5%; detached garage 29.1%; detached carport 0.3%; garage
+# living quarters 18 properties.
+
+description: >-
+  Lorain County, OH ISSG Parcel_Improvement table: outbuilding count
+  and pool, detached garage, carport and accessory dwelling flags.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel_Improvement
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*DETACHED GARAGE, (FRAME|MASONRY) CONSTRUCTION", value: 1}
+      - {pattern: ".*(SHED|BARN|STABLE|QUONSET|CABIN|GAZEBO, GAZEBO)", value: 1}
+      - {pattern: ".*(POLE BLDG - BASE COST|POLE FRAME BUILDING)", value: 1}
+      - {pattern: ".*(LEAN-TO - BASE COST|LEAN-TO, LEAN-TO)", value: 1}
+      - {pattern: ".*LEAN-TO, POLE FRAME", value: 1}
+      - {pattern: ".*(MILK HOUSE|GRANARY|POULTRY HOUSE|GREENHOUSE)", value: 1}
+      - {pattern: ".*(BATH HOUSE|BOAT HOUSE|CORN CRIB|GRAIN BIN)", value: 1}
+      - {pattern: ".*CARPORT, DETACHED", value: 1}
+      - {pattern: ".*SILO\\(S\\), CONCRETE SILO - (STAVE|POURED)", value: 1}
+      - {pattern: ".*SILO\\(S\\), STEEL SILO", value: 1}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*DETACHED GARAGE", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*LIVING QUARTERS", value: true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+  has_accessory_dwelling: max
+
+supplements: US-OH-LO_property-loraincounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

@@ -1,0 +1,92 @@
+# Recipe: Knox County, OH auditor roll (GovernMax DETINFO table).
+#
+# Source: the "Cama Download" link on the Knox County Auditor's home
+# page, a long-lived Azure blob URL on Schneider's Beacon file store
+# (CAMADatabase.zip, regenerated daily; 84 MB, 20 CSV tables of the
+# GovernMax "MVP1_OH_*" export, the same layout as Medina's). The
+# dwelling table is the _dwelling supplement.
+#
+# Why DETINFO and not Extract. MVP1_OH_Extract.csv is the parcel
+# master (land-use code, acreage, situs, values), but it is malformed:
+# 3,505 of its 44,557 rows (7.9%) carry 103 to 107 comma-separated
+# fields against a 102-field header, so every column after the stray
+# delimiter is shifted on those rows. pandas does not fail on it; it
+# silently misaligns them (Par_Deleted, which is 'N' or 'Y', holds
+# acreages and land-use codes on about 70 rows and is blank on 2,945).
+# A query cannot tell a shifted row from a clean one, so Extract is not
+# used. DETINFO, the tax-duplicate table, parses cleanly (0 misaligned
+# rows) and holds one row per live parcel (44,275 distinct
+# mpropertyNumber), so it anchors the roll. It carries no land-use code
+# and no acreage. Its propertyLand, ImprLand and TotValue columns are
+# above zero on 93.7%, 60.1% and 94.4% of rows, but whether they are
+# appraised or 35% taxable values is not stated, so they are not
+# mapped. The tax charge and payment columns are not mapped either.
+#
+# Join key. mpropertyNumber has the form '99-99999.999'; OGRIP's
+# LocalParcelID holds the 10 digits without separators. The raw form
+# matches 0 of 100 sampled ids and the stripped form 184 of 200
+# DETINFO ids and 200 of 200 dwelling ids, measured against the live
+# OGRIP layer on a random sample. OGRIP's Knox ids also include
+# placeholders ('99ROW', '99UNK'). parcel_id_admin3 carries the
+# stripped form and feeds parcel_id_local (the bundled conversion for
+# US-OH-KN is 'simple').
+
+description: >-
+  Knox County, OH auditor roll (GovernMax DETINFO tax table from the
+  Beacon CAMA download): one row per live parcel, key only.
+
+admin_id: US-OH-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: knoxcounty
+    # Checked 2026-09-12. No terms text sits next to the link on the
+    # auditor's home page, and the file is a direct blob URL with no
+    # click-through. Schneider's Beacon application has its own terms
+    # page, which this direct link bypasses and which is unread (Beacon
+    # challenges the openplaces User-Agent).
+    license: >-
+      unknown (no terms next to the auditor's download link; Beacon terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.knoxcountyauditor.org/"
+    download_url: "https://beaconfiledata.blob.core.windows.net/knoxcountyoh/downloads/CAMADatabase.zip?sv=2020-10-02&st=2023-04-11T20%3A18%3A41Z&se=2050-01-01T21%3A18%3A00Z&sr=b&sp=r&sig=d%2BoCtdXId7ZHT4jv2oW1mWSdzuAFGAu4%2FPfCxho6zkI%3D"
+  version: "2026"
+
+compressed_file_name: "CAMADatabase.zip"
+uncompressed_file_name: "MVP1_OH_DETINFO.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: mpropertyNumber
+
+transformations:
+  # OGRIP form: separators (and one stray space) stripped.
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: ".", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: " ", new: ""}
+    output: parcel_id_admin3
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache

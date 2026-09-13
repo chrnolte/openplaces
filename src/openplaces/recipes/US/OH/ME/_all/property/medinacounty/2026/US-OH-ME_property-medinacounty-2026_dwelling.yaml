@@ -1,0 +1,248 @@
+# Recipe: Medina County, OH auditor roll, GovernMax Dwelling extract.
+# Supplement of US-OH-ME_property-medinacounty-2026; see that recipe
+# for the source route, the terms and the join key.
+#
+# Source item: CAMA2025p2026 (modified 2026-07-20), a zip of five
+# pipe-delimited tables; this recipe reads GovernmaxDwellingExtract.
+#
+# Row shape: 66,569 rows over 66,189 PropertyNumbers, (PropertyNumber,
+# CardNumber) unique. One row is one dwelling card; 289 properties
+# have two. Numbers arrive as text with five decimals ('3.00000').
+#
+# Measured on cards:
+#   RoomCount     (total rooms)  99.96% above zero, median 7
+#   BedroomCount  (bedrooms)     99.73% above zero, median 3
+#   FullBathCount (full baths)   99.61% above zero, median 2
+#   HalfBathCount (half baths)   58.9% above zero
+#   StoryHeight   (numeric)      99.52% above zero (1, 1.5, 1.75, 2,
+#                                2.5, 3; 8 cards read 10)
+# 99.2% of the roll's 45,167 live land-use 510 properties have a card
+# with bedrooms. OtherPlumbingFixtureCount counts extra fixtures, not
+# baths, and is not mapped. n_bathrooms folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim; the item
+# ships no code list, so HeatingCode (heating_type), ExteriorWallCode
+# (exterior_wall), Grade (quality_grade), Condition (condition, e.g.
+# 'A  AV') and StyleOfHome (building_style) stay undecoded.
+# FinishedLivingArea (living_area_sqft) equals the first, upper and
+# half-floor areas including additions on 96.1% of cards, so it is
+# above-grade living area. BasementAreaTotal and BasementFinishedArea
+# are basement_area_sqft and basement_finished_area_sqft.
+# has_basement reads the basement area (recorded on every card, 0
+# where there is none), not BasementCode, whose list is not in the
+# item. CentralAirType is 1 or 0 on every card (has_central_air, both
+# values recorded). FireplaceOpeningCount is n_fireplaces,
+# YearRemodeled renovation_year (0 reads null). Years take the latest
+# card, codes the first. BasementGarageCount counts only basement
+# garage stalls and is not read as n_garage_spaces.
+# MEASURED 2026-09-13 on the 45,167 live land-use 510 properties:
+# living area 99.3% (median 1,862 sqft); basement area > 0 and
+# has_basement true 88.9% (false 10.4%); finished basement > 0 33.2%;
+# has_central_air true 88.5% (false 10.8%); fireplaces > 0 67.1%;
+# remodel year 12.5%; heating, wall, grade, condition and style
+# 99.3%.
+# YearBuilt is year_built (earliest card; years outside 1700-2026
+# read null, none occur): 99.3% of 510 properties, median 1992. The
+# card table has no dwelling-unit field, so n_dwellings is not
+# mapped. Placeholder heaps are small: 1900 on 807 cards (1.2%), 1850
+# on 199, 1800 on 14.
+# BasementCode is foundation_description, kept as the county records
+# it (codes 1 to 5; the list is not in the item). Measured against
+# the basement area, 3 and 5 carry a basement (5 on 80% of cards), 1
+# none, and 2 and 4 pair with CrawlTypeCode 2 and 4 (crawl types).
+# MEASURED 2026-09-13: 99.3% of 510 properties (5 on 36,625, 1 on
+# 4,474, 3 on 3,563, 4 on 153, 2 on 32).
+
+description: >-
+  Medina County, OH GovernMax Dwelling extract: rooms, baths, stories,
+  living and basement area, heating, air, fireplaces, grade and
+  condition per card.
+
+admin_id: US-OH-ME
+
+entity:
+  entity_type: property
+  source:
+    source_id: medinacounty
+    # Same publisher and terms as the roll; see its terms note.
+    license: >-
+      unknown (no licence on the ArcGIS items; auditor download page terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=81d7b42f6a004919825de3d047d5e09f"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/81d7b42f6a004919825de3d047d5e09f/data"
+  version: "2026"
+
+compressed_file_name: "CAMA2025p2026.zip"
+uncompressed_file_name: "GovernmaxDwellingExtract.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PropertyNumber
+  n_rooms: RoomCount
+  n_bedrooms: BedroomCount
+  n_bathrooms: FullBathCount
+  n_half_bathrooms: HalfBathCount
+  n_stories: StoryHeight
+  living_area_sqft: FinishedLivingArea
+  basement_area_sqft: BasementAreaTotal
+  basement_finished_area_sqft: BasementFinishedArea
+  n_fireplaces: FireplaceOpeningCount
+  renovation_year: YearRemodeled
+  heating_type: HeatingCode
+  exterior_wall: ExteriorWallCode
+  quality_grade: Grade
+  condition: Condition
+  building_style: StyleOfHome
+  year_built: YearBuilt
+  foundation_description: BasementCode
+
+transformations:
+  # Years outside 1700-2026 read null (0 is nulled by the registry).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_area_sqft
+    output: basement_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  # A card records its basement area, 0 where it has none.
+  - type: conditional
+    operation: greater_than
+    input: basement_area_sqft
+    args: {threshold: 0}
+    output: basement_row
+  - type: remap
+    input: basement_row
+    mapping: {0: false, 1: true}
+    output: has_basement
+  # CentralAirType: 1 central air, 0 none (both recorded).
+  - type: remap
+    input: CentralAirType
+    mapping: {"0": false, "1": true}
+    output: has_central_air
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - basement_row
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - heating_type
+  - exterior_wall
+  - quality_grade
+  - condition
+  - building_style
+  - foundation_description
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  year_built: min
+  has_basement: max
+  has_central_air: max
+  heating_type: first
+  exterior_wall: first
+  quality_grade: first
+  condition: first
+  building_style: first
+  foundation_description: first
+
+supplements: US-OH-ME_property-medinacounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

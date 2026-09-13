@@ -1,0 +1,98 @@
+# Recipe: Muskingum County, OH auditor roll, ISSG Parcel Land table.
+# Supplement of US-OH-MU_property-muskingumcounty-2026; see that
+# recipe for the unlinked endpoint, the terms and the key.
+#
+# One row per land line of a parcel (all tax year 2025; the query
+# keeps the latest year). Label says how Dim1 is read; on 'Effective
+# - Frontage / Depth' lines Dim1 is the effective frontage in feet.
+# frontage_ft sums Dim1 over the parcel's L1-FRONT LOT ENTRY lines
+# with that label: street frontage. L2-BACK LOT ENTRY lines have no
+# street frontage and add nothing; a parcel with no front-lot line
+# stays null. No land type records waterfront.
+#
+# MEASURED 2026-09-13: 89,448 land lines over 59,737 parcels, keys
+# 99.63% in the roll; frontage_ft on 95.6% of the 16,394 live
+# land-use 510 properties (median 66 ft, p99 216 ft).
+
+description: >-
+  Muskingum County, OH ISSG Parcel Land table: street frontage in
+  feet from front-lot land lines, per parcel.
+
+admin_id: US-OH-MU
+
+entity:
+  entity_type: property
+  source:
+    source_id: muskingumcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to
+      indemnify Muskingum County)
+    terms_url: "https://www.muskingumcountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://www.muskingumcountyauditor.org/"
+    download_url: "https://www.muskingumcountyauditor.org/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Land.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Dim1
+    output: land_dim1
+  # 1 on front-lot lines measured by frontage; other lines null.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "L1-", value: 1}
+    output: front_row
+  - type: remap
+    input: Label
+    mapping: {"Effective - Frontage / Depth": 1}
+    output: frontage_row
+  - type: unary
+    operation: to_numeric
+    input: front_row
+    output: front_row
+  - type: binary
+    operation: multiply
+    inputs: [land_dim1, front_row]
+    output: front_dim1
+  - type: binary
+    operation: multiply
+    inputs: [front_dim1, frontage_row]
+    output: frontage_ft
+
+drop_columns:
+  - land_dim1
+  - front_row
+  - frontage_row
+  - front_dim1
+
+aggregation_function:
+  frontage_ft: sum
+
+supplements: US-OH-MU_property-muskingumcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

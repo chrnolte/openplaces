@@ -1,0 +1,228 @@
+# Recipe: Summit County, OH CAMA roll, iasWorld DWELL extract
+# (SC710_DWELL). Supplement of US-OH-SU_property-summitcounty-2026; see
+# that recipe for the source and the join key.
+#
+# Row shape, measured on the extract dated 2026-04-13: 197,667 rows
+# over 196,321 PARCELs, all tax year 2026, (PARCEL, CARD) unique. One
+# row is one dwelling card (0.47% of parcels have more than one).
+#
+# The file uses iasWorld's short column names. Measured on cards:
+#   RMT (total rooms)   99.89% above zero, median 6
+#   BD  (bedrooms)      99.87% above zero, median 3
+#   BTH (full baths)    99.84% above zero
+#   FXH (half baths)    43.6% above zero
+#   ST  (stories)      100.0% above zero (1.00, 1.50, 2.00, 2.50, 3.00)
+# BTH x 3 + FXH x 2 + FXA equals FT on 100% of cards, which confirms
+# BTH and FXH are bath counts and FXA (additional fixtures) and FT
+# (total fixtures) are fixture counts; FXA and FT are never mapped.
+# n_bathrooms folds full + 0.5 x half. 99.8% of the roll's 175,579
+# land-use 510 properties have a card with bedrooms.
+#
+# Building features (added 2026-09-13), codes verbatim and decoded by
+# the Fiscal Office's AEDIT extract (SC718): SFLA (living_area_sqft),
+# FBSMT (finished basement area; blank on cards without one), O
+# (fireplace openings; S stacks and PF prefabricated are not read),
+# YRMOD (renovation_year), CDU (condition: AV, GD, FR, VG, PR, VP,
+# EX, UN), XTW (exterior_wall: 1 frame, 2 brick, 3 masonry and frame,
+# 4 block, 5 stucco, 6 aluminum/vinyl, 7 stone, 8 asbestos, 9
+# concrete, 10 masonry and vinyl, 11 masonry and fiber cement, 12
+# fiber cement), HEAT (heating_type: 1 none, 2 central, 3 central
+# air, 4 heat pump, 5 non-central), FUEL (heating_fuel: 1 none, 2
+# gas, 3 electric, 4 oil, 5 coal, 6 solar) and STYLE (building_style,
+# 40 codes, e.g. 33 colonial, 34 ranch, 41 cape cod). has_basement
+# reads BSMT (0 none and 3 crawl false, 1 full and 2 part true) and
+# has_central_air reads HEAT (3 true; 1, 2 and 5 false; 4 heat pump
+# null, as it names no air system); both are on every card. Not read:
+# GRADE (on 0.9% of cards), EFYR (empty), RECRM (rec room area), BG
+# (basement garage cars only) and ATTIC. Years take the latest card,
+# codes the first.
+# MEASURED 2026-09-13 on the 175,578 land-use 510 properties: living
+# area 99.8% (median 1,484 sqft); finished basement 6.6%; fireplaces
+# > 0 36.8%; remodel year 5.8%; condition, wall, heat, fuel, style
+# 99.7-99.8%; has_basement 99.8% (true 92.2%); has_central_air
+# 99.7% (true 75.7%).
+# year_built reads YRBLT (the earliest card; 0 and years outside
+# 1700-2026 are null). On cards 1900 is 0.3% and 1850 0.05%, no
+# placeholder heap. MEASURED 2026-09-13: 99.8% of the 510
+# properties, median 1958.
+# foundation_description keeps BSMT verbatim (0 none, 1 full, 2
+# part, 3 crawl); curate translates it. DWELL has no construction or
+# frame field (XTW is the wall material), so no
+# construction_description. MEASURED 2026-09-13: 99.8% of the 510
+# properties (1 on 87.9%, 0 7.6%, 2 4.2%, 3 0.1%).
+
+description: >-
+  Summit County, OH iasWorld DWELL extract: rooms, baths, stories,
+  living area, basement, heating, air and condition per card, to the
+  property.
+
+admin_id: US-OH-SU
+
+entity:
+  entity_type: property
+  source:
+    source_id: summitcounty
+    # Same page and terms as the roll; see its terms note.
+    license: "unknown (no terms on the Fiscal Office data-downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://fiscaloffice.summitoh.net/data-downloads"
+    download_url: "https://fiscaloffice.summitoh.net/sites/default/files/assets/forms/SC710_DWELL.zip"
+  version: "2026"
+
+compressed_file_name: "SC710_DWELL.zip"
+uncompressed_file_name: "SC710_DWELL.CSV"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL
+  n_rooms: RMT
+  n_bedrooms: BD
+  n_bathrooms: BTH
+  n_half_bathrooms: FXH
+  n_stories: ST
+  living_area_sqft: SFLA
+  basement_finished_area_sqft: FBSMT
+  n_fireplaces: O
+  renovation_year: YRMOD
+  condition: CDU
+  exterior_wall: XTW
+  heating_type: HEAT
+  heating_fuel: FUEL
+  building_style: STYLE
+  year_built: YRBLT
+  foundation_description: BSMT
+
+transformations:
+  # Year built: 0 is nulled by the registry; years outside 1700-2026
+  # are nulled here.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  # BSMT: 0 none, 1 full, 2 part, 3 crawl (AEDIT); on every card.
+  - type: remap
+    input: foundation_description
+    mapping: {"0": false, "1": true, "2": true, "3": false}
+    output: has_basement
+  # HEAT: 1 none, 2 central, 3 central air, 4 heat pump, 5
+  # non-central. A heat pump names no air system and stays null.
+  - type: remap
+    input: heating_type
+    mapping: {"1": false, "2": false, "3": true, "5": false}
+    output: has_central_air
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - condition
+  - exterior_wall
+  - heating_type
+  - heating_fuel
+  - building_style
+  - foundation_description
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  has_basement: max
+  has_central_air: max
+  condition: first
+  exterior_wall: first
+  heating_type: first
+  heating_fuel: first
+  building_style: first
+  year_built: min
+  foundation_description: first
+
+supplements: US-OH-SU_property-summitcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

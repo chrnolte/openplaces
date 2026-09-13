@@ -1,0 +1,124 @@
+# Recipe: Medina County, OH auditor roll (GovernMax parcel extract).
+#
+# Source: the Medina County Auditor's ArcGIS Online organization
+# publishes its GovernMax (Sigma lineage) CAMA extracts as public
+# items typed "CSV" that are in fact zips of pipe-delimited text:
+# GovernMaxExtract2025p2026 (this recipe; GovernmaxExtract.txt, plus
+# the same table as .xlsx) and CAMA2025p2026 (Dwelling, Building,
+# Additions, Features, OtherImprovements; the _dwelling supplement).
+# Prior years back to 2022p2023 are separate items. The auditor's own
+# "Data Downloads" page returns a Cloudflare 403 to the openplaces
+# User-Agent, so these items are the reachable route.
+#
+# Row shape, measured on the item modified 2026-09-11: 87,460 rows,
+# one per distinct mpropertyNumber. Par_Deleted is 'N' on 87,063 and
+# 'Y' on 397; the query keeps the live parcels. One row is one
+# property.
+#
+# Columns. mClassificationId is the Ohio DTE land-use code (3 digits
+# on every row). MKT_Land_Value, MKT_Impr_Value and MKT_Total_Value
+# are above zero on 95.5%, 82.7% and 95.8% of rows, macres on 96.2%.
+# activeYear is a record date (1990 on 87% of rows), not a tax year,
+# and is not mapped. The Own* and Taxp* owner and taxpayer name and
+# address fields are never mapped. NeighborhoodCode (the assessor's
+# valuation neighborhood, 603 codes) is tax_neighborhood_code:
+# MEASURED 2026-09-13 on 100% of the 45,167 live land-use 510
+# properties. mfrontfootage is 0 on every row and is not mapped.
+#
+# Join key. mpropertyNumber has the form '999-99A-99-999' (2% carry a
+# further '-A' suffix); OGRIP's LocalParcelID holds it without
+# separators. The raw form matches 0 of 100 sampled ids and the
+# stripped form 193 of 200 roll ids and 198 of 200 dwelling ids,
+# measured against the live OGRIP layer on a random sample.
+# parcel_id_admin3 carries the stripped form and feeds
+# parcel_id_local (the bundled conversion for US-OH-ME is 'simple').
+
+description: >-
+  Medina County, OH auditor roll (GovernMax parcel extract on ArcGIS
+  Online): land-use code, acreage, market values and situs per property.
+
+admin_id: US-OH-ME
+
+entity:
+  entity_type: property
+  source:
+    source_id: medinacounty
+    # Checked 2026-09-12. The ArcGIS Online items carry no licenseInfo
+    # or accessInformation. The county engineer's GIS download page
+    # has an "as is", no-warranty, no-liability disclaimer with no
+    # resale or redistribution clause. The auditor's own download
+    # page, which may state terms, is behind Cloudflare and unread.
+    license: >-
+      unknown (no licence on the ArcGIS items; auditor download page terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=a2ad473fc83d42d18492800ade250d50"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/a2ad473fc83d42d18492800ade250d50/data"
+  version: "2026"
+
+compressed_file_name: "GovernMaxExtract2025p2026.zip"
+uncompressed_file_name: "GovernmaxExtract.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+query: "Par_Deleted == 'N'"
+
+columns:
+  parcel_id_assessor: mpropertyNumber
+  use_group_code: mClassificationId
+  area_ac: macres
+  land_value: MKT_Land_Value
+  improvement_value: MKT_Impr_Value
+  total_value: MKT_Total_Value
+  address_number: mlocStrNo
+  city: mlocCity
+  postal_code: mlocZipCode
+  tax_neighborhood_code: NeighborhoodCode
+
+transformations:
+  # OGRIP form: separators stripped.
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: concat
+    inputs: [mlocStrDir, mlocStrName, mlocStrSuffix]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+
+columns_to_categorical:
+  - use_group_code
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache

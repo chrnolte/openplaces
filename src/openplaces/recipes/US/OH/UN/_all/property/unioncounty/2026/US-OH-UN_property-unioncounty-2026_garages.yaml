@@ -1,0 +1,108 @@
+# Recipe: Union County, OH auditor roll, ARC
+# TB_ARC_DwellingGaragesCarports table. Supplement of
+# US-OH-UN_property-unioncounty-2026; see that recipe for the source,
+# the terms and the join key.
+#
+# One row per garage or carport priced on a dwelling, with Code and
+# Code Description and Area in sqft:
+#   AGFU / AGFF  attached frame garage, unfinished / finished
+#   AGBU / AGBF  attached brick garage, unfinished / finished
+#   BG           basement garage
+#   DGFU / DGFF  detached frame garage, unfinished / finished
+#   CAR          carport
+# garage_area_sqft sums Area over the garage codes; garage_type keeps
+# the code. has_garage and has_carport are true where such a row is
+# recorded and null elsewhere: the table lists what is present, never
+# what is absent. Units is 0 or blank on every row, so no garage-space
+# count is read. Most detached garages are TB_ARC_OtherImprovements
+# rows (see _improvements), which sets has_garage too.
+#
+# MEASURED 2026-09-13 (files dated 2026-09-10): 25,425 rows over
+# 17,900 parcels, keys 100% in the roll. On the 14,779 live land-use
+# 510 properties: garage area > 0 and has_garage 73.3% (AGFU 5,618,
+# AGFF 4,665, AGBU 257, AGBF 165, BG 120, DGFU 2); carport 0.6%.
+
+description: >-
+  Union County, OH ARC dwelling garages and carports table: garage
+  area, garage type and garage and carport flags per property.
+
+admin_id: US-OH-UN
+
+entity:
+  entity_type: property
+  source:
+    source_id: unioncounty
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (no licence on the portal items; no terms on the download host)"
+    redistribution_restricted: null
+    portal_url: "https://www8.co.union.oh.us/mapunionoh/"
+    download_url: "https://www2.co.union.oh.us/propertyinfofile/TB_ARC_DwellingGaragesCarports.zip"
+  version: "2026"
+
+compressed_file_name: "TB_ARC_DwellingGaragesCarports.zip"
+uncompressed_file_name:
+  "TB_ARC_DwellingGaragesCarports/TB_ARC_DwellingGaragesCarports.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: item_area
+  - type: remap
+    input: Code
+    mapping: {AGFU: 1, AGFF: 1, AGBU: 1, AGBF: 1, BG: 1, DGFU: 1, DGFF: 1}
+    default: 0
+    output: garage_row
+  - type: binary
+    operation: multiply
+    inputs: [item_area, garage_row]
+    output: garage_area_sqft
+  - type: remap
+    input: Code
+    mapping:
+      {AGFU: true, AGFF: true, AGBU: true, AGBF: true, BG: true,
+       DGFU: true, DGFF: true}
+    output: has_garage
+  - type: remap
+    input: Code
+    mapping: {CAR: true}
+    output: has_carport
+  - type: remap
+    input: Code
+    mapping:
+      {AGFU: AGFU, AGFF: AGFF, AGBU: AGBU, AGBF: AGBF, BG: BG,
+       DGFU: DGFU, DGFF: DGFF}
+    output: garage_type
+
+drop_columns:
+  - item_area
+  - garage_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-UN_property-unioncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: garages

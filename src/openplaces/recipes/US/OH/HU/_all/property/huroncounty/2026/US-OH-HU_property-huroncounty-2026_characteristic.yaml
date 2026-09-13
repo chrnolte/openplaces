@@ -1,0 +1,92 @@
+# Recipe: Huron County, OH auditor roll, ISSG Parcel Characteristic
+# table. Supplement of US-OH-HU_property-huroncounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per parcel characteristic, several per parcel. Type is the
+# category (Neighborhood, Public Utilities, Street / Road, Topography)
+# and Characteristic the value; every value read here occurs under one
+# category only, so each output reads Characteristic alone.
+#
+#   sewer_type    SEWER, SEPTIC
+#   water_source  WATER, WELL
+#   topography    LEVEL, ROLLING, HIGH, LOW
+# STANDARD occurs under all four categories and is not read; ELECTRIC
+# and GAS, the street values (PAVED, SIDEWALKS, CURBS, GRAVEL, DIRT) and
+# the Neighborhood ratings are not read either. Codes keep the source's
+# words; the first listed value per parcel is taken.
+#
+# MEASURED 2026-09-13 on 2025: 204,535 rows over 38,053 parcels, keys
+# 94.98% in the roll. On the 10,924 live land-use 510 properties:
+# sewer_type 96.8% (SEWER 8,894, SEPTIC 1,676); water_source 97.4%
+# (WATER 9,638, WELL 1,003); topography 99.2% (LEVEL 9,609, ROLLING 728,
+# HIGH 476, LOW 20).
+
+description: >-
+  Huron County, OH ISSG Parcel Characteristic table: sewer, water supply
+  and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-HU
+
+entity:
+  entity_type: property
+  source:
+    source_id: huroncounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (property-line disclaimer only; no terms on the extract)"
+    redistribution_restricted: null
+    portal_url: "https://huroncountyauditor.org/"
+    download_url: "https://huron-auditor-public.issg.io/api/Document/PublicRecords.zip?e=t0YMq1"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Characteristic.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: remap
+    input: Characteristic
+    mapping:
+      "SEWER": "SEWER"
+      "SEPTIC": "SEPTIC"
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping:
+      "WATER": "WATER"
+      "WELL": "WELL"
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      "LEVEL": "LEVEL"
+      "ROLLING": "ROLLING"
+      "HIGH": "HIGH"
+      "LOW": "LOW"
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-HU_property-huroncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

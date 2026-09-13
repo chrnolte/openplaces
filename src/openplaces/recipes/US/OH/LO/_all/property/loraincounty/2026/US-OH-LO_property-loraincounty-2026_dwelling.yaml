@@ -1,0 +1,197 @@
+# Recipe: Lorain County, OH auditor roll, ISSG Parcel_Dwelling table.
+# Supplement of US-OH-LO_property-loraincounty-2026; see that recipe
+# for the source, its terms and the join key.
+#
+# The ISSG dwelling layout (Card, Bed_Rooms, Full_Baths, Half_Baths,
+# Total_Rooms, Story_Height) is identical across ISSG counties; this
+# is the SQLite copy of the table the XML counties ship as
+# "Parcel Dwelling.xml".
+#
+# Row shape, measured on the extract dated 2026-09-12: 114,693 rows
+# over 113,940 Parcel_Number_U, all tax year 2025, (id, Card) unique.
+# One row is one dwelling card. SQLite delivers the counts as
+# integers and Story_Height as a float.
+#
+# Measured on cards (inventory): Bed_Rooms 99.86% above zero (median
+# 3), Full_Baths 99.91%, Half_Baths 44.9%, Total_Rooms 99.86%.
+# Extra_Fixtures counts extra plumbing fixtures, not baths, and is
+# not mapped; Plumbing is a category. n_bathrooms folds full + 0.5 x
+# half. No heating field (Parcel_Dwelling_Custom_Field carries only
+# exterior walls in Lorain).
+#
+# NOTE: Story_Height is NOT mapped, although it is populated on
+# 99.97% of cards. The database declares it INT while storing 1.5 and
+# 2.5 as REAL; GDAL types the column from the declaration and reads
+# it as int32, so the 7,452 cards at 1.5 read 1 and the 32 at 2.5
+# read 2. Mapping it would ship wrong heights for 6.5% of cards. The
+# XML copy (PublicRecordsXML.zip) or a GDAL read that ignores the
+# declared type would recover it.
+#
+# Building features (added 2026-09-13), codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces;
+# Fireplace_Stacks is not read), Year_Effective
+# (effective_year_built), Grade (quality_grade, e.g. 'C+1'),
+# Condition (condition, e.g. '3-AVERAGE') and Type (building_style,
+# e.g. '01-RANCH'). Years take the latest card, codes the first. All
+# are INT or TEXT in the database, so the GDAL read loses nothing.
+# Year_Remodeled is 0 on every card and is not mapped.
+# MEASURED 2026-09-13 on the 89,855 live land-use 510 properties:
+# living area > 0 on 99.8% (median 1,538 sqft), fireplaces > 0 on
+# 32.2%, effective year, grade, condition and style on 99.8% each.
+# Grades run A+8 to E (27 values); conditions are 5 (3-AVERAGE on
+# 95.3% of these).
+#
+# Year built and units (added 2026-09-13). year_built is Year_Built,
+# the earliest card per property; 0 reads null (registry
+# placeholder) and years outside 1700 to 2026 read null (3 cards
+# above 2026). 1900 is a placeholder-like heap: 12,042 cards (10.5%)
+# and 9.5% of land-use 510 properties; it is kept. n_dwellings is
+# Units_Designed, summed over cards. Units_Converted is 0 on every
+# card, so designed and designed plus converted agree here. The
+# count tracks the card type (13-DUPLEX reads 2 on 96%, 14-TRIPLEX 3
+# on 95%) and the land use (520 reads 2 on 96.6% of cards, 530
+# reads 3 on 94.0%); condominium cards (550) read 1. Dwelling cards
+# cover residential units only.
+# MEASURED 2026-09-13 on the 89,855 live land-use 510 properties:
+# year_built on 99.8% (median 1969); n_dwellings on 99.8%, equal to
+# 1 on 99.5%.
+
+description: >-
+  Lorain County, OH ISSG Parcel_Dwelling table: rooms, bedrooms, full
+  and half baths per card, summed to the property.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel_Dwelling
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  effective_year_built: Year_Effective
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+  year_built: Year_Built
+  n_dwellings: Units_Designed
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  # year_built: impossible years read null (0 is already nulled by
+  # the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  living_area_sqft: sum
+  n_fireplaces: sum
+  effective_year_built: max
+  quality_grade: first
+  condition: first
+  building_style: first
+  year_built: min
+  n_dwellings: sum
+
+supplements: US-OH-LO_property-loraincounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling
