@@ -1,0 +1,70 @@
+# Recipe: Harris County, TX appraisal district fixtures table, total
+# rooms (HCAD). Same member (fixtures.txt) and row rule as
+# US-TX-HAR_property-hcad-2026_bedrooms; read its header first.
+#
+# MEASURED (RMT "Room: Total"): 1,319,055 rows over 1,286,650 accounts;
+# whole numbers, median 6, p99 11, max 44, no zeros; coverage A 99.0%,
+# B 64.7%, E 96.8%, M 100%. 51 (acct, bld_num, type) keys repeat, 46 of
+# them with differing units. RMR "Room: Rec" is a separate type and is
+# not added in: whether RMT already counts it is not documented.
+
+description: >-
+  Harris County, TX appraisal district fixtures table (HCAD PDATA):
+  total rooms per building, summed to the account.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "fixtures.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  n_rooms: units
+
+query: "`type`.str.strip() == 'RMT'"
+
+# One row per building, then summed across buildings.
+drop_duplicates: [parcel_id_assessor, bld_num, type]
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+
+aggregation_function:
+  n_rooms: sum
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: rooms

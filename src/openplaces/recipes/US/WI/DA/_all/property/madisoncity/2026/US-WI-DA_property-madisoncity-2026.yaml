@@ -1,0 +1,211 @@
+# Recipe: City of Madison assessor tax parcels, room counts and
+# building features.
+#
+# COVERAGE. The source covers only the City of Madison, not the rest of
+# Dane County (US-WI-DA). The recipe sits at the county because
+# openplaces processes Wisconsin at admin level 3. Dane County's own
+# TaxParcel layer has no bedroom or bath fields.
+#
+# SOURCE. City of Madison Assessor's Office, open-data layer "Tax
+# Parcels (Assessor Property Information)", updated daily. Read as the
+# Hub CSV export of OPEN_DATA2/FeatureServer/0 (about 51 MB, UTF-8 with
+# a byte-order mark), not by paging the REST layer.
+#
+# ROW SHAPE, measured 2026-09-12: 82,423 rows, 82,422 distinct Parcel
+# (all 12 digits). One row per tax parcel, condominium units as their
+# own rows (Condominium is 24% of residential rows). A tax roll, so this
+# is the property roll itself. One Parcel value carries two rows;
+# drop_duplicates keeps the first. MoreThanOneBuild is YES on 25,783
+# rows: the characteristics then describe the primary building.
+#
+# ROOM COUNTS, on Residential rows with CurrentImpr > 0 (70,299):
+# Bedrooms > 0 92.8%, FullBaths > 0 92.9%, HalfBaths > 0 39.2%. Baths
+# are whole full and half counts, so n_bathrooms = FullBaths + 0.5 x
+# HalfBaths and n_half_bathrooms = HalfBaths.
+#
+# VALIDATED in memory 2026-09-12 (reader, preprocessing and key as the
+# ingester runs them): of V11's 70,986 residential improved city
+# parcels, n_bedrooms > 0 92.7%, n_bathrooms 92.8%, n_half_bathrooms
+# 38.5%. Large apartment parcels carry building totals (up to 184
+# bedrooms).
+#
+# NOT MAPPED: rooms (no field). Stories: no count is published; one
+# could be derived from the FirstFloor, SecondFloor, ThirdFloor,
+# AboveThirdFloor and FinishedAttic areas and HomeStyle, which is
+# inference and left for a later stage. Owner fields are not in this
+# layer. Values and class are left to V11.
+#
+# YEAR AND UNITS, audited 2026-09-13. YearBuilt is the actual year
+# built (the layer has no effective year; MaxConstructionYear is 0 on
+# every row). Its 0 is the registry's placeholder; no year falls
+# outside 1600 to 2026. n_dwellings: TotalDwellingUnits, 0 nulled
+# (17.6% of rows: vacant, commercial and condominium notation rows,
+# and 30% of "Condominium" rows). Condominium unit rows carry their
+# own unit (1 on 11,946; none above 3 under "Condominium"), not the
+# complex's. "Condominium -apt" rows (81) are units that are whole
+# apartment buildings and carry their apartments (median 16).
+# MEASURED in memory 2026-09-13, of V11's 70,986 residential
+# improved city parcels: n_dwellings 92.8% (1 unit 85.9%, 2 units
+# 4.5%, 3 or more 2.4%; median 1); year_built 92.9%.
+#
+# BUILDING FEATURES, mapped 2026-09-13 (source vocabulary kept), on
+# Residential rows with CurrentImpr > 0 (70,299):
+# - living_area_sqft: TotalLivingArea, above-grade finished area. It
+#   equals FirstFloor + SecondFloor + ThirdFloor + AboveThirdFloor +
+#   FinishedAttic on 92.6% of these rows and never includes the
+#   finished basement. No area_sqft was mapped before.
+# - basement_area_sqft: Basement (> 0 81.3%);
+#   basement_finished_area_sqft: FinishedBasement (> 0 50.4%, within
+#   Basement on 99.9%). has_basement is true where Basement > 0 and
+#   null elsewhere: a 0 area also sits on vacant and non-residential
+#   rows, so it is not read as absence.
+# - has_central_air: CentralAir YES/NO, both recorded (YES 55,222, NO
+#   10,074, empty 5,003).
+# - n_fireplaces: Fireplaces (a count; > 0 on 50.0%).
+# - exterior_wall: ExteriorWall1 (24 codes, words and abbreviations
+#   mixed: 'Aluminum/Vinyl', 'FBrk', 'Wd' ...). ExteriorWall2, a
+#   secondary material, is not mapped.
+# - building_style: HomeStyle (70 codes, residential and commercial).
+# - year_built: YearBuilt (0 is the registry's no-year placeholder).
+#   With MoreThanOneBuild YES these describe the primary building.
+# - tax_neighborhood_code: AssessmentArea (514 distinct).
+#
+# VALIDATED FEATURES in memory 2026-09-13, of V11's 70,986
+# residential improved city parcels: year_built and building_style
+# 92.9%, living_area_sqft > 0 92.8% (median 1,448),
+# basement_area_sqft > 0 81.2%, basement_finished_area_sqft > 0
+# 50.1%, has_basement true 81.2%, has_central_air set 92.9% (true
+# 77.4%, false 15.5%), n_fireplaces > 0 49.7%, exterior_wall 92.9%,
+# tax_neighborhood_code 99.9%.
+#
+# - has_waterfront: TypeWaterFrontage, mapped 2026-09-13. True where
+#   the source records a waterfront type ('Owned' 588 rows, 'Riparian
+#   Rights' 74, 'Exclusive Easement' 4; each carries feet of frontage
+#   in WaterFrontage); false only where it records 'No Water
+#   Frontage' (81,520); null where the field is empty (236). The
+#   registry tags it a parcel attribute; the roll carries it and
+#   curate takes it to parcels, as with other parcel-tagged fields.
+#   Validated in memory, of V11's 70,986 residential improved city
+#   parcels: set 99.9%, true 0.71% (506), false 99.2%.
+#
+# NOT MAPPED, lot: frontage_ft. WaterFrontage is frontage on water
+# and LotWidth (> 0 on 47.5%) is a width; neither is street frontage.
+#
+# JOIN KEY. Parcel is V11's PARCELID for this city as shipped: 99.76%
+# of V11's City of Madison parcels find a Parcel, and 98.86% of Parcel
+# values are in V11 (raw, and the same after the bundled US-WI-DA
+# conversion, pattern Dx). 99.91% of V11's residential improved city
+# parcels match. No id-override row needed.
+
+description: >-
+  City of Madison assessor tax parcels (city only, not the rest of Dane
+  County): room counts, year built, living and basement areas, style,
+  air, fireplaces.
+
+admin_id: US-WI-DA
+
+entity:
+  entity_type: property
+  source:
+    source_id: madisoncity
+    # Checked 2026-09-12: the Hub item's licenseInfo points to the City
+    # of Madison Data Policy. It disclaims warranty, allows the City to
+    # discontinue data at any time, and reserves the right to protect
+    # IP only where a page indicates so (this item does not). No fee,
+    # gate, resale or redistribution clause.
+    license: >-
+      City of Madison Data Policy: no warranty, may be discontinued at
+      any time; no fee, gate, resale or redistribution clause.
+    terms_url: "https://www.cityofmadison.com/policy/data"
+    redistribution_restricted: false
+    portal_url: "https://data-cityofmadison.opendata.arcgis.com/datasets/0338b0638e4749c395f8d38b39a5c466_0"
+    download_url: "https://data-cityofmadison.opendata.arcgis.com/api/download/v1/items/0338b0638e4749c395f8d38b39a5c466/csv?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "madison_tax_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+
+# Parcel is all digits: read it as text so leading zeros survive.
+# AssessmentArea is a code, not a number.
+csv_dtype:
+  Parcel: str
+  AssessmentArea: str
+
+columns:
+  parcel_id_assessor: Parcel
+  n_bedrooms: Bedrooms
+  n_bathrooms: FullBaths
+  n_half_bathrooms: HalfBaths
+  year_built: YearBuilt
+  n_dwellings: TotalDwellingUnits
+  building_style: HomeStyle
+  living_area_sqft: TotalLivingArea
+  basement_area_sqft: Basement
+  basement_finished_area_sqft: FinishedBasement
+  exterior_wall: ExteriorWall1
+  n_fireplaces: Fireplaces
+  tax_neighborhood_code: AssessmentArea
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # TotalDwellingUnits 0 records no unit count (vacant, commercial and
+  # condominium notation rows), not a building without dwellings.
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args:
+      value: 0
+    output: n_dwellings
+  # CentralAir YES/NO records central air and its absence.
+  - type: remap
+    input: CentralAir
+    mapping: {"YES": true, "NO": false}
+    output: has_central_air
+  # A basement area records a basement; a 0 area is not read as
+  # absence, since non-residential and vacant rows carry 0 too.
+  - type: conditional
+    operation: greater_than
+    input: basement_area_sqft
+    args:
+      threshold: 0
+    output: basement_flag
+  - type: remap
+    input: basement_flag
+    mapping: {1: true}
+    output: has_basement
+  # A waterfront type records frontage; "No Water Frontage" records
+  # its absence; an empty field stays null.
+  - type: remap
+    input: TypeWaterFrontage
+    mapping:
+      "Owned": true
+      "Riparian Rights": true
+      "Exclusive Easement": true
+      "No Water Frontage": false
+    output: has_waterfront
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - basement_flag
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

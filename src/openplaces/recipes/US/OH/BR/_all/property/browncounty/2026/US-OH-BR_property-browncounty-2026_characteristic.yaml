@@ -1,0 +1,93 @@
+# Recipe: Brown County, OH auditor roll, ISSG Parcel Characteristic
+# table. Supplement of US-OH-BR_property-browncounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per parcel characteristic, several per parcel. Type is the
+# category (Public Utilities, Street / Road, Topography) and
+# Characteristic the value; the values do not repeat across
+# categories, so each output reads Characteristic alone.
+#
+#   sewer_type    SEWER
+#   water_source  WATER
+#   topography    ABOVE STREET, BELOW STREET, FLAT, ROLLING, STEEP,
+#                 LOW & SWAMPY
+# Brown records utilities present only (ELECTRIC, GAS, SEWER, WATER;
+# no septic or well value), so a parcel without a SEWER or WATER row
+# is null, not septic or well. The street values (PAVED, UNPAVED,
+# ALLEY) are not read. Codes keep the source's words; the first
+# listed value per parcel is taken.
+#
+# MEASURED 2026-09-13: 64,816 rows over 20,801 parcels, keys 98.19%
+# in the roll. On the 11,446 live land-use 510 properties: sewer_type
+# 30.0% (SEWER 3,431); water_source 58.6% (WATER 6,702); topography
+# 14.7% (ABOVE STREET 559, ROLLING 551, FLAT 394, BELOW STREET 174,
+# STEEP 6, LOW & SWAMPY 1).
+
+description: >-
+  Brown County, OH ISSG Parcel Characteristic table: public sewer,
+  public water and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-BR
+
+entity:
+  entity_type: property
+  source:
+    source_id: browncounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://realestate.browncountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://realestate.browncountyauditor.org/property-data-downloads"
+    download_url: "https://realestate.browncountyauditor.org/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Characteristic.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: remap
+    input: Characteristic
+    mapping: {SEWER: SEWER}
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping: {WATER: WATER}
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      ABOVE STREET: ABOVE STREET
+      BELOW STREET: BELOW STREET
+      FLAT: FLAT
+      ROLLING: ROLLING
+      STEEP: STEEP
+      LOW & SWAMPY: LOW & SWAMPY
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-BR_property-browncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

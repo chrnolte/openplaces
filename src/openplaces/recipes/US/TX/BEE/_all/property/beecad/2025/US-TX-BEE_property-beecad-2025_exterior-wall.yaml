@@ -1,0 +1,84 @@
+# Recipe: Bee County, TX certified appraisal roll, improvement features
+# member (PACS File #9): exterior_wall from the district's 'Exterior
+# Wall' attribute. Same download and File #9 row shape as the roll's
+# room-count supplements; read US-TX-BEE_property-beecad-2025 for the
+# source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# MEASURED on the 2025 export (aggregates only; share of properties with
+# a value): A is the 7,178 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# exterior_wall A 43.5% (B 55.6%, E 25.6%, M 1.4%), 299 distinct codes.
+
+description: >-
+  Bee County, TX certified appraisal roll, improvement features member: exterior_wall
+  per building, reduced to the property.
+
+admin_id: US-TX-BEE
+
+entity:
+  entity_type: property
+  source:
+    source_id: beecad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms on the download page)
+    redistribution_restricted: null
+    portal_url: "https://beecad.org/data-and-records/"
+    download_url: "https://beecad.org/wp-content/uploads/2025/09/BEE-CAD-2025-CERTIFIED-APPRAISAL-ROLL-CSV.zip"
+  version: 2025
+
+compressed_file_name: "BEE-CAD-2025-CERTIFIED-APPRAISAL-ROLL-CSV.zip"
+uncompressed_file_name: "2025-07-25_000292_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  exterior_wall: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Exterior Wall'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  exterior_wall: first
+
+supplements: US-TX-BEE_property-beecad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: exterior-wall

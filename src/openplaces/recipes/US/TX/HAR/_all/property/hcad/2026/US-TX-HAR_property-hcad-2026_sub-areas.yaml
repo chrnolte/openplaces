@@ -1,0 +1,158 @@
+# Recipe: Harris County, TX appraisal district building sub-areas
+# (HCAD). Supplement of US-TX-HAR_property-hcad-2026; see that recipe
+# for the PDATA export, the terms and the join key.
+#
+# SOURCE MEMBER. exterior.txt in Real_building_land.zip: one row per
+# sub-area of a building (acct, bld_num, sar_cd, sar_dscr, area in
+# square feet), 6,394,220 rows over 1,357,162 accounts. Codes ending in
+# P, U and L are the primary, upper and lower floor; codes ending "-C"
+# in their text are commercial.
+#
+# WHAT IS MAPPED, by sar_cd:
+#   garage_area_sqft  area over MGP, MGL (masonry/brick garage) and
+#                     FGP, FGL (frame garage): garages drawn as part of
+#                     the building, so attached or built in. Detached
+#                     garages are extra features (see _extra-features)
+#                     and their area is not added here.
+#   garage_type       the first garage sub-area's code
+#   has_garage        true where a garage sub-area exists
+#   has_carport       CRP, CRL (carport)
+#   porch_area_sqft   area over OFP, OFU, OFL (open frame porch), OMP,
+#                     OMU, OML (open masonry), EFP, EFU, EFL (enclosed
+#                     frame), EMP, EMU, EML (enclosed masonry)
+#   deck_area_sqft    area over WDP, WDU, WDL (wood deck), MPP, MPL
+#                     (masonry/concrete patio), SPP, SPU, SPL (stone or
+#                     tile patio), MTP, MTL (masonry terrace)
+#   basement_area_sqft  area over BFF (basement), BPF (part basement),
+#                     UBL (unfinished basement)
+# The member lists only sub-areas that exist, so flags are true or null
+# and areas null for an account without one. BAS/BAU (base area) are
+# the living floors and are not read (building_res carries the area).
+#
+# MEASURED (2026-09-13): 6,394,220 rows, every account in the roll.
+# Share of the 1,157,703 single-family (state class A1) accounts with a
+# value, or the flag true: garage_area_sqft, garage_type and has_garage
+# 70.7% (median 420; MGP on 78%), has_carport 4.4%, porch_area_sqft
+# 87.1%, deck_area_sqft 19.0%, basement_area_sqft under 0.1%.
+
+description: >-
+  Harris County, TX appraisal building sub-areas (HCAD PDATA exterior):
+  attached garage, porch, deck and patio, and basement areas, carport
+  flag.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "exterior.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  sub_area_code: sar_cd
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: sub_area_code
+    output: sub_area_code
+  - type: unary
+    operation: to_numeric
+    input: area
+    output: sub_area
+  # Masks: 1 on the named codes, null elsewhere.
+  - type: remap
+    input: sub_area_code
+    mapping: {"MGP": 1, "MGL": 1, "FGP": 1, "FGL": 1}
+    output: garage_mask
+  - type: expression
+    expression: "sub_area * garage_mask"
+    inputs: [sub_area, garage_mask]
+    output: garage_area_sqft
+  - type: remap
+    input: sub_area_code
+    mapping: {"MGP": "MGP", "MGL": "MGL", "FGP": "FGP", "FGL": "FGL"}
+    output: garage_type
+  - type: remap
+    input: sub_area_code
+    mapping: {"MGP": true, "MGL": true, "FGP": true, "FGL": true}
+    output: has_garage
+  - type: remap
+    input: sub_area_code
+    mapping: {"CRP": true, "CRL": true}
+    output: has_carport
+  - type: remap
+    input: sub_area_code
+    mapping: {"OFP": 1, "OFU": 1, "OFL": 1, "OMP": 1, "OMU": 1, "OML": 1,
+              "EFP": 1, "EFU": 1, "EFL": 1, "EMP": 1, "EMU": 1, "EML": 1}
+    output: porch_mask
+  - type: expression
+    expression: "sub_area * porch_mask"
+    inputs: [sub_area, porch_mask]
+    output: porch_area_sqft
+  - type: remap
+    input: sub_area_code
+    mapping: {"WDP": 1, "WDU": 1, "WDL": 1, "MPP": 1, "MPL": 1, "SPP": 1,
+              "SPU": 1, "SPL": 1, "MTP": 1, "MTL": 1}
+    output: deck_mask
+  - type: expression
+    expression: "sub_area * deck_mask"
+    inputs: [sub_area, deck_mask]
+    output: deck_area_sqft
+  - type: remap
+    input: sub_area_code
+    mapping: {"BFF": 1, "BPF": 1, "UBL": 1}
+    output: basement_mask
+  - type: expression
+    expression: "sub_area * basement_mask"
+    inputs: [sub_area, basement_mask]
+    output: basement_area_sqft
+
+drop_columns:
+  - sub_area_code
+  - sub_area
+  - garage_mask
+  - porch_mask
+  - deck_mask
+  - basement_mask
+
+aggregation_function:
+  garage_area_sqft: sum
+  garage_type: first
+  has_garage: max
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  basement_area_sqft: sum
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: sub-areas

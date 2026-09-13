@@ -31,7 +31,7 @@ description: >-
   acreage, zoning, subdivision, deed reference) from the county ArcGIS
   layer. No assessed values.
 
-admin_id: US-GA-CE
+admin_id: US-GA-CHE
 
 entity:
   entity_type: parcel

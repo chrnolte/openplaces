@@ -1,0 +1,108 @@
+# Recipe: McLennan County, TX certified appraisal export, improvement
+# features, bedrooms (MCAD). Sibling of US-TX-MCL_property-mclennancad-
+# 2026; read that recipe's header for the download route (a manual
+# placement) and the layout.
+#
+# SOURCE MEMBER. PACS File #9, APPRAISAL_IMPROVEMENT_DETAIL_ATTR (87
+# characters wide): one row per improvement detail per attribute. The
+# district prefixes its attribute names with a 2-digit number. Bedrooms
+# are "21 No of Bedrooms", coded "1 Bd" to "8 Bd"; the recipe reads the
+# leading integer.
+#
+# MEASURED on the 2026 certified export (2026-07-29): 79,510 rows over
+# 77,048 properties, every code parsed. Of the properties whose
+# improvements carry each state class (File #7): 91.2% of 76,240
+# single-family (A), 86.2% of 3,209 multifamily (B), 76.8% of 6,270
+# rural improved (E), 0.1% of 2,476 mobile homes (M). Median 3, max 8.
+#
+# ROW RULE. 270 of 79,222 improvements carry two or more bedroom rows,
+# only 36% of them equal, mostly on two main-area details (MA1+MA1).
+# The first row per (prop_id, imprv_id) is kept and buildings are then
+# summed. Keeping the first instead of the max changes 21 property
+# totals; summing within the building instead would change 267 (0.3%).
+# 1,792 properties carry bedrooms on more than one improvement.
+#
+# NOT MAPPED. "30 Bedrms Per Unit" (189 rows, 87 properties, mostly
+# multifamily) is a typical-unit figure, not a building total.
+
+description: >-
+  McLennan County, TX certified appraisal export, improvement features
+  member: bedrooms per building, summed to the property.
+
+admin_id: US-TX-MCL
+
+entity:
+  entity_type: property
+  source:
+    source_id: mclennancad
+    # Same download as the roll; see its terms note.
+    license: >-
+      site statement: 'considered in the public domain and is distributed
+      without warranty of any kind'
+    terms_url: "https://www.mclennancad.org/"
+    redistribution_restricted: false
+    portal_url: "https://www.mclennancad.org/"
+    # No download_url: the file needs the portal's session token; see
+    # the roll's header for where to place it.
+  version: 2026
+
+compressed_file_name: "DATA EXPORT 7.29.26.zip"
+uncompressed_file_name: "2026-07-29_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 wide in this export.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: "imprv_attr_desc == '21 No of Bedrooms'"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_bedrooms
+    args:
+      pattern: '^(?P<n>\d+)'
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-MCL_property-mclennancad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

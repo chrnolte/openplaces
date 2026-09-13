@@ -1,0 +1,175 @@
+# Recipe: Johnson County, TX certified appraisal roll, building
+# segments, building features (JCAD). Same member (externalbldse.tab)
+# and join key as US-TX-JOH_property-johnsoncad-2026_bedrooms; read its
+# header first.
+#
+# WHAT IS MAPPED. The member is long: one row per building (bld_id) per
+# segment type (bld_tp), the value a code in bld_se_cd. Four types are
+# read, in JCAD's own codes:
+#   EW Exterior Walls  exterior_wall (BV brick veneer, SV stone veneer,
+#                      FH frame house, HP hardiplank and so on)
+#   RC Roofing         roof_material (CR comp shingle, MR metal, WS wood
+#                      shingles, AS, TR, TG)
+#   FG HVAC            heating_type (CA central A/H, FF floor furnace)
+#   FG HVAC            has_central_air: true for CA and AC (central A/H)
+#   FP Fireplace       n_fireplaces: the code is the count (1 to 4)
+#   FN Foundation      foundation_description (CS slab, PF post, PB
+#                      pier/beam, CB concrete block)
+#   FR Frame           construction_description (WF wood, SF steel)
+# The two descriptions keep JCAD's codes; curate translates them into
+# the coded foundation_type and construction_type.
+# Rows coded UNASSIGNED (75% of EW rows) are dropped. The member lists
+# only what was recorded: an account without an FP row has no
+# fireplace count (null, not 0), and a floor furnace does not say there
+# is no air conditioning, so has_central_air is never false here.
+# Not mapped: RS Roof Type (a shape), IF Flooring (no registry home),
+# and COND and AMN, whose rows carry a factor in bld_se_units and no
+# code.
+#
+# REDUCTION. The first row per building and type (EW has several on
+# 7.1% of buildings); codes take the first building's, the flag the
+# max, fireplaces the sum over buildings.
+#
+# MEASURED (2026-09-13): 270,195 rows kept; 98.4% of their accounts
+# are in the roll. Share of the 49,093 single-family roll accounts
+# (BUILDING PTD A1) with a value: exterior_wall 93.1%, roof_material
+# 89.9%, heating_type 84.3%, has_central_air true 84.0%, n_fireplaces
+# 51.9% (median 1), foundation_description 92.4% (CS on 88%),
+# construction_description 12.0% (WF on 99%).
+
+description: >-
+  Johnson County, TX certified appraisal roll, building segments member:
+  exterior wall, roofing, HVAC and fireplace count per building.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalbldse.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  segment_code: bld_se_cd
+
+query: >-
+  bld_tp in ['EW', 'RC', 'FG', 'FP', 'FN', 'FR']
+  and cd_dscr != 'UNASSIGNED'
+
+# First row per building and type; see REDUCTION.
+drop_duplicates: [parcel_id, bld_id, bld_tp]
+
+transformations:
+  # "R" + nine-digit parcel_id is the roll's ACCOUNT; see the bedrooms
+  # recipe's JOIN KEY.
+  - type: string
+    operation: zfill
+    input: parcel_id
+    args:
+      width: 9
+    output: parcel_id_assessor
+  - type: string
+    operation: add_prefix
+    input: parcel_id_assessor
+    args:
+      prefix: "R"
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: segment_code
+    output: segment_code
+  # "type|code", so each attribute reads only its own rows.
+  - type: string
+    operation: concat
+    inputs: [bld_tp, segment_code]
+    args:
+      sep: "|"
+    output: segment_key
+  - type: string
+    operation: extract_named
+    input: segment_key
+    args:
+      pattern: '^EW\|(?P<v>\S+)$'
+    output: exterior_wall
+  - type: string
+    operation: extract_named
+    input: segment_key
+    args:
+      pattern: '^RC\|(?P<v>\S+)$'
+    output: roof_material
+  - type: string
+    operation: extract_named
+    input: segment_key
+    args:
+      pattern: '^FG\|(?P<v>\S+)$'
+    output: heating_type
+  - type: remap
+    input: segment_key
+    mapping: {"FG|CA": true, "FG|AC": true}
+    output: has_central_air
+  - type: string
+    operation: extract_named
+    input: segment_key
+    args:
+      pattern: '^FN\|(?P<v>\S+)$'
+    output: foundation_description
+  - type: string
+    operation: extract_named
+    input: segment_key
+    args:
+      pattern: '^FR\|(?P<v>\S+)$'
+    output: construction_description
+  - type: string
+    operation: extract_named
+    input: segment_key
+    args:
+      pattern: '^FP\|(?P<v>\d+)$'
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+
+drop_columns:
+  - parcel_id
+  - bld_id
+  - bld_tp
+  - segment_code
+  - segment_key
+
+aggregation_function:
+  exterior_wall: first
+  roof_material: first
+  heating_type: first
+  has_central_air: max
+  n_fireplaces: sum
+  foundation_description: first
+  construction_description: first
+
+supplements: US-TX-JOH_property-johnsoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: building-features

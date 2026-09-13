@@ -34,8 +34,9 @@ import pandas as pd
 from openplaces.core.schema import AdminId
 from openplaces.geo.polygon import points_from_coords
 from openplaces.io import parquet_columns, read_parquet, to_parquet
-from openplaces.io.bundle_terms import bundle_terms, format_notice
+from openplaces.io.bundle_terms import bundle_terms, format_notice, restricted_inputs
 from openplaces.io.readers import get_admin
+from openplaces.io.redaction import find_restricted, merge_counts, withhold
 from openplaces.recipe import (
     get_output_path,
     get_process_admin_level,
@@ -54,6 +55,11 @@ INTERNAL_COLUMNS = ('_join_id', 'bbox')
 # plain columns in the canonical table, and consumed into the point
 # geometry (so dropped) in the `_point` file.
 COORDINATE_COLUMNS = ('long', 'lat')
+
+# A team bundle's region id is its base region's plus this suffix, and
+# its files sit in this subdirectory beside the base region's bundle.
+TEAM_SUFFIX = '.team'
+TEAM_DIR = 'team'
 
 
 def delivery_regions(recipe) -> list[dict]:
@@ -126,6 +132,27 @@ def delivery_regions(recipe) -> list[dict]:
                 'admin_level': default_level,
                 'admin_ids': list(dict.fromkeys(rows['admin_id'].dropna())),
                 'admin_id': str(anchor.iat[0]) if len(anchor) else None,
+                'audience': 'public',
+            }
+        )
+    # A team bundle is a second delivery of a declared region, for the
+    # research team only: it keeps the values of sources a person has
+    # cleared for team sharing (`team_sharing_permitted`), which the
+    # region's own bundle withholds. Its own id keeps it a separate job
+    # and a separate file, so it can never overwrite the public one.
+    for name in block.get('team_regions') or []:
+        base = next((r for r in regions if r['region_id'] == str(name)), None)
+        if base is None:
+            raise KeyError(
+                f'team_regions names {name!r}, which is not one of the '
+                'declared delivery regions.'
+            )
+        regions.append(
+            {
+                **base,
+                'region_id': f'{name}{TEAM_SUFFIX}',
+                'audience': 'team',
+                'base_region_id': str(name),
             }
         )
     return regions
@@ -308,6 +335,34 @@ def share_columns(recipe) -> tuple[list[str], list[str]]:
     """
     share = recipe.get('share') or {}
     return list(share.get('columns') or []), list(share.get('point_columns') or [])
+
+
+class RestrictedInputError(RuntimeError):
+    """A delivery would pass on data whose terms forbid passing it on."""
+
+
+def _refuse_restricted_cells(frame, sources, admin_id_column):
+    """Raise if any value a restricted source supplied is still in *frame*.
+
+    The backstop behind `io.redaction.withhold`. It runs on what is about
+    to be written, so it fires only on restricted data actually present:
+    a source that merely feeds the recipe, or whose values were withheld,
+    does not stop the delivery. There is no override; shipping such
+    values is a decision for the licensor, not for a flag.
+    """
+    found = find_restricted(frame, sources, admin_id_column)
+    if not found['counts']:
+        return
+    lines = [
+        f'  {source_id}: {count["rows"]:,} rows, {count["cells"]:,} values'
+        for source_id, count in sorted(found['counts'].items())
+    ]
+    raise RestrictedInputError(
+        'Values from sources whose terms restrict passing their data on '
+        'are still in the delivery after redaction:\n'
+        + '\n'.join(lines)
+        + '\nThe delivery was not written.'
+    )
 
 
 def _share_spec(recipe):
@@ -531,6 +586,13 @@ def delivery_paths(
         recipe = get_recipe_by_id(recipe)
     spec = delivery_spec(recipe, region)
 
+    if spec.get('audience') == 'team':
+        # Beside its base region's bundle, never in place of it.
+        base = delivery_paths(
+            recipe, admin_id, admin_level, output_dir, spec['base_region_id']
+        )
+        return {role: path.parent / TEAM_DIR / path.name for role, path in base.items()}
+
     if admin_level is None:
         admin_level = spec.get('admin_level', 2)
     if output_dir is None:
@@ -555,10 +617,12 @@ def delivery_paths(
     # region's bundle in a subdirectory named after it; regions with a
     # unit of their own (the CHEER NC/TX pair) keep their flat paths.
     if region is not None:
+        # Team bundles nest under their base region (above), so they are
+        # not siblings here and cannot move a public bundle's path.
         siblings = [
             r['region_id']
             for r in delivery_regions(recipe)
-            if r.get('region_id') is not None
+            if r.get('region_id') is not None and r.get('audience') != 'team'
         ]
         if len(siblings) > 1 and region in siblings:
             unit_of = {
@@ -729,6 +793,19 @@ def export_delivery(
             f'No curated output found under {admin_id} for '
             f'{recipe.get("recipe_id", recipe)!r}; nothing to deliver.'
         )
+    # Walked per pooled unit, so the county sources the pipeline
+    # auto-discovered there are found too. Only candidates: whether any
+    # of their data is in the bundle is decided on the rows below.
+    restricted = restricted_inputs(recipe, [process_id for process_id, _ in inputs])
+    # A team bundle keeps what a person cleared for team sharing; every
+    # other bundle, and every other restricted source, is withheld.
+    audience = delivery_spec(recipe, region).get('audience', 'public')
+    team_shared = [
+        entry
+        for entry in restricted
+        if audience == 'team' and entry.get('team_sharing_permitted')
+    ]
+    restricted = [entry for entry in restricted if entry not in team_shared]
     admin_id_column = f'admin{process_level}_id'
     # Unlocked up front because the finished files are moved onto these
     # names, which Windows refuses for a read-only destination.
@@ -779,6 +856,11 @@ def export_delivery(
     # evidence pass rebuilds rows county by county, so neither lands
     # in file order on its own.
     pooled = pooled.sort_index()
+    # A restricted source's values are withheld, not the delivery: one
+    # county's terms must not hold every other county's rows back. The
+    # check after it is the backstop, and fires only on values present.
+    pooled, withheld_first = withhold(pooled, restricted, admin_id_column)
+    _refuse_restricted_cells(pooled, restricted, admin_id_column)
     if n_dropped and verbose:
         print(
             f'Resolved {n_dropped} entity id(s) curated by two adjacent '
@@ -816,6 +898,9 @@ def export_delivery(
         if 'geometry_source' in pooled.columns
         else None
     )
+    # The evidence file repeats these sidecars; it must carry the
+    # redacted tokens ('withheld'), not the ones pass one replaced.
+    redacted_sources = pd.DataFrame(pooled[source_columns]).copy()
     del pooled, canonical, point
 
     delivered = {*declared, *source_columns, *INTERNAL_COLUMNS, 'geometry'}
@@ -831,9 +916,32 @@ def export_delivery(
 
     evidence = pd.concat(evidence_frames).sort_index()
     evidence_frames.clear()
+    for column in redacted_sources.columns:
+        if column in evidence.columns:
+            evidence[column] = redacted_sources[column].reindex(evidence.index)
+    # Scope is tested on each row's unit, which this pass does not read;
+    # it is borrowed from pass one under a name no curated column uses.
+    unit_column = '_delivery_unit'
+    evidence[unit_column] = kept.reindex(evidence.index)
+    evidence, withheld_second = withhold(evidence, restricted, unit_column)
+    _refuse_restricted_cells(evidence, restricted, unit_column)
+    evidence = evidence.drop(columns=unit_column)
     to_parquet(evidence, staged['evidence'])
 
     terms = bundle_terms(recipe, geometry_source)
+    withheld = merge_counts(withheld_first, withheld_second)
+    by_source = {entry['source_id']: entry for entry in restricted}
+    terms['withheld'] = [
+        {
+            'source_id': source_id,
+            'license': by_source[source_id]['license'],
+            'terms_url': by_source[source_id]['terms_url'],
+            **count,
+        }
+        for source_id, count in sorted(withheld.items())
+    ]
+    terms['audience'] = audience
+    terms['team_shared'] = team_shared
     staged['terms'].write_text(format_notice(recipe, terms, admin_id), encoding='utf-8')
 
     # Every file exists; only now does the shipped bundle change.

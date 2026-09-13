@@ -37,7 +37,7 @@ description: >-
   values, year built, heated area, land use, zoning, owner, situs, last
   sale) from the county bulk GeoJSON export.
 
-admin_id: US-GA-CY
+admin_id: US-GA-CLA
 
 entity:
   entity_type: parcel

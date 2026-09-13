@@ -7,6 +7,7 @@ import pytest
 
 from openplaces.io.admin_codes import assign_admin_ids
 from openplaces.io.admin_codes import frame as frame_module
+from openplaces.io.admin_codes.anchors import normalize_name
 from openplaces.io.admin_codes.frame import _placeholder_codes
 from openplaces.io.admin_codes.registry import load_registry
 
@@ -23,7 +24,7 @@ def spine_id(parent, name, level=3):
     2026-08 re-mint and is 'US-NY-AL' now.
     """
     pins, _, _ = load_registry(level)
-    code = pins.get((parent, name))
+    code = pins.get((parent, normalize_name(name)))
     assert code is not None, f'the spine no longer names {name} under {parent}'
     return f'{parent}-{code}'
 
@@ -194,7 +195,10 @@ class TestSharedSourceCode:
     def two_pinned_siblings(self, monkeypatch):
         # A fabricated parent whose two units the spine records under
         # distinct names and distinct source codes.
-        pins = {('XX-AA', 'Alpha'): 'AL', ('XX-AA', 'Bravo'): 'BR'}
+        pins = {
+            ('XX-AA', normalize_name('Alpha')): 'AL',
+            ('XX-AA', normalize_name('Bravo')): 'BR',
+        }
         by_external = {('XX-AA', '101'): 'AL', ('XX-AA', '202'): 'BR'}
         monkeypatch.setattr(
             frame_module,
@@ -238,7 +242,7 @@ class TestReviewedGroupLength:
     def pinned_two_reviewed_three(self, monkeypatch):
         # A fabricated parent whose one existing sibling was minted two
         # characters wide, with a reviewed row asking for three.
-        pins = {('XX-AA', 'Alpha'): 'AL'}
+        pins = {('XX-AA', normalize_name('Alpha')): 'AL'}
         monkeypatch.setattr(
             frame_module,
             'load_registry',

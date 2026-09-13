@@ -28,7 +28,7 @@ description: >-
   floor area, land use, zoning, owner, situs) from the county open-data
   bulk GeoJSON export.
 
-admin_id: US-GA-FO
+admin_id: US-GA-FOR
 
 entity:
   entity_type: parcel

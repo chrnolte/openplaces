@@ -1,0 +1,262 @@
+# Recipe: Dallas County, TX residential detail table (DCAD). Supplement
+# of US-TX-DAL_property-dcad-2026; see that recipe for the download, the
+# terms and the join key.
+#
+# SOURCE MEMBER. RES_DETAIL.CSV ("Table containing information on
+# residential taxable objects", per the shipped TABLES AND FIELD
+# NAMES.xlsx): one row per residential taxable object, keyed ACCOUNT_NUM
+# plus TAX_OBJ_ID. 633,725 rows over 633,629 accounts; 88 accounts carry
+# 2 to 4 rows (distinct taxable objects, no repeated key). Room fields
+# are separate integer columns, fully populated:
+#   NUM_BEDROOMS    median 3, p99 5, max 42
+#   NUM_FULL_BATHS  median 2, p99 5, max 42 (not a fixture count)
+#   NUM_HALF_BATHS  median 0, p99 2, max 14
+#   NUM_STORIES_DESC  ONE STORY 420,021, TWO STORIES 110,830,
+#     UNASSIGNED 46,037, ONE AND ONE HALF STORIES 44,921, THREE STORIES
+#     9,447, TWO AND ONE HALF STORIES 2,469
+# There is no total-room field. NUM_KITCHENS and NUM_WET_BARS have no
+# registry home and are left out.
+#
+# SENTINEL. 58,685 rows carry 0 bedrooms. They are not dwellings:
+# 31,480 are BLDG_CLASS_DESC "LAND ONLY", 12,931 "MOBILE HOME" (class M
+# rows carry zeros in every room field), and 79.0% of all zero-bedroom
+# rows also have 0 full baths. The recipe drops, with `query`, every row
+# whose bedroom, full-bath and half-bath counts are all 0, so those
+# accounts get no room counts (null) rather than zeros. A row with a
+# bath but 0 bedrooms (an efficiency unit) is kept with its 0. On the
+# rows kept, a 0 half-bath count is a real zero.
+#
+# ENCODING. n_bathrooms = full + 0.5 x half (the registry definition),
+# n_half_bathrooms = NUM_HALF_BATHS. Stories are read off the text
+# description; UNASSIGNED becomes null.
+#
+# CONDOMINIUMS. 26,101 rows are BLDG_CLASS_DESC CONDOMINIUM (SPTD A13).
+# They are unit rows, not building totals: median 2 bedrooms, 2 full
+# baths, 1,090 sq ft living area, NUM_UNITS 1 on 26,053 of them, and a
+# median of 10 condo accounts share one GIS parcel.
+#
+# MEASURED COVERAGE (accounts by SPTD class, ACCOUNT_APPRL_YEAR): A
+# 573,730 - row 99.9%, bedrooms 97.4%, full baths 99.5%, half baths
+# 29.7%, stories 99.5%; B 20,151 - 81.7 / 80.8 / 81.6 / 20.7 / 81.7%;
+# E 80 - 47.5 / 22.5 / 21.2 / 8.8 / 22.5%; M 12,283 - row 95.3%, no
+# room counts at all.
+#
+# REDUCTION. Rooms sum over an account's taxable objects; stories take
+# the max.
+#
+# BUILDING FEATURES (added 2026-09-13). The same row carries the
+# building's features, mapped in the source's own vocabulary:
+#   TOT_LIVING_AREA_SF  living_area_sqft (TOT_MAIN_SF is the main
+#                       area: equal on 97.6% of class A rows, never
+#                       larger; not mapped)
+#   EFF_YR_BUILT        effective_year_built (equals YR_BUILT on 95.1%)
+#   CDU_RATING_DESC     condition (EXCELLENT ... UNDESIRABLE)
+#   HEATING_TYP_DESC    heating_type
+#   AC_TYP_DESC         has_central_air: CENTRAL FULL or PARTIAL true,
+#                       WINDOW, WALL or NONE false
+#   EXT_WALL_DESC       exterior_wall
+#   ROOF_MAT_DESC       roof_material
+#   FOUNDATION_TYP_DESC foundation_description (SLAB, PIER AND BEAM ...)
+#   CONSTR_FRAM_TYP_DESC construction_description (FRAME, METAL ...)
+#   BASEMENT_DESC       has_basement: FULL or PARTIAL true, NONE false
+#   POOL_IND            has_pool: Y true, N false (every row says)
+#   NUM_FIREPLACES      n_fireplaces (0 is a real zero)
+#   YR_BUILT            year_built (the earliest object's; 0 and years
+#                       outside 1700 to 2026 are nulled)
+#   NUM_UNITS           n_dwellings (1 on condominium unit rows; 0 is
+#                       nulled)
+# UNASSIGNED is nulled in every coded field, and so is MANUALLY ENTER
+# DEPRECIATION in CDU_RATING_DESC (a pricing flag, not a condition).
+# The two descriptions keep DCAD's words; curate translates them into
+# the coded foundation_type and construction_type.
+# Not mapped: ROOF_TYP_DESC (a shape);
+# BLDG_CLASS_DESC (two-digit classes whose meaning the shipped
+# dictionary does not give); DECK_IND and SPA_IND (no registry home).
+# Codes take the first object's value, flags the max, counts and areas
+# the sum, effective year the max.
+#
+# MEASURED (features, 2026-09-13): share of the 512,454 single-family
+# (SPTD A11) accounts with a value after the query and reduction.
+# living_area_sqft 99.8% (median 1,756), effective_year_built 99.8%,
+# year_built 99.8% (median 1974), n_fireplaces 99.8% (0 on 37.9%),
+# condition 99.4%, heating_type 99.7%, exterior_wall 99.7%,
+# roof_material 99.7%, foundation_description 99.8%,
+# construction_description 99.7%, n_dwellings 99.7% (median 1),
+# has_central_air 99.7% (true 91.7%, false 8.1%), has_basement 99.5%
+# (true 0.3%), has_pool 99.8% (true 11.8%).
+
+description: >-
+  Dallas County, TX appraisal residential detail table (DCAD RES_DETAIL):
+  rooms, stories, living area, condition, materials, climate, basement,
+  pool and fireplaces per account.
+
+admin_id: US-TX-DAL
+
+entity:
+  entity_type: property
+  source:
+    source_id: dcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (as-is, no-warranty disclaimer in the README; no licence terms)"
+    terms_url: "https://www.dallascad.org/DataProducts.aspx"
+    redistribution_restricted: null
+    portal_url: "https://www.dallascad.org/DataProducts.aspx"
+    download_url: "https://www.dallascad.org/ViewPDFs.aspx?type=3&id=%5C%5CDCAD.ORG%5CWEB%5CWEBDATA%5CWEBFORMS%5CDATA%20PRODUCTS%5CDCAD2026_CURRENT.ZIP"
+  version: 2026
+
+compressed_file_name: "DCAD2026_CURRENT.ZIP"
+uncompressed_file_name: "RES_DETAIL.CSV"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  ACCOUNT_NUM: str
+  TAX_OBJ_ID: str
+
+columns:
+  parcel_id_assessor: ACCOUNT_NUM
+  n_bedrooms: NUM_BEDROOMS
+  n_bathrooms: NUM_FULL_BATHS
+  n_half_bathrooms: NUM_HALF_BATHS
+  n_stories: NUM_STORIES_DESC
+  living_area_sqft: TOT_LIVING_AREA_SF
+  effective_year_built: EFF_YR_BUILT
+  n_fireplaces: NUM_FIREPLACES
+  condition: CDU_RATING_DESC
+  heating_type: HEATING_TYP_DESC
+  exterior_wall: EXT_WALL_DESC
+  roof_material: ROOF_MAT_DESC
+  year_built: YR_BUILT
+  n_dwellings: NUM_UNITS
+  foundation_description: FOUNDATION_TYP_DESC
+  construction_description: CONSTR_FRAM_TYP_DESC
+
+# Rows with no room recorded at all are not dwellings; see SENTINEL.
+query: "n_bedrooms > 0 or n_bathrooms > 0 or n_half_bathrooms > 0"
+
+transformations:
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: expression
+    expression: "n_dwellings.where(n_dwellings > 0)"
+    inputs: [n_dwellings]
+    output: n_dwellings
+  # UNASSIGNED (and, for condition, the pricing flag) becomes null;
+  # see BUILDING FEATURES.
+  - type: string
+    operation: extract_named
+    input: condition
+    args:
+      pattern: '^(?P<v>(?!UNASSIGNED$|MANUALLY ENTER DEPRECIATION$).+)$'
+    output: condition
+  - type: string
+    operation: extract_named
+    input: heating_type
+    args:
+      pattern: '^(?P<v>(?!UNASSIGNED$).+)$'
+    output: heating_type
+  - type: string
+    operation: extract_named
+    input: exterior_wall
+    args:
+      pattern: '^(?P<v>(?!UNASSIGNED$).+)$'
+    output: exterior_wall
+  - type: string
+    operation: extract_named
+    input: roof_material
+    args:
+      pattern: '^(?P<v>(?!UNASSIGNED$).+)$'
+    output: roof_material
+  - type: string
+    operation: extract_named
+    input: foundation_description
+    args:
+      pattern: '^(?P<v>(?!UNASSIGNED$).+)$'
+    output: foundation_description
+  - type: string
+    operation: extract_named
+    input: construction_description
+    args:
+      pattern: '^(?P<v>(?!UNASSIGNED$).+)$'
+    output: construction_description
+  - type: remap
+    input: AC_TYP_DESC
+    mapping:
+      "CENTRAL FULL": true
+      "CENTRAL PARTIAL": true
+      "WINDOW": false
+      "WALL": false
+      "NONE": false
+    output: has_central_air
+  - type: remap
+    input: BASEMENT_DESC
+    mapping:
+      "FULL": true
+      "PARTIAL": true
+      "NONE": false
+    output: has_basement
+  - type: remap
+    input: POOL_IND
+    mapping:
+      "Y": true
+      "N": false
+    output: has_pool
+  - type: remap
+    input: n_stories
+    mapping:
+      "ONE STORY": 1.0
+      "ONE AND ONE HALF STORIES": 1.5
+      "TWO STORIES": 2.0
+      "TWO AND ONE HALF STORIES": 2.5
+      "THREE STORIES": 3.0
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half; both columns are fully populated.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  effective_year_built: max
+  n_fireplaces: sum
+  condition: first
+  heating_type: first
+  exterior_wall: first
+  roof_material: first
+  has_central_air: max
+  has_basement: max
+  has_pool: max
+  year_built: min
+  n_dwellings: sum
+  foundation_description: first
+  construction_description: first
+
+supplements: US-TX-DAL_property-dcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Same conversion and tolerance as the roll, so both keys agree.
+  instruction:
+    US-TX-DAL:
+      conv: "string_lengths: 2 2 4 4 4 & skip_empty: 1"
+      tolerance: 0.05
+
+save_to:
+  data_dir: cache
+  filename: res-detail

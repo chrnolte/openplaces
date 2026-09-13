@@ -1,0 +1,96 @@
+# Recipe: Kerr County, TX certified appraisal roll, land detail member
+# (PACS File #10, one row per land segment): street frontage. Same
+# download as US-TX-KER_property-kerrcad-2025; read that roll's header
+# for the source and its terms.
+#
+# READING. effective_front is the segment's effective front footage, the
+# frontage the district prices a front-foot lot on (adjusted for shape,
+# not a surveyed lot line). Zero means the segment is not priced by the
+# front foot and is read as missing. Segments whose land type
+# description names water (water, lake, river, canal, creek, bay, shore,
+# beach, marina) are left out, so a waterfront footage is never read as
+# street frontage. A property with several segments takes the largest
+# frontage.
+#
+# MEASURED on the 2025 export (aggregates only; share of properties with
+# a value): A is the 15,825 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# frontage_ft A 39.7% (B 38.7%, E 0.2%, M 0.4%).
+
+description: >-
+  Kerr County, TX certified appraisal roll, land detail member: effective street
+  frontage per property, in feet.
+
+admin_id: US-TX-KER
+
+entity:
+  entity_type: property
+  source:
+    source_id: kerrcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms found on the exports page or /disclaimer/)
+    redistribution_restricted: null
+    portal_url: "https://kerrcad.org/appraisal-exports/"
+    download_url: "https://kerrcad.org/wp-content/uploads/2025/11/2025-Cert-Export-Files.zip"
+  version: 2025
+
+compressed_file_name: "2025-Cert-Export-Files.zip"
+uncompressed_file_name: "2025-11-25_004391_APPRAISAL_LAND_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #10 (Land Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # land_seg_id
+  - [filler, 10] # land_type_cd
+  - [land_type_desc, 25]
+  - [filler, 5] # state_cd
+  - [filler, 1] # land_seg_homesite
+  - [filler, 14] # size_acres
+  - [filler, 14] # size_square_feet
+  - [effective_front, 14]
+
+columns:
+  frontage_ft: effective_front
+
+query: >-
+  ~land_type_desc.str.upper().str.contains(
+  'WATER|LAKE|RIVER|CANAL|CREEK|BAY|SHORE|BEACH|MARINA', na=False)
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: frontage_ft
+    output: frontage_ft
+  - type: expression
+    expression: frontage_ft.where(frontage_ft > 0)
+    inputs: [frontage_ft]
+    output: frontage_ft
+
+drop_columns:
+  - land_type_desc
+
+aggregation_function:
+  frontage_ft: max
+
+supplements: US-TX-KER_property-kerrcad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: frontage

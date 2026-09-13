@@ -1,0 +1,131 @@
+# Recipe: Guadalupe County, TX certified appraisal roll (Guadalupe
+# Appraisal District, guadalupead.org). Same PACS 8.0.34 layout, offsets
+# and join-key trap as US-TX-VIC_property-victoriacad-2026; see that
+# recipe's header for the general shape of this source family. This
+# header covers only what differs for Guadalupe.
+#
+# SOURCE. "2026 GCO Certified Appraisal Roll Supp 0", values at
+# certification. Layout 8.0.34 ships inside the zip, and every mapped
+# offset matches the Victoria template (record width 9,714). The members
+# sit in a folder of the same name inside the zip.
+#
+# NOTE on coverage, measured on the 2026 export (113,486 rows):
+#   land_state_cd   88.3%   imprv_state_cd  75.1%
+#   geo_id         100.0%   market_value   100.0%
+# situs_city (26.6%) and situs_zip (24.1%) are thin in this export;
+# situs_street is on 95.6% of rows.
+#
+# NOTE on the join key. 80.6% of the roll's zero-stripped prop_ids are
+# in TxGIO's Prop_ID and 97.6% of TxGIO's 93,728 Guadalupe ids are in
+# the roll: the roll also carries personal-property and mineral
+# accounts that TxGIO leaves out by design.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 66,698 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 94.7% (B 99.5%, E 89.0%, M 0.2%), 587
+# distinct codes.
+
+description: >-
+  Guadalupe County, TX certified appraisal roll (PACS 8.0.34 export):
+  state land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-GUA
+
+entity:
+  entity_type: property
+  source:
+    source_id: guadalupecad
+    # Checked 2026-09-12 by fetching the roll page: it carries only a
+    # site-footer copyright over the website itself and states no terms
+    # for the roll (guadalupead.org/disclaimer/ is 404). A public
+    # information charges PDF there applies to records requests, not to
+    # the posted files. Silence is not a grant.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://guadalupead.org/certified-appraisal-roll/"
+    download_url: "https://guadalupead.org/wp-content/uploads/2026/07/2026-GCO-Certified-Appraisal-Roll-Supp-0.zip"
+  version: 2026
+
+compressed_file_name: "2026-GCO-Certified-Appraisal-Roll-Supp-0.zip"
+uncompressed_file_name: "2026 GCO Certified Appraisal Roll Supp 0/2026-07-28_016967_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); offsets as in the Victoria template.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  # Land-plus-structure market value; see the Victoria template for why
+  # this is total_value and not appraised_val.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

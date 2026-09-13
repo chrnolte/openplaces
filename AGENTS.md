@@ -350,7 +350,17 @@ A recipe's rows must be the entity its `entity_type` names. **A tax roll's
 rows are properties**, condo rows included: a roll or CAMA table is one
 `property` recipe, never split by a condo flag, and a table whose rows are
 *details* of those properties (one row per building component) declares
-`supplements: <roll id>` so that it adds columns to them, never rows.
+`supplements: <roll id>` so that it adds columns to them, never rows. The
+roll may sit at a containing scope (a county appraiser's building table
+detailing the state DOR roll; a city table detailing MassGIS's statewide
+layer), and `supplements_layer: <entity type>` names an `additional_layers`
+entry of the host when the roll has no recipe id of its own
+(`recipe.get_supplemented_table` validates both). A supplement joins its
+roll on `parcel_id_local` unless `supplements_key: <column>` names a column
+both tables carry, for a roll whose `parcel_id_local` is built from an id
+the detail table lacks (Travis County TX links parcels on `geo_id` while
+its detail tables carry `prop_id`); keyed supplements are skipped by every
+other auto-discovered join, the parcel geospine's included.
 
 The stages divide the work, and **harmonize keeps redundancy minimal**:
 
@@ -375,13 +385,14 @@ The stages divide the work, and **harmonize keeps redundancy minimal**:
   from summing its properties' in a curate recipe, not from a
   harmonize-time copy.
 
-Known debt, not yet migrated: the parcel geospine's
+The parcel geospine's
 `link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
-still copies every property recipe's registry columns onto parcels in the
-geometry phase. Moving that to curate changes shipped outputs, so it is a
-planned migration (see
-`plans/florida-county-property-appraiser-bedrooms-bathrooms.md`), not a
-precedent to extend. New attributes follow the rule above.
+copies an explicit list of parcel-level columns (values, use codes,
+`building_style`, `n_dwellings`, address) and nothing else since
+2026-09-12; property-level attributes reach curated parcels through
+`aggregate_from_entities` (curate, `aggregation.py`). A county whose
+geospine predates that still carries the old wider copy until its next
+geometry rerun, which is why the curate step fills only what is empty.
 
 ### Recipes (`recipe.py`, `src/openplaces/recipes/`)
 
@@ -806,6 +817,34 @@ sit at admin level 2, so `RecipeDAG._delivery_in_scope` asks whether a requested
 unit is the bundle's own unit or an ancestor of it (`US`, `US-TX`), not merely
 whether it is coarse enough. `--config deliver=true` likewise only forces the
 regions the run actually touches.
+
+**It withholds what restricted sources supplied, and ships the rest.** A
+source recording `redistribution_restricted: true` or a `usage_requirement`
+may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
+walked per pooled unit because county parcel and property recipes reach a
+spine only through auto-discovery, which resolves per admin unit (an unscoped
+walk never saw Edgecombe's parcels feeding the NC bundle).
+`io.redaction.withhold` then removes that source's values from both read
+passes: a row whose `geometry_source` names it is left out, a cell whose
+`{col}_source` names it is emptied, and inside the source's county, columns
+named after an attribute its recipe maps (or with its entity suffix), or whose
+sidecar names only its layer (`parcel`), are emptied unless a sidecar names
+another specific source. Emptied cells' sidecars read `withheld`, and the
+notice lists each source's counts. `RestrictedInputError` is only the
+backstop: it fires if restricted values are still in the frames about to be
+written, never because a source merely feeds the recipe, so one county's
+terms cannot hold the rest of a bundle hostage. The rules over-withhold where
+a layer's sidecar cannot say which source filled it; that costs values, not
+a leak. A no-resale clause withholds nothing; the notice reports it.
+**Team bundles are the one exception, and never published.** A region listed
+under `share: delivery: team_regions:` also ships as `<region>.team`, in a
+`team/` subdirectory beside the region's own bundle (whose path does not
+move). A team bundle keeps the values of sources a person has cleared with
+`team_sharing_permitted: true` (Edgecombe's parcels, decided by the user
+2026-09-13), and its notice opens "TEAM-INTERNAL BUNDLE"; every other bundle
+withholds them, and uncleared sources are withheld from team bundles too.
+Asked for a delivery by admin unit alone, the DAG and `delivery_node` resolve
+to the public bundle: a team twin is only ever shipped by naming it.
 
 Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
 then evidence) so the wide evidence columns are never in memory alongside the

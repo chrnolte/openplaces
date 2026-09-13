@@ -1,0 +1,99 @@
+# Recipe: Belmont County, OH auditor roll, ISSG Parcel Characteristic
+# table. Supplement of US-OH-BE_property-belmontcounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per parcel characteristic, several per parcel. Type is the
+# category (Public Utilities, Topography, Neighborhood) and
+# Characteristic the value; the values do not repeat across
+# categories, so each output reads Characteristic alone.
+#
+#   sewer_type    SEWER, SEPTIC, WELL/SEPTIC, ALL
+#   water_source  WATER, WELL, WELL/SEPTIC, ALL
+#   topography    LEVEL, ROLLING, HIGH, LOW, SWAMPY, FLAT
+# ALL is the source's "all public utilities" and is kept as ALL in
+# both utility columns. ELECTRICITY and GAS, and the Neighborhood
+# ratings (STATIC, DECLINING, ...), are not read. Codes keep the
+# source's words; the first listed value per parcel is taken.
+# topography describes the parcel; it is read here because this
+# table is where the auditor publishes it.
+#
+# MEASURED 2026-09-13: 217,313 rows over 58,206 parcels, keys 99.58%
+# in the roll. On the 14,075 live land-use 510 properties:
+# sewer_type 93.9% (ALL 9,972, SEPTIC 1,965, SEWER 1,030,
+# WELL/SEPTIC 245); water_source 97.9% (ALL 9,972, WATER 3,481,
+# WELL/SEPTIC 185, WELL 136); topography 99.2% (LEVEL 5,422, ROLLING
+# 4,102, HIGH 2,738, LOW 1,697, SWAMPY 3).
+
+description: >-
+  Belmont County, OH ISSG Parcel Characteristic table: sewer, water
+  supply and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-BE
+
+entity:
+  entity_type: property
+  source:
+    source_id: belmontcounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://belmontcountyauditor.org/additional-links-property-data-downloads"
+    download_url: "https://belmontcountyauditor.org/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel Characteristic.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number
+
+transformations:
+  - type: remap
+    input: Characteristic
+    mapping:
+      SEWER: SEWER
+      SEPTIC: SEPTIC
+      WELL/SEPTIC: WELL/SEPTIC
+      ALL: ALL
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping:
+      WATER: WATER
+      WELL: WELL
+      WELL/SEPTIC: WELL/SEPTIC
+      ALL: ALL
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      LEVEL: LEVEL
+      ROLLING: ROLLING
+      HIGH: HIGH
+      LOW: LOW
+      SWAMPY: SWAMPY
+      FLAT: FLAT
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-BE_property-belmontcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

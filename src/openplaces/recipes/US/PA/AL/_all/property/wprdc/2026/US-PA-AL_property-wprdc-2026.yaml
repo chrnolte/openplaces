@@ -1,0 +1,256 @@
+# Recipe: Allegheny County, PA property assessment roll.
+#
+# Source: the Allegheny County Office of Property Assessments' roll as
+# published by the Western Pennsylvania Regional Data Center (WPRDC),
+# dataset "Property Assessments", resource `assessments.csv`. The
+# source_id names WPRDC because it is the publisher of this file; the
+# county's own site offers no bulk download of the roll.
+#
+# FORMAT. One CSV (435,301,146 bytes, 2026-09-12), 86 columns, a Tyler
+# iasWorld-style extract. Fetched once with the identified openplaces
+# user agent (HTTP 200, no gate). A data dictionary CSV sits on the same
+# dataset page.
+#
+# ROW SHAPE: one row per property. 584,999 rows and 584,999 distinct
+# PARID, so this is a roll, not a per-card detail table, and needs no
+# `supplements:` and no aggregation_function. CARDNUMBER is the number
+# of the one dwelling card carried on the row (1 on 448,032 rows, 2-45
+# on 1,332), not a card count: a parcel with several dwellings shows
+# only one card's structure. Condominium units carry their own PARID.
+#
+# CLASS (R Residential 523,743; C Commercial 35,870; G Government
+# 16,885; I Industrial 3,544; F Agricultural 2,227; U Utilities 1,943;
+# O Other 787) and its label CLASSDESC are mapped to use_group_code /
+# use_group; the 159 three-digit USECODE values and USEDESC labels to
+# use_subgroup_code / use_subgroup. USECODE keeps its leading zero
+# only because csv_dtype reads it as text.
+#
+# ROOM COUNTS, measured in memory through this recipe after
+# preprocessing (see pa_recipes_B validation, 2026-09-12). The card
+# fields (STYLE through CARDNUMBER) are filled on 76.8% of all rows,
+# the rest being land-only and non-dwelling parcels:
+#   residential rows (CLASS R)       523,743
+#   n_bedrooms > 0                    85.5%
+#   n_bathrooms > 0                   85.4%
+#   n_half_bathrooms > 0              38.9%
+#   n_rooms > 0                       85.5%
+#   n_stories > 0                     85.5%
+# About 14% of residential rows carry no card at all; most are
+# condominium units and parcels whose dwelling card sits on another
+# PARID. That was not traced record by record.
+#
+# Baths: FULLBATHS is the full count and HALFBATHS the half count, both
+# integers. n_bathrooms folds them as full + 0.5 x half below;
+# n_half_bathrooms keeps the half count.
+#
+# STORIES is a number with 7.0% fractional values on residential rows
+# (1.5 and 2.5; a few dozen rows read 1.7, 1.8, 2.7 or 2.8). Kept as
+# published.
+#
+# JOIN KEY: PARID, a 16-character block-and-lot number ('9999A99999999
+# 999' shape, fabricated). Under the bundled US-PA-AL conversion
+# (`simple`) 584,389 of 584,999 rows (99.9%) match PASDA's Allegheny
+# PIN (US-PA_parcel-pasda-2026), covering 99.98% of PASDA's 584,529
+# distinct keys. No override row is needed.
+#
+# BUILDING FEATURES (2026-09-13), decoded from the WPRDC data
+# dictionary (data-dictionary-open-data.csv on the dataset page):
+#   - living_area_sqft: FINISHEDLIVINGAREA, "finished living area, as
+#     measured from the outside", so living, not gross. area_sqft
+#     keeps the same field. No gross area is published.
+#   - quality_grade: GRADE (A, B, C, D, E, X, XX with + and -; C is
+#     average). condition: CONDITION (1 excellent, 7 very good,
+#     2 good, 3 average, 4 fair, 5 poor, 8 very poor, 6 unsound).
+#   - exterior_wall, roof_material, heating_type: the published labels
+#     EXTFINISH_DESC, ROOFDESC, HEATINGCOOLINGDESC. The last combines
+#     heat and cooling ("Central Heat with AC").
+#   - has_central_air: from that label (see the transformation).
+#   - has_basement: BASEMENT, a recorded type for every card.
+#   - has_garage: true where BSMTGARAGE (integral basement garage, in
+#     cars) is above 0, null elsewhere: attached and detached garages
+#     are not in this table, so a 0 is not a recorded absence.
+#     n_garage_spaces is not mapped for the same reason.
+#   - n_fireplaces: FIREPLACES, the number of wood-burning fireplace
+#     stacks.
+#   - tax_neighborhood_code: NEIGHCODE, the 2013 valuation
+#     neighborhood.
+# MEASURED in memory through this recipe on the 523,743 CLASS R rows
+# (the card fields are empty on about 14.5% of them, see above):
+#   living_area_sqft > 0      85.5%   (median 1,505)
+#   quality_grade, condition, exterior_wall filled   85.5%
+#   roof_material 85.4%; heating_type 85.4%
+#   has_central_air   true 51.6%, false 33.4%, null 14.9%
+#   has_basement      true 80.6%, false 4.3%, null 15.2% (crawl)
+#   has_garage        true 39.2%, null 60.8%
+#   n_fireplaces > 0          26.9%
+#   tax_neighborhood_code   100% (760 codes)
+#   foundation_description  85.5% (BASEMENT codes as published:
+#     5 full 77.5%, 1 none 3.5%, 4 part 3.1%, 2 slab or piers 0.8%,
+#     3 crawl 0.7%), 2026-09-13
+# No construction or frame-type field is published (EXTERIORFINISH
+# is the exterior wall), so construction_description is not mapped.
+#
+# Deliberately not mapped:
+#   - owner and mailing fields (CHANGENOTICEADDRESS1-4) and the owner
+#     code: nothing downstream needs them.
+#   - values (COUNTY*, LOCAL*, FAIRMARKET*) and sales (SALEDATE,
+#     SALEPRICE, PREVSALE*): out of scope for this room-count pass;
+#     candidates for a later value/sales pass.
+#   - CDU (condition, desirability and utility combined): condition
+#     carries the physical rating; there is no registry home for CDU.
+#   - LOTAREA: lot size, outside the building-feature pass.
+#   - PROPERTYFRACTION (2.3% filled) and PROPERTYUNIT (1.6%): the
+#     address below is house number plus street only.
+
+description: >-
+  Allegheny County, PA property assessment roll (WPRDC): class and use
+  codes, situs address, year built, living area, rooms, bedrooms,
+  bathrooms, stories.
+
+admin_id: US-PA-AL
+
+entity:
+  entity_type: property
+  source:
+    source_id: wprdc
+    # Checked 2026-09-12 on the WPRDC dataset page: "Creative Commons
+    # CCZero", with the site's Open Data certification. CC0 waives
+    # copyright, so sharing and redistribution are unrestricted.
+    license: "CC0 1.0 (Creative Commons CCZero, per the WPRDC dataset page)"
+    terms_url: "https://data.wprdc.org/dataset/property-assessments"
+    redistribution_restricted: false
+    portal_url: "https://data.wprdc.org/dataset/property-assessments"
+    download_url: "https://data.wprdc.org/dataset/2b3df818-601e-4f06-b150-643557229491/resource/9a1c60bd-f9f7-4aba-aeb7-af8c3aaa44e5/download/assessments.csv"
+  version: "2026"
+
+uncompressed_file_name: "assessments.csv"
+
+# Ids and codes as text (leading zeros); the counts stay numeric so the
+# bath fold below can do arithmetic on them.
+csv_dtype:
+  PARID: str
+  PROPERTYHOUSENUM: str
+  PROPERTYZIP: str
+  CLASS: str
+  USECODE: str
+  NEIGHCODE: str
+  GRADE: str
+  CONDITION: str
+  BASEMENT: str
+  BSMTGARAGE: str
+
+columns:
+  parcel_id_assessor: PARID
+  city: PROPERTYCITY
+  postal_code: PROPERTYZIP
+  use_group_code: CLASS
+  use_group: CLASSDESC
+  use_subgroup_code: USECODE
+  use_subgroup: USEDESC
+  tax_year: TAXYEAR
+  year_built: YEARBLT
+  area_sqft: FINISHEDLIVINGAREA
+  building_style: STYLEDESC
+  n_stories: STORIES
+  n_rooms: TOTALROOMS
+  n_bedrooms: BEDROOMS
+  n_bathrooms: FULLBATHS
+  n_half_bathrooms: HALFBATHS
+  quality_grade: GRADE
+  condition: CONDITION
+  exterior_wall: EXTFINISH_DESC
+  roof_material: ROOFDESC
+  heating_type: HEATINGCOOLINGDESC
+  n_fireplaces: FIREPLACES
+  tax_neighborhood_code: NEIGHCODE
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [PROPERTYHOUSENUM, PROPERTYADDRESS]
+    args:
+      sep: " "
+    output: address
+  - type: string
+    operation: strip
+    input: address
+    output: address
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # FINISHEDLIVINGAREA is finished living area (data dictionary), so
+  # it is also living_area_sqft; area_sqft keeps it as before.
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: living_area_sqft
+  # BASEMENT (dictionary): 1 none, 2 slab or piers, 3 crawl space up
+  # to a quarter basement, 4 part, 5 full. Crawl can hold a small
+  # basement, so it stays null.
+  - type: remap
+    input: BASEMENT
+    mapping: {"1": false, "2": false, "4": true, "5": true}
+    output: has_basement
+  # BASEMENT is also the foundation description, kept as the
+  # dictionary's codes (1 none, 2 slab or piers, 3 crawl, 4 part,
+  # 5 full) for curate to translate. BASEMENTDESC labels 2-5 only.
+  - type: string
+    operation: strip
+    input: BASEMENT
+    output: foundation_description
+  # The heating/cooling label says "with AC" where there is AC. Only
+  # central heat and heat pump systems with AC count as central air;
+  # AC beside wall, floor, unit or electric heat may be room units,
+  # so those and "Other" stay null.
+  - type: remap
+    input: heating_type
+    mapping:
+      "Central Heat with AC": true
+      "Heat Pump with AC": true
+      "Central Heat": false
+      "Heat Pump": false
+      "Electric": false
+      "Unit Heat": false
+      "Wall Furnace": false
+      "Floor Furnace": false
+    output: has_central_air
+  # BSMTGARAGE counts integral basement garage stalls only, not
+  # attached or detached garages, so a 0 does not mean no garage.
+  - type: remap_conditional
+    input: BSMTGARAGE
+    conditions:
+      - condition: regex
+        pattern: "^[1-9]"
+        output: true
+    output: has_garage
+
+drop_columns:
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - use_subgroup
+  - use_subgroup_code
+  - building_style
+  - quality_grade
+  - condition
+  - exterior_wall
+  - roof_material
+  - heating_type
+  - tax_neighborhood_code
+  - foundation_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

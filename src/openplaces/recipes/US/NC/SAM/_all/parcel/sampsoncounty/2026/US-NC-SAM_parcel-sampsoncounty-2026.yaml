@@ -17,11 +17,25 @@
 # populated" note undercounted this because a plain non-null check treats
 # the placeholder zeros as populated too; nulled generically at ingest
 # instead (attribute_registry.csv's year_built null_placeholder).
+#
+# Building features, MEASURED 2026-09-13 in memory (residential =
+# PARCEL_CLA RESIDENTIAL, 24,181 rows, about 45% of them without a
+# building record): living_area_sqft (LIVING_ARE, the same value as
+# area_sqft, median 1,562), exterior wall (CONSTRUCTI, 14 values),
+# roof covering (ROOF, 11) and heating (HEAT, 14) 54.7% each;
+# has_central_air 54.3% (10,840 true, 2,296 false). CONSTRUCTI holds
+# exterior wall materials (ALUM/VINYL/STEEL, BRICK, WOOD FRAME), not
+# the structural code construction_type expects. STYLE (41.9%)
+# repeats what USE_DESC already gives building_style.
+# foundation_description is FOUNDATION in the county's words (CONT
+# WALL, PIER, SLAB, CONCRETE WALL, PILING): 47.3% of residential
+# rows, CONT WALL on 85.6% of those; curate translates it into
+# foundation_type.
 
 description: >-
-  Sampson County, NC parcel roll (total assessed value, year built, owner,
-  situs, most recent sale) from the county's ArcGIS parcel layer. No
-  land/building value split is available from this source.
+  Sampson County, NC parcel roll (total assessed value, year built,
+  building detail, owner, situs, last sale) from the county's ArcGIS
+  parcel layer; no land/building split.
 
 admin_id: US-NC-SAM
 
@@ -64,18 +78,93 @@ columns:
   # Building style incl. the manufactured-home markers this county uses
   # ("DOUBLE WIDE MOHO"), 59.2% populated, pipe-joined per structure.
   building_style: USE_DESC
+  # Baths: FULL_BATH is the full count and HALF_BATH the half count
+  # (9.0% of rows, 21.5% of rows with a full bath). n_bathrooms folds
+  # them as full + 0.5 x half below.
   n_rooms: TOTAL_ROOM
   n_bedrooms: BEDROOMS
   n_bathrooms: FULL_BATH
+  n_half_bathrooms: HALF_BATH
   n_stories: STORY_HEIG
   last_sale_date: DATE_RECOR
   total_value: ASSESSED_V
   year_built: YEAR_BUILT
   area_sqft: LIVING_ARE
+  exterior_wall: CONSTRUCTI
+  heating_type: HEAT
+  roof_material: ROOF
+  foundation_description: FOUNDATION
+
+transformations:
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # LIVING_ARE is the living area: area_sqft keeps it as before and
+  # living_area_sqft carries the same value under the name that says
+  # so.
+  - type: expression
+    expression: "area_sqft * 1"
+    inputs: [area_sqft]
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: 0}
+    output: living_area_sqft
+  # has_central_air: true where HEAT names central air or a heat pump,
+  # false where SYSTEM states no AC (HEAT ONLY, NONE), null otherwise.
+  # SYSTEM's own "HEAT AND A/C" is not read as central, because it
+  # also covers unit and space AC. A row in both sets reads true.
+  - type: remap
+    input: heating_type
+    mapping:
+      "FORCED HOT AIR / CENTRAL AIR": true
+      "RADIANT HEAT / CENTRAL AIR": true
+      "CENTRAL AIR, ONLY": true
+      "HEAT PUMP": true
+    output: central_air_named
+  - type: remap
+    input: SYSTEM
+    mapping:
+      "HEAT ONLY": false
+      "NONE": false
+    output: no_air_stated
+  - type: aggregate
+    operation: max
+    inputs: [central_air_named, no_air_stated]
+    output: has_central_air
+  # FOUNDATION arrives with a space on rows without a building: strip
+  # it and null the blank, or it becomes a category of its own.
+  - type: string
+    operation: strip
+    input: foundation_description
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+
+drop_columns:
+  - half_bathroom_equivalent
+  - central_air_named
+  - no_air_stated
 
 columns_to_categorical:
   - use_group
   - building_style
+  - exterior_wall
+  - heating_type
+  - roof_material
+  - foundation_description
   - owner_admin2_id_admin1
 
 parcel_id_local:

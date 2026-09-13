@@ -1,0 +1,186 @@
+# Recipe: Clermont County, OH CAMA roll (iasWorld PARDAT table).
+#
+# Source: the auditor's downloads page offers CLERMONT_AA407.ZIP, Tyler
+# iasWorld's AA407 export as 54 comma-delimited .DAT tables, each with
+# a header row (layout: "AA407 File Layout CSV.pdf" on the same page).
+# The zip is refreshed often (dated 2026-09-08 when read here) under a
+# fixed URL. Tables include PARDAT (this recipe), DWELL (the _dwelling
+# supplement), APRVAL, LAND, OBY and SALES, plus OWNDAT and MAILDAT,
+# which are never read.
+#
+# Row shape, measured on the 2026-09-08 zip: 102,620 PARDAT rows, all
+# tax year 2025, one per distinct PARID. One row is one property.
+#
+# Columns. LUC is the Ohio DTE land-use code (3 digits on every row).
+# CLASS (R 83,151, E, A, C, I) is the class letter LUC implies and is
+# not mapped. CALCACRES is above zero on 87.7% of rows. Values are in
+# APRVAL and are not read here.
+#
+# Join key. PARID ('999999A999.' and variants, the letter and the dot
+# part of the id) matches OGRIP's LocalParcelID as shipped on 187 of
+# 200 sampled roll ids and 185 of 200 sampled dwelling ids, measured
+# against the live OGRIP layer on a random sample. The bundled
+# conversion for US-OH-CL is 'simple', applied to both sides alike.
+#
+# Lot and location (added 2026-09-13), codes verbatim, decoded by the
+# zip's AEDIT table: NBHD (tax_neighborhood_code, the assessor's
+# valuation neighborhood, 1,082 values),
+# TOPO1 (topography: 1 level, 2 above street, 3 below street, 4 slope
+# to rear, 5 slope to front, 6 low, 7 swampy) and UTIL1-3 (1 all
+# public, 2 public water, 3 public sewer, 4 gas, 5 well, 6 septic, 7
+# none). water_source keeps codes 1, 2, 5, 7 and sewer_type 1, 3, 6,
+# 7 from the three fields, space-joined in field order (a parcel
+# listing two, e.g. '2 5', keeps both; under 0.1%).
+# MEASURED 2026-09-13 on the 58,508 land-use 510 properties:
+# neighborhood 100%; topography 92.3% (code 1 on 90.6%); water
+# 92.2% (1 65.1%, 7 13.2%, 2 12.6%, 5 1.2%); sewer 91.4% (1 65.1%,
+# 7 13.1%, 6 12.2%, 3 0.8%).
+# n_dwellings reads LIVUNIT ("Number of living units"). It is a unit
+# count but loose on multi-family: 1 on 99.8% of 510, 2 on 59% of 520
+# (two-family; 38% read 1) and 3 on 65% of 530. MEASURED 2026-09-13:
+# 100% of the 510 properties, 1 on 99.8%.
+
+description: >-
+  Clermont County, OH CAMA roll (iasWorld AA407 PARDAT table): land-use
+  code, calculated acreage and situs address per property.
+
+admin_id: US-OH-CL
+
+entity:
+  entity_type: property
+  source:
+    source_id: clermontcounty
+    # Checked 2026-09-12. The downloads page has no gate, fee or
+    # data-specific terms. The site Terms of Use are a general "as is"
+    # no-warranty disclaimer with a ban on using the site's
+    # communication services to advertise or sell; nothing restricts
+    # redistributing the data.
+    license: "unknown (site Terms of Use: 'as is', no warranty; no data-specific terms)"
+    terms_url: "https://www.clermontauditor.org/terms-of-use/"
+    redistribution_restricted: null
+    portal_url: "https://www.clermontauditor.org/downloads/"
+    download_url: "https://www.clermontauditor.org/wp-content/uploads/PublicAccess/CLERMONT_AA407.ZIP"
+  version: "2026"
+
+compressed_file_name: "CLERMONT_AA407.ZIP"
+uncompressed_file_name: "PARDAT.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARID
+  tax_year: TAXYR
+  use_group_code: LUC
+  area_ac: CALCACRES
+  tax_neighborhood_code: NBHD
+  topography: TOPO1
+  n_dwellings: LIVUNIT
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  # UTIL1-3 each hold one utility code (AEDIT: 1 all public, 2 public
+  # water, 3 public sewer, 4 gas, 5 well, 6 septic, 7 none). Each
+  # output keeps the codes that describe it, space-joined in field
+  # order; an empty result is null.
+  - type: remap
+    input: UTIL1
+    mapping: {"1": "1", "2": "2", "5": "5", "7": "7"}
+    output: water_1
+  - type: remap
+    input: UTIL2
+    mapping: {"1": "1", "2": "2", "5": "5", "7": "7"}
+    output: water_2
+  - type: remap
+    input: UTIL3
+    mapping: {"1": "1", "2": "2", "5": "5", "7": "7"}
+    output: water_3
+  - type: remap
+    input: UTIL1
+    mapping: {"1": "1", "3": "3", "6": "6", "7": "7"}
+    output: sewer_1
+  - type: remap
+    input: UTIL2
+    mapping: {"1": "1", "3": "3", "6": "6", "7": "7"}
+    output: sewer_2
+  - type: remap
+    input: UTIL3
+    mapping: {"1": "1", "3": "3", "6": "6", "7": "7"}
+    output: sewer_3
+  - type: string
+    operation: concat
+    inputs: [water_1, water_2, water_3]
+    args: {sep: " "}
+    output: water_source
+  - type: string
+    operation: strip
+    input: water_source
+    output: water_source
+  - type: unary
+    operation: null_if_equal
+    input: water_source
+    args: {value: ""}
+    output: water_source
+  - type: string
+    operation: concat
+    inputs: [sewer_1, sewer_2, sewer_3]
+    args: {sep: " "}
+    output: sewer_type
+  - type: string
+    operation: strip
+    input: sewer_type
+    output: sewer_type
+  - type: unary
+    operation: null_if_equal
+    input: sewer_type
+    args: {value: ""}
+    output: sewer_type
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: unary
+    operation: null_if_equal
+    input: ADRNO
+    args: {value: "0"}
+    output: address_number
+  - type: string
+    operation: concat
+    inputs: [ADRDIR, ADRSTR, ADRSUF]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+
+drop_columns:
+  - water_1
+  - water_2
+  - water_3
+  - sewer_1
+  - sewer_2
+  - sewer_3
+
+columns_to_categorical:
+  - use_group_code
+  - topography
+  - water_source
+  - sewer_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,125 @@
+# Recipe: Montgomery County, OH CAMA roll, OBY table (iasWorld other
+# buildings and yard items, AA407 fixed width). Supplement of
+# US-OH-MO_property-montgomerycounty-2026; see that recipe for the
+# source, the pinned monthly file and the join key.
+#
+# One record per yard item. Offsets from the layout PDF, page 19
+# (1-based starts: Taxyr 51, Code 56, Area 75); codes are the zip's
+# RCOBY table and areas fit them (median 400 sqft for RG1 detached
+# garage, 144 for RS1 shed, 576 for RP2 pool). Units ("Number of
+# Identical Units", 158 in the PDF) does not sit at that position in
+# the file and is not read, so each row counts once.
+#
+# n_outbuildings counts rows whose code is a detached accessory
+# structure: barns (AB1, AB2, AD1, AV1, AW1, AW2), corn cribs
+# (AC1-AC6), grain bins (AG1, AG2), poultry houses (AH1-AH6), lean-to
+# (AL1), detached milk houses (AM3, AM4), pole buildings (AP1-AP6),
+# quonset (AQ1), granary (AR1), silos (AS1-AS6), prefabricated steel
+# building (AX1), boathouses (BH1, BH2, RB1, RB2), bath house (BT2),
+# cabin (CB1), greenhouses (GH1-GH6), gazebo (GZ1), misc. building on
+# residential property (M98), carport (RC1), detached garages (RG1,
+# RG2), utility sheds (RS1-RS3), sheds (SH1-SH6), summer kitchen (SK2)
+# and workshop (WKS). Paving, fences, pools, decks, patios, porches,
+# canopies, courts, mobile homes and institutional buildings are not
+# counted; guest quarters (GQ1, GQ2, "guest quarters/office") are not
+# read as accessory dwellings.
+#
+# Flags, true where the item is recorded and null elsewhere (the
+# table lists what is present): has_pool (RP1-RP5), has_garage (RG1,
+# RG2 detached; RA1, RA2 attached garages listed here) and
+# has_carport (RC1). _additions sets the garage and carport flags too.
+# Decks, patios and porches here (WD1, SM5, LP3, SMP, PR1, PR2, SM1,
+# SM7) are not added to the areas _additions carries.
+#
+# MEASURED 2026-09-13: 135,175 records over 95,792 parcels, keys
+# 98.83% in the roll. On the 157,799 land-use 510 properties: an OBY
+# row on 38.0%; n_outbuildings > 0 on 35.2% (median 1); garage 28.0%;
+# pool 2.1%; carport 0.8%.
+
+description: >-
+  Montgomery County, OH CAMA OBY table: outbuilding count and pool,
+  garage and carport flags per property.
+
+admin_id: US-OH-MO
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms on the download page; auditor GIS disclaimer is
+      warranty/liability only)
+    terms_url: "https://www.mcohio.org/630/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm"
+    download_url: "https://go.mcohio.org/applications/treasurer/search/data/Cama/Cama_Files_20260831.zip"
+  version: "2026"
+
+compressed_file_name: "Cama_Files_20260831.zip"
+uncompressed_file_name: "Cama_Files_20260831/OBY.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [parid, 30]
+  - [filler, 6] # Jur
+  - [filler, 4] # Seq
+  - [filler, 5] # Lline
+  - [filler, 5] # Card
+  - [taxyr, 5]
+  - [code, 3]
+
+# Drop any filler line, whose tax year is blank.
+query: "taxyr.notna()"
+
+columns:
+  parcel_id_assessor: parid
+
+transformations:
+  - type: remap_pattern
+    input: code
+    patterns:
+      - {pattern: "(AB[12]|AD1|AV1|AW[12]|AC[1-6]|AG[12]|AH[1-6])$", value: 1}
+      - {pattern: "(AL1|AM[34]|AP[1-6]|AQ1|AR1|AS[1-6]|AX1)$", value: 1}
+      - {pattern: "(BH[12]|RB[12]|BT2|CB1|GH[1-6]|GZ1|M98|RC1)$", value: 1}
+      - {pattern: "(RG[12]|RS[1-3]|SH[1-6]|SK2|WKS)$", value: 1}
+    default: 0
+    output: n_outbuildings
+  - type: unary
+    operation: to_numeric
+    input: n_outbuildings
+    output: n_outbuildings
+  - type: remap_pattern
+    input: code
+    patterns:
+      - {pattern: "RP[1-5]$", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: code
+    patterns:
+      - {pattern: "R[AG][12]$", value: true}
+    output: has_garage
+  - type: remap
+    input: code
+    mapping: {RC1: true}
+    output: has_carport
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+
+supplements: US-OH-MO_property-montgomerycounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: oby

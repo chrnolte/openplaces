@@ -1,0 +1,119 @@
+# Recipe: Fort Bend County, TX appraisal roll, property table of the
+# "Property Data Export" (FBCAD).
+#
+# SOURCE. FBCAD posts two bulk files on its certified-and-supplements
+# page. The certified "Orion Appraisal Export" (Property, Owner,
+# Exemption, Entity, MobileHome and Agent tables) carries no building
+# data. The room counts are only in the separately posted "Property Data
+# Export" (PropertyData-Post2026Cert-Redacted.zip, 162.6 MB), six CSVs:
+# Property, Improvement, Segment, Land, Sales, Owner. This recipe reads
+# its Property table, one row per account, so the Segment supplements
+# have a roll to attach to. Owner and Sales tables are not read.
+#
+# ROWS. 441,271 rows, one per QuickRefID (and per PropertyID). The
+# QuickRefID prefix is the account type: "R" real (388,093), "P"
+# business personal (29,961), "N" (14,979), "M" mobile home (4,512), "V"
+# (3,726).
+#
+# JOIN KEY. QuickRefID is kept as shipped, "R" included, because Fort
+# Bend's parcel spine takes its geometry and its keys from the FBCAD
+# parcel recipe (US-TX-FOB_parcel-fbcad-2026, QUICKREFID): 381,524 of
+# the geospine's 383,132 rows are FBCAD's, every one "R"-prefixed. A
+# property key must match the spine it is aggregated onto in curate.
+# TxGIO's Prop_ID is QuickRefID without its "R" (99.8% of TxGIO's
+# 367,024 ids are found here once stripped), so the two Fort Bend parcel
+# sources do not join each other; that gap sits in the parcel recipes,
+# not here. PropertyID is an internal id (its 32% TxGIO overlap is
+# coincidental) and is not used.
+#
+# COLUMNS. Legal description, situs, and legal acreage (populated on
+# 21.1% of rows, median 0.93 acres). Two value pairs ship,
+# MarketValue/CurrMarketValue and their assessed counterparts, and the
+# export does not say which is the 2026 certified figure (medians
+# 310,933 and 307,662), so values are left unmapped; the FBCAD parcel
+# recipe and TxGIO carry values. No state codes are in this table (they
+# sit on Improvement and Land rows); the FBCAD parcel recipe carries the
+# land state code.
+#
+# LIVING AREA (checked 2026-09-13). SquareFootage (>0 on 65.7%, median
+# 2,476) is undocumented, so it was compared with the Segment table: it
+# equals the sum of an account's main-area segments (MA, MA2, MAA,
+# MA1.5, MA3 and similar) on 99.6% of 284,788 single-family accounts,
+# against 44.4% for MA alone and 0.1% for all segments. It is living
+# area, mapped as living_area_sqft (0 is nulled): on 99.8% of the
+# 278,846 single-family accounts, median 2,510. NbhdCode (88.1% filled)
+# is the appraisal neighborhood, mapped as tax_neighborhood_code like
+# the other Texas rolls.
+
+description: >-
+  Fort Bend County, TX appraisal roll, property table of FBCAD's
+  Property Data Export: one row per account with legal and situs fields.
+
+admin_id: US-TX-FOB
+
+entity:
+  entity_type: property
+  source:
+    source_id: fbcad
+    # Checked 2026-09-12. The downloads page states no terms. The GIS
+    # data page (https://www.fbcad.org/gis-data/) disclaims warranty and
+    # liability, asks users to indemnify FBCAD, and quotes Tax Code
+    # 25.025 on confidential owner information; the files are posted
+    # "Redacted". No click-through, fee, resale or redistribution
+    # clause on the data.
+    license: >-
+      no terms on the downloads page; GIS page disclaimer: 'as is', no
+      liability, user indemnifies FBCAD
+    terms_url: "https://www.fbcad.org/gis-data/"
+    redistribution_restricted: null
+    portal_url: "https://www.fbcad.org/certified-and-supplements-reports/"
+    download_url: "https://www.fbcad.org/wp-content/uploads/2026/07/PropertyData-Post2026Cert-Redacted.zip"
+  version: 2026
+
+compressed_file_name: "PropertyData-Post2026Cert-Redacted.zip"
+# The zip's single top folder is stripped on extraction.
+uncompressed_file_name: "Property Data Export - Property/PropertyDataExport4695914.txt"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  legal_description: LegalDesc
+  address_number: SitusStreetNumber
+  address_street: SitusStreetName
+  city: SitusCity
+  postal_code: SitusZip
+  area_ac: LegalAcres
+  living_area_sqft: SquareFootage
+  tax_neighborhood_code: NbhdCode
+
+transformations:
+  # Kept as shipped, "R" included, to match the FBCAD-keyed parcel
+  # spine; see JOIN KEY.
+  - type: string
+    operation: strip
+    input: QuickRefID
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 0)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+
+drop_columns:
+  - QuickRefID
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

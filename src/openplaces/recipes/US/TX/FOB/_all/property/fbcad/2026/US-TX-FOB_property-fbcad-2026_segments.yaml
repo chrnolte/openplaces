@@ -1,0 +1,180 @@
+# Recipe: Fort Bend County, TX appraisal roll, building segments,
+# secondary areas and features (FBCAD). Same member (the Segment table)
+# as US-TX-FOB_property-fbcad-2026_bedrooms; read its header first.
+#
+# WHAT IS MAPPED. Every segment row, by its Type code (Description in
+# brackets), with Area in square feet:
+#   garage_area_sqft  Area summed over AG (Attached Garage), DG
+#                     (Detached Garage), RG (Residential Garage), GA
+#   garage_type       the Type code of the first garage segment
+#   has_garage        true where a garage segment exists
+#   has_carport       AC, DC (carports RMS), CP, DP
+#   has_pool          RP (Swimming Pools)
+#   porch_area_sqft   OP (Open Porch), EP (Enclosed), SP (Screen)
+#   deck_area_sqft    WD (Wood Deck), PA and PO (Patio concrete slab)
+#   n_outbuildings    segments of DG, RS (Residential Storage), ST
+#                     (Storage), MT (Metal Bldg), AB (Barns), GH
+#                     (Greenhouses), AHB (Horse Stables), HGR (Hangar)
+#   has_elevator      RE2M, RE2S, RE3S, RE3M, RE4M (residential
+#                     elevators)
+#   has_solar         SED (Solar Energy Device, also lower case)
+#   has_accessory_dwelling  GAP (Garage Apartment), RMDG (Living Area
+#                     Over Detached Garage)
+#   sewer_type        LS (Septic System), LWS (Water Well and Septic),
+#                     LDS (Double Septic), as coded
+#   water_source      LW (Water Well), LWS, as coded
+# The table lists only segments that exist, so every flag is true where
+# a segment says so and null elsewhere, never false; the areas, counts
+# and codes are likewise null for an account without such a segment (a
+# sewer_type null is not "public sewer").
+#
+# MEASURED (2026-09-13): share of the 278,846 single-family accounts
+# (an improvement with StateCode A1) with a value, or with the flag
+# true. garage_area_sqft, garage_type and has_garage 96.4% (median
+# 460; AG on 87%), has_carport 3.9%, has_pool 13.5%, porch_area_sqft
+# 98.5%, deck_area_sqft 44.5%, n_outbuildings 23.9%, has_elevator
+# 0.1%, has_solar 0.1%, has_accessory_dwelling 0.2%, sewer_type 4.4%,
+# water_source 3.7%.
+
+description: >-
+  Fort Bend County, TX Property Data Export, segment table: garage, porch
+  and deck areas, outbuildings, pool, carport, elevator, solar, septic
+  and well.
+
+admin_id: US-TX-FOB
+
+entity:
+  entity_type: property
+  source:
+    source_id: fbcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no terms on the downloads page; GIS page disclaimer: 'as is', no
+      liability, user indemnifies FBCAD
+    terms_url: "https://www.fbcad.org/gis-data/"
+    redistribution_restricted: null
+    portal_url: "https://www.fbcad.org/certified-and-supplements-reports/"
+    download_url: "https://www.fbcad.org/wp-content/uploads/2026/07/PropertyData-Post2026Cert-Redacted.zip"
+  version: 2026
+
+compressed_file_name: "PropertyData-Post2026Cert-Redacted.zip"
+uncompressed_file_name: "Property Data Export   Segment/PropertyDataExport4695919.txt"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  segment_type: Type
+
+transformations:
+  # Kept as shipped, "R" included: see the roll's JOIN KEY.
+  - type: string
+    operation: strip
+    input: QuickRefID
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: segment_area
+  # Masks: 1 on the named segment types, null elsewhere.
+  - type: remap
+    input: segment_type
+    mapping: {"AG": 1, "DG": 1, "RG": 1, "GA": 1}
+    output: garage_mask
+  - type: expression
+    expression: "segment_area * garage_mask"
+    inputs: [segment_area, garage_mask]
+    output: garage_area_sqft
+  - type: remap
+    input: segment_type
+    mapping: {"AG": "AG", "DG": "DG", "RG": "RG", "GA": "GA"}
+    output: garage_type
+  - type: remap
+    input: segment_type
+    mapping: {"AG": true, "DG": true, "RG": true, "GA": true}
+    output: has_garage
+  - type: remap
+    input: segment_type
+    mapping: {"AC": true, "DC": true, "CP": true, "DP": true}
+    output: has_carport
+  - type: remap
+    input: segment_type
+    mapping: {"RP": true}
+    output: has_pool
+  - type: remap
+    input: segment_type
+    mapping: {"OP": 1, "EP": 1, "SP": 1}
+    output: porch_mask
+  - type: expression
+    expression: "segment_area * porch_mask"
+    inputs: [segment_area, porch_mask]
+    output: porch_area_sqft
+  - type: remap
+    input: segment_type
+    mapping: {"WD": 1, "PA": 1, "PO": 1}
+    output: deck_mask
+  - type: expression
+    expression: "segment_area * deck_mask"
+    inputs: [segment_area, deck_mask]
+    output: deck_area_sqft
+  - type: remap
+    input: segment_type
+    mapping: {"DG": 1, "RS": 1, "ST": 1, "MT": 1, "AB": 1, "GH": 1,
+              "AHB": 1, "HGR": 1}
+    output: n_outbuildings
+  - type: remap
+    input: segment_type
+    mapping: {"RE2M": true, "RE2S": true, "RE3S": true, "RE3M": true,
+              "RE4M": true}
+    output: has_elevator
+  - type: remap
+    input: segment_type
+    mapping: {"SED": true, "sed": true}
+    output: has_solar
+  - type: remap
+    input: segment_type
+    mapping: {"GAP": true, "RMDG": true}
+    output: has_accessory_dwelling
+  - type: remap
+    input: segment_type
+    mapping: {"LS": "LS", "LWS": "LWS", "LDS": "LDS"}
+    output: sewer_type
+  - type: remap
+    input: segment_type
+    mapping: {"LW": "LW", "LWS": "LWS"}
+    output: water_source
+
+drop_columns:
+  - QuickRefID
+  - segment_type
+  - segment_area
+  - garage_mask
+  - porch_mask
+  - deck_mask
+
+aggregation_function:
+  garage_area_sqft: sum
+  garage_type: first
+  has_garage: max
+  has_carport: max
+  has_pool: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  n_outbuildings: sum
+  has_elevator: max
+  has_solar: max
+  has_accessory_dwelling: max
+  sewer_type: first
+  water_source: first
+
+supplements: US-TX-FOB_property-fbcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: segments

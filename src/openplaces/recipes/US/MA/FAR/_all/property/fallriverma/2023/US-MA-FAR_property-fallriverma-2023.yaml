@@ -1,0 +1,208 @@
+# Recipe: Fall River, MA parcels with assessor information
+# "FallRiverMA_OpenGovParcelsAssessor" (City of Fall River
+# Engineering, ArcGIS Online), bathrooms, rooms, areas and building
+# features.
+#
+# SOURCE. Item 60839fd9ea3e4316ab8ebbbff7b7d612, owned by a City of
+# Fall River account, last modified 2023-09-15; the layer's copyright
+# text credits "City of Fall River, MassGIS, CDM Smith". ArcGIS Hub
+# serves a bulk CSV export of it, which this recipe downloads in one
+# request instead of paging the service. The export carries owner and
+# sale fields too; none is mapped.
+#
+# ROLE. Supplements the statewide MassGIS assessing table (L3_ASSESS),
+# the `property` layer of US-MA_parcel-massgis-2025, and never adds
+# rows.
+#
+# ROW SHAPE. One row per parcel polygon with its assessor account
+# (CardNumber is 1 on every account row, 0 on the rows without one).
+# Condominium units are not separate rows: L3's unit ids find no row
+# here, so no unit is given a building's total.
+#
+# KEY. ParcelID is the assessor's property id in the format L3 carries
+# as PROP_ID (property_id_assessor), so the table joins L3 on it
+# (`supplements_key`, merged from the tx-room-counts branch).
+# MAP_PAR_ID is the MassGIS parcel id; parcel_id_local is built from it
+# with the same per-town conversion as the L3 parcel layer.
+#
+# FIELDS. Fullbath, HalfBath, NumofRooms. The layer has no bedroom
+# field and no story field (NumofUnits, Units and TotalUnits are unit
+# counts, see YEAR AND UNITS). Read as text; counts are cast to
+# numbers below.
+#
+# BUILDING FEATURES, the city's codes as published: FinArea
+# (living_area_sqft) and TotalGross (building_area_sqft), square
+# feet; ExtType (exterior_wall, numeric codes the layer does not
+# label); Grade (quality_grade, letter grades such as C+ or B-);
+# FirePlaces (n_fireplaces); NBC (tax_neighborhood_code). Not
+# mapped: EffYearBlt (0 on all but 3 rows); CondoFloor (condo units
+# are not rows here); SizeAdjAre (a size-adjusted valuation area);
+# Kitchens, OtherFixtu and PercentSpr (no registry attribute). The
+# layer has no construction or foundation field.
+#
+# YEAR AND UNITS. YearBlt (year_built) is the actual year built.
+# NumofUnits (n_dwellings) is the parcel's unit count: it fits the
+# use-code definitions on 99% or more of rows (2 or more on 109, 4 to
+# 8 on 111, over 8 on 112), where Units, the field L3's UNITS agrees
+# with, is under 2 on 62.9% of 109 parcels and outside 4 to 8 on
+# 13.5% of 111. TotalUnits is 0 on every row. On commercial and
+# industrial codes NumofUnits counts units of any kind, not only
+# dwellings. Both fields read 0 on the 7.2% of rows without an
+# assessor account: the registry nulls the 0 year, and a 0 unit
+# count and a year before 1600 or after 2026 are nulled below. L3
+# carries YEAR_BUILT and UNITS too: link_by_id's column priority
+# (_write_prioritized) lets this table's value replace L3's where it
+# covers at least half the spine's properties, and only fill L3's
+# gaps otherwise.
+#
+# MEASURED 2026-09-13, in memory (the Hub CSV through the recipe's
+# reader and _preprocess_recipe_data, no ingest), against the local L3
+# output for Fall River (FY2025): 20,192 rows, 20,099 distinct keys.
+# 99.9% of keys are an L3 property id; 91.2% of L3's 22,017 properties
+# find a row, 91.1% of its 18,638 residential ones (use codes 101-105,
+# 109, 111, 112), the rest mostly condo units. parcel_id_local: 99.9%
+# of rows find an L3 parcel, 99.9% of L3 parcels find a row. On L3
+# residential properties: bathrooms > 0 on 90.8% (23.7% of counts end
+# in .5), rooms 87.1%.
+#
+# Building features, measured the same way on 2026-09-13 (on L3
+# residential properties): living and gross area > 0 on 90.9%
+# (medians 2,102 and 3,432 sq ft). Living area is within 5% of L3's
+# RES_AREA on 98.9% of properties carrying both, gross area within 5%
+# of L3's BLD_AREA on only 59.9%: the two publish different gross
+# measures. exterior_wall and quality_grade 90.9%, n_fireplaces > 0
+# on 14.2%, tax_neighborhood_code 91.1%.
+#
+# Year and units, measured the same way on 2026-09-13 (on L3
+# residential properties): year_built on 90.9% (median 1930; equal to
+# L3's YEAR_BUILT on 100.0% of properties carrying both); n_dwellings
+# on 91.1% (medians 1, 2, 3, 3, 5 and 12 on use codes 101, 104, 105,
+# 109, 111, 112), equal to L3's UNITS on 96.1% (where they differ, L3
+# copies Units, see above). On all L3 properties they cover 85.1% and
+# 91.2%, so both replace L3's values.
+
+description: >-
+  Fall River, MA parcels with assessor information (city ArcGIS layer,
+  2023): bathrooms, rooms, areas and building features per property,
+  supplementing MassGIS.
+
+admin_id: US-MA-FAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: fallriverma
+    # The item has no licenseInfo (checked 2026-09-13); its access
+    # information names the city's Engineering Department and the layer
+    # carries a copyright line only. No licence, nothing on
+    # redistribution or resale.
+    license: >-
+      unknown (no licence on the item; copyright line 'City of Fall
+      River, MassGIS, CDM Smith')
+    terms_url: "https://www.arcgis.com/home/item.html?id=60839fd9ea3e4316ab8ebbbff7b7d612"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=60839fd9ea3e4316ab8ebbbff7b7d612"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/60839fd9ea3e4316ab8ebbbff7b7d612_0/downloads/data?format=csv&spatialRefId=4326&where=1%3D1"
+  version: 2023
+
+uncompressed_file_name: "fallriver_parcels_assessor_2023.csv"
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: ParcelID
+  parcel_id_assessor: MAP_PAR_ID
+  n_bathrooms: Fullbath
+  n_half_bathrooms: HalfBath
+  n_rooms: NumofRooms
+  living_area_sqft: FinArea
+  building_area_sqft: TotalGross
+  exterior_wall: ExtType
+  quality_grade: Grade
+  n_fireplaces: FirePlaces
+  tax_neighborhood_code: NBC
+  year_built: YearBlt
+  n_dwellings: NumofUnits
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year before 1600 or after 2026 is impossible (see the Boston
+  # recipe): ok * year / ok is null where ok does not hold.
+  - type: expression
+    expression: >-
+      year_built * ((year_built >= 1600) & (year_built <= 2026)) /
+      ((year_built >= 1600) & (year_built <= 2026))
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args: {value: 0}
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  # n_bathrooms = full + 0.5 x half (see the Boston recipe).
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_rooms: sum
+  living_area_sqft: sum
+  building_area_sqft: sum
+  exterior_wall: first
+  quality_grade: first
+  n_fireplaces: sum
+  tax_neighborhood_code: first
+  year_built: min
+  n_dwellings: sum
+
+supplements: US-MA_parcel-massgis-2025
+supplements_layer: property
+supplements_key: property_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

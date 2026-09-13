@@ -1,0 +1,153 @@
+# Recipe: Taylor County, TX certified appraisal roll (Taylor CAD). Same
+# PACS export family, offsets and join-key trap as
+# US-TX-VIC_property-victoriacad-2026: read that recipe's header first.
+# This header covers only what differs for Taylor.
+#
+# Why: the roll is what the room-count supplements beside it detail
+# (supplements: this recipe). The statewide TxGIO layer carries no room
+# counts.
+#
+# LAYOUT. The export's header record names layout 8.0.0.34 and its
+# property records are 9,714 characters wide. Every field mapped below
+# sits at the same offset in the 8.0.30, 8.0.31, 8.0.33 and 8.0.34
+# layout sheets (compared field by field); the versions differ only
+# after situs_num (column 4474), where this recipe stops reading.
+#
+# MEASURED on the 2026 export (86,008 rows): land_state_cd 83.4%,
+# imprv_state_cd 67.0%, geo_id 100.0%, market_value 100.0%. prop_id is
+# unique. The roll also carries personal-property and mineral accounts,
+# which TxGIO omits by design, so the key overlap is stated both ways:
+# of all prop_ids (zero-stripped) 77.3% are in TxGIO's Prop_ID for the
+# county, of the 71,761 with a land_state_cd 92.6%, and 98.1% of TxGIO's
+# 67,771 ids are found here. The bundled parcel_id_local conversion
+# gives the same overlap on both sides.
+#
+# ROOM COUNTS: supplements _bedrooms and _bathrooms. 'Number of Rooms'
+# is on 38 properties (skipped). No stories attribute ('Fireplace Second
+# Story' and 'Fireplace 1 1/2 Story' describe fireplaces; 'Construction
+# Style' A/B/C is not a storey count); the File #8 detail type 'MAIN
+# AREA 1 1/2 STORIES' reaches 3.4% of single-family properties
+# (skipped).
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 45,222 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 98.7% (B 97.2%, E 99.2%, M 99.3%),
+# 978 distinct codes.
+
+description: >-
+  Taylor County, TX certified appraisal roll (PACS 8.0.34 export): state land-use
+  codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-TAY
+
+entity:
+  entity_type: property
+  source:
+    source_id: taylorcad
+    # Checked 2026-09-12 by fetching the download page. The sentence in
+    # license sits in a disclaimer written for the district's GIS
+    # shapefiles 'CD/FILE'; the rest is as-is and no-warranty text. No
+    # gate, no fee.
+    license: >-
+      download page disclaimer, verbatim: 'The Taylor County Appraisal District has
+      developed this product solely for internal use. This product is not developed
+      for resale or profit to the general public and resale of data under a personal,
+      sole proprietorship, or corporate label is considered out of the care, custody
+      and control, of the Taylor County Appraisal District and any applicable
+      liability is assumed through fraudulent use of the data.'
+    redistribution_restricted: null
+    # Approved by the user 2026-09-12 and marked on the stricter
+    # reading of the sentence above: resale is restricted, free sharing
+    # is not.
+    resale_restricted: true
+    portal_url: "https://taylor-cad.org/data-downloads/"
+    download_url: "https://taylor-cad.org/wp-content/uploads/2026/07/TaylorCAD_2026_Certified_Appr_Roll_as_of_Certification_31Jul26.zip"
+  version: 2026
+
+compressed_file_name: "TaylorCAD_2026_Certified_Appr_Roll_as_of_Certification_31Jul26.zip"
+uncompressed_file_name: "2026-07-31_000738_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+# The PACS export is latin-1, not UTF-8.
+encoding: latin-1
+
+# PACS File #2 (Property), offsets from the layout sheet; see
+# LAYOUT above. Reading stops at situs_num (column 4474).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
+  # bare form.
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  # PACS market_value is the district's land-plus-structure total; see
+  # the Victoria roll for why it is total_value, not appraised_val.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

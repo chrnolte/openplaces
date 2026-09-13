@@ -1,0 +1,190 @@
+# Recipe: Knox County, OH auditor roll, GovernMax Additions table.
+# Supplement of US-OH-KN_property-knoxcounty-2026; see that recipe for
+# the source, the terms and the join key.
+#
+# MVP1_OH_Additions.csv from the same CAMADatabase.zip: one row per
+# addition sketched onto a dwelling card, AdditionCode with its
+# AdditionDescr (the list is in MVP1_OH_Codes.csv, category
+# 'Additions') and BaseArea in sqft.
+#
+# Read here (codes matched whole):
+#   garages   AFG, ABG, ACBG (attached frame, brick, block garage),
+#             their 'w Fl Qtrs' and 'w Hf Qtrs' forms, BSG1-BSG4
+#             (1 to 4 car basement garage)
+#   carports  ACP, AFCP, AMCP, ABCP (attached carports)
+#   porches   OFP, OMP, EFP, EMP (open or enclosed, frame or masonry)
+#             with their 2-story forms, SFP, SMP (screened)
+#   decks     WDDK and its variants, MSDK, MSDK2 (masonry deck), OPMF,
+#             OPFF (open patio), OPFC, OPMC (open covered patio)
+# Stoops, breezeways, enclosed patios, roof extensions, bay windows,
+# living-area additions and the 63x cost lines are not read.
+#
+# garage_type keeps the code. has_garage and has_carport are true
+# where such an addition is recorded and null elsewhere: the table
+# lists additions present, never absent ones. The code list has
+# garages and porches 'w Fl Qtrs' / 'w Hf Qtrs', but none occurs in
+# this download, so no accessory-dwelling flag is read here.
+# Detached garages are OtherImprovements rows (see _improvements);
+# garage_area_sqft counts attached and basement garages only.
+#
+# MEASURED 2026-09-13: 74,556 rows over 23,287 properties, keys 100%
+# in the roll. On the 16,118 live land-use 510 properties: garage
+# area > 0 and has_garage 60.4% (AFG 7,827, BSG2 715, ABG 637, BSG1
+# 496, ACBG 40, BSG3 15); porch area > 0 79.9%; deck or patio area
+# > 0 77.4%; carport 1.4%.
+
+description: >-
+  Knox County, OH GovernMax Additions table: attached garage, carport,
+  porch and deck additions per property.
+
+admin_id: US-OH-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: knoxcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms next to the auditor's download link; Beacon terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.knoxcountyauditor.org/"
+    download_url: "https://beaconfiledata.blob.core.windows.net/knoxcountyoh/downloads/CAMADatabase.zip?sv=2020-10-02&st=2023-04-11T20%3A18%3A41Z&se=2050-01-01T21%3A18%3A00Z&sr=b&sp=r&sig=d%2BoCtdXId7ZHT4jv2oW1mWSdzuAFGAu4%2FPfCxho6zkI%3D"
+  version: "2026"
+
+compressed_file_name: "CAMADatabase.zip"
+uncompressed_file_name: "MVP1_OH_Additions.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PropertyNumber
+
+transformations:
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: ".", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: " ", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: strip
+    input: AdditionCode
+    output: addition_code
+  - type: unary
+    operation: to_numeric
+    input: BaseArea
+    output: addition_area
+  - type: remap_pattern
+    input: addition_code
+    patterns:
+      - {pattern: "(AFG|ABG|ACBG)(FQ|HQ)?$", value: 1}
+      - {pattern: "BSG[1-4]$", value: 1}
+    default: 0
+    output: garage_row
+  - type: remap_pattern
+    input: addition_code
+    patterns:
+      - {pattern: "(OFP|OMP|EFP|EMP)2?$", value: 1}
+      - {pattern: "(SFP|SMP)$", value: 1}
+    default: 0
+    output: porch_row
+  - type: remap_pattern
+    input: addition_code
+    patterns:
+      - {pattern: "(WDDK|WDDK2|WDDK_NV|WDDKOH|MSDK|MSDK2)$", value: 1}
+      - {pattern: "(OPMF|OPFF|OPFC|OPMC)$", value: 1}
+    default: 0
+    output: deck_row
+  - type: unary
+    operation: to_numeric
+    input: garage_row
+    output: garage_row
+  - type: unary
+    operation: to_numeric
+    input: porch_row
+    output: porch_row
+  - type: unary
+    operation: to_numeric
+    input: deck_row
+    output: deck_row
+  - type: binary
+    operation: multiply
+    inputs: [addition_area, garage_row]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [addition_area, porch_row]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [addition_area, deck_row]
+    output: deck_area_sqft
+  - type: remap_pattern
+    input: addition_code
+    patterns:
+      - {pattern: "(AFG|ABG|ACBG)(FQ|HQ)?$", value: true}
+      - {pattern: "BSG[1-4]$", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: addition_code
+    patterns:
+      - {pattern: "(ACP|AFCP|AMCP|ABCP)$", value: true}
+    output: has_carport
+  - type: remap
+    input: addition_code
+    mapping:
+      AFG: AFG
+      ABG: ABG
+      ACBG: ACBG
+      AFGFQ: AFGFQ
+      AFGHQ: AFGHQ
+      ABGFQ: ABGFQ
+      ABGHQ: ABGHQ
+      ACBGFQ: ACBGFQ
+      BSG1: BSG1
+      BSG2: BSG2
+      BSG3: BSG3
+      BSG4: BSG4
+    output: garage_type
+
+drop_columns:
+  - addition_code
+  - addition_area
+  - garage_row
+  - porch_row
+  - deck_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-KN_property-knoxcounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: additions

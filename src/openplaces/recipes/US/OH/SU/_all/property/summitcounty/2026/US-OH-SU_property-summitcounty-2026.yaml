@@ -1,0 +1,113 @@
+# Recipe: Summit County, OH CAMA roll (iasWorld PARDAT extract).
+#
+# Source: the Summit County Fiscal Office's "Data Downloads" page lists
+# the iasWorld CAMA extracts as zipped CSV files, SC702_LEGDAT through
+# SC736: SC705_PARDAT (this recipe), SC710_DWELL (the _dwelling
+# supplement), SC704_APRVAL (values), SC709_LAND and others. The CAMA
+# is Tyler iasWorld (the property site is iasWorld Public Access).
+# Owner tables are not among the files read here.
+#
+# Row shape, measured on the extract dated 2026-04-13: 265,708 rows,
+# one per distinct PARCEL, all tax year 2026. One row is one property.
+# DEACTIVATE holds a date on 41,835 rows, but it does not mark retired
+# parcels: 199 of 200 sampled ids with a date are in OGRIP's live
+# layer and those parcels carry 39,771 dwelling cards, so no row is
+# filtered on it.
+#
+# Columns. LUC is the Ohio DTE land-use code (3 digits on every row).
+# CLASS (R/C/E/I/A/O) is the class letter LUC implies, not mapped.
+# ACRES is above zero on only 19.0% of rows and is not mapped. Values
+# are in SC704_APRVAL and are not read.
+#
+# Join key. PARCEL is 7 digits (1,952 carry a trailing letter, 1,720
+# have 6 digits) and matches OGRIP's LocalParcelID as shipped on 186
+# of 200 sampled roll ids and 191 of 200 sampled dwelling ids,
+# measured against the live OGRIP layer on a random sample. No
+# transformation.
+#
+# Neighborhood (added 2026-09-13): tax_neighborhood_code joins NBHDP
+# (36 primary codes) and NBHDS (310 sub codes) with a space; 158 sub
+# codes recur under more than one primary, so neither alone is the
+# valuation neighborhood (1,593 pairs). On 100% of the 175,578
+# land-use 510 properties (MEASURED 2026-09-13). TOP01 and UTIL1-3
+# are filled on 0.3% of rows and are not mapped.
+# n_dwellings reads LVU (living units), filled mostly on
+# multi-family rows: 2 on 88% of land use 520 and 3 on 71% of 530,
+# but blank on 96% of 510 (blank is not recorded, not 0). MEASURED
+# 2026-09-13: 4.0% of the 510 properties, 1 on 92% of those.
+
+description: >-
+  Summit County, OH CAMA roll (iasWorld PARDAT extract from the Fiscal
+  Office): land-use code, tax year and situs address per property.
+
+admin_id: US-OH-SU
+
+entity:
+  entity_type: property
+  source:
+    source_id: summitcounty
+    # Checked 2026-09-12: the Data Downloads page shows no disclaimer,
+    # terms, click-through or fee for these files.
+    license: "unknown (no terms on the Fiscal Office data-downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://fiscaloffice.summitoh.net/data-downloads"
+    download_url: "https://fiscaloffice.summitoh.net/sites/default/files/assets/forms/SC705_PARDAT.ZIP"
+  version: "2026"
+
+compressed_file_name: "SC705_PARDAT.ZIP"
+uncompressed_file_name: "SC705_PARDAT.CSV"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL
+  tax_year: TAXYR
+  use_group_code: LUC
+  address_number: ADRNO
+  city: CITY
+  postal_code: ZIPCD
+  n_dwellings: LVU
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  # The valuation neighborhood is NBHDP (primary) with NBHDS (sub);
+  # sub codes repeat across primaries, so both are kept, space-joined.
+  - type: string
+    operation: concat
+    inputs: [NBHDP, NBHDS]
+    args: {sep: " "}
+    output: tax_neighborhood_code
+  - type: string
+    operation: strip
+    input: tax_neighborhood_code
+    output: tax_neighborhood_code
+  - type: string
+    operation: concat
+    inputs: [ADRDIR, ADRSTR, ADRSUF]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+
+columns_to_categorical:
+  - use_group_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

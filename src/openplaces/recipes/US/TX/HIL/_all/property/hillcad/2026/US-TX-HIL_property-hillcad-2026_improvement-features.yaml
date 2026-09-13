@@ -1,0 +1,222 @@
+# Recipe: Hill County, TX certified appraisal roll, improvement features
+# from the improvement detail member (PACS File #8, one row per building
+# component). Same download as US-TX-HIL_property-hillcad-2026; read
+# that roll's header for the source and its terms.
+#
+# RULE. Each component type below was assigned to a feature from the
+# district's own type code and description (listed, never crosswalked).
+# Areas are the component's imprv_det_area in square feet, summed over
+# the property's components; an area of 0 or 1 reads as missing (some
+# districts put 1 in the area of a component valued as a unit). A flag
+# is true where the property has a component of that type and missing
+# elsewhere: the file lists the components present, never their absence.
+# garage_type keeps the district's code of the first garage component.
+#
+# MAIN AREA. quality_grade is imprv_det_class_cd and
+# effective_year_built is depreciation_yr, both read on the living-area
+# components only. The class code is the district's construction class
+# (quality grade, often with a material or story suffix), kept as
+# published; the first living-area component's class stands for the
+# property. The depreciation year is the year PACS depreciates the
+# component from, the effective year built; the property takes the
+# earliest, as year_built does in the Texas improvement-detail recipes.
+# year_built is the living-area components' yr_built, the earliest kept.
+# Both years read as missing outside 1801 to 2027 (0 is the district's
+# blank).
+#
+# Most Hill descriptions repeat the code; GA, DG, OP, SP, EP and WD are
+# read in the PACS convention (garage, detached garage, open, screened
+# and enclosed porch, wood deck), which their median areas fit. PO is
+# left out (porch or patio cannot be told), as is CP3 ('CANOPY DIRT').
+#
+# TYPES. living area: types MA, MAA, MA2, MA1.5, MA3. garage: types GA,
+# DG. carport: types CP, CP2, CP1. porch: types OP, SP, EP. deck and
+# patio: types WD. swimming pool: types POOL2, POOL3, POOL1, POOL. solar
+# device: types SLR.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value, for flags the share where true). A is the 11,650
+# single-family properties (improvement state class A, File #7); B, E
+# and M the other residential classes. living_area_sqft A 94.0% (B
+# 100.0%, E 93.7%, M 99.7%), per-property median 1443. garage_area_sqft
+# A 37.7% (B 36.2%, E 28.1%, M 1.8%), per-property median 506.
+# has_garage A 37.7% (B 36.2%, E 28.1%, M 1.8%). garage_type A 37.7% (B
+# 36.2%, E 28.1%, M 1.8%), 2 distinct codes. has_carport A 23.7% (B
+# 11.2%, E 23.0%, M 8.8%). porch_area_sqft A 80.4% (B 58.8%, E 77.2%, M
+# 42.3%), per-property median 192. deck_area_sqft A 9.1% (B 0.0%, E
+# 9.5%, M 23.8%), per-property median 168. has_pool A 1.9% (B 1.2%, E
+# 4.7%, M 0.0%). has_solar A 0.9% (B 0.0%, E 1.4%, M 0.3%).
+# quality_grade A 94.0% (B 100.0%, E 93.7%, M 99.7%), 325 distinct
+# codes. year_built A 61.3% (B 56.2%, E 62.3%, M 68.8%), per-property
+# median 1989. effective_year_built A 80.9% (B 68.8%, E 73.5%, M 9.6%),
+# per-property median 1999.
+
+description: >-
+  Hill County, TX certified appraisal roll, improvement detail member: living, garage,
+  porch and deck areas, class and feature flags per property.
+
+admin_id: US-TX-HIL
+
+entity:
+  entity_type: property
+  source:
+    source_id: hillcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hillcad.org/download-data/"
+    download_url: "https://hillcad.org/wp-content/uploads/2026/08/2026-Hill-CAD-Data-as-of-082726.zip"
+  version: 2026
+
+compressed_file_name: "2026-Hill-CAD-Data-as-of-082726.zip"
+uncompressed_file_name: "2026-08-27_000839_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [depreciation_yr, 4]
+  - [imprv_det_area, 15]
+
+columns:
+  quality_grade: imprv_det_class_cd
+  year_built: yr_built
+  effective_year_built: depreciation_yr
+
+# The class code '*' is the district's blank.
+null_value_strings: ['*']
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA2', 'MA1.5',
+      'MA3']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['GA', 'DG']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: garage_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['GA', 'DG']
+        output: true
+    output: has_garage
+  - type: expression
+    expression: >-
+      imprv_det_type_cd.where(imprv_det_type_cd.isin(['GA', 'DG']))
+    inputs: [imprv_det_type_cd]
+    output: garage_type
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['CP', 'CP2', 'CP1']
+        output: true
+    output: has_carport
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['OP', 'SP', 'EP']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: porch_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['WD']) & (imprv_det_area >
+      1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: deck_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['POOL2', 'POOL3', 'POOL1', 'POOL']
+        output: true
+    output: has_pool
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['SLR']
+        output: true
+    output: has_solar
+  - type: expression
+    expression: >-
+      quality_grade.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA2', 'MA1.5',
+      'MA3']))
+    inputs: [quality_grade, imprv_det_type_cd]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA2', 'MA1.5',
+      'MA3']) & (year_built > 1800) & (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA2',
+      'MA1.5', 'MA3']) & (effective_year_built > 1800) & (effective_year_built
+      <= 2027))
+    inputs: [effective_year_built, imprv_det_type_cd]
+    output: effective_year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  garage_area_sqft: sum
+  has_garage: max
+  garage_type: first
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_pool: max
+  has_solar: max
+  quality_grade: first
+  year_built: min
+  effective_year_built: min
+
+supplements: US-TX-HIL_property-hillcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features

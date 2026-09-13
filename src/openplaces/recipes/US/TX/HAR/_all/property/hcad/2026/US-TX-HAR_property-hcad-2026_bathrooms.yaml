@@ -1,0 +1,106 @@
+# Recipe: Harris County, TX appraisal district fixtures table, bathrooms
+# (HCAD). Same member (fixtures.txt) and row rule as
+# US-TX-HAR_property-hcad-2026_bedrooms; read its header first.
+#
+# ENCODING. HCAD separates full baths (type RMF "Room: Full Bath") from
+# half baths (RMH "Room: Half Bath"), each a whole count. The recipe
+# keeps both types and weights each row before the per-account sum:
+#   n_bathrooms      = units x 1 on RMF rows, units x 0.5 on RMH rows
+#   n_half_bathrooms = units x 0 on RMF rows, units x 1 on RMH rows
+# so the sum gives full + 0.5 x half and the half count on one row per
+# account. An account with RMF but no RMH row gets 0 half baths, which
+# is what HCAD means: only 293 explicit RMH "0.00" rows exist, so a
+# missing RMH row is the district's "none". FXA "Fixtures: Addl" is a
+# plumbing fixture count and is not read.
+#
+# MEASURED. RMF: 1,319,071 rows over 1,286,736 accounts, whole numbers,
+# median 2, p99 4, max 16; coverage A 99.0%, B 64.7%, E 96.8%, M 100%.
+# RMH: 549,478 rows over 547,343 accounts, median 1, p99 2, max 10;
+# coverage A 44.0%, B 13.2%, E 53.6%, M 0.0%. Repeated (acct, bld_num,
+# type) keys: 54 for RMF (48 with differing units), 63 for RMH (6).
+
+description: >-
+  Harris County, TX appraisal district fixtures table (HCAD PDATA): full
+  and half baths per building, folded and summed to the account.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "fixtures.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  n_bathrooms: units
+
+query: "`type`.str.strip().isin(['RMF', 'RMH'])"
+
+# One row per building and type; see the bedrooms sibling's ROW RULE.
+drop_duplicates: [parcel_id_assessor, bld_num, type]
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: type
+    output: type
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: remap
+    input: type
+    mapping: {"RMF": 0.0, "RMH": 1.0}
+    output: half_bath_weight
+  - type: binary
+    operation: multiply
+    inputs: [n_bathrooms, half_bath_weight]
+    output: n_half_bathrooms
+  - type: remap
+    input: type
+    mapping: {"RMF": 1.0, "RMH": 0.5}
+    output: bath_weight
+  - type: binary
+    operation: multiply
+    inputs: [n_bathrooms, bath_weight]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bath_weight
+  - bath_weight
+
+aggregation_function:
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

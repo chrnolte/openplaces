@@ -34,7 +34,7 @@ description: >-
   land use, owner, situs, zoning, acreage) from the county assessment
   view ArcGIS layer.
 
-admin_id: US-GA-DE
+admin_id: US-GA-DEK
 
 entity:
   entity_type: parcel

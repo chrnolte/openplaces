@@ -1,0 +1,132 @@
+# Recipe: Lorain County, OH auditor roll, ISSG Parcel_Dwelling_Floor
+# table. Supplement of US-OH-LO_property-loraincounty-2026; see that
+# recipe for the source, its terms and the join key.
+#
+# One row per floor of a dwelling card. Floor_Type is First Floor,
+# Full or 1/2 Upper Floor, Attic, Basement, Crawl or Slab. Area is the
+# floor's area and Living_Area its finished living area (sqft);
+# Cool_Factor is the share of the floor that is cooled, 0 to 100 (the
+# layout's words: "the factor of the area that is cooled"). The
+# database declares all three INT; none holds a fraction (checked on
+# the extract), so the GDAL read loses nothing here.
+#
+# Basement. basement_area_sqft sums Area over Basement rows; other
+# rows add 0, so a card whose lowest level is a crawl or slab reads
+# 0. Living_Area is 0 on every Basement row here: Lorain records a
+# finished basement as a dwelling component, read in _components,
+# so this table does not map basement_finished_area_sqft.
+# has_basement is true on a Basement row and false on a
+# Crawl or Slab row: the source records every card's lowest level as
+# a floor row, so false is a recorded absence. A property with no
+# floor rows stays null.
+#
+# Cooling. has_central_air is true where any floor has a cooled share
+# above 0 and false where every floor records 0. ISSG says "cooled",
+# not "central"; the source does not name the system.
+#
+# MEASURED 2026-09-13: 343,412 floor rows over 113,849 parcels, keys
+# 99.70% in the roll. On the 89,855 live land-use 510 properties:
+# has_basement true 78.8%, false 21.0%, null 0.2%; basement area > 0
+# on 78.8% (median 856 sqft); has_central_air true 76.8%, false
+# 23.0%.
+# foundation_description is Floor_Type on Basement, Crawl and Slab
+# rows, in the source's words, first per property (a card with both
+# a basement and a crawl row reads the one listed first); on 99.8%
+# (Basement 70,735, Slab 14,504, Crawl 4,413). No construction or
+# frame field exists in the Lorain extract.
+
+description: >-
+  Lorain County, OH ISSG Parcel_Dwelling_Floor table: basement area
+  and basement and cooling flags per property.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel_Dwelling_Floor
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: floor_area
+  - type: unary
+    operation: to_numeric
+    input: Living_Area
+    output: floor_living_area
+  - type: unary
+    operation: to_numeric
+    input: Cool_Factor
+    output: cool_factor
+  # 1 on Basement rows, 0 on every other floor.
+  - type: remap
+    input: Floor_Type
+    mapping: {Basement: 1}
+    default: 0
+    output: basement_row
+  - type: binary
+    operation: multiply
+    inputs: [floor_area, basement_row]
+    output: basement_area_sqft
+  # Other floor types leave the flag null.
+  - type: remap
+    input: Floor_Type
+    mapping: {Basement: true, Crawl: false, Slab: false}
+    output: has_basement
+  # The lowest-level rows, in the source's words.
+  - type: remap
+    input: Floor_Type
+    mapping: {Basement: Basement, Crawl: Crawl, Slab: Slab}
+    output: foundation_description
+  - type: conditional
+    operation: greater_than
+    input: cool_factor
+    args: {threshold: 0}
+    output: cooled_row
+  - type: remap
+    input: cooled_row
+    mapping: {0: false, 1: true}
+    output: has_central_air
+
+drop_columns:
+  - floor_area
+  - floor_living_area
+  - cool_factor
+  - basement_row
+  - cooled_row
+
+aggregation_function:
+  basement_area_sqft: sum
+  has_basement: max
+  has_central_air: max
+  foundation_description: first
+
+supplements: US-OH-LO_property-loraincounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: floors

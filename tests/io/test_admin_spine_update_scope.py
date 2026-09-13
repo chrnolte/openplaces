@@ -138,3 +138,62 @@ def test_copied_codes_register_their_source(monkeypatch, tmp_path):
             'scheme': '',
         },
     ]
+
+
+class TestReplaceCountries:
+    """A global recipe can replace a country's slice, not only add to it."""
+
+    @pytest.fixture
+    def global_update(self, monkeypatch, tmp_path):
+        spine = pd.DataFrame(
+            {'name': ['Old A', 'Old B', 'Kept'], 'type': ['Region'] * 3},
+            index=pd.Index(['XX-AA', 'XX-BB', 'YY-AA'], name='admin2_id'),
+        )
+        local = pd.DataFrame(
+            {
+                'name': ['New A', 'New C'],
+                'type': ['Region', 'Region'],
+                'admin2_id_wikidata': ['Q1', 'Q2'],
+                'name_original': ['Nueva A', ''],
+            },
+            index=pd.Index(['XX-AA', 'XX-CC'], name='admin2_id'),
+        )
+        local_path = tmp_path / 'local.parquet'
+        local.to_parquet(local_path)
+        out_path = tmp_path / 'admin2_test.csv'
+        monkeypatch.setattr(
+            admin_module, 'get_recipe_by_id', lambda *a, **k: {'admin_id': AdminId()}
+        )
+        monkeypatch.setattr(admin_module, 'get_admin', lambda *a, **k: spine.copy())
+        monkeypatch.setattr(admin_module, 'get_output_path', lambda *a, **k: local_path)
+        monkeypatch.setattr(admin_module, 'recipe_path', lambda *a, **k: out_path)
+        monkeypatch.setattr(admin_module, 'find_admin_recipe_id', lambda *a, **k: None)
+
+        def _run(**kwargs):
+            admin_module.update_admin_spine(
+                level=2,
+                admin_recipe_id='admin-fab-2026_admin2',
+                test=True,
+                silent=True,
+                **kwargs,
+            )
+            return pd.read_csv(out_path, index_col=0, dtype=str, keep_default_na=False)
+
+        return _run
+
+    def test_the_covered_country_is_replaced_and_others_kept(self, global_update):
+        updated = global_update(replace_countries=True)
+        assert sorted(updated.index) == ['XX-AA', 'XX-CC', 'YY-AA']
+        assert updated.loc['XX-AA', 'name'] == 'New A'
+        assert updated.loc['YY-AA', 'name'] == 'Kept'
+
+    def test_the_source_key_and_native_name_are_carried(self, global_update):
+        updated = global_update(replace_countries=True)
+        assert updated.loc['XX-CC', 'admin2_id_wikidata'] == 'Q2'
+        assert updated.loc['XX-AA', 'name_original'] == 'Nueva A'
+        assert updated.loc['YY-AA', 'admin2_id_wikidata'] == ''
+
+    def test_without_the_flag_only_new_units_are_added(self, global_update):
+        updated = global_update()
+        assert sorted(updated.index) == ['XX-AA', 'XX-BB', 'XX-CC', 'YY-AA']
+        assert updated.loc['XX-AA', 'name'] == 'Old A'

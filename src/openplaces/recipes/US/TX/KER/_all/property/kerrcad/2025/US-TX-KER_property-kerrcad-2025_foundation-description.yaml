@@ -1,0 +1,89 @@
+# Recipe: Kerr County, TX certified appraisal roll, improvement features
+# member (PACS File #9): foundation_description from the district's
+# 'Foundation' attribute. Same download and File #9 row shape as the
+# roll's room-count supplements; read US-TX-KER_property-kerrcad-2025
+# for the source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# Kept in the district's own words or codes; curate translates them.
+# construction_type and foundation_type stay NSI-coded and are not
+# written here.
+#
+# MEASURED on the 2025 export (aggregates only; share of properties with
+# a value): A is the 15,825 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# foundation_description A 83.5% (B 92.9%, E 69.1%, M 0.2%), 16 distinct
+# codes.
+
+description: >-
+  Kerr County, TX certified appraisal roll, improvement features member:
+  foundation_description per building, reduced to the property.
+
+admin_id: US-TX-KER
+
+entity:
+  entity_type: property
+  source:
+    source_id: kerrcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms found on the exports page or /disclaimer/)
+    redistribution_restricted: null
+    portal_url: "https://kerrcad.org/appraisal-exports/"
+    download_url: "https://kerrcad.org/wp-content/uploads/2025/11/2025-Cert-Export-Files.zip"
+  version: 2025
+
+compressed_file_name: "2025-Cert-Export-Files.zip"
+uncompressed_file_name: "2025-11-25_004391_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  foundation_description: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Foundation'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  foundation_description: first
+
+supplements: US-TX-KER_property-kerrcad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: foundation-description

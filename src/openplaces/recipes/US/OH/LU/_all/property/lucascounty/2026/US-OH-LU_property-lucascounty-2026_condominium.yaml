@@ -1,0 +1,116 @@
+# Recipe: Lucas County, OH auditor roll, CONDOMINIUM table. Supplement
+# of US-OH-LU_property-lucascounty-2026; see that recipe for the
+# source, its terms and the join key, and the _residential supplement
+# for the story codes.
+#
+# NEEDS A READER: .mdb, as the roll's header explains. Not ingested.
+#
+# Row shape, measured on the copy dated 2026-09-07: 7,068 rows over
+# 7,065 Parcels, one row per condominium unit parcel (3 parcels carry
+# two rows, told apart by Subpar). 99.8% of the 6,567 land-use 550
+# properties have a row here; BedRms is above zero on 97.9% of them
+# and FullBath on 98.6%. The same room fields as RESIDENTIAL, so the
+# same mapping, remap and fold apply. Stories codes present: 1 (4,242
+# rows), 6 (2,069), 0 (515), 2 (134), 5 (87), 8 (20), 7 (1).
+
+description: >-
+  Lucas County, OH AREIS CONDOMINIUM table: rooms, bedrooms, full and
+  half baths and decoded story height per condo unit parcel.
+
+admin_id: US-OH-LU
+
+entity:
+  entity_type: property
+  source:
+    source_id: lucascounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, with all faults; user agrees to hold Lucas County
+      harmless)
+    terms_url: "https://www.arcgis.com/home/item.html?id=8e00e957fcc04a81aac77e8bfc17b2dc"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=8e00e957fcc04a81aac77e8bfc17b2dc"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/8e00e957fcc04a81aac77e8bfc17b2dc/data"
+  version: "2026"
+
+compressed_file_name: "AREIS_Info.zip"
+uncompressed_file_name: "AREIS_Info.mdb"
+layer: CONDOMINIUM
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel
+  n_rooms: Rooms
+  n_bedrooms: BedRms
+  n_bathrooms: FullBath
+  n_half_bathrooms: HalfBath
+  n_stories: Stories
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: remap
+    input: n_stories
+    mapping:
+      1.0: 1.0
+      2.0: 1.0
+      5.0: 1.5
+      6.0: 2.0
+      7.0: 2.5
+      8.0: 3.0
+      9.4: 4.0
+      9.5: 5.0
+      9.6: 6.0
+      9.7: 7.0
+      9.8: 8.0
+      9.9: 9.0
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+
+supplements: US-OH-LU_property-lucascounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: condominium

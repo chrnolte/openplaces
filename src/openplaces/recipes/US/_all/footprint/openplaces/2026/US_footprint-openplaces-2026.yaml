@@ -167,6 +167,12 @@ share:
       - boston-outer-rings
       - central-florida-lakes
       - northern-wisconsin
+    # Also shipped as a team-internal bundle (`<region>.team`, in a
+    # `team/` subdirectory beside the region's own): it keeps values of
+    # sources cleared for team sharing only (Edgecombe County's parcels),
+    # which every other bundle withholds. Never publish a team bundle.
+    team_regions:
+      - cheer-eastern-nc
 
 # Occupancy classification config: maps terminology, evidence columns, and thresholds.
 occupancy:

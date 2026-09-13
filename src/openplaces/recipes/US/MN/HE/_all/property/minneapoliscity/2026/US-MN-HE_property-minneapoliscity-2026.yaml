@@ -1,0 +1,112 @@
+# Recipe: City of Minneapolis Assessing Department parcel data, the
+# property roll (one row per tax parcel).
+#
+# COVERAGE. The source covers only the City of Minneapolis, not the
+# rest of Hennepin County (US-MN-HE). The recipe sits at the county
+# because openplaces processes Minnesota at admin level 3; the suburbs
+# get no rows from it. Hennepin County's own parcel layer
+# (gis.hennepin.us .../LAND_PROPERTY/MapServer/1) has no room-count
+# field, and no suburban city layer with one was found.
+#
+# SOURCE. The City's "Assessing Department Parcel Data 2026" table on
+# its ArcGIS Hub (item f6748f040c6a4244bb2b314b26b44b48), one CSV of
+# about 41 MB, fetched through the Hub download API's redirect (the v3
+# datasets route answered 404 for this item on 2026-09-12). A new item
+# is published each assessment year (2023, 2024, 2025 and 2026 items
+# exist, the 2023-2024 ones with older field names), so the item id is
+# pinned to this vintage.
+#
+# ROW SHAPE, measured 2026-09-12: 132,079 rows, 131,075 distinct PIN,
+# all assessment year 2026. 130,450 PINs have one row; 625 PINs repeat
+# (2 to 6 rows), and in 97.4% of those the row count equals
+# NUMBEROFBUILDINGS: they are one row per building on a multi-building
+# parcel (above-ground area differs within 93% of them). So this roll
+# keeps one row per PIN, and the room counts come from the sibling
+# supplement US-MN-HE_property-minneapoliscity-2026_rooms, which sums
+# the building rows to the property. Condominium units are their own
+# PINs (16,546 rows).
+#
+# JOIN KEY. PIN is "p" followed by the 13-digit Hennepin PID (19 rows
+# carry "p" and 5 digits and match nothing). Stripped of the "p", it is
+# MetroGIS's Hennepin COUNTY_PIN: 99.90% of Minneapolis PINs are in
+# MetroGIS, and 99.86% of MetroGIS's Minneapolis PINs find one. They
+# are 29.4% of MetroGIS's 445,965 Hennepin parcels.
+#
+# NOT MAPPED, deliberately: OWNERNAME, addresses and every other
+# personal field; values and property type (the MetroGIS parcel recipe
+# carries values and use for the whole county). Only the key and a
+# waterfront flag are mapped here: every other attribute of interest,
+# year built and unit count included, varies by building and lives in
+# the supplement.
+#
+# WATERFRONT, measured 2026-09-13: PROPERTYTYPE carries two lakeshore
+# classes (a one-unit residential and a vacant residential one; the
+# first is spelled with two spaces before its dash). has_waterfront is
+# true on those 35 PINs and null on the other 131,040, since other
+# property types do not record whether a parcel fronts water.
+
+description: >-
+  City of Minneapolis assessor parcel data (city only, not the rest of
+  Hennepin County): the property roll, one row per tax parcel.
+
+admin_id: US-MN-HE
+
+entity:
+  entity_type: property
+  source:
+    source_id: minneapoliscity
+    # Checked 2026-09-12: the item's licence text dedicates the data to
+    # the public domain ("City of Minneapolis has waived all copyright
+    # and related or neighboring rights to Open Data"), plus a GIS
+    # accuracy disclaimer (Minn. Stat. 466.03 subd. 21). No fee, gate or
+    # resale clause.
+    license: >-
+      Public domain dedication: the City of Minneapolis has waived all
+      copyright and related or neighboring rights to this Open Data;
+      GIS accuracy disclaimer under Minn. Stat. 466.03, subd. 21.
+    terms_url: "https://www.arcgis.com/home/item.html?id=f6748f040c6a4244bb2b314b26b44b48"
+    redistribution_restricted: false
+    portal_url: "https://www.arcgis.com/home/item.html?id=f6748f040c6a4244bb2b314b26b44b48"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/f6748f040c6a4244bb2b314b26b44b48/csv?redirect=true&layers=0"
+  version: "2026"
+
+uncompressed_file_name: "Assessing_Department_Parcel_Data_2026.csv"
+
+process_by:
+  admin_level: 3
+
+# The Hub CSV starts with a byte-order mark.
+encoding: utf-8-sig
+
+csv_dtype:
+  PIN: str
+
+columns:
+  parcel_id_assessor: PIN
+
+# One row per property; see the header's ROW SHAPE.
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # Strip the "p" prefix so the key matches the Hennepin PID.
+  - type: string
+    operation: lstrip
+    input: parcel_id_assessor
+    args:
+      chars: "p"
+    output: parcel_id_assessor
+  # PROPERTYTYPE has two lakeshore classes: true there, null
+  # elsewhere; see the header's WATERFRONT.
+  - type: remap
+    input: PROPERTYTYPE
+    mapping:
+      "RESIDENTIAL 1 UNIT  - LAKESHORE": true
+      "VACANT LAND - RES - LAKESHORE": true
+    output: has_waterfront
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

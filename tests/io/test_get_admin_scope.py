@@ -89,3 +89,20 @@ class TestAnEmptyScopeIsAnAnswer:
 
     def test_allow_empty_changes_nothing_for_a_populated_scope(self):
         assert 'US-NC-WAK' in get_admin_ids(3, 'US-NC', allow_empty=True)
+
+
+def test_a_placeholder_output_is_skipped_when_files_are_concatenated(tmp_path):
+    import pandas as pd
+
+    from openplaces.io.readers import _concat_recipe_files
+
+    real = tmp_path / 'US_x.parquet'
+    pd.DataFrame({'admin2_id': ['US-MA'], 'name': ['Massachusetts']}).to_parquet(real)
+    placeholder = tmp_path / 'AW_x.parquet'
+    pd.DataFrame({'_join_id': pd.Series([], dtype='int64')}).to_parquet(placeholder)
+    got = _concat_recipe_files(
+        [placeholder, real], filters=[('admin2_id', 'in', ['US-MA'])]
+    )
+    assert got['name'].tolist() == ['Massachusetts']
+    only = _concat_recipe_files([placeholder])
+    assert only.empty

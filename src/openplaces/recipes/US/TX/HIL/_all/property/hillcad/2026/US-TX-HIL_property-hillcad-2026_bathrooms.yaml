@@ -1,0 +1,105 @@
+# Recipe: Hill County, TX appraisal roll -- improvement features,
+# bathrooms (Hill CAD). Same member (PACS File #9) and row rule as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Hill.
+#
+# Hill configures a "Number of Bathrooms" attribute whose codes are
+# BA1, BA1.5, BA2, BA2.5 and BA3, nothing else: a bath count with halves
+# as .5 (the registry's n_bathrooms definition), read from the number
+# after "BA". No code above BA3 exists, so the district's scale may be
+# top-coded at 3. Hill records no bedrooms, rooms or stories in File #9,
+# and File #8 carries no room-type details, so this is the district's
+# only room count.
+#
+# MEASURED on the 2026-08-27 export: 14,028 rows over 13,428 properties.
+# After cleaning, 78.9% of the 11,650 single-family (A) properties carry
+# it, 62.5% of multifamily (B), 70.1% of rural improved (E), 0.1% of
+# mobile homes (M); per property median 2, p99 4.
+#
+# ROW RULE. 29 of 13,991 improvements carry two or more rows and 38% of
+# those agree, so the rule was measured against the count expected from
+# the improvement's area (median of single-row improvements in the same
+# area decile): first row off by 0.55 on average, max by 0.41, sum by
+# 1.38. A within-building max cannot be expressed here, so
+# drop_duplicates keeps the first row per building and the sum adds
+# distinct buildings.
+
+description: >-
+  Hill County, TX appraisal roll, improvement features member: bathrooms
+  per building (halves as .5), summed to the property.
+
+admin_id: US-TX-HIL
+
+entity:
+  entity_type: property
+  source:
+    source_id: hillcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hillcad.org/download-data/"
+    download_url: "https://hillcad.org/wp-content/uploads/2026/08/2026-Hill-CAD-Data-as-of-082726.zip"
+  version: 2026
+
+compressed_file_name: "2026-Hill-CAD-Data-as-of-082726.zip"
+uncompressed_file_name: "2026-08-27_000839_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bathrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bathrooms'
+  and n_bathrooms.str.contains('^BA[0-9]', na=False)
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_bathrooms
+    args:
+      pattern: '^BA(?P<n>[0-9]+(?:[.][0-9]+)?)'
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bathrooms: sum
+
+supplements: US-TX-HIL_property-hillcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

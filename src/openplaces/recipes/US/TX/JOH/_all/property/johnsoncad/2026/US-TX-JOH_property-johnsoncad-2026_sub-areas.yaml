@@ -1,0 +1,220 @@
+# Recipe: Johnson County, TX certified appraisal roll, building
+# sub-areas (JCAD). Sibling of US-TX-JOH_property-johnsoncad-2026; read
+# that header for the source and the terms, and the _bedrooms header
+# for the join key (the same "R" plus nine-digit parcel_id).
+#
+# SOURCE MEMBER. externalbldsar.tab: one row per sub-area of a building
+# (parcel_id, bld_num, ba_cd, cd_dscr, act_area in square feet). ba_cd
+# is a family prefix plus a grade or variant suffix (CP1, CP1Z, AGV2);
+# cd_dscr is often only the suffix ("-1"), so the recipe reads the
+# family from ba_cd. About 23% of rows are the residence's own areas
+# (numeric, N, C and RES codes) and are not read.
+#
+# WHAT IS MAPPED, by family:
+#   garage_area_sqft  act_area over AGV, AGF, AGM (attached garage,
+#                     veneer, frame, metal), DGF, DGV, DGM (detached)
+#                     and MGAR (metal garage)
+#   garage_type       the family of the first garage row
+#   has_garage        true where a garage row exists
+#   has_carport       CARP (all grades) and RVCP (RV carport)
+#   porch_area_sqft   act_area over CP (covered porch), OP (open), EP
+#                     (enclosed), SP (screen), ECP (enclosed 80%)
+#   deck_area_sqft    act_area over WD (wood deck) and DECK
+#   basement_area_sqft  act_area over BASE
+#   n_outbuildings    rows of DGF, DGV, DGM, SHED, BARN, PBLDG and PBLD
+#                     (portable buildings), PEM (engineered metal),
+#                     MBAR, PBAR, FBAR (barns), SHOP, OB, GRHS, FBLD,
+#                     MBLD, QBLD, CBLD, BBLD, BRBLD, STAB, BXCR, BXCRS
+#                     and WLHS (well house)
+#   has_accessory_dwelling  GHSE (guest house) and GAPT (garage
+#                     apartment)
+# STG (storage, median 140 sq ft) is left out of the outbuildings: the
+# codes do not say whether it is attached. The member lists only what
+# exists, so flags are true or null, and areas and counts null for an
+# account without such a row.
+#
+# MEASURED (2026-09-13): 355,716 rows; 92.5% of their accounts are in
+# the roll. Share of the 49,093 single-family roll accounts (BUILDING
+# PTD A1) with a value, or the flag true: garage_area_sqft, garage_type
+# and has_garage 80.9% (median 441; AGV on 86%), has_carport 11.6%,
+# porch_area_sqft 92.6%, deck_area_sqft 1.4%, basement_area_sqft under
+# 0.1%, n_outbuildings 26.6%, has_accessory_dwelling 0.6%.
+
+description: >-
+  Johnson County, TX certified appraisal roll, building sub-areas member:
+  garage, porch, deck and basement areas, carport, outbuildings and
+  guest quarters.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalbldsar.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  sub_area_code: ba_cd
+
+transformations:
+  - type: string
+    operation: zfill
+    input: parcel_id
+    args:
+      width: 9
+    output: parcel_id_assessor
+  - type: string
+    operation: add_prefix
+    input: parcel_id_assessor
+    args:
+      prefix: "R"
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: sub_area_code
+    output: sub_area_code
+  - type: unary
+    operation: to_numeric
+    input: act_area
+    output: sub_area
+  # Masks: 1 on the named families, null elsewhere.
+  - type: remap_pattern
+    input: sub_area_code
+    patterns:
+      - pattern: '^(AGV|AGF|AGM|DGF|DGV|DGM)[0-9Z]*$'
+        value: 1
+      - pattern: '^MGAR$'
+        value: 1
+    output: garage_mask
+  - type: unary
+    operation: to_numeric
+    input: garage_mask
+    output: garage_mask
+  - type: expression
+    expression: "sub_area * garage_mask"
+    inputs: [sub_area, garage_mask]
+    output: garage_area_sqft
+  - type: string
+    operation: extract_named
+    input: sub_area_code
+    args:
+      pattern: '^(?P<v>AGV|AGF|AGM|DGF|DGV|DGM|MGAR)[0-9Z]*$'
+    output: garage_type
+  - type: remap_pattern
+    input: sub_area_code
+    patterns:
+      - pattern: '^(AGV|AGF|AGM|DGF|DGV|DGM)[0-9Z]*$'
+        value: true
+      - pattern: '^MGAR$'
+        value: true
+    output: has_garage
+  - type: remap_pattern
+    input: sub_area_code
+    patterns:
+      - pattern: '^(CARP|RVCP)[0-9A-Z]*$'
+        value: true
+    output: has_carport
+  - type: remap_pattern
+    input: sub_area_code
+    patterns:
+      - pattern: '^(CP|OP|EP|SP|ECP)[0-9Z]*$'
+        value: 1
+    output: porch_mask
+  - type: unary
+    operation: to_numeric
+    input: porch_mask
+    output: porch_mask
+  - type: expression
+    expression: "sub_area * porch_mask"
+    inputs: [sub_area, porch_mask]
+    output: porch_area_sqft
+  - type: remap_pattern
+    input: sub_area_code
+    patterns:
+      - pattern: '^(WD[0-9Z]*|DECK)$'
+        value: 1
+    output: deck_mask
+  - type: unary
+    operation: to_numeric
+    input: deck_mask
+    output: deck_mask
+  - type: expression
+    expression: "sub_area * deck_mask"
+    inputs: [sub_area, deck_mask]
+    output: deck_area_sqft
+  - type: remap
+    input: sub_area_code
+    mapping: {"BASE": 1}
+    output: basement_mask
+  - type: expression
+    expression: "sub_area * basement_mask"
+    inputs: [sub_area, basement_mask]
+    output: basement_area_sqft
+  - type: remap_pattern
+    input: sub_area_code
+    patterns:
+      - pattern: '^(DGF|DGV|DGM)[0-9Z]*$'
+        value: 1
+      - pattern: '^(SHED|PBLDG[LFGE]?|PBLD|PEM[0-9]*|SHOP[0-9]*|OB|GRHS)$'
+        value: 1
+      - pattern: '^(BARN[0-9]*|MBAR[LAG]?|PBAR[LAG]?|FBAR|STAB)$'
+        value: 1
+      - pattern: '^(FBLDZ?|MBLD|QBLD|CBLD|BBLD|BRBLD|BXCRS?|WLHS)$'
+        value: 1
+    output: n_outbuildings
+  - type: unary
+    operation: to_numeric
+    input: n_outbuildings
+    output: n_outbuildings
+  - type: remap
+    input: sub_area_code
+    mapping: {"GHSE": true, "GAPT": true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - parcel_id
+  - sub_area_code
+  - sub_area
+  - garage_mask
+  - porch_mask
+  - deck_mask
+  - basement_mask
+
+aggregation_function:
+  garage_area_sqft: sum
+  garage_type: first
+  has_garage: max
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  basement_area_sqft: sum
+  n_outbuildings: sum
+  has_accessory_dwelling: max
+
+supplements: US-TX-JOH_property-johnsoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: sub-areas

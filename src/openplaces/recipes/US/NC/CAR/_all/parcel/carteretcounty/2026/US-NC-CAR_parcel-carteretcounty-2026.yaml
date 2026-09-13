@@ -49,6 +49,35 @@
 # NOTE: Y_BLT_HOUS uses 0 rather than null for "never recorded" --
 # nulled generically at ingest (attribute_registry.csv's year_built
 # null_placeholder), the same as Bladen and Sampson.
+#
+# Building features, MEASURED 2026-09-13 in memory (residential =
+# Use_desc naming a residential or dwelling class, 34,247 rows):
+# living_area_sqft (HtdSqFt, the same value as area_sqft, median
+# 1,648) and building_area_sqft (TOT_SQ_FT, the total area, median
+# 2,440; at least the heated area on all but one row, median ratio
+# 1.38) 76.3% each; grade (Grade, 16 values such as 'C+') and
+# condition (Condition, 11 values, identical to CDU) 76.3%; exterior
+# wall (ExWllDes1), roof covering (RCovDes1), heating (HeatDes1) and
+# style (DwellingSt) 76.2%; has_central_air 75.4% (25,311 true, 522
+# false); n_fireplaces 76.2% (24.5% with one or more). FireplaceC is
+# 0 on every row without a building, so the count is kept only on a
+# RES building model. has_waterfront is true where the land-use
+# description names water frontage (CANALFRONT, SOUNDFRONT,
+# OCEANFRONT, the WATERFRONT classes; 7,615 rows, 11.9%), null
+# elsewhere: WATER PROXIMITY is near water, not on it, and the
+# undecoded W-prefixed codes (WPC, WCC, ...) stay null. Those land
+# classes replace the RESIDENTIAL label, so the residential rates
+# above leave most waterfront homes out.
+#
+# foundation_description is FondDes1 in the county's words (Brick,
+# Stucco/Stone, Concrete Block, Poured, Slab, Pile, Pier; FondTyp1
+# is the same list as codes): 76.1% of residential rows. Brick and
+# block name a foundation wall's material; curate translates the
+# words into foundation_type.
+#
+# Not mapped: RStrDes1 (Gable, Hip, ...) is a roof shape;
+# CONDO_SQFT is filled only where HtdSqFt already is; BuildingCo is a
+# building count (n_buildings), outside this pass.
 
 description: >-
   Carteret County, NC parcel roll (land/building values, year built, heated
@@ -95,6 +124,15 @@ columns:
   # counts separately.
   n_bedrooms: BEDROOMS
   n_bathrooms: BATHROOMS
+  building_area_sqft: TOT_SQ_FT
+  exterior_wall: ExWllDes1
+  heating_type: HeatDes1
+  roof_material: RCovDes1
+  condition: Condition
+  quality_grade: Grade
+  building_style: DwellingSt
+  n_fireplaces: FireplaceC
+  foundation_description: FondDes1
   last_sale_date: DDATE
   last_sale_price: SALE_PRICE
   land_value: LAND_VALUE
@@ -108,8 +146,88 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # HtdSqFt is the heated area: area_sqft keeps it as before and
+  # living_area_sqft carries the same value under the name that says
+  # so.
+  - type: expression
+    expression: "area_sqft * 1"
+    inputs: [area_sqft]
+    output: living_area_sqft
+  # Both area fields hold 0 where no building was recorded.
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: 0}
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: building_area_sqft
+    args: {value: 0}
+    output: building_area_sqft
+  # FireplaceC is 0 on every row, parcels without a building included.
+  # A zero is a recorded count only on a residential building model
+  # (BldgModel RES); elsewhere the count is nulled.
+  - type: remap
+    input: BldgModel
+    mapping: {"RES": 1}
+    output: residential_model
+  - type: expression
+    expression: "n_fireplaces * residential_model"
+    inputs: [n_fireplaces, residential_model]
+    output: n_fireplaces
+  # has_central_air from the heat description: true where it names
+  # central heat/AC or a system that cools (heat pump, geothermal, gas
+  # pack, commercial HVAC), false for None, null otherwise (minisplit,
+  # radiant, steam, space heater).
+  - type: remap
+    input: heating_type
+    mapping:
+      "Central Heat/AC": true
+      "HEAT PUMP": true
+      "Geo Thermal": true
+      "GAS PAK": true
+      "Comm HVAC": true
+      "COMM HVAC": true
+      "None": false
+      "Comm None": false
+    output: has_central_air
+  # has_waterfront: true where the land-use class names water
+  # frontage, null elsewhere (no class records its absence).
+  - type: remap
+    input: use_group
+    mapping:
+      "CANALFRONT": true
+      "SOUNDFRONT": true
+      "OCEANFRONT": true
+      "WATERFRONT PRIMARY": true
+      "WATERFRONT RESIDUAL": true
+      "WATERFRONT UNDEVELOPED": true
+      "WATERFRONT HOMESITE": true
+    output: has_waterfront
+  # FondDes1 is blank on rows without a building: strip it and null
+  # the blank, or it becomes a category of its own.
+  - type: string
+    operation: strip
+    input: foundation_description
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+
+drop_columns:
+  - residential_model
 
 columns_to_categorical:
+  - exterior_wall
+  - heating_type
+  - roof_material
+  - condition
+  - quality_grade
+  - building_style
+  - foundation_description
   - use_group
   - use_group_code
   - tax_neighborhood_code

@@ -30,7 +30,7 @@ description: >-
   zoning, subdivision, acreage) from the county ArcGIS layer. No mapped
   values.
 
-admin_id: US-GA-DO
+admin_id: US-GA-DOU
 
 entity:
   entity_type: parcel

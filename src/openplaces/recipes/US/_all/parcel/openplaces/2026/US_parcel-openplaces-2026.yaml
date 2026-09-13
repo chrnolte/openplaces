@@ -69,6 +69,7 @@ pipeline:
       n_stories: max
       n_bedrooms: sum
       n_bathrooms: sum
+      n_half_bathrooms: sum
       n_rooms: sum
       n_dwellings: sum
 

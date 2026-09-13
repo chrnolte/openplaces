@@ -1,0 +1,105 @@
+# Recipe: Ottawa County, OH auditor roll, ISSG Parcel Dwelling Custom
+# Field table. Supplement of US-OH-OT_property-ottawacounty-2026; see
+# that recipe for the source, the terms and the join key.
+#
+# One row per answer to a county-defined question about a dwelling
+# card and tax year (2024 and 2025 stacked; the query keeps the
+# latest). Ottawa defines two single-value questions:
+#   'Heating'            AIR CONDITIONING, BASIC, HEAT PUMP, NONE
+#   'Heating Fuel Type'  GAS, ELECTRIC, OIL, NONE, COAL, GEOTHERMAL,
+#                        SOLAR
+# Question and Answer are joined as 'Question|Answer' so each output
+# reads only its own question; heating_type is the Heating answer and
+# heating_fuel the fuel answer, in the source's words (AIR
+# CONDITIONING is the source's heating-system answer, kept as is).
+# An answer the county adds later reads null until listed here. The
+# first answer per property is taken.
+#
+# MEASURED 2026-09-13: 44,078 answers (2025) over 21,667 parcels,
+# keys 99.97% in the roll. On the 17,904 live land-use 510
+# properties: heating_type 94.9% (AIR CONDITIONING 11,984, BASIC
+# 4,543, HEAT PUMP 440, NONE 22); heating_fuel 94.7% (GAS 13,695,
+# ELECTRIC 2,782, OIL 438, NONE 21, GEOTHERMAL 5, COAL 4, SOLAR 2).
+
+description: >-
+  Ottawa County, OH ISSG Parcel Dwelling Custom Field table: heating
+  system and heating fuel per property, in the source's words.
+
+admin_id: US-OH-OT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ottawacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Ottawa County)
+    terms_url: "https://auditor.co.ottawa.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.co.ottawa.oh.us/additional-links-property-data-downloads"
+    download_url: "https://auditor.co.ottawa.oh.us/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Dwelling Custom Field.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number U
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [Question, Answer]
+    args: {sep: "|"}
+    output: question_answer
+  - type: remap
+    input: question_answer
+    mapping:
+      "Heating|AIR CONDITIONING": "AIR CONDITIONING"
+      "Heating|BASIC": "BASIC"
+      "Heating|HEAT PUMP": "HEAT PUMP"
+      "Heating|NONE": "NONE"
+    output: heating_type
+  - type: remap
+    input: question_answer
+    mapping:
+      "Heating Fuel Type|GAS": "GAS"
+      "Heating Fuel Type|ELECTRIC": "ELECTRIC"
+      "Heating Fuel Type|OIL": "OIL"
+      "Heating Fuel Type|NONE": "NONE"
+      "Heating Fuel Type|COAL": "COAL"
+      "Heating Fuel Type|GEOTHERMAL": "GEOTHERMAL"
+      "Heating Fuel Type|SOLAR": "SOLAR"
+    output: heating_fuel
+
+drop_columns:
+  - question_answer
+
+columns_to_categorical:
+  - heating_type
+  - heating_fuel
+
+aggregation_function:
+  heating_type: first
+  heating_fuel: first
+
+supplements: US-OH-OT_property-ottawacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: custom-field

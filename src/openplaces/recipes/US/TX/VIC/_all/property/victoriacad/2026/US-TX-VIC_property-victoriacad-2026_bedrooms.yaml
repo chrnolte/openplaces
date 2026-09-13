@@ -1,0 +1,102 @@
+# Recipe: Victoria County, TX certified appraisal roll -- improvement
+# features, bedrooms (VCAD). Sibling of US-TX-VIC_property-victoriacad-2026;
+# see that recipe's header for the PACS 8.0.34 layout and the join key.
+#
+# SOURCE MEMBER. PACS File #9, APPRAISAL_IMPROVEMENT_DETAIL_ATTR
+# ("Improvement Features", 87 characters wide), is a long table: one row
+# per improvement detail per attribute. The district configures both the
+# attribute names (imprv_attr_desc) and their value codes (imprv_attr_cd),
+# so the vocabulary below is Victoria's own and does not transfer to
+# another district without its own inspection (plans/texas-cad-room-
+# counts.md, section 1).
+#
+# MEASURED on the 2026 export: "Number of Bedrooms" is on 28,208 rows
+# over 26,662 properties, numeric on every row, median 3; 84.1% of the
+# 28,149 properties with a single-family (A) improvement carry it, 84.5%
+# of multifamily (B), 71.1% of rural improved (E), none of the 1,561
+# mobile homes (M). Values up to 33 are multifamily building totals.
+#
+# ROW RULE. A figure describes one building (improvement), but the export
+# repeats it on several of that building's detail rows: 476 improvements
+# carry two or more bedroom rows, and in 90% of them the codes are equal.
+# drop_duplicates keeps one row per (prop_id, imprv_id); the recipe's
+# aggregation_function then sums distinct buildings to the property (771
+# properties have bedrooms on more than one improvement).
+#
+# Victoria's "Plumbing" attribute is a fixture count (median 8 for three
+# bedrooms, 12 for four), not a bath count, so no bath recipe exists for
+# this district.
+
+description: >-
+  Victoria County, TX certified appraisal roll, improvement features member:
+  bedrooms per building, summed to the property.
+
+admin_id: US-TX-VIC
+
+entity:
+  entity_type: property
+  source:
+    source_id: victoriacad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://victoriacad.org/downloads/"
+    download_url: "https://victoriacad.org/wp-content/uploads/2026/07/VCAD-2026-CERTIFIED-ROLL-1.zip"
+  version: 2026
+
+compressed_file_name: "VCAD-2026-CERTIFIED-ROLL-1.zip"
+uncompressed_file_name: "VCAD 2026 CERTIFIED ROLL/2026-07-28_001892_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: "imprv_attr_desc == 'Number of Bedrooms'"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped by the
+# property spine's union.
+supplements: US-TX-VIC_property-victoriacad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

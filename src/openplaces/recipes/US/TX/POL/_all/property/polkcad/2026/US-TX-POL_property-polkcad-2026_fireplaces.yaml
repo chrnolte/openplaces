@@ -1,0 +1,88 @@
+# Recipe: Polk County, TX certified appraisal roll, improvement features
+# member (PACS File #9): n_fireplaces from the district's 'Fireplace'
+# attribute. Same download and File #9 row shape as the roll's
+# room-count supplements; read US-TX-POL_property-polkcad-2026 for the
+# source and its terms.
+#
+# READING. A count. drop_duplicates keeps the first row per building and
+# the property sums its buildings; an explicit zero is kept as zero.
+#
+# Codes are whole counts, 0 to 10.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value): A is the 21,657 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# n_fireplaces A 19.9% (B 4.6%, E 19.5%, M 2.9%), per-property median 1.
+
+description: >-
+  Polk County, TX certified appraisal roll, improvement features member: n_fireplaces
+  per building, reduced to the property.
+
+admin_id: US-TX-POL
+
+entity:
+  entity_type: property
+  source:
+    source_id: polkcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the open-records page)"
+    redistribution_restricted: null
+    portal_url: "https://polkcad.org/open-records"
+    download_url: "https://polkcad.sharepoint.com/:u:/s/PolkCADWebsiteDocumentLibrary/IQCt5JPvlJ8TR5QUbVNI2Xt-AVMpt6wb1ys_TrWHoiQKqhE?download=1"
+  version: 2026
+
+compressed_file_name: "2026-Real Data Export.zip"
+uncompressed_file_name: "2026-08-05_001616_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_fireplaces: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Fireplace'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_fireplaces: sum
+
+supplements: US-TX-POL_property-polkcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: fireplaces

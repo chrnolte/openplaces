@@ -1,0 +1,102 @@
+# Recipe: Seneca County, OH auditor roll, ISSG Parcel Characteristic
+# table. Supplement of US-OH-SE_property-senecacounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per parcel characteristic, several per parcel. Type is the
+# category (Location, Public Utilities, Street / Road, Topography,
+# Traffic) and Characteristic the value; every value read here occurs
+# under one category only, so each output reads Characteristic alone.
+#
+#   sewer_type    ALL PUBLIC, PUBLIC SEWER, SEPTIC
+#   water_source  ALL PUBLIC, PUBLIC WATER, WELL
+#   topography    ABOVE STREET, BELOW STREET, FLOOD PLAIN, LEVEL, LOW,
+#                 ROLLING, STEEP
+# ALL PUBLIC is kept as ALL PUBLIC in both utility columns. NONE occurs
+# under Public Utilities and Traffic and is not read; GAS, the location,
+# street and traffic values are not read either. Codes keep the source's
+# words; the first listed value per parcel is taken.
+#
+# MEASURED 2026-09-13 on 2025: 154,136 rows over 34,871 parcels, keys
+# 99.63% in the roll. On the 11,009 live land-use 510 properties:
+# sewer_type 99.5% (ALL PUBLIC 9,326, SEPTIC 1,604, PUBLIC SEWER 29);
+# water_source 99.7% (ALL PUBLIC 9,326, WELL 1,589, PUBLIC WATER 60);
+# topography 99.7% (LEVEL 10,852, ABOVE STREET 98, BELOW STREET 18,
+# ROLLING 9).
+
+description: >-
+  Seneca County, OH ISSG Parcel Characteristic table: sewer, water
+  supply and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Characteristic.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: remap
+    input: Characteristic
+    mapping:
+      "ALL PUBLIC": "ALL PUBLIC"
+      "PUBLIC SEWER": "PUBLIC SEWER"
+      "SEPTIC": "SEPTIC"
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping:
+      "ALL PUBLIC": "ALL PUBLIC"
+      "PUBLIC WATER": "PUBLIC WATER"
+      "WELL": "WELL"
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      "ABOVE STREET": "ABOVE STREET"
+      "BELOW STREET": "BELOW STREET"
+      "FLOOD PLAIN": "FLOOD PLAIN"
+      "LEVEL": "LEVEL"
+      "LOW": "LOW"
+      "ROLLING": "ROLLING"
+      "STEEP": "STEEP"
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-SE_property-senecacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

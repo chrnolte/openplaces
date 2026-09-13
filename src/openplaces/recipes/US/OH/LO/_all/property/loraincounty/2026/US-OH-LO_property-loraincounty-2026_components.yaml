@@ -1,0 +1,75 @@
+# Recipe: Lorain County, OH auditor roll, ISSG
+# Parcel_Dwelling_Component table. Supplement of
+# US-OH-LO_property-loraincounty-2026; see that recipe for the
+# source, its terms and the join key.
+#
+# One row per graded dwelling component (Type, Input_1_Label,
+# Input_1_Value). Lorain uses seven types: 1-BASEMENT LIVING QUARTERS
+# NON GLA, 2-DIRECT VENT FIREPLACE, masonry trim (brick, stone,
+# artificial stone) and interior or exterior upgrades.
+#
+# basement_finished_area_sqft sums Input_1_Value ('Number Of SqFt')
+# over BASEMENT LIVING QUARTERS rows. Lorain records a finished
+# basement here and leaves the floor table's basement Living_Area at
+# 0, which is why _floors does not map it. A property with no such
+# component stays null (not 0): the table lists components present.
+# Direct-vent fireplaces ('Number Of Units') are not mapped:
+# n_fireplaces comes from the dwelling table's Fireplace_Openings,
+# and whether that count already includes them is not documented.
+#
+# MEASURED 2026-09-13: 22,181 component rows, 3,778 of them basement
+# living quarters (one per parcel), keys 99.79% in the roll; finished
+# basement area on 3.8% of the 89,855 live land-use 510 properties
+# (median 800 sqft).
+
+description: >-
+  Lorain County, OH ISSG Parcel_Dwelling_Component table: finished
+  basement living area per property.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel_Dwelling_Component
+
+process_by:
+  admin_level: 3
+
+query: "Type == '1-BASEMENT LIVING QUARTERS NON GLA'"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  basement_finished_area_sqft: Input_1_Value
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+
+aggregation_function:
+  basement_finished_area_sqft: sum
+
+supplements: US-OH-LO_property-loraincounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: components

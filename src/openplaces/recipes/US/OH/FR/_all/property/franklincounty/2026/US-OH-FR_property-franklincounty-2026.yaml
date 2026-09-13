@@ -1,0 +1,144 @@
+# Recipe: Franklin County, OH auditor appraisal roll (Parcel table).
+#
+# Source: the auditor's open directory listing of monthly appraisal
+# extracts, one folder per month
+# (Outside_User_Files/{YYYY}/{YYYY-MM-DD} Appraisal/). The CAMA is
+# Tyler iasWorld (the property site reads "Powered by iasWorld Public
+# Access"). Tab-Delimited.zip holds one UTF-8 (BOM) text file per
+# table: Parcel (this recipe), Dwelling (the _dwelling supplement),
+# Build, Improvement, Land, Permit and three Sales splits. The folder
+# below is pinned to the 2026-08-15 extract; later months use the same
+# layout under a new folder name.
+#
+# Row shape, measured on the 2026-08-15 extract: 494,522 rows over
+# 494,315 distinct PARCEL ID. The 207 repeated ids differ only in the
+# value columns (COSTLAND..APRTOT), so drop_duplicates keeps one row
+# per id. One row is one property (an ownership unit, condo units
+# included).
+#
+# Join key. PARCEL ID has the form '999-999999-99', the last two
+# digits a suffix ('-00' on 490,289 rows, '-10' on 4,233). OGRIP's
+# LocalParcelID for Franklin is '999-999999', so the raw id matches
+# 0 of 100 sampled ids and the suffix-dropped form 173 of 200 (86.5%),
+# measured against the live OGRIP layer on a random sample (no OGRIP
+# output is ingested yet). parcel_id_assessor keeps the raw id, which
+# is unique per property; parcel_id_admin3 carries the OGRIP form and
+# feeds parcel_id_local. 1,059 base ids carry both a '-00' and a '-10'
+# row, and those properties share one parcel_id_local.
+#
+# Columns. LUC is the Ohio DTE land-use code (3 digits on every row).
+# CALCACRES (98.8% populated, 61.8% above zero; condo units carry 0)
+# is used for area_ac rather than ACRES (9.6% populated). The
+# appraisal value columns APRLAND/APRIMP/APRTOT are populated on only
+# 1.7-2.2% of rows in this extract and are left unmapped, as are the
+# COST* columns. PROPERTYCLASS (R/C/E/I/A/Z) is a class letter that
+# LUC already implies. No owner or mailing field exists in this table.
+#
+# Lot and location (added 2026-09-13), codes verbatim: NBHD is the
+# assessor's neighborhood (tax_neighborhood_code); TOPO2 the lot
+# topography ('3 - Flat', '2 - Rolling', '1 - Steep', '4 - Low');
+# TOPO1 (the lot's level against the street) is not read.
+# LOCATION1 and LOCATION2 are lot location codes: has_waterfront is
+# true where either reads '6 - Water Frontage' and null elsewhere
+# (the codes name one notable trait, so a lot without the code is not
+# a recorded absence); view_rating takes '7 - View - Positive' or
+# '8 - View - Negative' from either. UTIL1-3 record utilities
+# "available", not connected, and are not read.
+# MEASURED 2026-09-13 on the 291,801 live land-use 510 properties:
+# neighborhood 100%; topography 99.5% ('3 - Flat' on 98.9%);
+# has_waterfront true on 598; view_rating on 1,139 (1,093 positive,
+# 46 negative).
+
+description: >-
+  Franklin County, OH auditor appraisal roll (iasWorld Parcel table):
+  land-use code, calculated acreage and situs address per property.
+
+admin_id: US-OH-FR
+
+entity:
+  entity_type: property
+  source:
+    source_id: franklincounty
+    # Checked 2026-09-12. The property site carries a no-liability
+    # disclaimer ("the county and vendors assume no legal
+    # responsibilities for the information contained on this site").
+    # The file directory has no gate and no resale or redistribution
+    # clause. The auditor's FTP landing page, which may print terms,
+    # returns 403 to the openplaces User-Agent and is unread.
+    license: "unknown (no-liability disclaimer only; FTP terms page unread)"
+    redistribution_restricted: null
+    portal_url: "https://apps.franklincountyauditor.com/Outside_User_Files/"
+    download_url: "https://apps.franklincountyauditor.com/Outside_User_Files/2026/2026-08-15%20Appraisal/Tab-Delimited.zip"
+  version: "2026"
+
+compressed_file_name: "Tab-Delimited.zip"
+uncompressed_file_name: "Parcel.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL ID
+  use_group_code: LUC
+  area_ac: CALCACRES
+  address_number: ADRNOLOW
+  tax_neighborhood_code: NBHD
+  topography: TOPO2
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [LOCATION1, LOCATION2]
+    args: {sep: " | "}
+    output: location_codes
+  - type: remap_pattern
+    input: location_codes
+    patterns:
+      - {pattern: ".*6 - Water Frontage", value: true}
+    output: has_waterfront
+  - type: remap_pattern
+    input: location_codes
+    patterns:
+      - {pattern: ".*7 - View", value: "7 - View - Positive"}
+      - {pattern: ".*8 - View", value: "8 - View - Negative"}
+    output: view_rating
+  # OGRIP form: drop the trailing '-NN' suffix.
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 0, end: -3}
+    output: parcel_id_admin3
+  - type: string
+    operation: concat
+    inputs: [ADRDIR, ADRSTR, ADRSUF]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+drop_columns:
+  - location_codes
+
+columns_to_categorical:
+  - use_group_code
+  - topography
+  - view_rating
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache

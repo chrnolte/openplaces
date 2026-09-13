@@ -31,7 +31,7 @@ description: >-
   zoning from the county ArcGIS layer. No owner, address, value or year
   built.
 
-admin_id: US-GA-FA
+admin_id: US-GA-FAY
 
 entity:
   entity_type: parcel

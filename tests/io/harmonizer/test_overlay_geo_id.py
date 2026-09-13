@@ -139,13 +139,12 @@ def test_resolve_spine_keep_columns_carries_value_fields(monkeypatch):
 def test_resolve_spine_falls_back_when_highest_priority_source_has_no_geometry(
     monkeypatch,
 ):
-    # Regression test for a real bug: Craven County's parcel roll is a
-    # geometry-less attribute table by design (its companion property
-    # recipe carries the geometry instead) -- when it's the highest-priority
-    # (first) source in `sources`, resolve_spine used to assume sources[0]
-    # always loaded and crashed with KeyError building the primary spine
-    # frame. It must instead fall back to the next source that actually has
-    # geometry for this admin unit.
+    # Regression test for a real bug: Craven County's roll, then a
+    # geometry-less parcel recipe (a property recipe since 2026-09-12),
+    # was the highest-priority (first) source in `sources`.
+    # resolve_spine used to assume sources[0] always loaded and crashed
+    # with KeyError building the primary spine frame. It must instead
+    # fall back to the next source that has geometry for this unit.
     fallback = gpd.GeoDataFrame(
         {'parcel_id_local': ['p1']},
         geometry=[box(0, 0, 10, 10)],

@@ -1,0 +1,93 @@
+# Recipe: Gregg County, TX certified appraisal roll, tax year 2025 --
+# improvement features, bedrooms (Gregg Appraisal District). Same
+# member (PACS File #9) and row rule as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+#
+# "Number of Bedrooms" is numeric on every row but one (blank, left out
+# by the query), median 3; one code of 50 is a keying error left for
+# curate's range checks.
+# The district records it on far fewer properties than it records baths.
+#
+# MEASURED on the 2025 export: 11,673 rows over 11,419 properties.
+# 29.3% of the 35,661 single-family (A) properties carry it, 12.2% of
+# multifamily (B), 25.3% of rural improved (E), no mobile homes (M);
+# per property median 3, p99 6. Above the 25% floor, but thin.
+#
+# ROW RULE. 55 of 11,599 improvements carry two or more rows and 65% of
+# those agree, so one row per building is kept (the area test agrees:
+# first row off by 0.91 on average, sum by 4.69).
+
+description: >-
+  Gregg County, TX certified appraisal roll 2025, improvement features
+  member: bedrooms per building, summed to the property.
+
+admin_id: US-TX-GRE
+
+entity:
+  entity_type: property
+  source:
+    source_id: greggcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://gcad.org/downloads/"
+    download_url: "https://gcad.org/wp-content/uploads/sites/24/2025/09/2025_gcad_certified_real_appraisal_data.zip"
+  version: 2025
+
+compressed_file_name: "2025_gcad_certified_real_appraisal_data.zip"
+uncompressed_file_name: "2025-07-22_004063_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.contains('^[0-9]*[.]?[0-9]+$', na=False)
+  and n_bedrooms.str.contains('[1-9]', na=False)
+
+# One row per building, then summed across buildings.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-GRE_property-greggcad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

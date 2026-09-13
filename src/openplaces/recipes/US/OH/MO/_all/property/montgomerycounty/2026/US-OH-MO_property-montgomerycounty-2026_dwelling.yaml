@@ -1,0 +1,289 @@
+# Recipe: Montgomery County, OH CAMA roll, DWELL table. Supplement of
+# US-OH-MO_property-montgomerycounty-2026; see that recipe for the
+# source, the pinned monthly file and the join key.
+#
+# Row shape, measured on the 2026-08-31 file: DWELL.DAT holds 189,390
+# records of 643 characters (144 of 684), each followed by two filler
+# lines of 9 and 0 characters. read_fwf skips the empty line; the query
+# drops the 9-character line, whose tax year is blank. All records are
+# tax year 2025. (Parid, Card) is unique: 189,390 cards over 188,787
+# parcels, one card per dwelling. 98.8% of the roll's 175,189
+# dwelling-class properties (Luc 510/520/530/550/560) have a card.
+#
+# Offsets come from the layout PDF, page 13 (1-based starts: Card 37,
+# Taxyr 42, Stories 51, Rmtot 69, Rmbed 72, Fixbath 77, Fixhalf 80).
+# They were checked on the file: Fixbath x 3 + Fixhalf x 2 + Fixaddl
+# equals Fixtot on 100% of cards. The PDF documents the record through
+# byte 861 but records end at 643; every field read here lies inside.
+#
+# Measured on cards:
+#   Rmtot   (total rooms)  99.9% above zero, median 6
+#   Rmbed   (bedrooms)    100.0% above zero, median 3
+#   Fixbath (full baths)   99.9% above zero, median 2
+#   Fixhalf (half baths)   34.2% above zero
+#   Stories (numeric)     100.0% above zero (1.0, 1.5, 2.0, 2.5, 3.0,
+#                          4.0; 3 cards read '.0', which parses to 0)
+# Fixtot (total plumbing fixtures) and Fixaddl (additional fixtures)
+# are not bath counts and are not read. n_bathrooms folds full + 0.5 x
+# half.
+#
+# Building features (added 2026-09-13). The PDF's DWELL offsets hold
+# through Heat (92); Heatsys is 2 characters in the file, not 1, so
+# every later field sits one column right of the PDF. Located on the
+# file: Fuel 95 (gas on 86% of cards), Grade 96 (a grade letter on
+# 100%), Finbsmtarea 147, Wbfp_o 192, Cdu 230 (the CDU vocabulary on
+# 99.9%), Sfla 474 and Effyr 635 (a 4-digit year where filled).
+# Codes verbatim, decoded by the zip's tables (AEDIT, BSMT, HEAT,
+# EXTWALL, GRADE): Sfla (living_area_sqft), Finbsmtarea, Wbfp_o
+# (fireplace openings), Yrremod, Effyr, Grade (quality_grade, A+ to
+# E-, X, XX), Cdu (condition: AV, GD, FR, VG, PR, UN), Extwall (1
+# frame, 2 brick, 3 masonry and frame, 4 block, 5 stucco, 6
+# aluminum/vinyl, 7 stone, 8 asbestos, 9 concrete), Heatsys
+# (heating_type: 1 hot air, 2 hot water, 3 unit, 4 heat pump), Fuel
+# (heating_fuel: 1 none, 2 gas, 3 electric, 4 oil, 5 coal, 6 solar, 7
+# wood, 8 propane) and Style (building_style, 20 codes, e.g. 03 ranch,
+# 07 colonial). has_basement reads Bsmt (1 none and 2 crawl false, 3
+# part and 4 full true); has_central_air reads Heat (4 central A/C
+# true; 1 none, 2 non-central, 3 central heat false; 5 geothermal
+# null). Bsmtcar (basement garage cars) is not read. Years take the
+# latest card, codes the first.
+# MEASURED 2026-09-13 on the 157,799 land-use 510 properties: living
+# area 99.9% (median 1,394 sqft); finished basement > 0 11.0%;
+# fireplaces > 0 39.3%; remodel year 4.3%; effective year 1.6%;
+# grade, condition, wall, fuel, style 99.8-99.9%; heating_type
+# 67.1%; has_basement 99.8% (true 57.4%); has_central_air 99.9%
+# (true 78.3%).
+# year_built reads Yrblt at 59 (5 wide), where the PDF puts it; it
+# precedes Heat, so the Heatsys shift does not touch it, and it reads
+# a 4-digit year on 100% of cards. The earliest card is taken; 0 and
+# years outside 1700-2026 are null. On cards 1900 is 0.8% and 1850
+# 0.08%, no placeholder heap. MEASURED 2026-09-13: 99.9% of the 510
+# properties, median 1959.
+# foundation_description keeps Bsmt (91) verbatim (1 none, 2 crawl,
+# 3 part, 4 full); curate translates it. DWELL has no construction
+# or frame field (Extwall is the wall material), so no
+# construction_description. MEASURED 2026-09-13: 99.8% of the 510
+# properties (4 on 45.2%, 1 36.5%, 3 12.2%, 2 6.0%).
+
+description: >-
+  Montgomery County, OH CAMA DWELL table: rooms, baths, stories, living
+  area, basement, heating, air, grade and condition per card, to the
+  property.
+
+admin_id: US-OH-MO
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms on the download page; auditor GIS disclaimer is
+      warranty/liability only)
+    terms_url: "https://www.mcohio.org/630/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm"
+    download_url: "https://go.mcohio.org/applications/treasurer/search/data/Cama/Cama_Files_20260831.zip"
+  version: "2026"
+
+compressed_file_name: "Cama_Files_20260831.zip"
+uncompressed_file_name: "Cama_Files_20260831/DWELL.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [parid, 30]
+  - [filler, 6] # Jur
+  - [filler, 5] # Card
+  - [taxyr, 5]
+  - [filler, 4] # Seq
+  - [stories, 4]
+  - [extwall, 2]
+  - [style, 2]
+  - [yrblt, 5]
+  - [yrremod, 5]
+  - [rmtot, 3]
+  - [rmbed, 3]
+  - [filler, 2] # Rmfam
+  - [fixbath, 3]
+  - [fixhalf, 3]
+  - [filler, 8] # Fixaddl, Fixtot, Remkit, Rembath
+  - [bsmt, 1]
+  - [heat, 1]
+  - [heatsys, 2] # 1 wide in the PDF; 2 in the file
+  - [fuel, 1]
+  - [grade, 3]
+  - [filler, 48] # Class through Recromarea
+  - [finbsmtarea, 7]
+  - [filler, 38] # CondoVw, Cndcmplx, Cline
+  - [wbfp_o, 3]
+  - [filler, 35] # Wbfp_s through Depr's lead
+  - [cdu, 2]
+  - [filler, 242] # Depr through Recval
+  - [sfla, 7]
+  - [filler, 154] # Shfact through Note2
+  - [effyr, 5]
+
+# Drop the 9-character filler line that follows each record.
+query: "taxyr.notna()"
+
+columns:
+  parcel_id_assessor: parid
+  n_rooms: rmtot
+  n_bedrooms: rmbed
+  n_bathrooms: fixbath
+  n_half_bathrooms: fixhalf
+  n_stories: stories
+  living_area_sqft: sfla
+  basement_finished_area_sqft: finbsmtarea
+  n_fireplaces: wbfp_o
+  renovation_year: yrremod
+  effective_year_built: effyr
+  quality_grade: grade
+  condition: cdu
+  exterior_wall: extwall
+  heating_type: heatsys
+  heating_fuel: fuel
+  building_style: style
+  year_built: yrblt
+  foundation_description: bsmt
+
+transformations:
+  # Year built: 0 is nulled by the registry; years outside 1700-2026
+  # are nulled here.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # BSMT: 1 none, 2 crawl, 3 part, 4 full (the zip's BSMT table).
+  - type: remap
+    input: foundation_description
+    mapping: {"1": false, "2": false, "3": true, "4": true}
+    output: has_basement
+  # HEAT: 1 none, 2 non-central, 3 central heat, 4 central A/C, 5
+  # geothermal (names no air system; stays null).
+  - type: remap
+    input: heat
+    mapping: {"1": false, "2": false, "3": false, "4": true}
+    output: has_central_air
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - exterior_wall
+  - heating_type
+  - heating_fuel
+  - building_style
+  - foundation_description
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  has_basement: max
+  has_central_air: max
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  heating_type: first
+  heating_fuel: first
+  building_style: first
+  year_built: min
+  foundation_description: first
+
+supplements: US-OH-MO_property-montgomerycounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

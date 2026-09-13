@@ -1,0 +1,145 @@
+# Recipe: Ottawa County, OH auditor roll, ISSG Parcel Improvement
+# table. Supplement of US-OH-OT_property-ottawacounty-2026; see that
+# recipe for the source, the terms and the join key.
+#
+# One row per improvement line on a card and tax year (2024 and 2025
+# stacked; the query keeps the latest). Type is 'CODE-DESCRIPTION'
+# (193 codes, residential, farm and commercial); Multiplier is "the
+# number of identical improvements represented by this item".
+#
+# n_outbuildings counts, times Multiplier, rows whose Type names a
+# detached structure: shed, detached garage, pole building or pole
+# garage, lean-to, barn, storage, utility or prefab steel building,
+# finished frame building, gazebo, poultry or milk house, quonset,
+# grain bin, corn crib, granary, boat house, carport, stable,
+# shelter, greenhouse (GH1 to GH3) and silo (AS1, AS2, AS4, AS5).
+# Living quarters inside a barn, pole building or boathouse (LQ) are
+# a part of that structure and not counted again. Storage condos,
+# attached garages, decks, patios, porches, docks, pools, canopies,
+# mobile homes, paving, fencing, elevators and commercial
+# structures are not counted.
+#
+# Flags, each true where such a row is recorded and null elsewhere
+# (the table lists what is present, never what is absent): has_pool
+# (residential or commercial pool), has_garage (detached, attached
+# or pole garage), has_carport, has_elevator (residential or
+# commercial elevator) and has_accessory_dwelling (living quarters in
+# a barn, pole building or over a boathouse). has_garage and
+# has_carport are also set by _features.
+#
+# MEASURED 2026-09-13: 43,322 rows (2025) over 20,770 parcels, keys
+# 99.99% in the roll. On the 17,904 live land-use 510 properties: an
+# improvement row on 65.1%; n_outbuildings > 0 on 63.1% (median 1);
+# pool 2.5%; garage 29.9%; carport 0.8%; elevator 22 properties;
+# living quarters 3.
+
+description: >-
+  Ottawa County, OH ISSG Parcel Improvement table: outbuilding count
+  and pool, garage, carport, elevator and accessory dwelling flags.
+
+admin_id: US-OH-OT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ottawacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Ottawa County)
+    terms_url: "https://auditor.co.ottawa.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.co.ottawa.oh.us/additional-links-property-data-downloads"
+    download_url: "https://auditor.co.ottawa.oh.us/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Improvement.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  # Later patterns win: LQ rows are parts of a counted structure.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(SHED|DET GAR|POLE BLDG|POLE BLD |POLE GARAGE)", value: 1}
+      - {pattern: ".*(LEAN TO|BARN|STORAGE BUILDING|UTILITY BUILDING)", value: 1}
+      - {pattern: ".*(UTILITY BLD|PREFAB STEEL BUILDING|FIN FR BLD)", value: 1}
+      - {pattern: ".*(GAZEBO|POULTRY HSE|MILK HOUSE|MILK HSE|QUONSET)", value: 1}
+      - {pattern: ".*(GRN BIN|CORN CRIB|GRANARY|BOAT HOUSE|CARPORT)", value: 1}
+      - {pattern: ".*(STABLES|SHELTER)", value: 1}
+      - {pattern: "(GH[123]|AS[1245])-", value: 1}
+      - {pattern: ".*LQ (IN|OVER) ", value: 0}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(DET GAR|ATT GAR|POLE GARAGE)", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*ELEVATOR", value: true}
+    output: has_elevator
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*LQ (IN|OVER) ", value: true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+  has_elevator: max
+  has_accessory_dwelling: max
+
+supplements: US-OH-OT_property-ottawacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

@@ -1,0 +1,229 @@
+# Recipe: Muskingum County, OH auditor roll, ISSG Parcel Dwelling
+# table. Supplement of US-OH-MU_property-muskingumcounty-2026; see
+# that recipe for the unlinked endpoint, the terms and the join key.
+#
+# Row shape, measured on the extract dated 2026-09-12: 30,986 cards
+# over 30,298 parcels, all tax year 2025, (id, Card) unique; one row
+# per dwelling card. 93.3% of the 16,394 live land-use 510 properties
+# have a card with bedrooms. Story Height values: 1, 1.5, 2, 1.75,
+# 2.5, 3. The ISSG dwelling layout is the same as in every ISSG
+# county (Bed Rooms, Full Baths, Half Baths, Total Rooms, Story
+# Height). Extra Fixtures counts extra plumbing fixtures, not baths,
+# and Plumbing is a category; neither is mapped. n_bathrooms folds
+# full + 0.5 x half. Heating sits in the Dwelling Feature and
+# Component tables and is not read.
+#
+# Building features (added 2026-09-13), codes verbatim: Living Area
+# (living_area_sqft), Fireplace Openings (n_fireplaces), Year
+# Remodeled (renovation_year; 0 means none and reads null), Year
+# Effective (effective_year_built), Grade (quality_grade, e.g.
+# 'C-01'), Condition (condition, e.g. 'AV-AVERAGE') and Type
+# (building_style, e.g. '1-CONVENTIONAL'). RecRoom Area is read as
+# basement_finished_area_sqft: ISSG prices a finished basement as the
+# dwelling's recreation room (RecRoom codes RR1 semifinished to RR4
+# finished divided extensive, some 'W/AC'), and the floor table's
+# basement living area is almost always 0 here. A card without a
+# rec room reads 0. Years take the latest card, codes the first. The
+# Well Septic field is not read (see _characteristic).
+# MEASURED 2026-09-13 on the 16,394 live land-use 510 properties:
+# living area > 0 on 93.3% (median 1,339 sqft), fireplaces > 0 on
+# 25.8%, a remodel year on 28.9%, effective year, grade, condition
+# and style on 93.4% each, finished basement area > 0 on 25.1%.
+# Grades are 25 values (A+02 to E-02); conditions are 5.
+#
+# Year built and units (added 2026-09-13). year_built is Year Built,
+# the earliest card per property; 0 and years outside 1700 to 2026
+# read null (none occur). 1901 is a placeholder-like heap: 4,428
+# cards (14.3%) and 17.5% of land-use 510 properties; it is kept.
+# n_dwellings is Units Designed plus Units Converted (the layout:
+# units "in the initial dwelling design" and units "converted from
+# the original dwelling design"), summed over cards. Designed alone
+# undercounts: on land-use 520 cards it reads 2 on 45% while the
+# sum reads 2 on 88.8% of 520 properties; on 530 properties the sum
+# reads 3 on 46% (designed alone 3 on 7% of cards). Dwelling cards
+# cover residential units only.
+# MEASURED 2026-09-13 on the 16,394 live land-use 510 properties:
+# year_built on 93.4% (median 1950); n_dwellings on 93.4%, equal to
+# 1 on 92.3% (98.8% of those with a card).
+
+description: >-
+  Muskingum County, OH ISSG Parcel Dwelling table: rooms, bedrooms,
+  full and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-MU
+
+entity:
+  entity_type: property
+  source:
+    source_id: muskingumcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to
+      indemnify Muskingum County)
+    terms_url: "https://www.muskingumcountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://www.muskingumcountyauditor.org/"
+    download_url: "https://www.muskingumcountyauditor.org/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Dwelling.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number
+  n_rooms: Total Rooms
+  n_bedrooms: Bed Rooms
+  n_bathrooms: Full Baths
+  n_half_bathrooms: Half Baths
+  n_stories: Story Height
+  living_area_sqft: Living Area
+  n_fireplaces: Fireplace Openings
+  renovation_year: Year Remodeled
+  effective_year_built: Year Effective
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+  basement_finished_area_sqft: RecRoom Area
+  year_built: Year Built
+  n_dwellings: Units Designed
+
+transformations:
+  # n_dwellings = units designed + units converted.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: Units Converted
+    output: units_converted
+  - type: aggregate
+    operation: sum
+    inputs: [n_dwellings, units_converted]
+    output: n_dwellings
+  # year_built: impossible years read null (0 is already nulled by
+  # the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - units_converted
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  quality_grade: first
+  condition: first
+  building_style: first
+  basement_finished_area_sqft: sum
+  year_built: min
+  n_dwellings: sum
+
+supplements: US-OH-MU_property-muskingumcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

@@ -1,0 +1,163 @@
+# Recipe: McLennan County, TX certified appraisal export (McLennan
+# Central Appraisal District, MCAD).
+#
+# SOURCE. MCAD runs the True Prodigy portal, but its "Full Data Export"
+# is the PACS 8.0.x "Appraisal Export" layout, the same fixed-width
+# members as the other PACS districts. The 2026 certified file is "Data
+# Export 7.29.26" (DATA EXPORT 7.29.26.zip, 107.2 MB), listed on the
+# site's Reports page under "Certified Totals And Entity Reports".
+#
+# DOWNLOAD IS MANUAL. mclennancad.org is a single-page app whose files
+# come from the vendor's API. That API answers 401 without the session
+# token the page itself obtains anonymously (POST
+# https://prod-container.trueprodigyapi.com/trueprodigy/cadpublic/auth/token
+# with {"office": "McLennan"}, then GET /public/filedownload/<file id>
+# with the token). The ingester's plain download cannot do that, so the
+# recipe carries no download_url: download the file from the Reports
+# page and place it in this recipe's external cache under
+# compressed_file_name. The API flags the report record isPublished 0,
+# but the portal's report table renders every record the category
+# search returns (its code applies a publish filter only to contact
+# entries), so the file is linked from the site. Checked from the
+# portal's code, not in a browser.
+#
+# LAYOUT. APPRAISAL_INFO is 9,922 characters wide here (8.0.34: 9,714).
+# The extra fields sit beyond the last one mapped: the 8.0.34 offsets
+# below were checked on the data (every row reads tax year 2026, state
+# codes read as A1/E1/F1..., market value and situs number numeric).
+# File #7 is 114 wide and File #9 87, as in 8.0.34.
+#
+# ROWS. 131,202 rows over 131,082 distinct prop_id; drop_duplicates
+# keeps the first row of the 120 repeated ids. Property types: R
+# 117,375, P (business personal) 11,363, MH 2,459, MN 5.
+#
+# JOIN KEY. prop_id is zero-padded to 12; the lstrip below restores
+# TxGIO's bare form. Through the bundled parcel_id_local conversion,
+# 86.6% of the roll's ids (96.8% of real-property ids) are found in
+# TxGIO and 99.3% of TxGIO's 114,255 ids are found here.
+#
+# COVERAGE on the 2026 export: land_state_cd 89.2%, imprv_state_cd
+# 73.8%, market_value >0 99.8%, legal acreage >0 87.4% (median 0.32
+# acres after scaling).
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (layout: "Legal
+# Acreage (4 Decimals)"), so it is divided by 10,000.
+#
+# NOT MAPPED: geo_id, declared as filler: it was not compared with
+# TxGIO in this pass, and the reader keeps a raw column of that name
+# even unmapped, where it would read as openplaces' own geo_id key.
+# Also appraised_val (homestead-capped) and the owner block.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 76,240 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 100.0% (B 100.0%, E 100.0%, M
+# 100.0%), 1,471 distinct codes.
+
+description: >-
+  McLennan County, TX certified appraisal roll (PACS-layout export via
+  the True Prodigy portal): state land-use codes, acreage, market value.
+
+admin_id: US-TX-MCL
+
+entity:
+  entity_type: property
+  source:
+    source_id: mclennancad
+    # Site statement, read on the site pages by the 2026-09-12
+    # inventory: "All information contained herein is considered in
+    # the public domain and is distributed without warranty of any
+    # kind." The site "is not intended for the bulk transfer of data"
+    # is said of property search, not of the posted exports. The
+    # portal's legal-statement endpoint answers 403 to the anonymous
+    # token and was not read. No resale or redistribution clause.
+    license: >-
+      site statement: 'considered in the public domain and is distributed
+      without warranty of any kind'
+    terms_url: "https://www.mclennancad.org/"
+    redistribution_restricted: false
+    portal_url: "https://www.mclennancad.org/"
+    # No download_url: see DOWNLOAD IS MANUAL above.
+  version: 2026
+
+compressed_file_name: "DATA EXPORT 7.29.26.zip"
+uncompressed_file_name: "2026-07-29_2026_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #2 (Property), 8.0.34 offsets; coverage stops at situs_num.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [filler, 50] # geo_id, see NOT MAPPED
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+# One row per property; see ROWS.
+drop_duplicates: [prop_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+
+columns:
+  tax_neighborhood_code: hood_cd
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

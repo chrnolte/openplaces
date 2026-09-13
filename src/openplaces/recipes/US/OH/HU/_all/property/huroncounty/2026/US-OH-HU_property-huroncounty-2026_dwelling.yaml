@@ -1,0 +1,220 @@
+# Recipe: Huron County, OH auditor roll, ISSG Parcel Dwelling table.
+# Supplement of US-OH-HU_property-huroncounty-2026; see that recipe
+# for the source and the join key.
+#
+# Row shape (2025): 19,912 cards over 19,716 parcels, one row per
+# dwelling card; the query keeps the latest tax year. 99.95% of card
+# keys are on the roll. Of the 10,924 live land-use 510 properties,
+# 98.6% have bedrooms above 0, 99.5% baths and rooms, 99.6% stories.
+# Story_Height values include 1.25 and 1.75. Family_Rooms and
+# Dining_Rooms are about 0% populated.
+#
+# The ISSG dwelling layout is the same in every ISSG county:
+# Bed_Rooms, Full_Baths, Half_Baths, Total_Rooms and Story_Height
+# (decimal). XML delivers every attribute as text, so each count is
+# cast to a number. Extra_Fixtures counts extra plumbing fixtures, not
+# baths, and Plumbing is a category; neither is mapped. n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces;
+# Fireplace_Stacks is not read), Year_Remodeled (renovation_year; 0
+# reads null), Year_Effective (effective_year_built), Grade
+# (quality_grade, e.g. 'C-'), Condition (condition, e.g. 'A-AVERAGE')
+# and Type (building_style, e.g. 'BI/TRI LEVEL-BI-LEVEL OR TRI-LEVEL
+# HOME'). Years take the latest card, codes the first. Exterior and
+# roof material are read in _custom.
+# MEASURED 2026-09-13 on the 10,924 live land-use 510 properties
+# (2025): living area > 0 on 99.8% (median 1,443 sqft), fireplaces
+# > 0 on 18.0%, a remodel year on 35.2%, effective year, grade,
+# condition and style on 99.8% each (A-AVERAGE on 93.3%).
+#
+# year_built (added 2026-09-13): Year_Built, earliest card. 0 (19.9%
+# of 2025 cards, year unknown) reads null; 1900 on 517 cards (2.6%)
+# looks like an "old" placeholder and is kept.
+# n_dwellings: Units_Designed + Units_Converted (the layout's "units
+# in the initial dwelling design" plus "units converted from" it),
+# summed over the residential dwelling cards; apartments valued as
+# commercial buildings are not dwelling cards and are not counted.
+# On parcels with cards the sum is 2 on 99.4% of land use 520 and 3
+# on 99.5% of 530 (designed alone: 74.5% and 86.1%).
+# MEASURED 2026-09-13 on the 10,924 live land-use 510 properties
+# (2025): year_built on 77.1% (median 1958); n_dwellings on 99.8%,
+# equal to 1 on 98.7%.
+
+description: >-
+  Huron County, OH ISSG Parcel Dwelling table: rooms, bedrooms, full
+  and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-HU
+
+entity:
+  entity_type: property
+  source:
+    source_id: huroncounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (property-line disclaimer only; no terms on the extract)"
+    redistribution_restricted: null
+    portal_url: "https://huroncountyauditor.org/"
+    download_url: "https://huron-auditor-public.issg.io/api/Document/PublicRecords.zip?e=t0YMq1"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Dwelling.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Story_Height
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  renovation_year: Year_Remodeled
+  effective_year_built: Year_Effective
+  year_built: Year_Built
+  n_dwellings: Units_Designed
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # year_built: null any year outside 1700 to 2026 (0 is already
+  # nulled by the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1700
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args:
+      threshold: 2026
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_after_min
+      - year_before_max
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping:
+      1: 1
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_built
+      - year_valid
+    output: year_built
+  # n_dwellings = Units_Designed + Units_Converted.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: Units_Converted
+    output: units_converted
+  - type: aggregate
+    operation: sum
+    inputs:
+      - n_dwellings
+      - units_converted
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+  - units_converted
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  year_built: min
+  n_dwellings: sum
+  quality_grade: first
+  condition: first
+  building_style: first
+
+supplements: US-OH-HU_property-huroncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

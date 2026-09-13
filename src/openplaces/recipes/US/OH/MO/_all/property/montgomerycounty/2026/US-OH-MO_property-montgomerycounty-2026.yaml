@@ -1,0 +1,217 @@
+# Recipe: Montgomery County, OH CAMA roll (iasWorld PARDAT table).
+#
+# Source: the County Treasurer's "File Downloads" page offers a monthly
+# "Cama Characteristics" zip (Cama_Files_YYYYMMDD.zip, 20 months kept).
+# The CAMA is Tyler iasWorld and the zip is Tyler's AA407 fixed-width
+# export: 35 .DAT tables (PARDAT, DWELL, APRVAL, LAND, OBY, SALES, the
+# owner and mail tables, and code lists such as HEAT). The layout is
+# the Treasurer's "Cama Data Layout.pdf" (AA407 Data File
+# Description); PARDAT is on its page 7. The URL below is pinned to the
+# 2026-08-31 file, which will age out of the 20-month window.
+#
+# Row shape, measured on that file: 259,808 PARDAT rows, all tax year
+# 2025, one row per distinct Parid. One row is one property. Record
+# length 608; the layout below reads only as far as Acres.
+#
+# Columns. Luc is the Ohio DTE land-use code (3 digits on every row;
+# 216,965 rows are 5xx). Class (R/C/E/A/I/U) is the class letter Luc
+# already implies and is not mapped. Calcacres (65.7% above zero) is
+# the calculated acreage. Values live in a separate table (APRVAL) and
+# are not read here; the owner (OWNDAT) and mail (MAILDAT) tables are
+# never read.
+#
+# Join key. Parid has the form 'A99 99999 9999' (a letter prefix and
+# internal spaces; 7% of ids use a no-space variant) and matches
+# OGRIP's LocalParcelID as shipped: 193 of 200 sampled roll ids and
+# 200 of 200 sampled dwelling ids, measured against the live OGRIP
+# layer on a random sample. No transformation is needed.
+#
+# The file is latin-1 (a UTF-8 read fails on byte 0xbf).
+#
+# Lot and location (added 2026-09-13), offsets from the layout PDF,
+# page 7 (1-based starts: Nbhd 227, Topo1 342, Util1-3 348, 350,
+# 352), codes verbatim and decoded by the zip's AEDIT table: Nbhd
+# (tax_neighborhood_code, 8 characters), Topo1 (topography: 1 level,
+# 2 above street, 3 below street, 4 rolling, 5 steep, 6 low, 7
+# swampy) and Util1-3 (1 all public, 2 public water, 3 public sewer,
+# 4 gas, 5 well, 6 septic, 7 none). water_source keeps codes 1, 2, 5,
+# 7 and sewer_type 1, 3, 6, 7 from the three fields, space-joined in
+# field order (a parcel listing two, e.g. '1 6', keeps both).
+# MEASURED 2026-09-13 on the 157,799 land-use 510 properties:
+# neighborhood 100%; topography 99.0% (code 1 on 95.5%); water 98.9%
+# (1 97.6%, 7 0.7%, 5 0.6%); sewer 98.8% (1 97.6%, 7 0.7%, 6 0.4%).
+# n_dwellings reads Livunit ("Number of living units", 244, 4 wide,
+# after Luc and Lucmult as in the PDF). A true unit count: 1 on 99.8%
+# of 510, 2 on 98.7% of 520 and 3 on 97.3% of 530. MEASURED
+# 2026-09-13: 100% of the 510 properties, 1 on 99.8%.
+
+description: >-
+  Montgomery County, OH CAMA roll (iasWorld AA407 PARDAT table from the
+  Treasurer's monthly file): land-use code, acreage and situs per property.
+
+admin_id: US-OH-MO
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycounty
+    # Checked 2026-09-12. The Treasurer's download page shows no terms,
+    # gate or fee. The Auditor's GIS disclaimer (mcohio.org/630) is a
+    # warranty and liability disclaimer only; no resale or
+    # redistribution clause was found.
+    license: >-
+      unknown (no terms on the download page; auditor GIS disclaimer is
+      warranty/liability only)
+    terms_url: "https://www.mcohio.org/630/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm"
+    download_url: "https://go.mcohio.org/applications/treasurer/search/data/Cama/Cama_Files_20260831.zip"
+  version: "2026"
+
+compressed_file_name: "Cama_Files_20260831.zip"
+uncompressed_file_name: "Cama_Files_20260831/PARDAT.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# AA407 PARDAT, offsets from the layout PDF (1-based starts: Parid 1,
+# Taxyr 37, Adrno 57, Adrdir 86, Adrstr 88, Luc 239, Calcacres 308).
+fixed_width:
+  - [parid, 30]
+  - [filler, 6] # Jur
+  - [taxyr, 5]
+  - [filler, 15] # Seq, Mappre, Mapsuf, Rtepre, Rtesuf
+  - [adrno, 11]
+  - [filler, 18] # Adrpre, Adrsuf, Adrsuf2
+  - [adrdir, 2]
+  - [adrstr, 30]
+  - [filler, 109] # Cityname through Zip2
+  - [nbhd, 8]
+  - [filler, 4] # Class
+  - [luc, 4]
+  - [filler, 1] # Lucmult
+  - [livunit, 4]
+  - [filler, 60] # Tieback through Landisc
+  - [calcacres, 14]
+  - [filler, 20] # Acres, Street1, Street2, Traffic
+  - [topo1, 1]
+  - [filler, 5] # Topo2, Topo3, Location, Fronting
+  - [util1, 2]
+  - [util2, 2]
+  - [util3, 2]
+
+columns:
+  parcel_id_assessor: parid
+  tax_year: taxyr
+  use_group_code: luc
+  area_ac: calcacres
+  tax_neighborhood_code: nbhd
+  topography: topo1
+  n_dwellings: livunit
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  # util1-3 each hold one utility code (AEDIT: 1 all public, 2 public
+  # water, 3 public sewer, 4 gas, 5 well, 6 septic, 7 none). Each
+  # output keeps the codes that describe it, space-joined in field
+  # order; an empty result is null.
+  - type: remap
+    input: util1
+    mapping: {"1": "1", "2": "2", "5": "5", "7": "7"}
+    output: water_1
+  - type: remap
+    input: util2
+    mapping: {"1": "1", "2": "2", "5": "5", "7": "7"}
+    output: water_2
+  - type: remap
+    input: util3
+    mapping: {"1": "1", "2": "2", "5": "5", "7": "7"}
+    output: water_3
+  - type: remap
+    input: util1
+    mapping: {"1": "1", "3": "3", "6": "6", "7": "7"}
+    output: sewer_1
+  - type: remap
+    input: util2
+    mapping: {"1": "1", "3": "3", "6": "6", "7": "7"}
+    output: sewer_2
+  - type: remap
+    input: util3
+    mapping: {"1": "1", "3": "3", "6": "6", "7": "7"}
+    output: sewer_3
+  - type: string
+    operation: concat
+    inputs: [water_1, water_2, water_3]
+    args: {sep: " "}
+    output: water_source
+  - type: string
+    operation: strip
+    input: water_source
+    output: water_source
+  - type: unary
+    operation: null_if_equal
+    input: water_source
+    args: {value: ""}
+    output: water_source
+  - type: string
+    operation: concat
+    inputs: [sewer_1, sewer_2, sewer_3]
+    args: {sep: " "}
+    output: sewer_type
+  - type: string
+    operation: strip
+    input: sewer_type
+    output: sewer_type
+  - type: unary
+    operation: null_if_equal
+    input: sewer_type
+    args: {value: ""}
+    output: sewer_type
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: unary
+    operation: null_if_equal
+    input: adrno
+    args: {value: "0"}
+    output: address_number
+  - type: string
+    operation: concat
+    inputs: [adrdir, adrstr]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+
+drop_columns:
+  - water_1
+  - water_2
+  - water_3
+  - sewer_1
+  - sewer_2
+  - sewer_3
+
+columns_to_categorical:
+  - use_group_code
+  - topography
+  - water_source
+  - sewer_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

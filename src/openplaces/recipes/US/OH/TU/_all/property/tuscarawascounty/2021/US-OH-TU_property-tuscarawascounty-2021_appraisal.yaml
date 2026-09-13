@@ -1,0 +1,73 @@
+# Recipe: Tuscarawas County, OH auditor roll, ISSG Parcel Appraisal
+# table. Supplement of US-OH-TU_property-tuscarawascounty-2021; see
+# that recipe for the source and the join key.
+#
+# One row per parcel and tax year. Land_Use_Code is the Ohio DTE land-
+# use code; Land_Use (its description) and Class (its broad group) are
+# not mapped. Total_Appraised_Land and Total_Appraised_Improvement are
+# the appraised values. Retired parcels are in this table too and join
+# to nothing on the roll.
+# Neighborhood is the assessor's valuation neighborhood
+# (tax_neighborhood_code); it is on every Appraisal row in the other
+# ISSG counties. Not validated here (FTP-only extract).
+
+description: >-
+  Tuscarawas County, OH ISSG Parcel Appraisal table: land-use code and
+  appraised land and improvement value per property.
+
+admin_id: US-OH-TU
+
+entity:
+  entity_type: property
+  source:
+    source_id: tuscarawascounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.co.tuscarawas.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "ftp://gis.co.tuscarawas.oh.us/GIS/"
+    download_url: "ftp://gis.co.tuscarawas.oh.us/GIS/Public/ExtractXML.zip"
+  version: "2021"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Appraisal.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number
+  use_group_code: Land_Use_Code
+  land_value: Total_Appraised_Land
+  improvement_value: Total_Appraised_Improvement
+  tax_neighborhood_code: Neighborhood
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+
+columns_to_categorical:
+  - use_group_code
+
+aggregation_function:
+  land_value: sum
+  improvement_value: sum
+  tax_neighborhood_code: first
+
+supplements: US-OH-TU_property-tuscarawascounty-2021
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: appraisal
