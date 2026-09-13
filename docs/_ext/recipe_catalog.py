@@ -11,7 +11,7 @@ that geography: its id, scope, stage, source portal link, and the prose
 description get a one-line stub entry.
 
 The landing page (``docs/recipes.rst``) additionally uses two directives
-defined here: ``recipe-coverage`` (headline figures plus the three
+defined here: ``recipe-coverage`` (headline figures plus the four
 coverage maps) and ``recipe-children`` (a compact per-geography summary
 table). The latter also replaces the plain title list every generated
 geography page used to show for its own subdivisions -- a table with a

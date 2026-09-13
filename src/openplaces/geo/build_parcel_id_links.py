@@ -551,53 +551,53 @@ def recheck_parcel_id_links(
 ) -> pd.DataFrame:
     """Re-derive the parcel-id link for units whose bundled rule underperforms.
 
-        The bundled conversions were measured once, on one vintage of one pair
-        of sources. A county's newly ingested parcel or transaction data can
-        carry a differently formatted id, and the join then quietly returns
-        few rows rather than failing -- which is why this exists: run it when
-        a unit's data is first ingested and linked, and whenever a link
-        reports less than *threshold*.
+    The bundled conversions were measured once, on one vintage of one pair
+    of sources. A county's newly ingested parcel or transaction data can
+    carry a differently formatted id, and the join then quietly returns
+    few rows rather than failing -- which is why this exists: run it when
+    a unit's data is first ingested and linked, and whenever a link
+    reports less than *threshold*.
 
     For a unit with both a parcel and a tax or transaction source
-        ingested, it measures the cross-dataset linkage the bundled rules
-        actually achieve (:func:`measure_parcel_id_linkage`) and, below
-        *threshold*, re-runs the grid search (:func:`find_best_parcel_id_link`).
+    ingested, it measures the cross-dataset linkage the bundled rules
+    actually achieve (:func:`measure_parcel_id_linkage`) and, below
+    *threshold*, re-runs the grid search (:func:`find_best_parcel_id_link`).
 
-        For a unit with only a parcel source - Maine, where the state ships a
-        parcel layer and no tax roll - there is no linkage to measure, but a
-        rule written for another source's id format still shows itself by
-        converting nothing (:func:`measure_parcel_id_fit`). Below *threshold*
-        it proposes the simplest pattern that fits the ids in hand. That
-        proposal is self-consistency only, never cross-validated, and
-        `cross_validated` says which kind each row is.
+    For a unit with only a parcel source - Maine, where the state ships a
+    parcel layer and no tax roll - there is no linkage to measure, but a
+    rule written for another source's id format still shows itself by
+    converting nothing (:func:`measure_parcel_id_fit`). Below *threshold*
+    it proposes the simplest pattern that fits the ids in hand. That
+    proposal is self-consistency only, never cross-validated, and
+    `cross_validated` says which kind each row is.
 
-        Either way a proposal is returned **only if it beats what the bundled
-        rule achieved**, so a re-check can never make a unit worse. Units
-        already at or above *threshold* are reported untouched.
+    Either way a proposal is returned **only if it beats what the bundled
+    rule achieved**, so a re-check can never make a unit worse. Units
+    already at or above *threshold* are reported untouched.
 
-        Nothing is written. The proposals go to
-        `{country}_{entity_type}_id-overrides.csv` through
-        :func:`propose_parcel_id_overrides`, or into the bundled table by
-        hand, both of which are decisions for a person.
+    Nothing is written. The proposals go to
+    `{country}_{entity_type}_id-overrides.csv` through
+    :func:`propose_parcel_id_overrides`, or into the bundled table by
+    hand, both of which are decisions for a person.
 
-        Parameters
-        ----------
-        admin_ids : list of str
-            Units to re-check. Not auto-discovered: pass the units whose data
-            has actually been ingested.
-        threshold : float, optional
-            Achieved linkage below which the search is re-run.
-        verbose : bool, optional
-            Print one line per unit re-checked.
+    Parameters
+    ----------
+    admin_ids : list of str
+        Units to re-check. Not auto-discovered: pass the units whose data
+        has actually been ingested.
+    threshold : float, optional
+        Achieved linkage below which the search is re-run.
+    verbose : bool, optional
+        Print one line per unit re-checked.
 
-        Returns
-        -------
-        pd.DataFrame
-            Columns `admin_id, cross_validated, achieved, best, improved,
-            pattern_parcel, conv_parcel, pattern_tax, conv_tax, n_pc, n_za`.
-            `achieved` is what the bundled rules manage today and `best` what
-            the search found; `improved` marks the rows worth acting on.
-            Empty when no unit has an ingested parcel source.
+    Returns
+    -------
+    pd.DataFrame
+        Columns `admin_id, cross_validated, achieved, best, improved,
+        pattern_parcel, conv_parcel, pattern_tax, conv_tax, n_pc, n_za`.
+        `achieved` is what the bundled rules manage today and `best` what
+        the search found; `improved` marks the rows worth acting on.
+        Empty when no unit has an ingested parcel source.
     """
     parcel_recipes = find_recipes('parcel', stage='ingest')
     tax_side_recipes = pd.concat(

@@ -70,6 +70,11 @@ autoapi_options = [
     'show-module-summary',
 ]
 autoapi_root = '4_api'
+# Leave the generated rst in place after the build. The directory is
+# git-ignored and rewritten on every build anyway, and autoapi's
+# post-build removal fails on Windows whenever a sync client holds a
+# handle on one of its subdirectories (Dropbox does, reliably).
+autoapi_keep_files = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
