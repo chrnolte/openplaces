@@ -161,6 +161,13 @@ PANDAS_EXTENSIONS = {
     '.json',
 }
 
+# Microsoft Access databases, read one named table at a time (the recipe's
+# `layer` key) by `openplaces.io.access.read_access_table`
+ACCESS_EXTENSIONS = {
+    '.mdb',
+    '.accdb',
+}
+
 # Extensions of companion files for shapefiles
 SHAPEFILE_EXTENSIONS = [
     '.cpg',

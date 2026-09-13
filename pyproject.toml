@@ -122,6 +122,12 @@ postal = ["zipcodes>=1.2.0"]
 # Cloud storage
 cloud = ["rclone>=1.73.1"]
 
+# Microsoft Access databases (.mdb/.accdb) on every platform, through
+# Jackcess (downloaded on first use, sha256-pinned). Also needs a Java
+# runtime, which is conda-only (`openjdk`), like torch. On Windows the
+# Access ODBC driver works without this extra.
+access = ["JPype1>=1.5.0"]
+
 # Browser- and API-driven scrapers (e.g. wi_retr for Wisconsin RETR
 # transactions via Playwright; places-fmv2026 for Google-Drive-hosted parcel
 # data via gdown). After install, fetch the browser binary:
@@ -151,7 +157,7 @@ dev = [
 
 # All optional dependencies
 all = [
-    "openplaces[analysis,viz,viz-fast,raster,docs,excel,postal,cloud,scrape,ml,dev]"
+    "openplaces[analysis,viz,viz-fast,raster,docs,excel,postal,cloud,access,scrape,ml,dev]"
 ]
 
 # For academic/research workflows

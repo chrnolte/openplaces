@@ -81,6 +81,12 @@ dependencies:
   # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.cloud]
   - rclone>=1.73.1
 
+  # Optional: access (Microsoft Access .mdb/.accdb through Jackcess)
+  # KEEP IN SYNC WITH pyproject.toml [project.optional-dependencies.access]
+  # openjdk is conda-only; the Jackcess jar is downloaded on first use.
+  - jpype1>=1.5.0
+  - openjdk>=17
+
   # Optional: ml (required for floor/roof/occupancy ML detectors)
   # GPU notes (detectors auto-select via io/enricher/detectors/device.py):
   # - NVIDIA (e.g. Linux cluster): conda-forge picks the CUDA build

@@ -17,6 +17,7 @@ from pyogrio.errors import DataSourceError
 from openplaces.config import can_prompt, cfg
 from openplaces.core.attribute_registry import get_null_placeholder
 from openplaces.core.constants import (
+    ACCESS_EXTENSIONS,
     GEOPANDAS_EXTENSIONS,
     PANDAS_EXTENSIONS,
     ZIP_EXTENSIONS,
@@ -38,6 +39,7 @@ from openplaces.io import (
     save_parquet,
     unzip,
 )
+from openplaces.io.access import read_access_table
 from openplaces.io.readers import get_admin
 from openplaces.io.transform import (
     add_unique_suffix,
@@ -581,7 +583,7 @@ class TableIngester:
                 f'Read vector file ({data_path.suffix})' + timer_suffix,
                 path=data_path,
             )
-        elif suffix in PANDAS_EXTENSIONS:
+        elif suffix in PANDAS_EXTENSIONS or suffix in ACCESS_EXTENSIONS:
             if 'fids' in kwargs:
                 # A `process_by.admin_id_column` recipe re-enters this branch
                 # once per admin unit with the same file and the same
@@ -660,9 +662,10 @@ class TableIngester:
     def _read_flat_table(self, data_path, columns, encoding):
         """Read one flat (non-spatial) source file in full.
 
-        Covers the fixed-width, JSON, spreadsheet, and delimited-text
-        layouts a recipe can declare. Row filtering is the caller's job:
-        this returns every row of the file, so a chunked recipe can parse
+        Covers the fixed-width, JSON, spreadsheet, delimited-text and
+        Microsoft Access layouts a recipe can declare. Row filtering is
+        the caller's job: this returns every row of the file, so a
+        chunked recipe can parse
         once per download partition and slice per admin unit.
 
         Parameters
@@ -686,6 +689,14 @@ class TableIngester:
             dtype = None
 
         suffix = data_path.suffix.lower()
+
+        if suffix in ACCESS_EXTENSIONS:
+            # One named table of the database (the recipe's `layer`),
+            # reading only the requested columns: county databases run
+            # to 0.5-1.5 GB. Typed at the source, so `csv_dtype` is
+            # applied only when a recipe asks for it.
+            df = read_access_table(data_path, self.recipe.get('layer'), columns)
+            return df.astype(dtype) if dtype is not None else df
 
         if self.recipe.get('fixed_width'):
             return self._read_fixed_width(data_path, dtype, encoding=encoding)
