@@ -78,6 +78,9 @@ every CAMA field null with a perfectly plausible feature count.
   header row.
 - `drop_duplicates:` — an explicit column subset. A bare full-row dedupe keeps
   rows that differ only in a column you do not care about.
+- `drop_columns:` — scratch columns a transformation produced and the output
+  must not carry. Per table: an `additional_layers` entry declares its own
+  list and inherits none from the host, like `columns` and `query`.
 
 ## Transformations
 

@@ -135,12 +135,6 @@ parcel_id_local:
   source: parcel_id_assessor
   kind: parcel
 
-# The property layer's scratch column. Declared here because
-# drop_columns is not a per-table key: an additional_layers entry
-# inherits this one and ignores its own.
-drop_columns:
-  - half_bathroom_equivalent
-
 save_to:
   data_dir: core
 
@@ -152,6 +146,9 @@ additional_layers:
       version: 2026
     # Both tables map PIN to parcel_id_assessor.
     layer_key: parcel_id_assessor
+    # The layer's own scratch column; drop_columns is a per-table key.
+    drop_columns:
+      - half_bathroom_equivalent
     columns:
       parcel_id_assessor: PIN
       use_group_code: land_use_code

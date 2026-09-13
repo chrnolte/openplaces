@@ -327,6 +327,7 @@ RECIPE_PER_TABLE_KEYS = (
     'null_value_strings',
     'transformations',
     'columns_to_categorical',
+    'drop_columns',
     'encoding',
     'save_to',
     'overlay_admin_ids',
