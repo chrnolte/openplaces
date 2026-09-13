@@ -1,0 +1,503 @@
+# Recipe: Montgomery County, PA property assessment roll.
+#
+# Source: the feature-service table "Montgomery County Assessment
+# Data" published by Montgomery County GIS for the Board of
+# Assessment Appeals (ArcGIS Online owner `Montco_GIS`, item
+# 89c888de3e4e46a48cb6170c0f378461, `.../Montgomery_County_Assessment_
+# Data/FeatureServer/0`). The county's Property Data Requests page
+# (montgomerycountypa.gov/4743) points here: the data is "available ...
+# at no charge through the County's Open Data Portal". A sibling
+# "Monthly Assessment Changes" table exists and is not used.
+#
+# FORMAT. The Hub CSV export (531,535,861 bytes, 2026-09-12), fetched
+# once with the identified openplaces user agent (HTTP 200). The older
+# `api/v3/datasets/..._0/downloads/data?format=csv` form of the URL
+# returned 400; the `api/download/v1/items/.../csv?layers=0` form below
+# works. A table, so no geometry: parcels come from PASDA.
+#
+# ROW SHAPE: one row per property. 311,193 rows and 311,193 distinct
+# PARCEL_NUMBER, 116 columns, so this is a roll: no `supplements:`, no
+# aggregation_function. LIV_UNITS > 1 on 7,290 residential rows, which
+# are multi-unit parcels described by a single dwelling record.
+#
+# PADDING. Two fields arrive fixed-width padded and are stripped below:
+#   - CLASS is four characters wide on every row ('R' plus three
+#     spaces), so a query or crosswalk on the raw value matches
+#     nothing. Values: R 284,772; C 12,866; E 9,184; I 2,677; U 1,015;
+#     A 679.
+#   - PARCEL_NUMBER is 30 characters wide on every row: a 12-digit
+#     number plus trailing spaces.
+# LAND_USE (a four-digit code, 302 values, no label in this table) is
+# mapped to use_subgroup_code.
+#
+# ROOM COUNTS, measured in memory through this recipe after
+# preprocessing (see pa_recipes_B validation, 2026-09-12). The
+# dwelling fields are filled on 87.3% of all rows:
+#   residential rows (CLASS R)       284,772
+#   n_bedrooms > 0                    94.8%
+#   n_bathrooms > 0                   94.7%
+#   n_half_bathrooms > 0              60.9%
+#   n_rooms > 0                       94.8%
+#   n_stories > 0                     94.8%
+# BEDROOMS > 0 also on 18.2% of CLASS E (exempt) rows.
+#
+# Baths: BATHS is the full count and HALF_BATHS the half count, both
+# integers. HALF_BATHS is blank on 37.6% of residential rows where
+# BATHS is not; the fold below reads a blank half count as zero halves.
+#
+# STORIES has 6.7% fractional values on residential rows (1.5, 2.5,
+# 3.5). SFLA (living area) is 0 rather than blank on non-dwelling
+# rows, so 0 is nulled before it becomes area_sqft.
+#
+# JOIN KEY: PARCEL_NUMBER, a 12-digit number ('999999999999' shape).
+# It shares no raw value with PASDA's Montgomery PIN, which writes
+# separators, but under the bundled US-PA-MO conversion (`simple`)
+# 300,629 of 311,193 rows (96.6%) match, covering 99.8% of PASDA's
+# 301,150 distinct keys. PARCEL (also 12 digits) yields the identical
+# key set and overlap; ALT_ID (a block-and-unit form) matches 0. No
+# override row is needed.
+#
+# BUILDING FEATURES (2026-09-13). The county publishes a code table
+# as a PDF ("Montgomery County Parcel Codes", ArcGIS item
+# c47e63a20eba41f69d370e6f4498bdbb). Codes are kept as published;
+# the decoders below are from that table:
+#   - exterior_wall (EXTWALL): 1 frame, 2 brick, 3 masonry and frame,
+#     4 block, 5 stucco, 6 aluminum/vinyl, 7 stone, 8 asbestos,
+#     9 concrete.
+#   - heating_fuel (FUEL): 1 none, 2 gas, 3 electric, 4 oil, 5 coal,
+#     6 solar, 7 other.
+#   - building_style (STYLE): 01 bilevel, 02 split level, 03 ranch,
+#     04 row, 05 old colonial, 06 bungalow, 07 colonial, 08 cape cod,
+#     09 twin, 10 townhouse, 11-25 rarer styles (log home to double
+#     wide mobile home).
+#   - has_basement (BASEMENT): 1 none, 2 crawl, 3 part, 4 full.
+#   - has_garage: BSMT_CAR is the basement garage size in cars; true
+#     where above 0, null elsewhere, since attached and detached
+#     garages are not in the table. n_garage_spaces is not mapped.
+#   - has_pool (POOL): RP1-RP5 pool types, only where a pool exists.
+#   - water_source, sewer_type: from UTIL1-3 (1 all public, 2 public
+#     water, 3 public sewer, 4 gas, 5 well, 6 septic, 7 none), with
+#     the table's own labels.
+#   - tax_neighborhood_code (NBHD): first two characters are the
+#     municipal code, per the table.
+# Not in the table, kept as published: condition (CONDITION, 1-6
+# plus one P), heating_type (HEAT, 1-4). has_central_air is not
+# derived, since HEAT has no decoder. SFLA (square feet of living
+# area) becomes living_area_sqft; no gross area is published.
+# FINBSMT_SF becomes basement_finished_area_sqft (0 nulled). YR_REM is
+# renovation_year; 6 rows read a year after 2026 (up to 5008) and are
+# kept as published. FRONTFT is frontage_ft (9999, 6 rows, nulled).
+# Fireplaces are openings plus prefabricated units (FRPL_OPEN +
+# PREFAB_FRPL); FRPL_STACK is left out so a chimney is not counted
+# twice. ELEV is a commercial-card field (1,441 rows, none R).
+#
+# PADDING, again: the code fields arrive fixed-width (EXTWALL,
+# BSMT_CAR, UTIL1 and YR_REM padded on every row; blanks on about
+# 39,500 rows are spaces). They are stripped and blanks nulled below.
+#
+# MEASURED in memory through this recipe on the 284,772 CLASS R
+# rows:
+#   living_area_sqft > 0            94.8%  (median 1,925)
+#   condition, exterior_wall, heating_fuel, heating_type,
+#   building_style filled           94.7-94.8%
+#   has_basement   true 81.6%, false 13.2%, null 5.2%
+#   has_garage     true 10.7%, null 89.3%
+#   has_pool       true 7.3%, null 92.7%
+#   basement_finished_area_sqft > 0 17.5%
+#   n_fireplaces > 0                52.4%
+#   renovation_year > 0             9.8%
+#   water_source 98.5% (public 253,833, well 26,520)
+#   sewer_type 98.4% (public 254,798, septic 25,515)
+#   frontage_ft > 0 88.2%; tax_neighborhood_code 99.9%
+# 206 R rows record finished basement area on a none or crawl
+# basement code; both are kept as published.
+#
+# Deliberately not mapped:
+#   - owner and mailing fields (OWN1, OWN2, CAREOF, ADDR1-3,
+#     ZIP1_ZIP2): nothing downstream needs them.
+#   - values, taxes and sales (TOTAL_APPRAISAL, TOTAL_ASSESSMENT,
+#     EST_*_TAX, CONSIDERATION, SALE_DATE): out of scope for this
+#     room-count pass.
+#   - DEGREE_REMODELED (1 cosmetic to 7 total renovation): no
+#     registry home.
+#   - PARK_COV, PARK_UNCOV: commercial cards only (69 and 293 rows).
+#   - COMM_* fields: the commercial card, outside this pass. That
+#     includes COMM_UNITS (units on a commercial card, 1,497 rows > 0,
+#     1,024 of them also with LIV_UNITS > 0), so adding it to
+#     n_dwellings would count some units twice.
+#
+# YEAR AND UNITS (2026-09-13):
+#   - year_built: YEAR_BUILT, the actual year; the remodel year is
+#     YR_REM (equal to it on 0.05% of rows with both). One row reads a
+#     year before 1600 and is kept as published.
+#   - n_dwellings: LIV_UNITS, dwelling units on the property's
+#     dwelling record (0 nulled). Condominium units carry their own
+#     count (1 on 16,070 of 17,117 unit-numbered R rows), not the
+#     complex's. Apartment properties (CLASS A) carry their unit count
+#     here too. Max 403 on one R row, kept as published.
+# MEASURED in memory through this recipe on the 284,772 CLASS R rows
+# (a roll, one row per property):
+#   year_built > 0      94.8%  (median 1967)
+#   n_dwellings > 0     94.8%  (1 on 92.3%, 2-4 on 2.6%)
+#   foundation_description 94.8% (BASEMENT as published: 4 full
+#     73.6%, 1 none 12.2%, 3 part 8.0%, 2 crawl 1.0%)
+# No residential construction or frame-type field: STRUCTURE is a
+# commercial-card structure code (164 R rows), not a frame type, so
+# construction_description is not mapped.
+
+description: >-
+  Montgomery County, PA property assessment roll: class and land-use
+  codes, situs address, year built, living area, rooms, bedrooms,
+  bathrooms, stories.
+
+admin_id: US-PA-MO
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomeryco
+    # Checked 2026-09-12 on the item's licenseInfo (verbatim): the
+    # county "provides this data as a free and open resource", "as is"
+    # without warranties, not "a legal description". Read as permitting
+    # sharing; no redistribution or resale limit is stated.
+    license: >-
+      "Montgomery County provides this data as a free and open
+      resource" ... "provided 'as is' without warranties of any kind"
+      (ArcGIS item licenseInfo)
+    terms_url: "https://www.arcgis.com/home/item.html?id=89c888de3e4e46a48cb6170c0f378461"
+    redistribution_restricted: false
+    portal_url: "https://www.montgomerycountypa.gov/4743/Property-Data-Requests"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/89c888de3e4e46a48cb6170c0f378461/csv?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "Montgomery_County_Assessment_Data.csv"
+encoding: utf-8-sig
+
+# Ids and codes as text (leading zeros on LAND_USE); counts stay
+# numeric so the bath fold below can do arithmetic on them.
+csv_dtype:
+  PARCEL_NUMBER: str
+  CLASS: str
+  LAND_USE: str
+  LOCATION1: str
+  LOC_ZIP1_ZIP2: str
+  NBHD: str
+  CONDITION: str
+  EXTWALL: str
+  FUEL: str
+  HEAT: str
+  STYLE: str
+  BASEMENT: str
+  BSMT_CAR: str
+  POOL: str
+  ELEV: str
+  UTIL1: str
+  UTIL2: str
+  UTIL3: str
+
+columns:
+  use_subgroup_code: LAND_USE
+  postal_code: LOC_ZIP1_ZIP2
+  year_built: YEAR_BUILT
+  n_dwellings: LIV_UNITS
+  area_sqft: SFLA
+  n_stories: STORIES
+  n_rooms: RM_TOT
+  n_bedrooms: BEDROOMS
+  n_bathrooms: BATHS
+  n_half_bathrooms: HALF_BATHS
+  basement_finished_area_sqft: FINBSMT_SF
+  renovation_year: YR_REM
+  condition: CONDITION
+  exterior_wall: EXTWALL
+  heating_fuel: FUEL
+  heating_type: HEAT
+  building_style: STYLE
+  tax_neighborhood_code: NBHD
+  frontage_ft: FRONTFT
+
+transformations:
+  # Strip the fixed-width padding (see header).
+  - type: string
+    operation: strip
+    input: PARCEL_NUMBER
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: CLASS
+    output: use_group_code
+  - type: string
+    operation: strip
+    input: LOCATION1
+    output: address
+  # Blank count fields arrive as padded strings, so pandas reads the
+  # columns as text; cast them before any arithmetic.
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # LIV_UNITS is padded text like the counts above; 0 is not a
+  # dwelling count and is nulled.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args:
+      value: 0
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: area_sqft
+  # SFLA is 0 on rows with no dwelling, not blank.
+  - type: unary
+    operation: null_if_equal
+    input: area_sqft
+    args:
+      value: 0
+    output: area_sqft
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # The code fields are fixed-width too: strip them and null the
+  # blanks, or an empty string becomes a category of its own.
+  - type: string
+    operation: strip
+    input: condition
+    output: condition
+  - type: unary
+    operation: null_if_equal
+    input: condition
+    args:
+      value: ""
+    output: condition
+  - type: string
+    operation: strip
+    input: exterior_wall
+    output: exterior_wall
+  - type: unary
+    operation: null_if_equal
+    input: exterior_wall
+    args:
+      value: ""
+    output: exterior_wall
+  - type: string
+    operation: strip
+    input: heating_fuel
+    output: heating_fuel
+  - type: unary
+    operation: null_if_equal
+    input: heating_fuel
+    args:
+      value: ""
+    output: heating_fuel
+  - type: string
+    operation: strip
+    input: heating_type
+    output: heating_type
+  - type: unary
+    operation: null_if_equal
+    input: heating_type
+    args:
+      value: ""
+    output: heating_type
+  - type: string
+    operation: strip
+    input: building_style
+    output: building_style
+  - type: unary
+    operation: null_if_equal
+    input: building_style
+    args:
+      value: ""
+    output: building_style
+  - type: string
+    operation: strip
+    input: tax_neighborhood_code
+    output: tax_neighborhood_code
+  - type: unary
+    operation: null_if_equal
+    input: tax_neighborhood_code
+    args:
+      value: ""
+    output: tax_neighborhood_code
+  # FRONTFT is street frontage in feet; 9999 is a placeholder.
+  - type: unary
+    operation: to_numeric
+    input: frontage_ft
+    output: frontage_ft
+  - type: unary
+    operation: null_if_equal
+    input: frontage_ft
+    args:
+      value: 9999
+    output: frontage_ft
+  # SFLA is square feet of living area, so it is also
+  # living_area_sqft; area_sqft keeps it as before.
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: living_area_sqft
+  # FINBSMT_SF is 0 rather than blank where nothing is finished.
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: basement_finished_area_sqft
+    args:
+      value: 0
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  # Fireplaces: FRPL_OPEN counts wood-burning openings, PREFAB_FRPL
+  # prefabricated units; FRPL_STACK (chimneys) is not added, as it
+  # would count an opening twice.
+  - type: unary
+    operation: to_numeric
+    input: FRPL_OPEN
+    output: fireplace_openings
+  - type: unary
+    operation: to_numeric
+    input: PREFAB_FRPL
+    output: fireplace_prefab
+  - type: aggregate
+    operation: sum
+    inputs: [fireplace_openings, fireplace_prefab]
+    output: n_fireplaces
+  # Basement Type (county code table): 1 none, 2 crawl, 3 part,
+  # 4 full.
+  - type: remap
+    input: BASEMENT
+    mapping: {"1": false, "2": false, "3": true, "4": true}
+    output: has_basement
+  # The same code is the foundation description, kept as published
+  # (1 none, 2 crawl, 3 part, 4 full) for curate to translate. Its
+  # blanks are padded spaces and are nulled.
+  - type: string
+    operation: strip
+    input: BASEMENT
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+  # BSMT_CAR is the basement garage size in cars (0 none); attached
+  # and detached garages are not in the table, so 0 stays null.
+  - type: remap_conditional
+    input: BSMT_CAR
+    conditions:
+      - condition: regex
+        pattern: "^\\s*[1-9]"
+        output: true
+    output: has_garage
+  # POOL holds a pool type (RP1-RP5) only where a pool is recorded.
+  - type: remap_conditional
+    input: POOL
+    conditions:
+      - condition: regex
+        pattern: "^\\s*RP[1-5]"
+        output: true
+    output: has_pool
+  - type: remap_conditional
+    input: ELEV
+    conditions:
+      - condition: regex
+        pattern: "^\\s*YES"
+        output: true
+      - condition: regex
+        pattern: "^\\s*NO"
+        output: false
+    output: has_elevator
+  # UTIL1-3 are three slots of one code list: 1 all public, 2 public
+  # water, 3 public sewer, 4 gas, 5 well, 6 septic, 7 none. Joined,
+  # then read for water and sewer; the labels are the county's own.
+  # A later rule wins, so a row coding both well and public water
+  # reads as well.
+  - type: string
+    operation: concat
+    inputs: [UTIL1, UTIL2, UTIL3]
+    args:
+      sep: ","
+    output: utility_codes
+  - type: remap_conditional
+    input: utility_codes
+    conditions:
+      - condition: regex
+        pattern: "(^|,)\\s*[12]\\s*(,|$)"
+        output: "Public water"
+      - condition: regex
+        pattern: "(^|,)\\s*5\\s*(,|$)"
+        output: "Well"
+    output: water_source
+  - type: remap_conditional
+    input: utility_codes
+    conditions:
+      - condition: regex
+        pattern: "(^|,)\\s*[13]\\s*(,|$)"
+        output: "Public sewer"
+      - condition: regex
+        pattern: "(^|,)\\s*6\\s*(,|$)"
+        output: "Septic"
+    output: sewer_type
+
+drop_columns:
+  - half_bathroom_equivalent
+  - fireplace_openings
+  - fireplace_prefab
+  - utility_codes
+
+columns_to_categorical:
+  - use_group_code
+  - use_subgroup_code
+  - condition
+  - exterior_wall
+  - heating_fuel
+  - heating_type
+  - building_style
+  - water_source
+  - sewer_type
+  - tax_neighborhood_code
+  - foundation_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
