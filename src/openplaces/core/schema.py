@@ -623,6 +623,10 @@ class Source:
     # Access-eligibility conditions from the terms, set deliberately by
     # a person who read them -- never inferred from `license` text.
     usage_requirement: UsageRequirement | None = None
+    # A person's determination that a source whose redistribution is
+    # restricted may still be shared within the project's research
+    # team (never published). None = no such determination.
+    team_sharing_permitted: bool | None = None
 
     def __init__(
         self,
@@ -639,6 +643,7 @@ class Source:
         redistribution_restricted: bool = None,
         resale_restricted: bool = None,
         usage_requirement: dict | UsageRequirement | None = None,
+        team_sharing_permitted: bool = None,
     ):
         """Initialize Source with metadata and download configurations.
 
@@ -684,6 +689,13 @@ class Source:
             person has determined a condition from the terms; None means
             no such determination was recorded, and the ingest gate is a
             no-op.
+        team_sharing_permitted : bool, optional
+            Whether a person has determined that this source, though its
+            redistribution is restricted, may be shared within the
+            project's research team. A team bundle (see
+            `io.delivery.delivery_regions`) then carries its values; every
+            other bundle still withholds them. Never grants publication.
+            None means no determination was recorded.
         """
 
         n_download_modes = sum(
@@ -716,6 +728,7 @@ class Source:
         if isinstance(usage_requirement, dict):
             usage_requirement = UsageRequirement(**usage_requirement)
         self.usage_requirement = usage_requirement
+        self.team_sharing_permitted = team_sharing_permitted
 
     def __str__(self) -> str:
         return self.source_id if self.source_id is not None else ''
