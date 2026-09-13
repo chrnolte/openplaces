@@ -1,0 +1,518 @@
+# Recipe: Connecticut statewide CAMA table, 2024 collection
+# ("2024 Connecticut Parcel and CAMA Data", data.ct.gov pqrn-qghw).
+#
+# Source: the dataset's own tabular rows, exported as CSV. The sibling
+# parcel recipe (US-CT_parcel-ctgov-2024) reads a different part of
+# the same dataset, the zipped parcel geodatabase attached to it, and
+# maps only CAMA_Link from that layer. The CAMA rows carry the
+# structure fields this recipe exists for.
+#
+# ROW SHAPE, measured on the 2024 export (1,354,664 rows, 169 towns):
+# one row per assessment account, condominium units included, so this
+# is a property roll. 1,274,671 distinct `link`; 92,776 rows share a
+# link with another row, in 12,783 groups. 56.7% of those rows carry
+# a Condo Main ID: condo units keyed to their building's parcel.
+# The rest are several accounts or buildings on one parcel; in 27.3%
+# of groups the room fields are identical. Each row is kept as a
+# property, so no aggregation_function is declared.
+#
+# FIELD POPULATION. Share of rows > 0, overall and on the 84.6% of
+# rows whose State Use Description reads residential:
+#   Number of Bedroom    82.9% / 93.9% (median 3)
+#   Number of Baths      82.7% / 94.0% (median 2)
+#   Number of Half Baths 39.5% / 45.0%
+#   Total Rooms          82.9% / 93.1% (median 7)
+#   Stories              87.9% / 94.8% (median 1.65; quarter and
+#                        tenth stories are common, 1.4 on 15.0k rows)
+# Three towns (Cornwall, Warren, Woodstock) publish no bedrooms.
+# Outliers are left as shipped: 18 rows with over 50 bedrooms, 389
+# with over 50 rooms, 20 with over 50 stories (up to 33,795).
+#
+# BATHS. Number of Baths is the full count and Number of Half Baths
+# the half count (47.7% of residential rows with a full bath also
+# carry a half). n_bathrooms folds them as full + 0.5 x half below.
+# 3,856 full-bath values arrive as spreadsheet-mangled dates
+# ('1-Jan', 'Feb-00') and cast to null; 52 are fractional. Baths/
+# Plumbing is a condition rating in most towns and a fixture count in
+# others, never a bath count, so it is not mapped.
+#
+# JOIN KEY. `link` is the same town-prefixed code as the parcel
+# layer's CAMA_Link (fabricated shape '99999-999-99'). Measured
+# against the ingested 2024 parcel output (157 town files, 1,103,706
+# parcels, 19,088 with a null CAMA_Link, all in Danbury):
+#   exact match           75.2% of CAMA rows
+#   'simple' both sides   76.3%
+#   town + part after the first dash, 'simple'   81.0% of CAMA rows;
+#   97.7% of parcels with a CAMA_Link find a CAMA row this way.
+# The gap between exact and town + suffix is the town prefix. The
+# prefix is the town's five-digit county subdivision code, one value
+# per town on both sides, and 9 towns drop its leading zero on the
+# parcel side only ('1234' against '01234'). New Canaan differs only
+# by internal spacing, which 'simple' removes.
+#
+# parcel_id_local is therefore built here, and identically on the
+# parcel recipe: the town code zero-padded to five digits, a dash,
+# then the part of `link` after its first dash (fabricated
+# '99999-999-99'), converted with 'simple'. The inline instruction
+# at US-CT replaces the bundled per-town conversions, which were fit
+# to other id columns. The raw `link` stays as parcel_id_admin2.
+# Measured in memory on both 2024 sources, per town chunk as the
+# ingest runs it: 92.98% of CAMA rows (93.55% of distinct keys)
+# find a parcel key, and 97.10% of keyed parcels find a CAMA row
+# (raw `link` exact: 86.21% of CAMA rows). In the 9 zero-dropping
+# towns: 98.16% and 97.67%. In 18 town chunks 'simple' would add
+# duplicates, so the guard falls back to 'pipe', alike on both
+# sides. One CAMA row has no dash and so no key.
+#
+# VINTAGE. Newer collections exist: 2025 (rny9-6ak2) and 2026
+# (ibe8-9i3q, 1,359,259 rows, same schema). The 2026 `link` matches
+# the 2024 parcel layer on 51.6% of rows, and 57.3% even after
+# ignoring the town prefix; 26 of 156 towns changed their modal
+# prefix between vintages. This recipe stays with the 2024 CAMA until
+# the parcel recipe moves to a newer parcel layer.
+#
+# TOWNS. Property City carries all 169 towns; it matches the parcel
+# recipe's crosswalk names only after capitalization ('New Canaan'
+# against 'New canaan'), which no transformation performs, so this
+# recipe has its own sidecar crosswalk with the CAMA's spelling.
+#
+# BUILDING FEATURES (building-feature pass, 2026-09-13). Each town
+# exports from its own CAMA vendor, so code fields carry mixed
+# vocabularies and spellings ('Average', 'AVERAGE', 'Avarage'). They
+# are mapped as shipped, no crosswalk; where a field comes as a
+# vendor code plus a description, the description is mapped (Grade
+# Desc, Condition Description), since bare numeric codes mean
+# different things per vendor. 'Not Available', written by one town
+# in every empty field, is nulled.
+#   Living Area -> living_area_sqft; Gross Area of Primary Building
+#     -> building_area_sqft. Where both are above 0 (831,144 rows)
+#     gross is a median 1.95 times living and below it on 0.2%, so
+#     the first is living and the second gross area. area_sqft was
+#     not mapped before. Fin Bsm Area -> basement_finished_area_sqft.
+#   Basement Type -> has_basement: true on basement values (Full,
+#     Basement, 3/4 Bsmt, Partial), false only on stated absence
+#     (No Basement, None, Slab, Crawl, Full Crawl, Piers); partial
+#     crawl and lower-level values, digits and spreadsheet dates
+#     ('2-Jan') stay null.
+#   Ac Type Description -> has_central_air: true on central values
+#     (Central, Central AC, Complete HVAC), false on stated absence
+#     or a non-central system (No, None, Heat only, window or wall
+#     units, ductless or mini-split); 'Partial', 'Heat Pump', 'Yes'
+#     and bare numbers stay null.
+#   Heat Type Description -> heating_type; Heat Fuel Description ->
+#     heating_fuel; Ext Wall1 Description -> exterior_wall; Roof
+#     Cover Description -> roof_material; Style Desc ->
+#     building_style; Outbuilding Count -> n_outbuildings; EYB ->
+#     effective_year_built; Septic -> sewer_type and Well ->
+#     water_source (source codes: City, On-Site, Sewer, Septic,
+#     Public, Well, and Y/N/P/S/C/W letters from some towns);
+#     Parcel Frontage -> frontage_ft (0 nulled); Neighborhood ->
+#     tax_neighborhood_code (the town's own code).
+#   No of Fireplaces -> n_fireplaces, except in 9 towns whose values
+#     are not counts (Middletown about 1,000 to 2,700; South Windsor,
+#     Waterford, Wolcott and Southbury mostly 100; West Hartford in
+#     the hundreds; Orange and East Hartford in tens; Plainfield
+#     mixed): nulled there. Every other town tops out at 17.
+#
+# MEASURED in memory through TableIngester._preprocess_recipe_data
+# on the 2024 export. Share of rows non-null, all / residential:
+#   living_area_sqft             94.6% / 97.5% (above 0: 88.0% of
+#                                rows, median 1,662 sqft)
+#   building_area_sqft           65.2% / 68.7% (114 of 169 towns)
+#   basement_finished_area_sqft  31.2% / 31.9% (above 0 on 10.8% of
+#                                residential rows, 57 towns)
+#   has_basement                 25.4% / 28.7% (313,474 true,
+#                                30,406 false)
+#   has_central_air              36.5% / 39.9% (467,853 true,
+#                                26,112 false)
+#   quality_grade                81.3% / 88.9%, 390 values
+#   condition                    73.0% / 79.2%, 73 values
+#   exterior_wall                77.6% / 83.9%, 416 values
+#   roof_material                71.2% / 76.9%, 213 values
+#   heating_type                 85.8% / 93.0%, 2,175 values
+#   heating_fuel                 85.7% / 93.1%, 2,071 values
+#   building_style               88.5% / 95.1%, 2,706 values
+#   n_outbuildings               97.2% / 99.5% (above 0 on 53.1% of
+#                                residential rows)
+#   n_fireplaces                 41.0% / 43.1% (above 0 on 22.1% of
+#                                residential rows, max 21)
+#   effective_year_built         81.7% / 89.0%
+#   sewer_type, water_source     32.0% / 31.8%
+#   frontage_ft                   2.3% /  2.4% (31 towns, median 126)
+#   tax_neighborhood_code        89.0% / 90.5% (165 towns, 3,943
+#                                codes, 6,940 town-code pairs)
+# Left as shipped for curate: heating_type carries style words on
+# about 18,400 rows ('Colonial', 'Split Level': one town's columns
+# are shifted) and '99' on 12,640; heating_fuel reads 'Yes' on
+# 16,129; 10,672 living areas above 20,000 sqft (the roll includes
+# commercial and apartment accounts); outbuilding counts up to 747;
+# 18,776 effective years before the actual year built.
+#
+# YEAR BUILT, UNITS, CONSTRUCTION (follow-up, 2026-09-13).
+#   AYB -> year_built: 88.9% of rows, 95.2% of residential ones
+#     (median 1965). Year columns are kept only within 1600-2026:
+#     this nulls 35 AYB values below 1600 (typos such as '940'), 3
+#     above 2026, and 4 and 9 such EYB values; 255 AYB years in the
+#     1600s are kept. A year of 0 (91,144 AYB, 122,488 EYB) is
+#     nulled by the registry's placeholder rule.
+#   Occupancy -> n_dwellings: 82.8% / 92.4%, median 1. Occupancy is
+#     the unit count: it reads 1 on 92.6% of single-family rows, 2
+#     on 96.1% of two-family rows, 3 on 98.0% of three-family rows,
+#     and where Number of Units is also above 0 the two agree on
+#     99.7%. Number of Units itself is 0 on most rows (above 0 on
+#     7.1% of residential rows, 59 towns), so it is not mapped.
+#     Counts below 1 and the placeholder 99999 are nulled; 971 rows
+#     of 51 to 500 units (mostly apartment accounts) and 41 above
+#     500 (commercial, hospital, storage uses, up to 1,970) are left
+#     as shipped.
+#   Frame Type Description -> construction_description: 77.0% /
+#     83.9%, 309 values, kept in each town's words (construction_type
+#     stays NSI-coded; curate translates). Many towns put the
+#     exterior cover here rather than a frame: of the ten commonest
+#     values, siding words ('Vinyl Siding', 'Wood Shingle',
+#     'Clapboard', aluminum and vinyl variants) cover 510,825 rows
+#     and frame words ('Wood Frame', 'Wood', 'Brick') 353,834.
+#   The roll has no foundation field, so foundation_description
+#     stays unmapped (Basement Type feeds has_basement above).
+#
+# SHARED KEYS AND SUMS. 100,111 rows share a parcel key with another
+# row (16,363 keys, mostly condominium units). Building-level
+# fields repeat on those rows: n_outbuildings is identical on every
+# row of 75.3% of such keys, tax_neighborhood_code on 78.4%. This
+# recipe declares no aggregation_function (each row is a property),
+# so the registry's sum applies when these rows are reduced to a
+# parcel, and that sum repeats the complex's outbuildings once per
+# unit. Areas differ within a key (living area identical on only
+# 10.8%), so they are per-account values and sum correctly.
+# n_dwellings mostly does not repeat the complex's count: of the
+# 8,754 shared keys whose rows all carry one value, 88.9% carry 1
+# (each unit counting itself, which sums correctly) and 11.1% a
+# value above 1 on every row, which a sum multiplies (7 of those
+# keys would sum above 10).
+#
+# LEFT UNMAPPED: Effective Area; the Grade and Condition codes and
+# the AC Type code (vendor codes; AC Type is set on 410,197 rows
+# with no description); Frame Type code (its description is mapped
+# above); Number of Units (see YEAR BUILT, UNITS); Roof Structure
+# Description (a roof shape, and roof_shape is an
+# enrich-stage attribute); Bsm Gar (basement garage stalls only,
+# not a garage count); Water frontage in Feet (5 non-zero values);
+# Attic Type, Whirlpool, kitchen and bath styles; values, sale
+# fields;
+# and every owner, co-owner, mailing and grantor/grantee field. The
+# roll has no garage, pool, porch, deck, elevator, solar, accessory
+# unit, unit floor, view, topography or remodel-year field.
+
+description: >-
+  Connecticut statewide CAMA roll (2024): rooms, baths, stories, areas, year
+  built, units, grade, condition, materials, heating, air, basement and utilities
+  per account.
+
+admin_id: US-CT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ctgov
+    # Checked 2026-09-12. The dataset metadata declares no licence.
+    # The portal's terms page (data.ct.gov/terms) provides data "as
+    # is" with no warranty and reserves the right to discontinue it;
+    # it states nothing about redistribution, attribution or resale.
+    license: "unknown (portal terms: 'as is', no warranty; no licence stated)"
+    terms_url: "https://data.ct.gov/terms"
+    redistribution_restricted: null
+    portal_url: "https://data.ct.gov/Local-Government/2024-Connecticut-Parcel-and-CAMA-Data/pqrn-qghw/about_data"
+    download_url: "https://data.ct.gov/api/views/pqrn-qghw/rows.csv?accessType=DOWNLOAD"
+  version: 2024
+
+uncompressed_file_name: "2024_Connecticut_Parcel_and_CAMA_Data.csv"
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+  admin_id_column: Property City
+  admin_id_crosswalk:
+    recipe_id: "US-CT_property-ctgov-2024_admin3-crosswalk"
+
+columns:
+  parcel_id_admin2: link
+  n_bedrooms: Number of Bedroom
+  n_bathrooms: Number of Baths
+  n_half_bathrooms: Number of Half Baths
+  n_rooms: Total Rooms
+  n_stories: Stories
+  # Building features (see the header's BUILDING FEATURES).
+  living_area_sqft: Living Area
+  building_area_sqft: Gross Area of Primary Building
+  basement_finished_area_sqft: Fin Bsm Area
+  has_basement: Basement Type
+  quality_grade: Grade Desc
+  condition: Condition Description
+  exterior_wall: Ext Wall1 Description
+  roof_material: Roof Cover Description
+  heating_type: Heat Type Description
+  heating_fuel: Heat Fuel Description
+  has_central_air: Ac Type Description
+  n_outbuildings: Outbuilding Count
+  n_fireplaces: No of Fireplaces
+  effective_year_built: EYB
+  building_style: Style Desc
+  sewer_type: Septic
+  water_source: Well
+  frontage_ft: Parcel Frontage
+  tax_neighborhood_code: Neighborhood
+  year_built: AYB
+  n_dwellings: Occupancy
+  construction_description: Frame Type Description
+
+# One town writes this in every field it leaves empty.
+null_value_strings:
+  - "Not Available"
+
+transformations:
+  # Cast before the bath fold: transformation_patterns run after
+  # this list, too late for the expression below.
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only
+  # when both counts are, so a missing half count reads as zero.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # Feature casts. Areas keep a 0 as shipped: on a land-only account
+  # it is a true zero.
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_outbuildings
+    output: n_outbuildings
+  # Nine towns fill this field with something other than a count
+  # (values in the tens to thousands, see the header); their values
+  # are nulled by multiplying with NaN, every other town's by 1.
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: remap_conditional
+    input: Property City
+    output: _fireplace_count_town
+    default: 1.0
+    conditions:
+      - condition: in
+        values: [Middletown, South Windsor, Waterford, West Hartford,
+                 Wolcott, Southbury, Orange, East Hartford, Plainfield]
+        output: .nan
+  - type: binary
+    operation: multiply
+    inputs: [n_fireplaces, _fireplace_count_town]
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  # The registry's null_placeholder already nulls a year of 0.
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year outside 1600-2026 is impossible here (typos such as a
+  # three-digit year): dividing by the in-range test turns it into
+  # inf, which is then nulled.
+  - type: expression
+    expression: "year_built / ((year_built >= 1600) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    output: year_built
+    args:
+      value: .inf
+  - type: expression
+    expression: >-
+      effective_year_built / ((effective_year_built >= 1600)
+      & (effective_year_built <= 2026))
+    inputs: [effective_year_built]
+    output: effective_year_built
+  - type: unary
+    operation: null_if_equal
+    input: effective_year_built
+    output: effective_year_built
+    args:
+      value: .inf
+  # Occupancy is the unit count (see the header). A count below 1
+  # (0 unrecorded, or negative) turns into NaN or an infinity by the
+  # division and is nulled; 99999 is a placeholder.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: expression
+    expression: "n_dwellings / (n_dwellings >= 1)"
+    inputs: [n_dwellings]
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    output: n_dwellings
+    args:
+      value: .inf
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    output: n_dwellings
+    args:
+      value: -.inf
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    output: n_dwellings
+    args:
+      value: 99999
+  # Frontage is 0 wherever a town does not record it (97.6% of
+  # rows), so 0 reads as missing here.
+  - type: unary
+    operation: to_numeric
+    input: frontage_ft
+    output: frontage_ft
+  - type: unary
+    operation: null_if_equal
+    input: frontage_ft
+    output: frontage_ft
+    args:
+      value: 0
+  # Flags, set only from values that state presence or absence (see
+  # the header). Patterns run in order and a later match overrides.
+  - type: string
+    operation: strip
+    input: has_basement
+    output: has_basement
+  - type: remap_pattern
+    input: has_basement
+    output: has_basement
+    patterns:
+      - pattern: '(?i).*(bsmt|basement)'
+        value: true
+      - pattern: '(?i)^(full|partial)$'
+        value: true
+      - pattern: '(?i)^(no basement|no bsmt|none|slab|full crawl|crawl|piers)$'
+        value: false
+  - type: string
+    operation: strip
+    input: has_central_air
+    output: has_central_air
+  - type: remap_pattern
+    input: has_central_air
+    output: has_central_air
+    patterns:
+      - pattern: '(?i)^(central|complete hvac)'
+        value: true
+      - pattern: '(?i)^(no|none|heat only)$'
+        value: false
+      - pattern: '(?i).*(unit|ductless|mini.?spl|min/split|mini spit|individual|slimjim|thru wall|vapor cooler)'
+        value: false
+      - pattern: '(?i).*partial'
+        value: null
+  # Shared parcel key (see JOIN KEY above). The same five steps sit on
+  # US-CT_parcel-ctgov-2024; change both or neither.
+  - type: string
+    operation: strip
+    input: parcel_id_admin2
+    output: _cama_link
+  - type: string
+    operation: extract_named
+    input: _cama_link
+    output: _town_code
+    args:
+      pattern: '^(?P<town_code>[^-]+)-'
+  - type: string
+    operation: zfill
+    input: _town_code
+    output: _town_code
+    args:
+      width: 5
+  - type: string
+    operation: extract_named
+    input: _cama_link
+    output: _cama_link_rest
+    args:
+      pattern: '^[^-]+-(?P<rest>.*)$'
+  - type: string
+    operation: concat
+    inputs: [_town_code, _cama_link_rest]
+    output: parcel_id_local
+    args:
+      sep: '-'
+
+drop_columns:
+  - half_bathroom_equivalent
+  - _cama_link
+  - _town_code
+  - _cama_link_rest
+  - _fireplace_count_town
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - exterior_wall
+  - roof_material
+  - heating_type
+  - heating_fuel
+  - building_style
+  - sewer_type
+  - water_source
+  - tax_neighborhood_code
+  - construction_description
+
+# Converts the key assembled above in place. The instruction at
+# US-CT outranks the bundled per-town table for every town.
+parcel_id_local:
+  source: parcel_id_local
+  kind: parcel
+  instruction:
+    US-CT:
+      conv: simple
+
+save_to:
+  data_dir: cache
+  # Same level as process_by, as on the parcel recipe: the town holds
+  # the roll, and Connecticut has no county above it.
+  admin_level: 3

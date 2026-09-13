@@ -1,4 +1,22 @@
 # Recipe to import Connecticut's parcel data
+#
+# PARCEL_ID_LOCAL CHANGED (2026-09-13): this recipe declared no
+# parcel_id_local before; it now builds the key it shares with the
+# CAMA roll US-CT_property-ctgov-2024. Outputs ingested earlier carry
+# no such column, so the next CT parcel ingest makes the CT geospine
+# sidecars stale: rerun the CT geospine after it.
+#
+# JOIN KEY. CAMA_Link is '{town code}-{rest}' (fabricated shape
+# '99999-999-99'). The town code is the town's five-digit county
+# subdivision code, one value per town, and 9 towns drop its leading
+# zero here but not in the CAMA table ('1234' against '01234'). So
+# parcel_id_local is the town code zero-padded to five digits, a
+# dash, then the part after the first dash, converted with 'simple';
+# the same steps sit on the property recipe. 19,088 parcels, all in
+# Danbury, have no CAMA_Link and so no key. Measured in memory
+# against the 2024 CAMA table: 97.10% of keyed parcels find a CAMA
+# row and 92.98% of CAMA rows find a parcel (9 zero-dropping towns:
+# 97.67% and 98.16%).
 
 description: >-
   Connecticut statewide parcel data from the state open data portal (2024).
@@ -49,6 +67,53 @@ columns:
   type: Parcel_Typ
   address_unit_type: Unit_Type
   source_date: Edit_Date
+
+transformations:
+  # Shared parcel key (see JOIN KEY above). The same five steps sit on
+  # US-CT_property-ctgov-2024; change both or neither.
+  - type: string
+    operation: strip
+    input: parcel_id_admin2
+    output: _cama_link
+  - type: string
+    operation: extract_named
+    input: _cama_link
+    output: _town_code
+    args:
+      pattern: '^(?P<town_code>[^-]+)-'
+  - type: string
+    operation: zfill
+    input: _town_code
+    output: _town_code
+    args:
+      width: 5
+  - type: string
+    operation: extract_named
+    input: _cama_link
+    output: _cama_link_rest
+    args:
+      pattern: '^[^-]+-(?P<rest>.*)$'
+  - type: string
+    operation: concat
+    inputs: [_town_code, _cama_link_rest]
+    output: parcel_id_local
+    args:
+      sep: '-'
+
+drop_columns:
+  - _cama_link
+  - _town_code
+  - _cama_link_rest
+
+# Converts the key assembled above in place. The instruction at
+# US-CT outranks the bundled per-town table (fit to other id
+# columns) for every town.
+parcel_id_local:
+  source: parcel_id_local
+  kind: parcel
+  instruction:
+    US-CT:
+      conv: simple
 
 save_to:
   # Same level as `process_by`, so nothing is aggregated: the town is the
