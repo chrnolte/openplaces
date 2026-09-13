@@ -1,0 +1,66 @@
+# Level-3 administrative units of every country, from Wikidata.
+#
+# Wikidata is CC0, which makes it the one source whose names, native
+# names, types and parent links the spine may publish for every country
+# at once. GADM, which supplied them before, forbids redistribution.
+#
+# One partition per country. The scraper fetches the items located in
+# each unit of the level-2 output, in batches, and keeps the most
+# common administrative class per country; see io/scrapers/wikidata_admin_scraper.py
+# and the class-overrides sidecar beside this file.
+
+description: >-
+  Level-3 administrative units worldwide from Wikidata: names, native
+  names, types, Q-numbers, parent Q-numbers.
+
+admin_id: NULL
+
+entity:
+  entity_type: admin
+  source:
+    source_id: wikidata
+    portal_url: "https://www.wikidata.org"
+    download_url_scraper: wikidata_admin_scraper
+    license: "CC0 1.0"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+download_by:
+  admin_level: 1
+
+scraper_options:
+  level: 3
+  parent_recipe_id: admin-wikidata-2026_admin2
+
+uncompressed_file_name: "wikidata_admin3.csv"
+
+columns:
+  name: name
+  name_original: name_original
+  type: type
+  admin3_id_wikidata: wikidata_id
+  admin2_id_wikidata: parent_wikidata_id
+  admin3_id_iso: iso
+
+# "NA" is Namibia, not a missing value.
+keep_default_na: false
+
+keep_unnamed_columns: False
+
+admin_id_crosswalk:
+  admin_level: 2
+  admin_id_column: admin2_id_wikidata
+  admin_recipe_id: "admin-wikidata-2026_admin2"
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin3_id
+    parent_admin_id_col: admin2_id
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin3

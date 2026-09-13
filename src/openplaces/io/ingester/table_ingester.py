@@ -752,6 +752,13 @@ class TableIngester:
         # export) failed to decode regardless of a declared `encoding:`.
         if encoding:
             read_kwargs['encoding'] = encoding
+        # pandas reads "NA" as missing by default, which erases Namibia's
+        # country code and any source whose codes look like null
+        # markers. A recipe that declares `keep_default_na: false` keeps
+        # every string, with only an empty cell read as missing.
+        if self.recipe.get('keep_default_na') is False:
+            read_kwargs['keep_default_na'] = False
+            read_kwargs['na_values'] = ['']
         # A source with a known malformed line (Harris County TX's
         # account roll carries one row with a stray tab) would otherwise
         # stop the whole read. The recipe opts in and names the rule

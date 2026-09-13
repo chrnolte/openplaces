@@ -59,6 +59,15 @@ GEOMETRY_MISMATCHED = {
 
 DEFAULT_RASTER = '_all/population/ghsl/r2023a/population-ghsl-r2023a.tif'
 
+#: Polygons the population weights are summed over, per level, as a
+#: recipe id with `{level}` in it; None means each level's default admin
+#: recipe, which is what the committed spine was minted on. The open
+#: licensed geoBoundaries layer ('admin-geoboundaries-6~0~0_admin{level}')
+#: is the intended value: it pins polygons to units by name, so it takes
+#: over on the day the world rows carry Wikidata names, together with
+#: one weight override per open file and a re-mint (see the phase-3 plan).
+GEOMETRY_RECIPE = None
+
 
 def _spine(level):
     """Return the live spine rows for one level, blank ids dropped."""
@@ -116,7 +125,7 @@ def is_estimated(source) -> bool:
 _RESOLVED_POLYGONS: dict = {}
 
 
-def resolved_polygons(level):
+def resolved_polygons(level, recipe=None):
     """Return this level's polygons keyed by the unit they really name.
 
     Resolving is not the same as reading the geometry layer's own
@@ -136,14 +145,21 @@ def resolved_polygons(level):
     ----------
     level : int
         Admin level wanted.
+    recipe : str, optional
+        Admin recipe whose output supplies the polygons. Defaults to
+        `GEOMETRY_RECIPE` for the level, and where that is unset to the
+        level's default admin recipe. A unit no polygon covers gets none
+        here and is gap-filled from its parent instead.
 
     Returns
     -------
     geopandas.GeoDataFrame
         Columns ``resolved`` and ``geometry``.
     """
-    if level in _RESOLVED_POLYGONS:
-        return _RESOLVED_POLYGONS[level]
+    if recipe is None and GEOMETRY_RECIPE:
+        recipe = GEOMETRY_RECIPE.format(level=level)
+    if (level, recipe) in _RESOLVED_POLYGONS:
+        return _RESOLVED_POLYGONS[(level, recipe)]
 
     import openplaces as op
 
@@ -166,7 +182,7 @@ def resolved_polygons(level):
         by_parent.setdefault((parent, name), []).append(admin_id)
         by_state.setdefault((state, name), []).append(admin_id)
 
-    gdf = op.get_admin(level=level, geom=True).reset_index()
+    gdf = op.get_admin(level=level, geom=True, recipe=recipe, silent=True).reset_index()
     gdf = gdf[[column, 'name', 'geometry']]
     gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty]
 
@@ -205,8 +221,8 @@ def resolved_polygons(level):
         .drop(columns='_exact')
         .sort_index()
     )
-    _RESOLVED_POLYGONS[level] = gdf[['resolved', 'geometry']]
-    return _RESOLVED_POLYGONS[level]
+    _RESOLVED_POLYGONS[(level, recipe)] = gdf[['resolved', 'geometry']]
+    return _RESOLVED_POLYGONS[(level, recipe)]
 
 
 def _polygon_ids(polygons) -> dict:

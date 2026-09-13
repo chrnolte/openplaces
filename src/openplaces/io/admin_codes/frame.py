@@ -17,7 +17,7 @@ import warnings
 import pandas as pd
 
 from openplaces.core.constants import STRING_SEPARATOR_WITHIN_IDS
-from openplaces.io.admin_codes.anchors import load_group_code_lengths
+from openplaces.io.admin_codes.anchors import load_group_code_lengths, normalize_name
 from openplaces.io.admin_codes.candidates import is_valid_code
 from openplaces.io.admin_codes.derive import derive_codes
 from openplaces.io.admin_codes.registry import (
@@ -203,7 +203,18 @@ def assign_admin_ids(
 
         # Units the spine already names keep their code; only the rest
         # are assigned, out of what those leave free.
-        held = {n: pins[(parent, n)] for n in set(named) if (parent, n) in pins}
+        # Pins are keyed on normalized names (see registry.load_registry).
+        # Two incoming names that normalize alike ("Nairobi" and
+        # "Nairobi City") would both take the one pinned code, so
+        # neither does; they are minted like any same-named siblings.
+        by_key = {}
+        for n in set(named):
+            by_key.setdefault(normalize_name(n), []).append(n)
+        held = {
+            names[0]: pins[(parent, key)]
+            for key, names in by_key.items()
+            if len(names) == 1 and (parent, key) in pins
+        }
         # The source's own code identifies a unit before its name does,
         # so a row carrying one the spine knows is pinned on it first,
         # and the name pin only serves rows the code cannot place. The
@@ -242,7 +253,7 @@ def assign_admin_ids(
                     continue
                 if pair in repeated:
                     continue
-                code = pins.get((parent, *pair))
+                code = pins.get((parent, normalize_name(pair[0]), pair[1]))
                 if code is not None and code not in pinned_rows.values():
                     pinned_rows[idx] = code
         # A code a row has claimed on its source code is no longer

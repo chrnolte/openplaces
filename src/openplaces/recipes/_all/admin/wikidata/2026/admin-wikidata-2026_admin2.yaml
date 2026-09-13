@@ -1,0 +1,61 @@
+# Second-level administrative units of every country, from Wikidata.
+#
+# Wikidata is CC0, which makes it the one source whose names, native
+# names, types and parent links the spine may publish for every country
+# at once. GADM, which supplied them before, forbids redistribution.
+#
+# One partition per country. The scraper unions two routes (items located
+# in the country, and items carrying the country's ISO 3166-2 codes) and
+# keeps one administrative class per country, the most common one among
+# the country's direct children; see io/scrapers/wikidata_admin_scraper.py
+# and the class-overrides sidecar beside this file.
+
+description: >-
+  Second-level administrative units worldwide from Wikidata: names, native
+  names, types, Q-numbers, ISO 3166-2 codes.
+
+admin_id: NULL
+
+entity:
+  entity_type: admin
+  source:
+    source_id: wikidata
+    portal_url: "https://www.wikidata.org"
+    download_url_scraper: wikidata_admin_scraper
+    license: "CC0 1.0"
+    terms_url: "https://www.wikidata.org/wiki/Wikidata:Licensing"
+    redistribution_restricted: false
+  version: 2026
+
+download_by:
+  admin_level: 1
+
+scraper_options:
+  level: 2
+
+uncompressed_file_name: "wikidata_admin2.csv"
+
+columns:
+  name: name
+  name_original: name_original
+  type: type
+  admin2_id_wikidata: wikidata_id
+  admin2_id_iso: iso
+  admin1_id: admin1_id
+
+# "NA" is Namibia, not a missing value.
+keep_default_na: false
+
+keep_unnamed_columns: False
+
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin2_id
+    parent_admin_id_col: admin1_id
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin2

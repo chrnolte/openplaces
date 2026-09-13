@@ -152,3 +152,46 @@ class TestPopulationCoverage:
         measured = one_unit_dropped.set_index('admin_id')['population']
         assert measured['XX-AA-AA'] == 12
         assert measured['XX-AA-CC'] == 34
+
+
+def test_polygons_come_from_the_configured_geometry_layer(monkeypatch):
+    # With a geometry recipe set, that layer supplies the polygons, not
+    # the package-wide default get_admin would pick on its own; unset,
+    # get_admin is asked for no recipe at all.
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    import openplaces as op
+
+    seen = {}
+
+    def fake_get_admin(*args, **kwargs):
+        seen.update(kwargs)
+        return gpd.GeoDataFrame(
+            {
+                'admin3_id': ['XX-AA-AA'],
+                'name': ['Alpha'],
+                'geometry': [box(0, 0, 1, 1)],
+            },
+            geometry='geometry',
+            crs='EPSG:4326',
+        ).set_index('admin3_id')
+
+    monkeypatch.setattr(op, 'get_admin', fake_get_admin)
+    monkeypatch.setattr(
+        build,
+        '_spine',
+        lambda level: pd.DataFrame({'admin3_id': ['XX-AA-AA'], 'name': ['Alpha']}),
+    )
+    monkeypatch.setattr(
+        build, 'GEOMETRY_RECIPE', 'admin-geoboundaries-6~0~0_admin{level}'
+    )
+    build._RESOLVED_POLYGONS.clear()
+    out = build.resolved_polygons(3)
+    assert seen['recipe'] == 'admin-geoboundaries-6~0~0_admin3'
+    assert list(out['resolved']) == ['XX-AA-AA']
+    monkeypatch.setattr(build, 'GEOMETRY_RECIPE', None)
+    build._RESOLVED_POLYGONS.clear()
+    build.resolved_polygons(3)
+    assert seen['recipe'] is None
+    build._RESOLVED_POLYGONS.clear()
