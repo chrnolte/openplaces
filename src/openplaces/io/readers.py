@@ -96,13 +96,21 @@ def _concat_recipe_files(paths, reader=None, **read_kwargs):
 
 
 def _is_placeholder(path) -> bool:
-    """True for an output file with no rows and no column but `_join_id`."""
+    """True for an output file with no rows and no column but `_join_id`.
+
+    Anything the parquet metadata cannot be read from (a path that is
+    not a file, or a reader's own handle in a test) is not a
+    placeholder; the reader decides what to do with it.
+    """
     import pyarrow.parquet as pq
 
-    schema = pq.read_schema(path)
-    if set(schema.names) - {'_join_id'}:
+    try:
+        schema = pq.read_schema(path)
+        if set(schema.names) - {'_join_id'}:
+            return False
+        return pq.read_metadata(path).num_rows == 0
+    except (TypeError, OSError, ValueError):
         return False
-    return pq.read_metadata(path).num_rows == 0
 
 
 def get_admin(
