@@ -1841,7 +1841,9 @@ def _register_code_source(level, recipe_id, admin_ids):
     table.to_csv(path, index=False, encoding='utf-8', lineterminator='\n')
 
 
-def update_admin_spine(level, admin_recipe_id, test, silent=False):
+def update_admin_spine(
+    level, admin_recipe_id, test, silent=False, replace_countries=False
+):
     """Update the `openplaces` admin spine with admin recipe info
 
     Parameters
@@ -1855,6 +1857,12 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         If True, writes to '{file}_test.csv' instead of the original
     silent : bool
         If True, silences printouts when new admin IDs are added.
+    replace_countries : bool
+        For a global recipe, replace the whole slice of every country it
+        covers (and no national recipe claims at this level) rather than
+        only adding units the spine lacks. This is how a country's units
+        move from one global source to another: rows the new source does
+        not name are dropped, not carried.
     """
 
     admin_recipe = get_recipe_by_id(admin_recipe_id)
@@ -1911,6 +1919,10 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
         if superseded_admin1_ids:
             admin1_of = admin_local.index.to_series().str.split('-', n=1).str[0]
             admin_local = admin_local[~admin1_of.isin(superseded_admin1_ids)]
+        if replace_countries:
+            covered = admin1_ids - superseded_admin1_ids
+            spine_admin1 = admin_spine.index.to_series().str.split('-', n=1).str[0]
+            admin_spine = admin_spine[~spine_admin1.isin(covered)]
 
     # Initiate new admin spine
     new_admin_spine = admin_spine.copy()
@@ -1970,6 +1982,14 @@ def update_admin_spine(level, admin_recipe_id, test, silent=False):
                 + ' '
                 + new_admin_entries.loc[i_collision, 'type'].str.lower()
             )
+
+        # A source's own stable key (`admin{N}_id_wikidata`) and native
+        # name are worth carrying; the spine gains the column on first
+        # sight rather than dropping the value.
+        for column in (f'admin{level}_id_wikidata', 'name_original'):
+            if column in new_admin_entries and column not in admin_spine:
+                admin_spine[column] = ''
+                new_admin_spine[column] = ''
 
         # Align columns
         new_admin_entries = new_admin_entries[

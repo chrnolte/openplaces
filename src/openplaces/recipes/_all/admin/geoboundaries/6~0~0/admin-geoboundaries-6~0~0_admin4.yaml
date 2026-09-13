@@ -1,0 +1,61 @@
+# geoBoundaries gbOpen ADM3 polygons, ingested as openplaces admin level 4.
+#
+# Every geoBoundaries file is licensed separately, and the spine ships
+# with the package, so no URL is carried here: io/scrapers/
+# geoboundaries_scraper.py downloads a country's file only when the
+# committed sidecar admin-geoboundaries-6~0~0_licenses.csv marks that
+# country-level open (CC BY, public domain, government open). Share-alike
+# (ODbL, CC BY-SA) and permission-only files are held and never fetched.
+#
+# The polygons weight the mint (population sums per unit) and never ship;
+# names come from Wikidata. Citation: Runfola, D. et al. (2020)
+# geoBoundaries: A global database of political administrative
+# boundaries. PLoS ONE 15(4): e0231866.
+
+description: >-
+  geoBoundaries gbOpen ADM3 polygons (admin level 4), open-licensed
+  country files only, for population weights.
+
+admin_id: NULL
+
+entity:
+  entity_type: admin
+  source:
+    source_id: geoboundaries
+    portal_url: "https://www.geoboundaries.org"
+    download_url_scraper: geoboundaries_scraper
+    license: "per country file; see admin-geoboundaries-6~0~0_licenses.csv"
+    terms_url: "https://www.geoboundaries.org/"
+    redistribution_restricted: false
+  version: 6~0~0
+
+download_by:
+  admin_level: 1
+
+scraper_options:
+  admin_level: 4
+
+uncompressed_file_name: "geoboundaries_admin4.gpkg"
+
+columns:
+  name: shapeName
+  admin4_id_geoboundaries: shapeID
+  admin4_id_iso: shapeISO
+  admin3_id: parent_admin_id
+
+keep_unnamed_columns: False
+
+# Pinned to the spine by name within the parent, so a polygon lands on
+# the unit Wikidata named; a polygon no spine unit matches gets a fresh
+# code and is simply never weighted against.
+create_index:
+  function: "openplaces.io.admin_codes.assign_admin_ids"
+  args:
+    new_admin_id_col: admin4_id
+    parent_admin_id_col: admin3_id
+
+sort_index: True
+
+save_to:
+  data_dir: cache
+  filename: admin4

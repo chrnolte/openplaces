@@ -31,6 +31,7 @@ import pandas as pd
 # `spine_path` lives in `path` (Layer 1) so that `geo` can read
 # the spine without importing from `io`. Imported here because
 # this is where callers have always got it from.
+from openplaces.io.admin_codes.anchors import normalize_name
 from openplaces.path import spine_path
 
 
@@ -93,7 +94,11 @@ def load_registry(level: int, id_separator: str = '-'):
 
     for parent, code, name, external, _, kind in rows:
         issued.setdefault(parent, set()).add(code)
-        name = str(name).strip()
+        # Names pin on their normalized form (diacritics folded, type
+        # words dropped), so a source spelling "Trans-Nzoia" or "Nairobi
+        # City" still finds "Trans Nzoia" and "Nairobi". Two siblings
+        # that normalize alike are treated as one duplicated name.
+        name = normalize_name(str(name).strip()) if str(name).strip() else ''
         if name:
             key = (parent, name)
             # A name duplicated under one parent identifies nothing, so
@@ -116,8 +121,8 @@ def load_registry(level: int, id_separator: str = '-'):
     # that already exists.
     for parent, code, name, _, alias, _ in rows:
         for spelling in str(alias).split('|'):
-            spelling = spelling.strip()
-            if spelling and spelling != str(name).strip():
+            spelling = normalize_name(spelling.strip()) if spelling.strip() else ''
+            if spelling and spelling != normalize_name(str(name).strip()):
                 pins.setdefault((parent, spelling), code)
 
     return (

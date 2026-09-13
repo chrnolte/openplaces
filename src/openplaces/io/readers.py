@@ -80,13 +80,29 @@ def _concat_recipe_files(paths, reader=None, **read_kwargs):
         The concatenated files, keeping each file's own index.
     """
     reader = read_parquet if reader is None else reader
-    frames = [reader(path, **read_kwargs) for path in paths]
+    # A placeholder written for a unit the source does not cover (an
+    # admin level whose file is held or unpublished) holds no rows and
+    # no column but the join id. It contributes nothing, and a filter
+    # on a column it lacks cannot even be bound to it, so it is left
+    # out unless it is all there is.
+    real = [path for path in paths if not _is_placeholder(path)]
+    frames = [reader(path, **read_kwargs) for path in real or paths[:1]]
     if len(frames) == 1:
         return frames[0]
     combined = pd.concat(frames)
     if isinstance(frames[0], gpd.GeoDataFrame):
         combined = gpd.GeoDataFrame(combined, crs=frames[0].crs)
     return combined
+
+
+def _is_placeholder(path) -> bool:
+    """True for an output file with no rows and no column but `_join_id`."""
+    import pyarrow.parquet as pq
+
+    schema = pq.read_schema(path)
+    if set(schema.names) - {'_join_id'}:
+        return False
+    return pq.read_metadata(path).num_rows == 0
 
 
 def get_admin(

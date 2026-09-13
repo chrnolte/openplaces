@@ -726,6 +726,13 @@ class TableIngester:
         # export) failed to decode regardless of a declared `encoding:`.
         if encoding:
             read_kwargs['encoding'] = encoding
+        # pandas reads "NA" as missing by default, which erases Namibia's
+        # country code and any source whose codes look like null
+        # markers. A recipe that declares `keep_default_na: false` keeps
+        # every string, with only an empty cell read as missing.
+        if self.recipe.get('keep_default_na') is False:
+            read_kwargs['keep_default_na'] = False
+            read_kwargs['na_values'] = ['']
         return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
     def _read_fixed_width(self, data_path, dtype, encoding=None):
