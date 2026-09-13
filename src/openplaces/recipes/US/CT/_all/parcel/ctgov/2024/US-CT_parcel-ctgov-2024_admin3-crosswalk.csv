@@ -7,15 +7,15 @@ US-CT-DAR,Darien
 US-CT-EAS,Easton
 US-CT-FAI,Fairfield
 US-CT-GRE,Greenwich
-US-CT-MOE,Monroe
-US-CT-NCN,New canaan
-US-CT-NEW,Newtown
+US-CT-MON,Monroe
+US-CT-NCA,New canaan
+US-CT-NEN,Newtown
 US-CT-NFA,New fairfield
 US-CT-NOR,Norwalk
 US-CT-RED,Redding
 US-CT-RID,Ridgefield
-US-CT-SHE,Sherman
-US-CT-SHN,Shelton
+US-CT-SHN,Sherman
+US-CT-SHE,Shelton
 US-CT-STR,Stratford
 US-CT-STA,Stamford
 US-CT-TRU,Trumbull
@@ -40,7 +40,7 @@ US-CT-HRT,Hartland
 US-CT-MAN,Manchester
 US-CT-MAR,Marlborough
 US-CT-NBR,New britain
-US-CT-NEN,Newington
+US-CT-NEW,Newington
 US-CT-PLA,Plainville
 US-CT-ROH,Rocky hill
 US-CT-SIM,Simsbury
@@ -53,7 +53,7 @@ US-CT-WIN,Windsor
 US-CT-WLO,Windsor locks
 US-CT-BAR,Barkhamsted
 US-CT-BEM,Bethlehem
-US-CT-BRI,Bridgewater
+US-CT-BRR,Bridgewater
 US-CT-CAA,Canaan
 US-CT-COK,Colebrook
 US-CT-COR,Cornwall
@@ -62,13 +62,13 @@ US-CT-HAN,Harwinton
 US-CT-KEN,Kent
 US-CT-LIT,Litchfield
 US-CT-MOR,Morris
-US-CT-NCA,North canaan
+US-CT-NCN,North canaan
 US-CT-NHR,New hartford
 US-CT-NMI,New milford
 US-CT-NOK,Norfolk
 US-CT-PLY,Plymouth
 US-CT-ROX,Roxbury
-US-CT-SAL,Salisbury
+US-CT-SAY,Salisbury
 US-CT-SHA,Sharon
 US-CT-THN,Thomaston
 US-CT-TOR,Torrington
@@ -77,18 +77,18 @@ US-CT-WIR,Winchester
 US-CT-WOO,Woodbury
 US-CT-WAS,Washington
 US-CT-WAN,Watertown
-US-CT-CHE,Chester
+US-CT-CHR,Chester
 US-CT-CLI,Clinton
 US-CT-CRO,Cromwell
 US-CT-DRI,Deep river
 US-CT-DUR,Durham
-US-CT-EHA,East hampton
+US-CT-EHM,East hampton
 US-CT-EHD,East haddam
 US-CT-ESS,Essex
 US-CT-HAD,Haddam
-US-CT-KIL,Killingworth
+US-CT-KIH,Killingworth
 US-CT-MID,Middletown
-US-CT-MID,Middlefield
+US-CT-MDL,Middlefield
 US-CT-OSA,Old saybrook
 US-CT-POR,Portland
 US-CT-WEK,Westbrook
@@ -106,7 +106,7 @@ US-CT-MER,Meriden
 US-CT-MIY,Middlebury
 US-CT-MIL,Milford
 US-CT-NAU,Naugatuck
-US-CT-NBR,North branford
+US-CT-NBA,North branford
 US-CT-NHA,New haven
 US-CT-NHV,North haven
 US-CT-ORA,Orange
@@ -116,7 +116,7 @@ US-CT-SEY,Seymour
 US-CT-SOY,Southbury
 US-CT-WAL,Wallingford
 US-CT-WOE,Woodbridge
-US-CT-WHA,West haven
+US-CT-WHV,West haven
 US-CT-WOL,Wolcott
 US-CT-WAT,Waterbury
 US-CT-BOZ,Bozrah
@@ -129,7 +129,7 @@ US-CT-LED,Ledyard
 US-CT-LEB,Lebanon
 US-CT-LIS,Lisbon
 US-CT-LYM,Lyme
-US-CT-MON,Montville
+US-CT-MOE,Montville
 US-CT-NLO,New london
 US-CT-NOH,Norwich
 US-CT-NST,North stonington
@@ -139,14 +139,14 @@ US-CT-SAL,Salem
 US-CT-SPR,Sprague
 US-CT-STO,Stonington
 US-CT-VOL,Voluntown
-US-CT-WAT,Waterford
+US-CT-WAD,Waterford
 US-CT-AND,Andover
 US-CT-BOL,Bolton
 US-CT-COA,Columbia
 US-CT-COV,Coventry
 US-CT-ELL,Ellington
 US-CT-HEB,Hebron
-US-CT-MAN,Mansfield
+US-CT-MNS,Mansfield
 US-CT-SOM,Somers
 US-CT-STD,Stafford
 US-CT-TOL,Tolland
@@ -154,8 +154,8 @@ US-CT-UNI,Union
 US-CT-VER,Vernon
 US-CT-WLN,Willington
 US-CT-ASH,Ashford
-US-CT-BRO,Brooklyn
-US-CT-CAN,Canterbury
+US-CT-BRN,Brooklyn
+US-CT-CAY,Canterbury
 US-CT-CHA,Chaplin
 US-CT-EAD,Eastford
 US-CT-HMP,Hampton

@@ -3,10 +3,10 @@ US-MT-BE,Beaverhead
 US-MT-BH,Big Horn
 US-MT-BL,Blaine
 US-MT-BR,Broadwater
-US-MT-CA,Carbon
+US-MT-CR,Carbon
 US-MT-CH,Chouteau
 US-MT-CA,Cascade
-US-MT-CR,Carter
+US-MT-CT,Carter
 US-MT-CU,Custer
 US-MT-DL,Deer Lodge
 US-MT-DN,Daniels
@@ -14,7 +14,7 @@ US-MT-DA,Dawson
 US-MT-FA,Fallon
 US-MT-FE,Fergus
 US-MT-FL,Flathead
-US-MT-GA,Glacier
+US-MT-GL,Glacier
 US-MT-GF,Garfield
 US-MT-GA,Gallatin
 US-MT-GR,Granite
@@ -33,9 +33,9 @@ US-MT-MN,Mineral
 US-MT-MI,Missoula
 US-MT-MU,Musselshell
 US-MT-PA,Park
-US-MT-PI,Powder River
+US-MT-PR,Powder River
 US-MT-PH,Phillips
-US-MT-PE,Powell
+US-MT-PO,Powell
 US-MT-PN,Pondera
 US-MT-PE,Petroleum
 US-MT-PI,Prairie

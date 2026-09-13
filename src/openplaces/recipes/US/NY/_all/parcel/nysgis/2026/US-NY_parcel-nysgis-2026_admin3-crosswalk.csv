@@ -1,9 +1,9 @@
 admin3_id,county_name
-US-NY-AE,Albany
+US-NY-AL,Albany
 US-NY-BR,Bronx
 US-NY-BO,Broome
 US-NY-CA,Cayuga
-US-NY-CN,Chautauqua
+US-NY-CH,Chautauqua
 US-NY-CR,Cortland
 US-NY-ER,Erie
 US-NY-GE,Genesee
@@ -17,7 +17,7 @@ US-NY-NY,NewYork
 US-NY-OE,Oneida
 US-NY-ON,Onondaga
 US-NY-OA,Ontario
-US-NY-OA,Orange
+US-NY-OR,Orange
 US-NY-OS,Oswego
 US-NY-OT,Otsego
 US-NY-PU,Putnam
@@ -25,11 +25,11 @@ US-NY-QU,Queens
 US-NY-RE,Rensselaer
 US-NY-RI,Richmond
 US-NY-RO,Rockland
-US-NY-SH,Schuyler
-US-NY-SU,StLawrence
+US-NY-SY,Schuyler
+US-NY-SL,StLawrence
 US-NY-ST,Steuben
 US-NY-SU,Suffolk
-US-NY-SH,Sullivan
+US-NY-SI,Sullivan
 US-NY-TI,Tioga
 US-NY-TO,Tompkins
 US-NY-UL,Ulster
