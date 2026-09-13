@@ -118,9 +118,9 @@
 #   - `OID_1` -- 0% populated (dead/legacy field, verified above).
 #   - `U_ID` -- an internal per-town sequence key (`{townid}-{seq}`),
 #     not a public-facing parcel identifier; no registry equivalent.
-#   - `LocalNBC`/`NBC` -- a local-code/statewide-code "neighborhood
-#     code" pair; no registry attribute for a neighborhood
-#     classification.
+#   - `NBC` -- DRA's statewide integer counterpart of `LocalNBC`
+#     (170 distinct values). `LocalNBC` itself is now mapped, see
+#     NEIGHBORHOOD CODE below.
 #   - `SLUM` -- a further land-use modifier field alongside
 #     SLU/SLUC; its own distinct-value vocabulary was not sampled in
 #     this pass (out of scope given no registry slot exists for a
@@ -169,6 +169,29 @@
 # fitness-for-use disclaimer, not a redistribution statement, so
 # `redistribution_restricted` is left null rather than guessed.
 #
+# NEIGHBORHOOD CODE (building-feature pass, 2026-09-13). The Cama
+# table (layer 3, 36 fields, 709,366 rows) was checked again for the
+# building-feature variables (living or gross area, grade,
+# condition, wall, roof, heating, air conditioning, garage, parking,
+# basement, pool, fireplaces, porch, deck, remodel or effective
+# year, style, utilities, frontage, view, topography): it carries
+# none of them. Its fields are ids, owner, town and county, land-use
+# codes, neighborhood codes, address parts, map/block/lot/unit parts
+# and CAMA bookkeeping. The one listed variable NH does publish is
+# the assessor's neighborhood code, on this Parcels layer as well:
+# `localnbc` -> tax_neighborhood_code (text, the town's own
+# code). MEASURED through REST statistics on the live layer:
+# populated on 94.9% of all parcels and 97.7% of residential ones
+# (sluc 11-15, 17-20); 1,539 distinct codes in 235 towns but 3,744
+# distinct (town, code) pairs (a median of 9 codes per town, up to
+# 168), so the same code recurs across towns and is meaningful only
+# together with its town. Empty strings are nulled below. Checked
+# in memory by running TableIngester._preprocess_recipe_data on
+# the first 20,000 rows of the live layer (9 towns, attributes
+# only): the code is present on 99.7% of residential rows.
+# Adding it changes this recipe's ingest output, so the next NH
+# parcel ingest needs an NH geospine rerun.
+#
 # Validation performed: recipe loads via `get_recipe_by_id`; every
 # mapped column exists in `core/attribute_registry.csv` (checked
 # directly against the CSV). See the ingest-verification note added
@@ -177,7 +200,7 @@
 
 description: >-
   New Hampshire statewide tax parcel mosaic (617k parcels, all 10 counties)
-  from NH GRANIT / NH DRA: geometry, owner name, address, and land-use code.
+  from NH GRANIT / NH DRA: geometry, owner name, address, land-use and neighborhood codes.
 
 admin_id: US-NH
 
@@ -221,6 +244,7 @@ columns:
   address: streetaddress
   use_group_code: sluc
   use_subgroup_code: slu
+  tax_neighborhood_code: localnbc
 
 columns_to_categorical:
   - use_group_code
@@ -234,6 +258,13 @@ transformations:
     operation: concat
     inputs: [parcel_id_admin2]
     output: parcel_id_assessor
+  # Some towns ship an empty string rather than a null code.
+  - type: unary
+    operation: null_if_equal
+    input: tax_neighborhood_code
+    output: tax_neighborhood_code
+    args:
+      value: ""
 
 # No bundled US_parcel_id-overrides.csv row exists for US-NH; falls
 # back to the default 'simple' conversion, which is safe here since
