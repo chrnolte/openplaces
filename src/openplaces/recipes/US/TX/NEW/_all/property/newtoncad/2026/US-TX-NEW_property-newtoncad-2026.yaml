@@ -1,0 +1,142 @@
+# Recipe: Newton County, TX certified appraisal roll (NCAD). Same PACS
+# export family, offsets and join-key trap as
+# US-TX-VIC_property-victoriacad-2026: read that recipe's header first.
+# This header covers only what differs for Newton.
+#
+# Why: the roll is what the room-count supplements beside it detail
+# (supplements: this recipe). The statewide TxGIO layer carries no room
+# counts.
+#
+# LAYOUT. The export's header record names layout 8.0.0.34 and its
+# property records are 9,714 characters wide. Every field mapped below
+# sits at the same offset in the 8.0.30, 8.0.31, 8.0.33 and 8.0.34
+# layout sheets (compared field by field); the versions differ only
+# after situs_num (column 4474), where this recipe stops reading.
+#
+# MEASURED on the 2026 export (22,828 rows): land_state_cd 70.5%,
+# imprv_state_cd 37.8%, geo_id 100.0%, market_value 100.0%. prop_id is
+# unique. The roll also carries personal-property and mineral accounts,
+# which TxGIO omits by design, so the key overlap is stated both ways:
+# of all prop_ids (zero-stripped) 67.9% are in TxGIO's Prop_ID for the
+# county, of the 16,083 with a land_state_cd 87.7%, and 95.7% of TxGIO's
+# 16,183 ids are found here. The bundled parcel_id_local conversion
+# gives the same overlap on both sides.
+#
+# ROOM COUNTS: supplements _bedrooms and _bathrooms. File #9 carries no
+# rooms or stories attribute, and no File #8 detail type names a room
+# count or a storey.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 4,027 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 97.2% (B 100.0%, E 96.4%, M 87.8%),
+# 93 distinct codes.
+
+description: >-
+  Newton County, TX certified appraisal roll (PACS 8.0.34 export): state land-use
+  codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-NEW
+
+entity:
+  entity_type: property
+  source:
+    source_id: newtoncad
+    # Checked 2026-09-12: the site says the data 'could contain
+    # inaccuracies of typographical errors' and that the district 'is
+    # not responsible for any errors or omissions'. The rolls page
+    # states no licence, no resale or redistribution terms, no gate and
+    # no fee.
+    license: >-
+      unknown (accuracy disclaimer only; no terms on the data)
+    redistribution_restricted: null
+    portal_url: "https://newtoncad.org/certified-rolls/"
+    download_url: "https://newtoncad.org/wp-content/uploads/2026/09/2026-APP-ROLL-NEWTON-CAD.zip"
+  version: 2026
+
+compressed_file_name: "2026-APP-ROLL-NEWTON-CAD.zip"
+uncompressed_file_name: "2026 APP ROLL NEWTON CAD/2026-07-20_001632_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+# The PACS export is latin-1, not UTF-8.
+encoding: latin-1
+
+# PACS File #2 (Property), offsets from the layout sheet; see
+# LAYOUT above. Reading stops at situs_num (column 4474).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
+  # bare form.
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  # PACS market_value is the district's land-plus-structure total; see
+  # the Victoria roll for why it is total_value, not appraised_val.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

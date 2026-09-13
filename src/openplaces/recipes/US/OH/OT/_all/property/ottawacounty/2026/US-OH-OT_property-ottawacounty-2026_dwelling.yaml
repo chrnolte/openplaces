@@ -1,0 +1,203 @@
+# Recipe: Ottawa County, OH auditor roll, ISSG Parcel Dwelling table.
+# Supplement of US-OH-OT_property-ottawacounty-2026; see that recipe
+# for the source, the terms and the join key.
+#
+# Row shape, measured on the extract dated 2026-09-12: two tax years
+# stacked (2024 23,074, 2025 23,183 rows); the query keeps the latest.
+# On 2025: 23,183 cards over 22,655 parcels, one row per dwelling card
+# (one condo complex carries 72). 99.7% of the 17,904 live land-use
+# 510 properties have a card with bedrooms. The ISSG dwelling layout
+# is the same as in every ISSG county (Bed Rooms, Full Baths, Half
+# Baths, Total Rooms, Story Height). Extra Fixtures counts extra
+# plumbing fixtures, not baths (median 2), and Plumbing is a
+# category; neither is mapped. n_bathrooms folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim: Living Area
+# (living_area_sqft), Fireplace Openings (n_fireplaces; Parcel
+# Dwelling Component's gas fireplaces are not read), Year Remodeled
+# (renovation_year; 0 means none and reads null), Year Effective
+# (effective_year_built), Grade (quality_grade, e.g. 'C0'),
+# Condition (condition, e.g. 'AV-AVERAGE') and Type (building_style;
+# '00-UNSPECIFIED', 85% of cards, reads null). Years take the latest
+# card, codes the first.
+# MEASURED 2026-09-13 on the 17,904 live land-use 510 properties:
+# living area > 0 on 99.8% (median 1,598 sqft), fireplaces > 0 on
+# 27.1%, a remodel year on 30.5%, effective year, grade and
+# condition on 99.8% each, style on 1.7% (02-SPLIT LEVEL). Grades
+# are 19 values (A+ to X-); conditions are 10.
+#
+# Year built (added 2026-09-13). year_built is Year Built, the
+# earliest card per property; 0 and years outside 1700 to 2026 read
+# null (none occur). 1900 is a placeholder-like heap: 1,835 cards
+# (7.9%) and 8.2% of land-use 510 properties; it is kept.
+# n_dwellings is not mapped: Units Designed is 1 on 23,181 of 23,183
+# cards, including every land-use 520 and 530 card, and Units
+# Converted is 0 on all but one, so neither counts units here.
+# MEASURED 2026-09-13: year_built on 99.8% of the 17,904 live
+# land-use 510 properties (median 1960).
+
+description: >-
+  Ottawa County, OH ISSG Parcel Dwelling table: rooms, bedrooms, full
+  and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-OT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ottawacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Ottawa County)
+    terms_url: "https://auditor.co.ottawa.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.co.ottawa.oh.us/additional-links-property-data-downloads"
+    download_url: "https://auditor.co.ottawa.oh.us/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Dwelling.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number U
+  n_rooms: Total Rooms
+  n_bedrooms: Bed Rooms
+  n_bathrooms: Full Baths
+  n_half_bathrooms: Half Baths
+  n_stories: Story Height
+  living_area_sqft: Living Area
+  n_fireplaces: Fireplace Openings
+  renovation_year: Year Remodeled
+  effective_year_built: Year Effective
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+  year_built: Year Built
+
+transformations:
+  # year_built: impossible years read null (0 is already nulled by
+  # the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # 00-UNSPECIFIED is the source's blank style, not a style.
+  - type: unary
+    operation: null_if_equal
+    input: building_style
+    args: {value: "00-UNSPECIFIED"}
+    output: building_style
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  quality_grade: first
+  condition: first
+  building_style: first
+  year_built: min
+
+supplements: US-OH-OT_property-ottawacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

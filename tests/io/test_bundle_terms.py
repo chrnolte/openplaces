@@ -295,3 +295,13 @@ def test_a_restricted_source_replaces_that_sentence_with_a_pointer():
     assert 'generally satisfied by keeping this notice' not in notice
     assert 'restrict redistribution; see' in notice
     assert 'decision for you as the distributor' in notice
+
+
+def test_the_notice_names_the_recipe_roots(terms):
+    from openplaces.io.bundle_terms import format_notice
+    from openplaces.path import BUNDLED_RECIPES_DIR
+
+    text = format_notice(RECIPE, terms)
+    assert 'Recipes' in text
+    assert 'openplaces' in text
+    assert str(BUNDLED_RECIPES_DIR) in text

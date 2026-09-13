@@ -1,0 +1,65 @@
+# Recipe: Union County, OH auditor roll, ARC TB_ARC_Buildings table.
+# Supplement of US-OH-UN_property-unioncounty-2026; see that recipe
+# for the source, the terms and the join key.
+#
+# One row per commercial or other non-dwelling building section
+# (Item Label A, B, ...), with Class and Class Description (the
+# occupancy), Area, Year Built and a Construction code. Construction
+# is construction_description, kept as the county records it: a code
+# 1 to 7 whose list is not published (Construction Description is
+# empty on every row and TB_ARC_CodeSets has no such set). Dwellings
+# are in TB_ARC_Dwellings, whose only structural fields are the
+# exterior-wall booleans (exterior_wall there); no foundation field
+# exists in any ARC table beyond basement percent.
+#
+# MEASURED 2026-09-13 (file dated 2026-09-10): 1,959 sections over
+# 1,335 parcels, keys 100% in the roll; Construction on 36.9% of
+# sections (5 on 305, 3 on 283, 4 on 121, 2 on 11, 1 on 2, 7 on 1).
+# No live land-use 510 property has a section here.
+
+description: >-
+  Union County, OH ARC buildings table (non-dwelling sections):
+  construction code per property, as the county records it.
+
+admin_id: US-OH-UN
+
+entity:
+  entity_type: property
+  source:
+    source_id: unioncounty
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (no licence on the portal items; no terms on the download host)"
+    redistribution_restricted: null
+    portal_url: "https://www8.co.union.oh.us/mapunionoh/"
+    download_url: "https://www2.co.union.oh.us/propertyinfofile/TB_ARC_Buildings.zip"
+  version: "2026"
+
+compressed_file_name: "TB_ARC_Buildings.zip"
+uncompressed_file_name: "TB_ARC_Buildings/TB_ARC_Buildings.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+  construction_description: Construction
+
+columns_to_categorical:
+  - construction_description
+
+aggregation_function:
+  construction_description: first
+
+supplements: US-OH-UN_property-unioncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: buildings

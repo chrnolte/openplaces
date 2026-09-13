@@ -1,0 +1,127 @@
+# Recipe: Brown County, OH auditor roll, ISSG Parcel Improvement
+# table. Supplement of US-OH-BR_property-browncounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per detached improvement on a card. Type is
+# 'CODE-DESCRIPTION'; many rows are sound-value items typed as free
+# text after 'SV-' (e.g. a fabricated 'SV-SHED/XX'). Multiplier is
+# "the number of identical improvements represented by this item".
+#
+# n_outbuildings counts rows whose Type names a structure (garage,
+# shed, barn, lean-to, building, shelter, gazebo, cabin, cottage,
+# shop, stable, quonset, a house such as a poultry, milk or green
+# house, crib, silo, bin, granary, coop, kennel, carport, storage,
+# hangar, milk parlor, pavilion, pole building), times Multiplier.
+# Rows naming commercial, institutional or dwelling uses (COMM,
+# RETAIL, OFFICE, CHURCH, SCHOOL, APT, MOTEL, STORE, LIBRARY, TAVERN,
+# LODGE, HALL, MFG, CAR WASH, RESTROOM, WHSE, a bank), pools, mobile
+# homes (MH), dwellings and towers are not counted. A free-text row
+# for several sheds ('SV-SHEDS 3') counts once.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere (the table lists what is present, never what is absent):
+# has_pool (any POOL type), has_garage (a detached GARAGE or GAR row,
+# commercial garages excepted) and has_carport (any CARPORT row).
+# has_garage and has_carport are also set by _features for attached
+# ones. No Type names detached living quarters, so no accessory
+# dwelling flag is read.
+#
+# MEASURED 2026-09-13: 43,663 rows over 17,413 parcels, keys 99.95%
+# in the roll. On the 11,446 live land-use 510 properties: an
+# improvement row on 73.3%; n_outbuildings > 0 on 70.4% (median 1);
+# pool 8.9%; detached garage 31.0%; detached carport 3.9%.
+
+description: >-
+  Brown County, OH ISSG Parcel Improvement table: outbuilding count and
+  pool, detached garage and carport flags per property.
+
+admin_id: US-OH-BR
+
+entity:
+  entity_type: property
+  source:
+    source_id: browncounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://realestate.browncountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://realestate.browncountyauditor.org/property-data-downloads"
+    download_url: "https://realestate.browncountyauditor.org/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Improvement.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  # Later patterns win: structures first, then the exclusions.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|\\bGAR\\b|SHED|BARN|LEAN|BLDG|BDG)", value: 1}
+      - {pattern: ".*(BUILDING|SHELTER|GAZEBO|CABIN|COTTAGE|SHOP)", value: 1}
+      - {pattern: ".*(STABLE|QUONSET|HOUSE|HSE|\\bHS\\b|CRIB|SILO)", value: 1}
+      - {pattern: ".*(\\bBIN\\b|GRANARY|COOP|KENNEL|CARPORT)", value: 1}
+      - {pattern: ".*(GREEN|STORAGE|HANGER|PRLR|PAVIL|POLE)", value: 1}
+      - {pattern: ".*(COMM|RETAIL|OFFICE|CHURCH|SCHOOL|APT|APART)", value: 0}
+      - {pattern: ".*(MOTEL|STORE|LIBRARY|TAVERN|LODGE|HALL|MFG)", value: 0}
+      - {pattern: ".*(CAR WASH|RESTROOM|RST ROOM|WHSE|WAREHOUSE)", value: 0}
+      - {pattern: ".*(POOL|MH|DWELLING|DWG|1SFR|TRIPLEX|TOWER|TWR)", value: 0}
+      - {pattern: ".*BANK$", value: 0}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|\\bGAR\\b)", value: true}
+      - {pattern: ".*COMM", value: null}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+
+supplements: US-OH-BR_property-browncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

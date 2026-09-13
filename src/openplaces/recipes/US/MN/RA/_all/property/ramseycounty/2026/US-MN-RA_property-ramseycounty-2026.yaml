@@ -1,0 +1,221 @@
+# Recipe: Ramsey County, MN attributed parcel points (county assessor
+# attributes), bedrooms, total rooms, stories and building features.
+#
+# Why: the MetroGIS regional parcel dataset (US-MN_parcel-metrogis-2026)
+# has no room-count field. Ramsey County's attributed parcel layers
+# carry BedRoom, RoomTotal and Stories from the assessor's records.
+# Covers the whole county, Saint Paul included (Saint Paul publishes no
+# separate assessor table; its assessment is county-run).
+#
+# SOURCE. Ramsey County's own bulk file on the Minnesota Geospatial
+# Commons, us_mn_co_ramsey/plan_parcel_data (shp_plan_parcel_data.zip,
+# about 200 MB, 2026-03-06 edition). Directly downloadable, no gate. The
+# zip holds 16 layers; only plan_attributedparcelpoint and
+# plan_attributedparcelpoly carry room fields. The live service
+# (gis.ramseycountymn.gov .../CAD_AttributedParcelPoly_ViewOnly) has
+# the same schema but only 2,000 rows per page.
+#
+# WHY THE POINT LAYER. Points are one per tax parcel, condominium units
+# and manufactured homes included, while polygons can stack. Measured
+# 2026-09-12: 167,643 points, 167,629 distinct ParcelID; 164,624 real
+# property (RollType RP) and 2,995 manufactured homes (MH, their own
+# 10-character ids). 8 ids repeat (22 rows); drop_duplicates keeps the
+# first so the roll holds one row per property.
+#
+# COVERAGE on improved rows (EMVBuildin > 0) by DwellingType: single
+# family (112,724), two-family, townhome (outer, inner, TICO) all carry
+# BedRoom, RoomTotal and Stories > 0 on 100.0% of rows; condo (10,448)
+# 98.8% bedrooms, 100% rooms and stories. Condo garages and vacant land
+# carry none. Across all rows: bedrooms 87.7%, rooms 87.8%, stories
+# 87.8%, medians 3, 6 and 1.
+#
+# ENCODING. BedRoom, RoomTotal and Stories are whole numbers (Stories
+# only 1, 2 or 3; the county's metadata: "Number of stories in the
+# dwelling"). A Stories 0 (about 20,400 rows, non-dwelling) means not
+# recorded and is nulled; a bedroom or room count of 0 is kept as
+# published. The layer has NO bathroom field. FamilyRoom (32.7%) has no
+# registry home and is left unmapped.
+#
+# JOIN KEY. ParcelID is MetroGIS's Ramsey COUNTY_PIN as shipped: 99.86%
+# of ParcelID values are in MetroGIS (polygons plus points), and 99.89%
+# of MetroGIS's Ramsey PINs find a ParcelID.
+#
+# BUILDING FEATURES, measured 2026-09-13 in memory (reader,
+# preprocessing, one row per ParcelID) on the 143,396 improved
+# residential rows (DwellingType single, two and three family,
+# townhome, twin home, co-op, condo; EMVBuildin > 0). Shapefile names
+# are truncated; the county's service spells them out.
+#   - living_area_sqft = LivingArea: 99.8% above 0, median 1,439. It
+#     equals MetroGIS's FIN_SQ_FT (the parcel recipe's area_sqft) on
+#     100% of Ramsey parcels; whether it includes a finished basement
+#     is not documented.
+#   - garage_area_sqft = GarageSqua: 34.5% above 0, median 498.
+#   - has_garage from GarageYN, Y or N on every row, so absence is
+#     recorded: true 41.9%, false 58.1%. A garage area is present on
+#     82.4% of the Y rows.
+#   - has_basement from BasementYN, which is Y or blank: true where Y
+#     (88.6%), null elsewhere, as a blank is not a recorded no.
+#   - has_central_air from HeatType, whose undocumented codes are
+#     CENTW/AIR, CENTRAL, N/CENTRAL and NONE: true for CENTW/AIR
+#     (central with air, 74.3%), null otherwise, which is also how
+#     MetroGIS's COOLING field reads this county.
+#   - heating_type = HeatSyst_1 (HeatSystemType: hot air, hot water,
+#     electric, unit): 76.2%.
+#   - exterior_wall = ExteriorWa: 99.7%, 10 codes; building_style =
+#     HomeStyleD: 99.8%, 17 codes.
+#   - effective_year_built = EffectiveY: 99.8% (the registry nulls a
+#     0), median 1974 against a median year built of 1956.
+#   - water_source and sewer_type split UtilityDes, one field mixing
+#     both: ALL PUBLIC goes to both, WELL and PUBLIC WATER to
+#     water_source, PUBLIC SEWER and SEPTIC to sewer_type, in the
+#     source's words; GAS and NONE go to neither. 99.3% and 94.7%.
+#   - has_accessory_dwelling: true where DwellingTy is the single
+#     family with accessory unit code (172 rows county-wide), null
+#     elsewhere.
+#   - frontage_ft = ParcelFron: 83.2% above 0 (a 0 on 16.8%, kept as
+#     published), median 62. Undocumented, so it was checked against
+#     geometry on 6,000 sampled one- to three-family polygons (the
+#     plan_attributedparcelpoly layer, EPSG:26915): it is feet (whole
+#     numbers on 98.9%; lot area over it gives a median depth of 131
+#     ft) and it is the front side of the lot: within 10% of the lot's
+#     short side on 86.9%. On interior lots it is within 25% of the
+#     boundary length lying along the county's right-of-way polygons
+#     on 94.2% (within 10% on 70.8%). Where a lot meets right-of-way
+#     on more than one side (corners and rear alleys) it is the short
+#     side on 91.0% and the whole street boundary on 0.4%, so it is
+#     front footage, not the sum of every street-facing side.
+#   - topography = TopologyDe: 99.9%, 8 codes (level, rolling, above
+#     or below street, steep, low, wetlands, flood plain).
+# Both describe the lot; this roll carries them because the county
+# publishes them here, and curate carries them to parcels.
+#
+# YEAR BUILT AND UNITS, measured 2026-09-13 the same way on the same
+# 143,396 residential rows:
+#   - year_built = YearBuilt, the actual year (EffectiveY differs from
+#     it on 88.4% of rows with both): 99.8%, median 1956, none before
+#     1600 or after 2026; a 0 is nulled by the registry.
+#   - n_dwellings = LivingUnit: 99.8%, median 1, at most 5. A
+#     condominium unit carries 1 (99.9% of condo rows), so the count is
+#     the unit's own, not its complex's; a two-family dwelling carries
+#     2, apartments 4-6 a median of 4 and 7-19 of 11. A 0 (10.1% of all
+#     rows: vacant land, garages, commercial) is nulled.
+#
+# NOT MAPPED: StructureD describes commercial buildings (0%
+# residential), and BusinessSq is commercial floor area.
+#
+# NOT MAPPED, deliberately: owner, taxpayer and homestead names and
+# addresses and every other personal field; values and use (the
+# MetroGIS parcel recipe carries those for the county).
+
+description: >-
+  Ramsey County, MN attributed parcel points (Saint Paul included):
+  bedrooms, rooms, stories, living and garage area, heating, walls,
+  style, utilities and flags.
+
+admin_id: US-MN-RA
+
+entity:
+  entity_type: property
+  source:
+    source_id: ramseycounty
+    # Checked 2026-09-12: the Commons metadata states "Access
+    # Constraints: None. Use Constraints: None" and asks that the
+    # publisher be acknowledged. No fee, gate or resale clause.
+    license: >-
+      Access constraints none; use constraints none (Ramsey County
+      metadata on the Minnesota Geospatial Commons). Acknowledgment of
+      the publisher, Ramsey County, is appreciated.
+    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_co_ramsey/plan_parcel_data/metadata/metadata.html"
+    redistribution_restricted: false
+    portal_url: "https://gis.data.mn.gov/"
+    download_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_co_ramsey/plan_parcel_data/shp_plan_parcel_data.zip"
+  version: "2026"
+
+compressed_file_name: "shp_plan_parcel_data.zip"
+uncompressed_file_name: "plan_attributedparcelpoint.shp"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: ParcelID
+  n_bedrooms: BedRoom
+  n_rooms: RoomTotal
+  n_stories: Stories
+  living_area_sqft: LivingArea
+  garage_area_sqft: GarageSqua
+  heating_type: HeatSyst_1
+  exterior_wall: ExteriorWa
+  building_style: HomeStyleD
+  effective_year_built: EffectiveY
+  frontage_ft: ParcelFron
+  topography: TopologyDe
+  year_built: YearBuilt
+  n_dwellings: LivingUnit
+
+# One row per property; see the header's WHY THE POINT LAYER.
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+  # A LivingUnit 0 (vacant land, garages, commercial) is no count.
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args:
+      value: 0
+    output: n_dwellings
+  # Flags; see the header's BUILDING FEATURES for which record
+  # absence. GarageYN is Y or N; BasementYN is Y or blank.
+  - type: remap
+    input: GarageYN
+    mapping: {"Y": true, "N": false}
+    output: has_garage
+  - type: remap
+    input: BasementYN
+    mapping: {"Y": true}
+    output: has_basement
+  - type: remap
+    input: HeatType
+    mapping: {"CENTW/AIR": true}
+    output: has_central_air
+  - type: remap
+    input: DwellingTy
+    mapping: {"SINGLE FAMILY W/ACCESSORY UNIT": true}
+    output: has_accessory_dwelling
+  # UtilityDescription mixes water and sewer codes in one field: each
+  # code goes to the column it describes, in the source's own words.
+  - type: remap
+    input: UtilityDes
+    mapping:
+      "ALL PUBLIC": "ALL PUBLIC"
+      "PUBLIC WATER": "PUBLIC WATER"
+      "WELL": "WELL"
+    output: water_source
+  - type: remap
+    input: UtilityDes
+    mapping:
+      "ALL PUBLIC": "ALL PUBLIC"
+      "PUBLIC SEWER": "PUBLIC SEWER"
+      "SEPTIC": "SEPTIC"
+    output: sewer_type
+
+columns_to_categorical:
+  - heating_type
+  - exterior_wall
+  - building_style
+  - water_source
+  - sewer_type
+  - topography
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -93,12 +93,33 @@ additional_layers:
       owner_postal_code: OWN_ZIP
       lot_size: LOT_SIZE
       lot_size_units: LOT_UNITS
-      building_area_m2: BLD_AREA
-      residential_area_m2: RES_AREA
+      # BLD_AREA is gross building area and RES_AREA residential living
+      # area, both in square feet (residential medians 2,630 and 1,713;
+      # RES_AREA <= BLD_AREA on 97.4% of residential rows carrying
+      # both). They were mapped to building_area_m2 and
+      # residential_area_m2 before: outside the registry, and wrong on
+      # the unit. Zeros are kept as published. Measured 2026-09-13 on
+      # the 2025 layer, in memory (the table recipe's reader and
+      # _preprocess_recipe_data): on residential rows (use codes
+      # 101-105, 109, 111, 112) living area > 0 on 98.3%, gross area
+      # on 85.4%. About half the gross-area zeros are Boston's, where
+      # BLD_AREA is 0 on 96.7% of residential rows; the Boston city
+      # recipe supplies it. L3 carries no other building feature (no
+      # condition, heating, cooling, garage, basement or amenity
+      # field); the city recipes under US/MA/{BOS,CAM,ARL,SOM,FAR}
+      # add them for their towns.
+      building_area_sqft: BLD_AREA
+      living_area_sqft: RES_AREA
       building_style: STYLE
       n_dwellings: UNITS
-      building_n_rooms: NUM_ROOMS
-      building_n_stories: STORIES
+      # Measured on the 2025 layer: NUM_ROOMS > 0 on 84.9% of
+      # residential (1xx) rows, median 6. STORIES is text: numeric on
+      # 80.6% of residential rows (1, 2, 1.75, 1.5, ...), town codes
+      # such as 2A or 1T otherwise, which to_numeric below nulls.
+      # STORIES_NUM exists in the schema and is empty. L3 carries no
+      # bedroom or bath field.
+      n_rooms: NUM_ROOMS
+      n_stories: STORIES
       year_built: YEAR_BUILT
       use_group_code: USE_CODE
       zoning: ZONING
@@ -107,6 +128,11 @@ additional_layers:
       last_sale_book: LS_BOOK
       last_sale_page: LS_PAGE
       admin3_id_source: TOWN_ID
+    transformations:
+      - type: unary
+        operation: to_numeric
+        input: n_stories
+        output: n_stories
     columns_to_categorical:
       - city
       - zip

@@ -32,6 +32,16 @@
 # reasoning as the parent recipe's deliberately-unmapped value columns and
 # Fort Bend's Building_Class: no registry column they belong in without
 # corrupting a curate-stage vote that reads it.
+#
+# AREA (measured 2026-09-13). area_sqft is a floor area, not a gross
+# building area: it sums the MA-prefixed components, which include the
+# district's enclosed garages and porches (MAEG, MAFEG, MAEFP, MAEMP,
+# MAEP) as well as its living areas. On 26,830 single-family (A)
+# properties it equals living_area_sqft from the sibling
+# ..._improvement-features (living-area types only) on 90.6%, differing
+# by those enclosed components (and by SM6, an attached living area the
+# prefix misses). area_sqft is kept for curate; PACS publishes no gross
+# area, so building_area_sqft is not mapped.
 
 description: >-
   Victoria County, TX certified appraisal roll, improvement detail member:

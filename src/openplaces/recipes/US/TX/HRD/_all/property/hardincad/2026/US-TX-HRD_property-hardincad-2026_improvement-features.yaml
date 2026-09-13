@@ -1,0 +1,210 @@
+# Recipe: Hardin County, TX certified appraisal roll, improvement
+# features from the improvement detail member (PACS File #8, one row per
+# building component). Same download as
+# US-TX-HRD_property-hardincad-2026; read that roll's header for the
+# source and its terms.
+#
+# RULE. Each component type below was assigned to a feature from the
+# district's own type code and description (listed, never crosswalked).
+# Areas are the component's imprv_det_area in square feet, summed over
+# the property's components; an area of 0 or 1 reads as missing (some
+# districts put 1 in the area of a component valued as a unit). A flag
+# is true where the property has a component of that type and missing
+# elsewhere: the file lists the components present, never their absence.
+# garage_type keeps the district's code of the first garage component.
+#
+# MAIN AREA. quality_grade is imprv_det_class_cd and
+# effective_year_built is depreciation_yr, both read on the living-area
+# components only. The class code is the district's construction class
+# (quality grade, often with a material or story suffix), kept as
+# published; the first living-area component's class stands for the
+# property. The depreciation year is the year PACS depreciates the
+# component from, the effective year built; the property takes the
+# earliest, as year_built does in the Texas improvement-detail recipes.
+# year_built is not mapped here: the county's ..._improvement-detail
+# recipe already carries it.
+#
+# Hardin's FP is a frame porch, not a fireplace. QC ('COVERED PORCH OR
+# PATIO') is read as a porch.
+#
+# TYPES. living area: types MA, MA1.5, MA-A, MA2, MA-F, MA-G, MA-L, MN,
+# FA, MA1, QG. garage: types MG, RG, FG, RH, GAR ATT, GAR DET, RG1.
+# carport: types RC, CP. porch: types MP, FP, QC, FE, QA, QH, OP, SM8,
+# 111, SCN PCH, SCP0. deck and patio: types QE, WD, SM5, DECK, WD1, 131,
+# 133. swimming pool: types RT, RS, RQ, RR, RP, RP5, SWIM POOL.
+# accessory dwelling: types GAPT.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value, for flags the share where true). A is the 22,090
+# single-family properties (improvement state class A, File #7); B, E
+# and M the other residential classes. living_area_sqft A 93.2% (B
+# 85.4%, E 90.2%, M 99.5%), per-property median 1680. garage_area_sqft A
+# 45.0% (B 19.1%, E 29.8%, M 0.5%), per-property median 550. has_garage
+# A 45.0% (B 19.1%, E 29.8%, M 0.5%). garage_type A 45.0% (B 19.1%, E
+# 29.8%, M 0.5%), 7 distinct codes. has_carport A 20.0% (B 7.9%, E
+# 29.8%, M 5.1%). porch_area_sqft A 81.2% (B 79.8%, E 77.7%, M 49.9%),
+# per-property median 256. deck_area_sqft A 12.4% (B 2.2%, E 11.6%, M
+# 27.9%), per-property median 168. has_pool A 8.6% (B 2.2%, E 8.3%, M
+# 0.0%). has_accessory_dwelling A 0.0% (B 0.0%, E 0.0%, M 0.0%).
+# quality_grade A 93.2% (B 85.4%, E 90.2%, M 99.5%), 42 distinct codes.
+# effective_year_built A 93.2% (B 85.4%, E 90.2%, M 99.5%), per-property
+# median 2010.
+
+description: >-
+  Hardin County, TX certified appraisal roll, improvement detail member: living, garage,
+  porch and deck areas, class and feature flags per property.
+
+admin_id: US-TX-HRD
+
+entity:
+  entity_type: property
+  source:
+    source_id: hardincad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hardin-cad.org/data-downloads/"
+    download_url: "https://hardin-cad.org/wp-content/uploads/2026/08/2026-Certified-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Roll.zip"
+uncompressed_file_name: "2026 Certified Roll/2026-08-14_000305_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [depreciation_yr, 4]
+  - [imprv_det_area, 15]
+
+columns:
+  quality_grade: imprv_det_class_cd
+  effective_year_built: depreciation_yr
+
+# The class code '*' is the district's blank.
+null_value_strings: ['*']
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA-A', 'MA2',
+      'MA-F', 'MA-G', 'MA-L', 'MN', 'FA', 'MA1', 'QG']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MG', 'RG', 'FG', 'RH', 'GAR
+      ATT', 'GAR DET', 'RG1']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: garage_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['MG', 'RG', 'FG', 'RH', 'GAR ATT', 'GAR DET', 'RG1']
+        output: true
+    output: has_garage
+  - type: expression
+    expression: >-
+      imprv_det_type_cd.where(imprv_det_type_cd.isin(['MG', 'RG', 'FG', 'RH',
+      'GAR ATT', 'GAR DET', 'RG1']))
+    inputs: [imprv_det_type_cd]
+    output: garage_type
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['RC', 'CP']
+        output: true
+    output: has_carport
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MP', 'FP', 'QC', 'FE', 'QA',
+      'QH', 'OP', 'SM8', '111', 'SCN PCH', 'SCP0']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: porch_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['QE', 'WD', 'SM5', 'DECK',
+      'WD1', '131', '133']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: deck_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['RT', 'RS', 'RQ', 'RR', 'RP', 'RP5', 'SWIM POOL']
+        output: true
+    output: has_pool
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['GAPT']
+        output: true
+    output: has_accessory_dwelling
+  - type: expression
+    expression: >-
+      quality_grade.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA-A', 'MA2',
+      'MA-F', 'MA-G', 'MA-L', 'MN', 'FA', 'MA1', 'QG']))
+    inputs: [quality_grade, imprv_det_type_cd]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA-A',
+      'MA2', 'MA-F', 'MA-G', 'MA-L', 'MN', 'FA', 'MA1', 'QG']) &
+      (effective_year_built > 1800) & (effective_year_built <= 2027))
+    inputs: [effective_year_built, imprv_det_type_cd]
+    output: effective_year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  garage_area_sqft: sum
+  has_garage: max
+  garage_type: first
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_pool: max
+  has_accessory_dwelling: max
+  quality_grade: first
+  effective_year_built: min
+
+supplements: US-TX-HRD_property-hardincad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features

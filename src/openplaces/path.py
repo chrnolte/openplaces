@@ -5,6 +5,7 @@ Standardized path generation for `openplaces` data files.
 import fnmatch
 import importlib.metadata
 import inspect
+import json
 import warnings
 from dataclasses import dataclass
 from functools import cache
@@ -30,6 +31,8 @@ __all__ = [
     'code_path',
     'recipe_path',
     'recipe_roots',
+    'recipe_root_records',
+    'recipe_roots_footer',
     'spine_path',
     'OpenPlacesReference',
 ]
@@ -48,15 +51,21 @@ BUNDLED_RECIPES_DIR = Path(__file__).parent / 'recipes'
 RECIPES_ENTRY_POINT_GROUP = 'openplaces.recipes'
 
 
-def _external_recipe_roots() -> list[Path]:
-    """Recipe directories contributed by installed packages.
+RECIPE_ROOTS_METADATA_KEY = 'openplaces:recipe_roots'
+
+
+def _external_recipe_root_records() -> list[dict]:
+    """Recipe directories contributed by installed packages, described.
 
     Each `openplaces.recipes` entry point names a path, or a callable
     returning one. A broken entry point is reported and skipped rather
     than raised, so one misinstalled package cannot take the bundled
-    recipes down with it.
+    recipes down with it. Each record carries the entry point's name and
+    the distribution and version it came from, which is what a build
+    records so that "the best source available at build time" can be
+    named later.
     """
-    roots = []
+    records = []
     for entry_point in importlib.metadata.entry_points(group=RECIPES_ENTRY_POINT_GROUP):
         try:
             target = entry_point.load()
@@ -75,8 +84,73 @@ def _external_recipe_roots() -> list[Path]:
                 stacklevel=2,
             )
             continue
-        roots.append(root)
-    return roots
+        dist = getattr(entry_point, 'dist', None)
+        records.append(
+            {
+                'root': str(root),
+                'provider': entry_point.name,
+                'distribution': getattr(dist, 'name', None),
+                'version': getattr(dist, 'version', None),
+            }
+        )
+    return records
+
+
+def _external_recipe_roots() -> list[Path]:
+    return [Path(record['root']) for record in _external_recipe_root_records()]
+
+
+def _bundled_recipe_root_record() -> dict:
+    """The bundled recipe directory, with the version it shipped in.
+
+    From an installed package the version is the distribution's; from a
+    checkout it is the commit the working tree is on, which is the
+    honest identity of a recipe tree that changes between releases.
+    """
+    try:
+        version = importlib.metadata.version('openplaces')
+    except importlib.metadata.PackageNotFoundError:
+        version = None
+    commit = None
+    head = cfg.code_root / '.git' / 'HEAD'
+    try:
+        ref = head.read_text(encoding='utf-8').strip()
+        if ref.startswith('ref: '):
+            commit = (cfg.code_root / '.git' / ref[5:]).read_text(encoding='utf-8')
+        else:
+            commit = ref
+        commit = commit.strip()[:12] or None
+    except OSError:
+        commit = None
+    return {
+        'root': str(BUNDLED_RECIPES_DIR),
+        'provider': 'bundled',
+        'distribution': 'openplaces',
+        'version': version,
+        'commit': commit,
+    }
+
+
+@cache
+def recipe_root_records() -> tuple[dict, ...]:
+    """Every recipe root a build reads from, described, bundled first.
+
+    A build's outputs record this in their parquet footer
+    (`RECIPE_ROOTS_METADATA_KEY`) and a delivery lists it in its terms
+    notice, because auto-discovery picks the most specific recipe that
+    covers a unit from whatever roots are installed: without the list,
+    "the best source available at build time" is not reproducible once
+    installing a recipe package can change that set.
+    """
+    records = [_bundled_recipe_root_record()]
+    seen = {Path(records[0]['root']).resolve()}
+    for record in _external_recipe_root_records():
+        resolved = Path(record['root']).resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        records.append(record)
+    return tuple(records)
 
 
 @cache
@@ -89,11 +163,12 @@ def recipe_roots() -> tuple[Path, ...]:
     entry-point group, in installation order. Cached for the process,
     like the recipe index itself.
     """
-    roots = [BUNDLED_RECIPES_DIR]
-    for root in _external_recipe_roots():
-        if root.resolve() not in {r.resolve() for r in roots}:
-            roots.append(root)
-    return tuple(roots)
+    return tuple(Path(record['root']) for record in recipe_root_records())
+
+
+def recipe_roots_footer() -> str:
+    """The recipe-root record as the JSON string a parquet footer carries."""
+    return json.dumps(list(recipe_root_records()))
 
 
 RECIPE_EXTENSIONS = ('.yaml', '.csv', '.xlsx', '.xls')

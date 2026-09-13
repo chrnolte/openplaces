@@ -1,0 +1,107 @@
+# Recipe: Travis County, TX certified appraisal roll -- improvement
+# detail, bedrooms (TCAD). Sibling of US-TX-TRA_property-traviscad-2026;
+# see that recipe's header for the layout and the join key.
+#
+# SOURCE MEMBER. Travis keeps no room attribute in File #9 (IMP_ATR.TXT
+# holds shape, floor, grade, foundation and roof factors only). Its room
+# counts are unit-priced detail lines in File #8 (IMP_DET.TXT), with the
+# count in imprv_det_area: type 252 "BEDROOMS", 251 "BATHROOM", 250
+# "HALF BATHROOM". The detail codes are the district's own.
+#
+# MEASURED on the 2026 certified export: 252 on 138,360 rows over
+# 137,996 improvements and 135,322 properties; counts 3, 4, 2, 5, 1
+# lead. Coverage by the property's improvement state class (File #7):
+# single-family (A) 36.9% of 352,880, multifamily (B) 5.8% of 12,847,
+# rural improved (E) 18.4% of 3,074, mobile homes (M) none of 11,668.
+#
+# QUERY. imprv_det_area is a zero-padded, fixed-format number
+# (8 digits, a point, 6 digits, on every 250-252 line), so the bounds
+# below compare it as text. They keep counts above 0 and up to 20,
+# dropping 252 zero lines and 14 above 20 (8 of them 100 or more,
+# floor areas keyed as counts), the same bound as Williamson's recipe.
+#
+# ROW RULE. 364 improvements carry two 252 lines, equal on 44.8% of
+# them. Unequal lines are separate priced components (an addition), so
+# they sum; drop_duplicates removes only a line repeating the same count
+# on the same building. aggregation_function then sums buildings to the
+# property.
+
+description: >-
+  Travis County, TX certified appraisal roll, improvement detail member:
+  bedroom count lines per building, summed to the property.
+
+admin_id: US-TX-TRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: traviscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the data; FAQ: roll 'made available free of charge')"
+    terms_url: "https://traviscad.org/faq-items/can-i-get-a-copy-of-the-appraisal-roll/"
+    redistribution_restricted: null
+    portal_url: "https://traviscad.org/publicinformation"
+    download_url: "https://traviscad.org/wp-content/largefiles/2026%20Certified%20Appraisal%20Export%20Supp%200_07182026.zip"
+  version: 2026
+
+compressed_file_name: "2026 Certified Appraisal Export Supp 0_07182026.zip"
+uncompressed_file_name: "IMP_DET.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail), 622 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [filler, 10] # Imprv_det_class_cd
+  - [filler, 4] # yr_built
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+columns:
+  n_bedrooms: imprv_det_area
+
+# Counts above 0 and up to 20, compared as fixed-format text.
+query: >-
+  imprv_det_type_cd == '252'
+  and n_bedrooms > '00000000.000000'
+  and n_bedrooms <= '00000020.000000'
+
+# Drops only a line repeating the same count on the same building.
+drop_duplicates: [prop_id, imprv_id, n_bedrooms]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-TRA_property-traviscad-2026
+# IMP_DET.TXT carries prop_id and no geo_id, while the roll's
+# parcel_id_local is built from geo_id (its link to TxGIO parcels). So
+# this table joins the roll on the zero-stripped prop_id both carry.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

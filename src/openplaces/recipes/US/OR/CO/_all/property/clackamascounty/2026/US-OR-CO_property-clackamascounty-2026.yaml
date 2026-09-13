@@ -1,0 +1,164 @@
+# Recipe: Clackamas County, OR taxlot roll as curated for CMap, room
+# counts and living area.
+#
+# WHY. The regional parcel source for Clackamas, Metro's RLIS "Taxlots
+# (Public)" (US-OR_parcel-metrorlis-2026), carries values, year built
+# and building area but no bedroom or bathroom field. Clackamas County
+# GIS publishes its own taxlot layer for the CMap web viewer that adds
+# both.
+#
+# SOURCE. ArcGIS Online item "Taxlots CMap" (ba94373905a54b82b05946e1
+# 64e38ec9, owner CCGISWebService, "Clackamas County parcels curated
+# for CMap", tags db_Assessor and tax_GenTaxlot), hosted FeatureServer
+# services3.arcgis.com/I2eWXOndpF9m8oKC/.../Taxlots_CMap/FeatureServer/0
+# Read as one Hub CSV export (about 47 MB, no geometry) rather than by
+# paging the layer (82 requests at its 2,000-row limit). The sibling
+# "Taxlots" service (fdc32c1afb004dddb2a2b3bf6db5c579) has the same
+# 163,927 rows but only 7 fields and no room counts.
+#
+# BULK VS REST, measured 2026-09-12: the CSV has 163,925 rows against
+# the layer's 163,927. BEDROOMS > 0 on 120,241 CSV rows against 120,396
+# on the server (-155, 0.13%); FULL_BATHS > 0 on 124,187 against
+# 124,338 (-151). The Hub file is a cached snapshot that trails the
+# layer's latest edit; the gap is lag, not a missing join.
+#
+# ROW SHAPE, measured 2026-09-12: one row per assessor account.
+# PARCEL_NUMBER (8 digits on every row) is populated on 163,848 rows
+# with 163,843 distinct values; 5 accounts appear twice. TLNO (the map
+# and taxlot number) has the same 163,843 distinct values, so each
+# account is its own taxlot, condominium units included. A tax roll,
+# so this is the property roll itself and supplements nothing.
+#
+# ROOM COUNTS. Residential rows are LANDCLASS 1xx (124,668; 100 is
+# vacant residential land, 101 improved, 102 condominium). On them
+# BEDROOMS > 0 83.9% and FULL_BATHS > 0 86.5%; on residential rows with
+# a building value (113,741) 91.5% and 94.4%. LANDCLASS 101 alone:
+# 91.0% and 93.6%; 102: 67.1% and 73.8%. Both are whole numbers on
+# every row. FULL_BATHS counts full baths only and the layer has no
+# half-bath, room or story field, so n_bathrooms is the full count and
+# n_half_bathrooms is not mapped. Zeros are kept as published: BEDROOMS
+# 0 on 6,369 rows (4,470 of them residential with a building value,
+# 4,073 in LANDCLASS 101), FULL_BATHS 0 on 2,423 (1,209 residential
+# with a building value). Whether a 0 on an improved house means "not
+# recorded" is not stated by the source, so it is not nulled here.
+#
+# BUILDING FEATURES, measured 2026-09-13 (the follow-up pass in
+# plans/room-count-sweep-2026-09.md). Of the 39 building-feature
+# attributes checked, the layer carries one: LIVING_AREA (integer
+# sqft) -> living_area_sqft. The layer has 30 fields and no related
+# table, and none of the county's other hosted services is a building
+# or improvement table, so there is nothing to supplement it with. No
+# quality, condition, material, heating, cooling, garage, parking,
+# basement, pool, fireplace, utility, lot or neighborhood field exists,
+# so no has_ flag is set. TRACT is not an assessor neighborhood code:
+# its 80 codes, on every row, are census tracts (201.00 to 249.xx plus
+# 9800.00), so it is not mapped.
+#
+# LIVING AREA, not gross area: the field is named so, and RLIS's
+# BLDGSQFT ("Square footage of building(s)"), which the RLIS parcel
+# recipe maps to area_sqft, equals LIVING_AREA on 99.98% of the 127,501
+# matched Clackamas accounts where both are above 0. RLIS's area_sqft
+# is therefore living area for this county. The layer has no gross
+# area, so building_area_sqft is not mapped, and this recipe maps no
+# area_sqft. LIVING_AREA > 0 on 88.5% of residential rows, 96.6% of
+# residential rows with a building value (median 2,027), 95.2% of
+# LANDCLASS 101 and 87.7% of 102 (condominium, median 1,178). Houses
+# on tract, farm and forest land (improved classes 4x1, 5x1, 6x1)
+# carry it on 72.0% to 76.2%. Zero on 2 rows; 34 rows below 100 sqft
+# and 2 above 20,000 are kept as published for curate's range checks.
+#
+# VALIDATED in memory 2026-09-12 (the ingester's flat-table reader and
+# preprocessing on the CSV): 163,925 rows, n_bedrooms and n_bathrooms
+# float, whole numbers only; on residential rows with a building value
+# n_bedrooms > 0 91.5% (median 3) and n_bathrooms > 0 94.4% (median 2).
+# Again 2026-09-13 with living_area_sqft: float, whole numbers only;
+# summed per account (the registry rule) over the 163,843 keys, > 0 on
+# 88.5% of residential and 96.6% of residential improved accounts. The
+# 5 accounts listed twice carry the same living area on both copies, so
+# the sum doubles it on those 5; left for curate's range checks.
+#
+# YEAR BUILT AND UNITS, measured 2026-09-13. YEARBLT -> year_built:
+# the actual year, not an effective one. It equals RLIS YEARBUILT
+# (which the RLIS recipe maps as year_built) on 100.00% of the 128,892
+# matched accounts where both are filled, with no account filled on one
+# side only. Zero on 2 rows (nulled by the registry placeholder); none
+# before 1600 or after 2026 (range 1852 to 2025), so no range filter is
+# needed. Validated in memory with the recipe's reader and
+# preprocessing, aggregated per account with the registry rule (mean;
+# the 5 duplicated accounts carry the same year on both copies): filled
+# on 88.1% of residential and 96.6% of residential improved accounts
+# (median 1983), 94.8% of LANDCLASS 101 and 87.7% of 102. The layer has
+# no unit-count field (30 fields, none a dwelling or unit count), so
+# n_dwellings is not mapped.
+#
+# JOIN KEY. PARCEL_NUMBER is the account number RLIS ships as
+# PRIMACCNUM for Clackamas (8 digits both sides): 99.92% of the
+# layer's accounts are in RLIS and 100.00% of RLIS's Clackamas accounts
+# are in the layer; 100.00% of residential improved accounts match.
+# Neither side has a bundled parcel_id_links row for US-OR-CO, so both
+# resolve to the default 'simple' conversion. No override row needed.
+#
+# NOT MAPPED, deliberately: situs address, sale price and document
+# fields, values, LANDCLASS (RLIS carries values and land use for this
+# county already), TAXCODE (levy code area), TRACT (census tract),
+# FP_ACRES, and YR_ASSESSED (empty on every row). YEARBLT is mapped
+# (see YEAR BUILT above) although RLIS carries the same year on
+# parcels: here it lands on the property, as living area does.
+# LIVING_AREA is mapped although RLIS carries the same figure as
+# area_sqft on parcels: here it lands on the property, under the name
+# that says what it measures. The layer holds no owner name or mailing
+# field.
+
+description: >-
+  Clackamas County, OR taxlot roll curated for the county's CMap viewer:
+  bedrooms, full baths and living area per assessor account.
+
+admin_id: US-OR-CO
+
+entity:
+  entity_type: property
+  source:
+    source_id: clackamascounty
+    # Checked 2026-09-12. The ArcGIS item's own licenseInfo is an as-is
+    # disclaimer only ("provided as is ... no warranties"), with no
+    # licence, fee or redistribution clause. The county's separate GIS
+    # Data Portal (maps.clackamas.us/dataportal) puts its shapefile
+    # downloads behind a click-through End User License Agreement that
+    # forbids distributing or transferring the product without written
+    # consent (section 7) and web display of owner names (2.2b). That
+    # EULA is not attached to this item and was not accepted. Approved
+    # for use by the user 2026-09-12 on the stricter reading: the EULA
+    # is taken to cover this layer, so redistribution is restricted and
+    # the source is never delivered.
+    license: >-
+      Clackamas County GIS Data Portal End User License Agreement: no
+      distribution or transfer of the product without the County's
+      written consent (section 7); item licenseInfo: as-is disclaimer
+    terms_url: "https://maps.clackamas.us/dataportal/index.jsp?layer=tax_parcels"
+    redistribution_restricted: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=ba94373905a54b82b05946e164e38ec9"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/ba94373905a54b82b05946e164e38ec9_0/downloads/data?format=csv&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "clackamas_taxlots_cmap.csv"
+
+process_by:
+  admin_level: 3
+
+# PARCEL_NUMBER is all digits: read it as text so leading zeros survive.
+csv_dtype:
+  PARCEL_NUMBER: str
+
+columns:
+  parcel_id_assessor: PARCEL_NUMBER
+  n_bedrooms: BEDROOMS
+  n_bathrooms: FULL_BATHS
+  living_area_sqft: LIVING_AREA
+  year_built: YEARBLT
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

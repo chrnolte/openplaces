@@ -1,0 +1,264 @@
+# Recipe: Knox County, OH auditor roll, GovernMax Dwelling table.
+# Supplement of US-OH-KN_property-knoxcounty-2026; see that recipe for
+# the source, the terms and the join key.
+#
+# Row shape, measured on the download dated 2026-09-12: 24,116 rows
+# over 23,082 PropertyNumbers; one (PropertyNumber, CardNumber) pair
+# repeats once and drop_duplicates keeps one. One row is one dwelling
+# card. The table parses cleanly (0 misaligned rows), unlike Extract.
+#
+# Measured on cards:
+#   RoomCount     (total rooms)  97.9% above zero, median 6
+#   BedroomCount  (bedrooms)     99.0% above zero, median 3
+#   FullBathCount (full baths)   98.8% above zero, median 2
+#   HalfBathCount (half baths)   28.6% above zero
+#   StoryHeight   (numeric)      99.7% above zero (1, 1.5, 1.75, 2,
+#                                2.5, 3; 2 cards read 20)
+# Measured against Extract's land-use code on its well-formed rows,
+# 99.1% of 16,188 class 510 parcels have a card with bedrooms.
+# OtherPlumbingFixtureCount counts extra fixtures, not baths, and is
+# not mapped. n_bathrooms folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim; the lists are
+# in MVP1_OH_Codes.csv. HeatingCode (heating_type; category
+# 'Heating': 1 Warm Air, 2 Hot Water, 3 Geo-thermal, 6 Electric,
+# 7 None, 8 Gas Heat, 9 Oil, ...; system and fuel mixed, so no
+# heating_fuel), ExteriorWallCode (exterior_wall, e.g. 'FRAME'),
+# Grade (quality_grade, mostly a percentage such as '110'),
+# Condition (condition, e.g. 'AV AV') and StyleOfHome
+# (building_style, category 'Style': 01 Single Family, 15 Ranch,
+# ...). BasementCode (category 'Bsmt_Type') gives has_basement: true
+# on 3, 4, 6 (partial or full basement), false on 1 None, 2 Pt Crawl,
+# 5 Crawl. CentralAirType (category 'AirType') gives has_central_air:
+# true on 1 Central Air and 2 Heat Pump, false on 0 None.
+# FinishedLivingArea (living_area_sqft) equals the first, upper and
+# half-floor areas including additions on 89.7% of cards;
+# BasementAreaTotal and BasementFinishedArea are the basement areas;
+# FireplaceOpeningCount is n_fireplaces, YearRemodeled
+# renovation_year (0 reads null). Years take the latest card, codes
+# the first.
+# MEASURED 2026-09-13 on the 16,118 live land-use 510 properties
+# (510 read off Extract's well-formed rows): living area 99.5%
+# (median 1,510 sqft); has_basement true 88.9%, false 10.7%; basement
+# area > 0 89.0%; finished basement > 0 0.2% (the field is barely
+# used); has_central_air true 71.1%, false 28.5%; fireplaces > 0
+# 38.2%; remodel year 17.8%; heating, wall, grade, condition, style
+# 99.6%.
+# YearBuilt is year_built (earliest card; 0 on 0.2% of cards and
+# years outside 1700-2026 read null): 99.6% of 510 properties,
+# median 1975. HEAP: 1900 on 2,111 cards (8.8%), the most common
+# value, well above 1910 (614) and 1890 (500), so it likely stands
+# for "old, year unknown". No dwelling-unit field: n_dwellings is not
+# mapped.
+# BasementCode is also foundation_description, kept as the county
+# records it (category 'Bsmt_Type': 1 None, 2 Pt Crawl, 3 Pt Bsmt/Pt
+# Slab, 4 Pt Bsmt/Pt Crawl, 5 Crawl, 6 Full Basement); has_basement
+# reads the same column. The dwelling table has no frame field, and
+# the Foundation code list in MVP1_OH_Codes is used by no table in
+# this download. MVP1_OH_Building's Class (Marshall & Swift) is not
+# mapped: 53 of its 2,973 rows carry an extra field.
+# MEASURED 2026-09-13: foundation_description on 99.6% of 510
+# properties (6 on 8,714, 3 on 4,574, 1 on 1,367, 4 on 1,000, 5 on
+# 335, 2 on 62).
+
+description: >-
+  Knox County, OH GovernMax Dwelling table: rooms, baths, stories,
+  living and basement area, heating, air, fireplaces, grade and
+  condition per card.
+
+admin_id: US-OH-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: knoxcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms next to the auditor's download link; Beacon terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.knoxcountyauditor.org/"
+    download_url: "https://beaconfiledata.blob.core.windows.net/knoxcountyoh/downloads/CAMADatabase.zip?sv=2020-10-02&st=2023-04-11T20%3A18%3A41Z&se=2050-01-01T21%3A18%3A00Z&sr=b&sp=r&sig=d%2BoCtdXId7ZHT4jv2oW1mWSdzuAFGAu4%2FPfCxho6zkI%3D"
+  version: "2026"
+
+compressed_file_name: "CAMADatabase.zip"
+uncompressed_file_name: "MVP1_OH_Dwelling.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PropertyNumber
+  n_rooms: RoomCount
+  n_bedrooms: BedroomCount
+  n_bathrooms: FullBathCount
+  n_half_bathrooms: HalfBathCount
+  n_stories: StoryHeight
+  living_area_sqft: FinishedLivingArea
+  basement_area_sqft: BasementAreaTotal
+  basement_finished_area_sqft: BasementFinishedArea
+  n_fireplaces: FireplaceOpeningCount
+  renovation_year: YearRemodeled
+  heating_type: HeatingCode
+  exterior_wall: ExteriorWallCode
+  quality_grade: Grade
+  condition: Condition
+  building_style: StyleOfHome
+  year_built: YearBuilt
+  foundation_description: BasementCode
+
+drop_duplicates: [parcel_id_assessor, CardNumber]
+
+transformations:
+  # Years outside 1700-2026 read null (0 is nulled by the registry).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_area_sqft
+    output: basement_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  # Bsmt_Type: 3 Pt Bsmt/Pt Slab, 4 Pt Bsmt/Pt Crawl, 6 Full
+  # Basement; 1 None, 2 Pt Crawl, 5 Crawl. BasementCode arrives
+  # renamed to foundation_description (columns are renamed first).
+  - type: remap
+    input: foundation_description
+    mapping: {"3": true, "4": true, "6": true, "1": false, "2": false,
+              "5": false}
+    output: has_basement
+  # AirType: 1 Central Air, 2 Heat Pump, 0 None.
+  - type: remap
+    input: CentralAirType
+    mapping: {"1": true, "2": true, "0": false}
+    output: has_central_air
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: ".", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: " ", new: ""}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - heating_type
+  - exterior_wall
+  - quality_grade
+  - condition
+  - building_style
+  - foundation_description
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  year_built: min
+  has_basement: max
+  has_central_air: max
+  heating_type: first
+  exterior_wall: first
+  quality_grade: first
+  condition: first
+  building_style: first
+  foundation_description: first
+
+supplements: US-OH-KN_property-knoxcounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

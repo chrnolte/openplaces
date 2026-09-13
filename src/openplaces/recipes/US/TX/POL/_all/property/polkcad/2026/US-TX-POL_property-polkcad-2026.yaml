@@ -1,0 +1,138 @@
+# Recipe: Polk County, TX certified appraisal roll (Polk Central
+# Appraisal District).
+#
+# SOURCE. The 2026 real-property roll on https://polkcad.org/open-records
+# ("2026-Real Data Export.zip", 35.2 MB), a PACS 8.0.34 "Appraisal
+# Export" (APPRAISAL_INFO 9,714 wide, File #7 114, File #9 87). BPP and
+# mineral rolls, Excel lists and a parcel shapefile are posted beside
+# it and are not read.
+#
+# DOWNLOAD. The link is a SharePoint anonymous share. It answers 302
+# with a cookie and the redirect target refuses a request that does not
+# carry it back; requests carries cookies across a redirect within one
+# call, so the ingester's plain requests.get gets the zip (tested
+# 2026-09-12: one redirect, 200, a zip). This is not a login or a
+# consent gate.
+#
+# ROWS. 62,931 rows, one per prop_id (62,920 R, 11 MH).
+#
+# JOIN KEY. prop_id is zero-padded to 12; the lstrip below restores
+# TxGIO's bare form. Through the bundled parcel_id_local conversion,
+# 89.5% of the roll's ids are found in TxGIO and 98.2% of TxGIO's 57,393
+# ids are found here.
+#
+# COVERAGE on the 2026 export (2026-08-05): land_state_cd 92.6%,
+# imprv_state_cd 49.5%, market_value >0 100%, legal acreage >0 78.5%
+# (median 0.50 acres after scaling).
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (layout: "Legal
+# Acreage (4 Decimals)"), so it is divided by 10,000.
+#
+# NOT MAPPED: geo_id, declared as filler: it was not compared with
+# TxGIO in this pass, and the reader keeps a raw column of that name
+# even unmapped, where it would read as openplaces' own geo_id key.
+# Also appraised_val (homestead-capped) and the owner block.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 21,657 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 98.2% (B 96.9%, E 98.4%, M 96.6%), 34
+# distinct codes.
+
+description: >-
+  Polk County, TX certified appraisal roll (PACS 8.0.34 export): state
+  land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-POL
+
+entity:
+  entity_type: property
+  source:
+    source_id: polkcad
+    # Checked 2026-09-12 (inventory): the open-records page carries no
+    # disclaimer, licence, resale or fee language for the files it
+    # links. Silence, not a grant.
+    license: "unknown (no terms on the open-records page)"
+    redistribution_restricted: null
+    portal_url: "https://polkcad.org/open-records"
+    download_url: "https://polkcad.sharepoint.com/:u:/s/PolkCADWebsiteDocumentLibrary/IQCt5JPvlJ8TR5QUbVNI2Xt-AVMpt6wb1ys_TrWHoiQKqhE?download=1"
+  version: 2026
+
+compressed_file_name: "2026-Real Data Export.zip"
+uncompressed_file_name: "2026-08-05_001616_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); coverage stops at situs_num.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [filler, 50] # geo_id, see NOT MAPPED
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+
+columns:
+  tax_neighborhood_code: hood_cd
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,89 @@
+# Recipe: Cooke County, TX certified appraisal roll, improvement
+# features member (PACS File #9): foundation_description from the
+# district's 'FOUNDATION' attribute. Same download and File #9 row shape
+# as the roll's room-count supplements; read
+# US-TX-COO_property-cookecad-2024 for the source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# Kept in the district's own words or codes; curate translates them.
+# construction_type and foundation_type stay NSI-coded and are not
+# written here.
+#
+# MEASURED on the 2024 export (aggregates only; share of properties with
+# a value): A is the 12,701 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# foundation_description A 94.1% (B 76.7%, E 85.8%, M 77.4%), 6 distinct
+# codes.
+
+description: >-
+  Cooke County, TX certified appraisal roll, improvement features member:
+  foundation_description per building, reduced to the property.
+
+admin_id: US-TX-COO
+
+entity:
+  entity_type: property
+  source:
+    source_id: cookecad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (the portal's legal statement answers 403 to the anonymous token; no
+      terms found)
+    redistribution_restricted: null
+    portal_url: "https://www.cookecad.org/"
+  version: 2024
+
+compressed_file_name: "2024 Certified Export.zip"
+uncompressed_file_name: "2024 CERTIFIED EXPORT/2024-07-30_001801_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  foundation_description: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'FOUNDATION'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  foundation_description: first
+
+supplements: US-TX-COO_property-cookecad-2024
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: foundation-description

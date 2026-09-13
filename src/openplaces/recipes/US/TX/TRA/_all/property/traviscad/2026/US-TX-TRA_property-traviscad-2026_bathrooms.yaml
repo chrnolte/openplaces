@@ -1,0 +1,127 @@
+# Recipe: Travis County, TX certified appraisal roll -- improvement
+# detail, bathrooms (TCAD). Same member (File #8, IMP_DET.TXT) as
+# US-TX-TRA_property-traviscad-2026_bedrooms; read its header first.
+#
+# ENCODING. Two detail types carry baths, with the count in
+# imprv_det_area: 251 "BATHROOM" and 250 "HALF BATHROOM". n_bathrooms
+# folds them as BATHROOM + 0.5 x HALF BATHROOM, summed over a building's
+# lines and then over the property's buildings.
+#
+# DOUBLE-COUNT CHECK. BATHROOM is fractional (2.5 is common), so the
+# question was whether it already holds the half that a 250 line counts.
+# Measured per improvement on the 2026 certified export:
+#   with a 250 line (52,964)   BATHROOM whole 99.6%, x.5 0.4%
+#   with no 250 line (307,296) BATHROOM x.5 25.3%
+# So TCAD writes a half either into BATHROOM or as a 250 line, almost
+# never both; the fold double-counts on the 0.4% (about 200 buildings).
+# Median by bedrooms, BATHROOM alone -> folded: 3 bedrooms 2.0 -> 2.5,
+# 4 bedrooms 3.0 -> 3.0, 5 bedrooms 4.0 -> 4.0.
+#
+# BATHROOM fractions: .0 259,740 rows, .5 78,721, .7 16,618, .2 6,485
+# (.7 and .2 are likely three-quarter and quarter baths; kept as
+# published).
+#
+# MEASURED: 251 on 361,630 rows over 360,260 improvements and 350,826
+# properties; 250 on 53,538 rows over 53,452 improvements. Coverage
+# (251) by improvement state class: A 94.4%, B 83.5%, E 67.5%, M none.
+#
+# QUERY. Keeps counts above 0 and up to 20, compared as fixed-format
+# text (see the bedrooms recipe): drops 306 zero and 10 larger 251
+# lines, 212 zero and 1 larger 250 lines.
+#
+# ROW RULE. 1,288 improvements carry two or more 251 lines, equal on
+# 31.9% of them; 84 carry two or more 250 lines, equal on 70.2%.
+# drop_duplicates removes only a line repeating the same type and count
+# on the same building; differing lines (additions) sum.
+
+description: >-
+  Travis County, TX certified appraisal roll, improvement detail member:
+  bathrooms per building (full plus half as .5), summed to the property.
+
+admin_id: US-TX-TRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: traviscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the data; FAQ: roll 'made available free of charge')"
+    terms_url: "https://traviscad.org/faq-items/can-i-get-a-copy-of-the-appraisal-roll/"
+    redistribution_restricted: null
+    portal_url: "https://traviscad.org/publicinformation"
+    download_url: "https://traviscad.org/wp-content/largefiles/2026%20Certified%20Appraisal%20Export%20Supp%200_07182026.zip"
+  version: 2026
+
+compressed_file_name: "2026 Certified Appraisal Export Supp 0_07182026.zip"
+uncompressed_file_name: "IMP_DET.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail), 622 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [filler, 10] # Imprv_det_class_cd
+  - [filler, 4] # yr_built
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+columns:
+  n_bathrooms: imprv_det_area
+
+# Counts above 0 and up to 20, compared as fixed-format text.
+query: >-
+  imprv_det_type_cd in ['251', '250']
+  and n_bathrooms > '00000000.000000'
+  and n_bathrooms <= '00000020.000000'
+
+# Drops only a line repeating the same type and count on one building.
+drop_duplicates: [prop_id, imprv_id, imprv_det_type_cd, n_bathrooms]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  # 1 on a HALF BATHROOM line, 0 on a BATHROOM line.
+  - type: conditional
+    operation: equal
+    input: imprv_det_type_cd
+    args:
+      threshold: "250"
+    output: half_bathroom_line
+  - type: expression
+    expression: "n_bathrooms * (1 - 0.5 * half_bathroom_line)"
+    inputs: [n_bathrooms, half_bathroom_line]
+    output: n_bathrooms
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_id
+  - half_bathroom_line
+
+aggregation_function:
+  n_bathrooms: sum
+
+supplements: US-TX-TRA_property-traviscad-2026
+# IMP_DET.TXT carries prop_id and no geo_id, while the roll's
+# parcel_id_local is built from geo_id (its link to TxGIO parcels). So
+# this table joins the roll on the zero-stripped prop_id both carry.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

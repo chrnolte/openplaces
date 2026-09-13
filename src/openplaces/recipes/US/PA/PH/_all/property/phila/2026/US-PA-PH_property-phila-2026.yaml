@@ -1,0 +1,339 @@
+# Recipe: Philadelphia, PA property assessment roll (OPA properties).
+#
+# APPROVED, RESTRICTED (2026-09-12): the user's approval to use this
+# source, conditional on its licence being recorded correctly, was
+# relayed to the recipe author through the coordinating session. The
+# source is marked redistribution_restricted: true (see LICENSE
+# below), so delivery refuses it: it may inform internal work but is
+# never shipped in a delivery bundle.
+#
+# Source: the City of Philadelphia Office of Property Assessment (OPA)
+# table `opa_properties_public`, listed on OpenDataPhilly as
+# "Philadelphia Properties and Assessment History". The source_id
+# names the city's own domain (phila.gov), since Philadelphia is a
+# consolidated city-county and the city publishes the roll. The same
+# table is also served as a GDB zip, as GeoJSON and through the Carto
+# SQL API (phl.carto.com); the plain CSV below is the smallest route.
+#
+# FORMAT. One CSV (293,975,029 bytes, 2026-09-12), 78 columns, fetched
+# once from the city's S3 download bucket with the identified
+# openplaces user agent (HTTP 200, no gate). The `shape` column is an
+# EWKT point in EPSG:2272 and is not read as geometry: parcels come
+# from PASDA.
+#
+# ROW SHAPE: one row per OPA account. 583,713 rows; pin (10 digits)
+# and parcel_number (the 9-digit OPA account) are each distinct on
+# every row, condominium units included. A roll: no `supplements:`,
+# no aggregation_function.
+#
+# category_code / category_code_description (use_group_code /
+# use_group): 1 SINGLE FAMILY 462,992; 2 MULTI FAMILY 41,399; 6 VACANT
+# LAND 39,802; 3 MIXED USE 14,165; 4 COMMERCIAL 12,506; 14 APARTMENTS
+# > 4 UNITS 4,062; smaller classes after. Code 16 (31 rows) has no
+# description. building_code_description_new (135 labels such as
+# ROW PORCH FRONT, TWIN CONVENTIONAL) describes the structure, so it is
+# building_style, not a use.
+#
+# ROOM COUNTS, measured in memory through this recipe after
+# preprocessing (see pa_recipes_B validation, 2026-09-12):
+#                        single family   multi family
+#   rows                     462,992         41,399
+#   n_bedrooms > 0            85.1%           44.7%
+#   n_bathrooms > 0           85.0%           40.2%
+#   n_stories > 0            99.97%           99.2%
+#   area_sqft > 0            99.98%           99.95%
+#
+# BATHROOMS: number_of_bathrooms is a whole number (no value is
+# fractional) and the table has no half-bath field. Whether it counts
+# full baths only or every bathroom is not documented in anything
+# read: the city's metadata catalog lists the field without a
+# definition. It is mapped to n_bathrooms as published, which the
+# registry allows for a source that publishes full baths only, but it
+# may include half baths counted as one; n_half_bathrooms is not
+# derived. 64,355 single-family rows read 0 bathrooms (4,696 of them
+# with bedrooms > 0), and 0 bedrooms is also common, so 0 on a
+# dwelling most likely means "not recorded". Kept as published.
+#
+# ROOMS: number_of_rooms is filled on 3.4% of single-family rows, so
+# it is not mapped.
+#
+# year_built is filled on 99.98% of single-family rows, but
+# year_built_estimate reads Y on 407,847 rows: most years are the
+# assessor's estimate (typically a round 1920 or 1925), not a record.
+# year_built 0 (985 rows) is nulled by the registry.
+#
+# JOIN KEY: pin, a 10-digit number ('9999999999' shape). Under the
+# bundled US-PA-PH conversion 524,165 of 583,713 rows (89.8%) match
+# PASDA's Philadelphia PIN, covering 91.1% of PASDA's 575,280 distinct
+# values. PASDA's Philadelphia rows include 30,302 single-character
+# placeholder PINs, which no roll can match. parcel_number matches 0.
+#
+# LICENSE. OpenDataPhilly lists the table under the "City of
+# Philadelphia License", which links to the city metadata catalog's
+# FAQ "What are the Terms of Use?" (read 2026-09-12 from the catalog's
+# app definition, since the page is rendered by JavaScript). Verbatim:
+#   "Browsing City data on this site, on opendataphilly.org, or on any
+#   other repository that includes data belonging to the City of
+#   Philadelphia constitutes acceptance of the license, the City's
+#   terms of use and your agreement to be bound by them."
+#   "The City of Philadelphia reserves all rights in the database and
+#   any data contained therein, and the end user's use of the data
+#   does not constitute a transfer of, nor does the end user receive,
+#   any title or interest in the database or any other City data."
+# followed by an "as is", no-warranty statement and a clause that the
+# user "will hold the City of Philadelphia harmless" from claims "that
+# arise from use of this data". The licence text does not itself
+# mention redistribution. Two things make it a question for a person:
+#   - the first sentence is a consent-by-use clause (the same shape
+#     that keeps Cumberland County's recipe unwritten), and it reaches
+#     "any other repository", so the S3 download is covered too;
+#   - the "City's terms of use" it incorporates, as published at
+#     phila.gov/terms-of-use, say "Distribution or republication in
+#     any other form or for any other purpose, including any commercial
+#     purpose or use, and any modification whatsoever, are strictly
+#     prohibited without the prior written permission of the City"
+#     (written for material on phila.gov). If that reaches open data,
+#     it forbids redistribution and derivative works.
+# The source is therefore marked redistribution_restricted: true.
+# terms_url holds the licence page; the phila.gov terms of use are at
+# https://www.phila.gov/terms-of-use/ (the schema takes one URL).
+#
+# BUILDING FEATURES (2026-09-13). Field definitions are from the
+# city metadata catalog (metadata.phila.gov, the table's Fields
+# list). Codes are kept as published:
+#   - living_area_sqft: total_livable_area (livable, not gross; the
+#     largest value, 2,500,000, is kept as published).
+#   - quality_grade: quality_grade. The catalog lists 1 low to
+#     6 highest; the data mostly carry letter grades (C, C+, B ...)
+#     and a few digits.
+#   - condition: exterior_condition (the catalog's list runs from
+#     newer construction to structurally compromised; its numbering
+#     skips 4, the most common value). interior_condition is not
+#     mapped: one condition column per source.
+#   - heating_fuel (fuel): A gas, B oil, C electric, D coal, E solar,
+#     F wood, G other, H none (I is not listed).
+#   - heating_type (type_heater): A hot air (ducts), B hot water,
+#     C electric baseboard, D heat pump, E other, G radiant,
+#     H undetermined.
+#   - has_central_air: central_air Y or N.
+#   - has_basement: basements 0 none, A-J full, partial or unknown
+#     size by finish. No residential row carries 0, so false never
+#     occurs; 1 and 2 are not in the catalog and stay null.
+#   - garage_type: the catalog lists 0 none, A basement, B attached,
+#     C detached, F converted, S self park, T attendant; the data
+#     carry 0-3 only, kept as published.
+#   - n_garage_spaces: garage_spaces; has_garage is true above 0 and
+#     false at a recorded 0.
+#   - n_fireplaces: fireplaces (the catalog says blank means none;
+#     the data mostly write 0).
+#   - frontage_ft: frontage, the width along the principal street
+#     (0 nulled). topography: A above street, B below, C flood plain,
+#     D rocky, E other, F level. view_rating: view_type, I typical,
+#     A cityscape, B water, C park, D commercial, E industrial,
+#     H landmark.
+# MEASURED in memory through this recipe on the 462,992 single-family
+# rows (category 1):
+#   living_area_sqft > 0    99.98%
+#   quality_grade 97.6%; condition 99.99%
+#   heating_fuel 18.3%; heating_type 64.3%
+#   has_central_air   true 29.0%, false 33.3%, null 37.8%
+#   has_basement      true 66.8%, null 33.2%
+#   garage_type 11.9%; n_garage_spaces > 0 35.4%
+#   has_garage        true 35.4%, false 63.2%, null 1.4%
+#   n_fireplaces > 0  3.4%
+#   frontage_ft > 0 92.7%; topography 94.4%; view_rating 99.6%
+#
+# CONSTRUCTION AND FOUNDATION (2026-09-13), kept as published for
+# curate to translate (construction_type and foundation_type stay
+# NSI-coded):
+#   - construction_description: general_construction. The catalog
+#     lists the field with no definition or code list: letters A-J
+#     and a few digits. A coincides with MASONRY in
+#     building_code_description on 94% of its rows, but no code is
+#     decoded here.
+#   - foundation_description: basements, the catalog's basement
+#     codes (see has_basement above).
+# MEASURED on the 462,992 single-family rows:
+#   construction_description 97.7% (A 81.9%, B 7.0%, C 2.4%, E 2.2%)
+#   foundation_description   69.2% (D, full of unknown finish, 20.8%)
+# building_code_description, the older structure label, also names
+# MASONRY or FRAME, but it mixes style, stories and material, so it
+# is not mapped as construction.
+#
+# Deliberately not mapped:
+#   - owner and mailing fields (owner_1, owner_2, mailing_*): nothing
+#     downstream needs them.
+#   - values, taxes, exemptions and sales (market_value, taxable_*,
+#     exempt_*, sale_date, sale_price): out of scope for this pass.
+#   - number_of_rooms (3.4%).
+#   - sewer, total_area, off_street_open: no
+#     definition in the catalog (off_street_open reads as an area,
+#     median about 1,600, not a count of spaces).
+#   - other_building (Y on 0.05%): a flag for any second building,
+#     not a count.
+#   - parcel_number: the OPA account number other city tables join on;
+#     no registry column fits it cleanly.
+
+description: >-
+  Philadelphia, PA property assessment roll (OPA): category codes,
+  situs address, year built, living area, bedrooms, bathrooms, stories.
+
+admin_id: US-PA-PH
+
+entity:
+  entity_type: property
+  source:
+    source_id: phila
+    license: >-
+      City of Philadelphia License: "Browsing City data on this site,
+      on opendataphilly.org, or on any other repository that includes
+      data belonging to the City of Philadelphia constitutes acceptance
+      of the license, the City's terms of use and your agreement to be
+      bound by them." "The City of Philadelphia reserves all rights in
+      the database and any data contained therein, and the end user's
+      use of the data does not constitute a transfer of, nor does the
+      end user receive, any title or interest in the database or any
+      other City data." Provided "as is"; users hold the City harmless.
+      The City's terms of use (https://www.phila.gov/terms-of-use/):
+      "Distribution or republication in any other form or for any
+      other purpose, including any commercial purpose or use, and any
+      modification whatsoever, are strictly prohibited without the
+      prior written permission of the City."
+    terms_url: "https://metadata.phila.gov/#help/help-faqs/what-are-the-terms-of-use/"
+    # The incorporated City terms of use prohibit distribution or
+    # republication without the City's written permission.
+    redistribution_restricted: true
+    portal_url: "https://opendataphilly.org/datasets/philadelphia-properties-and-assessment-history/"
+    download_url: "https://opendata-downloads.s3.amazonaws.com/opa_properties_public.csv"
+  version: "2026"
+
+uncompressed_file_name: "opa_properties_public.csv"
+
+# Ids and codes as text; counts stay numeric.
+csv_dtype:
+  pin: str
+  parcel_number: str
+  zip_code: str
+  category_code: str
+  basements: str
+  central_air: str
+  fuel: str
+  type_heater: str
+  garage_type: str
+  garage_spaces: str
+  quality_grade: str
+  exterior_condition: str
+  general_construction: str
+
+columns:
+  parcel_id_assessor: pin
+  address: location
+  postal_code: zip_code
+  use_group_code: category_code
+  use_group: category_code_description
+  building_style: building_code_description_new
+  year_built: year_built
+  area_sqft: total_livable_area
+  n_stories: number_stories
+  n_bedrooms: number_of_bedrooms
+  n_bathrooms: number_of_bathrooms
+  quality_grade: quality_grade
+  condition: exterior_condition
+  heating_fuel: fuel
+  heating_type: type_heater
+  garage_type: garage_type
+  n_garage_spaces: garage_spaces
+  n_fireplaces: fireplaces
+  frontage_ft: frontage
+  topography: topography
+  view_rating: view_type
+  construction_description: general_construction
+
+transformations:
+  # frontage (catalog): the lot's width along the principal street,
+  # in feet. 0 is not a frontage and is nulled.
+  - type: unary
+    operation: null_if_equal
+    input: frontage_ft
+    args:
+      value: 0
+    output: frontage_ft
+  # total_livable_area is the livable area, so it is also
+  # living_area_sqft; area_sqft keeps it as before.
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: living_area_sqft
+  # basements (catalog): 0 none; A-D full, E-H partial, I-J unknown
+  # size, each by finish. The codes 1 and 2 are not in the catalog
+  # and stay null.
+  - type: remap
+    input: basements
+    mapping:
+      "0": false
+      "A": true
+      "B": true
+      "C": true
+      "D": true
+      "E": true
+      "F": true
+      "G": true
+      "H": true
+      "I": true
+      "J": true
+    output: has_basement
+  # central_air (catalog): Y central air, N none.
+  - type: remap
+    input: central_air
+    mapping: {"Y": true, "N": false}
+    output: has_central_air
+  # basements is also the foundation description, kept as the
+  # catalog's codes (0 none; A-D full, E-H partial, I-J unknown
+  # size, each by finish; 1 and 2 undocumented) for curate.
+  - type: string
+    operation: strip
+    input: basements
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+  # garage_spaces is filled on 98.6% of rows, 0 on most, so a 0 is a
+  # recorded count and reads as no garage.
+  - type: remap_conditional
+    input: n_garage_spaces
+    conditions:
+      - condition: regex
+        pattern: "^0+$"
+        output: false
+      - condition: regex
+        pattern: "^[1-9]"
+        output: true
+    output: has_garage
+  - type: unary
+    operation: to_numeric
+    input: n_garage_spaces
+    output: n_garage_spaces
+
+columns_to_categorical:
+  - use_group
+  - use_group_code
+  - building_style
+  - quality_grade
+  - condition
+  - heating_fuel
+  - heating_type
+  - garage_type
+  - topography
+  - view_rating
+  - construction_description
+  - foundation_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

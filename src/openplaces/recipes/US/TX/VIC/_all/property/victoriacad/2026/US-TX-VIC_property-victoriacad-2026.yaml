@@ -37,6 +37,13 @@
 # to be summed first. The gap this recipe exists to close is land use, not
 # values. py_owner_name and the owner address block are likewise not mapped:
 # nothing downstream needs them here.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 28,149 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 92.7% (B 97.8%, E 84.5%, M 0.0%), 335
+# distinct codes.
 
 description: >-
   Victoria County, TX certified appraisal roll (PACS 8.0.34 export): state
@@ -102,6 +109,16 @@ fixed_width:
   - [situs_num, 15]
 
 transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
   # Strip the PACS zero-padding so parcel_id_local matches TxGIO's bare form.
   - type: string
     operation: lstrip
@@ -111,6 +128,7 @@ transformations:
     output: parcel_id_assessor
 
 columns:
+  tax_neighborhood_code: hood_cd
   parcel_id_admin2_2: geo_id
   # The land-side Comptroller state category is the better-populated of the
   # two (81.8% against 72.3%) and is what the crosswalk sidecar keys on.
@@ -133,6 +151,7 @@ columns:
   tax_year: prop_val_yr
 
 columns_to_categorical:
+  - tax_neighborhood_code
   - use_group_code
   - use_subgroup_code
 

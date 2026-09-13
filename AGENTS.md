@@ -394,6 +394,18 @@ src/openplaces/recipes/{admin_id_path}/{entity_type_or_theme_path}/{source}/{ver
 
 A recipe ID encodes its parts: `{admin_id}_{entity_type_or_theme}-{source}-{version}[_{filename}]`, e.g. `US-MA_parcel-massgis-2025`.
 
+**Recipe roots.** The bundled tree is one root; an installed package can
+contribute another through the `openplaces.recipes` entry-point group
+(`path.recipe_roots()`, bundled first, bundled wins on a name collision).
+Recipe lookup, the recipe index, source discovery and the suffix vocabulary
+read every root, so a recipe in a package is found exactly like a bundled
+one. Because auto-discovery then picks the most specific recipe *whatever
+roots are installed*, every attribute table `to_parquet` writes records the
+roots it was built from in its footer (`openplaces:recipe_roots`: bundled
+version or checkout commit, plus each package's distribution and version),
+and a delivery's terms notice lists them under "Recipes". Without that
+record, "the best source available at build time" is not reproducible.
+
 Key recipe fields:
 - `admin_id` — geographic scope
 - `entity` or `dataset` — what is being ingested
@@ -639,6 +651,20 @@ Steps are organized by the nature of the transformation:
   resolves through)
 - `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
   `impute_from_group_statistic`, `impute_occupancy_type`)
+- `aggregation.py` — reduce another entity's rows onto the curated rows
+  they belong to (`aggregate_from_entities`): a parcel's `year_built` is
+  the earliest of its properties', its `area_sqft` their sum, read from
+  `US_property-spine-2026` by `parcel_id_local` with the registry's rule
+  or a per-column override, filling only what the parcel's own layer
+  left empty. It exists because the parcel geospine's property
+  `link_by_id` no longer copies property-level attributes (its explicit
+  `columns:` list stops at parcel-level values, use codes and address):
+  a copy made in the geometry phase was a second, lossy home for them and
+  tied every fix to a geometry rerun. Measured on Victoria County, TX,
+  2026-09-12: the curate-side reduction reproduces the old copy's
+  coverage exactly (63.9% `year_built` and `area_sqft`), so a county
+  whose geospine predates the change loses nothing. An all-missing group
+  reduces to missing, not to pandas' zero sum.
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).
@@ -780,6 +806,34 @@ sit at admin level 2, so `RecipeDAG._delivery_in_scope` asks whether a requested
 unit is the bundle's own unit or an ancestor of it (`US`, `US-TX`), not merely
 whether it is coarse enough. `--config deliver=true` likewise only forces the
 regions the run actually touches.
+
+**It withholds what restricted sources supplied, and ships the rest.** A
+source recording `redistribution_restricted: true` or a `usage_requirement`
+may feed the recipe; `bundle_terms.restricted_inputs` lists every such input,
+walked per pooled unit because county parcel and property recipes reach a
+spine only through auto-discovery, which resolves per admin unit (an unscoped
+walk never saw Edgecombe's parcels feeding the NC bundle).
+`io.redaction.withhold` then removes that source's values from both read
+passes: a row whose `geometry_source` names it is left out, a cell whose
+`{col}_source` names it is emptied, and inside the source's county, columns
+named after an attribute its recipe maps (or with its entity suffix), or whose
+sidecar names only its layer (`parcel`), are emptied unless a sidecar names
+another specific source. Emptied cells' sidecars read `withheld`, and the
+notice lists each source's counts. `RestrictedInputError` is only the
+backstop: it fires if restricted values are still in the frames about to be
+written, never because a source merely feeds the recipe, so one county's
+terms cannot hold the rest of a bundle hostage. The rules over-withhold where
+a layer's sidecar cannot say which source filled it; that costs values, not
+a leak. A no-resale clause withholds nothing; the notice reports it.
+**Team bundles are the one exception, and never published.** A region listed
+under `share: delivery: team_regions:` also ships as `<region>.team`, in a
+`team/` subdirectory beside the region's own bundle (whose path does not
+move). A team bundle keeps the values of sources a person has cleared with
+`team_sharing_permitted: true` (Edgecombe's parcels, decided by the user
+2026-09-13), and its notice opens "TEAM-INTERNAL BUNDLE"; every other bundle
+withholds them, and uncleared sources are withheld from team bundles too.
+Asked for a delivery by admin unit alone, the DAG and `delivery_node` resolve
+to the public bundle: a team twin is only ever shipped by naming it.
 
 Three behaviors are worth knowing. It reads each unit twice (canonical+geometry,
 then evidence) so the wide evidence columns are never in memory alongside the

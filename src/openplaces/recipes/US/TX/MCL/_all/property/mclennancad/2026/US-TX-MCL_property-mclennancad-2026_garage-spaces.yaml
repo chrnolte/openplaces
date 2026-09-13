@@ -1,0 +1,99 @@
+# Recipe: McLennan County, TX certified appraisal roll, improvement
+# features member (PACS File #9): n_garage_spaces from the district's
+# '24 Garage Carport' attribute. Same download and File #9 row shape as
+# the roll's room-count supplements; read
+# US-TX-MCL_property-mclennancad-2026 for the source and its terms.
+#
+# READING. A count. drop_duplicates keeps the first row per building and
+# the property sums its buildings; an explicit zero is kept as zero.
+#
+# Codes such as '02G2 Gar 2' give the garage's car count after the G;
+# the carport codes ('06Cp2 Carp') are left out.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value): A is the 76,240 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# n_garage_spaces A 62.9% (B 31.6%, E 43.1%, M 0.0%), per-property
+# median 2.
+
+description: >-
+  McLennan County, TX certified appraisal roll, improvement features member:
+  n_garage_spaces per building, reduced to the property.
+
+admin_id: US-TX-MCL
+
+entity:
+  entity_type: property
+  source:
+    source_id: mclennancad
+    # Same download as the roll; see its terms note.
+    license: >-
+      site statement: 'considered in the public domain and is distributed
+      without warranty of any kind'
+    terms_url: "https://www.mclennancad.org/"
+    redistribution_restricted: false
+    portal_url: "https://www.mclennancad.org/"
+    # No download_url: see the roll's header.
+  version: 2026
+
+compressed_file_name: "DATA EXPORT 7.29.26.zip"
+uncompressed_file_name: "2026-07-29_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_garage_spaces: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == '24 Garage Carport' and n_garage_spaces.str.match('[0-9][0-9]G[0-9]', na=False)
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_garage_spaces
+    args:
+      pattern: '^\d\dG(?P<n>\d)'
+    output: n_garage_spaces
+  - type: unary
+    operation: to_numeric
+    input: n_garage_spaces
+    output: n_garage_spaces
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_garage_spaces: sum
+
+supplements: US-TX-MCL_property-mclennancad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: garage-spaces

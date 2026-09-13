@@ -1,0 +1,122 @@
+# Recipe: Williamson County, TX appraisal data -- property
+# characteristics, building features (WCAD). Same table (cvyp-ab5t) and
+# row shape as US-TX-WIL_property-wcad-2026_bedrooms; read its header
+# first.
+#
+# WHAT IS MAPPED. The table's feature columns are property-level: each
+# repeats identically on every row of a property (6,040 properties have
+# 2 to 6 rows), except EffectiveYear, which differs between rows on 58%
+# of multi-row properties.
+#   Class              quality_grade (R0 to R9, Q, H classes as coded)
+#   YearBuild          year_built (property-level; 0 and years
+#                      outside 1700 to 2026 are nulled)
+#   EffectiveYear      effective_year_built, the latest row's
+#   GarageArea + DetachedGarageArea   garage_area_sqft
+#   Garage, DetachedGarage            has_garage where either is above 0
+#   OpenPoarchArea     porch_area_sqft (the source's spelling)
+#   DeckArea + PatioArea              deck_area_sqft
+#   Pool               has_pool where above 0
+# The counts are null, never 0, where a property has no such feature,
+# so every flag is true where the table records one and null elsewhere.
+# Garage is a count of garages, not of car spaces, so n_garage_spaces
+# is not mapped; neither are OutdoorKitchen and the pool area.
+#
+# REDUCTION. Because the feature columns repeat on every row of a
+# property, the areas take the max over its rows, not the sum (a sum
+# would count a two-row property's garage twice). Flags take the max,
+# the class the first row's, the effective year the max.
+#
+# MEASURED (2026-09-13): share of the 207,822 single-family properties
+# (StateCode A1) with a value, or the flag true. quality_grade 100%
+# (R4, R3, R2, R5 lead), year_built 100% (median 2007),
+# effective_year_built 100%, garage_area_sqft and has_garage 95.9%
+# (median 441), porch_area_sqft 98.7%, deck_area_sqft 32.9%, has_pool
+# 7.9%.
+
+description: >-
+  Williamson County, TX property characteristics (WCAD open data): class,
+  effective year, garage, porch, deck and patio areas, garage and pool
+  flags.
+
+admin_id: US-TX-WIL
+
+entity:
+  entity_type: property
+  source:
+    source_id: wcad
+    # Same portal and terms as the roll; see its terms note.
+    license: "unknown (no licence on the datasets; WCAD: 'As Is', no warranty)"
+    terms_url: "https://www.wcad.org/data-downloads/"
+    redistribution_restricted: null
+    portal_url: "https://data.wcad.org/d/cvyp-ab5t"
+    download_url: "https://data.wcad.org/api/views/cvyp-ab5t/rows.csv?accessType=DOWNLOAD"
+  version: 2026
+
+uncompressed_file_name: "wcad_property_characteristics.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  QuickRefID: str
+  PropertyID: str
+  Class: str
+
+columns:
+  parcel_id_assessor: QuickRefID
+  quality_grade: Class
+  effective_year_built: EffectiveYear
+  porch_area_sqft: OpenPoarchArea
+  year_built: YearBuild
+
+transformations:
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  # A missing part adds nothing; both missing stays missing.
+  - type: aggregate
+    operation: sum
+    inputs: [GarageArea, DetachedGarageArea]
+    output: garage_area_sqft
+  - type: aggregate
+    operation: sum
+    inputs: [DeckArea, PatioArea]
+    output: deck_area_sqft
+  - type: aggregate
+    operation: sum
+    inputs: [Garage, DetachedGarage]
+    output: garage_count
+  # True where the table records one or more; null elsewhere.
+  - type: remap
+    input: garage_count
+    mapping: {1: true, 2: true, 3: true, 4: true, 5: true, 6: true,
+              7: true, 8: true, 9: true, 10: true}
+    output: has_garage
+  - type: remap
+    input: Pool
+    mapping: {1: true, 2: true, 3: true, 4: true}
+    output: has_pool
+
+drop_columns:
+  - garage_count
+
+aggregation_function:
+  quality_grade: first
+  effective_year_built: max
+  year_built: min
+  garage_area_sqft: max
+  porch_area_sqft: max
+  deck_area_sqft: max
+  has_garage: max
+  has_pool: max
+
+supplements: US-TX-WIL_property-wcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: features

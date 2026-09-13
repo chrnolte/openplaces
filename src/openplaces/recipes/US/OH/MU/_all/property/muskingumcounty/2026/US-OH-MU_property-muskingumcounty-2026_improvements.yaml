@@ -1,0 +1,132 @@
+# Recipe: Muskingum County, OH auditor roll, ISSG Parcel Improvement
+# table. Supplement of US-OH-MU_property-muskingumcounty-2026; see
+# that recipe for the unlinked endpoint, the terms and the key.
+#
+# One row per improvement on a card (all tax year 2025; the query
+# keeps the latest year). Type is 'CODE-DESCRIPTION' (71 codes);
+# Multiplier is "the number of identical improvements represented by
+# this item".
+#
+# n_outbuildings counts, times Multiplier, rows whose Type names a
+# detached structure: garage or pole garage, shed (including P.P.
+# sheds and implement sheds), barn (pole, flat, bank, hoop), lean-to,
+# shelter, carport, miscellaneous building, shop, gazebo, silo, bin,
+# crib, utility building, poultry, milk, hog or bath house,
+# greenhouse, stable, quonset, cabin, granary, summer kitchen, hangar
+# and kennel. Canopies, porches, decks, patios, pools, paving,
+# fencing, docks, pads, courts, cellars, wells and septic systems,
+# mobile homes and trailer additions, commercial buildings, the
+# elevator and market or total adjustments are not counted.
+#
+# Flags, each true where such a row is recorded and null elsewhere
+# (the table lists what is present, never what is absent): has_pool,
+# has_garage (garage or pole garage), has_carport and has_elevator.
+# has_garage and has_carport are also set by _features for attached
+# ones. No accessory-dwelling type is recorded.
+#
+# MEASURED 2026-09-13: 68,191 rows over 29,644 parcels, keys 99.94%
+# in the roll. On the 16,394 live land-use 510 properties: an
+# improvement row on 60.7%; n_outbuildings > 0 on 59.6% (median 1);
+# pool 1.3%; detached garage 28.9%; carport 3.1%; elevator none (one
+# row county-wide).
+
+description: >-
+  Muskingum County, OH ISSG Parcel Improvement table: outbuilding
+  count and pool, garage, carport and elevator flags per property.
+
+admin_id: US-OH-MU
+
+entity:
+  entity_type: property
+  source:
+    source_id: muskingumcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to
+      indemnify Muskingum County)
+    terms_url: "https://www.muskingumcountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://www.muskingumcountyauditor.org/"
+    download_url: "https://www.muskingumcountyauditor.org/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Improvement.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|SHED|BARN|LEAN-TO|SHELTER|CARPORT)", value: 1}
+      - {pattern: ".*(MISC BLDG|SHOP|GAZEBO|SILO|BIN|CRIB|UTILITY BLDG)", value: 1}
+      - {pattern: ".*(POULTRY HOUSE|MILK HOUSE|HOG HOUSE|BATH HOUSE)", value: 1}
+      - {pattern: ".*(GREENHOUSE|STABLE|QUONSET|CABIN|GRANARY)", value: 1}
+      - {pattern: ".*(SUMMER KITCHEN|HANGAR|KENNEL)", value: 1}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*GARAGE", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*ELEVATOR", value: true}
+    output: has_elevator
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+  has_elevator: max
+
+supplements: US-OH-MU_property-muskingumcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

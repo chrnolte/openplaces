@@ -1,0 +1,97 @@
+# Recipe: Huron County, OH auditor roll, ISSG Parcel Dwelling Custom
+# Field table. Supplement of US-OH-HU_property-huroncounty-2026; see
+# that recipe for the source and the join key.
+#
+# One row per answer to a county-defined question on a dwelling card
+# (Question, Answer; one answer each). Huron asks four: Exterior, Roof
+# Material, Roof Style and Occupancy.
+#
+# exterior_wall keeps the Exterior answer verbatim (Aluminum/Vinyl,
+# Wood, Brick, Stone, Concrete Block, Metal, Stucco) and roof_material
+# the Roof Material answer (Shingles, Metal, Slate/Tile, Shakes,
+# Composite). Roof Style (Gable, Hip, ...) is a roof shape, which the
+# registry reserves for enrichment, and Occupancy (Single Family,
+# Duplex, ...) is not a building feature; neither is read.
+#
+# MEASURED 2026-09-13 on 2025: 82,860 answers over 19,746 parcels, keys
+# 99.91% in the roll. On the 10,924 live land-use 510 properties:
+# exterior_wall 99.7% (Aluminum/Vinyl 7,196, Wood 2,993, Brick 542,
+# Stucco 65, Concrete Block 46, Metal 24, Stone 23); roof_material 99.6%
+# (Shingles 9,332, Metal 1,102, Slate/Tile 415, Shakes 28, Composite 1).
+
+description: >-
+  Huron County, OH ISSG Parcel Dwelling Custom Field table: exterior
+  wall and roof material per property, in the source's words.
+
+admin_id: US-OH-HU
+
+entity:
+  entity_type: property
+  source:
+    source_id: huroncounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (property-line disclaimer only; no terms on the extract)"
+    redistribution_restricted: null
+    portal_url: "https://huroncountyauditor.org/"
+    download_url: "https://huron-auditor-public.issg.io/api/Document/PublicRecords.zip?e=t0YMq1"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Dwelling Custom Field.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  # 'Question|Answer', so one remap can pick one question.
+  - type: string
+    operation: concat
+    inputs: [Question, Answer]
+    args: {sep: "|"}
+    output: question_answer
+  - type: remap
+    input: question_answer
+    mapping:
+      "Exterior|Aluminum/Vinyl": "Aluminum/Vinyl"
+      "Exterior|Brick": "Brick"
+      "Exterior|Concrete Block": "Concrete Block"
+      "Exterior|Metal": "Metal"
+      "Exterior|Stone": "Stone"
+      "Exterior|Stucco": "Stucco"
+      "Exterior|Wood": "Wood"
+    output: exterior_wall
+  - type: remap
+    input: question_answer
+    mapping:
+      "Roof Material|Composite": "Composite"
+      "Roof Material|Metal": "Metal"
+      "Roof Material|Shakes": "Shakes"
+      "Roof Material|Shingles": "Shingles"
+      "Roof Material|Slate/Tile": "Slate/Tile"
+    output: roof_material
+
+drop_columns:
+  - question_answer
+
+columns_to_categorical:
+  - exterior_wall
+  - roof_material
+
+aggregation_function:
+  exterior_wall: first
+  roof_material: first
+
+supplements: US-OH-HU_property-huroncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: custom

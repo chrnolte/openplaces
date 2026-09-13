@@ -1,0 +1,76 @@
+# Recipe: Williamson County, TX appraisal data -- property
+# characteristics, bedrooms (WCAD). Supplements
+# US-TX-WIL_property-wcad-2026; see that recipe's header for the portal
+# and the join key.
+#
+# SOURCE. Dataset cvyp-ab5t, "Property Characteristics" (Socrata bulk
+# CSV, updated 2026-07-29): 242,847 rows over 235,920 QuickRefIDs, all
+# real-property R-numbers, all found in the roll. A row is an
+# improvement: 6,040 properties have 2-6 rows, and EffectiveYear differs
+# between them on 48%. Every property-level column (value, square feet,
+# class, state code, main-area sizes) repeats identically on each row.
+# There is no improvement id.
+#
+# MEASURED: bedrooms populated on 67,579 rows (27.8%); 4 (30,484 rows)
+# and 3 (26,917) lead. The query keeps 1 to 20 and so drops 301 rows:
+# 283 values of 100 or more (square-footage figures keyed into the
+# field), one other value above 20, 14 zeros and 3 negatives. Coverage
+# after the query, by the rows' state code class: single-family (A)
+# 28.8% of 225,277 properties, multifamily (B) 6.6% of 2,336 (15.8%
+# before the query: the square-footage values sit mostly on B), rural
+# improved (E) 7.3% of 5,458, mobile homes (M) none of 622. Low: the
+# field reads as filled only on recently appraised improvements.
+#
+# ROW RULE. 139 multi-row properties carry bedrooms on two or more rows,
+# equal on 77.7% of them. With no improvement id, drop_duplicates
+# removes a row repeating the same count for the same property;
+# differing rows sum.
+
+description: >-
+  Williamson County, TX property characteristics (WCAD open data): bedroom
+  counts per improvement, implausible values dropped, summed to the property.
+
+admin_id: US-TX-WIL
+
+entity:
+  entity_type: property
+  source:
+    source_id: wcad
+    # Same portal and terms as the roll; see its terms note.
+    license: "unknown (no licence on the datasets; WCAD: 'As Is', no warranty)"
+    terms_url: "https://www.wcad.org/data-downloads/"
+    redistribution_restricted: null
+    portal_url: "https://data.wcad.org/d/cvyp-ab5t"
+    download_url: "https://data.wcad.org/api/views/cvyp-ab5t/rows.csv?accessType=DOWNLOAD"
+  version: 2026
+
+uncompressed_file_name: "wcad_property_characteristics.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  QuickRefID: str
+  PropertyID: str
+
+columns:
+  parcel_id_assessor: QuickRefID
+  n_bedrooms: bedrooms
+
+# 1 to 20 only; see the header for what this drops.
+query: "n_bedrooms > 0 and n_bedrooms <= 20"
+
+drop_duplicates: [parcel_id_assessor, n_bedrooms]
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-WIL_property-wcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

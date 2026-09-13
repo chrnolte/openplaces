@@ -1,0 +1,130 @@
+# Recipe: Wichita County, TX certified appraisal roll (Wichita Appraisal
+# District, wadtx.com). Same PACS 8.0.34 layout, offsets and join-key
+# trap as US-TX-VIC_property-victoriacad-2026; see that recipe's header
+# for the general shape of this source family. This header covers only
+# what differs for Wichita.
+#
+# SOURCE. No layout spreadsheet ships in the zip (the district posts an
+# 8.0.25 layout PDF on its reports page). The record width is 9,714,
+# the 8.0.34 width, and every mapped field reads as its type at the
+# template offsets (prop_val_yr one value, situs_num 98.4% numeric,
+# state codes in the Comptroller vocabulary), so the template stands.
+#
+# NOTE on coverage, measured on the 2026 export (60,174 rows):
+#   land_state_cd   97.5%   imprv_state_cd  83.2%
+#   geo_id         100.0%   market_value   100.0%
+# situs_city and situs_zip are empty on every row of this export, so
+# they are not mapped. The district's state codes run to 3-4 characters
+# (A1 but also D1F, BDUP, FSLO).
+#
+# NOTE on the join key. 94.2% of the roll's zero-stripped prop_ids are
+# in TxGIO's Prop_ID and 98.7% of TxGIO's 57,418 Wichita ids are in the
+# roll.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 42,417 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 99.0% (B 99.7%, E 98.7%, M 99.2%),
+# 206 distinct codes.
+
+description: >-
+  Wichita County, TX certified appraisal roll (PACS 8.0.34 export): state
+  land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-WIC
+
+entity:
+  entity_type: property
+  source:
+    source_id: wichitacad
+    # Checked 2026-09-12 by fetching the reports page: it carries only a
+    # site-footer copyright over the website itself and states no terms
+    # for the rolls it publishes (wadtx.com/disclaimer/ is 404). Texas
+    # appraisal records are public information under the Property Tax
+    # Code, but silence is not a grant.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://wadtx.com/reports/"
+    download_url: "https://wadtx.com/wp-content/uploads/2026/07/2026-CERTIFIED-REAL-ROLL.zip"
+  version: 2026
+
+compressed_file_name: "2026-CERTIFIED-REAL-ROLL.zip"
+uncompressed_file_name: "2026-07-17_008109_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); offsets as in the Victoria template.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [filler, 30] # situs_city, empty in this export
+  - [filler, 10] # situs_zip, empty in this export
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  # Land-plus-structure market value; see the Victoria template for why
+  # this is total_value and not appraised_val.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

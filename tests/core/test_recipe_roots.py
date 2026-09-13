@@ -13,7 +13,12 @@ import openplaces.diagnostics as diagnostics
 import openplaces.path as path_module
 import openplaces.recipe as recipe_module
 from openplaces.io.harmonizer import discover
-from openplaces.path import BUNDLED_RECIPES_DIR, recipe_path, recipe_roots
+from openplaces.path import (
+    BUNDLED_RECIPES_DIR,
+    recipe_path,
+    recipe_root_records,
+    recipe_roots,
+)
 
 RECIPE_ID = 'US-NC_parcel-spoketest-2026'
 
@@ -39,13 +44,26 @@ def external_root(tmp_path, monkeypatch):
         ),
         encoding='utf-8',
     )
-    monkeypatch.setattr(path_module, '_external_recipe_roots', lambda: [root])
+    monkeypatch.setattr(
+        path_module,
+        '_external_recipe_root_records',
+        lambda: [
+            {
+                'root': str(root),
+                'provider': 'spoketest',
+                'distribution': 'openplaces-spoketest',
+                'version': '0.1.0',
+            }
+        ],
+    )
+    recipe_root_records.cache_clear()
     recipe_roots.cache_clear()
     diagnostics._recipe_index.cache_clear()
     recipe_module.iter_entity_source_versions.cache_clear()
     recipe_module.iter_entity_sources.cache_clear()
     recipe_module.provenance_suffixes.cache_clear()
     yield root
+    recipe_root_records.cache_clear()
     recipe_roots.cache_clear()
     diagnostics._recipe_index.cache_clear()
     recipe_module.iter_entity_source_versions.cache_clear()
@@ -95,3 +113,47 @@ def test_a_broken_entry_point_is_skipped_with_a_warning(monkeypatch, tmp_path):
     )
     with pytest.warns(UserWarning, match='could not be loaded'):
         assert path_module._external_recipe_roots() == []
+
+
+def test_root_records_name_the_provider_and_version(external_root):
+    records = recipe_root_records()
+    assert records[0]['provider'] == 'bundled'
+    assert records[0]['distribution'] == 'openplaces'
+    assert records[0]['root'] == str(BUNDLED_RECIPES_DIR)
+    assert records[1] == {
+        'root': str(external_root),
+        'provider': 'spoketest',
+        'distribution': 'openplaces-spoketest',
+        'version': '0.1.0',
+    }
+
+
+def test_every_attribute_table_records_the_recipe_roots(external_root, tmp_path):
+    import json
+
+    import pandas as pd
+    import pyarrow.parquet as pq
+
+    from openplaces.io import save_parquet, to_parquet
+    from openplaces.path import RECIPE_ROOTS_METADATA_KEY
+
+    plain = tmp_path / 'plain.parquet'
+    to_parquet(pd.DataFrame({'a': [1]}), plain)
+    meta = pq.read_metadata(plain).metadata
+    recorded = json.loads(meta[RECIPE_ROOTS_METADATA_KEY.encode()].decode())
+    assert [r['provider'] for r in recorded] == ['bundled', 'spoketest']
+
+    # A caller's own footer entries ride alongside, not instead.
+    stamped = tmp_path / 'stamped.parquet'
+    to_parquet(pd.DataFrame({'a': [1]}), stamped, file_metadata={'x': 'y'})
+    meta = pq.read_metadata(stamped).metadata
+    assert meta[b'x'] == b'y' and RECIPE_ROOTS_METADATA_KEY.encode() in meta
+
+    # The split layout's attribute file carries it too.
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    gdf = gpd.GeoDataFrame({'a': [1]}, geometry=[Point(0, 0)], crs='EPSG:4326')
+    split = tmp_path / 'split.parquet'
+    save_parquet(gdf, split)
+    assert RECIPE_ROOTS_METADATA_KEY.encode() in pq.read_metadata(split).metadata

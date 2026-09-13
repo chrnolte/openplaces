@@ -1,0 +1,151 @@
+# Recipe: Tuscarawas County, OH auditor roll, ISSG Parcel Dwelling
+# Feature table. Supplement of US-OH-TU_property-tuscarawascounty-2021;
+# see that recipe for the source and the join key.
+#
+# One row per sketched feature attached to a dwelling card. Type is
+# 'CODE-DESCRIPTION'; Area is the feature's area in sqft. Capacity ('car
+# capacity of garage') is almost never set and is not read. Read here,
+# by code:
+#   garages   any Type naming a GARAGE (FG attached frame, BG
+#             attached brick, BSG basement)
+#   carports  any Type naming a CAR PORT or CARPORT (FCP)
+#   porches   OFP, EFP, OBP, EBP, OCBP (open concrete block)
+#   decks     WDDK wood deck, P patio, TERPATIO terrace patio
+# These codes come from the 25 most common Types of the 2021 extract
+# (measured 2026-09-12); rarer garage, porch or deck codes are not
+# listed and read as nothing.
+#
+# garage_type keeps the source's Type text on garage rows. has_garage
+# and has_carport are true where such a feature is recorded and null
+# elsewhere: the table lists features present, never absent ones.
+# Detached garages and carports are Parcel Improvement rows (see
+# _improvements), which sets the same two flags; garage_area_sqft counts
+# the garages listed here only.
+#
+# NOT VALIDATED: the only free Tuscarawas extract is on FTP, which
+# neither the downloader nor this pass may fetch, so this recipe follows
+# the ISSG layout the other ISSG counties share and has never been run.
+# Check it on the first ingest.
+
+description: >-
+  Tuscarawas County, OH ISSG Parcel Dwelling Feature table: attached
+  garage, carport, porch and deck features per property.
+
+admin_id: US-OH-TU
+
+entity:
+  entity_type: property
+  source:
+    source_id: tuscarawascounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.co.tuscarawas.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "ftp://gis.co.tuscarawas.oh.us/GIS/"
+    download_url: "ftp://gis.co.tuscarawas.oh.us/GIS/Public/ExtractXML.zip"
+  version: "2021"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Dwelling Feature.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: feature_area
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*GARAGE", value: 1}
+    default: 0
+    output: garage_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(OFP|EFP|OBP|EBP|OCBP)-", value: 1}
+    default: 0
+    output: porch_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(WDDK|P|TERPATIO)-", value: 1}
+    default: 0
+    output: deck_row
+  - type: unary
+    operation: to_numeric
+    input: garage_row
+    output: garage_row
+  - type: unary
+    operation: to_numeric
+    input: porch_row
+    output: porch_row
+  - type: unary
+    operation: to_numeric
+    input: deck_row
+    output: deck_row
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, garage_row]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, porch_row]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, deck_row]
+    output: deck_area_sqft
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*GARAGE", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CAR ?PORT", value: true}
+    output: has_carport
+  # The garage codes found in the extract, kept verbatim; any other
+  # Type leaves garage_type null.
+  - type: remap
+    input: Type
+    mapping:
+      "FG-ATTACHED FRAME GARAGE": "FG-ATTACHED FRAME GARAGE"
+      "BG-ATTACHED BRICK GARAGE": "BG-ATTACHED BRICK GARAGE"
+      "BSG-BASEMENT GARAGE": "BSG-BASEMENT GARAGE"
+    output: garage_type
+
+drop_columns:
+  - feature_area
+  - garage_row
+  - porch_row
+  - deck_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-TU_property-tuscarawascounty-2021
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: features

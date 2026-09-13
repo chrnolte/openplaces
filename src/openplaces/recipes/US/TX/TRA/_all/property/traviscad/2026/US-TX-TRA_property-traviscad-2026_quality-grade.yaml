@@ -1,0 +1,87 @@
+# Recipe: Travis County, TX certified appraisal roll, improvement
+# features member (PACS File #9): quality_grade from the district's
+# 'Grade Factor' attribute. Same download and File #9 row shape as the
+# roll's room-count supplements; read US-TX-TRA_property-traviscad-2026
+# for the source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# Travis grades each building in File #9 (A, G, F, E, P, S), so
+# quality_grade comes from here rather than from the File #8 class code.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value): A is the 352,880 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# quality_grade A 72.7% (B 90.2%, E 59.5%, M 0.1%), 6 distinct codes.
+
+description: >-
+  Travis County, TX certified appraisal roll, improvement features member: quality_grade
+  per building, reduced to the property.
+
+admin_id: US-TX-TRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: traviscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the data; FAQ: roll 'made available free of charge')"
+    terms_url: "https://traviscad.org/faq-items/can-i-get-a-copy-of-the-appraisal-roll/"
+    redistribution_restricted: null
+    portal_url: "https://traviscad.org/publicinformation"
+    download_url: "https://traviscad.org/wp-content/largefiles/2026%20Certified%20Appraisal%20Export%20Supp%200_07182026.zip"
+  version: 2026
+
+compressed_file_name: "2026 Certified Appraisal Export Supp 0_07182026.zip"
+uncompressed_file_name: "IMP_ATR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  quality_grade: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Grade Factor'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  quality_grade: first
+
+supplements: US-TX-TRA_property-traviscad-2026
+# Keyed like the roll's other supplements: the roll's
+# parcel_id_local is its geo_id, these tables carry
+# prop_id only.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: quality-grade

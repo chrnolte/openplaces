@@ -1,0 +1,128 @@
+# Recipe: Medina County, OH auditor roll, GovernMax OtherImprovements
+# extract. Supplement of US-OH-ME_property-medinacounty-2026; see that
+# recipe for the source route, the terms and the join key.
+#
+# Source item: CAMA2025p2026, the same zip as _dwelling; this recipe
+# reads GovernmaxOtherImprovementsExtract (pipe-delimited). One row
+# per detached improvement segment: ImprovementCode with its
+# ImprovementDescr (92 descriptions), TotalArea, YearBuilt.
+#
+# n_outbuildings counts rows whose description names a structure
+# (shed, building or pole building, garage, lean-to, barn, crib,
+# shelter, gazebo, stable, carport, silo, coop, greenhouse, cabin,
+# quonset, arena, or a milk, bath, pool or wash house). Paving,
+# fencing, pools, courts, decks, patios, porches, canopies, tanks,
+# mobile homes and commercial lines are not counted.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere (the table lists what is present, never what is absent):
+# has_pool (above-ground, in-ground, commercial, municipal or wading
+# pool; a pool house is not a pool), has_garage (detached or pole
+# garage), has_carport, has_solar ('Solar Panels') and has_elevator
+# ('Elevator Residential'). has_garage and has_carport are also set
+# by _additions for attached ones, has_elevator by _building for
+# commercial buildings.
+#
+# MEASURED 2026-09-13: 103,823 rows over 46,454 properties, keys 100%
+# in the roll. On the 45,167 live land-use 510 properties: an
+# improvement row on 55.4%, n_outbuildings > 0 on 50.8% (median 1);
+# pool 10.4%; detached garage 12.2%; carport 0.2%; solar panels 0.4%;
+# residential elevator 11 properties.
+
+description: >-
+  Medina County, OH GovernMax OtherImprovements extract: outbuilding
+  count and pool, detached garage, carport, solar and elevator flags.
+
+admin_id: US-OH-ME
+
+entity:
+  entity_type: property
+  source:
+    source_id: medinacounty
+    # Same publisher and terms as the roll; see its terms note.
+    license: >-
+      unknown (no licence on the ArcGIS items; auditor download page terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=81d7b42f6a004919825de3d047d5e09f"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/81d7b42f6a004919825de3d047d5e09f/data"
+  version: "2026"
+
+compressed_file_name: "CAMA2025p2026.zip"
+uncompressed_file_name: "GovernmaxOtherImprovementsExtract.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PropertyNumber
+
+transformations:
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  # Later patterns override earlier ones.
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: ".*(Shed|Bldg|Pole Bld|Building|Garage|Lean-to)", value: 1}
+      - {pattern: ".*(Barn|Crib|Shelter|Gazebo|Stable|Carport|Silo)", value: 1}
+      - {pattern: ".*(Coop|Greenhouse|Cabin|Quonset|Arena)", value: 1}
+      - {pattern: ".*(Milk House|Bath House|Pool House|Wash House)", value: 1}
+      - {pattern: "Comm ", value: 0}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: n_outbuildings
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: ".*Pool(?! House)", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: ".*Garage", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: ".*Carport", value: true}
+    output: has_carport
+  - type: remap
+    input: ImprovementDescr
+    mapping: {"Solar Panels": true}
+    output: has_solar
+  - type: remap
+    input: ImprovementDescr
+    mapping: {"Elevator Residential": true}
+    output: has_elevator
+
+drop_columns:
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+  has_solar: max
+  has_elevator: max
+
+supplements: US-OH-ME_property-medinacounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

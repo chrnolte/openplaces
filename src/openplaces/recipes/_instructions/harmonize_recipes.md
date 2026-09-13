@@ -67,13 +67,49 @@ to the roll's property. Spine discovery (`resolve_spine`,
 never become entities; `link_by_id`'s auto-discovery still joins it,
 reduced per key by its own `aggregation_function`. Without the key, the
 property spine unioned Victoria County TX's roll and its components
-into 100,112 "properties" where the roll has 53,405. Unlike
+into 100,112 "properties" where the roll has 53,405. The roll's scope
+may contain the supplement's (a city table detailing a statewide roll),
+and the roll may be a host's `additional_layers` table, which has no
+recipe id of its own: name the host and the layer's entity type,
+`supplements: US-MA_parcel-massgis-2025` with `supplements_layer:
+property`, as the Massachusetts city tables do for the MassGIS assessing
+layer. `get_supplemented_table` checks the layer, the entity type and
+the scope (containment by level, never a string prefix) and raises on
+any mismatch, both in `tests/recipe/test_supplements.py` and when the
+join discovers the table. Unlike
 `exclude_from_auto_discover`, the key keeps the table in the parcel
 join. The property spine joins it onto the properties of the roll it
 names (`link_by_id` with `supplements_only: true`, `count_as: false`),
-which is where its attributes belong; parcels and footprints get them in
-curate, aggregated from properties (AGENTS.md, "Entity model and stage
-roles").
+which is where its attributes belong. Parcels get them in curate, reduced
+from the property spine by `aggregate_from_entities`
+(`US_parcel-openplaces-2026`); the parcel geospine's property link lists
+only parcel-level columns (values, use codes, address), so a supplement
+still matches there but contributes nothing (AGENTS.md, "Entity model
+and stage roles").
+
+**A supplement joins its roll on `parcel_id_local` unless it declares
+`supplements_key: <column>`.** Declare it when the roll's
+`parcel_id_local` is built from an id the detail table does not carry.
+Travis County TX is the case: TxGIO's parcels key on TCAD's `geo_id`, so
+the roll builds `parcel_id_local` from `geo_id`, but the improvement
+detail carries only `prop_id`. Both tables then produce a second key
+(`parcel_id_assessor`, the zero-stripped `prop_id`, by the same
+transformation), and each supplement names it. The rules:
+
+- Both the supplement and its roll must produce the column, as a
+  `columns` key or a transformation `output`. `get_supplements_key`
+  checks this and raises; a recipe with `keep_unnamed_columns` cannot be
+  checked statically, and the join raises instead if the column is
+  missing from the data.
+- The key is matched as is, with no id conversion, so both recipes must
+  build it the same way.
+- The join takes part only in the property spine's `supplements_only`
+  pass, and only onto rows whose `source` is the roll's. Any other
+  auto-discovered `link_by_id` (the parcel geospine's property join)
+  skips the supplement, and `get_recipe_dependencies` leaves it out of
+  that job's inputs: the key relates the table to its roll, not to
+  parcels.
+- A keyed supplement needs no `parcel_id_local` directive of its own.
 
 **Order is a dependency, not a preference.** The property spine depends only on
 property ingests; the footprint spine additionally on parcel *ingests* and the

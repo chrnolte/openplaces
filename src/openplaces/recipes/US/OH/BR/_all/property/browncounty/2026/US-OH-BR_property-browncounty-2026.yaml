@@ -1,0 +1,80 @@
+# Recipe: Brown County, OH auditor roll (ISSG extract, Parcel table).
+#
+# The tables are XML (one element per row, fields as attributes),
+# which the ingester's XML branch reads as text. The recipe has not
+# been ingested. The ingester's own reader and
+# _preprocess_recipe_data were run on the extract on 2026-09-12.
+#
+# Source: the auditor's 'Property Data Downloads' page (ISSG Inc
+# platform) lists 'Full Real Estate Data (CAMA & Tax in XML format)',
+# /api/Document/ExtractXML.zip (85 MB), and a condensed Excel without
+# room fields.
+#
+# Three recipes read this extract, in the ISSG layout of Lorain's and
+# Belmont's recipes: this roll (Parcel.xml), _appraisal (Parcel
+# Appraisal.xml: land use and appraised values) and _dwelling (Parcel
+# Dwelling.xml).
+#
+# Row shape, measured on the extract dated 2026-09-11: Parcel.xml
+# holds 36,386 rows, all tax year 2025; Retired is 'YES' on 1,037, and
+# the query keeps the 35,349 live parcels.
+# One row is one property. The owner, taxpayer, lender and escrow
+# attributes of Parcel.xml are never mapped.
+#
+# Join key. Parcel_Number_U is the unformatted 12-digit id
+# (Parcel_Number is '99-999999.9999'). It matches OGRIP's
+# LocalParcelID on 97 of 100 sampled live ids, and the formatted form
+# on 0, measured against the live OGRIP layer on a random sample. No
+# transformation. 18.2% of ids start with 0; reading as text keeps it.
+
+description: >-
+  Brown County, OH auditor roll (ISSG extract, Parcel XML table):
+  live parcels with tax year and acreage.
+
+admin_id: US-OH-BR
+
+entity:
+  entity_type: property
+  source:
+    source_id: browncounty
+    # Checked 2026-09-12: the auditor's /Disclaimer says the data is
+    # 'as is', for reference only, with no liability, and that the
+    # user indemnifies the county. No resale clause; direct download.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://realestate.browncountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://realestate.browncountyauditor.org/property-data-downloads"
+    download_url: "https://realestate.browncountyauditor.org/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Retired == 'NO'"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  tax_year: Tax_Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

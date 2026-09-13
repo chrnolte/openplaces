@@ -1,0 +1,118 @@
+# Recipe: Dallas County, TX appraisal account roll (DCAD).
+#
+# SOURCE. Dallas Central Appraisal District's "Data Products" page
+# (www.dallascad.org/DataProducts.aspx), link "2026 Certified Data Files
+# with Supplemental Changes (Comma Delimited)": DCAD2026_CURRENT.ZIP,
+# 195.2 MB, members dated 2026-08-10. The link is a ViewPDFs.aspx URL
+# whose id is a UNC path; it must be requested with that path
+# URL-encoded (the short id=DCAD2026_CURRENT.ZIP form redirects to an
+# error page). The server ignores byte ranges. The zip ships its own
+# documentation: "TABLES AND FIELD NAMES.xlsx", "DCAD Data
+# Dictionary.rtf" and DCAD_Certified_READ_ME.rtf. This recipe reads
+# ACCOUNT_INFO.CSV; the room counts are in RES_DETAIL.CSV, read by
+# US-TX-DAL_property-dcad-2026_res-detail.
+#
+# MEASURED on the 2026 export (aggregates only):
+#   ACCOUNT_INFO rows 812,091, one per account, APPRAISAL_YR 2026
+#   DIVISION_CD: RES 633,629, COM 77,287, BPP 101,175
+#   populated: STREET_NUM 99.3%, PROPERTY_ZIPCODE 91.1%, NBHD_CD 100%
+# BPP (business personal property) accounts are not real property and
+# none is in TxGIO (0.0%), so the query drops them: 710,916 rows remain.
+#
+# JOIN KEY. ACCOUNT_NUM is a 17-character account number, the same form
+# as TxGIO's Prop_ID for Dallas (raw overlap 91.0% on RES accounts). The
+# bundled US-TX-DAL conversion (string_lengths 2 2 4 4 4, skip_empty)
+# reads the first 16 characters in five zero-stripped groups and ignores
+# the 17th. TxGIO's key is built with it. On this roll it merges
+# accounts differing only in character 17 (710,916 -> 684,114 keys,
+# 3.8%), so with the default 0.5% tolerance the duplicate guard falls
+# back to pipe, and the fallback key meets TxGIO's key on 0.0% of rows.
+# The instruction below keeps the bundled conversion with a 5%
+# tolerance: 91.1% of accounts then meet TxGIO's key. The accounts it
+# merges are mostly condominium units of one building (97% of merged
+# groups share one GIS_PARCEL_ID), so their keys coincide by design of
+# the conversion, on this side and TxGIO's alike.
+#
+# GIS_PARCEL_ID is the land parcel's id (equal to ACCOUNT_NUM on 80.3%
+# of accounts; condo units share their building's). It meets TxGIO's key
+# on 99.0% of non-BPP accounts under the bundled conversion, better than
+# ACCOUNT_NUM, but the room-count table does not carry it, and the
+# supplement must share the roll's key. It is mapped as parcel_id_admin3
+# for a future parcel-level link.
+#
+# NOT MAPPED. OWNER_NAME1/2, BIZ_NAME, the OWNER_ADDRESS block,
+# PHONE_NUM and MULTI_OWNER.CSV (owner names and mailing addresses) are
+# deliberately left out. Values and the Comptroller state code
+# (SPTD_CODE) live in ACCOUNT_APPRL_YEAR.CSV, another member, and are
+# not read yet.
+
+description: >-
+  Dallas County, TX appraisal account roll (DCAD ACCOUNT_INFO): situs
+  address, neighborhood and legal description keyed by account.
+
+admin_id: US-TX-DAL
+
+entity:
+  entity_type: property
+  source:
+    source_id: dcad
+    # Checked 2026-09-12: the Data Products page says only that DCAD
+    # "is unable to provide technical support for your use of the data".
+    # The shipped DCAD_Certified_READ_ME.rtf has a "Disclaimer of
+    # Liability" (provided "as is", no warranty, the purchaser takes the
+    # database as is). No licence, resale or redistribution clause, no
+    # click-through, no fee.
+    license: "unknown (as-is, no-warranty disclaimer in the README; no licence terms)"
+    terms_url: "https://www.dallascad.org/DataProducts.aspx"
+    redistribution_restricted: null
+    portal_url: "https://www.dallascad.org/DataProducts.aspx"
+    download_url: "https://www.dallascad.org/ViewPDFs.aspx?type=3&id=%5C%5CDCAD.ORG%5CWEB%5CWEBDATA%5CWEBFORMS%5CDATA%20PRODUCTS%5CDCAD2026_CURRENT.ZIP"
+  version: 2026
+
+compressed_file_name: "DCAD2026_CURRENT.ZIP"
+uncompressed_file_name: "ACCOUNT_INFO.CSV"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: ACCOUNT_NUM
+  parcel_id_admin3: GIS_PARCEL_ID
+  tax_year: APPRAISAL_YR
+  address_number: STREET_NUM
+  address_street: FULL_STREET_NAME
+  address_unit: UNIT_ID
+  city: PROPERTY_CITY
+  postal_code: PROPERTY_ZIPCODE
+  tax_neighborhood_code: NBHD_CD
+  legal_description: LEGAL1
+
+# Business personal property accounts are not real property; see header.
+query: "DIVISION_CD != 'BPP'"
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_admin3
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Keep the bundled conversion TxGIO uses; see the header's JOIN KEY.
+  instruction:
+    US-TX-DAL:
+      conv: "string_lengths: 2 2 4 4 4 & skip_empty: 1"
+      tolerance: 0.05
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,81 @@
+# Recipe: Lorain County, OH auditor roll (ISSG extract, Parcel table).
+#
+# Source: the Lorain County Auditor's site runs on ISSG Inc's platform
+# and serves the full CAMA and tax extract three ways under
+# /api/Document/: PublicRecordsXML.zip (XML), GISExtract.zip (a
+# condensed Excel without room fields) and "Public RecordsSqlite.zip",
+# which holds one SQLite database (extract.db, 57 tables, 4.7 GB
+# unzipped) and File Layout.xlsx. This recipe reads the SQLite copy,
+# because the ingester reads a non-spatial SQLite table through GDAL
+# as a plain frame (`layer:` names the table) and has no XML reader.
+# A HEAD request to these URLs returns 404; a GET works. No other
+# ISSG county in this batch serves the SQLite copy (the same path
+# returns 500 on Belmont, Erie, Brown, Shelby and Huron).
+#
+# Three recipes read this database: this roll (Parcel), the
+# _appraisal supplement (land use and appraised values, which ISSG
+# keeps in Parcel_Appraisal) and the _dwelling supplement.
+#
+# Row shape, measured on the extract dated 2026-09-12: Parcel holds
+# 194,753 rows, one per distinct Parcel_Number_U, all tax year 2025.
+# Retired is 'YES' on 23,032 of them; the query keeps the 171,721
+# live parcels, which is also the row count of the county's condensed
+# Excel. One row is one property. The owner, taxpayer, lender and
+# escrow fields in this table are never mapped.
+#
+# Join key. Parcel_Number_U is the unformatted id (13 digits on every
+# row); Parcel_Number is the same id formatted '99-99-999-999-999'.
+# OGRIP's LocalParcelID holds the unformatted form, so no
+# transformation is needed: it matches 170 of 200 sampled appraisal
+# ids (retired parcels included) and 198 of 200 sampled dwelling ids,
+# measured against the live OGRIP layer on a random sample.
+#
+# NOTE on types: the database declares Acres as INT although 79,253
+# of its values are fractional (SQLite stores them as REAL anyway).
+# GDAL types the column from the declaration and reads it as int32,
+# truncating every fractional acreage, so Acres is not mapped. The
+# same trap truncates the dwelling table's Story_Height; see the
+# _dwelling supplement.
+
+description: >-
+  Lorain County, OH auditor roll (ISSG extract, SQLite Parcel table):
+  live parcels with tax year.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Checked 2026-09-12. The auditor's /Disclaimer: data provided "as
+    # is" and "for reference only", no liability, and the user
+    # indemnifies the Auditor. No resale or redistribution clause and
+    # no click-through on the download links.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel
+
+process_by:
+  admin_level: 3
+
+query: "Retired == 'NO'"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  tax_year: Tax_Year
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

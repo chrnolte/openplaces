@@ -1,0 +1,202 @@
+# Recipe: Kenosha County Buildings table, garages and outbuildings.
+# Supplement of US-WI-KN_property-kenoshacounty-2026; see that
+# recipe's header for the key and the terms.
+#
+# Why a second supplement on the same table: the Buildings table has
+# one row per building, and detached garages, sheds, barns and pools
+# are rows of their own. The _buildings supplement keeps the dwelling
+# rows only (so room counts are not diluted by outbuildings); this
+# recipe reads every row, so it sees both the dwelling rows (attached
+# garage and carport areas are columns there) and the accessory rows.
+# The two supplements map disjoint columns: link_by_id writes each
+# supplement's columns by prioritized fill, not by summing across
+# supplements, so a column must come from one recipe only.
+#
+# SOURCE. Same download as the _buildings supplement (Hub CSV export
+# of SpecialAppData/PortalData/MapServer/3, PortalBuildingData).
+#
+# ROW RULE: every row. Per row, n_outbuildings is 1 on a detached
+# accessory structure (the styles in the remap below: detached
+# garages, sheds, farm buildings, barns, silos, bins, cribs, stables,
+# arenas, greenhouses, pole buildings, lean-tos). Not counted:
+# "Miscellaneous Building" (10,384 rows outside the City of Kenosha,
+# TotalArea median 0, no stories; what it holds is not documented),
+# pools, carports, tanks, commercial buildings and the portal's
+# placeholder styles ("Flat Value (800 Field)", "GARCO", "Invalid
+# MUSE ...", the "... city" rows). Summed per property, a property
+# whose buildings are all dwellings gets 0: the table lists every
+# building of the parcel, so 0 is the recorded count.
+# - garage_area_sqft: FrameGarageAttached + MasonryGarage (attached,
+#   on dwelling rows: 18,964 of 54,321) + TotalArea of the detached
+#   garage rows ("Det Garage - Frame", "Det Garage - Brick",
+#   "Garage").
+# - has_garage: true where a garage area, a detached garage row,
+#   BasementGarage stalls or a CondoGarageSpace is recorded; null
+#   elsewhere (no row records the absence of a garage).
+# - has_carport: a Carport area on a dwelling row (100 rows) or a
+#   "Carport - (RES)" row (46); null elsewhere.
+# - has_pool: a pool row (Swimming pool 986, Pool - Plastic Liner
+#   204, Pool - Prefab 37, Pool - Concrete 23, Pool - Fiberglass 3);
+#   null elsewhere.
+#
+# VALIDATED in memory 2026-09-13 (reader, preprocessing, key and
+# aggregation_function as the pipeline runs them): 112,075 rows over
+# 57,878 properties, all in the roll. Of V11's 54,029 residential
+# improved Kenosha parcels: n_outbuildings > 0 55.9% (median 1; p99
+# over all properties 4), garage_area_sqft > 0 78.0% (median 489),
+# has_garage true 78.3%, has_carport 0.3%, has_pool 2.3%.
+#
+# NOT MAPPED: n_garage_spaces (only basement stalls and condominium
+# spaces carry a count). year_built: an outbuilding row's YearBuilt
+# dates the garage or shed, not the home; the home's year comes from
+# _buildings (a column must come from one supplement only). No
+# dwelling-unit count exists in this table.
+
+description: >-
+  Kenosha County Buildings table, every row: garage area and flag,
+  carport and pool flags, and outbuilding counts summed to the property.
+
+admin_id: US-WI-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: kenoshacounty
+    # Same portal and terms as the roll; see its terms note.
+    license: >-
+      Kenosha County disclaimer (information and reference purposes
+      only) and Acceptable Use Policy: "for the noncommercial use of the
+      general public"; reproduction or redistribution beyond fair use
+      needs the County's permission.
+    terms_url: "https://www.kenoshacounty.org/1786/Acceptable-Use-Policy"
+    redistribution_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=d5476763d32f4b7596fe9baf5df46035"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/d5476763d32f4b7596fe9baf5df46035/csv?layers=3"
+  version: "2026"
+
+uncompressed_file_name: "kenosha_buildings.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+
+csv_dtype:
+  ParcelNumber: str
+
+columns:
+  parcel_id_assessor: ParcelNumber
+
+transformations:
+  # One per detached accessory structure row, summed per property.
+  # The two municipal vocabularies (City of Kenosha: "Det Garage -
+  # Frame", "Util Shed - Frame (RES)"; the other municipalities:
+  # "Garage", "Utility Shed") never share a parcel.
+  - type: remap
+    input: BuildingStyle
+    mapping:
+      "Det Garage - Frame": 1
+      "Det Garage - Brick": 1
+      "Garage": 1
+      "Utility Shed": 1
+      "Util Shed - Frame (RES)": 1
+      "Util Shed - Metal (RES)": 1
+      "Farm Building": 1
+      "Barn": 1
+      "Silo": 1
+      "Grain Bin": 1
+      "Granary": 1
+      "Corn Crib -wood board": 1
+      "Corn Crib -welded wire": 1
+      "Stable": 1
+      "Arena": 1
+      "Green house": 1
+      "Pole Bldg -4s,cls,metal": 1
+      "Pole Bldg -4s,cls,wood": 1
+      "8' High Lean-to": 1
+      "7' High Lean-to": 1
+    output: n_outbuildings
+  # Garage area: attached garages are areas on the dwelling row,
+  # detached garages are rows whose TotalArea is the garage.
+  - type: remap
+    input: BuildingStyle
+    mapping:
+      "Det Garage - Frame": 1
+      "Det Garage - Brick": 1
+      "Garage": 1
+    output: detached_garage_gate
+  - type: binary
+    operation: multiply
+    inputs: [TotalArea, detached_garage_gate]
+    output: detached_garage_area
+  - type: aggregate
+    operation: sum
+    inputs: [FrameGarageAttached, MasonryGarage, detached_garage_area]
+    output: garage_area_sqft
+  # has_garage: any garage area, a detached garage row, basement
+  # garage stalls or a condominium garage space records a garage.
+  - type: aggregate
+    operation: any_gt
+    inputs:
+      - garage_area_sqft
+      - detached_garage_gate
+      - BasementGarage
+      - CondoGarageSpace
+    args:
+      threshold: 0
+    output: garage_indicator
+  - type: remap
+    input: garage_indicator
+    mapping: {1: true}
+    output: has_garage
+  - type: remap
+    input: BuildingStyle
+    mapping: {"Carport - (RES)": 1}
+    output: carport_row
+  - type: aggregate
+    operation: any_gt
+    inputs: [Carport, carport_row]
+    args:
+      threshold: 0
+    output: carport_indicator
+  - type: remap
+    input: carport_indicator
+    mapping: {1: true}
+    output: has_carport
+  - type: remap
+    input: BuildingStyle
+    mapping:
+      "Swimming pool": true
+      "Pool - Plastic Liner": true
+      "Pool - Prefab": true
+      "Pool - Concrete": true
+      "Pool - Fiberglass": true
+    output: has_pool
+
+drop_columns:
+  - detached_garage_gate
+  - detached_garage_area
+  - garage_indicator
+  - carport_row
+  - carport_indicator
+
+aggregation_function:
+  n_outbuildings: sum
+  garage_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  has_pool: max
+
+# Details the roll's properties: joined by link_by_id, skipped by the
+# property spine's union.
+supplements: US-WI-KN_property-kenoshacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: outbuildings

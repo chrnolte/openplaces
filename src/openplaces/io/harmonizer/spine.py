@@ -404,10 +404,10 @@ def resolve_spine(
         return ['geometry'] + [c for c in keep_columns if c in gdf.columns]
 
     # loaded[0] is the highest-priority source by admin specificity that
-    # actually loaded (not necessarily resolved[0] -- e.g. Craven County's
-    # parcel roll is a geometry-less attribute table by design, its own
-    # property recipe carries the geometry instead), keyed by recipe_id
-    # since `label` (default the source_id) is not guaranteed unique.
+    # actually loaded (not necessarily resolved[0]: a geometry-less
+    # attribute roll ingested as a parcel recipe loads nothing here, as
+    # Craven County's did before it became a property recipe), keyed by
+    # recipe_id since `label` (default the source_id) is not unique.
     first_recipe_id = loaded[0]['recipe_id']
     first_label = loaded[0].get('label', first_recipe_id)
     spine: gpd.GeoDataFrame = source_gdfs[first_recipe_id][

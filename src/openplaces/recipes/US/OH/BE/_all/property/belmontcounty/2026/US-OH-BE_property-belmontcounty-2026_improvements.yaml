@@ -1,0 +1,121 @@
+# Recipe: Belmont County, OH auditor roll, ISSG Parcel Improvement
+# table. Supplement of US-OH-BE_property-belmontcounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per detached improvement on a card: outbuildings, pools,
+# paving, fencing, mobile homes and the like. Type is
+# 'CODE-DESCRIPTION' (144 codes in this extract); Multiplier is "the
+# number of identical improvements represented by this item".
+#
+# n_outbuildings counts rows whose Type names a structure (garage,
+# shed, barn, pole building, lean-to, shelter, gazebo, cabin, shop,
+# utility building, crib, silo, grain bin, quonset, stable, carport,
+# a "house" such as a milk, wash, poultry or green house, or detached
+# living quarters), times Multiplier. Paving, fencing, pools, decks,
+# patios, canopies, pads, courts, mobile homes and commercial or
+# dwelling sound-value items are not counted.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere (the table lists what is present, never what is absent):
+# has_pool (any POOL type: steel, concrete, block, fiberglass,
+# gunite, sound value only), has_garage (detached frame, block or
+# brick garage), has_carport (detached carport) and
+# has_accessory_dwelling (full or half story frame or brick living
+# quarters over a detached structure). has_garage and has_carport are
+# also set by _features for attached ones.
+#
+# MEASURED 2026-09-13: 51,866 rows over 23,521 parcels, keys 99.98%
+# in the roll. On the 14,075 live land-use 510 properties: an
+# improvement row on 52.0%; n_outbuildings > 0 on 48.8% (median 1);
+# pool 3.5%; detached garage 23.2%; detached carport 4.6%; detached
+# living quarters 0.3%.
+
+description: >-
+  Belmont County, OH ISSG Parcel Improvement table: outbuilding count
+  and pool, detached garage, carport and accessory dwelling flags.
+
+admin_id: US-OH-BE
+
+entity:
+  entity_type: property
+  source:
+    source_id: belmontcounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://belmontcountyauditor.org/additional-links-property-data-downloads"
+    download_url: "https://belmontcountyauditor.org/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel Improvement.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Multiplier
+    output: multiplier
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*(GARAGE|SHED|BARN|BKBN|FLBN|BLDG|BUILDING)", value: 1}
+      - {pattern: ".*(LEAN TO|SHELTER|GAZEBO|CABIN|SHOP|STABLE)", value: 1}
+      - {pattern: ".*(HOUSE|HSE|CRIB|SILO|GRNBIN|GRAIN BIN)", value: 1}
+      - {pattern: ".*(QUONSET|QUNST|CARPORT|LIVING QUARTERS)", value: 1}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, multiplier]
+    output: n_outbuildings
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*GARAGE", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*LIVING QUARTERS", value: true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - multiplier
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+  has_accessory_dwelling: max
+
+supplements: US-OH-BE_property-belmontcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

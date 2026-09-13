@@ -1,0 +1,82 @@
+# Recipe: Erie County, OH auditor roll (ISSG extract, Parcel table).
+#
+# The tables are XML (one element per row, fields as attributes),
+# which the ingester's XML branch reads as text. The recipe has not
+# been ingested. The ingester's own reader and
+# _preprocess_recipe_data were run on the extract on 2026-09-12.
+#
+# Source: the Erie County Auditor's site (ISSG Inc platform) serves
+# the full CAMA and tax extract as XML at
+# /api/Document/PublicRecordsRequest.zip (157 MB) and a condensed
+# Excel without room fields at GISExtract.zip. A HEAD request returns
+# 404; a GET works. An older DDTI site also exists and was not used.
+#
+# Three recipes read this extract, in the ISSG layout of Lorain's and
+# Belmont's recipes: this roll (Parcel.xml), _appraisal (Parcel
+# Appraisal.xml: land use and appraised values) and _dwelling (Parcel
+# Dwelling.xml).
+#
+# Row shape, measured on the extract dated 2026-09-12: Parcel.xml
+# holds 49,972 rows, all tax year 2025; Retired is 'YES' on 3,667, and
+# the query keeps the 46,305 live parcels.
+# One row is one property. The owner, taxpayer, lender and escrow
+# attributes of Parcel.xml are never mapped.
+#
+# Join key. Parcel_Number_U is the unformatted 10-digit id
+# (Parcel_Number is '99-99999.999'). It matches OGRIP's LocalParcelID
+# on 98 of 100 sampled live ids, and the formatted form on 0, measured
+# against the live OGRIP layer on a random sample. No transformation.
+# 8.3% of ids start with 0; reading as text keeps it.
+
+description: >-
+  Erie County, OH auditor roll (ISSG extract, Parcel XML table):
+  live parcels with tax year and acreage.
+
+admin_id: US-OH-ER
+
+entity:
+  entity_type: property
+  source:
+    source_id: eriecounty
+    # Checked 2026-09-12: the auditor's /Disclaimer says the data is
+    # 'as is', for reference only, with no liability, and that the
+    # user indemnifies the county. No resale or redistribution clause;
+    # direct download, no gate.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.eriecounty.oh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.eriecounty.oh.gov/"
+    download_url: "https://auditor.eriecounty.oh.gov/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Retired == 'NO'"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  tax_year: Tax_Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -84,10 +84,11 @@ def _blank_entry(source_id: str) -> dict:
         'portal_url': None,
         'redistribution_restricted': None,
         'resale_restricted': None,
+        'usage_requirement': None,
     }
 
 
-def _source_terms(recipe) -> dict[tuple, dict]:
+def _source_terms(recipe, admin_ids=None, key=_terms_key) -> dict:
     """Collect the terms every upstream recipe records, one entry each.
 
     Walks the recipe's real dependency graph rather than guessing from
@@ -100,16 +101,41 @@ def _source_terms(recipe) -> dict[tuple, dict]:
     source as unrecorded, which reads as "nobody checked" when the truth is
     "nobody looked far enough".
 
+    Auto-discovered inputs (a spine's county parcel and property recipes)
+    resolve only for a given admin unit, so without *admin_ids* they are
+    skipped. With them, the walk runs once per unit and reaches every
+    county source the pipeline would read there.
+
     Keyed by `_terms_key`, so two recipes sharing a source id but
     recording different licences both survive.
     """
     terms: dict[tuple, dict] = {}
+    for admin_id in admin_ids or [None]:
+        _walk_source_terms(recipe, admin_id, terms, key)
+    return terms
+
+
+def _mapped_attributes(recipe: dict) -> list[str]:
+    """Attribute names a recipe writes: mapped columns and outputs."""
+    names = set()
+    for spec in [recipe, *(recipe.get('additional_layers') or [])]:
+        if not isinstance(spec, dict):
+            continue
+        names.update(str(name) for name in (spec.get('columns') or {}))
+        for step in spec.get('transformations') or []:
+            if isinstance(step, dict) and step.get('output'):
+                names.add(str(step['output']))
+    return sorted(names)
+
+
+def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
+    """Add the terms of every recipe upstream of *recipe* for one unit."""
     seen: set[str] = set()
     frontier = [recipe]
 
     while frontier:
         current = frontier.pop()
-        for edge in get_recipe_dependencies(current):
+        for edge in get_recipe_dependencies(current, admin_id=admin_id):
             upstream_id = getattr(edge, 'upstream_recipe_id', None)
             if not upstream_id or upstream_id in seen:
                 # Unresolved auto-discovery cannot be attributed; a repeat
@@ -141,9 +167,89 @@ def _source_terms(recipe) -> dict[tuple, dict]:
                     source, 'redistribution_restricted', None
                 ),
                 'resale_restricted': getattr(source, 'resale_restricted', None),
+                'usage_requirement': getattr(source, 'usage_requirement', None),
+                # Where the source's data can land in an output: read by
+                # io.redaction to withhold exactly its values.
+                'entity_type': str(getattr(entity, 'entity_type', '') or '') or None,
+                'admin_id': str(upstream.get('admin_id') or '') or None,
+                'attributes': _mapped_attributes(upstream),
+                'team_sharing_permitted': getattr(
+                    source, 'team_sharing_permitted', None
+                ),
             }
-            terms.setdefault(_terms_key(entry), entry)
-    return terms
+            terms.setdefault(key(entry), entry)
+
+
+def _usage_conditions(requirement) -> list[str]:
+    """Plain-language conditions a `UsageRequirement` sets, or none."""
+    if requirement is None:
+        return []
+    conditions = []
+    if getattr(requirement, 'non_commercial', False):
+        conditions.append('non-commercial use only')
+    if getattr(requirement, 'environment', None):
+        conditions.append('environment ' + ', '.join(requirement.environment))
+    if getattr(requirement, 'admin_interest', False):
+        conditions.append('jurisdictional interest')
+    return conditions
+
+
+def restricted_inputs(recipe, admin_ids=None) -> list[dict]:
+    """Upstream sources whose terms forbid passing their data on.
+
+    Unlike `bundle_terms`, which weighs sources by the geometry they
+    contribute, this walks every source that feeds the recipe, geometry
+    or attribute alike: a restricted table that only contributes a
+    column (a county's room counts) would otherwise slip through. A
+    source counts as restricted when its recipe records
+    `redistribution_restricted: true` or a `usage_requirement` (a
+    condition on who may use it). A no-resale clause alone does not:
+    it forbids selling, not sharing, and stays a notice item.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        The recipe whose inputs are checked, usually a curation recipe.
+    admin_ids : list of str, optional
+        Admin units the output covers. Auto-discovered inputs (county
+        parcel and property recipes) resolve only per unit, so a check
+        without them sees declared inputs alone.
+
+    Returns
+    -------
+    list of dict
+        One entry per restricted recipe, with `source_id`, `recipe_id`,
+        `license`, `terms_url`, `reasons`, and where its data can land:
+        `entity_type`, `admin_id` (the recipe's scope) and `attributes`
+        (what it maps). Empty when no input is restricted.
+    """
+    if isinstance(recipe, str):
+        recipe = get_recipe_by_id(recipe)
+    blocked = []
+    # Keyed per recipe, not per set of terms: two recipes of one source
+    # (a roll and its buildings table) record the same terms but map
+    # different attributes, and redaction needs both.
+    per_recipe = _source_terms(recipe, admin_ids, key=lambda e: e['recipe_id'])
+    for entry in per_recipe.values():
+        reasons = []
+        if entry.get('redistribution_restricted'):
+            reasons.append('redistribution restricted')
+        reasons += _usage_conditions(entry.get('usage_requirement'))
+        if reasons:
+            blocked.append(
+                {
+                    'source_id': entry['source_id'],
+                    'recipe_id': entry['recipe_id'],
+                    'license': entry['license'],
+                    'terms_url': entry.get('terms_url'),
+                    'reasons': reasons,
+                    'entity_type': entry.get('entity_type'),
+                    'admin_id': entry.get('admin_id'),
+                    'attributes': entry.get('attributes') or [],
+                    'team_sharing_permitted': entry.get('team_sharing_permitted'),
+                }
+            )
+    return sorted(blocked, key=lambda e: (e['source_id'], e['recipe_id'] or ''))
 
 
 @cache
@@ -379,6 +485,21 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         lines[0] = f'Data licence and attribution for {recipe_id} ({admin_id})'
         lines[1] = '=' * 70
 
+    if terms.get('audience') == 'team':
+        lines += [
+            'TEAM-INTERNAL BUNDLE',
+            '-' * 70,
+            'For sharing within the research team only. It carries data from',
+            'the sources below, whose terms restrict redistribution but which',
+            'may be shared within the team. Do not publish it or pass it',
+            'outside the team: the public bundle of the same region withholds',
+            'these values.',
+        ]
+        for entry in terms.get('team_shared') or []:
+            license_text = entry.get('license') or _UNRECORDED
+            lines.append(f'  {entry["source_id"]}: {license_text}')
+        lines.append('')
+
     lines += ['Sources', '-' * 70]
     # One source id can record more than one licence (a source shipping
     # two themes under one id). Naming the recipe on those lines is what
@@ -409,6 +530,37 @@ def format_notice(recipe, terms: dict, admin_id=None) -> str:
         )
     lines.append('')
 
+    # Which recipe roots the build read from. Auto-discovery takes the
+    # most specific recipe those roots hold, so the roots and their
+    # versions are part of what produced this bundle.
+    from openplaces.path import recipe_root_records
+
+    lines += ['Recipes', '-' * 70]
+    for record in recipe_root_records():
+        version = record.get('version') or 'unversioned'
+        if record.get('commit'):
+            version = f'{version} at commit {record["commit"]}'
+        distribution = record.get('distribution') or record['provider']
+        lines.append(f'{distribution} {version}')
+        lines.append(f'{" " * 8}{record["root"]}')
+    lines.append('')
+    if terms.get('withheld'):
+        lines += [
+            'Withheld',
+            '-' * 70,
+            'These sources restrict passing their data on, so the values they',
+            'supplied are not in this bundle. Rows whose outline came from them',
+            "are left out; values they filled are empty, with their '_source'",
+            "column set to 'withheld'.",
+        ]
+        for entry in terms['withheld']:
+            lines.append(
+                f'  {entry["source_id"]}: {entry["rows"]:,} rows left out, '
+                f'{entry["cells"]:,} values emptied'
+            )
+            license_text = entry.get('license') or _UNRECORDED
+            lines.append(f'    {license_text}  {entry.get("terms_url") or ""}')
+        lines.append('')
     if terms.get('restricted'):
         lines += [
             'Redistribution restricted',

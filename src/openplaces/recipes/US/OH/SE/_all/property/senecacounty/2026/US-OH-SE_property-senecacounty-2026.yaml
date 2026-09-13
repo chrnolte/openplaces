@@ -1,0 +1,88 @@
+# Recipe: Seneca County, OH auditor roll (ISSG extract, Parcel table).
+#
+# The tables are XML (one element per row, fields as attributes),
+# which the ingester's XML branch reads as text. The recipe has not
+# been ingested. The ingester's own reader and
+# _preprocess_recipe_data were run on the extract on 2026-09-12.
+#
+# Source: the auditor's 'CAMA Data' page (ISSG Inc platform) links
+# 'Public Records (XML)', api/Media?p=Documents/PublicRecords.zip (154
+# MB, 60 XML tables), and 'GIS (Excel)'.
+#
+# Three recipes read this extract, in the ISSG layout of Lorain's and
+# Belmont's recipes: this roll (Parcel.xml), _appraisal (Parcel
+# Appraisal.xml: land use and appraised values) and _dwelling (Parcel
+# Dwelling.xml).
+#
+# Row shape, measured on the extract dated 2026-09-11: the tables
+# stack two tax years (Parcel.xml: 2024 40,173, 2025 40,288 rows). The
+# query keeps the latest tax year and the live parcels: 35,224 in
+# 2025.
+# One row is one property. The owner, taxpayer, lender and escrow
+# attributes of Parcel.xml are never mapped.
+#
+# Join key. Parcel_Number_U is the unformatted id ('A99999999999999';
+# Parcel_Number is 'A99-99-999999-99-99'). It matches OGRIP's
+# LocalParcelID on 97 of 100 sampled live ids, and the formatted form
+# on 0, measured against the live OGRIP layer on a random sample. No
+# transformation.
+
+description: >-
+  Seneca County, OH auditor roll (ISSG extract, Parcel XML table):
+  live parcels with tax year and acreage.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Read 2026-09-12 from the auditor's 'Disclaimer and Terms of
+    # Service' page: 'The information provided by the county is
+    # provided as is and for reference only'; 'No warranties,
+    # expressed or implied, are provided for the data provided, its
+    # use, or its interpretation'; 'You should always use the original
+    # recorded documents for legal transactions'; 'In using the data,
+    # users further agree to indemnify, defend, and hold harmless the
+    # county'. The text read states no resale, commercial-use or
+    # redistribution restriction, so none is set here; an earlier
+    # summary claimed one, and a person should confirm on the page
+    # itself.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Retired == 'NO' and tax_year == tax_year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  tax_year: Tax_Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

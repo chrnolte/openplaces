@@ -1,0 +1,84 @@
+# Recipe: Montgomery County, OH CAMA roll, LAND table (AA407 fixed
+# width). Supplement of US-OH-MO_property-montgomerycounty-2026; see
+# that recipe for the source, the pinned monthly file and the join
+# key.
+#
+# One record per land line. Offsets from the layout PDF, page 12
+# (1-based starts: Taxyr 42, Fronact 75, "Actual Frontage", 7 wide).
+# Montgomery prices residential lots by the square foot (LTYPE S) and
+# records the lot's actual frontage and depth on those lines; the
+# front-foot type (F) occurs once. frontage_ft sums Fronact over a
+# parcel's lines where it is above 0; a 0 is no frontage recorded
+# and reads null. 448 of the parcels with frontage have more than one
+# such line.
+#
+# MEASURED 2026-09-13: 285,892 lines over 254,905 parcels, keys
+# 99.88% in the roll; frontage on 56.2% of the 157,799 land-use 510
+# properties (median 55 ft, p99 149 ft).
+
+description: >-
+  Montgomery County, OH CAMA LAND table: actual street frontage in feet
+  from the land lines, per parcel.
+
+admin_id: US-OH-MO
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms on the download page; auditor GIS disclaimer is
+      warranty/liability only)
+    terms_url: "https://www.mcohio.org/630/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm"
+    download_url: "https://go.mcohio.org/applications/treasurer/search/data/Cama/Cama_Files_20260831.zip"
+  version: "2026"
+
+compressed_file_name: "Cama_Files_20260831.zip"
+uncompressed_file_name: "Cama_Files_20260831/LAND.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [parid, 30]
+  - [filler, 6] # Jur
+  - [filler, 5] # Lline
+  - [taxyr, 5]
+  - [filler, 28] # Seq, Ltype, Units, Code, SF
+  - [fronact, 7]
+
+# Drop any filler line, whose tax year is blank.
+query: "taxyr.notna()"
+
+columns:
+  parcel_id_assessor: parid
+  frontage_ft: fronact
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: frontage_ft
+    output: frontage_ft
+  - type: unary
+    operation: null_if_equal
+    input: frontage_ft
+    args: {value: 0}
+    output: frontage_ft
+
+aggregation_function:
+  frontage_ft: sum
+
+supplements: US-OH-MO_property-montgomerycounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

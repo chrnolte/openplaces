@@ -1,0 +1,117 @@
+# Recipe: Hays County, TX appraisal roll (Hays CAD), Orion CAMA
+# "Property Data Export" (Tyler Technologies), property record.
+#
+# INGEST BLOCKER: a zip of zips. The monthly export is one zip holding
+# six zips (PROPERTY, OWNER, LAND, IMPROVEMENT, SEGMENT, SALES), each
+# holding one comma-delimited .txt with a header row. The ingester's
+# unzip extracts one level, so after it the heap holds the inner zips
+# and not the .txt named below, and GDAL reads neither the inner zip
+# nor the .txt (both measured). Until the ingester extracts nested
+# archives, the inner PROPERTY zip has to be extracted into the heap by
+# hand. No flat alternative exists: the certified "Orion ... Certified
+# Export" of 2026-07-18 carries no improvement segments.
+#
+# VINTAGE. Monthly; this is the export "as of 8-26-2026". The inner
+# file names (PropertyDataExport<number>.txt) change with each export.
+#
+# MEASURED: 134,592 rows over 134,591 QuickRefIDs (one account repeats;
+# drop_duplicates keeps its first row). QuickRefID prefixes: R 123,433,
+# P 8,670, M 2,175.
+#
+# JOIN KEY. TxGIO's Hays Prop_ID is QuickRefID without its leading "R".
+# Stripped (lstrip below), under the bundled US-TX-HAY conversion:
+# 86.2% of this roll's ids are found in TxGIO (P and M accounts are not
+# parcels) and 99.7% of TxGIO's ids are covered. PropertyID matches
+# 58.0% and PropertyNumber (the geographic id) 0.0%.
+#
+# VALUES. Curr* and plain value columns agree on 19.7% of rows. The
+# Curr* columns are read as the 2026 values, by the evidence from
+# Williamson's copy of this same Orion export (see
+# US-TX-WIL_property-wcad-2026); the 2018 layout PDF names only one set.
+# Coverage: CurrMarketValue nonzero 100%, SquareFootage (living area)
+# 69.5%, LegalAcres 51.2%, situs street 96.7%, ZIP 95.0%. No land-use
+# code is on the property record. Owner data is a separate member and is
+# not read.
+
+description: >-
+  Hays County, TX appraisal roll (Orion property data export): values,
+  living area, legal acreage and situs keyed by property.
+
+admin_id: US-TX-HAY
+
+entity:
+  entity_type: property
+  source:
+    source_id: hayscad
+    # Checked 2026-09-12: the data-downloads page carries only a
+    # site-footer copyright; no licence, resale or redistribution terms
+    # on the data, no click-through. The "Policies for Public Access"
+    # page was keyword-scanned in the inventory and states none either.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hayscad.com/data-downloads/"
+    download_url: "https://hayscad.com/wp-content/uploads/2026/08/2026-PROPERTY-DATA-EXPORT-FILES-AS-OF-8-26-2026.zip"
+  version: 2026
+
+compressed_file_name: "2026-PROPERTY-DATA-EXPORT-FILES-AS-OF-8-26-2026.zip"
+# Inside 2026-PROPERTY-DATA-EXPORT-FILE-PROPERTY-8.26.2026.zip; see the
+# header's INGEST BLOCKER.
+uncompressed_file_name: "PropertyDataExport1404449.txt"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PropertyID: str
+  QuickRefID: str
+  PropertyNumber: str
+  NbhdCode: str
+  SitusStreetNumber: str
+  SitusZip: str
+
+drop_duplicates: [QuickRefID]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: QuickRefID
+    args:
+      chars: "R"
+    output: parcel_id_assessor
+  - type: string
+    operation: concat
+    inputs:
+      - SitusPreDirectional
+      - SitusStreetName
+      - SitusStreetSuffix
+      - SitusPostDirectional
+    args:
+      sep: " "
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+
+columns:
+  parcel_id_admin2_2: PropertyNumber
+  legal_description: LegalDesc
+  area_ac: LegalAcres
+  total_value: CurrMarketValue
+  land_value: CurrLandValue
+  improvement_value: CurrImprovmentValue
+  area_sqft: SquareFootage
+  tax_neighborhood_code: NbhdCode
+  address_number: SitusStreetNumber
+  city: SitusCity
+  postal_code: SitusZip
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

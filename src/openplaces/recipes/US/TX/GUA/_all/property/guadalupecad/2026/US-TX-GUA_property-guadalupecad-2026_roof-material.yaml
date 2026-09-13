@@ -1,0 +1,83 @@
+# Recipe: Guadalupe County, TX certified appraisal roll, improvement
+# features member (PACS File #9): roof_material from the district's
+# 'Roof Covering' attribute. Same download and File #9 row shape as the
+# roll's room-count supplements; read
+# US-TX-GUA_property-guadalupecad-2026 for the source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value): A is the 66,698 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# roof_material A 72.4% (B 80.7%, E 44.2%, M 58.5%), 18 distinct codes.
+
+description: >-
+  Guadalupe County, TX certified appraisal roll, improvement features member:
+  roof_material per building, reduced to the property.
+
+admin_id: US-TX-GUA
+
+entity:
+  entity_type: property
+  source:
+    source_id: guadalupecad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://guadalupead.org/certified-appraisal-roll/"
+    download_url: "https://guadalupead.org/wp-content/uploads/2026/07/2026-GCO-Certified-Appraisal-Roll-Supp-0.zip"
+  version: 2026
+
+compressed_file_name: "2026-GCO-Certified-Appraisal-Roll-Supp-0.zip"
+uncompressed_file_name: "2026 GCO Certified Appraisal Roll Supp 0/2026-07-28_016967_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  roof_material: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Roof Covering'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  roof_material: first
+
+supplements: US-TX-GUA_property-guadalupecad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: roof-material

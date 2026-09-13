@@ -1,0 +1,207 @@
+# Recipe: Craven County, NC building cards (per structure),
+# supplementing the county's property roll.
+#
+# Source: the county's bulk building-card shapefile
+# (`gis.cravencountync.gov`, same portal as the property roll), one row
+# per assessed structure/card on a parcel (a parcel with an outbuilding
+# has more than one row). Carries the construction year and room counts
+# that the roll's CSV export (US-NC-CRA_property-cravencounty-2026) does
+# not.
+#
+# The shapefile has no dedicated parcel-id column of its own; `PPRIO`
+# is the same raw assessor id format as the roll's `PID` (e.g.
+# `9-999   -999`), confirmed by direct inspection of sample records, so
+# `parcel_id_local` below derives the same standardized key and joins
+# the roll without a spatial join.
+#
+# KNOWN ISSUE: the published .shp is silently truncated to 1,000 of the
+# county's ~45,000 building records -- the .shx/.dbf indexes report 45,000,
+# but every geometry reader (fiona, pyogrio/GDAL 3.12) stops at 1,000 with
+# no error or warning. Reproduced on two independent downloads a day apart
+# (identical file size both times), and the zip itself contains stray
+# ArcGIS Server .lock files, suggesting the export was captured mid-write by
+# the county's nightly job. This recipe still ingests correctly and will
+# pick up the full roll automatically once the county's export is fixed
+# (`reprocess=True` to re-read after a redownload); until then, treat
+# year_built coverage from this source as a ~2% sample, not the full county.
+#
+# Building features, MEASURED 2026-09-13 in memory on the 1,000
+# published cards (302 carry a room count: the dwelling cards): wall
+# (BDWACD) 96.7%, roof covering (BDRMCD) 97.7% and heat (BDHTCD)
+# 99.7% of dwelling cards, each a numeric source code. The county
+# publishes no code list, and the shapefile's metadata defines no
+# field, so these names follow the export's field names (B building,
+# D detail, CD code). Effective year (BYREF) is kept on dwelling
+# cards only. has_garage is true for a Y in BDGARA (19 dwelling
+# cards) or a card of structure type GAR, has_carport for a card of
+# type CPT; both are null elsewhere. On the roll these reach 0.7% of
+# residential properties (0.2% for the two flags) until the export
+# is fixed.
+#
+# foundation_description is BDFOCD, a numeric foundation code kept
+# as published (97.4% of dwelling cards, 04 on 238 of 302) for
+# curate to translate once the county's code list is known. A key
+# takes its first coded card: 97.3% of keys with a dwelling card.
+#
+# Not mapped: BDQLCD (a quality code: LC, AV, D+, ...) is on every
+# card, outbuildings included, and a key's first card is its
+# dwelling for only 61.4% of keys, so a per-property grade would
+# often be a shed's. BDBASE and BYRRM are empty;
+# BDSTYP (RES, STG, CPT, GAR, BN1, ...) is a structure type, not a
+# style. area_sqft sums BTOAR over every card, so it includes sheds,
+# carports and decks: it is neither living nor gross building area,
+# and neither of those attributes is derived from it.
+
+description: >-
+  Craven County, NC building cards (year built, floor area, stories, rooms,
+  baths per structure) supplementing the county property roll; upstream
+  export truncated.
+
+admin_id: US-NC-CRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: cravencounty
+    # Checked 2026-08-20 at the download page: it carries a warranty
+    # disclaimer only ("does not warrant the accuracy, timeliness or
+    # completeness"), with no licence, no attribution requirement and
+    # nothing about redistribution. Disclaiming liability is not granting
+    # a licence, so this stays unknown rather than becoming false.
+    license: "unknown (warranty disclaimer only; no licence stated)"
+    terms_url: "https://gis.cravencountync.gov/downloads-zip-files.aspx"
+    redistribution_restricted: null
+    portal_url: "https://gis.cravencountync.gov/downloads-zip-files.aspx"
+    download_url: "https://gis.cravencountync.gov/Downloads/Shape_files/parcels_with_bldgs_info_shape.zip"
+  version: "2026"
+
+compressed_file_name: "parcels_with_bldgs_info_shape.zip"
+uncompressed_file_name: "parcels_with_bldgs_info.shp"
+
+# The shapefile's own .prj sidecar is blank (verified on the downloaded
+# file), so geopandas reads it with no CRS. The XML metadata sidecar
+# (parcels_with_bldgs_info.shp.xml) confirms NAD83 State Plane NC FIPS 3200
+# Feet, EPSG:2264 -- the same system Bladen's county layer uses.
+source_crs: "EPSG:2264"
+
+# Room counts, measured on the 1,000 published cards: bedrooms (BNUBR)
+# 28.3%, rooms (BNURM) 30.2%, baths (BBATH) 30.3%. BBATH packs full and
+# half baths into one decimal: 2.1 is two full and one half, 1.2 one
+# full and two half (x.1 on 13.9% of populated cards, no x.5 value).
+# The transformations below split it and fold it as full + 0.5 x half.
+columns:
+  parcel_id_assessor: PPRIO
+  year_built: BYRBL
+  area_sqft: BTOAR
+  n_stories: BSTOR
+  # BAPVA (appraised building value) is left unmapped: the roll carries
+  # the property's improvement value, and a supplement column covering
+  # half the spine would overwrite it with a card sum.
+  n_bedrooms: BNUBR
+  n_rooms: BNURM
+  heating_type: BDHTCD
+  exterior_wall: BDWACD
+  roof_material: BDRMCD
+  foundation_description: BDFOCD
+  effective_year_built: BYREF
+
+transformations:
+  # Effective year from dwelling cards only (cards with a room count):
+  # sheds and carports carry one too and would pull the mean.
+  - type: expression
+    expression: "effective_year_built * n_rooms / n_rooms"
+    inputs: [effective_year_built, n_rooms]
+    output: effective_year_built
+  # Garage: a Y in the dwelling card's garage field, or a card of
+  # structure type GAR. Carport: a card of type CPT. True where
+  # present, null elsewhere (a missing card is not a recorded absence).
+  - type: remap
+    input: BDGARA
+    mapping: {"Y": true}
+    output: garage_on_card
+  - type: remap
+    input: BDSTYP
+    mapping: {"GAR": true}
+    output: garage_card
+  - type: aggregate
+    operation: max
+    inputs: [garage_on_card, garage_card]
+    output: has_garage
+  - type: remap
+    input: BDSTYP
+    mapping: {"CPT": true}
+    output: has_carport
+  # BDFOCD is blank on cards without a foundation record: strip it and
+  # null the blank, or it becomes a code of its own.
+  - type: string
+    operation: strip
+    input: foundation_description
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+  - type: expression
+    expression: "BBATH * 10"
+    inputs: [BBATH]
+    output: bath_code
+  - type: unary
+    operation: round
+    input: bath_code
+    output: bath_code
+  - type: expression
+    expression: "bath_code % 10"
+    inputs: [bath_code]
+    output: n_half_bathrooms
+  - type: expression
+    expression: "(bath_code - n_half_bathrooms) / 10 + 0.5 * n_half_bathrooms"
+    inputs: [bath_code, n_half_bathrooms]
+    output: n_bathrooms
+
+drop_columns:
+  - bath_code
+  - garage_on_card
+  - garage_card
+
+# A parcel with an outbuilding carries several cards; its rooms and
+# floor area are the sum over them, not their mean, its stories the
+# tallest card and its year built the earliest (as Victoria TX's
+# improvement-detail table). Codes take the first card that has one
+# (the wall, roof and heat codes are filled on the dwelling cards
+# only), flags the max, the effective year the mean of the dwellings.
+aggregation_function:
+  year_built: min
+  area_sqft: sum
+  n_stories: max
+  n_bedrooms: sum
+  n_rooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  effective_year_built: mean
+  heating_type: first
+  exterior_wall: first
+  roof_material: first
+  foundation_description: first
+  has_garage: max
+  has_carport: max
+
+# The cards detail the roll's properties rather than being properties
+# themselves: the property spine's union skips them, and its
+# `supplements_only` link_by_id joins them onto the roll's rows by
+# parcel_id_local, reduced per property as above. Before this key the
+# property spine counted each card as a property. Measured 2026-09-12:
+# the 1,000 published cards carry 385 distinct keys, all 385 found in
+# the roll.
+supplements: US-NC-CRA_property-cravencounty-2026
+
+# Standardized cross-comparable matching key from the assessor id (same raw
+# format and conversion as the roll's PID).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
+  filename: building-cards

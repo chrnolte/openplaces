@@ -1,0 +1,175 @@
+# Recipe: Shelby County, OH auditor roll, ISSG Parcel Dwelling Feature
+# table. Supplement of US-OH-SH_property-shelbycounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per sketched feature attached to a dwelling card. Type is
+# 'CODE-DESCRIPTION'; Area is the feature's area in sqft. Capacity ('car
+# capacity of garage') is almost never set and is not read. Read here,
+# by code:
+#   garages   the 17 G.. garage codes (frame, brick, stone,
+#             block, metal, poured concrete; two-wall and
+#             finished forms) and BAS basement garage; the
+#             L-GARAGE LOFT is not a garage
+#   carports  CAR carport
+#   porches   OFP, EFP, OMP, EMP, OBP, EBP, their upper U forms,
+#             POR portico and P porch
+#   decks     WDD and DK decks; PAT, CVP covered, FLA flagstone
+#             and CON concrete patios
+# Stoops, roof extensions, bay windows, ceilings, canopies, overhangs,
+# breezeways, balconies, pavers (PAV) and the OB-OUTBUILDINGS rows are
+# not read.
+#
+# garage_type keeps the source's Type text on garage rows. has_garage
+# and has_carport are true where such a feature is recorded and null
+# elsewhere: the table lists features present, never absent ones.
+# Detached garages and carports are Parcel Improvement rows (see
+# _improvements), which sets the same two flags; garage_area_sqft counts
+# the garages listed here only.
+#
+# MEASURED 2026-09-13: 59,782 feature rows over 16,832 parcels, keys
+# 99.92% in the roll. On the 14,254 live land-use 510 properties: a
+# feature row on 99.3%; a garage on 70.9% (GF 5,523, GB 3,613, BAS 250,
+# GFF 223, GFW 149, GBW 147, GBF 135, others 70; garage area > 0 on
+# 69.2%); porch area > 0 on 73.2%; deck or patio area > 0 on 73.9%;
+# carport 1.5%.
+
+description: >-
+  Shelby County, OH ISSG Parcel Dwelling Feature table: attached garage,
+  carport, porch and deck features per property.
+
+admin_id: US-OH-SH
+
+entity:
+  entity_type: property
+  source:
+    source_id: shelbycounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms stated on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://realestate.shelbycountyauditors.com/property-data-downloads"
+    download_url: "https://shelby-auditor-public.issg.io/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Dwelling Feature.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 2}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: feature_area
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(GF|GB|GFW|GBW|BAS|GFF|GBF|GFWF|GSTN)-", value: 1}
+      - {pattern: "(GBWF|GCB|GMTL|GSTNW|GST|GPC|GSTF|GSF)-", value: 1}
+    default: 0
+    output: garage_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "((OFP|EFP|OMP|EMP|OBP|EBP)U?|POR|P)-", value: 1}
+    default: 0
+    output: porch_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(WDD|DK|PAT|CVP|FLA|CON)-", value: 1}
+    default: 0
+    output: deck_row
+  - type: unary
+    operation: to_numeric
+    input: garage_row
+    output: garage_row
+  - type: unary
+    operation: to_numeric
+    input: porch_row
+    output: porch_row
+  - type: unary
+    operation: to_numeric
+    input: deck_row
+    output: deck_row
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, garage_row]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, porch_row]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, deck_row]
+    output: deck_area_sqft
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(GF|GB|GFW|GBW|BAS|GFF|GBF|GFWF|GSTN)-", value: true}
+      - {pattern: "(GBWF|GCB|GMTL|GSTNW|GST|GPC|GSTF|GSF)-", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "CAR-", value: true}
+    output: has_carport
+  # The garage codes found in the extract, kept verbatim; any other
+  # Type leaves garage_type null.
+  - type: remap
+    input: Type
+    mapping:
+      "GF-FRAME GARAGE": "GF-FRAME GARAGE"
+      "GB-BRICK GARAGE": "GB-BRICK GARAGE"
+      "GFW-FRAME GARAGE - 2 WALLS": "GFW-FRAME GARAGE - 2 WALLS"
+      "GBW-BRICK GARAGE - 2 WALLS": "GBW-BRICK GARAGE - 2 WALLS"
+      "BAS-BASEMENT GARAGE": "BAS-BASEMENT GARAGE"
+      "GFF-FRAME GARAGE - FINISHED": "GFF-FRAME GARAGE - FINISHED"
+      "GBF-BRICK GARAGE - FINISHED": "GBF-BRICK GARAGE - FINISHED"
+      "GFWF-FRAME GARAGE - 2 WALLS, FINISHED": "GFWF-FRAME GARAGE - 2 WALLS, FINISHED"
+      "GSTN-STONE GARAGE": "GSTN-STONE GARAGE"
+      "GBWF-BRICK GARAGE - 2 WALLS, FINISHED": "GBWF-BRICK GARAGE - 2 WALLS, FINISHED"
+      "GCB-CONCRETE BLOCK GARAGE": "GCB-CONCRETE BLOCK GARAGE"
+      "GMTL-METAL GARAGE": "GMTL-METAL GARAGE"
+      "GSTNW-STONE GARAGE - 2 WALLS": "GSTNW-STONE GARAGE - 2 WALLS"
+      "GST-STONE GARAGE": "GST-STONE GARAGE"
+      "GPC-POURED CONCRETE GARAGE": "GPC-POURED CONCRETE GARAGE"
+      "GSTF-STONE GARAGE - FINISHED": "GSTF-STONE GARAGE - FINISHED"
+      "GSF-STONE GARAGE - FINISHED": "GSF-STONE GARAGE - FINISHED"
+    output: garage_type
+
+drop_columns:
+  - feature_area
+  - garage_row
+  - porch_row
+  - deck_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-SH_property-shelbycounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: features

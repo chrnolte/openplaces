@@ -1,0 +1,160 @@
+# Recipe: Brown County, OH auditor roll, ISSG Parcel Dwelling Feature
+# table. Supplement of US-OH-BR_property-browncounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per sketched feature attached to a dwelling card. Type is
+# 'CODE-DESCRIPTION'; Area is the feature's area in sqft. Capacity
+# ("car capacity of garage") is set on under 0.1% of rows and is not
+# read. Brown's codes differ from other ISSG counties':
+#   garages   any Type naming a GARAGE: FRG frame, BRG brick, MTLG
+#             metal, CBG concrete block, BASG basement, STNG/STG
+#             stone, STCG stucco, GC garage/carport
+#   carports  any Type naming a CARPORT (CAR, GC)
+#   porches   OFP/OBP open front/back, OP open, EFP/EBP/EP enclosed,
+#             OMP/EMP open/enclosed masonry, CVP covered, POR porch
+#   decks     DK and WDD/WDE deck, PAT patio
+# Stoops, canopies, overhangs, sheds and the unlabeled P, OBW, EBW,
+# CON, BAL, TER and UTIL codes are not read.
+#
+# garage_type keeps the source's Type text on garage rows. has_garage
+# and has_carport are true where such a feature is recorded and null
+# elsewhere: the table lists features present, never absent ones.
+# Detached garages and carports are Parcel Improvement rows (see
+# _improvements), which sets the same two flags; garage_area_sqft
+# counts attached and basement garages only.
+#
+# MEASURED 2026-09-13: 37,077 feature rows over 15,363 parcels, keys
+# 99.98% in the roll. On the 11,446 live land-use 510 properties: a
+# feature row on 95.2%; a garage on 46.0% (FRG 3,472, BRG 1,570, MTLG
+# 80, GC 54, CBG 34, stone 23, BASG 22, STCG 6; garage area > 0 on
+# 45.3%); porch area > 0 on 81.6%; deck or patio area > 0 on 42.3%;
+# carport 3.6%.
+
+description: >-
+  Brown County, OH ISSG Parcel Dwelling Feature table: attached garage,
+  carport, porch and deck features per property.
+
+admin_id: US-OH-BR
+
+entity:
+  entity_type: property
+  source:
+    source_id: browncounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://realestate.browncountyauditor.org/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://realestate.browncountyauditor.org/property-data-downloads"
+    download_url: "https://realestate.browncountyauditor.org/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Dwelling Feature.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: feature_area
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*GARAGE", value: 1}
+    default: 0
+    output: garage_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(OFP|OP|EFP|EP|OMP|OBP|EBP|EMP|CVP|POR)-", value: 1}
+    default: 0
+    output: porch_row
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(DK|WDD|WDE|PAT)-", value: 1}
+    default: 0
+    output: deck_row
+  - type: unary
+    operation: to_numeric
+    input: garage_row
+    output: garage_row
+  - type: unary
+    operation: to_numeric
+    input: porch_row
+    output: porch_row
+  - type: unary
+    operation: to_numeric
+    input: deck_row
+    output: deck_row
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, garage_row]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, porch_row]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [feature_area, deck_row]
+    output: deck_area_sqft
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*GARAGE", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: ".*CARPORT", value: true}
+    output: has_carport
+  # The garage codes found in the extract, kept verbatim; any other
+  # Type leaves garage_type null.
+  - type: remap
+    input: Type
+    mapping:
+      "FRG-FRAME GARAGE": "FRG-FRAME GARAGE"
+      "BRG-BRICK GARAGE": "BRG-BRICK GARAGE"
+      "MTLG-METAL GARAGE": "MTLG-METAL GARAGE"
+      "CBG-CONCRETE BLOCK GARAGE": "CBG-CONCRETE BLOCK GARAGE"
+      "BASG-BASEMENT GARAGE": "BASG-BASEMENT GARAGE"
+      "STNG-STONE GARAGE": "STNG-STONE GARAGE"
+      "STG-STONE GARAGE": "STG-STONE GARAGE"
+      "STCG-STUCCO GARAGE": "STCG-STUCCO GARAGE"
+      "GC-GARAGE/CARPORT": "GC-GARAGE/CARPORT"
+    output: garage_type
+
+drop_columns:
+  - feature_area
+  - garage_row
+  - porch_row
+  - deck_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-BR_property-browncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: features

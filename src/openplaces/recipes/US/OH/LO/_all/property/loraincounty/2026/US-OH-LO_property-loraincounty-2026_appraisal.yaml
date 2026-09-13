@@ -1,0 +1,69 @@
+# Recipe: Lorain County, OH auditor roll, ISSG Parcel_Appraisal table.
+# Supplement of US-OH-LO_property-loraincounty-2026; see that recipe
+# for the source, its terms and the join key.
+#
+# Row shape, measured on the extract dated 2026-09-12: 194,753 rows,
+# one per Parcel_Number_U, all tax year 2025, retired parcels
+# included. Those 23,032 retired parcels are not on the roll, so
+# their rows join to nothing.
+#
+# Columns. Land_Use_Code is the Ohio DTE land-use code (3 digits on
+# every row); Land_Use is its description and Class its broad group
+# (Residential 155,961, Commercial, Agriculture, Industrial, Public
+# Utility), neither mapped. Total_Appraised_Land is above zero on
+# 83.3% of rows and Total_Appraised_Improvement on 64.0%.
+# Neighborhood is the assessor's valuation neighborhood
+# (tax_neighborhood_code, 772 values), on 100% of the 89,855 live
+# land-use 510 properties (measured 2026-09-13).
+
+description: >-
+  Lorain County, OH ISSG Parcel_Appraisal table: land-use code and
+  appraised land and improvement value per property.
+
+admin_id: US-OH-LO
+
+entity:
+  entity_type: property
+  source:
+    source_id: loraincounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      Auditor)
+    terms_url: "https://loraincountyauditor.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://loraincountyauditor.gov/"
+    download_url: "https://loraincountyauditor.gov/api/Document/Public%20RecordsSqlite.zip"
+  version: "2026"
+
+compressed_file_name: "Public RecordsSqlite.zip"
+uncompressed_file_name: "extract.db"
+layer: Parcel_Appraisal
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  use_group_code: Land_Use_Code
+  land_value: Total_Appraised_Land
+  improvement_value: Total_Appraised_Improvement
+  tax_neighborhood_code: Neighborhood
+
+columns_to_categorical:
+  - use_group_code
+
+aggregation_function:
+  land_value: sum
+  improvement_value: sum
+  tax_neighborhood_code: first
+
+supplements: US-OH-LO_property-loraincounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: appraisal

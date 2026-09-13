@@ -1,0 +1,86 @@
+# Recipe: Travis County, TX certified appraisal roll -- improvement
+# information, accessory dwellings (TCAD). Sibling of
+# US-TX-TRA_property-traviscad-2026; see that recipe's header for the
+# layout and the join key.
+#
+# SOURCE MEMBER. File #7, IMP_INFO.TXT (114 characters wide): one row
+# per improvement (a building), 454,986 rows, with the improvement type
+# (imprv_type_cd, the district's list) and its state code.
+#
+# WHAT IS MAPPED. has_accessory_dwelling, true where a property has an
+# improvement of type 120 ADDITIONAL LIVING QUARTER (5,879
+# improvements) or 21 GARAGE APARTMENT (1,892). The member lists the
+# improvements that exist, but it does not say that a property without
+# such a type has no second unit, so the flag is true or null. The
+# _improvement-features recipe sets the same flag from LIVING QUARTERS
+# detail lines; the property join fills one from the other.
+#
+# MEASURED (2026-09-13): 7,771 improvements of the two types; the flag
+# is true on 2.3% of the 290,237 single-family properties (an
+# improvement with state code A1). The detail lines 483 and 283 flag
+# under 0.1% of them, so this member carries almost all of the flag.
+
+description: >-
+  Travis County, TX certified appraisal roll, improvement information
+  member: flags a property with an additional living quarter or garage
+  apartment.
+
+admin_id: US-TX-TRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: traviscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the data; FAQ: roll 'made available free of charge')"
+    terms_url: "https://traviscad.org/faq-items/can-i-get-a-copy-of-the-appraisal-roll/"
+    redistribution_restricted: null
+    portal_url: "https://traviscad.org/publicinformation"
+    download_url: "https://traviscad.org/wp-content/largefiles/2026%20Certified%20Appraisal%20Export%20Supp%200_07182026.zip"
+  version: 2026
+
+compressed_file_name: "2026 Certified Appraisal Export Supp 0_07182026.zip"
+uncompressed_file_name: "IMP_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #7 (Improvement Information); only the type is needed.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [imprv_type_cd, 10]
+
+columns:
+  improvement_type: imprv_type_cd
+
+query: "improvement_type in ['120', '21']"
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: remap
+    input: improvement_type
+    mapping: {"120": true, "21": true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - improvement_type
+
+aggregation_function:
+  has_accessory_dwelling: max
+
+supplements: US-TX-TRA_property-traviscad-2026
+# IMP_INFO.TXT carries prop_id and no geo_id; see the bedrooms recipe.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: improvement-info

@@ -1,0 +1,104 @@
+# Recipe: Wayne County, OH parcel roll (county ArcGIS Online layer
+# "Parcel_Dwelling_Parcels", one row per parcel).
+#
+# Source: the WayneCountyGIS public hosted feature service
+# Parcel_Dwelling_Parcels (item f471251af50145fab05e90f167e14087):
+# parcel polygons joined to the auditor's parcel fields (PP*) and to
+# ISSG dwelling cards (Card, Bed_Rooms, Full_Baths, Half_Baths,
+# Story_Height, ...). The auditor's site returns a Cloudflare 403 to
+# the openplaces User-Agent; no file download from it is known.
+#
+# Bulk vs REST (acquiring_sources.md Phase 3). The layer offers Query
+# only, but ArcGIS Hub still builds a CSV export of it; the download
+# URL below is the export Hub reported as ready. The equivalence test
+# passed exactly on 2026-09-12: the export holds 57,781 rows, as does
+# the live layer, and the counts of Bed_Rooms > 0 (37,333),
+# Full_Baths > 0 (36,955), Half_Baths > 0 (13,829), Story_Height > 0
+# (37,486) and Card > 0 (37,494) are identical in both. So the layer
+# is not paged.
+#
+# Row shape: one row per parcel polygon and dwelling card. 57,781 rows
+# over 57,388 distinct Parcel; parcels without a dwelling appear once
+# with the card fields blank, and 147 rows have Card > 1. This roll
+# keeps one row per Parcel (drop_duplicates) and maps the parcel-level
+# fields only; the _dwelling supplement reads the card rows of the same
+# file.
+#
+# Columns. PPClassCode is the Ohio DTE land-use code (3 digits; 510 on
+# 21,201 rows). The names are the other way round from what they hold:
+# PPClassNumber carries the class letter (R, A, C, I) and is not
+# mapped. PPLandValue,
+# PPImprValue, PPTotalValue and PPAcres are parcel values repeated on
+# every card row of a parcel. PPAddress is the situs address as one
+# string. Never mapped: PPOwner, PPOwnerAddress, PPTaxPayer,
+# PPTaxPayerAddress, PPDeeded and PPListed (owner and taxpayer data).
+#
+# Join key. Parcel ('99-99999.999') matches OGRIP's LocalParcelID as
+# shipped on 198 of 198 sampled ids (a contiguous block at a random
+# offset), measured against the live OGRIP layer (inventory).
+
+description: >-
+  Wayne County, OH parcel roll from the county's parcel-dwelling layer
+  (ArcGIS Hub CSV): land-use code, values, acreage and situs.
+
+admin_id: US-OH-WY
+
+entity:
+  entity_type: property
+  source:
+    source_id: waynecounty
+    # Checked 2026-09-12: the item carries no licenseInfo or
+    # accessInformation. The auditor's site terms could not be read
+    # (Cloudflare).
+    license: "unknown (no licence on the ArcGIS item; auditor site terms unread)"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=f471251af50145fab05e90f167e14087"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/f471251af50145fab05e90f167e14087_0/downloads/data?format=csv&spatialRefId=3734&where=1%3D1"
+  version: "2026"
+
+uncompressed_file_name: "wayne_parcel_dwellings.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+  use_group_code: PPClassCode
+  land_value: PPLandValue
+  improvement_value: PPImprValue
+  total_value: PPTotalValue
+  area_ac: PPAcres
+  address: PPAddress
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+columns_to_categorical:
+  - use_group_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

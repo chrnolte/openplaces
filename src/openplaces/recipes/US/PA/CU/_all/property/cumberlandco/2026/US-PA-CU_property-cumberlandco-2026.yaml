@@ -1,0 +1,283 @@
+# Recipe: Cumberland County, PA property roll with main-card CAMA.
+#
+# TERMS NOTE (2026-09-12): the item's terms end in a consent-by-use
+# sentence ("BY USING THIS DATA, I UNDERSTAND AND KNOWINGLY CONSENT TO
+# THE ABOVE TERMS AND CONDITIONS"). It is not a click-through gate and
+# nothing here accepts it on anyone's behalf (no accept_terms). The
+# recipe was held until the user's approval to use the source was
+# relayed to the recipe author through the coordinating session on
+# 2026-09-12. Anyone running it is the "user" those terms address; the
+# full text is quoted in `license` below.
+#
+# Source: Cumberland County's ArcGIS Online feature layer "Tax Parcel
+# Tax Estimates" (service `Tax_Parcels`, layer 0, owner `gis_ccpa`,
+# item 6ce565f2f9c04cfaab1e63dc6663ff15): parcel polygons carrying
+# the assessment record and the main dwelling card. The separate "Tax
+# Parcels Open Data" layer has 17 fields and no CAMA. The county also
+# sells a CAMA extract for $100 by request form; not used.
+#
+# FORMAT. The Hub CSV export (33,047,731 bytes, 2026-09-12), fetched
+# once with the identified openplaces user agent (HTTP 200). A CSV,
+# so no geometry: parcels come from PASDA, which covers Cumberland.
+# The export holds 102,885 rows against 104,641 on the live layer
+# (`returnCountOnly`); the gap reads as snapshot lag. The export
+# omits the live layer's PID and PIN columns (the v3 and v1 export
+# URLs give the same file).
+#
+# JOIN KEY. The parcel number is recovered from `Link`, whose last
+# '/'-separated segment is the assessor PIN ('99-99-9999-999' shape,
+# fabricated; letter suffixes on about 10% of rows). Under the bundled
+# US-PA-CU conversion it matches 99.3% of the county's distinct keys
+# and covers 96.9% of PASDA's 99,732 distinct Cumberland keys. The
+# conversion yields no key for 2,395 rows (407 blank, the rest
+# irregular suffixed shapes), the same on both sides. No override row.
+#
+# ROW SHAPE. Not per card: each row carries one (main) dwelling card.
+# 99,085 keys: 97,018 with one row, 1,709 with two, 358 with three or
+# more (5,702 rows on repeated keys). On every repeated key the room
+# fields are identical, and class, land use and value agree on 99.8%:
+# the repeats are pieces of one parcel, not further properties or
+# cards. drop_duplicates below keeps one row per key and content (a
+# roll, so no `supplements:` and no aggregation_function): 102,885
+# rows become 99,093 over 99,084 distinct keys, the 9 extra rows being
+# keys whose class codes differ between pieces.
+#
+# ROOM COUNTS, measured in memory through this recipe after
+# preprocessing (see pa_recipes_B validation, 2026-09-12), on the
+# 76,761 P_TYPE R (residential) rows: n_bedrooms > 0 99.98%,
+# n_bathrooms 99.97%, n_half_bathrooms 58.6%, n_rooms 100%, year
+# built and SQFT 100%, n_stories 81.0% (letter codes nulled). After
+# conversion 97.6% of rows match PASDA. Server-side, bedrooms > 0 on
+# 87,711 and full baths on 87,401 of 104,641 features.
+#
+# Baths: FULL_BATH_ is the full count and HALF_BATH_ the half count,
+# integers. n_bathrooms folds them as full + 0.5 x half below.
+#
+# STORY_HEIG is text: 1, 2 or 3 on 80.8% of residential rows; the rest
+# carry letter codes (S, B, H, F, A, Z: probably split-level, bi-level
+# and half-story variants, no decoder published) or a blank. Only the
+# numeric values become n_stories; the letter codes are nulled.
+# YEAR_BLT is a single space (not blank) on 16,033 rows; cast below.
+#
+# P_TYPE (49 class codes, R 77,599 rows) maps to use_group_code and
+# LUC (157 codes) to use_subgroup_code; neither has a label in the
+# export. LAND_DESC is free text and is not mapped. DWELLING_T
+# (DETACH, TOWN, DUPHLF, CONDO, SEMI-D, ROW, MODULR, ...) is the
+# structure type, so building_style. MUNI_NAME (50 municipalities)
+# maps to city, as in the Huntingdon recipe.
+#
+# BUILDING FEATURES (2026-09-13). The county publishes no field
+# definitions for the CAMA columns (the item, its layer and its CAMA
+# dashboard give none), so meanings below are read from names and
+# values:
+#   - exterior_wall: PRIMARY_EX (Vinyl, Aluminum, Brick, ...), as
+#     published.
+#   - has_central_air: AIR_CONDIT AC true, NO false, HP null.
+#   - has_basement: BASEMENT_P (see the transformation).
+#   - basement_finished_area_sqft: FINISHED_B, 0 nulled.
+#   - SQFT: whether this is living or gross area is not documented,
+#     so living_area_sqft and building_area_sqft are not derived;
+#     area_sqft keeps it as before.
+# MEASURED in memory through this recipe on the 76,761 P_TYPE R
+# rows:
+#   exterior_wall filled          99.99%
+#   has_central_air   true 61.6%, false 28.0%, null 10.4%
+#   has_basement      true 80.7%, false 15.3%, null 4.1%
+#   basement_finished_area_sqft > 0   23.5%
+#   foundation_description  100% (BASEMENT_P as published: 100
+#     65.1%, SLB 13.4%, 50 9.0%, 75 4.7%, BI 4.1%, 25 1.9%, CRL
+#     1.9%, PI under 0.1%), 2026-09-13
+# No construction or frame-type field is published (PRIMARY_EX is
+# the exterior wall, DWELLING_T the structure type), so
+# construction_description is not mapped.
+# 23 R rows record finished basement area on a slab, crawl or piers
+# code; both are kept as published.
+#
+# Deliberately not mapped: OWNER and CARE_OF; values, taxes and sales
+# (LAND_VAL, BLDG_VAL, TOTAL_VAL, SALEPRICE, SALEDATE), out of scope
+# for this room-count pass; BASEMENT_G (0 on 97% of R rows, else
+# mostly 300, 600 or 900: probably a basement garage in square feet,
+# undocumented). The live layer's NBHD_ID is not in the CSV export.
+
+description: >-
+  Cumberland County, PA property roll with main dwelling card: class and
+  land-use codes, situs, year built, living area, rooms, bedrooms,
+  bathrooms, stories.
+
+admin_id: US-PA-CU
+
+entity:
+  entity_type: property
+  source:
+    source_id: cumberlandco
+    # Read in full 2026-09-12 from the item's licenseInfo (1,268
+    # characters). An as-is, no-liability disclaimer: it contains no
+    # redistribution, resale or derivative-work clause, so
+    # redistribution_restricted is false. The consent-by-use sentence
+    # binds whoever uses the data to the disclaimer (see header).
+    license: >-
+      "Cumberland County provides these Geographic Information System
+      (GIS) maps and data on its web site as a public information
+      service. Every reasonable effort has been made to assure the
+      accuracy of these maps and associated data. The maps and data
+      being provided herein are intended for informational purposes
+      only. No guarantee is made as to the accuracy of the maps and
+      data and they should not be relied upon for any purpose other
+      than general information. CUMBERLAND COUNTY ASSUMES NO LIABILITY
+      ARISING FROM USE OF THESE MAPS OR DATA. THE MAPS AND DATA ARE
+      PROVIDED WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESSED OR
+      IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+      MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+      Furthermore, Cumberland County assumes no liability for any
+      errors, omissions, or inaccuracies in the information provided
+      regardless of the cause of such, or for any decision made, action
+      taken, or action not taken by the user in reliance upon any maps
+      or data provided herein. The user assumes the risk that the
+      information may not be accurate. BY USING THIS DATA, I UNDERSTAND
+      AND KNOWINGLY CONSENT TO THE ABOVE TERMS AND CONDITIONS. For more
+      information, please visit the Cumberland County GIS website."
+      (ArcGIS item licenseInfo)
+    terms_url: "https://www.arcgis.com/home/item.html?id=6ce565f2f9c04cfaab1e63dc6663ff15"
+    redistribution_restricted: false
+    portal_url: "https://www.arcgis.com/home/item.html?id=6ce565f2f9c04cfaab1e63dc6663ff15"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/6ce565f2f9c04cfaab1e63dc6663ff15/csv?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "Tax_Parcels.csv"
+encoding: utf-8-sig
+
+# Keys and codes as text; the counts stay numeric.
+csv_dtype:
+  Link: str
+  P_TYPE: str
+  LUC: str
+  STORY_HEIG: str
+  YEAR_BLT: str
+  AIR_CONDIT: str
+  BASEMENT_P: str
+
+columns:
+  address: SITUS
+  city: MUNI_NAME
+  use_group_code: P_TYPE
+  use_subgroup_code: LUC
+  building_style: DWELLING_T
+  year_built: YEAR_BLT
+  area_sqft: SQFT
+  n_stories: STORY_HEIG
+  n_rooms: TOTAL_ROOM
+  n_bedrooms: BEDROOM_CO
+  n_bathrooms: FULL_BATH_
+  n_half_bathrooms: HALF_BATH_
+  exterior_wall: PRIMARY_EX
+  basement_finished_area_sqft: FINISHED_B
+
+# One row per key and content: drops the repeated pieces of one
+# parcel (see ROW SHAPE) without collapsing rows whose Link is null.
+drop_duplicates:
+  - Link
+  - use_group_code
+  - use_subgroup_code
+  - address
+  - year_built
+  - area_sqft
+  - n_stories
+  - n_rooms
+  - n_bedrooms
+  - n_bathrooms
+  - n_half_bathrooms
+
+transformations:
+  # The assessor PIN is the last '/'-separated segment of Link.
+  - type: string
+    operation: split_take
+    input: Link
+    args:
+      sep: "/"
+      index: -1
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: address
+    output: address
+  # Blanks are a single space; letter story codes have no decoder.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # FINISHED_B is 0, not blank, where no finished basement area is
+  # recorded, including rows without a dwelling card.
+  - type: unary
+    operation: null_if_equal
+    input: basement_finished_area_sqft
+    args:
+      value: 0
+    output: basement_finished_area_sqft
+  # AIR_CONDIT: AC, NO or HP. HP (heat pump) does not say whether the
+  # system is ducted, so it stays null.
+  - type: remap
+    input: AIR_CONDIT
+    mapping: {"AC": true, "NO": false}
+    output: has_central_air
+  # BASEMENT_P: basement share of the footprint (25, 50, 75, 100) or
+  # a letter code (SLB, CRL, PI read as slab, crawl, piers; no
+  # decoder is published). BI matches the bi-level story code and
+  # stays null.
+  - type: remap
+    input: BASEMENT_P
+    mapping:
+      "100": true
+      "75": true
+      "50": true
+      "25": true
+      "SLB": false
+      "CRL": false
+      "PI": false
+    output: has_basement
+  # The same field is the foundation description, kept as published
+  # (a basement share or SLB, CRL, PI, BI) for curate to translate.
+  - type: string
+    operation: strip
+    input: BASEMENT_P
+    output: foundation_description
+  - type: unary
+    operation: null_if_equal
+    input: foundation_description
+    args:
+      value: ""
+    output: foundation_description
+
+drop_columns:
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - use_group_code
+  - use_subgroup_code
+  - building_style
+  - exterior_wall
+  - foundation_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

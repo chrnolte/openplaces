@@ -1,0 +1,135 @@
+# Recipe: Harris County, TX appraisal district residential buildings
+# (HCAD). Supplement of US-TX-HAR_property-hcad-2026; see that recipe
+# for the PDATA export, the terms and the join key.
+#
+# SOURCE MEMBER. building_res.txt in Real_building_land.zip:
+# tab-delimited with header, one row per residential building (acct,
+# bld_num), 1,318,822 rows over 1,286,540 accounts; 2.0% of accounts
+# have more than one building.
+#
+# WHAT IS MAPPED:
+#   heat_ar        living_area_sqft (heated area; equals im_sq_ft and
+#                  base_ar on 99.7% of A1 buildings)
+#   gross_ar       building_area_sqft (gross; equals act_ar on 99.8%,
+#                  and is at least heat_ar on every A1 building)
+#   date_erected   year_built (the earliest building's)
+#   eff            effective_year_built (the latest)
+#   yr_remodel     renovation_year (the latest; 0, "none recorded", is
+#                  nulled by the registry's placeholder rule)
+# Every year outside 1700 to 2026 is nulled as impossible.
+# Areas sum over an account's buildings. qa_cd (quality A to X) is not
+# mapped here: the structural-elements table carries the finer grade
+# (C+, B- and so on) as quality_grade.
+#
+# QUOTING. The free-text notes field holds unbalanced double quotes, and
+# the ingester's reader parses with default quoting, which merges a
+# quoted note with the lines after it. Measured 2026-09-13: 1,316,267
+# rows read from 1,318,822 physical lines, so 2,555 buildings (0.19%)
+# are lost; on every building that is read, the mapped fields equal a
+# read with quoting off exactly (100.000%). A recipe key passing
+# `quoting` to read_csv would recover them; the reader has none today.
+#
+# MEASURED (2026-09-13): 1,316,267 rows read, every account in the
+# roll. Share of the 1,157,703 single-family (state class A1) accounts
+# with a value: living_area_sqft 99.7% (median 1,983),
+# building_area_sqft 99.7% (median 2,532), year_built 99.7% (median
+# 1990), effective_year_built 99.7%, renovation_year 17.8% (median
+# 2016; remodel years up to 2121 occur and those above 2026 are
+# nulled).
+
+description: >-
+  Harris County, TX appraisal residential building table (HCAD PDATA
+  building_res): heated and gross area, year built, effective and
+  remodel years.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "building_res.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  living_area_sqft: heat_ar
+  building_area_sqft: gross_ar
+  year_built: date_erected
+  effective_year_built: eff
+  renovation_year: yr_remodel
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where((effective_year_built >= 1700)
+      & (effective_year_built <= 2026))
+    inputs: [effective_year_built]
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      renovation_year.where((renovation_year >= 1700)
+      & (renovation_year <= 2026))
+    inputs: [renovation_year]
+    output: renovation_year
+
+aggregation_function:
+  living_area_sqft: sum
+  building_area_sqft: sum
+  year_built: min
+  effective_year_built: max
+  renovation_year: max
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: building-res

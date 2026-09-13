@@ -1,0 +1,93 @@
+# Recipe: Hardin County, TX certified appraisal roll -- improvement
+# features, stories (HCAD). Same member (PACS File #9) and row rule as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+#
+# Hardin's "Number of Stories" attribute holds text codes: "STORIES (1"
+# (12,667 rows), "STORIES (2" (665), "STORIES (3", "1 STORY", "2 STORY",
+# "STORIES 1.". The transformation reads the first number in the code;
+# "SPLIT LEVE" (3 rows) has none and becomes null.
+#
+# MEASURED on the 2026 export: 13,384 rows over 13,254 properties; 57.7%
+# of the 22,090 single-family (A) properties carry it, 38.2% of
+# multifamily (B), 43.7% of rural improved (E), one mobile home.
+#
+# REDUCTION. A property's story count is its tallest building's, so the
+# recipe takes the max across buildings, not the sum the room counts use.
+
+description: >-
+  Hardin County, TX certified appraisal roll, improvement features member:
+  story count per building, the tallest building's kept per property.
+
+admin_id: US-TX-HRD
+
+entity:
+  entity_type: property
+  source:
+    source_id: hardincad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hardin-cad.org/data-downloads/"
+    download_url: "https://hardin-cad.org/wp-content/uploads/2026/08/2026-Certified-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Roll.zip"
+uncompressed_file_name: "2026 Certified Roll/2026-08-14_000305_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_stories: imprv_attr_cd
+
+query: "imprv_attr_desc == 'Number of Stories'"
+
+# One row per building, then the max across buildings.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_stories
+    args:
+      pattern: '(?P<n>\d+(?:\.\d+)?)'
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_stories: max
+
+supplements: US-TX-HRD_property-hardincad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: stories

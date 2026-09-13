@@ -1,0 +1,142 @@
+# Recipe: Clermont County, OH CAMA roll, OBY table (iasWorld other
+# buildings and yard items). Supplement of
+# US-OH-CL_property-clermontcounty-2026; see that recipe for the
+# source and the join key.
+#
+# One row per yard item: CODE (the zip's RCOBY table), AREA and UNITS
+# ("Number of Identical Units"). n_outbuildings counts rows whose code
+# is a detached accessory structure, times UNITS: barns (AB1, AB2),
+# crib (AC1), grain bins (AG1-AG3), poultry and hog houses (AH1, AH2),
+# hoop building (AHB), lean-to (AL1), milk house (AM1), pole building
+# (AP1), quonset (AQ1), granary and arena (AR1, AR2), silos (AS1,
+# AS2, AS5), prefabricated steel building (AX1), boathouse (BH2),
+# cabin (CB1), utility building (CU4), shop (EO1), greenhouses (GH1,
+# GH2, GH5), gazebo (GZ1), misc. building on residential property
+# (M98), pool house (PH1), carport (RC1), detached garage (RG1), shed
+# (RS1), picnic shelter (SH7), summer kitchen (SK2) and kennel (Z45).
+# Paving, fences, pools, decks, porches, mobile homes and pads, tanks
+# and commercial or institutional buildings are not counted.
+#
+# Flags, true where the item is recorded and null elsewhere (the
+# table lists what is present): has_pool (RP2 in-ground pool; no
+# above-ground code exists), has_garage (RG1) and has_carport (RC1).
+# _additions sets the garage and carport flags for attached ones.
+# Wood decks (WD1) and porches (SP7) here are not added to the deck
+# and porch areas, which _additions carries.
+#
+# MEASURED 2026-09-13: 102,863 rows over 47,311 parcels, keys 100% in
+# the roll. On the 58,508 land-use 510 properties: an OBY row on
+# 56.9%; n_outbuildings > 0 on 52.9% (median 1); in-ground pool
+# 6.9%; detached garage 13.1%; carport 2.2%.
+
+description: >-
+  Clermont County, OH CAMA OBY table: outbuilding count and pool,
+  detached garage and carport flags per property.
+
+admin_id: US-OH-CL
+
+entity:
+  entity_type: property
+  source:
+    source_id: clermontcounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (site Terms of Use: 'as is', no warranty; no data-specific terms)"
+    terms_url: "https://www.clermontauditor.org/terms-of-use/"
+    redistribution_restricted: null
+    portal_url: "https://www.clermontauditor.org/downloads/"
+    download_url: "https://www.clermontauditor.org/wp-content/uploads/PublicAccess/CLERMONT_AA407.ZIP"
+  version: "2026"
+
+compressed_file_name: "CLERMONT_AA407.ZIP"
+uncompressed_file_name: "OBY.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARID
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: UNITS
+    output: oby_units
+  - type: remap
+    input: CODE
+    mapping:
+      AB1: 1
+      AB2: 1
+      AC1: 1
+      AG1: 1
+      AG2: 1
+      AG3: 1
+      AH1: 1
+      AH2: 1
+      AHB: 1
+      AL1: 1
+      AM1: 1
+      AP1: 1
+      AQ1: 1
+      AR1: 1
+      AR2: 1
+      AS1: 1
+      AS2: 1
+      AS5: 1
+      AX1: 1
+      BH2: 1
+      CB1: 1
+      CU4: 1
+      EO1: 1
+      GH1: 1
+      GH2: 1
+      GH5: 1
+      GZ1: 1
+      M98: 1
+      PH1: 1
+      RC1: 1
+      RG1: 1
+      RS1: 1
+      SH7: 1
+      SK2: 1
+      Z45: 1
+    default: 0
+    output: outbuilding_row
+  - type: binary
+    operation: multiply
+    inputs: [outbuilding_row, oby_units]
+    output: n_outbuildings
+  - type: remap
+    input: CODE
+    mapping: {RP2: true}
+    output: has_pool
+  - type: remap
+    input: CODE
+    mapping: {RG1: true}
+    output: has_garage
+  - type: remap
+    input: CODE
+    mapping: {RC1: true}
+    output: has_carport
+
+drop_columns:
+  - oby_units
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+
+supplements: US-OH-CL_property-clermontcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: oby

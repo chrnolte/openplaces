@@ -21,6 +21,13 @@
 # porch, shed, patio cover -- are the top non-main codes). year_built is
 # 100.0% populated on main-area rows; min differs from mean for 12.0% of
 # multi-row properties.
+#
+# AREA (measured 2026-09-13). area_sqft is the main (living) area: on
+# 4,634 single-family (A) properties it equals living_area_sqft from the
+# sibling ..._improvement-features on 98.6%, the rest differing by the
+# MA3 to MA5 components that recipe also counts. area_sqft is kept for
+# curate; PACS publishes no gross area, so building_area_sqft is not
+# mapped.
 
 description: >-
   Lavaca County, TX certified appraisal roll, improvement detail member:

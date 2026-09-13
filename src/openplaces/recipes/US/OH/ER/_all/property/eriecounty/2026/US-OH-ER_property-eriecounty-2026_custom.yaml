@@ -1,0 +1,103 @@
+# Recipe: Erie County, OH auditor roll, ISSG Parcel Dwelling Custom
+# Field table. Supplement of US-OH-ER_property-eriecounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per answer to a county-defined question on a dwelling card
+# (Question, Answer; one answer each). Erie asks three: Heating Type,
+# Roofing Material and Air Condition Type.
+#
+# heating_type keeps the Heating Type answer verbatim (Central Heat,
+# HW/Steam, Electric, Heat Pump, No Heating, Stove/Space, Floor/Wall,
+# Other, and 'Central Air' on a few cards). roof_material keeps the
+# Roofing Material answer where it names a material (Asp Shingle, Metal,
+# Composition, Shake, Slate/Tile); the roof-shape answers Gabel, Hip and
+# Mansard are not read. Air Condition Type is answered only where air
+# conditioning exists ('Central AC'), so it records no absence;
+# has_central_air is read from _floors instead.
+#
+# MEASURED 2026-09-13: 81,193 answers over 30,602 parcels (30,886
+# cards), keys 99.99% in the roll. On the 25,796 live land-use 510
+# properties: heating_type on 99.8% (Central Heat 19,632, HW/Steam
+# 2,666, Electric 2,049, Heat Pump 697, No Heating 459, others 248);
+# roof_material on 99.2% (Asp Shingle 24,896, Metal 549, Slate/Tile 70,
+# Shake 65, Composition 19).
+
+description: >-
+  Erie County, OH ISSG Parcel Dwelling Custom Field table: heating type
+  and roofing material per property, in the source's words.
+
+admin_id: US-OH-ER
+
+entity:
+  entity_type: property
+  source:
+    source_id: eriecounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.eriecounty.oh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.eriecounty.oh.gov/"
+    download_url: "https://auditor.eriecounty.oh.gov/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel Dwelling Custom Field.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  # 'Question|Answer', so one remap can pick one question.
+  - type: string
+    operation: concat
+    inputs: [Question, Answer]
+    args: {sep: "|"}
+    output: question_answer
+  - type: remap
+    input: question_answer
+    mapping:
+      "Heating Type|Central Heat": "Central Heat"
+      "Heating Type|Central Air": "Central Air"
+      "Heating Type|Electric": "Electric"
+      "Heating Type|Floor/Wall": "Floor/Wall"
+      "Heating Type|HW/Steam": "HW/Steam"
+      "Heating Type|Heat Pump": "Heat Pump"
+      "Heating Type|No Heating": "No Heating"
+      "Heating Type|Stove/Space": "Stove/Space"
+      "Heating Type|Other": "Other"
+    output: heating_type
+  - type: remap
+    input: question_answer
+    mapping:
+      "Roofing Material|Asp Shingle": "Asp Shingle"
+      "Roofing Material|Composition": "Composition"
+      "Roofing Material|Metal": "Metal"
+      "Roofing Material|Shake": "Shake"
+      "Roofing Material|Slate/Tile": "Slate/Tile"
+    output: roof_material
+
+drop_columns:
+  - question_answer
+
+columns_to_categorical:
+  - heating_type
+  - roof_material
+
+aggregation_function:
+  heating_type: first
+  roof_material: first
+
+supplements: US-OH-ER_property-eriecounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: custom

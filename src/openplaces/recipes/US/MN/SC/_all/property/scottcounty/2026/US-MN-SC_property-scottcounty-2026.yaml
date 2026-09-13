@@ -1,0 +1,148 @@
+# Recipe: Scott County, MN parcels joined to the assessor's CAMA data,
+# bedrooms, baths and building features.
+#
+# Why: the MetroGIS regional parcel dataset (US-MN_parcel-metrogis-2026)
+# has no room-count field. Scott County's own "Parcels" layer is the
+# survey department's tax boundaries joined to the assessor's CAMA
+# records by PID, and carries NumBedrooms and NumBathRooms.
+#
+# SOURCE. ArcGIS Hub CSV export of the county's "Parcels" item
+# (07feb1aed9364b1a9900fe0ec6f93929, services.arcgis.com
+# .../DqIh9WAsIZcPlBEF/.../Parcels/FeatureServer/0), about 43 MB, one
+# request. The download API's redirect is used because the Hub v3
+# datasets route timed out for this item (2026-09-12).
+#
+# ROW SHAPE, measured 2026-09-12: 62,082 rows, 61,924 distinct PID. All
+# real PIDs are 9 digits; 150 rows carry a 1-3 character or blank
+# placeholder PID instead (one placeholder repeats on 108 rows) and are
+# dropped by the query below. Of the rest, 10 PIDs repeat once and
+# drop_duplicates keeps the first. One row per tax parcel, condominium
+# and townhouse units included as their own rows (ModelDesc Condo 400,
+# Townhouse 9,868). A tax roll, so this is a property roll.
+#
+# COVERAGE on improved residential rows (Classification 201-205 or 151,
+# EMVImprove > 0; 49,070 rows): NumBedrooms > 0 98.6%, NumBathRooms > 0
+# 98.6%. Single-family, townhouse, condo and duplex models carry
+# bedrooms on 99.4-100% of rows. Median 4 bedrooms, 2.5 baths.
+#
+# BATHS: NumBathRooms is one fractional total in QUARTER steps (0.25,
+# 0.5, 0.75: 21.2%, 28.5% and 29.1% of improved residential rows;
+# 1.75 is the most common value). That is a quarter-step bath
+# convention, not full + 0.5 x half (commonly a 0.75 is a shower bath
+# without a tub and a 0.25 a toilet-only room; the county's own field
+# notes were not checked). It maps to n_bathrooms as published, and no
+# half-bath count can be separated from it, so n_half_bathrooms is not
+# mapped. The convention differs from the registry's 0.5-per-half
+# definition, which a reader of n_bathrooms here should know.
+#
+# JOIN KEY. PID is MetroGIS's Scott COUNTY_PIN as shipped: 97.80% of
+# PID values are in MetroGIS (polygons plus points) and 99.55% of
+# MetroGIS's Scott PINs find a PID.
+#
+# BUILDING FEATURES, measured 2026-09-13 in memory (reader,
+# preprocessing, one row per PID) on the 49,069 improved residential
+# rows defined above. Shares are above 0; a 0 area is kept as
+# published (a 0 basement on 13.7% of those rows, a 0 garage on 9.4%;
+# non-residential rows carry 0 living area).
+#   - living_area_sqft = AGLASqFt, above-grade living area: 98.6%,
+#     median 1,582.
+#   - basement_area_sqft = BasementSqft: 86.3%, median 1,196.
+#   - basement_finished_area_sqft = BasementFinishedSqft: 70.9%,
+#     median 930; at most the basement area on 98.8% of rows with one.
+#   - garage_area_sqft = GarageSqft: 90.6%, median 620.
+#   - quality_grade = Grade: 98.6%, two-digit codes (29 occur on
+#     residential rows, mostly odd numbers from 31 to 49), read as text.
+#   - building_style = ArchitectureDesc: 98.6%, 17 codes (rambler,
+#     two story, split entry, level splits, townhome and so on).
+#   - tax_neighborhood_code = Neighborhood: 100%, 361 codes (152
+#     on residential rows). The service types it as a number, so codes
+#     arrive with two, one or no decimals; they are kept as published
+#     text, and a trailing zero the service dropped stays dropped.
+# MetroGIS's FIN_SQ_FT (the parcel recipe's area_sqft) equals
+# AGLASqFt + BasementFinishedSqft on 95.5% of Scott parcels: it is
+# total finished area, not above-grade area.
+#
+# YEAR BUILT AND UNITS, measured 2026-09-13 the same way on the same
+# 49,069 residential rows:
+#   - year_built = YearBuilt, the actual year: 98.6%, median 1999,
+#     none before 1600 or after 2026. A 0 (19.0% of all rows) is
+#     nulled by the registry.
+#   - n_dwellings: the layer has no unit count (ModelDesc names the
+#     dwelling type only), so it is not mapped.
+#
+# NOT MAPPED: ModelDesc (single-family, townhouse, condo, duplex) is a
+# dwelling type, not a style. No garage or basement flag is set: the
+# layer records areas, not presence.
+#
+# NOT MAPPED, deliberately: taxpayer names and addresses and every other
+# personal field; values and classification (the MetroGIS parcel
+# recipe carries those). No stories or total-rooms field exists.
+
+description: >-
+  Scott County, MN parcels joined to assessor CAMA data: bedrooms,
+  quarter-step baths, living, basement and garage areas, grade, style and
+  neighborhood.
+
+admin_id: US-MN-SC
+
+entity:
+  entity_type: property
+  source:
+    source_id: scottcounty
+    # Checked 2026-09-12: the item's licence text is a disclaimer only
+    # (reference use; the user waives claims against and indemnifies
+    # the County, citing Minn. Stat. 466.03 subd. 21). It states nothing
+    # about redistribution, and there is no fee, gate or resale clause.
+    license: >-
+      Scott County disclaimer: reference use only; the user waives all
+      claims against and agrees to indemnify Scott County (Minn. Stat.
+      466.03, subd. 21). No licence or redistribution terms stated.
+    terms_url: "https://www.arcgis.com/home/item.html?id=07feb1aed9364b1a9900fe0ec6f93929"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=07feb1aed9364b1a9900fe0ec6f93929"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/07feb1aed9364b1a9900fe0ec6f93929/csv?redirect=true&layers=0"
+  version: "2026"
+
+uncompressed_file_name: "scott_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+# The Hub CSV starts with a byte-order mark.
+encoding: utf-8-sig
+
+# PID is all digits: read it as text so leading zeros survive. Grade
+# and Neighborhood are codes, kept as text for the same reason.
+csv_dtype:
+  PID: str
+  Grade: str
+  Neighborhood: str
+
+columns:
+  parcel_id_assessor: PID
+  n_bedrooms: NumBedrooms
+  n_bathrooms: NumBathRooms
+  living_area_sqft: AGLASqFt
+  basement_area_sqft: BasementSqft
+  basement_finished_area_sqft: BasementFinishedSqft
+  garage_area_sqft: GarageSqft
+  quality_grade: Grade
+  building_style: ArchitectureDesc
+  tax_neighborhood_code: Neighborhood
+  year_built: YearBuilt
+
+columns_to_categorical:
+  - quality_grade
+  - building_style
+
+# Drop the placeholder PIDs; see the header's ROW SHAPE.
+query: "parcel_id_assessor.str.len() == 9"
+
+drop_duplicates: [parcel_id_assessor]
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

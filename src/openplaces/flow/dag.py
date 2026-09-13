@@ -328,14 +328,19 @@ class RecipeDAG:
 
         Kept so callers written against the one-region model still work;
         a recipe shipping several regions has no single node, and reading
-        this raises rather than silently returning one of them.
+        this raises rather than silently returning one of them. A region's
+        team twin (see `io.delivery.delivery_regions`) is not counted: it
+        is only ever reached by naming it.
         """
-        if len(self.delivery_nodes) > 1:
+        public = [
+            node for node, spec in self.delivery_nodes if spec.get('audience') != 'team'
+        ]
+        if len(public) > 1:
             raise ValueError(
-                f'{self.target_recipe_id!r} builds {len(self.delivery_nodes)} '
+                f'{self.target_recipe_id!r} builds {len(public)} '
                 f'delivery nodes; use .delivery_nodes.'
             )
-        return self.delivery_nodes[0][0] if self.delivery_nodes else None
+        return public[0] if public else None
 
     def _delivery_members(self) -> list[str]:
         """Process-level admin units the target recipe's bundles pool.
@@ -590,11 +595,18 @@ class RecipeDAG:
         regions = delivery_regions(recipe)
         if len(regions) <= 1:
             return regions[0]['region_id'] if regions else None
+        # A team twin shares its region's admin unit, but is only ever
+        # shipped by name: asked by unit alone, the public bundle is meant.
+        team_ids = {
+            spec['region_id'] for spec in regions if spec.get('audience') == 'team'
+        }
         in_graph = {
             node.region
             for node, _ in getattr(self, 'delivery_nodes', [])
             if node.recipe_id == recipe_id and str(node.admin_id) == str(admin_id)
         }
+        if len(in_graph) > 1 and len(in_graph - team_ids) == 1:
+            in_graph -= team_ids
         if len(in_graph) == 1:
             return next(iter(in_graph))
         if len(in_graph) > 1:
@@ -607,6 +619,8 @@ class RecipeDAG:
             for spec in regions
             if str(delivery_admin_id(recipe, region=spec['region_id'])) == str(admin_id)
         ]
+        if len(matches) > 1 and len(set(matches) - team_ids) == 1:
+            matches = [match for match in matches if match not in team_ids]
         if len(matches) == 1:
             return matches[0]
         if matches:
@@ -803,7 +817,40 @@ class RecipeDAG:
                         )
             except Exception:
                 continue
-        return paths
+        return self._without_consumed_intermediates(
+            paths, stage, recipe_id, admin_id, region
+        )
+
+    def _without_consumed_intermediates(
+        self, paths: list[Path], stage: str, recipe_id: str, admin_id, region
+    ) -> list[Path]:
+        """Drop inputs the data lifecycle has already consumed and deleted.
+
+        An `until_consumed` output is deleted once every consumer has
+        run, and a tombstone receipt beside it records that. To the
+        orchestrator the file is then simply missing, so it schedules the
+        producer and, behind it, every consumer again: a county rebuild
+        wanted the world admin layers back because the census block tile
+        grid had been consumed. A receipted, absent input of a job whose
+        own output exists is not a dependency the graph has to satisfy;
+        it is a dependency that was satisfied. A job whose output is
+        missing keeps every input, receipt or not, so a real rebuild
+        still regenerates what it needs.
+        """
+        try:
+            own_output = self.output_path(stage, recipe_id, admin_id, region)
+        except Exception:  # noqa: BLE001 - unresolvable, keep every input
+            return paths
+        if not own_output.exists():
+            return paths
+        from openplaces.io.cleanup import read_receipt
+
+        kept = []
+        for path in paths:
+            if not path.exists() and read_receipt(path) is not None:
+                continue
+            kept.append(path)
+        return kept
 
     def retention(self, stage: str, recipe_id: str, admin_id=None) -> str:
         """The retention class of one job's output (drives temp()/protected())."""

@@ -1,0 +1,86 @@
+# Recipe: Kenosha County property assessments roll (Data Portal).
+#
+# Why: the roll that the county's Buildings table
+# (US-WI-KN_property-kenoshacounty-2026_buildings) supplements. The
+# Buildings table has one row per building, outbuildings included, so
+# on its own it would make the property spine count buildings as
+# properties. This table has one row per tax parcel.
+#
+# COVERAGE. All 13 municipalities of Kenosha County, the City of
+# Kenosha included (City of Kenosha 32,456 rows).
+#
+# SOURCE. Kenosha County Data Portal, "Property Assessments table",
+# SpecialAppData/PortalData/MapServer/2 (PortalAssessments), read as
+# the Hub CSV export (about 36 MB, UTF-8 with a byte-order mark). It
+# carries no owner fields. The sibling ParcelTaxData layer (0) also has
+# one row per parcel but carries owner names and mailing addresses, so
+# it was not used.
+#
+# ROW SHAPE, measured 2026-09-12: 67,699 rows, 67,699 distinct
+# ParcelNumber (all 17 characters); REST returnCountOnly 67,698.
+# AssessmentYear 2026 on 67,618 rows. ClassCode1 G1 (residential) on
+# 57,028 rows. Every Buildings parcel (57,878) is in this roll; 85.5%
+# of roll parcels have a building row.
+#
+# JOIN KEY. ParcelNumber is V11's PARCELID as shipped: 99.80% of V11's
+# Kenosha parcels find it, and 99.51% of roll keys are in V11 (raw, and
+# the same after the bundled US-WI-KN conversion, which resolves to
+# 'simple'). 99.95% of V11's residential improved Kenosha parcels
+# match. No id-override row needed.
+#
+# NOT MAPPED: class codes, values, taxes and districts (V11 carries
+# class and values statewide). Room counts and building features
+# live in the two Buildings supplements (_buildings, _outbuildings).
+# The roll has no year built and no dwelling-unit count (audited
+# 2026-09-13); year_built comes from the _buildings supplement.
+
+description: >-
+  Kenosha County property assessments roll from the county Data Portal:
+  one row per tax parcel, the roll its Buildings table supplements.
+
+admin_id: US-WI-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: kenoshacounty
+    # Checked 2026-09-12. The Hub item's licenseInfo is a disclaimer
+    # ("for information purposes only", "for reference purposes only",
+    # no liability) that links the county's Acceptable Use Policy. That
+    # policy covers material on the county website: it is "for the
+    # noncommercial use of the general public", fair use applies, and
+    # use beyond fair use needs permission. Approved for use by the user
+    # 2026-09-12 on these terms: redistribution restricted (so it is
+    # never delivered) and non-commercial use only. No fee or gate.
+    license: >-
+      Kenosha County disclaimer (information and reference purposes
+      only) and Acceptable Use Policy: "for the noncommercial use of the
+      general public"; reproduction or redistribution beyond fair use
+      needs the County's permission.
+    terms_url: "https://www.kenoshacounty.org/1786/Acceptable-Use-Policy"
+    redistribution_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=ad595c5eb0e946b7a42c1cd16b4843e0"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/ad595c5eb0e946b7a42c1cd16b4843e0/csv?layers=2"
+  version: "2026"
+
+uncompressed_file_name: "kenosha_property_assessments.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+
+csv_dtype:
+  ParcelNumber: str
+
+columns:
+  parcel_id_assessor: ParcelNumber
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

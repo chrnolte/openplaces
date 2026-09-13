@@ -9,33 +9,72 @@ table.
 
 import pytest
 
-from openplaces.core.schema import ENTITY_TYPES
+from openplaces.core.schema import ENTITY_TYPES, admin_scope_covers
 from openplaces.diagnostics import find_recipes
-from openplaces.recipe import find_entity_recipe_id
+from openplaces.recipe import (
+    find_entity_recipe_id,
+    get_recipe_by_id,
+    get_recipe_dependencies,
+    get_supplemented_table,
+)
+
+MASSGIS = 'US-MA_parcel-massgis-2025'
+MA_CITY_TABLES = [
+    ('BOS', 'US-MA-BOS_property-bostongov-2026'),
+    ('CAM', 'US-MA-CAM_property-cambridgema-2026'),
+    ('ARL', 'US-MA-ARL_property-arlingtonma-2026'),
+    ('SOM', 'US-MA-SOM_property-somervillema-2022'),
+    ('FAR', 'US-MA-FAR_property-fallriverma-2023'),
+]
+
+
+@pytest.mark.parametrize(('town', 'recipe_id'), MA_CITY_TABLES)
+def test_massachusetts_city_tables_supplement_the_massgis_property_layer(
+    town, recipe_id
+):
+    recipe = get_recipe_by_id(recipe_id)
+    assert recipe['supplements'] == MASSGIS
+    assert str(get_supplemented_table(recipe)['entity']) == 'property-massgis-2025'
+    # A property key: on a parcel key every condo unit of a building
+    # would receive the whole building's rooms.
+    assert recipe['supplements_key'] == 'property_id_assessor'
+    # Never "the" property recipe of its town.
+    assert (
+        find_entity_recipe_id(f'US-MA-{town}', 'property', stage='ingest', silent=True)
+        != recipe_id
+    )
+
+    by_step: dict[str, set] = {}
+    edges = get_recipe_dependencies('US_property-spine-2026', admin_id=f'US-MA-{town}')
+    for edge in edges:
+        by_step.setdefault(edge.step, set()).add(edge.upstream_recipe_id)
+    assert MASSGIS in by_step['union_spine_sources']
+    assert recipe_id not in by_step['union_spine_sources']
+    assert recipe_id in by_step['link_by_id']
+
 
 TX_DETAIL_TABLES = [
     ('VIC', 'victoriacad'),
-    ('HAN', 'hardincad'),
+    ('HRD', 'hardincad'),
     ('LAV', 'lavacacad'),
 ]
 
 
 @pytest.mark.parametrize('entity_type', sorted(ENTITY_TYPES))
-def test_every_supplement_names_a_roll_of_the_same_entity_and_scope(entity_type):
+def test_every_supplement_names_a_roll_of_the_same_entity_within_scope(entity_type):
+    # The roll may be a recipe or a host's additional layer, and its
+    # scope may contain the supplement's (a city table detailing a
+    # statewide layer). get_supplemented_table raises on anything
+    # else: an unknown layer, another supplement, a scope outside.
     df = find_recipes(entity_type, stage='ingest')
     if df.empty:
         return
-    by_id = df.set_index('recipe_id')
-    for recipe_id, row in by_id[by_id['supplements'] != ''].iterrows():
-        target = row['supplements']
-        assert target in by_id.index, (
-            f'{recipe_id} supplements {target}, which is not an ingest '
-            f'recipe of entity type {entity_type!r}'
-        )
-        assert by_id.loc[target, 'admin_id'] == row['admin_id'], recipe_id
-        assert by_id.loc[target, 'supplements'] == '', (
-            f'{recipe_id} supplements another supplement ({target})'
-        )
+    for recipe_id in df.loc[df['supplements'] != '', 'recipe_id']:
+        recipe = get_recipe_by_id(recipe_id)
+        table = get_supplemented_table(recipe)
+        assert table['stage'] == 'ingest', recipe_id
+        assert str(table['entity'].entity_type) == entity_type, recipe_id
+        assert admin_scope_covers(table['admin_id'], recipe['admin_id']), recipe_id
 
 
 @pytest.mark.parametrize(('county', 'source_id'), TX_DETAIL_TABLES)

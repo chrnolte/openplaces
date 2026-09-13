@@ -59,6 +59,24 @@
 # land_value/improvement_value and its total to market_value; the
 # assessed total becomes `value`, matching how the other NC recipes use
 # that column.
+#
+# Building features, MEASURED 2026-09-13 in memory (residential =
+# ParcelDescrCode2 R, 38,110 rows; per PIN after deduplication the
+# rates are 1 to 2 points higher): living_area_sqft (finished area
+# summed over the three improvements, median 1,610; above area_sqft
+# on 1,321 rows) 75.7%, quality grade (QualityGradeCode1Imp, 28 codes
+# of the form 'C+05') 80.6%, HVAC description (HVACDesc1Imp, 22
+# values) as heating_type 75.3%, has_central_air 74.2% (25,286 true,
+# 3,000 false), style (ComponentDesc1Imp, 20 values) 75.4%, effective
+# year 75.5%. has_basement and has_garage 75.7% each (235 and 6,766
+# true): the Y/N fields are filled on vacant parcels too, so the
+# flags are kept only where a finished area exists.
+# BasementCompType1Imp reads UBM on 170 rows whose flag says N; the
+# flag is trusted. garage_type (AttGarCompType1Imp, codes AC1021 to
+# AC1028, attached garages only) 17.6%. FireplaceY_N1Imp (Y on 15,668
+# rows) is a flag, not the count n_fireplaces needs, and has no
+# registry home. HVACNumberOFUnits1Imp equals the finished area on
+# 77% of rows and is not a unit count.
 
 description: >-
   Wilson County, NC parcel roll (market and assessed values, year built, floor
@@ -108,11 +126,20 @@ columns:
   year_built: YearActuallyBuilt1Imp
   area_sqft: FinishedArea1Imp
   n_stories: NumberOfStories1Imp
-  # Structure detail for the first improvement on the parcel; this
-  # layer numbers its fields per improvement (1Imp, 2Imp, 3Imp) and
-  # only the first is mapped, matching the year/area fields above.
+  # Structure detail: this layer numbers its fields per improvement
+  # (1Imp, 2Imp, 3Imp). Year, area and stories take the first
+  # improvement. Room counts are summed over all three below, because
+  # a parcel's rooms are those of every dwelling on it (504 parcels
+  # carry baths on a second or third improvement). FBT is the full
+  # bath count and HBT the half count (18.4% of rows); n_bathrooms
+  # folds them as full + 0.5 x half.
   n_bedrooms: NumberofBedrooms1Imp
   n_bathrooms: NumberofFBT1Imp
+  n_half_bathrooms: NumberOfHBT1Imp
+  quality_grade: QualityGradeCode1Imp
+  heating_type: HVACDesc1Imp
+  building_style: ComponentDesc1Imp
+  garage_type: AttGarCompType1Imp
   effective_year_built: EffYrBuilt
   last_sale_year: DeedYear
   last_sale_price: SalesAmount
@@ -131,8 +158,143 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # Sum each room count over the three improvements; min_count keeps a
+  # parcel null when no improvement records the count.
+  - type: aggregate
+    operation: sum
+    inputs: [n_bedrooms, NumberofBedrooms2Imp, NumberofBedrooms3Imp]
+    output: n_bedrooms
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, NumberofFBT2Imp, NumberofFBT3Imp]
+    output: n_bathrooms
+  - type: aggregate
+    operation: sum
+    inputs: [n_half_bathrooms, NumberOfHBT2Imp, NumberOfHBT3Imp]
+    output: n_half_bathrooms
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves (9
+  # rows carry a half count with no full count and read 0.5 x half).
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # Finished area summed over the three improvements, as the room
+  # counts are; area_sqft keeps the first improvement's alone.
+  - type: aggregate
+    operation: sum
+    inputs: [area_sqft, FinishedArea2Imp, finishedArea3Imp]
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: 0}
+    output: living_area_sqft
+  # Basement and attached-garage flags: every improvement slot carries
+  # an explicit Y or N, so N is a recorded absence. The parcel flag is
+  # the max over the three improvements, kept only where a finished
+  # area says a building exists: the layer writes N on vacant parcels
+  # too. The garage flag covers attached garages only; a detached
+  # garage is not recorded here.
+  - type: remap
+    input: BasementY_N1Imp
+    mapping: {"Y": 1, "N": 0}
+    output: basement_1
+  - type: remap
+    input: BasementY_N2Imp
+    mapping: {"Y": 1, "N": 0}
+    output: basement_2
+  - type: remap
+    input: BasementY_N3Imp
+    mapping: {"Y": 1, "N": 0}
+    output: basement_3
+  - type: aggregate
+    operation: max
+    inputs: [basement_1, basement_2, basement_3]
+    output: basement_any
+  - type: expression
+    expression: "basement_any * living_area_sqft / living_area_sqft"
+    inputs: [basement_any, living_area_sqft]
+    output: basement_any
+  - type: remap
+    input: basement_any
+    mapping: {1: true, 0: false}
+    output: has_basement
+  - type: remap
+    input: AttachedGarageY_N1Imp
+    mapping: {"Y": 1, "N": 0}
+    output: garage_1
+  - type: remap
+    input: AttachedGarageY_N2Imp
+    mapping: {"Y": 1, "N": 0}
+    output: garage_2
+  - type: remap
+    input: AttachedGarageY_N3Imp
+    mapping: {"Y": 1, "N": 0}
+    output: garage_3
+  - type: aggregate
+    operation: max
+    inputs: [garage_1, garage_2, garage_3]
+    output: garage_any
+  - type: expression
+    expression: "garage_any * living_area_sqft / living_area_sqft"
+    inputs: [garage_any, living_area_sqft]
+    output: garage_any
+  - type: remap
+    input: garage_any
+    mapping: {1: true, 0: false}
+    output: has_garage
+  # has_central_air from each improvement's HVAC description: true
+  # where it names AC or a system that cools (heat pump, gas pack,
+  # packaged rooftop unit), false for "No Air Conditioning" (the only
+  # value whose code ends in N), null for heat-only descriptions.
+  - type: remap
+    input: heating_type
+    mapping: &central_air
+      "Forced Hot Air w/ AC": true
+      "Added Air Conditioning": true
+      "Heat Pump Electric": true
+      "Heat Pump Reversing Cycle": true
+      "Gas Pack": true
+      "Packaged Rooftop": true
+      "No Air Conditioning": false
+    output: central_air_1
+  - type: remap
+    input: HVACDesc2Imp
+    mapping: *central_air
+    output: central_air_2
+  - type: remap
+    input: HVACDesc3Imp
+    mapping: *central_air
+    output: central_air_3
+  - type: aggregate
+    operation: max
+    inputs: [central_air_1, central_air_2, central_air_3]
+    output: has_central_air
+
+drop_columns:
+  - half_bathroom_equivalent
+  - basement_1
+  - basement_2
+  - basement_3
+  - basement_any
+  - garage_1
+  - garage_2
+  - garage_3
+  - garage_any
+  - central_air_1
+  - central_air_2
+  - central_air_3
 
 columns_to_categorical:
+  - quality_grade
+  - heating_type
+  - building_style
+  - garage_type
   - use_group
   - use_group_code
   - tax_neighborhood_code

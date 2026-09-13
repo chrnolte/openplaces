@@ -1,0 +1,141 @@
+# Recipe: Seminole County, FL property appraiser CAMA export, buildings
+# table (SCPA). The first Florida county recipe of
+# plans/florida-county-property-appraiser-bedrooms-bathrooms.md: the
+# DOR roll (US-FL_property-fldor-2026) carries no room counts anywhere in
+# the state, and the appraiser's own daily CSV export does, one row per
+# building. This recipe reads that one table and declares itself a
+# supplement of the roll, so its rows describe the roll's properties and
+# are never counted as properties themselves.
+#
+# Source, measured 2026-09-11 on the export stamped that morning:
+# buildings.csv has 172,378 rows over 161,980 parcels; BldgId is unique
+# and so is Parcel + BuildingNum. Parcel is the 17-character DOR id in
+# the same shape mix as floridagio's parcel_id_assessor (all digits
+# 56.7%, letters in positions 8-9 or 11 for the rest); 98.7% of the raw
+# ids are found in the ingested parcel layer, so no conversion is
+# applied. Sub-areas (porches, garages) live in a separate table and
+# never split a building row, so a row is a whole structure.
+#
+# Row shape by DOR use: single family (136,468 parcels) 98.3% one row,
+# extra rows typed separately (a second house, a barn or shed); condo
+# units (15,108 parcels, codes 04 and 0403) exactly one row each,
+# describing the unit (median 100 m2, stories 1 on 87%); mobile homes
+# one row on 89%; multi-family under ten units one row on 94% carrying
+# whole-structure totals; multi-family ten and over (225 parcels, 3,353
+# rows) one row per building, 97.6% commercial-class with no room
+# counts. Bedrooms are filled on 99.9% of single-family and condo rows,
+# 99.0% of mobile homes, 99.1% of small multi-family, 0.0% of the
+# commercial classes, and 1.4% of barns and sheds.
+#
+# Filter: residential-class rows that are not barns or sheds. The
+# county's BuildingClassification splits Residential (single family,
+# condos, mobile homes, small multi-family, barns/sheds) from Commercial
+# (construction-class labels such as MASONRY PILASTER, plus the large
+# multi-family rows); dropping the sheds removes the one residential
+# type that describes no dwelling (2,610 rows). The commercial rows are
+# dropped with them, which loses nothing: they carry no counts.
+#
+# Bathrooms: the export publishes one fractional count in 0.5 steps
+# (28.7% of single-family rows fractional, all .5) and no full/half
+# split, although the site text promises one. It maps directly to
+# n_bathrooms in the folded meaning (full plus 0.5 per half); no
+# n_half_bathrooms is derived, because two half baths and one extra full
+# bath are indistinguishable in it. The Access export adds a plumbing
+# fixture count (FIXTURES) that is a separate measure (equal to 3 x full
+# + 2 x half on 43.7% of single-family rows), not read here.
+#
+# Not mapped: PrimaryAddress and MailingAddress (a mailing address is an
+# owner's, and the roll already carries the situs address);
+# AdjustedValue and ReplacementValue (the building's share of value, no
+# registry home that a curate vote would not misread); BaseRate,
+# ExteriorWallType, Fireplace, Pool, TaxDistrict; BldgId, MasterId and
+# BuildingNum (row identity, not attributes). Dor is the roll's own
+# use code and is left to the roll. YearBuilt is 1862 to 2025 with no
+# zero placeholders. Living area is the appraiser's heated area; GrossArea
+# and BaseArea are not read.
+#
+# Terms: the downloads page states none, and the bulk links need no
+# acceptance (a property search does). The site's Terms of Use disclaim
+# warranty and prohibit obtaining "any materials or information through
+# any means not intentionally made available or provided", which a
+# published download link is. No licence or redistribution clause was
+# found; silence is not a grant.
+
+description: >-
+  Seminole County, FL appraiser CAMA export, buildings table: bedrooms,
+  bathrooms, stories, year built and living area per building.
+
+admin_id: US-FL-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: seminolepa
+    license: "unknown (no terms stated on the download page; site Terms of Use disclaim warranty only)"
+    redistribution_restricted: null
+    terms_url: "https://www.scpafl.org/TermsOfUse"
+    portal_url: "https://www.scpafl.org/downloads"
+    download_url: "https://files.scpafl.org/data/cama/SeminoleCounty.zip"
+  version: 2026
+
+compressed_file_name: "SeminoleCounty.zip"
+uncompressed_file_name: "buildings.csv"
+
+process_by:
+  admin_level: 3
+
+# The file opens with a byte-order mark.
+encoding: utf-8-sig
+
+csv_dtype:
+  BldgId: str
+  MasterId: str
+  Parcel: str
+  ParcelFormat: str
+  BuildingNum: str
+  Dor: str
+
+# Residential-class structures that describe a dwelling; see header. The
+# filter runs after column mapping on the columns read, so the class
+# is read under its own name and dropped once the filter has used it.
+query: "BuildingClassification == 'Residential' and not building_style.str.startswith('BARNS')"
+
+columns:
+  BuildingClassification: BuildingClassification
+  parcel_id_assessor: Parcel
+  building_style: BuildingType
+  year_built: YearBuilt
+  area_sqft: LivingArea
+  n_stories: BaseFloors
+  n_bedrooms: Bedrooms
+  n_bathrooms: Bathrooms
+
+columns_to_categorical:
+  - building_style
+
+drop_columns:
+  - BuildingClassification
+
+# One row per building, several per parcel where a second house or a
+# duplex's buildings share the lot: counts and living area sum to the
+# parcel, the earliest year is the original structure's, stories take
+# the tallest building. Read only by this recipe's own auto-discover
+# match (link_by_id's aggregation_function).
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  area_sqft: sum
+  year_built: min
+  n_stories: max
+
+# Details the roll's properties rather than being a roll: the property
+# spine joins these rows onto the roll's rows for this county and its
+# union never counts a building as a property.
+supplements: US-FL_property-fldor-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

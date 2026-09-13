@@ -660,8 +660,8 @@ class TableIngester:
     def _read_flat_table(self, data_path, columns, encoding):
         """Read one flat (non-spatial) source file in full.
 
-        Covers the fixed-width, JSON, spreadsheet, and delimited-text
-        layouts a recipe can declare. Row filtering is the caller's job:
+        Covers the fixed-width, JSON, flat XML, spreadsheet, and
+        delimited-text layouts a recipe can declare. Row filtering is the caller's job:
         this returns every row of the file, so a chunked recipe can parse
         once per download partition and slice per admin unit.
 
@@ -702,8 +702,34 @@ class TableIngester:
             df = pd.json_normalize(payload, record_path=self.recipe.get('record_path'))
             return df.astype(dtype) if dtype is not None else df
 
+        if suffix == '.xml':
+            # A flat table: one element per row under the root, fields
+            # as attributes or child elements. `xml_xpath` selects the
+            # row elements when they are not the root's children. The
+            # standard-library parser avoids an lxml dependency (no
+            # lxml in the environment); it reads the whole file, which
+            # suits county extracts (tens of MB per table). XML holds
+            # every value as text, so text is the default: inferring
+            # types read 12-digit parcel ids as integers and dropped
+            # their leading zeros. Recipes cast counts with to_numeric.
+            df = pd.read_xml(
+                data_path,
+                xpath=self.recipe.get('xml_xpath', './*'),
+                parser='etree',
+                dtype=dtype if dtype is not None else str,
+                encoding=encoding or 'utf-8',
+            )
+            if columns:
+                df = df[[c for c in columns if c in df.columns]]
+            return df
+
         if suffix in {'.xlsx', '.xls'}:
             header = self.recipe.get('header', 'infer')
+            # 'infer' is read_csv's vocabulary; read_excel rejects it, so
+            # an Excel recipe without a `header` key failed outright.
+            # read_excel's own default is the first row.
+            if header == 'infer':
+                header = 0
             return pd.read_excel(
                 data_path,
                 sheet_name=self.recipe.get('sheet_name', 0),
@@ -733,6 +759,13 @@ class TableIngester:
         if self.recipe.get('keep_default_na') is False:
             read_kwargs['keep_default_na'] = False
             read_kwargs['na_values'] = ['']
+        # A source with a known malformed line (Harris County TX's
+        # account roll carries one row with a stray tab) would otherwise
+        # stop the whole read. The recipe opts in and names the rule
+        # ('warn' drops the line and says so; 'skip' drops it silently);
+        # the default stays pandas' 'error', so nothing is lost unasked.
+        if self.recipe.get('on_bad_lines'):
+            read_kwargs['on_bad_lines'] = self.recipe['on_bad_lines']
         return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
     def _read_fixed_width(self, data_path, dtype, encoding=None):

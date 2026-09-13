@@ -1,0 +1,117 @@
+# Recipe: Washington County, TX certified appraisal roll, improvement
+# features, bathrooms (WCAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Washington.
+#
+# Washington's 'Plumbing' attribute is a bath count with halves folded
+# in as .5 (2, 1, 2.5, 3, 1.5, 3.5 lead), not a fixture count, so there
+# is no separate half count. The query keeps codes that are a plain
+# number of one or two integer digits, with or without decimals ('2',
+# '2.5', '.5'), and not zero. Zero, three-digit, text and letter codes
+# are left out (listed in MEASURED). Values the query keeps but that are
+# implausible for one building are left for curate's range checks.
+#
+# MEASURED on the 2026 export: 'Plumbing' on 9,760 rows over 8,869
+# properties. The query drops 12 rows: written halves '1 1/2', '2 1/2',
+# '3 1/2' (7, too few for a second parser), 'WNDW' (2), 'H-3', 'F-5',
+# 'P' (1 each). After the row rule, 8,861 properties, median 2, p99 6;
+# 18.0% end in .5. The median bath count rises with bedrooms (1 for two,
+# 2 for three, 2.5 for four). Coverage (value above 0) is 57.6% of the
+# 9,766 single-family (A) properties, 18.2% of the 132 multifamily (B),
+# 52.6% of the 5,623 rural improved (E) and 0.1% of the 1,635 mobile
+# homes (M).
+#
+# ROW RULE. 182 improvements carry two or more kept rows and only 32% of
+# them agree, so three rules were measured per property: the first row
+# per improvement summed across buildings (this recipe), all rows
+# summed, and the maximum over all rows. The last two differ from the
+# first on 2.00% and 5.38% of properties. The disagreeing rows sit on a
+# second 'Main Area' or 'Main Area 2' detail, and the first row is the
+# largest in 93% of them, which reads either as an addition's own count
+# (sum) or as a partial repeat (first). Improvement value decides it:
+# over the 50 single-family improvements whose rows disagree, the File
+# #7 improvement value lies nearer the median value of single-row
+# improvements with the first row's count than with the summed count in
+# 64%. So drop_duplicates keeps the first row per (prop_id, imprv_id),
+# and aggregation_function sums distinct buildings to the property.
+
+description: >-
+  Washington County, TX certified appraisal roll, improvement features member:
+  bathrooms per building (halves as .5), summed to the property.
+
+admin_id: US-TX-WAS
+
+entity:
+  entity_type: property
+  source:
+    source_id: washingtoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no licence; download page disclaimer: 'By clicking the links below, the user
+      acknowledges they have read this disclaimer and accepts the limitations of the
+      data contained herein.'
+    redistribution_restricted: null
+    portal_url: "https://washingtoncad.org/downloads/"
+    download_url: "https://washingtoncad.org/wp-content/uploads/2026/07/2026-Certified-Appraisal-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Appraisal-Roll.zip"
+uncompressed_file_name: "2026-07-21_002016_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bathrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Plumbing'
+  and n_bathrooms.str.fullmatch(
+  '(?!0+([.]0+)?$)([0-9]{1,2}([.][0-9]+)?|[.][0-9]+)',
+  na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bathrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-WAS_property-washingtoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms
