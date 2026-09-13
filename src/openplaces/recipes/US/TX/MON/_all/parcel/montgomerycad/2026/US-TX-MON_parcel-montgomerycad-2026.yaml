@@ -1,0 +1,111 @@
+# Recipe: Montgomery County, TX parcel polygons from the appraisal
+# district (Montgomery Central Appraisal District, MCAD).
+#
+# MANUAL DOWNLOAD. MCAD's GIS page links the parcel geodatabase to a
+# Google Drive file:
+#   https://drive.google.com/file/d/1mC86lF4nAqxGdbnNX-Cn4DAFqsQowjTg/view
+# A person downloads it and places it, name unchanged, in
+# external/US/TX/MON/_all/parcel/montgomerycad/2026/. It is not a
+# download_url: a plain request with openplaces' identified client to
+# Drive's direct-download form returns Google's HTML "Virus scan
+# warning" confirmation page, not the file (tested 2026-09-13). The
+# portal itself is a single-page app whose file endpoints need a
+# browser session.
+#
+# FORMAT. "montgomery_parcels_updated.zip" (69 MB) holds CountyData.gdb
+# (edited 2026-07-01), EPSG:2277 (Texas South Central, US feet), with 13
+# layers: Parcel (read here, 341,855 polygons), Parcel_Points (8,252
+# label points), City, School_Districts, Subdivisions, Abstract and
+# taxing-district layers.
+#
+# JOIN KEY. pid is the PACS prop_id (the property roll's key, 100.0% of
+# pids are roll prop_ids) and equals PIN on 99.9% of rows. It arrives
+# as a float ('999999.0'), so it is rewritten as a whole number before
+# parcel_id_local is built; TxGIO's Montgomery Prop_ID is the same id
+# written as a decimal, so all three sources share one key. Measured
+# with the bundled US-TX-MON conversion: pid is null on 844 polygons
+# (0.25%); 335,533 distinct keys, 3.0% of polygons share a key with
+# another (a property drawn as several polygons). 94.0% of MCAD keys
+# are TxGIO keys and 99.7% of TxGIO's are MCAD keys; all but 3 MCAD
+# keys are roll keys, and MCAD holds 93.6% of the roll's keys (97.1% of
+# single-family properties, 1.8% of mobile homes). 315,475 keys are in
+# all three.
+#
+# INVALID GEOMETRY. One Parcel polygon has a ring of 2 points, and a
+# default read raises shapely's GEOSException ("Invalid number of
+# points in LinearRing found 2") for the whole layer. on_invalid: warn
+# (passed to pyogrio) keeps that row with an empty geometry: through the
+# ingester's own read all 341,855 rows load, 1 without geometry and 34
+# more invalid, and after _preprocess_recipe_data (fix_polygons,
+# clean_polygons) the empty and invalid shares both round to 0.00%.
+#
+# NOT MAPPED. ownerName, ownerAddress (owner fields), taxingUnits and
+# exemptions (no registry home), imprvMainArea (a property's living
+# area, carried by the roll's improvement-features supplement),
+# marketArea, Block, Lot, Tract and the abstract/subdivision codes.
+#
+# MEASURED on the 2026-07-01 geodatabase, read in memory through the
+# ingester's own path (aggregates only; share of the 244,715
+# single-family properties, improvement state class A of the roll's
+# File #7, whose key has a polygon value):
+# use_group_code (stateCd) 97.1%, year_built 89.7% (0 read as missing;
+# nonzero on 70.0% of polygons, median 2007), address 95.8%,
+# legal_description 97.1%.
+
+description: >-
+  Montgomery County, TX parcel polygons from the appraisal district
+  (MCAD): property id, state class code and year built per parcel.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: montgomerycad
+    # Same finding as the roll (US-TX-MON_property-montgomerycad-2026):
+    # no terms for the data on the portal or in the download; the
+    # portal's map viewer shows only a no-warranty "Map Disclaimer"
+    # ("for general reference purposes only", no liability), with no
+    # resale or redistribution clause. openplaces accepted nothing.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/gis-data"
+  version: 2026
+
+compressed_file_name: "montgomery_parcels_updated.zip"
+uncompressed_file_name: "CountyData.gdb"
+
+# The gdb's first layer is Parcel_Points; the polygons are Parcel.
+layer: Parcel
+
+# One polygon has a 2-point ring, which shapely cannot build; see
+# INVALID GEOMETRY. 'warn' keeps the row with an empty geometry.
+on_invalid: warn
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: pid
+  use_group_code: stateCd
+  year_built: imprvActualYearBuilt
+  address: situs
+  legal_description: legalDescription
+  tax_year: pYear
+
+transformations:
+  # '999999.0' -> '999999'; see JOIN KEY.
+  - type: expression
+    expression: "parcel_id_assessor.astype('Int64').astype('string')"
+    inputs: [parcel_id_assessor]
+    output: parcel_id_assessor
+
+columns_to_categorical:
+  - use_group_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

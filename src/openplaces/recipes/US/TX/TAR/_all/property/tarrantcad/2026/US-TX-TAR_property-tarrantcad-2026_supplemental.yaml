@@ -1,0 +1,113 @@
+# Recipe: Tarrant County, TX, TAD's residential "PropertyData
+# Supplemental" file for the 2025 certified roll: story count, quality
+# and condition per account, joined onto the 2026 roll
+# (US-TX-TAR_property-tarrantcad-2026; read its header for the manual
+# download and the terms).
+#
+# SOURCE. PropertyDataSupplemental_R_2025(Certified).ZIP, one of TAD's
+# legacy PropertyData downloads (the portal offers the residential
+# certified files for 2021 to 2026; this one was downloaded beside the
+# True Prodigy export, same folder, name unchanged). One '|'-delimited
+# text member with a header row, 28 columns, 658,733 rows, one per
+# account, AppraisalYear 2025 on every row. Read here: AccountNumber,
+# NumberofStories, Quality, Condition. Left unmapped: EYOC (the 2026
+# roll's File #8 depreciation year carries effective_year_built), NBHD
+# (the roll's hood_cd), agent, site, sale-date and coordinate columns.
+#
+# WHY. It is the only story count found for Tarrant: the True Prodigy
+# export has none, and the legacy PropertyData files leave every room
+# and story field empty. It is a year older than the roll: a house
+# built or enlarged in 2025-26 is missing or stale here.
+#
+# JOIN. AccountNumber is TAD's account number, the PACS prop_id
+# zero-padded to 8 digits ('00099999'); zero-stripped, 99.8% of these
+# accounts are roll prop_ids and they cover 90.2% of the roll's
+# accounts. So parcel_id_assessor is the stripped AccountNumber and the
+# file joins the roll on it, like the roll's File #8 and #9 supplements.
+#
+# READING. NumberofStories '0' is the file's blank (on 48,931 rows, the
+# same rows that leave Quality and Condition empty) and reads as
+# missing. Quality (Low, Average, Above Average, Good, Excellent,
+# Highest, 'Common Area Quality') and Condition (Uninhabitable, Poor,
+# Fair, Average, Good, Excellent) are kept as published.
+#
+# MEASURED in memory (aggregates only): 658,733 rows, one per account;
+# 99.8% are accounts of the 2026 roll. A is the 2026 roll's 599,911
+# single-family properties (improvement state class A, File #7); B, E
+# and M the other residential classes. n_stories A 98.1% (B 79.4%, E
+# 97.0%, M 96.5%): 1 on 428,414 accounts, 2 on 176,011, 3 or more on
+# 5,377. quality_grade and condition have the same shares, 7 and 6
+# distinct values.
+
+description: >-
+  Tarrant County, TX residential supplemental file for the 2025 certified
+  roll: number of stories, quality and condition per account.
+
+admin_id: US-TX-TAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: tarrantcad
+    # Same district and portal as the roll; see its terms note.
+    license: "unknown (tad.org answers 403 to the identified client; terms could not be checked)"
+    redistribution_restricted: null
+    portal_url: "https://www.tad.org/resources/data-downloads"
+  version: 2026
+
+compressed_file_name: "PropertyDataSupplemental_R_2025(Certified).ZIP"
+uncompressed_file_name: "PropertyDataSupplemental_R_2025.txt"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+delimiter: "|"
+csv_dtype: str
+
+columns:
+  n_stories: NumberofStories
+  quality_grade: Quality
+  condition: Condition
+
+transformations:
+  - type: string
+    operation: strip
+    input: AccountNumber
+    output: parcel_id_assessor
+  - type: string
+    operation: lstrip
+    input: parcel_id_assessor
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: expression
+    expression: "n_stories.where(n_stories > 0)"
+    inputs: [n_stories]
+    output: n_stories
+  - type: string
+    operation: strip
+    input: quality_grade
+    output: quality_grade
+  - type: string
+    operation: strip
+    input: condition
+    output: condition
+
+aggregation_function:
+  n_stories: max
+  quality_grade: first
+  condition: first
+
+supplements: US-TX-TAR_property-tarrantcad-2026
+# The roll's parcel_id_local is its geo_id; this file carries the
+# account number (prop_id) only.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: supplemental

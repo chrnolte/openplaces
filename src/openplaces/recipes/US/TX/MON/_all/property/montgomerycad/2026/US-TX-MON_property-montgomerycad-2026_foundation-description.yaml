@@ -1,0 +1,89 @@
+# Recipe: Montgomery County, TX certified appraisal roll, improvement
+# features member (PACS File #9): foundation_description from the
+# district's 'Foundation' attribute. Same download as
+# US-TX-MON_property-montgomerycad-2026; read that roll's header for the
+# source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk): 81
+# numeric codes, '1' on 92.0% of rows; MCAD publishes no legend with the
+# export. drop_duplicates keeps the first row per building (1.2% of
+# buildings carry more than one), and the property takes the first
+# building's code.
+#
+# Kept in the district's own codes; curate translates them.
+# foundation_type stays NSI-coded and is not written here.
+#
+# MEASURED on the 2026 certified export, in memory (aggregates only):
+# 229,528 building rows over 225,993 properties, every one found in the
+# roll. A is the 244,715 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# foundation_description A 89.9% (B 2.5%, E 79.8%, M 0.1%); code '1' on
+# 93.4% of the properties with a value.
+
+description: >-
+  Montgomery County, TX certified appraisal roll, improvement features
+  member: foundation_description per building, reduced to the property.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/appraisal-data-exports"
+  version: 2026
+
+compressed_file_name: "Certified Appraisal Roll 2026.zip"
+uncompressed_file_name: "2026-08-04_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  foundation_description: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Foundation'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  foundation_description: first
+
+supplements: US-TX-MON_property-montgomerycad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: foundation-description

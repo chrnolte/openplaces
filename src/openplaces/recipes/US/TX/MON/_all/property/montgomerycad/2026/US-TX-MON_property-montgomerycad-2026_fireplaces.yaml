@@ -1,0 +1,100 @@
+# Recipe: Montgomery County, TX certified appraisal roll, improvement
+# features member (PACS File #9): n_fireplaces from the district's
+# 'Fireplace' attribute (and the rare 'Fireplaces'). Same download as
+# US-TX-MON_property-montgomerycad-2026; read that roll's header for the
+# source and its terms.
+#
+# READING. Codes lead with the count, then a letter and a digit ('1P1',
+# '2M2': count, P or M, a trailing digit; every code parses). The
+# leading digits are read.
+#
+# ROW RULE. 3,968 buildings carry two or more fireplace rows, mostly on
+# one detail, and 91.8% of those carry distinct codes (a prefab and a
+# masonry fireplace, say), so rows on one building are summed;
+# drop_duplicates removes only a code repeated on one building.
+#
+# MEASURED on the 2026 certified export, in memory (aggregates only):
+# 128,229 rows over 124,271 properties, every one found in the roll. A
+# is the 244,715 single-family properties (improvement state class A,
+# File #7); B, E and M the other residential classes. n_fireplaces A
+# 49.7% (B 0.0%, E 49.3%, M 0.0%); 1 on 92.0% of the properties with a
+# value, p99 3, max 26.
+
+description: >-
+  Montgomery County, TX certified appraisal roll, improvement features
+  member: fireplaces per building, summed to the property.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/appraisal-data-exports"
+  version: 2026
+
+compressed_file_name: "Certified Appraisal Roll 2026.zip"
+uncompressed_file_name: "2026-08-04_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_fireplaces: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc in ['Fireplace', 'Fireplaces']
+  and n_fireplaces.str.contains('^[0-9]', na=False)
+
+# Drops only a code repeated on one building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id, n_fireplaces]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_fireplaces
+    args:
+      pattern: '^(?P<n>[0-9]+)'
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_fireplaces: sum
+
+supplements: US-TX-MON_property-montgomerycad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: fireplaces
