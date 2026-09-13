@@ -1,0 +1,134 @@
+# Recipe: Knox County, OH auditor roll, GovernMax OtherImprovements
+# table. Supplement of US-OH-KN_property-knoxcounty-2026; see that
+# recipe for the source, the terms and the join key.
+#
+# MVP1_OH_OtherImprovements.csv from the same CAMADatabase.zip: one
+# row per detached improvement segment, ImprovementCode with its
+# ImprovementDescr (171 codes in this download), TotalArea, YearBuilt.
+#
+# n_outbuildings counts rows whose description names a structure
+# (shed, barn, garage, carport, lean-to, crib or granary, grain bin,
+# shop, silo, cabin, shelter, pavilion, gazebo, stable, pole barn or
+# pole building, quonset, kennel, play house, or a milk, spring,
+# boat, bath, poultry, green or summer house). Attached sheds,
+# paving, fencing, pools, decks, porches, canopies, docks, tanks,
+# manufactured-home items and commercial buildings are not counted.
+#
+# Flags, each true where such an improvement is recorded and null
+# elsewhere (the table lists what is present, never what is absent):
+# has_pool (POOL, POOLCC, POOLSTA), has_garage (detached garages),
+# has_carport (CARPORT) and has_accessory_dwelling (a detached garage
+# recorded 'w Full Qtrs' or 'w Half Qtrs'). has_garage and
+# has_carport are also set by _additions for attached ones.
+#
+# MEASURED 2026-09-13: 53,366 rows over 20,054 properties, keys 100%
+# in the roll. On the 16,118 live land-use 510 properties: an
+# improvement row on 67.3%, n_outbuildings > 0 on 65.1% (median 1,
+# p99 6); pool 1.5%; detached garage 29.2%; carport 1.6%; garage
+# with living quarters 0.7%.
+
+description: >-
+  Knox County, OH GovernMax OtherImprovements table: outbuilding count
+  and pool, detached garage, carport and accessory dwelling flags.
+
+admin_id: US-OH-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: knoxcounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms next to the auditor's download link; Beacon terms
+      unread)
+    redistribution_restricted: null
+    portal_url: "https://www.knoxcountyauditor.org/"
+    download_url: "https://beaconfiledata.blob.core.windows.net/knoxcountyoh/downloads/CAMADatabase.zip?sv=2020-10-02&st=2023-04-11T20%3A18%3A41Z&se=2050-01-01T21%3A18%3A00Z&sr=b&sp=r&sig=d%2BoCtdXId7ZHT4jv2oW1mWSdzuAFGAu4%2FPfCxho6zkI%3D"
+  version: "2026"
+
+compressed_file_name: "CAMADatabase.zip"
+uncompressed_file_name: "MVP1_OH_OtherImprovements.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PropertyNumber
+
+transformations:
+  - type: string
+    operation: replace
+    input: parcel_id_assessor
+    args: {old: "-", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: ".", new: ""}
+    output: parcel_id_admin3
+  - type: string
+    operation: replace
+    input: parcel_id_admin3
+    args: {old: " ", new: ""}
+    output: parcel_id_admin3
+  # Later patterns override earlier ones.
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: ".*(Shed|Barn|Garage|Carport|Lean To|Crib|Grainary)", value: 1}
+      - {pattern: ".*(Grain Bin|Shop|Silo|Cabin|Shelter|Pavilion)", value: 1}
+      - {pattern: ".*(Gazebo|Stable|Pole Barn|Pole Building|Quonset)", value: 1}
+      - {pattern: ".*(Kennel|Play House|Milk House|Spring House)", value: 1}
+      - {pattern: ".*(Boat House|Bath House|Hen/Chicken|Green House)", value: 1}
+      - {pattern: ".*(Summer Kitchen)", value: 1}
+      - {pattern: "(Attached Shed|Mfd Home|Shed - Pers Prop)", value: 0}
+      - {pattern: ".*(Comm|Commercial|Warehse|Service Garage)", value: 0}
+      - {pattern: "(Storage Garage|Garage Multiple|Boat Dock)", value: 0}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: n_outbuildings
+  - type: remap_pattern
+    input: ImprovementCode
+    patterns:
+      - {pattern: "POOL", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: "Detch .*Garage|Detch Garage", value: true}
+    output: has_garage
+  - type: remap
+    input: ImprovementCode
+    mapping: {CARPORT: true}
+    output: has_carport
+  - type: remap_pattern
+    input: ImprovementDescr
+    patterns:
+      - {pattern: "Detch .*Garage w (Full|Half|Fl|Hf) Qtrs", value: true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - outbuilding_row
+
+aggregation_function:
+  n_outbuildings: sum
+  has_pool: max
+  has_garage: max
+  has_carport: max
+  has_accessory_dwelling: max
+
+supplements: US-OH-KN_property-knoxcounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

@@ -1,0 +1,262 @@
+# Recipe: Richland County, OH CAMA roll, DWELL table. Supplement of
+# US-OH-RI_property-richlandcounty-2026; see that recipe for the
+# source, the missing layout and the join key.
+#
+# Row shape, measured on the 2026-09-08 file: 45,779 records of 1,177
+# characters, each followed by two lines of spaces (137,337 lines in
+# all); the query drops the filler lines, whose tax year is blank.
+# All records are tax year 2025; (parcel, card) is unique: 45,779
+# cards over 45,274 parcels, one card per dwelling.
+#
+# Offsets (0-based) follow AA407's DWELL order and match Montgomery's
+# layout up to Fixbath, but Fixhalf and Fixaddl are 2 characters wide
+# here rather than 3: Stories 50, Rmtot 68, Rmbed 71, Fixbath 76,
+# Fixhalf 79, Fixaddl 81, Fixtot 83. They were checked on the file:
+# Fixbath x 3 + Fixhalf x 2 + Fixaddl equals Fixtot on 100% of
+# cards. Fixtot and Fixaddl are fixture counts and are not read.
+#
+# Measured on cards (the inventory, over 42,930 5xx parcels with a
+# card): Rmbed 99.9% at 1 or more, Fixbath 99.7%, Fixhalf 31.8%,
+# Rmtot 99.9%, Stories 100% (1.0, 1.5, 2.0, 2.5, 3.0). n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13). No layout describes this
+# record, so each position below was located on the file (1-based),
+# in AA407's DWELL field order and checked against the field's
+# vocabulary or a known relation:
+#   Extwall 55, Style 56 (3), Yrremod 64 (5)  between Stories and
+#     Rmtot, as in AA407; Yrblt (60) lies between them
+#   Heat 90, Fuel 93, Grade 94 (3)  after Remkit and Rembath (87, 88)
+#     and Bsmt (89); Heatsys (91-92) is filled on 0.25% of cards
+#   Wbfp_o 219 (the count's digit)  fireplace openings; stacks
+#     (221), prefabricated fireplaces (223) and basement garage cars
+#     follow, and openings exceed stacks where they differ
+#   Cdu 254 (2)  the CDU vocabulary; the record repeats it at 714
+#     and the two agree on 100% of cards
+#   Sfla 507 (7)  the field before the story-height factor (516,
+#     1.000/1.500/1.300); median 1,456 sqft, correlation 0.62 with
+#     rooms
+#   Effyr 687 (4)  a year on 6.4% of cards, never before Yrblt
+# Codes are kept verbatim: Extwall (single digits), Style (two
+# digits), Heat (heating_type; 1-5), Fuel (heating_fuel; 1-8), Grade
+# (quality_grade, e.g. 'C0', 'C-', 'D+') and Cdu (condition, e.g.
+# 'AV', 'GD', 'P-'). Richland publishes no code tables. Its Heat
+# codes do not match Clermont's or Montgomery's meaning (code 4,
+# central A/C there, is on 2.7% of cards here) and may follow
+# Summit's, so no has_central_air is derived; Bsmt (1-4) is not read
+# as has_basement for the same reason. Finished basement area is not
+# read: two adjacent area fields (ending at 145 and 152) cannot be
+# told apart from rec room area. Years take the latest card, codes
+# the first.
+# MEASURED 2026-09-13 on the 26,604 land-use 510 properties: living
+# area 99.2% (median 1,368 sqft); fireplaces > 0 34.2%; remodel year
+# 11.6%; effective year 6.7%; grade, condition, wall, heat, fuel and
+# style codes 99.2% each.
+# year_built reads Yrblt, the 4-digit year at 60-63 between Style and
+# Yrremod (read as 59, 5 wide; 59 is blank). The earliest card is
+# taken; 0 and years outside 1700-2026 are null. PLACEHOLDER HEAP:
+# 1900 is on 5.7% of cards (5.2% of 510 properties) and decade years
+# are overrepresented (1930 4.4%, 1920 4.2%), so pre-1950 years are
+# often estimates. MEASURED 2026-09-13: 99.2% of the 510 properties,
+# median 1954.
+# foundation_description keeps Bsmt (89, after Remkit and Rembath, a
+# code 1-4 on 99.7% of cards) verbatim; Richland publishes no code
+# table, and curate translates it. No construction or frame field is
+# located, so no construction_description. MEASURED 2026-09-13:
+# 99.2% of the 510 properties (4 on 78.5%, 3 9.0%, 1 7.5%, 2 4.2%).
+
+description: >-
+  Richland County, OH CAMA DWELL table: rooms, baths, stories, living
+  area, fireplaces, heating, grade and condition codes per card.
+
+admin_id: US-OH-RI
+
+entity:
+  entity_type: property
+  source:
+    source_id: richlandcounty
+    # Same Drive folder as the roll; see its terms note.
+    license: "unknown (no terms stated on the Cama Data page)"
+    redistribution_restricted: null
+    portal_url: "https://www.richlandcountyoh.gov/departments/auditor/CamaData"
+    download_url: "https://drive.usercontent.google.com/download?id=19JXAI--l6BBA79NJO94OjYiEyrvoYv-F&export=download&confirm=t"
+  version: "2026"
+
+uncompressed_file_name: "DWELL.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [parid, 30]
+  - [filler, 11] # Jur, Card
+  - [taxyr, 5]
+  - [filler, 4] # Seq
+  - [stories, 4]
+  - [extwall, 1]
+  - [style, 3]
+  - [yrblt, 5]
+  - [yrremod, 5]
+  - [rmtot, 3]
+  - [rmbed, 3]
+  - [filler, 2] # Rmfam
+  - [fixbath, 3]
+  - [fixhalf, 2]
+  - [filler, 7] # Fixaddl, Fixtot, Remkit, Rembath
+  - [bsmt, 1]
+  - [heat, 1]
+  - [filler, 2] # Heatsys
+  - [fuel, 1]
+  - [grade, 3]
+  - [filler, 122]
+  - [wbfp_o, 1]
+  - [filler, 34]
+  - [cdu, 2]
+  - [filler, 251]
+  - [sfla, 7]
+  - [filler, 173]
+  - [effyr, 4]
+
+# Drop the two blank filler lines that follow each record.
+query: "taxyr.notna()"
+
+columns:
+  parcel_id_assessor: parid
+  n_rooms: rmtot
+  n_bedrooms: rmbed
+  n_bathrooms: fixbath
+  n_half_bathrooms: fixhalf
+  n_stories: stories
+  living_area_sqft: sfla
+  n_fireplaces: wbfp_o
+  renovation_year: yrremod
+  effective_year_built: effyr
+  quality_grade: grade
+  condition: cdu
+  exterior_wall: extwall
+  heating_type: heat
+  heating_fuel: fuel
+  building_style: style
+  year_built: yrblt
+  foundation_description: bsmt
+
+transformations:
+  # Year built: 0 is nulled by the registry; years outside 1700-2026
+  # are nulled here.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - exterior_wall
+  - heating_type
+  - heating_fuel
+  - building_style
+  - foundation_description
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  heating_type: first
+  heating_fuel: first
+  building_style: first
+  year_built: min
+  foundation_description: first
+
+supplements: US-OH-RI_property-richlandcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

@@ -1,0 +1,94 @@
+# Recipe: Erie County, OH auditor roll, ISSG Parcel Characteristic
+# table. Supplement of US-OH-ER_property-eriecounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per parcel characteristic, several per parcel. Type is the
+# category (Neighborhood, Public Utilities, Topography) and
+# Characteristic the value; every value read here occurs under one
+# category only, so each output reads Characteristic alone.
+#
+#   sewer_type    ALL, SEPTIC, SEWER
+#   water_source  ALL, WATER, WELL
+#   topography    LEVEL, LOW, ROLLING
+# ALL is the source's 'all public utilities' and is kept as ALL in both
+# utility columns. ELECTRIC and GAS and the Neighborhood ratings
+# (STATIC, IMPROVING, ...) are not read. Erie fills this table for about
+# 15,000 parcels only. Codes keep the source's words; the first listed
+# value per parcel is taken.
+#
+# MEASURED 2026-09-13: 15,175 rows over 5,115 parcels, keys 97.46% in
+# the roll. The table barely reaches houses: on the 25,796 live land-use
+# 510 properties sewer_type and water_source are set on 0.2% (ALL on 55)
+# and topography on 0.3% (LEVEL on 66).
+
+description: >-
+  Erie County, OH ISSG Parcel Characteristic table: sewer, water supply
+  and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-ER
+
+entity:
+  entity_type: property
+  source:
+    source_id: eriecounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.eriecounty.oh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.eriecounty.oh.gov/"
+    download_url: "https://auditor.eriecounty.oh.gov/api/Document/PublicRecordsRequest.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsRequest.zip"
+uncompressed_file_name: "Parcel Characteristic.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: remap
+    input: Characteristic
+    mapping:
+      "ALL": "ALL"
+      "SEPTIC": "SEPTIC"
+      "SEWER": "SEWER"
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping:
+      "ALL": "ALL"
+      "WATER": "WATER"
+      "WELL": "WELL"
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      "LEVEL": "LEVEL"
+      "LOW": "LOW"
+      "ROLLING": "ROLLING"
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-ER_property-eriecounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

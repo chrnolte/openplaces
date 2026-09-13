@@ -1,0 +1,111 @@
+# Recipe: Ottawa County, OH auditor roll, ISSG Parcel Land table.
+# Supplement of US-OH-OT_property-ottawacounty-2026; see that recipe
+# for the source, the terms and the join key.
+#
+# One row per land line of a parcel and tax year (2024 and 2025
+# stacked; the query keeps the latest). Label says how Dim1 is read;
+# on 'Effective - Frontage / Depth' lines Dim1 is the effective
+# frontage in feet.
+#
+# frontage_ft sums Dim1 over the parcel's F1-REGULAR LOT lines with
+# that label: street frontage. F4-WATERFRONT LOT lines are measured
+# along the water and F5-REAR LOT lines have no street frontage, so
+# neither adds to it; a parcel with no regular-lot line stays null.
+# has_waterfront is true where the parcel has an F4-WATERFRONT LOT,
+# A0-HOMESITE/WATERFRONT or A8-HOMESITE/RIVER line and null
+# elsewhere: the land lines record waterfront pricing, not its
+# absence.
+#
+# MEASURED 2026-09-13: 58,044 land lines (2025) over 39,314 parcels,
+# keys 99.94% in the roll. On the 17,904 live land-use 510
+# properties: frontage_ft on 60.9% (median 75 ft, p99 260 ft);
+# has_waterfront true on 10.9%.
+
+description: >-
+  Ottawa County, OH ISSG Parcel Land table: street frontage in feet
+  and a waterfront flag from land lines, per parcel.
+
+admin_id: US-OH-OT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ottawacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Ottawa County)
+    terms_url: "https://auditor.co.ottawa.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.co.ottawa.oh.us/additional-links-property-data-downloads"
+    download_url: "https://auditor.co.ottawa.oh.us/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Land.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Dim1
+    output: land_dim1
+  # 1 on regular-lot lines measured by frontage; other lines null.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "F1-", value: 1}
+    output: front_row
+  - type: remap
+    input: Label
+    mapping: {"Effective - Frontage / Depth": 1}
+    output: frontage_row
+  - type: unary
+    operation: to_numeric
+    input: front_row
+    output: front_row
+  - type: binary
+    operation: multiply
+    inputs: [land_dim1, front_row]
+    output: front_dim1
+  - type: binary
+    operation: multiply
+    inputs: [front_dim1, frontage_row]
+    output: frontage_ft
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "(F4|A0|A8)-", value: true}
+    output: has_waterfront
+
+drop_columns:
+  - land_dim1
+  - front_row
+  - frontage_row
+  - front_dim1
+
+aggregation_function:
+  frontage_ft: sum
+  has_waterfront: max
+
+supplements: US-OH-OT_property-ottawacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

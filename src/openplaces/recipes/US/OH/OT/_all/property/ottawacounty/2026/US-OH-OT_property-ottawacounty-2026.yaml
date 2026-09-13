@@ -1,0 +1,84 @@
+# Recipe: Ottawa County, OH auditor roll (ISSG extract, Parcel table).
+#
+# Source: the auditor's "Property Data Downloads" page (ISSG Inc
+# platform) lists "Full Real Estate Data (CAMA & Tax)",
+# /api/Document/PublicRecordsExtract.zip (582 MB, one XLSX workbook per
+# table, 56 tables, updated nightly), a condensed Excel (GISExtract.zip)
+# and SchneiderExtract.zip. Unlike the XML counties, the ingester reads
+# these .xlsx tables directly. Three recipes read this extract, in the
+# ISSG layout of Lorain's and Belmont's recipes: this roll
+# (Parcel.xlsx), _appraisal (Parcel Appraisal.xlsx) and _dwelling
+# (Parcel Dwelling.xlsx). The XLSX headers use spaces where the XML
+# and SQLite copies use underscores ("Parcel Number U").
+#
+# Row shape, measured on the extract dated 2026-09-12: the tables stack
+# two tax years (Parcel.xlsx: 2024 43,552, 2025 43,659 rows). The query
+# keeps the latest tax year and the live parcels (Retired 'NO'):
+# 39,496 in 2025. One row is one property. The owner, taxpayer, lender
+# and escrow columns are never mapped.
+#
+# Join key. Parcel Number U is the unformatted 16-character id
+# (Parcel Number is '999-99999-99999-999', 196 ids end in letters).
+# Measured forward against the live OGRIP layer on a random sample,
+# Parcel Number U is found as OGRIP's LocalParcelID for 93 of 100 live
+# ids, and the formatted id for 0. OGRIP'S OTTAWA KEY IS MOSTLY BLANK
+# in a reverse sample: the inventory's first 1,000 OGRIP rows for
+# Ottawa carried a non-blank LocalParcelID on only 26 (the rest are the
+# single-space placeholder). The two readings disagree, so the
+# parcel_id_local join should be checked after ingest before it is
+# relied on; a spatial link may be needed where OGRIP is blank.
+
+description: >-
+  Ottawa County, OH auditor roll (ISSG extract, Parcel XLSX table):
+  live parcels of the latest tax year with acreage.
+
+admin_id: US-OH-OT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ottawacounty
+    # Read 2026-09-12 on the downloads page and /Disclaimer: "provided
+    # 'as is' and for reference only", no warranties, no liability, and
+    # "in using the data, users further agree to indemnify, defend, and
+    # hold harmless Ottawa County". No resale or redistribution clause,
+    # no click-through, no fee.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Ottawa County)
+    terms_url: "https://auditor.co.ottawa.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.co.ottawa.oh.us/additional-links-property-data-downloads"
+    download_url: "https://auditor.co.ottawa.oh.us/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "Retired == 'NO' and tax_year == tax_year.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number U
+  tax_year: Tax Year
+  area_ac: Acres
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,192 @@
+# Recipe: Tuscarawas County, OH auditor roll, ISSG Parcel Dwelling
+# table. Supplement of US-OH-TU_property-tuscarawascounty-2021; see
+# that recipe for the source and the join key.
+#
+# Row shape (2021): 33,199 cards over 32,545 parcels, one row per
+# dwelling card. 99.4% of the 18,921 live land-use 510 properties have
+# a card with bedrooms. Story_Height values: 1.00, 1.50, 2.00, 3.00 (7
+# cards read 0).
+#
+# The ISSG dwelling layout is the same in every ISSG county:
+# Bed_Rooms, Full_Baths, Half_Baths, Total_Rooms and Story_Height
+# (decimal). XML delivers every attribute as text, so each count is
+# cast to a number. Extra_Fixtures counts extra plumbing fixtures, not
+# baths, and Plumbing is a category; neither is mapped. n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), from the ISSG layout the
+# other ISSG counties share, codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces),
+# Year_Remodeled (renovation_year; 0 reads null), Year_Effective
+# (effective_year_built), Grade (quality_grade), Condition
+# (condition) and Type (building_style, e.g. '01-SINGLE FAMILY').
+# Years take the latest card, codes the first. NOT VALIDATED: the
+# extract is FTP-only and was not fetched; the 2026-09-12 measurement
+# found Living_Area above 0 on 99.85% of residential cards.
+#
+# year_built (added 2026-09-13): Year_Built, earliest card; 0 and any
+# year outside 1700 to 2026 read null. Not validated; the 2026-09-12
+# measurement found Year_Built above 0 on 99.9% of residential cards.
+# n_dwellings is not mapped: the unit fields were not measured then,
+# and whether they count units (they do not in Seneca or Belmont)
+# cannot be checked against land use without the extract.
+
+description: >-
+  Tuscarawas County, OH ISSG Parcel Dwelling table: rooms, bedrooms, full
+  and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-TU
+
+entity:
+  entity_type: property
+  source:
+    source_id: tuscarawascounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; user indemnifies the
+      county)
+    terms_url: "https://auditor.co.tuscarawas.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "ftp://gis.co.tuscarawas.oh.us/GIS/"
+    download_url: "ftp://gis.co.tuscarawas.oh.us/GIS/Public/ExtractXML.zip"
+  version: "2021"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Dwelling.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Story_Height
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  renovation_year: Year_Remodeled
+  effective_year_built: Year_Effective
+  year_built: Year_Built
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # year_built: null any year outside 1700 to 2026 (0 is already
+  # nulled by the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1700
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args:
+      threshold: 2026
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_after_min
+      - year_before_max
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping:
+      1: 1
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_built
+      - year_valid
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  year_built: min
+  quality_grade: first
+  condition: first
+  building_style: first
+
+supplements: US-OH-TU_property-tuscarawascounty-2021
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

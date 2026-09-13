@@ -1,0 +1,196 @@
+# Recipe: Wayne County, OH dwelling cards from the county's
+# parcel-dwelling layer. Supplement of US-OH-WY_property-waynecounty-
+# 2026; see that recipe for the source, the equivalence test and the
+# join key.
+#
+# Rows: the same export, restricted to rows that carry a dwelling card
+# (Card populated on 37,494 of 57,781 rows; 147 rows have Card > 1).
+# The layout is ISSG's dwelling card: Bed_Rooms, Full_Baths,
+# Half_Baths, Story_Height. Coverage (inventory, server statistics):
+# Bed_Rooms > 0 on 21,117 of 21,201 class-510 rows (99.6%).
+#
+# Total_Rooms is NOT mapped: it is above zero on only 242 of the
+# 57,781 rows (the field is effectively empty in this layer).
+# Extra_Fixtures counts extra plumbing fixtures and Plumbing is a
+# category; neither is a bath count. n_bathrooms folds full + 0.5 x
+# half. No heating, basement or cooling field on this layer.
+#
+# Building features (added 2026-09-13), codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces;
+# Fireplace_Stacks is not read), Year_Remodeled (renovation_year; 0
+# reads null), Year_Effective (effective_year_built), Grade
+# (quality_grade: a percentage grade such as '110'), Condition
+# (condition, e.g. '4 AV-AVERAGE') and Type (building_style, e.g.
+# '15-RANCH'). Years take the latest card, codes the first. The
+# parcel-level PPGrade, PPCondition and PPLivingArea repeat card
+# values on the roll's fields and are not read.
+# Year_Built_Human_Readable is year_built (the layer carries no plain
+# Year_Built; 'OLD' and years outside 1700-2026 read null; earliest
+# card; heaps at 1900 on 4.5% and 1880 on 1.5% of cards look like
+# placeholders). n_dwellings is Units_Designed plus Units_Converted:
+# the units of the card's dwelling as designed plus those converted
+# from it (a '1 FAM + 1 CONV' card counts 2), summed over cards.
+# MEASURED 2026-09-13 on the 21,200 live land-use 510 properties:
+# living area 99.9% (median 1,458 sqft); effective year, grade,
+# condition and style 99.9% each; fireplaces > 0 on 45.4%; remodel
+# year 32.4%; year_built 99.9% (median 1968; 1900 and 1920 on 3.2%
+# each); n_dwellings 99.9%, exactly 1 on 99.7%.
+
+admin_id: US-OH-WY
+
+entity:
+  entity_type: property
+  source:
+    source_id: waynecounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no licence on the ArcGIS item; auditor site terms unread)"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=f471251af50145fab05e90f167e14087"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/f471251af50145fab05e90f167e14087_0/downloads/data?format=csv&spatialRefId=3734&where=1%3D1"
+  version: "2026"
+
+uncompressed_file_name: "wayne_parcel_dwellings.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+query: "Card.notna()"
+
+columns:
+  parcel_id_assessor: Parcel
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Story_Height
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  renovation_year: Year_Remodeled
+  effective_year_built: Year_Effective
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+  year_built: Year_Built_Human_Readable
+
+transformations:
+  # n_dwellings = units in the original design + units converted.
+  - type: unary
+    operation: to_numeric
+    input: Units_Designed
+    output: units_designed
+  - type: unary
+    operation: to_numeric
+    input: Units_Converted
+    output: units_converted
+  - type: aggregate
+    operation: sum
+    inputs: [units_designed, units_converted]
+    output: n_dwellings
+  # year_built outside 1700-2026 reads null ('OLD' reads null too).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - units_designed
+  - units_converted
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  year_built: min
+  n_dwellings: sum
+  quality_grade: first
+  condition: first
+  building_style: first
+
+supplements: US-OH-WY_property-waynecounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

@@ -1,0 +1,200 @@
+# Recipe: Franklin County, OH auditor appraisal roll, Improvement
+# table (iasWorld other-building and yard items). Supplement of
+# US-OH-FR_property-franklincounty-2026; see that recipe for the
+# source, the extract folder and the join key.
+#
+# One row per improvement line (PARCEL ID, CARD, LLINE). CODE is
+# 'code - description' (240 codes); AREA is the line's area in sqft.
+# Codes read, by the code before ' - ':
+#   garages     RG1-RG4 (detached frame, block, masonry, metal),
+#               RA1-RA2 (attached frame, masonry), CG1 (condo)
+#   carports    RCP, CPP (portable), MA3 (mobile home)
+#   porches     OFP, EFP, OMP, EMP, SCP and their upper forms OFU,
+#               EFU, SCU; MA1 (mobile home porch)
+#   decks       WD1-WD2 (wood decks), PD1-PD2 (detached patios),
+#               SPP (pool patio), MA4 (mobile home deck)
+#   pools       RP1-RP5, PPP, SC1-SC2 (commercial pools)
+#   elevator    ELV
+#   outbuildings the garages and carports above, RS1-RS5 and SHP
+#               (sheds, well house, outhouse), RCS, PB1-PB8 (pole
+#               buildings), AB1-AB2, the A-prefixed barns, stables,
+#               cribs, bins, silos and poultry, milk and smoke houses,
+#               OGZ and GZP (gazebos), RSL (shelter), CS1-CS7 (sheds),
+#               QU1-QU2 (quonset), GH1-GH6 (greenhouses), RBH, CBN,
+#               RCA, SKN, MIS, OP1-OP3 and BH1-BH2 (boathouses)
+# n_outbuildings counts lines, not UNITS (UNITS reaches the
+# thousands on paving and fence lines and is not a building count).
+# garage_area_sqft, porch_area_sqft and deck_area_sqft sum AREA over
+# their codes. Attached garages and porches mostly sit in iasWorld's
+# addition table, which the extract does not carry, so these areas
+# are mainly detached items; attached car spaces come from the
+# Dwelling table (n_garage_spaces). Flags are true where the item is
+# recorded and null elsewhere (the table lists what is present).
+# SOL - SOLAR RM is a room, not solar panels, and is not read.
+#
+# MEASURED 2026-09-13: 309,129 lines over 202,453 parcels, keys 100%
+# in the roll. On the 291,801 live land-use 510 properties: a line on
+# 38.6%; n_outbuildings > 0 on 30.9% (median 1); a garage on 22.9%
+# (RG1 55,865, RG2 10,091, RG3 701, RG4 118, RA1 21, RA2 3; median
+# 308 sqft); deck or patio area on 8.3%; porch area on 0.8%; pool
+# 1.7%; carport 0.7%; elevator on 21 properties.
+
+description: >-
+  Franklin County, OH auditor Improvement table: garages, carports,
+  porches, decks, pools, elevators and outbuilding count per property.
+
+admin_id: US-OH-FR
+
+entity:
+  entity_type: property
+  source:
+    source_id: franklincounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no-liability disclaimer only; FTP terms page unread)"
+    redistribution_restricted: null
+    portal_url: "https://apps.franklincountyauditor.com/Outside_User_Files/"
+    download_url: "https://apps.franklincountyauditor.com/Outside_User_Files/2026/2026-08-15%20Appraisal/Tab-Delimited.zip"
+  version: "2026"
+
+compressed_file_name: "Tab-Delimited.zip"
+uncompressed_file_name: "Improvement.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL ID
+
+transformations:
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 0, end: -3}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: AREA
+    output: item_area
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(RG[1-4]|RA[12]|CG1) - ", value: 1}
+    default: 0
+    output: garage_row
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(OFP|EFP|OMP|EMP|SCP|OFU|EFU|SCU|MA1) - ", value: 1}
+    default: 0
+    output: porch_row
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(WD[12]|PD[12]|SPP|MA4) - ", value: 1}
+    default: 0
+    output: deck_row
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(RG[1-4]|RA[12]|CG1|RCP|CPP|MA3|RCS) - ", value: 1}
+      - {pattern: "(RS[1-5]|SHP|PB[1-8]|AB[12]|AF[BD1]|ABB) - ", value: 1}
+      - {pattern: "(AS[1-3BCDFHT]|AH[124P]|AMH|AG[12R]|AC[124]) - ", value: 1}
+      - {pattern: "(AK1|OGZ|GZP|RSL|CS[1-7]|QU[12]|GH[1-6]) - ", value: 1}
+      - {pattern: "(RBH|CBN|RCA|SKN|MIS|OP[1-3]|BH[12]) - ", value: 1}
+    default: 0
+    output: outbuilding_row
+  - type: unary
+    operation: to_numeric
+    input: garage_row
+    output: garage_row
+  - type: unary
+    operation: to_numeric
+    input: porch_row
+    output: porch_row
+  - type: unary
+    operation: to_numeric
+    input: deck_row
+    output: deck_row
+  - type: unary
+    operation: to_numeric
+    input: outbuilding_row
+    output: n_outbuildings
+  - type: binary
+    operation: multiply
+    inputs: [item_area, garage_row]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [item_area, porch_row]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [item_area, deck_row]
+    output: deck_area_sqft
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(RG[1-4]|RA[12]|CG1) - ", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(RCP|CPP|MA3) - ", value: true}
+    output: has_carport
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "(RP[1-5]|PPP|SC[12]) - ", value: true}
+    output: has_pool
+  - type: remap_pattern
+    input: CODE
+    patterns:
+      - {pattern: "ELV - ", value: true}
+    output: has_elevator
+  # Garage codes kept verbatim; other lines leave garage_type null.
+  - type: remap
+    input: CODE
+    mapping:
+      "RG1 - DETACHED FRAME GARAGE": "RG1 - DETACHED FRAME GARAGE"
+      "RG2 - DETACHED CONC BLK GARAGE": "RG2 - DETACHED CONC BLK GARAGE"
+      "RG3 - DETACHED MAS GARAGE": "RG3 - DETACHED MAS GARAGE"
+      "RG4 - DETACHED METAL GARAGE": "RG4 - DETACHED METAL GARAGE"
+      "RA1 - ATTACHED FRAME GARAGE": "RA1 - ATTACHED FRAME GARAGE"
+      "RA2 - ATTACHED MASONRY GARAGE": "RA2 - ATTACHED MASONRY GARAGE"
+      "CG1 - CONDO GARAGE": "CG1 - CONDO GARAGE"
+    output: garage_type
+
+drop_columns:
+  - item_area
+  - garage_row
+  - porch_row
+  - deck_row
+  - outbuilding_row
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  n_outbuildings: sum
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  has_pool: max
+  has_elevator: max
+  garage_type: first
+
+supplements: US-OH-FR_property-franklincounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvements

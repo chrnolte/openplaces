@@ -1,0 +1,213 @@
+# Recipe: Montgomery County, OH CAMA roll, ADDN table (iasWorld
+# additions, AA407 fixed width). Supplement of
+# US-OH-MO_property-montgomerycounty-2026; see that recipe for the
+# source, the pinned monthly file and the join key.
+#
+# One record per addition line of a dwelling card. Offsets from the
+# layout PDF, page 18 (1-based starts: Taxyr 51, Lower 70, First 73,
+# Second 76, Area 100); on the 2026-08-31 file every record is tax
+# year 2025 and Area is numeric on 100%.
+#
+# Codes. The zip carries no addition code table. The codes read here
+# are Tyler iasWorld's residential addition codes as Clermont
+# County's AA407 extract publishes them (RCADDN), and Montgomery's
+# areas agree: median first-floor area 400 sqft for 13 (frame
+# garage), 454 for 23 (masonry garage), 91 and 160 for 11 and 12
+# (open and enclosed frame porch), 128 and 184 for 21 and 22 (open
+# and enclosed masonry porch), 200 for 31 (wood deck), 176 and 240
+# for 33 and 34 (concrete and stone patio) and 270 for 30 (carport).
+#   garage   13, 23, 43 (integral), at every level
+#   porch    11, 12, 21, 22, 45 (screen porch), at every level
+#   deck     31, 33, 34, at every level
+#   carport  30 (first floor)
+# Stoops (35), canopies (32), overhangs, bays, attics and living
+# additions are not read. Each area sums Area over the levels whose
+# code matches, so a deck over a patio adds both.
+#
+# garage_type keeps the first-floor garage code. has_garage and
+# has_carport are true where such a line is recorded and null
+# elsewhere. Detached garages and carports are OBY rows (see _oby),
+# which sets the same two flags.
+#
+# MEASURED 2026-09-13: 822,864 lines over 188,486 parcels, keys 99.83%
+# in the roll. On the 157,799 land-use 510 properties: attached
+# garage on 54.7% (first-floor 23 on 38.5%, 13 on 16.1%); porch area
+# > 0 on 62.9%; deck or patio area > 0 on 69.5%; carport 2.7%.
+
+description: >-
+  Montgomery County, OH CAMA ADDN table: attached garage, porch, deck
+  and patio area and garage and carport flags per property.
+
+admin_id: US-OH-MO
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms on the download page; auditor GIS disclaimer is
+      warranty/liability only)
+    terms_url: "https://www.mcohio.org/630/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://go.mcohio.org/applications/treasurer/search/filedownloads.cfm"
+    download_url: "https://go.mcohio.org/applications/treasurer/search/data/Cama/Cama_Files_20260831.zip"
+  version: "2026"
+
+compressed_file_name: "Cama_Files_20260831.zip"
+uncompressed_file_name: "Cama_Files_20260831/ADDN.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [parid, 30]
+  - [filler, 6] # Jur
+  - [filler, 4] # Seq
+  - [filler, 5] # Card
+  - [filler, 5] # Lline
+  - [taxyr, 5]
+  - [filler, 14] # Class, Yrblt, Effyr
+  - [lower, 3]
+  - [first, 3]
+  - [second, 3]
+  - [filler, 21] # Third, Grade, Grdfact, Cdu, Depr, Pctcomp
+  - [area, 9]
+
+# Drop any filler line, whose tax year is blank.
+query: "taxyr.notna()"
+
+columns:
+  parcel_id_assessor: parid
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: area
+    output: addn_area
+  - type: remap
+    input: lower
+    mapping: {"13": 1, "23": 1, "43": 1}
+    default: 0
+    output: garage_lower
+  - type: remap
+    input: first
+    mapping: {"13": 1, "23": 1, "43": 1}
+    default: 0
+    output: garage_first
+  - type: remap
+    input: second
+    mapping: {"13": 1, "23": 1, "43": 1}
+    default: 0
+    output: garage_second
+  - type: remap
+    input: lower
+    mapping: {"11": 1, "12": 1, "21": 1, "22": 1, "45": 1}
+    default: 0
+    output: porch_lower
+  - type: remap
+    input: first
+    mapping: {"11": 1, "12": 1, "21": 1, "22": 1, "45": 1}
+    default: 0
+    output: porch_first
+  - type: remap
+    input: second
+    mapping: {"11": 1, "12": 1, "21": 1, "22": 1, "45": 1}
+    default: 0
+    output: porch_second
+  - type: remap
+    input: lower
+    mapping: {"31": 1, "33": 1, "34": 1}
+    default: 0
+    output: deck_lower
+  - type: remap
+    input: first
+    mapping: {"31": 1, "33": 1, "34": 1}
+    default: 0
+    output: deck_first
+  - type: remap
+    input: second
+    mapping: {"31": 1, "33": 1, "34": 1}
+    default: 0
+    output: deck_second
+  - type: aggregate
+    operation: sum
+    inputs: [garage_lower, garage_first, garage_second]
+    output: garage_levels
+  - type: aggregate
+    operation: sum
+    inputs: [porch_lower, porch_first, porch_second]
+    output: porch_levels
+  - type: aggregate
+    operation: sum
+    inputs: [deck_lower, deck_first, deck_second]
+    output: deck_levels
+  - type: binary
+    operation: multiply
+    inputs: [addn_area, garage_levels]
+    output: garage_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [addn_area, porch_levels]
+    output: porch_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [addn_area, deck_levels]
+    output: deck_area_sqft
+  - type: conditional
+    operation: greater_than
+    input: garage_levels
+    args: {threshold: 0}
+    output: garage_line
+  # Lines with no garage leave the flag null.
+  - type: remap
+    input: garage_line
+    mapping: {1: true}
+    output: has_garage
+  - type: remap
+    input: first
+    mapping: {"30": true}
+    output: has_carport
+  - type: remap
+    input: first
+    mapping: {"13": "13", "23": "23", "43": "43"}
+    output: garage_type
+
+drop_columns:
+  - addn_area
+  - garage_lower
+  - garage_first
+  - garage_second
+  - porch_lower
+  - porch_first
+  - porch_second
+  - deck_lower
+  - deck_first
+  - deck_second
+  - garage_levels
+  - porch_levels
+  - deck_levels
+  - garage_line
+
+columns_to_categorical:
+  - garage_type
+
+aggregation_function:
+  garage_area_sqft: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_garage: max
+  has_carport: max
+  garage_type: first
+
+supplements: US-OH-MO_property-montgomerycounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: additions

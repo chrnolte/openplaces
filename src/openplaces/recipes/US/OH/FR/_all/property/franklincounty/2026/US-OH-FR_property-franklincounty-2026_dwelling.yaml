@@ -1,0 +1,334 @@
+# Recipe: Franklin County, OH auditor appraisal roll, Dwelling table.
+# Supplement of US-OH-FR_property-franklincounty-2026; see that recipe
+# for the source, the extract folder and the join key.
+#
+# Row shape, measured on the 2026-08-15 extract: 431,505 rows over
+# 430,102 distinct PARCEL ID, (PARCEL ID, CARD) unique. One row is one
+# residential dwelling card: 429,051 properties have one card, 946
+# two, about 90 three or more. 95.1% of the roll's 447,880 5xx
+# (residential) properties have a card.
+#
+# Measured on dwelling rows:
+#   RMTOT   (total rooms)  100.0% above zero, median 6
+#   RMBED   (bedrooms)      99.8% above zero, median 3
+#   FIXBATH (full baths)    99.9% above zero, median 2
+#   FIXHALF (half baths)    55.3% populated, 49.2% above zero
+#   STORIES                100.0% populated (6 rows null)
+# FIXTOT and FIXADDL are plumbing-fixture counts, not baths, and are
+# not mapped. n_bathrooms folds full + 0.5 x half.
+#
+# STORIES is iasWorld's code text, 'code - description', so the
+# code list travels with every value. The code is the story count
+# for 99.8% of rows (1, 1.5, 2, 2.5, 3, 4). Five variant codes carry
+# a description that names a standard height: 1.1 'HI 1 Story' (413
+# rows), 1.4 '1 1/2 - Story' (218), 1.6 '1 1/2 + Story' (97), 2.4
+# '2 1/2 - Story' (70) and 2.6 '2 1/2 + Story' (13). The remap below
+# sends each to the height its description names. A code not in the
+# map lands null rather than guessed.
+#
+# Join key: as in the roll. 690 base ids carry dwelling cards under
+# both a '-00' and a '-10' suffix; they are different structures
+# (year built agrees on 0.1% of those pairs), so summing them on the
+# shared parcel_id_local is correct. Suffix-dropped overlap with the
+# live OGRIP layer: 180 of 200 sampled dwelling ids (90%).
+#
+# Building features (added 2026-09-13), codes verbatim as the
+# source's 'code - description' text:
+#   SFLA          living_area_sqft (living area, sqft; summed)
+#   STYLE         building_style ('01 - CONVENTIONAL', ...)
+#   EXTWALL       exterior_wall ('1 - WD/ALUM/VINYL', '7 - BRICK',
+#                 the 91-95 masonry-to-frame shares, ...)
+#   GRADE, COND   quality_grade ('C+1 - AVERAGE +'), condition
+#   YRREMOD       renovation_year (latest card)
+#   WBFP_O        n_fireplaces (wood-burning openings; WBFP_S, the
+#                 stack count, is not read)
+#   FINBSMTAREA   basement_finished_area_sqft
+#   CARSPACESATT  n_garage_spaces (attached garage car spaces; the
+#                 code before ' - ', 1 to 6 with 1.5)
+# BSMT is also kept verbatim as foundation_description ('B - FULL
+# BASEMENT', 'C - FULL CRAWL', '8 - 1/2 BASEMENT 1/2 CRAWL', ...).
+# The Dwelling table has no frame or structure field (EXTWALL is the
+# wall material); Build.txt's CONSTR (wood joist, fire resistant,
+# fireproof) covers commercial sections only and is not read.
+# has_basement reads BSMT, which records every card's lowest level:
+# true on B (full) and the 1/4, 1/2, 3/4 basement codes 1-3 and 7-9,
+# false on 0 (NONE), C (full crawl) and the crawl-only codes 4-6.
+# has_central_air reads HEAT: true on '2 - HEAT/AIR CON', false on
+# '1 - HEAT' and '0 - NONE' (both record no air conditioning).
+# has_garage is true where CARSPACESATT is filled and has_carport where
+# CARPORTSPACES is; both stay null elsewhere (a blank is not a
+# recorded absence), and _improvements sets them for detached ones.
+# WELLSEPTIC ('9 - Well / Septic', '8 - Septic', '7 - Well', filled
+# only where a private system exists) feeds sewer_type and
+# water_source; public service is not recorded here, so other cards
+# stay null. The Parcel table's UTIL1 ('6 - Public Utilities
+# Available') records availability, not the connection, and is not
+# read. EFFYR is not mapped: it equals YRREMOD on all 119,967 cards
+# that fill either, so it is a remodel year, not an effective one.
+# YRBLT is year_built (earliest card; outside 1700-2026 reads null;
+# 1900 is a placeholder heap on 2.7% of cards). LIVUNITS is
+# n_dwellings: the living units on the dwelling card (1 on 96.6% of
+# cards, 2 on 3.1%; a condominium unit's card counts its own unit),
+# summed over cards. Commercial and apartment buildings have no
+# dwelling card, so their units are not counted here.
+# Not mapped: ATTIC, CARPORTSPACES counts, RECROMAREA.
+# MEASURED 2026-09-13 on the 291,801 live land-use 510 properties:
+# living area 98.5% (median 1,500 sqft); style, wall, grade and
+# condition 98.5% each; has_basement true 84.4%, false 14.1%;
+# has_central_air true 91.1%, false 7.4%; attached garage spaces on
+# 57.2% (median 2); carport 1.9%; fireplaces > 0 on 42.1%; finished
+# basement area on 15.6%; remodel year 30.9%; sewer_type 2.1% and
+# water_source 1.9% (private systems only); year_built 98.5%
+# (median 1970); n_dwellings 98.5%, exactly 1 on 99.7% of those;
+# foundation_description 98.5% (B - FULL BASEMENT on 62.0%).
+
+description: >-
+  Franklin County, OH auditor Dwelling table: rooms, baths, stories,
+  living area, basement, air conditioning, garage spaces, grade and
+  condition per card, summed to the property.
+
+admin_id: US-OH-FR
+
+entity:
+  entity_type: property
+  source:
+    source_id: franklincounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no-liability disclaimer only; FTP terms page unread)"
+    redistribution_restricted: null
+    portal_url: "https://apps.franklincountyauditor.com/Outside_User_Files/"
+    download_url: "https://apps.franklincountyauditor.com/Outside_User_Files/2026/2026-08-15%20Appraisal/Tab-Delimited.zip"
+  version: "2026"
+
+compressed_file_name: "Tab-Delimited.zip"
+uncompressed_file_name: "Dwelling.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL ID
+  n_rooms: RMTOT
+  n_bedrooms: RMBED
+  n_bathrooms: FIXBATH
+  n_half_bathrooms: FIXHALF
+  n_stories: STORIES
+  living_area_sqft: SFLA
+  building_style: STYLE
+  exterior_wall: EXTWALL
+  quality_grade: GRADE
+  condition: COND
+  renovation_year: YRREMOD
+  n_fireplaces: WBFP_O
+  basement_finished_area_sqft: FINBSMTAREA
+  year_built: YRBLT
+  n_dwellings: LIVUNITS
+  foundation_description: BSMT
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  # year_built outside 1700-2026 reads null.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: string
+    operation: split_take
+    input: CARSPACESATT
+    args: {sep: " - ", index: 0}
+    output: n_garage_spaces
+  - type: unary
+    operation: to_numeric
+    input: n_garage_spaces
+    output: n_garage_spaces
+  - type: remap_pattern
+    input: CARSPACESATT
+    patterns:
+      - {pattern: "[0-9]", value: true}
+    output: has_garage
+  - type: remap_pattern
+    input: CARPORTSPACES
+    patterns:
+      - {pattern: "[0-9]", value: true}
+    output: has_carport
+  - type: remap
+    input: foundation_description
+    mapping:
+      "B - FULL BASEMENT": true
+      "1 - 1/4 BASEMENT": true
+      "2 - 1/2 BASEMENT": true
+      "3 - 3/4 BASEMENT": true
+      "7 - 1/4 BASEMENT 3/4 CRAWL": true
+      "8 - 1/2 BASEMENT 1/2 CRAWL": true
+      "9 - 3/4 BASEMENT 1/4 CRAWL": true
+      "0 - NONE": false
+      "C - FULL CRAWL": false
+      "4 - 1/4 CRAWL": false
+      "5 - 1/2 CRAWL": false
+      "6 - 3/4 CRAWL": false
+    output: has_basement
+  - type: remap
+    input: HEAT
+    mapping:
+      "2 - HEAT/AIR CON": true
+      "1 - HEAT": false
+      "0 - NONE": false
+    output: has_central_air
+  - type: remap
+    input: WELLSEPTIC
+    mapping:
+      "9 - Well / Septic": "9 - Well / Septic"
+      "8 - Septic": "8 - Septic"
+    output: sewer_type
+  - type: remap
+    input: WELLSEPTIC
+    mapping:
+      "9 - Well / Septic": "9 - Well / Septic"
+      "7 - Well": "7 - Well"
+    output: water_source
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 0, end: -3}
+    output: parcel_id_admin3
+  - type: string
+    operation: split_take
+    input: n_stories
+    args: {sep: " - ", index: 0}
+    output: n_stories
+  - type: remap
+    input: n_stories
+    mapping:
+      "1": 1.0
+      "1.1": 1.0
+      "1.4": 1.5
+      "1.5": 1.5
+      "1.6": 1.5
+      "2": 2.0
+      "2.4": 2.5
+      "2.5": 2.5
+      "2.6": 2.5
+      "3": 3.0
+      "4": 4.0
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only
+  # when both counts are, so a missing half count reads as zero.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - building_style
+  - exterior_wall
+  - foundation_description
+  - quality_grade
+  - condition
+  - sewer_type
+  - water_source
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  n_garage_spaces: sum
+  n_dwellings: sum
+  year_built: min
+  renovation_year: max
+  has_basement: max
+  has_central_air: max
+  has_garage: max
+  has_carport: max
+  building_style: first
+  exterior_wall: first
+  foundation_description: first
+  quality_grade: first
+  condition: first
+  sewer_type: first
+  water_source: first
+
+supplements: US-OH-FR_property-franklincounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

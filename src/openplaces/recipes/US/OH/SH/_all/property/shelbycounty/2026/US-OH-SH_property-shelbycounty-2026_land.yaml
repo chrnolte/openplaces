@@ -1,0 +1,93 @@
+# Recipe: Shelby County, OH auditor roll, ISSG Parcel Land table.
+# Supplement of US-OH-SH_property-shelbycounty-2026; see that recipe for
+# the source and the join key.
+#
+# One row per land line of a parcel. Label says how Dim1 and Dim2 are
+# read; on 'Effective - Frontage / Depth' lines Dim1 is the effective
+# street frontage in feet and Dim2 the depth. frontage_ft sums Dim1 over
+# the parcel's FL-FRONT LOT (FF) lines with that label; RL-REAR LOT
+# lines carry a front-lot/rear-lot label and add nothing. A parcel with
+# no front-lot line stays null.
+#
+# MEASURED 2026-09-13: 56,290 land lines over 31,409 parcels, keys
+# 99.63% in the roll; frontage_ft on 67.7% of the 14,254 live land-use
+# 510 properties (median 74 ft, p99 218 ft).
+
+description: >-
+  Shelby County, OH ISSG Parcel Land table: effective street frontage in
+  feet from front-lot land lines, per parcel.
+
+admin_id: US-OH-SH
+
+entity:
+  entity_type: property
+  source:
+    source_id: shelbycounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms stated on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://realestate.shelbycountyauditors.com/property-data-downloads"
+    download_url: "https://shelby-auditor-public.issg.io/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Land.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 2}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: Dim1
+    output: land_dim1
+  # 1 on front-lot lines measured by frontage; others null.
+  - type: remap_pattern
+    input: Type
+    patterns:
+      - {pattern: "FL-", value: 1}
+    output: front_row
+  - type: remap
+    input: Label
+    mapping:
+      "Effective - Frontage / Depth": 1
+    output: frontage_row
+  - type: unary
+    operation: to_numeric
+    input: front_row
+    output: front_row
+  - type: binary
+    operation: multiply
+    inputs: [land_dim1, front_row]
+    output: front_dim1
+  - type: binary
+    operation: multiply
+    inputs: [front_dim1, frontage_row]
+    output: frontage_ft
+
+drop_columns:
+  - land_dim1
+  - front_row
+  - frontage_row
+  - front_dim1
+
+aggregation_function:
+  frontage_ft: sum
+
+supplements: US-OH-SH_property-shelbycounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

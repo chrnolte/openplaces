@@ -1,0 +1,76 @@
+# Recipe: Union County, OH auditor roll, ARC TB_ARC_Land table.
+# Supplement of US-OH-UN_property-unioncounty-2026; see that recipe
+# for the source, the terms and the join key.
+#
+# One row per land line (crop, front, woods, road, homesite, small
+# acres, ...). Code F ('Front', Calc Type Front/Rear) lines carry the
+# street frontage in Front (feet) and the depth in Front Depth; Code
+# R ('Rear') lines are rear lots. frontage_ft sums Front over the F
+# lines, so it is street frontage; a parcel with no front line stays
+# null.
+#
+# MEASURED 2026-09-13: 97,572 lines over 37,458 parcels, keys 100% in
+# the roll; frontage_ft on 89.0% of the 14,779 live land-use 510
+# properties (median 73 ft, p99 180 ft).
+
+description: >-
+  Union County, OH ARC land table: street frontage in feet from front
+  land lines, per parcel.
+
+admin_id: US-OH-UN
+
+entity:
+  entity_type: property
+  source:
+    source_id: unioncounty
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (no licence on the portal items; no terms on the download host)"
+    redistribution_restricted: null
+    portal_url: "https://www8.co.union.oh.us/mapunionoh/"
+    download_url: "https://www2.co.union.oh.us/propertyinfofile/TB_ARC_Land.zip"
+  version: "2026"
+
+compressed_file_name: "TB_ARC_Land.zip"
+uncompressed_file_name: "TB_ARC_Land/TB_ARC_Land.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "|"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Front
+    output: land_front
+  # 1 on front lines; other lines null.
+  - type: remap
+    input: Code
+    mapping: {F: 1}
+    output: front_row
+  - type: binary
+    operation: multiply
+    inputs: [land_front, front_row]
+    output: frontage_ft
+
+drop_columns:
+  - land_front
+  - front_row
+
+aggregation_function:
+  frontage_ft: sum
+
+supplements: US-OH-UN_property-unioncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

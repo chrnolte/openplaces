@@ -1,0 +1,142 @@
+# Recipe: Ottawa County, OH auditor roll, ISSG Parcel Dwelling Floor
+# table. Supplement of US-OH-OT_property-ottawacounty-2026; see that
+# recipe for the source, the terms and the join key.
+#
+# One row per floor of a dwelling card and tax year (2024 and 2025
+# stacked; the query keeps the latest). Floor Type is First Floor,
+# Full, 1/2 or 1/4 Upper Floor, Attic, Basement, Crawl or Slab. Area
+# is the floor's area and Living Area its finished living area
+# (sqft); Cool Factor is the share of the floor that is cooled, 0 to
+# 100 (the layout's words: "the factor of the area that is cooled").
+#
+# Basement. basement_area_sqft sums Area and
+# basement_finished_area_sqft sums Living Area over Basement rows;
+# other rows add 0, so a card whose lowest level is a crawl or slab
+# reads 0. has_basement is true on a Basement row and false on a
+# Crawl or Slab row: the source records every card's lowest level as
+# a floor row, so false is a recorded absence. A property with no
+# floor rows stays null.
+#
+# Cooling. has_central_air is true where any floor has a cooled share
+# above 0 and false where every floor records 0. ISSG says "cooled",
+# not "central"; the source does not name the system (Parcel
+# Dwelling Custom Field's 'Heating' answer, read in _custom-field,
+# says AIR CONDITIONING on most cooled cards).
+#
+# MEASURED 2026-09-13: 57,536 floor rows (2025) over 22,654 parcels,
+# keys 100.00% in the roll. On the 17,904 live land-use 510
+# properties: has_basement true 40.6%, false 51.3%, null 8.1%;
+# basement area > 0 on 40.6%; finished basement area > 0 on 4.0%;
+# has_central_air true 69.8%, false 30.1%.
+# foundation_description is Floor Type on Basement, Crawl and Slab
+# rows, in the source's words, first per property (a card with both
+# a basement and a crawl row reads the one listed first); on 91.9%
+# (Crawl 9,169, Basement 7,171, Slab 111). No construction or frame
+# field exists in the Ottawa extract.
+
+description: >-
+  Ottawa County, OH ISSG Parcel Dwelling Floor table: basement area,
+  finished basement area and basement and cooling flags per property.
+
+admin_id: US-OH-OT
+
+entity:
+  entity_type: property
+  source:
+    source_id: ottawacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Ottawa County)
+    terms_url: "https://auditor.co.ottawa.oh.us/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://auditor.co.ottawa.oh.us/additional-links-property-data-downloads"
+    download_url: "https://auditor.co.ottawa.oh.us/api/Document/PublicRecordsExtract.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecordsExtract.zip"
+uncompressed_file_name: "Parcel Dwelling Floor.xlsx"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+# The ingester's read_excel default header='infer' is rejected by
+# pandas; the header is the first row.
+header: 0
+
+query: "`Tax Year` == `Tax Year`.max()"
+
+columns:
+  parcel_id_assessor: Parcel Number U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: floor_area
+  - type: unary
+    operation: to_numeric
+    input: Living Area
+    output: floor_living_area
+  - type: unary
+    operation: to_numeric
+    input: Cool Factor
+    output: cool_factor
+  # 1 on Basement rows, 0 on every other floor.
+  - type: remap
+    input: Floor Type
+    mapping: {Basement: 1}
+    default: 0
+    output: basement_row
+  - type: binary
+    operation: multiply
+    inputs: [floor_area, basement_row]
+    output: basement_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [floor_living_area, basement_row]
+    output: basement_finished_area_sqft
+  # Other floor types leave the flag null.
+  - type: remap
+    input: Floor Type
+    mapping: {Basement: true, Crawl: false, Slab: false}
+    output: has_basement
+  # The lowest-level rows, in the source's words.
+  - type: remap
+    input: Floor Type
+    mapping: {Basement: Basement, Crawl: Crawl, Slab: Slab}
+    output: foundation_description
+  - type: conditional
+    operation: greater_than
+    input: cool_factor
+    args: {threshold: 0}
+    output: cooled_row
+  - type: remap
+    input: cooled_row
+    mapping: {0: false, 1: true}
+    output: has_central_air
+
+drop_columns:
+  - floor_area
+  - floor_living_area
+  - cool_factor
+  - basement_row
+  - cooled_row
+
+aggregation_function:
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  has_central_air: max
+  foundation_description: first
+
+supplements: US-OH-OT_property-ottawacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: floors

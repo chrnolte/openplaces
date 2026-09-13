@@ -1,0 +1,143 @@
+# Recipe: Seneca County, OH auditor roll, ISSG Parcel Dwelling Floor
+# table. Supplement of US-OH-SE_property-senecacounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per floor of a dwelling card. Floor_Type is First Floor, Full,
+# 1/2, 1/4 or 3/4 Upper Floor, Attic, Basement, Crawl or Slab. Area is
+# the floor's area and Living_Area its finished living area (sqft);
+# Cool_Factor is the share of the floor that is cooled, 0 to 100 (the
+# layout's words: 'the factor of the area that is cooled').
+#
+# Basement. basement_area_sqft sums Area and basement_finished_area_sqft
+# sums Living_Area over Basement rows; other rows add 0. has_basement is
+# true on a Basement row and false on a Crawl or Slab row, null
+# otherwise. Seneca records a crawl row on about 3,000 cards a year and
+# a slab row on few, so many cards without a basement read null, not
+# false. foundation_description keeps the lowest-level Floor_Type
+# (Basement, Crawl or Slab) verbatim, the first listed per property;
+# other floor types leave it null.
+#
+# Cooling. has_central_air is true where any floor has a cooled share
+# above 0 and false where every floor records 0. ISSG says 'cooled', not
+# 'central'; the source does not name the system.
+#
+# MEASURED 2026-09-13 on the latest tax year (2025): 53,416 floor rows
+# over 19,914 parcels, keys 99.99% in the roll. On the 11,009 live
+# land-use 510 properties: has_basement true 78.4%, false 14.9%, null
+# 6.7%; basement area > 0 on 78.4% (median 704 sqft); finished basement
+# area > 0 on 3.4%; has_central_air true 58.3%, false 41.6%;
+# foundation_description on 93.3% (Basement 8,622, Crawl 1,643, Slab 1).
+
+description: >-
+  Seneca County, OH ISSG Parcel Dwelling Floor table: basement area,
+  finished basement area, foundation and basement and cooling flags per
+  property.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Dwelling Floor.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: floor_area
+  - type: unary
+    operation: to_numeric
+    input: Living_Area
+    output: floor_living_area
+  - type: unary
+    operation: to_numeric
+    input: Cool_Factor
+    output: cool_factor
+  # 1 on Basement rows, 0 on every other floor.
+  - type: remap
+    input: Floor_Type
+    mapping:
+      "Basement": 1
+    default: 0
+    output: basement_row
+  - type: binary
+    operation: multiply
+    inputs: [floor_area, basement_row]
+    output: basement_area_sqft
+  - type: binary
+    operation: multiply
+    inputs: [floor_living_area, basement_row]
+    output: basement_finished_area_sqft
+  # Other floor types leave the flag null.
+  - type: remap
+    input: Floor_Type
+    mapping:
+      "Basement": true
+      "Crawl": false
+      "Slab": false
+    output: has_basement
+  - type: remap
+    input: Floor_Type
+    mapping:
+      "Basement": "Basement"
+      "Crawl": "Crawl"
+      "Slab": "Slab"
+    output: foundation_description
+  - type: conditional
+    operation: greater_than
+    input: cool_factor
+    args: {threshold: 0}
+    output: cooled_row
+  - type: remap
+    input: cooled_row
+    mapping:
+      0: false
+      1: true
+    output: has_central_air
+
+drop_columns:
+  - floor_area
+  - floor_living_area
+  - cool_factor
+  - basement_row
+  - cooled_row
+
+columns_to_categorical:
+  - foundation_description
+
+aggregation_function:
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  has_central_air: max
+  foundation_description: first
+
+supplements: US-OH-SE_property-senecacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: floors

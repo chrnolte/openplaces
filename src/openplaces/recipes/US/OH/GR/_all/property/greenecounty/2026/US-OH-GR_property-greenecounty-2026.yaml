@@ -1,0 +1,270 @@
+# Recipe: Greene County, OH parcel roll with dwelling attributes
+# (county OpenData "Parcels" layer, ArcGIS Hub CSV export).
+#
+# Source: Greene County's GIS (GIMS) publishes
+# OpenData/OpenData/MapServer/1, registered on ArcGIS Online as item
+# 9a203896be6c44f083080c4bf22f9358 ("all of the fields maintained in
+# the Greene County CAMA system", updated daily). The download is the
+# Hub CSV export of that layer.
+#
+# Bulk vs REST (acquiring_sources.md Phase 3). The equivalence test
+# passed exactly on 2026-09-12: the export holds 77,802 rows, as does
+# the live layer, and the counts of Bed_Rooms > 0 (56,820),
+# Full_Baths > 0 (56,746), Half_Baths > 0 (25,735), Total_Rooms > 0
+# (56,854), Stories > 0 (56,872) and Card > 1 (162) are identical in
+# both. So the layer is not paged.
+#
+# Row shape: one row per parcel, 77,802 rows over 77,798 distinct
+# Parcel_Id; drop_duplicates keeps one row per id. Each row carries
+# one dwelling card's attributes: Card is above 1 on 162 rows while
+# Parcel_Id repeats only 4 times, so a parcel's other cards are not in
+# the layer and the room counts sit on the roll itself, with no
+# supplement. Tax_Year is 2025 on 77,619 rows. Coverage on the 54,723
+# improved-residential rows (Land_Use_Code 510-515, 520, 530, 550, 560,
+# inventory): Bed_Rooms 99.7%, Full_Baths 99.6%, Half_Baths 45.5%,
+# Total_Rooms 99.7%, Stories 99.8%. n_bathrooms folds full + 0.5 x
+# half.
+#
+# Building features (added 2026-09-13), same card, codes verbatim:
+# Living_Area (living_area_sqft; 0 on rows without a dwelling reads
+# null), Finished_Basement_Area (basement_finished_area_sqft),
+# Fireplaces (n_fireplaces), Heat_Type (heating_type: CENTRAL AIR
+# CONDITION, CENTRAL, HEAT PUMP, GEOTHERMAL, NONE), Heat_Source
+# (heating_fuel: GAS, ELECTRIC, OIL, SOLAR, WOOD, COAL, NONE), Style
+# (building_style: RANCH, COLONIAL, ...) and Neighborhood
+# (tax_neighborhood_code). has_central_air reads Heat_Type: true
+# on CENTRAL AIR CONDITION, false on CENTRAL and NONE (the one field
+# names the air conditioning when present), null on HEAT PUMP and
+# GEOTHERMAL, which may cool but do not say. has_basement is true
+# where Basement reads BASEMENT; the field is otherwise blank, not a
+# recorded 'none', so it stays null there. The same field is kept
+# verbatim as foundation_description (BASEMENT or null). No frame or
+# construction field is published. No grade, condition or
+# remodel year is published. Year_Built is year_built (outside
+# 1700-2026 reads null; 1900 is a placeholder heap on 5.4% of dated
+# rows). The layer has no dwelling-unit field, so n_dwellings is not
+# mapped.
+# MEASURED 2026-09-13 on the 44,771 live land-use 510 properties:
+# living area 99.9% (median 1,624 sqft); heating type, fuel and style
+# 99.8-99.9%; neighborhood 100%; fireplaces > 0 on 36.7%; finished
+# basement area > 0 on 20.8%; has_basement true 53.5% (null
+# elsewhere); has_central_air true 80.7%, false 10.4%, null 8.9%;
+# year_built 99.9% (median 1969; 1900 on 4.1% of these);
+# foundation_description BASEMENT on 53.5%, null elsewhere.
+#
+# Never mapped: Owner_Name, Taxpayer_Contact and the Tax_Mailing_*
+# fields (owner data). Also not mapped: the Assessed_* (35% taxable)
+# values, the tax and delinquency columns and the sale fields.
+#
+# Join key. Parcel_Id matches OGRIP's LocalParcelID as shipped on 100
+# of 100 sampled ids (Parcel_Number, stripped, also 100 of 100),
+# measured against the live OGRIP layer (inventory). No
+# transformation.
+#
+# TERMS: the licence text says the data "is used to locate, identify
+# and inventory parcels of land in Greene County for appraisal and
+# taxing purposes only". That limits use, so the source is marked
+# redistribution_restricted: true. Using it on those terms was
+# approved by the user on 2026-09-12 (relayed by the coordinating
+# session). Because it is marked restricted, delivery refuses it: its
+# columns may inform internal checks but are never delivered.
+
+description: >-
+  Greene County, OH parcel roll with one dwelling card's attributes
+  (Hub CSV): land use, appraised values, rooms, bedrooms, baths, stories.
+
+admin_id: US-OH-GR
+
+entity:
+  entity_type: property
+  source:
+    source_id: greenecounty
+    # Quoted 2026-09-12 from the item's licenseInfo. The use limit
+    # ("for appraisal and taxing purposes only") is why the source is
+    # marked restricted; see the header.
+    license: >-
+      restricted use (item disclaimer: "The information contained in
+      this data is used to locate, identify and inventory parcels of
+      land in Greene County for appraisal and taxing purposes only and
+      is NOT to be construed or used as a legal description"; accuracy
+      not guaranteed; no liability)
+    terms_url: "https://www.arcgis.com/home/item.html?id=9a203896be6c44f083080c4bf22f9358"
+    redistribution_restricted: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=9a203896be6c44f083080c4bf22f9358"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/9a203896be6c44f083080c4bf22f9358_1/downloads/data?format=csv&spatialRefId=3754&where=1%3D1"
+  version: "2026"
+
+uncompressed_file_name: "greene_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel_Id
+  tax_year: Tax_Year
+  use_group_code: Land_Use_Code
+  area_ac: Acres
+  land_value: Appraised_Land
+  improvement_value: Appraised_Buildings
+  total_value: Appraised_Total
+  address_number: Address_Number
+  city: Address_City
+  postal_code: Address_ZipCode
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Stories
+  living_area_sqft: Living_Area
+  basement_finished_area_sqft: Finished_Basement_Area
+  n_fireplaces: Fireplaces
+  heating_type: Heat_Type
+  heating_fuel: Heat_Source
+  building_style: Style
+  tax_neighborhood_code: Neighborhood
+  year_built: Year_Built
+  foundation_description: Basement
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # year_built outside 1700-2026 reads null.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: "0"}
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: remap
+    input: foundation_description
+    mapping: {BASEMENT: true}
+    output: has_basement
+  - type: remap
+    input: heating_type
+    mapping:
+      "CENTRAL AIR CONDITION": true
+      CENTRAL: false
+      NONE: false
+    output: has_central_air
+  - type: string
+    operation: concat
+    inputs:
+      - Address_PreDirection
+      - Address_Street
+      - Address_StreetSuffix
+      - Address_PostDirection
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - use_group_code
+  - heating_type
+  - heating_fuel
+  - building_style
+  - foundation_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

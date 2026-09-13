@@ -1,0 +1,75 @@
+# Recipe: Shelby County, OH auditor roll, ISSG Parcel Appraisal table.
+# Supplement of US-OH-SH_property-shelbycounty-2026; see that recipe
+# for the source and the join key.
+#
+# One row per parcel and tax year. Land_Use_Code is the Ohio DTE land-
+# use code; Land_Use (its description) and Class (its broad group) are
+# not mapped. Total_Appraised_Land and Total_Appraised_Improvement are
+# the appraised values. Retired parcels are in this table too and join
+# to nothing on the roll.
+# Neighborhood is the assessor's valuation neighborhood
+# (tax_neighborhood_code, 244 values), on 100% of the 14,254 live
+# land-use 510 properties (measured 2026-09-13).
+
+description: >-
+  Shelby County, OH ISSG Parcel Appraisal table: land-use code and
+  appraised land and improvement value per property.
+
+admin_id: US-OH-SH
+
+entity:
+  entity_type: property
+  source:
+    source_id: shelbycounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms stated on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://realestate.shelbycountyauditors.com/property-data-downloads"
+    download_url: "https://shelby-auditor-public.issg.io/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Appraisal.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  use_group_code: Land_Use_Code
+  land_value: Total_Appraised_Land
+  improvement_value: Total_Appraised_Improvement
+  tax_neighborhood_code: Neighborhood
+
+transformations:
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 2}
+    output: parcel_id_admin3
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+
+columns_to_categorical:
+  - use_group_code
+
+aggregation_function:
+  land_value: sum
+  improvement_value: sum
+  tax_neighborhood_code: first
+
+supplements: US-OH-SH_property-shelbycounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: appraisal

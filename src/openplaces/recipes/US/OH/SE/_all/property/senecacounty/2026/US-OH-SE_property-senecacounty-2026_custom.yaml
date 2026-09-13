@@ -1,0 +1,101 @@
+# Recipe: Seneca County, OH auditor roll, ISSG Parcel Dwelling Custom
+# Field table. Supplement of US-OH-SE_property-senecacounty-2026; see
+# that recipe for the source and the join key.
+#
+# One row per answer to a county-defined question on a dwelling card
+# (Question, Answer; one answer each). Seneca asks Heat Type, Heating
+# Fuel Type, Heating System Type (18 cards), Kitchen and Bathrooms
+# Remodeled, Degree Remodeled and Interior Condition Relative to
+# Exterior.
+#
+# heating_type keeps the Heat Type answer verbatim (BASIC, CENTRAL AIR
+# CONDITION, HEAT PUMP, NONE; the source files central air as a heat
+# type) and heating_fuel the Heating Fuel Type answer (GAS, ELECTRIC,
+# OIL, GEOTHERMAL, COAL, WOOD, SOLAR, NONE). has_central_air is read
+# from _floors. The other questions are not read.
+#
+# MEASURED 2026-09-13 on 2025: 99,463 answers over 19,939 parcels, keys
+# 99.98% in the roll. On the 11,009 live land-use 510 properties:
+# heating_type 99.9% (CENTRAL AIR CONDITION 5,949, BASIC 4,543, HEAT
+# PUMP 468, NONE 40); heating_fuel 99.9% (GAS 9,548, ELECTRIC 1,252, OIL
+# 142, NONE 34, WOOD 12, COAL 5, GEOTHERMAL 5, SOLAR 1).
+
+description: >-
+  Seneca County, OH ISSG Parcel Dwelling Custom Field table: heat type
+  and heating fuel per property, in the source's words.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Dwelling Custom Field.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  # 'Question|Answer', so one remap can pick one question.
+  - type: string
+    operation: concat
+    inputs: [Question, Answer]
+    args: {sep: "|"}
+    output: question_answer
+  - type: remap
+    input: question_answer
+    mapping:
+      "Heat Type|BASIC": "BASIC"
+      "Heat Type|CENTRAL AIR CONDITION": "CENTRAL AIR CONDITION"
+      "Heat Type|HEAT PUMP": "HEAT PUMP"
+      "Heat Type|NONE": "NONE"
+    output: heating_type
+  - type: remap
+    input: question_answer
+    mapping:
+      "Heating Fuel Type|GAS": "GAS"
+      "Heating Fuel Type|ELECTRIC": "ELECTRIC"
+      "Heating Fuel Type|OIL": "OIL"
+      "Heating Fuel Type|GEOTHERMAL": "GEOTHERMAL"
+      "Heating Fuel Type|COAL": "COAL"
+      "Heating Fuel Type|WOOD": "WOOD"
+      "Heating Fuel Type|SOLAR": "SOLAR"
+      "Heating Fuel Type|NONE": "NONE"
+    output: heating_fuel
+
+drop_columns:
+  - question_answer
+
+columns_to_categorical:
+  - heating_type
+  - heating_fuel
+
+aggregation_function:
+  heating_type: first
+  heating_fuel: first
+
+supplements: US-OH-SE_property-senecacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: custom

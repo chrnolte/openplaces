@@ -1,0 +1,253 @@
+# Recipe: Fairfield County, OH parcel roll with dwelling attributes
+# (county ArcGIS Online layer "ParcelBoundariesAGOL").
+#
+# Source: the Fairfield County GIS public hosted feature service
+# ParcelBoundaries (item a1530640c0c9449494c87be6e79c437a): parcel
+# polygons joined to the Tyler iasWorld CAMA fields (PARID, LUC, RMBED,
+# FIXBATH, FIXHALF, RMTOT, STORIES, APRLAND, APRBLDG, ...). The
+# auditor's own daily CAMA file is unreachable from this client: the
+# ISSG real-estate site returns a Cloudflare 403 and the county GIS
+# host fails the TLS handshake.
+#
+# Bulk vs REST (acquiring_sources.md Phase 3). The download is the
+# ArcGIS Hub CSV export through the Hub download API, which answers
+# with a JSON status while the export builds and redirects to the file
+# once built; the v3 datasets URL returned 404 for this item. The
+# equivalence test passed exactly on 2026-09-12: the export holds
+# 75,007 rows, as does the live layer (returnCountOnly), and the
+# counts of RMBED > 0 (55,486), FIXBATH > 0 (55,381), FIXHALF > 0
+# (28,568), RMTOT > 0 (55,504), STORIES > 0 (55,516) and APRLAND > 0
+# (73,413) are identical in both. So the layer is not paged.
+#
+# Row shape: one row per parcel polygon, 75,007 rows over 74,962
+# distinct PARID; drop_duplicates keeps one row per PARID. Only one
+# dwelling card is carried per parcel (presumably card 1), so the
+# room counts sit on the roll itself and no supplement exists; a
+# parcel with several dwellings keeps only one card's counts.
+# Coverage on the 40,683 dwelling-class rows (LUC 510/520/530/550/560,
+# inventory): RMBED 99.2%, FIXBATH 99.1%, FIXHALF 55.6%, RMTOT 99.2%,
+# STORIES 99.3%. FIXTOT is a plumbing-fixture total and is not
+# mapped. n_bathrooms folds full + 0.5 x half.
+#
+# Never mapped: OWN1, OWN2, LASTNAME and the MADDR1-3/MCITYNAME/
+# MSTATECODE/MZIP1 mailing block (owner data). Also not mapped: the
+# sale fields (PRICE, SALEDT, ...).
+#
+# YRBLT is year_built (card 1; 0 on rows without a dwelling and
+# years outside 1700-2026 read null; 1900 is a placeholder heap on
+# 12.7% of the dated rows). The layer has no dwelling-unit field, so
+# n_dwellings is not mapped.
+#
+# Building features (added 2026-09-13), card 1 only like the counts:
+# SFLA (living_area_sqft; 0 on rows without a dwelling reads null),
+# YRREMOD (renovation_year; 0 reads null), FINBSMTARE
+# (basement_finished_area_sqft), WBFP_O + WBFP_PF (n_fireplaces:
+# wood-burning openings plus prefabricated units), CDU (condition:
+# AV, GD, FR, PR, VG, VP, UN), GRDFACT (quality_grade: the grade
+# factor, e.g. '1.08'; 0 reads null) and NBHD (tax_neighborhood_code,
+# the assessor's neighborhood). Not mapped, because the layer ships
+# numeric codes with no code list: EXTWALL, STYLE, BSMT, HEAT, FUEL,
+# ATTIC. BSMTCAR (basement garage spaces, above 0 on 3.8% of rows)
+# is not a garage-space count for other garages and is not read.
+# MEASURED 2026-09-13 on the 36,311 live land-use 510 properties:
+# living area 99.5% (median 1,764 sqft); condition and grade factor
+# 99.5% each (AV on 88.6%); neighborhood 100%; fireplaces > 0 on
+# 51.7%; finished basement area > 0 on 21.8%; remodel year 12.2%;
+# year_built 99.5% (median 1984; 1900 on 12.0% of these).
+#
+# Join key. PARID matches OGRIP's LocalParcelID as shipped on 96% of
+# 200 sampled dwelling-class ids, measured against the live OGRIP
+# layer (inventory). No transformation.
+
+description: >-
+  Fairfield County, OH parcel roll with card-1 dwelling attributes
+  (ArcGIS Hub CSV): land use, values, rooms, bedrooms, baths, stories.
+
+admin_id: US-OH-FA
+
+entity:
+  entity_type: property
+  source:
+    source_id: fairfieldcounty
+    # Checked 2026-09-12, the item's licenseInfo: data "provided 'as
+    # is' and for reference only ... use of Fairfield County's data is
+    # at the user's sole risk", no warranty, no liability, and "users
+    # further agree to indemnify, defend, and hold harmless Fairfield
+    # County". No resale or redistribution clause and no gate.
+    license: >-
+      unknown (as-is, reference only, no liability; users agree to indemnify
+      Fairfield County)
+    terms_url: "https://www.arcgis.com/home/item.html?id=a1530640c0c9449494c87be6e79c437a"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=a1530640c0c9449494c87be6e79c437a"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/a1530640c0c9449494c87be6e79c437a/csv?redirect=true&layers=0"
+  version: "2026"
+
+uncompressed_file_name: "fairfield_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARID
+  use_group_code: LUC
+  area_ac: ACRES
+  land_value: APRLAND
+  improvement_value: APRBLDG
+  address_number: ADRNO
+  n_rooms: RMTOT
+  n_bedrooms: RMBED
+  n_bathrooms: FIXBATH
+  n_half_bathrooms: FIXHALF
+  n_stories: STORIES
+  living_area_sqft: SFLA
+  renovation_year: YRREMOD
+  basement_finished_area_sqft: FINBSMTARE
+  condition: CDU
+  quality_grade: GRDFACT
+  tax_neighborhood_code: NBHD
+  year_built: YRBLT
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # year_built outside 1700-2026 reads null (0 already reads null).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: "0"}
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: quality_grade
+    args: {value: "0"}
+    output: quality_grade
+  # A single space on rows without a dwelling card.
+  - type: unary
+    operation: null_if_equal
+    input: condition
+    args: {value: " "}
+    output: condition
+  - type: unary
+    operation: to_numeric
+    input: WBFP_O
+    output: fireplace_openings
+  - type: unary
+    operation: to_numeric
+    input: WBFP_PF
+    output: fireplace_prefab
+  - type: aggregate
+    operation: sum
+    inputs: [fireplace_openings, fireplace_prefab]
+    output: n_fireplaces
+  - type: string
+    operation: concat
+    inputs: [ADRDIR, ADRSTR, ADRSUF]
+    args: {sep: " "}
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - fireplace_openings
+  - fireplace_prefab
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - use_group_code
+  - condition
+  - quality_grade
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

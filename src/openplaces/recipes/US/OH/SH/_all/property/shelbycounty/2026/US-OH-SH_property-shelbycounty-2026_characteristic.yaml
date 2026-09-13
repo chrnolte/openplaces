@@ -1,0 +1,90 @@
+# Recipe: Shelby County, OH auditor roll, ISSG Parcel Characteristic
+# table. Supplement of US-OH-SH_property-shelbycounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per parcel characteristic, several per parcel. Type is the
+# category (Public Utilities, Street / Road, Topography) and
+# Characteristic the value; every value read here occurs under one
+# category only, so each output reads Characteristic alone.
+#
+#   sewer_type    SEWER
+#   water_source  WATER
+#   topography    ROLLING
+# Shelby records utilities present only (ELECTRIC, GAS, SEWER, WATER; no
+# septic or well value), so a parcel without a SEWER or WATER row is
+# null, not septic or well. Topography is recorded only as ROLLING (on
+# 117 parcels). PAVED is not read. Codes keep the source's words; the
+# first listed value per parcel is taken.
+#
+# MEASURED 2026-09-13: 58,203 rows over 25,460 parcels, keys 97.79% in
+# the roll. On the 14,254 live land-use 510 properties: sewer_type 44.8%
+# (SEWER 6,382), water_source 44.8% (WATER 6,387), topography 0.4%
+# (ROLLING 55).
+
+description: >-
+  Shelby County, OH ISSG Parcel Characteristic table: sewer, water
+  supply and topography codes per parcel, in the source's words.
+
+admin_id: US-OH-SH
+
+entity:
+  entity_type: property
+  source:
+    source_id: shelbycounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms stated on the downloads page)"
+    redistribution_restricted: null
+    portal_url: "https://realestate.shelbycountyauditors.com/property-data-downloads"
+    download_url: "https://shelby-auditor-public.issg.io/api/Document/ExtractXML.zip"
+  version: "2026"
+
+compressed_file_name: "ExtractXML.zip"
+uncompressed_file_name: "Parcel Characteristic.xml"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: string
+    operation: substring
+    input: parcel_id_assessor
+    args: {start: 2}
+    output: parcel_id_admin3
+  - type: remap
+    input: Characteristic
+    mapping:
+      "SEWER": "SEWER"
+    output: sewer_type
+  - type: remap
+    input: Characteristic
+    mapping:
+      "WATER": "WATER"
+    output: water_source
+  - type: remap
+    input: Characteristic
+    mapping:
+      "ROLLING": "ROLLING"
+    output: topography
+
+columns_to_categorical:
+  - sewer_type
+  - water_source
+  - topography
+
+aggregation_function:
+  sewer_type: first
+  water_source: first
+  topography: first
+
+supplements: US-OH-SH_property-shelbycounty-2026
+
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: characteristic

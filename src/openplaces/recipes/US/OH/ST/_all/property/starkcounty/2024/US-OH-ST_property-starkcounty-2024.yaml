@@ -1,0 +1,266 @@
+# Recipe: Stark County, OH residential dwelling cards (Auditor's
+# AppraiserCAMA map service, layer "Stark Appraisal Residential
+# Grade").
+#
+# Source: the county ArcGIS Server service
+# Auditor/AppraiserCAMA/MapServer/1: building-footprint polygons that
+# carry the Tyler iasWorld dwelling-card attributes (PARCEL_ID, CARD,
+# BEDROOMS, FULL_BATHS, HALF_BATHS, STORIES, ...). Its rows are tax
+# year 2024 (ROLL_TYPE 'RP_OH'), hence version 2024.
+#
+# Bulk vs REST (acquiring_sources.md Phase 3). No bulk file exists:
+# the service is not registered as an ArcGIS Online item (item search
+# on the service URL and title finds nothing), so no Hub export can be
+# built, the county site is behind Cloudflare, and its "Abstractor
+# Resources" hub renders nothing without JavaScript. The recipe
+# therefore pages the layer with arcgis_rest_scraper, gently: only the
+# 225,743 rows with a tax year (the other 35,238 of 260,981 carry no
+# attributes), seven fields and no geometry, about 113 pages of 2,000.
+#
+# NO ROLL. The CAMA service holds no parcel-level table (layer 0,
+# "Stark County Appraisal Value", carries only value-review codes), so
+# per the batch rule this dwelling table stands alone as a property
+# recipe with its own aggregation_function. The county's separate
+# StarkCountyParcels service (ArcGIS Online item
+# bbeab7fa5368494c980e80be42d230f1, Query and Extract) carries
+# LAND_USE_CODE and appraised values per parcel and could become the
+# roll; it is not written here.
+#
+# Row shape: one row per footprint polygon, and a dwelling drawn as
+# several polygons repeats its card on each. In one PARCEL_ID-sorted
+# page of 2,000 rows, 522 (PARCEL_ID, CARD) pairs repeat and none of
+# them differ in any count, so drop_duplicates keeps one row per card
+# before the sum; without it the counts would multiply. 132,097
+# distinct PARCEL_ID carry data; CARD > 1 on 538 rows.
+#
+# Measured by server statistics on rows with a tax year: BEDROOMS > 0
+# on 225,509 of 225,743, FULL_BATHS > 0 on 225,075, HALF_BATHS > 0 on
+# 85,512, STORIES > 0 on all (1, 1.5, 1.75, 2, 2.5, 3). There is no
+# total-room field (FAM_ROOM is a family-room indicator), so n_rooms
+# is not mapped. n_bathrooms folds full + 0.5 x half.
+#
+# Join key. PARCEL_ID (8 digits on most rows) matches OGRIP's
+# LocalParcelID as shipped on 100 of 100 sampled ids, measured against
+# the live OGRIP layer on a random sample. No transformation.
+#
+# Building features (added 2026-09-13), codes verbatim ('code-label';
+# a lone '-' is a blank and reads null): LIVING_AREA_SQ_FT
+# (living_area_sqft), FIREPLACES (n_fireplaces), EFF_YR_BUILT
+# (effective_year_built, latest card), CONDITION (condition, e.g.
+# 'GD-GOOD'), QUAL_GRADE (quality_grade, A+ to E and X), HEAT_TYPE
+# (heating_fuel: the field lists fuels, '1-GAS', '3-OIL',
+# '2-ELECTRIC', '5-PROPANE', ...), BLDG_TYPE (building_style, e.g.
+# '11-RANCH') and CONSTR_TYPE (exterior_wall: '1-FRAME', '2-BRICK',
+# '4-STUCCO', '10-DRYVIT', ...; it names wall materials, so it is not
+# mapped to construction_type's structural codes). has_central_air
+# reads CENTRAL_AIR: true on '1-AC/HEAT', false on '0-No AC'.
+# has_basement reads BSMT: true on 1-FULL, 2-PART, 3-WALKOUT and
+# 4-GROUND LEVEL, false on 0-NONE and 5-CRAWL (a recorded lowest
+# level); BSMT is also kept verbatim as foundation_description.
+# CONSTR_TYPE lists wall materials and stays exterior_wall; no frame
+# field exists. has_accessory_dwelling is true on a card typed
+# 'A2-APARTMENT OVER GARAGE' and null elsewhere. QUAL_BSMT_FINISH is
+# a finish quality, not an area, and is not read. ACT_YR_BUILT is
+# year_built (earliest card; outside 1700-2026 reads null; 1900 is a
+# placeholder heap on 4,063 of 225,743 cards, 1.8%; median 1956).
+# No dwelling-unit field is published (BLDG_TYPE names duplexes and
+# conversions only as types), so n_dwellings is not mapped.
+# MEASURED 2026-09-13. Server statistics on the 225,743 cards with a
+# tax year: living area > 0 on all, FIREPLACES > 0 on 112,317,
+# CENTRAL_AIR '1-AC/HEAT' on 165,296 and '0-No AC' on 60,417, BSMT
+# NONE or CRAWL on 12,037. The recipe's own preprocessing on three
+# 2,000-row pages (5,880 properties; no land-use code exists here, so
+# not a 510 figure): living area, effective year, grade, condition,
+# fuel, style and wall 100%; has_basement true 95.0%, false 5.0%;
+# has_central_air true 73.9%; fireplaces > 0 on 49.6%; year_built
+# 100% (median 1957); foundation_description 100% (1-FULL 91.1%).
+
+description: >-
+  Stark County, OH residential dwelling cards (tax year 2024, county
+  CAMA map service): rooms, baths, stories, living area, basement,
+  cooling, fuel, grade, condition per property.
+
+admin_id: US-OH-ST
+
+entity:
+  entity_type: property
+  source:
+    source_id: starkcounty
+    download_url_scraper: arcgis_rest_scraper
+    # Checked 2026-09-12. The CAMA service has no item or terms of its
+    # own; the Stark County Auditor's licenseInfo on the county parcel
+    # item reads: "Public information data furnished by the Stark
+    # County Auditor must be accepted and used by the recipient with
+    # the understanding that the Stark County Auditor makes no
+    # warranties ... [and] assumes no liability, whatsoever, associated
+    # with the use or misuse of such data." No resale clause.
+    license: "unknown (Stark County Auditor disclaimer: no warranties, no liability)"
+    terms_url: "https://www.arcgis.com/home/item.html?id=bbeab7fa5368494c980e80be42d230f1"
+    redistribution_restricted: null
+    portal_url: "https://scgisa.starkcountyohio.gov/arcgis/rest/services/Auditor/AppraiserCAMA/MapServer/1"
+  version: "2024"
+
+uncompressed_file_name: "stark_residential_cards.geojson"
+
+scraper_options:
+  layer_url: "https://scgisa.starkcountyohio.gov/arcgis/rest/services/Auditor/AppraiserCAMA/MapServer/1"
+  where: "TAX_YEAR IS NOT NULL"
+  # One comma-separated string: each backslash joins the next line
+  # with no space.
+  out_fields: "PARCEL_ID,CARD,TAX_YEAR,BEDROOMS,FULL_BATHS,HALF_BATHS,\
+    STORIES,LIVING_AREA_SQ_FT,FIREPLACES,EFF_YR_BUILT,CONDITION,\
+    QUAL_GRADE,HEAT_TYPE,CENTRAL_AIR,BSMT,BLDG_TYPE,CONSTR_TYPE,\
+    ACT_YR_BUILT"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+null_value_strings: ["-"]
+
+columns:
+  parcel_id_assessor: PARCEL_ID
+  n_bedrooms: BEDROOMS
+  n_bathrooms: FULL_BATHS
+  n_half_bathrooms: HALF_BATHS
+  n_stories: STORIES
+  living_area_sqft: LIVING_AREA_SQ_FT
+  n_fireplaces: FIREPLACES
+  effective_year_built: EFF_YR_BUILT
+  condition: CONDITION
+  quality_grade: QUAL_GRADE
+  heating_fuel: HEAT_TYPE
+  building_style: BLDG_TYPE
+  exterior_wall: CONSTR_TYPE
+  year_built: ACT_YR_BUILT
+  foundation_description: BSMT
+
+# One row per card: see the header's row shape.
+drop_duplicates: [parcel_id_assessor, CARD]
+
+transformations:
+  # year_built outside 1700-2026 reads null.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: remap
+    input: CENTRAL_AIR
+    mapping:
+      "1-AC/HEAT": true
+      "0-No AC": false
+    output: has_central_air
+  - type: remap
+    input: foundation_description
+    mapping:
+      "1-FULL": true
+      "2-PART": true
+      "3-WALKOUT": true
+      "4-GROUND LEVEL": true
+      "0-NONE": false
+      "5-CRAWL": false
+    output: has_basement
+  - type: remap
+    input: building_style
+    mapping: {"A2-APARTMENT OVER GARAGE": true}
+    output: has_accessory_dwelling
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - condition
+  - quality_grade
+  - heating_fuel
+  - building_style
+  - exterior_wall
+  - foundation_description
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  effective_year_built: max
+  year_built: min
+  has_central_air: max
+  has_basement: max
+  has_accessory_dwelling: max
+  condition: first
+  quality_grade: first
+  heating_fuel: first
+  building_style: first
+  exterior_wall: first
+  foundation_description: first
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

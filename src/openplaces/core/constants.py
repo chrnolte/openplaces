@@ -159,6 +159,9 @@ PANDAS_EXTENSIONS = {
     # Read through `json_normalize` so nested records flatten to dotted
     # column names a recipe can map directly.
     '.json',
+    # Flat XML tables, one element per row with the fields as
+    # attributes (the ISSG auditor extracts used by Ohio counties).
+    '.xml',
 }
 
 # Extensions of companion files for shapefiles

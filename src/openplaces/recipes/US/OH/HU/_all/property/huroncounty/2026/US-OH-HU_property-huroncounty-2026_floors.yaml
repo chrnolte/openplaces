@@ -1,0 +1,128 @@
+# Recipe: Huron County, OH auditor roll, ISSG Parcel Dwelling Floor
+# table. Supplement of US-OH-HU_property-huroncounty-2026; see that
+# recipe for the source and the join key.
+#
+# One row per floor of a dwelling card. Floor_Type is First Floor, Full,
+# 1/2, 1/4 or 3/4 Upper Floor, Attic, Basement, Crawl or Slab. Area is
+# the floor's area and Living_Area its finished living area (sqft);
+# Cool_Factor is the share of the floor that is cooled, 0 to 100 (the
+# layout's words: 'the factor of the area that is cooled').
+#
+# Basement. basement_area_sqft sums Area over Basement rows; other rows
+# add 0. has_basement is true on a Basement row and false on a Crawl or
+# Slab row, null otherwise. Huron records Crawl and Slab rows widely, so
+# false is common. Living_Area is 0 on every Basement row, so no
+# finished basement area is read. foundation_description keeps the
+# lowest-level Floor_Type (Basement, Crawl or Slab) verbatim, the first
+# listed per property; other floor types leave it null.
+#
+# Cooling. has_central_air is true where any floor has a cooled share
+# above 0 and false where every floor records 0. ISSG says 'cooled', not
+# 'central'; the source does not name the system.
+#
+# MEASURED 2026-09-13 on the latest tax year (2025): 61,194 floor rows
+# over 19,716 parcels, keys 99.96% in the roll. On the 10,924 live
+# land-use 510 properties: has_basement true 82.5%, false 17.1%, null
+# 0.4%; basement area > 0 on 82.5% (median 832 sqft); has_central_air
+# true 61.8%, false 38.0%; foundation_description on 99.6% (Basement
+# 8,990, Crawl 1,447, Slab 442).
+
+description: >-
+  Huron County, OH ISSG Parcel Dwelling Floor table: basement area,
+  foundation and basement and cooling flags per property.
+
+admin_id: US-OH-HU
+
+entity:
+  entity_type: property
+  source:
+    source_id: huroncounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (property-line disclaimer only; no terms on the extract)"
+    redistribution_restricted: null
+    portal_url: "https://huroncountyauditor.org/"
+    download_url: "https://huron-auditor-public.issg.io/api/Document/PublicRecords.zip?e=t0YMq1"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Dwelling Floor.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: floor_area
+  - type: unary
+    operation: to_numeric
+    input: Cool_Factor
+    output: cool_factor
+  # 1 on Basement rows, 0 on every other floor.
+  - type: remap
+    input: Floor_Type
+    mapping:
+      "Basement": 1
+    default: 0
+    output: basement_row
+  - type: binary
+    operation: multiply
+    inputs: [floor_area, basement_row]
+    output: basement_area_sqft
+  # Other floor types leave the flag null.
+  - type: remap
+    input: Floor_Type
+    mapping:
+      "Basement": true
+      "Crawl": false
+      "Slab": false
+    output: has_basement
+  - type: remap
+    input: Floor_Type
+    mapping:
+      "Basement": "Basement"
+      "Crawl": "Crawl"
+      "Slab": "Slab"
+    output: foundation_description
+  - type: conditional
+    operation: greater_than
+    input: cool_factor
+    args: {threshold: 0}
+    output: cooled_row
+  - type: remap
+    input: cooled_row
+    mapping:
+      0: false
+      1: true
+    output: has_central_air
+
+drop_columns:
+  - floor_area
+  - cool_factor
+  - basement_row
+  - cooled_row
+
+columns_to_categorical:
+  - foundation_description
+
+aggregation_function:
+  basement_area_sqft: sum
+  has_basement: max
+  has_central_air: max
+  foundation_description: first
+
+supplements: US-OH-HU_property-huroncounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: floors

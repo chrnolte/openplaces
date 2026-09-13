@@ -1,0 +1,240 @@
+# Recipe: Clermont County, OH CAMA roll, DWELL table. Supplement of
+# US-OH-CL_property-clermontcounty-2026; see that recipe for the
+# source and the join key.
+#
+# Row shape, measured on the 2026-09-08 zip: 72,702 rows over 72,321
+# PARIDs, all tax year 2025, (PARID, CARD) unique. One row is one
+# dwelling card; 308 properties have more than one (CARD 1-4).
+#
+# Measured on cards:
+#   RMTOT   (total rooms)  99.95% above zero, median 6
+#   RMBED   (bedrooms)     99.74% above zero, median 3
+#   FIXBATH (full baths)   99.73% above zero, median 2
+#   FIXHALF (half baths)   48.3% above zero
+#   STORIES (numeric)     100.0% above zero (1.00, 1.50, 2.00, 2.50,
+#                          3.00)
+# FIXBATH x 3 + FIXHALF x 2 + FIXADDL equals FIXTOT on 100% of cards,
+# which confirms FIXBATH and FIXHALF are bath counts and FIXTOT and
+# FIXADDL fixture counts; the latter two are not mapped. n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim and decoded by
+# the zip's own tables (AEDIT, BSMT, HEAT, EXTWALL): SFLA ("Total
+# Living Area", living_area_sqft), FINBSMTAREA ("Finished Basement
+# Living Area"), WBFP_O (fireplace openings; WBFP_S stacks and
+# WBFP_PF prefabricated are not read), YRREMOD, EFFYR, GRADE
+# (quality_grade, A+ to E-, X), CDU (condition: AV, GD, FR, PR, VG,
+# VP, UN, EX), EXTWALL (1 frame, 2 brick, 3 masonry and frame, 4
+# block, 5 stucco, 6 aluminum/vinyl, 7 stone, 8 other, 9 concrete),
+# HEATSYS (heating_type: 1 hot air, 2 unit, 3 hot water, 4 electric),
+# FUEL (heating_fuel: 1 none, 2 gas, 3 electric, 4 oil, 5 coal, 6
+# solar, 7 wood, 8 hot water) and STYLE (building_style, 24 codes,
+# e.g. 03 ranch, 07 colonial). has_basement reads BSMT (1 none and 2
+# crawl false, 3 part and 4 full true) and has_central_air reads HEAT
+# (4 central A/C true; 1 none, 2 and 3 central heat false); both
+# codes are on every card, so false is recorded. BSMT is also the
+# foundation fact, but foundation_type's letter codes are not
+# assigned here. BSMTCAR (basement garage cars, 0.6% of cards) is not
+# read: it counts basement garages only. Years take the latest card,
+# codes the first.
+# MEASURED 2026-09-13 on the 58,508 land-use 510 properties: living
+# area 100% (median 1,700 sqft); finished basement > 0 17.2%;
+# fireplaces > 0 40.3%; remodel year 3.9%; effective year 3.7%;
+# grade, condition, wall, fuel, style 99.7-100%; heating_type 58.1%;
+# has_basement 99.9% (true 73.5%); has_central_air 99.9% (true
+# 87.9%).
+# year_built reads YRBLT (the earliest card; 0 and years outside
+# 1700-2026 are null). On cards 1900 is 0.6% and 1800 0.01%, no
+# placeholder heap. MEASURED 2026-09-13: 100% of the 510 properties,
+# median 1987.
+# foundation_description keeps BSMT verbatim (1 none, 2 crawl, 3
+# part, 4 full); curate translates it. DWELL has no construction or
+# frame field (EXTWALL is the wall material), so no
+# construction_description. MEASURED 2026-09-13: 99.9% of the 510
+# properties (4 on 66.6%, 2 18.3%, 1 8.2%, 3 6.8%).
+
+description: >-
+  Clermont County, OH CAMA DWELL table: rooms, baths, stories, living
+  area, basement, heating, air, grade and condition per card, to the
+  property.
+
+admin_id: US-OH-CL
+
+entity:
+  entity_type: property
+  source:
+    source_id: clermontcounty
+    # Same download as the roll; see its terms note.
+    license: "unknown (site Terms of Use: 'as is', no warranty; no data-specific terms)"
+    terms_url: "https://www.clermontauditor.org/terms-of-use/"
+    redistribution_restricted: null
+    portal_url: "https://www.clermontauditor.org/downloads/"
+    download_url: "https://www.clermontauditor.org/wp-content/uploads/PublicAccess/CLERMONT_AA407.ZIP"
+  version: "2026"
+
+compressed_file_name: "CLERMONT_AA407.ZIP"
+uncompressed_file_name: "DWELL.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARID
+  n_rooms: RMTOT
+  n_bedrooms: RMBED
+  n_bathrooms: FIXBATH
+  n_half_bathrooms: FIXHALF
+  n_stories: STORIES
+  living_area_sqft: SFLA
+  basement_finished_area_sqft: FINBSMTAREA
+  n_fireplaces: WBFP_O
+  renovation_year: YRREMOD
+  effective_year_built: EFFYR
+  quality_grade: GRADE
+  condition: CDU
+  exterior_wall: EXTWALL
+  heating_type: HEATSYS
+  heating_fuel: FUEL
+  building_style: STYLE
+  year_built: YRBLT
+  foundation_description: BSMT
+
+transformations:
+  # Year built: 0 is nulled by the registry; years outside 1700-2026
+  # are nulled here.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args: {threshold: 1700}
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args: {threshold: 2026}
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs: [year_after_min, year_before_max]
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping: {1: 1}
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_valid]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # BSMT: 1 none, 2 crawl, 3 part, 4 full (the source's own code
+  # table); every card carries a code, so false is recorded.
+  - type: remap
+    input: foundation_description
+    mapping: {"1": false, "2": false, "3": true, "4": true}
+    output: has_basement
+  # HEAT: 1 none, 2 and 3 central heat, 4 central A/C.
+  - type: remap
+    input: HEAT
+    mapping: {"1": false, "2": false, "3": false, "4": true}
+    output: has_central_air
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - exterior_wall
+  - heating_type
+  - heating_fuel
+  - building_style
+  - foundation_description
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_finished_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  has_basement: max
+  has_central_air: max
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  heating_type: first
+  heating_fuel: first
+  building_style: first
+  year_built: min
+  foundation_description: first
+
+supplements: US-OH-CL_property-clermontcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

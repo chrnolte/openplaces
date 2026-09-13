@@ -1,0 +1,202 @@
+# Recipe: Seneca County, OH auditor roll, ISSG Parcel Dwelling table.
+# Supplement of US-OH-SE_property-senecacounty-2026; see that recipe
+# for the source and the join key.
+#
+# Row shape (2025): 20,148 cards over 19,914 parcels, one row per
+# dwelling card; the query keeps the latest tax year. 99.99% of card
+# keys are on the roll. Of the 11,009 live land-use 510 properties,
+# 99.8% have bedrooms above 0, 99.7% baths, 99.9% rooms and stories.
+# Story_Height values include 1.25 and 2.25.
+#
+# The ISSG dwelling layout is the same in every ISSG county:
+# Bed_Rooms, Full_Baths, Half_Baths, Total_Rooms and Story_Height
+# (decimal). XML delivers every attribute as text, so each count is
+# cast to a number. Extra_Fixtures counts extra plumbing fixtures, not
+# baths, and Plumbing is a category; neither is mapped. n_bathrooms
+# folds full + 0.5 x half.
+#
+# Building features (added 2026-09-13), codes verbatim: Living_Area
+# (living_area_sqft), Fireplace_Openings (n_fireplaces;
+# Fireplace_Stacks is not read), Year_Remodeled (renovation_year; 0
+# reads null), Year_Effective (effective_year_built), Grade
+# (quality_grade, e.g. 'C0'), Condition (condition, e.g. 'GD-GOOD')
+# and Type, which here is the architectural style (building_style,
+# e.g. '03-RANCH'). Years take the latest card, codes the first.
+# RecRoom (finished basement rec room, on 7% of cards) is not read;
+# heat type and fuel are read in _custom.
+# MEASURED 2026-09-13 on the 11,009 live land-use 510 properties
+# (2025): living area > 0 on 99.9% (median 1,392 sqft), fireplaces
+# > 0 on 13.5%, a remodel year on 25.9%, effective year, grade,
+# condition and style on 99.9% each (22 grades; 24 styles).
+#
+# year_built (added 2026-09-13): Year_Built, earliest card. It is
+# never 0 or outside 1700 to 2026, but 1900 is on 4,073 of 20,148
+# cards (20.1% of 510 properties), with further heaps at 1890, 1880
+# and round decades: a placeholder-like "old" value, kept as given.
+# n_dwellings is not mapped: Units_Designed is 1 and Units_Converted
+# 0 on every card, the 141 duplex and 26 triplex cards included, so
+# neither is a unit count here.
+# MEASURED 2026-09-13 on the 11,009 live land-use 510 properties
+# (2025): year_built on 99.9% (median 1930).
+
+description: >-
+  Seneca County, OH ISSG Parcel Dwelling table: rooms, bedrooms, full
+  and half baths and story height per card, summed to the property.
+
+admin_id: US-OH-SE
+
+entity:
+  entity_type: property
+  source:
+    source_id: senecacounty
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (Disclaimer: 'as is' and for reference only; no warranties;
+      users agree to indemnify, defend, and hold harmless the county)
+    terms_url: "https://senecacountyauditoroh.gov/Disclaimer"
+    redistribution_restricted: null
+    portal_url: "https://senecacountyauditoroh.gov/cama-data"
+    download_url: "https://senecacountyauditoroh.gov/api/Media?p=Documents/PublicRecords.zip"
+  version: "2026"
+
+compressed_file_name: "PublicRecords.zip"
+uncompressed_file_name: "Parcel Dwelling.xml"
+
+process_by:
+  admin_level: 3
+
+query: "Tax_Year == Tax_Year.max()"
+
+columns:
+  parcel_id_assessor: Parcel_Number_U
+  n_rooms: Total_Rooms
+  n_bedrooms: Bed_Rooms
+  n_bathrooms: Full_Baths
+  n_half_bathrooms: Half_Baths
+  n_stories: Story_Height
+  living_area_sqft: Living_Area
+  n_fireplaces: Fireplace_Openings
+  renovation_year: Year_Remodeled
+  effective_year_built: Year_Effective
+  year_built: Year_Built
+  quality_grade: Grade
+  condition: Condition
+  building_style: Type
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  # year_built: null any year outside 1700 to 2026 (0 is already
+  # nulled by the registry placeholder).
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1700
+    output: year_after_min
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args:
+      threshold: 2026
+    output: year_before_max
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_after_min
+      - year_before_max
+    output: year_valid
+  - type: remap
+    input: year_valid
+    mapping:
+      1: 1
+    output: year_valid
+  - type: binary
+    operation: multiply
+    inputs:
+      - year_built
+      - year_valid
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - year_after_min
+  - year_before_max
+  - year_valid
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - building_style
+
+aggregation_function:
+  n_rooms: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  n_fireplaces: sum
+  renovation_year: max
+  effective_year_built: max
+  year_built: min
+  quality_grade: first
+  condition: first
+  building_style: first
+
+supplements: US-OH-SE_property-senecacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling

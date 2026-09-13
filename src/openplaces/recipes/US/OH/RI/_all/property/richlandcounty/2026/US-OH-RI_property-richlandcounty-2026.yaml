@@ -1,0 +1,117 @@
+# Recipe: Richland County, OH CAMA roll (iasWorld AA407 PARDAT table).
+#
+# Source: the auditor's "Cama Data" page links three public Google
+# Drive folders; the "Regional" (Cama Update File) folder holds about
+# 45 fixed-width .DAT tables of Tyler's AA407 export, one Drive file
+# each (PARDAT here, DWELL in the _dwelling supplement). Each is
+# downloaded by its Drive file id through drive.usercontent.google.com
+# with confirm=t; the folder showed the files modified 2026-09-08.
+# A Drive file id changes if the county replaces the file rather than
+# updating it, so a failing download means re-reading the folder.
+#
+# Layout. The folder's layout files do not describe these records:
+# AA407.PDF is a blank one-page PDF and AA407.out is a job log. The
+# published "AA407 File Layout 2022.1.83" sheet gives a 1,312-character
+# record, but PARDAT records here are 891 characters (plus a trailing
+# space). Positions below were derived from the file: the tax year
+# ('2025' on every row) at 0-based 37, and the Ohio DTE land-use code,
+# 3 digits, at 0-based 308 (74% 5xx over the first 20,000 rows; the
+# inventory knew this field as CLASS). The situs address is not read,
+# because its positions could not be tied to a layout.
+#
+# Row shape, measured on the 2026-09-08 file: 76,302 rows, one per
+# distinct parcel id. One row is one property.
+#
+# Join key. The id is 13 digits with no separator (3.6% of dwelling
+# ids are a 10-character variant with a letter). OGRIP stores
+# '999-99-999-99-999', so the raw form matches 0 of 200 sampled ids
+# and the dashed form 192 of 200 (96%), measured against the live
+# OGRIP layer on a random sample. No transformation is applied: the
+# bundled conversion for US-OH-RI is 'simple', which keeps
+# alphanumerics only, so OGRIP's dashed id and this raw id reduce to
+# the same parcel_id_local. Inserting the dashes here would change no
+# key, and the 10-character ids do not fit the 3-2-3-2-3 split.
+#
+# Neighborhood and topography (added 2026-09-13), located on the file
+# (1-based) in AA407's PARDAT field order. Nbhd is the 8 characters
+# at 297, immediately before Class (305, a class letter on every row)
+# and the land-use code (309). Topo1 is 416 in the run Street1 (410),
+# Street2 (412), Traffic (414), Topo1-3 (416-418), Location (419),
+# Fronting (421), Util1-3 (422, 424, 426) and Ofcard (428-432, the
+# card count); the run ends on the card count, which fixes it. Codes
+# verbatim. Util1-3 are not read: Richland publishes no code table
+# and its codes could not be tied to water or sewer meanings.
+# MEASURED 2026-09-13 on the 26,604 land-use 510 properties:
+# neighborhood 100%; topography 87.8% (code 1 on 72.9%, 2 on 12.9%).
+# n_dwellings reads Livunit, the 4 characters at 314-317 after the
+# land-use code (309-312) and Lucmult (313), in AA407's order. A true
+# unit count: 1 on 99.4% of 510, 2 on 97.3% of 520 and 3 on 95.2% of
+# 530. MEASURED 2026-09-13: 100% of the 510 properties, 1 on 99.4%.
+
+description: >-
+  Richland County, OH CAMA roll (iasWorld AA407 PARDAT table from the
+  auditor's Drive folder): land-use code and tax year per property.
+
+admin_id: US-OH-RI
+
+entity:
+  entity_type: property
+  source:
+    source_id: richlandcounty
+    # Checked 2026-09-12: the Cama Data page states no terms,
+    # disclaimer, fee or resale clause, and the files sit in publicly
+    # shared Drive folders.
+    license: "unknown (no terms stated on the Cama Data page)"
+    redistribution_restricted: null
+    portal_url: "https://www.richlandcountyoh.gov/departments/auditor/CamaData"
+    download_url: "https://drive.usercontent.google.com/download?id=1M2X9Fmb_erURsLRSrH2ZxogVANRSrjl6&export=download&confirm=t"
+  version: "2026"
+
+uncompressed_file_name: "PARDAT.DAT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+fixed_width:
+  - [parid, 30]
+  - [filler, 7] # Jur and padding
+  - [taxyr, 4]
+  - [filler, 255]
+  - [nbhd, 8]
+  - [filler, 4] # Class
+  - [luc, 3]
+  - [filler, 2] # Luc's 4th character, Lucmult
+  - [livunit, 4]
+  - [filler, 98] # Tieback through Traffic
+  - [topo1, 1]
+
+columns:
+  parcel_id_assessor: parid
+  tax_year: taxyr
+  use_group_code: luc
+  tax_neighborhood_code: nbhd
+  topography: topo1
+  n_dwellings: livunit
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+columns_to_categorical:
+  - use_group_code
+  - topography
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
