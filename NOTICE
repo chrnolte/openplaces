@@ -32,6 +32,18 @@ redistributed here.
 
 --------------------------------------------------------------------------
 
+Jackcess (a pure-Java library for Microsoft Access databases)
+Health Market Science, Inc. and the Jackcess contributors
+Licence: Apache-2.0
+Upstream: https://jackcess.sourceforge.io/
+          (Maven Central: com.healthmarketscience.jackcess:jackcess)
+
+Not redistributed here. src/openplaces/io/access.py downloads the jar
+(version 5.0.0) from Maven Central on first use into the models
+directory and refuses it unless it matches a pinned sha256.
+
+--------------------------------------------------------------------------
+
 Anything vendored in future must record its upstream URL, author and
 licence both in the file header and in this NOTICE, and a copyleft licence
 must be reviewed before it is added at all.
