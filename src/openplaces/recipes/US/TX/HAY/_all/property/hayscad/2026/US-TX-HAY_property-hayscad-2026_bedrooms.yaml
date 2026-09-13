@@ -1,0 +1,80 @@
+# Recipe: Hays County, TX appraisal data -- improvement segments,
+# bedrooms (Hays CAD). Supplements US-TX-HAY_property-hayscad-2026; read
+# that recipe's header for the export, the join key and the nested-zip
+# INGEST BLOCKER, which applies here too (this member sits in
+# 2026-PROPERTY-DATA-EXPORT-FILE-SEGMENT-8.26.2026.zip).
+#
+# SOURCE MEMBER. The SEGMENT record: one row per improvement segment
+# (main area, covered porch, garage, addition ...), 419,775 rows over
+# 98,122 properties and 103,426 improvements (InstanceID). Bedrooms is
+# filled on the main-area ("MA") segment almost only: 25,787 of 25,883
+# populated rows.
+#
+# MEASURED: every populated value numeric ("3.000000"), 1 to 13, no
+# zeros; 3 (12,742 rows) and 4 (10,156) lead. Coverage by the
+# property's improvement state code (IMPROVEMENT member): single-family
+# (A) 29.8% of 84,543, multifamily (B) 11.4% of 1,162, rural improved
+# (E) 6.3% of 4,876, mobile homes (M) none of 3,075.
+#
+# ROW RULE. 50 improvements carry bedrooms on two or more segments
+# (usually MA plus a guest-house or addition segment), equal on 62.0%
+# of them. drop_duplicates removes a segment repeating the same count
+# on the same improvement; differing segments sum.
+
+description: >-
+  Hays County, TX appraisal data, improvement segment member: bedroom
+  counts per improvement, summed to the property.
+
+admin_id: US-TX-HAY
+
+entity:
+  entity_type: property
+  source:
+    source_id: hayscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hayscad.com/data-downloads/"
+    download_url: "https://hayscad.com/wp-content/uploads/2026/08/2026-PROPERTY-DATA-EXPORT-FILES-AS-OF-8-26-2026.zip"
+  version: 2026
+
+compressed_file_name: "2026-PROPERTY-DATA-EXPORT-FILES-AS-OF-8-26-2026.zip"
+# Inside 2026-PROPERTY-DATA-EXPORT-FILE-SEGMENT-8.26.2026.zip.
+uncompressed_file_name: "PropertyDataExport1404453.txt"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PropertyID: str
+  QuickRefID: str
+  PropertyNumber: str
+  InstanceID: str
+
+columns:
+  n_bedrooms: Bedrooms
+
+query: "n_bedrooms > 0"
+
+drop_duplicates: [QuickRefID, InstanceID, n_bedrooms]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: QuickRefID
+    args:
+      chars: "R"
+    output: parcel_id_assessor
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-HAY_property-hayscad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

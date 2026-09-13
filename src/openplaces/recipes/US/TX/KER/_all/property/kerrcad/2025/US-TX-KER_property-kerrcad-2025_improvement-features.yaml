@@ -1,0 +1,238 @@
+# Recipe: Kerr County, TX certified appraisal roll, improvement features
+# from the improvement detail member (PACS File #8, one row per building
+# component). Same download as US-TX-KER_property-kerrcad-2025; read
+# that roll's header for the source and its terms.
+#
+# RULE. Each component type below was assigned to a feature from the
+# district's own type code and description (listed, never crosswalked).
+# Areas are the component's imprv_det_area in square feet, summed over
+# the property's components; an area of 0 or 1 reads as missing (some
+# districts put 1 in the area of a component valued as a unit). A flag
+# is true where the property has a component of that type and missing
+# elsewhere: the file lists the components present, never their absence.
+# garage_type keeps the district's code of the first garage component.
+#
+# MAIN AREA. quality_grade is imprv_det_class_cd and
+# effective_year_built is depreciation_yr, both read on the living-area
+# components only. The class code is the district's construction class
+# (quality grade, often with a material or story suffix), kept as
+# published; the first living-area component's class stands for the
+# property. The depreciation year is the year PACS depreciates the
+# component from, the effective year built; the property takes the
+# earliest, as year_built does in the Texas improvement-detail recipes.
+# year_built is the living-area components' yr_built, the earliest kept.
+# Both years read as missing outside 1801 to 2026 (0 is the district's
+# blank).
+#
+# Most Kerr descriptions read 'ACAD CONV CODE: <code>' (codes carried
+# over from an earlier system), so types were read from the code in the
+# PACS convention and checked against median areas: GF, GU (attached
+# garage finished, unfinished) and DF, DU (detached) near 300 to 625 sq
+# ft; OP, SP, EP, GP porches; WD deck, PO patio, PC covered patio; POO a
+# pool. This reading is an inference and is marked as one.
+#
+# TYPES. living area: types MA, MAA, MA3, MA2, MA4, MA5. garage: types
+# GF2, GF1, DF2, DF1, DU2, DU1, GU1, GU2, AGU, AGF, AGE, DGE, DGF, GAR.
+# carport: types CP, ACP, ACN, CP1, CP2. porch: types OP, OP2, SP, SP1,
+# EP, EP1, GP. deck and patio: types WD, PO, PC. swimming pool: types
+# POOL, POO. basement (finished and unfinished): types BAS.
+#
+# MEASURED on the 2025 export (aggregates only; share of properties with
+# a value, for flags the share where true). A is the 15,825
+# single-family properties (improvement state class A, File #7); B, E
+# and M the other residential classes. living_area_sqft A 99.3% (B
+# 100.0%, E 91.8%, M 99.8%), per-property median 1712. garage_area_sqft
+# A 58.0% (B 39.0%, E 39.4%, M 15.1%), per-property median 528.
+# has_garage A 58.2% (B 39.3%, E 39.8%, M 15.1%). garage_type A 58.2% (B
+# 39.3%, E 39.8%, M 15.1%), 14 distinct codes. has_carport A 29.1% (B
+# 34.8%, E 36.5%, M 44.1%). porch_area_sqft A 87.7% (B 80.7%, E 79.3%, M
+# 62.8%), per-property median 248. deck_area_sqft A 43.5% (B 40.2%, E
+# 39.8%, M 36.0%), per-property median 256. has_pool A 4.2% (B 4.5%, E
+# 9.4%, M 0.1%). basement_area_sqft A 0.4% (B 0.0%, E 0.9%, M 0.0%),
+# per-property median 444. has_basement A 0.4% (B 0.0%, E 0.9%, M 0.0%).
+# quality_grade A 99.3% (B 100.0%, E 91.4%, M 99.8%), 293 distinct
+# codes. year_built A 79.3% (B 70.2%, E 66.0%, M 74.5%), per-property
+# median 1986. effective_year_built A 75.1% (B 71.7%, E 73.0%, M 81.0%),
+# per-property median 1988.
+
+description: >-
+  Kerr County, TX certified appraisal roll, improvement detail member: living, garage,
+  porch and deck areas, class and feature flags per property.
+
+admin_id: US-TX-KER
+
+entity:
+  entity_type: property
+  source:
+    source_id: kerrcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms found on the exports page or /disclaimer/)
+    redistribution_restricted: null
+    portal_url: "https://kerrcad.org/appraisal-exports/"
+    download_url: "https://kerrcad.org/wp-content/uploads/2025/11/2025-Cert-Export-Files.zip"
+  version: 2025
+
+compressed_file_name: "2025-Cert-Export-Files.zip"
+uncompressed_file_name: "2025-11-25_004391_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [depreciation_yr, 4]
+  - [imprv_det_area, 15]
+
+columns:
+  quality_grade: imprv_det_class_cd
+  year_built: yr_built
+  effective_year_built: depreciation_yr
+
+# The class code '*' is the district's blank.
+null_value_strings: ['*']
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA3', 'MA2',
+      'MA4', 'MA5']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['GF2', 'GF1', 'DF2', 'DF1',
+      'DU2', 'DU1', 'GU1', 'GU2', 'AGU', 'AGF', 'AGE', 'DGE', 'DGF', 'GAR']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: garage_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['GF2', 'GF1', 'DF2', 'DF1', 'DU2', 'DU1', 'GU1', 'GU2', 'AGU', 'AGF', 'AGE',
+          'DGE', 'DGF', 'GAR']
+        output: true
+    output: has_garage
+  - type: expression
+    expression: >-
+      imprv_det_type_cd.where(imprv_det_type_cd.isin(['GF2', 'GF1', 'DF2',
+      'DF1', 'DU2', 'DU1', 'GU1', 'GU2', 'AGU', 'AGF', 'AGE', 'DGE', 'DGF',
+      'GAR']))
+    inputs: [imprv_det_type_cd]
+    output: garage_type
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['CP', 'ACP', 'ACN', 'CP1', 'CP2']
+        output: true
+    output: has_carport
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['OP', 'OP2', 'SP', 'SP1',
+      'EP', 'EP1', 'GP']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: porch_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['WD', 'PO', 'PC']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: deck_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['POOL', 'POO']
+        output: true
+    output: has_pool
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['BAS']) & (imprv_det_area >
+      1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: basement_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['BAS']
+        output: true
+    output: has_basement
+  - type: expression
+    expression: >-
+      quality_grade.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA3', 'MA2',
+      'MA4', 'MA5']))
+    inputs: [quality_grade, imprv_det_type_cd]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA3', 'MA2', 'MA4',
+      'MA5']) & (year_built > 1800) & (year_built <= 2026))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where(imprv_det_type_cd.isin(['MA', 'MAA', 'MA3',
+      'MA2', 'MA4', 'MA5']) & (effective_year_built > 1800) &
+      (effective_year_built <= 2026))
+    inputs: [effective_year_built, imprv_det_type_cd]
+    output: effective_year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  garage_area_sqft: sum
+  has_garage: max
+  garage_type: first
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  has_pool: max
+  basement_area_sqft: sum
+  has_basement: max
+  quality_grade: first
+  year_built: min
+  effective_year_built: min
+
+supplements: US-TX-KER_property-kerrcad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features

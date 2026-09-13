@@ -1,0 +1,93 @@
+# Recipe: Fort Bend County, TX appraisal roll, building segments,
+# bedrooms (FBCAD). Sibling of US-TX-FOB_property-fbcad-2026; read that
+# header for the source (the Property Data Export, not the certified
+# Orion export) and the join key.
+#
+# SOURCE MEMBER. The Segment table is long: one row per improvement
+# segment (1,677,520 rows; Main Area "MA", second story "MA2", porches,
+# garages and so on). Bedrooms is a column on the segment row, and it
+# sits on the MA segment: 287,264 of the 288,831 rows that carry it.
+# The other 1,567 sit on MA2, MAA, GAP, MA1.5 and similar segments of
+# buildings whose MA row mostly carries it too; reading them as well
+# would double count, so only MA rows are kept (36 properties have a
+# bedroom figure on a non-MA segment only and are lost).
+#
+# ROW RULE. InstanceID is the improvement (a building). 22 of 287,242
+# instances carry two MA rows with a bedroom count (73% equal);
+# drop_duplicates keeps the first per (QuickRefID, InstanceID) and the
+# recipe's aggregation_function sums buildings to the account (1,043
+# accounts carry bedrooms on more than one instance).
+#
+# MEASURED on the post-certification 2026 export: of the accounts whose
+# improvements (Improvement table StateCode) carry each class, 98.2% of
+# 288,166 single-family (A), 69.8% of 907 multifamily (B), 41.1% of
+# 1,964 rural improved (E), 0.4% of 1,830 mobile homes (M). Values 0 to
+# 13 (median 4; six zeros); one 55 is left for curate's range checks.
+# 98.5% of the accounts carrying bedrooms are found in TxGIO; they
+# cover 76.8% of TxGIO's ids (TxGIO ships no state class here).
+
+description: >-
+  Fort Bend County, TX Property Data Export, segment table: bedrooms on
+  each building's main-area segment, summed to the account.
+
+admin_id: US-TX-FOB
+
+entity:
+  entity_type: property
+  source:
+    source_id: fbcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no terms on the downloads page; GIS page disclaimer: 'as is', no
+      liability, user indemnifies FBCAD
+    terms_url: "https://www.fbcad.org/gis-data/"
+    redistribution_restricted: null
+    portal_url: "https://www.fbcad.org/certified-and-supplements-reports/"
+    download_url: "https://www.fbcad.org/wp-content/uploads/2026/07/PropertyData-Post2026Cert-Redacted.zip"
+  version: 2026
+
+compressed_file_name: "PropertyData-Post2026Cert-Redacted.zip"
+uncompressed_file_name: "Property Data Export   Segment/PropertyDataExport4695919.txt"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  n_bedrooms: Bedrooms
+
+# Main-area segments that carry a count (x == x is false for NaN).
+query: "Type == 'MA' and n_bedrooms == n_bedrooms"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [QuickRefID, InstanceID]
+
+transformations:
+  # Kept as shipped, "R" included: see the roll's JOIN KEY.
+  - type: string
+    operation: strip
+    input: QuickRefID
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - QuickRefID
+  - InstanceID
+  - Type
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-FOB_property-fbcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

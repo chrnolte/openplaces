@@ -1,0 +1,92 @@
+# Recipe: El Paso County, TX certified appraisal roll, improvement
+# features member (PACS File #9): foundation_description from the
+# district's 'Foundation' attribute. Same download and File #9 row shape
+# as the roll's room-count supplements; read
+# US-TX-ELP_property-elpasocad-2026 for the source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# Kept in the district's own words or codes; curate translates them.
+# construction_type and foundation_type stay NSI-coded and are not
+# written here.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value): A is the 239,555 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# foundation_description A 96.5% (B 99.3%, E 79.0%, M 0.1%), 18 distinct
+# codes.
+
+description: >-
+  El Paso County, TX certified appraisal roll, improvement features member:
+  foundation_description per building, reduced to the property.
+
+admin_id: US-TX-ELP
+
+entity:
+  entity_type: property
+  source:
+    source_id: elpasocad
+    # Same download as the roll; see its terms note.
+    license: >-
+      public domain per the district ('considered in the public domain
+      and is distributed without warranty'); files 'intended for
+      development use only'
+    terms_url: "https://epcad.org/OpenGovernment"
+    redistribution_restricted: null
+    portal_url: "https://epcad.org/OpenGovernment"
+    download_url: "https://export.epcad.org/datasets/2026_Certified_Export_Files.zip"
+  version: 2026
+
+compressed_file_name: "2026_Certified_Export_Files.zip"
+uncompressed_file_name: "2026-08-31_003012_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  foundation_description: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Foundation'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  foundation_description: first
+
+supplements: US-TX-ELP_property-elpasocad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: foundation-description

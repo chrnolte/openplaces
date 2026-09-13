@@ -1,0 +1,82 @@
+# Recipe: Victoria County, TX certified appraisal roll -- improvement
+# features, rooms (VCAD). Same member, layout and row rule as the
+# bedrooms sibling (US-TX-VIC_property-victoriacad-2026_bedrooms); read
+# its header first.
+#
+# MEASURED on the 2026 export: "Number of Rooms" is on 26,791 rows over
+# 25,369 properties, numeric on every row, median 6; 80.3% of
+# single-family (A), 82.9% of multifamily (B) and 64.1% of rural
+# improved (E) properties carry it, no mobile homes. 424 improvements
+# carry two or more room rows, 93% of them with equal codes.
+
+description: >-
+  Victoria County, TX certified appraisal roll, improvement features member:
+  total rooms per building, summed to the property.
+
+admin_id: US-TX-VIC
+
+entity:
+  entity_type: property
+  source:
+    source_id: victoriacad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://victoriacad.org/downloads/"
+    download_url: "https://victoriacad.org/wp-content/uploads/2026/07/VCAD-2026-CERTIFIED-ROLL-1.zip"
+  version: 2026
+
+compressed_file_name: "VCAD-2026-CERTIFIED-ROLL-1.zip"
+uncompressed_file_name: "VCAD 2026 CERTIFIED ROLL/2026-07-28_001892_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_rooms: imprv_attr_cd
+
+query: "imprv_attr_desc == 'Number of Rooms'"
+
+# One row per building, then summed across buildings.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_rooms: sum
+
+supplements: US-TX-VIC_property-victoriacad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: rooms

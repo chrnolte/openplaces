@@ -1,0 +1,90 @@
+# Recipe: Lavaca County, TX certified appraisal roll -- improvement
+# features, bathrooms (LCAD). Same member (PACS File #9) and row rule as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Lavaca.
+#
+# Lavaca records no bedrooms (6 properties) and no rooms (1). Its
+# "Plumbing" attribute is a bath count, not the fixture count Victoria's
+# attribute of the same name holds: the codes are 1, 2, 3, 2.5, 1.5, 3.5,
+# 4 in that order of frequency, median 2. Halves are already folded in as
+# .5 values, which is the registry's n_bathrooms definition, so there is
+# no separate half count to map. Codes that are not numbers ("1 1/2", a
+# few letter codes, 11 rows) become null; values above 10 (a handful,
+# up to 347) are keying errors left for curate's range checks.
+#
+# MEASURED on the 2026 export: 9,847 rows over 9,193 properties; 85.1% of
+# the 4,907 single-family (A), 78.3% of multifamily (B) and 77.3% of the
+# 5,972 rural improved (E) properties carry it, 2 of 608 mobile homes.
+# 47 improvements carry two or more rows, 79% of them with equal codes.
+
+description: >-
+  Lavaca County, TX certified appraisal roll, improvement features member:
+  bathrooms per building (halves as .5), summed to the property.
+
+admin_id: US-TX-LAV
+
+entity:
+  entity_type: property
+  source:
+    source_id: lavacacad
+    # Same download as the roll; see its terms note.
+    license: "unknown"
+    redistribution_restricted: null
+    portal_url: "https://lavacacad.com/certified-appraisal-rolls/"
+    download_url: "https://lavacacad.com/wp-content/uploads/2026/07/2026-certified-roll-1-1.zip"
+  version: 2026
+
+compressed_file_name: "2026-certified-roll-1-1.zip"
+uncompressed_file_name: "2026-07-23_002730_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bathrooms: imprv_attr_cd
+
+query: "imprv_attr_desc == 'Plumbing'"
+
+# One row per building, then summed across buildings.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bathrooms: sum
+
+supplements: US-TX-LAV_property-lavacacad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

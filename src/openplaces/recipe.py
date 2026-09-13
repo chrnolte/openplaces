@@ -437,6 +437,105 @@ def get_table_recipe(recipe: str | dict, layer: str) -> dict:
 _VERSION_CHUNK_REGEX = re.compile(r'(\d+)')
 
 
+def get_recipe_output_columns(recipe: dict) -> set[str] | None:
+    """Return the column names an ingest recipe's output is declared to carry.
+
+    Read from the recipe alone, never from data: the keys of *columns*,
+    every transformation *output*, and ``parcel_id_local`` when the
+    recipe declares that directive, less anything in *drop_columns*. This
+    mirrors what :class:`~openplaces.io.ingester.table_ingester.
+    TableIngester` keeps (named columns, columns a transformation added,
+    and the matching key it computes last).
+
+    Parameters
+    ----------
+    recipe : dict
+        A loaded ingest recipe.
+
+    Returns
+    -------
+    set of str or None
+        The declared column names, or None for a recipe that sets
+        *keep_unnamed_columns*: it passes through source columns the
+        recipe never names, so its output cannot be listed statically.
+    """
+    if recipe.get('keep_unnamed_columns'):
+        return None
+    produced = set(recipe.get('columns') or {})
+    for transformation in recipe.get('transformations') or []:
+        if not isinstance(transformation, dict):
+            continue
+        output = transformation.get('output')
+        if isinstance(output, str):
+            produced.add(output)
+        elif isinstance(output, list):
+            produced.update(o for o in output if isinstance(o, str))
+    produced -= set(recipe.get('drop_columns') or [])
+    if recipe.get('parcel_id_local'):
+        produced.add('parcel_id_local')
+    return produced
+
+
+def get_supplements_key(recipe: dict) -> str | None:
+    """Return a supplement's declared join key, validated against its roll.
+
+    A supplement (a recipe declaring ``supplements: <roll id>``) joins
+    its roll's entities on ``parcel_id_local`` by default. That fails
+    where the roll's ``parcel_id_local`` is built from an id the detail
+    table does not carry: Travis County TX's roll links to parcels on
+    ``geo_id``, while its improvement detail carries only ``prop_id``.
+    ``supplements_key: <column>`` names another column both tables carry,
+    and the supplement then joins its roll on that column instead,
+    leaving the roll's ``parcel_id_local`` free to serve the parcel link.
+
+    Parameters
+    ----------
+    recipe : dict
+        A loaded ingest recipe.
+
+    Returns
+    -------
+    str or None
+        The key column, or None when the recipe declares no
+        ``supplements_key``.
+
+    Raises
+    ------
+    ValueError
+        If ``supplements_key`` is set on a recipe that declares no
+        ``supplements``, is not a non-empty string, or names a column
+        that the supplement or the roll it supplements does not produce
+        (see :func:`get_recipe_output_columns`). A recipe that passes
+        source columns through unnamed (*keep_unnamed_columns*) cannot be
+        checked here; the join itself then raises if the column is
+        missing from the data.
+    """
+    key = recipe.get('supplements_key')
+    if key is None:
+        return None
+    recipe_id = get_recipe_id(recipe)
+    roll_id = recipe.get('supplements')
+    if not roll_id:
+        raise ValueError(
+            f'{recipe_id} declares supplements_key but no supplements; the '
+            'key names the column it joins its roll on, so it needs a roll.'
+        )
+    if not isinstance(key, str) or not key:
+        raise ValueError(
+            f'{recipe_id}: supplements_key must be a column name, got {key!r}.'
+        )
+    for name, table in ((recipe_id, recipe), (roll_id, get_recipe_by_id(roll_id))):
+        produced = get_recipe_output_columns(table)
+        if produced is not None and key not in produced:
+            raise ValueError(
+                f'{recipe_id} joins {roll_id} on supplements_key {key!r}, '
+                f'but {name} does not produce that column (neither a '
+                '`columns` key nor a transformation output). Both tables '
+                'must carry it.'
+            )
+    return key
+
+
 def version_sort_key(version) -> tuple:
     """Return a sortable key for a recipe version string.
 
@@ -867,6 +966,7 @@ def _scan_ingest_recipe_ids(entity_type: str) -> tuple[dict, ...]:
             'specificity': (len(admin_id_str.split('-')) if admin_id_str else 0),
             'version': version,
             'supplements': str(row.get('supplements') or ''),
+            'supplements_key': str(row.get('supplements_key') or ''),
         }
         if key not in best or version_sort_key(version) > version_sort_key(
             best[key]['version']
@@ -1027,7 +1127,7 @@ def get_recipe_dependencies(
         entity = recipe.get('entity')
         return str(entity.entity_type) if entity is not None else None
 
-    def _add_discovered(entity_type, step_name, multi):
+    def _add_discovered(entity_type, step_name, multi, supplements_only=False):
         entity_type = entity_type or _default_entity_type()
         if entity_type is None or admin_id is None:
             _add(None, 'auto_discover', step=step_name, resolved=False)
@@ -1040,6 +1140,13 @@ def get_recipe_dependencies(
             recipe_admin_str = str(recipe.get('admin_id') or '')
             for src in _scan_ingest_recipe_ids(entity_type):
                 if src.get('supplements') and step_name in _SPINE_BUILDING_STEPS:
+                    continue
+                # A supplement keyed on its own supplements_key relates
+                # only to its roll's rows, so link_by_id joins it in a
+                # supplements_only pass and nowhere else; listing it
+                # for any other join would make it an input of a job
+                # that never reads it.
+                if src.get('supplements_key') and not supplements_only:
                     continue
                 # Containment by level, mirroring the harmonizer: a raw
                 # prefix test would make the pre-2026 'US-NC-WA' (Wake)
@@ -1084,7 +1191,12 @@ def get_recipe_dependencies(
         elif not step_spec.get('recipe_id') and (
             step_spec.get('auto_discover') or step_spec.get('entity_type')
         ):
-            _add_discovered(step_spec.get('entity_type'), step_name, multi)
+            _add_discovered(
+                step_spec.get('entity_type'),
+                step_name,
+                multi,
+                supplements_only=bool(step_spec.get('supplements_only')),
+            )
 
     return edges
 

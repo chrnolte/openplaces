@@ -40,7 +40,8 @@ def find_recipes(
     pd.DataFrame
         Columns: ``admin_id``, ``stage``, ``entity_type``, ``source_id``,
         ``version``, ``n_companion_files``, ``exclude_from_auto_discover``,
-        ``supplements``, ``level``, ``recipe_id``, ``filename_suffix``.
+        ``supplements``, ``supplements_key``, ``level``, ``recipe_id``,
+        ``filename_suffix``.
         Sorted by admin_id
         then source_id. Global recipes have an empty string for
         ``admin_id``. ``level`` is the admin level the recipe's own output
@@ -60,7 +61,11 @@ def find_recipes(
         supplementary table declares it details (an improvement-detail
         table beside its appraisal roll), empty string for a recipe that
         is a source of entities in its own right. Spine discovery skips
-        supplements; link discovery keeps them.
+        supplements; link discovery keeps them. ``supplements_key`` is
+        the column a supplement joins its roll on when that is not
+        ``parcel_id_local`` (see
+        :func:`~openplaces.recipe.get_supplements_key`), empty string
+        otherwise.
     """
     index = _recipe_index()
     if index.empty:
@@ -152,6 +157,7 @@ def _recipe_index() -> pd.DataFrame:
                     data.get('exclude_from_auto_discover', False)
                 ),
                 'supplements': str(data.get('supplements') or ''),
+                'supplements_key': str(data.get('supplements_key') or ''),
                 'level': level,
                 'recipe_id': recipe_id,
                 'filename_suffix': filename_suffix,
@@ -169,6 +175,7 @@ def _recipe_index() -> pd.DataFrame:
             'n_companion_files',
             'exclude_from_auto_discover',
             'supplements',
+            'supplements_key',
             'level',
             'recipe_id',
             'filename_suffix',

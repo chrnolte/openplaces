@@ -1,0 +1,125 @@
+# Recipe: Williamson County, TX appraisal roll (WCAD), from the
+# district's Tyler Data & Insights (Socrata) portal, data.wcad.org.
+#
+# SOURCE. Dataset ij43-xknu, "Property - PropertyDataExport": the Orion
+# CAMA "PropertyDataExport" property record (the same record layout Hays
+# CAD ships as CSV), read through Socrata's bulk CSV export rather than
+# paged through the SODA API. Updated 2026-07-29.
+#
+# MEASURED (2026-09-12 download): 319,477 rows, one per QuickRefID (and
+# per PropertyID). QuickRefID prefixes: R (real) 290,477, P (personal)
+# 28,022, M (mobile home) 973, N 5.
+#
+# REJECTED: "Property - Certified" (ai3c-c9pf), 323,098 rows over
+# 319,464 QuickRefIDs, so not one row per account.
+#
+# JOIN KEY. TxGIO's Williamson Prop_ID is the R-number, QuickRefID here;
+# PropertyID (internal) and PropertyNumber (geographic id) match 0.0%.
+# Under the bundled US-TX-WIL parcel conversion, 88.3% of this roll's
+# QuickRefIDs are found in TxGIO (the P and M accounts are not parcels)
+# and 99.9% of TxGIO's ids are covered.
+#
+# VALUES. The export carries each value twice, Curr* and plain; they
+# agree on only 7.1% of rows. The Curr* columns are the 2026 values:
+# CurrMarketValue sums to $197.6 B against $198.7 B in WCAD's certified
+# table (plain MarketValue: $192.3 B), and the Property Characteristics
+# table's "Market Value" equals CurrMarketValue on 100% of its rows.
+#
+# Coverage: CurrMarketValue nonzero 99.8%, CurrLandValue 86.7%,
+# CurrImprovmentValue 76.4%; SquareFootage (living area) 76.8%;
+# LegalAcres 31.6%; situs street name 96.7%, ZIP 96.6%. No state
+# (land-use) code is in this record; the characteristics table carries
+# one per improvement. Owner fields live in a separate dataset and are
+# not read.
+#
+# LIVING AREA (checked 2026-09-13). SquareFootage is living area: it
+# equals the characteristics table's TotalMainAreaSize (main plus
+# second main area, no garage or porch) on 99.7% of 229,986 properties
+# with both. It stays mapped as area_sqft (curate reads that) and is
+# copied to living_area_sqft with 0 nulled (filled on 100% of the
+# 207,822 single-family properties, median 2,145); the export has no
+# gross building area.
+
+description: >-
+  Williamson County, TX appraisal roll (Orion property export via WCAD open
+  data): values, living area, legal acreage and situs keyed by property.
+
+admin_id: US-TX-WIL
+
+entity:
+  entity_type: property
+  source:
+    source_id: wcad
+    # Checked 2026-09-12: the datasets carry no licence field. WCAD's
+    # data-downloads page says the data is provided "As Is" without
+    # warranty of any kind and may include inaccuracies; the portal
+    # footer links Tyler Technologies' site terms. No resale or
+    # redistribution clause, no click-through, no fee.
+    license: "unknown (no licence on the datasets; WCAD: 'As Is', no warranty)"
+    terms_url: "https://www.wcad.org/data-downloads/"
+    redistribution_restricted: null
+    portal_url: "https://data.wcad.org/d/ij43-xknu"
+    download_url: "https://data.wcad.org/api/views/ij43-xknu/rows.csv?accessType=DOWNLOAD"
+  version: 2026
+
+uncompressed_file_name: "wcad_property_data_export.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PropertyID: str
+  QuickRefID: str
+  PropertyNumber: str
+  NbhdCode: str
+  SitusStreetNumber: str
+  SitusZip: str
+
+transformations:
+  - type: string
+    operation: concat
+    inputs:
+      - SitusPreDirectional
+      - SitusStreetName
+      - SitusStreetSuffix
+      - SitusPostDirectional
+    args:
+      sep: " "
+    output: address_street
+  - type: string
+    operation: strip
+    input: address_street
+    output: address_street
+  # SquareFootage is living area; see LIVING AREA.
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: living_area_sqft
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 0)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+
+columns:
+  parcel_id_assessor: QuickRefID
+  parcel_id_admin2_2: PropertyNumber
+  legal_description: LegalDesc
+  area_ac: LegalAcres
+  total_value: CurrMarketValue
+  land_value: CurrLandValue
+  improvement_value: CurrImprovmentValue
+  area_sqft: SquareFootage
+  tax_neighborhood_code: NbhdCode
+  address_number: SitusStreetNumber
+  city: SitusCity
+  postal_code: SitusZip
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

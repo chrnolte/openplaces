@@ -1,0 +1,104 @@
+# Recipe: Brazos County, TX certified appraisal roll, improvement
+# features, bedrooms (BCAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Brazos.
+#
+# Brazos writes 'Number of Bedrooms' as bare whole numbers. The query
+# keeps codes that are a whole number from 1 to 99, written bare or with
+# a zero decimal ('3', '3.00', '10.0'); zero, fractional and letter
+# codes are left out (listed in MEASURED).
+#
+# MEASURED on the 2025 export: 'Number of Bedrooms' on 43,116 rows over
+# 41,628 properties; the query drops none. After the row rule, 41,628
+# properties, median 3, p99 6. Coverage (value above 0) is 68.2% of the
+# 58,079 single-family (A) properties, 20.6% of the 3,293 multifamily
+# (B), 26.3% of the 3,353 rural improved (E) and 8.7% of the 3,745
+# mobile homes (M).
+#
+# ROW RULE. 1,172 improvements carry two or more kept rows, 89% of them
+# with equal values, so the rows mostly repeat one building's figure
+# across its components. drop_duplicates keeps the first row per
+# (prop_id, imprv_id), and aggregation_function sums distinct buildings
+# to the property. Where rows disagree, the first sits on the MAIN AREA
+# detail and the later one mostly on an OPEN PORCH, a stray repeat; over
+# the 125 single-family improvements concerned, improvement value sits
+# nearer the first row's count in 65%. Summing all rows would change
+# 2.81% of properties.
+
+description: >-
+  Brazos County, TX certified appraisal roll, improvement features member: bedrooms
+  per building, summed to the property.
+
+admin_id: US-TX-BRS
+
+entity:
+  entity_type: property
+  source:
+    source_id: brazoscad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (download page: the district 'claims no responsibility for the
+      downloading of this data'; no terms on the data)
+    redistribution_restricted: null
+    portal_url: "https://brazoscad.org/certified-data-downloads/"
+    download_url: "https://brazoscad.org/wp-content/uploads/2025/08/2025-CERTIFIED-EXPORT.zip"
+  version: 2025
+
+compressed_file_name: "2025-CERTIFIED-EXPORT.zip"
+uncompressed_file_name: "2025-07-23_002022_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.fullmatch('[1-9][0-9]?([.]0+)?', na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-BRS_property-brazoscad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

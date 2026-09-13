@@ -1,0 +1,85 @@
+# Recipe: Wise County, TX certified appraisal roll, improvement features
+# member (PACS File #9): exterior_wall from the district's 'Exterior
+# Wall' attribute. Same download and File #9 row shape as the roll's
+# room-count supplements; read US-TX-WIS_property-wisecad-2026 for the
+# source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk).
+# drop_duplicates keeps the first row per building, and the property
+# takes the first building's code.
+#
+# MEASURED on the 2026 export (aggregates only; share of properties with
+# a value): A is the 24,526 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# exterior_wall A 50.7% (B 46.0%, E 48.6%, M 0.1%), 12 distinct codes.
+
+description: >-
+  Wise County, TX certified appraisal roll, improvement features member: exterior_wall
+  per building, reduced to the property.
+
+admin_id: US-TX-WIS
+
+entity:
+  entity_type: property
+  source:
+    source_id: wisecad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (download page: 'Wise CAD cannot offer technical support'; no terms on
+      the data)
+    redistribution_restricted: null
+    portal_url: "https://wise-cad.com/data-downloads/"
+    download_url: "https://wise-cad.com/wp-content/uploads/2026/08/2026-Certified-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Roll.zip"
+uncompressed_file_name: "2026-08-05_003186_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  exterior_wall: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Exterior Wall'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  exterior_wall: first
+
+supplements: US-TX-WIS_property-wisecad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: exterior-wall

@@ -726,6 +726,13 @@ class TableIngester:
         # export) failed to decode regardless of a declared `encoding:`.
         if encoding:
             read_kwargs['encoding'] = encoding
+        # A source with a known malformed line (Harris County TX's
+        # account roll carries one row with a stray tab) would otherwise
+        # stop the whole read. The recipe opts in and names the rule
+        # ('warn' drops the line and says so; 'skip' drops it silently);
+        # the default stays pandas' 'error', so nothing is lost unasked.
+        if self.recipe.get('on_bad_lines'):
+            read_kwargs['on_bad_lines'] = self.recipe['on_bad_lines']
         return pd.read_csv(data_path, usecols=columns, **read_kwargs)
 
     def _read_fixed_width(self, data_path, dtype, encoding=None):

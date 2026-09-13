@@ -1,0 +1,99 @@
+# Recipe: Aransas County, TX certified appraisal roll -- improvement
+# features, bedrooms (Aransas CAD). Same member (PACS File #9) and row
+# rule as US-TX-VIC_property-victoriacad-2026_bedrooms; read its header
+# first.
+#
+# "Number of Bedrooms" is numeric on every row, written with decimals
+# ("3.00"), median 3; the query leaves out the single "0.00" row (a
+# row it admits must parse, because link_by_id sums a property whose
+# only rows are null to 0).
+#
+# MEASURED on the 2026 export: 8,393 rows over 8,098 properties.
+# 47.0% of the 16,816 single-family (A) properties carry it, 39.0% of
+# multifamily (B), 36.2% of rural improved (E), 0.8% of mobile homes
+# (M); per property median 3, p99 5. Totals above 20 (max 60) are
+# keying errors left for curate's range checks.
+#
+# ROW RULE. 128 of 8,249 improvements carry two or more rows (each on a
+# separate detail: main area, second floor, under-main area, addition)
+# and 57% of those agree, so the rule was measured against the count
+# expected from the improvement's area (median of single-row
+# improvements in the same area decile): first row off by 0.47 on
+# average, max by 0.40, sum by 2.41. A within-building max cannot be
+# expressed here, so drop_duplicates keeps the first row per building
+# and the sum adds distinct buildings.
+
+description: >-
+  Aransas County, TX certified appraisal roll, improvement features
+  member: bedrooms per building, summed to the property.
+
+admin_id: US-TX-ARA
+
+entity:
+  entity_type: property
+  source:
+    source_id: aransascad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://aransascad.org/"
+    download_url: "https://aransascad.org/wp-content/uploads/2026/07/2026-07-20-Certified-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-07-20-Certified-Roll.zip"
+uncompressed_file_name: "2026-07-20_000723_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.contains('^[0-9]*[.]?[0-9]+$', na=False)
+  and n_bedrooms.str.contains('[1-9]', na=False)
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-ARA_property-aransascad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

@@ -154,6 +154,9 @@ PANDAS_EXTENSIONS = {
     '.xls',
     '.dat',
     '.txt',
+    # Tab-delimited appraisal exports (Johnson County TX's roll) ship as
+    # .tab; the recipe's `delimiter` key says so, exactly as for .txt.
+    '.tab',
     # Statistical offices increasingly publish their code registries as a
     # JSON API rather than a file (IBGE's municipality list, the PSGC).
     # Read through `json_normalize` so nested records flatten to dotted

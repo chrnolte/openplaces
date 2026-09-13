@@ -1,0 +1,132 @@
+# Recipe: Johnson County, TX certified appraisal roll (Central
+# Appraisal District of Johnson County, JCAD).
+#
+# SOURCE. The 2026 certified batch on https://johnsoncad.com/downloads/
+# (BATCH_896.all_.zip, 45 MB): twelve tab-delimited "external*.tab"
+# tables. This is not a PACS export and the CAMA vendor is not named.
+# This recipe reads externalnal.tab, the account master: one row per
+# account with state codes, values and situs. Owner name, mailing and
+# agent columns are in the same table and are deliberately not mapped.
+#
+# READER GAP. The ingester's flat-file reader does not list ".tab" among
+# its extensions (core/constants.PANDAS_EXTENSIONS), so an ingest of
+# this recipe raises "Filepath suffix not yet interpreted" until ".tab"
+# is added there. The recipe was validated by calling the reader it
+# would use (read_csv with delimiter "\t") directly.
+#
+# ROWS. 111,072 rows over 108,508 distinct ACCOUNT values: 2,538
+# accounts repeat (2,564 extra rows), 23 of them with a different
+# improvement state code. drop_duplicates keeps the first row per
+# account so the roll is one row per property. ACCOUNT is a letter plus
+# nine digits: "R" (105,449 rows) for real property, "M" (5,623) for
+# mobile homes, plus 1,672 shorter ids.
+#
+# JOIN KEY. TxGIO's Johnson Prop_ID is this letter-prefixed ACCOUNT, not
+# the numeric parcel_id the building tables carry. The bundled
+# conversion for this county (pattern "Dx", digit groups) fits neither
+# TxGIO's ids nor these, so compute_parcel_id_local falls back to its
+# "pipe" form on both sides, with a warning; both land on the same key.
+# That way, 92.1% of the roll's accounts are found in TxGIO and 99.3%
+# of TxGIO's 100,603 keyed ids (101,852 rows, 1,188 with an empty
+# Prop_ID) are found in the roll. The match rests on both sides falling
+# back alike; a parcel_id_links.csv row for Johnson would make it
+# explicit.
+#
+# COLUMNS. LAND PTD (the land-side state code, 93.1% populated) is
+# use_group_code and BUILDING PTD (improvement side, 75.7%) is
+# use_subgroup_code, as in the PACS rolls. MKT VAL is the market total:
+# it equals LAND MKT VALUE + TOTAL BUILDING VALUE on 100% of rows (>0 on
+# 99.7%). BLDG HEAT AREA is heated floor area (>0 on 68.7%,
+# median 1,860 sqft); YEAR_BUILT is >0 on 67.0% (its 0 is nulled by the
+# registry's placeholder rule).
+#
+# Room counts are not in this table; they sit in externalbldse.tab, read
+# by the _bedrooms and _bathrooms supplements.
+#
+# LIVING AREA (2026-09-13). BLDG HEAT AREA is heated area, so it stays
+# area_sqft (curate reads that) and is copied to living_area_sqft, with
+# 0 nulled (0 on 3.6% of the 49,093 single-family accounts, BUILDING
+# PTD A1; filled on the rest, median 1,881). No gross building area is
+# in this table. NBHD CD (100% filled) is the
+# appraisal neighborhood, mapped as tax_neighborhood_code like the other
+# Texas rolls. The building features sit in the _building-features,
+# _sub-areas, _extra-features and _land supplements.
+#
+# NOT READABLE: externalbld.tab, the building master (one row per
+# building, 17 fields), ships without a header row, and the flat-file
+# reader takes column names from the first line for delimited text
+# (`names` is passed for spreadsheets only). It likely carries year
+# built, effective year and areas; it is not mapped until the reader
+# can name headerless columns.
+
+description: >-
+  Johnson County, TX certified appraisal roll (JCAD account master):
+  state codes, market value, heated area and year built by account.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Checked 2026-09-12 on the downloads page: "Use of this data
+    # constitutes acceptance that the Central Appraisal District of
+    # Johnson County (JCAD) makes no warranty as to the accuracy or
+    # completeness of the data." A no-warranty notice, not a gate: no
+    # click-through, fee, resale or redistribution clause.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalnal.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: ACCOUNT
+  use_group_code: LAND PTD
+  use_subgroup_code: BUILDING PTD
+  address_number: SITUS STREET NUM
+  address_street: SITUS STREET NAME
+  city: SITUS CITY
+  total_value: MKT VAL
+  area_sqft: BLDG HEAT AREA
+  year_built: YEAR_BUILT
+  tax_neighborhood_code: NBHD CD
+
+# One row per account; see ROWS.
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # Heated area is living area; see LIVING AREA.
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: living_area_sqft
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 0)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+
+columns_to_categorical:
+  - use_group_code
+  - use_subgroup_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

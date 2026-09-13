@@ -1,0 +1,122 @@
+# Recipe: Wise County, TX certified appraisal roll, improvement
+# features, bathrooms (WCAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Wise.
+#
+# Wise records baths under its own attribute, 'BATHS', a total with
+# halves as .5 (the registry's n_bathrooms definition) stored as free
+# text: '2.0', '2', '2.50', '1.'. A few codes carry keying slips, '2..0'
+# and '2.0.', so the transformation reads the leading number rather than
+# parsing the whole code. No zero codes occur. 'Plumbing' (6 properties)
+# and 'Number of Bedrooms' (45) are too thin to map.
+#
+# MEASURED on the 2026 export: 'BATHS' on 20,844 rows over 20,496
+# properties; every code parses, so the query drops none. After the row
+# rule, 20,496 properties, median 2, p99 4.5; 17.0% end in .5. Coverage
+# (value above 0) is 62.5% of the 24,526 single-family (A) properties,
+# 48.7% of the 224 multifamily (B), 63.4% of the 6,807 rural improved
+# (E) and 11.8% of the 1,916 mobile homes (M).
+#
+# ROW RULE. 177 improvements carry two or more kept rows and only 36%
+# (28% on the raw codes, which also differ in spelling, '2' against
+# '2.0') of them agree, so three rules were measured per property: the
+# first row per improvement summed across buildings (this recipe), all
+# rows summed, and the maximum over all rows. The last two differ from
+# the first on 0.86% and 1.08% of properties. The disagreeing rows sit
+# on a second LIVING AREA or a 2ND STORY detail, and the first row is
+# the largest in 35% of them, which reads either as an addition's own
+# count (sum) or as a partial repeat (first). Improvement value decides
+# it: over the 69 single-family improvements whose rows disagree, the
+# File #7 improvement value lies nearer the median value of single-row
+# improvements with the first row's count than with the summed count in
+# 63%. So drop_duplicates keeps the first row per (prop_id, imprv_id),
+# and aggregation_function sums distinct buildings to the property.
+# Unlike the other districts, the first row is often the smaller ('1'
+# then '2'); value still favors it over the sum, and the rules differ on
+# under 1.1% of properties.
+
+description: >-
+  Wise County, TX certified appraisal roll, improvement features member: bathrooms per
+  building (halves as .5), summed to the property.
+
+admin_id: US-TX-WIS
+
+entity:
+  entity_type: property
+  source:
+    source_id: wisecad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (download page: 'Wise CAD cannot offer technical support'; no terms on
+      the data)
+    redistribution_restricted: null
+    portal_url: "https://wise-cad.com/data-downloads/"
+    download_url: "https://wise-cad.com/wp-content/uploads/2026/08/2026-Certified-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Roll.zip"
+uncompressed_file_name: "2026-08-05_003186_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bathrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'BATHS'
+  and n_bathrooms.str.fullmatch('[0-9]+[.]*[0-9]*[.]?', na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  # The leading number, which also reads the keying slips right:
+  # '2..0' and '2.' give 2, '2.0.' gives 2.0.
+  - type: string
+    operation: extract_named
+    input: n_bathrooms
+    args:
+      pattern: '^(?P<n>\d+(?:\.\d+)?)'
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bathrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-WIS_property-wisecad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

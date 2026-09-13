@@ -75,6 +75,30 @@ which is where its attributes belong; parcels and footprints get them in
 curate, aggregated from properties (AGENTS.md, "Entity model and stage
 roles").
 
+**A supplement joins its roll on `parcel_id_local` unless it declares
+`supplements_key: <column>`.** Declare it when the roll's
+`parcel_id_local` is built from an id the detail table does not carry.
+Travis County TX is the case: TxGIO's parcels key on TCAD's `geo_id`, so
+the roll builds `parcel_id_local` from `geo_id`, but the improvement
+detail carries only `prop_id`. Both tables then produce a second key
+(`parcel_id_assessor`, the zero-stripped `prop_id`, by the same
+transformation), and each supplement names it. The rules:
+
+- Both the supplement and its roll must produce the column, as a
+  `columns` key or a transformation `output`. `get_supplements_key`
+  checks this and raises; a recipe with `keep_unnamed_columns` cannot be
+  checked statically, and the join raises instead if the column is
+  missing from the data.
+- The key is matched as is, with no id conversion, so both recipes must
+  build it the same way.
+- The join takes part only in the property spine's `supplements_only`
+  pass, and only onto rows whose `source` is the roll's. Any other
+  auto-discovered `link_by_id` (the parcel geospine's property join)
+  skips the supplement, and `get_recipe_dependencies` leaves it out of
+  that job's inputs: the key relates the table to its roll, not to
+  parcels.
+- A keyed supplement needs no `parcel_id_local` directive of its own.
+
 **Order is a dependency, not a preference.** The property spine depends only on
 property ingests; the footprint spine additionally on parcel *ingests* and the
 property spine; the parcel spine on both spines. Derive the order from

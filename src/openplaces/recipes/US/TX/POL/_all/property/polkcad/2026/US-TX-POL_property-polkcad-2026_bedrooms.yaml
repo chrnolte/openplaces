@@ -1,0 +1,106 @@
+# Recipe: Polk County, TX certified appraisal roll, improvement
+# features, bedrooms (Polk CAD). Sibling of US-TX-POL_property-polkcad-
+# 2026; see that recipe's header for the download and the join key.
+#
+# SOURCE MEMBER. PACS File #9, APPRAISAL_IMPROVEMENT_DETAIL_ATTR (87
+# characters wide): one row per improvement detail per attribute. Polk's
+# "Number of Bedrooms" is a plain number.
+#
+# SENTINEL. The code "0" sits on 3,225 of 26,647 rows (12.1%); 74.2% of
+# those buildings carry a nonzero bath count, so it reads as "not
+# recorded" rather than a zero-bedroom building; the recipe nulls it.
+# Values of 10 and above (43 rows, up to 90) are multi-unit or
+# commercial totals and are left for curate's range checks.
+#
+# MEASURED on the 2026 certified export (2026-08-05): 26,647 rows over
+# 24,769 properties. Of the properties whose improvements carry each
+# state class (File #7), a nonzero bedroom count is on 73.2% of 21,657
+# single-family (A), 66.2% of 68 multifamily (B), 75.2% of 2,873 rural
+# improved (E) and 97.6% of 4,085 mobile homes (M); presence before the
+# sentinel is nulled is 80.3% of A. Median 3.
+#
+# ROW RULE. 158 of 26,404 improvements carry two or more rows (81%
+# equal), almost always on different details of one building (main area
+# plus an addition, MA+MLA). The first row per (prop_id, imprv_id) is
+# kept, then buildings are summed; first differs from max on 10
+# property totals. 1,174 properties carry bedrooms on more than one
+# improvement.
+
+description: >-
+  Polk County, TX certified appraisal roll, improvement features member:
+  bedrooms per building, summed to the property.
+
+admin_id: US-TX-POL
+
+entity:
+  entity_type: property
+  source:
+    source_id: polkcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the open-records page)"
+    redistribution_restricted: null
+    portal_url: "https://polkcad.org/open-records"
+    download_url: "https://polkcad.sharepoint.com/:u:/s/PolkCADWebsiteDocumentLibrary/IQCt5JPvlJ8TR5QUbVNI2Xt-AVMpt6wb1ys_TrWHoiQKqhE?download=1"
+  version: 2026
+
+compressed_file_name: "2026-Real Data Export.zip"
+uncompressed_file_name: "2026-08-05_001616_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: "imprv_attr_desc == 'Number of Bedrooms'"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  # "0" is the district's not-recorded code; see SENTINEL.
+  - type: unary
+    operation: null_if_equal
+    input: n_bedrooms
+    args:
+      value: 0
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-POL_property-polkcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

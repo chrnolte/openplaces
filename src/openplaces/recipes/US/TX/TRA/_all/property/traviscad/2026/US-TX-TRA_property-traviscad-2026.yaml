@@ -1,0 +1,165 @@
+# Recipe: Travis County, TX certified appraisal roll (TCAD). Same PACS
+# field positions as US-TX-VIC_property-victoriacad-2026; read that
+# recipe's header for the source family. This header covers what differs
+# for Travis.
+#
+# FORMAT. TCAD's export is the legacy PACS 8.0.33 layout with short
+# member names (PROP.TXT, IMP_DET.TXT, IMP_INFO.TXT, IMP_ATR.TXT). Every
+# offset mapped below was checked against the district's own layout
+# workbook ("Legacy8.0.33-AppraisalExportLayout.xlsx", Property sheet)
+# and equals Victoria's 8.0.34 offset. The record is 9,922 characters.
+# The zip is 557 MB and extracts to about 18 GB (PROP_ENT.TXT alone is
+# 9.8 GB); PROP.TXT is 4.9 GB.
+#
+# MEASURED on the 2026 certified export (supplement 0, 2026-07-18):
+# 493,324 rows over 493,246 prop_ids. PROP.TXT carries one row per
+# property-owner combination, so 78 rows repeat an account with another
+# owner; drop_duplicates keeps one row per prop_id. prop_type_cd: real
+# 442,039, personal 39,536, mobile home 11,744, mineral 5.
+#   geo_id 92.7%   imprv_state_cd 81.4%   land_state_cd 89.5%
+#   market_value 100.0%
+#
+# JOIN KEYS. This roll carries two, one per join.
+# - parcel_id_local, from geo_id (kind: parcel), links properties to
+#   TxGIO parcels. TxGIO's Travis Prop_ID is TCAD's geo_id; 43.8% of
+#   TxGIO's Travis ids are 1-character placeholders. Measured on the
+#   2026 certified export with the bundled US-TX-TRA parcel conversion
+#   applied to both sides: geo_id keys 92.2% of rows (432,538 distinct;
+#   5.1% of rows share a key, several accounts on one parcel), 87.0%
+#   of keyed rows are found in TxGIO, and they cover 98.2% of the
+#   469,186 TxGIO ids longer than one character. prop_id would match
+#   0.0%.
+# - parcel_id_assessor, the zero-stripped prop_id (unique per row), is
+#   the supplements_key: the room-count supplements come from
+#   IMP_DET.TXT, which carries prop_id and no geo_id, and join this
+#   roll's properties on it (not on parcel_id_local). 100% of each
+#   supplement's keys are found here. link_by_id sets aside one
+#   degenerate key per table as a placeholder (234 to 457 detail
+#   rows; which account it is was not inspected).
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (TCAD's own layout:
+# "Legal Acreage (4 Decimals)"); all 493,246 values are 16 bare digits,
+# so it is divided by 10,000. Nonzero on 74.7%, median 0.2041 acres
+# after scaling. Confirmed on the 18,603 accounts whose legal
+# description states an acreage ("ACR n"): scaled over stated, median
+# 1.0000, within 1% on 93.1%. TxGIO's Travis LEGAL_AREA is empty (0.0%
+# of 834,936 rows), so it cannot serve as the check; its polygon median
+# (SHAPE_Area 956 m2 in EPSG:3857, about 0.18 acres at 30.3 N) is of the
+# same order.
+#
+# Values: market_value is the land-plus-structure total, as for
+# Victoria. The homestead/non-homestead land and improvement splits are
+# left unmapped, as there.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 352,880 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 100.0% (B 100.0%, E 100.0%, M 0.7%),
+# 1,691 distinct codes.
+
+description: >-
+  Travis County, TX certified appraisal roll (PACS 8.0.33 export): state
+  land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-TRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: traviscad
+    # Checked 2026-09-12: the download page states no terms for the
+    # roll. TCAD's FAQ says an electronic copy of the entire appraisal
+    # roll is made available free of charge on its website. No resale or
+    # redistribution clause, no click-through.
+    license: "unknown (no terms on the data; FAQ: roll 'made available free of charge')"
+    terms_url: "https://traviscad.org/faq-items/can-i-get-a-copy-of-the-appraisal-roll/"
+    redistribution_restricted: null
+    portal_url: "https://traviscad.org/publicinformation"
+    download_url: "https://traviscad.org/wp-content/largefiles/2026%20Certified%20Appraisal%20Export%20Supp%200_07182026.zip"
+  version: 2026
+
+compressed_file_name: "2026 Certified Appraisal Export Supp 0_07182026.zip"
+uncompressed_file_name: "PROP.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #2 (Property); offsets as in the Victoria roll.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+# One row per account; see the header on owner rows.
+drop_duplicates: [prop_id]
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+# Two keys; see JOIN KEYS. parcel_id_local (geo_id) links to TxGIO
+# parcels; parcel_id_assessor (prop_id) is the supplements_key the
+# room-count tables join on.
+parcel_id_local:
+  source: parcel_id_admin2_2
+  kind: parcel
+
+save_to:
+  data_dir: cache

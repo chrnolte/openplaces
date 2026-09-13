@@ -61,6 +61,7 @@ from openplaces.recipe import (
     get_recipe_dependencies,
     get_recipe_id,
     get_save_admin_level,
+    get_supplements_key,
     raise_if_coverage_complete,
     resolve_attribute_name,
     source_id_from_recipe_id,
@@ -1938,19 +1939,27 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     registry's ``mean``. Scoped to the recipe that declares it: unlike a
     caller-supplied override on the :func:`link_by_id` step itself, it
     never reaches a sibling match's columns.
+
+    A supplement declaring ``supplements_key`` joins on that column
+    instead of ``parcel_id_local`` (``key`` and ``supplements_key`` both
+    carry it), validated against its roll by
+    :func:`~openplaces.recipe.get_supplements_key`, which raises on a
+    column either table does not produce.
     """
     from openplaces.recipe import get_recipe_by_id
 
     matches = []
     for recipe_id in _find_admin_scoped_recipe_ids(state, entity_type):
         recipe = get_recipe_by_id(recipe_id)
+        supplements_key = get_supplements_key(recipe)
         matches.append(
             {
                 'recipe_id': recipe_id,
                 'layer': None,
-                'key': 'parcel_id_local',
+                'key': supplements_key or 'parcel_id_local',
                 'aggregation_function': recipe.get('aggregation_function'),
                 'supplements': recipe.get('supplements'),
+                'supplements_key': supplements_key,
             }
         )
         for layer_spec in recipe.get('additional_layers') or []:
@@ -2392,6 +2401,7 @@ def link_by_id(
     fill_only: bool = False,
     supplements_only: bool = False,
     _protect_own_columns: set[str] | None = None,
+    _supplement_of: str | None = None,
 ) -> HarmonizeState:
     """Link a reference entity to the spine by a precomputed id key (non-spatial).
 
@@ -2559,6 +2569,17 @@ def link_by_id(
         unrelated table (default False). This is how a property spine
         receives its rolls' detail tables as columns on the properties they
         describe, without re-joining the rolls onto themselves.
+
+        A supplement declaring ``supplements_key: <column>`` joins on that
+        column on both sides, whatever *spine_key*/*ref_key* say, and only
+        onto spine rows loaded from the roll it names (the spine's
+        ``source`` label is the roll's source id or recipe id). Such a
+        key relates the table to its roll alone, so a discovery without
+        *supplements_only* skips it rather than joining it onto another
+        entity on a key that entity does not share. A missing key column
+        on either side raises instead of warning: the recipes promise the
+        column (see :func:`~openplaces.recipe.get_supplements_key`), so
+        its absence means an output written before the recipe changed.
     """
     if auto_discover:
         # A standalone roll that is also one of the spine's own geometry
@@ -2582,6 +2603,14 @@ def link_by_id(
         if supplements_only:
             matches = _select_supplements(matches, spine_source_ids)
         for match in matches:
+            keyed = match.get('supplements_key')
+            if keyed and not supplements_only:
+                # Its key names rows of its roll, not parcels or any
+                # other entity: joining it here would match on a column
+                # the spine does not share, or on one that means
+                # something else there. Its attributes reach other
+                # entities in curate, from the property spine.
+                continue
             match_columns = columns or list(
                 get_attributes(match['layer'] or entity_type).index
             )
@@ -2613,15 +2642,22 @@ def link_by_id(
             # Auto-discovery normally picks the key per match. An
             # explicit key from the caller overrides it, which is what
             # lets a second pass re-run the same discovery on the
-            # punctuation-free fallback key.
+            # punctuation-free fallback key. A supplements_key is the
+            # one column relating a supplement to its roll, so no
+            # caller key replaces it.
+            if keyed:
+                match_spine_key = match_ref_key = keyed
+            else:
+                match_spine_key = (
+                    spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
+                )
+                match_ref_key = ref_key if ref_key != DEFAULT_LINK_KEY else match['key']
             state = link_by_id(
                 state,
                 recipe_id=match['recipe_id'],
                 mode='aggregate',
-                spine_key=(
-                    spine_key if spine_key != DEFAULT_LINK_KEY else match['key']
-                ),
-                ref_key=(ref_key if ref_key != DEFAULT_LINK_KEY else match['key']),
+                spine_key=match_spine_key,
+                ref_key=match_ref_key,
                 columns=match_columns,
                 aggregation_function=match_aggregation_function or None,
                 suffix=suffix,
@@ -2632,6 +2668,7 @@ def link_by_id(
                 track_provenance=track_provenance,
                 fill_only=fill_only,
                 _protect_own_columns=protect_columns,
+                _supplement_of=match['supplements'] if keyed else None,
             )
             state = _apply_remap_csvs(state, match['recipe_id'])
         return state
@@ -2654,6 +2691,12 @@ def link_by_id(
         # the counties this fallback exists to serve is the source that
         # has no usable id -- Pender arrived with 49 of 55,101 filled.
         state.spine = add_parcel_id_alnum(state.spine, key=spine_key)
+    if _supplement_of and spine_key not in state.spine.columns:
+        raise ValueError(
+            f'link_by_id: {recipe_id} joins {_supplement_of} on its '
+            f'supplements_key {spine_key!r}, but the spine has no such '
+            f'column. Re-ingest {_supplement_of}: its output predates the key.'
+        )
     if spine_key not in state.spine.columns:
         warnings.warn(
             f'link_by_id: spine has no {spine_key!r}; skipping {recipe_id}. '
@@ -2680,6 +2723,12 @@ def link_by_id(
         ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
     if ref is not None and ref_key in PARCEL_ID_ALNUM_KEYS:
         ref = add_parcel_id_alnum(ref, key=ref_key)
+    if _supplement_of and ref is not None and ref_key not in ref.columns:
+        raise ValueError(
+            f'link_by_id: {recipe_id} declares supplements_key {ref_key!r}, '
+            f'but its output has no such column. Re-ingest {recipe_id}: '
+            'its output predates the key.'
+        )
     if ref is None or ref_key not in ref.columns:
         if ref_key in PARCEL_ID_ALNUM_KEYS:
             # A derived fallback key simply cannot be built for a source
@@ -2699,6 +2748,14 @@ def link_by_id(
 
     spine = state.spine
     skey = spine[spine_key].astype('string')
+    if _supplement_of and 'source' in spine.columns:
+        # A supplements_key is a source's own id, unique only among its
+        # roll's rows; another source unioned onto the same spine may
+        # carry the same value for a different property. Only the
+        # roll's rows take part (union_spine_sources labels them with
+        # the roll's source id, an explicit source with its recipe id).
+        own_labels = {_supplement_of, source_id_from_recipe_id(_supplement_of)}
+        skey = skey.where(spine['source'].astype('string').isin(own_labels))
     # Before any mode reads the key: a placeholder shared by thousands of
     # rows is not an identifier, and every mode below would silently treat
     # it as one (see _neutralize_degenerate_keys).
@@ -2835,7 +2892,14 @@ def link_by_id(
                 )
             else:
                 grouped_col = grouped[col]
-            agg_series = grouped_col.agg(func)
+            if fname == 'sum':
+                # A group whose values are all missing has an unknown
+                # total, not a total of zero: a property whose every bath
+                # row failed to parse must not read as zero baths.
+                # min_count=1 matches transform._aggregate_cols.
+                agg_series = grouped_col.sum(min_count=1)
+            else:
+                agg_series = grouped_col.agg(func)
             mapper = agg_series.to_dict() if agg_series.empty else agg_series
             new_vals = skey.map(mapper)
             if fname == 'sum':

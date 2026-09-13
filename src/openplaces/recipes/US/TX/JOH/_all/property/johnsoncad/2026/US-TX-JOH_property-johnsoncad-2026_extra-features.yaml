@@ -1,0 +1,107 @@
+# Recipe: Johnson County, TX certified appraisal roll, extra features
+# (JCAD). Sibling of US-TX-JOH_property-johnsoncad-2026; read that
+# header for the source and the terms, and the _bedrooms header for the
+# join key (the same "R" plus nine-digit parcel_id).
+#
+# SOURCE MEMBER. externalexft.tab: one row per extra feature (parcel_id,
+# xf_num, xf_cd, xf_cd_dscr, year, dimensions, units, value, condition).
+#
+# WHAT IS MAPPED, by xf_cd:
+#   has_pool      POOL, POOL1, POOL9, POOL11, POOLC (custom), POOLH
+#                 (pool and hot tub)
+#   has_solar     SLRP (solar panel)
+#   has_elevator  ELEV
+# The member lists only features that exist, so each flag is true where
+# a row says so and null elsewhere. Outbuildings and carports listed
+# here (OB, SHED, BARN, CARP and similar, under 0.2% of single-family
+# accounts each) are left to the _sub-areas recipe, which carries them
+# far more often, so that one count has one source.
+#
+# MEASURED (2026-09-13): 18,290 rows; 98.6% of their accounts are in
+# the roll. Share of the 49,093 single-family roll accounts (BUILDING
+# PTD A1) with the flag true: has_pool 10.5%, has_solar 3.0%,
+# has_elevator under 0.1%.
+
+description: >-
+  Johnson County, TX certified appraisal roll, extra features member:
+  swimming pool, solar panel and elevator flags per account.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalexft.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  feature_code: xf_cd
+
+transformations:
+  - type: string
+    operation: zfill
+    input: parcel_id
+    args:
+      width: 9
+    output: parcel_id_assessor
+  - type: string
+    operation: add_prefix
+    input: parcel_id_assessor
+    args:
+      prefix: "R"
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: feature_code
+    output: feature_code
+  - type: remap_pattern
+    input: feature_code
+    patterns:
+      - pattern: '^POOL[0-9CH]*$'
+        value: true
+    output: has_pool
+  - type: remap
+    input: feature_code
+    mapping: {"SLRP": true}
+    output: has_solar
+  - type: remap
+    input: feature_code
+    mapping: {"ELEV": true}
+    output: has_elevator
+
+drop_columns:
+  - parcel_id
+  - feature_code
+
+aggregation_function:
+  has_pool: max
+  has_solar: max
+  has_elevator: max
+
+supplements: US-TX-JOH_property-johnsoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: extra-features
