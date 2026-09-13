@@ -1,0 +1,81 @@
+# Recipe: Harris County, TX appraisal district fixtures table, stories
+# (HCAD). Same member (fixtures.txt) as
+# US-TX-HAR_property-hcad-2026_bedrooms; read its header first.
+#
+# Two type codes carry a story count. STY "Story Height Index" is on the
+# residential models: 1,318,248 rows over 1,285,926 accounts, values
+# 1 (813,296), 2 (462,174), 3 (33,260), 4 (5,099), 1.5 (4,133), 2.5
+# (188), max 30, 16 zeros; coverage A 99.0%, B 64.7%, E 97.0%, M 97.8%.
+# STC "# Stories" is on commercial models only: 17,476 rows over 10,516
+# accounts, median 2, p99 16, max 86, 336 zeros; coverage B 34.3% (the
+# apartment complexes STY misses), F 5.7%. Both are read.
+#
+# REDUCTION. A property's story count is its tallest building's, so the
+# recipe takes the max over all its STY and STC rows. Max is unaffected
+# by repeated rows, so there is no drop_duplicates here (STC repeats 376
+# keys, 192 with differing units). A zero story count is not a building
+# and is nulled before the max.
+
+description: >-
+  Harris County, TX appraisal district fixtures table (HCAD PDATA): story
+  count per building, the tallest building's kept per account.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "fixtures.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  n_stories: units
+
+query: "`type`.str.strip().isin(['STY', 'STC'])"
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+
+aggregation_function:
+  n_stories: max
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: stories

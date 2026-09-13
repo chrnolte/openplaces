@@ -1,0 +1,106 @@
+# Recipe: Johnson County, TX certified appraisal roll, building
+# segments, bedrooms (JCAD). Sibling of US-TX-JOH_property-johnsoncad-
+# 2026; read that header for the source, the terms and the reader gap
+# (".tab" is not yet a readable extension).
+#
+# SOURCE MEMBER. externalbldse.tab is long: one row per building
+# (bld_id) per segment type (bld_tp), 1,112,789 rows. Most accounts have
+# several buildings, outbuildings included. Bedrooms are bld_tp "BDR"
+# ("Bedrooms"), with the count in bld_se_units ("3.00"); bld_se_cd is
+# empty on these rows.
+#
+# JOIN KEY. The table carries the numeric parcel_id, while the roll and
+# TxGIO use the letter-prefixed account. "R" plus parcel_id zero-padded
+# to nine digits is a roll ACCOUNT for 96.0% of all segment rows and
+# 98.4% of bedroom rows, and agrees with the account reached through
+# the table's own strap (GEO ACCOUNT NUM) on 97.0% of rows. 98.3% of
+# the accounts carrying a bedroom or bath row are found in TxGIO.
+# Zero-stripping parcel_id instead matches 0% of TxGIO.
+#
+# MEASURED on the 2026 certified batch: 57,869 bedroom rows over 57,868
+# buildings and 57,202 parcels; 3 rows empty. Of the roll's accounts by
+# improvement state code (BUILDING PTD, blank on 24.3% of accounts):
+# 78.8% of 58,785 single-family (A), 43.7% of 1,111 multifamily (B),
+# 66.9% of 13,433 rural improved (E), none of 2,402 mobile homes (M).
+# Median 3, p99 5; three stray values of 30 and above are left for
+# curate's range checks.
+#
+# ROW RULE. One building carries two bedroom rows; drop_duplicates
+# keeps one row per (parcel_id, bld_id), and the recipe's
+# aggregation_function sums buildings to the account (315 accounts have
+# bedrooms on more than one building).
+
+description: >-
+  Johnson County, TX certified appraisal roll, building segments member:
+  bedrooms per building, summed to the account.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalbldse.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  n_bedrooms: bld_se_units
+
+query: "bld_tp == 'BDR'"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [parcel_id, bld_id]
+
+transformations:
+  # "R" + nine-digit parcel_id is the roll's ACCOUNT; see JOIN KEY.
+  - type: string
+    operation: zfill
+    input: parcel_id
+    args:
+      width: 9
+    output: parcel_id_assessor
+  - type: string
+    operation: add_prefix
+    input: parcel_id_assessor
+    args:
+      prefix: "R"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - parcel_id
+  - bld_id
+  - bld_tp
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-JOH_property-johnsoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

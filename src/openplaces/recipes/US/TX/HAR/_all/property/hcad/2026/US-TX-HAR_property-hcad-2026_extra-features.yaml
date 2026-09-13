@@ -1,0 +1,129 @@
+# Recipe: Harris County, TX appraisal district extra features (HCAD).
+# Supplement of US-TX-HAR_property-hcad-2026; see that recipe for the
+# PDATA export, the terms and the join key.
+#
+# SOURCE MEMBER. extra_features.txt in Real_building_land.zip: one row
+# per extra feature (acct, bld_num, cd, l_dscr, cat, uts), 1,217,483
+# rows over 615,644 accounts. cd is padded to six characters and is
+# stripped. uts is the feature's size (square feet for garages and
+# sheds). The `count` field runs 1 to 5 on every feature type alike
+# (a pool reads 2 or 3 more often than 1), so it is not a count of
+# items and is not used; each row is one feature.
+#
+# WHAT IS MAPPED, by cd:
+#   has_pool        RRP1 (plastic liner), RRP2 (prefab vinyl), RRP3
+#                   (reinforced concrete), RRP4 (fiberglass), RRP5
+#                   (gunite). RRP8 (heater only) and RRP9 (spa with
+#                   heater) are not pools.
+#   has_solar       RSP1 (solar photovoltaic panel)
+#   has_carport     RRC1 (carport, residential)
+#   has_garage      RRG1 to RRG4 (detached garages)
+#   n_outbuildings  rows of RRG1 to RRG4, RRS1, RRS2, RRS5, RRS6, RRS7
+#                   (sheds and utility buildings), RAP1 to RAP6 (pole
+#                   barns), RAB1, RAB2, RAD1 (barns), RGH1, RGH3
+#                   (greenhouses)
+#   has_accessory_dwelling  RRG3, RRG4 (detached garage with living
+#                   area above)
+# The member lists only features that exist, so flags are true or null
+# and the count null for an account without one. has_garage and
+# has_carport are also set by the _sub-areas recipe (attached ones);
+# the property join fills one from the other. Detached garage area
+# (uts) is not mapped, so garage_area_sqft keeps one source.
+#
+# MEASURED (2026-09-13): 1,217,483 rows, every account in the roll.
+# Share of the 1,157,703 single-family (state class A1) accounts with
+# the flag true, or a value: has_pool 10.1%, has_solar 1.7%,
+# has_carport 6.4%, has_garage 16.6% (detached), n_outbuildings 26.5%
+# (median 1), has_accessory_dwelling 0.7%.
+
+description: >-
+  Harris County, TX appraisal extra features (HCAD PDATA): pool, solar,
+  carport, detached garage, outbuilding count and garage-apartment flags.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "extra_features.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  feature_code: cd
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: feature_code
+    output: feature_code
+  - type: remap
+    input: feature_code
+    mapping: {"RRP1": true, "RRP2": true, "RRP3": true, "RRP4": true,
+              "RRP5": true}
+    output: has_pool
+  - type: remap
+    input: feature_code
+    mapping: {"RSP1": true}
+    output: has_solar
+  - type: remap
+    input: feature_code
+    mapping: {"RRC1": true}
+    output: has_carport
+  - type: remap
+    input: feature_code
+    mapping: {"RRG1": true, "RRG2": true, "RRG3": true, "RRG4": true}
+    output: has_garage
+  - type: remap
+    input: feature_code
+    mapping: {"RRG1": 1, "RRG2": 1, "RRG3": 1, "RRG4": 1, "RRS1": 1,
+              "RRS2": 1, "RRS5": 1, "RRS6": 1, "RRS7": 1, "RAP1": 1,
+              "RAP2": 1, "RAP3": 1, "RAP4": 1, "RAP5": 1, "RAP6": 1,
+              "RAB1": 1, "RAB2": 1, "RAD1": 1, "RGH1": 1, "RGH3": 1}
+    output: n_outbuildings
+  - type: remap
+    input: feature_code
+    mapping: {"RRG3": true, "RRG4": true}
+    output: has_accessory_dwelling
+
+drop_columns:
+  - feature_code
+
+aggregation_function:
+  has_pool: max
+  has_solar: max
+  has_carport: max
+  has_garage: max
+  n_outbuildings: sum
+  has_accessory_dwelling: max
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: extra-features

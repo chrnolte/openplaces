@@ -1,0 +1,74 @@
+# Recipe: Dallas County, TX land sections (DCAD). Supplement of
+# US-TX-DAL_property-dcad-2026; see that recipe for the download, the
+# terms and the join key.
+#
+# SOURCE MEMBER. LAND.CSV: one row per land section of an account
+# (ACCOUNT_NUM, SECTION_NUM), with the section's state code, zoning,
+# front and depth dimensions, area and value. 701,363 rows; 0.2% of
+# class A accounts have more than one section.
+#
+# WHAT IS MAPPED. FRONT_DIM, the section's street front in feet, as
+# frontage_ft (the registry's street frontage). The query keeps sections
+# with a front above 0: acreage tracts carry 0 (or nothing), which is
+# "not measured", not a zero frontage. An account takes its first
+# section's front. ZONING is not mapped here (zoning_code is left to a
+# decision on the roll's land-use fields).
+#
+# MEASURED (2026-09-13): 535,037 of 701,363 sections carry a front
+# above 0; frontage_ft on 89.9% of the 512,454 single-family (SPTD A11)
+# accounts, median 65 ft, p99 154 ft. A handful of fronts are absurd
+# (the largest is in the millions) and are left for curate's range
+# checks.
+
+description: >-
+  Dallas County, TX appraisal land sections (DCAD LAND): street frontage
+  in feet per account, from the first section with a front.
+
+admin_id: US-TX-DAL
+
+entity:
+  entity_type: property
+  source:
+    source_id: dcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (as-is, no-warranty disclaimer in the README; no licence terms)"
+    terms_url: "https://www.dallascad.org/DataProducts.aspx"
+    redistribution_restricted: null
+    portal_url: "https://www.dallascad.org/DataProducts.aspx"
+    download_url: "https://www.dallascad.org/ViewPDFs.aspx?type=3&id=%5C%5CDCAD.ORG%5CWEB%5CWEBDATA%5CWEBFORMS%5CDATA%20PRODUCTS%5CDCAD2026_CURRENT.ZIP"
+  version: 2026
+
+compressed_file_name: "DCAD2026_CURRENT.ZIP"
+uncompressed_file_name: "LAND.CSV"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+csv_dtype:
+  ACCOUNT_NUM: str
+
+columns:
+  parcel_id_assessor: ACCOUNT_NUM
+  frontage_ft: FRONT_DIM
+
+# A front of 0 or none is not measured; see WHAT IS MAPPED.
+query: "frontage_ft > 0"
+
+aggregation_function:
+  frontage_ft: first
+
+supplements: US-TX-DAL_property-dcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Same conversion and tolerance as the roll, so both keys agree.
+  instruction:
+    US-TX-DAL:
+      conv: "string_lengths: 2 2 4 4 4 & skip_empty: 1"
+      tolerance: 0.05
+
+save_to:
+  data_dir: cache
+  filename: land

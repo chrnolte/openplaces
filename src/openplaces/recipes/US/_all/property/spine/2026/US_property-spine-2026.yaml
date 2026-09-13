@@ -56,6 +56,9 @@ pipeline:
   # property by the table's own aggregation_function. Only supplements
   # of rolls loaded above are joined, and no record count is written
   # (count_as: false), so the step adds nothing but those attributes.
+  # The join key is parcel_id_local, or the supplement's own
+  # supplements_key where its roll keys parcels on an id the detail
+  # table lacks (Travis County TX).
   # Parcels and footprints get them in curate, aggregated from
   # properties, not by copying them here (AGENTS.md, "Entity model and
   # stage roles").

@@ -27,6 +27,13 @@
 #   land_state_cd  100.0% (20,558/20,558, by construction of the subset)
 #   imprv_state_cd  73.1% (15,031/20,558)
 #   market_value    99.9%
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 4,907 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 38.0% (B 49.3%, E 2.7%, M 0.5%), 21
+# distinct codes.
 
 description: >-
   Lavaca County, TX certified appraisal roll (PACS 8.0.34 export): state
@@ -84,6 +91,16 @@ fixed_width:
   - [situs_num, 15]
 
 transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
   - type: string
     operation: lstrip
     input: prop_id
@@ -92,6 +109,7 @@ transformations:
     output: parcel_id_assessor
 
 columns:
+  tax_neighborhood_code: hood_cd
   parcel_id_admin2_2: geo_id
   use_group_code: land_state_cd
   use_subgroup_code: imprv_state_cd
@@ -112,6 +130,7 @@ columns:
   tax_year: prop_val_yr
 
 columns_to_categorical:
+  - tax_neighborhood_code
   - use_group_code
   - use_subgroup_code
 

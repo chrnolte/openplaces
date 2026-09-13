@@ -1,0 +1,102 @@
+# Recipe: El Paso County, TX certified appraisal roll -- improvement
+# features, rooms (El Paso CAD). Same member (PACS File #9) and row rule
+# as US-TX-VIC_property-victoriacad-2026_bedrooms; read its header
+# first.
+#
+# "Number of Rooms" is numeric on every row, codes 6, 7, 8, 9, 5 lead,
+# median 7, with no zero sentinel. The district records it on about a
+# quarter of single-family properties, far fewer than bedrooms.
+#
+# MEASURED on the 2026 export: 71,082 rows over 67,952 properties.
+# 26.9% of the 239,555 single-family (A) properties carry it, 20.8% of
+# multifamily (B), 25.2% of rural improved (E), no mobile homes (M);
+# per property median 7, p99 14. Just above the 25% floor.
+#
+# ROW RULE. 473 of 70,595 improvements (0.67%) carry two or more rows
+# and 25% of those agree, so the rule was measured against the count
+# expected from the improvement's area (median of single-row
+# improvements in the same area decile): first row off by 2.88 on
+# average, max by 1.55, sum by 6.34. The max within a building fits
+# best but cannot be expressed here: aggregation_function acts per
+# property, where a max would drop every building but the largest.
+# drop_duplicates therefore keeps the first row per building, the
+# template's rule, and the 473 buildings read low on average.
+
+description: >-
+  El Paso County, TX certified appraisal roll, improvement features
+  member: total rooms per building, summed to the property.
+
+admin_id: US-TX-ELP
+
+entity:
+  entity_type: property
+  source:
+    source_id: elpasocad
+    # Same download as the roll; see its terms note.
+    license: >-
+      public domain per the district ('considered in the public domain
+      and is distributed without warranty'); files 'intended for
+      development use only'
+    terms_url: "https://epcad.org/OpenGovernment"
+    redistribution_restricted: null
+    portal_url: "https://epcad.org/OpenGovernment"
+    download_url: "https://export.epcad.org/datasets/2026_Certified_Export_Files.zip"
+  version: 2026
+
+compressed_file_name: "2026_Certified_Export_Files.zip"
+uncompressed_file_name: "2026-08-31_003012_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_rooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Rooms'
+  and n_rooms.str.contains('^[0-9]*[.]?[0-9]+$', na=False)
+  and n_rooms.str.contains('[1-9]', na=False)
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_rooms: sum
+
+supplements: US-TX-ELP_property-elpasocad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: rooms

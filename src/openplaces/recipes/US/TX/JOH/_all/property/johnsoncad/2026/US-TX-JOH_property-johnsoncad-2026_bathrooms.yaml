@@ -1,0 +1,92 @@
+# Recipe: Johnson County, TX certified appraisal roll, building
+# segments, bathrooms (JCAD). Same member (externalbldse.tab), join key
+# and row rule as US-TX-JOH_property-johnsoncad-2026_bedrooms; read its
+# header first. This header covers what differs for baths.
+#
+# Baths are bld_tp "BTH" ("Baths"), and here the value is in bld_se_cd,
+# not bld_se_units: a fractional total, "2", "2.5", "1.5", "3", with
+# halves as .5 (15.6% of rows), the registry's n_bathrooms definition.
+# There is no separate half-bath segment. Eight rows carry another
+# decimal ("3.2", "2.1", "0.3" and the like); they may be a full.half
+# notation, but that is unconfirmed and they are read as written.
+# Values above 10 (5 rows) are left for curate's range checks.
+#
+# MEASURED on the 2026 certified batch: 59,915 bath rows over 59,914
+# buildings and 59,136 parcels; 3 rows empty. By improvement state code:
+# 79.1% of single-family (A), 82.1% of multifamily (B), 67.6% of rural
+# improved (E), none of the mobile homes (M). Median 2. 388 accounts
+# have baths on more than one building.
+
+description: >-
+  Johnson County, TX certified appraisal roll, building segments member:
+  bathrooms per building (halves as .5), summed to the account.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalbldse.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  n_bathrooms: bld_se_cd
+
+query: "bld_tp == 'BTH'"
+
+# One row per building, then summed across buildings.
+drop_duplicates: [parcel_id, bld_id]
+
+transformations:
+  - type: string
+    operation: zfill
+    input: parcel_id
+    args:
+      width: 9
+    output: parcel_id_assessor
+  - type: string
+    operation: add_prefix
+    input: parcel_id_assessor
+    args:
+      prefix: "R"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+drop_columns:
+  - parcel_id
+  - bld_id
+  - bld_tp
+
+aggregation_function:
+  n_bathrooms: sum
+
+supplements: US-TX-JOH_property-johnsoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

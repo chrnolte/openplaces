@@ -1,0 +1,112 @@
+# Recipe: Washington County, TX certified appraisal roll, improvement
+# features, bedrooms (WCAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Washington.
+#
+# Washington writes 'Number of Bedrooms' with decimals cut to the
+# field's 4 characters ('3.00', '10.0'). The query keeps codes that are
+# a whole number from 1 to 99, written bare or with a zero decimal ('3',
+# '3.00', '10.0'); zero, fractional and letter codes are left out
+# (listed in MEASURED).
+#
+# MEASURED on the 2026 export: 'Number of Bedrooms' on 9,038 rows over
+# 8,366 properties; the query drops '0.00' (1 row). After the row rule,
+# 8,365 properties, median 3, p99 6; the largest values (up to 150) are
+# multifamily building totals. Coverage (value above 0) is 55.8% of the
+# 9,766 single-family (A) properties, 15.2% of the 132 multifamily (B),
+# 50.2% of the 5,623 rural improved (E) and 0.0% of the 1,635 mobile
+# homes (M).
+#
+# ROW RULE. 129 improvements carry two or more kept rows and only 24% of
+# them agree, so three rules were measured per property: the first row
+# per improvement summed across buildings (this recipe), all rows
+# summed, and the maximum over all rows. The last two differ from the
+# first on 1.53% and 4.54% of properties. The disagreeing rows sit on a
+# second 'Main Area' or 'Main Area 2' detail (every one on a distinct
+# detail), and the first row is the largest in 91% of them, which reads
+# either as an addition's own count (sum) or as a partial repeat
+# (first). Improvement value decides it: over the 42 single-family
+# improvements whose rows disagree, the File #7 improvement value lies
+# nearer the median value of single-row improvements with the first
+# row's count than with the summed count in 54%. So drop_duplicates
+# keeps the first row per (prop_id, imprv_id), and aggregation_function
+# sums distinct buildings to the property.
+
+description: >-
+  Washington County, TX certified appraisal roll, improvement features member:
+  bedrooms per building, summed to the property.
+
+admin_id: US-TX-WAS
+
+entity:
+  entity_type: property
+  source:
+    source_id: washingtoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no licence; download page disclaimer: 'By clicking the links below, the user
+      acknowledges they have read this disclaimer and accepts the limitations of the
+      data contained herein.'
+    redistribution_restricted: null
+    portal_url: "https://washingtoncad.org/downloads/"
+    download_url: "https://washingtoncad.org/wp-content/uploads/2026/07/2026-Certified-Appraisal-Roll.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Appraisal-Roll.zip"
+uncompressed_file_name: "2026-07-21_002016_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.fullmatch('[1-9][0-9]?([.]0+)?', na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-WAS_property-washingtoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

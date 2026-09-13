@@ -1,0 +1,145 @@
+# Recipe: Harris County, TX real property account roll (HCAD).
+#
+# SOURCE. Harris Central Appraisal District's "PDATA" bulk export, an
+# in-house CAMA format (not PACS): tab-delimited text with a header
+# row, one zip per table group under download.hcad.org/data/CAMA/2026/.
+# The listing page (hcad.org/pdata/pdata-property-downloads.html) fills
+# its links with JavaScript; the download host itself needs no gate.
+# Codebook: hcad.org/assets/uploads/pdf/pdataCodebook.pdf. This recipe
+# reads real_acct.txt from Real_acct_owner.zip (211.9 MB, members dated
+# 2026-09-06). Its siblings read fixtures.txt from
+# Real_building_land.zip for the room counts; see
+# US-TX-HAR_property-hcad-2026_bedrooms.
+#
+# ENCODING. real_acct.txt is not UTF-8 (a 0xa5 byte lies past its first
+# 200,000 rows), so it is read as latin-1, like the PACS rolls.
+#
+# ONE MALFORMED LINE. One data row of 1,628,282 carries 72
+# tab-separated fields against the header's 71 (a stray tab in a text
+# field), which stops a default read with a ParserError. The recipe sets
+# `on_bad_lines: warn` (the ingester passes it to read_csv), so that one
+# account is dropped with a warning and the rest read. Found
+# 2026-09-12; the fixtures.txt supplements are unaffected (5 fields on
+# every line).
+#
+# MEASURED on the 2026-09-06 export (aggregates only):
+#   rows 1,628,282, one per account (distinct acct 1,628,282), yr 2026
+#   state_class first letter: A 1,184,538, C 128,201, X 89,161,
+#     F 71,273, Z 64,392 (condominium/townhome), M 31,893, O 21,589,
+#     B 16,450, E 440
+#   populated: site_addr_1 99.7%, site_addr_3 (ZIP) 98.9%,
+#     land_val 91.9%, bld_val 83.4%, tot_mkt_val 94.5%, acreage 100%
+#   plain read_csv (the ingester's reader, default quoting) parses all
+#   1,628,282 physical lines of this member.
+#
+# JOIN KEY. acct is a 13-digit account number, padded here with
+# trailing blanks (hence the strip). TxGIO's Prop_ID for Harris is the
+# same 13-digit number. Under the bundled US-TX-HAR conversion
+# (string_lengths 2 3 2 2 4, applied to both sides) 93.4% of this
+# roll's accounts meet a TxGIO key; the raw ids overlap 93.3%. 99.8%
+# of TxGIO's Harris Prop_IDs are in this roll. No override is needed.
+#
+# CONDOMINIUMS. Harris condo and townhome units are accounts of their
+# own (state classes Z1, Z3, Z4, Z5; 63,717 accounts), each with its
+# own fixtures rows: median 2 bedrooms, median heated area 924 to
+# 1,417 sq ft by class. The room counts are per unit, not per building.
+#
+# NOT MAPPED. mailto and the mail_* block (owner name and mailing
+# address) are deliberately left out. yr_impr is ambiguous (year built
+# or year of the latest improvement; the file does not say) and is
+# left for a sibling that reads building_res.txt's date_erected; bld_ar
+# and land_ar likewise. No recipe reads building_res.txt yet: a plain
+# read_csv loses 2,555 of its 1,318,822 lines to an unbalanced quote
+# in its free-text notes field, so it needs a quoting option the
+# ingester does not pass today.
+
+description: >-
+  Harris County, TX real property account roll (HCAD PDATA real_acct):
+  state class, situs address, values and acreage keyed by account.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Checked 2026-09-12: hcad.org/hcad-help/hcad-disclaimer/ covers
+    # update frequency and search limits only. It states no licence, no
+    # resale or redistribution clause and no fee, and the PDATA files
+    # sit behind no click-through. Silence is not a grant.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_acct_owner.zip"
+  version: 2026
+
+compressed_file_name: "Real_acct_owner.zip"
+uncompressed_file_name: "real_acct.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+encoding: latin-1
+# One row has a stray tab; see ONE MALFORMED LINE.
+on_bad_lines: warn
+
+columns:
+  parcel_id_assessor: acct
+  tax_year: yr
+  use_group_code: state_class
+  address: site_addr_1
+  address_unit: str_unit
+  city: site_addr_2
+  postal_code: site_addr_3
+  tax_neighborhood_code: Neighborhood_Code
+  legal_description: lgl_1
+  area_ac: acreage
+  land_value: land_val
+  improvement_value: bld_val
+  # tot_mkt_val is the district's market value (Tax Code 23.01), the
+  # land-plus-structure total; tot_appr_val is the capped figure.
+  total_value: tot_mkt_val
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: use_group_code
+    output: use_group_code
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: unary
+    operation: to_numeric
+    input: land_value
+    output: land_value
+  - type: unary
+    operation: to_numeric
+    input: improvement_value
+    output: improvement_value
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+columns_to_categorical:
+  - use_group_code
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

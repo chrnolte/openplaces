@@ -1,0 +1,97 @@
+# Recipe: Travis County, TX certified appraisal roll -- improvement
+# detail, stories (TCAD). Same member (File #8, IMP_DET.TXT) as
+# US-TX-TRA_property-traviscad-2026_bedrooms; read its header first.
+#
+# ENCODING. TCAD prices each storey as its own detail line: types 1ST,
+# 2ND, 3RD, 4TH and 5TH ("1st Floor" ... "5th Floor", the floor's area
+# in imprv_det_area). A building's story count is its highest ordinal
+# line, read from the code's digit; a property's is its tallest
+# building's, so the recipe takes the max, not a sum.
+#
+# MEASURED on the 2026 certified export: 420,364 improvements over
+# 398,066 properties carry a floor line; highest floor 1 on 248,216,
+# 2 on 164,263, 3 on 6,748, 4 on 637, 5 on 383. Coverage by improvement
+# state class: A 99.5%, B 99.9%, E 89.3%, M 100%.
+#
+# LEFT OUT. "1/2 Half Floor" (3,860 improvements) is not read, so a
+# story-and-a-half house reads 1. "ADDL Additional Floor" (398
+# improvements, median area over 26,000 sq ft) marks high-rises whose
+# upper floors have no ordinal line; they read no higher than their
+# highest ordinal.
+#
+# REJECTED: imprvStories in TCAD's separate improvement_detail_2026.zip
+# CSV (March 2026). It agrees with the highest floor line on only 65.7%
+# of 408,598 shared improvements, and reads 1 on 128,743 improvements
+# that carry a priced 2nd-floor line (median 1,044 sq ft), so it looks
+# like a default, not a count. It is also a pre-certification vintage
+# and a second download.
+
+description: >-
+  Travis County, TX certified appraisal roll, improvement detail member:
+  highest floor line per building, the tallest building kept per property.
+
+admin_id: US-TX-TRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: traviscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the data; FAQ: roll 'made available free of charge')"
+    terms_url: "https://traviscad.org/faq-items/can-i-get-a-copy-of-the-appraisal-roll/"
+    redistribution_restricted: null
+    portal_url: "https://traviscad.org/publicinformation"
+    download_url: "https://traviscad.org/wp-content/largefiles/2026%20Certified%20Appraisal%20Export%20Supp%200_07182026.zip"
+  version: 2026
+
+compressed_file_name: "2026 Certified Appraisal Export Supp 0_07182026.zip"
+uncompressed_file_name: "IMP_DET.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail); only the type code is needed.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+
+columns:
+  n_stories: imprv_det_type_cd
+
+query: "n_stories in ['1ST', '2ND', '3RD', '4TH', '5TH']"
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_stories
+    args:
+      pattern: '^(?P<n>\d)'
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+
+aggregation_function:
+  n_stories: max
+
+supplements: US-TX-TRA_property-traviscad-2026
+# IMP_DET.TXT carries prop_id and no geo_id, while the roll's
+# parcel_id_local is built from geo_id (its link to TxGIO parcels). So
+# this table joins the roll on the zero-stripped prop_id both carry.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: stories

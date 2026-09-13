@@ -1,0 +1,94 @@
+# Recipe: Williamson County, TX appraisal data -- property
+# characteristics, bathrooms (WCAD). Same table (cvyp-ab5t) and row
+# shape as US-TX-WIL_property-wcad-2026_bedrooms; read its header first.
+#
+# ENCODING. "plumbing" is a full-bath count, not a fixture count: median
+# 2 for three bedrooms, 3 for four, 4 for six. "Halfbath" counts half
+# baths separately (1 on 71,772 rows). n_bathrooms folds them as
+# plumbing + 0.5 x Halfbath; n_half_bathrooms keeps the half count.
+# plumbing is fractional on 236 rows (x.5), and Halfbath is null on
+# every one of them, so the fold never adds a second half.
+#
+# MEASURED: plumbing above 0 on 91.2% of rows; Halfbath populated on
+# 29.9% and null on 67.3% of rows with a plumbing count (zero on 0.1%).
+# The query keeps plumbing from above 0 to 20 and Halfbath from 0 to
+# 10 or null: 221,440 of 221,465 rows with a plumbing count, dropping 9
+# zero or negative and 8 larger plumbing values and 8 Halfbath values
+# (7 negative, one above 10). It also drops the 31 rows that carry a
+# half bath but no plumbing count. Coverage by state code class:
+# A 94.5%, B 95.8%, E 70.0%, M none.
+#
+# NULL HALF COUNTS. link_by_id sums with pandas, which turns a property
+# whose rows all have a null Halfbath into 0 half baths. That matches
+# the source's evident convention (null, not 0, for "none").
+#
+# ROW RULE. 550 multi-row properties carry plumbing on two or more rows,
+# equal on 56.5%; 88 carry Halfbath on two or more rows, all equal.
+# drop_duplicates removes a row repeating the same pair of counts for
+# the same property; differing rows (a guest house) sum.
+
+description: >-
+  Williamson County, TX property characteristics (WCAD open data): full and
+  half bathrooms per improvement, folded as full plus half as .5, summed.
+
+admin_id: US-TX-WIL
+
+entity:
+  entity_type: property
+  source:
+    source_id: wcad
+    # Same portal and terms as the roll; see its terms note.
+    license: "unknown (no licence on the datasets; WCAD: 'As Is', no warranty)"
+    terms_url: "https://www.wcad.org/data-downloads/"
+    redistribution_restricted: null
+    portal_url: "https://data.wcad.org/d/cvyp-ab5t"
+    download_url: "https://data.wcad.org/api/views/cvyp-ab5t/rows.csv?accessType=DOWNLOAD"
+  version: 2026
+
+uncompressed_file_name: "wcad_property_characteristics.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  QuickRefID: str
+  PropertyID: str
+
+columns:
+  parcel_id_assessor: QuickRefID
+  n_bathrooms: plumbing
+  n_half_bathrooms: Halfbath
+
+query: >-
+  n_bathrooms > 0 and n_bathrooms <= 20
+  and not (n_half_bathrooms < 0 or n_half_bathrooms > 10)
+
+drop_duplicates: [parcel_id_assessor, n_bathrooms, n_half_bathrooms]
+
+transformations:
+  # n_bathrooms = full + 0.5 x half; a null half count adds nothing.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+
+supplements: US-TX-WIL_property-wcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

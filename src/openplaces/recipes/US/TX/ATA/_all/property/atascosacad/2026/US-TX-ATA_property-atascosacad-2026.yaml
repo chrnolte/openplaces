@@ -1,0 +1,133 @@
+# Recipe: Atascosa County, TX certified appraisal roll (Atascosa
+# Central Appraisal District).
+#
+# SOURCE. "2026-ATASCOSA-CERTIFIED-EXPORT.zip" (43.5 MB) on
+# https://atascosacad.com/data-export/, a PACS 8.0.34 "Appraisal
+# Export" (APPRAISAL_INFO 9,714 wide, File #7 114, File #9 87). The zip
+# holds one top folder, which the unzip step strips.
+#
+# ROWS. 89,576 rows, one per prop_id. More than half are mineral
+# accounts: MN 46,438, R 35,895, MH 4,826, P 2,417. That is why the
+# state codes and situs look sparse over the whole roll.
+#
+# JOIN KEY. prop_id is zero-padded to 12; the lstrip below restores
+# TxGIO's bare form. Through the bundled parcel_id_local conversion,
+# 89.6% of the real-property (R) ids are found in TxGIO (35.9% of all
+# ids, minerals included) and 92.8% of TxGIO's 34,648 ids are found
+# here.
+#
+# COVERAGE on the 2026 export (2026-07-20), over all rows:
+# land_state_cd 39.9%, imprv_state_cd 29.4%, market_value >0 82.0%,
+# legal acreage >0 32.7% (median 2.46 acres after scaling).
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (layout: "Legal
+# Acreage (4 Decimals)"), so it is divided by 10,000.
+#
+# NOT MAPPED: geo_id, declared as filler: it was not compared with
+# TxGIO in this pass, and the reader keeps a raw column of that name
+# even unmapped, where it would read as openplaces' own geo_id key.
+# Also appraised_val (homestead-capped) and the owner block.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 15,031 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 94.8% (B 92.2%, E 87.3%, M 99.8%),
+# 698 distinct codes.
+
+description: >-
+  Atascosa County, TX certified appraisal roll (PACS 8.0.34 export):
+  state land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-ATA
+
+entity:
+  entity_type: property
+  source:
+    source_id: atascosacad
+    # Checked 2026-09-12 (inventory): the data-export page carries a
+    # site-footer copyright only; no licence, resale or redistribution
+    # terms on the data.
+    license: "unknown (footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://atascosacad.com/data-export/"
+    download_url: "https://atascosacad.com/wp-content/uploads/2026/07/2026-ATASCOSA-CERTIFIED-EXPORT.zip"
+  version: 2026
+
+compressed_file_name: "2026-ATASCOSA-CERTIFIED-EXPORT.zip"
+uncompressed_file_name: "2026-07-20_003275_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); coverage stops at situs_num.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [filler, 50] # geo_id, see NOT MAPPED
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+
+columns:
+  tax_neighborhood_code: hood_cd
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

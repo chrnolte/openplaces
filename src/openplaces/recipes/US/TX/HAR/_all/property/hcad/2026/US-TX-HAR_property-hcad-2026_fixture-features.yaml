@@ -1,0 +1,120 @@
+# Recipe: Harris County, TX appraisal district fixtures table,
+# fireplaces and elevators (HCAD). Same member (fixtures.txt) and row
+# rule as US-TX-HAR_property-hcad-2026_bedrooms; read its header first.
+#
+# WHAT IS MAPPED, by fixture type (units is the count):
+#   n_fireplaces  units summed over FPM (metal prefab), FPW (masonry
+#                 firebrick), FPD (direct vent), FPO (additional open)
+#                 and FL1 to FL3 (open, commercial models)
+#   has_elevator  true where REL (elevator stops) or EL1 to EL4
+#                 (electric or hydraulic, passenger or freight) exist
+#   n_dwellings   units of UNT (Number of Apartment Units, on apartment
+#                 models); 0 is nulled. AP0 to AP4 split the same units
+#                 by bedroom count and are not added.
+# The table lists only fixtures that exist: an account with no fireplace
+# row has no count (null, not 0), and has_elevator is true or null.
+# Single-family and condominium accounts carry no UNT row (one unit
+# each, by their state class). Not mapped: MAS (masonry trim), WH/WHT
+# (wall heights) and the commercial fixtures.
+#
+# MEASURED (2026-09-13): 680,954 rows kept, every account in the roll.
+# Share of the 1,157,703 single-family (state class A1) accounts:
+# n_fireplaces 54.0% (median 1), has_elevator true 0.5%, n_dwellings
+# none (UNT sits only on the 1,013 apartment-model rows).
+
+description: >-
+  Harris County, TX appraisal district fixtures table (HCAD PDATA):
+  fireplaces per building summed to the account, and an elevator flag.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "fixtures.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  fixture_units: units
+
+query: >-
+  `type`.str.strip() in ['FPM', 'FPW', 'FPD', 'FPO', 'FL1', 'FL2', 'FL3',
+  'REL', 'EL1', 'EL2', 'EL3', 'EL4', 'UNT']
+
+# One row per building and type, as for bedrooms.
+drop_duplicates: [parcel_id_assessor, bld_num, type]
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: type
+    output: fixture_type
+  - type: unary
+    operation: to_numeric
+    input: fixture_units
+    output: fixture_units
+  - type: remap
+    input: fixture_type
+    mapping: {"FPM": 1, "FPW": 1, "FPD": 1, "FPO": 1, "FL1": 1, "FL2": 1,
+              "FL3": 1}
+    output: fireplace_mask
+  - type: expression
+    expression: "fixture_units * fireplace_mask"
+    inputs: [fixture_units, fireplace_mask]
+    output: n_fireplaces
+  - type: remap
+    input: fixture_type
+    mapping: {"REL": true, "EL1": true, "EL2": true, "EL3": true,
+              "EL4": true}
+    output: has_elevator
+  - type: remap
+    input: fixture_type
+    mapping: {"UNT": 1}
+    output: unit_mask
+  - type: expression
+    expression: "(fixture_units * unit_mask).where(fixture_units > 0)"
+    inputs: [fixture_units, unit_mask]
+    output: n_dwellings
+
+drop_columns:
+  - fixture_units
+  - fixture_type
+  - fireplace_mask
+  - unit_mask
+
+aggregation_function:
+  n_fireplaces: sum
+  has_elevator: max
+  n_dwellings: sum
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: fixture-features

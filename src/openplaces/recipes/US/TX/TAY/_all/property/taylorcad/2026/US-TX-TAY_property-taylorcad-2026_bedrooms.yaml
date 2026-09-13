@@ -1,0 +1,107 @@
+# Recipe: Taylor County, TX certified appraisal roll, improvement
+# features, bedrooms (Taylor CAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Taylor.
+#
+# Taylor writes 'Number of Bedrooms' as bare whole numbers. The query
+# keeps codes that are a whole number from 1 to 99, written bare or with
+# a zero decimal ('3', '3.00', '10.0'); zero, fractional and letter
+# codes are left out (listed in MEASURED).
+#
+# MEASURED on the 2026 export: 'Number of Bedrooms' on 22,354 rows over
+# 21,809 properties; the query drops '0' (4), '2.5' (3) and 'G' (2).
+# After the row rule, 21,801 properties, median 3, p99 6; the largest
+# values (up to 169) are multifamily building totals. Coverage (value
+# above 0) is 43.3% of the 45,222 single-family (A) properties, 39.0% of
+# the 1,475 multifamily (B), 38.2% of the 3,709 rural improved (E) and
+# 17.3% of the 1,105 mobile homes (M).
+#
+# ROW RULE. 202 improvements carry two or more kept rows, 81% of them
+# with equal values, so the rows mostly repeat one building's figure
+# across its components. drop_duplicates keeps the first row per
+# (prop_id, imprv_id), and aggregation_function sums distinct buildings
+# to the property. Summing all rows would change 0.91% of properties.
+
+description: >-
+  Taylor County, TX certified appraisal roll, improvement features member: bedrooms
+  per building, summed to the property.
+
+admin_id: US-TX-TAY
+
+entity:
+  entity_type: property
+  source:
+    source_id: taylorcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      download page disclaimer, verbatim: 'The Taylor County Appraisal District has
+      developed this product solely for internal use. This product is not developed
+      for resale or profit to the general public and resale of data under a personal,
+      sole proprietorship, or corporate label is considered out of the care, custody
+      and control, of the Taylor County Appraisal District and any applicable
+      liability is assumed through fraudulent use of the data.'
+    redistribution_restricted: null
+    # Marked as on the roll; see its note.
+    resale_restricted: true
+    portal_url: "https://taylor-cad.org/data-downloads/"
+    download_url: "https://taylor-cad.org/wp-content/uploads/2026/07/TaylorCAD_2026_Certified_Appr_Roll_as_of_Certification_31Jul26.zip"
+  version: 2026
+
+compressed_file_name: "TaylorCAD_2026_Certified_Appr_Roll_as_of_Certification_31Jul26.zip"
+uncompressed_file_name: "2026-07-31_000738_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.fullmatch('[1-9][0-9]?([.]0+)?', na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-TAY_property-taylorcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

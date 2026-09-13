@@ -1,0 +1,94 @@
+# Recipe: Harris County, TX appraisal district fixtures table, bedrooms
+# (HCAD). Supplement of US-TX-HAR_property-hcad-2026; see that recipe
+# for the PDATA export, the terms and the join key.
+#
+# SOURCE MEMBER. fixtures.txt in Real_building_land.zip (234.6 MB zip,
+# members dated 2026-09-06): tab-delimited with header (acct, bld_num,
+# type, type_dscr, units). It is a LONG table: one row per (account,
+# building, fixture type), 8,141,614 rows over 1,356,993 accounts. The
+# type codes are HCAD's own; the room counts are
+#   RMB "Room: Bedroom"   (this recipe)
+#   RMF "Room: Full Bath" and RMH "Room: Half Bath" (_bathrooms)
+#   RMT "Room: Total"     (_rooms)
+#   STY "Story Height Index", STC "# Stories" (_stories)
+# FXA "Fixtures: Addl" is a plumbing fixture count and is never read as
+# baths. RMR "Room: Rec" (39.4% of A accounts) has no registry home.
+# AP0-AP4 and UNT (apartment units by bedroom type, on commercial
+# models) are left unmapped: they count units, not rooms.
+#
+# DESIGN. One supplement per attribute, each selecting its type codes
+# with `query`, because the ingester has no long-to-wide step and the
+# attributes reduce differently (sum for rooms, max for stories).
+#
+# MEASURED (RMB): 1,319,230 rows over 1,286,781 accounts; units are
+# whole numbers ("3.00"), median 3, p99 5, max 20, no zeros. Coverage of
+# accounts by state_class first letter (real_acct): A 99.0% of
+# 1,184,538, B 64.7% of 16,450, E 97.0% of 440, M 100% of 31,893.
+# By class: A1 100%, A2 99.7%, A4 99.9%, B2 99.9%, M3 100%, condo Z1-Z5
+# 100% (median 2). B1 (apartment complexes, 0.5%) and A3 (0.3%) carry
+# none. 25,578 accounts carry bedrooms on more than one building.
+#
+# ROW RULE. 149 (acct, bld_num, type) keys repeat (298 rows), 138 of
+# them with differing units. drop_duplicates keeps the first row per
+# building; aggregation_function then sums buildings to the account.
+
+description: >-
+  Harris County, TX appraisal district fixtures table (HCAD PDATA):
+  bedrooms per building, summed to the account.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "fixtures.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  n_bedrooms: units
+
+query: "`type`.str.strip() == 'RMB'"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [parcel_id_assessor, bld_num, type]
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

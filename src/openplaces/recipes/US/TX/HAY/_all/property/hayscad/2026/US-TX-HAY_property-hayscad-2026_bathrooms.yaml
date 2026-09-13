@@ -1,0 +1,85 @@
+# Recipe: Hays County, TX appraisal data -- improvement segments,
+# bathrooms (Hays CAD). Same member (SEGMENT) and row rule as
+# US-TX-HAY_property-hayscad-2026_bedrooms; read its header first,
+# including the nested-zip INGEST BLOCKER.
+#
+# ENCODING. "Plumbing" is a bath count with halves folded in as .5
+# ("2", "2.5", "3", "3.5"), the registry's n_bathrooms definition, and
+# not a fixture count: median 1 for one bedroom, 2 for three, 3 for
+# four, 4 for five. There is no separate half-bath field, so no
+# n_half_bathrooms.
+#
+# MEASURED: Plumbing on 27,201 rows (27,093 on "MA" segments); fraction
+# .0 on 19,348 and .5 on 7,750 numeric rows. Coverage after the query,
+# by improvement state code: A 31.2%, B 11.8%, E 6.5%, M none.
+#
+# QUERY. Keeps codes that are a one- or two-digit number with an
+# optional decimal part: 27,095 of the 27,201 rows. It drops 86 rows
+# under 31 distinct text or malformed codes (fireplace and heating
+# codes keyed into this field, "BATHS" spelled out, "2/1", a doubled
+# decimal point), 9 three-digit codes that lost their decimal point and
+# 11 codes ending in a bare decimal point. Four two-digit values above
+# 20 remain, left to curate's range checks.
+
+description: >-
+  Hays County, TX appraisal data, improvement segment member: bathrooms per
+  improvement (halves as .5), summed to the property.
+
+admin_id: US-TX-HAY
+
+entity:
+  entity_type: property
+  source:
+    source_id: hayscad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://hayscad.com/data-downloads/"
+    download_url: "https://hayscad.com/wp-content/uploads/2026/08/2026-PROPERTY-DATA-EXPORT-FILES-AS-OF-8-26-2026.zip"
+  version: 2026
+
+compressed_file_name: "2026-PROPERTY-DATA-EXPORT-FILES-AS-OF-8-26-2026.zip"
+# Inside 2026-PROPERTY-DATA-EXPORT-FILE-SEGMENT-8.26.2026.zip.
+uncompressed_file_name: "PropertyDataExport1404453.txt"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PropertyID: str
+  QuickRefID: str
+  PropertyNumber: str
+  InstanceID: str
+  Plumbing: str
+
+columns:
+  n_bathrooms: Plumbing
+
+query: "n_bathrooms.str.fullmatch('[0-9]{1,2}([.][0-9]+)?', na=False)"
+
+drop_duplicates: [QuickRefID, InstanceID, n_bathrooms]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: QuickRefID
+    args:
+      chars: "R"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+aggregation_function:
+  n_bathrooms: sum
+
+supplements: US-TX-HAY_property-hayscad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

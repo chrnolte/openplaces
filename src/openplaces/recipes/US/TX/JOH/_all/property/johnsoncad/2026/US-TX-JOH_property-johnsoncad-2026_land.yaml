@@ -1,0 +1,87 @@
+# Recipe: Johnson County, TX certified appraisal roll, land lines
+# (JCAD). Sibling of US-TX-JOH_property-johnsoncad-2026; read that
+# header for the source and the terms, and the _bedrooms header for the
+# join key (the same "R" plus nine-digit parcel_id).
+#
+# SOURCE MEMBER. externalland.tab: one row per land line (parcel_id,
+# lnd_num, use code, value, lnd_front, lnd_depth, units, rates and
+# adjustments); 2.8% of single-family accounts have more than one line.
+#
+# WHAT IS MAPPED. lnd_front, the line's street front in feet, as
+# frontage_ft. The query keeps lines with a front above 0 (acreage lines
+# carry 0, which is "not measured"); an account takes its first such
+# line's front.
+#
+# MEASURED (2026-09-13): 53,991 of 108,291 lines carry a front above
+# 0; 97.1% of their accounts are in the roll. frontage_ft on 74.4% of
+# the 49,093 single-family roll accounts (BUILDING PTD A1), median 70
+# ft, p99 296 ft; a few absurd fronts are left for curate's range
+# checks.
+
+description: >-
+  Johnson County, TX certified appraisal roll, land member: street
+  frontage in feet per account, from the first land line with a front.
+
+admin_id: US-TX-JOH
+
+entity:
+  entity_type: property
+  source:
+    source_id: johnsoncad
+    # Same download as the roll; see its terms note.
+    license: >-
+      no-warranty notice only ('Use of this data constitutes acceptance
+      that ... JCAD makes no warranty as to the accuracy or completeness')
+    terms_url: "https://johnsoncad.com/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://johnsoncad.com/downloads/"
+    download_url: "https://johnsoncad.com/wp-content/uploads/2026/08/BATCH_896.all_.zip"
+  version: 2026
+
+compressed_file_name: "BATCH_896.all_.zip"
+uncompressed_file_name: "externalland.tab"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype:
+  parcel_id: str
+  strap: str
+
+columns:
+  frontage_ft: lnd_front
+
+# A front of 0 is not measured; see WHAT IS MAPPED.
+query: "frontage_ft > 0"
+
+transformations:
+  - type: string
+    operation: zfill
+    input: parcel_id
+    args:
+      width: 9
+    output: parcel_id_assessor
+  - type: string
+    operation: add_prefix
+    input: parcel_id_assessor
+    args:
+      prefix: "R"
+    output: parcel_id_assessor
+
+drop_columns:
+  - parcel_id
+
+aggregation_function:
+  frontage_ft: first
+
+supplements: US-TX-JOH_property-johnsoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: land

@@ -1,0 +1,171 @@
+# Recipe: Harris County, TX appraisal district structural elements
+# (HCAD). Supplement of US-TX-HAR_property-hcad-2026; see that recipe
+# for the PDATA export, the terms and the join key.
+#
+# SOURCE MEMBER. structural_elem1.txt in Real_building_land.zip: a long
+# table, one row per (account, building, element type), 8,885,567 rows
+# over 1,286,544 accounts. Each row has the element type (type,
+# type_dscr), a numeric code and its text (category_dscr). The
+# residential types sit here; structural_elem2.txt holds the commercial
+# ones (none on A1 accounts) and is not read.
+#
+# WHAT IS MAPPED, as category_dscr text:
+#   GRD Grade Adjustment     quality_grade (X+ ... E-, C and C+ lead)
+#   PCR Physical Condition   condition (Excellent ... Unsound)
+#   XWR Exterior Wall        exterior_wall (Brick / Veneer, Frame /
+#                            Concrete Blk, Stone and so on); 43.8% of
+#                            buildings list two or more walls, the
+#                            first is kept
+#   HAC Heating / AC         heating_type (Central Heat/AC, Central
+#                            Heat, A/C Only)
+#   HAC Heating / AC         has_central_air: Central Heat/AC true,
+#                            Central Heat false; A/C Only stays null
+#                            (the text does not say central)
+#   FND Foundation Type      foundation_description (Slab, Crawl Space,
+#                            Full Basement and so on; curate translates
+#                            it into the coded foundation_type)
+#   FND Foundation Type      has_basement: Full or Partial Basement
+#                            true; Slab, Crawl Space and Piers false
+# Not mapped: CDU (a combined condition, desirability and utility
+# rating; PCR is the physical one) and CAD (cost and design). HCAD has
+# no residential construction or frame element.
+#
+# REDUCTION. The first row per building and element type; codes take
+# the first building's, flags the max.
+#
+# MEASURED (2026-09-13): 6,593,905 rows kept, every account in the
+# roll. Share of the 1,157,703 single-family (state class A1) accounts
+# with a value: quality_grade 100% (C and C+ lead), condition 100%
+# (Average on 81%), exterior_wall 100%, foundation_description 100%
+# (Slab on 91%), heating_type 95.0%, has_central_air 94.9% (true
+# 93.5%, false 1.4%), has_basement 99.9% (true on 316 accounts).
+
+description: >-
+  Harris County, TX appraisal structural elements (HCAD PDATA): grade,
+  physical condition, exterior wall, heating and air, and basement per
+  building.
+
+admin_id: US-TX-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: hcad
+    # Same host and terms as the roll; see its terms note.
+    license: "unknown (site disclaimer covers update frequency and search limits only)"
+    terms_url: "https://hcad.org/hcad-help/hcad-disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://hcad.org/pdata/pdata-property-downloads.html"
+    download_url: "https://download.hcad.org/data/CAMA/2026/Real_building_land.zip"
+  version: 2026
+
+compressed_file_name: "Real_building_land.zip"
+uncompressed_file_name: "structural_elem1.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+csv_dtype: str
+# The PDATA members are not reliably UTF-8 (see the roll's ENCODING).
+encoding: latin-1
+
+columns:
+  parcel_id_assessor: acct
+  element_text: category_dscr
+
+query: "`type`.str.strip() in ['GRD', 'PCR', 'XWR', 'HAC', 'FND']"
+
+# First row per building and element; see REDUCTION.
+drop_duplicates: [parcel_id_assessor, bld_num, type]
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+  - type: string
+    operation: strip
+    input: type
+    output: element_type
+  - type: string
+    operation: strip
+    input: element_text
+    output: element_text
+  # "type|text", so each attribute reads only its own rows.
+  - type: string
+    operation: concat
+    inputs: [element_type, element_text]
+    args:
+      sep: "|"
+    output: element_key
+  - type: string
+    operation: extract_named
+    input: element_key
+    args:
+      pattern: '^GRD\|(?P<v>.+)$'
+    output: quality_grade
+  - type: string
+    operation: extract_named
+    input: element_key
+    args:
+      pattern: '^PCR\|(?P<v>.+)$'
+    output: condition
+  - type: string
+    operation: extract_named
+    input: element_key
+    args:
+      pattern: '^XWR\|(?P<v>.+)$'
+    output: exterior_wall
+  - type: string
+    operation: extract_named
+    input: element_key
+    args:
+      pattern: '^HAC\|(?P<v>.+)$'
+    output: heating_type
+  - type: string
+    operation: extract_named
+    input: element_key
+    args:
+      pattern: '^FND\|(?P<v>.+)$'
+    output: foundation_description
+  - type: remap
+    input: element_key
+    mapping:
+      "HAC|Central Heat/AC": true
+      "HAC|Central Heat": false
+    output: has_central_air
+  - type: remap
+    input: element_key
+    mapping:
+      "FND|Full Basement": true
+      "FND|Partial Basement": true
+      "FND|Slab": false
+      "FND|Crawl Space": false
+      "FND|Piers 8 ft or Greater": false
+      "FND|Piers 8 ft or Greater with Enclosure": false
+    output: has_basement
+
+drop_columns:
+  - element_type
+  - element_text
+  - element_key
+
+aggregation_function:
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  heating_type: first
+  foundation_description: first
+  has_central_air: max
+  has_basement: max
+
+supplements: US-TX-HAR_property-hcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: structural-elements

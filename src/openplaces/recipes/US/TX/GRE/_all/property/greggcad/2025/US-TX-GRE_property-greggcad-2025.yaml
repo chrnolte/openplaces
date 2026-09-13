@@ -1,0 +1,136 @@
+# Recipe: Gregg County, TX certified appraisal roll (Gregg Appraisal
+# District, gcad.org), tax year 2025. Same PACS offsets and join-key
+# trap as US-TX-VIC_property-victoriacad-2026; see that recipe's header
+# for the general shape of this source family. This header covers only
+# what differs for Gregg.
+#
+# VINTAGE. The newest export on the downloads page as of 2026-09-12 is
+# the 2025 certified roll (exported 2025-07-22), hence version 2025.
+# Replace it when the district posts the 2026 roll.
+#
+# LAYOUT. The export header names PACS export version 8.0.30, not the
+# 8.0.34 of the Victoria template, and the record is 9,247 characters,
+# not 9,714. No layout ships in the zip; the vendor's 8.0.30 layout
+# spreadsheet (the copy Kerr CAD posts) places every field mapped here
+# at the same offsets as 8.0.34 (checked field by field), so the
+# template's widths stand. The two versions differ only after situs_num.
+#
+# NOTE on coverage, measured on the 2025 export (63,027 rows, which is
+# the property count the zip's own totals report gives):
+#   land_state_cd   93.4%   imprv_state_cd  76.5%
+#   geo_id         100.0%   market_value   100.0%
+#
+# NOTE on the join key. 90.2% of the roll's zero-stripped prop_ids are
+# in TxGIO's Prop_ID and 98.4% of TxGIO's 57,818 distinct Gregg ids are
+# in the roll.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2025 export: A is the 35,661 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 98.7% (B 100.0%, E 94.5%, M 30.1%),
+# 2,101 distinct codes.
+
+description: >-
+  Gregg County, TX certified appraisal roll, tax year 2025 (PACS 8.0.30
+  export): state land-use codes, legal acreage and market value.
+
+admin_id: US-TX-GRE
+
+entity:
+  entity_type: property
+  source:
+    source_id: greggcad
+    # Checked 2026-09-12: the downloads page carries only a site-footer
+    # copyright, and the "General Policy & Procedures for Public
+    # Access" PDF it links covers the board, complaints and the tax
+    # calendar, with nothing on use, resale or redistribution of the
+    # data. Silence is not a grant.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://gcad.org/downloads/"
+    download_url: "https://gcad.org/wp-content/uploads/sites/24/2025/09/2025_gcad_certified_real_appraisal_data.zip"
+  version: 2025
+
+compressed_file_name: "2025_gcad_certified_real_appraisal_data.zip"
+uncompressed_file_name: "2025-07-22_004063_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.30 File #2 (Property): the same offsets as 8.0.34 up to
+# situs_num (see LAYOUT above).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  # Land-plus-structure market value; see the Victoria template for why
+  # this is total_value and not appraised_val.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

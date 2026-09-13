@@ -1,0 +1,96 @@
+# Recipe: Bee County, TX certified appraisal roll, land detail member
+# (PACS File #10, one row per land segment): street frontage. Same
+# download as US-TX-BEE_property-beecad-2025; read that roll's header
+# for the source and its terms.
+#
+# READING. effective_front is the segment's effective front footage, the
+# frontage the district prices a front-foot lot on (adjusted for shape,
+# not a surveyed lot line). Zero means the segment is not priced by the
+# front foot and is read as missing. Segments whose land type
+# description names water (water, lake, river, canal, creek, bay, shore,
+# beach, marina) are left out, so a waterfront footage is never read as
+# street frontage. A property with several segments takes the largest
+# frontage.
+#
+# MEASURED on the 2025 export (aggregates only; share of properties with
+# a value): A is the 7,178 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# frontage_ft A 63.5% (B 52.5%, E 1.1%, M 0.5%).
+
+description: >-
+  Bee County, TX certified appraisal roll, land detail member: effective street frontage
+  per property, in feet.
+
+admin_id: US-TX-BEE
+
+entity:
+  entity_type: property
+  source:
+    source_id: beecad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms on the download page)
+    redistribution_restricted: null
+    portal_url: "https://beecad.org/data-and-records/"
+    download_url: "https://beecad.org/wp-content/uploads/2025/09/BEE-CAD-2025-CERTIFIED-APPRAISAL-ROLL-CSV.zip"
+  version: 2025
+
+compressed_file_name: "BEE-CAD-2025-CERTIFIED-APPRAISAL-ROLL-CSV.zip"
+uncompressed_file_name: "2025-07-25_000292_APPRAISAL_LAND_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #10 (Land Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # land_seg_id
+  - [filler, 10] # land_type_cd
+  - [land_type_desc, 25]
+  - [filler, 5] # state_cd
+  - [filler, 1] # land_seg_homesite
+  - [filler, 14] # size_acres
+  - [filler, 14] # size_square_feet
+  - [effective_front, 14]
+
+columns:
+  frontage_ft: effective_front
+
+query: >-
+  ~land_type_desc.str.upper().str.contains(
+  'WATER|LAKE|RIVER|CANAL|CREEK|BAY|SHORE|BEACH|MARINA', na=False)
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: frontage_ft
+    output: frontage_ft
+  - type: expression
+    expression: frontage_ft.where(frontage_ft > 0)
+    inputs: [frontage_ft]
+    output: frontage_ft
+
+drop_columns:
+  - land_type_desc
+
+aggregation_function:
+  frontage_ft: max
+
+supplements: US-TX-BEE_property-beecad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: frontage

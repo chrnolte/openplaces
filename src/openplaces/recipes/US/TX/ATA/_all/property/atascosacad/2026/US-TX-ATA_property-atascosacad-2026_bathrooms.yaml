@@ -1,0 +1,106 @@
+# Recipe: Atascosa County, TX certified appraisal roll, improvement
+# features, bathrooms (Atascosa CAD). Sibling of US-TX-ATA_property-
+# atascosacad-2026; see that recipe's header for the download and key.
+#
+# SOURCE MEMBER. PACS File #9, APPRAISAL_IMPROVEMENT_DETAIL_ATTR (87
+# characters wide): one row per improvement detail per attribute.
+# Atascosa records no bedroom, room or story attribute; baths are its
+# only room count.
+#
+# Its "Plumbing" attribute is a bath count, not a fixture count: codes
+# "2", "1", "2.5", "1.5", "3", median 2, halves as .5 (the registry's
+# n_bathrooms definition). One text form, "2 1/2" (291 rows), is
+# rewritten to "2.5" before parsing. Letter codes ("S", "CAH", "WU",
+# "FA", about 20 rows) are not counts and become null. ".5" on its own
+# (6 rows) is kept: a building with a half bath only.
+#
+# MEASURED on the 2026 certified export (2026-07-20): 14,713 rows over
+# 13,097 properties. Of the properties whose improvements carry each
+# state class (File #7): 63.1% of 15,031 single-family (A), 94.2% of 172
+# multifamily (B), 62.8% of 4,426 rural improved (E), 2.5% of 3,181
+# mobile homes (M).
+#
+# ROW RULE. 681 of 13,916 improvements carry two or more rows, 68% of
+# them equal; 74% of those repeat the figure on the same detail. The
+# first row per (prop_id, imprv_id) is kept, then buildings are summed;
+# first differs from max on 99 property totals (0.8%).
+
+description: >-
+  Atascosa County, TX certified appraisal roll, improvement features
+  member: bathrooms per building (halves as .5), summed to the property.
+
+admin_id: US-TX-ATA
+
+entity:
+  entity_type: property
+  source:
+    source_id: atascosacad
+    # Same download as the roll; see its terms note.
+    license: "unknown (footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://atascosacad.com/data-export/"
+    download_url: "https://atascosacad.com/wp-content/uploads/2026/07/2026-ATASCOSA-CERTIFIED-EXPORT.zip"
+  version: 2026
+
+compressed_file_name: "2026-ATASCOSA-CERTIFIED-EXPORT.zip"
+# The zip's single top folder is stripped on extraction.
+uncompressed_file_name: "2026-07-20_003275_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bathrooms: imprv_attr_cd
+
+query: "imprv_attr_desc == 'Plumbing'"
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: replace
+    input: n_bathrooms
+    args:
+      old: " 1/2"
+      new: ".5"
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bathrooms: sum
+
+supplements: US-TX-ATA_property-atascosacad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bathrooms

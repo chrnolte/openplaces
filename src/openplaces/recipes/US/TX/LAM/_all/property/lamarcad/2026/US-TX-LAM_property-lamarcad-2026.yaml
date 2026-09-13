@@ -1,0 +1,141 @@
+# Recipe: Lamar County, TX appraisal roll (Lamar County Appraisal
+# District), April 2026 pre-certification export.
+#
+# SOURCE. "Notice of Appraised Value Open Records" on
+# https://lamarcad.org/public-info/ (notice-of-Appraised-value-open-
+# records.zip, 25.9 MB): a full PACS "Appraisal Export" dated
+# 2026-04-28, i.e. the notice-of-value vintage, before certification. No
+# certified 2026 export was found on the site (older exports sit in its
+# media library: 6.25.2025.zip and 2023 files). Values will differ from
+# the certified roll; room counts rarely do.
+#
+# LAYOUT. This is layout 8.0.33: APPRAISAL_INFO is 9,659 wide (8.0.34:
+# 9,714). The fields that differ sit beyond the last one mapped; the
+# 8.0.33 layout sheet gives the same offsets as 8.0.34 for every field
+# below, and they were checked on the data (every row reads tax year
+# 2026, state codes read as A1/E1/F1...). File #7 is 114 wide and
+# File #9 87.
+#
+# ROWS. 40,522 rows, one per prop_id: R 37,063, P 3,056, A 206, MH 188,
+# MN 9.
+#
+# JOIN KEY. prop_id is zero-padded to 12; the lstrip below restores
+# TxGIO's bare form. Through the bundled parcel_id_local conversion,
+# 87.5% of the roll's ids (95.7% of real-property ids) are found in
+# TxGIO and 99.1% of TxGIO's 35,789 ids are found here.
+#
+# COVERAGE on the 2026-04-28 export: land_state_cd 89.9%,
+# imprv_state_cd 60.4%, market_value >0 99.3%, legal acreage >0 55.2%
+# (median 5.0 acres after scaling).
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (layout: "Legal
+# Acreage (4 Decimals)"), so it is divided by 10,000.
+#
+# NOT MAPPED: geo_id, declared as filler: it was not compared with
+# TxGIO in this pass, and the reader keeps a raw column of that name
+# even unmapped, where it would read as openplaces' own geo_id key.
+# Also appraised_val (homestead-capped) and the owner block.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code
+# (File #2), is mapped to tax_neighborhood_code as published. MEASURED
+# on the 2026 export: A is the 13,664 single-family properties
+# (improvement state class A, File #7); B, E and M the other residential
+# classes. tax_neighborhood_code A 99.5% (B 99.5%, E 99.6%, M 89.9%),
+# 330 distinct codes.
+
+description: >-
+  Lamar County, TX appraisal roll (PACS 8.0.33 export, April 2026
+  pre-certification): state land-use codes, legal acreage, market value.
+
+admin_id: US-TX-LAM
+
+entity:
+  entity_type: property
+  source:
+    source_id: lamarcad
+    # Checked 2026-09-12: the Public Info page links the file with no
+    # disclaimer, licence, resale or fee language.
+    license: "unknown (no terms on the Public Info page)"
+    redistribution_restricted: null
+    portal_url: "https://lamarcad.org/public-info/"
+    download_url: "https://lamarcad.org/wp-content/uploads/2026/06/notice-of-Appraised-value-open-records.zip"
+  version: 2026
+
+compressed_file_name: "notice-of-Appraised-value-open-records.zip"
+uncompressed_file_name: "2026-04-28_000261_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.33 File #2 (Property); same offsets as 8.0.34 up to
+# situs_num, where coverage stops.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [filler, 50] # geo_id, see NOT MAPPED
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+
+columns:
+  tax_neighborhood_code: hood_cd
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

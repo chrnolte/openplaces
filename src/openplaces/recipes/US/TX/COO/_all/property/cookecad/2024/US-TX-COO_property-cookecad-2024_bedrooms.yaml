@@ -1,0 +1,108 @@
+# Recipe: Cooke County, TX certified appraisal roll, improvement
+# features, bedrooms (CCAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Cooke.
+#
+# Cooke configures its own attribute names in capitals: 'BEDROOMS', bare
+# whole numbers 1 to 8. The query keeps codes that are a whole number
+# from 1 to 99, written bare or with a zero decimal ('3', '3.00',
+# '10.0'); zero, fractional and letter codes are left out (listed in
+# MEASURED).
+#
+# MEASURED on the 2024 export: 'BEDROOMS' on 18,139 rows over 17,304
+# properties; the query drops none. After the row rule, 17,304
+# properties, median 3, p99 6. Coverage (value above 0) is 94.7% of the
+# 12,701 single-family (A) properties, 77.3% of the 150 multifamily (B),
+# 86.2% of the 4,999 rural improved (E) and 88.1% of the 756 mobile
+# homes (M).
+#
+# ROW RULE. 335 improvements carry two or more kept rows and only 61% of
+# them agree, so three rules were measured per property: the first row
+# per improvement summed across buildings (this recipe), all rows
+# summed, and the maximum over all rows. The last two differ from the
+# first on 1.85% and 2.21% of properties. The disagreeing rows sit on a
+# second MAIN detail or an 'ADDN TO MAIN (HOME)', and the first row is
+# the largest in 86% of them, which reads either as an addition's own
+# count (sum) or as a partial repeat (first). Improvement value decides
+# it: over the 84 single-family improvements whose rows disagree, the
+# File #7 improvement value lies nearer the median value of single-row
+# improvements with the first row's count than with the summed count in
+# 69%. So drop_duplicates keeps the first row per (prop_id, imprv_id),
+# and aggregation_function sums distinct buildings to the property.
+
+description: >-
+  Cooke County, TX certified appraisal roll, improvement features member: bedrooms per
+  building, summed to the property.
+
+admin_id: US-TX-COO
+
+entity:
+  entity_type: property
+  source:
+    source_id: cookecad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (the portal's legal statement answers 403 to the anonymous token; no
+      terms found)
+    redistribution_restricted: null
+    portal_url: "https://www.cookecad.org/"
+  version: 2024
+
+compressed_file_name: "2024 Certified Export.zip"
+uncompressed_file_name: "2024 CERTIFIED EXPORT/2024-07-30_001801_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'BEDROOMS'
+  and n_bedrooms.str.fullmatch('[1-9][0-9]?([.]0+)?', na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-COO_property-cookecad-2024
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

@@ -1,0 +1,109 @@
+# Recipe: Guadalupe County, TX certified appraisal roll -- improvement
+# features, bedrooms (Guadalupe Appraisal District). Same member (PACS
+# File #9) and row rule as US-TX-VIC_property-victoriacad-2026_bedrooms;
+# read its header first. This header covers what differs for Guadalupe.
+#
+# "Number of Bedrooms" holds mostly bare integers (3, 4, 5, 2, 1, 6),
+# some "3 BED" and one "5+ BED". The query keeps those forms and the
+# transformation reads the leading number. Left out: "UNKNOWN" (960
+# rows, the district's not-recorded code) and truncated free text
+# ("All Bedroo", "Master Bed"). A row the query admits always parses to
+# a positive count, because link_by_id sums a property whose only rows
+# are null to 0.
+#
+# MEASURED on the 2026 export: 40,628 rows over 39,347 properties.
+# After cleaning, 54.1% of the 66,698 single-family (A) properties
+# carry it, 16.6% of multifamily (B), 20.0% of rural improved (E), 7.5%
+# of mobile homes (M); per property median 3, p99 5.
+#
+# ROW RULE. This is the county where it matters most: 871 of 38,600
+# improvements carry two or more bedroom rows, only 25% of them agree,
+# and 65% of them sit on a single detail (a main floor with its
+# additions). Measured against the count expected from the
+# improvement's area (median of single-row improvements in the same
+# area decile), the first row is off by 0.49 on average, the max by
+# 0.63 and the sum by 4.12: the rows are repeated, inconsistently
+# updated figures for one building, not counts to add. drop_duplicates
+# keeps the first row per building; the sum then adds distinct
+# buildings.
+
+description: >-
+  Guadalupe County, TX certified appraisal roll, improvement features
+  member: bedrooms per building, summed to the property.
+
+admin_id: US-TX-GUA
+
+entity:
+  entity_type: property
+  source:
+    source_id: guadalupecad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://guadalupead.org/certified-appraisal-roll/"
+    download_url: "https://guadalupead.org/wp-content/uploads/2026/07/2026-GCO-Certified-Appraisal-Roll-Supp-0.zip"
+  version: 2026
+
+compressed_file_name: "2026-GCO-Certified-Appraisal-Roll-Supp-0.zip"
+uncompressed_file_name: "2026 GCO Certified Appraisal Roll Supp 0/2026-07-28_016967_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #9 (Improvement Features).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.contains('^[0-9]+[+]? *(?:BED)?$', na=False)
+  and n_bedrooms.str.contains('^0*[1-9]', na=False)
+
+# One row per building; see the header's ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_bedrooms
+    args:
+      pattern: '^(?P<n>[0-9]+)'
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+supplements: US-TX-GUA_property-guadalupecad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

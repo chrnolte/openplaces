@@ -1,0 +1,109 @@
+# Recipe: Kerr County, TX certified appraisal roll, improvement
+# features, bedrooms (KCAD). Same member (PACS File #9) as
+# US-TX-VIC_property-victoriacad-2026_bedrooms; read its header first.
+# This header covers what differs for Kerr.
+#
+# Kerr writes 'Number of Bedrooms' as bare whole numbers. The query
+# keeps codes that are a whole number from 1 to 99, written bare or with
+# a zero decimal ('3', '3.00', '10.0'); zero, fractional and letter
+# codes are left out (listed in MEASURED).
+#
+# MEASURED on the 2025 export: 'Number of Bedrooms' on 8,289 rows over
+# 8,100 properties; the query drops '2.5' (2) and '3.5' (1). After the
+# row rule, 8,097 properties, median 3, p99 5. Coverage (value above 0)
+# is 43.8% of the 15,825 single-family (A) properties, 34.8% of the 336
+# multifamily (B), 20.8% of the 4,929 rural improved (E) and 0.3% of the
+# 2,470 mobile homes (M).
+#
+# ROW RULE. 67 improvements carry two or more kept rows and only 54% of
+# them agree, so three rules were measured per property: the first row
+# per improvement summed across buildings (this recipe), all rows
+# summed, and the maximum over all rows. The last two differ from the
+# first on 0.83% and 1.14% of properties. The disagreeing rows sit on
+# distinct main-area details (Kerr's detail types are converted codes
+# such as MAA, MA2, MA3), and the first row is the largest in 71% of
+# them. Improvement value leans the other way here: over the 18
+# single-family improvements whose rows disagree, the File #7 value lies
+# nearer the median of single-row improvements with the summed count in
+# 57%. That is too few to set this recipe apart from the county's bath
+# rows (first nearer in 56% of 55) and from every other district
+# measured, so drop_duplicates keeps the first row per (prop_id,
+# imprv_id) here too, and aggregation_function sums distinct buildings
+# to the property. Dropping drop_duplicates would switch it to the sum.
+
+description: >-
+  Kerr County, TX certified appraisal roll, improvement features member: bedrooms per
+  building, summed to the property.
+
+admin_id: US-TX-KER
+
+entity:
+  entity_type: property
+  source:
+    source_id: kerrcad
+    # Same download as the roll; see its terms note.
+    license: >-
+      unknown (no terms found on the exports page or /disclaimer/)
+    redistribution_restricted: null
+    portal_url: "https://kerrcad.org/appraisal-exports/"
+    download_url: "https://kerrcad.org/wp-content/uploads/2025/11/2025-Cert-Export-Files.zip"
+  version: 2025
+
+compressed_file_name: "2025-Cert-Export-Files.zip"
+uncompressed_file_name: "2025-11-25_004391_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_bedrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Number of Bedrooms'
+  and n_bedrooms.str.fullmatch('[1-9][0-9]?([.]0+)?', na=False)
+
+# One row per building; see ROW RULE.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_bedrooms: sum
+
+# Details the roll's properties: joined by link_by_id, skipped
+# by the property spine's union.
+supplements: US-TX-KER_property-kerrcad-2025
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: bedrooms

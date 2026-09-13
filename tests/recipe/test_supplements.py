@@ -15,7 +15,7 @@ from openplaces.recipe import find_entity_recipe_id
 
 TX_DETAIL_TABLES = [
     ('VIC', 'victoriacad'),
-    ('HAN', 'hardincad'),
+    ('HRD', 'hardincad'),
     ('LAV', 'lavacacad'),
 ]
 
