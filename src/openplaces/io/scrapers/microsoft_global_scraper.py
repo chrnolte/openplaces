@@ -26,8 +26,8 @@ import math
 import pandas as pd
 import requests
 
-from openplaces.api import get_admin
 from openplaces.io import request_headers
+from openplaces.io.readers import get_admin
 
 DEFAULT_INDEX_URL = (
     'https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv'
