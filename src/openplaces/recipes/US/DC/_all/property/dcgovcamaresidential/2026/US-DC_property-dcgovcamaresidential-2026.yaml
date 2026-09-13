@@ -1,0 +1,335 @@
+# Recipe: Washington, DC Office of Tax and Revenue (OTR) Computer
+# Assisted Mass Appraisal (CAMA), Residential table.
+#
+# Source: layer 25, "RESIDENTIAL (CAMA)", of the same
+# DCGIS_DATA/Property_and_Land_WebMercator MapServer that serves the
+# sibling parcel recipes (dcgovrecordlots, layer 35; dcgovtaxlots,
+# layer 39). It is a table without geometry, keyed by SSL. Published
+# on opendata.dc.gov as "Computer Assisted Mass Appraisal -
+# Residential" (Hub item dbc439534a164a479a88140fbdd6bdc2_25).
+#
+# WHY A SEPARATE SOURCE_ID. OTR publishes its CAMA as three tables
+# (Residential, Condominium, Commercial). An Entity's identity, and
+# so its output path, is (entity_type, source_id, version) only; the
+# sibling recordlots header records a real overwrite caused by
+# sharing one source_id. Residential and Condominium therefore each
+# get their own (dcgovcamaresidential, dcgovcamacondo).
+#
+# BULK vs REST (equivalence test, 2026-09-12). The Hub CSV export
+# carries the live layer's field names exactly (the stale-schema trap
+# the recordlots header describes does not apply to this item) and
+# reconciles to snapshot lag: 109,273 rows against the server's
+# returnCountOnly of 109,286; BEDRM > 0 on 107,304 rows against the
+# server's 107,312; BATHRM > 0 on 107,431 against 107,438.
+#
+# ROW SHAPE, measured on that export: one row per building card
+# (BLDG_NUM). 109,163 distinct SSL; 109,061 SSL carry one row, 95
+# carry two, 7 carry three or four. The aggregation_function below
+# folds a multi-building SSL to one property: counts are summed and
+# the tallest building's story count is kept.
+#
+# FIELD POPULATION (share of rows > 0; values are whole numbers):
+#   BEDRM 98.2% (median 3)   BATHRM 98.3% (median 2)
+#   ROOMS 98.0% (median 7)   HF_BATHRM 57.4% (median 1 where > 0)
+#   STORIES 98.2% (median 2; quarter and half stories such as 2.5 on
+#   14% of rows; a handful of outliers up to 65 are left as shipped)
+# About 1,800 rows (1.7%) are null on every room field together.
+# USECODE is residential throughout (11, 12, 13 are 45.8k, 31.8k and
+# 16.7k rows).
+#
+# BATHS. BATHRM is the full-bath count and HF_BATHRM the half-bath
+# count, separate fields. n_bathrooms folds them as full + 0.5 x half
+# below; n_half_bathrooms keeps the half count.
+#
+# JOIN KEY. SSL (Square-Suffix-Lot, 12 characters, fabricated shape
+# '9999    9999') is the same key the sibling parcel recipes carry.
+# 98.0% of this table's distinct SSL appear in the union of the Record
+# Lots and Tax Lots SSL (measured against both layers' Hub CSV
+# exports, 175,449 distinct lot SSL). Like the siblings, SSL is copied
+# to parcel_id_assessor and converted with the default 'simple' rule.
+#
+# NO SUPPLEMENTS TARGET. This table details properties by building,
+# but DC has no property roll recipe for it to supplement: the only
+# rolls in this tree are the two parcel geometry recipes. It is
+# therefore a property recipe in its own right, with the aggregation
+# above, and declares no `supplements:` (the same open question as
+# Craven County, NC).
+#
+# BUILDING FEATURES (building-feature pass, 2026-09-13). Field
+# meanings from the layer's own aliases. Each *_D description field
+# is mapped in the source's wording (no crosswalk); 'No Data' is
+# nulled everywhere:
+#   GBA 'Gross Building Area' -> building_area_sqft. The table has
+#     no living-area field, and no area_sqft was mapped before, so
+#     living_area_sqft stays unmapped. A GBA of 0 (1,803 cards, the
+#     ones empty on every field) is nulled.
+#   GRADE_D -> quality_grade (12 grades, 'Low Quality' to
+#     'Exceptional-D'); CNDTN_D -> condition (7, 'Poor' to
+#     'Excellent', plus 'Typical')
+#   EXTWALL_D -> exterior_wall (24); ROOF_D -> roof_material (16,
+#     'Typical' among them); HEAT_D -> heating_type (13; the system,
+#     not the fuel, so heating_fuel stays unmapped)
+#   AC Y/N -> has_central_air: presence and absence are both
+#     recorded; the third value, '0' (40 cards), stays null
+#   FIREPLACES -> n_fireplaces (0 is a recorded count)
+#   YR_RMDL 'Year Remodeled' -> renovation_year; EYB 'Improvement
+#     Year Built' -> effective_year_built (median 1972 against AYB's
+#     1931: an effective year)
+#   STYLE_D -> building_style (story-based: '2 Story', 'Split
+#     Level'). STRUCT_D (row inside, row end, semi-detached, single)
+#     is an attachment type with no registry home; not mapped.
+# Per SSL, areas and counts sum, the flag is true if any card has
+# it, codes take the first card's (aggregation_function below).
+#
+# MEASURED in memory through TableIngester._preprocess_recipe_data
+# on the Hub export (109,273 cards, 109,163 SSL; every card is
+# residential). Share of cards non-null, the same within 0.1 point
+# per SSL:
+#   building_area_sqft 98.4% (per SSL median 1,512 sqft, p99 5,005)
+#   quality_grade 98.3%   condition 98.4%   exterior_wall 98.3%
+#   roof_material 98.4%   heating_type 98.3%   building_style 98.3%
+#   has_central_air 98.3% (69.1% of cards true, 29.2% false)
+#   n_fireplaces 98.4% non-null, above 0 on 42.8%
+#   renovation_year 54.0% (null where never remodeled)
+#   effective_year_built 98.4%
+#
+# YEAR BUILT AND UNITS (follow-up, 2026-09-13). AYB 'Actual Year
+# Built' -> year_built, the oldest card's per SSL (min); NUM_UNITS
+# -> n_dwellings, summed per SSL, 0 nulled (165 cards). Every year
+# column is kept only within 1600-2026: this nulls 193 AYB values of
+# 2027 (all on cards with no area and an EYB of 0, so placeholders),
+# one three-digit AYB, 13 remodel years above 2026 (two years run
+# together, up to eight digits) and 5 below 1600; a year of 0 (181
+# AYB, 1,799 EYB) is nulled by the registry's placeholder rule.
+# MEASURED as above: year_built 99.6% of cards and SSL (median
+# 1931); n_dwellings 98.2% (per SSL median 1, p99 4, max 12; USECODE
+# 25 cards a median of 4).
+# Left as shipped for curate: 26 remodel years and 1,821 effective
+# years before the actual year built, 7 gross areas above 20,000
+# sqft.
+#
+# LEFT UNMAPPED: STRUCT_D (row inside, row end, semi-detached,
+# single: an attachment type, which is neither construction_
+# description nor any other registry attribute), INTWALL_D (floor
+# finish), KITCHENS, sale fields, USECODE and LANDAREA. The table
+# has no foundation field. Dates are Esri date strings in the
+# export.
+
+description: >-
+  Washington, DC OTR CAMA residential table: rooms, baths, stories, gross area,
+  grade, condition, materials, heating and air per building, folded by SSL.
+
+admin_id: US-DC
+
+entity:
+  entity_type: property
+  source:
+    source_id: dcgovcamaresidential
+    # The Hub item declares CC BY 4.0; DC's district-data terms page
+    # dedicates District data to the public domain (CC0 1.0), permits
+    # redistribution and commercial use, and asks for (does not
+    # require) attribution. No resale clause.
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::computer-assisted-mass-appraisal-residential/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/dbc439534a164a479a88140fbdd6bdc2_25/downloads/data?format=csv&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "dc_cama_residential.csv"
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_admin2: SSL
+  n_bedrooms: BEDRM
+  n_bathrooms: BATHRM
+  n_half_bathrooms: HF_BATHRM
+  n_rooms: ROOMS
+  n_stories: STORIES
+  # Building features (see the header's BUILDING FEATURES). The *_D
+  # description fields are mapped, not their numeric codes: the text
+  # is the source's own vocabulary and reads without a code table.
+  building_area_sqft: GBA
+  quality_grade: GRADE_D
+  condition: CNDTN_D
+  exterior_wall: EXTWALL_D
+  roof_material: ROOF_D
+  heating_type: HEAT_D
+  has_central_air: AC
+  n_fireplaces: FIREPLACES
+  renovation_year: YR_RMDL
+  effective_year_built: EYB
+  building_style: STYLE_D
+  year_built: AYB
+  n_dwellings: NUM_UNITS
+
+# OTR's description fields spell a missing code 'No Data'.
+null_value_strings:
+  - "No Data"
+
+transformations:
+  # Raw SSL as the key parcel_id_local derives from, as in the
+  # sibling parcel recipes.
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  # A gross area of 0 sits on the cards whose every field is empty; it
+  # is a missing value, not a building without floor area.
+  - type: unary
+    operation: null_if_equal
+    input: building_area_sqft
+    output: building_area_sqft
+    args:
+      value: 0
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  # The registry's null_placeholder already nulls a year of 0.
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year outside 1600-2026 is impossible here (a remodel year of
+  # two years run together, a typo): dividing by the in-range test
+  # turns it into inf, which is then nulled.
+  - type: expression
+    expression: "year_built / ((year_built >= 1600) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    output: year_built
+    args:
+      value: .inf
+  - type: expression
+    expression: >-
+      renovation_year / ((renovation_year >= 1600)
+      & (renovation_year <= 2026))
+    inputs: [renovation_year]
+    output: renovation_year
+  - type: unary
+    operation: null_if_equal
+    input: renovation_year
+    output: renovation_year
+    args:
+      value: .inf
+  - type: expression
+    expression: >-
+      effective_year_built / ((effective_year_built >= 1600)
+      & (effective_year_built <= 2026))
+    inputs: [effective_year_built]
+    output: effective_year_built
+  - type: unary
+    operation: null_if_equal
+    input: effective_year_built
+    output: effective_year_built
+    args:
+      value: .inf
+  # NUM_UNITS is 0 on cards with no recorded unit count.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    output: n_dwellings
+    args:
+      value: 0
+  # AC records presence and absence explicitly (Y, N); its third
+  # value, '0', is left null.
+  - type: remap
+    input: has_central_air
+    output: has_central_air
+    mapping:
+      "Y": true
+      "N": false
+  # Cast before the bath fold: transformation_patterns run after
+  # this list, too late for the expression below.
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only
+  # when both counts are, so a missing half count reads as zero.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - exterior_wall
+  - roof_material
+  - heating_type
+  - building_style
+
+# One row per building card; see the header's ROW SHAPE. Areas and
+# counts are summed, the flag is true if any card has it, and codes
+# take the first card's. year_built takes the oldest card's year and
+# n_dwellings sums; the other two years are left to the registry
+# (renovation_year max, effective_year_built mean).
+aggregation_function:
+  year_built: min
+  n_dwellings: sum
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_rooms: sum
+  n_stories: max
+  building_area_sqft: sum
+  n_fireplaces: sum
+  has_central_air: max
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  roof_material: first
+  heating_type: first
+  building_style: first
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

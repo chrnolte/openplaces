@@ -1,0 +1,235 @@
+# Recipe: Washington, DC Office of Tax and Revenue (OTR) Computer
+# Assisted Mass Appraisal (CAMA), Condominium table.
+#
+# Source: layer 24, "CONDOMINIUM (CAMA)", of the
+# DCGIS_DATA/Property_and_Land_WebMercator MapServer; a table without
+# geometry, keyed by SSL. Published on opendata.dc.gov as "Computer
+# Assisted Mass Appraisal - Condominium" (Hub item
+# 7c675d683a3d4e6d90584af6e25c800d_24). Read the sibling
+# US-DC_property-dcgovcamaresidential-2026 header for why each OTR
+# CAMA table has its own source_id.
+#
+# BULK vs REST (equivalence test, 2026-09-12). The Hub CSV export
+# carries the live field names and reconciles exactly: 61,329 rows
+# against the server's returnCountOnly of 61,329; BEDRM > 0 on 56,103
+# against 56,104; BATHRM > 0 on 61,321 against 61,321.
+#
+# ROW SHAPE, measured: one row per condominium unit, which is one
+# property. 61,329 rows, 61,329 distinct SSL, BLDG_NUM 1 throughout.
+# No aggregation is needed.
+#
+# FIELD POPULATION (share of rows > 0; values are whole numbers):
+#   BATHRM 100.0% (median 1)   ROOMS 99.5% (median 4)
+#   BEDRM 91.5% (median 1; most of the rest are 0, efficiency units,
+#   not missing: 1 row is null)   HF_BATHRM 16.5%
+# The table has no story field (a unit's building height is not
+# recorded here). USECODE is 16 or 17 on all but 8 rows.
+#
+# BATHS. BATHRM is the full-bath count and HF_BATHRM the half-bath
+# count. n_bathrooms folds them as full + 0.5 x half below.
+#
+# JOIN KEY, AND WHY IT DOES NOT JOIN TO A PARCEL YET. Each unit has
+# its own SSL (fabricated shape '9999    2999': condo unit lots are
+# numbered in their own series). 0.0% of this table's SSL appear in
+# the Record Lots or Tax Lots layers, because a unit SSL is not a
+# land lot. The unit-to-lot relation lives in the same MapServer
+# (CONDORELATE, table 52; Condo Approval Lots, layer 44), which this
+# recipe does not read. Until a recipe maps unit SSL to the
+# underlying lot, these properties carry a key that matches no
+# parcel. The key is still the correct property identifier, so it is
+# kept.
+#
+# UNIT FEATURES (building-feature pass, 2026-09-13). Field meanings
+# from the layer's own aliases:
+#   LIVING_GBA 'Living Gross Building Area' -> living_area_sqft (the
+#     unit's living area; the table has no gross building area, and
+#     no area_sqft was mapped before)
+#   HEAT_D 'Heat Description' -> heating_type (system, e.g. forced
+#     air, heat pump, hot water radiator; 14 values in the source's
+#     wording, 'No Data' nulled)
+#   AC Y/N -> has_central_air (presence and absence both recorded;
+#     the third value '0' stays null)
+#   FIREPLACES -> n_fireplaces; YR_RMDL 'Year Remodeled' ->
+#     renovation_year; EYB 'Improvement Year Built' ->
+#     effective_year_built (median 1961, near AYB's 1962)
+# MEASURED in memory through TableIngester._preprocess_recipe_data
+# on the Hub export (61,329 units, one per SSL, all residential
+# condominium use codes):
+#   living_area_sqft 99.9% (median 792 sqft, p99 2,281)
+#   heating_type 99.3%, 13 values
+#   has_central_air 99.9% (93.5% true, 6.5% false)
+#   n_fireplaces 99.7% non-null, above 0 on 14.8%; three values of
+#     several hundred or more are left as shipped for curate
+#   renovation_year 59.6% (null where never remodeled)
+#   effective_year_built 100.0%
+# The table carries no grade, condition, wall, roof, parking,
+# storage, foundation or floor-number field, so unit_floor and
+# n_parking_spaces stay unmapped.
+#
+# YEAR BUILT (follow-up, 2026-09-13). AYB 'Actual Year Built' ->
+# year_built: 99.9% of units (median 1962; 37 zeros nulled by the
+# registry's placeholder rule). Every year column is kept only
+# within 1600-2026, which here nulls one effective year of 20. The
+# table has no unit-count field: each row is one unit, and
+# n_dwellings is not filled in for it.
+#
+# LEFT UNMAPPED: CMPLX_NUM, sale fields, USECODE and LANDAREA.
+
+description: >-
+  Washington, DC OTR CAMA condominium table: rooms, baths, living area,
+  heating, air conditioning, fireplaces and remodel years per unit, keyed by SSL.
+
+admin_id: US-DC
+
+entity:
+  entity_type: property
+  source:
+    source_id: dcgovcamacondo
+    # Same terms as the residential sibling: CC BY 4.0 on the item,
+    # CC0 in DC's district-data policy; no resale clause.
+    license: "CC BY 4.0 (item); DC's general data policy also states CC0"
+    terms_url: "https://dc.gov/page/terms-and-conditions-use-district-data"
+    redistribution_restricted: false
+    portal_url: "https://opendata.dc.gov/datasets/DCGIS::computer-assisted-mass-appraisal-condominium/about"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/7c675d683a3d4e6d90584af6e25c800d_24/downloads/data?format=csv&spatialRefId=4326"
+  version: "2026"
+
+uncompressed_file_name: "dc_cama_condominium.csv"
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  parcel_id_admin2: SSL
+  n_bedrooms: BEDRM
+  n_bathrooms: BATHRM
+  n_half_bathrooms: HF_BATHRM
+  n_rooms: ROOMS
+  # Unit features (see the header's UNIT FEATURES).
+  living_area_sqft: LIVING_GBA
+  heating_type: HEAT_D
+  has_central_air: AC
+  n_fireplaces: FIREPLACES
+  renovation_year: YR_RMDL
+  effective_year_built: EYB
+  year_built: AYB
+
+# OTR's description fields spell a missing code 'No Data'.
+null_value_strings:
+  - "No Data"
+
+transformations:
+  - type: string
+    operation: concat
+    inputs: [parcel_id_admin2]
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    output: living_area_sqft
+    args:
+      value: 0
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  # The registry's null_placeholder already nulls a year of 0.
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year outside 1600-2026 is impossible here: dividing by the
+  # in-range test turns it into inf, which is then nulled.
+  - type: expression
+    expression: "year_built / ((year_built >= 1600) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    output: year_built
+    args:
+      value: .inf
+  - type: expression
+    expression: >-
+      renovation_year / ((renovation_year >= 1600)
+      & (renovation_year <= 2026))
+    inputs: [renovation_year]
+    output: renovation_year
+  - type: unary
+    operation: null_if_equal
+    input: renovation_year
+    output: renovation_year
+    args:
+      value: .inf
+  - type: expression
+    expression: >-
+      effective_year_built / ((effective_year_built >= 1600)
+      & (effective_year_built <= 2026))
+    inputs: [effective_year_built]
+    output: effective_year_built
+  - type: unary
+    operation: null_if_equal
+    input: effective_year_built
+    output: effective_year_built
+    args:
+      value: .inf
+  # AC records presence and absence explicitly (Y, N); '0' stays null.
+  - type: remap
+    input: has_central_air
+    output: has_central_air
+    mapping:
+      "Y": true
+      "N": false
+  # Cast before the bath fold: transformation_patterns run after
+  # this list, too late for the expression below.
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  # n_bathrooms = full + 0.5 x half; a missing half count reads as
+  # zero, and the row is null only when both counts are.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - heating_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
