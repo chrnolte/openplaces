@@ -1,0 +1,124 @@
+# Recipe: Cook County, IL assessor condominium units, "Assessor -
+# Residential Condominium Unit Characteristics" (Socrata 3r7i-mrz4).
+# Supplement of US-IL-CO_property-cookcountyassessor-2026; see that
+# recipe's header for the source and the join keys.
+#
+# ONE ROW IS ONE CONDOMINIUM UNIT PIN (14 digits; class 299, a few
+# 399), tax year 2025. Each is a row of the roll too, so this table
+# adds columns to those properties and never rows. Parking, storage and
+# common-area PINs are units of their own and stay in (is_parking_space
+# and is_common_area are left unmapped); their unit characteristics
+# are empty except year_built, which is the building's.
+#
+# COVERAGE BY DESIGN. The CCAO compiles unit characteristics from
+# listings and other sources since 2021, triad by triad, so bedrooms,
+# baths and unit area are partial. Bedroom 0 is kept (a studio).
+#
+# MAPPINGS: year_built char_yrblt; n_bedrooms char_bedrooms;
+# n_bathrooms = char_full_baths + 0.5 x char_half_baths and
+# n_half_bathrooms char_half_baths; living_area_sqft char_unit_sf (the
+# unit's own square feet, from listings). The metadata says a missing
+# full-bath count defaults to 1, as on the cards; see VALIDATION.
+#
+# NOT MAPPED: char_building_sf is the whole building's area, repeated
+# on every unit, so on a unit it would be summed once per unit at any
+# roll-up; char_land_sf likewise. char_building_pins and
+# char_building_non_units are building-wide counts.
+#
+# VALIDATION (2026-09-13, in memory: this recipe's reader and
+# _preprocess_recipe_data; nothing ingested). 457,158 rows, one per
+# PIN (none repeats), all of them roll rows; each of the roll's
+# 457,107 class-299 PINs has one (the other 51 are class 399). Raw
+# full baths are filled on 23.3% of rows, so the metadata's default
+# of 1 is not applied in this table (1 on 38.4% of filled values).
+# Coverage on the roll's class-299 PINs, parking and common-area PINs
+# included: year_built 100%, n_bedrooms 43.9% (0 on 746 units),
+# n_bathrooms 23.4%, n_half_bathrooms 14.0% (above 0 on 4.1%),
+# living_area_sqft 32.5% (median 1,200 square feet). On the 372,354
+# livable units alone the shares are higher (the inventory measured
+# bedrooms above 0 on 53.2%, full baths on 28.3%).
+
+description: >-
+  Cook County, IL assessor condominium unit characteristics, tax year
+  2025: bedrooms, baths, unit area and year built per unit PIN.
+
+admin_id: US-IL-CO
+
+entity:
+  entity_type: property
+  source:
+    source_id: cookcountyassessor
+    # Same portal and terms as the roll; see its terms note.
+    license: "none stated; Terms of Use: 'THE COUNTY PROVIDES THIS INFORMATION ON AN 'AS IS' BASIS.'"
+    terms_url: "https://www.cookcountyil.gov/terms-use"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://datacatalog.cookcountyil.gov/d/3r7i-mrz4"
+    download_url: "https://datacatalog.cookcountyil.gov/resource/3r7i-mrz4.csv?$select=pin,pin10,year,class,char_yrblt,char_unit_sf,char_bedrooms,char_full_baths,char_half_baths,is_parking_space,is_common_area&$where=year=2025&$limit=3000000"
+  version: 2026
+
+uncompressed_file_name: "cook_condominium_units_2025.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: pin
+  year_built: char_yrblt
+  n_bedrooms: char_bedrooms
+  n_bathrooms: char_full_baths
+  n_half_bathrooms: char_half_baths
+  living_area_sqft: char_unit_sf
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  # n_bathrooms = full + 0.5 x half; empty only when both are.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+# One row per unit PIN; the rules only matter if a PIN ever repeats.
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  living_area_sqft: sum
+  year_built: min
+
+supplements: US-IL-CO_property-cookcountyassessor-2026
+# Units share their building's 10-digit PIN (the roll's
+# parcel_id_local), so they join the roll on the 14-digit PIN.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: condominium-units

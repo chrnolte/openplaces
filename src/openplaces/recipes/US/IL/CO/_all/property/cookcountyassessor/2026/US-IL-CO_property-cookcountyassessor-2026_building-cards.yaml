@@ -1,0 +1,255 @@
+# Recipe: Cook County, IL assessor building cards, "Assessor - Single
+# and Multi-Family Improvement Characteristics" (Socrata x54s-btds).
+# Supplement of US-IL-CO_property-cookcountyassessor-2026; see that
+# recipe's header for the source and the join keys.
+#
+# ONE ROW IS ONE BUILDING CARD: an improvement on a PIN. Tax year 2025
+# only, filtered with SoQL like the roll. Residential classes only
+# (2xx, plus a few EX and OA2 rows); condominium units are in the
+# _condominium-units table instead. A PIN with more than one building
+# (a coach house or second dwelling) has one card per building, so
+# counts and areas sum to the PIN, stories take the maximum and
+# year_built the minimum.
+#
+# MAPPINGS AND CODES (the CCAO's own vocabularies, kept as published):
+# - n_bathrooms = char_fbath + 0.5 x char_hbath; n_half_bathrooms is
+#   char_hbath. The CCAO sets the full-bath count to 1 when it is
+#   missing, so some full-bath 1s are defaults, not observations.
+# - n_stories from char_type_resd: 1 Story 1, 1.5 Story 1.5, 2 Story 2,
+#   3 Story + 3 (three or more). Split Level is left empty: it states
+#   a layout, not a number of stories.
+# - building_area_sqft is char_bldg_sf, the building "as measured from
+#   the exterior"; an attached garage inside it is subtracted
+#   (char_gar1_area). Mapped as gross area (user decision 2026-09-13),
+#   not living area.
+# - n_dwellings from char_apts (Two to Six, filled for multi-family
+#   classes 211 and 212). A single-family card reads "None", which the
+#   CSV reader takes as empty, so single-family cards carry no count.
+# - has_central_air from char_air (Central A/C / No Central A/C, both
+#   stated). foundation_description is char_bsmt (Full, Partial, Slab,
+#   Crawl); has_basement is true for Full and Partial, false for Slab
+#   and Crawl.
+# - Garage (first garage only; the table has no second-garage fields):
+#   n_garage_spaces from char_gar1_size ("2 cars", "1.5 cars"), where
+#   "0 cars" is a stated no-garage and so has_garage false; garage_type
+#   from char_gar1_att (attached Yes or No), empty without a garage.
+# - n_fireplaces is char_frpl, "counted as the number of flues one can
+#   see from the outside of the building".
+# - quality_grade char_cnst_qlty, condition char_repair_cnd,
+#   exterior_wall char_ext_wall, roof_material char_roof_cnst,
+#   heating_type char_heat.
+# - lot_size is char_land_sf (land square feet of the PIN; repeated on
+#   every card, so `first`).
+#
+# NOT MAPPED: char_bsmt_fin (finish type, no area), char_porch (type,
+# no area), char_renovation (a Yes flag without a year),
+# char_site (site desirability, not a view), attic fields, design plan,
+# cdu ("not well maintained" per the CCAO), char_ncu (commercial
+# units), pin_is_multicard (a second card is not a stated accessory
+# dwelling), proration fields.
+#
+# VALIDATION (2026-09-13, in memory: this recipe's reader,
+# _preprocess_recipe_data, then aggregation_function per PIN; nothing
+# ingested). 1,103,047 cards on 1,095,132 PINs (7,366 PINs have more
+# than one card, up to 25); 99.9999% of the PINs are roll rows. Raw
+# char_fbath is 1 on 49.3% of cards, defaults included. n_stories:
+# 2 on 432,727 cards, 1 on 421,117, 1.5 on 113,825, 3 on 38,859,
+# empty on 96,519 (Split Level and 28 blanks). has_garage is false on
+# the 174,360 "0 cars" cards and never false with spaces above 0;
+# garage_type Detached 598,276, Attached 330,139.
+# Coverage after the roll-up, on the roll's 1,130,720 PINs of class
+# 2xx other than 299: n_bedrooms, n_bathrooms, n_rooms, year_built
+# and building_area_sqft 96.7% (the rest are 2xx classes without a
+# building; see the roll's header); n_half_bathrooms above 0 42.8%;
+# n_stories 88.1%; n_garage_spaces and has_garage 96.6% (a garage on
+# 81.9%); has_basement 96.6% (true 79.5%); has_central_air 96.7%
+# (true 48.7%); n_fireplaces above 0 27.0%; exterior_wall,
+# roof_material, heating_type, quality_grade, condition 96.4 to
+# 96.7%; n_dwellings 14.0% (multi-family only). Medians: 3 bedrooms,
+# 2 baths, 6 rooms, 1,507 square feet, built 1955.
+
+description: >-
+  Cook County, IL assessor single- and multi-family building cards, tax
+  year 2025: rooms, baths, stories, area and features per building.
+
+admin_id: US-IL-CO
+
+entity:
+  entity_type: property
+  source:
+    source_id: cookcountyassessor
+    # Same portal and terms as the roll; see its terms note.
+    license: "none stated; Terms of Use: 'THE COUNTY PROVIDES THIS INFORMATION ON AN 'AS IS' BASIS.'"
+    terms_url: "https://www.cookcountyil.gov/terms-use"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://datacatalog.cookcountyil.gov/d/x54s-btds"
+    download_url: "https://datacatalog.cookcountyil.gov/resource/x54s-btds.csv?$select=pin,year,card,class,char_yrblt,char_bldg_sf,char_land_sf,char_beds,char_rooms,char_fbath,char_hbath,char_frpl,char_type_resd,char_cnst_qlty,char_apts,char_gar1_att,char_gar1_size,char_bsmt,char_ext_wall,char_heat,char_repair_cnd,char_roof_cnst,char_air,char_use&$where=year=2025&$limit=3000000"
+  version: 2026
+
+uncompressed_file_name: "cook_building_cards_2025.csv"
+
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: pin
+  n_bedrooms: char_beds
+  n_bathrooms: char_fbath
+  n_half_bathrooms: char_hbath
+  n_rooms: char_rooms
+  n_stories: char_type_resd
+  year_built: char_yrblt
+  building_area_sqft: char_bldg_sf
+  lot_size: char_land_sf
+  n_dwellings: char_apts
+  n_fireplaces: char_frpl
+  n_garage_spaces: char_gar1_size
+  garage_type: char_gar1_att
+  quality_grade: char_cnst_qlty
+  condition: char_repair_cnd
+  exterior_wall: char_ext_wall
+  roof_material: char_roof_cnst
+  heating_type: char_heat
+  has_central_air: char_air
+  foundation_description: char_bsmt
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: lot_size
+    output: lot_size
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row empty only
+  # when both counts are, so a missing half count reads as no halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  - type: remap
+    input: n_stories
+    mapping: {"1 Story": 1, "1.5 Story": 1.5, "2 Story": 2, "3 Story +": 3}
+    output: n_stories
+  - type: remap
+    input: n_dwellings
+    mapping: {"Two": 2, "Three": 3, "Four": 4, "Five": 5, "Six": 6}
+    output: n_dwellings
+  - type: remap
+    input: has_central_air
+    mapping: {"Central A/C": true, "No Central A/C": false}
+    output: has_central_air
+  - type: remap
+    input: foundation_description
+    mapping: {"Full": true, "Partial": true, "Slab": false, "Crawl": false}
+    output: has_basement
+  # Garage: flag and type read the size text before it is parsed.
+  - type: remap
+    input: n_garage_spaces
+    mapping:
+      "0 cars": false
+      "1 cars": true
+      "1.5 cars": true
+      "2 cars": true
+      "2.5 cars": true
+      "3 cars": true
+      "3.5 cars": true
+      "4 cars": true
+    output: has_garage
+  - type: string
+    operation: concat
+    inputs: [n_garage_spaces, garage_type]
+    args: {sep: "|"}
+    output: garage_type
+  - type: remap_pattern
+    input: garage_type
+    patterns:
+      - {pattern: ".*[|]Yes$", value: "Attached"}
+      - {pattern: ".*[|]No$", value: "Detached"}
+      - {pattern: "0 cars", value: null}
+    output: garage_type
+  - type: string
+    operation: split_take
+    input: n_garage_spaces
+    args: {sep: " ", index: 0}
+    output: n_garage_spaces
+  - type: unary
+    operation: to_numeric
+    input: n_garage_spaces
+    output: n_garage_spaces
+
+drop_columns:
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - quality_grade
+  - condition
+  - exterior_wall
+  - roof_material
+  - heating_type
+  - foundation_description
+  - garage_type
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_rooms: sum
+  building_area_sqft: sum
+  n_dwellings: sum
+  n_fireplaces: sum
+  n_garage_spaces: sum
+  n_stories: max
+  has_central_air: max
+  has_basement: max
+  has_garage: max
+  year_built: min
+  lot_size: first
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  roof_material: first
+  heating_type: first
+  foundation_description: first
+  garage_type: first
+
+supplements: US-IL-CO_property-cookcountyassessor-2026
+# The roll's parcel_id_local is the 10-digit PIN, shared by every unit
+# of a condominium building; cards join on the 14-digit PIN instead.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: building-cards

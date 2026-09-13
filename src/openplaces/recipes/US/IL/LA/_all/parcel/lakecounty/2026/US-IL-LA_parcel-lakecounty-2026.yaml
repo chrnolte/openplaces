@@ -1,0 +1,262 @@
+# Recipe: Lake County, IL tax parcels with assessment and building
+# characteristics, Lake County GIS Division "Tax Parcel Information"
+# (GISMapping/WABParcels/MapServer/12, Hub dataset
+# 63b2f986f529460385af42cb931687e0_12), pulled as the Hub's cached
+# GeoJSON export (1.69 GB, EPSG:4326, dated 2026-07-24) instead of
+# about 279 REST pages of 1,000.
+#
+# ONE DOWNLOAD, TWO TABLES. The layer joins the parcel polygons to the
+# assessor's CAMA fields, one row per tax parcel (PIN unique). The
+# primary table is the parcel; the additional `property` layer reads
+# the same file and keeps the assessment and building fields, one
+# property per parcel. Lake publishes no separate roll, and its
+# condominium units do not appear as rows of their own. The property
+# table also gets a `_geo` sidecar (the file carries polygons), which
+# nothing downstream reads.
+#
+# KEY. PIN is the 10-digit parcel number on both tables, and the
+# bundled Lake conversion (2-2-3-3 digit groups) applies to both, so
+# the two share parcel_id_local by construction. The county's hosted
+# open-data polygons (OpenData_ParcelPolygons) match 99.9% both ways
+# (inventory, samples of 2,000 and 1,000) but are a second download
+# and carry taxpayer names, so this layer is used for both tables.
+#
+# RESIDENTIAL is land_use_code '40-Residential Improvements'.
+#
+# PROPERTY MAPPINGS (the county's own vocabularies, kept as published):
+# - n_bedrooms from bedroom_count, zeros emptied: a zero is left on
+#   residential improvements whose record carries no bedroom count, and
+#   it concentrates in some housetypecode values (up to half of a
+#   code's rows), so it reads as "not recorded", not as a studio.
+# - n_bathrooms = full_baths + 0.5 x half_baths; n_half_bathrooms is
+#   half_baths.
+# - n_stories from stories text (1, 1.5, 1.75, 2, 2.5, 3 STORY).
+# - year_built improve_year_built; effective_year_built
+#   improve_eff_year_built (0 is the registry's placeholder for both).
+# - living_area_sqft liv_sq_ft. bldg_sq_ft (gross) is filled on 53
+#   rows and left unmapped.
+# - basement_area_sqft bsmt_sq_ft; has_basement true where it is above
+#   0, empty otherwise (a missing or zero area is not a stated "no
+#   basement"). basemntsiz is a second, sparser size field; the
+#   finished-basement fields are above 0 on 0.2% and left unmapped.
+# - garage_area_sqft garage_size (square feet: median 480 on
+#   residential); has_garage true where garage_count is above 0.
+#   garage_count counts garages, not spaces, so n_garage_spaces is
+#   not mapped.
+# - n_fireplaces: fireplace_stk_open is "stacks/openings"; openings are
+#   the count.
+# - construction_description const_type ("Wood Frame" on 96%);
+#   exterior_wall const_type12 (siding and masonry words; const_type13
+#   is a second wall material, unmapped). roof_material roof_cover,
+#   where about 1.3% are bare numeric codes with no published decoder.
+#   heating_type heating (a fuel suffix on 76 rows only, so
+#   heating_fuel is not mapped). has_central_air from central_air Y/N.
+#   quality_grade qual_grade; condition condition ('-' emptied).
+# - tax_neighborhood_code neighborhood (seven characters).
+# - land_value, improvement_value, total_value: assess_*_assyr, the
+#   current assessment year's assessed values (Illinois assesses at
+#   one third of market value).
+# - situs address parts; the taxpayer name and mailing columns are
+#   never mapped.
+#
+# NOT MAPPED: housetypecode (numeric codes without a published
+# decoder); porch, deck and patio counts (the registry holds areas);
+# WATER (a GIS overlay flag for parcels touching mapped water, not an
+# assessor waterfront field); LMWATER and CWS (utility overlays,
+# meaning unverified); multi_bldg (Y on 13 residential parcels); the
+# ~60 environmental, flood and district overlays.
+#
+# VALIDATION (2026-09-13, in memory: both tables through this
+# recipe's reader and _preprocess_recipe_data; nothing ingested).
+# 278,876 rows, PIN 10 digits and distinct on every row; the live
+# layer had 278,972 (inventory), so the export lags by 96 rows.
+# parcel_id_local filled 100% on both tables, identical key sets.
+# Parcel table: use_group_code 99.5%, zoning_code and tax_district
+# 99.99%, area_assessed_ac 95.4%.
+# 221,760 residential improvements; coverage on them: n_bedrooms
+# 67.0%; n_bathrooms 97.6%; n_half_bathrooms above 0 57.3%;
+# n_stories, year_built, living_area_sqft 97.6%;
+# effective_year_built 97.4%; basement_area_sqft above 0 67.6% (and
+# has_basement true there); garage_area_sqft and has_garage 88.1%;
+# n_fireplaces 97.6% (above 0 on 55.6%); has_central_air 97.5% (true
+# 83.1%); heating_type 97.5%; construction_description and
+# exterior_wall 96.5%; roof_material, quality_grade, condition 97.6%;
+# tax_neighborhood_code, the three values and the situs address
+# 100%. Medians: 3 bedrooms, 2.5 baths, 1,738 square feet, built 1982.
+
+description: >-
+  Lake County, IL tax parcels with assessed values and building
+  characteristics (rooms, baths, area, features) from one county GIS
+  layer.
+
+admin_id: US-IL-LA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: lakecounty
+    # Checked 2026-09-13: the hosted parcel item's licence field links
+    # "Lake County, Illinois Data Terms of Use" (arcgis item
+    # 89679671cfa64832ac2399a0ef52e414), covering "any and all Lake
+    # County, Illinois GIS (and related) data". It opens "use of this
+    # data constitutes acceptance of all of the following terms and
+    # conditions", so using the data is accepting the terms (the user
+    # has accepted this consent-by-use pattern before, for Cumberland
+    # County, PA). Besides disclaimers it states "Lake County, Illinois
+    # does not hold a copyright on this data. The County hereby grants
+    # any person the right to the data for personal use or business
+    # use", free of charge. No redistribution or resale clause.
+    license: "Lake County, Illinois Data Terms of Use: 'Lake County, Illinois does not hold a copyright on this data. The County hereby grants any person the right to the data for personal use or business use'; free of charge; use constitutes acceptance"
+    terms_url: "https://www.arcgis.com/sharing/rest/content/items/89679671cfa64832ac2399a0ef52e414/data"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://hub.arcgis.com/datasets/63b2f986f529460385af42cb931687e0_12"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/63b2f986f529460385af42cb931687e0_12/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+  version: 2026
+
+uncompressed_file_name: "lake_tax_parcels.geojson"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: PIN
+  use_group_code: land_use_code
+  zoning_code: ZONING
+  tax_district: tax_code
+  area_assessed_ac: lot_area_acres
+
+columns_to_categorical:
+  - use_group_code
+  - zoning_code
+  - tax_district
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+# The property layer's scratch column. Declared here because
+# drop_columns is not a per-table key: an additional_layers entry
+# inherits this one and ignores its own.
+drop_columns:
+  - half_bathroom_equivalent
+
+save_to:
+  data_dir: core
+
+additional_layers:
+  - entity:
+      entity_type: property
+      source:
+        source_id: lakecounty
+      version: 2026
+    # Both tables map PIN to parcel_id_assessor.
+    layer_key: parcel_id_assessor
+    columns:
+      parcel_id_assessor: PIN
+      use_group_code: land_use_code
+      tax_neighborhood_code: neighborhood
+      address_number: situs_cmptaddr_number_legdat
+      address_street_directional: situs_cmptaddr_direct_legdat
+      address_street_name: situs_cmptaddr_name_legdat
+      address_street_type: situs_cmptaddr_suffix_legdat
+      address_unit: situs_cmptaddr_untnum_legdat
+      city: situs_addr_city
+      postal_code: situs_addr_zip_legdat
+      land_value: assess_land_assyr
+      improvement_value: assess_bldg_assyr
+      total_value: assess_total_assyr
+      n_bedrooms: bedroom_count
+      n_bathrooms: full_baths
+      n_half_bathrooms: half_baths
+      n_stories: stories
+      year_built: improve_year_built
+      effective_year_built: improve_eff_year_built
+      living_area_sqft: liv_sq_ft
+      basement_area_sqft: bsmt_sq_ft
+      garage_area_sqft: garage_size
+      n_fireplaces: fireplace_stk_open
+      construction_description: const_type
+      exterior_wall: const_type12
+      roof_material: roof_cover
+      heating_type: heating
+      has_central_air: central_air
+      quality_grade: qual_grade
+      condition: condition
+    transformations:
+      # Zero bedrooms reads as "not recorded"; see the header.
+      - type: unary
+        operation: null_if_equal
+        input: n_bedrooms
+        args: {value: 0}
+        output: n_bedrooms
+      # n_bathrooms = full + 0.5 x half; empty only when both are.
+      - type: expression
+        expression: "n_half_bathrooms * 0.5"
+        inputs: [n_half_bathrooms]
+        output: half_bathroom_equivalent
+      - type: aggregate
+        operation: sum
+        inputs: [n_bathrooms, half_bathroom_equivalent]
+        output: n_bathrooms
+      - type: remap
+        input: n_stories
+        mapping:
+          "1 STORY": 1
+          "1.5 STORY": 1.5
+          "1.75 STORY": 1.75
+          "2 STORY": 2
+          "2.5 STORY": 2.5
+          "3 STORY": 3
+        output: n_stories
+      # Flags set only where the source records the feature.
+      - type: expression
+        expression: "basement_area_sqft > 0"
+        inputs: [basement_area_sqft]
+        output: has_basement
+      - type: unary
+        operation: null_if_equal
+        input: has_basement
+        args: {value: false}
+        output: has_basement
+      - type: expression
+        expression: "garage_count > 0"
+        inputs: [garage_count]
+        output: has_garage
+      - type: unary
+        operation: null_if_equal
+        input: has_garage
+        args: {value: false}
+        output: has_garage
+      - type: remap
+        input: has_central_air
+        mapping: {"Y": true, "N": false}
+        output: has_central_air
+      # "stacks/openings": the openings are the count.
+      - type: string
+        operation: split_take
+        input: n_fireplaces
+        args: {sep: "/", index: 1}
+        output: n_fireplaces
+      - type: unary
+        operation: to_numeric
+        input: n_fireplaces
+        output: n_fireplaces
+      - type: unary
+        operation: null_if_equal
+        input: condition
+        args: {value: "-"}
+        output: condition
+    columns_to_categorical:
+      - use_group_code
+      - tax_neighborhood_code
+      - city
+      - postal_code
+      - construction_description
+      - exterior_wall
+      - roof_material
+      - heating_type
+      - quality_grade
+      - condition
+    save_to:
+      data_dir: core

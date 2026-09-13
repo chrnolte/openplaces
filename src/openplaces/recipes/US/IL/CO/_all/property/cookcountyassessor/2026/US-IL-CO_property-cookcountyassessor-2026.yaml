@@ -1,0 +1,122 @@
+# Recipe: Cook County, IL assessor roll (Cook County Assessor's Office,
+# CCAO), from the "Assessor - Parcel Universe" dataset on the county's
+# Socrata portal (datacatalog.cookcountyil.gov, id nj4t-kc8j). Source
+# system iasWorld; the dataset runs from 1999 and refreshes about every
+# two weeks.
+#
+# ONE ROW IS ONE PROPERTY: a 14-digit PIN in one tax year. Condominium
+# units are PINs of their own (the last four digits number the unit
+# within the building), so they are rows here, never split off by a
+# condo flag. The download is filtered to tax year 2025 with SoQL
+# ($where=year=2025): 2026 rows exist but are final only once every
+# township's roll is certified. A refresh bumps the filter and
+# `version:` together.
+#
+# MEASURED (2026-09-13, tax year 2025, SoQL aggregates and the file
+# read through this recipe): see VALIDATION below.
+#
+# JOIN KEYS. This roll carries two.
+# - parcel_id_assessor is the 14-digit PIN (unique per row). The two
+#   supplements (_building-cards, _condominium-units) carry it and join
+#   the roll on it (supplements_key), because the roll's
+#   parcel_id_local is not unique per property.
+# - parcel_id_local links properties to Cook's parcel polygons
+#   (US-IL-CO_parcel-cookcounty-2026), which carry the 10-digit PIN.
+#   It is built from pin10 (parcel_id_admin3), not from the 14-digit
+#   PIN: the bundled Cook conversion splits a 14-digit PIN into the
+#   parcel and a unit suffix, so a condominium unit would keep its
+#   unit and match no polygon. The conversion below reads the 10
+#   digits as one group and strips leading zeros, which is what the
+#   bundled conversion yields for a land parcel's PIN14 (ending 0000),
+#   so a future source keyed on PIN14 still matches. Condominium units
+#   share their building's pin10 and so link many-to-one to its
+#   polygon.
+#
+# NEIGHBORHOOD. nbhd_code is the assessor neighborhood (first two
+# digits township, last three neighborhood), mapped to
+# tax_neighborhood_code as published.
+#
+# NOT MAPPED. Values live in "Assessor - Assessed Values" (uzyt-m557)
+# and addresses in "Assessor - Parcel Addresses" (3723-97qp), which
+# also carries mailing names; neither is part of this recipe. tax_code
+# is marked "not currently up-to-date" by the CCAO. The ~100 census,
+# district and environmental overlay columns are left unmapped.
+#
+# VALIDATION (2026-09-13, in memory: this recipe's reader and
+# TableIngester._preprocess_recipe_data; nothing ingested).
+# 1,863,801 rows, one per PIN (all 14 characters, all distinct), tax
+# year 2025 only. parcel_id_local filled 100%, 1,417,168 distinct
+# (the distinct pin10 count). Classes: 2xx 1,587,827, of them 457,107
+# condominium units (299); E 93,376; 5xx 91,046; 1xx 60,909; others
+# under 20,000 each. tax_neighborhood_code 100% (905 codes),
+# postal_code 97.4%.
+# Keys: 100.00% of the roll's 1,417,168 distinct keys are polygons of
+# US-IL-CO_parcel-cookcounty-2026 (11 rows are not), and 99.97% of
+# the polygons' 1,417,542 keys are here. 99.9999% of the card PINs
+# and 100% of the condominium unit PINs are roll rows. No PIN is in
+# both supplements, so link_by_id's fill order does not matter.
+# RESIDENTIAL for coverage is class 2xx. The building classes (202 to
+# 212, 234, 278, 295) hold 1,092,892 PINs, all but 2 with a card.
+# The 37,714 other 2xx PINs without one are classes 241 (25,134),
+# 201 (8,217), 290 (2,592), 239 (784), 297 (509), 213 (365) and a
+# few more.
+
+description: >-
+  Cook County, IL assessor parcel universe, tax year 2025: one row per
+  14-digit PIN, condominium units included, with class and neighborhood.
+
+admin_id: US-IL-CO
+
+entity:
+  entity_type: property
+  source:
+    source_id: cookcountyassessor
+    # Checked 2026-09-13: the Socrata dataset has no licence field
+    # (attribution "Cook County Assessor's Office"). The portal's Terms
+    # of Use hold an "as is" disclaimer and no licence, redistribution
+    # or resale clause; its permission clause covers images and
+    # graphics on the website, not data. No click-through.
+    license: "none stated; Terms of Use: 'THE COUNTY PROVIDES THIS INFORMATION ON AN 'AS IS' BASIS.'"
+    terms_url: "https://www.cookcountyil.gov/terms-use"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://datacatalog.cookcountyil.gov/d/nj4t-kc8j"
+    download_url: "https://datacatalog.cookcountyil.gov/resource/nj4t-kc8j.csv?$select=pin,pin10,year,class,nbhd_code,zip_code&$where=year=2025&$limit=3000000"
+  version: 2026
+
+uncompressed_file_name: "cook_parcel_universe_2025.csv"
+
+# PINs, classes and codes are text with leading zeros.
+csv_dtype: str
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: pin
+  parcel_id_admin3: pin10
+  use_group_code: class
+  tax_neighborhood_code: nbhd_code
+  postal_code: zip_code
+  tax_year: year
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+columns_to_categorical:
+  - use_group_code
+  - tax_neighborhood_code
+
+# Built from the 10-digit PIN; see JOIN KEYS.
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+  instruction:
+    US-IL-CO:
+      conv: "string_lengths: 10 & skip_empty: 1"
+
+save_to:
+  data_dir: cache

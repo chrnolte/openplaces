@@ -1,0 +1,83 @@
+# Recipe: Cook County, IL parcel polygons, Cook County GIS "Parcels -
+# Historical - 2025" (parcelHistorical/MapServer/2025, Hub item
+# 4a4a4b47c8804b5e850371b0fdf25244), pulled as the Hub's cached GeoJSON
+# export (1.79 GB, EPSG:4326) instead of about 717 REST pages of 2,000.
+# The Hub refuses a shapefile export ("too large for shapefile
+# generation") and offers no file geodatabase for this layer.
+#
+# ONE ROW IS ONE POLYGON of a parcel as the cadastre draws it, keyed on
+# PIN10. The layer carries the assessor's building class and a
+# neighborhood number too.
+#
+# KEY. parcel_id_local is built from PIN10 exactly as on the assessor
+# roll (US-IL-CO_property-cookcountyassessor-2026): the 10 digits as
+# one group, leading zeros stripped. Name (PIN14, mapped to
+# parcel_id_assessor) equals PIN10 plus a four-digit suffix, 0000 on
+# almost every polygon; see VALIDATION.
+#
+# NOT MAPPED: AssessorNBHD is a number (201 distinct values against
+# the roll's 905 five-character codes), so the roll's code is the one
+# kept; TAXCODE (filled on a third of rows, one value); PARCELTYPE
+# (BaseParcel, CondominiumParcel, ElevatedParcel, Leasehold and
+# combinations; no registry field); PINA, PINSA, PINB, PINP (the PIN's
+# parts); districts, wards and school districts; Latitude/Longitude.
+#
+# VALIDATION (2026-09-13, in memory: this recipe's reader and
+# _preprocess_recipe_data; nothing ingested). 1,432,483 polygons (775
+# multipolygons); parcel_id_local filled 99.9995%, 1,417,542 distinct.
+# 1.72% of rows share a key with another polygon (a parcel drawn in
+# pieces, or an elevated, leasehold or condominium polygon on a base
+# parcel's PIN). Name starts with PIN10 on 99.997% and ends 0000 on
+# 99.78%. use_group_code 99.92%, city 100%.
+# Keys: 99.97% of the distinct keys are keys of the assessor roll,
+# and 100.00% of the roll's 1,417,168 distinct keys are polygons
+# (condominium units included, many to one); 81.1% of the distinct
+# keys carry a residential (2xx) property.
+
+description: >-
+  Cook County, IL parcel polygons (2025) keyed on the 10-digit PIN, with
+  assessor building class and municipality, from the county GIS.
+
+admin_id: US-IL-CO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: cookcounty
+    # Checked 2026-09-13: the item's licence text reads "Cook County
+    # provides the data for use 'as is'. The data is not guaranteed to
+    # be 100% accurate, correct, or complete." No licence,
+    # redistribution or resale clause and no click-through.
+    license: "none stated; item: 'Cook County provides the data for use 'as is''"
+    terms_url: "https://www.arcgis.com/home/item.html?id=4a4a4b47c8804b5e850371b0fdf25244"
+    redistribution_restricted: false
+    resale_restricted: false
+    portal_url: "https://hub.arcgis.com/datasets/4a4a4b47c8804b5e850371b0fdf25244_2025"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/4a4a4b47c8804b5e850371b0fdf25244_2025/downloads/data?format=geojson&spatialRefId=4326&where=1%3D1"
+  version: 2026
+
+uncompressed_file_name: "cook_parcels_2025.geojson"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: Name
+  parcel_id_admin3: PIN10
+  use_group_code: AssessorBLDGclass
+  city: MUNICIPALITY
+
+columns_to_categorical:
+  - use_group_code
+  - city
+
+# Same key as the roll; see KEY.
+parcel_id_local:
+  source: parcel_id_admin3
+  kind: parcel
+  instruction:
+    US-IL-CO:
+      conv: "string_lengths: 10 & skip_empty: 1"
+
+save_to:
+  data_dir: core
