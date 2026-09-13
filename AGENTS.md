@@ -350,7 +350,17 @@ A recipe's rows must be the entity its `entity_type` names. **A tax roll's
 rows are properties**, condo rows included: a roll or CAMA table is one
 `property` recipe, never split by a condo flag, and a table whose rows are
 *details* of those properties (one row per building component) declares
-`supplements: <roll id>` so that it adds columns to them, never rows.
+`supplements: <roll id>` so that it adds columns to them, never rows. The
+roll may sit at a containing scope (a county appraiser's building table
+detailing the state DOR roll; a city table detailing MassGIS's statewide
+layer), and `supplements_layer: <entity type>` names an `additional_layers`
+entry of the host when the roll has no recipe id of its own
+(`recipe.get_supplemented_table` validates both). A supplement joins its
+roll on `parcel_id_local` unless `supplements_key: <column>` names a column
+both tables carry, for a roll whose `parcel_id_local` is built from an id
+the detail table lacks (Travis County TX links parcels on `geo_id` while
+its detail tables carry `prop_id`); keyed supplements are skipped by every
+other auto-discovered join, the parcel geospine's included.
 
 The stages divide the work, and **harmonize keeps redundancy minimal**:
 
@@ -375,13 +385,14 @@ The stages divide the work, and **harmonize keeps redundancy minimal**:
   from summing its properties' in a curate recipe, not from a
   harmonize-time copy.
 
-Known debt, not yet migrated: the parcel geospine's
+The parcel geospine's
 `link_by_id(auto_discover: true, entity_type: property, mode: aggregate)`
-still copies every property recipe's registry columns onto parcels in the
-geometry phase. Moving that to curate changes shipped outputs, so it is a
-planned migration (see
-`plans/florida-county-property-appraiser-bedrooms-bathrooms.md`), not a
-precedent to extend. New attributes follow the rule above.
+copies an explicit list of parcel-level columns (values, use codes,
+`building_style`, `n_dwellings`, address) and nothing else since
+2026-09-12; property-level attributes reach curated parcels through
+`aggregate_from_entities` (curate, `aggregation.py`). A county whose
+geospine predates that still carries the old wider copy until its next
+geometry rerun, which is why the curate step fills only what is empty.
 
 ### Recipes (`recipe.py`, `src/openplaces/recipes/`)
 

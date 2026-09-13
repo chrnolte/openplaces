@@ -1098,7 +1098,13 @@ def get_recipe_dependencies(
                     # file full of Columbus County under `mtime`
                     # rerun-triggers, and nothing said so.
                     continue
-                if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
+                # A mapping's keys are not always strings (a value map
+                # keyed on an integer code); an int never names a recipe.
+                if (
+                    isinstance(key, str)
+                    and isinstance(value, str)
+                    and _RECIPE_ID_KEY_REGEX.search(key)
+                ):
                     _add(value, key, step=context)
                 else:
                     _walk(value, context)
@@ -1121,7 +1127,11 @@ def get_recipe_dependencies(
         # io/enricher/buildings.py) produced no edge at all: the enrich
         # job was neither ordered after that ingest nor listed it as an
         # input, and bundle_terms never reached the reference's licence.
-        if isinstance(value, str) and _RECIPE_ID_KEY_REGEX.search(key):
+        if (
+            isinstance(key, str)
+            and isinstance(value, str)
+            and _RECIPE_ID_KEY_REGEX.search(key)
+        ):
             _add(value, key)
             continue
         _walk(value, context=key)
