@@ -1,0 +1,322 @@
+# Recipe: Kenosha County Buildings table, room counts and building
+# features. Supplement of US-WI-KN_property-kenoshacounty-2026; see
+# that recipe's header for the key and the terms.
+#
+# SOURCE. Kenosha County Data Portal, "Buildings Information table",
+# SpecialAppData/PortalData/MapServer/3 (PortalBuildingData), read as
+# the Hub CSV export (about 20.5 MB, UTF-8 with a byte-order mark).
+#
+# ROW SHAPE, measured 2026-09-12: ONE ROW PER BUILDING. 112,075 rows
+# over 57,878 parcels, no duplicate (ParcelNumber, BuildingNumber).
+# Outbuildings are rows too (Det Garage - Frame 15,660, Garage 9,775,
+# Utility Shed 6,369, ...). Each building appears once, at its latest
+# AssessmentYear (2025: 77,132 rows; 2024: 34,542; a few older).
+#
+# ROW RULE. The query keeps rows with bedrooms or a residential
+# ResidentialType: 54,321 rows over 53,965 properties (79.7% of the
+# roll). Garages, sheds, farm and commercial buildings drop out.
+# ResidentialType is empty on 83k rows, 28k of which carry bedrooms,
+# so it cannot filter alone. The recipe's aggregation_function then
+# sums room counts over a property's buildings and takes the tallest
+# building's stories. 287 properties keep more than one building.
+#
+# VALIDATED in memory 2026-09-12 (reader, preprocessing, key and
+# aggregation_function as the pipeline runs them): every supplement
+# property is in the roll; of V11's 54,029 residential improved
+# Kenosha parcels, n_bedrooms > 0 98.6%, n_bathrooms 98.6%,
+# n_half_bathrooms 35.4%, n_stories 98.6%.
+#
+# ROOM COUNTS: Bedrooms > 0 on 54,249 rows, FullBaths > 0 54,200,
+# HalfBaths > 0 19,318, NumberOfStories > 0 57,154. 98.6% of V11's
+# 54,029 residential improved Kenosha parcels have a bedroom-bearing
+# row. Baths are whole full and half counts, so n_bathrooms =
+# FullBaths + 0.5 x HalfBaths and n_half_bathrooms = HalfBaths.
+# HasPlumbing is a flag, not a count. NumberOfStories is fractional
+# (1, 1.5, 2); its 0 (11 rows) means "not recorded" and is nulled.
+#
+# BUILDING FEATURES, mapped 2026-09-13 (source vocabulary kept), on
+# the kept dwelling rows, then reduced per property by the
+# aggregation_function below (sum for areas and counts, max for
+# flags, min for year built, first for codes):
+# - living_area_sqft: TotalArea, finished living area including the
+#   finished basement. It equals the finished first, second, half
+#   and additional stories + AtticFinished + BasementFinished on 98.4%
+#   of kept rows (88.4% without BasementFinished). No area_sqft was
+#   mapped before.
+# - basement_area_sqft: FullBasementTotalArea + PartBasementTotalArea;
+#   basement_finished_area_sqft: BasementFinished + RecRoom (within
+#   the basement area on 99.9% of rows where both are set).
+# - has_basement: BasementType Full or Partial true, Pier or Crawl
+#   false (BasementType set on 48.2% of kept rows); true wherever a
+#   basement area is set.
+# - has_central_air: Heating_AirCond ('Air Conditioning' true, 'Basic'
+#   false). heating_type: HeatingSystemType; heating_fuel:
+#   HeatingFuelType.
+# - n_fireplaces: FirePlace (a count; empty where none is recorded).
+# - porch_area_sqft: the eight enclosed and open, frame and masonry,
+#   first-story and upper porch areas, plus ScreenPorchFull and
+#   ScreenPorchHalf (both empty). MasonryTerraceStoop, a stoop, is
+#   not mapped.
+# - deck_area_sqft: WoodDeck + BrickConcretePatio + MasonryPatio +
+#   FlagstonePatio + TilePatio (empty).
+# - UTILITIES. Water and sewer are True/False flags, set on 48.3% of
+#   kept rows. water_source is 'city water' where UsesCityWater is
+#   true and 'well' where HasWell is true (never both; 192 rows have
+#   neither and stay null); sewer_type is 'city sewer'
+#   (UsesCitySewer) or 'septic' (UsesSepticSystem), likewise. The
+#   labels name the flag; the source has no text vocabulary for them.
+# - exterior_wall: ExteriorWall; building_style: BuildingStyle;
+#   year_built: YearBuilt. "Not Assigned" is read as empty.
+# Garages, carports, pools and outbuildings are rows of their own and
+# sit in the _outbuildings supplement.
+#
+# VALIDATED FEATURES in memory 2026-09-13, of V11's 54,029
+# residential improved Kenosha parcels: year_built and building_style
+# 98.6%, living_area_sqft > 0 98.6% (median 1,508),
+# basement_area_sqft > 0 85.0%, basement_finished_area_sqft > 0
+# 27.4%, has_basement set 85.7% (true 85.0%, false 0.7%),
+# has_central_air set 98.6% (true 41.5%, false 57.1%), n_fireplaces
+# > 0 18.6%, porch_area_sqft > 0 51.4%, deck_area_sqft > 0 46.2%,
+# exterior_wall 98.3%, heating_fuel 98.2%, heating_type 98.4%,
+# water_source and sewer_type 46.7%.
+#
+# NOT MAPPED: rooms (no field; RecRoom is an area); AirConditioning
+# (12 rows, codes and areas mixed); HasHeating; n_garage_spaces
+# (BasementGarage counts basement stalls only). n_dwellings: neither
+# this table nor the roll publishes a unit count (audited
+# 2026-09-13); BuildingStyle names a type ('Duplex Old Style',
+# 'Triplex'), not a count, and is not read as one.
+#
+# YEAR, audited 2026-09-13: YearBuilt is the actual year built (no
+# effective year is published); its 0 (7 kept rows) is the
+# registry's placeholder, and no year falls outside 1600 to 2026.
+# MEASURED per property (min over kept buildings), of V11's 54,029
+# residential improved Kenosha parcels: year_built 98.6%.
+#
+# FOUNDATION, mapped 2026-09-13: foundation_description is
+# BasementType as published (Full, Partial, Pier, Crawl; "Not
+# Assigned" read as empty), reduced per property with first. It also
+# feeds has_basement above. foundation_type stays unmapped
+# (NSI-coded). MEASURED of V11's 54,029 residential improved Kenosha
+# parcels: foundation_description 48.2%.
+
+description: >-
+  Kenosha County Buildings table, dwelling rows: bedrooms, baths,
+  stories, living and basement areas, heating, cooling, porches and
+  utilities per property.
+
+admin_id: US-WI-KN
+
+entity:
+  entity_type: property
+  source:
+    source_id: kenoshacounty
+    # Same portal and terms as the roll; see its terms note.
+    license: >-
+      Kenosha County disclaimer (information and reference purposes
+      only) and Acceptable Use Policy: "for the noncommercial use of the
+      general public"; reproduction or redistribution beyond fair use
+      needs the County's permission.
+    terms_url: "https://www.kenoshacounty.org/1786/Acceptable-Use-Policy"
+    redistribution_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=d5476763d32f4b7596fe9baf5df46035"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/d5476763d32f4b7596fe9baf5df46035/csv?layers=3"
+  version: "2026"
+
+uncompressed_file_name: "kenosha_buildings.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+
+csv_dtype:
+  ParcelNumber: str
+
+# "Not Assigned" is the portal's empty code (ExteriorWall,
+# HeatingFuelType, ResidentialType).
+null_value_strings: ["Not Assigned"]
+
+columns:
+  parcel_id_assessor: ParcelNumber
+  n_bedrooms: Bedrooms
+  n_bathrooms: FullBaths
+  n_half_bathrooms: HalfBaths
+  n_stories: NumberOfStories
+  year_built: YearBuilt
+  building_style: BuildingStyle
+  living_area_sqft: TotalArea
+  exterior_wall: ExteriorWall
+  heating_fuel: HeatingFuelType
+  heating_type: HeatingSystemType
+  n_fireplaces: FirePlace
+  foundation_description: BasementType
+
+# Runs after the column renaming, so it names the mapped columns.
+query: >-
+  n_bedrooms > 0 or ResidentialType in
+  ['Single Family Residential', 'Multi-Family Residential']
+
+transformations:
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  - type: aggregate
+    operation: sum
+    inputs: [FullBasementTotalArea, PartBasementTotalArea]
+    output: basement_area_sqft
+  # Finished basement: finished basement area plus rec room, both
+  # within the basement area on 99.9% of rows.
+  - type: aggregate
+    operation: sum
+    inputs: [BasementFinished, RecRoom]
+    output: basement_finished_area_sqft
+  # has_basement: BasementType records presence (Full, Partial) and
+  # absence (Pier, Crawl); a basement area records presence.
+  - type: remap
+    input: foundation_description
+    mapping: {"Full": 1, "Partial": 1, "Pier": 0, "Crawl": 0}
+    output: basement_type_flag
+  - type: conditional
+    operation: greater_than
+    input: basement_area_sqft
+    args:
+      threshold: 0
+    output: basement_area_indicator
+  - type: remap
+    input: basement_area_indicator
+    mapping: {1: 1}
+    output: basement_area_flag
+  - type: aggregate
+    operation: max
+    inputs: [basement_type_flag, basement_area_flag]
+    output: basement_flag
+  - type: remap
+    input: basement_flag
+    mapping: {1: true, 0: false}
+    output: has_basement
+  # Heating_AirCond records central air and its absence.
+  - type: remap
+    input: Heating_AirCond
+    mapping: {"Air Conditioning": true, "Basic": false}
+    output: has_central_air
+  - type: aggregate
+    operation: sum
+    inputs:
+      - EnclosedFramePorch1St
+      - EnclosedFramePorchUpper
+      - EnclosedMasonryPorch1St
+      - EnclosedMasonryPorchUpper
+      - OpenFramePorch1St
+      - OpenFramePorchUpper
+      - OpenMasonryPorch1St
+      - OpenMasonryPorchUpper
+      - ScreenPorchFull
+      - ScreenPorchHalf
+    output: porch_area_sqft
+  - type: aggregate
+    operation: sum
+    inputs:
+      - WoodDeck
+      - BrickConcretePatio
+      - MasonryPatio
+      - FlagstonePatio
+      - TilePatio
+    output: deck_area_sqft
+  # Water and sewer come as True/False flags; the labels below name
+  # the flag that is set (see the header's UTILITIES).
+  - type: remap
+    input: UsesCityWater
+    mapping: {true: 1, false: 0}
+    output: city_water_code
+  - type: remap
+    input: HasWell
+    mapping: {true: 2, false: 0}
+    output: well_code
+  - type: aggregate
+    operation: sum
+    inputs: [city_water_code, well_code]
+    output: water_code
+  - type: remap
+    input: water_code
+    mapping: {1: "city water", 2: "well", 3: "city water and well"}
+    output: water_source
+  - type: remap
+    input: UsesCitySewer
+    mapping: {true: 1, false: 0}
+    output: city_sewer_code
+  - type: remap
+    input: UsesSepticSystem
+    mapping: {true: 2, false: 0}
+    output: septic_code
+  - type: aggregate
+    operation: sum
+    inputs: [city_sewer_code, septic_code]
+    output: sewer_code
+  - type: remap
+    input: sewer_code
+    mapping: {1: "city sewer", 2: "septic", 3: "city sewer and septic"}
+    output: sewer_type
+
+drop_columns:
+  - half_bathroom_equivalent
+  - ResidentialType
+  - basement_type_flag
+  - basement_area_indicator
+  - basement_area_flag
+  - basement_flag
+  - city_water_code
+  - well_code
+  - water_code
+  - city_sewer_code
+  - septic_code
+  - sewer_code
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  year_built: min
+  building_style: first
+  living_area_sqft: sum
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  exterior_wall: first
+  heating_fuel: first
+  heating_type: first
+  has_central_air: max
+  n_fireplaces: sum
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  water_source: first
+  sewer_type: first
+  foundation_description: first
+
+# Details the roll's properties: joined by link_by_id, skipped by the
+# property spine's union.
+supplements: US-WI-KN_property-kenoshacounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: buildings
