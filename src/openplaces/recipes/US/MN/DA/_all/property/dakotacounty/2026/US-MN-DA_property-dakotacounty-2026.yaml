@@ -1,0 +1,161 @@
+# Recipe: Dakota County, MN tax parcels (county assessor attributes),
+# bedrooms, baths and building features.
+#
+# Why: the MetroGIS regional parcel dataset (US-MN_parcel-metrogis-2026)
+# follows the MN Parcel Data Transfer Standard, which has no room-count
+# field at all. Dakota County's own "Tax Parcels" layer carries BEDS and
+# BATH from the assessor's records.
+#
+# SOURCE. ArcGIS Hub CSV export of the county's "Tax Parcels, Dakota
+# County, Minnesota" item (9785dd74842d4d7781be0fe7c0cbfe62, layer 71 of
+# gis2.co.dakota.mn.us .../DCGIS_OL_PropertyInformation/MapServer). One
+# request, about 106 MB. The county's own downloads (Geospatial Commons
+# us_mn_co_dakota/plan_parcels, and gis.co.dakota.mn.us/OpenData) are
+# the MetroGIS-standard shapefiles: parcela_metrogis / parcelp_metrogis
+# carry no BEDS or BATH (checked field lists, 2026-09-12), so they
+# cannot replace this export. The OpenData folder itself answers 403.
+#
+# EQUIVALENCE, measured 2026-09-12: the export has 167,244 rows against
+# the service's 167,255 (11 short, export-snapshot lag). BEDS > 0 on
+# 142,252 rows and BATH > 0 on 142,265, both exactly the server's own
+# where-counts.
+#
+# ROW SHAPE: one row per TAXPIN (167,244 distinct, all 12 digits).
+# Condominium units are their own rows (DWELL_TYPE CONDOMINM, 5,978).
+# A tax roll, so this is a property roll and supplements nothing.
+#
+# COVERAGE on improved rows (BLDGVAL > 0) by DWELL_TYPE: single-family
+# (101,715), townhouse (30,688), condo (5,978), twin home, co-op and
+# duplex all carry BEDS > 0 and BATH > 0 on 99.9-100% of rows. Apartment
+# (612) and non-residential rows carry neither. Median 3 bedrooms.
+#
+# BATHS: BATH is already fractional in half steps (57.2% whole, 42.8%
+# x.5; 2.5 is the second most common value), so the county has folded
+# half baths in as 0.5. It maps to n_bathrooms as published. The layer
+# has no separate half-bath count, so n_half_bathrooms is not mapped.
+# A BEDS or BATH of 0 (5,108 and 5,093 rows, non-residential) is kept
+# as published.
+#
+# JOIN KEY. TAXPIN is MetroGIS's Dakota COUNTY_PIN as shipped: 98.98%
+# of TAXPIN values are in MetroGIS (polygons plus points), and 99.56% of
+# MetroGIS's Dakota PINs find a TAXPIN. The 13-digit PIN column is a
+# different form and matches 0%, so it is not used.
+#
+# BUILDING FEATURES, measured 2026-09-13 in memory (reader,
+# preprocessing, one row per TAXPIN) on the 142,289 improved
+# residential rows (DWELL_TYPE single-family, townhouse, condo, twin
+# home, co-op, duplex, triplex; BLDGVAL > 0). All areas are square
+# feet as published.
+#   - living_area_sqft = ABOVEGRD_SF, above-grade finished area: 100%,
+#     median 1,456.
+#   - basement_finished_area_sqft = FNSHD_SF - ABOVEGRD_SF: 100%,
+#     above 0 on 72.8% (median 792), 0 on 27.2%. FNSHD_SF is total
+#     finished area: it is never below ABOVEGRD_SF (one row gives a
+#     negative, kept for curate's range checks), and it equals
+#     MetroGIS's FIN_SQ_FT on 98.5% of Dakota parcels, a field that on
+#     Scott's layer is above-grade plus finished basement (95.5%). The
+#     difference is therefore the finished basement; the layer has no
+#     basement field of its own.
+#   - garage_area_sqft = GAR_SF: 93.9%, median 528. A missing GAR_SF
+#     stays null rather than meaning no garage, so has_garage is not
+#     set (MetroGIS's GARAGE Yes/No carries it on the parcel).
+#   - building_style = HOME_STYLE: 100%, 9 codes in the county's own
+#     abbreviations (two story, split entry, multi-level and so on).
+#
+# YEAR BUILT AND UNITS, measured 2026-09-13 the same way on the same
+# 142,289 residential rows:
+#   - year_built = YEAR_BUILT, the actual year: 100%, median 1989, none
+#     before 1600 or after 2026. A 0 (11.8% of all rows, 4,015 of them
+#     with a building value) is nulled by the registry. YRBUILT is the
+#     same year on every row where both are filled; 88.1% of all rows.
+#   - n_dwellings: the layer has no unit count (DWELL_TYPE names the
+#     class only, duplex or triplex), so it is not mapped.
+#
+#   - construction_description = FRME, the frame in the county's four
+#     words (wood, concrete, a misspelled masonry, fireproof concrete),
+#     padding stripped: 99.9% of residential rows, 85.6% of all rows.
+#     Kept as published; construction_type stays NSI-coded, for curate
+#     to translate into.
+#
+# NOT MAPPED: FNDTN_SF (23%) never exceeds 999, so it looks
+# truncated. WATER_ACRES is water inside the parcel, not frontage,
+# so it is not has_waterfront. TOTAL_SF is the lot area.
+#
+# NOT MAPPED, deliberately: FULLNAME, owner address lines and every
+# other personal field; values and use (the MetroGIS parcel recipe
+# carries those for the county; it also carries a year built, which
+# this roll now adds for the property). No stories or total-rooms
+# field exists in this layer.
+
+description: >-
+  Dakota County, MN assessor tax parcels: bedrooms, baths (half as 0.5),
+  living, garage and finished-basement area and home style, from the Hub
+  CSV.
+
+admin_id: US-MN-DA
+
+entity:
+  entity_type: property
+  source:
+    source_id: dakotacounty
+    # Checked 2026-09-12: the item's licence text and the Commons
+    # metadata give the Dakota County GIS Database Disclaimer. Data
+    # are made available under the MN Government Data Practices Act
+    # (Minn. Stat. ch. 13), as is, no warranty; access constraints
+    # none. No fee, gate, resale or redistribution clause.
+    license: >-
+      Dakota County GIS Database Disclaimer: made available under the
+      Minnesota Government Data Practices Act (Minn. Stat. ch. 13), as
+      is, without warranty; access constraints none.
+    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_co_dakota/plan_parcels/metadata/metadata.html"
+    redistribution_restricted: false
+    portal_url: "https://www.arcgis.com/home/item.html?id=9785dd74842d4d7781be0fe7c0cbfe62"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/9785dd74842d4d7781be0fe7c0cbfe62_71/downloads/data?format=csv&spatialRefId=26915&where=1%3D1"
+  version: "2026"
+
+uncompressed_file_name: "dakota_tax_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+# The Hub CSV starts with a byte-order mark.
+encoding: utf-8-sig
+
+# TAXPIN is all digits: read it as text so leading zeros survive.
+csv_dtype:
+  TAXPIN: str
+
+columns:
+  parcel_id_assessor: TAXPIN
+  n_bedrooms: BEDS
+  n_bathrooms: BATH
+  living_area_sqft: ABOVEGRD_SF
+  garage_area_sqft: GAR_SF
+  building_style: HOME_STYLE
+  year_built: YEAR_BUILT
+  construction_description: FRME
+
+transformations:
+  # Finished area minus above-grade area is the finished basement;
+  # see the header's BUILDING FEATURES.
+  - type: binary
+    operation: subtract
+    inputs: [FNSHD_SF, living_area_sqft]
+    output: basement_finished_area_sqft
+  # FRME pads one of its words with trailing spaces: strip them so a
+  # word is one category.
+  - type: string
+    operation: strip
+    input: construction_description
+    output: construction_description
+
+columns_to_categorical:
+  - building_style
+  - construction_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

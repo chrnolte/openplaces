@@ -1,0 +1,157 @@
+# Recipe: Anoka County, MN parcels with tax information (county
+# assessor attributes), bedrooms, baths, stories and building features.
+#
+# Why: the MetroGIS regional parcel dataset (US-MN_parcel-metrogis-2026)
+# has no room-count field. Anoka County's "OpenData_TaxInfo" parcel
+# layer carries BEDROOMS, BATHROOMS and STORIES.
+#
+# SOURCE. The county's own ArcGIS Server layer
+# gis.anokacountymn.gov/anoka_gis/rest/services/OpenData_TaxInfo/
+# FeatureServer/0. No bulk file was found: no ArcGIS Hub or AGOL item
+# publishes this layer (Hub dataset and AGOL item searches, 2026-09-12),
+# the Geospatial Commons folder us_mn_co_anoka lists no parcel data,
+# and the county website (anokacountymn.gov, anokacounty.us) did not
+# answer from this network. So the REST scraper is used, attribute-only
+# (returnGeometry false, ten fields): about 71 light pages rather
+# than polygons. The MetroGIS recipe already carries the geometry.
+# NOTE: the service advertises Create/Update/Delete capabilities to
+# anonymous users; this recipe only ever queries it.
+#
+# ROW SHAPE, measured 2026-09-12 (one attribute-only query of all
+# fields used here): 140,290 rows, 139,478 distinct PIN. Real PINs are
+# 12 digits; 17 rows carry an 11-character text placeholder instead and
+# are dropped by the query below. Of the rest, a few dozen PINs repeat
+# (2 to 8 rows) and drop_duplicates keeps the first. One row per tax
+# parcel, townhouse and condominium units included (STRUC_TYPE
+# "TOWNHOUSE ...", "Condo-TH Style ..."). A property roll.
+#
+# COVERAGE on improved rows (BLDG_VALUE > 0) by PROP_CLASS: 1a
+# residential single unit (119,180 rows) bedrooms 97.1%, stories 98.5%,
+# baths only 45.4%; residential duplex/triplex (1,047) bedrooms 97.0%,
+# baths 39.9%. Across all rows bedrooms > 0 83.8%, baths 39.1%. The
+# bath gap is the county's (only 46.4% of rows with bedrooms carry a
+# bath count), not a read error: the service returns the same counts.
+#
+# ENCODING. BATHROOMS is whole numbers only (1 to 8), with no half-bath
+# field; whether halves are dropped or rounded in is undocumented, so
+# it maps to n_bathrooms as published. STORIES is fractional in quarter
+# steps (1, 1.25, 1.5, 1.75, 2, 2.5, 3). A bedroom 0 is kept as
+# published. USE_DESC is empty on every row, so the residential
+# figures above use PROP_CLASS.
+#
+# JOIN KEY. PIN is MetroGIS's Anoka COUNTY_PIN as shipped: 99.28% of PIN
+# values are in MetroGIS (polygons plus points) and 99.76% of MetroGIS's
+# Anoka PINs find one.
+#
+# BUILDING FEATURES, measured 2026-09-13 in memory (one attribute-only
+# query of the fields used here, then the recipe's preprocessing) on
+# the 120,237 improved residential rows (PROP_CLASS 1a residential
+# single unit, duplex/triplex, 1 to 3 units; BLDG_VALUE > 0):
+#   - living_area_sqft = LIV_SQ_FT: 98.5%, median 1,302. It equals
+#     MetroGIS's FIN_SQ_FT (the parcel recipe's area_sqft) on 97.9% of
+#     Anoka parcels. TOT_SQ_FT is identical on every row, so it is not
+#     a gross area and building_area_sqft is not set.
+#   - effective_year_built = EFF_YR_BLT: 98.4%, median 1994.
+#   - building_style = STRUC_TYPE: 98.5%, 70 codes in the county's
+#     spelling (townhouse and condominium styles included).
+#   - heating_type = HEAT_COOL: 98.5%, 10 codes, every one a heating
+#     system (no cooling code occurs despite the name), so
+#     has_central_air is not set.
+#   - has_basement from BASEMENT, which is Y or blank: true where Y
+#     (87.1%), null elsewhere, as a blank is not a recorded no.
+#   - tax_neighborhood_code = NBHD: 100%, 260 codes (a letter
+#     prefix, then digits).
+# One live 2,000-row page with this field list was read and
+# preprocessed cleanly (2026-09-13).
+#
+# YEAR BUILT AND UNITS, measured 2026-09-13 by the service's own
+# count queries on the same residential definition (120,238 rows),
+# and one live page through the recipe's preprocessing:
+#   - year_built = YEAR_BUILT, the actual year: 98.4% (118,375), none
+#     before 1600 or after 2026; a 0 is nulled by the registry. It
+#     equals EFF_YR_BLT on 37.3% of residential rows.
+#   - n_dwellings: the layer has no unit count. PAD_COUNT (86 rows,
+#     manufactured home parks among them) counts park pads, not
+#     dwellings, so it is not mapped.
+#
+# NOT MAPPED, deliberately: owner and taxpayer names and addresses and
+# every other personal field (they are never requested: out_fields
+# names only the columns below); values and use (the MetroGIS
+# parcel recipe carries those for the county). LOT_DIMS
+# (75.1% of rows) is lot dimensions as text, a compass letter then
+# side lengths, or IRREGULAR: it does not say which side faces the
+# street, so it is not parsed into frontage_ft (street frontage).
+
+description: >-
+  Anoka County, MN parcel tax information layer: bedrooms, whole-number
+  baths, stories, living area, effective year, style, heating, basement
+  and neighborhood.
+
+admin_id: US-MN-AN
+
+entity:
+  entity_type: property
+  source:
+    source_id: anokacounty
+    portal_url: "https://gis.anokacountymn.gov/anoka_gis/rest/services/OpenData_TaxInfo/FeatureServer/0"
+    download_url_scraper: arcgis_rest_scraper
+    # Checked 2026-09-12: the service's description and copyright text
+    # are empty and the county website did not answer, so no terms were
+    # read. MetroGIS's metadata records that all seven metro county
+    # boards, Anoka's included, adopted resolutions in 2014-2015 to
+    # make their public geospatial data available without fee or
+    # licence; that is context, not this layer's own terms.
+    license: >-
+      unknown (no terms on the service; county website unreachable on
+      2026-09-12). MetroGIS records the county board's 2014-2015
+      resolution to share public geospatial data without fee or licence.
+    terms_url: "https://resources.gisdata.mn.gov/pub/gdrs/data/pub/us_mn_state_metrogis/plan_regional_parcels/metadata/metadata.html"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "anoka_taxinfo_rooms.geojson"
+
+scraper_options:
+  layer_url: "https://gis.anokacountymn.gov/anoka_gis/rest/services/OpenData_TaxInfo/FeatureServer/0"
+  where: "1=1"
+  out_fields: "PIN,BEDROOMS,BATHROOMS,STORIES,LIV_SQ_FT,YEAR_BUILT,EFF_YR_BLT,STRUC_TYPE,HEAT_COOL,BASEMENT,NBHD"
+  extra_params:
+    returnGeometry: "false"
+
+process_by:
+  admin_level: 3
+
+columns:
+  parcel_id_assessor: PIN
+  n_bedrooms: BEDROOMS
+  n_bathrooms: BATHROOMS
+  n_stories: STORIES
+  living_area_sqft: LIV_SQ_FT
+  year_built: YEAR_BUILT
+  effective_year_built: EFF_YR_BLT
+  building_style: STRUC_TYPE
+  heating_type: HEAT_COOL
+  tax_neighborhood_code: NBHD
+
+# Drop the text placeholder PINs; see the header's ROW SHAPE.
+query: "parcel_id_assessor.str.len() == 12"
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # BASEMENT is Y or blank: true where Y, null elsewhere.
+  - type: remap
+    input: BASEMENT
+    mapping: {"Y": true}
+    output: has_basement
+
+columns_to_categorical:
+  - building_style
+  - heating_type
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,196 @@
+# Recipe: City of Minneapolis Assessing Department parcel data, room
+# counts and building features per building, reduced to the property.
+# Sibling of
+# US-MN-HE_property-minneapoliscity-2026; see that recipe's header for
+# the source, the city-only coverage and the join key.
+#
+# ROW RULE. The table is one row per PIN except on multi-building
+# parcels, which repeat the PIN once per building (625 PINs, 1,629
+# rows; bedrooms differ within 63.7% of them). Every row is kept here
+# and aggregation_function sums bedrooms and baths across a parcel's
+# buildings and takes the tallest building's stories. Where a
+# multi-building parcel repeats identical figures (36.3% of those
+# groups for bedrooms) the sum may double-count a parcel-level total;
+# the city's field notes do not say which it is.
+#
+# MEASURED 2026-09-12 on residential dwelling rows (PROPERTYTYPE
+# RESIDENTIAL 1, 2 or 3 UNITS, condominium, co-op, townhouse, or
+# APARTMENT; 110,203 rows): TOTALBEDROOMS > 0 99.0%, TOTALBATHROOMS > 0
+# 96.2%, STORIES > 0 99.9%. Single-family rows (75,263) carry all three
+# on 99.9-100%; condominium units 96.7% bedrooms. Apartment rows carry
+# bedrooms (93.0%) but almost never baths (2.6%). Condo garage/misc
+# rows (8,200) and vacant land carry none. Bedroom values up to the
+# thousands are apartment building totals.
+#
+# BATHS: TOTALBATHROOMS is whole numbers only (no fractional value in
+# 132,079 rows), documented only as "Number of bathrooms". Whether half
+# baths are dropped or rounded in is not stated, so it maps to
+# n_bathrooms as published and no half count exists. STORIES is
+# fractional in the city's own steps (1.2, 1.5, 1.7, 2.2, 2.5: story
+# and a quarter, a half, three quarters); a STORIES 0 means not
+# recorded and is nulled. A bedroom 0 is kept as published.
+#
+# BUILDING FEATURES, measured 2026-09-13 in memory (reader,
+# preprocessing, aggregation_function per PIN) on the 109,552
+# residential properties above. Every feature varies by building, so
+# all of them live here, not on the roll.
+#   - living_area_sqft = ABOVEGROUNDAREA, summed: 99.9% above 0,
+#     median 1,318. Undocumented; on dwellings it reads as above-grade
+#     finished area, on apartment and commercial buildings likely as
+#     their gross above-grade area. MetroGIS's FIN_SQ_FT is empty for
+#     every Minneapolis parcel, so this is the city's only floor area.
+#   - basement_area_sqft = BASEMENTAREA, summed: 64.3% above 0 (a 0 on
+#     35.7%, kept), median 885; finished and unfinished not split.
+#   - n_garage_spaces = GARAGESTALLS, summed: 75.2% above 0, median 2.
+#   - n_fireplaces = FIREPLACES, summed: 33.9% above 0.
+#   - heating_type = PRIMARYHEATING, upper-cased: 99.8%, 10 codes.
+#   - exterior_wall = EXTERIORWALL: 99.3%, 12 codes.
+#   - has_accessory_dwelling: true where BUILDINGUSE is one of its two
+#     accessory-dwelling codes (175 building rows), null elsewhere:
+#     0.2% of residential properties.
+# In the 625 multi-building groups the living area repeats within 6.6%
+# of groups and the garage stalls within 64.6%, so a parcel-level
+# stall count repeated per building may be summed twice there.
+#
+# YEAR BUILT AND UNITS, measured 2026-09-13 the same way on the same
+# 109,552 residential properties:
+#   - year_built = YEARBUILT, the actual year, reduced by min (the
+#     oldest building): 99.96%, median 1926, none before 1600 or after
+#     2026 (a 0 on 12.0% of all rows is nulled by the registry). It
+#     differs between buildings in 60.8% of the multi-building groups.
+#   - n_dwellings = TOTALUNITS, summed: the city records it only on
+#     apartment and mixed-use buildings. Every house, duplex, triplex
+#     and condominium row carries 0, which means not recorded and is
+#     nulled, so it is filled on 3.1% of residential properties and
+#     93.7% of the 3,644 apartment properties (median 10 units). Condo
+#     units do not repeat their building's count (6 of 16,540 carry
+#     one, at most 5). Of the 164 multi-building groups with a count,
+#     40 repeat one figure on every building, so the sum may double
+#     there, and one mixed-use one-unit row carries 2,878; both are
+#     kept as published for curate's range checks.
+#
+# CONSTRUCTION. construction_description = CONSTRUCTIONTYPE, the
+# city's ten words (wood frame, frame with concrete, reinforced
+# concrete, steel frame and so on), first building's per parcel,
+# kept as published; construction_type stays NSI-coded for curate to
+# translate into. Measured 2026-09-13 as above: 99.5% of the 109,552
+# residential properties, 87.5% of all; no padding, no blanks.
+#
+# NOT MAPPED: ROOF holds roof shapes (gable, hip, flat), not a
+# material, and roof_shape is an enrich-stage registry name.
+# NEIGHBORHOOD is the city's 87 named neighborhoods, not
+# documented as a valuation neighborhood. BUILDINGUSE is a use, not a
+# style.
+
+description: >-
+  City of Minneapolis assessor parcel data (city only): bedrooms, baths,
+  stories, areas, garage stalls, fireplaces, heating, walls per building,
+  reduced to the parcel.
+
+admin_id: US-MN-HE
+
+entity:
+  entity_type: property
+  source:
+    source_id: minneapoliscity
+    # Same download as the roll; see its terms note.
+    license: >-
+      Public domain dedication: the City of Minneapolis has waived all
+      copyright and related or neighboring rights to this Open Data;
+      GIS accuracy disclaimer under Minn. Stat. 466.03, subd. 21.
+    terms_url: "https://www.arcgis.com/home/item.html?id=f6748f040c6a4244bb2b314b26b44b48"
+    redistribution_restricted: false
+    portal_url: "https://www.arcgis.com/home/item.html?id=f6748f040c6a4244bb2b314b26b44b48"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/f6748f040c6a4244bb2b314b26b44b48/csv?redirect=true&layers=0"
+  version: "2026"
+
+uncompressed_file_name: "Assessing_Department_Parcel_Data_2026.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+
+csv_dtype:
+  PIN: str
+
+columns:
+  parcel_id_assessor: PIN
+  n_bedrooms: TOTALBEDROOMS
+  n_bathrooms: TOTALBATHROOMS
+  n_stories: STORIES
+  living_area_sqft: ABOVEGROUNDAREA
+  basement_area_sqft: BASEMENTAREA
+  n_garage_spaces: GARAGESTALLS
+  n_fireplaces: FIREPLACES
+  heating_type: PRIMARYHEATING
+  exterior_wall: EXTERIORWALL
+  year_built: YEARBUILT
+  n_dwellings: TOTALUNITS
+  construction_description: CONSTRUCTIONTYPE
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: parcel_id_assessor
+    args:
+      chars: "p"
+    output: parcel_id_assessor
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+  # TOTALUNITS is 0 wherever the city records no unit count (every
+  # house, duplex and condo row): a 0 means not recorded.
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args:
+      value: 0
+    output: n_dwellings
+  # PRIMARYHEATING spells each code in two cases ("HOT WATER" and
+  # "Hot Water"); upper-casing merges them, words unchanged.
+  - type: string
+    operation: upper
+    input: heating_type
+    output: heating_type
+  # BUILDINGUSE names an accessory dwelling in two codes: true there,
+  # null elsewhere (the table records no explicit absence).
+  - type: remap
+    input: BUILDINGUSE
+    mapping: {"Detached ADU": true, "SF House w/ADU": true}
+    output: has_accessory_dwelling
+
+columns_to_categorical:
+  - heating_type
+  - exterior_wall
+  - construction_description
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  basement_area_sqft: sum
+  n_garage_spaces: sum
+  n_fireplaces: sum
+  heating_type: first
+  exterior_wall: first
+  has_accessory_dwelling: max
+  year_built: min
+  n_dwellings: sum
+  construction_description: first
+
+# Details the roll's properties: joined by link_by_id, skipped by the
+# property spine's union.
+supplements: US-MN-HE_property-minneapoliscity-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: rooms
