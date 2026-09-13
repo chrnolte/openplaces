@@ -1,0 +1,250 @@
+# Recipe: Somerville, MA assessor parcels "Parcel_FY2022_Manual" (City
+# of Somerville, ArcGIS Online), room counts, areas and building
+# features.
+#
+# SOURCE. Item 1f642e72a56140d2be5cb06d24e86be0, owned by a City of
+# Somerville account, last modified 2022-07-19. Its description calls
+# it the "fiscal year 2021 parcels ... Updates provided by the
+# Somerville Assessing Department", so the assessor fields are about
+# five years older than MassGIS's FY2025 table. The city portal
+# (data.somervillema.gov) has no newer table with room counts: its
+# FY2025 Tax Parcels carry none. No bulk export exists on ArcGIS Hub,
+# so the layer is paged with arcgis_rest_scraper, requesting only the
+# fields below (no owner fields) and no geometry.
+#
+# ROLE. Supplements the statewide MassGIS assessing table (L3_ASSESS),
+# the `property` layer of US-MA_parcel-massgis-2025, and never adds
+# rows.
+#
+# ROW SHAPE. One row per tax parcel (and per sublot), not per
+# condominium unit: the room counts of a multi-family parcel are the
+# building's totals. That is correct for the properties L3 keys by the
+# parcel's own MBL; condo units in L3 carry a longer id and simply find
+# no row here, so no unit is given a building's total.
+#
+# KEY. MBL is the map-block-lot id with dashes; L3's PROP_ID
+# (property_id_assessor) writes the same id with underscores, so the
+# dashes are replaced before the join (`supplements_key`, merged from
+# the tx-room-counts branch). TaxParMBL is the tax parcel a row belongs
+# to, in L3's MAP_PAR_ID form; parcel_id_local is built from it with
+# the same per-town conversion as the L3 parcel layer.
+#
+# FIELDS. BEDROOM, BATH, ROOMS, STORIES. BATH holds whole numbers only
+# and the layer has no half-bath field (BATH_DESCRIP is empty), so
+# n_bathrooms is the count as published.
+#
+# BUILDING FEATURES, the city's vocabulary as published: GROSS_AREA
+# (building_area_sqft) and LIVING_AREA (living_area_sqft), square
+# feet, building totals like the room counts; STYLE_DESCRIP
+# (building_style); WALL_TYPE_1 (exterior_wall; WALL_TYPE_2, a second
+# material on 15% of rows, is not mapped); ROOF_COVER_DESCRIP
+# (roof_material, as published: about 11% of its values are roof
+# shapes such as Gable/Hip, and ROOF_STRUCTURE_DESCRIP holds about as
+# many material values, so the two look swapped on those rows);
+# HEAT_TYPE and FUEL_TYPE (heating_type, heating_fuel); AC_TYPE
+# (has_central_air) and HAS_GARAGE (has_garage), both explicit;
+# GRADE_DESCRIP (quality_grade); NHBD (tax_neighborhood_code,
+# served by the layer as a number). Not mapped: PERCENT_GOOD (a
+# depreciation percentage, not a condition rating) and
+# ROOF_STRUCTURE_DESCRIP (roof shape, outside this pass). The layer
+# has no construction or foundation field (PrinBldgType is a
+# building type).
+#
+# YEAR AND UNITS. YEAR (year_built) is the actual year built; OCCUP
+# (n_dwellings) is the row's number of dwelling units (1, 2 and 3 on
+# single, two and three-family use codes, 1 on a condo sublot). L3's
+# UNITS is 0 on 97.8% of Somerville's properties, so this table is
+# the town's only unit count. The registry nulls a 0 year; a year
+# before 1600 or after 2026 and a 0 unit count are nulled below. L3
+# carries YEAR_BUILT and UNITS too: link_by_id's column priority
+# (_write_prioritized) lets this table's value replace L3's where it
+# covers at least half the spine's properties, and only fill L3's
+# gaps otherwise.
+#
+# MEASURED 2026-09-13, in memory (the scraper's attribute-only GeoJSON
+# through the recipe's reader and _preprocess_recipe_data, no ingest),
+# against the local L3 output for Somerville (FY2025): 14,054 rows,
+# 13,973 distinct keys. 79.7% of keys are an L3 property id; 58.6% of
+# L3's 19,013 properties find a row, 57.7% of its 17,077 residential
+# ones (use codes 101-105, 109, 111, 112). The gap is the condo units
+# (40.5% of L3's Somerville properties share their parcel with other
+# properties) and parcels renumbered since FY2021. parcel_id_local:
+# 90.1% of rows find an L3 parcel, 99.5% of L3 parcels find a row. On
+# L3 residential properties: bedrooms, bathrooms and rooms > 0 on
+# 56.8%, stories 57.6%. Medians are building totals (5 bedrooms, 11
+# rooms), as the row shape above says.
+#
+# Building features, measured the same way on 2026-09-13 (on L3
+# residential properties, 57.7% of which find a row): living and
+# gross area > 0 on 57.6% (medians 2,636 and 4,472 sq ft, building
+# totals; within 5% of L3's RES_AREA and BLD_AREA on 93.9% and 95.3%
+# of properties carrying both); building_style, exterior_wall,
+# roof_material, heating_type, heating_fuel and quality_grade 57.6%;
+# has_central_air true on 6.4%, false 51.1%; has_garage true 11.8%,
+# false 45.8%; tax_neighborhood_code 57.7%.
+#
+# Year and units, measured the same way on 2026-09-13 (on L3
+# residential properties, 57.7% of which find a row): year_built on
+# 57.6% (median 1900; equal to L3's YEAR_BUILT on 99.7% of properties
+# carrying both), one year before 1600 nulled; n_dwellings on 57.7%
+# (medians 1, 2, 3, 5 and 14 on use codes 101, 104, 105, 111, 112).
+# On all L3 properties they cover 56.4% and 58.6%, just over the half
+# at which they replace L3's values (L3's UNITS being 0 here).
+
+description: >-
+  Somerville, MA assessor parcels (city ArcGIS layer, FY2021 assessor
+  data): room counts, areas and building features, supplementing
+  MassGIS.
+
+admin_id: US-MA-SOM
+
+entity:
+  entity_type: property
+  source:
+    source_id: somervillema
+    # The item's licenseInfo (read 2026-09-13): "Public data with no
+    # access constraints. These data may be appropriate for planning
+    # purposes. Not to be utilized where legal and surveyed boundaries
+    # are required." It states no licence and nothing on redistribution
+    # or resale.
+    license: >-
+      unknown ('Public data with no access constraints'; planning-purposes
+      disclaimer; no licence stated)
+    terms_url: "https://www.arcgis.com/home/item.html?id=1f642e72a56140d2be5cb06d24e86be0"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=1f642e72a56140d2be5cb06d24e86be0"
+    download_url_scraper: arcgis_rest_scraper
+  version: 2022
+
+uncompressed_file_name: "somerville_parcel_fy2022_manual.geojson"
+
+scraper_options:
+  layer_url: "https://services7.arcgis.com/Tco18eJkayyK2DZU/arcgis/rest/services/Parcel_FY2022_Manual/FeatureServer/10"
+  where: "1=1"
+  out_fields: >-
+    MBL,TaxParMBL,BEDROOM,BATH,ROOMS,STORIES,GROSS_AREA,LIVING_AREA,STYLE_DESCRIP,WALL_TYPE_1,ROOF_COVER_DESCRIP,HEAT_TYPE,FUEL_TYPE,AC_TYPE,HAS_GARAGE,GRADE_DESCRIP,NHBD,YEAR,OCCUP
+  extra_params:
+    returnGeometry: "false"
+
+columns:
+  parcel_id_assessor: TaxParMBL
+  n_bedrooms: BEDROOM
+  n_bathrooms: BATH
+  n_rooms: ROOMS
+  n_stories: STORIES
+  building_area_sqft: GROSS_AREA
+  living_area_sqft: LIVING_AREA
+  building_style: STYLE_DESCRIP
+  exterior_wall: WALL_TYPE_1
+  roof_material: ROOF_COVER_DESCRIP
+  heating_type: HEAT_TYPE
+  heating_fuel: FUEL_TYPE
+  has_central_air: AC_TYPE
+  has_garage: HAS_GARAGE
+  quality_grade: GRADE_DESCRIP
+  tax_neighborhood_code: NHBD
+  year_built: YEAR
+  n_dwellings: OCCUP
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year before 1600 or after 2026 is impossible (see the Boston
+  # recipe): ok * year / ok is null where ok does not hold.
+  - type: expression
+    expression: >-
+      year_built * ((year_built >= 1600) & (year_built <= 2026)) /
+      ((year_built >= 1600) & (year_built <= 2026))
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args: {value: 0}
+    output: n_dwellings
+  # AC_TYPE and HAS_GARAGE record presence and absence explicitly.
+  # 'Heat Pump' is left null: the layer does not say whether it is
+  # ducted (central) or not.
+  - type: remap
+    input: has_central_air
+    output: has_central_air
+    mapping:
+      "Central": true
+      "None": false
+      "Unit/AC": false
+  - type: remap
+    input: has_garage
+    output: has_garage
+    mapping:
+      "Y": true
+      "N": false
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: string
+    operation: replace
+    input: MBL
+    args:
+      old: "-"
+      new: "_"
+    output: property_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+
+drop_columns:
+  - MBL
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_rooms: sum
+  n_stories: max
+  building_area_sqft: sum
+  living_area_sqft: sum
+  building_style: first
+  exterior_wall: first
+  roof_material: first
+  heating_type: first
+  heating_fuel: first
+  has_central_air: max
+  has_garage: max
+  quality_grade: first
+  tax_neighborhood_code: first
+  year_built: min
+  n_dwellings: sum
+
+supplements: US-MA_parcel-massgis-2025
+supplements_layer: property
+supplements_key: property_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

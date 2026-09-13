@@ -67,7 +67,16 @@ to the roll's property. Spine discovery (`resolve_spine`,
 never become entities; `link_by_id`'s auto-discovery still joins it,
 reduced per key by its own `aggregation_function`. Without the key, the
 property spine unioned Victoria County TX's roll and its components
-into 100,112 "properties" where the roll has 53,405. Unlike
+into 100,112 "properties" where the roll has 53,405. The roll's scope
+may contain the supplement's (a city table detailing a statewide roll),
+and the roll may be a host's `additional_layers` table, which has no
+recipe id of its own: name the host and the layer's entity type,
+`supplements: US-MA_parcel-massgis-2025` with `supplements_layer:
+property`, as the Massachusetts city tables do for the MassGIS assessing
+layer. `get_supplemented_table` checks the layer, the entity type and
+the scope (containment by level, never a string prefix) and raises on
+any mismatch, both in `tests/recipe/test_supplements.py` and when the
+join discovers the table. Unlike
 `exclude_from_auto_discover`, the key keeps the table in the parcel
 join. The property spine joins it onto the properties of the roll it
 names (`link_by_id` with `supplements_only: true`, `count_as: false`),

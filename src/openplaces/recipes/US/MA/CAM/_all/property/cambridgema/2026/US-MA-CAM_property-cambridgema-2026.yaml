@@ -1,0 +1,337 @@
+# Recipe: Cambridge, MA property database FY2026 (Cambridge Assessing
+# Department, published on the city's Socrata portal), room counts,
+# areas and building features.
+#
+# SOURCE. The portal publishes one table per fiscal year and a combined
+# FY2016-FY2026 table (eey2-rv59). This recipe reads the FY2026 table
+# (waa7-ibdu), which carries only YearOfAssessment 2026, so no year
+# filter is needed.
+#
+# ROLE. Every property here is already a row of the statewide MassGIS
+# assessing table (L3_ASSESS), the `property` layer of
+# US-MA_parcel-massgis-2025, so this table supplements that layer
+# (`supplements` + `supplements_layer`) and never adds rows.
+#
+# ROW SHAPE. One row per building of a property: PID repeats once per
+# BldgNum. aggregation_function sums bedrooms, baths and rooms across a
+# property's buildings and keeps the tallest building's stories.
+#
+# KEY. Map/Lot is the property id L3 carries as PROP_ID
+# (property_id_assessor), condo unit suffix included, so the table
+# joins L3 on it (`supplements_key`, merged from the tx-room-counts
+# branch). PID is the city's CAMA account number (L3's CAMA_ID) and is
+# not needed for the join. GISID is the parcel id L3 carries as
+# MAP_PAR_ID; parcel_id_local is built from it with the same per-town
+# conversion as the L3 parcel layer.
+#
+# FIELDS. Interior_Bedrooms, Interior_FullBaths, Interior_HalfBaths,
+# Interior_TotalRooms, Exterior_NumStories (quarter stories such as
+# 2.25 and 2.75 occur and are kept). Owner and sale fields are not
+# mapped. Read as text; counts are cast to numbers below.
+#
+# BUILDING FEATURES, codes in the city's own vocabulary, which mixes
+# spellings of one value (e.g. 'Forced Air' and 'FORCED-AIR'):
+# Interior_LivingArea (living_area_sqft); Exterior_Style
+# (building_style); Exterior_WallType (exterior_wall);
+# Exterior_RoofMaterial (roof_material); Exterior_FloorLocation
+# (unit_floor; 'B', a basement unit, is not a number and reads null);
+# Interior_Fireplaces (n_fireplaces); Systems_HeatType and
+# Systems_HeatFuel (heating_type, heating_fuel); Systems_CentralAir
+# (has_central_air, an explicit True/False);
+# Condition_OverallCondition (condition); Condition_OverallGrade
+# (quality_grade); Parking_Garage (n_garage_spaces, and has_garage
+# from it, 0 being a recorded absence); Parking_Open +
+# Parking_Covered + Parking_Garage (n_parking_spaces);
+# UnfinishedBasementGross + FinishedBasementGross
+# (basement_area_sqft); FinishedBasementGross
+# (basement_finished_area_sqft); has_basement true where the basement
+# area is positive, null elsewhere, never false; Exterior_View
+# (view_rating; the property spine's supplements join, which takes
+# get_attributes('property'), does not carry this parcel-tagged
+# attribute yet). Not mapped: Exterior_RoofType (roof shape, outside
+# this pass);
+# Condition_InteriorCondition, Interior_Layout and Systems_Plumbing.
+# The table has no gross building area and no construction or
+# foundation field.
+#
+# YEAR AND UNITS. Condition_YearBuilt (year_built) is the actual year
+# built (the table has no effective or remodel year); the registry
+# nulls a 0 (12.6% of rows), and a year before 1600 or after 2026 is
+# nulled below. A property's buildings take the earliest year.
+# Interior_NumUnits (n_dwellings) is the property's number of dwelling
+# units, filled on non-condo properties; condo unit rows leave it
+# empty and condo-building rows read 0, which is nulled, so no unit
+# is given its complex's total. A property with several buildings
+# repeats its unit count on each building row (on the 770 such
+# properties, the first row equals L3's UNITS on 95.8%, the sum on
+# 6.2%), so n_dwellings takes the first row, not a sum. L3 carries
+# YEAR_BUILT and UNITS too: link_by_id's column priority
+# (_write_prioritized) lets this table's value replace L3's where it
+# covers at least half the spine's properties, and only fill L3's
+# gaps otherwise.
+#
+# MEASURED 2026-09-13, in memory (the recipe's reader and
+# _preprocess_recipe_data, no ingest), against the local L3 output for
+# Cambridge (FY2025): 30,156 rows over 28,850 properties, 770 of them
+# with two or more buildings. 98.8% of Map/Lot ids are an L3 property
+# id; 99.4% of L3's 28,676 properties find a row, 99.4% of its 23,515
+# residential ones (use codes 101-105, 109, 111, 112).
+# parcel_id_local: 99.7% of rows find an L3 parcel, 99.6% of L3 parcels
+# find a row. On L3 residential properties: bedrooms > 0 on 95.4%,
+# bathrooms 96.1% (21.7% of counts end in .5), rooms 96.1%, stories
+# 99.1%.
+#
+# Building features, measured the same way on 2026-09-13 (on L3
+# residential properties): living_area_sqft > 0 on 99.2% (median
+# 1,218 sq ft; within 5% of L3's RES_AREA on 99.5% of properties
+# carrying both); condition and quality_grade 99.2%, heating_type
+# 97.8%, building_style 59.6%; exterior_wall, roof_material and
+# heating_fuel 34.5%; has_central_air true on 10.3%, false 21.4%,
+# null 68.3%; has_garage true 19.6%, false 45.1%, null 35.3%;
+# n_parking_spaces > 0 on 62.1%; basement_area_sqft > 0 on 41.8%
+# (finished part 15.2%); n_fireplaces > 0 on 19.5%; unit_floor on
+# 96.8% of L3 condo units (use code 102); view_rating 64.7%.
+#
+# Year and units, measured the same way on 2026-09-13 (on L3
+# residential properties): year_built on 98.8% (median 1915; equal to
+# L3's YEAR_BUILT on 99.8% of properties carrying both), three years
+# after 2026 nulled. n_dwellings on 33.5%: 95% to 100% of each
+# non-condo residential code (medians 1, 2, 3, 5 and 20 on use codes
+# 101, 104, 105, 111, 112) and none of the condo units; equal to L3's
+# UNITS on 99.5%. Condo-building rows read 0 on all but 22 of 3,118.
+# On all L3 properties year_built covers 88.2% (so it replaces L3's)
+# and n_dwellings 32.4% (so it only fills L3's gaps).
+
+description: >-
+  Cambridge, MA FY2026 property database: room counts, areas and
+  building features per property, supplementing the MassGIS assessing
+  table.
+
+admin_id: US-MA-CAM
+
+entity:
+  entity_type: property
+  source:
+    source_id: cambridgema
+    # The portal's "Cambridge Open Data Disclaimer and Release" (read
+    # 2026-09-13) disclaims warranties and states: "Any user of Data
+    # distributed by the City may modify, use and publish such Data
+    # without charge." No restriction on redistribution or resale.
+    license: >-
+      City of Cambridge Open Data Disclaimer and Release: "Any user of
+      Data distributed by the City may modify, use and publish such Data
+      without charge."
+    terms_url: "https://data.cambridgema.gov/download/tif9-pmiw/application/pdf"
+    redistribution_restricted: false
+    portal_url: "https://data.cambridgema.gov/Assessing/Cambridge-Property-Database-FY2026/waa7-ibdu"
+    download_url: "https://data.cambridgema.gov/api/views/waa7-ibdu/rows.csv?accessType=DOWNLOAD"
+  version: 2026
+
+uncompressed_file_name: "cambridge-property-database-fy2026.csv"
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: Map/Lot
+  parcel_id_assessor: GISID
+  n_bedrooms: Interior_Bedrooms
+  n_bathrooms: Interior_FullBaths
+  n_half_bathrooms: Interior_HalfBaths
+  n_rooms: Interior_TotalRooms
+  n_stories: Exterior_NumStories
+  living_area_sqft: Interior_LivingArea
+  building_style: Exterior_Style
+  exterior_wall: Exterior_WallType
+  roof_material: Exterior_RoofMaterial
+  unit_floor: Exterior_FloorLocation
+  n_fireplaces: Interior_Fireplaces
+  heating_type: Systems_HeatType
+  heating_fuel: Systems_HeatFuel
+  has_central_air: Systems_CentralAir
+  condition: Condition_OverallCondition
+  quality_grade: Condition_OverallGrade
+  n_garage_spaces: Parking_Garage
+  parking_open_spaces: Parking_Open
+  parking_covered_spaces: Parking_Covered
+  basement_unfinished_area_sqft: UnfinishedBasementGross
+  basement_finished_area_sqft: FinishedBasementGross
+  view_rating: Exterior_View
+  year_built: Condition_YearBuilt
+  n_dwellings: Interior_NumUnits
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year before 1600 or after 2026 is impossible (see the Boston
+  # recipe): ok * year / ok is null where ok does not hold.
+  - type: expression
+    expression: >-
+      year_built * ((year_built >= 1600) & (year_built <= 2026)) /
+      ((year_built >= 1600) & (year_built <= 2026))
+    inputs: [year_built]
+    output: year_built
+  # A 0 unit count is a condo building's or a non-dwelling's, not a
+  # count of dwellings: null.
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args: {value: 0}
+    output: n_dwellings
+  # Parking_Garage is a count, 0 included, so a garage is recorded as
+  # present (1 or more) or absent (0); null where the count is empty.
+  # Read off the text before the count is cast.
+  - type: remap_pattern
+    input: n_garage_spaces
+    output: has_garage
+    patterns:
+      - pattern: '^0+$'
+        value: false
+      - pattern: '^0*[1-9][0-9]*$'
+        value: true
+  # Systems_CentralAir is an explicit True/False.
+  - type: remap
+    input: has_central_air
+    output: has_central_air
+    mapping:
+      "True": true
+      "False": false
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: unit_floor
+    output: unit_floor
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_garage_spaces
+    output: n_garage_spaces
+  - type: unary
+    operation: to_numeric
+    input: parking_open_spaces
+    output: parking_open_spaces
+  - type: unary
+    operation: to_numeric
+    input: parking_covered_spaces
+    output: parking_covered_spaces
+  - type: unary
+    operation: to_numeric
+    input: basement_unfinished_area_sqft
+    output: basement_unfinished_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: basement_finished_area_sqft
+    output: basement_finished_area_sqft
+  # Parking spaces: open + covered + garage (a row whose three counts
+  # are all empty stays empty).
+  - type: aggregate
+    operation: sum
+    inputs: [parking_open_spaces, parking_covered_spaces, n_garage_spaces]
+    output: n_parking_spaces
+  # Basement area: unfinished + finished. A zero area does not say the
+  # building has no basement (a condo unit on an upper floor reads 0),
+  # so has_basement is true where the area is positive and null
+  # elsewhere, never false.
+  - type: aggregate
+    operation: sum
+    inputs: [basement_unfinished_area_sqft, basement_finished_area_sqft]
+    output: basement_area_sqft
+  - type: conditional
+    operation: greater_than
+    input: basement_area_sqft
+    args:
+      threshold: 0
+    output: has_basement
+  - type: remap
+    input: has_basement
+    output: has_basement
+    mapping:
+      1: true
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half (see the Boston recipe).
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - parking_open_spaces
+  - parking_covered_spaces
+  - basement_unfinished_area_sqft
+
+# Across a property's buildings: counts and areas add up, stories take
+# the taller, flags any, codes the first building's.
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_rooms: sum
+  n_stories: max
+  living_area_sqft: sum
+  building_style: first
+  exterior_wall: first
+  roof_material: first
+  unit_floor: first
+  n_fireplaces: sum
+  heating_type: first
+  heating_fuel: first
+  has_central_air: max
+  condition: first
+  quality_grade: first
+  n_garage_spaces: sum
+  has_garage: max
+  n_parking_spaces: sum
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  view_rating: first
+  year_built: min
+  # Repeated on each building row of a property, so the first row
+  # (see the header), not a sum.
+  n_dwellings: first
+
+supplements: US-MA_parcel-massgis-2025
+supplements_layer: property
+supplements_key: property_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

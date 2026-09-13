@@ -1,0 +1,228 @@
+# Recipe: Arlington, MA parcels with assessor information (Town of
+# Arlington GIS, ArcGIS Online), room counts, areas and building
+# features.
+#
+# SOURCE. The town's assessor CSV (Patriot Properties) is linked from
+# arlingtonma.gov, which answered 403 to the identified openplaces
+# client on 2026-09-13 (the assessor page and the home page alike). The
+# town's own ArcGIS organization (ArlingtonMA_GIS) publishes the same
+# assessor fields on its parcel layer "Parcels with Assessor Info"
+# (item 04d200bd212f487a937ed3f79c3fb272), refreshed from the assessor
+# database (field DateLastPulled; ValuationFY 2026). No bulk export
+# exists for it on ArcGIS Hub, so it is paged with
+# arcgis_rest_scraper. Only the fields below are requested (no owner
+# fields), and no geometry: the parcels' geometry is MassGIS's.
+#
+# ROLE. Every property here is already a row of the statewide MassGIS
+# assessing table (L3_ASSESS), the `property` layer of
+# US-MA_parcel-massgis-2025, so this table supplements that layer
+# (`supplements` + `supplements_layer`) and never adds rows. One row
+# per property: condominium units are stacked rows on their parcel.
+#
+# KEY. The layer's CAMA_ID holds the assessor's property id in the
+# same format L3 carries as PROP_ID (property_id_assessor), so the
+# table joins L3 on it (`supplements_key`, merged from the
+# tx-room-counts branch). ParcelID is the parcel id L3 carries as
+# MAP_PAR_ID; parcel_id_local is built from it with the same per-town
+# conversion as the L3 parcel layer.
+#
+# FIELDS. NumBedroom, FullBath, HalfBath, NumRoom. StoryHgt is a
+# Patriot story code: numeric ('1', '2') or with a letter ('2A', '1T',
+# '2H'), which to_numeric nulls rather than guessing what the letter
+# adds.
+#
+# BUILDING FEATURES, Patriot vocabulary as published: GrossArea
+# (building_area_sqft) and FinishedArea (living_area_sqft), square
+# feet; RenoYear (renovation_year); BuildingType (building_style);
+# HeatFuel and HeatType (heating_fuel, heating_type); FirePlaces
+# (n_fireplaces; empty on 46% of rows and 0 on 5%, so an empty count
+# is left null, not read as zero). Not mapped: PctAC (the share of
+# the building air conditioned, which does not say central air);
+# SolarHotWater (solar water heating, not the solar panels has_solar
+# describes); WoodStove, CentralVac and PctHeated (no registry
+# attribute). The layer has no construction or foundation field.
+#
+# YEAR AND UNITS. YearBuilt (year_built) is the actual year built;
+# RenoYear stays renovation_year. NumUnits (n_dwellings) counts a
+# property's dwelling units: 1 on a condo unit, not its complex's
+# total. A 0 in either is nulled (the registry nulls year_built's;
+# a 0 unit count, found on land-only use codes, below), as is a year
+# before 1600 or after 2026. L3 carries YEAR_BUILT and UNITS too:
+# link_by_id's column priority (_write_prioritized) lets this table's
+# value replace L3's where it covers at least half the spine's
+# properties, and only fill L3's gaps otherwise.
+#
+# MEASURED 2026-09-13, in memory (the scraper's attribute-only GeoJSON
+# through the recipe's reader and _preprocess_recipe_data, no ingest),
+# against the local L3 output for Arlington (FY2025): 15,747 rows, one
+# per property; every geometry is null, as requested. 99.0% of ids are
+# an L3 property id; 99.7% of L3's 15,642 properties find a row, 99.7%
+# of its 14,511 residential ones (use codes 101-105, 109, 111, 112).
+# parcel_id_local: 100.0% of rows find an L3 parcel, 99.9% of L3
+# parcels find a row. On L3 residential properties: bedrooms > 0 on
+# 98.8%, bathrooms 99.6% (36.6% of counts end in .5), rooms 98.8%,
+# stories 48.9% (the rest carry a lettered code).
+#
+# Building features, measured the same way on 2026-09-13 (on L3
+# residential properties): living and gross area > 0 on 99.6%
+# (medians 1,924 and 2,910 sq ft; within 5% of L3's RES_AREA and
+# BLD_AREA on 98.5% and 98.9% of properties carrying both);
+# building_style 99.7%, heating_type 99.6%, heating_fuel 99.7%;
+# n_fireplaces > 0 on 51.7%; renovation_year 3.2%.
+#
+# Year and units, measured the same way on 2026-09-13 (on L3
+# residential properties): year_built on 99.7% (median 1932; equal to
+# L3's YEAR_BUILT on 99.6% of properties carrying both); n_dwellings
+# on 99.7% (medians 1, 1, 2 and 3 on use codes 101, 102, 104, 105;
+# equal to L3's UNITS on 99.7%). On all L3 properties they cover
+# 95.9% and 99.7%, so both replace L3's values.
+
+description: >-
+  Arlington, MA parcels with assessor information (town ArcGIS layer):
+  room counts, areas and building features per property, supplementing
+  MassGIS.
+
+admin_id: US-MA-ARL
+
+entity:
+  entity_type: property
+  source:
+    source_id: arlingtonma
+    # The item's licenseInfo (read 2026-09-13) is an accuracy
+    # disclaimer only: "intended for informational purposes only ...
+    # does not guarantee the accuracy of the information". No licence,
+    # no terms on redistribution or resale.
+    license: >-
+      unknown (informational-purposes accuracy disclaimer only; no
+      licence stated)
+    terms_url: "https://www.arcgis.com/home/item.html?id=04d200bd212f487a937ed3f79c3fb272"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=04d200bd212f487a937ed3f79c3fb272"
+    download_url_scraper: arcgis_rest_scraper
+  version: 2026
+
+uncompressed_file_name: "arlington_parcels_with_assessor_info.geojson"
+
+scraper_options:
+  layer_url: "https://services2.arcgis.com/s1Sh73K7qtP9JdrG/arcgis/rest/services/Parcels_with_Assessor_Info/FeatureServer/0"
+  where: "1=1"
+  out_fields: >-
+    CAMA_ID,ParcelID,NumBedroom,FullBath,HalfBath,NumRoom,StoryHgt,GrossArea,FinishedArea,RenoYear,BuildingType,HeatFuel,HeatType,FirePlaces,YearBuilt,NumUnits
+  extra_params:
+    returnGeometry: "false"
+
+columns:
+  property_id_assessor: CAMA_ID
+  parcel_id_assessor: ParcelID
+  n_bedrooms: NumBedroom
+  n_bathrooms: FullBath
+  n_half_bathrooms: HalfBath
+  n_rooms: NumRoom
+  n_stories: StoryHgt
+  building_area_sqft: GrossArea
+  living_area_sqft: FinishedArea
+  renovation_year: RenoYear
+  building_style: BuildingType
+  heating_fuel: HeatFuel
+  heating_type: HeatType
+  n_fireplaces: FirePlaces
+  year_built: YearBuilt
+  n_dwellings: NumUnits
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year before 1600 or after 2026 is impossible (see the Boston
+  # recipe): ok * year / ok is null where ok does not hold.
+  - type: expression
+    expression: >-
+      year_built * ((year_built >= 1600) & (year_built <= 2026)) /
+      ((year_built >= 1600) & (year_built <= 2026))
+    inputs: [year_built]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: n_dwellings
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args: {value: 0}
+    output: n_dwellings
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half (see the Boston recipe).
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_rooms: sum
+  n_stories: max
+  building_area_sqft: sum
+  living_area_sqft: sum
+  renovation_year: max
+  building_style: first
+  heating_fuel: first
+  heating_type: first
+  n_fireplaces: sum
+  year_built: min
+  n_dwellings: sum
+
+supplements: US-MA_parcel-massgis-2025
+supplements_layer: property
+supplements_key: property_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

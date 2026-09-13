@@ -1974,6 +1974,16 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
                     'supplements': None,
                 }
             )
+
+    from openplaces.recipe import get_supplemented_table
+
+    # Raises on a supplement whose roll, layer, entity type or scope
+    # is wrong. Left unchecked, _select_supplements would still match
+    # it on the host id alone and join it onto rows it does not
+    # describe.
+    for match in matches:
+        if match['supplements']:
+            get_supplemented_table(get_recipe_by_id(match['recipe_id']))
     return matches
 
 
@@ -1986,6 +1996,13 @@ def _select_supplements(matches: list[dict], spine_source_ids: set[str]) -> list
     the entity they describe. A supplement of a roll this spine did not
     load has nothing to attach to here, and a roll itself is already the
     spine's rows, so neither is joined.
+
+    A supplement of an ``additional_layers`` table names the layer's
+    host recipe (``supplements`` plus ``supplements_layer``, see
+    :func:`~openplaces.recipe.get_supplemented_table`), and
+    ``union_spine_sources`` records a layer source under its host's id,
+    so the same comparison matches it. The layer, entity type and scope
+    are checked when the match is discovered, not here.
     """
     return [
         match
