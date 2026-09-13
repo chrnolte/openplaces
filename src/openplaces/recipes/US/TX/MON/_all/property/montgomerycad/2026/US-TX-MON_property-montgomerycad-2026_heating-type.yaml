@@ -1,0 +1,89 @@
+# Recipe: Montgomery County, TX certified appraisal roll, improvement
+# features member (PACS File #9): heating_type from the district's
+# 'HVAC' attribute. Same download as
+# US-TX-MON_property-montgomerycad-2026; read that roll's header for the
+# source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk):
+# 'RH1-RC1' on 92.6% of rows, then 'RH1' and 'RC1' alone (RH reads as a
+# residential heating and RC a cooling component; MCAD publishes no
+# legend with the export). Central air therefore sits inside this code
+# and is left to curate's translation. 52.6% of buildings carry more
+# than one HVAC row, and 88.7% of those agree; drop_duplicates keeps the
+# first row per building and the property takes the first building's
+# code.
+#
+# MEASURED on the 2026 certified export, in memory (aggregates only):
+# 243,580 building rows over 234,743 properties, every one found in the
+# roll. A is the 244,715 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# heating_type A 90.0% (B 91.6%, E 79.3%, M 0.1%), 9 distinct codes
+# after the reduction ('RH1-RC1' on 93.9% of properties, 'RC1' 6.1%).
+
+description: >-
+  Montgomery County, TX certified appraisal roll, improvement features
+  member: heating_type per building, reduced to the property.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/appraisal-data-exports"
+  version: 2026
+
+compressed_file_name: "Certified Appraisal Roll 2026.zip"
+uncompressed_file_name: "2026-08-04_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  heating_type: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'HVAC'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  heating_type: first
+
+supplements: US-TX-MON_property-montgomerycad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: heating-type

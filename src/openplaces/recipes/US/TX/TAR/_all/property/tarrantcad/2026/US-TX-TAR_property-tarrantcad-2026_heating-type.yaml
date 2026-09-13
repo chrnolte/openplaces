@@ -1,0 +1,110 @@
+# Recipe: Tarrant County, TX certified appraisal roll, improvement
+# features member (PACS File #9): heating_type and has_central_air from
+# the district's 'CentralHeatAir' and 'HeatCool' attributes. Same
+# download as US-TX-TAR_property-tarrantcad-2026; read that roll's
+# header for the source and its terms.
+#
+# READING. 'CentralHeatAir' lists what a residential building has, one
+# row per system: 'CentralHea' (central heat) and 'CentralAir' (central
+# air); 99.8% of buildings with the attribute carry both.
+# has_central_air is true where a 'CentralAir' row is present, the one
+# explicit
+# statement; it is missing elsewhere, because the file never states an
+# absence. heating_type keeps the district's code as published: the
+# 'CentralHea' row, or the 'HeatCool' code ('CompHVAC', 'PackageUni',
+# 'NoHVAC' and 9 more) that TAD writes on commercial and multifamily
+# buildings. The placeholders 'Unassigned' and 'DefltHeatC' read as
+# missing. drop_duplicates removes a code repeated on one building; the
+# property takes the first heating code and true if any building has
+# central air.
+#
+# JOIN. The roll's parcel_id_local is its geo_id; this member carries
+# prop_id only, so it joins the roll on parcel_id_assessor.
+#
+# MEASURED on the 2026 export, in memory (aggregates only): 1,013,530
+# rows after the query and dedup, over 513,854 properties, every one a
+# roll account. A is the 599,911 single-family properties (improvement
+# state class A, File #7); B, E and M the other residential classes.
+# heating_type A 79.6% (B 74.4%, E 79.1%, M 72.1%), 10 distinct codes.
+# has_central_air true on A 79.5% (B 60.5%, E 78.8%, M 72.0%).
+
+description: >-
+  Tarrant County, TX certified appraisal roll, improvement features
+  member: heating code and central air per building, reduced to the
+  property.
+
+admin_id: US-TX-TAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: tarrantcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (tad.org answers 403 to the identified client; terms could not be checked)"
+    redistribution_restricted: null
+    portal_url: "https://www.tad.org/resources/data-downloads"
+  version: 2026
+
+compressed_file_name: "000_Tarrant_All_Taxing_Units.zip"
+uncompressed_file_name: "2026-09-09_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  heating_type: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc in ['CentralHeatAir', 'HeatCool']
+  and ~heating_type.isin(['Unassigned', 'DefltHeatC'])
+
+# Drops only a code repeated on one building.
+drop_duplicates: [prop_id, imprv_id, heating_type]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: remap_conditional
+    input: heating_type
+    conditions:
+      - condition: in
+        values: ['CentralAir']
+        output: true
+    output: has_central_air
+  - type: expression
+    expression: "heating_type.where(heating_type != 'CentralAir')"
+    inputs: [heating_type]
+    output: heating_type
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  heating_type: first
+  has_central_air: max
+
+supplements: US-TX-TAR_property-tarrantcad-2026
+# The roll's parcel_id_local is its geo_id; this member carries prop_id
+# only.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: heating-type

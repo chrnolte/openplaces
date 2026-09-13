@@ -1,0 +1,209 @@
+# Recipe: Tarrant County, TX certified appraisal roll (Tarrant
+# Appraisal District, TAD), from the district's True Prodigy export.
+# Same PACS field positions as US-TX-TRA_property-traviscad-2026 (on the
+# tx-room-counts branch) and US-TX-VIC_property-victoriacad-2026.
+#
+# MANUAL DOWNLOAD. www.tad.org answers every request from openplaces'
+# identified client with a Cloudflare challenge (HTTP 403 on the
+# data-downloads page, the home page and the layout PDF, checked
+# 2026-09-12 and 2026-09-13), so this recipe has no download_url. A
+# person downloads the export from the portal below and places it, name
+# unchanged, in external/US/TX/TAR/_all/property/tarrantcad/2026/. The
+# file read here is "000_Tarrant_All_Taxing_Units.zip" (748 MB, exported
+# 2026-09-09), the True Prodigy export TAD names as its format going
+# forward.
+#
+# FORMAT. PACS "Legacy 8.0.33" appraisal export written by True Prodigy
+# (header record: "Appraisal Export - 2026", version 8.0.0.33), the same
+# layout as Travis: File #2 records are 9,922 characters. Every offset
+# below was checked against the district's workbook
+# (Legacy8.0.33-AppraisalExportLayout.xlsx, Property sheet, downloaded
+# beside the zip as TP_Legacy8.0.33-AppraisalExportLayout.zip); the
+# 8.0.32 workbook inside the zip has the same File #2 offsets. Member
+# names carry the export date, so the name below is pinned to this
+# export. The zip extracts to about 41 GB: APPRAISAL_ENTITY_INFO.TXT
+# (24.8 GB) is never read, APPRAISAL_INFO.TXT is 13.9 GB. A member
+# filter in the ingester would save the rest (as for Travis).
+#
+# ROWS. 1,404,542 File #2 rows over 1,404,203 prop_ids: real 718,074,
+# mineral 624,184, business personal 51,070, mobile home 11,214. The
+# query keeps real property and mobile homes, the units a sale conveys.
+# Mineral and business personal accounts carry the geo_id of the parcel
+# they sit on (55.8% and 93.4% of them are found in TxGIO), so kept they
+# would add $1.4 bn and $65.2 bn of market value that is not real estate
+# onto parcels. Rows repeating a prop_id with another owner are removed
+# by drop_duplicates.
+#
+# JOIN KEYS. TxGIO's Tarrant Prop_ID is TAD's geo_id (the dashed account
+# number, shaped '99999-9-99'), not the PACS prop_id (0.0% of TxGIO ids
+# match a prop_id). So parcel_id_local is built from geo_id, as for
+# Travis, and parcel_id_assessor keeps the zero-stripped prop_id.
+# Measured with the bundled US-TX-TAR parcel conversion on both sides:
+# 97.9% of the roll's 701,790 keys are TxGIO keys and 99.6% of TxGIO's
+# 689,829 are roll keys. By improvement class (File #7): single-family
+# 99.9%, multifamily 99.2%, rural improved 99.0%, mobile homes 92.2%,
+# accounts with no improvement 81.5%.
+#
+# NO ROOM COUNTS. Tarrant publishes no bedroom, bathroom or room count
+# in any file read for it: not in this export, not in TAD's legacy
+# PropertyData files (below). File #9's 'Rooms' attribute (on 85.6% of
+# single-family properties) holds only the labels 'Bedrooms' and
+# 'Bathrooms' in its 10-character code field, and the 87-character
+# record has no count; 'NoOfUnits' is the same, a label with no number.
+# File #8 has no bedroom or bath detail types. Stories come only from
+# the 2025 supplemental file.
+#
+# SUPPLEMENTS. The detail members (File #8, #9, #10) carry prop_id only,
+# while this roll's parcel_id_local is geo_id, so every supplement
+# declares supplements_key: parcel_id_assessor and joins on the
+# zero-stripped prop_id, as Travis's do: _improvement-features (File
+# #8: living area, year built, effective year, garage, carport, porch,
+# pool, basement), _heating-type (with has_central_air),
+# _exterior-wall, _foundation-description, _roof-material (File #9)
+# and _supplemental (2025: n_stories, quality_grade, condition). No
+# frontage: File #10 effective front is filled on 0.3% of single-family
+# properties. No fireplaces: File #9 'Fireplaces' is 19 rows, all
+# 'Unassigned'. No quality grade in this export: the File #8 class code
+# is a type class ('ResSF'), not a grade.
+#
+# LEGACY FILES, measured and not used. TAD's older PropertyData exports
+# (PropertyData(Delimited).ZIP, 2,286,492 rows, and the residential
+# PropertyData(Delimited)_R.ZIP, 669,177 rows; '|' delimited, 58
+# columns) key on Account_Num and GIS_Link (GIS_Link equals the TP
+# geo_id on 100.0% of the residential file). Their Num_Bedrooms,
+# Num_Bathrooms, Garage_Capacity, Central_Heat_Ind, Central_Air_Ind and
+# Structure_Count are empty on all 599,482 state class A rows;
+# Year_Built (99.7%), Living_Area (99.8%) and Swimming_Pool_Ind are
+# filled.
+# PropertyDataSupplemental_R_2025(Certified).ZIP (658,733 accounts)
+# carries NumberofStories, Quality, Condition and EYOC for 2025. Its
+# AccountNumber is the prop_id zero-padded to 8 digits, so it joins
+# this roll (99.8% of its accounts); the _supplemental recipe reads it.
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (layout: "Legal
+# Acreage (4 Decimals)") and is divided by 10,000.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code, is
+# mapped to tax_neighborhood_code as published.
+#
+# MEASURED on the 2026 export, in memory (aggregates only): 728,949
+# rows after the query and dedup (339 owner rows removed), one per
+# prop_id. parcel_id_local (geo_id) is null on 0.01% of rows and takes
+# 701,790 values: 5.1% of rows share a key with another account
+# (several accounts on one parcel, as in Travis). A is the 599,911
+# single-family properties (improvement state class A, File #7); B
+# (10,757), E (807) and M (11,219) the other residential classes.
+# use_group_code A 100.0% (B 99.9%, E 99.9%, M 0.1%), 23 codes;
+# use_subgroup_code 100.0% in every class; tax_neighborhood_code 100.0%
+# in every class, 3,395 codes; address_number, address_street and city
+# A 100.0%; postal_code A 88.3% (B 94.5%, E 96.3%, M 96.2%). area_ac is
+# nonzero on 96.9% of rows, median 0.1864 acres (max 615,590: keying
+# errors left for curate). total_value on every row, $351.1 bn in all.
+
+description: >-
+  Tarrant County, TX certified appraisal roll (True Prodigy PACS 8.0.33
+  export): state land-use codes, legal acreage and market value keyed by
+  property.
+
+admin_id: US-TX-TAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: tarrantcad
+    # Checked 2026-09-13 with openplaces' identified client: every
+    # tad.org page answers HTTP 403 (Cloudflare challenge), so no terms,
+    # disclaimer or licence could be read, and the download folder holds
+    # no LICENSE.txt. Recorded as unknown, which is not a finding that
+    # the data is unrestricted.
+    license: "unknown (tad.org answers 403 to the identified client; terms could not be checked)"
+    redistribution_restricted: null
+    portal_url: "https://www.tad.org/resources/data-downloads"
+  version: 2026
+
+compressed_file_name: "000_Tarrant_All_Taxing_Units.zip"
+uncompressed_file_name: "2026-09-09_2026_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #2 (Property); offsets as in the Travis and Victoria rolls,
+# with prop_type_cd (13-17) read for the query.
+fixed_width:
+  - [prop_id, 12]
+  - [prop_type_cd, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+# Real property and mobile homes; see ROWS.
+query: "prop_type_cd in ['R', 'MH']"
+
+# One row per account; see ROWS.
+drop_duplicates: [prop_id]
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+# geo_id links properties to TxGIO parcels; see JOIN KEYS.
+parcel_id_local:
+  source: parcel_id_admin2_2
+  kind: parcel
+
+save_to:
+  data_dir: cache

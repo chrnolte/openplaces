@@ -1,0 +1,89 @@
+# Recipe: Tarrant County, TX certified appraisal roll, improvement
+# features member (PACS File #9): roof_material from the district's
+# 'RoofMaterial' attribute. Same download as
+# US-TX-TAR_property-tarrantcad-2026; read that roll's header for the
+# source and its terms.
+#
+# READING. The district's code, kept as published (no crosswalk): Comp,
+# BuiltUp, Metal, Tile, WoodShake. The placeholder 'Unassigned' reads as
+# missing. 'RoofType' (Flat, Gable, Hip and 8 more) is the roof's shape
+# and is not read. Like 'Foundation', TAD writes these mostly on
+# commercial and multifamily buildings. drop_duplicates keeps the first
+# row per building, and the property takes the first building's code.
+#
+# JOIN. The roll's parcel_id_local is its geo_id; this member carries
+# prop_id only, so it joins the roll on parcel_id_assessor.
+#
+# MEASURED on the 2026 export, in memory (aggregates only): 57,724
+# building rows over 49,347 properties, every one a roll account. A is
+# the 599,911 single-family properties (improvement state class A, File
+# #7); B, E and M the other residential classes. roof_material A 3.1%
+# (B 19.1%, E 2.0%, M 0.0%), 5 distinct codes.
+
+description: >-
+  Tarrant County, TX certified appraisal roll, improvement features
+  member: roof_material per building, reduced to the property.
+
+admin_id: US-TX-TAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: tarrantcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (tad.org answers 403 to the identified client; terms could not be checked)"
+    redistribution_restricted: null
+    portal_url: "https://www.tad.org/resources/data-downloads"
+  version: 2026
+
+compressed_file_name: "000_Tarrant_All_Taxing_Units.zip"
+uncompressed_file_name: "2026-09-09_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  roof_material: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'RoofMaterial'
+  and roof_material != 'Unassigned'
+
+# One row per building.
+drop_duplicates: [prop_id, imprv_id]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  roof_material: first
+
+supplements: US-TX-TAR_property-tarrantcad-2026
+# The roll's parcel_id_local is its geo_id; this member carries prop_id
+# only.
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: roof-material

@@ -1,0 +1,226 @@
+# Recipe: Montgomery County, TX certified appraisal roll, improvement
+# features from the improvement detail member (PACS File #8, one row per
+# building component). Same download as
+# US-TX-MON_property-montgomerycad-2026; read that roll's header for the
+# source and its terms.
+#
+# RULE. Each component type below was assigned to a feature from the
+# district's own type code and description (listed, never crosswalked).
+# Areas are the component's imprv_det_area in square feet, summed over
+# the property's components; an area of 0 or 1 reads as missing. A flag
+# is true where the property has a component of that type and missing
+# elsewhere: the file lists the components present, never their absence.
+# garage_type keeps the district's code of the first garage component
+# (BG attached brick, DFG detached frame, and so on).
+#
+# MAIN AREA. MCAD prices each floor of a house as its own main-area
+# line: MA (first floor), MA1.5 ('1/2 Stry Addition'), MA2.0 ('Main
+# Area 2nd Flr'), MA3.0 ('Main Area 3rd flr'), plus additions (MAF,
+# MAF2, MAM, MAM2, MAHSM2) and mobile-home main areas (MAMH1 single,
+# MAMH2 double). living_area_sqft sums them. n_stories is the highest
+# floor line present: MA and MAMH1/MAMH2 read 1, MA1.5 1.5, MA2.0 2,
+# MA3.0 3; the property takes the maximum over its buildings (a
+# building priced with no main-area line has none). year_built is the
+# main-area lines' yr_built and effective_year_built their
+# depreciation_yr, the earliest kept, both missing outside 1801 to 2027;
+# quality_grade is the first main-area line's class code ('6', '5+'),
+# kept as published.
+#
+# TYPES. living area: MA, MA1.5, MA2.0, MA3.0, MAF, MAF2, MAM, MAM2,
+# MAHSM2, MAMH1, MAMH2. garage: BG, FG, BFG, SG, SFG, MG, RA1, RA2, DFG,
+# DBG, DBFG, DMG, DSG, RG1, RG2. carport: CP, RC1, MCP. porch: OMP,
+# OMPU, OFP, OFPU, OFP2, OFP3, SM7, SFP, SFPU, SMP, EFP, EFPU, EMP, SM1.
+# deck and patio: MP, MPU, SP, WD, WD2, SM5. Left out: EV ('ESTIMATED
+# VALUE', area 1), CPY and RC2 (canopies), RPC (porte-cochere), SM3
+# ('Covered Patio Or Carport', either), AU ('Attic/Basement
+# Unfinished', either), AF (finished attic), the commercial Y* types,
+# and pools (43 residential pool rows in the whole file).
+#
+# MEASURED on the 2026 certified export, in memory (aggregates only):
+# 1,346,020 component rows over 273,352 properties, every one found in
+# the roll. A is the 244,715 single-family properties (improvement state
+# class A, File #7); B, E and M the other residential classes.
+# Multifamily (B) improvements are priced on commercial schedules
+# (numeric type codes), so B reads near zero here. living_area_sqft A
+# 98.8% (B 1.4%, E 93.2%, M 99.8%), per-property median 2084. n_stories
+# A 98.8% (B 1.4%, E 93.2%, M 99.8%): 1 on 164,203 properties, 2 on
+# 93,016, 3 on 1,219, 1.5 on 280. year_built A 98.8% (M 99.7%), median
+# 2006; effective_year_built A 98.8%, median 2007. quality_grade A
+# 98.8%, 19 distinct codes. garage_area_sqft, has_garage and garage_type
+# A 81.0% (B 0.6%, E 52.6%, M 1.0%), median 460, 15 garage codes.
+# has_carport A
+# 7.0% (B 0.6%, E 26.2%, M 4.2%). porch_area_sqft A 90.6% (B 1.4%, E
+# 80.2%, M 23.1%), median 182. deck_area_sqft A 20.5% (B 0.3%, E 23.8%,
+# M 11.5%), median 210.
+
+description: >-
+  Montgomery County, TX certified appraisal roll, improvement detail
+  member: living area, stories, year built, garage, porch and deck per
+  property.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/appraisal-data-exports"
+  version: 2026
+
+compressed_file_name: "Certified Appraisal Roll 2026.zip"
+uncompressed_file_name: "2026-08-04_2026_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail), 622 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [depreciation_yr, 4]
+  - [imprv_det_area, 15]
+
+columns:
+  quality_grade: imprv_det_class_cd
+  year_built: yr_built
+  effective_year_built: depreciation_yr
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA2.0',
+      'MA3.0', 'MAF', 'MAF2', 'MAM', 'MAM2', 'MAHSM2', 'MAMH1', 'MAMH2']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  # Highest floor line present; 0 elsewhere, nulled below.
+  - type: expression
+    expression: >-
+      1.0 * imprv_det_type_cd.isin(['MA', 'MAMH1', 'MAMH2']) + 1.5 *
+      (imprv_det_type_cd == 'MA1.5') + 2.0 * (imprv_det_type_cd == 'MA2.0') +
+      3.0 * (imprv_det_type_cd == 'MA3.0')
+    inputs: [imprv_det_type_cd]
+    output: n_stories
+  - type: expression
+    expression: "n_stories.where(n_stories > 0)"
+    inputs: [n_stories]
+    output: n_stories
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['BG', 'FG', 'BFG', 'SG',
+      'SFG', 'MG', 'RA1', 'RA2', 'DFG', 'DBG', 'DBFG', 'DMG', 'DSG', 'RG1',
+      'RG2']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: garage_area_sqft
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['BG', 'FG', 'BFG', 'SG', 'SFG', 'MG', 'RA1', 'RA2', 'DFG', 'DBG',
+          'DBFG', 'DMG', 'DSG', 'RG1', 'RG2']
+        output: true
+    output: has_garage
+  - type: expression
+    expression: >-
+      imprv_det_type_cd.where(imprv_det_type_cd.isin(['BG', 'FG', 'BFG', 'SG',
+      'SFG', 'MG', 'RA1', 'RA2', 'DFG', 'DBG', 'DBFG', 'DMG', 'DSG', 'RG1',
+      'RG2']))
+    inputs: [imprv_det_type_cd]
+    output: garage_type
+  - type: remap_conditional
+    input: imprv_det_type_cd
+    conditions:
+      - condition: in
+        values: ['CP', 'RC1', 'MCP']
+        output: true
+    output: has_carport
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['OMP', 'OMPU', 'OFP',
+      'OFPU', 'OFP2', 'OFP3', 'SM7', 'SFP', 'SFPU', 'SMP', 'EFP', 'EFPU',
+      'EMP', 'SM1']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: porch_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MP', 'MPU', 'SP', 'WD',
+      'WD2', 'SM5']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: deck_area_sqft
+  - type: expression
+    expression: >-
+      quality_grade.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA2.0',
+      'MA3.0', 'MAF', 'MAF2', 'MAM', 'MAM2', 'MAHSM2', 'MAMH1', 'MAMH2']))
+    inputs: [quality_grade, imprv_det_type_cd]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MA1.5', 'MA2.0',
+      'MA3.0', 'MAF', 'MAF2', 'MAM', 'MAM2', 'MAHSM2', 'MAMH1', 'MAMH2']) &
+      (year_built > 1800) & (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where(imprv_det_type_cd.isin(['MA', 'MA1.5',
+      'MA2.0', 'MA3.0', 'MAF', 'MAF2', 'MAM', 'MAM2', 'MAHSM2', 'MAMH1',
+      'MAMH2']) & (effective_year_built > 1800) & (effective_year_built <=
+      2027))
+    inputs: [effective_year_built, imprv_det_type_cd]
+    output: effective_year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  n_stories: max
+  year_built: min
+  effective_year_built: min
+  quality_grade: first
+  garage_area_sqft: sum
+  has_garage: max
+  garage_type: first
+  has_carport: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+
+supplements: US-TX-MON_property-montgomerycad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features

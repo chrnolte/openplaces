@@ -1,0 +1,97 @@
+# Recipe: Montgomery County, TX certified appraisal roll, improvement
+# features member (PACS File #9): half bathrooms from the district's
+# 'Plumbing' HB codes. Same member and row rule as
+# US-TX-MON_property-montgomerycad-2026_bathrooms, which already folds
+# these halves into n_bathrooms as 0.5 each; read its header first.
+#
+# READING. The count before HB ('1HB', '2HB'), summed over a building's
+# rows and the property's buildings. The file lists what a building has:
+# a property with full baths and no HB row reads as missing here, not
+# as zero halves.
+#
+# MEASURED on the 2026 certified export, in memory (aggregates only):
+# 97,015 HB rows over 96,738 properties, every one found in the roll.
+# A is the 244,715 single-family properties (improvement state class A,
+# File #7); B, E and M the other residential classes. n_half_bathrooms
+# A 38.8% (B 0.0%, E 34.3%, M 0.0%); 1 on 95.1% of the properties with
+# a value, max 12.
+
+description: >-
+  Montgomery County, TX certified appraisal roll, improvement features
+  member: half bathrooms per building, summed to the property.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/appraisal-data-exports"
+  version: 2026
+
+compressed_file_name: "Certified Appraisal Roll 2026.zip"
+uncompressed_file_name: "2026-08-04_2026_APPRAISAL_IMPROVEMENT_DETAIL_ATTR.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #9 (Improvement Features), 87 characters wide.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [filler, 12] # imprv_attr_id
+  - [imprv_attr_desc, 25]
+  - [imprv_attr_cd, 10]
+
+columns:
+  n_half_bathrooms: imprv_attr_cd
+
+query: >-
+  imprv_attr_desc == 'Plumbing'
+  and n_half_bathrooms.str.contains('(?i)^[0-9]+ ?HB$', na=False)
+  and n_half_bathrooms.str.contains('[1-9]', na=False)
+
+# Drops only a code repeated on one building.
+drop_duplicates: [prop_id, imprv_id, n_half_bathrooms]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: n_half_bathrooms
+    args:
+      pattern: '^(?P<n>[0-9]+)'
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+
+drop_columns:
+  - imprv_attr_desc
+  - imprv_id
+
+aggregation_function:
+  n_half_bathrooms: sum
+
+supplements: US-TX-MON_property-montgomerycad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: half-bathrooms

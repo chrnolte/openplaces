@@ -1,0 +1,192 @@
+# Recipe: Montgomery County, TX certified appraisal roll (Montgomery
+# Central Appraisal District, MCAD), from the district's True Prodigy
+# export. Same PACS field positions as
+# US-TX-VIC_property-victoriacad-2026; this header covers what differs.
+#
+# MANUAL DOWNLOAD. MCAD's portal (mcad-tx.org) is a single-page True
+# Prodigy app whose report and file endpoints answer 401 without the
+# session token a browser creates, so a person downloads the export
+# and places it, name unchanged, in
+# external/US/TX/MON/_all/property/montgomerycad/2026/. The portal links
+# the 2026 certified roll to a Google Drive file:
+#   https://drive.google.com/file/d/1pQvjZX9rnM-vUOwhGuLfiWpZ3S9Ms2mr/view
+# It is not a download_url: a plain request with openplaces' identified
+# client to Drive's direct-download form
+# (drive.google.com/uc?export=download&id=..., and the
+# drive.usercontent.google.com form it redirects to) returns Google's
+# HTML "Virus scan warning" confirmation page, not the file (tested
+# 2026-09-13; the zip is 379 MB, too large for Drive's scan).
+#
+# FORMAT. PACS "Legacy 8.0.33" export written by True Prodigy (header
+# record version 8.0.0.33, exported 2026-08-04), 9,922-character File #2
+# records with the Travis and Tarrant offsets; see
+# US-TX-TAR_property-tarrantcad-2026 for the layout workbook. Member
+# names carry the export date. The zip extracts to 14.0 GB
+# (APPRAISAL_ENTITY_INFO.TXT 8.4 GB, never read; APPRAISAL_INFO.TXT
+# 4.0 GB).
+#
+# ROWS. 405,533 File #2 rows over 400,131 prop_ids: real 352,031,
+# business personal 30,574, mobile home 12,007, mineral 10,921. The
+# query keeps real property and mobile homes (the units a sale conveys),
+# as the Tarrant roll does; the personal and mineral accounts have their
+# own prop_ids (none found in TxGIO). Rows repeating a prop_id with
+# another owner are removed by drop_duplicates.
+#
+# JOIN KEY. Every Montgomery file keys on the PACS prop_id: TxGIO's
+# Montgomery Prop_ID is the prop_id written as a decimal
+# ('999999.00000000', which the parcel_id_local conversion reads as the
+# whole number), MCAD's parcel layer carries it as pid
+# (US-TX-MON_parcel-montgomerycad-2026), and the detail members carry
+# it. geo_id ('9999-99-99999') is kept as parcel_id_admin2_2, an
+# independent check. Measured with the bundled US-TX-MON conversion on
+# both sides: 88.0% of the roll's 358,636 keys are TxGIO keys and 99.8%
+# of TxGIO's 316,270 are roll keys. By improvement class (File #7):
+# single-family 96.2%, multifamily 82.8%, rural improved 95.4%, mobile
+# homes 1.8% (mostly homes on land another account owns), accounts with
+# no improvement 76.1%. geo_id matches 99.2% of TxGIO's 306,784
+# populated GEO_IDs (84.9% of the roll's geo_ids). MCAD's parcel layer
+# holds 93.6% of the roll's keys (97.1% of single-family properties).
+#
+# ACREAGE. legal_acreage carries 4 implied decimals (layout: "Legal
+# Acreage (4 Decimals)") and is divided by 10,000.
+#
+# NEIGHBORHOOD. hood_cd, the district's valuation neighborhood code, is
+# mapped to tax_neighborhood_code as published.
+#
+# SUPPLEMENTS on this roll (same zip): _bathrooms and _half-bathrooms
+# (File #9 'Plumbing' FB and HB codes), _fireplaces, _heating-type,
+# _exterior-wall, _foundation-description (File #9), and
+# _improvement-features (File #8: living area, stories, year built,
+# garage, carport, porch, deck). Not available in this export:
+# bedrooms (File #9 'Bedrooms' is on 110 properties and holds only the
+# label), rooms, dwelling units, frontage (File #10 effective front on
+# 0.1% of single-family properties) and pools (43 residential pool
+# detail rows). 'Roof' (codes 1 to 6) is left unmapped: no code legend
+# says whether it is a shape or a covering. 'Flooring', 'Interior
+# Finish', 'Ceiling', 'Electrical' and the 'Additional Factor'
+# attributes have no registry home.
+#
+# MEASURED on the 2026 certified export, in memory (aggregates only):
+# 358,636 rows after the query and dedup (5,402 owner rows removed),
+# one per prop_id; parcel_id_local filled and distinct on every row. A
+# is the 244,715 single-family properties (improvement state class A,
+# File #7); B (641), E (4,606) and M (10,320) the other residential
+# classes. use_group_code A 98.3% (B 99.7%, E 98.0%, M 1.8%), 64 codes;
+# use_subgroup_code 100.0% in every class, 40 codes;
+# tax_neighborhood_code A 100.0% (B 99.7%, E 99.8%, M 99.8%);
+# address_number A 98.3%, address_street A 98.5%, city A 98.4%,
+# postal_code A 98.3% (B 84.6%, E 94.1%, M 95.5%). area_ac is nonzero on
+# 24.3% of rows (median 1.24 acres): subdivision lots carry no legal
+# acreage here. total_value on every row, $141.0 bn in all.
+
+description: >-
+  Montgomery County, TX certified appraisal roll (True Prodigy PACS
+  8.0.33 export): state land-use codes, legal acreage and market value
+  keyed by property.
+
+admin_id: US-TX-MON
+
+entity:
+  entity_type: property
+  source:
+    source_id: montgomerycad
+    # Checked 2026-09-13 with the identified client: mcad-tx.org serves
+    # a single-page True Prodigy app; no terms, licence or disclaimer
+    # for the data exports is in the page or its scripts, and the
+    # download folder holds no LICENSE.txt. The app's map viewer (Map
+    # Search) shows a click-to-accept "Map Disclaimer": the GIS
+    # information cannot be guaranteed accurate, is "for general
+    # reference purposes only", compiled for property assessment, not a
+    # survey or legal document, and the district "assumes no
+    # liability". A no-warranty notice, with no resale or
+    # redistribution clause; openplaces accepted nothing. Whether the
+    # export pages show it too is for a person to confirm.
+    license: "unknown (no terms on the exports; portal map viewer: no-warranty disclaimer only)"
+    redistribution_restricted: null
+    portal_url: "https://mcad-tx.org/appraisal-data-exports"
+  version: 2026
+
+compressed_file_name: "Certified Appraisal Roll 2026.zip"
+uncompressed_file_name: "2026-08-04_2026_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #2 (Property); offsets as in the Tarrant roll.
+fixed_width:
+  - [prop_id, 12]
+  - [prop_type_cd, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+# Real property and mobile homes; see ROWS.
+query: "prop_type_cd in ['R', 'MH']"
+
+# One row per account; see ROWS.
+drop_duplicates: [prop_id]
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: area_ac
+    output: area_ac
+  # 4 implied decimals; see ACREAGE.
+  - type: expression
+    expression: "area_ac / 10000"
+    inputs: [area_ac]
+    output: area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -498,6 +498,13 @@ class TableIngester:
 
         if 'encoding' in self.recipe:
             kwargs['encoding'] = self.recipe['encoding']
+        # A single malformed shape (a ring with fewer than four points,
+        # as in one of Montgomery County TX's parcels) otherwise makes
+        # pyogrio raise on the whole layer. `on_invalid: warn` or
+        # `ignore` keeps the row with an empty geometry instead;
+        # `clean_polygons` then drops it like any other empty shape.
+        if 'on_invalid' in self.recipe:
+            kwargs['on_invalid'] = self.recipe['on_invalid']
 
         if columns:
             timer_suffix = (
