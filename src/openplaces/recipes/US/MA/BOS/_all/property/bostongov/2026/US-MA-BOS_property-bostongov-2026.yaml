@@ -1,0 +1,264 @@
+# Recipe: Boston, MA property assessment FY2026 (City of Boston
+# Assessing Department, published on Analyze Boston), room counts,
+# areas and building features.
+#
+# ROLE. One row per property (PID), condominium units and condo mains
+# included. Every one of these properties is already a row of the
+# statewide MassGIS assessing table (L3_ASSESS), the `property` layer
+# of US-MA_parcel-massgis-2025, so this table adds columns to those
+# rows and never rows of its own: `supplements` names the MassGIS host
+# recipe and `supplements_layer` its property layer. The property
+# spine's supplements join puts the counts on the L3 properties they
+# describe (AGENTS.md, "Entity model and stage roles").
+#
+# KEY. PID is the city's 10-digit property id, the same string L3
+# carries as PROP_ID (property_id_assessor), so the join is on that
+# column (`supplements_key`, merged from the tx-room-counts branch). A
+# parcel-level key would give every condo unit of a building the sum
+# of all its units' rooms. GIS_ID is the parcel id L3 carries as
+# MAP_PAR_ID, so parcel_id_local is built from it exactly as the L3
+# parcel layer builds its own (same per-town conversion).
+#
+# FIELDS. BED_RMS, TT_RMS, FULL_BTH, HLF_BTH, RES_FLOOR (stories of a
+# residential building). Condo mains (LU 'CM') carry no room counts.
+# The file is read as text so PIDs keep their leading zeros; counts
+# and areas are cast to numbers below.
+#
+# BUILDING FEATURES, codes in the city's own 'X - Label' vocabulary:
+# GROSS_AREA (building_area_sqft) and LIVING_AREA (living_area_sqft),
+# square feet; YR_REMODEL (renovation_year); BLDG_TYPE
+# (building_style); EXT_FNISHED (exterior_wall); ROOF_COVER
+# (roof_material); OVERALL_COND (condition); HEAT_TYPE (heating_type,
+# the system: hot water or steam, forced air, electric, heat pump);
+# AC_TYPE (has_central_air, see its transformation); FIREPLACES
+# (n_fireplaces); NUM_PARKING (n_parking_spaces); CD_FLOOR
+# (unit_floor), the floor a condo unit sits on, not a story count;
+# PROP_VIEW (view_rating). The registry tags view_rating as a parcel
+# attribute, and the property spine's supplements join, which takes
+# get_attributes('property'), does not carry it yet. STRUCTURE_CLASS
+# (construction_description), Boston's five 'X - Label' classes as
+# published, from structural steel to wood frame; the NSI-coded
+# construction_type is left to curate to translate into. The class is
+# recorded almost only on apartment, mixed-use and commercial
+# buildings. Not mapped: INT_COND and EXT_COND (condition takes the
+# overall rating); ROOF_STRUCTURE (roof shape, outside this pass);
+# HEAT_SYSTEM, ORIENTATION and CORNER_UNIT (no registry attribute).
+# The table has no heating fuel, garage, basement, quality grade or
+# foundation field.
+#
+# YEAR AND UNITS. YR_BUILT (year_built) is the actual year built;
+# YR_REMODEL stays renovation_year. The registry nulls a 0, and a year
+# before 1600 or after 2026 is nulled below. RES_UNITS, COM_UNITS and
+# RC_UNITS are filled only on condo-main (LU 'CM') rows, with the
+# complex's total; single to four-family rows and condo units leave
+# them empty, so they are not mapped and n_dwellings stays L3's UNITS.
+# L3 carries YEAR_BUILT too: link_by_id's column priority
+# (_write_prioritized) lets this table's year replace L3's where it
+# covers at least half the spine's properties, and only fill L3's
+# gaps otherwise.
+#
+# MEASURED 2026-09-13, in memory (the recipe's reader and
+# _preprocess_recipe_data, no ingest), against the local L3 output for
+# Boston, which is FY2023: 184,552 rows, one per PID. 97.5% of PIDs are
+# an L3 property id (the rest are newer than FY2023); 99.7% of L3's
+# 180,445 properties find a row, 99.9% of its 135,410 residential ones
+# (use codes 101-105, 109, 111, 112). parcel_id_local: 99.9% of rows
+# find an L3 parcel, 99.6% of L3 parcels find a row. On L3 residential
+# properties: bedrooms > 0 on 94.3%, bathrooms 96.6% (19.7% of counts
+# end in .5), rooms 96.6%, stories 99.7%.
+#
+# Building features, measured the same way on 2026-09-13 (on L3
+# residential properties): living and gross area > 0 on 99.4%
+# (medians 1,409 and 1,900 sq ft; living area within 5% of L3's
+# RES_AREA on 98.7% of properties carrying both); renovation_year
+# 58.8%; building_style 99.8%, exterior_wall 99.7%, roof_material
+# 96.9%, condition 94.7%, heating_type 96.6%; has_central_air true on
+# 38.8%, false 57.8%, null 3.4%; n_parking_spaces > 0 on 54.6% (0 on
+# 45.3%); n_fireplaces > 0 on 26.4%; unit_floor on 88.4% of L3 condo
+# units (use code 102), 11.3% of them on floor 0; view_rating 96.9%.
+#
+# Year and construction, measured the same way on 2026-09-13 (on L3
+# residential properties): year_built on 99.7% (median 1917; equal to
+# L3's YEAR_BUILT on 99.8% of properties carrying both), one year
+# after 2026 nulled; on all L3 properties it covers 87.3%, so it
+# replaces L3's year. construction_description on 4.5% (9.3% of all
+# L3 properties): 94% of 4-8 unit and 92% of larger apartments (use
+# codes 111, 112), at most 1% of one to three-family homes and 3% of
+# condo units.
+
+description: >-
+  Boston, MA FY2026 property assessment (Analyze Boston): room counts,
+  areas and building features per property, supplementing the MassGIS
+  assessing table.
+
+admin_id: US-MA-BOS
+
+entity:
+  entity_type: property
+  source:
+    source_id: bostongov
+    # Analyze Boston lists the dataset under the Open Data Commons
+    # Public Domain Dedication and License (CKAN license_id odc-pddl,
+    # checked 2026-09-13 through the portal's package_show API).
+    license: "ODC Public Domain Dedication and License (PDDL)"
+    terms_url: "https://opendatacommons.org/licenses/pddl/"
+    redistribution_restricted: false
+    portal_url: "https://data.boston.gov/dataset/property-assessment"
+    download_url: "https://data.boston.gov/dataset/e02c44d2-3c64-459c-8fe2-e1ce5f38a035/resource/ee73430d-96c0-423e-ad21-c4cfb54c8961/download/fy2026-property-assessment-data_rev.csv"
+  version: 2026
+
+uncompressed_file_name: "fy2026-property-assessment-data_rev.csv"
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: PID
+  parcel_id_assessor: GIS_ID
+  n_bedrooms: BED_RMS
+  n_bathrooms: FULL_BTH
+  n_half_bathrooms: HLF_BTH
+  n_rooms: TT_RMS
+  n_stories: RES_FLOOR
+  building_area_sqft: GROSS_AREA
+  living_area_sqft: LIVING_AREA
+  renovation_year: YR_REMODEL
+  building_style: BLDG_TYPE
+  exterior_wall: EXT_FNISHED
+  roof_material: ROOF_COVER
+  condition: OVERALL_COND
+  heating_type: HEAT_TYPE
+  has_central_air: AC_TYPE
+  n_fireplaces: FIREPLACES
+  n_parking_spaces: NUM_PARKING
+  unit_floor: CD_FLOOR
+  view_rating: PROP_VIEW
+  year_built: YR_BUILT
+  construction_description: STRUCTURE_CLASS
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # A year before 1600 or after 2026 is impossible. ok * year / ok is
+  # the year where ok holds and 0 / 0 (null) where it does not.
+  - type: expression
+    expression: >-
+      year_built * ((year_built >= 1600) & (year_built <= 2026)) /
+      ((year_built >= 1600) & (year_built <= 2026))
+    inputs: [year_built]
+    output: year_built
+  # STRUCTURE_CLASS as published, padding stripped, blanks null.
+  - type: string
+    operation: strip
+    input: construction_description
+    output: construction_description
+  - type: unary
+    operation: null_if_equal
+    input: construction_description
+    args: {value: ""}
+    output: construction_description
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: to_numeric
+    input: n_bathrooms
+    output: n_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_half_bathrooms
+    output: n_half_bathrooms
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: building_area_sqft
+    output: building_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: renovation_year
+    output: renovation_year
+  - type: unary
+    operation: to_numeric
+    input: n_fireplaces
+    output: n_fireplaces
+  - type: unary
+    operation: to_numeric
+    input: n_parking_spaces
+    output: n_parking_spaces
+  - type: unary
+    operation: to_numeric
+    input: unit_floor
+    output: unit_floor
+  # AC_TYPE records presence and absence explicitly, so the flag is
+  # true for central air, false for none or ductless units, and null
+  # where AC_TYPE is empty.
+  - type: remap
+    input: has_central_air
+    output: has_central_air
+    mapping:
+      "C - Central AC": true
+      "N - None": false
+      "D - Ductless AC": false
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row whose two
+  # counts are both missing missing, and reads a missing half count
+  # as zero halves where the full count is present.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+# One row per PID, so these reduce nothing today; they state how a
+# repeated key would combine (counts and areas of two buildings add
+# up, stories take the taller, flags any, codes the first).
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_rooms: sum
+  n_stories: max
+  building_area_sqft: sum
+  living_area_sqft: sum
+  renovation_year: max
+  building_style: first
+  exterior_wall: first
+  roof_material: first
+  condition: first
+  heating_type: first
+  has_central_air: max
+  n_fireplaces: sum
+  n_parking_spaces: sum
+  unit_floor: first
+  view_rating: first
+  year_built: min
+  construction_description: first
+
+supplements: US-MA_parcel-massgis-2025
+supplements_layer: property
+supplements_key: property_id_assessor
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

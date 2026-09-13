@@ -1115,6 +1115,123 @@ def get_layers(recipe: str | dict) -> list[str]:
     ]
 
 
+def _declared_entity_type(recipe: dict) -> str | None:
+    """Return a recipe's entity type as a string, or None if it has none."""
+    entity = recipe.get('entity')
+    entity_type = getattr(entity, 'entity_type', None)
+    return str(entity_type) if entity_type is not None else None
+
+
+def get_supplemented_table(recipe: dict) -> dict | None:
+    """Return the table a supplement details, validated against it.
+
+    A supplement (a recipe declaring ``supplements: <recipe id>``) adds
+    columns to the entities of another ingest table, its roll, and never
+    rows of its own. The roll is usually a recipe in its own right. It
+    can also be an ``additional_layers`` entry of a host recipe, which
+    has no recipe id: MassGIS's statewide assessing table (L3_ASSESS)
+    is the ``property`` layer of ``US-MA_parcel-massgis-2025``. A
+    supplement of such a layer names the host and the layer's entity
+    type::
+
+        supplements: US-MA_parcel-massgis-2025
+        supplements_layer: property
+
+    The host id is what the property spine records for a layer source
+    (``union_spine_sources`` adds the host's recipe id to
+    ``spine_source_recipe_ids``), so the supplements join matches the
+    declaration with no id form of its own for the layer.
+
+    The roll's admin scope must contain the supplement's, tested by
+    level with :func:`~openplaces.core.schema.admin_scope_covers`, never
+    by string prefix: a city's assessing table may detail a statewide
+    roll, as Boston's detailing the MassGIS layer does, and a table
+    scoped outside its roll could never match one of its rows.
+
+    Parameters
+    ----------
+    recipe : dict
+        A loaded ingest recipe.
+
+    Returns
+    -------
+    dict or None
+        The roll's table recipe (for a layer, the host merged with its
+        layer spec, see :func:`build_table_recipe`), or None when the
+        recipe declares no ``supplements``.
+
+    Raises
+    ------
+    ValueError
+        If ``supplements_layer`` is set without ``supplements`` or is
+        not a non-empty string; if the host has no additional layer of
+        that entity type; if the roll is itself a supplement; if the
+        roll's entity type differs from the supplement's (a supplement
+        of a host whose own entity type differs must name the layer); or
+        if the roll's scope does not contain the supplement's. Entity
+        types and scopes are compared only where both recipes declare
+        them.
+    """
+    recipe_id = get_recipe_id(recipe)
+    roll_id = recipe.get('supplements')
+    layer = recipe.get('supplements_layer')
+    if not roll_id:
+        if layer is not None:
+            raise ValueError(
+                f'{recipe_id} declares supplements_layer but no supplements; '
+                'the layer names a table of the recipe it supplements.'
+            )
+        return None
+    if layer is not None and (not isinstance(layer, str) or not layer):
+        raise ValueError(
+            f'{recipe_id}: supplements_layer must be an entity type, got {layer!r}.'
+        )
+
+    roll = get_recipe_by_id(roll_id)
+    if roll.get('supplements'):
+        raise ValueError(
+            f'{recipe_id} supplements {roll_id}, which is itself a supplement '
+            f'(of {roll["supplements"]}); name the roll it details instead.'
+        )
+    available = get_layers(roll)
+    if layer is None:
+        table = roll
+    elif layer in available:
+        table = get_table_recipe(roll, layer)
+    else:
+        raise ValueError(
+            f'{recipe_id} supplements the {layer!r} layer of {roll_id}, which '
+            f'has no such additional layer (it has: {available or "none"}).'
+        )
+
+    own_type = _declared_entity_type(recipe)
+    table_type = _declared_entity_type(table)
+    if own_type and table_type and own_type != table_type:
+        hint = (
+            f' {roll_id} has a {own_type!r} layer: name it with '
+            f'supplements_layer: {own_type}.'
+            if layer is None and own_type in available
+            else ''
+        )
+        raise ValueError(
+            f'{recipe_id} is a {own_type} table but supplements a {table_type} '
+            f'table ({roll_id}{f", layer {layer}" if layer else ""}); a '
+            f'supplement adds columns to entities of its own type.{hint}'
+        )
+
+    own_scope, roll_scope = recipe.get('admin_id'), roll.get('admin_id')
+    if (
+        own_scope is not None
+        and roll_scope is not None
+        and not admin_scope_covers(roll_scope, own_scope)
+    ):
+        raise ValueError(
+            f'{recipe_id} (scope {own_scope}) supplements {roll_id} (scope '
+            f'{roll_scope}), whose scope does not contain it.'
+        )
+    return table
+
+
 def find_additional_layer_recipes(
     layer_entity_type: str,
     admin_id: AdminId | str,
