@@ -49,6 +49,29 @@ pipeline:
       - group_building_nsi
       - group_footprint_fema
 
+  # Property-level attributes a roll states per property or per building
+  # component, reduced onto the parcel from the harmonized property spine
+  # (one row per property, its `supplements:` detail tables already
+  # joined). The parcel geospine copies none of these (see its property
+  # link_by_id step). A parcel's year built is its earliest property's,
+  # its living area the sum; the counts sum; the total value sums. Fills
+  # only where the parcel spine has nothing, so a county whose parcel
+  # layer carries the attribute directly keeps it.
+  - step: aggregate_from_entities
+    recipe_id: US_property-spine-2026
+    # A standalone roll keys on the local parcel id; a roll bundled with
+    # its parcel layer (MassGIS L3_ASSESS) on the state-wide one.
+    key: [parcel_id_local, parcel_id_admin2]
+    columns:
+      year_built: min
+      area_sqft: sum
+      total_value: sum
+      n_stories: max
+      n_bedrooms: sum
+      n_bathrooms: sum
+      n_rooms: sum
+      n_dwellings: sum
+
   # These parcel_id_assessor values are non-taxable placeholders, not real
   # parcels (found empirically in Carteret County, NC): WATER (water
   # bodies), ROW (road rights-of-way). Confirmed via direct data checks

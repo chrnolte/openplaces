@@ -209,10 +209,32 @@ pipeline:
   # Distinct from the count-only US_property-spine-2026 join below, which
   # only covers additional_layers-bundled property tables (parcel_id_admin2
   # keyed) and never carries these sources' own value columns.
+  # Only the parcel-level attributes a roll states about the parcel as a
+  # whole are copied here. What a roll states per property (year_built,
+  # area_sqft, n_stories, n_bedrooms, and the detail tables that
+  # `supplements:` a roll) stays in US_property-spine-2026 and reaches
+  # the curated parcel through aggregate_from_entities, reduced per
+  # parcel with the rule each column needs (see
+  # US_parcel-openplaces-2026). Copying them here made the parcel spine
+  # a second, lossy home for property attributes and tied every fix to
+  # a geometry rerun.
   - step: link_by_id
     auto_discover: true
     entity_type: property
     mode: aggregate
+    columns:
+      - land_value
+      - improvement_value
+      - total_value
+      - use_group
+      - use_group_code
+      - use_subgroup
+      - use_subgroup_code
+      - building_style
+      - n_dwellings
+      - address
+      - city
+      - postal_code
 
   # Exact per-parcel property/unit count from the harmonized property spine
   # (the authoritative per-unit source, built directly from the same

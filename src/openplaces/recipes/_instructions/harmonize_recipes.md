@@ -71,9 +71,12 @@ into 100,112 "properties" where the roll has 53,405. Unlike
 `exclude_from_auto_discover`, the key keeps the table in the parcel
 join. The property spine joins it onto the properties of the roll it
 names (`link_by_id` with `supplements_only: true`, `count_as: false`),
-which is where its attributes belong; parcels and footprints get them in
-curate, aggregated from properties (AGENTS.md, "Entity model and stage
-roles").
+which is where its attributes belong. Parcels get them in curate, reduced
+from the property spine by `aggregate_from_entities`
+(`US_parcel-openplaces-2026`); the parcel geospine's property link lists
+only parcel-level columns (values, use codes, address), so a supplement
+still matches there but contributes nothing (AGENTS.md, "Entity model
+and stage roles").
 
 **Order is a dependency, not a preference.** The property spine depends only on
 property ingests; the footprint spine additionally on parcel *ingests* and the

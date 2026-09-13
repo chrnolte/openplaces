@@ -651,6 +651,20 @@ Steps are organized by the nature of the transformation:
   resolves through)
 - `imputers.py` — fill missing canonical values (`impute_n_dwellings`,
   `impute_from_group_statistic`, `impute_occupancy_type`)
+- `aggregation.py` — reduce another entity's rows onto the curated rows
+  they belong to (`aggregate_from_entities`): a parcel's `year_built` is
+  the earliest of its properties', its `area_sqft` their sum, read from
+  `US_property-spine-2026` by `parcel_id_local` with the registry's rule
+  or a per-column override, filling only what the parcel's own layer
+  left empty. It exists because the parcel geospine's property
+  `link_by_id` no longer copies property-level attributes (its explicit
+  `columns:` list stops at parcel-level values, use codes and address):
+  a copy made in the geometry phase was a second, lossy home for them and
+  tied every fix to a geometry rerun. Measured on Victoria County, TX,
+  2026-09-12: the curate-side reduction reproduces the old copy's
+  coverage exactly (63.9% `year_built` and `area_sqft`), so a county
+  whose geospine predates the change loses nothing. An all-missing group
+  reduces to missing, not to pandas' zero sum.
 - `inferers.py` — derive new canonical features (`derive_metrics`,
   `derive_indicators` — named indicator columns holding values, never
   pre-thresholded booleans; every cutoff lives in the vote decisions).
