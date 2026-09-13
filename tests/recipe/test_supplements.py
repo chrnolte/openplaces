@@ -21,7 +21,7 @@ TX_DETAIL_TABLES = [
 
 
 @pytest.mark.parametrize('entity_type', sorted(ENTITY_TYPES))
-def test_every_supplement_names_a_roll_of_the_same_entity_and_scope(entity_type):
+def test_every_supplement_names_a_roll_of_the_same_entity_covering_it(entity_type):
     df = find_recipes(entity_type, stage='ingest')
     if df.empty:
         return
@@ -32,7 +32,13 @@ def test_every_supplement_names_a_roll_of_the_same_entity_and_scope(entity_type)
             f'{recipe_id} supplements {target}, which is not an ingest '
             f'recipe of entity type {entity_type!r}'
         )
-        assert by_id.loc[target, 'admin_id'] == row['admin_id'], recipe_id
+        # A roll covers its supplement's scope: a county appraiser's
+        # building table details the state roll's rows for that county.
+        roll_admin = str(by_id.loc[target, 'admin_id'])
+        assert str(row['admin_id']).startswith(roll_admin), (
+            f'{recipe_id} ({row["admin_id"]}) supplements {target} '
+            f'({roll_admin}), which does not cover it'
+        )
         assert by_id.loc[target, 'supplements'] == '', (
             f'{recipe_id} supplements another supplement ({target})'
         )

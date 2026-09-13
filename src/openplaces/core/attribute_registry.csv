@@ -235,7 +235,8 @@ effective_year_built,"Assessor's effective year built: the construction year imp
 renovation_year,Year of the most recent recorded remodel or renovation,,float,max,32,,,0
 n_rooms,Number of rooms in the building,,float,mean,54,,,
 n_bedrooms,Number of bedrooms in the building,,float,mean,55,,,
-n_bathrooms,Number of full bathrooms in the building; half baths are counted separately by the source where available and are not folded in here,,float,mean,58,,,
+n_bathrooms,Number of bathrooms in the building with half baths folded in as 0.5 (two full and one half read 2.5); a source publishing halves separately also maps them to n_half_bathrooms,,float,mean,58,,,
+n_half_bathrooms,Number of half bathrooms in the building where the source publishes them separately from full bathrooms; already folded into n_bathrooms as 0.5 each,,float,mean,59,,,
 heating_type,Heating system type as described by the source,,categorical,first,59,,,
 has_basement,Whether the building has a basement,,bool,max,67,,,
 building_style,"Architectural or construction style of the building as described by the source (e.g. ranch, conventional, double-wide). A structure descriptor, not a land use: do not map it to use_group",,categorical,join_nonnull,68,,,
