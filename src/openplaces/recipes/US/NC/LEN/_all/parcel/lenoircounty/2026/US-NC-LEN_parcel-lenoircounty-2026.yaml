@@ -45,6 +45,14 @@
 # NOTE: `City` sits in the Addr1/City/State/Zip block and is the owner's
 # mailing city, not the situs city; the situs side of this layer
 # publishes only PhysStrAdd. It is mapped as owner_city accordingly.
+#
+# Building features, MEASURED 2026-09-13 in memory: living_area_sqft
+# (FinishedAr, the same value as area_sqft, median 1,607) on 59.5% of
+# rows and on every row whose CompCodeDe names a dwelling type
+# (19,716 rows). CompCodeDe, mapped as use_group, is a building type
+# (SINGLE FAMILY RESIDENCE, DOUBLEWIDE MOBILE HOME, OFFICE, ...)
+# rather than a land use. The layer carries no other building
+# feature: no heating, wall, roof, garage, basement or grade field.
 
 description: >-
   Lenoir County, NC parcel roll (land/building values, year built, finished
@@ -83,7 +91,10 @@ columns:
   year_built: YearBuilt
   area_sqft: FinishedAr
   # Structure detail, measured on this layer: bedrooms 52.8%,
-  # bathrooms 52.7%.
+  # bathrooms 52.7%. NumBaths holds whole numbers only (no x.5 value
+  # among 19,676 populated rows, median 2 for three bedrooms), and the
+  # layer has no half-bath field, so it is a bath count as published:
+  # a house with a half bath reads one bath short.
   n_bedrooms: NumBeds
   n_bathrooms: NumBaths
   last_sale_date: DateSold
@@ -112,6 +123,19 @@ transformations:
     args:
       value: "0"
     output: last_sale_date
+
+  # FinishedAr is the finished area: area_sqft keeps it as before and
+  # living_area_sqft carries the same value under the name that says
+  # so.
+  - type: expression
+    expression: "area_sqft * 1"
+    inputs: [area_sqft]
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args: {value: 0}
+    output: living_area_sqft
 
 columns_to_categorical:
   - use_group

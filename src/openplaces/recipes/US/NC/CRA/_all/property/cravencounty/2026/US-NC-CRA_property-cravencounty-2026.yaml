@@ -1,32 +1,47 @@
-# Recipe: Craven County, NC building-card roll (year built, per structure).
+# Recipe: Craven County, NC property tax roll.
 #
-# Source: the county's bulk building-card shapefile (`gis.cravencountync.gov`,
-# same portal as the parcel roll), one row per assessed structure/card on a
-# parcel (a parcel with an outbuilding has more than one row). Carries the
-# construction year that the parcel-level CSV export
-# (US-NC-CRA_parcel-cravencounty-2026.yaml) does not.
+# Source: the county's own bulk CSV export (`gis.cravencountync.gov`), a
+# plain no-auth download refreshed regularly (observed 2026-08-05). One
+# row per property (one unit of ownership): assessed land, building and
+# total values, owner, situs, legal description and a most-recent-sale
+# snapshot. No geometry (attribute roll only).
 #
-# The shapefile has no dedicated parcel-id column of its own; `PPRIO` is the
-# same raw assessor id format as the parcel roll's `PID` (e.g.
-# `1-011   -005`), confirmed by direct inspection of sample records, so
-# `parcel_id_local` below derives the same standardized key and joins the
-# two rolls without a spatial join.
+# Entity type: this roll was a `parcel` recipe
+# (US-NC-CRA_parcel-cravencounty-2026) until 2026-09-12. Its rows are
+# what a sale conveys, each with its own owner and value, so it is a
+# `property` recipe (AGENTS.md, "Entity model and stage roles"): one
+# recipe for every row, condominium units included, never split by a
+# condo flag.
 #
-# KNOWN ISSUE: the published .shp is silently truncated to 1,000 of the
-# county's ~45,000 building records -- the .shx/.dbf indexes report 45,000,
-# but every geometry reader (fiona, pyogrio/GDAL 3.12) stops at 1,000 with
-# no error or warning. Reproduced on two independent downloads a day apart
-# (identical file size both times), and the zip itself contains stray
-# ArcGIS Server .lock files, suggesting the export was captured mid-write by
-# the county's nightly job. This recipe still ingests correctly and will
-# pick up the full roll automatically once the county's export is fixed
-# (`reprocess=True` to re-read after a redownload); until then, treat
-# year_built coverage from this source as a ~2% sample, not the full county.
+# Parcel geometry for Craven is NC OneMap's. The county's only geometry
+# download, the building-card shapefile, is truncated upstream to 1,000
+# of about 45,000 features, so no parcel layer is split off from it.
+# Should the county publish it whole, the pattern is an
+# `additional_layers` parcel layer deduplicated on the parcel key.
+#
+# The roll reaches parcels through parcel_id_local. NC OneMap maps its
+# own parcel_id_local from ALTPARNO, which is empty for every Craven
+# row, so a US_parcel_id-overrides.csv row scoped to
+# `source_id: nconemap` at US-NC-CRA points it at parcel_id_admin3
+# (PARNO) instead. PARNO holds the same PID this roll's key uses,
+# spacing included ('9-999   -999'), so both sides resolve under the
+# bundled `no_conv`. Measured 2026-09-12 on the local files: 99.9% of
+# NC OneMap's 59,752 Craven rows find this roll's key, and 99.6% of the
+# roll's 59,965 rows find a parcel. Every PID is unique in the roll, so
+# each property links to exactly one parcel.
+#
+# The building cards (bedrooms, rooms, baths, year built per structure)
+# are a separate table that declares `supplements:` this roll
+# (US-NC-CRA_property-cravencounty-2026_building-cards).
+#
+# Building features: the roll carries none (checked 2026-09-13); they
+# sit on the building cards. has_waterfront is true for the land-use
+# class VACANT - WATER FRONT LOTS (37 rows), null elsewhere.
 
 description: >-
-  Craven County, NC building-card roll (year built, floor area, stories, per
-  structure) from the county's bulk shapefile export. Currently truncated
-  upstream to ~1,000 of ~45,000 records; see notes.
+  Craven County, NC property tax roll (assessed land/building/total
+  values, owner, situs, most recent sale) from the county's bulk CSV
+  export.
 
 admin_id: US-NC-CRA
 
@@ -43,27 +58,50 @@ entity:
     terms_url: "https://gis.cravencountync.gov/downloads-zip-files.aspx"
     redistribution_restricted: null
     portal_url: "https://gis.cravencountync.gov/downloads-zip-files.aspx"
-    download_url: "https://gis.cravencountync.gov/Downloads/Shape_files/parcels_with_bldgs_info_shape.zip"
+    download_url: "https://gis.cravencountync.gov/Downloads/CSV_files/parcels.csv"
   version: "2026"
 
-compressed_file_name: "parcels_with_bldgs_info_shape.zip"
-uncompressed_file_name: "parcels_with_bldgs_info.shp"
-
-# The shapefile's own .prj sidecar is blank (verified on the downloaded
-# file), so geopandas reads it with no CRS. The XML metadata sidecar
-# (parcels_with_bldgs_info.shp.xml) confirms NAD83 State Plane NC FIPS 3200
-# Feet, EPSG:2264 -- the same system Bladen's county layer uses.
-source_crs: "EPSG:2264"
+uncompressed_file_name: "parcels.csv"
 
 columns:
-  parcel_id_assessor: PPRIO
-  year_built: BYRBL
-  area_sqft: BTOAR
-  n_stories: BSTOR
-  improvement_value: BAPVA
+  parcel_id_assessor: PID
+  owner_name: PANAME
+  owner_address: TMADDR
+  owner_city: CITYNM
+  owner_admin2_id_admin1: TAXSTE
+  owner_postal_code: ZIP
+  legal_description: LEGDES
+  address: FULLADD
+  last_sale_date: SALE_DATE
+  last_sale_price: SALE_PRICE
+  land_value: totlnd
+  improvement_value: totbld
+  total_value: totval
+  use_group: LUDESC
 
-# Standardized cross-comparable matching key from the assessor id (same raw
-# format and conversion as the parcel roll's PID).
+# Assemble the combined deed book/page reference (registry has no separate
+# book/page fields; nhcgov's NC recipe uses the same single-field
+# convention).
+transformations:
+  - type: string
+    operation: concat
+    inputs: [PABOOK, PAPAGE]
+    args:
+      sep: "-"
+    output: last_sale_book_page
+  - type: remap
+    input: use_group
+    mapping: {"VACANT - WATER FRONT LOTS": true}
+    output: has_waterfront
+
+columns_to_categorical:
+  - owner_admin2_id_admin1
+  - use_group
+
+# Standardized cross-comparable matching key from the assessor PID (auto
+# per-county conversion; falls back to `simple` if Craven has no bundled
+# instruction). It links each property to its NC OneMap parcel, and the
+# building cards join this roll on the same key.
 parcel_id_local:
   source: parcel_id_assessor
   kind: parcel

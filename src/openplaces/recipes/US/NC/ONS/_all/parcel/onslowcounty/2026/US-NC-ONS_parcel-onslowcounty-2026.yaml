@@ -97,13 +97,51 @@ columns:
   n_buildings: TOTALCARDS
   # Structure detail, measured on this layer: rooms 70.7%, bedrooms
   # 70.6%, full baths 70.6%, heating 70.7%, effective year 44.4%,
-  # remodel year 18.4%. BASEMENT is a 0/1 flag here rather than a
-  # foundation type, so it maps to has_basement.
+  # remodel year 18.4%.
+  #
+  # Building features, MEASURED 2026-09-13 in memory (residential =
+  # PROPERTYTY R, 82,180 rows): exterior wall (STRUCTURET, 21
+  # values), style (STRUCTURES, 13) and heating fuel (HEATINGFUE, 6)
+  # 76.7% each; has_central_air 74.2% (60,750 true, 264 false);
+  # effective year 21.0%, remodel year 8.2%. quality_grade
+  # (COM_GRADE, 5 letter grades) and building_area_sqft (COM_AREA)
+  # come from the commercial section only: 3.2% of rows, none of
+  # them residential, never on a row with a dwelling record.
+  #
+  # BASEMENT is not mapped. It is a code (1 on 64,573 rows, 2 on 21,
+  # 3 on 1,221, 4 on 211), not the 0/1 flag this header once called
+  # it, so has_basement: BASEMENT read every coded row as true. The
+  # layer publishes no domain for it, and codes 3 and 4 sit mostly
+  # on beach houses and beach duplexes (764 of 1,432), where a
+  # basement is unlikely: the county's code list is needed first.
+  # ATTIC (1 on 65,988 rows) is the same kind of code.
+  #
+  # area_sqft (HEATEDSQUA) is not the living area: 28.3% of rows,
+  # 39.5% of rows with a dwelling record, median 344 sqft (10th to
+  # 90th percentile 160 to 835), correlation 0.32 with the room
+  # count. It stays mapped as before, but neither living_area_sqft
+  # nor building_area_sqft is derived from it, and the layer carries
+  # no other residential area field.
+  #
+  # LANDWIDTH (21.3% of rows, median 85) is filled on GROSS land-type
+  # rows (19,634 of 19,840), not front-foot ones, so it reads as a
+  # lot width, not street frontage, and is not frontage_ft. HEATSYS
+  # mixes numeric codes with text and is left unmapped.
+  #
+  # Baths: NUMBEROFFU is the full count and NUMBEROFHA the half count
+  # (25.5% of rows carry a half bath, 35.7% of rows with a full bath).
+  # n_bathrooms folds them as full + 0.5 x half below. NUMBEROFFI
+  # (median 3) counts extra plumbing fixtures and is not a bath count.
   n_rooms: NUMBEROFRO
   n_bedrooms: NUMBEROFBE
   n_bathrooms: NUMBEROFFU
+  n_half_bathrooms: NUMBEROFHA
   heating_type: HEATING
-  has_basement: BASEMENT
+  heating_fuel: HEATINGFUE
+  exterior_wall: STRUCTURET
+  building_style: STRUCTURES
+  quality_grade: COM_GRADE
+  building_area_sqft: COM_AREA
   effective_year_built: EFFECTIVEY
   renovation_year: REMODELED
   last_sale_date: SALEDATE
@@ -119,9 +157,44 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # has_central_air from the combined heat/AC description: true where
+  # it names central AC, false where it states no AC, null for a
+  # heating-only description that says nothing either way.
+  - type: remap
+    input: heating_type
+    mapping:
+      "CENTRAL HEAT & A/C": true
+      "CENTRAL AC": true
+      "FURNACE / CENT AC": true
+      "ELECTRIC HT / CENT AC": true
+      "NO HEAT, NO AC": false
+    output: has_central_air
+  # COM_AREA holds 0 where nothing was recorded.
+  - type: unary
+    operation: null_if_equal
+    input: building_area_sqft
+    args: {value: 0}
+    output: building_area_sqft
+
+drop_columns:
+  - half_bathroom_equivalent
 
 columns_to_categorical:
   - heating_type
+  - heating_fuel
+  - exterior_wall
+  - building_style
+  - quality_grade
   - use_group
   - use_group_code
   - zoning_code
