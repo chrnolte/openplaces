@@ -33,7 +33,7 @@ description: >-
   owner, situs, land use, dwelling units) from the county open-data bulk
   GeoJSON export.
 
-admin_id: US-GA-FU
+admin_id: US-GA-FUL
 
 entity:
   entity_type: parcel

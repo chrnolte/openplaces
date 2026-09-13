@@ -38,7 +38,7 @@ description: >-
   from the county bulk GeoJSON export. No owner, value, year built or
   land use.
 
-admin_id: US-GA-GW
+admin_id: US-GA-GWI
 
 entity:
   entity_type: parcel

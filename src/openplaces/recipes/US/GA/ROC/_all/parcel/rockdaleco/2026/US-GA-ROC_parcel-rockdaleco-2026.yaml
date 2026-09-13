@@ -31,7 +31,7 @@ description: >-
   acreage, assembled situs address) from the county bulk GeoJSON export.
   No owner or value.
 
-admin_id: US-GA-RO
+admin_id: US-GA-ROC
 
 entity:
   entity_type: parcel
