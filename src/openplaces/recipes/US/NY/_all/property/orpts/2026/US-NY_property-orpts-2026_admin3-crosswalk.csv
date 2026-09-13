@@ -1,10 +1,10 @@
 admin3_id,county_name
-US-NY-AE,Albany
+US-NY-AL,Albany
 US-NY-AE,Allegany
 US-NY-BO,Broome
-US-NY-CA,Cattaraugus
+US-NY-CT,Cattaraugus
 US-NY-CA,Cayuga
-US-NY-CN,Chautauqua
+US-NY-CH,Chautauqua
 US-NY-CE,Chemung
 US-NY-CN,Chenango
 US-NY-CL,Clinton
@@ -31,7 +31,7 @@ US-NY-NI,Niagara
 US-NY-OE,Oneida
 US-NY-ON,Onondaga
 US-NY-OA,Ontario
-US-NY-OA,Orange
+US-NY-OR,Orange
 US-NY-OL,Orleans
 US-NY-OS,Oswego
 US-NY-OT,Otsego
@@ -39,14 +39,14 @@ US-NY-PU,Putnam
 US-NY-RE,Rensselaer
 US-NY-RO,Rockland
 US-NY-SA,Saratoga
-US-NY-SE,Schenectady
+US-NY-SC,Schenectady
 US-NY-SH,Schoharie
-US-NY-SH,Schuyler
+US-NY-SY,Schuyler
 US-NY-SE,Seneca
-US-NY-SU,St Lawrence
+US-NY-SL,St Lawrence
 US-NY-ST,Steuben
 US-NY-SU,Suffolk
-US-NY-SH,Sullivan
+US-NY-SI,Sullivan
 US-NY-TI,Tioga
 US-NY-TO,Tompkins
 US-NY-UL,Ulster

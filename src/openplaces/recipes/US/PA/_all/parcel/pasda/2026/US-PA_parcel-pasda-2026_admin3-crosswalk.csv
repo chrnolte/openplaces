@@ -8,7 +8,7 @@ US-PA-BR,Bradford
 US-PA-BU,Bucks
 US-PA-BT,Butler
 US-PA-CA,Cambria
-US-PA-CI,Centre
+US-PA-CE,Centre
 US-PA-CH,Chester
 US-PA-CO,Columbia
 US-PA-CR,Crawford
@@ -26,7 +26,7 @@ US-PA-LY,Lycoming
 US-PA-ME,Mercer
 US-PA-MI,Mifflin
 US-PA-MN,Monroe
-US-PA-MT,Montgomery
+US-PA-MO,Montgomery
 US-PA-MT,Montour
 US-PA-PE,Perry
 US-PA-PH,Philadelphia
@@ -35,5 +35,5 @@ US-PA-UN,Union
 US-PA-VE,Venango
 US-PA-WR,Warren
 US-PA-WA,Washington
-US-PA-WY,Wyoming
+US-PA-WO,Wyoming
 US-PA-YO,York
