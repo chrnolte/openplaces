@@ -1,0 +1,142 @@
+# Recipe: Virginia statewide parcel layer, VGIN 2026 Q2 release.
+#
+# SOURCE. VGIN (Virginia Geographic Information Network, Virginia
+# Department of Emergency Management) "Virginia Parcels", 2026 Q2
+# product: ArcGIS Online item 29627d7c051a47dc8ce71b4484531ab3, a
+# zipped file geodatabase (Virginia_Parcels.zip, 1,000,756,592 bytes)
+# holding one layer, VA_Parcels: 4,170,691 polygons in 136
+# localities, fields VGIN_QPID, FIPS, LOCALITY, PARCELID, PTM_ID,
+# LASTUPDATE. Downloaded and read 2026-09-13. The item URL is not
+# versioned: VGIN replaces the file each quarter.
+#
+# WHY THE GEODATABASE. US-VA_parcel-vgin-2025 reads
+# VirginiaParcel.shp.zip from vginmaps.vdem.virginia.gov. In its 2025
+# edition VGIN_QPID had lost its last digit (Fairfax: 36,875 values
+# over 368,742 parcels). That URL is not versioned either: on
+# 2026-09-13 it served a file last modified 2026-07-01, the 2026 Q2
+# release, whose field widths were not checked. The geodatabase keeps
+# VGIN_QPID whole (below).
+#
+# The per-locality attribute tables VGIN also publishes (the "Local
+# Schema Tables", item 523d89ebf23d4d84957f9fe5b9158bd9) are a
+# separate 363 MB download, not layers of this geodatabase. The one
+# used so far is read by US-VA-CH_property-vgin-2026.
+#
+# VGIN_QPID. Unique in this release: 4,170,691 distinct values over
+# 4,170,691 rows, no locality with a duplicate, every value integral
+# and at most 15 digits (exact in the float64 it is stored as). It
+# stays parcel_id_admin2, cast to the integer's digits so the id does
+# not read as a float.
+#
+# KEYS. PARCELID is parcel_id_assessor and feeds parcel_id_local,
+# except in two localities whose assessors key their records on the
+# id VGIN carries in PTM_ID: Fairfax County (US-VA-FA, the tax-map
+# PARID) and Norfolk (US-VA-NO, the 10-digit GPIN). The `instruction`
+# below points parcel_id_local at PTM_ID there. The 2025 recipe
+# declared no parcel_id_local, so a Virginia property table could
+# reach a parcel only through the parcel_id_alnum fallback, which is
+# built from PARCELID.
+#
+# MEASURED 2026-09-13 (share of the assessor's distinct keys found
+# among this layer's keys, both directions; "before" = the alnum
+# fallback on PARCELID, "after" = parcel_id_local as below):
+#   Fairfax County, roll PARID       before 0.00% / 0.00%
+#                                    after 99.83% / 99.99%
+#   Norfolk, FY27 assessment gpin    before 0.00% / 0.00%
+#   (Socrata qva7-tzrf, no recipe)   after 99.59% / 99.68%
+#                                    (residential rows 99.95%)
+#   Chesterfield County, GPIN        100.00% / 99.92%, unchanged
+#   Richmond city, GIS_ID            99.84% / 99.95%, unchanged
+# Richmond city's bundled conversion is written for its PIN and fits
+# no PARCELID, so it fell back to pipe on both sides; `conv: simple`
+# below (and in its property recipe) states what both sides do. The
+# other localities keep the conversions in geo/parcel_id_links.csv,
+# checked here only for fill: 37 of 132 warn (a pattern that fits part
+# of PARCELID, or a fallback to pipe), and PARCELID is empty or one
+# value in US-VA-BO, US-VA-BV and US-VA-LE and 14 values in US-VA-NE,
+# so no key is built there. No property recipe joins them yet.
+#
+# ADMIN CROSSWALK (blocks ingest, 2026-09-13). process_by crosswalks
+# FIPS through the harmonized admin3 layer on the data root, which
+# still carries pre-re-mint FIPS: US-VA-RI and US-VA-RH both 51159,
+# US-VA-FK and US-VA-FN both 51620, and US-VA-FR 51067 (the committed
+# spine has Richmond city 51760, Richmond County 51159, Franklin city
+# 51620, Franklin County 51067, Frederick 51069). get_crosswalk raises
+# on the duplicates, so neither VGIN recipe can ingest until that
+# layer is rebuilt against the spine. Four towns VGIN lists under
+# seven-digit codes (5105544 Bedford, 5118400 Colonial Beach, 5120752
+# Culpeper, 5127440 Farmville; 19,322 rows) have no admin3 unit and
+# will be dropped with a warning. Rappahannock County (51157) has no
+# rows in this release.
+#
+# TERMS. The item licence (read 2026-09-13), the same text as the
+# shapefile metadata: "The Virginia Base Data layers are intended for
+# cartographic use and spatial analysis only, and not for use as a
+# legal description. ... all warranties regarding the accuracy of the
+# map data and any representation or inferences derived there from
+# are hereby expressly disclaimed." A disclaimer: no redistribution,
+# resale or commercial-use clause, no consent gate.
+
+description: >-
+  Virginia statewide parcel layer from the Virginia Geographic Information
+  Network (VGIN), 2026 Q2 release.
+
+admin_id: US-VA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: vgin
+    license: >-
+      VGIN disclaimer: "intended for cartographic use and spatial analysis
+      only, and not for use as a legal description"; warranties disclaimed.
+      No redistribution, resale or commercial-use clause.
+    terms_url: "https://www.arcgis.com/home/item.html?id=29627d7c051a47dc8ce71b4484531ab3"
+    redistribution_restricted: false
+    portal_url: "https://vgin.vdem.virginia.gov/pages/parcels"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/29627d7c051a47dc8ce71b4484531ab3/data"
+  version: 2026
+
+compressed_file_name: "Virginia_Parcels.zip"
+uncompressed_file_name: "Virginia_Parcel_Dataset_2026Q2.gdb"
+layer: VA_Parcels
+
+# Column that splits the data into chunks for processing
+process_by:
+  admin_level: 3
+  admin_id_column: FIPS
+  admin_id_crosswalk:
+    admin_level: 3
+    admin_id_column: admin3_id_admin1
+    admin_recipe_id: "admin-openplaces-2026_admin3"
+
+columns:
+  parcel_id_assessor: PARCELID
+  parcel_id_admin2: VGIN_QPID
+  parcel_id_admin3_2: PTM_ID
+  source_date: LASTUPDATE
+
+transformations:
+  # Stored as float64; every value is an integer of at most 15 digits.
+  - type: expression
+    expression: "parcel_id_admin2.astype('Int64').astype('string')"
+    inputs: [parcel_id_admin2]
+    output: parcel_id_admin2
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Localities whose assessor ids are VGIN's PTM_ID, not PARCELID.
+  # The property recipes of these localities declare the same conv,
+  # so both sides of the join standardize identically.
+  instruction:
+    US-VA-FA:
+      source: parcel_id_admin3_2
+      conv: simple
+    US-VA-NO:
+      source: parcel_id_admin3_2
+      conv: simple
+    # Richmond city's bundled conversion is written for its PIN and
+    # matches no PARCELID, so it fell back to pipe on both sides.
+    US-VA-RI:
+      conv: simple

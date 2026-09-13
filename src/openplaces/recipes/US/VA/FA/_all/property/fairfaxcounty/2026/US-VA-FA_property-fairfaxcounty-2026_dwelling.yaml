@@ -1,0 +1,223 @@
+# Recipe: Fairfax County, VA dwelling table (Tax Administration).
+# Supplement of US-VA-FA_property-fairfaxcounty-2026; see that recipe
+# for the terms and the join key.
+#
+# SOURCE. "Real Estate - Dwelling Data" on the County GIS open-data
+# Hub (OpenData_A7 layer 2), bulk CSV export, 340,594 rows, 75.9 MB,
+# read 2026-09-13 (iasWorld DWELDAT with _DESC decodes).
+#
+# WHAT ONE ROW IS. One dwelling card. 340,594 cards over 340,197
+# PARIDs: 397 parcels carry more than one card. Condominium units are
+# their own PARID with their own card. Rooms and areas sum over a
+# parcel's cards; stories take the max, year built the min, codes the
+# first card's value.
+#
+# MAPPED (the county's own words throughout).
+#   RMBED          n_bedrooms (null on 2.1% of cards, 0 on 0.1%,
+#                  kept as published)
+#   FIXBATH        full baths; n_bathrooms = FIXBATH + 0.5 x FIXHALF
+#   FIXHALF        n_half_bathrooms. Null on 31.8% of cards: not
+#                  recorded, so the bath total there is the full count
+#   YRBLT          year_built (outside 1700 to 2026 nulled)
+#   EFFYR          effective_year_built (1.7% filled)
+#   YRREMOD        renovation_year (17.2%; a 9999 sentinel nulled)
+#   SFLA           living_area_sqft (0 nulled)
+#   RECROMAREA     basement_finished_area_sqft: iasWorld's recreation
+#                  room area, the finished part of the basement
+#   BSMT_DESC      has_basement: Full, Sub & Full, 2/3, 1/2 and 1/3
+#                  Bsmt true. Blank on 24.9% of cards (slab houses and
+#                  upper-floor condos, not confirmed), left null
+#   STYLE_DESC     building_style; n_stories from it (1 Story 1,
+#                  1 1/2 Story 1.5 ... 4 Story 4; "+ Attic" and
+#                  "+ Unfinished" keep the story count before them;
+#                  split levels, bi-level and Other stay null)
+#   GRADE_DESC     quality_grade (Average 10 ... Mansion 30)
+#   CDU_DESC       condition (Poor, Fair, Average, Average Plus, Good)
+#   EXTWALL_DESC   exterior_wall (67 values)
+#   USER13_DESC    roof_material (Composition Shingle ...)
+#   HEAT_DESC      heating_type; has_central_air: "Central A/C" true,
+#                  "Central" and "Non Central" false
+#   WBFP_PF        n_fireplaces. In iasWorld's layout this is the
+#                  prefabricated wood-burning fireplace count; it is
+#                  the only fireplace field published (73.6% > 0), so
+#                  it may undercount masonry fireplaces
+#   BSMTCAR        n_garage_spaces: the basement (built-in) garage's
+#                  car count only; zeros nulled, since a zero does not
+#                  mean no garage. Attached garages come from the
+#                  additions supplement as has_garage and area
+# NOT MAPPED: USER7_DESC (dormers and attic finish), USER9_DESC
+# (basement entry: daylight, welled), USER6 (builder model name),
+# USER10 (values 1 to 5, meaning not documented): no registry home.
+# The tables publish no total room count and no neighborhood code.
+#
+# MEASURED 2026-09-13, reduced per parcel, share of the roll's 338,959
+# residential parcels (see the roll): n_bedrooms 98.2% (median 3),
+# n_bathrooms 99.8%, n_half_bathrooms 68.3% (> 0 on 66.9%), n_stories
+# 88.0%, year_built 99.9% (median 1982), effective_year_built 1.7%,
+# renovation_year 17.2%, living_area_sqft 99.9% (median 1,638),
+# basement_finished_area_sqft 65.8%, has_basement true 75.3%,
+# quality_grade, condition and exterior_wall 99.8%, roof_material
+# 97.9%, heating_type 99.6%, has_central_air 99.6% (true 98.9%),
+# n_fireplaces 74.2% (> 0 on 73.9%), n_garage_spaces 13.6%. 503
+# parcels have both a basement garage and an attached one.
+
+description: >-
+  Fairfax County, VA dwelling table (Tax Administration, Hub CSV): rooms,
+  baths, stories, year built, living area, grade, condition and materials
+  per dwelling card.
+
+admin_id: US-VA-FA
+
+entity:
+  entity_type: property
+  source:
+    source_id: fairfaxcounty
+    # Same terms as the roll; see its TERMS note.
+    license: >-
+      Fairfax County copyright: reproduction "for internal or personal use"
+      is granted; "no part of this material may be published or reproduced
+      by any means for commercial sale or use without prior written
+      permission of Fairfax County."
+    terms_url: "https://www.fairfaxcounty.gov/maps/disclaimer"
+    redistribution_restricted: true
+    resale_restricted: true
+    usage_requirement:
+      non_commercial: true
+    portal_url: "https://www.arcgis.com/home/item.html?id=53ee1065351c4273ab91ba2e6cfbbc6d"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/53ee1065351c4273ab91ba2e6cfbbc6d_2/downloads/data?format=csv&spatialRefId=4326"
+  version: 2026
+
+uncompressed_file_name: "fairfax_real_estate_dwelling.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype:
+  PARID: str
+
+columns:
+  parcel_id_assessor: PARID
+  n_bedrooms: RMBED
+  n_bathrooms: FIXBATH
+  n_half_bathrooms: FIXHALF
+  year_built: YRBLT
+  effective_year_built: EFFYR
+  renovation_year: YRREMOD
+  living_area_sqft: SFLA
+  basement_finished_area_sqft: RECROMAREA
+  building_style: STYLE_DESC
+  quality_grade: GRADE_DESC
+  condition: CDU_DESC
+  exterior_wall: EXTWALL_DESC
+  roof_material: USER13_DESC
+  heating_type: HEAT_DESC
+  n_fireplaces: WBFP_PF
+  n_garage_spaces: BSMTCAR
+
+transformations:
+  - type: expression
+    expression: "year_built.where((year_built >= 1700) & (year_built <= 2026))"
+    inputs: [year_built]
+    output: year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where((effective_year_built >= 1700)
+      & (effective_year_built <= 2026))
+    inputs: [effective_year_built]
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      renovation_year.where((renovation_year >= 1700)
+      & (renovation_year <= 2026))
+    inputs: [renovation_year]
+    output: renovation_year
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 0)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+  - type: expression
+    expression: "n_garage_spaces.where(n_garage_spaces > 0)"
+    inputs: [n_garage_spaces]
+    output: n_garage_spaces
+  - type: string
+    operation: strip
+    input: building_style
+    output: building_style
+  - type: remap
+    input: building_style
+    mapping:
+      "1 Story": 1.0
+      "1 Story + Attic": 1.0
+      "1 1/2 Story": 1.5
+      "1 1/2 Story + Unfinished": 1.5
+      "2 Story": 2.0
+      "2 Story + Attic": 2.0
+      "2 1/2 Story": 2.5
+      "2 1/2 Story + Unfinished": 2.5
+      "3 Story": 3.0
+      "3 Story + Attic": 3.0
+      "4 Story": 4.0
+    output: n_stories
+  - type: remap
+    input: BSMT_DESC
+    mapping:
+      "Full": true
+      "Sub & Full": true
+      "2/3 Bsmt": true
+      "1/2 Bsmt": true
+      "1/3 Bsmt": true
+    output: has_basement
+  - type: remap
+    input: heating_type
+    mapping:
+      "Central A/C": true
+      "Central": false
+      "Non Central": false
+    output: has_central_air
+  # n_bathrooms = full + 0.5 x half; a null half count adds nothing.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  year_built: min
+  effective_year_built: max
+  renovation_year: max
+  living_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  building_style: first
+  quality_grade: first
+  condition: first
+  exterior_wall: first
+  roof_material: first
+  heating_type: first
+  has_central_air: max
+  n_fireplaces: sum
+  n_garage_spaces: sum
+
+supplements: US-VA-FA_property-fairfaxcounty-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+  # Same conversion as the roll, so both keys agree.
+  instruction:
+    US-VA-FA:
+      conv: simple
+
+save_to:
+  data_dir: cache
+  filename: dwelling
