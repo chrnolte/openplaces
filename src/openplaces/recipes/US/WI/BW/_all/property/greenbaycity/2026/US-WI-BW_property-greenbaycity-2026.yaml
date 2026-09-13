@@ -1,0 +1,280 @@
+# Recipe: City of Green Bay parcels with assessor detail, room counts
+# and building features.
+#
+# COVERAGE. The source covers only the City of Green Bay, not the rest
+# of Brown County (US-WI-BW): Municipality is CITY OF GREEN BAY on all
+# 35,243 rows. The recipe sits at the county because openplaces
+# processes Wisconsin at admin level 3. Brown County's own tax parcel
+# layer has no building data.
+#
+# SOURCE. City of Green Bay Open Data Hub, layer "GB_Parcels / City
+# Parcels" (153 fields; CAMA vendor not stated), read as the Hub CSV
+# export (about 69 MB, UTF-8 with a byte-order mark). On a cold Hub
+# cache the first request answers 202 while the file is generated; a
+# 202 means "not built yet", not "gone".
+#
+# ROW SHAPE, measured 2026-09-12: 35,243 rows, 35,140 distinct
+# PARCELID. One row per parcel: the layer joins one residential
+# (Bedrooms, FullBaths, Story ...) and one commercial (Stories,
+# TaxClass_1 ...) record to each parcel polygon. A tax roll, so this is
+# the property roll itself. One 3-character PARCELID value carries 100
+# rows: all ParcelType 3, no TaxClass, no room or story field. It is a
+# placeholder key, not a property, and the query drops ParcelType 3
+# (exactly those 100 rows). Three more keys carry two or three rows
+# (7 rows) and are kept as published.
+#
+# VALIDATED in memory 2026-09-12 (reader, preprocessing and key as the
+# ingester runs them): of V11's 29,377 residential improved city
+# parcels, n_bedrooms > 0 99.2%, n_bathrooms 99.2%, n_half_bathrooms
+# 31.3%, n_stories 99.2%.
+#
+# ROOM COUNTS, on TaxClass Residential rows (29,224): Bedrooms > 0
+# 99.98%, FullBaths > 0 99.93%, HalfBaths > 0 31.6%. Baths are whole
+# full and half counts, so n_bathrooms = FullBaths + 0.5 x HalfBaths
+# and n_half_bathrooms = HalfBaths. PlumbingRoughIns and
+# AdditionalFixtures are fixtures, not baths, and are not mapped.
+#
+# STORIES. The numeric Stories is filled only on the commercial side
+# (2,279 rows). Residential stories are the text Story ("1 story",
+# "1.5 story", "2 story w/attic", ...): its leading number is taken and
+# the "w/attic" qualifier dropped (4,194 + 348 rows carry it). Where a
+# parcel has no Story text, the commercial Stories fills in; its 0
+# (32 rows) means "not recorded" and is nulled.
+#
+# NOT MAPPED: rooms. OtherRooms and FamilyRooms are counts of two room
+# types, not a total, so neither is n_rooms. Owner names and mailing
+# fields (OWNERLST, OWNERFST, OWNMAIL*) are never mapped. Values and
+# class are left to V11.
+#
+# BUILDING FEATURES, mapped 2026-09-13 (source vocabulary kept), from
+# the residential record (29,224 TaxClass Residential rows). The
+# commercial record's own fields (PredominantExteriorWallDesc,
+# CDURating_1, AboveGradeSF, BelowGradeSF, FinishedBasementSF; 2,279
+# rows) are not mapped, except ConstructionClass (see CONSTRUCTION).
+# - living_area_sqft: SFLA, finished living area including finished
+#   basement living area. It equals FirstFloorSF + SecondFloorSF +
+#   ThirdFloorSF + HalfStorySF + FinishedAtticSF + FBLASF on 99.9% of
+#   residential rows (92.7% without FBLASF). No area_sqft was mapped
+#   before.
+# - basement_area_sqft: FullBasementSF (> 0 96.4%);
+#   basement_finished_area_sqft: RecRoomSF + FBLASF (within
+#   FullBasementSF on 99.9%); has_basement true where FullBasementSF
+#   > 0, null elsewhere. CrawlSpaceSF is not a basement, not mapped.
+# - n_fireplaces: masonry + metal + gas fireplace openings (> 0
+#   38.5%); FireplaceStacks, FireplaceOpenings and OtherFireplaces are
+#   0 on every row.
+# - has_central_air: CoolingType ('A/C, same ducts' and 'A/C,
+#   separate ducts' true, 'No A/C' false).
+# - heating_type: HeatingType as published ('Gas, forced air' ...);
+#   heating_fuel: its leading word (Gas, Oil, Electric, Wood/coal).
+#   'Space (1 unit)' and 'Space (2 units)' name no fuel (14 rows).
+# - quality_grade: Grade (16 codes, AA to E); condition: CDURating
+#   (Very poor to Very good, and Unusable); roof_material: RoofType;
+#   exterior_wall: ExteriorWall; building_style: Style.
+# - year_built: YearBuilt, filled from the commercial YearBuilt_1;
+#   effective_year_built: EffectiveYearBuilt (differs from YearBuilt
+#   on 1.9%); renovation_year: YearRemodeled (0 is the registry's
+#   placeholder; set on 1.6%).
+#
+# VALIDATED FEATURES in memory 2026-09-13, of V11's 29,377
+# residential improved city parcels: year_built and
+# effective_year_built 99.2%, renovation_year 1.5%, living_area_sqft
+# > 0 99.2% (median 1,440), basement_area_sqft > 0 95.6%,
+# basement_finished_area_sqft > 0 44.0%, has_basement true 95.6%,
+# has_central_air set 99.2% (true 65.0%, false 34.3%), n_fireplaces
+# > 0 38.2%, heating_type and heating_fuel 98.6%, quality_grade,
+# condition, exterior_wall and building_style 99.2%, roof_material
+# 98.3%.
+#
+# NOT MAPPED, features: BasementGarageStalls (basement garages only,
+# > 0 on 2%; other garages are not in this layer, so neither a garage
+# count nor a garage flag can be read from it); Whirlpools and HotTubs
+# (not pools); the component ratings (Kitchen, Bath, Interior,
+# Exterior, Equipment); Occupancy (a use label; LivingUnits is
+# mapped). No neighborhood code is published.
+#
+# YEAR AND UNITS, audited 2026-09-13. YearBuilt is the actual year
+# built; EffectiveYearBuilt is mapped separately. No year falls
+# outside 1600 to 2026. n_dwellings: the residential record's
+# LivingUnits (1 to 4) plus the commercial record's TotalLivingUnits
+# (up to 225); both are set on 25 rows and both above 0 on 10, where
+# the sum counts two buildings. 0 is nulled. Style "Condominium" rows
+# carry their own unit (1 on 686 of 688), not the complex's.
+# MEASURED in memory 2026-09-13, of V11's 29,377 residential
+# improved city parcels: n_dwellings 99.2% (1 unit 87.5%, 2 units
+# 11.1%, 3 or more 0.6%; median 1); year_built 99.2%.
+#
+# CONSTRUCTION, mapped 2026-09-13: construction_description is the
+# commercial record's ConstructionClass as published ('Masonry
+# bearing walls', 'Wood or steel framed exterior walls', ...; 6
+# codes). The residential record has no construction or foundation
+# field (BasementType is empty on every row), so it is set on 6.4% of
+# properties and on none of V11's 29,377 residential improved city
+# parcels. construction_type stays unmapped (NSI-coded).
+#
+# JOIN KEY. PARCELID is V11's PARCELID for this city as shipped:
+# 99.78% of V11's City of Green Bay parcels find it raw (99.78% after
+# the bundled US-WI-BW conversion, which resolves to 'simple'), and
+# 99.84% of source keys are in V11. 100.0% of V11's residential
+# improved city parcels match. No id-override row needed.
+
+description: >-
+  City of Green Bay parcels with assessor detail (city only, not Brown
+  County): room counts, stories, years, areas, grade, condition,
+  materials, heating, cooling.
+
+admin_id: US-WI-BW
+
+entity:
+  entity_type: property
+  source:
+    source_id: greenbaycity
+    # Checked 2026-09-12: the Hub item is public, its licenseInfo is
+    # empty, and the Hub page shows no terms text. No fee or gate.
+    license: "unknown (Hub item licenseInfo empty; no terms on the Hub page)"
+    redistribution_restricted: null
+    portal_url: "https://www.arcgis.com/home/item.html?id=680c712fc2454e80af8673ed1a36f1da"
+    download_url: "https://hub.arcgis.com/api/download/v1/items/680c712fc2454e80af8673ed1a36f1da/csv?layers=0"
+  version: "2026"
+
+uncompressed_file_name: "greenbay_parcels.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+
+csv_dtype:
+  PARCELID: str
+
+columns:
+  parcel_id_assessor: PARCELID
+  n_bedrooms: Bedrooms
+  n_bathrooms: FullBaths
+  n_half_bathrooms: HalfBaths
+  year_built: YearBuilt
+  n_dwellings: LivingUnits
+  effective_year_built: EffectiveYearBuilt
+  renovation_year: YearRemodeled
+  building_style: Style
+  living_area_sqft: SFLA
+  basement_area_sqft: FullBasementSF
+  exterior_wall: ExteriorWall
+  roof_material: RoofType
+  heating_type: HeatingType
+  quality_grade: Grade
+  condition: CDURating
+  construction_description: ConstructionClass
+
+# Drops the 100-row placeholder key (see the header's ROW SHAPE).
+query: "ParcelType != 3"
+
+transformations:
+  # Residential stories: the leading number of the Story text.
+  - type: string
+    operation: split_take
+    input: Story
+    args:
+      sep: " "
+      index: 0
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # Commercial stories fill parcels without Story text. Both are set on
+  # only 25 rows, where max keeps the taller building.
+  - type: unary
+    operation: null_if_equal
+    input: Stories
+    args:
+      value: 0
+    output: commercial_stories
+  - type: aggregate
+    operation: max
+    inputs: [n_stories, commercial_stories]
+    output: n_stories
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # Commercial year built fills parcels without a residential one;
+  # both are set on 24 rows, where min keeps the older building.
+  - type: aggregate
+    operation: min
+    inputs: [year_built, YearBuilt_1]
+    output: year_built
+  # Dwelling units: the residential record's LivingUnits plus the
+  # commercial record's TotalLivingUnits (two buildings where both
+  # are set). 0 records no unit count and is nulled.
+  - type: aggregate
+    operation: sum
+    inputs: [n_dwellings, TotalLivingUnits]
+    output: n_dwellings
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args:
+      value: 0
+    output: n_dwellings
+  # Finished basement: rec room plus finished basement living area
+  # (FBLA), both within FullBasementSF on 99.9% of rows.
+  - type: aggregate
+    operation: sum
+    inputs: [RecRoomSF, FBLASF]
+    output: basement_finished_area_sqft
+  # Fireplaces: masonry, metal and gas openings.
+  - type: aggregate
+    operation: sum
+    inputs:
+      - MasonryFireplaceOpenings
+      - MetalFireplaceOpenings
+      - GasFireplaceOpenings
+    output: n_fireplaces
+  # HeatingType pairs fuel and system ("Gas, forced air"); the fuel
+  # is its leading word. Space heaters name no fuel and stay null.
+  - type: remap_pattern
+    input: heating_type
+    patterns:
+      - {pattern: "^Gas", value: "Gas"}
+      - {pattern: "^Oil", value: "Oil"}
+      - {pattern: "^Electric", value: "Electric"}
+      - {pattern: "^Wood/coal", value: "Wood/coal"}
+    output: heating_fuel
+  # CoolingType records central air and its absence.
+  - type: remap
+    input: CoolingType
+    mapping:
+      "A/C, same ducts": true
+      "A/C, separate ducts": true
+      "No A/C": false
+    output: has_central_air
+  # A basement area records a basement; 0 is not read as absence.
+  - type: conditional
+    operation: greater_than
+    input: basement_area_sqft
+    args:
+      threshold: 0
+    output: basement_flag
+  - type: remap
+    input: basement_flag
+    mapping: {1: true}
+    output: has_basement
+
+drop_columns:
+  - commercial_stories
+  - half_bathroom_equivalent
+  - basement_flag
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

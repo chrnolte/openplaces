@@ -1,0 +1,270 @@
+# Recipe: City of Milwaukee Master Property File (MPROP), room counts
+# and building features.
+#
+# COVERAGE. The source covers only the City of Milwaukee, not the rest
+# of Milwaukee County (US-WI-MU). The recipe sits at the county because
+# openplaces processes Wisconsin at admin level 3; the suburbs get no
+# rows from it. No public layer with room counts was found for the
+# suburbs (MCLIO's county parcel layer has none).
+#
+# SOURCE. The City Assessor's Office's MPROP, one CSV on
+# data.milwaukee.gov (CKAN dataset "mprop", updated daily, about
+# 90 MB). The documentation PDF (mprop_fall_2024.pdf) sits in the same
+# dataset. Its column layout interleaves text, and a "not used, all
+# zeros" note beside BATHS and NR_STORIES is contradicted by the data
+# (both populated). It also says BEDROOMS is "reliable for residential
+# single and duplex structures only".
+#
+# FORMAT. The CSV uses CR-only line endings. The ingester's plain
+# pd.read_csv reads it correctly without any recipe key (measured
+# 2026-09-12: 159,949 rows, 92 columns, the same row count as a
+# lineterminator='\r' read), so none is set.
+#
+# ROW SHAPE, measured 2026-09-12: 159,949 rows, 159,949 distinct TAXKEY
+# (all 10 digits). One row per tax key, condominium units included as
+# their own rows (C_A_CLASS 5: 11,452 rows). A tax roll, so this is the
+# property roll itself and supplements nothing.
+#
+# ROOM COUNTS, on class 1 residential rows with improvements (124,048):
+# BEDROOMS > 0 99.5%, BATHS > 0 99.75%, POWDER_ROOMS > 0 22.8%,
+# NR_ROOMS > 0 99.0%, NR_STORIES > 0 99.9%. Condos (class 5): beds
+# 95.2%, baths 97.3%. BATHS counts full baths only (whole numbers) and
+# POWDER_ROOMS counts half baths, so n_bathrooms = BATHS + 0.5 x
+# POWDER_ROOMS and n_half_bathrooms = POWDER_ROOMS. NR_STORIES is
+# fractional (1, 1.5, 2); its 0 (2,506 rows) means "not recorded" and
+# is nulled. A bedroom 0 (17,010 rows, mostly non-residential and
+# vacant) is kept as published.
+#
+# VALIDATED in memory 2026-09-12 (reader, preprocessing and key as the
+# ingester runs them): of V11's 140,462 residential improved city
+# parcels, n_bedrooms > 0 99.0%, n_bathrooms 95.9%, n_half_bathrooms
+# 23.4%, n_rooms 95.1%, n_stories 99.3%. The fold equals BATHS + 0.5 x
+# POWDER_ROOMS on every row.
+#
+# JOIN KEY. TAXKEY is V11's PARCELID for this city as shipped: 99.64%
+# of V11's City of Milwaukee parcels find a TAXKEY, and 99.47% of TAXKEY
+# values are in V11 (raw and after the bundled US-WI-MU conversion,
+# which resolves to 'simple' on these all-digit keys). 99.92% of V11's
+# residential improved city parcels match. No id-override row needed.
+#
+# BUILDING FEATURES, mapped 2026-09-13, codes in the source's own
+# vocabulary. The MPROP documentation says BASEMENT, ATTIC,
+# AIR_CONDITIONING, FIREPLACE and the garage field are maintained for
+# residential building types only, and the data agree: BASEMENT is Y
+# on 97.9% of class 1 improved rows, on under 2% of classes 2 to 7
+# (apartments, class 7, included) and on 13.8% of exempt class 9.
+# - has_basement: BASEMENT Y/N (both recorded) on class 1 only; null
+#   on every other class. The PDF's F/N/P/C codes do not occur; the
+#   file carries Y and N.
+# - has_central_air: AIR_CONDITIONING 1/0 on classes 1 and 5 (condo
+#   units: 82.4% 1); null elsewhere.
+# - n_fireplaces: FIREPLACE (a count, 0 to 9) on classes 1 and 5.
+# - living_area_sqft: BLDG_AREA ("total useable floor area") on
+#   classes 1 and 5. It is above-grade finished area, not gross: on
+#   one-story class 1 houses the median is 1,147 with a basement and
+#   882 without (a counted basement would double it), and it scales
+#   with stories (median 1,140 at one, 2,208 at two). Commercial
+#   classes carry a usable area that is neither, left unmapped. No
+#   area_sqft was mapped before, so none is kept or removed.
+# - garage_type: PARKING_TYPE (the PDF's GARAGE-TYPE: A attached, D
+#   detached, AD both), set on 7.8% of class 1 improved rows (A 9,642,
+#   D 1): it records attached garages, not the city's garage stock.
+#   has_garage is true where it is set and null elsewhere.
+#   PARKING_SPACES (the garage size) is empty on every row.
+# - year_built: YR_BUILT (0 is the registry's no-year placeholder).
+# - building_style: BLDG_TYPE (PDF Appendix E): two-digit residential
+#   style codes and 'C' codes for commercial and condominium
+#   buildings, 139 distinct.
+# - tax_neighborhood_code: NEIGHBORHOOD (four digits, zero
+#   padded; 708 distinct).
+#
+# VALIDATED FEATURES in memory 2026-09-13, of V11's 140,462
+# residential improved city parcels: year_built 99.5%, building_style
+# 99.6%, living_area_sqft > 0 95.7% (median 1,357), has_basement set
+# 88.0% (true 86.1%, false 1.9%), has_central_air set 96.0% (true
+# 51.1%, false 44.9%), n_fireplaces > 0 11.9%, garage_type and
+# has_garage 7.0%, tax_neighborhood_code 99.7%.
+#
+# YEAR AND UNITS, audited 2026-09-13. YR_BUILT is the actual year
+# built (MPROP publishes no effective year). Its 0 is the registry's
+# placeholder; 3 rows outside 1600 to 2026 (2 after, 1 before) are
+# nulled too. n_dwellings: NR_UNITS, the building's dwelling units,
+# 0 nulled (5.7% of rows). Condominium units (class 5) carry their
+# own unit, not the complex's: 1 on 11,131 of 11,452 rows, 2 on 40;
+# one row carries 81 and is kept as published.
+# MEASURED in memory 2026-09-13, of V11's 140,462 residential
+# improved city parcels: year_built 99.5%, n_dwellings 99.6% (1 unit
+# 71.0%, 2 units 23.2%, 3 or more 5.4%; median 1).
+#
+# NOT MAPPED, deliberately: owner names, owner mailing address and
+# every other personal field; ATTIC (Y/N, no registry row); LOT_AREA
+# (a parcel attribute); SWIM_POOL (empty); values and land use (V11
+# carries values and class for the whole state).
+
+description: >-
+  City of Milwaukee Master Property File (city only, not suburban
+  Milwaukee County): room counts, stories, year built, living area,
+  basement, air, garage per tax key.
+
+admin_id: US-WI-MU
+
+entity:
+  entity_type: property
+  source:
+    source_id: milwaukeecity
+    # Checked 2026-09-12: the CKAN record gives license_id cc-by,
+    # "Creative Commons Attribution". No fee, gate or resale clause.
+    license: >-
+      Creative Commons Attribution (CC BY), per the data.milwaukee.gov
+      record. Attribution: City of Milwaukee Assessor's Office, Master
+      Property File (MPROP), data.milwaukee.gov.
+    terms_url: "http://www.opendefinition.org/licenses/cc-by"
+    redistribution_restricted: false
+    portal_url: "https://data.milwaukee.gov/dataset/mprop"
+    download_url: "https://data.milwaukee.gov/dataset/562ab824-48a5-42cd-b714-87e205e489ba/resource/0a2c7f31-cd15-4151-8222-09dd57d5f16d/download/mprop.csv"
+  version: "2026"
+
+uncompressed_file_name: "mprop.csv"
+
+process_by:
+  admin_level: 3
+
+# TAXKEY is all digits: read it as text so leading zeros survive.
+# NEIGHBORHOOD is a zero-padded code ('0020'); BLDG_TYPE mixes
+# zero-padded numeric codes with 'C' codes.
+csv_dtype:
+  TAXKEY: str
+  NEIGHBORHOOD: str
+  BLDG_TYPE: str
+
+columns:
+  parcel_id_assessor: TAXKEY
+  n_bedrooms: BEDROOMS
+  n_bathrooms: BATHS
+  n_half_bathrooms: POWDER_ROOMS
+  n_rooms: NR_ROOMS
+  n_stories: NR_STORIES
+  year_built: YR_BUILT
+  n_dwellings: NR_UNITS
+  building_style: BLDG_TYPE
+  garage_type: PARKING_TYPE
+  tax_neighborhood_code: NEIGHBORHOOD
+
+transformations:
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+  # year_built outside 1600 to 2026 is not a construction year and is
+  # nulled (see the header's YEAR AND UNITS).
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1600
+    output: year_not_before_1600
+  - type: conditional
+    operation: less_equal
+    input: year_built
+    args:
+      threshold: 2026
+    output: year_not_after_2026
+  - type: binary
+    operation: multiply
+    inputs: [year_not_before_1600, year_not_after_2026]
+    output: year_range_indicator
+  - type: remap
+    input: year_range_indicator
+    mapping: {1: 1}
+    output: year_range_gate
+  - type: binary
+    operation: multiply
+    inputs: [year_built, year_range_gate]
+    output: year_built
+  # NR_UNITS 0 records no unit count (vacant and most non-residential
+  # rows), not a building without dwellings.
+  - type: unary
+    operation: null_if_equal
+    input: n_dwellings
+    args:
+      value: 0
+    output: n_dwellings
+  # Class gates (C_A_CLASS 1 residential, 5 condominium). The fields
+  # below are maintained for residential building types only, so a
+  # value on any other class is left null rather than read as absence.
+  - type: remap
+    input: C_A_CLASS
+    mapping: {1: 1}
+    output: residential_class_gate
+  - type: remap
+    input: C_A_CLASS
+    mapping: {1: 1, 5: 1}
+    output: dwelling_class_gate
+  # BLDG_AREA on classes 1 and 5: above-grade finished area (see
+  # the header's LIVING AREA).
+  - type: binary
+    operation: multiply
+    inputs: [BLDG_AREA, dwelling_class_gate]
+    output: living_area_sqft
+  # BASEMENT Y/N records presence and absence, kept on class 1 only.
+  - type: remap
+    input: BASEMENT
+    mapping: {"Y": 1, "N": 0}
+    output: basement_code
+  - type: binary
+    operation: multiply
+    inputs: [basement_code, residential_class_gate]
+    output: basement_flag
+  - type: remap
+    input: basement_flag
+    mapping: {1: true, 0: false}
+    output: has_basement
+  # AIR_CONDITIONING 1/0 records central air and its absence.
+  - type: binary
+    operation: multiply
+    inputs: [AIR_CONDITIONING, dwelling_class_gate]
+    output: central_air_flag
+  - type: remap
+    input: central_air_flag
+    mapping: {1: true, 0: false}
+    output: has_central_air
+  - type: binary
+    operation: multiply
+    inputs: [FIREPLACE, dwelling_class_gate]
+    output: n_fireplaces
+  # A garage type code records a garage; no code is not absence.
+  - type: remap
+    input: garage_type
+    mapping: {"A": true, "D": true, "AD": true}
+    output: has_garage
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+
+drop_columns:
+  - half_bathroom_equivalent
+  - residential_class_gate
+  - dwelling_class_gate
+  - basement_code
+  - basement_flag
+  - central_air_flag
+  - year_not_before_1600
+  - year_not_after_2026
+  - year_range_indicator
+  - year_range_gate
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
