@@ -1,0 +1,202 @@
+# Recipe: Northampton County, PA parcels with residential CAMA fields.
+#
+# Source: the county GIS Division's own ArcGIS Server map service
+# `Assessment_Services/Land_Records_LGM`, layer 0 "Parcels"
+# (gis.northamptoncounty.org). Per the layer description, the parcel
+# polygon feature class "is joined to the parcel's assessment
+# information based on the CAMA_ID field", so one row is one parcel
+# polygon carrying its assessment record. Northampton is NOT one of the
+# 39 counties in PASDA's statewide layer (US-PA_parcel-pasda-2026), so
+# this is also the county's only parcel geometry in the repo, which is
+# why it is a parcel recipe (like US-PA-HU_parcel-huntingdonco-2026)
+# rather than a property roll.
+#
+# BULK VS REST. No free bulk file exists. The county sells the
+# complete package (parcels with assessment data, centerlines,
+# addresses) for $6,240 by letter request (norcopa.gov/gis-info), and
+# states that "Educational institutions receive data at no charge": a
+# request a person could make, not something this recipe does. Without
+# it, `arcgis_rest_scraper` pages the layer: maxRecordCount is 1000,
+# so a full ingest is about 124 sequential, paced requests. out_fields
+# lists only the mapped fields, so owner and mailing lines are never
+# requested or cached.
+#
+# VALIDATED 2026-09-12 by server-side counts and ONE 1,000-row page
+# (no further paging):
+#   rows (returnCountOnly)                   123,297
+#   distinct PARCEL_ID / CAMA_ID     122,198 / 123,070
+#   NUMBER_OF_BEDROOMS > 0                   101,822
+#   NUMBER_OF_BATHS > 0                      101,594
+#   NUMBER_HALF_BATHS > 0                     49,798
+#   TOTAL_ROOMS > 0                          101,936
+#   NUMBER_OF_STORIES > 0                    101,949
+#   RES_YEAR_BUILT > 0                       101,949
+#   SQFT_LIVING_AREA > 0                     101,947
+# By land-use code (LUC), bedrooms > 0 on 91,315 of 91,512 rows of 110,
+# 4,807 of 4,891 of 151, 2,935 of 2,951 of 120, 1,887 of 2,220 of 210
+# and 635 of 661 of 211: 101,579 of 102,235 (99.4%) over those five
+# dwelling codes. Codes 90, 200, 201, 92 and 180 (10,771 rows) carry
+# almost none. On the validation page, run through this recipe in
+# memory, bedrooms > 0 on 844 of 845 rows in the five codes, and the
+# bath fold reproduces full + 0.5 x half on all 998 uniquely keyed
+# rows.
+#
+# ROW SHAPE AND CARDS. The layer carries one residential card summary
+# per row: NUMBER_OF_CARDS > 1 on 530 rows (null on 21,348). Rows are
+# not per card, so no card aggregation is needed. 913 PARCEL_ID values
+# repeat, over 2,011 rows (at most 8 per key). Every one of them has
+# bedrooms on every row, identical across the rows for 909 of the 913,
+# and rows equal cards for only 9: they are pieces of one parcel
+# repeating one assessment record, not separate cards. The registry's
+# default (mean) therefore keeps their counts; a sum would double
+# them. Separately, 192 CAMA_ID values repeat over 418 rows.
+#
+# FIELD NOTES:
+#   - YEAR_BUILT is null on all 123,297 rows; the year lives in
+#     RES_YEAR_BUILT (101,949 > 0). COM_YEAR_BUILT (6,095 > 0) is the
+#     commercial counterpart and is left unmapped.
+#   - Baths: NUMBER_OF_BATHS is the full count and NUMBER_HALF_BATHS
+#     the half count, both integers. n_bathrooms folds them as
+#     full + 0.5 x half below. 83 rows have half baths and no full.
+#   - NUMBER_OF_STORIES is a double; 5,847 rows are fractional.
+#   - SALE_DATE is an Esri date and would arrive as epoch milliseconds
+#     through f=geojson, so sales are not mapped; nor are the value
+#     fields (market and assessed families), which are outside this
+#     room-count pass.
+#   - Owner lines (OWNERS_NAME_1/2, MAIL_ADDRESS_1-3, OWNERS_HIDENAME)
+#     are not requested at all.
+#
+# BUILDING FEATURES (2026-09-13). The layer publishes no domains or
+# field descriptions beyond aliases, and no county code table was
+# found, so codes are kept as published:
+#   - living_area_sqft: SQFT_LIVING_AREA, aliased "GLA SQFT" (gross
+#     living area), so living, not gross building area.
+#   - exterior_wall: EXTERIOR, two-digit codes 01-09, undecoded. Its
+#     distribution does not match Montgomery's code table, so that
+#     table is not borrowed.
+#   - has_pool: SWIMMING_POOL carries RP1-RP5 where a pool is
+#     recorded; true there, null elsewhere.
+#   - tax_neighborhood_code: NBHD (163 codes on dwelling rows).
+# BASEMENT (codes 1-4, no decoder published) is requested since
+# 2026-09-13 as foundation_description, kept as published for curate
+# to translate; without a decoder it does not become has_basement.
+# Server-side on the 102,235 rows in the five dwelling codes it is
+# filled on 99.4% (4 on 89.0%, 1 on 5.5%, 3 on 4.1%, 2 on 0.9%); on
+# the validation page, run through this recipe in memory, on all 845
+# dwelling rows. No construction or frame-type field exists: the
+# commercial structure type is filled on 20 dwelling rows only.
+# Other fields, server-side on the 102,235 rows in the five
+# dwelling codes: EXTERIOR filled 99.5%, SQFT_LIVING_AREA > 0 99.5%,
+# a pool code 7.1% (7,285 on all rows), NBHD 100%. On the validation
+# page run through this recipe in memory, all 845 dwelling rows carry
+# living area, exterior and neighborhood, and 8.3% a pool.
+# living_area_sqft's registry aggregation is a sum, so where a
+# PARCEL_ID repeats over split polygons (913 keys, see ROW SHAPE) an
+# aggregation by key would double it; area_sqft (mean) does not.
+#
+# JOIN KEY: PARCEL_ID, the map-block-lot number with internal
+# fixed-width spacing ('X9XX9X 9  99' shape, fabricated). CAMA_ID is
+# PARCEL_ID plus a four-digit suffix. The bundled US-PA-NO parcel
+# conversion keeps a key on 100% of the validation page with no
+# collisions (999 distinct in, 999 out); the `tax` conversion would
+# lose 12.6%. There is no PASDA layer to measure overlap against.
+
+description: >-
+  Northampton County, PA parcel polygons with residential CAMA fields:
+  land-use code, situs, year built, living area, rooms, bedrooms,
+  bathrooms, stories.
+
+admin_id: US-PA-NO
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: northamptonco
+    # Checked 2026-09-12: the service and layer declare only
+    # copyrightText "Northampton County GIS Division" and no licence or
+    # use terms. The paid bulk package's terms were not found online
+    # and do not govern this public service.
+    license: "unknown (copyright 'Northampton County GIS Division'; no terms stated)"
+    terms_url: null
+    redistribution_restricted: null
+    portal_url: "https://norcopa.gov/gis-info"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "northampton_parcels.geojson"
+
+scraper_options:
+  layer_url: "https://gis.northamptoncounty.org/arcgisweb/rest/services/Assessment_Services/Land_Records_LGM/MapServer/0"
+  where: "1=1"
+  # One comma-separated string; each trailing backslash continues it
+  # with no space inserted.
+  out_fields: "OBJECTID,PARCEL_ID,CAMA_ID,LOCATION,LUC,ASMT_ACREAGE,\
+    NUMBER_OF_CARDS,NUMBER_OF_STORIES,BUILDING_STYLE,RES_YEAR_BUILT,\
+    SQFT_LIVING_AREA,NUMBER_OF_BEDROOMS,NUMBER_OF_BATHS,\
+    NUMBER_HALF_BATHS,TOTAL_ROOMS,EXTERIOR,SWIMMING_POOL,NBHD,BASEMENT"
+
+columns:
+  parcel_id_assessor: PARCEL_ID
+  address: LOCATION
+  use_group_code: LUC
+  exterior_wall: EXTERIOR
+  foundation_description: BASEMENT
+  tax_neighborhood_code: NBHD
+  area_assessed_ac: ASMT_ACREAGE
+  year_built: RES_YEAR_BUILT
+  area_sqft: SQFT_LIVING_AREA
+  building_style: BUILDING_STYLE
+  n_stories: NUMBER_OF_STORIES
+  n_rooms: TOTAL_ROOMS
+  n_bedrooms: NUMBER_OF_BEDROOMS
+  n_bathrooms: NUMBER_OF_BATHS
+  n_half_bathrooms: NUMBER_HALF_BATHS
+
+transformations:
+  # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
+  # both counts are, so a missing half count reads as zero halves.
+  - type: expression
+    expression: "n_half_bathrooms * 0.5"
+    inputs: [n_half_bathrooms]
+    output: half_bathroom_equivalent
+  - type: aggregate
+    operation: sum
+    inputs: [n_bathrooms, half_bathroom_equivalent]
+    output: n_bathrooms
+  # lot_size's canonical unit is sqft; the source gives acres.
+  - type: unary
+    operation: acres_to_sqft
+    input: area_assessed_ac
+    output: lot_size
+  # SQFT_LIVING_AREA is aliased "GLA SQFT" (gross living area), so it
+  # is also living_area_sqft; area_sqft keeps it as before.
+  - type: unary
+    operation: to_numeric
+    input: area_sqft
+    output: living_area_sqft
+  # SWIMMING_POOL carries a pool code (RP1-RP5) only where a pool is
+  # recorded; blank is not a recorded absence, so it stays null.
+  - type: remap_conditional
+    input: SWIMMING_POOL
+    conditions:
+      - condition: regex
+        pattern: "^RP[1-5]"
+        output: true
+    output: has_pool
+
+drop_columns:
+  - half_bathroom_equivalent
+
+columns_to_categorical:
+  - use_group_code
+  - building_style
+  - exterior_wall
+  - tax_neighborhood_code
+  - foundation_description
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
