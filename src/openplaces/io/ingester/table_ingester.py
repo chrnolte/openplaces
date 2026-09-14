@@ -49,6 +49,8 @@ from openplaces.io.transform import (
 )
 from openplaces.path import recipe_path
 from openplaces.recipe import (
+    STACKED_UNITS_LAYER_KEY,
+    build_table_recipe,
     get_output_path,
     get_process_admin_level,
     get_recipe,
@@ -228,7 +230,10 @@ class TableIngester:
         gdf = self._preprocess_recipe_data(gdf)
         self.timer.mark(f'Preprocess{suffix}')
 
+        gdf, properties = self._split_stacked_units(gdf, suffix)
         self._save_recipe_data(gdf)
+        if properties is not None:
+            self._save_recipe_data(properties, recipe=self._stacked_units_recipe())
         self.timer.mark(f'Save{suffix}')
 
     # FID filter helpers (per-table, cached in download_partition)
@@ -1463,20 +1468,73 @@ class TableIngester:
     # the measured case).
     # Save
 
-    def _save_recipe_data(self, gdf):
+    def _split_stacked_units(self, gdf, suffix=''):
+        """Split a parcel table's stacked units off into its property layer.
+
+        Returns the parcel table (unchanged when the split does not apply
+        or found nothing stacked) and the property table or None.
+        """
+        from openplaces.io.stacked_units import (
+            is_enabled,
+            lot_key_of,
+            split_stacked_units,
+        )
+
+        if not is_enabled(self.recipe) or not isinstance(gdf, gpd.GeoDataFrame):
+            return gdf, None
+        lot_key = lot_key_of(self.recipe)
+        if lot_key not in gdf.columns:
+            if lot_key == 'geo_id':
+                # A parcel recipe with its own index has no geo_id column;
+                # nothing to group on, so nothing to split.
+                return gdf, None
+            raise KeyError(
+                f'lot_key {lot_key!r} names a column the table does not carry '
+                f'after column mapping for {self.table_name}.'
+            )
+        result = split_stacked_units(gdf, lot_key=lot_key)
+        if self.verbose or result.n_stacks:
+            print(f'  stacked units{suffix}: {result.summary()}')
+        self.timer.mark(f'Split stacked units{suffix}')
+        return result.parcels, result.properties
+
+    def _stacked_units_recipe(self) -> dict:
+        """The table recipe of this parcel recipe's implicit property layer.
+
+        Built from `self.recipe` so that a temporary aggregate-mode recipe
+        (save level stripped) carries over to the layer's output path.
+        """
+        spec = next(
+            spec
+            for spec in self.recipe.get('additional_layers', [])
+            if spec.get(STACKED_UNITS_LAYER_KEY)
+        )
+        table_recipe = build_table_recipe(self.recipe, spec)
+        if self.recipe.get('save_to') is not None:
+            table_recipe['save_to'] = self.recipe['save_to']
+        else:
+            table_recipe.pop('save_to', None)
+        return table_recipe
+
+    def _save_recipe_data(self, gdf, recipe=None):
         """Save processed data to the entity's output path.
 
         Parameters
         ----------
         gdf : DataFrame or GeoDataFrame
             Preprocessed data ready to be saved.
+        recipe : dict, optional
+            The table recipe to resolve the output path from; defaults to
+            this table's own. The stacked-units property layer is saved
+            through its own table recipe.
         """
+        recipe = self.recipe if recipe is None else recipe
         gdf = coerce_mixed_object_columns(gdf)
 
-        save_to = self.recipe.get('save_to') or {}
-        admin_level = save_to.get('admin_level') or (
-            self.recipe.get('cache_by') or {}
-        ).get('admin_level')
+        save_to = recipe.get('save_to') or {}
+        admin_level = save_to.get('admin_level') or (recipe.get('cache_by') or {}).get(
+            'admin_level'
+        )
         # Saving at the level the chunk is processed at is not a split.
         # The chunk already *is* that unit, so which unit a row belongs to
         # is carried by the output path and filename, not by a column --
@@ -1484,7 +1542,7 @@ class TableIngester:
         # columns before writing. Only a coarser save is a real split,
         # where one file gathers rows from several units and the column is
         # needed to tell them apart.
-        processing_level = (self.recipe.get('process_by') or {}).get('admin_level')
+        processing_level = (recipe.get('process_by') or {}).get('admin_level')
         split_dataset_by_admin = (
             admin_level is not None and admin_level != processing_level
         )
@@ -1552,7 +1610,7 @@ class TableIngester:
                 gdf_to_save = gdf.copy()
 
             output_path = get_output_path(
-                self.recipe,
+                recipe,
                 admin_id_to_save,
                 self.download_partition.get('partition_id_to_download'),
             )

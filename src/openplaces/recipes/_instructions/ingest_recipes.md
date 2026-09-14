@@ -154,6 +154,20 @@ degenerate source column, empty column — is in
   `admin_level`, optional `retention`.
 - `join_partitions_by:` — left-join per-table partitions into one file per
   admin unit.
+- **Stacked units are split at ingest, by default, for every parcel table.**
+  A source that stacks several ownership records on one lot polygon
+  (every condo unit carrying its building's outline; every account on a
+  lot repeating the lot) is regrouped: one parcel row per lot, and every
+  source record kept, unchanged, in an implicit `property` layer of the
+  same recipe (`property-<source>-<version>`, joined on `parcel_id_local`,
+  read like MassGIS's bundled property table). The lot is the set of rows
+  sharing a `geo_id`; `lot_key: <column>` names a source lot id instead
+  (a column present after column mapping). A stack's parcel row keeps
+  only the values its members agree on; exact duplicate rows collapse to
+  one; singletons are untouched; the ingest log prints the counts.
+  `stacked_units: false` opts a table out; a recipe that declares its own
+  `property` layer gets no implicit one. See `io/stacked_units.py` for
+  the mechanism and its patent rationale.
 - `additional_layers:` — secondary entities extracted from the same source
   file (a property table alongside a parcel table).
 

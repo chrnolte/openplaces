@@ -50,6 +50,7 @@ from openplaces.path import (
     path_matches_pattern,
 )
 from openplaces.recipe import (
+    STACKED_UNITS_LAYER_KEY,
     build_table_recipe,
     find_admin_recipe_id,
     get_download_admin_level,
@@ -2360,8 +2361,12 @@ class Ingester:
         primary_table_ingester.process(process_in_chunks=process_in_chunks, bbox=bbox)
         self.timer.mark(f'Wrap up{suffix}')
 
-        # Process additional tables from the same source file
+        # Process additional tables from the same source file. The
+        # stacked-units property layer is not read from the file: the
+        # primary parcel table's own processing wrote it.
         for table_spec in self.recipe.get('additional_layers', []):
+            if table_spec.get(STACKED_UNITS_LAYER_KEY):
+                continue
             table_recipe = build_table_recipe(self.recipe, table_spec)
             if self.verbose and admin_id_to_process is not None:
                 print(f'Processing {table_recipe["entity"]} for {admin_id_to_process}:')

@@ -471,6 +471,28 @@ Key recipe functions (`recipe.py`):
 already-resolved source file. It applies column mappings, type casts, spatial filtering,
 and the attribute registry type checks.
 
+**Every parcel table is split into lots and properties at ingest**
+(`io/stacked_units.py`). Sixteen parcel sources stack several ownership
+records on one lot polygon (Florida's statewide layer alone carries 1.13
+million condo-unit rows on shared outlines), and a stacked row is a
+property, not a parcel. After preprocessing, rows are grouped by `lot_key`
+(default `geo_id`, the geometry hash; a recipe may name a source lot id):
+exact duplicates collapse, a group with one row is a lot and passes
+through, and a group with several distinct rows becomes one parcel row
+keeping only the values its members agree on (a varying value is left
+missing, never summed) plus one property row per member, written to an
+implicit `additional_layers` entry of the same recipe
+(`property-<source>-<version>`, `layer_key: parcel_id_local`) that the
+recipe loader adds to every parcel ingest recipe without a declared
+property layer. Discovery, the property spine, readers and cleanup see
+that layer like a declared one; the ingester's layer loop skips it
+(`STACKED_UNITS_LAYER_KEY`) because the parcel table's own processing
+wrote it. `stacked_units: false` opts a recipe out. The module docstring
+carries the patent rationale (US9298740B2 claim 1, all-elements rule;
+its other independent claims are still to be read before a public
+release). Data on disk keeps the old row shape until a county is
+re-ingested.
+
 Public entrypoint:
 
 `ingest(recipe, admin_ids, partition_ids, reprocess, redownload, verbose)`.
