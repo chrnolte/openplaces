@@ -48,9 +48,38 @@
 # dwelling for only 61.4% of keys, so a per-property grade would
 # often be a shed's. BDBASE and BYRRM are empty;
 # BDSTYP (RES, STG, CPT, GAR, BN1, ...) is a structure type, not a
-# style. gross_floor_area_sqft sums BTOAR over every card, so it
-# includes sheds, carports and decks and runs above the dwelling's
-# own gross floor area; living_area_sqft is not derived from it.
+# style.
+#
+# FLOOR AREA. gross_floor_area_sqft sums BTOAR over enclosed cards
+# only (the user's decision, 2026-09-13). The county publishes no
+# code list, so the split reads the codes' names, checked against
+# appraised value per sqft (BAPVA / BTOAR, median per type, USD)
+# between cards known to be open (carport CPT 1.7, open shed SHO
+# 2.2, patio PAT 2.4) and known to be enclosed (garage GAR 16.1,
+# storage STG 12.4, metal building MTL 20.4):
+#   - kept: RES (dwelling), MF1 and MF2 (manufactured homes; they
+#     carry room counts), GAR, STG, MTL, and every BTYPE M card
+#     (commercial buildings coded by occupancy: K40, N30, H90, ...);
+#   - excluded: CPT, CVD (covered, 3.3), POL (pool), WDK (wood
+#     deck), PAT, GZB (gazebo), the shed variants SHO, SHS, SHA and
+#     SHM, the barns BN1 and BN2, STB, TOB and PKH (tobacco barn and
+#     pack house, 1.0 and 2.1), PHS (0.7), MHP (0), GBN and MHH
+#     (areas of 4 and 1, counts rather than floor area), the BTYPE I
+#     cards (area 0), and any code not listed.
+# Barns (BN1 8.1, BN2 6.3), STB (9.2) and the shed variants (SHS
+# 4.8, SHM 8.8, SHA 13.9) may be enclosed, but their codes do not
+# say so and all but SHA price between the two groups; they stay
+# out until a code list settles them.
+# MEASURED 2026-09-13 in memory through this recipe on the 1,000
+# published cards (385 properties): 589 cards kept, 76.4% of card
+# area. 224 properties (58.2%) change, by a median 694 sqft (after
+# over before 0.70); the median property sum falls from 2,147 to
+# 1,711. On the 231 properties with one dwelling card (a card with
+# a room count) and other cards, the sum over the dwelling card was
+# 1.46 at the median and is 1.15 after; it exceeds 1 on 100% before
+# and 71.0% after. 41 properties have no enclosed card and reduce
+# to 0, not null (see the transformation). living_area_sqft is not
+# derived from BTOAR.
 
 description: >-
   Craven County, NC building cards (year built, floor area, stories, rooms,
@@ -143,6 +172,31 @@ transformations:
     args:
       value: ""
     output: foundation_description
+  # Floor area from enclosed cards only (see header): the dwelling
+  # and manufactured-home cards, garages, storage and metal
+  # buildings, and every commercial (BTYPE M) card. Any other card
+  # type, including one not listed yet, is nulled before the sum
+  # (x * 0 / 0 is null). A property with no enclosed card still
+  # reduces to 0, not null: the supplement sum is pandas' sum,
+  # which turns an all-null group into 0 (41 properties, header).
+  - type: remap
+    input: BDSTYP
+    mapping: {"RES": 1, "MF1": 1, "MF2": 1, "GAR": 1, "STG": 1, "MTL": 1}
+    default: 0
+    output: enclosed_structure_card
+  - type: remap
+    input: BTYPE
+    mapping: {"M": 1}
+    default: 0
+    output: enclosed_commercial_card
+  - type: aggregate
+    operation: max
+    inputs: [enclosed_structure_card, enclosed_commercial_card]
+    output: enclosed_card
+  - type: expression
+    expression: "gross_floor_area_sqft * enclosed_card / enclosed_card"
+    inputs: [gross_floor_area_sqft, enclosed_card]
+    output: gross_floor_area_sqft
   - type: expression
     expression: "BBATH * 10"
     inputs: [BBATH]
@@ -164,6 +218,9 @@ drop_columns:
   - bath_code
   - garage_on_card
   - garage_card
+  - enclosed_structure_card
+  - enclosed_commercial_card
+  - enclosed_card
 
 # A parcel with an outbuilding carries several cards; its rooms and
 # floor area are the sum over them, not their mean, its stories the

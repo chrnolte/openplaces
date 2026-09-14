@@ -75,9 +75,21 @@
 #   - has_central_air: AIR_CONDIT AC true, NO false, HP null.
 #   - has_basement: BASEMENT_P (see the transformation).
 #   - basement_finished_area_sqft: FINISHED_B, 0 nulled.
-#   - SQFT: whether this is living or gross area is not documented;
-#     it is mapped as gross_floor_area_sqft, the choice for an
-#     undocumented total, and living_area_sqft is not derived.
+#   - SQFT: undocumented, read as living area (living_area_sqft)
+#     from aggregates of the live layer, 2026-09-13, on P_TYPE R
+#     Single Family rows. It leaves out every basement: one-story
+#     houses average 1,475 sqft over a full basement and 1,452 on a
+#     slab, and those with finished basement area average 1,496
+#     against 688 sqft of FINISHED_B, where a total including it
+#     would add the 688. Basement garages (BASEMENT_G, mean 413)
+#     move it by 119. It counts the finished upper level in
+#     proportion: 1.5-story houses whose upper level is 33%, 50% or
+#     67% of the lower average 1,508, 1,775 and 1,882. Gross area
+#     would include the unfinished basement and garage. Non-R rows
+#     with no dwelling type (5,303, mean 24,203 sqft) carry a
+#     commercial building's area here, whose basis is unknown. It
+#     was gross_floor_area_sqft after the area rename, a default for
+#     undocumented fields.
 # MEASURED in memory through this recipe on the 76,761 P_TYPE R
 # rows:
 #   exterior_wall filled          99.99%
@@ -101,7 +113,7 @@
 
 description: >-
   Cumberland County, PA property roll with main dwelling card: class and
-  land-use codes, situs, year built, floor area, rooms, bedrooms,
+  land-use codes, situs, year built, living area, rooms, bedrooms,
   bathrooms, stories.
 
 admin_id: US-PA-CU
@@ -163,7 +175,7 @@ columns:
   use_subgroup_code: LUC
   building_style: DWELLING_T
   year_built: YEAR_BLT
-  gross_floor_area_sqft: SQFT
+  living_area_sqft: SQFT
   n_stories: STORY_HEIG
   n_rooms: TOTAL_ROOM
   n_bedrooms: BEDROOM_CO
@@ -180,7 +192,7 @@ drop_duplicates:
   - use_subgroup_code
   - address
   - year_built
-  - gross_floor_area_sqft
+  - living_area_sqft
   - n_stories
   - n_rooms
   - n_bedrooms
