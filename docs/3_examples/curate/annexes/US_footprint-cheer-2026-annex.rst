@@ -154,7 +154,7 @@ Recipe: ``US_footprint-spine-2026``
 
 10. **Package raw variables**
 
-   Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Unhandled numeric columns (such as NSI's ``n_stories`` and ``area_sqft``) are aggregated using the attribute registry's default function so they are carried onto the spine. Point reference records flagged by the duplicate resolution (where ``duplicate_resolution`` is non-null) are filtered out and excluded from all aggregates (match counts, sums, means, and value-weighted picks).
+   Aggregates all joined source evidence from NSI, Overture, and parcels into intermediate columns on the footprint spine using the configured list of :input:`sources`. Unhandled numeric columns (such as NSI's ``n_stories`` and ``gross_floor_area_sqft``) are aggregated using the attribute registry's default function so they are carried onto the spine. Point reference records flagged by the duplicate resolution (where ``duplicate_resolution`` is non-null) are filtered out and excluded from all aggregates (match counts, sums, means, and value-weighted picks).
 
    NSI's ``foundation_type`` is among the columns carried across, as ``foundation_type_building_nsi``. NSI assigns foundation from regional and flood-zone rules, so it is a prior rather than a per-building observation - but a stable one, which a per-building classifier is not guaranteed to be. That is why it leads the foundation reconciliation in curation.
 
