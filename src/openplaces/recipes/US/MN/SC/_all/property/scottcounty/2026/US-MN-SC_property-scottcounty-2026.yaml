@@ -58,7 +58,7 @@
 #     on residential rows). The service types it as a number, so codes
 #     arrive with two, one or no decimals; they are kept as published
 #     text, and a trailing zero the service dropped stays dropped.
-# MetroGIS's FIN_SQ_FT (the parcel recipe's area_sqft) equals
+# MetroGIS's FIN_SQ_FT (the parcel recipe's living_area_sqft) equals
 # AGLASqFt + BasementFinishedSqft on 95.5% of Scott parcels: it is
 # total finished area, not above-grade area.
 #

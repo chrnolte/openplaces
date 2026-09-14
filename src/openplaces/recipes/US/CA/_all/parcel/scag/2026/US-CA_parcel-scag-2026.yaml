@@ -250,9 +250,9 @@ license: >-
 #   - BF_SQFT, BSF_NAME, BSF_TYPE -- a big-box/superstore-facility
 #     footprint area, name and type, evidently tracked for retail
 #     land-use classification purposes. No registry field for this
-#     narrow, retail-specific concept; `area_sqft` is a structure
-#     floor-area field on `property`/`footprint` entities, not this
-#     one.
+#     narrow, retail-specific concept; the floor-area fields
+#     (`living_area_sqft`, `gross_floor_area_sqft`) describe
+#     structures, not this one.
 #   - FIRE, FLOOD, EQUAKE, LIQUAFA, LANDSLIDE, SEARISE36, SEARISE72,
 #     CPAD, RIPARIAN, WILDLIFE, CNDDB, HCPRA, WETLAND, UAZ -- boolean
 #     (0/1) hazard/habitat/conservation overlay flags. The registry
@@ -329,7 +329,7 @@ process_by:
 columns:
   parcel_id_admin3: APN
   city: CITY
-  lot_size: ACRES
+  land_area_sqft: ACRES
   use_group_code: LU19
   use_group: LU19_CLASS
   zoning_code: SCAG_ZN_CO
@@ -364,13 +364,13 @@ transformations:
     args: {value: "9999"}
     output: zoning_code
 
-  # ACRES (mapped to lot_size, sqft-typed in the registry) is sourced
-  # in acres; confirmed 100% populated and >0 region-wide, so no
+  # ACRES (mapped to land_area_sqft, sqft-typed in the registry) is
+  # sourced in acres; confirmed 100% populated and >0 region-wide, so no
   # zero/sentinel nulling is needed first.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
 # Standardized matching key from the raw county assessor's parcel
 # number (APN).

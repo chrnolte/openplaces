@@ -93,7 +93,7 @@ columns:
   use_group: UseCode
   tax_neighborhood_code: Neighborhood
   year_built: YearBuilt
-  area_sqft: HeatedSqFt
+  living_area_sqft: HeatedSqFt
   n_buildings: NumBldgs
   # EffYR is the assessor's effective year built, 79.6% populated --
   # better covered than YearBuilt itself (84% of a smaller base) and a

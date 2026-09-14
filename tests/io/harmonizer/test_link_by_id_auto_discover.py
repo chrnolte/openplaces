@@ -247,7 +247,10 @@ def test_supplements_only_joins_detail_columns_onto_their_roll(monkeypatch):
         _match(
             detail,
             supplements=_ROLL,
-            aggregation_function={'area_sqft': 'sum', 'year_built': 'min'},
+            aggregation_function={
+                'gross_floor_area_sqft': 'sum',
+                'year_built': 'min',
+            },
         ),
         _match('US-XX-YY_property-other-2026_detail', supplements='elsewhere'),
     ]
@@ -255,7 +258,7 @@ def test_supplements_only_joins_detail_columns_onto_their_roll(monkeypatch):
         detail: pd.DataFrame(
             {
                 'parcel_id_local': ['a', 'a', 'b'],
-                'area_sqft': [100.0, 50.0, 70.0],
+                'gross_floor_area_sqft': [100.0, 50.0, 70.0],
                 'year_built': [1990.0, 1980.0, 2000.0],
             }
         )
@@ -282,10 +285,10 @@ def test_supplements_only_joins_detail_columns_onto_their_roll(monkeypatch):
     )
 
     spine = state.spine.set_index('parcel_id_local')
-    assert spine.loc['a', 'area_sqft'] == 150.0
+    assert spine.loc['a', 'gross_floor_area_sqft'] == 150.0
     assert spine.loc['a', 'year_built'] == 1980.0
-    assert spine.loc['b', 'area_sqft'] == 70.0
-    assert pd.isna(spine.loc['c', 'area_sqft'])
+    assert spine.loc['b', 'gross_floor_area_sqft'] == 70.0
+    assert pd.isna(spine.loc['c', 'gross_floor_area_sqft'])
     assert 'n_records_per_key' not in spine.columns
 
 
@@ -685,8 +688,8 @@ def test_link_by_id_auto_discover_joins_every_match(monkeypatch):
 def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
     monkeypatch,
 ):
-    # A match's own declared aggregation_function (e.g. the improvement-
-    # detail sibling's area_sqft: sum, year_built: min) must apply to that
+    # A match's own declared aggregation_function (e.g. a land-line
+    # sibling's land_area_ac: sum, year_built: min) must apply to that
     # match's columns only -- a sibling match with no such declaration keeps
     # the registry default ('mean' for both here) even though both matches
     # attach the same two column names.
@@ -701,7 +704,7 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
             'recipe_id': 'source-b',
             'layer': None,
             'key': 'parcel_id_local',
-            'aggregation_function': {'area_sqft': 'sum', 'year_built': 'min'},
+            'aggregation_function': {'land_area_ac': 'sum', 'year_built': 'min'},
         },
     ]
     monkeypatch.setattr(links, '_discover_link_sources', lambda *a, **k: matches)
@@ -712,15 +715,15 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
         'source-a': pd.DataFrame(
             {
                 'parcel_id_local': ['A', 'A'],
-                'area_sqft': [10.0, 20.0],
+                'land_area_ac': [10.0, 20.0],
                 'year_built': [2000.0, 2010.0],
             }
         ),
-        # Own override: area_sqft sums to 30, year_built takes the min 2000.
+        # Own override: land_area_ac sums to 30, year_built min 2000.
         'source-b': pd.DataFrame(
             {
                 'parcel_id_local': ['B', 'B'],
-                'area_sqft': [10.0, 20.0],
+                'land_area_ac': [10.0, 20.0],
                 'year_built': [2000.0, 2010.0],
             }
         ),
@@ -735,12 +738,12 @@ def test_link_by_id_auto_discover_match_own_aggregation_function_is_scoped(
         state,
         auto_discover=True,
         entity_type='property',
-        columns=['area_sqft', 'year_built'],
+        columns=['land_area_ac', 'year_built'],
     )
 
-    assert state.spine.set_index('parcel_id_local').loc['A', 'area_sqft'] == 15.0
+    assert state.spine.set_index('parcel_id_local').loc['A', 'land_area_ac'] == 15.0
     assert state.spine.set_index('parcel_id_local').loc['A', 'year_built'] == 2005.0
-    assert state.spine.set_index('parcel_id_local').loc['B', 'area_sqft'] == 30.0
+    assert state.spine.set_index('parcel_id_local').loc['B', 'land_area_ac'] == 30.0
     assert state.spine.set_index('parcel_id_local').loc['B', 'year_built'] == 2000.0
 
 

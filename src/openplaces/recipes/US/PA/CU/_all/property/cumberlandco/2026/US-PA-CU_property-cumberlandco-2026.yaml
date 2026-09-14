@@ -75,9 +75,9 @@
 #   - has_central_air: AIR_CONDIT AC true, NO false, HP null.
 #   - has_basement: BASEMENT_P (see the transformation).
 #   - basement_finished_area_sqft: FINISHED_B, 0 nulled.
-#   - SQFT: whether this is living or gross area is not documented,
-#     so living_area_sqft and building_area_sqft are not derived;
-#     area_sqft keeps it as before.
+#   - SQFT: whether this is living or gross area is not documented;
+#     it is mapped as gross_floor_area_sqft, the choice for an
+#     undocumented total, and living_area_sqft is not derived.
 # MEASURED in memory through this recipe on the 76,761 P_TYPE R
 # rows:
 #   exterior_wall filled          99.99%
@@ -101,7 +101,7 @@
 
 description: >-
   Cumberland County, PA property roll with main dwelling card: class and
-  land-use codes, situs, year built, living area, rooms, bedrooms,
+  land-use codes, situs, year built, floor area, rooms, bedrooms,
   bathrooms, stories.
 
 admin_id: US-PA-CU
@@ -163,7 +163,7 @@ columns:
   use_subgroup_code: LUC
   building_style: DWELLING_T
   year_built: YEAR_BLT
-  area_sqft: SQFT
+  gross_floor_area_sqft: SQFT
   n_stories: STORY_HEIG
   n_rooms: TOTAL_ROOM
   n_bedrooms: BEDROOM_CO
@@ -180,7 +180,7 @@ drop_duplicates:
   - use_subgroup_code
   - address
   - year_built
-  - area_sqft
+  - gross_floor_area_sqft
   - n_stories
   - n_rooms
   - n_bedrooms

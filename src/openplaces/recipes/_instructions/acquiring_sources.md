@@ -27,7 +27,7 @@ Establish, and write down:
   recipe.
 - **Attributes that justify the work.** Typically `last_sale_price`,
   `last_sale_date`, `land_value`, `improvement_value`, `year_built`,
-  `use_group`/`use_group_code`, `zoning_code`, `area_sqft`, `owner_name`.
+  `use_group`/`use_group_code`, `zoning_code`, `living_area_sqft`, `owner_name`.
   A county layer with none of these is rarely worth a recipe: the statewide
   layer usually already covers geometry.
 - **The incumbent baseline.** What does the statewide source already give this

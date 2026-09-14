@@ -65,7 +65,7 @@
 #   882 without (a counted basement would double it), and it scales
 #   with stories (median 1,140 at one, 2,208 at two). Commercial
 #   classes carry a usable area that is neither, left unmapped. No
-#   area_sqft was mapped before, so none is kept or removed.
+#   floor area was mapped before, so none is kept or removed.
 # - garage_type: PARKING_TYPE (the PDF's GARAGE-TYPE: A attached, D
 #   detached, AD both), set on 7.8% of class 1 improved rows (A 9,642,
 #   D 1): it records attached garages, not the city's garage stock.

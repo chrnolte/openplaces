@@ -64,7 +64,8 @@ pipeline:
     key: [parcel_id_local, parcel_id_admin2]
     columns:
       year_built: min
-      area_sqft: sum
+      living_area_sqft: sum
+      gross_floor_area_sqft: sum
       total_value: sum
       n_stories: max
       n_bedrooms: sum

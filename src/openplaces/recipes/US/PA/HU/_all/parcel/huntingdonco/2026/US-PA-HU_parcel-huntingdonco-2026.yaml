@@ -54,10 +54,10 @@
 #     rows (plus 0 on the rest); 1600 is nulled here, 0 by the
 #     registry's null_placeholder. Two rows read 1648 / 1695.
 #   - Living_Are is finished living area in sqft (18,936 rows > 0) and
-#     maps to area_sqft. First/Second/Third floor areas, perimeter
-#     and the coded roof / foundation / basement / heating / condition
-#     fields are CAMA detail with no published decoder; only the ones
-#     with a registry home and readable values (Bedroom_Co, the
+#     maps to living_area_sqft. First/Second/Third floor areas,
+#     perimeter and the coded roof / foundation / basement / heating /
+#     condition fields are CAMA detail with no published decoder; only
+#     the ones with a registry home and readable values (Bedroom_Co, the
 #     Heating_No label) are mapped, the numeric codes are left out.
 #   - Acres (assessor acreage, 24,175 rows > 0) equals CAMA_ACRES; the
 #     GIS-computed MAP_ACRES is redundant with the geometry.
@@ -123,10 +123,10 @@ columns:
   use_subgroup_code: Property_T
   use_subgroup: Primary__1
   year_built: Year_Built
-  area_sqft: Living_Are
+  living_area_sqft: Living_Are
   n_bedrooms: Bedroom_Co
   heating_type: Heating_No
-  area_assessed_ac: Acres
+  land_area_ac: Acres
   land_value: Land_Value
   improvement_value: Improvemen
   total_value: Total_Valu
@@ -165,11 +165,11 @@ transformations:
       value: 1600
     output: year_built
 
-  # lot_size's canonical unit is sqft; the source gives acres.
+  # land_area_sqft's canonical unit is sqft; the source gives acres.
   - type: unary
     operation: acres_to_sqft
-    input: area_assessed_ac
-    output: lot_size
+    input: land_area_ac
+    output: land_area_sqft
 
 columns_to_categorical:
   - use_group

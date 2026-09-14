@@ -91,8 +91,8 @@ additional_layers:
       owner_city: OWN_CITY
       owner_admin2_id_admin1: OWN_STATE
       owner_postal_code: OWN_ZIP
-      lot_size: LOT_SIZE
-      lot_size_units: LOT_UNITS
+      land_area_sqft: LOT_SIZE
+      land_area_units: LOT_UNITS
       # BLD_AREA is gross building area and RES_AREA residential living
       # area, both in square feet (residential medians 2,630 and 1,713;
       # RES_AREA <= BLD_AREA on 97.4% of residential rows carrying
@@ -108,7 +108,7 @@ additional_layers:
       # condition, heating, cooling, garage, basement or amenity
       # field); the city recipes under US/MA/{BOS,CAM,ARL,SOM,FAR}
       # add them for their towns.
-      building_area_sqft: BLD_AREA
+      gross_floor_area_sqft: BLD_AREA
       living_area_sqft: RES_AREA
       building_style: STYLE
       n_dwellings: UNITS

@@ -48,9 +48,10 @@
 # the 120,237 improved residential rows (PROP_CLASS 1a residential
 # single unit, duplex/triplex, 1 to 3 units; BLDG_VALUE > 0):
 #   - living_area_sqft = LIV_SQ_FT: 98.5%, median 1,302. It equals
-#     MetroGIS's FIN_SQ_FT (the parcel recipe's area_sqft) on 97.9% of
-#     Anoka parcels. TOT_SQ_FT is identical on every row, so it is not
-#     a gross area and building_area_sqft is not set.
+#     MetroGIS's FIN_SQ_FT (the parcel recipe's
+#     living_area_sqft) on 97.9% of Anoka parcels. TOT_SQ_FT is
+#     identical on every row, so it is not a gross area and
+#     gross_floor_area_sqft is not set.
 #   - effective_year_built = EFF_YR_BLT: 98.4%, median 1994.
 #   - building_style = STRUC_TYPE: 98.5%, 70 codes in the county's
 #     spelling (townhouse and condominium styles included).

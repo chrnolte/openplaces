@@ -47,7 +47,7 @@
 #
 # STORIES has 6.7% fractional values on residential rows (1.5, 2.5,
 # 3.5). SFLA (living area) is 0 rather than blank on non-dwelling
-# rows, so 0 is nulled before it becomes area_sqft.
+# rows, so 0 is nulled before it becomes living_area_sqft.
 #
 # JOIN KEY: PARCEL_NUMBER, a 12-digit number ('999999999999' shape).
 # It shares no raw value with PASDA's Montgomery PIN, which writes
@@ -200,7 +200,7 @@ columns:
   postal_code: LOC_ZIP1_ZIP2
   year_built: YEAR_BUILT
   n_dwellings: LIV_UNITS
-  area_sqft: SFLA
+  living_area_sqft: SFLA
   n_stories: STORIES
   n_rooms: RM_TOT
   n_bedrooms: BEDROOMS
@@ -270,15 +270,15 @@ transformations:
     output: n_dwellings
   - type: unary
     operation: to_numeric
-    input: area_sqft
-    output: area_sqft
+    input: living_area_sqft
+    output: living_area_sqft
   # SFLA is 0 on rows with no dwelling, not blank.
   - type: unary
     operation: null_if_equal
-    input: area_sqft
+    input: living_area_sqft
     args:
       value: 0
-    output: area_sqft
+    output: living_area_sqft
   # n_bathrooms = full + 0.5 x half. The sum keeps a row null only when
   # both counts are, so a missing half count reads as zero halves.
   - type: expression
@@ -362,12 +362,6 @@ transformations:
     args:
       value: 9999
     output: frontage_ft
-  # SFLA is square feet of living area, so it is also
-  # living_area_sqft; area_sqft keeps it as before.
-  - type: unary
-    operation: to_numeric
-    input: area_sqft
-    output: living_area_sqft
   # FINBSMT_SF is 0 rather than blank where nothing is finished.
   - type: unary
     operation: to_numeric

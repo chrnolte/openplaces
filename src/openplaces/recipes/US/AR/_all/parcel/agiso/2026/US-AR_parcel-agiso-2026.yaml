@@ -156,8 +156,9 @@
 # plausible large timber/industrial tract), not square feet. The
 # registry's `area_ac` is `stage: curate` (geometry-derived downstream,
 # not an ingest-time source field) and no ingest-stage acres field
-# exists in the registry today (only `lot_size`, in sqft) -- raising the
-# registry question rather than mapping a source acreage field onto a
+# existed in the registry then (only `land_area_sqft`, in sqft;
+# `land_area_ac` has since been added) -- raising the registry
+# question rather than mapping a source acreage field onto a
 # curate-stage-only or wrong-unit attribute.
 #
 # NOTE on date fields, ALL left unmapped (`SourceDate`, `CAMADate`,

@@ -70,7 +70,7 @@
 # renovation_year 20.9%, n_dwellings 18.2%, deck_area_sqft 16.7%,
 # foundation_description 12.0%, has_solar 9.0%, has_carport 3.3%,
 # n_outbuildings 2.2%, construction_description 0.5%, has_pool 0.5%,
-# building_area_sqft 0.3%, view_rating and has_waterfront 0.2%,
+# gross_floor_area_sqft 0.3%, view_rating and has_waterfront 0.2%,
 # topography, has_elevator and has_accessory_dwelling below 0.05%.
 #
 # TERMS. The county's ArcGIS items for this Assessor data (e.g. the

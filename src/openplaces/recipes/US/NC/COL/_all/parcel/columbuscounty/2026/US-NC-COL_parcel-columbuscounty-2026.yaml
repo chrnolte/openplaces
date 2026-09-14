@@ -83,7 +83,7 @@ columns:
   use_group: land_class
   use_subgroup: bldg_type
   year_built: yrblt
-  area_sqft: sqft
+  gross_floor_area_sqft: sqft
   last_sale_price: saleamt
   last_sale_book_page: deed
   total_value: taxvalue

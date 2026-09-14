@@ -13,7 +13,7 @@
 # MAPPING. By PROPERTY_TYPE_CODE: IMPROVEMENT_SF is living_area_sqft
 # for dwelling types (Residential, Condo, Townhouse, Multiple Unit,
 # Mobile Home, Duplex, Triplex; the built-as finished area, equal to
-# BUILT_AS_SF on 99.96% of rows) and building_area_sqft for
+# BUILT_AS_SF on 99.96% of rows) and gross_floor_area_sqft for
 # Commercial; outbuildings count toward n_outbuildings instead.
 # Summed to the account: garage_area_sqft TOTAL_GARAGE_SF,
 # porch_area_sqft TOTAL_PORCH_SF, basement_finished_area_sqft
@@ -88,7 +88,7 @@ transformations:
       IMPROVEMENT_SF.where((PROPERTY_TYPE_CODE == 'Commercial') &
       (IMPROVEMENT_SF > 0))
     inputs: [IMPROVEMENT_SF, PROPERTY_TYPE_CODE]
-    output: building_area_sqft
+    output: gross_floor_area_sqft
   - type: remap_conditional
     input: PROPERTY_TYPE_CODE
     conditions:
@@ -163,7 +163,7 @@ transformations:
 
 aggregation_function:
   living_area_sqft: sum
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   n_outbuildings: sum
   garage_area_sqft: sum
   has_garage: max

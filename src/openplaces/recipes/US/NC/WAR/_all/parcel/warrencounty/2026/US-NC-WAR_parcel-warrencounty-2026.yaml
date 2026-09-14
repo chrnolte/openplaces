@@ -65,7 +65,7 @@ columns:
   land_value: LAND_VAL
   improvement_value: BLDG_VAL
   total_value: ASSESSED_VAL
-  area_sqft: HEATED_AREA
+  living_area_sqft: HEATED_AREA
 
 transformations:
   - type: string

@@ -35,8 +35,8 @@
 # LIVING AREA (checked 2026-09-13). SquareFootage is living area: it
 # equals the characteristics table's TotalMainAreaSize (main plus
 # second main area, no garage or porch) on 99.7% of 229,986 properties
-# with both. It stays mapped as area_sqft (curate reads that) and is
-# copied to living_area_sqft with 0 nulled (filled on 100% of the
+# with both. It maps to living_area_sqft, cast to a
+# number with 0 nulled (filled on 100% of the
 # 207,822 single-family properties, median 2,145); the export has no
 # gross building area.
 
@@ -93,7 +93,7 @@ transformations:
   # SquareFootage is living area; see LIVING AREA.
   - type: unary
     operation: to_numeric
-    input: area_sqft
+    input: living_area_sqft
     output: living_area_sqft
   - type: expression
     expression: "living_area_sqft.where(living_area_sqft > 0)"
@@ -104,11 +104,11 @@ columns:
   parcel_id_assessor: QuickRefID
   parcel_id_admin2_2: PropertyNumber
   legal_description: LegalDesc
-  area_ac: LegalAcres
+  land_area_ac: LegalAcres
   total_value: CurrMarketValue
   land_value: CurrLandValue
   improvement_value: CurrImprovmentValue
-  area_sqft: SquareFootage
+  living_area_sqft: SquareFootage
   tax_neighborhood_code: NbhdCode
   address_number: SitusStreetNumber
   city: SitusCity

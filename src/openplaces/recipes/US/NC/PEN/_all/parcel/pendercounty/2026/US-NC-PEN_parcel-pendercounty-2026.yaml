@@ -77,7 +77,7 @@ columns:
   total_value: TOTAL_VALUE
   subdivision: SUBDIVISION
   zoning_code: ZONE
-  area_sqft: HEAT_SQ_FT
+  living_area_sqft: HEAT_SQ_FT
 
 transformations:
   - type: string

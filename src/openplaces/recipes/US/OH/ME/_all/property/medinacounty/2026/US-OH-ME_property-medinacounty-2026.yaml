@@ -71,7 +71,7 @@ query: "Par_Deleted == 'N'"
 columns:
   parcel_id_assessor: mpropertyNumber
   use_group_code: mClassificationId
-  area_ac: macres
+  land_area_ac: macres
   land_value: MKT_Land_Value
   improvement_value: MKT_Impr_Value
   total_value: MKT_Total_Value
@@ -98,8 +98,8 @@ transformations:
     output: address_street
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
   - type: unary
     operation: to_numeric
     input: land_value

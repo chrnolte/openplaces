@@ -164,10 +164,13 @@
 #     Service ... This does not reflect jurisdiction or city boundary
 #     city." -> city (99.9997% populated, 647,190/647,192).
 #   - SITEZIP -> postal_code (same population as SITECITY).
-#   - BLDGSQFT: "Square footage of building(s)." -> area_sqft (floor
-#     area; 538,368/647,192, 83.2%, > 0).
+#   - BLDGSQFT: "Square footage of building(s)." -> living_area_sqft
+#     (538,368/647,192, 83.2%, > 0). It equals Clackamas County's
+#     LIVING_AREA on 99.98% of matched accounts (see
+#     US-OR-CO_property-clackamascounty-2026), so it is read as
+#     living area, not gross.
 #   - A_T_ACRES: "Acreage of tax lot as shown in the County Assessor's
-#     database" -> lot_size via `acres_to_sqft` (453,834/647,192,
+#     database" -> land_area_sqft via `acres_to_sqft` (453,834/647,192,
 #     70.1%, > 0).
 #   - YEARBUILT -> year_built (555,792/647,192, 85.9%, > 0; 0 nulled
 #     as the standard "never recorded" sentinel).
@@ -341,8 +344,8 @@ columns:
   year_built: YEARBUILT
   use_group: LANDUSE
   use_group_code: PROP_CODE
-  area_sqft: BLDGSQFT
-  lot_size: A_T_ACRES
+  living_area_sqft: BLDGSQFT
+  land_area_sqft: A_T_ACRES
   last_sale_date: SALEDATE
   last_sale_price: SALEPRICE
 
@@ -390,12 +393,12 @@ transformations:
     args: {value: 0}
     output: year_built
 
-  # A_T_ACRES (mapped to lot_size, sqft-typed in the registry) is
+  # A_T_ACRES (mapped to land_area_sqft, sqft-typed in the registry) is
   # sourced in acres.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
   # SALEDATE is a 6-digit CCYYMM string with no day-of-month (verified
   # via a live sample: first two digits 19/20, next two 0-99, last two

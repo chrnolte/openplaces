@@ -98,7 +98,7 @@ pipeline:
     vintage_column: tax_year
     direction: backward
     match_type_column: property_match_type
-    columns: [tax_year, year_built, living_area_sqft, area_sqft, market_value, land_value, n_dwellings, n_buildings]
+    columns: [tax_year, year_built, living_area_sqft, land_area_sqft, market_value, land_value, n_dwellings, n_buildings]
 
   # Nearest later year, only for sales already improved at sale time: a
   # pure land sale must not inherit a later year's improved state.
@@ -111,7 +111,7 @@ pipeline:
     only_unmatched: true
     restrict_to: {column: sale_vacant, equals: "Improved property"}
     match_type_column: property_match_type
-    columns: [tax_year, year_built, living_area_sqft, area_sqft, market_value, land_value, n_dwellings, n_buildings]
+    columns: [tax_year, year_built, living_area_sqft, land_area_sqft, market_value, land_value, n_dwellings, n_buildings]
 
   # Single-family verification lookup, unrelated to the property match
   # above: the exact next year, feeding the vote below only.

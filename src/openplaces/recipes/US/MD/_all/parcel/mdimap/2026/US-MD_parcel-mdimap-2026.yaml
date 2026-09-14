@@ -185,8 +185,9 @@
 #     Kent County sample (13,273 each, i.e. 96.3%), and `LUOM` ("Land
 #     Unit Area") takes null/`A`/`S` across a statewide distinct-value
 #     sample. `ACRES`'s own field alias is unambiguously "Acres" for
-#     every row regardless of `LUOM`, so it is mapped as `lot_size`
-#     (registry unit `sqft`, via the `acres_to_sqft` transform)
+#     every row regardless of `LUOM`, so it is mapped as
+#     `land_area_sqft` (registry unit `sqft`, via the `acres_to_sqft`
+#     transform)
 #     without trying to interpret what `LUOM`/`S` rows mean --
 #     MD's documentation does not say whether `LUOM` describes the
 #     original plat measurement or overrides `ACRES` itself, and
@@ -201,7 +202,7 @@
 #     rather than risk silent date corruption; `TRADATE` is the one
 #     genuinely clean date field on this layer.
 #   - `STRUGRAD`/`DESCGRAD` (quality_grade) and `SQFTSTRC`
-#     (building_area_sqft): US-MD_property-mdplanning-2026 carries
+#     (gross_floor_area_sqft): US-MD_property-mdplanning-2026 carries
 #     both per account (grade per building, gross enclosed area), so
 #     they are not repeated here.
 #   - `DEPTH`, `PFSP`/`PFSU`/`PFIC`/`PFIH`/`RECIND` (other factor
@@ -427,12 +428,12 @@ transformations:
     args: {sep: "-"}
     output: last_sale_book_page
 
-  # ACRES is unambiguously acres (see header); registry lot_size is
-  # in sqft.
+  # ACRES is unambiguously acres (see header); registry
+  # land_area_sqft is in sqft.
   - type: unary
     operation: acres_to_sqft
     input: ACRES
-    output: lot_size
+    output: land_area_sqft
 
   # Stories and basement from the style text (see the header note on
   # BLDG_STORY). The number before "Story" is the count ("1", "1.5",

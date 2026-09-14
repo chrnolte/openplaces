@@ -186,7 +186,7 @@
 # because they are redundant with a mapped field:
 #   - `PARCELID`, `CMAP`, `GP`, `PARCEL` -- see join-key note above.
 #   - `LOT` (the plat/subdivision lot number, distinct from
-#     `lot_size` which is an area) -- no registry field for a lot
+#     `land_area_sqft` which is an area) -- no registry field for a lot
 #     *number*, and this layer has no legal-description field to
 #     fold it into (contrast MetroGIS's `ABB_LEGAL` ->
 #     `legal_description`, `US-MN_parcel-metrogis-2026`).
@@ -297,7 +297,7 @@ columns:
   owner_name: OWNER
   owner_name_2: OWNER2
   subdivision: SUBDIV
-  lot_size: DEEDAC
+  land_area_sqft: DEEDAC
 
 # Expose the raw GISLINK key under the canonical name
 # parcel_id_assessor (a copy of parcel_id_admin3), so it is the raw
@@ -309,12 +309,12 @@ transformations:
     inputs: [parcel_id_admin3]
     output: parcel_id_assessor
 
-  # DEEDAC (mapped to lot_size, sqft-typed in the registry) is
+  # DEEDAC (mapped to land_area_sqft, sqft-typed in the registry) is
   # sourced in acres (deed acreage).
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
 # See "NOTE on the join key" above: a state-level override row in
 # US_parcel_id-overrides.csv (US-TN, tncomptroller, parcel -> simple)

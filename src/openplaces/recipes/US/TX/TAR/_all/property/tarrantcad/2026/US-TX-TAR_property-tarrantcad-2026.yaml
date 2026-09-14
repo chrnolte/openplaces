@@ -96,8 +96,9 @@
 # use_group_code A 100.0% (B 99.9%, E 99.9%, M 0.1%), 23 codes;
 # use_subgroup_code 100.0% in every class; tax_neighborhood_code 100.0%
 # in every class, 3,395 codes; address_number, address_street and city
-# A 100.0%; postal_code A 88.3% (B 94.5%, E 96.3%, M 96.2%). area_ac is
-# nonzero on 96.9% of rows, median 0.1864 acres (max 615,590: keying
+# A 100.0%; postal_code A 88.3% (B 94.5%, E 96.3%, M 96.2%).
+# land_area_ac is nonzero on 96.9% of rows, median 0.1864 acres
+# (max 615,590: keying
 # errors left for curate). total_value on every row, $351.1 bn in all.
 
 description: >-
@@ -167,13 +168,13 @@ drop_duplicates: [prop_id]
 transformations:
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
   # 4 implied decimals; see ACREAGE.
   - type: expression
-    expression: "area_ac / 10000"
-    inputs: [area_ac]
-    output: area_ac
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
   - type: string
     operation: lstrip
     input: prop_id
@@ -191,7 +192,7 @@ columns:
   city: situs_city
   postal_code: situs_zip
   legal_description: legal_desc
-  area_ac: legal_acreage
+  land_area_ac: legal_acreage
   total_value: market_value
   tax_year: prop_val_yr
 

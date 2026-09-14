@@ -66,9 +66,9 @@ columns:
   section_length_ft_2: Length2
   section_width_ft_3: Width3
   section_length_ft_3: Length3
-  # Floor area as certified. Genuinely floor area here, not lot area -- see
-  # the area_sqft note in the attribute registry.
-  area_sqft: SqrFeet
+  # Floor area as certified, not lot area. Whether it is living or
+  # gross area is not documented; mapped as gross.
+  gross_floor_area_sqft: SqrFeet
   # HUD wind zone (1-3); zone 2/3 units are built to higher wind standards
   # and the coast is where they concentrate.
   wind_zone: WindZone

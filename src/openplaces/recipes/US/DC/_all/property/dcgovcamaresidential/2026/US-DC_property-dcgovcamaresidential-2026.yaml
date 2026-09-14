@@ -59,8 +59,8 @@
 # meanings from the layer's own aliases. Each *_D description field
 # is mapped in the source's wording (no crosswalk); 'No Data' is
 # nulled everywhere:
-#   GBA 'Gross Building Area' -> building_area_sqft. The table has
-#     no living-area field, and no area_sqft was mapped before, so
+#   GBA 'Gross Building Area' -> gross_floor_area_sqft. The table has
+#     no living-area field, and no floor area was mapped before, so
 #     living_area_sqft stays unmapped. A GBA of 0 (1,803 cards, the
 #     ones empty on every field) is nulled.
 #   GRADE_D -> quality_grade (12 grades, 'Low Quality' to
@@ -85,7 +85,7 @@
 # on the Hub export (109,273 cards, 109,163 SSL; every card is
 # residential). Share of cards non-null, the same within 0.1 point
 # per SSL:
-#   building_area_sqft 98.4% (per SSL median 1,512 sqft, p99 5,005)
+#   gross_floor_area_sqft 98.4% (per SSL median 1,512 sqft, p99 5,005)
 #   quality_grade 98.3%   condition 98.4%   exterior_wall 98.3%
 #   roof_material 98.4%   heating_type 98.3%   building_style 98.3%
 #   has_central_air 98.3% (69.1% of cards true, 29.2% false)
@@ -150,7 +150,7 @@ columns:
   # Building features (see the header's BUILDING FEATURES). The *_D
   # description fields are mapped, not their numeric codes: the text
   # is the source's own vocabulary and reads without a code table.
-  building_area_sqft: GBA
+  gross_floor_area_sqft: GBA
   quality_grade: GRADE_D
   condition: CNDTN_D
   exterior_wall: EXTWALL_D
@@ -177,14 +177,14 @@ transformations:
     output: parcel_id_assessor
   - type: unary
     operation: to_numeric
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
   # A gross area of 0 sits on the cards whose every field is empty; it
   # is a missing value, not a building without floor area.
   - type: unary
     operation: null_if_equal
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
     args:
       value: 0
   - type: unary
@@ -317,7 +317,7 @@ aggregation_function:
   n_half_bathrooms: sum
   n_rooms: sum
   n_stories: max
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   n_fireplaces: sum
   has_central_air: max
   quality_grade: first

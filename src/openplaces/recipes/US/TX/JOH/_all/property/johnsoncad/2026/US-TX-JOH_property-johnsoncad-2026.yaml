@@ -43,8 +43,8 @@
 # Room counts are not in this table; they sit in externalbldse.tab, read
 # by the _bedrooms and _bathrooms supplements.
 #
-# LIVING AREA (2026-09-13). BLDG HEAT AREA is heated area, so it stays
-# area_sqft (curate reads that) and is copied to living_area_sqft, with
+# LIVING AREA (2026-09-13). BLDG HEAT AREA is heated area, so it maps
+# to living_area_sqft, with
 # 0 nulled (0 on 3.6% of the 49,093 single-family accounts, BUILDING
 # PTD A1; filled on the rest, median 1,881). No gross building area is
 # in this table. NBHD CD (100% filled) is the
@@ -101,7 +101,7 @@ columns:
   address_street: SITUS STREET NAME
   city: SITUS CITY
   total_value: MKT VAL
-  area_sqft: BLDG HEAT AREA
+  living_area_sqft: BLDG HEAT AREA
   year_built: YEAR_BUILT
   tax_neighborhood_code: NBHD CD
 
@@ -112,7 +112,7 @@ transformations:
   # Heated area is living area; see LIVING AREA.
   - type: unary
     operation: to_numeric
-    input: area_sqft
+    input: living_area_sqft
     output: living_area_sqft
   - type: expression
     expression: "living_area_sqft.where(living_area_sqft > 0)"

@@ -63,8 +63,9 @@
 # Building features, MEASURED 2026-09-13 in memory (residential =
 # ParcelDescrCode2 R, 38,110 rows; per PIN after deduplication the
 # rates are 1 to 2 points higher): living_area_sqft (finished area
-# summed over the three improvements, median 1,610; above area_sqft
-# on 1,321 rows) 75.7%, quality grade (QualityGradeCode1Imp, 28 codes
+# summed over the three improvements, median 1,610; above the first
+# improvement's area on 1,321 rows) 75.7%, quality grade
+# (QualityGradeCode1Imp, 28 codes
 # of the form 'C+05') 80.6%, HVAC description (HVACDesc1Imp, 22
 # values) as heating_type 75.3%, has_central_air 74.2% (25,286 true,
 # 3,000 false), style (ComponentDesc1Imp, 20 values) 75.4%, effective
@@ -124,10 +125,9 @@ columns:
   tax_neighborhood_code: NeighborhoodCodeDesc
   tax_year: TaxYear
   year_built: YearActuallyBuilt1Imp
-  area_sqft: FinishedArea1Imp
   n_stories: NumberOfStories1Imp
   # Structure detail: this layer numbers its fields per improvement
-  # (1Imp, 2Imp, 3Imp). Year, area and stories take the first
+  # (1Imp, 2Imp, 3Imp). Year and stories take the first
   # improvement. Room counts are summed over all three below, because
   # a parcel's rooms are those of every dwelling on it (504 parcels
   # carry baths on a second or third improvement). FBT is the full
@@ -184,10 +184,10 @@ transformations:
     inputs: [n_bathrooms, half_bathroom_equivalent]
     output: n_bathrooms
   # Finished area summed over the three improvements, as the room
-  # counts are; area_sqft keeps the first improvement's alone.
+  # counts are.
   - type: aggregate
     operation: sum
-    inputs: [area_sqft, FinishedArea2Imp, finishedArea3Imp]
+    inputs: [FinishedArea1Imp, FinishedArea2Imp, finishedArea3Imp]
     output: living_area_sqft
   - type: unary
     operation: null_if_equal
