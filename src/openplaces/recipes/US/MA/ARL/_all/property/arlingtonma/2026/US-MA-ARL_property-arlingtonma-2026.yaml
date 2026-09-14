@@ -32,7 +32,7 @@
 # adds.
 #
 # BUILDING FEATURES, Patriot vocabulary as published: GrossArea
-# (building_area_sqft) and FinishedArea (living_area_sqft), square
+# (gross_floor_area_sqft) and FinishedArea (living_area_sqft), square
 # feet; RenoYear (renovation_year); BuildingType (building_style);
 # HeatFuel and HeatType (heating_fuel, heating_type); FirePlaces
 # (n_fireplaces; empty on 46% of rows and 0 on 5%, so an empty count
@@ -119,7 +119,7 @@ columns:
   n_half_bathrooms: HalfBath
   n_rooms: NumRoom
   n_stories: StoryHgt
-  building_area_sqft: GrossArea
+  gross_floor_area_sqft: GrossArea
   living_area_sqft: FinishedArea
   renovation_year: RenoYear
   building_style: BuildingType
@@ -153,8 +153,8 @@ transformations:
     output: n_dwellings
   - type: unary
     operation: to_numeric
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
   - type: unary
     operation: to_numeric
     input: living_area_sqft
@@ -206,7 +206,7 @@ aggregation_function:
   n_half_bathrooms: sum
   n_rooms: sum
   n_stories: max
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   living_area_sqft: sum
   renovation_year: max
   building_style: first

@@ -18,8 +18,8 @@
 # - n_stories from char_type_resd: 1 Story 1, 1.5 Story 1.5, 2 Story 2,
 #   3 Story + 3 (three or more). Split Level is left empty: it states
 #   a layout, not a number of stories.
-# - building_area_sqft is char_bldg_sf, the building "as measured from
-#   the exterior"; an attached garage inside it is subtracted
+# - gross_floor_area_sqft is char_bldg_sf, the building "as measured
+#   from the exterior"; an attached garage inside it is subtracted
 #   (char_gar1_area). Mapped as gross area (user decision 2026-09-13),
 #   not living area.
 # - n_dwellings from char_apts (Two to Six, filled for multi-family
@@ -38,8 +38,8 @@
 # - quality_grade char_cnst_qlty, condition char_repair_cnd,
 #   exterior_wall char_ext_wall, roof_material char_roof_cnst,
 #   heating_type char_heat.
-# - lot_size is char_land_sf (land square feet of the PIN; repeated on
-#   every card, so `first`).
+# - land_area_sqft is char_land_sf (land square feet of the PIN;
+#   repeated on every card, so `first`).
 #
 # NOT MAPPED: char_bsmt_fin (finish type, no area), char_porch (type,
 # no area), char_renovation (a Yes flag without a year),
@@ -59,7 +59,7 @@
 # garage_type Detached 598,276, Attached 330,139.
 # Coverage after the roll-up, on the roll's 1,130,720 PINs of class
 # 2xx other than 299: n_bedrooms, n_bathrooms, n_rooms, year_built
-# and building_area_sqft 96.7% (the rest are 2xx classes without a
+# and gross_floor_area_sqft 96.7% (the rest are 2xx classes without a
 # building; see the roll's header); n_half_bathrooms above 0 42.8%;
 # n_stories 88.1%; n_garage_spaces and has_garage 96.6% (a garage on
 # 81.9%); has_basement 96.6% (true 79.5%); has_central_air 96.7%
@@ -102,8 +102,8 @@ columns:
   n_rooms: char_rooms
   n_stories: char_type_resd
   year_built: char_yrblt
-  building_area_sqft: char_bldg_sf
-  lot_size: char_land_sf
+  gross_floor_area_sqft: char_bldg_sf
+  land_area_sqft: char_land_sf
   n_dwellings: char_apts
   n_fireplaces: char_frpl
   n_garage_spaces: char_gar1_size
@@ -139,12 +139,12 @@ transformations:
     output: year_built
   - type: unary
     operation: to_numeric
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
   - type: unary
     operation: to_numeric
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
   - type: unary
     operation: to_numeric
     input: n_fireplaces
@@ -227,7 +227,7 @@ aggregation_function:
   n_bathrooms: sum
   n_half_bathrooms: sum
   n_rooms: sum
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   n_dwellings: sum
   n_fireplaces: sum
   n_garage_spaces: sum
@@ -236,7 +236,7 @@ aggregation_function:
   has_basement: max
   has_garage: max
   year_built: min
-  lot_size: first
+  land_area_sqft: first
   quality_grade: first
   condition: first
   exterior_wall: first

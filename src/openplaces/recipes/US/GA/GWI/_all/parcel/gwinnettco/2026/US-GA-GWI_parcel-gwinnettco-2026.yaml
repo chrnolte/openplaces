@@ -58,7 +58,7 @@ uncompressed_file_name: "gwinnett_parcels.geojson"
 
 columns:
   parcel_id_assessor: PIN
-  area_ac: CALCULATEDACREAGE
+  land_area_ac: CALCULATEDACREAGE
 
 parcel_id_local:
   source: parcel_id_assessor

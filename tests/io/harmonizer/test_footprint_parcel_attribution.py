@@ -269,10 +269,11 @@ def test_point_reference_all_suppressed_when_points_agree():
 
 
 def test_point_reference_carries_generic_numeric_with_registry_agg():
-    # n_stories/area_sqft are requested by the real footprint spine recipe but
-    # used to be silently dropped: only structure_value/year_built/n_dwellings
-    # were aggregated. Any other requested numeric column should now reach the
-    # spine via the attribute registry's default aggregation (mean for both).
+    # n_stories/gross_floor_area_sqft are requested by the real
+    # footprint spine recipe but used to be silently dropped: only
+    # structure_value/year_built/n_dwellings were aggregated. Any other
+    # requested numeric column should now reach the spine via the
+    # attribute registry's default aggregation (mean for n_stories).
     spine = pd.DataFrame(index=pd.Index(['F1'], name='footprint_id'))
     state = _state(spine)
 

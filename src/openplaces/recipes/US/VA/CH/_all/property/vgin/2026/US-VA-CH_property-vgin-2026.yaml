@@ -81,7 +81,7 @@
 #                  on 99.6% of rows); Improvemen improvement_value;
 #                  TotalAsses total_value
 #   Assessment     tax_year (0 nulled)
-#   DeededAcre     area_assessed_ac (0 on 85% of rows, nulled)
+#   DeededAcre     area_deed_ac (0 on 85% of rows, nulled)
 #   SalePrice      last_sale_price (0 nulled); SaleDate last_sale_date
 # The room fields carry 0 on rows without a residential card; where
 # rooms, bedrooms, full and half baths are all 0 the counts are
@@ -106,7 +106,7 @@
 # filled 100%, true 11.9%; building_style, construction_description,
 # foundation_description, exterior_wall and roof_material 100%;
 # water_source and sewer_type 99.9%; tax_neighborhood_code 100%
-# (1,896 codes); values 99.8 to 99.9%; area_assessed_ac 15.0%;
+# (1,896 codes); values 99.8 to 99.9%; area_deed_ac 15.0%;
 # last_sale_price 75.9%.
 #
 # TERMS. The item licence (read 2026-09-13), the same text as the
@@ -174,7 +174,7 @@ columns:
   improvement_value: Improvemen
   total_value: TotalAsses
   tax_year: Assessment
-  area_assessed_ac: DeededAcre
+  area_deed_ac: DeededAcre
   last_sale_price: SalePrice
   last_sale_date: SaleDate
 
@@ -208,9 +208,9 @@ transformations:
     inputs: [tax_year]
     output: tax_year
   - type: expression
-    expression: "area_assessed_ac.where(area_assessed_ac > 0)"
-    inputs: [area_assessed_ac]
-    output: area_assessed_ac
+    expression: "area_deed_ac.where(area_deed_ac > 0)"
+    inputs: [area_deed_ac]
+    output: area_deed_ac
   - type: expression
     expression: "last_sale_price.where(last_sale_price > 0)"
     inputs: [last_sale_price]

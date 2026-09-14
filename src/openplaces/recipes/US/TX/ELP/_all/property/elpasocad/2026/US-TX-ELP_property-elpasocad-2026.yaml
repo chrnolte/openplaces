@@ -99,12 +99,12 @@ transformations:
   # Acreage (4 Decimals)"), so it is divided by 10,000.
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
   - type: expression
-    expression: "area_ac / 10000"
-    inputs: [area_ac]
-    output: area_ac
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
   - type: string
     operation: lstrip
     input: prop_id
@@ -122,7 +122,7 @@ columns:
   city: situs_city
   postal_code: situs_zip
   legal_description: legal_desc
-  area_ac: legal_acreage
+  land_area_ac: legal_acreage
   # Land-plus-structure market value; see the Victoria template for why
   # this is total_value and not appraised_val.
   total_value: market_value

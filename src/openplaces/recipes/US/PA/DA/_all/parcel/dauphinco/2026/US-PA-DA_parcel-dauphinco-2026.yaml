@@ -37,15 +37,15 @@ columns:
   parcel_id_upi: UPI
   parcel_id_cama: CAMA_PID
   admin4_id_source: MUNICIPALI
-  # Kept under a working name; converted to lot_size (sqft) below.
-  lot_size_acres: acres
+  # Kept under a working name; converted to land_area_sqft (sqft) below.
+  land_area_acres: acres
 
-# lot_size's canonical unit is sqft; the source gives acres.
+# land_area_sqft's canonical unit is sqft; the source gives acres.
 transformations:
   - type: unary
     operation: acres_to_sqft
-    input: lot_size_acres
-    output: lot_size
+    input: land_area_acres
+    output: land_area_sqft
 
 # Standardized cross-comparable matching key derived from parcel_id_assessor
 # (auto per-county conversion). Needed for resolve_spine to expose

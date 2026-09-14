@@ -61,7 +61,7 @@ columns:
   total_value: TotAppr
   use_group_code: LUCode
   n_dwellings: LivUnits
-  area_ac: LandAcres
+  land_area_ac: LandAcres
   tax_neighborhood_code: NbrHood
   tax_year: TaxYear
   subdivision: Subdiv

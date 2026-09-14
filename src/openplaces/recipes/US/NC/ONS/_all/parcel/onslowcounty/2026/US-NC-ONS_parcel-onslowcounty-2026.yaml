@@ -92,7 +92,6 @@ columns:
   tax_neighborhood_code: NBHD
   tax_year: VALUEYEAR
   year_built: YEARBUILT
-  area_sqft: HEATEDSQUA
   n_stories: STORYHEIGH
   n_buildings: TOTALCARDS
   # Structure detail, measured on this layer: rooms 70.7%, bedrooms
@@ -104,7 +103,7 @@ columns:
   # values), style (STRUCTURES, 13) and heating fuel (HEATINGFUE, 6)
   # 76.7% each; has_central_air 74.2% (60,750 true, 264 false);
   # effective year 21.0%, remodel year 8.2%. quality_grade
-  # (COM_GRADE, 5 letter grades) and building_area_sqft (COM_AREA)
+  # (COM_GRADE, 5 letter grades) and gross_floor_area_sqft (COM_AREA)
   # come from the commercial section only: 3.2% of rows, none of
   # them residential, never on a row with a dwelling record.
   #
@@ -116,12 +115,13 @@ columns:
   # basement is unlikely: the county's code list is needed first.
   # ATTIC (1 on 65,988 rows) is the same kind of code.
   #
-  # area_sqft (HEATEDSQUA) is not the living area: 28.3% of rows,
-  # 39.5% of rows with a dwelling record, median 344 sqft (10th to
-  # 90th percentile 160 to 835), correlation 0.32 with the room
-  # count. It stays mapped as before, but neither living_area_sqft
-  # nor building_area_sqft is derived from it, and the layer carries
-  # no other residential area field.
+  # HEATEDSQUA is not the living area: 28.3% of rows, 39.5% of rows
+  # with a dwelling record, median 344 sqft (10th to 90th percentile
+  # 160 to 835), correlation 0.32 with the room count. It was mapped
+  # to area_sqft while that name meant floor area; it is now left
+  # unmapped, being neither living_area_sqft nor
+  # gross_floor_area_sqft, and the layer carries no other residential
+  # area field.
   #
   # LANDWIDTH (21.3% of rows, median 85) is filled on GROSS land-type
   # rows (19,634 of 19,840), not front-foot ones, so it reads as a
@@ -141,7 +141,7 @@ columns:
   exterior_wall: STRUCTURET
   building_style: STRUCTURES
   quality_grade: COM_GRADE
-  building_area_sqft: COM_AREA
+  gross_floor_area_sqft: COM_AREA
   effective_year_built: EFFECTIVEY
   renovation_year: REMODELED
   last_sale_date: SALEDATE
@@ -182,9 +182,9 @@ transformations:
   # COM_AREA holds 0 where nothing was recorded.
   - type: unary
     operation: null_if_equal
-    input: building_area_sqft
+    input: gross_floor_area_sqft
     args: {value: 0}
-    output: building_area_sqft
+    output: gross_floor_area_sqft
 
 drop_columns:
   - half_bathroom_equivalent

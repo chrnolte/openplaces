@@ -76,7 +76,7 @@
 #   - `gisacres` -- a GIS-computed polygon acreage, 100% populated
 #     and > 0 on every sampled row (384,035/384,035), so this is a
 #     documented redirect, not an unmapped-because-empty field. Left
-#     unmapped rather than sent to `lot_size` (which the registry
+#     unmapped rather than sent to `land_area_sqft` (which the registry
 #     scopes to a source-stated/deeded lot size, not a GIS-derived
 #     one) or `area_ac` (itself computed downstream from the
 #     ingested geometry at the curate stage, so a source-supplied

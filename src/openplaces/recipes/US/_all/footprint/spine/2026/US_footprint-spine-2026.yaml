@@ -84,7 +84,7 @@ pipeline:
           - structure_value
           - year_built_block_median
           - source
-          - area_sqft
+          - gross_floor_area_sqft
           - n_stories
           - n_dwellings
           # NSI assigns foundation from regional/flood-zone rules, so it is

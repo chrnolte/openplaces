@@ -34,7 +34,7 @@
 # n_bathrooms is the count as published.
 #
 # BUILDING FEATURES, the city's vocabulary as published: GROSS_AREA
-# (building_area_sqft) and LIVING_AREA (living_area_sqft), square
+# (gross_floor_area_sqft) and LIVING_AREA (living_area_sqft), square
 # feet, building totals like the room counts; STYLE_DESCRIP
 # (building_style); WALL_TYPE_1 (exterior_wall; WALL_TYPE_2, a second
 # material on 15% of rows, is not mapped); ROOF_COVER_DESCRIP
@@ -132,7 +132,7 @@ columns:
   n_bathrooms: BATH
   n_rooms: ROOMS
   n_stories: STORIES
-  building_area_sqft: GROSS_AREA
+  gross_floor_area_sqft: GROSS_AREA
   living_area_sqft: LIVING_AREA
   building_style: STYLE_DESCRIP
   exterior_wall: WALL_TYPE_1
@@ -186,8 +186,8 @@ transformations:
       "N": false
   - type: unary
     operation: to_numeric
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
   - type: unary
     operation: to_numeric
     input: living_area_sqft
@@ -224,7 +224,7 @@ aggregation_function:
   n_bathrooms: sum
   n_rooms: sum
   n_stories: max
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   living_area_sqft: sum
   building_style: first
   exterior_wall: first

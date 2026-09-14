@@ -190,9 +190,9 @@ license: 'public domain (MN Government Data Practices Act, Minn. Stat. ch. 13); 
 # mirroring the DC CALCULATEDAREA precedent
 # (US-DC_parcel-dcgovrecordlots-2026). ACRES_DEED (the deeded/legal
 # acreage -- a genuinely distinct, non-geometric figure) is mapped to
-# `lot_size` instead (acres_to_sqft), despite uneven population: Ramsey
-# 96%, Scott 100%, Anoka 9.3%, Carver 22%, Dakota/Hennepin/Washington
-# 0% (no data at all in those three).
+# `land_area_sqft` instead (acres_to_sqft), despite uneven population:
+# Ramsey 96%, Scott 100%, Anoka 9.3%, Carver 22%,
+# Dakota/Hennepin/Washington 0% (no data at all in those three).
 #
 # Sentinel handling: the source's own documentation states, for
 # EMV_LAND/EMV_BLDG/EMV_TOTAL/SALE_VALUE/TAX_YEAR, "0 = No value" and
@@ -268,14 +268,14 @@ columns:
   owner_name_2: OWNER_MORE
   owner_address: OWN_ADD_L1
   owner_address_2: OWN_ADD_L2
-  lot_size: ACRES_DEED
+  land_area_sqft: ACRES_DEED
   land_value: EMV_LAND
   improvement_value: EMV_BLDG
   total_value: EMV_TOTAL
   tax_year: TAX_YEAR
   use_group: USECLASS1
   building_style: HOME_STYLE
-  area_sqft: FIN_SQ_FT
+  living_area_sqft: FIN_SQ_FT
   heating_type: HEATING
   year_built: YEAR_BUILT
   n_dwellings: NUM_UNITS
@@ -356,12 +356,12 @@ transformations:
     args: {value: -9999}
     output: tax_year
 
-  # ACRES_DEED (mapped to lot_size, sqft-typed in the registry) is
+  # ACRES_DEED (mapped to land_area_sqft, sqft-typed in the registry) is
   # sourced in acres.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
   # GARAGE/BASEMENT domain is Yes/No/Unknown; map to real booleans,
   # leaving anything else (blank or "Unknown") null rather than false.

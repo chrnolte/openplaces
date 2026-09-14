@@ -20,8 +20,8 @@
 #
 # Building features, MEASURED 2026-09-13 in memory (residential =
 # PARCEL_CLA RESIDENTIAL, 24,181 rows, about 45% of them without a
-# building record): living_area_sqft (LIVING_ARE, the same value as
-# area_sqft, median 1,562), exterior wall (CONSTRUCTI, 14 values),
+# building record): living_area_sqft (LIVING_ARE,
+# median 1,562), exterior wall (CONSTRUCTI, 14 values),
 # roof covering (ROOF, 11) and heating (HEAT, 14) 54.7% each;
 # has_central_air 54.3% (10,840 true, 2,296 false). CONSTRUCTI holds
 # exterior wall materials (ALUM/VINYL/STEEL, BRICK, WOOD FRAME), not
@@ -89,7 +89,7 @@ columns:
   last_sale_date: DATE_RECOR
   total_value: ASSESSED_V
   year_built: YEAR_BUILT
-  area_sqft: LIVING_ARE
+  living_area_sqft: LIVING_ARE
   exterior_wall: CONSTRUCTI
   heating_type: HEAT
   roof_material: ROOF
@@ -106,13 +106,7 @@ transformations:
     operation: sum
     inputs: [n_bathrooms, half_bathroom_equivalent]
     output: n_bathrooms
-  # LIVING_ARE is the living area: area_sqft keeps it as before and
-  # living_area_sqft carries the same value under the name that says
-  # so.
-  - type: expression
-    expression: "area_sqft * 1"
-    inputs: [area_sqft]
-    output: living_area_sqft
+  # A living area of 0 is not a recorded area.
   - type: unary
     operation: null_if_equal
     input: living_area_sqft

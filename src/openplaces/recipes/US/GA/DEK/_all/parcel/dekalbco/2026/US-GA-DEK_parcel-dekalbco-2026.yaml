@@ -93,7 +93,7 @@ columns:
   use_group_code: LANDUSECODE
   land_use_group: PROP_CLASS
   zoning_code: ZONING
-  area_ac: ACREAGE
+  land_area_ac: ACREAGE
   tax_year: TAX_YEAR
 
 columns_to_categorical:

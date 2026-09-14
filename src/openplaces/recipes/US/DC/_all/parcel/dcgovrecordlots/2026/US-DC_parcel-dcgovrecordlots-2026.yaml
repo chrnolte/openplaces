@@ -100,7 +100,7 @@
 #   - `CALCULATEDAREA` (a second, GIS-computed area figure) --
 #     redundant with the geometry-derived area the pipeline already
 #     computes from the polygon itself; `STATEDAREA` (the
-#     recorded/deeded area) is mapped as `lot_size` instead, since
+#     recorded/deeded area) is mapped as `land_area_sqft` instead, since
 #     it is the one number the registry has a slot for.
 #
 # Measured (live REST, `maps2.dcgis.dc.gov`, current as of
@@ -156,7 +156,7 @@ scraper_options:
 
 columns:
   parcel_id_admin2: SSL
-  lot_size: STATEDAREA
+  land_area_sqft: STATEDAREA
 
 # Expose the raw SSL under the canonical name parcel_id_assessor (a copy
 # of parcel_id_admin2), so it is the raw key parcel_id_local derives

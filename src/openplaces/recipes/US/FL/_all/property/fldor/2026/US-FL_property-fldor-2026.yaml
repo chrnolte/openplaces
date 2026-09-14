@@ -123,7 +123,7 @@ columns:
   land_value: LND_VAL
   land_unit_code: LND_UNTS_CD
   n_land_units: NO_LND_UNTS
-  area_sqft: LND_SQFOOT
+  land_area_sqft: LND_SQFOOT
   last_inspection_date: DT_LAST_INSPT
   structure_quality_code: IMP_QUAL
   construction_class: CONST_CLASS

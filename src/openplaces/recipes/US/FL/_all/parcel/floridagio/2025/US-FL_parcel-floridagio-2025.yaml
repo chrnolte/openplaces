@@ -54,7 +54,7 @@ columns:
   postal_code: PHY_ZIPCD
   legal_description: S_LEGAL
   census_block_id: CENSUS_BK
-  area_sqft: LND_SQFOOT
+  land_area_sqft: LND_SQFOOT
   n_buildings: NO_BULDNG
   structure_quality_code: IMP_QUAL
   construction_class: CONST_CLAS

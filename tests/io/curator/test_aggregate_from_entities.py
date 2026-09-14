@@ -32,7 +32,7 @@ def properties(monkeypatch):
         {
             'parcel_id_local': ['p1', 'p1', 'p2', None, 'p9', 'p4'],
             'year_built': [1990, 1965, 2001, 1950, 1880, None],
-            'area_sqft': [1200, 800, 950, 300, 500, None],
+            'living_area_sqft': [1200, 800, 950, 300, 500, None],
             'n_bedrooms': [3, 2, 4, 1, 1, None],
         }
     )
@@ -58,12 +58,12 @@ def test_each_column_is_reduced_with_its_own_rule(properties):
     state = aggregation.aggregate_from_entities(
         _state(curated),
         'US_property-spine-2026',
-        columns={'year_built': 'min', 'area_sqft': 'sum', 'n_bedrooms': 'sum'},
+        columns={'year_built': 'min', 'living_area_sqft': 'sum', 'n_bedrooms': 'sum'},
     )
     out = state.curated
     assert out['year_built'].tolist() == [1965, 2001, 1977]
-    assert out['area_sqft'].tolist()[:2] == [2000, 950]
-    assert pd.isna(out['area_sqft'][2])
+    assert out['living_area_sqft'].tolist()[:2] == [2000, 950]
+    assert pd.isna(out['living_area_sqft'][2])
     assert out['n_bedrooms'].tolist()[:2] == [5, 4]
     assert properties[0][0] == 'US_property-spine-2026'
     assert properties[0][1] == 'US-XX-YY'
@@ -72,9 +72,9 @@ def test_each_column_is_reduced_with_its_own_rule(properties):
 def test_a_parcel_whose_properties_state_nothing_gets_no_zero(properties):
     curated = pd.DataFrame({'parcel_id_local': ['p4']})
     state = aggregation.aggregate_from_entities(
-        _state(curated), 'r', columns={'area_sqft': 'sum', 'year_built': 'min'}
+        _state(curated), 'r', columns={'living_area_sqft': 'sum', 'year_built': 'min'}
     )
-    assert state.curated[['area_sqft', 'year_built']].isna().all().all()
+    assert state.curated[['living_area_sqft', 'year_built']].isna().all().all()
 
 
 def test_a_value_the_parcel_layer_states_is_kept(properties):

@@ -128,7 +128,7 @@
 #     this same polygon (the DC `CALCULATEDAREA` precedent,
 #     `US-DC_parcel-dcgovrecordlots-2026`). `Acres_Deeded` (the
 #     legally deeded acreage, a genuinely distinct non-geometric
-#     figure) is mapped to `lot_size` instead, the MN `ACRES_DEED`
+#     figure) is mapped to `land_area_sqft` instead, the MN `ACRES_DEED`
 #     precedent (`US-MN_parcel-metrogis-2026`).
 #   - `Ph_Full_Address`/`Ph_Suf_Dir` -- `Ph_Full_Address` is a
 #     redundant composite (same population as `Situs_Address`,
@@ -235,7 +235,7 @@ columns:
   city: Ph_City
   postal_code: Ph_Zip5
   legal_description: Legal_Description
-  lot_size: Acres_Deeded
+  land_area_sqft: Acres_Deeded
   total_value: Total_Assessed_Value
   land_value: Land_Value
   improvement_value: Improvements_Value
@@ -249,7 +249,7 @@ columns:
   last_sale_price: Sales_Value
   source_date: CAMAUpdate
   year_built: BuildingYear
-  area_sqft: ImpSF
+  gross_floor_area_sqft: ImpSF
   tax_neighborhood_code: Neighborhood
 
 transformations:
@@ -262,12 +262,12 @@ transformations:
     inputs: [parcel_id_admin3]
     output: parcel_id_assessor
 
-  # Acres_Deeded (mapped to lot_size, sqft-typed in the registry) is
-  # sourced in acres.
+  # Acres_Deeded (mapped to land_area_sqft, sqft-typed in the registry)
+  # is sourced in acres.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
   # BuildingYear is a string field; empty string (not '0') is the
   # source's own "no value" placeholder, and to_numeric's

@@ -96,7 +96,7 @@ columns:
   postal_code: site_addr_3
   tax_neighborhood_code: Neighborhood_Code
   legal_description: lgl_1
-  area_ac: acreage
+  land_area_ac: acreage
   land_value: land_val
   improvement_value: bld_val
   # tot_mkt_val is the district's market value (Tax Code 23.01), the
@@ -114,8 +114,8 @@ transformations:
     output: use_group_code
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
   - type: unary
     operation: to_numeric
     input: land_value

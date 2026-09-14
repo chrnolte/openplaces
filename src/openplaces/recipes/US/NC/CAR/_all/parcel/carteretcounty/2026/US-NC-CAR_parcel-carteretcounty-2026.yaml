@@ -52,8 +52,8 @@
 #
 # Building features, MEASURED 2026-09-13 in memory (residential =
 # Use_desc naming a residential or dwelling class, 34,247 rows):
-# living_area_sqft (HtdSqFt, the same value as area_sqft, median
-# 1,648) and building_area_sqft (TOT_SQ_FT, the total area, median
+# living_area_sqft (HtdSqFt, median
+# 1,648) and gross_floor_area_sqft (TOT_SQ_FT, the total area, median
 # 2,440; at least the heated area on all but one row, median ratio
 # 1.38) 76.3% each; grade (Grade, 16 values such as 'C+') and
 # condition (Condition, 11 values, identical to CDU) 76.3%; exterior
@@ -117,14 +117,14 @@ columns:
   use_group_code: Use_code
   tax_neighborhood_code: Neighborho
   year_built: Y_BLT_HOUS
-  area_sqft: HtdSqFt
+  living_area_sqft: HtdSqFt
   # Structure detail, measured on this layer: bedrooms 70.7%, bathrooms
   # 70.8%. BATHROOMS is fractional here (2.0, 2.5), i.e. it already
   # folds half baths in, unlike the counties that publish full and half
   # counts separately.
   n_bedrooms: BEDROOMS
   n_bathrooms: BATHROOMS
-  building_area_sqft: TOT_SQ_FT
+  gross_floor_area_sqft: TOT_SQ_FT
   exterior_wall: ExWllDes1
   heating_type: HeatDes1
   roof_material: RCovDes1
@@ -146,13 +146,6 @@ transformations:
     args:
       sep: "-"
     output: last_sale_book_page
-  # HtdSqFt is the heated area: area_sqft keeps it as before and
-  # living_area_sqft carries the same value under the name that says
-  # so.
-  - type: expression
-    expression: "area_sqft * 1"
-    inputs: [area_sqft]
-    output: living_area_sqft
   # Both area fields hold 0 where no building was recorded.
   - type: unary
     operation: null_if_equal
@@ -161,9 +154,9 @@ transformations:
     output: living_area_sqft
   - type: unary
     operation: null_if_equal
-    input: building_area_sqft
+    input: gross_floor_area_sqft
     args: {value: 0}
-    output: building_area_sqft
+    output: gross_floor_area_sqft
   # FireplaceC is 0 on every row, parcels without a building included.
   # A zero is a recorded count only on a residential building model
   # (BldgModel RES); elsewhere the count is nulled.

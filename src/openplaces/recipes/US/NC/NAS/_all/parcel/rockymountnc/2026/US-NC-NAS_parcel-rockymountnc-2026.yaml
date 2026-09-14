@@ -81,19 +81,19 @@ columns:
   tax_neighborhood_code: NBHD
   tax_year: ASMNT_YR
   year_built: R_YR_BUILT
-  area_sqft: R_SQFT
+  living_area_sqft: R_SQFT
   n_stories: R_STORY_HT
   # Structure detail, measured on this layer: rooms 65.6%, bedrooms
   # 65.5%, full baths 65.0%, heating 65.5%, effective year 32.3%.
   #
   # Building features, MEASURED 2026-09-13 in memory (residential =
-  # PROPTYPE D-Dwelling, 33,277 rows): living_area_sqft (R_SQFT, the
-  # same value as area_sqft, median 1,604) 99.9%, exterior wall
+  # PROPTYPE D-Dwelling, 33,277 rows): living_area_sqft (R_SQFT,
+  # median 1,604) 99.9%, exterior wall
   # (R_S_TYPE, 15 values) 99.8%, style (R_S_STYLE, 13) 99.9%, heating
   # fuel (R_HEATFUEL, 8) 95.4%, has_central_air 99.6% (28,413 true,
   # 4,728 false), has_basement 83.8% (204 true), effective year
   # 45.4%, remodel year (R_REMOD_YR) 7.7%, frontage_ft 49.0% (median
-  # 85). building_area_sqft is C_SQFT, the commercial section's area:
+  # 85). gross_floor_area_sqft is C_SQFT, the commercial section's area:
   # 5.5% of rows; on the 170 parcels that also carry a residential
   # area it covers the commercial part only.
   #
@@ -117,7 +117,7 @@ columns:
   exterior_wall: R_S_TYPE
   building_style: R_S_STYLE
   foundation_description: R_BASEMENT
-  building_area_sqft: C_SQFT
+  gross_floor_area_sqft: C_SQFT
   frontage_ft: LANDWIDTH
   effective_year_built: R_EFF_YR
   renovation_year: R_REMOD_YR
@@ -145,13 +145,6 @@ transformations:
     operation: sum
     inputs: [n_bathrooms, half_bathroom_equivalent]
     output: n_bathrooms
-  # R_SQFT is the finished residential area: area_sqft keeps it as
-  # before and living_area_sqft carries the same value under the
-  # name that says so.
-  - type: expression
-    expression: "area_sqft * 1"
-    inputs: [area_sqft]
-    output: living_area_sqft
   # The area and width fields hold 0 where nothing was recorded.
   - type: unary
     operation: null_if_equal
@@ -160,9 +153,9 @@ transformations:
     output: living_area_sqft
   - type: unary
     operation: null_if_equal
-    input: building_area_sqft
+    input: gross_floor_area_sqft
     args: {value: 0}
-    output: building_area_sqft
+    output: gross_floor_area_sqft
   - type: unary
     operation: null_if_equal
     input: frontage_ft

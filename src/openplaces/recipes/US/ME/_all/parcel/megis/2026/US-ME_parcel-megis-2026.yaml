@@ -156,7 +156,7 @@
 #     "solon", "Town", vs. "0" for most rows), not a parcel
 #     attribute.
 #   - RES_AREA / CI_AREA: a residential/commercial-industrial area
-#     split; the registry has one `area_sqft`, not a per-use split.
+#     split; the registry has no per-use floor-area split.
 #   - PARENT (35,305/708,382 populated): a parcel-split/lineage
 #     reference, mirroring DC's condo-lineage fields
 #     (CONDO_REGIME_NUM etc.) -- no registry slot.
@@ -340,8 +340,8 @@ columns:
   land_value: LAND_VAL
   improvement_value: BLDG_VAL
   n_dwellings: LIV_UNITS
-  lot_size: LOT_SIZE
-  area_sqft: BLDG_SIZE
+  land_area_sqft: LOT_SIZE
+  gross_floor_area_sqft: BLDG_SIZE
   source_date: FMUPDAT
 
 columns_to_categorical:
@@ -385,11 +385,11 @@ transformations:
     output: last_sale_price
 
   # LOT_SIZE arrives in acres (see header for the magnitude check);
-  # the registry's lot_size is sqft.
+  # the registry's land_area_sqft is sqft.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
   # FMUPDAT is a plain 4-digit year string (e.g. "2010"), not an
   # Esri date field -- verified via a raw attribute sample, so it

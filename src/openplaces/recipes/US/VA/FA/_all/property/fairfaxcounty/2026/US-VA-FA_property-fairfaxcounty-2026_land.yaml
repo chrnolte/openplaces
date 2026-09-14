@@ -11,12 +11,12 @@
 # TWNHSE INT, CONDO COMMERCIAL ...). 367,625 PARIDs; lines sum per
 # parcel.
 #
-# MAPPED. ACRES as area_assessed_ac (filled on 97.7% of lines, > 0 on
+# MAPPED. ACRES as land_area_ac (filled on 97.7% of lines, > 0 on
 # 82.9%: condominium unit lines carry 0). SF is the same area in
 # square feet and is not mapped twice. NOT MAPPED: UNITS and
 # CODE_DESC (a pricing unit and a land-line type; no registry home).
 #
-# MEASURED 2026-09-13, summed per parcel: area_assessed_ac on 98.7%
+# MEASURED 2026-09-13, summed per parcel: land_area_ac on 98.7%
 # of the roll's 338,959 residential parcels (> 0 on 82.9%, median
 # 0.241 ac). Every land-line PARID is in the roll.
 
@@ -55,10 +55,10 @@ csv_dtype:
 
 columns:
   parcel_id_assessor: PARID
-  area_assessed_ac: ACRES
+  land_area_ac: ACRES
 
 aggregation_function:
-  area_assessed_ac: sum
+  land_area_ac: sum
 
 supplements: US-VA-FA_property-fairfaxcounty-2026
 

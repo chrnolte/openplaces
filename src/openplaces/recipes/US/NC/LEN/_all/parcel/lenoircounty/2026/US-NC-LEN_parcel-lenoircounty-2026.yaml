@@ -47,7 +47,7 @@
 # publishes only PhysStrAdd. It is mapped as owner_city accordingly.
 #
 # Building features, MEASURED 2026-09-13 in memory: living_area_sqft
-# (FinishedAr, the same value as area_sqft, median 1,607) on 59.5% of
+# (FinishedAr, median 1,607) on 59.5% of
 # rows and on every row whose CompCodeDe names a dwelling type
 # (19,716 rows). CompCodeDe, mapped as use_group, is a building type
 # (SINGLE FAMILY RESIDENCE, DOUBLEWIDE MOBILE HOME, OFFICE, ...)
@@ -89,7 +89,7 @@ columns:
   use_group: CompCodeDe
   tax_neighborhood_code: NHCode
   year_built: YearBuilt
-  area_sqft: FinishedAr
+  living_area_sqft: FinishedAr
   # Structure detail, measured on this layer: bedrooms 52.8%,
   # bathrooms 52.7%. NumBaths holds whole numbers only (no x.5 value
   # among 19,676 populated rows, median 2 for three bedrooms), and the
@@ -124,13 +124,7 @@ transformations:
       value: "0"
     output: last_sale_date
 
-  # FinishedAr is the finished area: area_sqft keeps it as before and
-  # living_area_sqft carries the same value under the name that says
-  # so.
-  - type: expression
-    expression: "area_sqft * 1"
-    inputs: [area_sqft]
-    output: living_area_sqft
+  # FinishedAr is the finished area; 0 is not a recorded area.
   - type: unary
     operation: null_if_equal
     input: living_area_sqft

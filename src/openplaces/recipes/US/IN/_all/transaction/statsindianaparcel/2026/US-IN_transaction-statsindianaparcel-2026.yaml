@@ -69,8 +69,9 @@
 # 198,475 rows (of 205,068 raw; 6,593 removed by `drop_duplicates`
 # below). `parcel_id_local` populated 100%, 175,275 distinct values
 # for 198,475 rows (a parcel selling more than once in the year is
-# expected, not a key defect). `land_value`/`total_value`/`lot_size`
-# populated (>0) in 97.5%/97.9%/96.7%.
+# expected, not a key defect).
+# `land_value`/`total_value`/`land_area_sqft` populated (>0) in
+# 97.5%/97.9%/96.7%.
 #
 # This pass also surfaced and fixed two real, pre-existing
 # `openplaces` bugs (neither specific to this source), only
@@ -196,7 +197,7 @@ transformations:
   - type: unary
     operation: acres_to_sqft
     input: P2_9_Acreage
-    output: lot_size
+    output: land_area_sqft
 
 # No bundled US_parcel_id-overrides.csv row exists for US-IN; falls
 # back to the default 'simple' conversion (see

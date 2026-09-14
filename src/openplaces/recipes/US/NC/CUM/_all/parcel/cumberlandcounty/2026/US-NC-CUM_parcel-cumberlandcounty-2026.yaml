@@ -87,7 +87,7 @@ columns:
   owner_admin2_id_admin1: OWNER_MA_2
   owner_postal_code: OWNER_MA_3
   subdivision: SUB_NAME
-  area_sqft: RES_SQFT
+  living_area_sqft: RES_SQFT
   last_sale_price: SALE_PRICE
   last_sale_book_page: DEED
 

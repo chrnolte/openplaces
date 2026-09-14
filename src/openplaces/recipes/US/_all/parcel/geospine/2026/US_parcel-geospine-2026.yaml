@@ -211,7 +211,7 @@ pipeline:
   # keyed) and never carries these sources' own value columns.
   # Only the parcel-level attributes a roll states about the parcel as a
   # whole are copied here. What a roll states per property (year_built,
-  # area_sqft, n_stories, n_bedrooms, and the detail tables that
+  # living_area_sqft, n_stories, n_bedrooms, and the detail tables that
   # `supplements:` a roll) stays in US_property-spine-2026 and reaches
   # the curated parcel through aggregate_from_entities, reduced per
   # parcel with the rule each column needs (see

@@ -28,7 +28,7 @@
 #
 # Columns. LUC is the Ohio DTE land-use code (3 digits on every row).
 # CALCACRES (98.8% populated, 61.8% above zero; condo units carry 0)
-# is used for area_ac rather than ACRES (9.6% populated). The
+# is used for land_area_ac rather than ACRES (9.6% populated). The
 # appraisal value columns APRLAND/APRIMP/APRTOT are populated on only
 # 1.7-2.2% of rows in this extract and are left unmapped, as are the
 # COST* columns. PROPERTYCLASS (R/C/E/I/A/Z) is a class letter that
@@ -84,7 +84,7 @@ csv_dtype: str
 columns:
   parcel_id_assessor: PARCEL ID
   use_group_code: LUC
-  area_ac: CALCACRES
+  land_area_ac: CALCACRES
   address_number: ADRNOLOW
   tax_neighborhood_code: NBHD
   topography: TOPO2
@@ -125,8 +125,8 @@ transformations:
     output: address_street
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
 
 drop_columns:
   - location_codes

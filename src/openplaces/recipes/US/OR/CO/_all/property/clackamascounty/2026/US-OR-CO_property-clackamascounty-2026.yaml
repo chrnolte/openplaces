@@ -56,11 +56,11 @@
 #
 # LIVING AREA, not gross area: the field is named so, and RLIS's
 # BLDGSQFT ("Square footage of building(s)"), which the RLIS parcel
-# recipe maps to area_sqft, equals LIVING_AREA on 99.98% of the 127,501
-# matched Clackamas accounts where both are above 0. RLIS's area_sqft
-# is therefore living area for this county. The layer has no gross
-# area, so building_area_sqft is not mapped, and this recipe maps no
-# area_sqft. LIVING_AREA > 0 on 88.5% of residential rows, 96.6% of
+# recipe maps to living_area_sqft, equals LIVING_AREA on 99.98% of the
+# 127,501 matched Clackamas accounts where both are above 0: it is
+# living area for this county. The layer has no gross area, so
+# gross_floor_area_sqft is not mapped. LIVING_AREA > 0 on 88.5% of
+# residential rows, 96.6% of
 # residential rows with a building value (median 2,027), 95.2% of
 # LANDCLASS 101 and 87.7% of 102 (condominium, median 1,178). Houses
 # on tract, farm and forest land (improved classes 4x1, 5x1, 6x1)
@@ -105,8 +105,8 @@
 # (see YEAR BUILT above) although RLIS carries the same year on
 # parcels: here it lands on the property, as living area does.
 # LIVING_AREA is mapped although RLIS carries the same figure as
-# area_sqft on parcels: here it lands on the property, under the name
-# that says what it measures. The layer holds no owner name or mailing
+# living_area_sqft on parcels: here it lands on the property as well.
+# The layer holds no owner name or mailing
 # field.
 
 description: >-

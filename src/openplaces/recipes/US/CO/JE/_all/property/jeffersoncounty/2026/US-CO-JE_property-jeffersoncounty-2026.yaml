@@ -32,7 +32,7 @@
 #
 # MAPPING. Structures 1 to 4 are combined to the property:
 # - year_built: the earliest STTYRBLT* above 0 (0 is the blank).
-# - building_area_sqft: the sum of STTGRSAREA* (gross area).
+# - gross_floor_area_sqft: the sum of STTGRSAREA* (gross area).
 # - basement_area_sqft: the sum of STTBSTAREA* above 0; has_basement
 #   is true where structure 1's STTBSTTYP is 'BST' (its only code)
 #   and missing elsewhere.
@@ -61,7 +61,7 @@
 # layer's Jefferson parcel_id (same conversion): 99.90% of roll keys
 # found there and 99.90% of its keys found here; 99.98% of
 # residential schedules found. Share of residential schedules with a
-# value: year_built 99.9%, building_area_sqft 99.9% (median 1,655),
+# value: year_built 99.9%, gross_floor_area_sqft 99.9% (median 1,655),
 # basement_area_sqft 68.6%, has_basement 68.5%, has_garage and
 # garage_type 82.2%, has_carport 3.3%, building_style 99.9%,
 # construction_description and quality_grade 99.9%,
@@ -107,7 +107,7 @@ columns:
   building_style: STTTYPUSE
   garage_type: STTGARTYP
   year_built: STTYRBLT
-  building_area_sqft: STTGRSAREA
+  gross_floor_area_sqft: STTGRSAREA
   basement_area_sqft: STTBSTAREA
   n_stories: STTNBRFLR
   n_dwellings: STTNBRUNT
@@ -135,17 +135,17 @@ transformations:
     output: year_built
 
   # Gross area: sum over structures.
-  - {type: unary, operation: to_numeric, input: building_area_sqft,
-     output: building_area_sqft}
+  - {type: unary, operation: to_numeric, input: gross_floor_area_sqft,
+     output: gross_floor_area_sqft}
   - {type: unary, operation: to_numeric, input: STTGRSARE2, output: STTGRSARE2}
   - {type: unary, operation: to_numeric, input: STTGRSARE3, output: STTGRSARE3}
   - {type: unary, operation: to_numeric, input: STTGRSARE4, output: STTGRSARE4}
   - type: aggregate
     operation: sum
-    inputs: [building_area_sqft, STTGRSARE2, STTGRSARE3, STTGRSARE4]
-    output: building_area_sqft
-  - {type: unary, operation: null_if_equal, input: building_area_sqft,
-     args: {value: 0}, output: building_area_sqft}
+    inputs: [gross_floor_area_sqft, STTGRSARE2, STTGRSARE3, STTGRSARE4]
+    output: gross_floor_area_sqft
+  - {type: unary, operation: null_if_equal, input: gross_floor_area_sqft,
+     args: {value: 0}, output: gross_floor_area_sqft}
 
   # Basement area: sum over structures.
   - {type: unary, operation: to_numeric, input: basement_area_sqft,

@@ -57,7 +57,7 @@ scraper_options:
 columns:
   parcel_id_assessor: PARCEL_NO
   zoning_code: Zoning
-  area_ac: acres
+  land_area_ac: acres
 
 columns_to_categorical:
   - zoning_code

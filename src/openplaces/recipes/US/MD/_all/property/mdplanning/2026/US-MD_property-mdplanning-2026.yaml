@@ -45,8 +45,8 @@
 #     parcel_id_local is built exactly as on US-MD_parcel-mdimap-2026.
 #   - tax_neighborhood_code: CM_NBRHOOD, filled on 99.98% of accounts,
 #     15,430 distinct codes of 4 to 11 characters.
-#   - building_area_sqft: PR_ENCSQFT, "Cumulative Total Enclosed SQ FT
-#     of All Buildings", filled (> 0) on 82.6% of accounts, null
+#   - gross_floor_area_sqft: PR_ENCSQFT, "Cumulative Total Enclosed
+#     SQ FT of All Buildings", filled (> 0) on 82.6% of accounts, null
 #     elsewhere (never 0). Gross, not living area: the enclosed area
 #     includes built-in garages (sketch code F76) and rooms over a
 #     building (RMO). It equals the sum of the account's building
@@ -93,7 +93,7 @@
 #     Per county, parcel -> roll is 99.26-100%, and roll -> parcel
 #     runs from 78.89% (Montgomery) to 99.01% (Carroll).
 #   - Coverage on residential accounts, both supplements reduced
-#     per account: tax_neighborhood_code 100.0%, building_area_sqft
+#     per account: tax_neighborhood_code 100.0%, gross_floor_area_sqft
 #     87.0%, quality_grade 80.0%, year_built 89.2%, building_style
 #     88.7%, living_area_sqft 79.8%, n_stories and has_basement
 #     78.9% (true 56.7%), has_garage 34.2%, has_carport 2.6%,
@@ -142,7 +142,7 @@ process_by:
 columns:
   parcel_id_assessor: ACCTID
   tax_neighborhood_code: CM_NBRHOOD
-  building_area_sqft: PR_ENCSQFT
+  gross_floor_area_sqft: PR_ENCSQFT
 
 columns_to_categorical:
   - tax_neighborhood_code

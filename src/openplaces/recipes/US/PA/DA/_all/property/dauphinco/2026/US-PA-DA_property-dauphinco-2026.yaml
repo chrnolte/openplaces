@@ -48,8 +48,8 @@ columns:
   clean_and_green: cleangrn
   use_group_code: py_used_code
   owner_relationship: relationship
-  # Kept under a working name; converted to lot_size (sqft) below.
-  lot_size_acres: acres
+  # Kept under a working name; converted to land_area_sqft (sqft) below.
+  land_area_acres: acres
   owner_city: city
   owner_admin2_id_admin1: state_code
   owner_postal_code: zip_code
@@ -104,11 +104,11 @@ transformations:
     input: owner_address
     output: owner_address
 
-  # lot_size's canonical unit is sqft; the source gives acres.
+  # land_area_sqft's canonical unit is sqft; the source gives acres.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size_acres
-    output: lot_size
+    input: land_area_acres
+    output: land_area_sqft
 
 transformation_patterns:
   - type: unary

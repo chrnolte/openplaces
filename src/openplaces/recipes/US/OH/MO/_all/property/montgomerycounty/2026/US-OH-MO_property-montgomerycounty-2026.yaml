@@ -106,7 +106,7 @@ columns:
   parcel_id_assessor: parid
   tax_year: taxyr
   use_group_code: luc
-  area_ac: calcacres
+  land_area_ac: calcacres
   tax_neighborhood_code: nbhd
   topography: topo1
   n_dwellings: livunit
@@ -178,8 +178,8 @@ transformations:
     output: tax_year
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
   - type: unary
     operation: null_if_equal
     input: adrno

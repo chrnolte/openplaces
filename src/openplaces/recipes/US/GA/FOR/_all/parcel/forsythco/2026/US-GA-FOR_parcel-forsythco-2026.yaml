@@ -57,7 +57,7 @@ columns:
   land_value: LNDVALUE
   total_value: CNTASSDVAL
   year_built: RESYRBLT
-  area_sqft: RESFLRAREA
+  gross_floor_area_sqft: RESFLRAREA
   use_group: USEDSCRP
   use_group_code: USECD
   zoning_code: ZONING

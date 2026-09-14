@@ -129,13 +129,13 @@ transformations:
     output: parcel_id_assessor
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
   # 4 implied decimals; see ACREAGE.
   - type: expression
-    expression: "area_ac / 10000"
-    inputs: [area_ac]
-    output: area_ac
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
 
 columns:
   tax_neighborhood_code: hood_cd
@@ -146,7 +146,7 @@ columns:
   city: situs_city
   postal_code: situs_zip
   legal_description: legal_desc
-  area_ac: legal_acreage
+  land_area_ac: legal_acreage
   total_value: market_value
   tax_year: prop_val_yr
 

@@ -96,11 +96,11 @@ transformations:
 columns:
   parcel_id_admin2_2: PropertyNumber
   legal_description: LegalDesc
-  area_ac: LegalAcres
+  land_area_ac: LegalAcres
   total_value: CurrMarketValue
   land_value: CurrLandValue
   improvement_value: CurrImprovmentValue
-  area_sqft: SquareFootage
+  living_area_sqft: SquareFootage
   tax_neighborhood_code: NbhdCode
   address_number: SitusStreetNumber
   city: SitusCity

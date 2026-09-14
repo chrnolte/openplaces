@@ -83,7 +83,7 @@ columns:
   purpose_group: st_damcat
   occupancy_type: occtype
   n_stories: num_story
-  area_sqft: sqft
+  gross_floor_area_sqft: sqft
   construction_type: bldgtype
   foundation_type: found_type
   foundation_height_ft: found_ht

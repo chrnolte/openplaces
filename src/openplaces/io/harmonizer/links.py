@@ -1935,8 +1935,8 @@ def _discover_link_sources(state: HarmonizeState, entity_type: str) -> list[dict
     rows are structurally 1:many for a reason the attribute registry's
     global default does not anticipate -- e.g. a PACS
     ``APPRAISAL_IMPROVEMENT_DETAIL`` roll, one row per building component,
-    where ``area_sqft`` needs summing per property rather than the
-    registry's ``mean``. Scoped to the recipe that declares it: unlike a
+    where ``year_built`` needs the earliest component's year rather than
+    the registry's ``mean``. Scoped to the recipe that declares it: unlike a
     caller-supplied override on the :func:`link_by_id` step itself, it
     never reaches a sibling match's columns.
 
@@ -2507,12 +2507,13 @@ def link_by_id(
         ``'aggregate'`` mode only. Per-output-column override of the
         attribute-registry aggregation, keyed by the same post-rename
         canonical output name as *columns*'s dict form (e.g.
-        ``{'area_sqft': 'sum'}``). Exists because the registry default is a
-        property-level default (``area_sqft`` is ``'mean'``, i.e. one value
+        ``{'year_built': 'min'}``). Exists because the registry default is a
+        property-level default (``year_built`` is ``'mean'``, i.e. one value
         per property in most sources), while a reference where several rows
         share a key for a structural reason -- e.g. one row per building
         component in a PACS ``APPRAISAL_IMPROVEMENT_DETAIL`` roll -- needs
-        that key's *sum* instead. Changing the registry default would
+        that key's *min* (the original structure's year) instead.
+        Changing the registry default would
         corrupt every other recipe's one-row-per-property case, so the
         override lives here, per recipe, instead. A column absent from the
         dict keeps the registry default. Resolved through the same
@@ -2649,7 +2650,7 @@ def link_by_id(
                         if not match_columns:
                             continue
             # A match's own declared override (e.g. the improvement-detail
-            # sibling's area_sqft: sum) wins over the caller's for the
+            # sibling's year_built: min) wins over the caller's for the
             # columns it names, but never reaches a sibling match with no
             # such declaration -- see _discover_link_sources.
             match_aggregation_function = {

@@ -59,7 +59,7 @@
 # basement_area_sqft and has_basement 84.5%,
 # basement_finished_area_sqft 49.9%, has_central_air true 84.1%,
 # n_fireplaces 83.8%, renovation_year 11.2%, n_outbuildings 4.0%,
-# building_area_sqft 0.1%.
+# gross_floor_area_sqft 0.1%.
 #
 # TERMS. The open-data item for these Assessor tables (Property
 # Improvements Data, 59223a6a14b24022a3831e4ea9913c5e) states: "This

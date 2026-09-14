@@ -43,7 +43,7 @@
 # from the layer's own aliases:
 #   LIVING_GBA 'Living Gross Building Area' -> living_area_sqft (the
 #     unit's living area; the table has no gross building area, and
-#     no area_sqft was mapped before)
+#     no floor area was mapped before)
 #   HEAT_D 'Heat Description' -> heating_type (system, e.g. forced
 #     air, heat pump, hot water radiator; 14 values in the source's
 #     wording, 'No Data' nulled)

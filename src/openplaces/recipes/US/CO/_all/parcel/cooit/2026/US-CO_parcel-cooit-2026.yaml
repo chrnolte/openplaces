@@ -81,9 +81,9 @@
 #   ownerAdd       -> owner_address; ownAddCty -> owner_city;
 #   ownAddStt      -> owner_state;  ownAddZip -> owner_postal_code
 #   legalDesc      1,820,625 (70.0%) -> legal_description
-#   landAcres      1,314,431 (50.6%) -> area_ac
-#   landSqft         113,579 (4.4%) -> lot_size (mapped despite low
-#                  population -- it is the sqft-unit counterpart of
+#   landAcres      1,314,431 (50.6%) -> land_area_ac
+#   landSqft         113,579 (4.4%) -> land_area_sqft (mapped despite
+#                  low population -- it is the sqft-unit counterpart of
 #                  landAcres and some counties report only this one)
 #   subCode        1,126,929 (43.3%) -> subdivision_code
 #   subName        -> subdivision
@@ -247,8 +247,8 @@ columns:
   owner_state: ownAddStt
   owner_postal_code: ownAddZip
   legal_description: legalDesc
-  area_ac: landAcres
-  lot_size: landSqft
+  land_area_ac: landAcres
+  land_area_sqft: landSqft
   subdivision_code: subCode
   subdivision: subName
   zoning_code: zoningCode

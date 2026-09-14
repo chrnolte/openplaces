@@ -60,7 +60,7 @@ query: "Retired == 'NO' and tax_year == tax_year.max()"
 columns:
   parcel_id_assessor: Parcel_Number_U
   tax_year: Tax_Year
-  area_ac: Acres
+  land_area_ac: Acres
 
 transformations:
   - type: unary
@@ -69,8 +69,8 @@ transformations:
     output: tax_year
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
 
 parcel_id_local:
   source: parcel_id_assessor

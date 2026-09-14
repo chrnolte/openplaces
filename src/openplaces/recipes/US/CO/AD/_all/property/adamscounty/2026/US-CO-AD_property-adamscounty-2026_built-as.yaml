@@ -32,7 +32,7 @@
 # 0 on single-family rows). Areas by the code's property type:
 # living_area_sqft is BLTASSF of residential codes (above-grade
 # finished area; basements and garages are Detail lines);
-# building_area_sqft is BLTASSF of commercial codes; outbuildings
+# gross_floor_area_sqft is BLTASSF of commercial codes; outbuildings
 # count toward neither. Read from non-outbuilding sections only:
 # year_built YRBLT (earliest), renovation_year YRREM from 1800 to 2027
 # (latest; 20.3% of residential sections), n_stories STORIES above 0
@@ -152,7 +152,7 @@ transformations:
   - type: expression
     expression: "BLTASSF.where((built_as_type == 'Commercial') & (BLTASSF > 0))"
     inputs: [BLTASSF, built_as_type]
-    output: building_area_sqft
+    output: gross_floor_area_sqft
   - {type: unary, operation: to_numeric, input: year_built, output: year_built}
   - type: expression
     expression: "year_built.where(built_as_type != 'Out Building')"
@@ -221,7 +221,7 @@ aggregation_function:
   n_rooms: sum
   n_dwellings: sum
   living_area_sqft: sum
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   year_built: min
   renovation_year: max
   n_stories: max

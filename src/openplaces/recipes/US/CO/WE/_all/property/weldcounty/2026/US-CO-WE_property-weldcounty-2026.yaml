@@ -28,7 +28,7 @@
 # MAPPING. year_built YEARBUILT (the primary building's);
 # living_area_sqft RESIDENTIALSF (equals the sum of the residential
 # buildings' built-as area on 93.7% of residential accounts);
-# building_area_sqft COMMERCIALSF (commercial built-as area, 0.2% of
+# gross_floor_area_sqft COMMERCIALSF (commercial built-as area, 0.2% of
 # residential accounts); basement_finished_area_sqft BSMTTOTALFINSF
 # (equals fair + minimal + full finished on 99.9%); basement_area_sqft
 # BSMTUNFINSF + BSMTTOTALFINSF, has_basement where that is above 0;
@@ -75,7 +75,7 @@
 # (1,187 codes), use_subgroup_code 100%, use_group_code 91.5%,
 # renovation_year 13.4%, n_dwellings 7.7%, n_outbuildings 6.2%,
 # foundation_description 4.9%, has_carport 1.4%,
-# construction_description 0.9%, building_area_sqft 0.2%.
+# construction_description 0.9%, gross_floor_area_sqft 0.2%.
 #
 # TERMS. The item licence is recorded verbatim in license. It is a
 # disclaimer with no redistribution or resale clause and no
@@ -129,7 +129,7 @@ columns:
   use_subgroup_code: IMPABSTRACTCODE
   year_built: YEARBUILT
   living_area_sqft: RESIDENTIALSF
-  building_area_sqft: COMMERCIALSF
+  gross_floor_area_sqft: COMMERCIALSF
   basement_finished_area_sqft: BSMTTOTALFINSF
   porch_area_sqft: PORCH
 
@@ -145,8 +145,8 @@ transformations:
   - {type: unary, operation: to_numeric, input: year_built, output: year_built}
   - {type: unary, operation: to_numeric, input: living_area_sqft,
      output: living_area_sqft}
-  - {type: unary, operation: to_numeric, input: building_area_sqft,
-     output: building_area_sqft}
+  - {type: unary, operation: to_numeric, input: gross_floor_area_sqft,
+     output: gross_floor_area_sqft}
   - {type: unary, operation: to_numeric, input: basement_finished_area_sqft,
      output: basement_finished_area_sqft}
   - {type: unary, operation: to_numeric, input: BSMTUNFINSF, output: BSMTUNFINSF}
@@ -159,8 +159,8 @@ transformations:
     output: basement_area_sqft
   - {type: unary, operation: null_if_equal, input: living_area_sqft,
      args: {value: 0}, output: living_area_sqft}
-  - {type: unary, operation: null_if_equal, input: building_area_sqft,
-     args: {value: 0}, output: building_area_sqft}
+  - {type: unary, operation: null_if_equal, input: gross_floor_area_sqft,
+     args: {value: 0}, output: gross_floor_area_sqft}
   - {type: unary, operation: null_if_equal, input: basement_finished_area_sqft,
      args: {value: 0}, output: basement_finished_area_sqft}
   - {type: unary, operation: null_if_equal, input: basement_area_sqft,
