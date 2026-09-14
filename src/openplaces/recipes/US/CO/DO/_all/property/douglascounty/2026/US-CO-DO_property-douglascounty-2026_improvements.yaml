@@ -1,0 +1,125 @@
+# Recipe: Douglas County, CO Assessor property improvements table,
+# built-as sections: bedrooms, baths, stories, years, units, style.
+# Same source and terms as US-CO-DO_property-douglascounty-2026; read
+# that roll's header first.
+#
+# SOURCE. Open-data table 8, Property_Improvements_Data, as the Hub
+# CSV of item 59223a6a14b24022a3831e4ea9913c5e (43.0 MB, 151,388 rows,
+# headers). It matches the headerless Property_Improvements.txt:
+# 151,445 rows there, bedrooms above 0 on 132,032 Hub rows against
+# 132,070.
+#
+# ONE ROW. A building (ACCOUNT_NO x BUILDING_ID) or one built-as
+# section of it. 2,055 building keys repeat over 5,068 rows, differing
+# in BUILT_AS and BUILT_AS_SF: sections, almost all commercial or
+# outbuildings (17 groups among dwelling types). Per-section fields
+# (this recipe) are summed over all rows; per-building fields, which
+# repeat on every section row (garage, porch, basement, fireplace,
+# quality, condition), come from _buildings, deduplicated per
+# building.
+#
+# BATHS. NO_OF_BATHROOM holds whole numbers only (no fraction on any
+# Hub row; the headerless file has 11 at .5 and 2 at .75 out of
+# 137,628), and on 12.4% of dwelling rows it exceeds the bedroom
+# count. It
+# counts every bathroom, a half bath as one, not 0.5: n_bathrooms here
+# is a whole-bath count and n_half_bathrooms is not mapped. Apartment
+# rows carry complex totals (bedrooms up to 563).
+#
+# MAPPING. Summed to the account: n_bedrooms NO_OF_BEDROOM, n_bathrooms
+# NO_OF_BATHROOM, n_dwellings NO_OF_UNIT above 0. From sections other
+# than outbuildings (PROPERTY_TYPE_CODE 'Out Building'): year_built
+# BUILT_YEAR (earliest), renovation_year REMODELED_YEAR from 1800 to
+# 2027 (latest; 11.2% of dwelling rows), n_stories NO_OF_STORY above 0
+# (largest), building_style BUILT_AS (first; the county's built-as
+# style, e.g. '2 Story', 'Ranch 1 Story').
+# Left unmapped: STYLE (the occupancy description, e.g. 'Single
+# Family Residential'), OCCUPANCY_CODE, BUILT_AS_CODE, BUILT_AS_SF,
+# COMPLETION_PERCENT, UNIT_TYPE ('End', 'Inside'), the mobile-home
+# dimensions, AVERAGE_STORY_HEIGHT, SPRINKLER_COVERAGE_SF, and
+# ROOF_CONSTRUCTION_TYPE_CODE, INTERIOR_FINISH_TYPE and
+# FLOOR_MATERIAL_TYPE_CODE (no registry rows).
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Douglas County, CO Assessor improvements sections: bedrooms,
+  whole-number baths, stories, year built, remodel year, units, style.
+
+admin_id: US-CO-DO
+
+entity:
+  entity_type: property
+  source:
+    source_id: douglascounty
+    # Same terms as the roll; see its header.
+    portal_url: "https://www.douglasco.gov/assessor/data-downloads/"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/59223a6a14b24022a3831e4ea9913c5e_8/downloads/data?format=csv&spatialRefId=4326"
+    license: "CC-BY-SA-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59223a6a14b24022a3831e4ea9913c5e"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "Property_Improvements_Data.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  property_id_assessor: ACCOUNT_NO
+  n_bedrooms: NO_OF_BEDROOM
+  n_bathrooms: NO_OF_BATHROOM
+  n_dwellings: NO_OF_UNIT
+  year_built: BUILT_YEAR
+  renovation_year: REMODELED_YEAR
+  n_stories: NO_OF_STORY
+  building_style: BUILT_AS
+
+transformations:
+  - {type: unary, operation: to_numeric, input: n_bedrooms, output: n_bedrooms}
+  - {type: unary, operation: to_numeric, input: n_bathrooms, output: n_bathrooms}
+  - {type: unary, operation: to_numeric, input: n_dwellings, output: n_dwellings}
+  - {type: unary, operation: null_if_equal, input: n_dwellings, args: {value: 0},
+     output: n_dwellings}
+  - {type: unary, operation: to_numeric, input: year_built, output: year_built}
+  - type: expression
+    expression: "year_built.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [year_built, PROPERTY_TYPE_CODE]
+    output: year_built
+  - {type: unary, operation: to_numeric, input: renovation_year,
+     output: renovation_year}
+  - type: expression
+    expression: >-
+      renovation_year.where((PROPERTY_TYPE_CODE != 'Out Building') &
+      (renovation_year >= 1800) & (renovation_year <= 2027))
+    inputs: [renovation_year, PROPERTY_TYPE_CODE]
+    output: renovation_year
+  - {type: unary, operation: to_numeric, input: n_stories, output: n_stories}
+  - type: expression
+    expression: >-
+      n_stories.where((PROPERTY_TYPE_CODE != 'Out Building') & (n_stories > 0))
+    inputs: [n_stories, PROPERTY_TYPE_CODE]
+    output: n_stories
+  - type: expression
+    expression: "building_style.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [building_style, PROPERTY_TYPE_CODE]
+    output: building_style
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_dwellings: sum
+  year_built: min
+  renovation_year: max
+  n_stories: max
+  building_style: first
+
+supplements: US-CO-DO_property-douglascounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: improvements

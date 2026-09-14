@@ -1,0 +1,159 @@
+# Recipe: El Paso County, CO Assessor "EPC Parcel Data" file, one row
+# per real property parcel with its primary improvement.
+#
+# SOURCE. assessor.elpasoco.com/assessordata links one zip,
+# EPC-Parcel-Data-YYYYMMDD.zip (20 MB; one tab-delimited "EPC Parcel
+# Data.txt", 120 MB, 41 columns, Latin-1), "updated weekly". The date
+# in the file name changes, so the link is scraped from that page
+# (download_url_source); fetched 2026-09-13 as
+# EPC-Parcel-Data-20260908.zip. Layout PDF (2023) on the same page;
+# the file has drifted from it (assessed value split school and
+# non-school, sale fields renamed).
+#
+# ONE ROW. One parcel with its primary improvement: 277,652 rows,
+# 277,638 distinct PARCEL. IMPCOUNT > 1 on 11,016 residential rows,
+# and only the primary improvement is described, so the room counts
+# and areas are the primary building's, not the parcel's total.
+# About 20 rows are broken by tabs or line breaks inside the legal
+# description and carry text in PARCEL ('COLO SPGS SCHOOL DISTRICT
+# #99'); the query keeps all-digit ids only. Condominium units are
+# parcels here and stay rows.
+#
+# KEY. PARCEL is the 10-digit schedule number; 1,238 carry a leading
+# space and have lost a leading zero (9 digits), as the statewide OIT
+# layer's El Paso parcel_id does too. It is stripped and feeds
+# parcel_id_local (kind parcel).
+#
+# BATHS. Baths is one decimal in quarter steps (.00, .25, .50, .75 on
+# 96,957 / 22,992 / 91,528 / 21,011 residential rows). It is kept as
+# published: a three-quarter bath counts 0.75 and a quarter bath
+# 0.25, as the registry allows. Full and half baths cannot be told
+# apart, so n_half_bathrooms is not mapped.
+#
+# AREAS. TotalFinishedArea (living_area_sqft) includes the finished
+# basement: it is at least IMPSQFT on 97.96% of residential rows,
+# median ratio 1.327. TotalBSMT and FinishedBSMT are the basement's
+# total and finished areas; has_basement is true where TotalBSMT is
+# above 0. IMPSQFT (above-grade area) is left unmapped: it is neither
+# living area as the county totals it nor gross building area.
+#
+# USE CODES. LANDCODE is use_group_code; IMPSTATECODE (the state
+# improvement abstract code, 12xx residential) is use_subgroup_code.
+#
+# Left unmapped: LOCATION and LOCATIONZIP (situs), owner and mailing
+# fields (OWNER1-3, MAIL*), PARTIALLEGAL, PLATNUM, ZONING, values,
+# SALEDATE and SALEPRICE, IMPLOCALCODE. There are no stories (the
+# style names them), quality, condition, exterior, roof, heating,
+# garage, fireplace, porch or neighborhood fields.
+#
+# MEASURED on the 2026-09-08 file, in memory with this recipe's
+# reader and preprocessing (2026-09-13): 277,652 rows read, 277,627
+# kept (25 broken rows dropped), every kept PARCEL distinct.
+# Residential is IMPSTATECODE 12xx: 235,274 parcels. parcel_id_local
+# against the statewide OIT layer's El Paso parcel_id (same
+# conversion): 98.65% of roll keys found there, 98.87% of its keys
+# found here; 99.69% of residential parcels found. Share of
+# residential parcels with a value: year_built 100%, n_bedrooms 98.8%
+# (median 3), n_bathrooms 98.7% (median 2.5), n_rooms 98.5%,
+# n_dwellings 98.6%, living_area_sqft 98.0% (median 2,021),
+# basement_area_sqft and has_basement 71.3%,
+# basement_finished_area_sqft 57.3%, building_style 100%,
+# use_subgroup_code 100%, use_group_code 96.1%.
+#
+# TERMS. No licence and no click-through. The county's general
+# disclaimer (terms_url) states that "no warranty, expressed or
+# implied, is made regarding the correctness, accuracy or utility of
+# the data" and that "All content included on this site, such as
+# text, graphics, ... digital downloads, data compilations, and
+# software, is the property of El Paso County, Colorado or its
+# content suppliers and is protected by United States and
+# international copyright laws." No permission to redistribute is
+# granted, so redistribution_restricted is true (decided by the user,
+# 2026-09-13); a delivery withholds these values.
+
+description: >-
+  El Paso County, CO Assessor parcel data file: primary improvement's
+  rooms, bedrooms, quarter-step baths, year built, finished and
+  basement areas, style.
+
+admin_id: US-CO-EP
+
+entity:
+  entity_type: property
+  source:
+    source_id: elpasocounty
+    portal_url: "https://assessor.elpasoco.com/assessordata/"
+    download_url_source: "https://assessor.elpasoco.com/assessordata/"
+    download_url_source_regex: 'https://epc-assets\.elpasoco\.com/wp-content/uploads/sites/4/Data/EPC-Parcel-Data-[0-9]+\.zip'
+    license: >-
+      unknown (no licence; the site claims copyright over 'data
+      compilations' and 'digital downloads')
+    terms_url: "https://www.elpasoco.com/general-disclaimer/"
+    redistribution_restricted: true
+  version: "2026"
+
+download_by:
+  admin_level: 3
+
+compressed_file_name: "EPC-Parcel-Data.zip"
+uncompressed_file_name: "EPC Parcel Data.txt"
+
+process_by:
+  admin_level: 3
+
+delimiter: "\t"
+encoding: latin-1
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: PARCEL
+  use_group_code: LANDCODE
+  use_subgroup_code: IMPSTATECODE
+  year_built: YearBlt
+  n_dwellings: UNITS
+  building_style: RESSTYLE
+  n_rooms: Rooms
+  n_bedrooms: Beds
+  n_bathrooms: Baths
+  living_area_sqft: TotalFinishedArea
+  basement_area_sqft: TotalBSMT
+  basement_finished_area_sqft: FinishedBSMT
+
+# Broken rows carry text in PARCEL; see ONE ROW.
+query: "parcel_id_assessor.str.strip().str.isdigit() == True"
+
+transformations:
+  - {type: string, operation: strip, input: parcel_id_assessor,
+     output: parcel_id_assessor}
+  - {type: string, operation: strip, input: building_style, output: building_style}
+  - {type: unary, operation: to_numeric, input: year_built, output: year_built}
+  - {type: unary, operation: to_numeric, input: n_dwellings, output: n_dwellings}
+  - {type: unary, operation: to_numeric, input: n_rooms, output: n_rooms}
+  - {type: unary, operation: to_numeric, input: n_bedrooms, output: n_bedrooms}
+  - {type: unary, operation: to_numeric, input: n_bathrooms, output: n_bathrooms}
+  - {type: unary, operation: to_numeric, input: living_area_sqft,
+     output: living_area_sqft}
+  - {type: unary, operation: to_numeric, input: basement_area_sqft,
+     output: basement_area_sqft}
+  - {type: unary, operation: to_numeric, input: basement_finished_area_sqft,
+     output: basement_finished_area_sqft}
+  - {type: unary, operation: null_if_equal, input: basement_area_sqft,
+     args: {value: 0}, output: basement_area_sqft}
+  - {type: unary, operation: null_if_equal, input: basement_finished_area_sqft,
+     args: {value: 0}, output: basement_finished_area_sqft}
+  - type: expression
+    expression: "(basement_area_sqft > 0).where(basement_area_sqft > 0)"
+    inputs: [basement_area_sqft]
+    output: has_basement
+
+columns_to_categorical:
+  - use_group_code
+  - use_subgroup_code
+  - building_style
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
