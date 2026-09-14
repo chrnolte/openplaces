@@ -1,23 +1,39 @@
-# Recipe: New Hanover County, NC parcel tax roll.
+# Recipe: New Hanover County, NC property tax roll.
 #
-# Source: the county's cumulative property-data export `nhclttax`, a ZIP
-# containing a fixed-width ASCII flat file (`nhclttax.txt`, 530 bytes/record).
-# The fixed-width layout below is the "Text" layout from the county's Tax Data
-# File Format document; the widths sum to the 530-byte record length.
+# Source: the county's cumulative property-data export `nhclttax`, a
+# ZIP containing a fixed-width ASCII flat file (`nhclttax.txt`, 530
+# bytes per record). The fixed-width layout below is the "Text" layout
+# from the county's Tax Data File Format document; the widths sum to
+# the 530-byte record length.
 #
-# This is the assessor attribute roll (one row per parcel, no geometry): assessed
-# values, year built, owner, situs, and a most-recent-sale snapshot. It is keyed
-# by the parcel PIN and is joinable to the GIS parcels (US-NC_parcel-nconemap)
-# downstream.
+# One row per tax account, no geometry: assessed values, year built,
+# owner, situs and a most-recent-sale snapshot.
+#
+# Entity type: this roll was a `parcel` recipe
+# (US-NC-NHA_parcel-nhcgov-2026) until 2026-09-13. Its rows are
+# accounts, not lots: 17,101 of its 115,028 rows carry a sub-lot
+# number (condominium and other units on a shared lot), and it has
+# 11,914 more rows than NC OneMap has parcels in the county. A roll's
+# rows are properties (AGENTS.md, "Entity model and stage roles"), so
+# this is one `property` recipe for every row, units included, never
+# split by the sub-lot field.
+#
+# Parcel geometry for New Hanover is NC OneMap's
+# (US-NC_parcel-nconemap-2025), whose `altparno` carries the same
+# account id as this roll's parcel_id_assessor. The roll reaches
+# parcels through parcel_id_local, built from the lot rather than the
+# account (parcel_id_tax, below), so that every account on one lot
+# aggregates onto that lot's parcel.
 
 description: >-
-  New Hanover County, NC parcel tax roll (assessed values, owner, situs, most
-  recent sale) from the county's fixed-width property data export.
+  New Hanover County, NC property tax roll, one row per account
+  (assessed values, owner, situs, most recent sale), from the county's
+  fixed-width export.
 
 admin_id: US-NC-NHA
 
 entity:
-  entity_type: parcel
+  entity_type: property
   source:
     source_id: nhcgov
     portal_url: "https://www.nhcgov.com/344/Database-Download"
@@ -93,19 +109,22 @@ fixed_width:
   - [year_built, 4]
   - [filler, 4]
 
-# Columns are named once, in the fixed-width layout above, using canonical
-# openplaces attribute names (see docs: Writing recipes -> Columns): no entity
-# (parcel) prefix except on identifiers, no abbreviations. Fields kept under
-# working names (mapnumber/blocknumber/lotnumber/sublotnumber, owner_city_state,
-# legal_description_line_1/2) feed the transformations below. The parcel id is
-# not a single field in this layout (the 15-digit geo PIN `parcel_id_geo` is
-# blank for ~90% of records), so it is assembled from the map/block/lot composite.
+# Columns are named once, in the fixed-width layout above, using
+# canonical openplaces attribute names (see docs: Writing recipes ->
+# Columns): no entity prefix except on identifiers, no abbreviations.
+# Fields kept under working names (mapnumber, blocknumber, lotnumber,
+# sublotnumber, owner_city_state, legal_description_line_1/2) feed the
+# transformations below. The
+# account id is not a single field in this layout (the 15-digit geo
+# PIN `parcel_id_geo` is filled on only 2,623 of 115,028 rows,
+# `master_index` is empty, and `type` is R on every row), so it is
+# assembled from the map/block/lot/sub-lot composite.
 
 transformations:
-  # Assemble the raw assessor parcel id as `<type><mapnumber>-<block>-<lot>-<sublot>`
-  # (e.g. R06116-006-001-000). The standardized matching key parcel_id_local is
-  # derived from it below, making the roll joinable to the sales and the GIS
-  # parcels.
+  # Assemble the per-account id as
+  # `<type><mapnumber>-<block>-<lot>-<sublot>` (shape
+  # R99999-999-999-999). It is unique per row, and it is what the
+  # county's sales name (US-NC-NHA_transaction-nhcgov-2026 keys on it).
   - type: string
     operation: concat
     inputs: [type, mapnumber]
@@ -116,6 +135,26 @@ transformations:
     args:
       sep: "-"
     output: parcel_id_assessor
+
+  # The lot key: the same id with the sub-lot forced to 000, which is
+  # how NC OneMap numbers a lot's own polygon. Every account on a lot
+  # shares it, so it feeds parcel_id_local below.
+  - type: string
+    operation: concat
+    inputs: [type, mapnumber]
+    output: parcel_id_tax
+  - type: string
+    operation: concat
+    inputs: [parcel_id_tax, blocknumber, lotnumber]
+    args:
+      sep: "-"
+    output: parcel_id_tax
+  - type: string
+    operation: add_suffix
+    input: parcel_id_tax
+    args:
+      suffix: "-000"
+    output: parcel_id_tax
 
   # Assemble the full legal description from its two fixed-width lines. The
   # county hard-wraps the text at exactly 27 chars (mid-word, e.g. `...SQ` +
@@ -202,11 +241,27 @@ transformation_patterns:
       - last_sale_month
       - n_sales
 
-# Standardized cross-comparable matching key derived from parcel_id_assessor
-# (auto per-county conversion; New Hanover uses `simple`). Lets this roll connect
-# to the GIS parcels and the sales transactions without re-deriving ids.
+# Standardized matching key from the lot key (auto per-county
+# conversion; New Hanover resolves to `simple`, as NC OneMap's own key
+# does), linking each account to its NC OneMap lot parcel.
+#
+# Measured 2026-09-13 on the local files (115,028 roll rows, 103,114
+# NC OneMap parcels in the county):
+# - lot key: 97.7% of roll rows find a OneMap parcel and 94.5% of
+#   OneMap parcels find a roll row; 2,621 parcels carry more than one
+#   account (17,545 rows, the largest lot 327).
+# - account key: 89.6% of roll rows and 99.9% of parcels match, one
+#   to one, but 11,533 unit rows then reach no parcel at all, and a
+#   condominium lot shows only its common-area account.
+# The lot key's cost is the 5,637 unit polygons OneMap draws itself
+# (sub-lot other than 000). Where the roll also has the lot's 000
+# account (4,214 units), a unit's values land on the lot's parcel,
+# not its own polygon; the 1,354 units whose lot has no 000 polygon
+# link nowhere. Choosing per row needs a lot-level condition (does
+# this lot have a 000 account?), which recipe transformations cannot
+# express.
 parcel_id_local:
-  source: parcel_id_assessor
+  source: parcel_id_tax
   kind: parcel
 
 save_to:

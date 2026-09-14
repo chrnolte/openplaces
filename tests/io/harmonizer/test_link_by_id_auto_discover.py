@@ -3,9 +3,9 @@ per-admin `recipe_id` with admin-scoped discovery of every applicable ingest
 source, plus an auto-applied `*-remap.csv` crosswalk).
 
 Uses the real bundled MA (MassGIS, with a `property` `additional_layers`
-entry declaring `layer_key: parcel_id_admin2`) and NC (nconemap geometry +
-standalone nhcgov roll) recipes as discovery fixtures, since the discovery
-helpers read real recipe files from the recipe tree.
+entry declaring `layer_key: parcel_id_admin2`) and NC (nconemap geometry,
+and the standalone nhcgov property roll) recipes as discovery fixtures,
+since the discovery helpers read real recipe files from the recipe tree.
 """
 
 import pandas as pd
@@ -38,16 +38,17 @@ def test_discover_link_sources_ma_property_layer_uses_layer_key():
     assert layer['key'] == 'parcel_id_admin2'
 
 
-def test_discover_link_sources_nc_finds_geometry_and_standalone_roll():
+def test_discover_link_sources_nc_roll_is_property_not_parcel():
+    # New Hanover's county roll is a property recipe since 2026-09-13
+    # (one row per account, condo and sub-lot units included), so
+    # parcel discovery finds NC OneMap's geometry alone and the roll
+    # arrives through property discovery, keyed on parcel_id_local.
     state = _state('US-NC-NHA')
-    matches = links._discover_link_sources(state, 'parcel')
-    recipe_ids = {m['recipe_id'] for m in matches}
+    parcel = links._discover_link_sources(state, 'parcel')
+    assert {m['recipe_id'] for m in parcel} == {'US-NC_parcel-nconemap-2025'}
 
-    assert 'US-NC_parcel-nconemap-2025' in recipe_ids
-    assert 'US-NC-NHA_parcel-nhcgov-2026' in recipe_ids
-    nhcgov = next(
-        m for m in matches if m['recipe_id'] == 'US-NC-NHA_parcel-nhcgov-2026'
-    )
+    prop = links._discover_link_sources(state, 'property')
+    nhcgov = next(m for m in prop if m['recipe_id'] == 'US-NC-NHA_property-nhcgov-2026')
     assert nhcgov['layer'] is None
     assert nhcgov['key'] == 'parcel_id_local'
 
@@ -117,20 +118,23 @@ def test_find_admin_scoped_recipe_ids_keeps_distinct_filename_suffixes(monkeypat
 def test_find_admin_scoped_recipe_ids_orders_by_specificity_then_version(monkeypatch):
     rows = pd.DataFrame(
         [
-            _recipe_row('US-NC-NHA', 'nhcgov', '2026'),
+            _recipe_row('US-NC-CUM', 'cumberlandcounty', '2026'),
             _recipe_row('US-NC', 'nconemap', '2025'),
         ]
     )
     monkeypatch.setattr(links, 'find_recipes', lambda *a, **k: rows)
 
-    state = _state('US-NC-NHA')
+    state = _state('US-NC-CUM')
     ids = links._find_admin_scoped_recipe_ids(state, 'parcel')
 
-    # Broader-scope 'US-NC' (2025) sorts first, county-scoped 'US-NC-NHA'
+    # Broader-scope 'US-NC' (2025) sorts first, county-scoped 'US-NC-CUM'
     # (2026) sorts last (wins link_by_id's write-priority): admin
     # specificity decides join order here, version merely happens to agree
     # with it in this fixture (see the disagreeing case below).
-    assert ids == ['US-NC_parcel-nconemap-2025', 'US-NC-NHA_parcel-nhcgov-2026']
+    assert ids == [
+        'US-NC_parcel-nconemap-2025',
+        'US-NC-CUM_parcel-cumberlandcounty-2026',
+    ]
 
 
 def test_find_admin_scoped_recipe_ids_specificity_beats_newer_version(monkeypatch):
