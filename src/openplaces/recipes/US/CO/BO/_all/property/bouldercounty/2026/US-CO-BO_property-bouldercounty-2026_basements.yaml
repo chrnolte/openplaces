@@ -1,0 +1,100 @@
+# Recipe: Boulder County, CO Assessor buildings table, basement
+# sub-areas. Same file as
+# US-CO-BO_property-bouldercounty-2026_buildings; read its header for
+# why the table is read three times.
+#
+# ONE ROW. A basement sub-area of a building section: rows are kept
+# once per strap, bld_num, section_num, bsmtType and bsmtSF, which
+# removes the copies the car storage sub-areas make.
+#
+# MAPPING. bsmtTypeDscr names ten basement kinds, finished or
+# unfinished: subterranean, walk-out, garden, and the lower level of a
+# bi-level or split-level ('LOWER LVL GARDEN FINISHED (BI-SPLIT
+# LVL)'), which the county records as a basement type and is kept as
+# one. '0' means no basement. basement_area_sqft sums bsmtSF over the
+# ten kinds, basement_finished_area_sqft over the five finished ones;
+# has_basement is true where any of the ten is present and missing
+# elsewhere.
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Boulder County, CO Assessor buildings table, basement sub-areas:
+  total and finished basement area per property.
+
+admin_id: US-CO-BO
+
+entity:
+  entity_type: property
+  source:
+    source_id: bouldercounty
+    # Same page and terms as the roll; see its header.
+    portal_url: "https://bouldercounty.gov/property-and-land/assessor/data-download/"
+    download_url: "https://assessor.boco.solutions/ASR_PublicDataFiles/Buildings.csv"
+    license: >-
+      unknown (no licence; General Disclaimer 'developed solely for
+      internal use only by Boulder County', quoted in full on the roll)
+    terms_url: "https://bouldercounty.gov/property-and-land/assessor/data-download/"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "Buildings.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: strap
+  basement_area_sqft: bsmtSF
+
+# One row per basement sub-area; see ONE ROW.
+drop_duplicates: [property_id_assessor, bld_num, section_num, bsmtType,
+                  basement_area_sqft]
+
+transformations:
+  - {type: unary, operation: to_numeric, input: basement_area_sqft,
+     output: basement_area_sqft}
+  - type: expression
+    expression: >-
+      basement_area_sqft.where((bsmtTypeDscr != '0') & (basement_area_sqft > 0))
+    inputs: [basement_area_sqft, bsmtTypeDscr]
+    output: basement_area_sqft
+  - type: expression
+    expression: >-
+      basement_area_sqft.where(bsmtTypeDscr.isin(['SUBTERRANEAN BASEMENT
+      FINISHED AREA', 'WALK-OUT BASEMENT FINISHED AREA', 'GARDEN BASEMENT
+      FINISHED AREA', 'LOWER LVL GARDEN FINISHED (BI-SPLIT LVL)', 'LOWER LVL
+      WALKOUT FINISHED (BI-SPLIT LVL)']))
+    inputs: [basement_area_sqft, bsmtTypeDscr]
+    output: basement_finished_area_sqft
+  - type: remap_conditional
+    input: bsmtTypeDscr
+    conditions:
+      - condition: in
+        values:
+          - 'SUBTERRANEAN BASEMENT UNFINISHED AREA'
+          - 'SUBTERRANEAN BASEMENT FINISHED AREA'
+          - 'LOWER LVL GARDEN FINISHED (BI-SPLIT LVL)'
+          - 'WALK-OUT BASEMENT FINISHED AREA'
+          - 'WALK-OUT BASEMENT UNFINISHED AREA'
+          - 'GARDEN BASEMENT FINISHED AREA'
+          - 'GARDEN BASEMENT UNFINISHED AREA'
+          - 'LOWER LVL GARDEN UNFINISHED (BI-SPLIT LVL)'
+          - 'LOWER LVL WALKOUT FINISHED (BI-SPLIT LVL)'
+          - 'LOWER LVL WALKOUT UNFINISHED (BI-SPLIT LVL)'
+        output: true
+    output: has_basement
+
+aggregation_function:
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+
+supplements: US-CO-BO_property-bouldercounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: basements

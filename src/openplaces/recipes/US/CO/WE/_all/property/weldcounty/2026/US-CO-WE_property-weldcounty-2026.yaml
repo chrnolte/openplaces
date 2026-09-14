@@ -1,0 +1,189 @@
+# Recipe: Weld County, CO Assessor current account inventory
+# (AcctCurrentInvntry), one row per account with characteristics
+# summed over its buildings.
+#
+# SOURCE. Weld County's open-data hub (gishub.weldgov.com, AGOL org
+# ewjSqmSyHJnkfBLL, tag OpenDataTable): item
+# a7ee101be54e4f859998d1e3b3d0f3fa, table AcctCurrentInvntry
+# FeatureServer/12, downloaded as the Hub CSV (43.4 MB, 180,424 rows,
+# file dated 2026-08-05). The live table holds 183,116 rows: the bulk
+# file lags about five weeks (TOTALIMPSF > 0 on 129,300 file rows
+# against 129,310 live). www.weld.gov answers the identified client
+# with an Akamai 403, so the county site's own terms page is unread;
+# the data itself is open on arcgis.com.
+#
+# ONE ROW. One account (TAXYEAR 2026), ACCOUNTNO ('A9999999') unique.
+# The query keeps real property accounts and drops Personal, Leasing,
+# Production, Mineral, Water, Pipeline, Tank Battery, Natural Rsrc,
+# State Assessed and Real State Assd (business property, severed
+# interests and state-assessed utilities, which a sale of the land
+# does not convey). Condominium units are accounts and stay rows.
+#
+# KEYS. parcel_id_local is built from PARCELNO (12 digits; 618
+# blank), kind parcel, the id the statewide OIT layer
+# (US-CO_parcel-cooit-2026) carries as parcel_id for Weld.
+# property_id_assessor is ACCOUNTNO, the supplements_key of
+# US-CO-WE_property-weldcounty-2026_buildings.
+#
+# MAPPING. year_built YEARBUILT (the primary building's);
+# living_area_sqft RESIDENTIALSF (equals the sum of the residential
+# buildings' built-as area on 93.7% of residential accounts);
+# building_area_sqft COMMERCIALSF (commercial built-as area, 0.2% of
+# residential accounts); basement_finished_area_sqft BSMTTOTALFINSF
+# (equals fair + minimal + full finished on 99.9%); basement_area_sqft
+# BSMTUNFINSF + BSMTTOTALFINSF, has_basement where that is above 0;
+# porch_area_sqft PORCH; has_carport where CARPORT is above 0;
+# tax_neighborhood_code LEA (the land economic area, the county's
+# market-area code); use_group_code LANDABSTRACTCODE; use_subgroup_code
+# IMPABSTRACTCODE (12xx residential).
+#
+# GARAGES, NOT MAPPED. The garage columns do not read as labelled. On
+# residential accounts GARAGETOTALSF equals GARBASEMENTSF on every one
+# of the 10,267 accounts where it is above 0, GARDETACHSF is never
+# above 0, and the sum of attached, detached, built-in and basement
+# garages equals GARAGETOTALSF on only 21.7%. GARATTACHSF (74.7%,
+# median 506 sq ft) looks plausible, but with its siblings scrambled
+# which garage it measures cannot be told, so no garage column is
+# mapped (has_garage, garage_area_sqft and garage_type stay empty).
+#
+# Also left unmapped: BALCONY (21.2%; a balcony is not a deck),
+# OUTBUILDINGSF (an area; the buildings supplement counts
+# outbuildings), TOTALIMPSF (sums every building, outbuildings
+# included), MEZZANINE, WALKOUT (no registry row), BEDROOMCOUNT and
+# ROOMCOUNT (0.01%), BATHCOUNT (the buildings table's BATHS is used),
+# HVACTYPE, IMPEXTERIOR, CLASSDESC and PRIMARYBLTASDESCRIPTION (the
+# buildings table carries the same codes per building), LANDGROSSFF
+# (0%), and the situs address columns.
+#
+# MEASURED on the 2026-08-05 Hub files, in memory with each recipe's
+# reader and preprocessing, the buildings supplement aggregated per
+# account with its aggregation_function (2026-09-13). Roll: 180,424
+# rows read, 170,751 real property accounts kept, 170,563 keyed,
+# 162,916 distinct keys. Buildings: 171,782 rows on 129,302 accounts;
+# 99.96% of them are in the roll (the rest belong to dropped account
+# types) and 75.7% of roll accounts have a building. Residential is
+# IMPABSTRACTCODE 12xx: 111,631 accounts. parcel_id_local against the
+# statewide OIT layer's Weld parcel_id (same conversion): 99.51% of
+# roll keys found there, 99.16% of its keys found here; 99.98% of
+# residential accounts found. Share of residential accounts with a
+# value: year_built 100%, living_area_sqft 99.7% (median 1,585),
+# n_bedrooms 98.5%, n_bathrooms 98.4% (whole numbers, median 3),
+# n_stories 98.6%, building_style 99.7%, exterior_wall 99.2%,
+# roof_material 98.8%, heating_type 98.4%, has_central_air true 69.2%,
+# porch_area_sqft 92.0%, basement_area_sqft and has_basement 67.4%,
+# basement_finished_area_sqft 38.9%, tax_neighborhood_code 95.3%
+# (1,187 codes), use_subgroup_code 100%, use_group_code 91.5%,
+# renovation_year 13.4%, n_dwellings 7.7%, n_outbuildings 6.2%,
+# foundation_description 4.9%, has_carport 1.4%,
+# construction_description 0.9%, building_area_sqft 0.2%.
+#
+# TERMS. The item licence is recorded verbatim in license. It is a
+# disclaimer with no redistribution or resale clause and no
+# click-through; "internal use only" describes the county's purpose,
+# not a condition on users, and it grants nothing either, so
+# redistribution_restricted is null.
+
+description: >-
+  Weld County, CO Assessor account inventory: year built, living,
+  commercial and basement areas, porch, carport, neighborhood and use
+  codes per account.
+
+admin_id: US-CO-WE
+
+entity:
+  entity_type: property
+  source:
+    source_id: weldcounty
+    portal_url: "https://www.arcgis.com/home/item.html?id=a7ee101be54e4f859998d1e3b3d0f3fa"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/a7ee101be54e4f859998d1e3b3d0f3fa_12/downloads/data?format=csv&spatialRefId=4326"
+    license: >-
+      unknown (no licence). Item licence, verbatim: 'This product has been
+      developed solely for internal use only by Weld County. The GIS
+      database, applications, and data in the product is subject to
+      constant change and the accuracy and completeness cannot be and is
+      not guaranteed. The designation of lots or parcels or land uses in
+      the database does not imply that the lots or parcels were legally
+      created or that the land uses comply with applicable State or Local
+      law. UNDER NO CIRCUMSTANCE SHALL ANY PART THE PRODUCT BE USED FOR
+      FINAL DESIGN PURPOSES. WELD COUNTY MAKES NO WARRANTIES OR GUARANTEES,
+      EITHER EXPRESSED OR IMPLIED AS TO THE COMPLETENESS, ACCURACY, OR
+      CORRECTNESS OF SUCH PRODUCT, NOR ACCEPTS ANY LIABILITY, ARISING FROM
+      ANY INCORRECT, INCOMPLETE OR MISLEADING INFORMATION CONTAINED
+      THEREIN.'
+    terms_url: "https://www.arcgis.com/home/item.html?id=a7ee101be54e4f859998d1e3b3d0f3fa"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "AcctCurrentInvntry.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: ACCOUNTNO
+  parcel_id_assessor: PARCELNO
+  tax_neighborhood_code: LEA
+  use_group_code: LANDABSTRACTCODE
+  use_subgroup_code: IMPABSTRACTCODE
+  year_built: YEARBUILT
+  living_area_sqft: RESIDENTIALSF
+  building_area_sqft: COMMERCIALSF
+  basement_finished_area_sqft: BSMTTOTALFINSF
+  porch_area_sqft: PORCH
+
+# Real property accounts only; see ONE ROW.
+query: >-
+  ACCTTYPE not in ['Personal', 'Leasing', 'Production', 'Mineral', 'Water',
+  'Pipeline', 'Tank Battery', 'Natural Rsrc', 'State Assessed',
+  'Real State Assd']
+
+drop_duplicates: [property_id_assessor]
+
+transformations:
+  - {type: unary, operation: to_numeric, input: year_built, output: year_built}
+  - {type: unary, operation: to_numeric, input: living_area_sqft,
+     output: living_area_sqft}
+  - {type: unary, operation: to_numeric, input: building_area_sqft,
+     output: building_area_sqft}
+  - {type: unary, operation: to_numeric, input: basement_finished_area_sqft,
+     output: basement_finished_area_sqft}
+  - {type: unary, operation: to_numeric, input: BSMTUNFINSF, output: BSMTUNFINSF}
+  - {type: unary, operation: to_numeric, input: porch_area_sqft,
+     output: porch_area_sqft}
+  - {type: unary, operation: to_numeric, input: CARPORT, output: CARPORT}
+  - type: aggregate
+    operation: sum
+    inputs: [BSMTUNFINSF, basement_finished_area_sqft]
+    output: basement_area_sqft
+  - {type: unary, operation: null_if_equal, input: living_area_sqft,
+     args: {value: 0}, output: living_area_sqft}
+  - {type: unary, operation: null_if_equal, input: building_area_sqft,
+     args: {value: 0}, output: building_area_sqft}
+  - {type: unary, operation: null_if_equal, input: basement_finished_area_sqft,
+     args: {value: 0}, output: basement_finished_area_sqft}
+  - {type: unary, operation: null_if_equal, input: basement_area_sqft,
+     args: {value: 0}, output: basement_area_sqft}
+  - {type: unary, operation: null_if_equal, input: porch_area_sqft,
+     args: {value: 0}, output: porch_area_sqft}
+  - type: expression
+    expression: "(basement_area_sqft > 0).where(basement_area_sqft > 0)"
+    inputs: [basement_area_sqft]
+    output: has_basement
+  - type: expression
+    expression: "(CARPORT > 0).where(CARPORT > 0)"
+    inputs: [CARPORT]
+    output: has_carport
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

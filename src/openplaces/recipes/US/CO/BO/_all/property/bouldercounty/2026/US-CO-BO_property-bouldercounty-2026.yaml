@@ -1,0 +1,103 @@
+# Recipe: Boulder County, CO Assessor account-to-parcel table, the
+# property roll its building supplements attach to.
+#
+# SOURCE. Assessor public data files, bouldercounty.gov
+# property-and-land/assessor/data-download, served from
+# assessor.boco.solutions/ASR_PublicDataFiles (CSV with headers,
+# refreshed daily; Last-Modified 2026-09-13). Account_Parcels.csv
+# (3.6 MB) holds two columns: strap, the account ('R9999999' real
+# property, 'M9999999' manufactured home), and Parcelno.
+#
+# ONE ROW. One account: 134,891 rows, strap unique. 4,779 Parcelno
+# values repeat (several accounts on one parcel) and 62 are blank.
+# Condominium units are accounts and stay rows.
+#
+# KEYS. parcel_id_local is built from Parcelno (12 characters, a few
+# with a letter), kind parcel: the statewide OIT layer
+# (US-CO_parcel-cooit-2026) carries the same id as parcel_id for
+# Boulder. property_id_assessor is strap, the supplements_key the
+# building tables (keyed by strap only) join on.
+#
+# SUPPLEMENTS. Buildings.csv is read three times, because one row is
+# a building section crossed with one basement sub-area and one car
+# storage sub-area (see _buildings): _buildings (rooms, baths, years,
+# areas, codes), _basements and _car-storage.
+#
+# Left unmapped: Owner_Address.csv, Sales.csv, Permits.csv, Land.csv,
+# Values.csv (not read). No neighborhood code is published.
+#
+# MEASURED on the 2026-09-13 files, in memory with each recipe's
+# reader and preprocessing, supplements aggregated per strap with
+# their aggregation_function (2026-09-13). Roll: 134,891 accounts,
+# 134,770 keyed, 129,993 distinct keys. Buildings.csv: 179,809 rows,
+# kept 139,509 section rows (_buildings), 170,218 basement sub-area
+# rows (_basements) and 142,951 car storage rows (_car-storage), all
+# on 120,508 accounts; every supplement account is in the roll, and
+# 89.3% of roll accounts have a building. Residential is an account
+# with a building of class 12xx or 4277: 114,304. parcel_id_local
+# against the statewide OIT layer's Boulder parcel_id (same
+# conversion): 99.74% of roll keys found there, 99.72% of its keys
+# found here; 99.97% of residential accounts found. Share of
+# residential accounts with a value: year_built and
+# effective_year_built 100%, living_area_sqft 99.9% (median 1,567),
+# n_bedrooms and n_rooms 96.5%, n_bathrooms 96.2% (median 2.25),
+# n_half_bathrooms 44.6%, building_style and quality_grade 100%,
+# exterior_wall 96.7%, heating_type 95.5%, construction_description
+# 93.8%, roof_material 58.3%, has_central_air true 52.9% (false
+# 1.7%), garage_area_sqft, garage_type and has_garage 79.7%,
+# has_carport 4.0%, basement_area_sqft and has_basement 64.8%,
+# basement_finished_area_sqft 44.8%, n_stories 5.4%, n_dwellings 2.6%.
+#
+# TERMS. No licence, no click-through. The download page's "General
+# Disclaimer" is recorded verbatim in license. It carries no
+# restriction clause, which is not a grant either, so
+# redistribution_restricted is null.
+
+description: >-
+  Boulder County, CO Assessor account-to-parcel table: the property roll
+  that the county's building supplements attach to.
+
+admin_id: US-CO-BO
+
+entity:
+  entity_type: property
+  source:
+    source_id: bouldercounty
+    portal_url: "https://bouldercounty.gov/property-and-land/assessor/data-download/"
+    download_url: "https://assessor.boco.solutions/ASR_PublicDataFiles/Account_Parcels.csv"
+    license: >-
+      unknown (no licence). General Disclaimer, verbatim: 'The data which
+      is provided here has been developed solely for internal use only by
+      Boulder County, and the county makes no warranties, representations
+      or guarantees, either expressed or implied, as to the completeness,
+      accuracy or correctness of the data, nor accepts or assumes any
+      liability arising from or for any incorrect, incomplete or misleading
+      data provided. There are no warranties and/or representations, either
+      expressed or implied, of merchantability or fitness of the data for a
+      particular purpose or use. Boulder County is not responsible for
+      incidental, consequential, or special damages arising from the use of
+      the data provided. The data shall be used and relied upon only at the
+      risk of user.'
+    terms_url: "https://bouldercounty.gov/property-and-land/assessor/data-download/"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "Account_Parcels.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: strap
+  parcel_id_assessor: Parcelno
+
+drop_duplicates: [property_id_assessor]
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

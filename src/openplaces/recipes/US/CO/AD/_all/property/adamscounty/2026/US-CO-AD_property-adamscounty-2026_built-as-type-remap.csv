@@ -1,0 +1,408 @@
+bltasid,property_type
+0,Residential
+1,Residential
+2,Residential
+3,Residential
+4,Residential
+5,Residential
+6,Residential
+7,Residential
+8,Residential
+9,Residential
+10,Residential
+11,Residential
+12,Residential
+13,Residential
+14,Mobile Home
+15,Mobile Home
+16,Mobile Home
+17,Multiple Unit
+18,Multiple Unit
+19,Condo
+20,Condo
+21,Residential
+22,Residential
+23,Residential
+24,Residential
+25,Residential
+26,Residential
+27,Residential
+40,Residential
+41,Residential
+42,Residential
+51,Duplex
+55,Duplex
+57,Duplex
+58,Duplex
+61,Townhouse
+65,Townhouse
+67,Townhouse
+68,Townhouse
+69,Townhouse
+71,Triplex
+75,Triplex
+77,Triplex
+78,Triplex
+95,Residential
+98,Residential
+99,Residential
+140,Commercial
+141,Commercial
+144,Out Building
+145,Out Building
+146,Commercial
+147,Commercial
+148,Commercial
+149,Residential
+150,Commercial
+151,Commercial
+152,Commercial
+153,Commercial
+154,Commercial
+155,Commercial
+156,Commercial
+157,Commercial
+158,Commercial
+159,Commercial
+160,Commercial
+161,Commercial
+162,Commercial
+163,Commercial
+164,Commercial
+165,Commercial
+166,Commercial
+167,Commercial
+168,Commercial
+169,Commercial
+170,Commercial
+171,Commercial
+172,Commercial
+173,Commercial
+174,Commercial
+175,Commercial
+177,Commercial
+180,Out Building
+181,Commercial
+182,Out Building
+183,Commercial
+184,Commercial
+186,Commercial
+195,Commercial
+200,Commercial
+201,Commercial
+203,Commercial
+207,Commercial
+208,Commercial
+209,Commercial
+210,Commercial
+211,Commercial
+212,Commercial
+213,Commercial
+214,Commercial
+215,Commercial
+216,Commercial
+217,Residential
+218,Commercial
+219,Commercial
+220,Commercial
+221,Commercial
+222,Commercial
+223,Commercial
+224,Commercial
+225,Commercial
+226,Commercial
+227,Commercial
+228,Commercial
+300,Commercial
+301,Commercial
+302,Commercial
+303,Commercial
+304,Commercial
+305,Commercial
+306,Commercial
+308,Commercial
+309,Commercial
+310,Commercial
+311,Commercial
+312,Commercial
+313,Commercial
+314,Commercial
+315,Commercial
+316,Commercial
+317,Commercial
+318,Commercial
+319,Commercial
+320,Commercial
+321,Commercial
+322,Commercial
+323,Commercial
+324,Commercial
+325,Commercial
+326,Commercial
+327,Commercial
+328,Commercial
+329,Commercial
+330,Commercial
+331,Commercial
+332,Commercial
+333,Commercial
+334,Commercial
+335,Commercial
+336,Commercial
+337,Commercial
+338,Commercial
+339,Commercial
+340,Commercial
+341,Commercial
+342,Commercial
+343,Commercial
+344,Commercial
+345,Commercial
+346,Commercial
+348,Commercial
+349,Commercial
+350,Commercial
+351,Commercial
+352,Commercial
+353,Commercial
+355,Commercial
+356,Commercial
+357,Commercial
+358,Commercial
+359,Commercial
+360,Commercial
+361,Commercial
+362,Commercial
+363,Commercial
+364,Commercial
+365,Commercial
+366,Commercial
+367,Commercial
+368,Commercial
+371,Commercial
+372,Commercial
+377,Commercial
+378,Out Building
+379,Commercial
+380,Commercial
+381,Commercial
+382,Commercial
+384,Commercial
+386,Commercial
+387,Commercial
+388,Commercial
+389,Out Building
+390,Commercial
+391,Commercial
+392,Commercial
+393,Commercial
+394,Commercial
+395,Out Building
+396,Out Building
+397,Out Building
+398,Out Building
+399,Out Building
+400,Out Building
+401,Out Building
+402,Out Building
+403,Commercial
+404,Out Building
+405,Commercial
+406,Commercial
+407,Commercial
+408,Commercial
+409,Commercial
+410,Commercial
+411,Commercial
+412,Commercial
+413,Commercial
+414,Commercial
+416,Commercial
+417,Commercial
+418,Commercial
+419,Commercial
+420,Out Building
+421,Out Building
+422,Out Building
+423,Commercial
+424,Commercial
+425,Commercial
+426,Commercial
+427,Commercial
+428,Commercial
+429,Out Building
+430,Out Building
+431,Commercial
+432,Commercial
+433,Out Building
+434,Commercial
+435,Commercial
+436,Commercial
+437,Residential
+438,Commercial
+439,Commercial
+440,Residential
+441,Commercial
+442,Commercial
+443,Commercial
+444,Commercial
+446,Commercial
+447,Commercial
+448,Commercial
+449,Out Building
+450,Out Building
+451,Out Building
+452,Out Building
+453,Out Building
+454,Out Building
+455,Out Building
+456,Out Building
+457,Out Building
+458,Out Building
+459,Out Building
+460,Out Building
+461,Out Building
+462,Out Building
+463,Out Building
+464,Out Building
+465,Out Building
+466,Out Building
+467,Out Building
+468,Out Building
+469,Out Building
+471,Out Building
+473,Out Building
+474,Commercial
+475,Commercial
+476,Out Building
+478,Out Building
+479,Out Building
+480,Out Building
+481,Commercial
+482,Commercial
+483,Commercial
+484,Commercial
+485,Commercial
+486,Commercial
+487,Commercial
+489,Commercial
+491,Commercial
+492,Commercial
+493,Commercial
+497,Commercial
+500,Commercial
+504,Commercial
+508,Commercial
+512,Commercial
+514,Commercial
+515,Commercial
+516,Commercial
+518,Commercial
+519,Commercial
+521,Out Building
+523,Commercial
+525,Commercial
+526,Commercial
+527,Commercial
+529,Commercial
+530,Commercial
+531,Commercial
+532,Commercial
+533,Commercial
+534,Commercial
+540,Commercial
+544,Commercial
+554,Commercial
+557,Out Building
+558,Out Building
+559,Out Building
+560,Out Building
+562,Out Building
+563,Out Building
+564,Out Building
+566,Out Building
+567,Out Building
+573,Commercial
+574,Commercial
+575,Commercial
+576,Commercial
+577,Commercial
+580,Commercial
+582,Commercial
+583,Commercial
+584,Commercial
+585,Commercial
+586,Commercial
+587,Commercial
+598,Commercial
+599,Commercial
+602,Commercial
+718,Commercial
+719,Commercial
+720,Commercial
+777,Commercial
+778,Commercial
+779,Commercial
+780,Commercial
+781,Commercial
+800,Residential
+1100,Out Building
+1101,Out Building
+1103,Out Building
+1104,Commercial
+1105,Out Building
+1110,Out Building
+1113,Out Building
+1118,Out Building
+1119,Out Building
+1120,Out Building
+1123,Out Building
+1124,Out Building
+1125,Out Building
+1127,Commercial
+1132,Out Building
+1133,Commercial
+1155,Commercial
+1156,Commercial
+1157,Commercial
+1171,Commercial
+1174,Commercial
+1175,Commercial
+1300,Commercial
+1311,Commercial
+1312,Commercial
+1318,Commercial
+1319,Commercial
+1325,Commercial
+1332,Commercial
+1343,Commercial
+1344,Commercial
+1353,Commercial
+1398,Out Building
+1413,Commercial
+1414,Commercial
+1415,Commercial
+1421,Out Building
+1429,Out Building
+1430,Out Building
+1440,Out Building
+1448,Out Building
+1450,Out Building
+1458,Commercial
+1459,Commercial
+1460,Commercial
+1461,Commercial
+1462,Commercial
+1463,Commercial
+1465,Commercial
+1466,Commercial
+1467,Commercial
+1468,Commercial
+1469,Out Building
+1471,Commercial
+1473,Commercial
+1499,Commercial
+1513,Commercial
+1587,Commercial
+1596,Commercial
+1597,Residential

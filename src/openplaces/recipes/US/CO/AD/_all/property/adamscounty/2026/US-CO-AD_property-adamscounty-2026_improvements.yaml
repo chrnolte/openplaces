@@ -1,0 +1,103 @@
+# Recipe: Adams County, CO Assessor's Detailed Data Dump, improvements
+# table: one row per improvement (account x IMPNO). Same source and
+# terms as US-CO-AD_property-adamscounty-2026; read that roll's header
+# first.
+#
+# LAYOUT. Improvements.TXT, 510 characters (IMPROVEMENTS TABLE); read
+# up to QUALITY. 181,795 rows, account and IMPNO unique. The fields
+# read here sit before any of the value fields; CONDITION and QUALITY
+# parse to clean vocabularies ('Average', 'Good', 'Fair', 'Low',
+# 'Very Good', 'Excellent', and 'Salvage' or 'Badly worn' for
+# condition) with 24 and 13 blanks, which confirms the offsets.
+#
+# MAPPING. condition CONDITION and quality_grade QUALITY, the first
+# non-outbuilding improvement's (the county's words, not harmonized);
+# n_outbuildings counts improvements whose PROPTYPE is 'Out Building'
+# (6,695 improvements). PROPTYPE is otherwise Residential, Townhouse,
+# Condo, Multiple Unit, Duplex, Triplex, Mobile Home or Commercial.
+# Left unmapped: CONDOSF, SF (equals the sum of the improvement's
+# built-as areas on 99.95%; _built-as maps those), NETSF, PERIM,
+# PERCCOMP, UNITTYPE ('End', 'Inside'), and every value field.
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Adams County, CO Assessor improvements table: condition, quality grade
+  and outbuilding count per property.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: property
+  source:
+    source_id: adamscounty
+    # Same page and terms as the roll; see its header.
+    portal_url: "https://adamscountyco.gov/our-county/elected-officials/assessor/maps-data/"
+    download_url: "https://adamscountyco.gov/wp-content/uploads/2026/05/Appraisal_2026_2.zip"
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59fb004d67a748b19f5faf1dca9d700d"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "Appraisal_2026_2.zip"
+uncompressed_file_name: "Appraisal_2026_2/Improvements.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# Appraisal layout, IMPROVEMENTS TABLE; read up to QUALITY.
+fixed_width:
+  - [ACCOUNTNO, 8]
+  - [filler, 3] # AREAID
+  - [filler, 13] # PARCELNB
+  - [filler, 6] # IMPNO
+  - [PROPTYPE, 15]
+  - [filler, 10] # COSTVALUEBY
+  - [filler, 10] # MKTVALUEBY
+  - [filler, 10] # INCVALUEBY
+  - [filler, 17] # PERCOFLANDATTR
+  - [filler, 16] # CONDOSF
+  - [filler, 16] # SF
+  - [filler, 16] # NETSF
+  - [filler, 16] # PERIM
+  - [filler, 17] # PERCCOMP
+  - [CONDITION, 25]
+  - [QUALITY, 15]
+
+columns:
+  property_id_assessor: ACCOUNTNO
+  condition: CONDITION
+  quality_grade: QUALITY
+
+transformations:
+  - type: remap_conditional
+    input: PROPTYPE
+    conditions:
+      - condition: in
+        values: ['Out Building']
+        output: 1
+    output: n_outbuildings
+  - {type: unary, operation: to_numeric, input: n_outbuildings,
+     output: n_outbuildings}
+  - type: expression
+    expression: "condition.where(PROPTYPE != 'Out Building')"
+    inputs: [condition, PROPTYPE]
+    output: condition
+  - type: expression
+    expression: "quality_grade.where(PROPTYPE != 'Out Building')"
+    inputs: [quality_grade, PROPTYPE]
+    output: quality_grade
+
+aggregation_function:
+  condition: first
+  quality_grade: first
+  n_outbuildings: sum
+
+supplements: US-CO-AD_property-adamscounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: improvements

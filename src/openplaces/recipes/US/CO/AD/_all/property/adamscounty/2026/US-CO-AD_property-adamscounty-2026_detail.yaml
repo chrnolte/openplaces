@@ -1,0 +1,241 @@
+# Recipe: Adams County, CO Assessor's Detailed Data Dump, improvements
+# detail table: one row per component line of an improvement. Same
+# source and terms as US-CO-AD_property-adamscounty-2026; read that
+# roll's header first.
+#
+# LAYOUT. Detail.TXT, 199 characters (IMPROVEMENTS DETAIL TABLE), 457
+# MB, 2,274,329 lines; read up to UNITS. DETAILTYPE groups the lines
+# (User 827,215, Fixture 562,717, Porch 179,988, Basement 151,076,
+# Appliance 147,923, Rough In 144,292, Garage 135,971, Add On
+# 112,826, Carport 5,532, ...); DETAILDESC names the component and
+# UNITS holds its square feet for areas and its count for fixtures
+# and add-ons. The query keeps the six types read below. 'User' lines
+# are free-text appraiser notes and adjustments and are not read.
+#
+# RULE. Components were assigned from the county's own type and
+# description (listed, never crosswalked). Areas and counts are
+# summed over the account's lines; a flag is true where the account
+# has such a line and missing elsewhere (the table lists what is
+# present, never its absence). Share of residential accounts with the
+# line, from the 2026-05 dump:
+# - Garage: Attached 71.6%, Detached 11.4%, Built In 0.9%, Basement
+#   Single and Basement Double: garage_area_sqft (UNITS, median 460 sq
+#   ft attached), has_garage, garage_type (the first line's
+#   description).
+# - Basement: Unfinished 62.0%, Finished 27.2%, Minimal Finish 2.7%,
+#   and the commercial Finished and Unfinished variants. They are
+#   separate areas (40,119 accounts have both an Unfinished and a
+#   Finished line), so basement_area_sqft sums all of them and
+#   basement_finished_area_sqft the finished and minimal-finish ones.
+#   'Walkout' (a flag, UNITS 1) and 'Storage (Commercial)' add no
+#   area; every basement line sets has_basement.
+# - Porch: Open Slab, Wood Roof (a wood-floored covered porch; it
+#   stands alone on 26,316 accounts), Cvrd Slab, Slab Roof, Slab Roof
+#   Ceil, Encl Screen, Encl Solid Wall, Encl Glass Wall, and the Add On
+#   'Porches-Concrete Slab Average': porch_area_sqft. 'Ceiling' (461
+#   lines) is left out as it may repeat a porch's area.
+# - Porch: Wood Deck 13.9%, Cvrd Wood Deck, Covered Wood Deck, Cement
+#   Deck, Roof Top Deck: deck_area_sqft. Balcony lines are not decks.
+# - Add On fireplaces ('HVAC-Fireplace-...' single, double-sided, two
+#   and three story, gas direct vented; 'Fireplace-Gas Log',
+#   'Fireplace-Good'): n_fireplaces, summing UNITS. 'HVAC-Fireplace-Gas
+#   Log Conversion' converts an existing fireplace and is not counted.
+# - Fixture 'Bath 2' (a two-fixture bath, 44.9%): n_half_bathrooms,
+#   summing UNITS. The built-as BATHS count already weighs these at
+#   0.5; see _built-as.
+# - Carport lines (3.3%): has_carport. Add On 'Solar KW' (9.8%):
+#   has_solar. Add On swimming pools ('...Swimming Pools...', wading
+#   pools excluded; 1.2%): has_pool. Add On passenger elevators
+#   ('Elevator (2-3 story)', 'Elevator (4-7 story)',
+#   'Mech-Elevator-2 passenger', 'Mech-Elevator-3 passenger'):
+#   has_elevator. Garage 'Det Apartment' and 'Det Garage Apt':
+#   has_accessory_dwelling.
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Adams County, CO Assessor improvement detail lines: garage, basement,
+  porch and deck areas, fireplaces, half baths, pool, solar, carport.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: property
+  source:
+    source_id: adamscounty
+    # Same page and terms as the roll; see its header.
+    portal_url: "https://adamscountyco.gov/our-county/elected-officials/assessor/maps-data/"
+    download_url: "https://adamscountyco.gov/wp-content/uploads/2026/05/Appraisal_2026_2.zip"
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59fb004d67a748b19f5faf1dca9d700d"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "Appraisal_2026_2.zip"
+uncompressed_file_name: "Appraisal_2026_2/Detail.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# Appraisal layout, IMPROVEMENTS DETAIL TABLE; read up to UNITS.
+fixed_width:
+  - [ACCOUNTNO, 8]
+  - [filler, 3] # AREAID
+  - [filler, 13] # PARCELNB
+  - [filler, 6] # IMPNO
+  - [DETAILTYPE, 30]
+  - [DETAILDESC, 50]
+  - [filler, 11] # ADDONCODE
+  - [UNITS, 17]
+
+columns:
+  property_id_assessor: ACCOUNTNO
+
+query: "DETAILTYPE in ['Garage', 'Basement', 'Porch', 'Carport', 'Fixture', 'Add On']"
+
+transformations:
+  - {type: unary, operation: to_numeric, input: UNITS, output: UNITS}
+  - type: string
+    operation: concat
+    inputs: [DETAILTYPE, DETAILDESC]
+    args: {sep: ": "}
+    output: detail_line
+  - type: expression
+    expression: >-
+      UNITS.where(detail_line.isin(['Garage: Attached', 'Garage: Detached',
+      'Garage: Built In', 'Garage: Basement Single', 'Garage: Basement
+      Double']) & (UNITS > 1))
+    inputs: [UNITS, detail_line]
+    output: garage_area_sqft
+  - type: remap_conditional
+    input: detail_line
+    conditions:
+      - condition: in
+        values:
+          - 'Garage: Attached'
+          - 'Garage: Detached'
+          - 'Garage: Built In'
+          - 'Garage: Basement Single'
+          - 'Garage: Basement Double'
+        output: true
+    output: has_garage
+  - type: expression
+    expression: "DETAILDESC.where(has_garage == True)"
+    inputs: [DETAILDESC, has_garage]
+    output: garage_type
+  - type: expression
+    expression: >-
+      UNITS.where(detail_line.isin(['Basement: Unfinished', 'Basement:
+      Finished', 'Basement: Minimal Finish', 'Basement: Finished
+      (Commercial)', 'Basement: Unfinished (Commercial)']) & (UNITS > 1))
+    inputs: [UNITS, detail_line]
+    output: basement_area_sqft
+  - type: expression
+    expression: >-
+      UNITS.where(detail_line.isin(['Basement: Finished', 'Basement: Minimal
+      Finish', 'Basement: Finished (Commercial)']) & (UNITS > 1))
+    inputs: [UNITS, detail_line]
+    output: basement_finished_area_sqft
+  - type: remap_conditional
+    input: DETAILTYPE
+    conditions:
+      - condition: in
+        values: ['Basement']
+        output: true
+    output: has_basement
+  - type: expression
+    expression: >-
+      UNITS.where(detail_line.isin(['Porch: Open Slab', 'Porch: Wood Roof',
+      'Porch: Cvrd Slab', 'Porch: Slab Roof', 'Porch: Slab Roof Ceil', 'Porch:
+      Encl Screen', 'Porch: Encl Solid Wall', 'Porch: Encl Glass Wall', 'Add
+      On: Porches-Concrete Slab Average']) & (UNITS > 1))
+    inputs: [UNITS, detail_line]
+    output: porch_area_sqft
+  - type: expression
+    expression: >-
+      UNITS.where(detail_line.isin(['Porch: Wood Deck', 'Porch: Cvrd Wood
+      Deck', 'Porch: Covered Wood Deck', 'Porch: Cement Deck', 'Porch: Roof Top
+      Deck']) & (UNITS > 1))
+    inputs: [UNITS, detail_line]
+    output: deck_area_sqft
+  - type: expression
+    expression: >-
+      UNITS.where(detail_line.isin(['Add On: HVAC-Fireplace-Gas Direct Vented',
+      'Add On: HVAC-Fireplace-Single Story', 'Add On: HVAC-Fireplace-Single
+      Story-Dbl', 'Add On: HVAC-Fireplace-Two Story', 'Add On:
+      HVAC-Fireplace-Two Story-Dbl', 'Add On: HVAC-Fireplace-Three Story', 'Add
+      On: Fireplace-Gas Log', 'Add On: Fireplace-Good']) & (UNITS > 0))
+    inputs: [UNITS, detail_line]
+    output: n_fireplaces
+  - type: expression
+    expression: "UNITS.where((detail_line == 'Fixture: Bath 2') & (UNITS > 0))"
+    inputs: [UNITS, detail_line]
+    output: n_half_bathrooms
+  - type: remap_conditional
+    input: DETAILTYPE
+    conditions:
+      - condition: in
+        values: ['Carport']
+        output: true
+    output: has_carport
+  - type: remap_conditional
+    input: detail_line
+    conditions:
+      - condition: in
+        values: ['Add On: Solar KW']
+        output: true
+    output: has_solar
+  - type: remap_conditional
+    input: detail_line
+    conditions:
+      - condition: regex
+        pattern: '^Add On: .*Swimming Pool'
+        output: true
+    output: has_pool
+  - type: remap_conditional
+    input: detail_line
+    conditions:
+      - condition: in
+        values:
+          - 'Add On: Elevator (2-3 story)'
+          - 'Add On: Elevator (4-7 story)'
+          - 'Add On: Mech-Elevator-2 passenger'
+          - 'Add On: Mech-Elevator-3 passenger'
+        output: true
+    output: has_elevator
+  - type: remap_conditional
+    input: detail_line
+    conditions:
+      - condition: in
+        values: ['Garage: Det Apartment', 'Garage: Det Garage Apt']
+        output: true
+    output: has_accessory_dwelling
+
+drop_columns:
+  - detail_line
+
+aggregation_function:
+  garage_area_sqft: sum
+  has_garage: max
+  garage_type: first
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  porch_area_sqft: sum
+  deck_area_sqft: sum
+  n_fireplaces: sum
+  n_half_bathrooms: sum
+  has_carport: max
+  has_solar: max
+  has_pool: max
+  has_elevator: max
+  has_accessory_dwelling: max
+
+supplements: US-CO-AD_property-adamscounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: detail
