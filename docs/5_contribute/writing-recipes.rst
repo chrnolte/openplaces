@@ -996,7 +996,7 @@ Additional layers
 
    - **Per-table keys** are taken from the layer spec when present; otherwise they are removed from the merged recipe. These include:
 
-     ``entity``, ``layer``, ``columns``, ``keep_unnamed_columns``, ``set_index``, ``create_index``, ``index_function``, ``drop``, ``query``, ``null_value_strings``, ``transformations``, ``columns_to_categorical``, ``encoding``, ``save_to``, ``overlay_admin_ids``
+     ``entity``, ``layer``, ``layer_key``, ``columns``, ``keep_unnamed_columns``, ``set_index``, ``create_index``, ``index_function``, ``drop``, ``query``, ``null_value_strings``, ``transformations``, ``columns_to_categorical``, ``drop_columns``, ``encoding``, ``save_to``, ``overlay_admin_ids``, ``entity_links``
    - **Shared keys** are always inherited from the primary recipe. These include:
 
      ``admin_id``, ``download_by``, ``compressed_file_name``, ``uncompressed_file_name``

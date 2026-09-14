@@ -302,11 +302,33 @@ def _generate_geography_pages(app: Sphinx) -> None:
             subdir.rmdir()
 
 
+def _outdated_catalog_pages(
+    app: Sphinx, env, added: set[str], changed: set[str], removed: set[str]
+) -> list[str]:
+    """Name every catalog page as outdated, so each build re-reads it.
+
+    Sphinx decides whether to re-read a document from its source file's
+    mtime. A generated geography page's source is one directive line
+    that never changes, while what the directive renders comes from the
+    recipe tree; without this, a recipe added under an existing
+    geography stays missing from that geography's page until the
+    environment is discarded (-E). The landing page's own directives
+    read the recipe tree the same way, so it is listed too.
+    """
+    out_dir = Path(app.srcdir) / 'recipes'
+    docnames = {'recipes'}
+    for page in out_dir.rglob('*.rst'):
+        rel = page.relative_to(out_dir).with_suffix('').as_posix()
+        docnames.add(f'recipes/{rel}')
+    return sorted((docnames & env.found_docs) - added)
+
+
 def setup(app: Sphinx) -> ExtensionMetadata:
     app.add_directive('recipe-catalog', RecipeCatalog)
     app.add_directive('recipe-coverage', RecipeCoverage)
     app.add_directive('recipe-children', RecipeChildren)
     app.connect('builder-inited', _generate_geography_pages)
+    app.connect('env-get-outdated', _outdated_catalog_pages)
     return {
         'version': '0.1',
         'parallel_read_safe': True,
