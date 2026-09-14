@@ -156,19 +156,23 @@ pipeline:
   # label values, so this cannot fragment the cohort statistics keyed on
   # use_group_combined.
   #
-  # building_style joins them because in some counties the occupancy
-  # signal is only in the structure description, not the land use.
-  # Sampson County, NC is the measured case: its use_group is a land
-  # *segment* type (HOMESITE / CROPLAND / WOODLAND) that matches no
-  # land-use keyword at all, while its style column identifies 6,364
-  # manufactured homes the classifier would otherwise never see -- 0% of
-  # parcels getting a keyword class versus 15%. Listed last so it only
-  # ever extends the assessor's own use label, never displaces it.
+  # building_style is deliberately not part of the combined label
+  # (decided 2026-09-13). In some counties the occupancy signal is only
+  # in the structure description (Sampson County, NC: use_group is a
+  # land segment type, HOMESITE / CROPLAND / WOODLAND, that matches no
+  # land-use keyword, while USE_DESC names its manufactured homes), but
+  # folding it in here made cohort statistics keyed on
+  # use_group_combined fragment on style text, and let two readings of
+  # one assessor field vote twice. The curate parcel vote reads
+  # building_style as its own indicator instead (style_class in
+  # US_parcel-openplaces-2026), empty wherever the land use already
+  # names a class. Measured before the change: keyword coverage 16.7%
+  # with style against 16.2% without; classes moved on 0.27% to 0.70%
+  # of parcels across the surveyed counties.
   - step: derive_use_classes
     columns:
       - [use_group, use_group_code]
       - [use_subgroup, use_subgroup_code]
-      - building_style
 
   # Attach the modal NSI building group per parcel (group_building_nsi), the
   # linked-data signal the parcel land-use classifier votes on -- from the

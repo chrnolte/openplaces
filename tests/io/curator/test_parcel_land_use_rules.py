@@ -671,3 +671,67 @@ def test_rule_wins_are_recorded_in_source_sidecar():
     out = _classify(_state(df), rules=RULES).curated
     assert out['land_use_class_source'].iloc[0] == 'rule'
     assert pd.isna(out['land_use_class_source'].iloc[1])
+
+
+def test_ruleset_class_where_null_speaks_only_where_the_other_reading_is_empty(
+    monkeypatch,
+):
+    # building_style is read through the same rules as the land use, but
+    # a second reading of one assessor record must not add a vote where
+    # the first already named a class.
+    from openplaces.core.schema import AdminId
+    from openplaces.io.curator import CurateState, occupancy
+    from openplaces.io.curator.inferers import derive_indicators
+
+    rules = [
+        {
+            'pattern': 'MOBILE|MOHO',
+            'match_type': 'regex',
+            'occupancy_type': 'Manufactured Home',
+            'reviewed': False,
+        },
+        {
+            'pattern': 'CONDO',
+            'match_type': 'contains',
+            'occupancy_type': 'Condominium',
+            'reviewed': False,
+        },
+    ]
+    monkeypatch.setattr(occupancy, 'load_ruleset', lambda *a, **k: rules)
+    curated = pd.DataFrame(
+        {
+            'use_group_combined': ['CONDO UNIT', 'HOMESITE', None],
+            'building_style': ['MOBILE HOME', 'DOUBLE WIDE MOHO', 'CONDO'],
+        }
+    )
+    state = CurateState(
+        recipe={},
+        entity_recipe={},
+        admin_id=AdminId('US', 'XX', 'YY'),
+        verbose=False,
+        timer=None,
+        curated=curated,
+    )
+    state = derive_indicators(
+        state,
+        [
+            {
+                'output': 'keyword_class',
+                'type': 'ruleset_class',
+                'column': 'use_group_combined',
+                'ruleset': 'x.csv',
+            },
+            {
+                'output': 'style_class',
+                'type': 'ruleset_class',
+                'column': 'building_style',
+                'ruleset': 'x.csv',
+                'where_null': 'keyword_class',
+            },
+        ],
+    )
+    out = state.curated
+    assert out['keyword_class'].iloc[0] == 'Condominium'
+    assert pd.isna(out['style_class'].iloc[0])
+    assert out['style_class'].iloc[1] == 'Manufactured Home'
+    assert out['style_class'].iloc[2] == 'Condominium'
