@@ -17,17 +17,18 @@
 # Commercial or Out Building). Code 0 ('Permit Value *CODE') is a
 # valuation placeholder and gets no style.
 #
-# BATHS. BATHS is already a decimal count in half steps (fractions .0
-# on 98,042 residential rows, .5 on 66,939, .75 on 10, .25 on 3). It is
-# mapped as published. Checked against the Detail table's bathroom
-# fixture lines per improvement, BATHS equals full baths (four or more
-# fixtures) + three-fixture baths + 0.5 x two-fixture baths on 92.0% of
-# 153,169 improvements: a three-quarter (three-fixture) bath counts as
-# one here, and a half bath as 0.5. n_half_bathrooms comes from the
-# Detail table (_detail).
+# BATHS. BATHS is a decimal count in half steps (fractions .0 on
+# 98,042 residential rows, .5 on 66,939, .75 on 10, .25 on 3). It is NOT
+# mapped (user decision, 2026-09-13): checked against the Detail
+# table's bathroom fixture lines per improvement, BATHS equals full
+# baths (four or more fixtures) + three-fixture baths + 0.5 x
+# two-fixture baths on 92.0% of 153,169 improvements, i.e. it counts a
+# three-quarter bath as one. n_bathrooms and n_half_bathrooms are
+# therefore built from those fixture lines in _detail, weighting a
+# three-quarter bath 0.75; this table writes neither.
 #
 # MAPPING, summed over sections to the account: n_bedrooms BEDROOMS,
-# n_bathrooms BATHS, n_rooms ROOMS, n_dwellings UNITS above 0 (UNITS is
+# n_rooms ROOMS, n_dwellings UNITS above 0 (UNITS is
 # 0 on single-family rows). Areas by the code's property type:
 # living_area_sqft is BLTASSF of residential codes (above-grade
 # finished area; basements and garages are Detail lines);
@@ -51,8 +52,8 @@
 # MEASURED: see the validation note at the end of the roll's header.
 
 description: >-
-  Adams County, CO Assessor built-as table: rooms, bedrooms, half-step
-  baths, stories, years, living area and building codes per property.
+  Adams County, CO Assessor built-as table: rooms, bedrooms, stories,
+  years, living area and building codes per property.
 
 admin_id: US-CO-AD
 
@@ -98,7 +99,7 @@ fixed_width:
   - [FOUNDATION, 20]
   - [ROOMS, 6]
   - [BEDROOMS, 8]
-  - [BATHS, 8]
+  - [filler, 8] # BATHS, not mapped; see BATHS
   - [UNITS, 11]
   - [filler, 11] # OTHER
   - [CLASS, 10]
@@ -112,7 +113,6 @@ fixed_width:
 columns:
   property_id_assessor: ACCOUNTNO
   n_bedrooms: BEDROOMS
-  n_bathrooms: BATHS
   n_rooms: ROOMS
   n_dwellings: UNITS
   n_stories: STORIES
@@ -138,7 +138,6 @@ transformations:
   - {type: unary, operation: null_if_equal, input: building_style,
      args: {value: 'Permit Value  *CODE'}, output: building_style}
   - {type: unary, operation: to_numeric, input: n_bedrooms, output: n_bedrooms}
-  - {type: unary, operation: to_numeric, input: n_bathrooms, output: n_bathrooms}
   - {type: unary, operation: to_numeric, input: n_rooms, output: n_rooms}
   - {type: unary, operation: to_numeric, input: n_dwellings, output: n_dwellings}
   - {type: unary, operation: null_if_equal, input: n_dwellings, args: {value: 0},
@@ -219,7 +218,6 @@ drop_columns:
 
 aggregation_function:
   n_bedrooms: sum
-  n_bathrooms: sum
   n_rooms: sum
   n_dwellings: sum
   living_area_sqft: sum

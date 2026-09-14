@@ -40,9 +40,29 @@
 #   and three story, gas direct vented; 'Fireplace-Gas Log',
 #   'Fireplace-Good'): n_fireplaces, summing UNITS. 'HVAC-Fireplace-Gas
 #   Log Conversion' converts an existing fireplace and is not counted.
-# - Fixture 'Bath 2' (a two-fixture bath, 44.9%): n_half_bathrooms,
-#   summing UNITS. The built-as BATHS count already weighs these at
-#   0.5; see _built-as.
+# - BATHS. Bathroom fixture lines name each bathroom by its fixture
+#   count, and UNITS counts the bathrooms of that kind (median 1).
+#   n_bathrooms = full + 0.75 x three-quarter + 0.5 x half, the
+#   user's rule of 2026-09-13: 'Bath 4', 'Bath 5', 'Bath 6+' and 'MH
+#   Bath4 WH SS' (four or more fixtures) count 1, 'Bath 3' (three
+#   fixtures: a three-quarter bath) 0.75, 'Bath 2' (two fixtures: a
+#   half bath) 0.5. No one-fixture bath line exists, so no quarter
+#   bath is counted. Single fixtures ('Toilet', 'Sink Bathroom',
+#   'Shower', 'Bathtub') are not bathrooms and are left out, as are 7
+#   bath lines with a blank DETAILTYPE. n_half_bathrooms sums the
+#   'Bath 2' lines. The built-as BATHS total is not mapped: it counts
+#   a three-quarter bath as one (it equals full + three-fixture + 0.5
+#   x two-fixture on 92.0% of improvements).
+#   MEASURED (2026-05 dump, 2026-09-13): on the 164,951 residential
+#   improvements (Occupancy abstract 12xx), a bathroom count is
+#   filled on 96.5% from fixture lines against 93.2% from BATHS; on
+#   the 158,415 residential accounts, 98.8% against 95.4%. Where both
+#   are filled (153,119 improvements), the recomputed count differs
+#   from BATHS on 33.8%: lower by 0.25 on 27.1% (one three-quarter
+#   bath), by 0.5 on 4.0%, by 0.75 or more on 1.4%, higher on 1.1%;
+#   mean difference -0.10. 0.4% of residential improvements have
+#   BATHS but no bath fixture line; 3.7% have fixture lines but
+#   BATHS 0. Account values carry fractions .0, .25, .5 and .75.
 # - Carport lines (3.3%): has_carport. Add On 'Solar KW' (9.8%):
 #   has_solar. Add On swimming pools ('...Swimming Pools...', wading
 #   pools excluded; 1.2%): has_pool. Add On passenger elevators
@@ -54,8 +74,9 @@
 # MEASURED: see the validation note at the end of the roll's header.
 
 description: >-
-  Adams County, CO Assessor improvement detail lines: garage, basement,
-  porch and deck areas, fireplaces, half baths, pool, solar, carport.
+  Adams County, CO Assessor improvement detail lines: fixture-weighted
+  bathrooms, half baths, garage, basement, porch and deck areas,
+  fireplaces, pool, solar.
 
 admin_id: US-CO-AD
 
@@ -173,6 +194,18 @@ transformations:
     expression: "UNITS.where((detail_line == 'Fixture: Bath 2') & (UNITS > 0))"
     inputs: [UNITS, detail_line]
     output: n_half_bathrooms
+  # Bathrooms weighted by fixture count; see BATHS.
+  - type: expression
+    expression: >-
+      (UNITS * (detail_line.isin(['Fixture: Bath 4', 'Fixture: Bath 5',
+      'Fixture: Bath 6+', 'Fixture: MH Bath4 WH SS']) * 1.0
+      + (detail_line == 'Fixture: Bath 3') * 0.75
+      + (detail_line == 'Fixture: Bath 2') * 0.5)).where(
+      detail_line.isin(['Fixture: Bath 2', 'Fixture: Bath 3',
+      'Fixture: Bath 4', 'Fixture: Bath 5', 'Fixture: Bath 6+',
+      'Fixture: MH Bath4 WH SS']) & (UNITS > 0))
+    inputs: [UNITS, detail_line]
+    output: n_bathrooms
   - type: remap_conditional
     input: DETAILTYPE
     conditions:
@@ -227,6 +260,7 @@ aggregation_function:
   deck_area_sqft: sum
   n_fireplaces: sum
   n_half_bathrooms: sum
+  n_bathrooms: sum
   has_carport: max
   has_solar: max
   has_pool: max
