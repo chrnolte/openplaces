@@ -273,3 +273,4 @@ view_rating,"Assessor's view rating in the source's own codes (for a condominium
 topography,"Lot topography as described by the source (e.g. level, rolling, steep)",,categorical,first,,,,
 construction_description,"Structural construction or frame type in the source's own words or codes (e.g. frame, masonry, wood; a county's class letters). Kept as the county defines it; curate translates it into construction_type",,categorical,first,57.1,,,
 foundation_description,"Foundation type in the source's own words or codes (e.g. slab, crawl space, full basement). Kept as the county defines it; curate translates it into foundation_type",,categorical,first,56.1,,,
+dwelling_type_description,"Dwelling or unit type in the source's own words or codes (e.g. standard, end unit, garden condo, mobile home, parking space). Kept as the county defines it; curate translates it into occupancy and attachment indicators",,categorical,first,68.1,,,

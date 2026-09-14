@@ -1,0 +1,158 @@
+# Recipe: Maryland statewide assessment accounts (the property roll),
+# from the Maryland Department of Planning's (MDP) 2026 Q2 statewide
+# CAMA (computer-assisted mass appraisal) geodatabase.
+#
+# Source: one public zip (412,705,680 bytes; fetched 2026-09-13 by the
+# identified client, HTTP 200) holding a file geodatabase of four
+# point layers in EPSG:26985. The item says "the date of the
+# assessment data linked to the parcel point locations is April 2026".
+#   - CAMA_MAIN: 2,445,307 rows, one per SDAT account (condominium
+#     units included), 2,445,307 distinct ACCTID. Read here.
+#   - CAMA_BUILDING: 2,176,526 rows, one per building (97.97% of
+#     accounts with a building have one). Read by the _buildings
+#     supplement.
+#   - CAMA_SUBAREA: 7,955,603 rows, one per building sketch line.
+#     Read by the _subareas supplement.
+#   - CAMA_LAND: 4,244,911 rows, one per land pricing line. Not read:
+#     its codes are pricing classes, and lot size is already mapped
+#     on US-MD_parcel-mdimap-2026 from ACRES.
+# The same four layers are served by the MD iMAP CAMA MapServer
+# (maxRecordCount 1000; about 20,000 accounts fewer, an older build),
+# whose advertised bulk link (MDiMAPDataDownload) answers HTTP 500.
+# The geodatabase is newer and one request, so it is the source.
+#
+# WHY THREE RECIPES, NOT additional_layers. The roll and its two
+# supplements read one zip once: the download and unzip directories
+# depend only on the entity (property-mdplanning-2026), not on the
+# recipe's filename suffix, so the second and third recipes find the
+# file already present (as the Victoria County TX supplements share
+# one roll zip). additional_layers cannot carry a detail table here:
+# a layer entry is never a supplement (links._discover_link_sources
+# gives layers no `supplements`), so the property spine's
+# supplements_only join would never reduce its rows onto these
+# accounts. Each recipe declares its own drop_columns, so each is
+# right whether a drop list is read per table or from the host.
+#
+# NO ROOM COUNTS. No open Maryland source, statewide or county,
+# publishes bedrooms, bathrooms or total rooms (inventory 2026-09-13:
+# the SDAT roll, this geodatabase and seven county sources). The
+# rooms field here (CM_BLDROOM) is filled on 0.1% of accounts,
+# commercial only, and is not mapped.
+#
+# Columns:
+#   - parcel_id_assessor: ACCTID, the SDAT account id, equal to the
+#     parcel layer's ACCTID as is (Baltimore City included), so
+#     parcel_id_local is built exactly as on US-MD_parcel-mdimap-2026.
+#   - tax_neighborhood_code: CM_NBRHOOD, filled on 99.98% of accounts,
+#     15,430 distinct codes of 4 to 11 characters.
+#   - building_area_sqft: PR_ENCSQFT, "Cumulative Total Enclosed SQ FT
+#     of All Buildings", filled (> 0) on 82.6% of accounts, null
+#     elsewhere (never 0). Gross, not living area: the enclosed area
+#     includes built-in garages (sketch code F76) and rooms over a
+#     building (RMO). It equals the sum of the account's building
+#     enclosed areas (BL_ENCSQFT) on 99.64% of accounts, and the
+#     parcel layer's SQFTSTRC on 98.6% (inventory).
+#
+# NOT IN THIS SOURCE (mapped on US-MD_parcel-mdimap-2026 instead,
+# the user's decision of 2026-09-13): the SDAT
+# "construction" field (STRUCNST/DESCCNST, which holds exterior
+# materials, for exterior_wall), water (PFUW, water_source), sewer
+# (PFUS, sewer_type), waterfront and water view (PFLW,
+# has_waterfront/view_rating) and effective width (WIDTH,
+# frontage_ft). None of the four layers has these fields (schema read
+# 2026-09-13); they are SDAT roll fields, published on the parcel
+# layer and on the Socrata roll (opendata.maryland.gov ed4q-f8tm),
+# not in CAMA. Where they go is the user's decision.
+#
+# Also unmapped: CM_BLDTOTL (buildings per account), CM_FAMUNTS and
+# cm_bldunts (unit counts, > 0 on 9.2% and 0.6%), PTYPE, CT2020 and
+# BG2020 (census tract and block group, which harmonize derives
+# spatially), and the point geometry (DIGXCORD/DIGYCORD), dropped so
+# the roll is a plain table like the other property rolls.
+#
+# ADMIN CROSSWALK. process_by reuses the parcel recipe's JURSCODE
+# crosswalk, so one file serves both. Checked 2026-09-13 against
+# admin-spine-2026_admin3.csv: that file maps CARO (Caroline) to
+# US-MD-CA, which the spine gives to Carroll (Caroline is US-MD-CR),
+# so Caroline's rows would be written into Carroll's unit. Not fixed
+# here (an admin-id file); fixing that one row fixes both recipes.
+#
+# MEASURED in memory 2026-09-13 (this recipe's reader and
+# preprocessing on the downloaded geodatabase; aggregates only):
+#   - Rows: 2,445,307 read and kept, one per account;
+#     parcel_id_local filled and distinct on every row.
+#   - Residential: land use R, TH or U on the SDAT roll (Socrata
+#     ed4q-f8tm, joined on ACCTID; Baltimore City's roll id drops
+#     the "03" prefix and the space): 2,126,737 accounts (R
+#     1,755,697, TH 156,916, U 214,124); 99.48% of all accounts
+#     matched the roll.
+#   - Keys against US-MD_parcel-mdimap-2026 (live layer, 2,288,725
+#     polygons, 2,199,985 distinct keys): parcel -> roll 99.87%,
+#     roll -> parcel 89.85% (residential accounts 90.57%). Most
+#     accounts without a polygon are condominium units (159,630 U).
+#     Per county, parcel -> roll is 99.26-100%, and roll -> parcel
+#     runs from 78.89% (Montgomery) to 99.01% (Carroll).
+#   - Coverage on residential accounts, both supplements reduced
+#     per account: tax_neighborhood_code 100.0%, building_area_sqft
+#     87.0%, quality_grade 80.0%, year_built 89.2%, building_style
+#     88.7%, living_area_sqft 79.8%, n_stories and has_basement
+#     78.9% (true 56.7%), has_garage 34.2%, has_carport 2.6%,
+#     deck_area_sqft 48.6%, porch_area_sqft 40.8%. Condominium
+#     units (U) have a style (97.5%) but rarely a grade (11.9%) or a
+#     main body (9.9%): their sketch line is CND, which feeds none.
+#   - No neighborhood code repeats across counties.
+
+description: >-
+  Maryland statewide assessment accounts (neighborhood, gross enclosed area) from
+  MDP's 2026 Q2 CAMA geodatabase; one row per SDAT account.
+
+admin_id: US-MD
+
+entity:
+  entity_type: property
+  source:
+    source_id: mdplanning
+    portal_url: "https://www.arcgis.com/home/item.html?id=a23d795088e04e34ae4a53d09249ce3a"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/a23d795088e04e34ae4a53d09249ce3a/data"
+    # The geodatabase item's licenseInfo (fetched 2026-09-13) is a
+    # no-warranty note plus "Attribution: Please credit the Maryland
+    # Department of Planning". The MD iMAP CAMA items carry the
+    # state's standard licence, quoted below. Neither restricts
+    # sharing or resale, and neither conditions use on the user.
+    license: >-
+      MD iMAP: "The Data can be freely distributed as long as the metadata
+      entry is not modified or deleted. Any data derived from the Data must
+      acknowledge the State of Maryland in the metadata." Geodatabase item:
+      "Attribution: Please credit the Maryland Department of Planning".
+    terms_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "2026-Q2-Statewide-CAMA.zip"
+uncompressed_file_name: "2026-Q2-Statewide-CAMA.gdb"
+
+layer: CAMA_MAIN
+
+process_by:
+  admin_level: 3
+  admin_id_column: JURSCODE
+  admin_id_crosswalk:
+    recipe_id: "US-MD_parcel-mdimap-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: ACCTID
+  tax_neighborhood_code: CM_NBRHOOD
+  building_area_sqft: PR_ENCSQFT
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+drop_columns:
+  - geometry
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

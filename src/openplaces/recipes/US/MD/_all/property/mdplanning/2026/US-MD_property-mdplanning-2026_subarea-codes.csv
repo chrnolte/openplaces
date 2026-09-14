@@ -1,0 +1,42 @@
+SA_NAMSUBA,feature,feeds,description
+A01,main_body,living_area_sqft; n_stories; has_basement,RESI 1 Story No Basement
+A02,main_body,living_area_sqft; n_stories; has_basement,STRY 1 Story with Basement
+A03,main_body,living_area_sqft; n_stories; has_basement,STRY 1 1/2 Story No Basement
+A04,main_body,living_area_sqft; n_stories; has_basement,STRY 1 1/2 Story with Basement
+A05,main_body,living_area_sqft; n_stories; has_basement,STRY 2 Story No Basement
+A06,main_body,living_area_sqft; n_stories; has_basement,STRY 2 Story with Basement
+A07,main_body,living_area_sqft; n_stories; has_basement,STRY 2 1/2 Story No Basement
+A08,main_body,living_area_sqft; n_stories; has_basement,STRY 2 1/2 Story with Basement
+A09,main_body,living_area_sqft; n_stories; has_basement,STRY 3 Story No Basement
+A10,main_body,living_area_sqft; n_stories; has_basement,STRY 3 Story with Basement
+A11,main_body,living_area_sqft; n_stories; has_basement,STRY 4 Story No Basement
+A12,main_body,living_area_sqft; n_stories; has_basement,STRY 4 Story with Basement
+A13,main_body,living_area_sqft,STRY Split Foyer
+F73,garage,has_garage; garage_area_sqft; garage_type,ATGR Frame Attached Garage
+F74,garage,has_garage; garage_area_sqft; garage_type,ATGR Brick Attached Garage
+F75,garage,has_garage; garage_area_sqft; garage_type,ATGR Stone Attached Garage
+F76,garage,has_garage; garage_area_sqft; garage_type,ATGR Built-in Garage
+F77,garage,has_garage; garage_area_sqft; garage_type,ATGR Basement Garage
+F78,carport,has_carport,ATGR Carport
+F60,deck,deck_area_sqft,DECK Deck
+F61,deck,deck_area_sqft,DECK Deck w/Roof
+F67,patio,deck_area_sqft,PTIO Concrete Patio
+F68,patio,deck_area_sqft,PTIO Concrete Patio w/Roof
+F69,patio,deck_area_sqft,PTIO Brick Patio
+F70,patio,deck_area_sqft,PTIO Brick Patio w/Roof
+F71,patio,deck_area_sqft,PTIO Stone Patio
+F72,patio,deck_area_sqft,PTIO Stone Patio w/Roof
+F91,patio,deck_area_sqft,SPTIO Enclosed Patio
+F62,porch,porch_area_sqft,PRCH Porch no Roof
+F63,porch,porch_area_sqft,PRCH 1 Story Open Porch
+F64,porch,porch_area_sqft,PRCH 2 Story Open Porch
+F65,porch,porch_area_sqft,PRCH 3 Story Open Porch
+F66,porch,porch_area_sqft,PRCH Enclosed Porch
+BAS,unused,,COMM Base Area (Commercial Buildings)
+CND,unused,,CNDO Condominium
+RMO,unused,,STRM Room Over Building
+F18,unused,,BRZW Open Breezeway
+F19,unused,,BRZW Enclosed Breezeway
+F24,unused,,GHSE Attached Greenhouse
+F25,unused,,STRG Attached Storage
+Z99,unused,,DROP Ignore Area

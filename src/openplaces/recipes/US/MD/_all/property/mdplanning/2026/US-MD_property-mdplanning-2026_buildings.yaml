@@ -1,0 +1,113 @@
+# Recipe: Maryland statewide CAMA buildings (one row per building),
+# supplementing the account roll US-MD_property-mdplanning-2026. Same
+# download as the roll; read its header for the source and terms.
+#
+# Layer CAMA_BUILDING: 2,176,526 rows, one per building, keyed by
+# ACCTID (2,108,897 accounts; 97.97% have one building) and CAMALINK
+# (unique per building).
+#
+# Columns:
+#   - quality_grade: BL_BLDGRAD, the SDAT grade code 1 to 9 ("Codes
+#     range from lowest to highest quality 1-9"), kept as published;
+#     null on 251,079 buildings (11.5%), mostly commercial buildings,
+#     which carry a class (BL_COMCLSS) instead. Codes 3 and 4 hold
+#     69.2% of buildings.
+#   - year_built: BL_YEARBLT, a 4-character year, filled on 97.73% of
+#     buildings, all within 1600-2026 (no 0 placeholder measured).
+#   - building_style: BL_DSCSTYL, the style description as published
+#     (173 codes, e.g. "STRY 2 Story With Basement", the townhouse
+#     center and end unit forms, "HOUSING Condominium (residential)",
+#     "HOUSING Mobile Home" and commercial types), the same
+#     vocabulary as the parcel layer's DESCSTYL.
+#   - dwelling_type_description: BL_DSCTYPE, the published
+#     description of the BL_BLDTYPE code (Standard, Center or End
+#     Unit, Split Foyer, Split Level, the condo kinds, Mobile Home,
+#     Rental Dwelling, Parking Space, Boat Slip, Storage Unit), and
+#     the building type of commercial buildings, all as published.
+# Stories and basement are not parsed from the style here: the
+# _subareas supplement reads them from each sketch line's main-body
+# code, the finer source.
+#
+# NOT MAPPED: BL_COMCLSS (commercial class) and BL_ENCSQFT
+# (per-building enclosed area; the roll maps the account total).
+#
+# A property with several buildings takes its earliest year built,
+# and the grade and style of its first building in file order.
+#
+# MEASURED in memory 2026-09-13: 2,176,526 rows over 2,108,897
+# accounts, every key found in the roll. On residential accounts
+# (land use R, TH, U; see the roll): quality_grade 80.0% (R 87.2%,
+# TH 92.7%, U 11.9%), year_built 89.2%, building_style 88.7% (U
+# 97.5%), dwelling_type_description 90.47% (R 89.27%, TH 92.73%, U
+# 98.72%). By account (first building): 15,091 residential accounts
+# read Mobile Home, 14,048 Parking Space, 4,130 Boat Slip and 2,079
+# Storage Unit, nearly all condominium units (U) except the mobile
+# homes. 22,932 accounts have buildings of more than one type and
+# take the first.
+
+description: >-
+  Maryland statewide CAMA buildings (grade, year built, style, dwelling type), one
+  row per building, supplementing MDP's 2026 Q2 account roll.
+
+admin_id: US-MD
+
+entity:
+  entity_type: property
+  source:
+    source_id: mdplanning
+    portal_url: "https://www.arcgis.com/home/item.html?id=a23d795088e04e34ae4a53d09249ce3a"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/a23d795088e04e34ae4a53d09249ce3a/data"
+    # Same download and terms as the roll (see its source block).
+    license: >-
+      MD iMAP: "The Data can be freely distributed as long as the metadata
+      entry is not modified or deleted. Any data derived from the Data must
+      acknowledge the State of Maryland in the metadata." Geodatabase item:
+      "Attribution: Please credit the Maryland Department of Planning".
+    terms_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "2026-Q2-Statewide-CAMA.zip"
+uncompressed_file_name: "2026-Q2-Statewide-CAMA.gdb"
+
+layer: CAMA_BUILDING
+
+process_by:
+  admin_level: 3
+  admin_id_column: JURSCODE
+  admin_id_crosswalk:
+    recipe_id: "US-MD_parcel-mdimap-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: ACCTID
+  quality_grade: BL_BLDGRAD
+  year_built: BL_YEARBLT
+  building_style: BL_DSCSTYL
+  dwelling_type_description: BL_DSCTYPE
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+
+drop_columns:
+  - geometry
+
+aggregation_function:
+  quality_grade: first
+  year_built: min
+  building_style: first
+  dwelling_type_description: first
+
+# Buildings detail the roll's accounts: the property spine skips them
+# as rows and joins them onto the roll by parcel_id_local.
+supplements: US-MD_property-mdplanning-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
+  filename: buildings
