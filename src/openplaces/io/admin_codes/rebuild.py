@@ -21,7 +21,11 @@ phase 2 fail partway with half the overrides applied.
 
 **The country arguments are data.** Which recipe supplies weights for
 which scope, at which level, now lives in ``population-overrides.csv``
-beside this module. Adding a country is a row, not a code edit.
+beside this module. Adding a country is a row, not a code edit. The
+open geometry layer adds its own rows without anyone writing them: every
+country-level the geoBoundaries licence sidecar marks shippable weighs
+its units from that layer (:func:`geometry_overrides`), unless the table
+names a national layer for the same scope and level, which wins.
 
 Nothing here writes by default: ``apply=False`` runs every read-only
 phase and reports what a real run would change.
@@ -51,14 +55,25 @@ KEY_STRATEGIES = {
 }
 
 
-def load_overrides(path=OVERRIDES) -> pd.DataFrame:
-    """Read the population-override table.
+def load_overrides(path=OVERRIDES, with_geometry=True) -> pd.DataFrame:
+    """Read the population-override table, plus the geometry layer's rows.
+
+    Parameters
+    ----------
+    path : pathlib.Path, optional
+        The committed table.
+    with_geometry : bool, optional
+        Append :func:`geometry_overrides` for every level. Default True.
 
     Returns
     -------
     pandas.DataFrame
         Columns ``recipe_id``, ``scope``, ``level``, ``join_column``,
-        ``key``, ``note``. Blank ``join_column``/``key`` mean "not used".
+        ``key``, ``note``, ``required``. Blank ``join_column``/``key``
+        mean "not used". A row from the table is required (its failure
+        stops the rebuild); a geometry-layer row is not, since a
+        country-level whose polygons pin to no unit only leaves those
+        units on gap-filled weights, as they would be without the file.
     """
     frame = pd.read_csv(path, dtype=str, keep_default_na=False)
     frame['level'] = frame['level'].astype(int)
@@ -68,7 +83,64 @@ def load_overrides(path=OVERRIDES) -> pd.DataFrame:
             f'population-overrides.csv names unknown key strategies '
             f'{sorted(unknown)}; add them to KEY_STRATEGIES or fix the table.'
         )
+    frame['required'] = True
+    if with_geometry:
+        derived = geometry_overrides(exclude=set(zip(frame['scope'], frame['level'])))
+        frame = pd.concat([frame, derived], ignore_index=True)
     return frame
+
+
+def geometry_overrides(exclude=(), levels=LEVELS) -> pd.DataFrame:
+    """Return one override row per shippable country-level of the geometry layer.
+
+    Read from the geoBoundaries licence sidecar rather than written into
+    the table: 280-odd rows that restate a sidecar drift from it. Empty
+    when no geometry layer is configured (`build.GEOMETRY_RECIPE` unset).
+
+    Parameters
+    ----------
+    exclude : iterable of (str, int), optional
+        (scope, level) pairs the table already covers; a national layer
+        wins over the world one.
+    levels : iterable of int, optional
+        Levels to derive rows for.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Same columns as :func:`load_overrides`, ``required`` False.
+    """
+    columns = ['recipe_id', 'scope', 'level', 'join_column', 'key', 'note', 'required']
+    if not build.GEOMETRY_RECIPE:
+        return pd.DataFrame(columns=columns)
+    from openplaces.io.scrapers.geoboundaries_scraper import (
+        SHIPPABLE_TIER,
+        load_licenses,
+    )
+
+    table = load_licenses()
+    table = table[table['tier'] == SHIPPABLE_TIER]
+    exclude = set(exclude)
+    rows = []
+    for level in levels:
+        recipe_id = build.GEOMETRY_RECIPE.format(level=level)
+        for _, row in table[table['admin_level'] == str(level)].iterrows():
+            scope = row['admin1_id']
+            if (scope, level) in exclude:
+                continue
+            rows.append(
+                [
+                    recipe_id,
+                    scope,
+                    level,
+                    f'admin{level}_id',
+                    '',
+                    f'geoBoundaries {row["geoboundaries_level"]}, '
+                    f'{row["license_spdx"]}',
+                    False,
+                ]
+            )
+    return pd.DataFrame(rows, columns=columns)
 
 
 def check_prerequisites(overrides=None, verbose=True) -> list[str]:
@@ -128,8 +200,11 @@ def apply_population_overrides(overrides=None, verbose=True, strict=True) -> int
         If *strict* and any override failed.
     """
     overrides = load_overrides() if overrides is None else overrides
+    if 'required' not in overrides:
+        overrides = overrides.assign(required=True)
     applied = 0
     failed = []
+    skipped = []
     for _, row in overrides.sort_values('level').iterrows():
         kwargs = {}
         if row['join_column']:
@@ -143,15 +218,20 @@ def apply_population_overrides(overrides=None, verbose=True, strict=True) -> int
             )
             applied += 1
         except Exception as exc:  # noqa: BLE001
-            failed.append(
+            message = (
                 f'{row["recipe_id"]} @ {row["scope"]} (level {row["level"]}): {exc}'
             )
-            warnings.warn(f'population override {failed[-1]}', stacklevel=2)
+            (failed if row['required'] else skipped).append(message)
+            warnings.warn(f'population override {message}', stacklevel=2)
             if verbose:
-                print(f'    {label} FAILED')
+                print(f'    {label} {"FAILED" if row["required"] else "skipped"}')
             continue
         if verbose:
             print(f'    {label}')
+    if skipped and verbose:
+        print(
+            f'    {len(skipped)} geometry-layer override(s) matched no unit; gap-filled'
+        )
     if failed and strict:
         raise RuntimeError(
             f'{len(failed)} of {len(overrides)} population override(s) failed; '

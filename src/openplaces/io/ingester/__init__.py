@@ -458,12 +458,12 @@ class Ingester:
 
             self._create_entity_links(reprocess)
 
-            self._record_units_the_source_does_not_cover()
+            self._record_units_the_source_does_not_cover(reprocess)
         finally:
             if self._owns_timer:
                 self.timer.finish()
 
-    def _record_units_the_source_does_not_cover(self):
+    def _record_units_the_source_does_not_cover(self, reprocess=False):
         """Write an empty table for a unit the source has no data for.
 
         A soft skip means the source does not publish this unit (the
@@ -479,13 +479,30 @@ class Ingester:
         Only reached after a run that raised nothing: a real failure
         propagates, so an output still missing here is an absence in
         the source rather than an error.
+
+        On a reprocess, a unit whose partition the scraper reported
+        unavailable this time also gets the empty table, in place of
+        whatever an earlier run wrote for it: a source can stop
+        covering a unit (the Wikidata harvest of Curacao emptied when
+        its one candidate was ruled out), and the stale rows would
+        otherwise read as current.
+
+        Parameters
+        ----------
+        reprocess : bool, optional
+            Whether this run was asked to rebuild existing outputs.
         """
+        stale = getattr(self, '_unavailable_units', set()) if reprocess else set()
         for admin_id in self.admin_ids_to_save or []:
             out_path = get_output_path(self.recipe, admin_id)
-            if out_path.exists():
+            replacing = out_path.exists() and str(admin_id) in stale
+            if out_path.exists() and not replacing:
                 continue
             if self.verbose:
-                print(f'{admin_id}: not covered by the source; saved an empty table.')
+                what = 'no longer covered' if replacing else 'not covered'
+                print(f'{admin_id}: {what} by the source; saved an empty table.')
+            for old in (out_path, out_path.with_stem(out_path.stem + '_geo')):
+                old.unlink(missing_ok=True)
             empty = gpd.GeoDataFrame(
                 {'geometry': gpd.GeoSeries([], dtype='geometry')}, crs=cfg.crs
             )
@@ -2189,6 +2206,9 @@ class Ingester:
             if self.verbose:
                 print(f'No source file available; skipping partition: {partition_id}')
             self.download_partition['unavailable'] = True
+            unit = self.download_partition.get('admin_id_to_download')
+            if unit is not None:
+                self.__dict__.setdefault('_unavailable_units', set()).add(str(unit))
             return
 
         if not target_path.exists():

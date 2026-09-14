@@ -61,11 +61,15 @@ DEFAULT_RASTER = '_all/population/ghsl/r2023a/population-ghsl-r2023a.tif'
 
 #: Polygons the population weights are summed over, per level, as a
 #: recipe id with `{level}` in it; None means each level's default admin
-#: recipe, which is what the committed spine was minted on. The open
-#: licensed geoBoundaries layer ('admin-geoboundaries-6~0~0_admin{level}')
-#: is the intended value: it pins polygons to units by name, so it takes
-#: over on the day the world rows carry Wikidata names, together with
-#: one weight override per open file and a re-mint (see the phase-3 plan).
+#: recipe, which is what the committed spine was minted on. The value to
+#: come is 'admin-geoboundaries-6~0~0_admin{level}': only its permissive
+#: country-levels are ever ingested (the recipe's licence sidecar
+#: decides), so no polygon from a source that may not be redistributed
+#: weighs on a code, and `rebuild.geometry_overrides` then weights every
+#: such country-level from it. Its polygons pin to units by name, so the
+#: flip comes with the Wikidata rename of the world rows and a re-mint
+#: (see the phase-3 plan); countries with a national layer are
+#: overridden from it afterwards either way.
 GEOMETRY_RECIPE = None
 
 

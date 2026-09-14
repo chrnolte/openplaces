@@ -28,6 +28,7 @@ one silently would sometimes be wrong.
 """
 
 import difflib
+import re
 from collections import defaultdict
 
 import pandas as pd
@@ -222,6 +223,11 @@ ADMINISTRATIVE_ENTITY = 'Q56061'
 # the state's municipalities do.
 ELECTORAL_DISTRICT = 'Q192611'
 HUMAN_SETTLEMENT = 'Q486972'
+# What a class is called when it is drawn for voting. The subtree under
+# ELECTORAL_DISTRICT cannot serve: real units are filed there too.
+ELECTORAL_WORDS = re.compile(
+    r'constituen|electoral|election|polling|wahlkreis|stimmkreis', re.I
+)
 # Subtrees that reach the administrative tree and hold nothing that
 # governs: a fort, an airbase, a diocese, an Antarctic claim.
 EXCLUDED_TREES = {
@@ -362,8 +368,9 @@ def select_units(
     among those (the standard's own list of principal subdivisions),
     settlements included: Korea's metropolitan cities are coded beside
     its provinces. Without codes, classes outside the settlement subtree
-    are preferred (Mexico's 460 localities linked straight to the
-    country outnumber its 32 states), the parent's direct children
+    and the constituency classes are preferred (Mexico's 460 localities
+    linked straight to the country outnumber its 32 states; Kenya's 290
+    constituencies its 195 sub-counties), the parent's direct children
     decide (`direct` True, or every row where the column is absent), and
     a country with a single uncoded child has no level at all (Aruba,
     Sint Maarten). A class whose items are mostly located in other
@@ -390,9 +397,12 @@ def select_units(
     keep_classes : iterable of str, optional
         Q-numbers to keep in addition to the dominant class.
     electoral_classes : iterable of str, optional
-        Q-numbers in the electoral-district subtree; a class that ties
+        Q-numbers of classes that are constituencies by name. Without
+        codes they rank below every other class, and a class that ties
         with one of these labels the units (Sao Tome's districts are
-        its electoral units too).
+        its electoral units too). Not the electoral-district subtree:
+        Wikidata files France's departments and the Netherlands'
+        municipalities under it as well.
     settlement_classes : iterable of str, optional
         Q-numbers in the human-settlement subtree; a unit only where no
         other administrative class is on offer.
@@ -436,17 +446,30 @@ def select_units(
     if len(coded):
         pool = coded
     else:
-        territorial = candidates[
-            candidates['admin_list'].map(
-                lambda cs: any(c not in settlement for c in cs)
-            )
-        ]
-        pool = territorial if len(territorial) else candidates
+        # Without codes, a class drawn for voting or for living in is
+        # the level only when nothing territorial is on offer: Kenya's
+        # level 3 is its sub-counties, not its 290 constituencies, and
+        # Mexico's 460 localities do not outrank its 32 states. A place
+        # people live in still beats a voting map.
+        pool = candidates
+        for demoted in (settlement | electoral, electoral):
+            kept_rows = candidates[
+                candidates['admin_list'].map(
+                    lambda cs, d=demoted: any(c not in d for c in cs)
+                )
+            ]
+            if len(kept_rows):
+                pool = kept_rows
+                break
         if 'direct' in pool:
             flagged = pool[pool['direct'].astype(str).str.lower() == 'true']
             pool = flagged if len(flagged) else pool
     counted = pool['admin_list'].map(
-        lambda cs: [c for c in cs if c not in settlement] or cs
+        lambda cs: (
+            [c for c in cs if c not in settlement | electoral]
+            or [c for c in cs if c not in electoral]
+            or cs
+        )
     )
     counts = counted.explode().value_counts()
     ranked = sorted(counts.index, key=lambda c: (-counts[c], c in electoral))

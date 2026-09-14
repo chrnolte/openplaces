@@ -80,10 +80,14 @@ Then, from `openplaces.io.admin_codes import build`:
 for level in (2, 3, 4):
     build.build_population(level)
 
-# 2. Override where the global admin geometry lacks a country's units.
-#    New England towns are level 3 and come from each state's own
-#    layer; the national admin4 layer excludes them. The full table is
-#    population-overrides.csv, which rebuild.rebuild_spine reads.
+# 2. Override where a country's own layer knows its units better than
+#    the world geometry does. New England towns are level 3 and come
+#    from each state's own layer; the national admin4 layer excludes
+#    them. The table is population-overrides.csv, which
+#    rebuild.rebuild_spine reads; the world geometry (geoBoundaries,
+#    build.GEOMETRY_RECIPE) adds one row per country-level its licence
+#    sidecar marks permissive, derived at run time by
+#    rebuild.geometry_overrides, and a national row wins over it.
 for state in ('US-CT', 'US-MA', 'US-ME', 'US-NH', 'US-RI', 'US-VT'):
     build.build_population_from_entity(
         f'{state}_admin-census-2025_admin3', state, level=3,

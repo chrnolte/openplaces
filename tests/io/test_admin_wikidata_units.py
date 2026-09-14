@@ -343,3 +343,48 @@ def test_a_single_child_of_a_lower_level_parent_is_still_a_unit():
         pd.DataFrame([_row('Q1', 'Only', [COUNTY])]), ADMIN
     )
     assert dominant == COUNTY and len(kept) == 1
+
+
+def test_constituencies_lose_to_a_territorial_class_without_codes():
+    # Level 3 under a Kenyan county: 290 constituencies, 195 sub-counties.
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Constituency {i}', [CONSTITUENCY]) for i in range(8)]
+        + [_row(f'Q{i}', f'Sub-county {i}', [COUNTY]) for i in range(20, 25)]
+    )
+    kept, dominant = wd.select_units(
+        harvest, ADMIN | {CONSTITUENCY}, electoral_classes={CONSTITUENCY}
+    )
+    assert dominant == COUNTY and len(kept) == 5
+
+
+def test_constituencies_are_the_level_when_nothing_else_is_on_offer():
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Constituency {i}', [CONSTITUENCY]) for i in range(3)]
+    )
+    kept, dominant = wd.select_units(
+        harvest, ADMIN | {CONSTITUENCY}, electoral_classes={CONSTITUENCY}
+    )
+    assert dominant == CONSTITUENCY and len(kept) == 3
+
+
+def test_constituencies_rank_below_settlements_too():
+    harvest = pd.DataFrame(
+        [_row(f'Q{i}', f'Constituency {i}', [CONSTITUENCY]) for i in range(8)]
+        + [_row(f'Q{i}', f'Town {i}', [CITY]) for i in range(20, 23)]
+    )
+    kept, dominant = wd.select_units(
+        harvest,
+        ADMIN | {CONSTITUENCY},
+        electoral_classes={CONSTITUENCY},
+        settlement_classes={CITY},
+    )
+    assert dominant == CITY and len(kept) == 3
+
+
+def test_electoral_words_name_constituencies_not_units():
+    assert wd.ELECTORAL_WORDS.search('constituency of the National Assembly of Kenya')
+    assert wd.ELECTORAL_WORDS.search('Landtag electoral district')
+    assert wd.ELECTORAL_WORDS.search('polling district of Malaysia')
+    assert wd.ELECTORAL_WORDS.search('Stimmkreis')
+    assert not wd.ELECTORAL_WORDS.search('department of France')
+    assert not wd.ELECTORAL_WORDS.search('municipality of the Netherlands')
