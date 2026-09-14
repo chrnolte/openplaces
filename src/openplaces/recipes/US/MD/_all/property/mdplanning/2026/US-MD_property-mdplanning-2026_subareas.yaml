@@ -1,0 +1,200 @@
+# Recipe: Maryland statewide CAMA building sketch lines (one row per
+# subarea), supplementing the account roll
+# US-MD_property-mdplanning-2026. Same download as the roll; read its
+# header for the source and terms.
+#
+# Layer CAMA_SUBAREA: 7,955,603 rows, one per sketch line of a
+# building (CAMALINK plus SA_ITMNUMB unique), keyed by ACCTID. Each
+# line has a subarea code (SA_NAMSUBA, 41 codes, one description each
+# in SA_DSCSUBA; 40,387 lines carry no code), a foundation area
+# (SA_FNDSQFT, the line's footprint, > 0 on 99.9% of coded lines) and
+# an enclosed area (SA_ENCSQFT, > 0 on enclosed lines only: the main
+# body, built-in garage F76, room over building RMO, condominium CND
+# and commercial base BAS).
+#
+# RULE. The sidecar US-MD_property-mdplanning-2026_subarea-codes.csv
+# assigns each code to the feature it feeds, from the code's own
+# description; codes that feed nothing say `unused`. No meaning is
+# added: a code feeds only what its description states.
+#   - main_body (A01-A13): living_area_sqft is the sum of the
+#     enclosed areas. On every main-body code the enclosed area is
+#     the footprint times the stories (median ratio 1, 1.5, 2, 2.5,
+#     3, 4 by code, "with basement" codes included), so it counts
+#     floors above grade and no basement: the nearest registry
+#     attribute, with that caveat (no finished-basement figure is
+#     published). n_stories and has_basement come from the code's
+#     description (e.g. A06 "2 Story with Basement": 2, true; A03
+#     "1 1/2 Story No Basement": 1.5, false). A13 "Split Foyer"
+#     states neither and gives neither.
+#   - garage (F73-F77, frame, brick or stone attached, built-in,
+#     basement garage): has_garage true, garage_area_sqft the
+#     footprint, garage_type the line's description as published.
+#   - carport (F78): has_carport true. There is no carport area
+#     attribute, so its footprint is not kept.
+#   - deck (F60, F61) and patio (F67-F72, F91): deck_area_sqft, the
+#     registry's "deck and patio area", the footprint.
+#   - porch (F62-F66, open and enclosed): porch_area_sqft.
+#   - unused: BAS (commercial base area), CND (condominium unit),
+#     RMO (room over building), F18/F19 (breezeways), F24
+#     (greenhouse), F25 (attached storage), Z99 ("Ignore Area").
+# Flags are true where a property has a line of that kind and null
+# elsewhere: the sketch lists what is present, never an absence. A
+# footprint or enclosed area of 0 reads as missing.
+#
+# Several lines per property: areas sum, stories take the tallest
+# main body, has_basement is true if any main body has one (1.05M
+# accounts carry more than one distinct main-body code, additions
+# included), and garage_type takes the first garage line.
+#
+# MEASURED in memory 2026-09-13 (aggregates only): 7,955,603 lines
+# over 2,103,737 accounts, every key found in the roll. Lines feeding
+# each column: living area 3,806,277; stories and basement
+# 3,713,025; garage 886,490; carport 58,795; deck and patio
+# 1,362,914; porch 1,202,164. On residential accounts (land use R,
+# TH, U; see the roll): living_area_sqft 79.8% (median 1,624 sqft),
+# n_stories 78.9% (1: 468,756; 1.5: 144,155; 2: 970,922; 2.5:
+# 21,293; 3: 70,916; 4: 2,499), has_basement 78.9% (true 56.7%),
+# has_garage, garage_type and garage_area_sqft 34.2% (median 440
+# sqft), has_carport 2.6%, deck_area_sqft 48.6% (median 240),
+# porch_area_sqft 40.8% (median 144). The main-body sum is at most
+# the roll's gross enclosed area on 86.0% of the 1,684,184
+# residential accounts carrying both.
+
+description: >-
+  Maryland statewide CAMA sketch lines (stories, basement, main-body, garage,
+  deck, porch areas) supplementing MDP's 2026 Q2 account roll.
+
+admin_id: US-MD
+
+entity:
+  entity_type: property
+  source:
+    source_id: mdplanning
+    portal_url: "https://www.arcgis.com/home/item.html?id=a23d795088e04e34ae4a53d09249ce3a"
+    download_url: "https://www.arcgis.com/sharing/rest/content/items/a23d795088e04e34ae4a53d09249ce3a/data"
+    # Same download and terms as the roll (see its source block).
+    license: >-
+      MD iMAP: "The Data can be freely distributed as long as the metadata
+      entry is not modified or deleted. Any data derived from the Data must
+      acknowledge the State of Maryland in the metadata." Geodatabase item:
+      "Attribution: Please credit the Maryland Department of Planning".
+    terms_url: "https://www.arcgis.com/home/item.html?id=17ebd56a70174682a781de29105fa1da"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "2026-Q2-Statewide-CAMA.zip"
+uncompressed_file_name: "2026-Q2-Statewide-CAMA.gdb"
+
+layer: CAMA_SUBAREA
+
+process_by:
+  admin_level: 3
+  admin_id_column: JURSCODE
+  admin_id_crosswalk:
+    recipe_id: "US-MD_parcel-mdimap-2026_admin3-crosswalk"
+
+columns:
+  parcel_id_assessor: ACCTID
+
+transformations:
+  - type: remap_file
+    input: SA_NAMSUBA
+    crosswalk_id: US-MD_property-mdplanning-2026_subarea-codes
+    output: sa_feature
+  - type: expression
+    expression: >-
+      SA_ENCSQFT.where(sa_feature.isin(['main_body']) & (SA_ENCSQFT > 0))
+    inputs: [SA_ENCSQFT, sa_feature]
+    output: living_area_sqft
+  - type: remap
+    input: SA_NAMSUBA
+    mapping:
+      A01: 1
+      A02: 1
+      A03: 1.5
+      A04: 1.5
+      A05: 2
+      A06: 2
+      A07: 2.5
+      A08: 2.5
+      A09: 3
+      A10: 3
+      A11: 4
+      A12: 4
+    output: n_stories
+  - type: remap
+    input: SA_NAMSUBA
+    mapping:
+      A01: false
+      A02: true
+      A03: false
+      A04: true
+      A05: false
+      A06: true
+      A07: false
+      A08: true
+      A09: false
+      A10: true
+      A11: false
+      A12: true
+    output: has_basement
+  - type: remap_conditional
+    input: sa_feature
+    conditions:
+      - condition: in
+        values: ['garage']
+        output: true
+    output: has_garage
+  - type: expression
+    expression: >-
+      SA_FNDSQFT.where(sa_feature.isin(['garage']) & (SA_FNDSQFT > 0))
+    inputs: [SA_FNDSQFT, sa_feature]
+    output: garage_area_sqft
+  - type: expression
+    expression: "SA_DSCSUBA.where(sa_feature.isin(['garage']))"
+    inputs: [SA_DSCSUBA, sa_feature]
+    output: garage_type
+  - type: remap_conditional
+    input: sa_feature
+    conditions:
+      - condition: in
+        values: ['carport']
+        output: true
+    output: has_carport
+  - type: expression
+    expression: >-
+      SA_FNDSQFT.where(sa_feature.isin(['deck', 'patio']) & (SA_FNDSQFT > 0))
+    inputs: [SA_FNDSQFT, sa_feature]
+    output: deck_area_sqft
+  - type: expression
+    expression: >-
+      SA_FNDSQFT.where(sa_feature.isin(['porch']) & (SA_FNDSQFT > 0))
+    inputs: [SA_FNDSQFT, sa_feature]
+    output: porch_area_sqft
+
+drop_columns:
+  - sa_feature
+  - geometry
+
+aggregation_function:
+  living_area_sqft: sum
+  n_stories: max
+  has_basement: max
+  has_garage: max
+  garage_area_sqft: sum
+  garage_type: first
+  has_carport: max
+  deck_area_sqft: sum
+  porch_area_sqft: sum
+
+# Sketch lines detail the roll's accounts: the property spine skips
+# them as rows and joins them onto the roll by parcel_id_local.
+supplements: US-MD_property-mdplanning-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
+  filename: subareas

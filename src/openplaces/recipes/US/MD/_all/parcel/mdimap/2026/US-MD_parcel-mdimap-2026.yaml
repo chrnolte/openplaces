@@ -200,15 +200,15 @@
 #     `YYYYMMDD` string). Left unmapped (including `source_date`)
 #     rather than risk silent date corruption; `TRADATE` is the one
 #     genuinely clean date field on this layer.
-#   - `STRUCNST`/`DESCCNST` (construction material code), `STRUGRAD`/
-#     `DESCGRAD` (construction quality grade), `STRUBLDG`/`DESCBLDG`
-#     (building type, distinct from `building_style`), `WIDTH`/
-#     `DEPTH` (parcel frontage/depth), `PFUW`/`PFUS`/`PFLW`/`PFSP`/
-#     `PFSU`/`PFIC`/`PFIH`/`RECIND` (utility/influence factor flags),
-#     `CRTARCOD`/`FCMACODE`/`AGFNDAREA`/`ENTZNDAT`/`ENTZNASSM`/
-#     `PLNDEVDAT`/`NPRCTSTDAT`/`NPRCAREA`/`NPRCLUOM`/`HOMQLCOD`/
-#     `HOMQLDAT` (special assessment/tax-program flags and dates) --
-#     no registry attribute for any of these.
+#   - `STRUGRAD`/`DESCGRAD` (quality_grade) and `SQFTSTRC`
+#     (building_area_sqft): US-MD_property-mdplanning-2026 carries
+#     both per account (grade per building, gross enclosed area), so
+#     they are not repeated here.
+#   - `DEPTH`, `PFSP`/`PFSU`/`PFIC`/`PFIH`/`RECIND` (other factor
+#     flags), `CRTARCOD`/`FCMACODE`/`AGFNDAREA`/
+#     `ENTZNDAT`/`ENTZNASSM`/`PLNDEVDAT`/`NPRCTSTDAT`/`NPRCAREA`/
+#     `NPRCLUOM`/`HOMQLCOD`/`HOMQLDAT` (special assessment and
+#     tax-program flags and dates): no registry attribute.
 #   - Assessment/tax year: no clean single tax-year field exists on
 #     this layer (`LASTASSD` is a `YYYYMM` last-assessed-date, not a
 #     roll year); `tax_year` is left unmapped rather than
@@ -244,6 +244,59 @@
 #     13,373/13,781 (97.0%); ZIPCODE not null: 13,413/13,781 (97.3%);
 #     ZONING not null: 12,341/13,781 (89.6%); LU not null:
 #     13,404/13,781 (97.3%).
+#
+# NOTE on exterior material, utilities, waterfront and frontage (user
+# decision 2026-09-13: mapped here from this layer's own fields, the
+# codes kept as published). Measured on the live layer with
+# server-side counts grouped by code, run through this recipe's
+# transformations, on the 1,926,894 residential rows (LU R, TH, U):
+#   - exterior_wall: DESCCNST, the description of STRUCNST, labeled
+#     "Construction" but listing exterior materials ("CNST Siding",
+#     "CNST Frame", "CNST Brick", asbestos or wood shingle, stucco,
+#     stone, block, log, half-brick and half-stone forms). 86.93%
+#     (R 88.22%, TH 95.29%, U 23.65%). Not construction_type, whose
+#     codes are the NSI set.
+#   - water_source (PFUW) and sewer_type (PFUS): one-character codes,
+#     1 public and 2 private per the SDAT roll's labels ("Public
+#     (1)", "Private (2)" on opendata.maryland.gov ed4q-f8tm); 0 is
+#     "not set" and reads as missing. Water 33.85% (R 33.94%, TH
+#     23.48%, U 58.58%), sewer 70.78% (R 72.88%, TH 47.91%, U
+#     65.14%). Montgomery, Prince George's, Frederick, Calvert,
+#     Garrett and Baltimore City never set water (inventory).
+#   - has_waterfront and view_rating from PFLW, filled on every row:
+#     0 none, 1 waterfront, 2 water view (the roll's labels).
+#     has_waterfront is true for 1 and false for 0 and 2, since the
+#     field records a view instead of frontage there: true on 2.68%
+#     (R 2.51%, TH 0.26%, U 14.59%). view_rating keeps code 2 where
+#     the lot has a water view (0.52%) and is null elsewhere.
+#   - frontage_ft: WIDTH, "Effective Width" in feet, > 0 on 11.74%
+#     (R 13.03%, TH 0.51%, U 0.77%; Baltimore County 71.7% and Queen
+#     Anne's 44.4% in the inventory), null elsewhere (no 0 values).
+#   - dwelling_type_description (user decision 2026-09-13): DESCBLDG,
+#     the published description of the STRUBLDG code (e.g. "DWEL
+#     Standard Unit", "DWEL Center Unit", "DWEL Condo Garden").
+#     90.62% (R 90.01%, TH 95.29%, U 97.83%). Non-dwelling units are
+#     kept as published: on residential rows 14,106 read Mobile Home,
+#     1,610 Boat Slip, 551 Storage Unit and 424 Parking Space, and
+#     216 carry a commercial building type.
+#
+# NOTE on stories and basement (2026-09-13). BLDG_STORY, mapped as
+# n_stories until then, is > 0 on 128 of 1,926,894 residential rows
+# (land use R, TH or U; 124 of 1,727,294 R) and on 65,401 of the
+# 361,831 other rows. The style text (DESCSTYL, mapped to
+# building_style) states the story count and the basement for most
+# homes ("STRY 2 Story With Basement", the townhouse center and end
+# unit forms), so n_stories is parsed from it, with BLDG_STORY > 0 as
+# the fallback where the style states no count, and has_basement is
+# parsed the same way. On the 1,602 rows carrying both counts they
+# agree on 677; the style wins. Measured on the live layer (ACCTID,
+# LU, style and story fields of all 2,288,725 rows, no geometry, run
+# through this recipe's preprocessing):
+#   - n_stories, residential: 128 before, 1,565,612 after (81.25%;
+#     R 82.00%, TH 95.25%, U 20.11%, whose condominium styles state
+#     no count). All rows: 65,529 before, 1,706,484 after (74.56%);
+#     no BLDG_STORY value is lost.
+#   - has_basement, residential: filled on 81.25%, true on 59.15%.
 #
 # License: the ArcGIS item's own `licenseInfo` (fetched directly via
 # the AGOL sharing API, not just its rendered Hub page) states: "The
@@ -308,9 +361,13 @@ columns:
   use_group: DESCLU
   zoning_code: ZONING
   year_built: YEARBLT
-  n_stories: BLDG_STORY
   n_dwellings: BLDG_UNITS
   building_style: DESCSTYL
+  dwelling_type_description: DESCBLDG
+  exterior_wall: DESCCNST
+  water_source: PFUW
+  sewer_type: PFUS
+  frontage_ft: WIDTH
   land_value: NFMLNDVL
   improvement_value: NFMIMPVL
   total_value: NFMTTLVL
@@ -325,8 +382,34 @@ columns_to_categorical:
   - owner_postal_code
   - use_group_code
   - zoning_code
+  - dwelling_type_description
+  - exterior_wall
+  - water_source
+  - sewer_type
+  - view_rating
 
 transformations:
+  # Utility codes: 1 public, 2 private; 0 is "not set" (see header).
+  - type: unary
+    operation: null_if_equal
+    input: water_source
+    args: {value: "0"}
+    output: water_source
+  - type: unary
+    operation: null_if_equal
+    input: sewer_type
+    args: {value: "0"}
+    output: sewer_type
+  # PFLW: 0 none, 1 waterfront, 2 water view (see header).
+  - type: remap
+    input: PFLW
+    mapping: {"0": false, "1": true, "2": false}
+    output: has_waterfront
+  - type: remap
+    input: PFLW
+    mapping: {"2": "2"}
+    output: view_rating
+
   # YEARBLT's '0'/'0000' placeholder is handled generically by the
   # registry's null_placeholder for year_built (see
   # attribute_registry.csv) -- no explicit null_if_equal needed here.
@@ -350,6 +433,44 @@ transformations:
     operation: acres_to_sqft
     input: ACRES
     output: lot_size
+
+  # Stories and basement from the style text (see the header note on
+  # BLDG_STORY). The number before "Story" is the count ("1", "1.5",
+  # ... "4"); split foyer, condominium, mobile home and commercial
+  # styles state none and stay null. The text is truncated at 45
+  # characters ("... With Basem", "... No Basemen"), so the basement
+  # match needs only the first three letters.
+  - type: string
+    operation: extract_named
+    input: building_style
+    args:
+      pattern: '(?P<n_stories>\d(?:\.5)?) Story'
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  # BLDG_STORY is the fallback where the style states no count: it is
+  # filled almost only on non-residential rows, whose styles name a
+  # use, not a height.
+  - type: unary
+    operation: to_numeric
+    input: BLDG_STORY
+    output: BLDG_STORY
+  - type: expression
+    expression: "n_stories.fillna(BLDG_STORY.where(BLDG_STORY > 0))"
+    inputs: [n_stories, BLDG_STORY]
+    output: n_stories
+  - type: remap_conditional
+    input: building_style
+    conditions:
+      - condition: regex
+        pattern: 'With Bas'
+        output: true
+      - condition: regex
+        pattern: 'No Bas'
+        output: false
+    output: has_basement
 
 # No bundled US_parcel_id-overrides.csv row exists for US-MD; falls
 # back to the default 'simple' conversion. ACCTID is SDAT's own
