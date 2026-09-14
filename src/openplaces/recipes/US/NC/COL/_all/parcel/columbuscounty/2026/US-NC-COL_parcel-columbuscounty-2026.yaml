@@ -50,6 +50,24 @@
 # An earlier version of this note claimed NC OneMap's key was simply empty
 # for this county and that no shared key existed. That was wrong: the
 # column was populated, just with a different identifier.
+#
+# FLOOR AREA. `sqft` is undocumented (no field or layer description);
+# it is read as heated living area, measured 2026-09-13 against the
+# source file and the NCDPS 2020 footprints:
+#   - not the lot: sqft / (acres x 43,560) has median 0.027. It is 0
+#     on 60.4% of rows, exactly the rows with no year built;
+#   - on single-footprint parcels (12,413) sqft is 0.72 of the
+#     footprint area at the median, 0.67 for SINGLE FAMILY UNIT and
+#     0.65 for one-story houses (NSI stories), but 0.91 for two-story
+#     ones: it grows with stories yet stays well below the outline of
+#     a one-story house, so it counts upper floors and leaves out
+#     garages and porches;
+#   - NCDPS's own heated square feet (HTD_SQ_FT) equals it within 5%
+#     on 73% of footprints whose HTDSQFTSRC is 6000 and 97% of those
+#     with 2000. NSI's sqft copies it (equal on 92.5% of parcels with
+#     one RES1 point), so NSI is not independent evidence here.
+# Mapped as living_area_sqft. It was gross_floor_area_sqft after the
+# area rename, a default for undocumented fields.
 
 description: >-
   Columbus County, NC parcel roll (total assessed value, year built, floor
@@ -83,7 +101,7 @@ columns:
   use_group: land_class
   use_subgroup: bldg_type
   year_built: yrblt
-  gross_floor_area_sqft: sqft
+  living_area_sqft: sqft
   last_sale_price: saleamt
   last_sale_book_page: deed
   total_value: taxvalue

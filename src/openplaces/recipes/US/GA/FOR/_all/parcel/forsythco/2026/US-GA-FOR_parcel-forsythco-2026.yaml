@@ -5,8 +5,8 @@
 # `Public/Tax_Parcel` layer served from `geo.forsythco.com`.
 #
 # The richest of the Greater Atlanta county sources: land value, both
-# value bases, year built, floor area, floor count, land-use code and
-# description, and zoning all in one layer.
+# value bases, year built, building areas, floor count, land-use code
+# and description, and zoning all in one layer.
 #
 # CAUTION: do not confuse this county with Forsyth County, NORTH
 # CAROLINA. An AGOL layer literally named `Forsyth_County_Tax_Parcels`
@@ -22,11 +22,34 @@
 # therefore on different bases; `value` takes the assessed total and
 # `land_value` the land figure as published, unreconciled. Measure
 # before relying on their ratio.
+#
+# FLOOR AREA. The layer follows Esri's tax-parcel schema and carries
+# RESFLRAREA ("Residential Floor Area"), BLDGAREA ("Building Area")
+# and FLOORCOUNT ("Number of Floors"), none with a field description.
+# Measured 2026-09-13 on the bulk export (42,507 rows with both
+# areas):
+#   - RESFLRAREA x FLOORCOUNT / BLDGAREA has median 0.93 at two
+#     floors (IQR 0.88-1.00) and 1.02 at three;
+#   - RESFLRAREA falls as floors rise: SF RESIDENTIAL medians 1,910,
+#     1,546 and 1,380 sqft at one, two and three floors, while
+#     BLDGAREA rises (2,782, 3,302, 3,579). TOWNHOME median 846 at
+#     two floors.
+# RESFLRAREA therefore reads as the area of one floor, neither living
+# area nor a total, and stays unmapped: as a 2D area it would be a
+# footprint, which a parcel roll has no registry column for.
+# BLDGAREA is the building's area on all floors and is mapped as
+# gross_floor_area_sqft, with MEDIUM confidence: that it spans every
+# floor is measured, but whether it counts unfinished space (garage,
+# unfinished basement) is not. At one floor RESFLRAREA / BLDGAREA has
+# median 0.69, so BLDGAREA holds more than that floor there, which
+# fits gross area. BLDGAREA is filled on 88.8% of rows, commercial
+# ones included (FLEX 99.9%, OFFICE CONDO 99.6%); RESFLRAREA on
+# 41.0%. Before 2026-09-13 RESFLRAREA was mapped here instead.
 
 description: >-
   Forsyth County, GA parcel roll (land and assessed values, year built,
-  floor area, land use, zoning, owner, situs) from the county open-data
-  bulk GeoJSON export.
+  building floor area, land use, zoning, owner, situs) from the county
+  open-data bulk GeoJSON export.
 
 admin_id: US-GA-FOR
 
@@ -57,7 +80,7 @@ columns:
   land_value: LNDVALUE
   total_value: CNTASSDVAL
   year_built: RESYRBLT
-  gross_floor_area_sqft: RESFLRAREA
+  gross_floor_area_sqft: BLDGAREA
   use_group: USEDSCRP
   use_group_code: USECD
   zoning_code: ZONING
