@@ -80,3 +80,19 @@ def test_an_unset_save_list_is_tolerated(monkeypatch, tmp_path, admin_ids):
     ingester._record_units_the_source_does_not_cover()
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_unit_that_became_unavailable_is_emptied_on_reprocess(monkeypatch, tmp_path):
+    """A stale output from an earlier run must not read as current."""
+    ingester = _ingester(monkeypatch, tmp_path, ADMIN_IDS)
+    ingester._unavailable_units = {'US-NC-CAM'}
+    stale = tmp_path / 'US-NC-CAM.parquet'
+    save_parquet(
+        gpd.GeoDataFrame({'geometry': [box(0, 0, 1, 1)]}, crs='epsg:4326'), stale
+    )
+
+    ingester._record_units_the_source_does_not_cover(reprocess=False)
+    assert len(read_parquet(stale)) == 1
+
+    ingester._record_units_the_source_does_not_cover(reprocess=True)
+    assert len(read_parquet(stale)) == 0

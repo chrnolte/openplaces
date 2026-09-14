@@ -225,10 +225,11 @@ def fetch(
         harvest,
         admin_classes(),
         _kept_classes(alpha2, level),
-        # The electoral subtree only breaks ties: Wikidata files Kenya's
-        # counties, Romania's counties and Brazil's states under it too,
-        # so membership cannot tell a constituency from a county.
-        electoral_classes=class_tree(wd.ELECTORAL_DISTRICT),
+        # Not the electoral subtree: Wikidata files Kenya's counties,
+        # France's departments and the Netherlands' municipalities under
+        # it too, so membership cannot tell a constituency from a county.
+        # The class's own name can.
+        electoral_classes=_electoral_classes(type_of),
         settlement_classes=class_tree(wd.HUMAN_SETTLEMENT),
         country_classes=_country_classes(alpha2, type_of),
     )
@@ -279,6 +280,11 @@ def _class_labels(harvest) -> dict[str, str]:
         return {}
     labels = query(wd.class_labels_query(wanted))
     return dict(zip(labels['c'].map(wd.qid), labels['cLabel']))
+
+
+def _electoral_classes(type_of: dict[str, str]) -> set[str]:
+    """Return the classes whose label says they are drawn for voting."""
+    return {c for c, label in type_of.items() if wd.ELECTORAL_WORDS.search(str(label))}
 
 
 def _country_classes(alpha2: str, type_of: dict[str, str]) -> set[str]:

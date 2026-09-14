@@ -7,6 +7,7 @@ order, or stopping before the mint settles, produces a *plausible* spine
 
 from __future__ import annotations
 
+import pandas as pd
 import pytest
 
 from openplaces.io.admin_codes import rebuild
@@ -182,3 +183,82 @@ def test_a_clean_override_run_reports_what_it_applied(monkeypatch):
         rebuild.build, 'build_population_from_entity', lambda *a, **k: None
     )
     assert _apply_overrides(verbose=False) == 1
+
+
+def _licenses(rows):
+    return pd.DataFrame(
+        rows,
+        columns=[
+            'admin1_id',
+            'admin_level',
+            'geoboundaries_level',
+            'license_spdx',
+            'tier',
+        ],
+    )
+
+
+def test_the_geometry_layer_adds_a_row_per_shippable_country_level(monkeypatch):
+    import openplaces.io.scrapers.geoboundaries_scraper as gb
+
+    monkeypatch.setattr(rebuild.build, 'GEOMETRY_RECIPE', 'geo-layer_admin{level}')
+    monkeypatch.setattr(
+        gb,
+        'load_licenses',
+        lambda: _licenses(
+            [
+                ('KE', '2', 'ADM1', 'CC-BY-4.0', 'permissive'),
+                ('KE', '3', 'ADM2', 'CC-BY-4.0', 'permissive'),
+                ('FR', '2', 'ADM1', 'ODbL-1.0', 'share-alike'),
+                ('US', '2', 'ADM1', 'public-domain', 'permissive'),
+            ]
+        ),
+    )
+    derived = rebuild.geometry_overrides(exclude={('US', 2)})
+    assert derived[['recipe_id', 'scope', 'level', 'join_column']].values.tolist() == [
+        ['geo-layer_admin2', 'KE', 2, 'admin2_id'],
+        ['geo-layer_admin3', 'KE', 3, 'admin3_id'],
+    ]
+    assert not derived['required'].any()
+
+
+def test_no_geometry_layer_means_no_derived_rows(monkeypatch):
+    monkeypatch.setattr(rebuild.build, 'GEOMETRY_RECIPE', None)
+    assert rebuild.geometry_overrides().empty
+
+
+def test_a_national_row_wins_over_the_geometry_layer(monkeypatch, tmp_path):
+    import openplaces.io.scrapers.geoboundaries_scraper as gb
+
+    monkeypatch.setattr(rebuild.build, 'GEOMETRY_RECIPE', 'geo-layer_admin{level}')
+    monkeypatch.setattr(
+        gb,
+        'load_licenses',
+        lambda: _licenses([('US', '2', 'ADM1', 'public-domain', 'permissive')]),
+    )
+    p = tmp_path / 'o.csv'
+    p.write_text(
+        'recipe_id,scope,level,join_column,key,note\n'
+        'national,US,2,admin2_id_admin1,,\n',
+        encoding='utf-8',
+    )
+    frame = rebuild.load_overrides(p)
+    assert frame['recipe_id'].tolist() == ['national']
+    assert frame['required'].tolist() == [True]
+
+
+def test_a_failed_geometry_layer_row_is_skipped_not_fatal(monkeypatch):
+    table = _overrides([('national', 'US-MA', 3, '', '', '')]).assign(required=True)
+    geo = _overrides([('geo-layer_admin3', 'KE', 3, 'admin3_id', '', '')]).assign(
+        required=False
+    )
+    table = pd.concat([table, geo], ignore_index=True)
+
+    def fake_entity(recipe_id, scope, level=None, **kwargs):
+        if recipe_id.startswith('geo-layer'):
+            raise ValueError('matched no unit')
+
+    monkeypatch.setattr(rebuild, 'load_overrides', lambda *a, **k: table)
+    monkeypatch.setattr(rebuild.build, 'build_population_from_entity', fake_entity)
+    with pytest.warns(UserWarning, match='geo-layer'):
+        assert _apply_overrides(verbose=False) == 1

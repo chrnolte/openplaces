@@ -7,9 +7,12 @@ package, so a share-alike or unreviewed file must not enter it. The
 recipe therefore does not carry a download URL at all; this scraper
 reads the licence sidecar committed beside the recipes
 (`admin-geoboundaries-6~0~0_licenses.csv`, derived from the project's
-own metadata table) and downloads only a country-level whose `status` is
-`open`. A held file is skipped as an unavailable partition, never
-fetched.
+own metadata table) and downloads only a country-level whose `tier` is
+`permissive` (CC0, public domain, CC BY and the national open licences).
+The other tiers, `share-alike` (ODbL, CC BY-SA: fine as a local
+intermediate, never in a shipped artifact) and `unreviewed`, are held:
+skipped as an unavailable partition, never fetched. `status` restates
+the tier as `open` or `held`, and `held_reason` says why.
 
 The version is pinned to a release tag rather than `main`, so a rebuild
 next year reads the same polygons as today's.
@@ -32,6 +35,9 @@ URL = (
     '{iso3}/{level}/geoBoundaries-{iso3}-{level}.geojson'
 )
 LICENSES_RECIPE = 'admin-geoboundaries-6~0~0'
+# The one tier whose polygons may weigh on a shipped spine or be
+# redistributed with attribution.
+SHIPPABLE_TIER = 'permissive'
 REQUEST_INTERVAL_S = 1.0
 
 
@@ -210,9 +216,9 @@ def fetch(
         country = get_admin(str(admin_id_to_download), level=1, columns='admin1_id_a3')
         iso3 = str(country.iloc[0, 0])
     row = license_row(iso3, admin_level)
-    if row is None or row['status'] != 'open':
+    if row is None or row['tier'] != SHIPPABLE_TIER:
         if verbose:
-            reason = 'not published' if row is None else f'held ({row["held_reason"]})'
+            reason = 'not published' if row is None else f'held ({row["tier"]})'
             print(f'  {iso3} level {admin_level}: {reason}')
         return None
     url = URL.format(release=release, iso3=iso3, level=row['geoboundaries_level'])
