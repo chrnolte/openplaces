@@ -31,7 +31,7 @@
 # numbers below.
 #
 # BUILDING FEATURES, the city's codes as published: FinArea
-# (living_area_sqft) and TotalGross (building_area_sqft), square
+# (living_area_sqft) and TotalGross (gross_floor_area_sqft), square
 # feet; ExtType (exterior_wall, numeric codes the layer does not
 # label); Grade (quality_grade, letter grades such as C+ or B-);
 # FirePlaces (n_fireplaces); NBC (tax_neighborhood_code). Not
@@ -116,7 +116,7 @@ columns:
   n_half_bathrooms: HalfBath
   n_rooms: NumofRooms
   living_area_sqft: FinArea
-  building_area_sqft: TotalGross
+  gross_floor_area_sqft: TotalGross
   exterior_wall: ExtType
   quality_grade: Grade
   n_fireplaces: FirePlaces
@@ -152,8 +152,8 @@ transformations:
     output: living_area_sqft
   - type: unary
     operation: to_numeric
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
   - type: unary
     operation: to_numeric
     input: n_fireplaces
@@ -188,7 +188,7 @@ aggregation_function:
   n_half_bathrooms: sum
   n_rooms: sum
   living_area_sqft: sum
-  building_area_sqft: sum
+  gross_floor_area_sqft: sum
   exterior_wall: first
   quality_grade: first
   n_fireplaces: sum

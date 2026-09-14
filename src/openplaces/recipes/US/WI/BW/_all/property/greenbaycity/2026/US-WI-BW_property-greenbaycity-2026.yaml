@@ -54,7 +54,7 @@
 # - living_area_sqft: SFLA, finished living area including finished
 #   basement living area. It equals FirstFloorSF + SecondFloorSF +
 #   ThirdFloorSF + HalfStorySF + FinishedAtticSF + FBLASF on 99.9% of
-#   residential rows (92.7% without FBLASF). No area_sqft was mapped
+#   residential rows (92.7% without FBLASF). No floor area was mapped
 #   before.
 # - basement_area_sqft: FullBasementSF (> 0 96.4%);
 #   basement_finished_area_sqft: RecRoomSF + FBLASF (within

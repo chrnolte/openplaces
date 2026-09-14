@@ -63,7 +63,10 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
     Supported ``type`` values:
 
     - ``value_share_below``: ``value / sum(total) < max_ratio``. With
-      ``include_zero`` true, a zero ``value`` also matches (covers a zero total).
+      ``include_zero`` true, a zero ``value`` beside a positive total also
+      matches. A zero or missing total never matches: a parcel with no
+      assessed value at all says nothing about the share, and letting it
+      match voted Condominium on 77% of Sampson County NC (2026-09-13).
     - ``value_share_at_least``: ``value / sum(total) >= min_ratio``, the mirror
       of ``value_share_below``. No ``include_zero`` option: a zero ``value``
       can never satisfy ``>= min_ratio`` for any positive ``min_ratio``.
@@ -122,7 +125,7 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
         ratio = value.where(total > 0) / total.where(total > 0)
         matched = (ratio < max_ratio).fillna(False)
         if indicator.get('include_zero'):
-            matched = matched | (value == 0).fillna(False)
+            matched = matched | ((value == 0) & (total > 0)).fillna(False)
         return matched
 
     if kind == 'value_share_at_least':

@@ -89,7 +89,7 @@ query: "LOT_TYPE == 2"
 
 columns:
   parcel_id_admin2: SSL
-  lot_size: STATEDAREA
+  land_area_sqft: STATEDAREA
 
 # Expose the raw SSL under the canonical name parcel_id_assessor (a copy
 # of parcel_id_admin2), so it is the raw key parcel_id_local derives

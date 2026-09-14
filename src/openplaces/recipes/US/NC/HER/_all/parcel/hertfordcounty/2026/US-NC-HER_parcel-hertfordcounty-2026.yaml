@@ -62,7 +62,7 @@ columns:
   land_value: TOTAL_LAND_ASSESSED
   improvement_value: TOTAL_BLDG_ASSESSED
   total_value: TOTAL_PROP_VALUE
-  area_sqft: HEATED_AREA
+  living_area_sqft: HEATED_AREA
   # LAND_CLASS is the county land-use class (RES / FRM / MAN-HOU / COM /
   # FRST / WTRF), 97% populated. Without it this county reached curate
   # with no use_group at all, and the footprint deliverable with no

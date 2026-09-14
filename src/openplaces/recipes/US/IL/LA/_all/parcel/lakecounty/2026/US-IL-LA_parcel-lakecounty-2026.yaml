@@ -72,7 +72,7 @@
 # layer had 278,972 (inventory), so the export lags by 96 rows.
 # parcel_id_local filled 100% on both tables, identical key sets.
 # Parcel table: use_group_code 99.5%, zoning_code and tax_district
-# 99.99%, area_assessed_ac 95.4%.
+# 99.99%, land_area_ac 95.4%.
 # 221,760 residential improvements; coverage on them: n_bedrooms
 # 67.0%; n_bathrooms 97.6%; n_half_bathrooms above 0 57.3%;
 # n_stories, year_built, living_area_sqft 97.6%;
@@ -124,7 +124,7 @@ columns:
   use_group_code: land_use_code
   zoning_code: ZONING
   tax_district: tax_code
-  area_assessed_ac: lot_area_acres
+  land_area_ac: lot_area_acres
 
 columns_to_categorical:
   - use_group_code

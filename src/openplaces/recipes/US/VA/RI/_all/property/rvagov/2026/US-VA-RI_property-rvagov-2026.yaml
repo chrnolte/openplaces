@@ -58,7 +58,7 @@
 #                  has_waterfront true on "8 - Waterfront",
 #                  view_rating "A - Waterview", topography "6 - Topo"
 #                  or "B - Topography"
-#   LEGAL_AC       area_assessed_ac
+#   LEGAL_AC       land_area_ac
 #   FRONTAGE       frontage_ft (DEPTH has no registry home)
 #   ZONING         zoning_code
 #   ASSSESS_*_VALUE_1   land_value, improvement_value, total_value
@@ -130,7 +130,7 @@ columns:
   n_bedrooms: BED_COUNT
   n_bathrooms: BATH_COUNT
   n_half_bathrooms: HALF_BATH_COUNT
-  area_assessed_ac: LEGAL_AC
+  land_area_ac: LEGAL_AC
   frontage_ft: FRONTAGE
   zoning_code: ZONING
   land_value: ASSSESS_LAND_VALUE_1

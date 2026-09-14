@@ -261,7 +261,7 @@ transformations:
   - type: unary
     operation: acres_to_sqft
     input: LEGALLY_DEEDED_ACREAGE
-    output: lot_size
+    output: land_area_sqft
 
   - type: unary
     operation: to_datetime
@@ -311,7 +311,7 @@ additional_layers:
       parcel_id_assessor: PARCEL_NUMBER
       tax_year: ASSESSMENT_YEAR
       n_stories: NUMBER_OF_FLOORS
-      area_sqft: TOTAL_SQUARE_FOOT_AREA
+      gross_floor_area_sqft: TOTAL_SQUARE_FOOT_AREA
       total_value: TOTAL_BASE_VALUE
     save_to:
       data_dir: core

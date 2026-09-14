@@ -1,0 +1,174 @@
+# Recipe: Weld County, CO Assessor current improvements inventory
+# (ImpsCurrentInvntry), one row per building section. Same hub and
+# terms as US-CO-WE_property-weldcounty-2026; read that roll's header
+# first.
+#
+# SOURCE. Item 824c974c5d68474698f30983bb438ec4, table
+# Imps_CurrentInvntry FeatureServer/14, downloaded as the Hub CSV
+# (31.0 MB, 171,782 rows against 171,851 live, file dated
+# 2026-08-05; BEDROOMS > 0 on 121,943 file rows against 121,955 live).
+#
+# ONE ROW. A building (BLDGID) or one built-as section of it, keyed by
+# ACCOUNTNO: 129,302 accounts, every one found in the roll. 3,192 rows
+# repeat an account and building (MULTIBLTASFLAG 'YES'), almost all
+# commercial or outbuildings; in 83.6% of those groups one section
+# has no bedrooms, and SF (the building total) repeats while the
+# section's BLTASSF differs, so sections are summed, not deduplicated.
+#
+# BATHS. BATHS (NUMBER(7,2) in the data dictionary) holds whole
+# numbers only: no fraction on any of 92,493 non-null residential
+# rows. A half bath is therefore counted as one bath here, not 0.5;
+# n_bathrooms is a whole-bath count and n_half_bathrooms is not
+# mapped. FIXTURECOUNT is not used to guess halves (median 4.5
+# fixtures per bath).
+#
+# MAPPING. Summed to the account: n_bedrooms BEDROOMS, n_bathrooms
+# BATHS, n_dwellings UNITS above 0, and n_outbuildings, one per
+# building whose PROPTYPE is 'Out Building'. n_stories is the largest
+# STORIES above 0; renovation_year the latest YRREMODELED from 1800 to
+# 2027. Codes keep the county's words and are read from buildings
+# other than outbuildings only, first one kept: building_style
+# BLTASDESC, heating_type HEATTYPE, exterior_wall EXTERIOR,
+# roof_material ROOFCOVER, foundation_description FOUNDATION ('0'
+# and 'Error' dropped), construction_description CLASS (the Realware
+# construction class letter). has_central_air is true where HEATTYPE
+# names cooling ('Central Air to Air', 'Cool Air in Heat Ducts', 'Cool
+# Air Separate Ducts', 'Warm and Cool Air Zone', 'Complete HVAC') and
+# missing elsewhere.
+# Left unmapped: ROOMS (0.01%), SF, BLTASSF and CONDOSF (the roll's
+# RESIDENTIALSF is the living area), UNITTYPE, OCCUPANCY, INTERIOR,
+# FLOORCOVER, ROOFTYPE, STORYHT, SPRINKLERSF, AGE, YRBLT (the roll's
+# YEARBUILT is used), and the manufactured-home dimensions.
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Weld County, CO Assessor improvements inventory, one row per building
+  section: bedrooms, whole-number baths, stories, remodel year, codes.
+
+admin_id: US-CO-WE
+
+entity:
+  entity_type: property
+  source:
+    source_id: weldcounty
+    # Same hub and terms as the roll; see its header.
+    portal_url: "https://www.arcgis.com/home/item.html?id=824c974c5d68474698f30983bb438ec4"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/824c974c5d68474698f30983bb438ec4_14/downloads/data?format=csv&spatialRefId=4326"
+    license: >-
+      unknown (no licence; item licence 'developed solely for internal use
+      only by Weld County', quoted in full on the roll)
+    terms_url: "https://www.arcgis.com/home/item.html?id=824c974c5d68474698f30983bb438ec4"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "ImpsCurrentInvntry.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: ACCOUNTNO
+  n_bedrooms: BEDROOMS
+  n_bathrooms: BATHS
+  n_stories: STORIES
+  renovation_year: YRREMODELED
+  n_dwellings: UNITS
+  building_style: BLTASDESC
+  heating_type: HEATTYPE
+  exterior_wall: EXTERIOR
+  roof_material: ROOFCOVER
+  foundation_description: FOUNDATION
+  construction_description: CLASS
+
+transformations:
+  - {type: unary, operation: to_numeric, input: n_bedrooms, output: n_bedrooms}
+  - {type: unary, operation: to_numeric, input: n_bathrooms, output: n_bathrooms}
+  - {type: unary, operation: to_numeric, input: n_stories, output: n_stories}
+  - {type: unary, operation: null_if_equal, input: n_stories, args: {value: 0},
+     output: n_stories}
+  - {type: unary, operation: to_numeric, input: n_dwellings, output: n_dwellings}
+  - {type: unary, operation: null_if_equal, input: n_dwellings, args: {value: 0},
+     output: n_dwellings}
+  - {type: unary, operation: to_numeric, input: renovation_year,
+     output: renovation_year}
+  - type: expression
+    expression: >-
+      renovation_year.where((renovation_year >= 1800) & (renovation_year <=
+      2027))
+    inputs: [renovation_year]
+    output: renovation_year
+  - type: remap_conditional
+    input: PROPTYPE
+    conditions:
+      - condition: in
+        values: ['Out Building']
+        output: 1
+    output: n_outbuildings
+  - {type: unary, operation: to_numeric, input: n_outbuildings,
+     output: n_outbuildings}
+  - {type: unary, operation: null_if_equal, input: foundation_description,
+     args: {value: '0'}, output: foundation_description}
+  - {type: unary, operation: null_if_equal, input: foundation_description,
+     args: {value: 'Error'}, output: foundation_description}
+  - type: remap_conditional
+    input: heating_type
+    conditions:
+      - condition: in
+        values:
+          - 'Central Air to Air'
+          - 'Cool Air in Heat Ducts'
+          - 'Cool Air Separate Ducts'
+          - 'Warm and Cool Air Zone'
+          - 'Complete HVAC'
+        output: true
+    output: has_central_air
+  # Codes from buildings other than outbuildings; see MAPPING.
+  - type: expression
+    expression: "building_style.where(PROPTYPE != 'Out Building')"
+    inputs: [building_style, PROPTYPE]
+    output: building_style
+  - type: expression
+    expression: "heating_type.where(PROPTYPE != 'Out Building')"
+    inputs: [heating_type, PROPTYPE]
+    output: heating_type
+  - type: expression
+    expression: "exterior_wall.where(PROPTYPE != 'Out Building')"
+    inputs: [exterior_wall, PROPTYPE]
+    output: exterior_wall
+  - type: expression
+    expression: "roof_material.where(PROPTYPE != 'Out Building')"
+    inputs: [roof_material, PROPTYPE]
+    output: roof_material
+  - type: expression
+    expression: "foundation_description.where(PROPTYPE != 'Out Building')"
+    inputs: [foundation_description, PROPTYPE]
+    output: foundation_description
+  - type: expression
+    expression: "construction_description.where(PROPTYPE != 'Out Building')"
+    inputs: [construction_description, PROPTYPE]
+    output: construction_description
+
+aggregation_function:
+  n_bedrooms: sum
+  n_bathrooms: sum
+  n_stories: max
+  renovation_year: max
+  n_dwellings: sum
+  n_outbuildings: sum
+  has_central_air: max
+  building_style: first
+  heating_type: first
+  exterior_wall: first
+  roof_material: first
+  foundation_description: first
+  construction_description: first
+
+supplements: US-CO-WE_property-weldcounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: buildings

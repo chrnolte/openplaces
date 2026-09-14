@@ -1,0 +1,241 @@
+# Recipe: Jefferson County, CO parcel attribute table ("Jeffco
+# Parcel", published by the county's Business and Innovation
+# Technologies GIS Section and the County Assessor), read as a
+# property roll for its structure features.
+#
+# SOURCE. Hub CSV export of the Jeffco Parcel layer
+# (gisportal.jeffco.us server2 Parcel/FeatureServer/20, ArcGIS item
+# 77e79327097d4b7aa364926b40c5f14c): 225 MB, 236 columns, file dated
+# 2026-09-10. The shapefile links on jeffco.us/3165 return 404. Bulk
+# equals live (2026-09-13): 258,941 rows in both, STTYRBLT > 0 on
+# 208,877 file rows against 208,875 live.
+#
+# ONE ROW. One parcel polygon with its schedule (account) number SCH
+# ('999999'), carrying up to four structures flattened into STT*,
+# STT*2, STT*3 and STT*4. 28,288 rows have no SCH: letter
+# placeholders in PIN ('AAA', 'AAAAA') with no tax class; the query
+# drops them. 1,076 schedules repeat over 2,568 rows (multi-part
+# polygons) and every mapped column is identical within a schedule,
+# so drop_duplicates keeps one row per SCH. Condominium units carry
+# their own schedule and stay rows.
+#
+# KEYS. parcel_id_local is built from PIN ('99-999-99-999'), kind
+# parcel, the id the statewide OIT layer (US-CO_parcel-cooit-2026)
+# carries as parcel_id for Jefferson. property_id_assessor is SCH.
+#
+# FEATURES ONLY. The layer publishes no bedrooms, bathrooms or rooms.
+# The Assessor's appraisal data dictionary shows the county system
+# holds them (bedrooms above and below grade; full, three-quarter and
+# half baths; AC, fireplaces, view), but not in this layer. There is
+# no living area, remodel or effective year, heating, roof, exterior
+# wall, pool or porch field either.
+#
+# MAPPING. Structures 1 to 4 are combined to the property:
+# - year_built: the earliest STTYRBLT* above 0 (0 is the blank).
+# - gross_floor_area_sqft: the sum of STTGRSAREA* (gross area).
+# - basement_area_sqft: the sum of STTBSTAREA* above 0; has_basement
+#   is true where structure 1's STTBSTTYP is 'BST' (its only code)
+#   and missing elsewhere.
+# - n_stories: the largest STTNBRFLR* above 0. Filled on 0.9% of
+#   residential rows; for houses the style carries the story count.
+# - n_dwellings: the sum of STTNBRUNT* above 0 (0.7%, mostly
+#   apartments).
+# - garage_type: structure 1's STTGARTYP code (ATG attached, DTG
+#   detached, BSG basement); has_garage is true for those three,
+#   has_carport for CPT, which is not kept as a garage type.
+# - building_style: structure 1's STTTYPUSE ('1 Story/Ranch').
+# - STTTYPCNS joins construction and quality ('FR - Frame-Average'):
+#   the text before the last hyphen is construction_description, the
+#   text after it quality_grade.
+# - tax_neighborhood_code: NHDNBR (142 codes). use_group_code: TAXCLS,
+#   the first of up to six tax classes.
+# Left unmapped: STTSTRC (structure type, e.g. 'Single Family',
+# 'Townhomes', no registry row apart from building_style), STTNBRBLDG
+# (1 on every residential row), QUAL (empty), values, sales, and
+# every owner, mailing and legal field.
+#
+# MEASURED on the 2026-09-10 file, in memory with this recipe's
+# reader and preprocessing (2026-09-13): 258,941 rows read, 229,161
+# kept, one per SCH. Residential is a schedule with any of TAXCLS to
+# TAXCLS6 in 12xx: 200,594. parcel_id_local against the statewide OIT
+# layer's Jefferson parcel_id (same conversion): 99.90% of roll keys
+# found there and 99.90% of its keys found here; 99.98% of
+# residential schedules found. Share of residential schedules with a
+# value: year_built 99.9%, gross_floor_area_sqft 99.9% (median 1,655),
+# basement_area_sqft 68.6%, has_basement 68.5%, has_garage and
+# garage_type 82.2%, has_carport 3.3%, building_style 99.9%,
+# construction_description and quality_grade 99.9%,
+# tax_neighborhood_code 100% (106 codes), use_group_code 100%,
+# n_stories 0.9%, n_dwellings 0.7%.
+#
+# TERMS. The item page states: "This work is licensed under a
+# Creative Commons Attribution 4.0 International License", with
+# credit to "Jefferson County's Business and Innovation Technologies
+# (BIT) Division - GIS Section and Jefferson County Assessor".
+# Attribution only; no click-through.
+
+description: >-
+  Jefferson County, CO parcel layer read as a property roll: year
+  built, gross and basement area, garage, style, construction, quality
+  and neighborhood.
+
+admin_id: US-CO-JE
+
+entity:
+  entity_type: property
+  source:
+    source_id: jeffersoncounty
+    portal_url: "https://www.arcgis.com/home/item.html?id=77e79327097d4b7aa364926b40c5f14c"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/77e79327097d4b7aa364926b40c5f14c_20/downloads/data?format=csv&spatialRefId=4326"
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=77e79327097d4b7aa364926b40c5f14c"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "Jeffco_Parcel.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: SCH
+  parcel_id_assessor: PIN
+  use_group_code: TAXCLS
+  tax_neighborhood_code: NHDNBR
+  building_style: STTTYPUSE
+  garage_type: STTGARTYP
+  year_built: STTYRBLT
+  gross_floor_area_sqft: STTGRSAREA
+  basement_area_sqft: STTBSTAREA
+  n_stories: STTNBRFLR
+  n_dwellings: STTNBRUNT
+
+# Rows without a schedule number are placeholders; see ONE ROW.
+query: "property_id_assessor == property_id_assessor"
+
+drop_duplicates: [property_id_assessor]
+
+transformations:
+  # Year built: earliest structure year above 0.
+  - {type: unary, operation: to_numeric, input: year_built, output: year_built}
+  - {type: unary, operation: to_numeric, input: STTYRBLT2, output: STTYRBLT2}
+  - {type: unary, operation: to_numeric, input: STTYRBLT3, output: STTYRBLT3}
+  - {type: unary, operation: to_numeric, input: STTYRBLT4, output: STTYRBLT4}
+  - {type: unary, operation: null_if_equal, input: STTYRBLT2, args: {value: 0},
+     output: STTYRBLT2}
+  - {type: unary, operation: null_if_equal, input: STTYRBLT3, args: {value: 0},
+     output: STTYRBLT3}
+  - {type: unary, operation: null_if_equal, input: STTYRBLT4, args: {value: 0},
+     output: STTYRBLT4}
+  - type: aggregate
+    operation: min
+    inputs: [year_built, STTYRBLT2, STTYRBLT3, STTYRBLT4]
+    output: year_built
+
+  # Gross area: sum over structures.
+  - {type: unary, operation: to_numeric, input: gross_floor_area_sqft,
+     output: gross_floor_area_sqft}
+  - {type: unary, operation: to_numeric, input: STTGRSARE2, output: STTGRSARE2}
+  - {type: unary, operation: to_numeric, input: STTGRSARE3, output: STTGRSARE3}
+  - {type: unary, operation: to_numeric, input: STTGRSARE4, output: STTGRSARE4}
+  - type: aggregate
+    operation: sum
+    inputs: [gross_floor_area_sqft, STTGRSARE2, STTGRSARE3, STTGRSARE4]
+    output: gross_floor_area_sqft
+  - {type: unary, operation: null_if_equal, input: gross_floor_area_sqft,
+     args: {value: 0}, output: gross_floor_area_sqft}
+
+  # Basement area: sum over structures.
+  - {type: unary, operation: to_numeric, input: basement_area_sqft,
+     output: basement_area_sqft}
+  - {type: unary, operation: to_numeric, input: STTBSTARE2, output: STTBSTARE2}
+  - {type: unary, operation: to_numeric, input: STTBSTARE3, output: STTBSTARE3}
+  - {type: unary, operation: to_numeric, input: STTBSTARE4, output: STTBSTARE4}
+  - type: aggregate
+    operation: sum
+    inputs: [basement_area_sqft, STTBSTARE2, STTBSTARE3, STTBSTARE4]
+    output: basement_area_sqft
+  - {type: unary, operation: null_if_equal, input: basement_area_sqft,
+     args: {value: 0}, output: basement_area_sqft}
+  - type: remap_conditional
+    input: STTBSTTYP
+    conditions:
+      - condition: in
+        values: ['BST']
+        output: true
+    output: has_basement
+
+  # Stories: largest structure floor count above 0.
+  - {type: unary, operation: to_numeric, input: n_stories, output: n_stories}
+  - {type: unary, operation: to_numeric, input: STTNBRFLR2, output: STTNBRFLR2}
+  - {type: unary, operation: to_numeric, input: STTNBRFLR3, output: STTNBRFLR3}
+  - {type: unary, operation: to_numeric, input: STTNBRFLR4, output: STTNBRFLR4}
+  - type: aggregate
+    operation: max
+    inputs: [n_stories, STTNBRFLR2, STTNBRFLR3, STTNBRFLR4]
+    output: n_stories
+  - {type: unary, operation: null_if_equal, input: n_stories, args: {value: 0},
+     output: n_stories}
+
+  # Dwelling units: sum over structures.
+  - {type: unary, operation: to_numeric, input: n_dwellings, output: n_dwellings}
+  - {type: unary, operation: to_numeric, input: STTNBRUNT2, output: STTNBRUNT2}
+  - {type: unary, operation: to_numeric, input: STTNBRUNT3, output: STTNBRUNT3}
+  - {type: unary, operation: to_numeric, input: STTNBRUNT4, output: STTNBRUNT4}
+  - type: aggregate
+    operation: sum
+    inputs: [n_dwellings, STTNBRUNT2, STTNBRUNT3, STTNBRUNT4]
+    output: n_dwellings
+  - {type: unary, operation: null_if_equal, input: n_dwellings, args: {value: 0},
+     output: n_dwellings}
+
+  # Garage and carport from structure 1's code; see MAPPING.
+  - type: remap_conditional
+    input: garage_type
+    conditions:
+      - condition: in
+        values: ['ATG', 'DTG', 'BSG']
+        output: true
+    output: has_garage
+  - type: remap_conditional
+    input: garage_type
+    conditions:
+      - condition: in
+        values: ['CPT']
+        output: true
+    output: has_carport
+  - type: expression
+    expression: "garage_type.where(garage_type != 'CPT')"
+    inputs: [garage_type]
+    output: garage_type
+
+  # Construction and quality from one joined field; see MAPPING.
+  - type: string
+    operation: extract_named
+    input: STTTYPCNS
+    args:
+      pattern: '^(?P<construction>.+)-[^-]+$'
+    output: construction_description
+  - type: string
+    operation: extract_named
+    input: STTTYPCNS
+    args:
+      pattern: '-(?P<quality>[^-]+)$'
+    output: quality_grade
+
+columns_to_categorical:
+  - use_group_code
+  - tax_neighborhood_code
+  - building_style
+  - garage_type
+  - construction_description
+  - quality_grade
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

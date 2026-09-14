@@ -93,9 +93,9 @@
 #   YR_BLT (-> year_built) > 0 for 2,644,332 (69.1%).
 #   ACRES > 0 for 1,991,046 (52.0%); SQ_FT > 0 for only 1,095,189
 #     (28.6%) -- ACRES is the better-populated of the two competing
-#     lot-size fields and is used (via acres_to_sqft) for lot_size;
+#     lot-size fields and feeds land_area_sqft (via acres_to_sqft);
 #     SQ_FT is left unmapped as the redundant, sparser alternative.
-#   SQFT_LIVING (-> area_sqft) > 0 for 2,468,274 (64.5%). GFA (a
+#   SQFT_LIVING (-> living_area_sqft) > 0 for 2,468,274 (64.5%). GFA (a
 #     second, "gross floor area" figure) > 0 for only 238,236 (6.2%)
 #     -- left unmapped as too sparse to be worth a second area field.
 #   BLDG_STYLE_DESC (-> building_style; mapped instead of the raw
@@ -248,10 +248,10 @@ columns:
   total_value: TOTAL_AV
   market_value: FULL_MARKET_VAL
   year_built: YR_BLT
-  lot_size: ACRES
+  land_area_sqft: ACRES
   building_style: BLDG_STYLE_DESC
   heating_type: HEAT_TYPE_DESC
-  area_sqft: SQFT_LIVING
+  living_area_sqft: SQFT_LIVING
   n_bathrooms: NBR_FULL_BATHS
   n_bedrooms: NBR_BEDROOMS
   owner_name: PRIMARY_OWNER
@@ -287,12 +287,12 @@ transformations:
     args: {value: "-"}
     output: last_sale_book_page
 
-  # ACRES (mapped to lot_size, sqft-typed in the registry) is
+  # ACRES (mapped to land_area_sqft, sqft-typed in the registry) is
   # sourced in acres.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
 # Standardized matching key -- see header note on SWIS_PRINT_KEY_ID
 # vs. SWIS_SBL_ID for why this specific raw column was chosen.

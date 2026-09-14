@@ -80,8 +80,8 @@
 #   - `ID` -- an internal auto-incrementing OID, not a parcel
 #     attribute.
 #   - `landgrosss` -- land area in square feet, exactly
-#     `landgrossa` (mapped as `area_ac`) times 43,560; redundant with
-#     the mapped acreage and not distinct from it.
+#     `landgrossa` (mapped as `land_area_ac`) times 43,560;
+#     redundant with the mapped acreage and not distinct from it.
 #   - `Shape__Area`/`Shape__Length` -- Esri-computed geometry
 #     properties, superseded by the pipeline's own geometry-derived
 #     measurements.
@@ -110,7 +110,7 @@
 # county -- verified this is a source phenomenon, not a conversion
 # artifact: the raw `parcelnb` column itself is already only
 # 2,850/3,806 distinct before any conversion runs, and every
-# duplicate-parcelnb group shares an identical `area_ac` across its
+# duplicate-parcelnb group shares an identical `land_area_ac` across its
 # rows (e.g. several rows all reading 0.0 acres under one PLSS
 # number), consistent with multiple assessment interests (surface,
 # mineral, or split-ownership shares) recorded under one PLSS-based
@@ -165,7 +165,7 @@ columns:
   legal_description: legal
   market_value: actualvalu
   total_value: assessedva
-  area_ac: landgrossa
+  land_area_ac: landgrossa
   tax_district: DEFAULTTAX
   tax_year: taxyear
 

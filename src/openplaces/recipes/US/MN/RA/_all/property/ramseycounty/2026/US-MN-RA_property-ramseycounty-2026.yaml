@@ -46,9 +46,9 @@
 # townhome, twin home, co-op, condo; EMVBuildin > 0). Shapefile names
 # are truncated; the county's service spells them out.
 #   - living_area_sqft = LivingArea: 99.8% above 0, median 1,439. It
-#     equals MetroGIS's FIN_SQ_FT (the parcel recipe's area_sqft) on
-#     100% of Ramsey parcels; whether it includes a finished basement
-#     is not documented.
+#     equals MetroGIS's FIN_SQ_FT (the parcel recipe's
+#     living_area_sqft) on 100% of Ramsey parcels; whether it
+#     includes a finished basement is not documented.
 #   - garage_area_sqft = GarageSqua: 34.5% above 0, median 498.
 #   - has_garage from GarageYN, Y or N on every row, so absence is
 #     recorded: true 41.9%, false 58.1%. A garage area is present on

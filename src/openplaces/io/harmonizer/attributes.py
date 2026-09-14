@@ -164,7 +164,7 @@ _POINT_REF_COLS = [
     'structure_value',
     'year_built_block_median',
     'source',
-    'area_sqft',
+    'gross_floor_area_sqft',
     'n_stories',
     'n_dwellings',
     'address_street',
@@ -938,9 +938,10 @@ def _attribute_point_reference(
             n_dwellings_sum.rename(renamed.get('n_dwellings', 'n_dwellings'))
         )
 
-    # Any other requested numeric column (e.g. n_stories, area_sqft) not covered
-    # by a special case above: aggregate with the attribute registry's default
-    # function (fallback 'mean') so it still reaches the spine.
+    # Any other requested numeric column (e.g. n_stories,
+    # gross_floor_area_sqft) not covered by a special case above:
+    # aggregate with the attribute registry's default function
+    # (fallback 'mean') so it still reaches the spine.
     remaining_numeric_cols = [
         c
         for c in avail_cols

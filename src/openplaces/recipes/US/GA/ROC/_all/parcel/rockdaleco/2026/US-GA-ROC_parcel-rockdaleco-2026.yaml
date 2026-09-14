@@ -54,7 +54,7 @@ columns:
   year_built: Yr_Built
   zoning_code: County_Zon
   land_use_group: County_Lan
-  area_ac: Acreage
+  land_area_ac: Acreage
 
 transformations:
   - type: string

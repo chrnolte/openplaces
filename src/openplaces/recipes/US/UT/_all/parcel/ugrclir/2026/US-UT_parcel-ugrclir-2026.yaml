@@ -205,11 +205,11 @@ drop_duplicates: [parcel_id_assessor]
 
 transformations:
   # PARCEL_ACRES is unambiguously acres (item's own field definition);
-  # registry lot_size is in sqft.
+  # registry land_area_sqft is in sqft.
   - type: unary
     operation: acres_to_sqft
     input: PARCEL_ACRES
-    output: lot_size
+    output: land_area_sqft
 
   # HOUSE_CNT is a digit string on every county sampled, but the
   # item's own documentation allows a range like '5-10'; coerce

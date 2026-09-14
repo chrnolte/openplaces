@@ -62,7 +62,7 @@ columns:
   owner_admin2_id_admin1: Mailing_State
   owner_postal_code: Mailing_Zip
   zoning_code: Zoning
-  area_ac: Acreage
+  land_area_ac: Acreage
   subdivision: Subdivision
 
 transformations:

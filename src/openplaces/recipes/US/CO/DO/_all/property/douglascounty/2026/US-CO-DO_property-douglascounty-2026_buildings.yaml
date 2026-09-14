@@ -1,0 +1,187 @@
+# Recipe: Douglas County, CO Assessor property improvements table,
+# one row per building: areas, garage, porch, basement, fireplaces,
+# quality, condition and materials. Same file as
+# US-CO-DO_property-douglascounty-2026_improvements; read its header
+# for why the table is read twice.
+#
+# ONE ROW. A building: rows are kept once per ACCOUNT_NO and
+# BUILDING_ID. Every field read here is identical across a building's
+# section rows in the dwelling-type groups checked (IMPROVEMENT_SF,
+# garage, porch, both basement areas, fireplaces, walkout, quality
+# and condition on all 17), so the first row stands for the building.
+#
+# MAPPING. By PROPERTY_TYPE_CODE: IMPROVEMENT_SF is living_area_sqft
+# for dwelling types (Residential, Condo, Townhouse, Multiple Unit,
+# Mobile Home, Duplex, Triplex; the built-as finished area, equal to
+# BUILT_AS_SF on 99.96% of rows) and gross_floor_area_sqft for
+# Commercial; outbuildings count toward n_outbuildings instead.
+# Summed to the account: garage_area_sqft TOTAL_GARAGE_SF,
+# porch_area_sqft TOTAL_PORCH_SF, basement_finished_area_sqft
+# TOTAL_FINISHED_BASEMENT_SF, basement_area_sqft finished plus
+# TOTAL_UNFINISHED_BASEMENT_SF, n_fireplaces NO_OF_FIREPLACE. has_garage
+# and has_basement are true where the area is above 0 and missing
+# elsewhere. Codes from buildings other than outbuildings, first kept:
+# quality_grade QUALITY_CODE, condition CONDITION, heating_type HVAC,
+# exterior_wall EXTERIOR_CONSTRUCTION_TYPE, roof_material
+# ROOF_MATERIAL_CODE. has_central_air is true where HVAC names cooling
+# ('Central Air to Air', 'Cool Air in Heat Ducts', 'Warm and Cool Air
+# Zone', 'Complete HVAC', 'Refrigerated AC Zoned Sys') and missing
+# elsewhere.
+# Left unmapped: WALKOUT_BASEMENT_FLAG (Y/N; no registry row).
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Douglas County, CO Assessor improvements, one row per building:
+  living, garage, porch and basement areas, fireplaces, quality,
+  condition, materials.
+
+admin_id: US-CO-DO
+
+entity:
+  entity_type: property
+  source:
+    source_id: douglascounty
+    # Same terms as the roll; see its header.
+    portal_url: "https://www.douglasco.gov/assessor/data-downloads/"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/59223a6a14b24022a3831e4ea9913c5e_8/downloads/data?format=csv&spatialRefId=4326"
+    license: "CC-BY-SA-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59223a6a14b24022a3831e4ea9913c5e"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "Property_Improvements_Data.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  property_id_assessor: ACCOUNT_NO
+  garage_area_sqft: TOTAL_GARAGE_SF
+  porch_area_sqft: TOTAL_PORCH_SF
+  basement_finished_area_sqft: TOTAL_FINISHED_BASEMENT_SF
+  n_fireplaces: NO_OF_FIREPLACE
+  quality_grade: QUALITY_CODE
+  condition: CONDITION
+  heating_type: HVAC
+  exterior_wall: EXTERIOR_CONSTRUCTION_TYPE
+  roof_material: ROOF_MATERIAL_CODE
+
+# One row per building; see ONE ROW.
+drop_duplicates: [property_id_assessor, BUILDING_ID]
+
+transformations:
+  - {type: unary, operation: to_numeric, input: IMPROVEMENT_SF,
+     output: IMPROVEMENT_SF}
+  - type: expression
+    expression: >-
+      IMPROVEMENT_SF.where(PROPERTY_TYPE_CODE.isin(['Residential', 'Condo',
+      'Townhouse', 'Multiple Unit', 'Mobile Home', 'Duplex', 'Triplex']) &
+      (IMPROVEMENT_SF > 0))
+    inputs: [IMPROVEMENT_SF, PROPERTY_TYPE_CODE]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      IMPROVEMENT_SF.where((PROPERTY_TYPE_CODE == 'Commercial') &
+      (IMPROVEMENT_SF > 0))
+    inputs: [IMPROVEMENT_SF, PROPERTY_TYPE_CODE]
+    output: gross_floor_area_sqft
+  - type: remap_conditional
+    input: PROPERTY_TYPE_CODE
+    conditions:
+      - condition: in
+        values: ['Out Building']
+        output: 1
+    output: n_outbuildings
+  - {type: unary, operation: to_numeric, input: n_outbuildings,
+     output: n_outbuildings}
+  - {type: unary, operation: to_numeric, input: garage_area_sqft,
+     output: garage_area_sqft}
+  - {type: unary, operation: null_if_equal, input: garage_area_sqft,
+     args: {value: 0}, output: garage_area_sqft}
+  - type: expression
+    expression: "(garage_area_sqft > 0).where(garage_area_sqft > 0)"
+    inputs: [garage_area_sqft]
+    output: has_garage
+  - {type: unary, operation: to_numeric, input: porch_area_sqft,
+     output: porch_area_sqft}
+  - {type: unary, operation: null_if_equal, input: porch_area_sqft,
+     args: {value: 0}, output: porch_area_sqft}
+  - {type: unary, operation: to_numeric, input: basement_finished_area_sqft,
+     output: basement_finished_area_sqft}
+  - {type: unary, operation: to_numeric, input: TOTAL_UNFINISHED_BASEMENT_SF,
+     output: TOTAL_UNFINISHED_BASEMENT_SF}
+  - type: aggregate
+    operation: sum
+    inputs: [basement_finished_area_sqft, TOTAL_UNFINISHED_BASEMENT_SF]
+    output: basement_area_sqft
+  - {type: unary, operation: null_if_equal, input: basement_area_sqft,
+     args: {value: 0}, output: basement_area_sqft}
+  - {type: unary, operation: null_if_equal, input: basement_finished_area_sqft,
+     args: {value: 0}, output: basement_finished_area_sqft}
+  - type: expression
+    expression: "(basement_area_sqft > 0).where(basement_area_sqft > 0)"
+    inputs: [basement_area_sqft]
+    output: has_basement
+  - {type: unary, operation: to_numeric, input: n_fireplaces, output: n_fireplaces}
+  - type: remap_conditional
+    input: heating_type
+    conditions:
+      - condition: in
+        values:
+          - 'Central Air to Air'
+          - 'Cool Air in Heat Ducts'
+          - 'Warm and Cool Air Zone'
+          - 'Complete HVAC'
+          - 'Refrigerated AC Zoned Sys'
+        output: true
+    output: has_central_air
+  # Codes from buildings other than outbuildings; see MAPPING.
+  - type: expression
+    expression: "quality_grade.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [quality_grade, PROPERTY_TYPE_CODE]
+    output: quality_grade
+  - type: expression
+    expression: "condition.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [condition, PROPERTY_TYPE_CODE]
+    output: condition
+  - type: expression
+    expression: "heating_type.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [heating_type, PROPERTY_TYPE_CODE]
+    output: heating_type
+  - type: expression
+    expression: "exterior_wall.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [exterior_wall, PROPERTY_TYPE_CODE]
+    output: exterior_wall
+  - type: expression
+    expression: "roof_material.where(PROPERTY_TYPE_CODE != 'Out Building')"
+    inputs: [roof_material, PROPERTY_TYPE_CODE]
+    output: roof_material
+
+aggregation_function:
+  living_area_sqft: sum
+  gross_floor_area_sqft: sum
+  n_outbuildings: sum
+  garage_area_sqft: sum
+  has_garage: max
+  porch_area_sqft: sum
+  basement_area_sqft: sum
+  basement_finished_area_sqft: sum
+  has_basement: max
+  n_fireplaces: sum
+  has_central_air: max
+  quality_grade: first
+  condition: first
+  heating_type: first
+  exterior_wall: first
+  roof_material: first
+
+supplements: US-CO-DO_property-douglascounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: buildings

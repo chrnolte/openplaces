@@ -95,11 +95,11 @@ columns:
   # STAT_LAND_USE -- hence the crosswalk sidecar beside this recipe.
   use_group_code: Land_State_Code
   year_built: YEARBUILT
-  # TOTSQFTLVG is total square feet *living*, i.e. genuine floor area, which
-  # is what the registry's area_sqft means. Do not confuse with LANDSIZEFT
-  # (lot size) below, which is mapped to area_ac in acres instead.
-  area_sqft: TOTSQFTLVG
-  area_ac: LANDSIZEAC
+  # TOTSQFTLVG is total square feet *living*, i.e. living area. Do not
+  # confuse with LANDSIZEFT (lot size) below, which is mapped to
+  # land_area_ac in acres instead.
+  living_area_sqft: TOTSQFTLVG
+  land_area_ac: LANDSIZEAC
   land_value: LANDVALUE
   improvement_value: IMPVALUE
   # The source names this column TOTALVALUE, and it holds exactly that:

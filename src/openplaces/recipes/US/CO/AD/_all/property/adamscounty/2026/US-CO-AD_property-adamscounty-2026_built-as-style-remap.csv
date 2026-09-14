@@ -1,0 +1,408 @@
+bltasid,building_style
+0,Permit Value  *CODE
+1,Ranch 1 Story
+2,Bi Level
+3,Bi Level 1 Story
+4,Bi Level 2 Story
+5,One and Half Story Fin
+6,One and Half Story Unfin
+7,Split Level
+8,2 Story
+9,2 and Half Story
+10,Cabin
+11,A Frame
+12,Dome
+13,Cottage
+14,Single Wide
+15,Double Wide
+16,Triple Wide
+17,Apartment  LT 3 Stories
+18,Apartment GT 3 Stories
+19,Condo LT 3 Stories
+20,Condo GT 3 Stories
+21,Modular
+22,Modular One and Half Story
+23,Modular 2 Story
+24,2 and Half Story Unfin
+25,3 Story
+26,Manufactured  *CODE
+27,Multi-level
+40,Earth Sheltered
+41,Rammed Earth
+42,Baled Straw
+51,Duplex One Story
+55,Duplex One and Half Story
+57,Duplex Split Level
+58,Duplex Two Story
+61,Townhouse One Story
+65,Townhouse  One and Half Story
+67,Townhouse Split Level
+68,Townhouse Two Story
+69,Townhouse Three Story
+71,Triplex One Story
+75,Triplex  One and Half Story
+77,Triplex Split Level
+78,Triplex Two Story
+95,Residential Tennis Court *CODE
+98,Attached Garage *CODE
+99,Detached Garage
+140,Parking Lot *CODE
+141,Tanks  *CODE
+144,Grain Hopper
+145,Corrals  *CODE
+146,Scales Cattle  *CODE
+147,Scales Platform *CODE
+148,Scales Truck *CODE
+149,Solar Room *CODE
+150,Race Track *CODE
+151,Swimming Pool  *CODE
+152,Pumps  *CODE
+153,Salvage Yard *CODE
+154,Steel Tank Low Stress-Above ground
+155,Steel Tank High Stress-Above ground
+156,Welded Steel Water Tank
+157,Bolted Steel Water Tank
+158,Concrete Water Tank
+159,Wood Tank
+160,Galvanized SteelTank
+161,Towers
+162,Fiberglass Sngl Wall Underground Fuel Tank
+163,Fiberglass Dbl Wall Underground Fuel Tank
+164,Steel Sngl Wall Underground Fuel Tank
+165,Steel Dbl Wall Underground Fuel Tank
+166,Fiber Coated Steel Sgl Wall Underground Fuel Tank
+167,Fiber Coated Steel Dbl Wall Underground Fuel Tank
+168,Welded Underground Fuel Tank
+169,Bolted Steel Underground Tank
+170,Horizontal Bulk Tank
+171,Horizontal Plastic Tank
+172,Vertical Welded Tank
+173,Vertical Bulk Tank
+174,Vertical Plastic Tank
+175,Welded Pressure
+177,High-Rise Row (Town) Houses
+180,Feed Handling and Mixing
+181,Secure Storage Modular Shed Bldgs
+182,Calving Barns - Sheds
+183,Golf Starter (Guard House) Booths
+184,Arena Shelters
+186,Light Commercial - Manufacturing Utility Bldg
+195,Commercial Tennis Court  *CODE
+200,Air Support Structures  *CODE
+201,Bulk Oil
+203,"Commuter Terminal, Airline, Bus"
+207,Firing Range Buildings
+208,Golf Course  *CODE
+209,Nursery/Greenhouse
+210,Industrial Flex Mall Building
+211,Industiral Interior Office Space
+212,Laboratories
+213,Light Industrial Shell Buildings
+214,Mausoleums  *CODE
+215,Natatoriums  *CODE
+216,Radio & TV Stations
+217,Mobile Home Parks  *CODE
+218,Stadiums  *CODE
+219,Telephone Building
+220,Recreational Pool Enclosure
+221,Rooming Houses
+222,Lodges
+223,Guest Cottages
+224,Bed And Breakfast Inns
+225,Guest Houses
+226,Bath Houses
+227,Complete Auto Dealership
+228,Kennel
+300,Apartments (Hi-Rise)
+301,Armory
+302,Auditorium
+303,Showroom
+304,Bank
+305,Drive-up Mini Banks
+306,Bowling Alley
+308,Church w/Sunday School
+309,Church
+310,City Club
+311,Clubhouse
+312,Multiple - Elderly Assisted Living
+313,Convlsnt Hosp Nursing Home
+314,Country Club
+315,Creamery
+316,Dairy Milking Parlor
+317,Dairy Sales
+318,Department Store
+319,Discount Store
+320,Dispensary
+321,Dormitory Residence Halls
+322,Fire Station Staffed
+323,Fraternal Building
+324,Fraternity
+325,Service Garage
+326,Storage Garage
+327,Government Building
+328,Storage Hanger
+329,Maintenance Hanger
+330,Home For the Elderly
+331,Hospital
+332,Hotel - Full Service
+333,Indust Heavy Manufacturing
+334,Indust Lght Manufacturing
+335,Jail - Correctional Facility
+336,Laundromat
+337,Library - Public
+338,Loft - Industrial
+339,Lumber Storage - Horizontal
+340,Market
+341,Medical Offices
+342,Mortuary
+343,Motel
+344,Office Building
+345,Parking Structure
+346,Post Office
+348,Rectory
+349,Fast Food Restaurant
+350,Restaurant
+351,Multiple - Senior Citizens
+352,Multiple - Residential
+353,Retail Store
+355,School - Fine Arts Building
+356,School - Classroom
+357,School - Commons - Student Activity
+358,School - Gymnasium
+359,School - Lecture Hall
+360,Elem/Secondary Media Center
+361,School - Manual Arts
+362,Multipurpose Buildings
+363,School - Physical Education
+364,School - Science Building
+365,School - Elementary/Secondary
+366,School - Middle (Junior High)
+367,School - Arts & Crafts Bldg
+368,College - Classrooms
+371,Lecture Hall Bldg
+372,Academic (College) Libraries
+377,College - Entire
+378,Stable
+379,Theatre - Stage
+380,Theatre - Motion
+381,Veterinary Hospital
+382,Veterinary Office
+384,Barber/Beauty Shop
+386,Mini Warehouse
+387,Transit Warehouse
+388,Underground Parking Garage
+389,Equipment Implement
+390,Lumber Storage - Vertical
+391,Storage - Material
+392,Industrial Engineering & Research
+393,Farm Labor
+394,Transient Labor Cabin
+395,Corn Crib
+396,Hog Barn
+397,Barn
+398,Shed - Hay
+399,Shed - Sheep
+400,Shed - Poultry
+401,Shed - Equipment
+402,Shed - Cattle
+403,Shower Building
+404,Farm Utility Building
+405,Skating Rink
+406,Storage Warehouse
+407,Distribution Warehouse
+408,Service Station
+409,T-Hanger
+410,Automotive Center
+411,Self Service Booth
+412,Neighborhood Shopping Center
+413,Community Shopping Center
+414,Regional Shopping Center
+416,Indoor Tennis Club
+417,Handball/Raquetball Courts/Club
+418,Health Club
+419,Convenience Store
+420,Farm Silo Conc Stave
+421,Shed - Tool
+422,Grain Bin
+423,Mini Lube Garage
+424,Group Care Homes
+425,Condo/Warehouse
+426,Day Care Center
+427,Fire Station - Volunteer
+428,Horse Arena
+429,Storage - Potato
+430,Storage - Utility Grain
+431,Surgical Center - Out patient
+432,Restroom Building/Concessions
+433,Grain Handling System
+434,Car Wash - Self Service
+435,Car Wash - Drive thru
+436,Car Wash - Automatic
+437,Quonset
+438,Prefab Metal Building  *CODE
+439,Drive In Theatre  *CODE
+440,Turbine Pump
+441,Cocktail Lounge
+442,Bar/Tavern
+443,Central Bank
+444,Dental Office/ Clinic
+446,SuperMarket
+447,Cold Storage Warehouse
+448,Self Service Booth
+449,Grain Elevator Horiz Concrete
+450,Storage - Bulk Fertilizer
+451,Grain Elevator Concrete
+452,Grain Elevator Conc Annex
+453,Grain Elevator Metal Wood
+454,Grain Elevator Metal Wood Annex
+455,Grain Elevator Bolted Steel
+456,Grain Elevator Corr Metal
+457,Grain Elevator Horiz Wood
+458,Grain Elevator Horiz Steel
+459,Farm Silo Brick Masonry
+460,Farm Silo Reinforced Conc
+461,Farm Silo Conc Block
+462,Farm Silo Glass Lined Steel
+463,Farm Silo Steel
+464,Grain Elevator Low
+465,Grain Elevator Average
+466,Grain Elevator Good
+467,Grain Elevator Excellent
+468,Farm Office
+469,Farm Implement Equip Shed
+471,Hay Loft
+473,Equipment Building
+474,Modular Office
+475,Satelite Service Center
+476,Farm Implement-Equip Shop
+478,Farm Utility Loafing Shed
+479,Farm Utility Storage - Loafing
+480,Vegetable Building
+481,Museum
+482,Convention Center
+483,Fitness Center
+484,School - High (High School)
+485,Natatoriums
+486,Fieldhouse
+487,Vocational Schools
+489,Jails - Police Stations
+491,Governmental-Community Service Buildings
+492,Shell Office Buildings
+493,Flathouse Storage Buildings
+497,Computer Centers
+500,R V Parks  *CODE
+504,Box Car  *CODE
+508,Car Wash Canopies
+512,Luxury Boutiques
+514,Community Recreation Center
+515,Casinos
+516,Fellowship Halls
+518,Lath Shade Shelter
+519,Greenhouse Shade Shelters
+521,Hoop (Arch-Rib/Quonset) Structure
+523,Golf Cart Storage Bldgs
+525,Mini Warehouse Hi-rise
+526,Service Garage Sheds
+527,Municipal Service Garages
+529,Snack Bar
+530,Restaurants - Cafeterias
+531,Mini-Mart Convenience Stores
+532,Florist Shop
+533,Warehouse Food Store
+534,Warehouse Showroom Store
+540,Motel Guest Rooms
+544,Office-Apartment
+554,Shed Office Structure
+557,Arch-Rib Quonset Utility
+558,Arch-Rib Quonset Farm Implement
+559,Stables High Value
+560,Lean-tos
+562,Commodity Storage Shed - Farm
+563,Bag Fertilizer Storage
+564,Dehydrator Building
+566,Farm Sun Shelters
+567,Poultry House - Cage
+573,Arcade
+574,Visitor Center
+575,Dining Atriums
+576,Atriums/Vestibules
+577,Parking Levels
+580,Truck Stop Restaurant
+582,Branch Post Office
+583,Mail Processing Facility
+584,Mega Warehouse
+585,Mechanical Penthouse
+586,Roadside Markets
+587,Quonset Commercial
+598,Relocatable Classroom
+599,Relocatable Office
+602,Administration Bldg
+718,Banquet Halls
+719,Modular Restaurants - Diners
+720,Mega Warehouse Stores
+777,Shell Luxury Apartment Buildings
+778,Shell Hotel Full Service Buildings
+779,Shell Hotel Limited Service Buildings
+780,Shell Motel
+781,Shell Extended Stay Motels
+800,Override Code Only *CODE
+1100,Barns (Two-Story)
+1101,Barns (Two-Story) - Special Purpose
+1103,Barns-Special Purpose
+1104,Light Commercial-Commodity Warehouse
+1105,Confinement Barns
+1110,Hog Barns-Farrowing
+1113,Hog Barns-Finishing
+1118,Poultry Floor Operation - Broiler Houses
+1119,Turkey Barns
+1120,Sheep Sheds
+1123,Seed Processing Storage
+1124,Farm Utility Lean-Tos
+1125,Poultry Cage Operation-Screened Houses
+1127,Winery (Tasting-Display) Shops
+1132,Individual Livestock Shelters
+1133,Prefabricated Storage Shed Buildings
+1155,Hunting Shelters
+1156,Alternative School
+1157,Maintenance (Storage) Buildings
+1171,Commercial (Institutional) Greenhouses
+1174,Pavilions
+1175,Ice Skating Rinks
+1300,Luxury Apartments Hi-Rise
+1311,Senior (Clubhouse) Centers
+1312,Multiple Residences - Retirement Complex
+1318,Mall Anchor (Department) Store
+1319,Drug Store
+1325,Service Garage - Condo
+1332,Hotels - Limited Service
+1343,Extended Stay Motels
+1344,Office Building - Condo
+1353,Retail Store - Condo
+1398,Fruit Packing Barns
+1413,Shopping Center Mall Concourse Enclosed
+1414,Shopping Center Mall Concourse Covered
+1415,Shopping Center Mall Concourse Open
+1421,Farm Utility/Grain Storage Bldgs
+1429,Modified Hog Sheds
+1430,Hog Sheds
+1440,Milkhouse
+1448,Farm Cold Storage Buildings
+1450,Cotton Gins
+1458,Warehouse Discount Store
+1459,Mixed Retail w/ Res Units
+1460,Mixed Retail w/ Office Units
+1461,Community Shopping Center Shell Buildings
+1462,Regional Shopping Center Shell Buildings
+1463,Neighborhood Shopping Center Shell Buildings
+1465,Prefabricated Food Booths
+1466,Boat Storage Sheds
+1467,Boat Storage Buildings
+1468,Material Storage Sheds
+1469,Free-Stall Barns
+1471,Light Commercial Utility
+1473,Material Shelters
+1499,Laundry/Dry Cleaning
+1513,Regional Discount Shopping Centers
+1587,Shell Multiple Residence
+1596,Shell Apartments (High-Rise)
+1597,Purged MH

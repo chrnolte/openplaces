@@ -62,8 +62,8 @@ columns:
   owner_admin2_id_admin1: MailingAddressState
   owner_postal_code: MailingAddressZipCode
   year_built: yr_built
-  area_sqft: heatedarea
-  area_ac: totalacres
+  living_area_sqft: heatedarea
+  land_area_ac: totalacres
   zoning_code: ZONING_GIS
   land_use_group: FLU_GIS
   subdivision: SUBDIVISION

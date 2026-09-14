@@ -291,7 +291,7 @@ transformations:
   - type: unary
     operation: acres_to_sqft
     input: DeededAcres
-    output: lot_size
+    output: land_area_sqft
 
   # Taxable land value: the three non-exempt use-category land values
   # summed (see header for the empirical justification and the

@@ -56,8 +56,8 @@
 # BUILDING FEATURES (2026-09-13), decoded from the WPRDC data
 # dictionary (data-dictionary-open-data.csv on the dataset page):
 #   - living_area_sqft: FINISHEDLIVINGAREA, "finished living area, as
-#     measured from the outside", so living, not gross. area_sqft
-#     keeps the same field. No gross area is published.
+#     measured from the outside", so living, not gross. No gross
+#     area is published.
 #   - quality_grade: GRADE (A, B, C, D, E, X, XX with + and -; C is
 #     average). condition: CONDITION (1 excellent, 7 very good,
 #     2 good, 3 average, 4 fair, 5 poor, 8 very poor, 6 unsound).
@@ -149,7 +149,7 @@ columns:
   use_subgroup: USEDESC
   tax_year: TAXYEAR
   year_built: YEARBLT
-  area_sqft: FINISHEDLIVINGAREA
+  living_area_sqft: FINISHEDLIVINGAREA
   building_style: STYLEDESC
   n_stories: STORIES
   n_rooms: TOTALROOMS
@@ -185,11 +185,10 @@ transformations:
     operation: sum
     inputs: [n_bathrooms, half_bathroom_equivalent]
     output: n_bathrooms
-  # FINISHEDLIVINGAREA is finished living area (data dictionary), so
-  # it is also living_area_sqft; area_sqft keeps it as before.
+  # FINISHEDLIVINGAREA is finished living area (data dictionary).
   - type: unary
     operation: to_numeric
-    input: area_sqft
+    input: living_area_sqft
     output: living_area_sqft
   # BASEMENT (dictionary): 1 none, 2 slab or piers, 3 crawl space up
   # to a quarter basement, 4 part, 5 full. Crawl can hold a small

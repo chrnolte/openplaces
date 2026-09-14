@@ -41,7 +41,7 @@
 #   n_bedrooms > 0            85.1%           44.7%
 #   n_bathrooms > 0           85.0%           40.2%
 #   n_stories > 0            99.97%           99.2%
-#   area_sqft > 0            99.98%           99.95%
+#   living_area_sqft > 0     99.98%           99.95%
 #
 # BATHROOMS: number_of_bathrooms is a whole number (no value is
 # fractional) and the table has no half-bath field. Whether it counts
@@ -233,7 +233,7 @@ columns:
   use_group: category_code_description
   building_style: building_code_description_new
   year_built: year_built
-  area_sqft: total_livable_area
+  living_area_sqft: total_livable_area
   n_stories: number_stories
   n_bedrooms: number_of_bedrooms
   n_bathrooms: number_of_bathrooms
@@ -258,11 +258,10 @@ transformations:
     args:
       value: 0
     output: frontage_ft
-  # total_livable_area is the livable area, so it is also
-  # living_area_sqft; area_sqft keeps it as before.
+  # total_livable_area is the livable area.
   - type: unary
     operation: to_numeric
-    input: area_sqft
+    input: living_area_sqft
     output: living_area_sqft
   # basements (catalog): 0 none; A-D full, E-H partial, I-J unknown
   # size, each by finish. The codes 1 and 2 are not in the catalog

@@ -47,8 +47,8 @@ def aggregate_from_entities(
     columns : list of str or dict
         Columns to reduce. A list uses the registry's aggregation for each
         column; a mapping gives a per-column override (`{year_built: min,
-        area_sqft: sum}`), for a column whose registry rule (a mean for
-        `year_built`) is not what the parcel needs.
+        n_stories: max}`), for a column whose registry rule (a mean for
+        both) is not what the parcel needs.
     key : str or list of str, optional
         Curated column the reference joins on (default `parcel_id_local`).
         A list is tried in order and the first column present on both

@@ -41,7 +41,7 @@
 # - living_area_sqft: TotalArea, finished living area including the
 #   finished basement. It equals the finished first, second, half
 #   and additional stories + AtticFinished + BasementFinished on 98.4%
-#   of kept rows (88.4% without BasementFinished). No area_sqft was
+#   of kept rows (88.4% without BasementFinished). No floor area was
 #   mapped before.
 # - basement_area_sqft: FullBasementTotalArea + PartBasementTotalArea;
 #   basement_finished_area_sqft: BasementFinished + RecRoom (within

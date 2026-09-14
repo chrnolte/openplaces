@@ -105,7 +105,7 @@ columns:
   parcel_id_assessor: Parcel
   building_style: BuildingType
   year_built: YearBuilt
-  area_sqft: LivingArea
+  living_area_sqft: LivingArea
   n_stories: BaseFloors
   n_bedrooms: Bedrooms
   n_bathrooms: Bathrooms
@@ -124,7 +124,7 @@ drop_columns:
 aggregation_function:
   n_bedrooms: sum
   n_bathrooms: sum
-  area_sqft: sum
+  living_area_sqft: sum
   year_built: min
   n_stories: max
 

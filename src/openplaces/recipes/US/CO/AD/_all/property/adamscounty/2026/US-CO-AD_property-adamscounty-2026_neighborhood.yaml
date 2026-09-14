@@ -1,0 +1,59 @@
+# Recipe: Adams County, CO Assessor's Detailed Data Dump, neighborhood
+# table. Same source and terms as US-CO-AD_property-adamscounty-2026;
+# read that roll's header first.
+#
+# LAYOUT. Neighborhood.TXT, 49 characters (NEIGHBORHOOD TABLE):
+# ACCOUNTNO, AREAID, PARCELNB, PROPTYPE, NBHD. 195,612 rows; 3,799
+# accounts carry more than one row (one per property type on the
+# account), and the first NBHD is kept. 59 distinct codes; the county's
+# descriptions are in Neighborhood_Codes.TXT, not read.
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Adams County, CO Assessor neighborhood table: the appraisal
+  neighborhood code per property account.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: property
+  source:
+    source_id: adamscounty
+    # Same page and terms as the roll; see its header.
+    portal_url: "https://adamscountyco.gov/our-county/elected-officials/assessor/maps-data/"
+    download_url: "https://adamscountyco.gov/wp-content/uploads/2026/05/Appraisal_2026_2.zip"
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59fb004d67a748b19f5faf1dca9d700d"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "Appraisal_2026_2.zip"
+uncompressed_file_name: "Appraisal_2026_2/Neighborhood.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# Appraisal layout, NEIGHBORHOOD TABLE.
+fixed_width:
+  - [ACCOUNTNO, 8]
+  - [filler, 3] # AREAID
+  - [filler, 13] # PARCELNB
+  - [filler, 15] # PROPTYPE
+  - [NBHD, 10]
+
+columns:
+  property_id_assessor: ACCOUNTNO
+  tax_neighborhood_code: NBHD
+
+aggregation_function:
+  tax_neighborhood_code: first
+
+supplements: US-CO-AD_property-adamscounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: neighborhood

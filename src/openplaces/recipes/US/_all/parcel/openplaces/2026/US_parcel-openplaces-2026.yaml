@@ -64,7 +64,8 @@ pipeline:
     key: [parcel_id_local, parcel_id_admin2]
     columns:
       year_built: min
-      area_sqft: sum
+      living_area_sqft: sum
+      gross_floor_area_sqft: sum
       total_value: sum
       n_stories: max
       n_bedrooms: sum
@@ -121,6 +122,21 @@ pipeline:
         type: ruleset_class
         column: use_group_combined
         ruleset: land-use-keywords.csv
+
+      # The structure description read through the same rules, but only
+      # where the land use named no class (where_null): the two are
+      # readings of one assessor record, and letting both fire would
+      # reach a decision's min_score from a single field. Sampson County
+      # NC is the case that needs it: a land-segment use_group that
+      # matches nothing, and a style column naming its manufactured
+      # homes. building_style stays out of use_group_combined (see the
+      # parcel spine's derive_use_classes) so cohort statistics keyed on
+      # it do not fragment on style text.
+      - output: style_class
+        type: ruleset_class
+        column: building_style
+        ruleset: land-use-keywords.csv
+        where_null: keyword_class
 
       # Log-space z-score of max footprint area within its assessor use
       # cohort. Used to identify vacant parcels.
@@ -182,7 +198,10 @@ pipeline:
             column: n_small_elongated_footprints_per_parcel
             min: 4
         indicators:
-          - {type: equals, column: keyword_class, value: Manufactured Home Park}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Manufactured Home Park}
+              - {type: equals, column: style_class, value: Manufactured Home Park}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           # Dominant FEMA building group on the parcel.
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
@@ -190,7 +209,10 @@ pipeline:
       - class: RV Park
         min_score: 2
         indicators:
-          - {type: equals, column: keyword_class, value: RV Park}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: RV Park}
+              - {type: equals, column: style_class, value: RV Park}
           - {type: in_set, column: group_parcel, values: [Entertainment/Recreation]}
           - {type: count_at_least, column: n_footprints_per_parcel, min: 4}
 
@@ -198,7 +220,10 @@ pipeline:
       - class: Manufactured Home
         min_score: 2
         indicators:
-          - {type: equals, column: keyword_class, value: Manufactured Home}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Manufactured Home}
+              - {type: equals, column: style_class, value: Manufactured Home}
           - {type: in_set, column: group_parcel, values: [Manufactured Home]}
           - {type: in_set, column: group_footprint_fema, values: [Manufactured Home]}
 
@@ -207,7 +232,10 @@ pipeline:
       - class: Multiple Single-Family
         min_score: 4
         indicators:
-          - {type: equals, column: keyword_class, value: Multiple Single-Family}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Multiple Single-Family}
+              - {type: equals, column: style_class, value: Multiple Single-Family}
           - {type: count_at_least, column: n_primary_footprints_per_parcel, min: 2}
           - {type: numeric_at_most, column: n_small_elongated_footprints_per_parcel, max: 0}
           # Backing occupancy classification.
@@ -238,7 +266,10 @@ pipeline:
               - type: in_set
                 column: group_footprint_fema
                 values: [Multi Family, Single Family]
-          - {type: equals, column: keyword_class, value: Condominium}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Condominium}
+              - {type: equals, column: style_class, value: Condominium}
 
       # Townhomes: single-footprint structures genuinely spanning multiple
       # separately-parceled units (horizontally adjacent, each with its own
@@ -256,6 +287,7 @@ pipeline:
             indicators:
               - {type: numeric_at_least, column: max_parcels_per_footprint, min: 2}
               - {type: equals, column: keyword_class, value: Townhome}
+              - {type: equals, column: style_class, value: Townhome}
           - type: any_of
             indicators:
               - type: in_set
@@ -280,7 +312,10 @@ pipeline:
             total: [improvement_value, land_value]
             max_ratio: 0.01
             include_zero: true
-          - {type: equals, column: keyword_class, value: Vacant}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Vacant}
+              - {type: equals, column: style_class, value: Vacant}
           - {type: numeric_at_most, column: n_footprints_per_parcel, max: 0}
 
       # Vacant in area, not just improvement value: this parcel's total real
@@ -325,13 +360,19 @@ pipeline:
       - class: Retail
         min_score: 1
         indicators:
-          - {type: equals, column: keyword_class, value: Retail}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Retail}
+              - {type: equals, column: style_class, value: Retail}
           - {type: in_set, column: group_parcel, values: [Retail]}
 
       - class: Office
         min_score: 1
         indicators:
-          - {type: equals, column: keyword_class, value: Office}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Office}
+              - {type: equals, column: style_class, value: Office}
           - type: in_set
             column: group_parcel
             values: [Bank, Medical Office, Professional Technical Services]
@@ -343,7 +384,10 @@ pipeline:
       - class: Industrial
         min_score: 1
         indicators:
-          - {type: equals, column: keyword_class, value: Industrial}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Industrial}
+              - {type: equals, column: style_class, value: Industrial}
           - type: in_set
             column: group_parcel
             values:
@@ -355,7 +399,10 @@ pipeline:
       - class: Institutional
         min_score: 1
         indicators:
-          - {type: equals, column: keyword_class, value: Institutional}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Institutional}
+              - {type: equals, column: style_class, value: Institutional}
           - type: in_set
             column: group_parcel
             values:
@@ -367,7 +414,10 @@ pipeline:
       - class: Commercial
         min_score: 1
         indicators:
-          - {type: equals, column: keyword_class, value: Commercial}
+          - type: any_of
+            indicators:
+              - {type: equals, column: keyword_class, value: Commercial}
+              - {type: equals, column: style_class, value: Commercial}
           - type: in_set
             column: group_parcel
             values: ['Personal & Repair Services', Hotel, Garage]

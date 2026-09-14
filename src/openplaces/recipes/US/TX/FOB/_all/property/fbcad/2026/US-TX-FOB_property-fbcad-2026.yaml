@@ -85,7 +85,7 @@ columns:
   address_street: SitusStreetName
   city: SitusCity
   postal_code: SitusZip
-  area_ac: LegalAcres
+  land_area_ac: LegalAcres
   living_area_sqft: SquareFootage
   tax_neighborhood_code: NbhdCode
 

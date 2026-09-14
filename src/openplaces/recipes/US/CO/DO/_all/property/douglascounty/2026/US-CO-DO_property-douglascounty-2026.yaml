@@ -1,0 +1,134 @@
+# Recipe: Douglas County, CO Assessor property location table, the
+# property roll the improvements table supplements.
+#
+# SOURCE. The Assessor publishes monthly headerless CSVs
+# (apps.douglasco.gov/realware/datadownloads, "active accounts only",
+# last updated 2026-09-01) and the same tables in the county's
+# open-data FeatureServer (services.arcgis.com/seTexOicoRXDvRsJ
+# OpenData, service item 7ca5a1199ee94728bb3324bf4d646c9e). The
+# headerless files cannot be read by the delimited reader, which
+# takes no column names (a reader gap; see the hand-off). This recipe
+# reads table 5, Property_Location_Data, as the Hub CSV (41.1 MB,
+# 169,009 rows, headers, UTF-8 with a byte-order mark). The headerless
+# Property_Location.txt holds 172,013 rows on 169,085 accounts; the
+# difference is personal property accounts ('P9999999', 3,051), which
+# the open-data table leaves out.
+#
+# ONE ROW. One account per location: 169,009 rows, 471 accounts on
+# two or more rows (2,897 rows) whose parcel and neighborhood are
+# identical, so drop_duplicates keeps one row per account. The query
+# drops 'Severed Int' (592) and 'Utilities' (213) accounts, which a
+# sale of the land does not convey. Condominium units are accounts and
+# stay rows.
+#
+# KEYS. parcel_id_local is built from STATE_PARCEL_NO (12 digits;
+# 610 blank), kind parcel, the id the statewide OIT layer
+# (US-CO_parcel-cooit-2026) carries as parcel_id for Douglas.
+# property_id_assessor is ACCOUNT_NO ('R9999999', 'M9999999'), the
+# supplements_key of the improvements table.
+#
+# NEIGHBORHOOD. NEIGHBORHOOD_CODE_EXT joins the neighborhood code and
+# its extension (' 999-A'; 1,106 distinct, 23,942 blank) and lists
+# several where an account spans more than one (' 999-99, 999-A').
+# tax_neighborhood_code keeps the first entry's code, the part before
+# the hyphen: 260 codes in the headerless file's own Neighborhood_Code.
+#
+# Left unmapped: the situs address, LEGAL_DESCR, section, township,
+# range, LAND_ECONOMIC_AREA_CODE, VACANT_FLAG, TOTAL_NET_ACRES,
+# TAX_DISTRICT_NO. The owner table (Property_Owner_Data) is not read.
+#
+# MEASURED on the Hub files fetched 2026-09-13, in memory with each
+# recipe's reader and preprocessing, supplements aggregated per
+# account with their aggregation_function (2026-09-13). Roll: 169,009
+# rows read, 165,310 accounts kept, 165,292 keyed, 158,355 distinct
+# keys. Improvements: 151,388 section rows (_improvements) and
+# 148,366 building rows (_buildings) on 136,056 accounts; 99.97% of
+# them are in the roll and 82.3% of roll accounts have a building.
+# Residential is an account with a dwelling-type building
+# (Residential, Condo, Townhouse, Multiple Unit, Mobile Home, Duplex,
+# Triplex): 132,326. parcel_id_local against the statewide OIT
+# layer's Douglas parcel_id (same conversion): 99.32% of roll keys
+# found there, 99.61% of its keys found here; 100% of residential
+# accounts found. Share of residential accounts with a value:
+# year_built and building_style 100%, tax_neighborhood_code 100%
+# (135 codes), n_bedrooms and n_bathrooms 98.9% (whole numbers,
+# median 3), n_stories 99.6%, n_dwellings 99.5%, living_area_sqft
+# 99.7% (median 2,214), quality_grade and condition 99.7%,
+# exterior_wall 99.4%, roof_material 99.2%, heating_type 98.9%,
+# porch_area_sqft 97.7%, garage_area_sqft and has_garage 95.6%,
+# basement_area_sqft and has_basement 84.5%,
+# basement_finished_area_sqft 49.9%, has_central_air true 84.1%,
+# n_fireplaces 83.8%, renovation_year 11.2%, n_outbuildings 4.0%,
+# gross_floor_area_sqft 0.1%.
+#
+# TERMS. The open-data item for these Assessor tables (Property
+# Improvements Data, 59223a6a14b24022a3831e4ea9913c5e) states: "This
+# data is licensed by Creative Commons 4.0:
+# https://creativecommons.org/licenses/by-sa/4.0/ You are free to:
+# Share - copy and redistribute the material in any medium or format
+# Adapt - remix, transform, and build upon the material for any
+# purpose, even commercially." That is CC BY-SA 4.0, share-alike: a
+# bundle carrying these values must itself be released under it, which
+# the delivery notice reports. No click-through. The downloads page
+# adds: "we can make no guarantees as to the accuracy or the
+# timeliness of the data."
+
+description: >-
+  Douglas County, CO Assessor property location table: the property roll
+  keyed by account, with state parcel number and neighborhood code.
+
+admin_id: US-CO-DO
+
+entity:
+  entity_type: property
+  source:
+    source_id: douglascounty
+    portal_url: "https://www.douglasco.gov/assessor/data-downloads/"
+    download_url: "https://hub.arcgis.com/api/v3/datasets/7ca5a1199ee94728bb3324bf4d646c9e_5/downloads/data?format=csv&spatialRefId=4326"
+    license: "CC-BY-SA-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59223a6a14b24022a3831e4ea9913c5e"
+    redistribution_restricted: false
+  version: "2026"
+
+uncompressed_file_name: "Property_Location_Data.csv"
+
+process_by:
+  admin_level: 3
+
+encoding: utf-8-sig
+csv_dtype: str
+
+columns:
+  property_id_assessor: ACCOUNT_NO
+  parcel_id_assessor: STATE_PARCEL_NO
+  tax_neighborhood_code: NEIGHBORHOOD_CODE_EXT
+
+# See ONE ROW.
+query: "ACCOUNT_TYPE_CODE not in ['Severed Int', 'Utilities']"
+
+drop_duplicates: [property_id_assessor]
+
+transformations:
+  # First entry's code; see NEIGHBORHOOD.
+  - type: string
+    operation: split_take
+    input: tax_neighborhood_code
+    args: {sep: ",", index: 0}
+    output: tax_neighborhood_code
+  - type: string
+    operation: split_take
+    input: tax_neighborhood_code
+    args: {sep: "-", index: 0}
+    output: tax_neighborhood_code
+  - {type: string, operation: strip, input: tax_neighborhood_code,
+     output: tax_neighborhood_code}
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

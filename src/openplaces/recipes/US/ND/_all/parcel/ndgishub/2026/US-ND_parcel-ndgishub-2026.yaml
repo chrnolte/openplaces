@@ -113,12 +113,12 @@
 # NOTE on fields left unmapped for want of a registry attribute, or
 # because they are declared-but-sparse/redundant:
 #   - `CalculatedAcres`: a second, geometry-derived area figure --
-#     deliberately NOT mapped to `lot_size`, matching the
+#     deliberately NOT mapped to `land_area_sqft`, matching the
 #     `US-MD_parcel-mdimap-2026` precedent for the analogous
 #     `CALCULATEDAREA` field: redundant with the area the pipeline
 #     already computes from the polygon itself. The sibling property
 #     recipe's `DeededAcres` (the recorded/legal acreage, independent
-#     of geometry) is mapped to `lot_size` instead.
+#     of geometry) is mapped to `land_area_sqft` instead.
 #   - `Lot`, `Block`, `Section`, `Township`, `Range`, `SectionNumber`,
 #     `TownshipNumber`, `RangeNumber`, `TownshipName`: legal-
 #     description / PLSS (Public Land Survey System) components with

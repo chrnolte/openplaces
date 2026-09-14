@@ -98,9 +98,10 @@
 # NOTE on units: `LandArea` is in ACRES, not square feet -- verified
 # by sampling real populated values, roughly 1 to 160 (acre
 # magnitudes; a 150-square-foot parcel would be absurd, and no
-# populated value sampled was below 1). The registry's `lot_size` is
-# defined in `sqft`, so the bundled `acres_to_sqft` unary op is
-# applied rather than mapping `LandArea` to `lot_size` directly,
+# populated value sampled was below 1). The registry's
+# `land_area_sqft` is defined in `sqft`, so the bundled
+# `acres_to_sqft` unary op is
+# applied rather than mapping `LandArea` to `land_area_sqft` directly,
 # which would have silently understated every parcel's lot size by
 # a factor of ~43,560.
 #
@@ -192,7 +193,7 @@
 # `parcel_id_local` populated 12,724/13,218 (96.3%, 12,436 distinct)
 # -- 2 rows short of the 12,726 non-blank `LocalParcelID` count
 # measured directly against the live service, consistent with
-# export-snapshot lag, not a conversion bug. `lot_size` converted
+# export-snapshot lag, not a conversion bug. `land_area_sqft` converted
 # from acres correctly (populated range translates to roughly
 # 435 sqft to several hundred acres in sqft, no overflow or unit
 # mismatch). This run is also what caught the `CurrentTo`
@@ -288,7 +289,7 @@ columns:
   owner_city: MailCity
   owner_postal_code: MailZip
   owner_admin2_id_admin1: MailState
-  lot_size: LandArea
+  land_area_sqft: LandArea
 
 columns_to_categorical:
   - use_group
@@ -311,11 +312,11 @@ transformations:
     args: {sep: ": ", index: 0}
     output: use_group_code
 
-  # LandArea is in acres; the registry's lot_size is in sqft.
+  # LandArea is in acres; the registry's land_area_sqft is in sqft.
   - type: unary
     operation: acres_to_sqft
-    input: lot_size
-    output: lot_size
+    input: land_area_sqft
+    output: land_area_sqft
 
   # Expose the raw county parcel number under the canonical name
   # parcel_id_assessor (a copy of parcel_id_admin3 -- LocalParcelID),

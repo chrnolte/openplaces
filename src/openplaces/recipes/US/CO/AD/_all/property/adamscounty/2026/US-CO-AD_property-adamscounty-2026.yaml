@@ -1,0 +1,135 @@
+# Recipe: Adams County, CO Assessor's Detailed Data Dump, account
+# master table: the property roll the appraisal tables supplement.
+#
+# SOURCE. adamscountyco.gov assessor maps-data page, "Assessor's
+# Detailed Data Dump" in two fixed-width zips, posted 2026-05-04 and
+# "Updated bi-annually": Admin_2026_2.zip (51.9 MB; Master, Value,
+# Legal, Name_Address, Sales, Mobile, lookups) and Appraisal_2026_2.zip
+# (40.9 MB; Appraisal, Improvements, Built_As, Occupancy, Detail,
+# Land, Neighborhood, lookups). Layouts: Admin_FileLayout.doc and
+# Appraisal_FileLayout.doc on the same page; every record length in
+# the files equals its documented length. This dump is preferred over
+# the weekly "Parcel GDB with Supplemental Tables" (item
+# 59fb004d67a748b19f5faf1dca9d700d), whose PropertyImprovements table
+# carries fewer variables and no component lines.
+#
+# ONE ROW. Master.TXT (449 characters): one account, 212,435 rows,
+# ACCOUNTNO ('A9999999') unique. The query keeps real property
+# accounts and drops Personal, Equipment, Leasing, State Assessed,
+# Severed Mineral, Oil & Gas, Pipeline, Tank Battery, Drilling Rig and
+# Water (business property, severed and state-assessed interests,
+# which a sale of the land does not convey). Condominium units are
+# accounts and stay rows. STATUS is 'A' on 210,666 rows and 'H' on
+# 1,769; both are kept.
+#
+# KEYS. parcel_id_local is built from PARCELNB (13 digits; blank on
+# 7,727 accounts, none of them Residential), kind parcel, the id the
+# statewide OIT layer (US-CO_parcel-cooit-2026) carries as parcel_id
+# for Adams. property_id_assessor is ACCOUNTNO, the supplements_key
+# every appraisal table joins on (they carry ACCOUNTNO, IMPNO and
+# PARCELNB; a parcel key would give every condominium unit on a parcel
+# the sum of all units).
+#
+# SUPPLEMENTS. _built-as (Built_As.TXT: rooms, bedrooms, stories,
+# years, areas and codes per built-as section), _improvements
+# (Improvements.TXT: condition, quality, outbuildings), _detail
+# (Detail.TXT component lines: bathrooms and half baths from fixture
+# lines, garages, basements, porches, decks, fireplaces, pools, solar,
+# carports), _neighborhood
+# (Neighborhood.TXT) and _land-attributes (Land_Attributes.TXT: view,
+# lakeside, topography).
+#
+# Left unmapped on the roll: BUSINESSNAME and the whole Name_Address
+# table (owners), situs address, subdivision, block and lot, Legal,
+# Sales and Value tables.
+#
+# MEASURED on the 2026-05 dump, in memory with each recipe's reader
+# and preprocessing, supplements aggregated per account with their
+# aggregation_function (2026-09-13). Roll: 212,435 rows read, 200,271
+# real property accounts kept, 199,781 keyed, 188,316 distinct keys.
+# Supplement rows kept (accounts): _built-as 182,056 (169,823),
+# _improvements 181,795 (169,834), _detail 1,148,110 of 2,274,329
+# lines (166,754), _neighborhood 195,612 (191,813), _land-attributes
+# 51,188 (42,039). Every supplement account but a handful (at most
+# 0.03%, dropped account types) is in the roll; 84.8% of roll accounts
+# have a built-as row. Residential is an account with an Occupancy.TXT
+# abstract code 12xx: 158,415. parcel_id_local against the statewide
+# OIT layer's Adams parcel_id (same conversion): 99.88% of roll keys
+# found there, 99.79% of its keys found here; 99.83% of residential
+# accounts found (99.84% keyed). Share of residential accounts with a
+# value: year_built, building_style and quality_grade 100%,
+# tax_neighborhood_code 100% (57 codes), living_area_sqft 99.9%
+# (median 1,558), condition 99.9%, heating_type and exterior_wall
+# 99.8%, n_bathrooms 98.8% (fixture-weighted, see _detail; the
+# published BATHS total, not mapped, fills 95.4%), n_stories 98.7%,
+# n_bedrooms and n_rooms 95.3%, roof_material 95.2%, garage_area_sqft,
+# garage_type
+# and has_garage 82.1%, porch_area_sqft 67.2%, basement_area_sqft and
+# has_basement 62.1%, n_half_bathrooms 44.9%, has_central_air true
+# 42.6%, n_fireplaces 42.4%, basement_finished_area_sqft 29.8%,
+# renovation_year 20.9%, n_dwellings 18.2%, deck_area_sqft 16.7%,
+# foundation_description 12.0%, has_solar 9.0%, has_carport 3.3%,
+# n_outbuildings 2.2%, construction_description 0.5%, has_pool 0.5%,
+# gross_floor_area_sqft 0.3%, view_rating and has_waterfront 0.2%,
+# topography, has_elevator and has_accessory_dwelling below 0.05%.
+#
+# TERMS. The county's ArcGIS items for this Assessor data (e.g. the
+# Parcel GDB with Supplemental Tables, terms_url) state: "This work is
+# licensed under a Creative Commons Attribution 4.0 International
+# License." The data-dump page itself carries a disclaimer only
+# ("Adams County makes no representations or warranty as to the
+# completeness, accuracy, timeliness, or content of any data made
+# available through this site...") and no restriction or
+# click-through.
+
+description: >-
+  Adams County, CO Assessor detailed data dump, account master table:
+  the property roll keyed by account, with its parcel number.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: property
+  source:
+    source_id: adamscounty
+    portal_url: "https://adamscountyco.gov/our-county/elected-officials/assessor/maps-data/"
+    download_url: "https://adamscountyco.gov/wp-content/uploads/2026/05/Admin_2026_2.zip"
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59fb004d67a748b19f5faf1dca9d700d"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "Admin_2026_2.zip"
+uncompressed_file_name: "Admin_2026_2/Master.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# Admin layout, ACCOUNT MASTER TABLE; read up to STATUS.
+fixed_width:
+  - [ACCOUNTNO, 8]
+  - [filler, 3] # AREAID
+  - [PARCELNB, 13]
+  - [ACCTTYPE, 15]
+  - [filler, 1] # STATUS
+
+columns:
+  property_id_assessor: ACCOUNTNO
+  parcel_id_assessor: PARCELNB
+
+# Real property accounts only; see ONE ROW.
+query: >-
+  ACCTTYPE not in ['Personal', 'Equipment', 'Leasing', 'State Assessed',
+  'Severed Mineral', 'Oil & Gas', 'Pipeline', 'Tank Battery', 'Drilling Rig',
+  'Water']
+
+drop_duplicates: [property_id_assessor]
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

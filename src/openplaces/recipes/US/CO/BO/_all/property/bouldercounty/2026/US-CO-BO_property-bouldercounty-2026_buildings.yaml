@@ -1,0 +1,153 @@
+# Recipe: Boulder County, CO Assessor buildings table, building
+# sections: rooms, baths, years, finished area and building codes.
+# Same download page and terms as US-CO-BO_property-bouldercounty-2026;
+# read that roll's header first.
+#
+# SOURCE. Buildings.csv (59.5 MB, 42 columns, headers), keyed by
+# strap (account), bld_num and section_num.
+#
+# ONE ROW. A building section crossed with one basement sub-area and
+# one car storage sub-area: 179,809 rows on 120,508 accounts. 1,080
+# rows are exact duplicates; after removing them, 33,326 section keys
+# still repeat over 72,546 rows, which differ in bsmtType/bsmtSF
+# (28,621 keys) and carStorageType/carStorageSF (3,144 keys, 813
+# keys in both, a cross product). Bedrooms and baths differ within a
+# key on 2 to 10 keys only. So this table keeps one row per section
+# (drop_duplicates on strap, bld_num, section_num) and sums its
+# counts; basement and car storage areas come from _basements and
+# _car-storage, each deduplicated on its own sub-area.
+#
+# BATHS. Three whole-number columns (a handful of stray 0.5, 1.25 and
+# 2.25): nbrFullBaths, nbrThreeQtrBaths, nbrHalfBaths. n_bathrooms =
+# full + 0.75 x three-quarter + 0.5 x half (a three-quarter bath counts
+# 0.75, the user's rule of 2026-09-13); n_half_bathrooms = half.
+#
+# MAPPING. year_built builtYear and effective_year_built
+# EffectiveYear (earliest over sections); living_area_sqft
+# TotalFinishedSF (summed; at least mainfloorSF on 99.995% of rows);
+# n_bedrooms nbrBedRoom; n_rooms nbrRoomsNobath (rooms without
+# baths); n_stories Stories (4.7% filled, mostly non-houses; the
+# design code names stories for houses); n_dwellings UnitCount (2.7%,
+# multi-unit classes). Codes keep the county's descriptions:
+# building_style designCodeDscr, quality_grade qualityCodeDscr,
+# construction_description ConstCodeDscr, heating_type HeatingDscr,
+# exterior_wall ExtWallDscrPrim, roof_material Roof_CoverDscr.
+# has_central_air is true where AcDscr is 'Whole House' and false
+# where it is 'Evaporative Cooler' or 'Attic Fan'; blank stays
+# missing. HeatingDscr 'Air Cond in Heat Ducts' (1,022 rows) is not
+# read into the flag.
+# Left unmapped: mainfloorSF, bldgClass (state class code),
+# ExtWallSec, IntWall, CompCode, status_cd (all 'A').
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Boulder County, CO Assessor buildings table, one row per building
+  section: bedrooms, full, three-quarter and half baths, rooms, years,
+  codes.
+
+admin_id: US-CO-BO
+
+entity:
+  entity_type: property
+  source:
+    source_id: bouldercounty
+    # Same page and terms as the roll; see its header.
+    portal_url: "https://bouldercounty.gov/property-and-land/assessor/data-download/"
+    download_url: "https://assessor.boco.solutions/ASR_PublicDataFiles/Buildings.csv"
+    license: >-
+      unknown (no licence; General Disclaimer 'developed solely for
+      internal use only by Boulder County', quoted in full on the roll)
+    terms_url: "https://bouldercounty.gov/property-and-land/assessor/data-download/"
+    redistribution_restricted: null
+  version: "2026"
+
+uncompressed_file_name: "Buildings.csv"
+
+process_by:
+  admin_level: 3
+
+csv_dtype: str
+
+columns:
+  property_id_assessor: strap
+  year_built: builtYear
+  effective_year_built: EffectiveYear
+  living_area_sqft: TotalFinishedSF
+  n_bedrooms: nbrBedRoom
+  n_rooms: nbrRoomsNobath
+  n_half_bathrooms: nbrHalfBaths
+  n_stories: Stories
+  n_dwellings: UnitCount
+  building_style: designCodeDscr
+  quality_grade: qualityCodeDscr
+  construction_description: ConstCodeDscr
+  heating_type: HeatingDscr
+  exterior_wall: ExtWallDscrPrim
+  roof_material: Roof_CoverDscr
+
+# One row per building section; see ONE ROW.
+drop_duplicates: [property_id_assessor, bld_num, section_num]
+
+transformations:
+  - {type: unary, operation: to_numeric, input: year_built, output: year_built}
+  - {type: unary, operation: to_numeric, input: effective_year_built,
+     output: effective_year_built}
+  - {type: unary, operation: to_numeric, input: living_area_sqft,
+     output: living_area_sqft}
+  - {type: unary, operation: null_if_equal, input: living_area_sqft,
+     args: {value: 0}, output: living_area_sqft}
+  - {type: unary, operation: to_numeric, input: n_bedrooms, output: n_bedrooms}
+  - {type: unary, operation: to_numeric, input: n_rooms, output: n_rooms}
+  - {type: unary, operation: to_numeric, input: n_half_bathrooms,
+     output: n_half_bathrooms}
+  - {type: unary, operation: to_numeric, input: nbrFullBaths, output: nbrFullBaths}
+  - {type: unary, operation: to_numeric, input: nbrThreeQtrBaths,
+     output: nbrThreeQtrBaths}
+  # See BATHS.
+  - type: expression
+    expression: "nbrFullBaths + 0.75 * nbrThreeQtrBaths + 0.5 * n_half_bathrooms"
+    inputs: [nbrFullBaths, nbrThreeQtrBaths, n_half_bathrooms]
+    output: n_bathrooms
+  - {type: unary, operation: to_numeric, input: n_stories, output: n_stories}
+  - {type: unary, operation: null_if_equal, input: n_stories, args: {value: 0},
+     output: n_stories}
+  - {type: unary, operation: to_numeric, input: n_dwellings, output: n_dwellings}
+  - {type: unary, operation: null_if_equal, input: n_dwellings, args: {value: 0},
+     output: n_dwellings}
+  - {type: string, operation: strip, input: quality_grade, output: quality_grade}
+  - type: remap_conditional
+    input: AcDscr
+    conditions:
+      - condition: in
+        values: ['Whole House']
+        output: true
+      - condition: in
+        values: ['Evaporative Cooler', 'Attic Fan']
+        output: false
+    output: has_central_air
+
+aggregation_function:
+  year_built: min
+  effective_year_built: min
+  living_area_sqft: sum
+  n_bedrooms: sum
+  n_rooms: sum
+  n_bathrooms: sum
+  n_half_bathrooms: sum
+  n_stories: max
+  n_dwellings: sum
+  has_central_air: max
+  building_style: first
+  quality_grade: first
+  construction_description: first
+  heating_type: first
+  exterior_wall: first
+  roof_material: first
+
+supplements: US-CO-BO_property-bouldercounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: buildings

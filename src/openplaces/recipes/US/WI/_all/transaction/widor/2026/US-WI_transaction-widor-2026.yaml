@@ -68,7 +68,7 @@ columns:
   parcel_id_tax: "Parcel Number"
   n_units: "Number of Units"
   address: "Physical Address"
-  area_ac: "Acres"
+  land_area_ac: "Acres"
   grantor: "Grantor Name"
   grantor_address: "Grantor Address"
   grantee: "Grantee Name"

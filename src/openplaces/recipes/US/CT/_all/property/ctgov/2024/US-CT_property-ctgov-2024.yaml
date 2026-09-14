@@ -85,10 +85,10 @@
 # different things per vendor. 'Not Available', written by one town
 # in every empty field, is nulled.
 #   Living Area -> living_area_sqft; Gross Area of Primary Building
-#     -> building_area_sqft. Where both are above 0 (831,144 rows)
+#     -> gross_floor_area_sqft. Where both are above 0 (831,144 rows)
 #     gross is a median 1.95 times living and below it on 0.2%, so
-#     the first is living and the second gross area. area_sqft was
-#     not mapped before. Fin Bsm Area -> basement_finished_area_sqft.
+#     the first is living and the second gross area. No floor area
+#     was mapped before. Fin Bsm Area -> basement_finished_area_sqft.
 #   Basement Type -> has_basement: true on basement values (Full,
 #     Basement, 3/4 Bsmt, Partial), false only on stated absence
 #     (No Basement, None, Slab, Crawl, Full Crawl, Piers); partial
@@ -118,7 +118,7 @@
 # on the 2024 export. Share of rows non-null, all / residential:
 #   living_area_sqft             94.6% / 97.5% (above 0: 88.0% of
 #                                rows, median 1,662 sqft)
-#   building_area_sqft           65.2% / 68.7% (114 of 169 towns)
+#   gross_floor_area_sqft           65.2% / 68.7% (114 of 169 towns)
 #   basement_finished_area_sqft  31.2% / 31.9% (above 0 on 10.8% of
 #                                residential rows, 57 towns)
 #   has_basement                 25.4% / 28.7% (313,474 true,
@@ -243,7 +243,7 @@ columns:
   n_stories: Stories
   # Building features (see the header's BUILDING FEATURES).
   living_area_sqft: Living Area
-  building_area_sqft: Gross Area of Primary Building
+  gross_floor_area_sqft: Gross Area of Primary Building
   basement_finished_area_sqft: Fin Bsm Area
   has_basement: Basement Type
   quality_grade: Grade Desc
@@ -310,8 +310,8 @@ transformations:
     output: living_area_sqft
   - type: unary
     operation: to_numeric
-    input: building_area_sqft
-    output: building_area_sqft
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
   - type: unary
     operation: to_numeric
     input: basement_finished_area_sqft

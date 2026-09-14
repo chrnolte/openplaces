@@ -1,0 +1,92 @@
+# Recipe: Adams County, CO Assessor's Detailed Data Dump, land
+# attributes table. Same source and terms as
+# US-CO-AD_property-adamscounty-2026; read that roll's header first.
+#
+# LAYOUT. Land_Attributes.TXT, 84 characters (LAND ATTRIBUTES TABLE):
+# ACCOUNTNO, AREAID, PARCELNB, ATTRIBUTE, ATTRIBUTEDESC; one row per
+# attribute an appraiser recorded for the land. ATTRIBUTE groups them
+# (Location, Size, Easement, Market, Topography, Environmental, Soil
+# Conditions).
+#
+# MAPPING. Few accounts carry these; each is set only where recorded.
+# - view_rating: the Location descriptions naming a view ('Premium
+#   View' 294 rows, 'Poor View', 'Hill View'), as published.
+# - has_waterfront: true for the Location descriptions naming a lake
+#   ('Lakeside' 241 rows, 'Lake_220_240', 'Lake_115').
+# - topography: the Topography descriptions as published ('Walkout
+#   Basement', 'Slope', 'Hilly', 'Garden Level', 'Gully').
+# Left unmapped: the remaining Location, Size, Easement, Market and
+# Environmental attributes (school proximity, road noise, golf course,
+# corner lot, flood plain, lot size classes, easements).
+#
+# MEASURED: see the validation note at the end of the roll's header.
+
+description: >-
+  Adams County, CO Assessor land attributes: recorded view, lakeside
+  and topography attributes per property account.
+
+admin_id: US-CO-AD
+
+entity:
+  entity_type: property
+  source:
+    source_id: adamscounty
+    # Same page and terms as the roll; see its header.
+    portal_url: "https://adamscountyco.gov/our-county/elected-officials/assessor/maps-data/"
+    download_url: "https://adamscountyco.gov/wp-content/uploads/2026/05/Appraisal_2026_2.zip"
+    license: "CC-BY-4.0"
+    terms_url: "https://www.arcgis.com/home/item.html?id=59fb004d67a748b19f5faf1dca9d700d"
+    redistribution_restricted: false
+  version: "2026"
+
+compressed_file_name: "Appraisal_2026_2.zip"
+uncompressed_file_name: "Appraisal_2026_2/Land_Attributes.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# Appraisal layout, LAND ATTRIBUTES TABLE.
+fixed_width:
+  - [ACCOUNTNO, 8]
+  - [filler, 3] # AREAID
+  - [filler, 13] # PARCELNB
+  - [ATTRIBUTE, 30]
+  - [ATTRIBUTEDESC, 30]
+
+columns:
+  property_id_assessor: ACCOUNTNO
+
+query: "ATTRIBUTE in ['Location', 'Topography']"
+
+transformations:
+  - type: expression
+    expression: >-
+      ATTRIBUTEDESC.where((ATTRIBUTE == 'Location') &
+      ATTRIBUTEDESC.isin(['Premium View', 'Poor View', 'Hill View']))
+    inputs: [ATTRIBUTE, ATTRIBUTEDESC]
+    output: view_rating
+  - type: remap_conditional
+    input: ATTRIBUTEDESC
+    conditions:
+      - condition: in
+        values: ['Lakeside', 'Lake_220_240', 'Lake_115']
+        output: true
+    output: has_waterfront
+  - type: expression
+    expression: "ATTRIBUTEDESC.where(ATTRIBUTE == 'Topography')"
+    inputs: [ATTRIBUTE, ATTRIBUTEDESC]
+    output: topography
+
+aggregation_function:
+  view_rating: first
+  has_waterfront: max
+  topography: first
+
+supplements: US-CO-AD_property-adamscounty-2026
+supplements_key: property_id_assessor
+
+save_to:
+  data_dir: cache
+  filename: land-attributes

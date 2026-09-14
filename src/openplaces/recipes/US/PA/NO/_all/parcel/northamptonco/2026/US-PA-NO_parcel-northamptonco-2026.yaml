@@ -92,7 +92,8 @@
 # living area, exterior and neighborhood, and 8.3% a pool.
 # living_area_sqft's registry aggregation is a sum, so where a
 # PARCEL_ID repeats over split polygons (913 keys, see ROW SHAPE) an
-# aggregation by key would double it; area_sqft (mean) does not.
+# aggregation by key would double it. The mean-aggregated copy under
+# area_sqft is gone since that name became the 2D area.
 #
 # JOIN KEY: PARCEL_ID, the map-block-lot number with internal
 # fixed-width spacing ('X9XX9X 9  99' shape, fabricated). CAMA_ID is
@@ -142,9 +143,9 @@ columns:
   exterior_wall: EXTERIOR
   foundation_description: BASEMENT
   tax_neighborhood_code: NBHD
-  area_assessed_ac: ASMT_ACREAGE
+  land_area_ac: ASMT_ACREAGE
   year_built: RES_YEAR_BUILT
-  area_sqft: SQFT_LIVING_AREA
+  living_area_sqft: SQFT_LIVING_AREA
   building_style: BUILDING_STYLE
   n_stories: NUMBER_OF_STORIES
   n_rooms: TOTAL_ROOMS
@@ -163,16 +164,15 @@ transformations:
     operation: sum
     inputs: [n_bathrooms, half_bathroom_equivalent]
     output: n_bathrooms
-  # lot_size's canonical unit is sqft; the source gives acres.
+  # land_area_sqft's canonical unit is sqft; the source gives acres.
   - type: unary
     operation: acres_to_sqft
-    input: area_assessed_ac
-    output: lot_size
-  # SQFT_LIVING_AREA is aliased "GLA SQFT" (gross living area), so it
-  # is also living_area_sqft; area_sqft keeps it as before.
+    input: land_area_ac
+    output: land_area_sqft
+  # SQFT_LIVING_AREA is aliased "GLA SQFT" (gross living area).
   - type: unary
     operation: to_numeric
-    input: area_sqft
+    input: living_area_sqft
     output: living_area_sqft
   # SWIMMING_POOL carries a pool code (RP1-RP5) only where a pool is
   # recorded; blank is not a recorded absence, so it stays null.

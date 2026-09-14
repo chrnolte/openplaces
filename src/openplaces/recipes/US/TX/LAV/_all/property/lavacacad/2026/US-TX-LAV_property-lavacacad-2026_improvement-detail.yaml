@@ -22,12 +22,14 @@
 # 100.0% populated on main-area rows; min differs from mean for 12.0% of
 # multi-row properties.
 #
-# AREA (measured 2026-09-13). area_sqft is the main (living) area: on
-# 4,634 single-family (A) properties it equals living_area_sqft from the
-# sibling ..._improvement-features on 98.6%, the rest differing by the
-# MA3 to MA5 components that recipe also counts. area_sqft is kept for
-# curate; PACS publishes no gross area, so building_area_sqft is not
-# mapped.
+# AREA (measured 2026-09-13). gross_floor_area_sqft sums the main-area
+# segments: on 4,634 single-family (A) properties it equals
+# living_area_sqft from the sibling ..._improvement-features on 98.6%,
+# the rest differing by the MA3 to MA5 components that recipe also
+# counts.
+# PACS publishes no gross area, and this segment sum is the closest
+# figure. The segment sums can include open porches and decks, so
+# they run slightly above true gross floor area.
 
 description: >-
   Lavaca County, TX certified appraisal roll, improvement detail member:
@@ -81,13 +83,13 @@ transformations:
 
 columns:
   year_built: yr_built
-  area_sqft: imprv_det_area
+  gross_floor_area_sqft: imprv_det_area
 
 drop_columns:
   - imprv_det_type_cd
 
 aggregation_function:
-  area_sqft: sum
+  gross_floor_area_sqft: sum
   year_built: min
 
 # Details the roll's properties; joined by link_by_id, skipped by the

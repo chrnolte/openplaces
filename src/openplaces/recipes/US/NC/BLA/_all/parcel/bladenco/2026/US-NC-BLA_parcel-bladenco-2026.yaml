@@ -68,7 +68,7 @@ columns:
   last_sale_doc_type: SalesInstr
   last_sale_year: DeedYear
   year_built: YearActual
-  area_sqft: FinishedAr
+  living_area_sqft: FinishedAr
   zoning_code: ZONING
   owner_address: OwnerAddre
   owner_city: OwnerCity

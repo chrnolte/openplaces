@@ -70,7 +70,7 @@ columns:
   land_value: PPLandValue
   improvement_value: PPImprValue
   total_value: PPTotalValue
-  area_ac: PPAcres
+  land_area_ac: PPAcres
   address: PPAddress
 
 drop_duplicates: [parcel_id_assessor]
@@ -90,8 +90,8 @@ transformations:
     output: total_value
   - type: unary
     operation: to_numeric
-    input: area_ac
-    output: area_ac
+    input: land_area_ac
+    output: land_area_ac
 
 columns_to_categorical:
   - use_group_code

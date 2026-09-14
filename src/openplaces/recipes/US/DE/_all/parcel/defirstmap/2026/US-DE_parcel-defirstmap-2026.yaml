@@ -154,11 +154,11 @@ transformations:
     output: source_date
 
   # ACRES is unambiguously acres (field alias "Acres"); registry
-  # lot_size is sqft.
+  # land_area_sqft is sqft.
   - type: unary
     operation: acres_to_sqft
     input: ACRES
-    output: lot_size
+    output: land_area_sqft
 
   # Expose PIN under the canonical raw-id name parcel_id_assessor (a
   # copy of parcel_id_admin2), so it is the raw key parcel_id_local

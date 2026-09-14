@@ -90,6 +90,12 @@ def _derive_ruleset_class(state: CurateState, spec: dict) -> pd.Series | None:
         # legitimately matched an unreviewed rule fall through to a later
         # reviewed one, silently changing which class it asserts.
         proposal = proposal.where(reviewed)
+    where_null = spec.get('where_null')
+    if where_null is not None and where_null in curated.columns:
+        # A second reading of the same assessor text must not reach a
+        # decision's min_score on its own: the structure description
+        # speaks only where the land use named no class.
+        proposal = proposal.where(curated[where_null].isna())
     return proposal
 
 

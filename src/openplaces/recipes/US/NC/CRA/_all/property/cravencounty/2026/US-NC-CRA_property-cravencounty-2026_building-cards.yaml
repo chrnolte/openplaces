@@ -48,9 +48,9 @@
 # dwelling for only 61.4% of keys, so a per-property grade would
 # often be a shed's. BDBASE and BYRRM are empty;
 # BDSTYP (RES, STG, CPT, GAR, BN1, ...) is a structure type, not a
-# style. area_sqft sums BTOAR over every card, so it includes sheds,
-# carports and decks: it is neither living nor gross building area,
-# and neither of those attributes is derived from it.
+# style. gross_floor_area_sqft sums BTOAR over every card, so it
+# includes sheds, carports and decks and runs above the dwelling's
+# own gross floor area; living_area_sqft is not derived from it.
 
 description: >-
   Craven County, NC building cards (year built, floor area, stories, rooms,
@@ -92,7 +92,7 @@ source_crs: "EPSG:2264"
 columns:
   parcel_id_assessor: PPRIO
   year_built: BYRBL
-  area_sqft: BTOAR
+  gross_floor_area_sqft: BTOAR
   n_stories: BSTOR
   # BAPVA (appraised building value) is left unmapped: the roll carries
   # the property's improvement value, and a supplement column covering
@@ -173,7 +173,7 @@ drop_columns:
 # only), flags the max, the effective year the mean of the dwellings.
 aggregation_function:
   year_built: min
-  area_sqft: sum
+  gross_floor_area_sqft: sum
   n_stories: max
   n_bedrooms: sum
   n_rooms: sum
