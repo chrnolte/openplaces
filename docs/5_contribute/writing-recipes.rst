@@ -582,6 +582,12 @@ Columns
    - **Do not abbreviate words** - ``value`` not ``val``, ``subdivision`` not
      ``subd``, ``market`` not ``mkt``, ``number`` not ``no``.
    - **``n_``** is the prefix for counts (``n_dwellings``, ``n_sales``).
+   - **``area_<unit>``, unprefixed, is the row's own 2D area seen from above**:
+     a parcel's lot, a footprint's outline, an admin unit's extent. A prefix
+     names what else is measured (``land_area_sqft`` for the land area a
+     source states, ``living_area_sqft``, ``gross_floor_area_sqft``), and
+     ``total_`` marks a sum across several separate things (the footprints on
+     a parcel). Floor area never goes in ``area_sqft``.
 
    The authoritative, entity-scoped list of canonical
    names lives in ``src/openplaces/core/attribute_registry.csv`` and is queryable
