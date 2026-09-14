@@ -1,0 +1,119 @@
+# Recipe: New Hanover County, NC parcel polygons.
+#
+# Source: the county's own tax parcel layer, `Parcels` on its ArcGIS
+# Server (gis.nhcgov.com/server/rest/services/Layers/Parcels/
+# FeatureServer/0), published through the county's ArcGIS Hub site
+# (opendata.nhcgov.com) as item aef2fe275af24317bc262628cbbd77ec.
+# Downloaded as the Hub's cached shapefile export in the service's own
+# projection, NAD83(2011) / North Carolina (ftUS), EPSG 6543.
+#
+# Geometry and ids only: PID, PIN, MAPID, MAPIDKEY, FTR_CODE,
+# SUBIDKEY and ACRES. No values, use codes, owners or addresses.
+#
+# RANKING. This recipe outranks NC OneMap (US-NC_parcel-nconemap-2025)
+# as US-NC-NHA's geometry on admin specificity alone: a county recipe
+# beats a statewide one. That is not a judgement that its data is
+# newer. A newest-first ranking by an `as_of` date on Source is
+# planned but not built. The vintages, measured 2026-09-13:
+# - this layer: Hub export stamped 2026-09-10, item modified
+#   2026-03-11; the layer itself publishes no edit date, and the live
+#   service held 103,923 rows against the export's 103,874;
+# - NC OneMap for US-NC-NHA: `source_date` (transfdate) 2025-12-12 on
+#   all 103,114 rows.
+#
+# OneMap's attributes are not lost. The parcel geospine's
+# link_by_id(auto_discover, entity_type: parcel) joins every parcel
+# recipe covering the county, least specific first, and this layer
+# overwrites none of OneMap's columns. Emulating its three passes on
+# the export: `parcel_id_local` reaches OneMap for 103,064 of 103,874
+# parcels (99.22%); the `parcel_id_alnum` and `parcel_id_alnum_pin`
+# fill-only passes add none (PID and OneMap's `parno` are different
+# id systems). OneMap then fills use_group on 98.27% of these
+# parcels, use_subgroup 97.95%, values, address and sale date 99.22%,
+# legal description 99.15%.
+#
+# Measured on the export (103,874 rows, 0 without geometry, 9
+# invalid):
+# - PID has the account-id shape A99999-999-999-999, the same id NC
+#   OneMap carries as `altparno`; 42 rows have neither PID nor PIN,
+#   and 49 PIDs carry a trailing tab or space (stripped below). 84
+#   rows repeat another's key (OneMap: 83).
+# - Repeated geometry: 10 rows (0.010%), 5 stacks of 2, 4 of them
+#   with distinct ids. OneMap: 30 rows (0.029%), 15 same-id pairs.
+# - Against the roll's lot key (US-NC-NHA_property-nhcgov-2026,
+#   115,028 rows): 97.68% of roll rows find a parcel and 93.86% of
+#   parcels find a roll row (OneMap: 97.70% and 94.53%).
+# - Against OneMap's keys: 99.26% of this layer's keys are in OneMap
+#   and 99.95% of OneMap's are here. The 768 keys only this layer
+#   has (745 of them FTR_CODE "1", 20 matching a roll account) are
+#   probably parcels newer than the roll; not verified.
+# - Unit polygons (sub-lot other than 000): 5,631 (OneMap 5,637).
+# - Against OneMap on 5,000 shared keys: centroids 0.42 m apart
+#   (median), IoU median 0.966, 99.5% at 0.8 or above, 0.18% below
+#   0.5.
+#
+# Rejected alternatives:
+# - The Hub's GeoJSON and file geodatabase exports in EPSG 4326: the
+#   county server's own WGS84 conversion shifts them about 1.26 m
+#   from OneMap (IoU median 0.903; 0.998 once the constant shift is
+#   removed, so the linework is the same). The native projection
+#   avoids that datum step.
+# - Paging the REST layer: a bulk file exists.
+# - Forcing PID's sub-lot to 000 to mirror the roll's lot key: it
+#   lifts the roll match to 99.41% but collapses 5,266 unit polygons
+#   onto shared keys. PID as-is is how OneMap keys the county, so
+#   accounts on a lot reach the lot's 000 polygon exactly as today.
+#
+# Not mapped: ACRES (not clear whether it is the assessor's or the
+# GIS area), FTR_CODE (undocumented codes: PARCEL 100,425, "1"
+# 1,657, COMMON-AREA 1,586, blank 126, "2" 52, PRIVATE ROW 15, "3"
+# 13), MAPID (identical to PIN), MAPIDKEY and SUBIDKEY.
+
+description: >-
+  New Hanover County, NC tax parcel polygons with parcel and map ids,
+  from the county's ArcGIS Hub shapefile export.
+
+admin_id: US-NC-NHA
+
+entity:
+  entity_type: parcel
+  source:
+    source_id: nhcgov
+    # Checked 2026-09-13: the Hub item declares license "none" and the
+    # service copyright is "New Hanover County NC". The Hub site's home
+    # page carries a disclaimer, not a licence: "users are advised
+    # that their use of any County data is at their own risk ... The
+    # user agrees that the County shall be held harmless from all
+    # actions, claims, damages or judgments arising out of the use of
+    # County data." No click-through gate guards the download, and no
+    # resale or redistribution clause was found.
+    license: "unknown (disclaimer only)"
+    terms_url: "https://opendata.nhcgov.com"
+    redistribution_restricted: null
+    portal_url: "https://opendata.nhcgov.com"
+    # Tested 2026-09-13: 200, application/zip, 38.7 MB, Parcels.shp.
+    download_url: "https://hub.arcgis.com/api/v3/datasets/aef2fe275af24317bc262628cbbd77ec_0/downloads/data?format=shp&spatialRefId=6543"
+  version: "2026"
+
+compressed_file_name: "nhc_parcels.zip"
+uncompressed_file_name: "Parcels.shp"
+
+columns:
+  parcel_id_assessor: PID
+  parcel_id_admin3: PIN
+
+transformations:
+  - type: string
+    operation: strip
+    input: parcel_id_assessor
+    output: parcel_id_assessor
+
+# Standardized matching key from the account id, as NC OneMap builds
+# its own from `altparno` (auto per-county conversion; New Hanover
+# resolves to `simple`).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
