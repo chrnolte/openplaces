@@ -19,6 +19,36 @@ Datasets organized by entities are covered here. For datasets that are not organ
 Building blocks
 ~~~~~~~~~~~~~~~
 
+The building blocks below are not levels of one hierarchy.
+
+Each is the unit of a different record-keeper: the cadastre draws parcels, imagery draws footprints, engineers and hazard models see structures, the census and the postal system count dwellings, and the tax roll records properties.
+
+On a detached house they coincide.
+
+Everywhere else they diverge, which is why ``openplaces`` keeps one table per entity rather than one building table with columns from each.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 16 84
+
+   * - Entity
+     - One row is
+   * - :ref:`parcel <parcels>`
+     - One unit of land as the cadastre draws it.
+   * - :ref:`footprint <footprints>`
+     - One building outline polygon. It may cover one building or several (a townhome row).
+   * - :ref:`building <buildings>`
+     - One structure. A townhome row drawn as a single footprint is several buildings; a condominium building holding many units is one building.
+   * - :ref:`dwelling <dwellings>`
+     - One housing unit. A single-family home is one dwelling; a multi-family building is one dwelling per unit.
+   * - :ref:`property <properties>`
+     - One unit of ownership as a tax roll records it: what a sale conveys. A single-family home on its lot is one property; a condominium unit is one property.
+   * - :ref:`transaction <transactions>`
+     - One recorded sale or conveyance.
+
+The same text lives in ``openplaces.core.schema.ENTITY_DEFINITIONS``, and a test keeps the two in step.
+
+
 .. _parcels:
 
 Parcels
@@ -29,6 +59,22 @@ Parcels are geo-referenced boundaries that describe a spatial unit of property: 
 Parcel data is most often created by local land surveyors and tax assessors, typically with the goal of covering all taxable property within a given administrative unit.
 
 Each parcel is indexed by a geometry-derived :ref:`parcel_id (geo_id) <parcel_id>`, a stable fingerprint that identifies the same lot across data versions and sources.
+
+A parcel is land only: a condominium unit has no parcel of its own, and a manufactured home may be owned apart from the lot it stands on.
+
+
+.. _footprints:
+
+Footprints
+----------
+
+Footprints are the boundaries of a building envelope as seen from space.
+
+Footprints are usually produced from satellite imagery.
+
+Because a footprint is what can be seen from above, a row of townhomes in New York is one footprint holding several buildings, each on its own parcel.
+
+Some hazard models (e.g., for hurricane exposure) operate at the footprint level, e.g., :ref:`CHEER footprints <cheer_footprints>`.
 
 
 .. _buildings:
@@ -52,21 +98,7 @@ Hazard risk models often require:
 - The location of buildings, e.g., for flood risk models.
 - Structural properties, e.g., for earthquakes, hurricanes, and tornadoes.
 
-Buildings are neither dwellings nor footprints.
-
-
-.. _footprints:
-
-Footprints
-----------
-
-Footprints are the boundaries of a building envelope as seen from space.
-
-Footprints are usually produced from satellite imagery.
-
-An urban footprint, e.g., in New York might contain multiple parcels, each with its own building, e.g., townhomes.
-
-Some hazard models (e.g., for hurricane exposure) operate at the footprint level, e.g., :ref:`CHEER footprints <cheer_footprints>`.
+A footprint may hold several buildings, and a building may hold many dwellings and many properties.
 
 
 .. _dwellings:
@@ -83,10 +115,12 @@ Dwellings are individual residential units within a building, e.g.,:
 
 - an apartment in a building.
 - a unit in a two-family home.
-- a condominium (separate ownership).
+- a condominium unit.
 - one single-family home.
 
 Address and census databases commonly refer to dwellings.
+
+A dwelling is a housing unit whatever its ownership: a rental apartment building is many dwellings and one property.
 
 
 .. _properties:
@@ -96,15 +130,11 @@ Properties
 
 Properties are the assets (property rights) that are sold, valued, and taxed.
 
-The taxable property is the unit by which most tax assessors organize information.
+Ownership, not structure, draws the boundary: a rental apartment building is one property, and a condominium building of the same size is many.
 
-In practice, properties can be any collection of entities. A property can be:
+The taxable property is the unit by which most tax assessors organize information, so a tax roll's rows are properties whatever each row describes.
 
-- a parcel (excluding any manufactured home on it)
-- a building (a multi-family unit)
-- a dwelling (a condominium)
-- both (a multi-apartment complex)
-- an entirely different type of asset (e.g., a right-of-way).
+A property need not be land or a building at all, e.g., a right-of-way.
 
 
 .. _transactions:
@@ -118,7 +148,72 @@ This typically happens in the form of a sale or easement.
 
 They are recorded in deeds or similar documents.
 
+One transaction may convey several properties, and one property sells many times.
+
 Transaction data, which may identify the seller, buyer, property, and date, is private in many countries.
+
+
+Worked cases
+------------
+
+The table counts rows per entity for common situations.
+
+Every column differs from every other in at least one row.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 12 12 12 12 12
+
+   * - Situation
+     - parcel
+     - footprint
+     - building
+     - dwelling
+     - property
+   * - vacant lot
+     - 1
+     - 0
+     - 0
+     - 0
+     - 1
+   * - detached house on its lot
+     - 1
+     - 1
+     - 1
+     - 1
+     - 1
+   * - house with a detached garage
+     - 1
+     - 2
+     - 2
+     - 1
+     - 1
+   * - townhome row, each home on its own lot
+     - n
+     - 1
+     - n
+     - n
+     - n
+   * - condominium building
+     - 1
+     - 1
+     - 1
+     - n
+     - n
+   * - rental apartment building
+     - 1
+     - 1
+     - 1
+     - n
+     - 1
+   * - manufactured-home park, lots rented
+     - 1
+     - n
+     - n
+     - n
+     - 1
+
+In the manufactured-home park, the homes are personal property in most U.S. states and appear on a separate roll, if at all.
 
 
 Spatial reference and partitioning
