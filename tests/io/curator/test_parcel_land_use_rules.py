@@ -350,8 +350,20 @@ def test_value_share_below_false_at_or_above_ratio():
     assert not matched.iloc[0]
 
 
-def test_value_share_below_include_zero_matches_zero_total():
-    df = pd.DataFrame({'land_value': [0], 'improvement_value': [0]})
+def test_value_share_below_include_zero_ignores_a_zero_total():
+    # No assessed value at all is no evidence of a share. Sampson County
+    # NC ships zero land and improvement values on 98.3% of parcels, and
+    # a zero total that matched voted 77% of the county Condominium.
+    df = pd.DataFrame({'land_value': [0, None], 'improvement_value': [0, None]})
+    matched = evaluate_indicator(
+        df,
+        _value_share_indicator('value_share_below', max_ratio=0.01, include_zero=True),
+    )
+    assert not matched.any()
+
+
+def test_value_share_below_include_zero_matches_zero_beside_a_positive_total():
+    df = pd.DataFrame({'land_value': [0], 'improvement_value': [120_000]})
     matched = evaluate_indicator(
         df,
         _value_share_indicator('value_share_below', max_ratio=0.01, include_zero=True),
