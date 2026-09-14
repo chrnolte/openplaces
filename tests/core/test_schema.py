@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from openplaces.core.constants import ESCAPE_DIR
@@ -96,6 +98,31 @@ class TestEntityDefinitions:
         assert 'condominium building' in ENTITY_DEFINITIONS['building']
         assert 'one dwelling per unit' in ENTITY_DEFINITIONS['dwelling']
         assert 'townhome' in ENTITY_DEFINITIONS['footprint']
+
+    def test_the_entities_docs_page_carries_every_definition(self):
+        # The concept page states each definition in a table so that the
+        # docs and the schema cannot drift; rst wraps lines, so compare on
+        # collapsed whitespace.
+        from openplaces.core.schema import ENTITY_DEFINITIONS
+
+        page = (
+            Path(__file__).resolve().parents[2]
+            / 'docs'
+            / '1_overview'
+            / 'concepts'
+            / 'entities.rst'
+        )
+        text = ' '.join(page.read_text(encoding='utf-8').split())
+        for entity_type in (
+            'parcel',
+            'footprint',
+            'building',
+            'dwelling',
+            'property',
+            'transaction',
+        ):
+            definition = ' '.join(ENTITY_DEFINITIONS[entity_type].split())
+            assert definition in text, entity_type
 
 
 class TestSourceTerms:
