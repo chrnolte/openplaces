@@ -61,3 +61,30 @@ def test_sample_raster_at_points_nodata(tmp_path):
         dst.write(data, 1)
     values = sample_raster_at_points(path, [0.5], [1.5])
     assert np.isnan(values[0])
+
+
+def test_sample_raster_at_points_bilinear_ignores_nodata_neighbors(tmp_path):
+    """A point beside a masked pixel is a mean of valid pixels only."""
+    data = np.full((4, 4), 10.0, dtype='float32')
+    data[:, 2:] = -9999.0  # right half nodata
+    path = tmp_path / 'half_nodata.tif'
+    with rasterio.open(
+        path,
+        'w',
+        driver='GTiff',
+        height=4,
+        width=4,
+        count=1,
+        dtype='float32',
+        crs='EPSG:32619',
+        transform=from_origin(0, 4, 1, 1),
+        nodata=-9999.0,
+    ) as dst:
+        dst.write(data, 1)
+    # x=1.9 sits between the centers of column 1 (valid) and column 2
+    # (nodata): blending with the fill value would give a huge negative,
+    # a NaN-propagating blend would give NaN; neither is the terrain.
+    values = sample_raster_at_points(path, [1.9, 3.5], [2.0, 2.0], 'bilinear')
+    assert values[0] == pytest.approx(10.0)
+    # No valid neighbor at all stays NaN rather than inventing a value.
+    assert np.isnan(values[1])

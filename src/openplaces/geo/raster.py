@@ -252,7 +252,7 @@ def zonal_stats_with_exactextract(
     return gpd.GeoDataFrame(result, geometry='geometry', crs=gdf.crs)
 
 
-def sample_raster_at_points(raster_path, x, y):
+def sample_raster_at_points(raster_path, x, y, interpolation: str = 'nearest'):
     """Sample a single-band raster at arbitrary points, vectorized.
 
     Reads the full band into memory once, then resolves every point's
@@ -272,6 +272,19 @@ def sample_raster_at_points(raster_path, x, y):
         CRS it was ingested in. `x`/`y` must already be in that CRS.
     x, y : array-like of float
         Point coordinates, in the raster's own CRS.
+    interpolation : {'nearest', 'bilinear'}
+        `'nearest'` (default) returns the value of the pixel the point
+        falls in, so a value field stepped at every pixel edge.
+        `'bilinear'` interpolates between the four surrounding pixel
+        centers, giving a continuous surface: what a vertex-draped
+        polygon needs, because two shapes sampling the same edge at
+        different vertices otherwise step differently and open gaps.
+        Nodata never enters the interpolation: a point whose
+        neighborhood touches nodata or the raster edge is interpolated
+        over its valid neighbors only, with the weights renormalized, so
+        a value next to a masked region is a weighted mean of real
+        pixels rather than a blend with the fill value. Only a point with
+        no valid neighbor at all returns NaN.
 
     Returns
     -------
@@ -279,20 +292,56 @@ def sample_raster_at_points(raster_path, x, y):
         One value per point, `float`. NaN for points outside the raster's
         extent or landing on a nodata pixel.
     """
+    if interpolation not in ('nearest', 'bilinear'):
+        raise ValueError(
+            f"interpolation must be 'nearest' or 'bilinear', got {interpolation!r}."
+        )
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
 
     with rasterio.open(raster_path) as src:
         band = src.read(1, masked=True)
-        cols, rows = ~src.transform * (x, y)
+        cols_f, rows_f = ~src.transform * (x, y)
 
-    cols = np.floor(cols).astype(np.int64)
-    rows = np.floor(rows).astype(np.int64)
+    nearest = _gather_pixels(band, np.floor(rows_f), np.floor(cols_f))
+    if interpolation == 'nearest':
+        return nearest
+
+    # Pixel centers sit at half-integer pixel coordinates, so the
+    # interpolation cell around a point starts half a pixel back.
+    fr = rows_f - 0.5
+    fc = cols_f - 0.5
+    r0 = np.floor(fr)
+    c0 = np.floor(fc)
+    wr = fr - r0
+    wc = fc - c0
+    values = np.stack(
+        [
+            _gather_pixels(band, r0, c0),
+            _gather_pixels(band, r0, c0 + 1),
+            _gather_pixels(band, r0 + 1, c0),
+            _gather_pixels(band, r0 + 1, c0 + 1),
+        ]
+    )
+    weights = np.stack([(1 - wr) * (1 - wc), (1 - wr) * wc, wr * (1 - wc), wr * wc])
+    # Drop the nodata corners and renormalize over the rest: a masked
+    # corner contributes neither its fill value nor a NaN, so the
+    # surface stays continuous right up to the mask.
+    weights = np.where(np.isnan(values), 0.0, weights)
+    total = weights.sum(axis=0)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        bilinear = np.nansum(values * weights, axis=0) / total
+    return np.where(total > 0, bilinear, np.nan)
+
+
+def _gather_pixels(band, rows, cols):
+    """Values at integer (row, col) positions; NaN off-raster or nodata."""
+    rows = rows.astype(np.int64)
+    cols = cols.astype(np.int64)
     in_bounds = (
         (rows >= 0) & (rows < band.shape[0]) & (cols >= 0) & (cols < band.shape[1])
     )
-
-    values = np.full(len(x), np.nan)
+    values = np.full(len(rows), np.nan)
     sampled = band[rows[in_bounds], cols[in_bounds]]
     values[in_bounds] = np.where(
         np.ma.getmaskarray(sampled), np.nan, np.ma.getdata(sampled)
