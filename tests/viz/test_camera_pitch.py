@@ -76,3 +76,34 @@ def test_non_map_view_state_warns_and_is_left_alone():
     with pytest.warns(UserWarning, match='Cannot set camera pitch'):
         set_camera_pitch(m, pitch=75, max_pitch=85)
     assert isinstance(m.view_state, GlobeViewState)
+
+
+def test_camera_echo_is_not_bounced_back_to_the_browser():
+    # ipywidgets re-sends a frontend-set value when the validated value
+    # serializes differently; lonboard's echo lacks the constraints, so
+    # every drag would come back as a camera reset with max_pitch 60.
+    # Unlike `_drag`, go through `set_state`, the path a browser message
+    # takes, which is what puts the property lock in place.
+    def browser_drag(m, pitch):
+        m.set_state(
+            {
+                'view_state': {
+                    'longitude': -71.68,
+                    'latitude': 42.47,
+                    'zoom': 11.4,
+                    'pitch': pitch,
+                    'bearing': 15.0,
+                }
+            }
+        )
+
+    m = set_camera_pitch(_map(), pitch=45, max_pitch=85, min_pitch=0)
+    sent = []
+    m.send_state = lambda key=None: sent.append(key)
+    browser_drag(m, 30.0)
+    assert 'view_state' not in sent
+    assert m.view_state.pitch == 30.0
+    # Above the default ceiling the re-assert must still reach the browser.
+    browser_drag(m, 70.0)
+    assert 'view_state' in sent
+    assert m.view_state.max_pitch == 85
