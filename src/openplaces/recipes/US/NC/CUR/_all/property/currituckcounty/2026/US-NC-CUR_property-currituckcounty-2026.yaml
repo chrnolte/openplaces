@@ -1,0 +1,89 @@
+# Recipe: Currituck County, NC property tax roll (Tyler iasWorld AA502
+# parcel export).
+#
+# Source: the county Tax Department's "Tax Data" page, which publishes
+# its iasWorld AA502 extract as five Excel workbooks (parcel, dwelling,
+# commercial, land, other buildings), each in a "certified" and an
+# "updated" edition, plus one PDF layout per file. This recipe reads the
+# updated parcel workbook (`aa502nccur-updated-parcel.xlsx`, one sheet,
+# 52 columns, ~6 MB). Checked 2026-09-16: 26,947 rows, every `Parcel ID`
+# present and distinct (15 characters, shape `999A99999999999`), one
+# `Tax Year` (2026) on every row.
+#
+# WHY THIS RECIPE EXISTS. It is the roll that the county's dwelling
+# cards (US-NC-CUR_property-currituckcounty-2026_dwellings) supplement.
+# A card table's rows are details of properties, not properties, so it
+# must declare `supplements:` a property roll (AGENTS.md, "Entity model
+# and stage roles"). Currituck's only other recipe,
+# US-NC-CUR_parcel-currituckcounty-2026, is a `parcel` recipe (the GIS
+# tax parcel layer), and a supplement must share its roll's entity type
+# (recipe.get_supplemented_table). Before this recipe the county had no
+# property roll, so the property spine had no Currituck rows for floor
+# area to land on.
+#
+# Deliberately thin: only the account id and tax year are mapped.
+# Values, land use, sale and situs fields in this workbook repeat what
+# the parcel layer recipe already carries (the same iasWorld system
+# behind both), and the parcel geospine's property link_by_id would
+# copy any of them it lists onto parcels a second time. Owner names
+# and mailing addresses are never mapped.
+#
+# Keys, measured 2026-09-16 on parcel_id_local of the ingested files
+# (filled and distinct on all 26,947 roll rows): 99.47% of this roll's
+# keys are in the parcel layer recipe (27,895 rows) and 99.77% of the
+# layer's distinct keys are in this roll. 17,722 of the 17,723
+# dwelling-card keys are in this roll, so 65.8% of properties carry
+# living area: 99.0% of those on land-use codes 51x (17,269
+# properties) and 99.6% on 55x (460), under 2% on 50x and 53x.
+#
+# The "certified" workbooks are the certified roll of the same tax
+# year; "updated" is the later refresh and is the one used here.
+
+description: >-
+  Currituck County, NC property tax roll (account ids) from the county's
+  Tyler iasWorld AA502 parcel Excel export.
+
+admin_id: US-NC-CUR
+
+entity:
+  entity_type: property
+  source:
+    source_id: currituckcounty
+    # Checked 2026-09-16: the Tax Data page states no licence, terms,
+    # resale or redistribution condition, and no click-through guards
+    # the download. The site footer links a "Disclaimer" page whose
+    # served HTML carries no terms text either.
+    license: "unknown (no terms on the county's tax data page)"
+    terms_url: "https://currituckcountync.gov/tax/tax-data/"
+    redistribution_restricted: null
+    portal_url: "https://currituckcountync.gov/tax/tax-data/"
+    download_url: "https://www.currituckcountync.gov/wp-content/uploads/aa502nccur-updated-parcel.xlsx"
+  version: "2026"
+
+uncompressed_file_name: "aa502nccur-updated-parcel.xlsx"
+
+sheet_name: 0
+
+# Read every cell as text: the account id is an alphanumeric code, and
+# the numeric fields are cast explicitly below.
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel ID
+  tax_year: Tax Year
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: tax_year
+    output: tax_year
+
+# The same standardized key the parcel layer recipe builds from its
+# PARCEL_ID (the bundled US-NC-CUR conversion), so every account
+# reaches its parcel and its dwelling cards.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

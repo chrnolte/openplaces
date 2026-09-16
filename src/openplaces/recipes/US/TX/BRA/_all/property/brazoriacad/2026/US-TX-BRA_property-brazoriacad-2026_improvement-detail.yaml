@@ -1,0 +1,164 @@
+# Recipe: Brazoria County, TX certified appraisal roll, improvement
+# detail member (PACS File #8, one row per building component). Same
+# download as US-TX-BRA_property-brazoriacad-2026; read that roll's
+# header for the source, its terms and its nested ZIP.
+#
+# RULE. Each component type below was assigned from the district's own
+# type code and description, reviewed over the complete code table of
+# the 2026 export (384 types; listed, never matched by prefix). Areas
+# are imprv_det_area in square feet, summed over the property's listed
+# components; an area of 0 or 1 reads as missing.
+#
+# NO DESCRIPTION RULE. A "MAIN" description filter drops every mobile
+# home (MAMH1, MAMH2 read "MOBILE HOME ...").
+#
+# LIVING AREA (living_area_sqft): MA main area, MA2.0 and MA3.0 (2 and
+# 3 story), MAMH1 and MAMH2 mobile homes, DLA detached living area,
+# DLA2 its second story, ATT finished attic, AF finish attic, FBR
+# finished basement rec room, SM6 attached frame addition to a mobile
+# home (Victoria's district describes the same code as an attached
+# living area), MH mobile home, 351 single-family residence and 352 and
+# 451 multiple residence (low rise, senior citizen) from the commercial
+# schedule. Against the inventory list (MA, MA2.0, MA3.0, MAMH1, MAMH2)
+# this adds the candidates DLA, DLA2 and ATT, and AF, FBR, SM6, MH,
+# 351, 352 and 451.
+#
+# LEFT OUT OF LIVING AREA. AU attic unfinished, BT1 basement, SM2 wood,
+# metal or glass addition to a mobile home: enclosed, finish not stated
+# (they are in gross area). RSE residential screen enclosure and SM1
+# screened porch are screened, not enclosed. 459 mixed retail with
+# residential units, 544 motel office-apartment, 538 commercial
+# cottage, 551 rooming house, 393 labor dormitory, 394 transient labor
+# cabin, 330 home for elderly, 424 group care home and 710 retirement
+# community are lodging, institutional, or not separable from retail.
+#
+# GROSS FLOOR AREA (gross_floor_area_sqft): the living types plus
+# garages (BG brick garage, FG frame garage, DFG and DBG detached, RG1
+# and RG2, YRG4 and YRG5 detached, CRG1 and CRG2 attached, 153
+# residential garage attached), enclosed porches (EFP, EFPU, EFPL,
+# EMP, EMPU, CRP2, CRP4), attached storage (AS1, AS2, AS3), AU attic
+# unfinished, BT1 basement, SM2 mobile-home addition. Open porches,
+# patios, decks, carports, canopies, lean-tos, pole buildings, storage
+# buildings (RS1 to RS3), utility sheds (FU, MU), barns, pools, paving,
+# skirting and commercial building types are excluded: never a sum of
+# all segments.
+#
+# YEAR BUILT. year_built is yr_built of the living-area components, the
+# earliest per property.
+#
+# MEASURED on the 2026 export (aggregates only): File #8 holds 775,727
+# rows over 143,324 properties; 309,288 are listed types. Share of the
+# roll's properties with living area > 0, by improvement state class
+# (roll imprv_state_cd): A 97.6% of 119,853, B 97.9%, E 54.9% of
+# 6,359, M 99.6%. Class A per-property living area p10/p50/p90 1,170 /
+# 2,024 / 3,307; gross 1,344 / 2,497 / 3,960 (median gross/living
+# 1.21). Properties without living area, class E especially, carry
+# only storage buildings, pole barns, lean-tos, canopies and
+# bulkheads. 69.6% of TxGIO's Brazoria parcel ids have a living area
+# here; 90.8% of properties with one are in TxGIO.
+
+description: >-
+  Brazoria County, TX certified appraisal roll, improvement detail member:
+  living and gross floor area and year built, summed per property.
+
+admin_id: US-TX-BRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: brazoriacad
+    # Same download as the roll; see its terms note.
+    license: "public domain per the district website disclaimer; no warranty"
+    terms_url: "https://brazoriacad.org/"
+    redistribution_restricted: false
+    portal_url: "https://brazoriacad.org/public-gis-and-property-data-downloads/"
+    download_url: "https://api.pcloud.com/getpubzip?code=kZYMUV7ZD6GgiyP3moR0gLKHGc1l5Qd0c9xV&fileids=92286624172&filename=BRAZORIA-2026-CERTIFIED.zip"
+  version: 2026
+
+compressed_file_name: "BRAZORIA-2026-CERTIFIED.zip"
+uncompressed_file_name: "2026-07-23_003457_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+extract_members:
+  - "2026-07-23_003457_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [filler, 10] # Imprv_det_class_cd
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+# Only the listed component types; every other row carries nothing.
+query: >-
+  imprv_det_type_cd in ['MA', 'MA2.0', 'MA3.0', 'MAMH1', 'MAMH2', 'DLA',
+  'DLA2', 'ATT', 'AF', 'FBR', 'SM6', 'MH', '351', '352', '451', 'BG', 'FG',
+  'DFG', 'DBG', 'RG1', 'RG2', 'YRG4', 'YRG5', 'CRG1', 'CRG2', '153', 'EFP',
+  'EFPU', 'EFPL', 'EMP', 'EMPU', 'CRP2', 'CRP4', 'AS1', 'AS2', 'AS3', 'AU',
+  'BT1', 'SM2']
+
+columns:
+  year_built: yr_built
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA2.0', 'MA3.0',
+      'MAMH1', 'MAMH2', 'DLA', 'DLA2', 'ATT', 'AF', 'FBR', 'SM6', 'MH', '351',
+      '352', '451']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_area > 1)
+    inputs: [imprv_det_area]
+    output: gross_floor_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MA2.0', 'MA3.0',
+      'MAMH1', 'MAMH2', 'DLA', 'DLA2', 'ATT', 'AF', 'FBR', 'SM6', 'MH', '351',
+      '352', '451']) & (year_built > 1800) & (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  gross_floor_area_sqft: sum
+  year_built: min
+
+supplements: US-TX-BRA_property-brazoriacad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail

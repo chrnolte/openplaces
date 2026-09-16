@@ -1,0 +1,131 @@
+# Recipe: Jefferson County, TX certified appraisal roll (JCAD).
+#
+# Why: the statewide TxGIO parcel layer carries no building floor area
+# for Jefferson. The district's certified roll does, in its improvement
+# detail member; this recipe is the property roll those details
+# supplement (see its _improvement-detail sibling).
+#
+# FORMAT. True Automation / PACS "Appraisal Export", layout 8.0.34, the
+# same vendor layout as US-TX-VIC_property-victoriacad-2026 (read that
+# recipe's header for the format and the prop_id zero-padding trap).
+# The ZIP ships the layout spreadsheet ("Appraisal Export Layout -
+# 8.0.34.xlsx"), a README and the district's export notes beside the
+# data. APPRAISAL_INFO (File #2) is 1.5 GB raw; the reader stops at
+# situs_num, the last field mapped.
+#
+# MEASURED on the 2026 export (154,028 rows, prop_id unique):
+# land_state_cd 83.2%, imprv_state_cd 60.8%. The roll also carries
+# personal-property and mineral accounts, which TxGIO omits, so the
+# key overlap is stated both ways: 98.7% of TxGIO's Jefferson parcel
+# ids are in this roll; 78.2% of the roll's ids are in TxGIO, 94.0% of
+# those with a land_state_cd.
+#
+# NOTE: member names carry the export date and the per-export dataset
+# id, so the name below is pinned to this vintage.
+#
+# NOT MAPPED. Owner name and mailing address (py_owner_name and the
+# py_addr block) are never read; nothing downstream needs them. Land
+# and improvement values are not mapped for the reason given in the
+# Victoria recipe; market_value is the total.
+
+description: >-
+  Jefferson County, TX certified appraisal roll (PACS 8.0.34 export): state
+  land-use codes, legal acreage, situs and market value keyed by property.
+
+admin_id: US-TX-JEF
+
+entity:
+  entity_type: property
+  source:
+    source_id: jeffersoncad
+    # Checked 2026-09-16 by fetching the data download page: a
+    # site-footer copyright over the website only, no licence, no
+    # attribution requirement, no resale or redistribution clause for
+    # the published roll.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://jcad.org/data-download/"
+    download_url: "https://jcad.org/wp-content/uploads/2026/07/CERTIFIED-2026_0_PUBLIC.zip"
+  version: 2026
+
+compressed_file_name: "CERTIFIED-2026_0_PUBLIC.zip"
+uncompressed_file_name: "CERTIFIED-2026_0_PUBLIC/2026-07-21_002178_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); same offsets as Victoria's roll.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: land_area_ac
+    output: land_area_ac
+  - type: expression
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
+  # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
+  # bare form.
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  land_area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

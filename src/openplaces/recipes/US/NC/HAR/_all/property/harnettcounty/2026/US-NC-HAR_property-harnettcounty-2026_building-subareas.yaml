@@ -1,0 +1,163 @@
+# Recipe: Harnett County, NC building subareas (gross floor area from
+# enclosed subarea types), supplementing the county property roll
+# US-NC-HAR_property-harnettcounty-2026.
+#
+# SOURCE. BuildingSubarea_Info.csv from the county's 2026 appraisal
+# files; see the roll's header for the page, the terms and the ="..."
+# quoting (no row of this file is shifted by it: every column read
+# here agrees with a parse with repaired quoting).
+#
+# ROW SHAPE, MEASURED 2026-09-16: 326,801 subareas (Code, Description,
+# ActualArea, EffectiveArea, PercentageOfBase, cost) on all 57,062
+# buildings of Building_Info; 132 distinct codes. ActualArea is the
+# measured area; EffectiveArea is the cost-weighted area and is not
+# read. The sum of ActualArea over a building equals Building_Info
+# TotalActualArea on every building, so that total includes decks,
+# patios and carports and is not gross floor area. 73 parcel numbers
+# here have no roll row (see the roll's LOST ROWS).
+#
+# GROSS FLOOR AREA. gross_floor_area_sqft is the sum of ActualArea over
+# the ENCLOSED codes below, per property. The list is built from the
+# county's own subarea descriptions, in two parts:
+# 1. Heated area: the codes whose sum equals Building_Info
+#    HeatedAreaCard (equal on all but 3 of 57,062 buildings), i.e.
+#    base and finished upper stories (BAS, FUS, FUS3), semi-finished
+#    base (SFB), finished basements (FBM and the commercial FAB, FCL,
+#    FGO, FOB, FSB), manufactured-home bases (BAS-02 double wide,
+#    BAS-03 single wide), townhouse, condominium, duplex and apartment
+#    bases, overhang (OVH, counted in heated area by the county),
+#    sunrooms (SRF, SRU), mezzanine (MEZ), office areas (AOF, FOF) and
+#    the commercial type areas (CHURCH ... SKATING RINK).
+# 2. Enclosed but not heated: enclosed porches (FEP "Porch, Enclosed,
+#    Finished, Heated"; UEP "Porch, Enclosed, Unfinished, No Heat");
+#    attached and basement garages (FGD/UGD "Garage, ..., with Door",
+#    FGR/UGR "Garage, Finished/Unfinished", FGB/UGB "Garage ...
+#    Basement"; none of them says detached, and the detached garages
+#    have codes of their own); unfinished upper stories (UUS, UUS3);
+#    unfinished and semi-finished basements (UBM, SBM, UAB, UCL, UOB,
+#    USB, UGO, UHM, UWB); loft (LFT); store display area (SDA).
+# EXCLUDED: open and screened porches (FOP, UOP, FSP, USP), wood deck
+# (WDD), patio (PTO), stoop (STP), terrace (TER), canopies (CAN, CDN),
+# carports (FCP, UCP, FDC, UDC), loading platforms (CLP, ULP),
+# detached garages (FDG, UDG), cabana (FCB, likely a detached pool
+# structure; 1 row), unfinished attic (UAT, 6 rows), and storage and
+# utility rooms (FST, UST, FUT, UUT: the descriptions do not say
+# whether they are enclosed rooms; 8,857 rows, median 48-64 sqft,
+# 0.8 million sqft or 0.4% of all subarea area).
+# MEASURED 2026-09-16 after ingest, summed per property of the roll:
+# gross > 0 on 54,553 properties, p10/p50/p90 1,140 / 2,119 / 3,614
+# sqft; on all 54,547 properties with living area (buildings
+# supplement) gross exists and is never below it; gross / living
+# p10 1.00, p50 1.15, p90 1.34. The excluded codes are 12.9% of all
+# subarea area.
+# A subarea with an excluded code contributes null, so a property with
+# no enclosed subarea has no gross area, not 0.
+
+description: >-
+  Harnett County, NC gross floor area (sum of enclosed building subarea
+  types) supplementing the county property roll, from the 2026
+  appraisal CSV files.
+
+admin_id: US-NC-HAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: harnettcounty
+    # Same page and terms as the roll; see its note.
+    license: >-
+      unknown (no terms on the county's appraisal data page; site
+      footer copyright notice only)
+    terms_url: "https://www.harnett.org/tax/real-property-appraisal-data.asp"
+    redistribution_restricted: null
+    portal_url: "https://www.harnett.org/tax/real-property-appraisal-data.asp"
+    download_url: "https://www.harnett.org/tax/downloads/BuildingSubarea_Info.csv"
+  version: "2026"
+
+uncompressed_file_name: "BuildingSubarea_Info.csv"
+
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: ParcelNumber
+  gross_floor_area_sqft: ActualArea
+
+transformations:
+  # Unwrap the ="..." quoting; plain values pass unchanged.
+  - type: string
+    operation: extract_named
+    input: parcel_id_assessor
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: parcel_id_assessor
+  - type: string
+    operation: extract_named
+    input: gross_floor_area_sqft
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: gross_floor_area_sqft
+  - type: string
+    operation: extract_named
+    input: Code
+    args:
+      pattern: '^=?"?(.*?)"?$'
+    output: subarea_code
+  - type: unary
+    operation: to_numeric
+    input: gross_floor_area_sqft
+    output: gross_floor_area_sqft
+  # 1 for an enclosed subarea type (see GROSS FLOOR AREA), else null.
+  - type: remap_conditional
+    input: subarea_code
+    conditions:
+      # Heated: residential bases, stories, basements, sunrooms.
+      - condition: in
+        values: [BAS, BAS-02, BAS-03, FUS, FUS3, SFB, FBM, OVH, SRF, SRU,
+                 TWNHSE SFR, TWNHSE APT, CONDO, DUP/TRI, GARDEN APT,
+                 HIGHR APT, APT, MEZ, AOF, FOF, FAB, FCL, FGO, FOB, FSB]
+        output: 1.0
+      # Heated: commercial type areas.
+      - condition: in
+        values: [CHURCH, WHSE, OWF, OFFICE, DNTWN ROW, CONV RES,
+                 SERV GARG, MINI STRG, SCHOOL, STRIP, MED BLDG, CLUB,
+                 LIGHT MANUF, RETAIL, SCH/COLL PRI, DORM, GYM, CONV ST,
+                 INSTIT, POLICE/FIRE, UTILITY, REST, HFTA, FAST FD,
+                 AUTO SALE/SERV, DAYCARE, BANK, MOTEL, BEAUT/BARB,
+                 FUNERAL, HOTEL, LIBRARY, MAN CARWSH, SUPERMRKT,
+                 LAUNDRY, CAFETR, DISC STR, GOVERN BLDG, HOSP,
+                 COUNTRY CLUB, AUTO CARWSH, DEPT STR, VETS, AUDI,
+                 HEAVY MANUF, COLLEGE, CLD STRG, KENNEL, SERV STATION,
+                 FRAN DRUGSTR, MINI LUBE, FURN. SHOWRM, INDUST,
+                 CLASSRM, RADIO, CONV FF, PACKING/FOOD, LAB/RESEARCH,
+                 BOWLING, HANGAR, HEALTH CLUB, SKATING RINK]
+        output: 1.0
+      # Enclosed, not heated: porches, attached and basement garages,
+      # unfinished stories and basements, loft, display area.
+      - condition: in
+        values: [FEP, UEP, FGD, UGD, FGR, UGR, FGB, UGB, UUS, UUS3,
+                 UBM, SBM, UAB, UCL, UOB, USB, UGO, UHM, UWB, LFT, SDA]
+        output: 1.0
+    output: is_enclosed
+  - type: unary
+    operation: to_numeric
+    input: is_enclosed
+    output: is_enclosed
+  - type: expression
+    expression: "gross_floor_area_sqft * is_enclosed"
+    inputs: [gross_floor_area_sqft, is_enclosed]
+    output: gross_floor_area_sqft
+
+drop_columns:
+  - subarea_code
+  - is_enclosed
+
+aggregation_function:
+  gross_floor_area_sqft: sum
+
+# Joined on the raw parcel number; see the buildings supplement.
+supplements: US-NC-HAR_property-harnettcounty-2026
+supplements_key: parcel_id_assessor
+
+save_to:
+  data_dir: core
+  filename: building-subareas

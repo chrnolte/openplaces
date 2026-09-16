@@ -1,0 +1,159 @@
+# Recipe: San Patricio County, TX certified appraisal roll, improvement
+# features from the improvement detail member (PACS File #8, one row per
+# building component). Same download as
+# US-TX-SAP_property-sanpatcad-2026; read that roll's header for the
+# source, the layout version and its terms.
+#
+# RULE. Each component type below was assigned from the district's own
+# type code and description (listed, never crosswalked, never a code
+# prefix). The file ships 153 distinct types; the district's list was
+# read in full (codes and descriptions, with rows, properties and median
+# area per type). Areas are the component's imprv_det_area in square
+# feet, summed over the property's components; an area of 0 or 1 reads
+# as missing (the district puts 1 in the area of a component valued as
+# a unit, e.g. FP 'FIREPLACE' and POOL).
+#
+# LIVING AREA. MA 'MAIN AREA', MA2 'MAIN AREA SECOND STORY', MA3 'MAIN
+# AREA THIRD STORY', MAA 'MAIN AREA ADDITION', LQ 'LIVING QUARTERS', MH
+# 'MANUFACTURED HOME', MTS 'MOBILE HOME SPECIAL PRICE' and MAG 'GARAGE
+# MA CONV' (a garage converted to main area). Left out: LS 'ATTIC
+# FINISHED NO AC' (finished but not conditioned); GRAPT 'GARAGE
+# APARTMENT', whose one area covers the garage and the apartment
+# together (median 600); REC 'RECREATIONAL ROOM', BATH 'BATH HOUSE' and
+# OF 'OFFICE', which are not dwelling space; S12AP352 'APARTMENT /
+# MULTIPLE RESI' and the other S-prefixed 'ORIG CODE' types, commercial
+# cost-manual sections whose area is gross building area; MT and RT,
+# 'ORIG CODE' types with no description. A code prefix would have
+# missed LQ and MH.
+#
+# GROSS FLOOR AREA is deliberately not mapped. The enclosed non-living
+# types are GR 'GARAGE' and UTIL 'UTILITY ROOM', and GR does not say
+# whether the garage is attached; the district also gives each
+# component its own improvement id, so attachment cannot be read from
+# the grouping either. The sum of all components is not gross area: it
+# includes DW 'DRIVEWAY', S66PL 'DRIVE WAY / PARKING LOT', POR 'PORCH'
+# and PAT 'PATIO DECK BALCONY'.
+#
+# MAIN AREA. quality_grade is imprv_det_class_cd, year_built yr_built
+# and effective_year_built depreciation_yr, all read on the living-area
+# components only; the first living-area component's class stands for
+# the property and the years take the earliest. Both years read as
+# missing outside 1801 to 2027 (0 is the district's blank).
+#
+# MEASURED on the 2026 export (164,120 components over 29,186
+# properties; aggregates only). A is the 19,956 single-family
+# properties (improvement state class A, File #2). living_area_sqft A
+# 94.3% (E 82.0%, M 97.6%, B 42.6%, F 7.1%), per-property median 1,470
+# on A (p10 900, p90 2,373). B is low because apartment complexes are
+# described by commercial cost-manual sections, left out above.
+
+description: >-
+  San Patricio County, TX certified appraisal roll, improvement detail member:
+  living area, construction class and year built per property.
+
+admin_id: US-TX-SAP
+
+entity:
+  entity_type: property
+  source:
+    source_id: sanpatcad
+    # Same download as the roll; see its terms note.
+    license: "unknown (no terms stated on the data download page)"
+    redistribution_restricted: null
+    portal_url: "https://sanpatcad.org/data-downloads/"
+    download_url: "https://sanpatcad.org/wp-content/uploads/2026/08/ALL-ENTITIES.zip"
+  version: 2026
+
+compressed_file_name: "ALL-ENTITIES.zip"
+uncompressed_file_name: "2026-07-27_001687_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [depreciation_yr, 4]
+  - [imprv_det_area, 15]
+
+columns:
+  quality_grade: imprv_det_class_cd
+  year_built: yr_built
+  effective_year_built: depreciation_yr
+
+# The class code '*' is the PACS blank.
+null_value_strings: ['*']
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA2', 'MA3', 'MAA',
+      'LQ', 'MH', 'MTS', 'MAG']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      quality_grade.where(imprv_det_type_cd.isin(['MA', 'MA2', 'MA3', 'MAA',
+      'LQ', 'MH', 'MTS', 'MAG']))
+    inputs: [quality_grade, imprv_det_type_cd]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MA2', 'MA3', 'MAA', 'LQ',
+      'MH', 'MTS', 'MAG']) & (year_built > 1800) & (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where(imprv_det_type_cd.isin(['MA', 'MA2', 'MA3',
+      'MAA', 'LQ', 'MH', 'MTS', 'MAG']) & (effective_year_built > 1800) &
+      (effective_year_built <= 2027))
+    inputs: [effective_year_built, imprv_det_type_cd]
+    output: effective_year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  quality_grade: first
+  year_built: min
+  effective_year_built: min
+
+supplements: US-TX-SAP_property-sanpatcad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features

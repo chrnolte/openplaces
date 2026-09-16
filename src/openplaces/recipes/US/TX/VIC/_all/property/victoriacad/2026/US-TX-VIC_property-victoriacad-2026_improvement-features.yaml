@@ -13,12 +13,54 @@
 # elsewhere: the file lists the components present, never their absence.
 # garage_type keeps the district's code of the first garage component.
 #
+# FLOOR AREA (revised 2026-09-16). living_area_sqft and
+# gross_floor_area_sqft both come from this recipe and from nowhere else
+# in the family: the sibling ..._improvement-detail recipe used to map
+# its MA-prefixed segment sum to gross_floor_area_sqft, which was
+# neither figure (the prefix takes in enclosed garages and porches and
+# misses SM6, the mobile-home attached living area).
+# - living_area_sqft sums the living-area types listed below. Beyond
+#   the main-area types it takes the mobile-home types (MAT 'MAIN AREA
+#   MBH TAG', RM1 and RM2 single- and double-wide), GRM ('GAME / BONUS
+#   ROOM') and LOFT, all finished interior space by description. MA
+#   also carries the main area of mobile homes (classes MHA, MHL, MHF,
+#   MHG) and of apartments (classes AM, FM, GF and kin, state class B).
+# - Commercial main areas are left out by class, not by type: the class
+#   family HC (HCA, HCG, HCE) occurs on MA and MA2 only under
+#   commercial improvements (state class F, 95 rows in 2026), and OFFM
+#   (2 rows) names an office, so those rows are dropped. Victoria otherwise codes commercial buildings
+#   under their own C-prefixed types (COFF, CRTL, ...), none listed.
+#   What remains unseparated: 33 MA2 rows ('SECOND FLOOR') and both MA3
+#   rows ('THIRD FLOOR') under commercial improvements carry the blank
+#   class.
+# - gross_floor_area_sqft is the enclosed floor area of the living-area
+#   types plus the enclosed parts of the same structure: attached and
+#   enclosed garages (GAR, MAEG, MAFEG, EGAR; the detached garage types
+#   have their own codes and are not listed), enclosed porches (EP,
+#   MAEFP, MAEMP, MAEP), UTIL 'UTILITY ROOM', SUNR 'SUN ROOM', SM2
+#   'ADDITION WOOD/MTL OR GLAS', UATT 'UNFINISHED ATTIC', UNFA
+#   'UNFINISHED AREA' and the basements (UBAS, BASR). Left out: open,
+#   screened and covered porches, decks, paving, pools, carports,
+#   detached garages and outbuildings, and every commercial building
+#   type. A commercial property therefore has no gross area unless it
+#   also has one of the listed types (a garage, enclosed porch or
+#   utility room is enough), and then the figure covers those rows only.
+# - An area of 0 or 1 reads as missing, as for the other areas.
+# - MEASURED 2026-09-16 on the 2026 export, per property with state
+#   class A (28,149): living_area_sqft 95.3%, p10/p50/p90 954, 1,520,
+#   2,559 (the 2026-09-13 list gave 953, 1,518, 2,545, and the old
+#   MA-prefix gross 964, 1,546, 2,571); it changed on 1.4% of them.
+#   gross_floor_area_sqft 95.3%, p10/p50/p90 1,056, 1,881, 3,113; it is
+#   never below living area and equals it on 32.5%. The MEASURED block
+#   below predates this revision for living_area_sqft.
+#
 # MAIN AREA. quality_grade is imprv_det_class_cd and
-# effective_year_built is depreciation_yr, both read on the living-area
-# components only. The class code is the district's construction class
-# (quality grade, often with a material or story suffix), kept as
-# published; the first living-area component's class stands for the
-# property. The depreciation year is the year PACS depreciates the
+# effective_year_built is depreciation_yr, both read on the main-area
+# types of the 2026-09-13 living list (the TYPES list below without
+# MAT, RM1, RM2, GRM and LOFT, and without the class filter). The class
+# code is the district's construction class (quality grade, often with
+# a material or story suffix), kept as published; the first main-area
+# component's class stands for the property. The depreciation year is the year PACS depreciates the
 # component from, the effective year built; the property takes the
 # earliest, as year_built does in the Texas improvement-detail recipes.
 # year_built is not mapped here: the county's ..._improvement-detail
@@ -31,7 +73,9 @@
 #
 # TYPES. living area: types MA_1, MA, MA_1.5, MASF, MA_2, MA2MF, MATD1,
 # MATD2, MASB, SM6, MA3MF, MATD1.5, MA2, MA1.5, MAF1.5, MAB1.5, MAF2,
-# MA3. garage: types GAR, RG1, RGF, MAEG, DGAR, MAFEG, RGM, EGAR, RGB,
+# MA3, MAT, RM1, RM2, GRM, LOFT (classes HC* and OFF* excluded). gross
+# floor area: the living-area types plus GAR, MAEG, MAFEG, EGAR, EP,
+# MAEFP, MAEMP, MAEP, UTIL, SUNR, SM2, UATT, UNFA, UBAS, BASR. garage: types GAR, RG1, RGF, MAEG, DGAR, MAFEG, RGM, EGAR, RGB,
 # RGH, RG2. carport: types RC1, SM10. porch: types OP, SM7, SP, EP, OP3,
 # OP1, SM1, OP2, MAEFP, MAEMP, MAEP. deck and patio: types SLB, SM5,
 # WDK, WDKRA, TPAT, WDKRO, TER. swimming pool: types RP5, RP4, RP3, RP1,
@@ -58,7 +102,7 @@
 
 description: >-
   Victoria County, TX certified appraisal roll, improvement detail member: living,
-  garage, porch and deck areas, class and feature flags per property.
+  gross, garage, porch and deck areas, class and feature flags per property.
 
 admin_id: US-TX-VIC
 
@@ -112,14 +156,28 @@ transformations:
     operation: to_numeric
     input: imprv_det_area
     output: imprv_det_area
+  # Floor area, see the header's FLOOR AREA note. Both read
+  # quality_grade before the quality_grade step below overwrites it.
   - type: expression
     expression: >-
       imprv_det_area.where(imprv_det_type_cd.isin(['MA_1', 'MA', 'MA_1.5',
       'MASF', 'MA_2', 'MA2MF', 'MATD1', 'MATD2', 'MASB', 'SM6', 'MA3MF',
-      'MATD1.5', 'MA2', 'MA1.5', 'MAF1.5', 'MAB1.5', 'MAF2', 'MA3']) &
-      (imprv_det_area > 1))
-    inputs: [imprv_det_area, imprv_det_type_cd]
+      'MATD1.5', 'MA2', 'MA1.5', 'MAF1.5', 'MAB1.5', 'MAF2', 'MA3', 'MAT',
+      'RM1', 'RM2', 'GRM', 'LOFT']) & ~quality_grade.str.match('HC|OFF',
+      na=False) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd, quality_grade]
     output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA_1', 'MA', 'MA_1.5',
+      'MASF', 'MA_2', 'MA2MF', 'MATD1', 'MATD2', 'MASB', 'SM6', 'MA3MF',
+      'MATD1.5', 'MA2', 'MA1.5', 'MAF1.5', 'MAB1.5', 'MAF2', 'MA3', 'MAT',
+      'RM1', 'RM2', 'GRM', 'LOFT', 'GAR', 'MAEG', 'MAFEG', 'EGAR', 'EP',
+      'MAEFP', 'MAEMP', 'MAEP', 'UTIL', 'SUNR', 'SM2', 'UATT', 'UNFA',
+      'UBAS', 'BASR']) & ~quality_grade.str.match('HC|OFF', na=False) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd, quality_grade]
+    output: gross_floor_area_sqft
   - type: expression
     expression: >-
       imprv_det_area.where(imprv_det_type_cd.isin(['GAR', 'RG1', 'RGF', 'MAEG',
@@ -213,6 +271,7 @@ drop_columns:
 
 aggregation_function:
   living_area_sqft: sum
+  gross_floor_area_sqft: sum
   garage_area_sqft: sum
   has_garage: max
   garage_type: first

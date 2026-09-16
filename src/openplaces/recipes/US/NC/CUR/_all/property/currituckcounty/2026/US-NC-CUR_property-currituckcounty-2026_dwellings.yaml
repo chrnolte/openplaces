@@ -1,0 +1,134 @@
+# Recipe: Currituck County, NC residential dwelling cards (Tyler
+# iasWorld AA502 dwelling export), supplementing the county property
+# roll.
+#
+# Source: `aa502nccur-updated-dwelling.xlsx` on the county Tax
+# Department's "Tax Data" page (sheet AA502NCCUR-DWEL, 29 columns). Its
+# layout is the county's "Residential - Dwelling Data File Layout" PDF
+# (aa502nccur-dwelling-layout.pdf): one row per residential building
+# card, record type RES_BLDG on every row.
+#
+# Measured 2026-09-16: 17,918 cards on 17,723 distinct `Parcel ID`s
+# (17,537 parcels with one card, 179 with two, 7 with three or four).
+# Card numbers are in `Card # ` (trailing space in the header).
+# 17,722 of the 17,723 keys are in the roll, 99.63% in the parcel layer
+# recipe (US-NC-CUR_parcel-currituckcounty-2026). Summed per property,
+# living area has p10 1,152, median 2,077, p90 3,561 sqft.
+#
+# FLOOR AREA. `Living Area - Sqft` is populated on every card and
+# greater than zero on all but one (p10 1,144, median 2,056, p90
+# 3,540). It maps to living_area_sqft: the layout names it living
+# area, and it is the iasWorld dwelling SFLA field. A parcel's value is
+# the sum over its cards (a second dwelling on the lot adds its own
+# living area).
+#
+# Also mapped, per card then reduced per property:
+# - year_built (`Year Built`): 224 cards (1.3%) carry a three-digit
+#   value, not a year; values below 1700 are nulled. Earliest card.
+# - n_stories (`Stories`): 1, 1.5, 2, 2.5 or 3. Tallest card.
+#
+# Not mapped:
+# - `Effective Year Built` (20.8% of cards), bedrooms and full/half
+#   baths (populated, but outside this recipe's floor-area scope; a
+#   later pass can add them, folding half baths as the registry says).
+# - The code fields (attic, style, exterior wall, foundation, HVAC,
+#   fireplaces, miscellaneous items): their Description columns are
+#   empty on every card and the county's code PDFs cover only land
+#   use, land, commercial structure and other-building codes.
+# - `Assessed Value` (per card; the roll's building value is the
+#   property's), `Tax Year`, `File Date`.
+#
+# COMMERCIAL AREA, NOT USED. The companion commercial workbook
+# (`aa502nccur-updated-commercial.xlsx`: 1,021 cards on 796 parcels, 4
+# of them also with a dwelling card) carries `Area Under Roof`. Its
+# layout PDF (aa502nccur-commerical-layout.pdf) lists the field with
+# no definition, and the commercial structure code PDF defines codes
+# only. Whether it counts all floors or the roofed ground area, and
+# whether it includes unenclosed roofed space, is not stated, so it is
+# not mapped to gross_floor_area_sqft and no commercial recipe is
+# written.
+
+description: >-
+  Currituck County, NC residential dwelling cards (living area, year
+  built, stories) supplementing the county property roll, from the
+  iasWorld AA502 Excel export.
+
+admin_id: US-NC-CUR
+
+entity:
+  entity_type: property
+  source:
+    source_id: currituckcounty
+    # Checked 2026-09-16: the Tax Data page states no licence, terms,
+    # resale or redistribution condition, and no click-through guards
+    # the download. The site footer links a "Disclaimer" page whose
+    # served HTML carries no terms text either.
+    license: "unknown (no terms on the county's tax data page)"
+    terms_url: "https://currituckcountync.gov/tax/tax-data/"
+    redistribution_restricted: null
+    portal_url: "https://currituckcountync.gov/tax/tax-data/"
+    download_url: "https://www.currituckcountync.gov/wp-content/uploads/aa502nccur-updated-dwelling.xlsx"
+  version: "2026"
+
+uncompressed_file_name: "aa502nccur-updated-dwelling.xlsx"
+
+sheet_name: 0
+
+# Read every cell as text: the account id is an alphanumeric code, and
+# the numeric fields are cast explicitly below.
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel ID
+  living_area_sqft: Living Area - Sqft
+  year_built: Year Built
+  n_stories: Stories
+
+transformations:
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  # Null the three-digit year values (x * 0 / 0 is null).
+  - type: conditional
+    operation: greater_equal
+    input: year_built
+    args:
+      threshold: 1700
+    output: year_built_plausible
+  - type: expression
+    expression: "year_built * year_built_plausible / year_built_plausible"
+    inputs: [year_built, year_built_plausible]
+    output: year_built
+
+drop_columns:
+  - year_built_plausible
+
+# Several cards on one property: living area sums, year built takes
+# the earliest card, stories the tallest.
+aggregation_function:
+  living_area_sqft: sum
+  year_built: min
+  n_stories: max
+
+# The cards detail the roll's properties: the property spine's union
+# skips them, and its `supplements_only` link_by_id joins them onto the
+# roll's rows by parcel_id_local, reduced per property as above.
+supplements: US-NC-CUR_property-currituckcounty-2026
+
+# Same raw id and conversion as the roll's `Parcel ID`.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
+  filename: dwellings

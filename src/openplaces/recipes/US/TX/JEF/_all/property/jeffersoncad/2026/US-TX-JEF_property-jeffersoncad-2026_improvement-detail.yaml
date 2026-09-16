@@ -1,0 +1,150 @@
+# Recipe: Jefferson County, TX certified appraisal roll, improvement
+# detail member (PACS File #8, one row per building component). Same
+# download as US-TX-JEF_property-jeffersoncad-2026; read that roll's
+# header for the source and its terms.
+#
+# RULE. Each component type below was assigned from the district's own
+# type code and description, reviewed over the complete code table of
+# the 2026 export (136 types; listed, never matched by prefix). Areas
+# are imprv_det_area in square feet, summed over the property's listed
+# components; an area of 0 or 1 reads as missing.
+#
+# JEFFERSON HAS NO MA CODES. Unlike most PACS districts, no type code
+# starts with MA and no description contains MAIN, so every
+# startswith('MA') or "MAIN AREA" rule returns nothing here.
+#
+# LIVING AREA (living_area_sqft): HSE house, SEC second story, DUP
+# duplex, MBH mobile home, LIVAREA living area, LAMBH living area on
+# mobile home, MBHA mobile home addition living area, FEMAMBH (a
+# FEMA-supplied mobile home, a dwelling; added to the inventory list).
+# SEC is the second floor's own area (per-type median about half of
+# HSE's), so summing it with HSE gives the two-floor total.
+#
+# LEFT OUT OF LIVING AREA. OLA "outdoor living area" is outdoor space.
+# GAMEROOM, BATHHOUSE and BOATHOUSE are accessory buildings whose
+# finish the table does not state. COM (commercial building) and the
+# other commercial types are not living area; a commercial property
+# therefore has no living_area_sqft.
+#
+# GROSS FLOOR AREA (gross_floor_area_sqft): the living types plus
+# enclosed garages and porches, GA1A garage attached, GA1D garage
+# detached, GA2A garage 2 attached, GA2D garage 2 detached, GA1
+# ("garage, do not use"), GA2 garage 2, ENP enclosed porch/patio. Open
+# and screened porches (CVP, SCP), carports (CAR, C01 to C65), storage
+# sheds (SR1 to SR4, SHED), shops, barns, pools, paving and all
+# commercial building types are excluded, so gross area is the
+# dwelling's enclosed area plus its garages, never a sum of all
+# segments (which adds covered porches, carports, sheds and parking).
+# A property with no listed component has no gross area.
+#
+# YEAR BUILT. year_built is yr_built of the living-area components, the
+# earliest per property (the original structure, not an addition).
+#
+# MEASURED on the 2026 export (aggregates only): File #8 holds 381,605
+# rows over 92,893 properties; 158,369 are listed types. Share of the
+# roll's properties with living area > 0, by improvement state class
+# (roll imprv_state_cd): A 97.3% of 81,505, B 80.0%, E 92.5%, M 99.8%.
+# Class A per-property living area p10/p50/p90 988 / 1,494 / 2,568;
+# gross 1,083 / 1,872 / 3,223 (median gross/living 1.23). The class A
+# properties without living area carry only outbuildings (storage,
+# carports, detached garages). 64.1% of TxGIO's Jefferson parcel ids
+# have a living area here; 93.7% of properties with one are in TxGIO.
+
+description: >-
+  Jefferson County, TX certified appraisal roll, improvement detail member:
+  living and gross floor area and year built, summed per property.
+
+admin_id: US-TX-JEF
+
+entity:
+  entity_type: property
+  source:
+    source_id: jeffersoncad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://jcad.org/data-download/"
+    download_url: "https://jcad.org/wp-content/uploads/2026/07/CERTIFIED-2026_0_PUBLIC.zip"
+  version: 2026
+
+compressed_file_name: "CERTIFIED-2026_0_PUBLIC.zip"
+uncompressed_file_name: "CERTIFIED-2026_0_PUBLIC/2026-07-21_002178_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [filler, 10] # Imprv_det_class_cd
+  - [yr_built, 4]
+  - [filler, 4] # depreciation_yr
+  - [imprv_det_area, 15]
+
+# Only the listed component types; every other row carries nothing.
+query: >-
+  imprv_det_type_cd in ['HSE', 'SEC', 'DUP', 'MBH', 'LIVAREA', 'LAMBH',
+  'MBHA', 'FEMAMBH', 'GA1A', 'GA1D', 'GA2A', 'GA2D', 'GA1', 'GA2', 'ENP']
+
+columns:
+  year_built: yr_built
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['HSE', 'SEC', 'DUP',
+      'MBH', 'LIVAREA', 'LAMBH', 'MBHA', 'FEMAMBH']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_area > 1)
+    inputs: [imprv_det_area]
+    output: gross_floor_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['HSE', 'SEC', 'DUP', 'MBH',
+      'LIVAREA', 'LAMBH', 'MBHA', 'FEMAMBH']) & (year_built > 1800) &
+      (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  gross_floor_area_sqft: sum
+  year_built: min
+
+supplements: US-TX-JEF_property-jeffersoncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-detail

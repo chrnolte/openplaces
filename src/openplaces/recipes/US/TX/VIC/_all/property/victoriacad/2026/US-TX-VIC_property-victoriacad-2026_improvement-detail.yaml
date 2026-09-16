@@ -33,20 +33,23 @@
 # Fort Bend's Building_Class: no registry column they belong in without
 # corrupting a curate-stage vote that reads it.
 #
-# AREA (measured 2026-09-13). gross_floor_area_sqft sums the
-# MA-prefixed components, which include the district's enclosed
-# garages and porches (MAEG, MAFEG, MAEFP, MAEMP, MAEP) as well as
-# its living areas. On 26,830 single-family (A) properties it equals
-# living_area_sqft from the sibling ..._improvement-features
-# (living-area types only) on 90.6%, differing by those enclosed
-# components (and by SM6, an attached living area the prefix misses).
-# PACS publishes no gross area, and this segment sum is the closest
-# figure. The segment sums can include open porches and decks, so
-# they run slightly above true gross floor area.
+# AREA. No floor area is mapped here (removed 2026-09-16). This recipe
+# used to map the sum of its MA-prefixed rows to gross_floor_area_sqft,
+# which was neither living nor gross floor area: the prefix takes in
+# the enclosed garage and porch types (MAEG, MAFEG, MAEFP, MAEMP, MAEP)
+# but no other garage, misses SM6 (attached living area) and the
+# mobile-home types, and PACS publishes no gross area to check it
+# against. Both living_area_sqft and gross_floor_area_sqft now come
+# from the sibling ..._improvement-features recipe, which reads every
+# component row against explicit type lists (see its FLOOR AREA note).
+#
+# The MA prefix filter below still selects the rows year_built is read
+# from, unchanged by the revision (the per-property year_built is
+# identical before and after it on the 2026 export).
 
 description: >-
   Victoria County, TX certified appraisal roll, improvement detail member:
-  year built and floor area per building component, aggregated to property.
+  year built per main-area building component, aggregated to property.
 
 admin_id: US-TX-VIC
 
@@ -76,9 +79,10 @@ encoding: latin-1
 
 # PACS 8.0.34 File #8 (Improvement Detail), offsets from the same "Appraisal
 # Export Layout - 8.0.34.xlsx" the parent recipe cites. Coverage stops at
-# imprv_det_area -- imprv_det_val and sketch_cmds (the rest of the 622-char
-# record) are not mapped, same convention as the parent recipe stopping at
-# situs_num.
+# yr_built: depreciation_yr, imprv_det_area, imprv_det_val and sketch_cmds
+# (the rest of the 622-char record) are not read here, same convention as
+# the parent recipe stopping at situs_num. The sibling
+# ..._improvement-features recipe reads the area.
 fixed_width:
   - [prop_id, 12]
   - [filler, 4] # prop_val_yr -- already on the parent recipe as tax_year
@@ -88,13 +92,10 @@ fixed_width:
   - [filler, 25] # Imprv_det_type_desc
   - [filler, 10] # Imprv_det_class_cd -- deliberately unmapped, see header
   - [yr_built, 4]
-  - [filler, 4] # depreciation_yr
-  - [imprv_det_area, 15]
 
 # Main-area components only -- see header NOTE on row shape. A garage
-# or open porch sharing this prop_id would otherwise inflate
-# gross_floor_area_sqft and potentially override a genuine main-area
-# yr_built with an addition's.
+# or open porch sharing this prop_id could otherwise override a genuine
+# main-area yr_built with an outbuilding's.
 query: "imprv_det_type_cd.str.startswith('MA')"
 
 transformations:
@@ -109,7 +110,6 @@ transformations:
 
 columns:
   year_built: yr_built
-  gross_floor_area_sqft: imprv_det_area
 
 drop_columns:
   - imprv_det_type_cd
@@ -117,10 +117,7 @@ drop_columns:
 # Collapses the remaining 1:many (72.1% of properties still have more than
 # one MA row -- an addition, a second main structure) when harmonize's
 # link_by_id(auto_discover=True, entity_type='property', mode='aggregate')
-# picks this recipe up: gross_floor_area_sqft sums (total main-area
-# floor area is the sum of its components; the registry default is
-# also a sum, and the override states it here).
-# year_built takes the earliest component's year, i.e. the original
+# picks this recipe up: year_built takes the earliest component's year, i.e. the original
 # structure's construction date, not a component-count-weighted average
 # that lands between two real years and belongs to neither (mean differs
 # from min for 8.6% of multi-row properties). Read only by this recipe's
@@ -128,7 +125,6 @@ drop_columns:
 # docstring for why a caller-level override would leak into every sibling
 # match instead.
 aggregation_function:
-  gross_floor_area_sqft: sum
   year_built: min
 
 # Details the properties of the roll rather than being a roll itself:

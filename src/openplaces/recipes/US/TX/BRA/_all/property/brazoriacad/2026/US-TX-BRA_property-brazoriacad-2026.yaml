@@ -1,0 +1,148 @@
+# Recipe: Brazoria County, TX certified appraisal roll (BCAD).
+#
+# Why: the statewide TxGIO parcel layer carries no building floor area
+# for Brazoria. The district's certified roll does, in its improvement
+# detail member; this recipe is the property roll those details
+# supplement (see its _improvement-detail sibling).
+#
+# FORMAT. True Automation / PACS "Appraisal Export", layout 8.0.34, the
+# same vendor layout as US-TX-VIC_property-victoriacad-2026 (read that
+# recipe's header for the format and the prop_id zero-padding trap).
+# The roll ZIP ships the layout spreadsheet beside the data.
+# APPRAISAL_INFO (File #2) is 2.4 GB raw; the reader stops at
+# situs_num, the last field mapped.
+#
+# DOWNLOAD. The district's download page links a pCloud public folder
+# ("(A) CURRENT CERTIFIED ROLL"), not a file. pCloud's own file link
+# (getpublinkdownload) is signed and expires within a day, so it cannot
+# go in a recipe. The URL below is pCloud's public-folder ZIP endpoint
+# (getpubzip), keyed on the folder's public code and the file's id: it
+# is stable while the district keeps that file in that folder, needs
+# no session, and returns the certified roll ZIP wrapped, uncompressed,
+# in a one-member ZIP of pCloud's making. The ingester extracts that
+# nested roll ZIP too; extract_members keeps its other members out of
+# the heap (APPRAISAL_ENTITY_INFO alone is 5.8 GB raw).
+#
+# MEASURED on the 2026 export (252,098 rows, prop_id unique):
+# land_state_cd 73.1%, imprv_state_cd 57.4%. The roll also carries
+# personal-property and mineral accounts, which TxGIO omits, so the
+# key overlap is stated both ways: 98.1% of TxGIO's Brazoria parcel
+# ids are in this roll; 66.6% of the roll's ids are in TxGIO, 91.1% of
+# those with a land_state_cd.
+#
+# VINTAGE. The certified roll of 2026-07-23. When the district posts a
+# new roll into the folder, the file id changes and the URL below stops
+# resolving; read the new id off the folder listing (pCloud's
+# showpublink call on the same code).
+#
+# NOT MAPPED. Owner name and mailing address are never read; nothing
+# downstream needs them. The ZIP also carries an AGENT_OWNER member
+# that this recipe never reads. Land and improvement values are not
+# mapped for the reason given in the Victoria recipe; market_value is
+# the total.
+
+description: >-
+  Brazoria County, TX certified appraisal roll (PACS 8.0.34 export): state
+  land-use codes, legal acreage, situs and market value keyed by property.
+
+admin_id: US-TX-BRA
+
+entity:
+  entity_type: property
+  source:
+    source_id: brazoriacad
+    # Checked 2026-09-16. The district website footer reads: "All
+    # information contained herein, is considered in the public domain
+    # and is distributed without warranty of any kind". The download
+    # page adds a disclaimer that the GIS product is not a survey. No
+    # licence, attribution requirement, resale or redistribution clause.
+    license: "public domain per the district website disclaimer; no warranty"
+    terms_url: "https://brazoriacad.org/"
+    redistribution_restricted: false
+    portal_url: "https://brazoriacad.org/public-gis-and-property-data-downloads/"
+    download_url: "https://api.pcloud.com/getpubzip?code=kZYMUV7ZD6GgiyP3moR0gLKHGc1l5Qd0c9xV&fileids=92286624172&filename=BRAZORIA-2026-CERTIFIED.zip"
+  version: 2026
+
+compressed_file_name: "BRAZORIA-2026-CERTIFIED.zip"
+uncompressed_file_name: "2026-07-23_003457_APPRAISAL_INFO.TXT"
+extract_members:
+  - "2026-07-23_003457_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); same offsets as Victoria's roll.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: land_area_ac
+    output: land_area_ac
+  - type: expression
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
+  # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
+  # bare form.
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  land_area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

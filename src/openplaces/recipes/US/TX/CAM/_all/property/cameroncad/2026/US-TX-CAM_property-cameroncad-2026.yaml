@@ -1,0 +1,176 @@
+# Recipe: Cameron County, TX certified appraisal roll (Cameron
+# Appraisal District).
+#
+# Why: the statewide TxGIO parcel layer carries no building floor area
+# for Cameron. The district's certified roll does, in its improvement
+# detail member; this recipe is the property roll those details
+# supplement (see its _improvement-detail sibling).
+#
+# FORMAT. True Automation / PACS "Appraisal Export", Legacy layout
+# 8.0.33 (the ZIP ships "Legacy8.0.33-AppraisalExportLayout.xlsx"
+# beside the data). The fields read here sit at the same offsets as in
+# the 8.0.34 rolls (US-TX-JEF_property-jeffersoncad-2026, whose header
+# and Victoria's describe the format and the prop_id zero-padding
+# trap). APPRAISAL_INFO (File #2) is 2.2 GB raw; the reader stops at
+# situs_num, the last field mapped. The whole ZIP unpacks to 6.8 GB,
+# most of it the unread APPRAISAL_ENTITY_INFO member (4.3 GB), so
+# extract_members unpacks only the member read here.
+#
+# ONE ROW PER OWNER. Cameron's File #2 repeats a property once per
+# partial owner (partial_owner 'T'): 224,139 rows over 221,962
+# prop_ids, 1,668 of them repeated on 2 to 20 adjacent rows. Every
+# mapped column but market_value is identical within a prop_id;
+# market_value is the owner's share (ownership_pct, 2 decimals, sums to
+# 100 within a prop_id). drop_duplicates keeps the first owner row, and
+# total_value is scaled back to the whole property as market_value *
+# 100 / ownership_pct (within 1% across a prop_id's rows on 99.8% of
+# them; the rest is the share's rounding). Unique prop_ids all carry
+# 100.
+#
+# MEASURED on the 2026 export (221,962 properties after the owner
+# dedupe): land_state_cd 86.5%, imprv_state_cd 71.8%. The roll also
+# carries personal-property and separately owned mobile-home accounts,
+# which TxGIO omits, so the key overlap is stated both ways: 99.1% of
+# TxGIO's Cameron parcel ids are in this roll; 78.3% of the roll's ids
+# are in TxGIO, 90.6% of those with a land_state_cd (the 2023 export
+# gave 82.2% and 55.3%). legal_acreage is 0 on 80.5% of state class A
+# properties (the district does not record acreage for most lots), so
+# land_area_ac is mostly 0 there; p90 0.44 ac after the 10,000 scaling.
+#
+# NOTE: member names carry the export date, so the name below is
+# pinned to this vintage; the district's data page links the next
+# export under a new dated name.
+#
+# NOT MAPPED. Owner name and mailing address (py_owner_name and the
+# py_addr block) are never read; nothing downstream needs them. Land
+# and improvement values are not mapped for the reason given in the
+# Victoria recipe; market_value is the total.
+
+description: >-
+  Cameron County, TX certified appraisal roll (PACS 8.0.33 export): state
+  land-use codes, legal acreage, situs and market value keyed by property.
+
+admin_id: US-TX-CAM
+
+entity:
+  entity_type: property
+  source:
+    source_id: cameroncad
+    # Checked 2026-09-16 on the district's Downloads > Data Export page:
+    # its Data Disclaimer states that all information "is considered in
+    # the public domain and is distributed without warranty of any
+    # kind". No licence, attribution, resale or redistribution clause.
+    license: "public domain (district data disclaimer; without warranty)"
+    terms_url: "https://ftp.cameroncad.org/Pages/Data"
+    redistribution_restricted: false
+    portal_url: "https://ftp.cameroncad.org/Pages/Data"
+    download_url: "https://ftp.cameroncad.org/cad/exports/certified/2026/cameron-2026-certified-appraisal-export-20260723.zip"
+  version: 2026
+
+compressed_file_name: "cameron-2026-certified-appraisal-export-20260723.zip"
+uncompressed_file_name: "2026-07-23_2026_APPRAISAL_INFO.TXT"
+extract_members:
+  - "2026-07-23_2026_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.33 File #2 (Property); same offsets as Jefferson's 8.0.34
+# roll up to land_state_cd, plus ownership_pct.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1270]
+  - [ownership_pct, 6]
+  - [filler, 186]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+# One row per property; see ONE ROW PER OWNER.
+drop_duplicates: [prop_id]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: land_area_ac
+    output: land_area_ac
+  - type: expression
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
+  # The owner row's market_value is its ownership share of the total.
+  - type: unary
+    operation: to_numeric
+    input: ownership_pct
+    output: ownership_pct
+  - type: unary
+    operation: to_numeric
+    input: total_value
+    output: total_value
+  - type: expression
+    expression: >-
+      (total_value * 100 / ownership_pct).where(ownership_pct > 0,
+      total_value).round()
+    inputs: [total_value, ownership_pct]
+    output: total_value
+  # Strip the PACS zero-padding so parcel_id_local matches TxGIO's
+  # bare form.
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+drop_columns:
+  - ownership_pct
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  land_area_ac: legal_acreage
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,129 @@
+# Recipe: Dare County, NC parcel cards (finished area of building 1,
+# year built, stories, bedrooms) from the county's bulk tax CSV.
+#
+# SOURCE. The county tax office's download page
+# (tax.darecountync.gov/downloads/) publishes, refreshed daily,
+# "County Parcel Data (Only Primary owners, building and land
+# information)" as prclcard.csv, plus per-district and whole-county
+# owner files (00county.csv and 01avon.csv ... 22martin.csv). Only
+# prclcard carries a floor area: 00county's header (read 2026-09-16)
+# has building codes, baths, bedrooms, stories and year built, but no
+# area. The page also links building-feature code lists
+# (downloads/bldgfeatures.php); it states no licence and no terms.
+#
+# ROW SHAPE, measured 2026-09-16 on the downloaded file: 43,985 rows,
+# one per property, Parcel and PIN each distinct on every row. STATUS
+# is A (41,971) or E (2,014); both are kept. Rows include
+# condominium, townhouse, boat-slip and timeshare units (Prop Desc),
+# which is why 8.6% of Parcel values have no NC OneMap polygon of
+# their own: 2,502 of the 3,773 unmatched rows are residential
+# condominiums, 415 boat slips, 193 commercial condominiums.
+#
+# FLOOR AREA. "Finished SqFt Bldg 1" maps to living_area_sqft
+# (80.1% of rows, p10/p50/p90 981/1,751/3,423 sqft). It is the
+# finished area of the property's FIRST BUILDING ONLY. The file has
+# no other building-area column and no building count, and the
+# county publishes no per-building file, so a property with a second
+# heated building under-reports; how many do is not knowable from
+# this download. The "OBY Code" columns are outbuilding and yard
+# items (sheds, pools, decks, docks) without areas. No total or
+# gross area exists, so gross_floor_area_sqft is not set. "RESIDENTIAL
+# MASTER CARD" rows (207) may describe a whole condominium or
+# townhouse complex whose units also have rows; their area is kept
+# as published.
+#
+# OTHER FIELDS. "Yr Blt", STORIES (whole or one decimal) and Bedrms
+# are filled on the same rows as the area (75.8% to 80.1%). The
+# bldgfeatures page says bath and bedroom values must be multiplied
+# by 0.1 "for the downloaded file"; in prclcard, Bedrms is already a
+# whole count (one or two digits), so that note refers to the coded
+# district files and is not applied. Bath is text, "(FULL-n) /
+# (HALF-n)", and is not parsed here.
+#
+# NOT MAPPED, deliberately: owner names and mailing addresses; values,
+# land use, situs address, building style and living units (NC
+# OneMap carries values and use for the county; style and units would
+# also reach the parcel spine through its property link, which is
+# beyond this recipe's floor-area scope).
+
+description: >-
+  Dare County, NC parcel cards (finished area of building 1 only,
+  year built, stories, bedrooms) from the county tax office's daily
+  bulk CSV.
+
+admin_id: US-NC-DAR
+
+entity:
+  entity_type: property
+  source:
+    source_id: darecounty
+    # Checked 2026-09-16: the download page states no licence, terms,
+    # disclaimer or resale restriction.
+    license: "unknown (download page states no licence or terms)"
+    terms_url: "https://tax.darecountync.gov/downloads/"
+    redistribution_restricted: null
+    portal_url: "https://tax.darecountync.gov/downloads/"
+    download_url: "https://publicfiles.darecountync.gov/taxfiles/prclcard.csv"
+  version: "2026"
+
+uncompressed_file_name: "prclcard.csv"
+
+csv_dtype: str
+
+columns:
+  parcel_id_assessor: Parcel
+  living_area_sqft: "Finished SqFt Bldg 1"
+  year_built: "Yr Blt"
+  n_stories: STORIES
+  n_bedrooms: Bedrms
+
+transformations:
+  # csv_dtype str keeps Parcel's leading zeros; the numeric fields
+  # are cast here, as the registry does not cast them.
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: unary
+    operation: null_if_equal
+    input: year_built
+    args:
+      value: 0
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args:
+      value: 0
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+
+# NC OneMap's Dare parcel_id_local comes from altparno, which has the
+# same nine-digit form as Parcel; the bundled per-county conversion
+# applies to both, so the keys agree. Measured 2026-09-16 after
+# ingest: 99.96% of NC OneMap's distinct Dare keys are here, and
+# 91.4% of this recipe's rows find a parcel (the rest are the unit
+# rows described under ROW SHAPE).
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

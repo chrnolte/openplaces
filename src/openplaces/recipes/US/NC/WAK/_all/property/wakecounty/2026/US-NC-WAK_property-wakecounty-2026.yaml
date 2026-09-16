@@ -1,0 +1,122 @@
+# Recipe: Wake County, NC property roll, one row per Real Estate ID.
+#
+# Source: the county's daily real estate extract
+# (services.wake.gov/realdata_extracts/RealEstDataMMDDYYYY.zip, about
+# 42 MB; a 337 MB fixed-width .txt inside). The same file is offered
+# as .xlsx and .mdb; the .txt is read because the ingester reads
+# fixed-width text without a JVM or Excel parser. The file name
+# carries the extract date and the directory keeps only the current
+# day's copy, so the link is scraped from the directory listing
+# rather than pinned. Layout: "Record Layout as of 1/14/2019"
+# (linked from the portal page), 711 characters per record; every
+# offset read here was checked on the 2026-09-16 file.
+#
+# Row shape, MEASURED 2026-09-16: 472,571 records, one per building
+# card, over 456,600 REIDs. (REID, card) is unique, every REID has a
+# card 01, and the number-of-cards field agrees with the card count
+# on all but 2 REIDs. Parcel-level fields (land class, values, PIN)
+# repeat on every card. This roll reads card 01 only, so its rows are
+# properties (AGENTS.md, "a tax roll's rows are properties"); the
+# per-card building fields, floor area included, sit in the
+# supplement US-NC-WAK_property-wakecounty-2026_building-cards, which
+# reads the same download.
+#
+# Condominium units (land class N, 18,081 REIDs; O, 652) are REIDs of
+# their own and stay rows here. The county's REST parcel layer
+# (maps.wake.gov .../Property/Parcels/MapServer/0, 438,253 rows) has
+# no land class N row, which is why this roll is larger than it.
+#
+# Join key: REID, a 7-digit zero-padded id ('0009999'), is the same
+# field and format NC OneMap carries as altparno for Wake, so both
+# sides resolve under the bundled Wake conversion with no override
+# (US_parcel_id-overrides.csv has no US-NC-WAK row).
+#
+# Mapped beyond the key: land class (use_group) and the card-01
+# type-and-use code (use_subgroup_code). NC OneMap's Wake rows carry
+# the same two vocabularies in the same columns (land class letters
+# in use_group, the 2-3 digit type-and-use code in
+# use_subgroup_code), so the property and parcel layers agree. Codes
+# are decoded in the county's CodeDescriptions.pdf.
+#
+# Deliberately not mapped: owner names and mailing addresses (personal
+# data); situs address, values, sale price and date, deed book and
+# page, acreage, zoning and districts (NC OneMap's Wake parcels carry
+# values, situs and sale fields; add them here if a property-level
+# copy is wanted); the PIN ('Parcel Identification', a
+# '9999.99 99 9999 999' format that differs from NC OneMap's 10-digit
+# parno, so it would not join as parcel_id_admin3 without work).
+
+description: >-
+  Wake County, NC property roll (Real Estate ID, land class, type and
+  use) from the county's daily fixed-width real estate extract.
+
+admin_id: US-NC-WAK
+
+entity:
+  entity_type: property
+  source:
+    source_id: wakecounty
+    # Checked 2026-09-16. The data page links the site-wide disclaimer,
+    # which states that information on wake.gov is public record under
+    # N.C.G.S. ch. 132 and provided "as is" without warranties, with no
+    # licence, no attribution requirement and nothing on redistribution
+    # or resale. The download itself is a plain directory listing with
+    # no click-through.
+    license: >-
+      public record (N.C.G.S. ch. 132), provided "as is" without
+      warranties; no licence stated
+    terms_url: "https://www.wake.gov/disclaimers"
+    redistribution_restricted: null
+    portal_url: "https://www.wake.gov/departments-government/tax-administration/data-files-statistics-and-reports/real-estate-property-data-files"
+    download_url_source: "https://services.wake.gov/realdata_extracts/"
+    # [0-9]+ rather than [0-9]{8}: braces are read as a placeholder.
+    download_url_source_regex: '(/realdata_extracts/RealEstData[0-9]+\.zip)'
+  version: "2026"
+
+download_by:
+  admin_level: 3
+
+process_by:
+  admin_level: 3
+
+# Saved under a fixed name; the dated .txt inside is found by
+# wildcard (the latest extraction wins). A rerun reuses the saved
+# zip, so a newer extract needs redownload=True. The building-cards
+# supplement shares this download directory and file.
+compressed_file_name: "RealEstData.zip"
+uncompressed_file_name: "RealEstData*.txt"
+
+encoding: latin-1
+
+# 1-based starts from the layout: REID 176, Card Number 183, Land
+# Classification 386, Type & Use 654. Reading stops after Type & Use.
+fixed_width:
+  - [filler, 175] # Owner 1 through Mailing Address 3 (not read)
+  - [reid, 7]
+  - [card, 3]
+  - [filler, 200] # Number of Cards through Property Description
+  - [land_class, 1]
+  - [filler, 267] # Deed Book through Land Disqualify flag
+  - [type_use, 3]
+
+# One row per property: the parcel-level fields repeat on every card.
+query: "card == '01'"
+
+columns:
+  parcel_id_assessor: reid
+  use_group: land_class
+  use_subgroup_code: type_use
+
+drop_columns:
+  - card
+
+columns_to_categorical:
+  - use_group
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

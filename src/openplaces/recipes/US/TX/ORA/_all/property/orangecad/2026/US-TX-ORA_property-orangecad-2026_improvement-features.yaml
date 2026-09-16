@@ -1,0 +1,139 @@
+# Recipe: Orange County, TX certified appraisal roll, improvement
+# features from the Segment member (Tyler Orion property export, one row
+# per improvement segment). Same download as
+# US-TX-ORA_property-orangecad-2026; read that roll's header for the
+# format, the nested ZIP, the join key and the terms.
+#
+# RULE. Each segment type below was assigned from the district's own
+# type code and description (listed, never crosswalked). Area is the
+# segment's Area in square feet (AreaFactor is a valuation factor, not
+# an area multiplier: the roll's SquareFootage equals the plain sum of
+# the Main Area segments on 98.2% of single-family accounts); an area
+# of 0 or 1 reads as missing.
+#
+# LIVING AREA is not mapped here: the roll carries it as SquareFootage.
+#
+# GROSS FLOOR AREA sums the enclosed types: living area, attached and
+# built-in garages, and enclosed porches. Left out: GAR1 ('Garage,
+# Detached') and MGAR1, which are separate buildings; P1 and MP1
+# (screened porches); EXT1 and EXT2 ('Extra, Central heat/air'), whose
+# area repeats the heated area of the house rather than adding to it
+# (median 1,216); storage, carports, covered patios, metal buildings,
+# paving and COMM ('Commercial'), whose enclosure is not stated.
+#
+# MAIN AREA. quality_grade is Class (the district's construction class,
+# e.g. an R or MH grade), year_built is ActYrBuilt and
+# effective_year_built is EffYrBuilt, all read on MA segments only; the
+# first MA segment's class stands for the property and the years take
+# the earliest. Both years read as missing outside 1801 to 2027.
+#
+# TYPES. living area: type MA ('Main Area'; also the living segment of
+# manufactured homes). gross floor area: types MA, GAR2 ('Garage,
+# Attached'), GAR3 ('Garage, Built-In'), P2 ('Porch/Patio, Enclosed'),
+# MP2 ('Porch, MH Enclosed').
+#
+# MEASURED on the 2026 export (171,089 segments over 37,382 accounts):
+# MA segments on 34,816 accounts, 4.9% of them with more than one.
+# Share of accounts with a value, by the export's own improvement state
+# class: gross_floor_area_sqft A 93.9% (M 99.7%, E 82.2%, B 80.1%),
+# per-account median 1,796 on A (p10 1,014, p90 2,881), never below
+# the roll's living area; year_built A 93.4% (M 98.2%, E 81.9%).
+
+description: >-
+  Orange County, TX certified appraisal roll, segment member: gross floor area,
+  construction class and year built per property.
+
+admin_id: US-TX-ORA
+
+entity:
+  entity_type: property
+  source:
+    source_id: orangecad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site disclaimer of warranty only; no terms on the data)"
+    terms_url: "https://orangecad.net/disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://orangecad.net/data-downloads/"
+    download_url: "https://orangecad.net/wp-content/uploads/2026/07/2026-Certified-Appraisal-Roll-Export-Files.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Appraisal-Roll-Export-Files.zip"
+# In "Property Data Export - Segment.zip"; the ingester extracts the
+# nested archive.
+uncompressed_file_name: "PropertyDataExport856472.txt"
+extract_members:
+  - "PropertyDataExport856472.txt"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+csv_dtype: str
+
+columns:
+  quality_grade: Class
+  year_built: ActYrBuilt
+  effective_year_built: EffYrBuilt
+
+transformations:
+  # Same key as the roll: QuickRefID, not PropertyID (see its header).
+  - type: string
+    operation: lstrip
+    input: QuickRefID
+    args:
+      chars: "R0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: Area
+    output: Area
+  - type: expression
+    expression: >-
+      Area.where(Type.isin(['MA', 'GAR2', 'GAR3', 'P2', 'MP2']) & (Area > 1))
+    inputs: [Area, Type]
+    output: gross_floor_area_sqft
+  - type: expression
+    expression: "quality_grade.where(Type == 'MA')"
+    inputs: [quality_grade, Type]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where((Type == 'MA') & (year_built > 1800) & (year_built <=
+      2027))
+    inputs: [year_built, Type]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where((Type == 'MA') & (effective_year_built > 1800)
+      & (effective_year_built <= 2027))
+    inputs: [effective_year_built, Type]
+    output: effective_year_built
+
+drop_columns:
+  - Type
+  - Area
+
+aggregation_function:
+  gross_floor_area_sqft: sum
+  quality_grade: first
+  year_built: min
+  effective_year_built: min
+
+supplements: US-TX-ORA_property-orangecad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features

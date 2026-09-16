@@ -1,0 +1,123 @@
+# Recipe: Liberty County, TX certified appraisal roll (Liberty CAD).
+# Same PACS 8.0.34 layout, offsets and join-key trap as
+# US-TX-VIC_property-victoriacad-2026; see that recipe's header for the
+# general shape of this source family. This header covers only what
+# differs for Liberty.
+#
+# SOURCE. The zip ships "Appraisal Export Layout - 8.0.34.xlsx" and the
+# vendor's 8.0.34 change letters; the record width is 9,714 and every
+# mapped field reads as its type at the template offsets.
+#
+# NOTE on coverage, measured on the 2026 export (162,230 rows):
+#   land_state_cd   76.0%   imprv_state_cd  35.1%
+#   geo_id         100.0%   market_value   100.0%
+# imprv_state_cd is low because most of the county's accounts are
+# unimproved subdivision lots (land state C1 on 51,652 rows).
+#
+# NOTE on the join key. 67.8% of the roll's parcel_id_local values are
+# in TxGIO's and 97.2% of TxGIO's 113,236 Liberty ids are in the roll.
+# Mobile homes are separate accounts here (15,658 of type MH, state
+# class M1), most without a TxGIO parcel of their own, which lowers the
+# roll-side share. geo_id matches 98.1% of TxGIO's GEO_ID.
+
+description: >-
+  Liberty County, TX certified appraisal roll (PACS 8.0.34 export): state
+  land-use codes, legal acreage and market value keyed by property.
+
+admin_id: US-TX-LIB
+
+entity:
+  entity_type: property
+  source:
+    source_id: libertycad
+    # Checked 2026-09-16 by fetching the homepage that links the roll:
+    # it carries only a site-footer copyright over the website itself
+    # and states no terms for the data (libertycad.com/disclaimer/ is
+    # 404). Nothing on redistribution or resale.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://libertycad.com/"
+    download_url: "https://libertycad.com/wp-content/uploads/2026/07/2026-CERTIFIED-APPRAISAL-ROLL-ALL-ENTITIES.zip"
+  version: 2026
+
+compressed_file_name: "2026-CERTIFIED-APPRAISAL-ROLL-ALL-ENTITIES.zip"
+uncompressed_file_name: "2026-07-16_002152_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #2 (Property); offsets as in the Victoria template.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 5]
+  - [prop_val_yr, 5]
+  - [filler, 524]
+  - [geo_id, 50]
+  - [filler, 443]
+  - [situs_street_prefx, 10]
+  - [situs_street, 50]
+  - [filler, 10]
+  - [situs_city, 30]
+  - [situs_zip, 10]
+  - [legal_desc, 255]
+  - [filler, 255]
+  - [legal_acreage, 16]
+  - [abs_subdv_cd, 10]
+  - [hood_cd, 10]
+  - [filler, 220]
+  - [appraised_val, 15]
+  - [filler, 801]
+  - [imprv_state_cd, 10]
+  - [land_state_cd, 10]
+  - [filler, 1462]
+  - [market_value, 14]
+  - [filler, 232]
+  - [situs_num, 15]
+
+transformations:
+  # legal_acreage carries 4 implied decimals (PACS layout: "Legal
+  # Acreage (4 Decimals)"), so it is divided by 10,000.
+  - type: unary
+    operation: to_numeric
+    input: land_area_ac
+    output: land_area_ac
+  - type: expression
+    expression: "land_area_ac / 10000"
+    inputs: [land_area_ac]
+    output: land_area_ac
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+
+columns:
+  tax_neighborhood_code: hood_cd
+  parcel_id_admin2_2: geo_id
+  use_group_code: land_state_cd
+  use_subgroup_code: imprv_state_cd
+  address_number: situs_num
+  address_street: situs_street
+  city: situs_city
+  postal_code: situs_zip
+  legal_description: legal_desc
+  land_area_ac: legal_acreage
+  # Land-plus-structure market value; see the Victoria template for why
+  # this is total_value and not appraised_val.
+  total_value: market_value
+  tax_year: prop_val_yr
+
+columns_to_categorical:
+  - tax_neighborhood_code
+  - use_group_code
+  - use_subgroup_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

@@ -1,0 +1,200 @@
+# Recipe: Tyrrell County, NC property records (heated area, year
+# built, stories, rooms) from the county's tax parcel layer.
+#
+# SOURCE. Layer 7 ("TaxParcels") of the county's TyrrellService
+# FeatureServer, hosted on ArcGIS Online for the county by its CAMA
+# vendor (AGD; the layer's PRC links point at the vendor's property
+# record card viewer). The service declares no description, copyright
+# or licence. It is a parcel polygon layer with the CAMA record
+# joined on; the other layers of the service (address points,
+# centerlines, buildings, soils, ...) carry no floor area. No bulk
+# export was found, so the REST scraper pages it attribute-only
+# (returnGeometry false, the fields below only): 4,378 rows, 1,000
+# per page, five light requests. Parcel geometry for Tyrrell is NC
+# OneMap's.
+#
+# ROW SHAPE, measured 2026-09-16 on one attribute-only pull: 4,378
+# rows; 4,320 carry a joined CAMA card (CARD not null), and the query
+# below keeps only those. mapid is the parcel map number in NC
+# OneMap's altparno format (letter, then digit groups separated by
+# spaces); it is present on all but 19 rows and repeats on a handful
+# (multipart polygons), which drop_duplicates removes.
+#
+# CARDS. CARDCOUNT is how many cards the property has (1 on 3,976
+# rows, 2 to 5 on 344). The layer does NOT carry one row per card:
+# each polygon carries one card only, and for a multi-card property
+# that card is card 2 as often as card 1 (the 208 rows with CARD 2
+# are almost all on map numbers with no card-1 row). The card-level
+# fields (HSQFT, BLDGVALUE, YEARBUILT, ...) are that one card's, not
+# the property's: BLDGVALUE equals the parcel total BLDGVALUEPARCEL
+# on every single-card row but on only 47% of multi-card rows. A sum
+# over cards is therefore impossible from this layer, and one card's
+# area would under-report the property. Every building field below
+# is nulled where CARDCOUNT is not 1 (133 multi-card rows carried a
+# heated area).
+#
+# FLOOR AREA. Checked 2026-09-16 on the vendor's property record
+# card image: HSQFT is the card's "HEATED SQFT" box (the sum of the
+# heated building sections: dwelling, additions) and maps to
+# living_area_sqft. TSQFT is the "TOTAL SQFT" box, the sum of every
+# building section, and those sections include enclosed porches and
+# wood decks. It is not enclosed-only floor area, so
+# gross_floor_area_sqft is not set. HSQFT is 0 on cards without a
+# building and is nulled.
+#
+# OTHER FIELDS. YEARBUILT (0 when unrecorded, nulled by the
+# registry), EFFYEAR (effective year), STORYHEIGHT (text: whole or
+# one-decimal stories; 0 without a building, and 1 on 698 cards with
+# neither heated area nor building value, so it is kept only where
+# BLDGVALUE > 0), ROOMS and BEDROOMS (text counts; 0 nulled for
+# rooms, and bedrooms kept only where rooms are recorded).
+#
+# JOIN, measured 2026-09-16 after ingest: 94.5% of this recipe's
+# keys are in NC OneMap's Tyrrell parcels and 96.8% of those parcels'
+# keys are here. Of the 238 keys not found, 64% share their map and
+# block with a statewide parcel (likely splits or renumbering after
+# the 2025 statewide snapshot); 71 of them carry a heated area.
+#
+# NOT MAPPED, deliberately: owner names and mailing addresses (never
+# requested; out_fields names only the columns below); values, land
+# use and situs address (NC OneMap carries those for the county).
+# account_no is the parcel layer's own id (mapid without spaces), but
+# it is blank or a word (NOLINK, COMMONAREA, ...) on 12% of rows,
+# including rows with a card, so mapid is the key.
+
+description: >-
+  Tyrrell County, NC property records (heated living area, year built,
+  stories, rooms, bedrooms) from the county's CAMA-joined tax parcel
+  layer.
+
+admin_id: US-NC-TYR
+
+entity:
+  entity_type: property
+  source:
+    source_id: tyrrellcounty
+    # Checked 2026-09-16: the service and layer declare an empty
+    # description and copyright text, and no terms page was found.
+    license: "unknown (service declares no copyright or licence)"
+    terms_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/TyrrellService/FeatureServer"
+    redistribution_restricted: null
+    portal_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/TyrrellService/FeatureServer/7"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "tyrrell_taxparcels_cards.geojson"
+
+scraper_options:
+  layer_url: "https://services3.arcgis.com/nJbIFHiSnaX0z0hS/arcgis/rest/services/TyrrellService/FeatureServer/7"
+  where: "1=1"
+  out_fields: "OBJECTID,mapid,CARD,CARDCOUNT,BLDGVALUE,HSQFT,YEARBUILT,EFFYEAR,STORYHEIGHT,ROOMS,BEDROOMS"
+  extra_params:
+    returnGeometry: "false"
+
+columns:
+  parcel_id_assessor: mapid
+  living_area_sqft: HSQFT
+  year_built: YEARBUILT
+  effective_year_built: EFFYEAR
+  n_stories: STORYHEIGHT
+  n_rooms: ROOMS
+  n_bedrooms: BEDROOMS
+
+# Rows with a joined card and a map number; see ROW SHAPE.
+query: "CARD == CARD and parcel_id_assessor == parcel_id_assessor"
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  # 1 on single-card properties, null elsewhere (see CARDS).
+  - type: remap
+    input: CARDCOUNT
+    mapping: {1: 1}
+    output: single_card
+  # 1 where the card carries a building value, null elsewhere.
+  - type: expression
+    expression: "(BLDGVALUE > 0) * 1"
+    inputs: [BLDGVALUE]
+    output: has_building_card
+  - type: unary
+    operation: null_if_equal
+    input: has_building_card
+    args:
+      value: 0
+    output: has_building_card
+  - type: unary
+    operation: to_numeric
+    input: n_stories
+    output: n_stories
+  - type: expression
+    expression: "n_stories * has_building_card / has_building_card"
+    inputs: [n_stories, has_building_card]
+    output: n_stories
+  - type: unary
+    operation: to_numeric
+    input: n_rooms
+    output: n_rooms
+  - type: unary
+    operation: to_numeric
+    input: n_bedrooms
+    output: n_bedrooms
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args:
+      value: 0
+    output: living_area_sqft
+  - type: unary
+    operation: null_if_equal
+    input: n_stories
+    args:
+      value: 0
+    output: n_stories
+  - type: unary
+    operation: null_if_equal
+    input: n_rooms
+    args:
+      value: 0
+    output: n_rooms
+  - type: expression
+    expression: "n_bedrooms * n_rooms / n_rooms"
+    inputs: [n_bedrooms, n_rooms]
+    output: n_bedrooms
+  - type: expression
+    expression: "living_area_sqft * single_card / single_card"
+    inputs: [living_area_sqft, single_card]
+    output: living_area_sqft
+  - type: expression
+    expression: "year_built * single_card / single_card"
+    inputs: [year_built, single_card]
+    output: year_built
+  - type: expression
+    expression: "effective_year_built * single_card / single_card"
+    inputs: [effective_year_built, single_card]
+    output: effective_year_built
+  - type: expression
+    expression: "n_stories * single_card / single_card"
+    inputs: [n_stories, single_card]
+    output: n_stories
+  - type: expression
+    expression: "n_rooms * single_card / single_card"
+    inputs: [n_rooms, single_card]
+    output: n_rooms
+  - type: expression
+    expression: "n_bedrooms * single_card / single_card"
+    inputs: [n_bedrooms, single_card]
+    output: n_bedrooms
+
+drop_columns:
+  - single_card
+  - has_building_card
+
+# NC OneMap's Tyrrell parcel_id_local comes from altparno under the
+# bundled `simple` conversion; mapid has altparno's format, so the
+# same conversion yields the same key.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core
