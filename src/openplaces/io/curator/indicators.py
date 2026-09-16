@@ -67,6 +67,13 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
       matches. A zero or missing total never matches: a parcel with no
       assessed value at all says nothing about the share, and letting it
       match voted Condominium on 77% of Sampson County NC (2026-09-13).
+      "This row carries no value" is a different question from "this
+      row's share is small", and is asked as one: ``numeric_at_most``
+      with ``max: 0`` on the value column (False on a missing value),
+      inside an ``all_of`` with whatever presence test the row needs,
+      pooled with the share test through ``any_of`` when both readings
+      should count once. The footprint recipe's ``no_improvement_value``
+      indicator is the worked example.
     - ``value_share_at_least``: ``value / sum(total) >= min_ratio``, the mirror
       of ``value_share_below``. No ``include_zero`` option: a zero ``value``
       can never satisfy ``>= min_ratio`` for any positive ``min_ratio``.

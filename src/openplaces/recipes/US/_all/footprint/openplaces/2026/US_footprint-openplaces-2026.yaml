@@ -865,12 +865,37 @@ pipeline:
           # homes lost the evidence that way, eight of them correctly
           # classified before.
           # See plans/manufactured-home-neighborhood-signal-and-vote-provenance.md.
-          - type: value_share_below
-            value: improvement_value_parcel
-            total: [improvement_value_parcel_whole, land_value_parcel_whole]
-            max_ratio: *mh_value_share_max
-            include_zero: true
+          #
+          # Two readings, pooled so the evidence counts once. The share
+          # reading needs a positive parcel total: share = value / total is
+          # undefined without one, and a zero or missing total matching
+          # voted 77% of Sampson County NC Condominium (2026-09-13,
+          # 1f59d42). The absence reading is not a share. It asks whether
+          # this structure carries any improvement value at all, on a
+          # footprint that does sit on a parcel, and so holds where the
+          # parcel's own totals are zero or missing. A missing improvement
+          # value never matches (numeric_at_most is False on null), only an
+          # apportioned zero does. Before 1f59d42 include_zero covered the
+          # absence reading; splitting it off cost eleven surveyed
+          # manufactured homes (Beaufort 8, Halifax 3) whose parcels carry
+          # no assessed value, NSI or FEMA alone then falling short of
+          # min_score. Where a whole county is unassessed (Halifax, Sampson
+          # ship zero values on every parcel) this reading fires on every
+          # footprint and one agreeing source suffices; that is the 08-25
+          # behavior the survey measured, and it is stated here rather
+          # than hidden in a share option.
+          - type: any_of
             label: no_improvement_value
+            indicators:
+              - type: value_share_below
+                value: improvement_value_parcel
+                total: [improvement_value_parcel_whole, land_value_parcel_whole]
+                max_ratio: *mh_value_share_max
+                include_zero: true
+              - type: all_of
+                indicators:
+                  - {type: numeric_at_most, column: improvement_value_parcel, max: 0}
+                  - {type: not_null, column: parcel_id}
           # The parcel lane's park classification, restricted to its rule
           # route. That route carries a hard require on
           # n_small_elongated_footprints_per_parcel >= 4 -- footprint

@@ -58,6 +58,10 @@ DEFAULTS = {
     # test reads -- distinct from the apportioned pair above.
     'improvement_value_parcel_total': 150_000.0,
     'land_value_parcel_total': 50_000.0,
+    # The footprint sits on a parcel: the absence reading of the
+    # manufactured-home value test needs one. A case modelling a footprint
+    # no parcel covers sets it to None.
+    'parcel_id': 'p1',
     'n_stories': None,
     # A plainly non-manufactured shape unless a case overrides it.
     'length_m': 20.0,
@@ -798,6 +802,74 @@ class TestManufacturedHomeValueTestBasis:
         )
         assert 'no_improvement_value' in str(
             big['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+
+class TestNoImprovementValueWithoutAParcelTotal:
+    """The absence reading: a zero improvement value counts on a parcel the
+    assessor never valued, while a zero or missing total still yields no
+    share (the Sampson County protection, 1f59d42).
+
+    Eleven surveyed manufactured homes (Beaufort 8, Halifax 3) sat on
+    parcels with a zero or missing whole-parcel total and lost this
+    evidence when the share reading alone stopped matching there; NSI or
+    FEMA alone then fell short of min_score and they shipped Single-Family.
+    """
+
+    NSI_MH = {
+        'occupancy_type_building_nsi': 'Manufactured Home',
+        'n_dwellings_overture': 1,
+    }
+
+    @pytest.mark.parametrize('whole', [None, 0.0])
+    def test_zero_value_on_an_unvalued_parcel_is_evidence(self, recipe, whole):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': whole,
+                    'land_value_parcel_whole': whole,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+        assert 'no_improvement_value' in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_a_missing_value_on_an_unvalued_parcel_is_not(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'improvement_value_parcel': None,
+                    'improvement_value_parcel_whole': None,
+                    'land_value_parcel_whole': None,
+                }
+            ],
+        )
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
+        )
+
+    def test_a_zero_without_a_parcel_is_not(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    **self.NSI_MH,
+                    'parcel_id': None,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': None,
+                    'land_value_parcel_whole': None,
+                }
+            ],
+        )
+        assert 'no_improvement_value' not in str(
+            out['occupancy_type_source'].astype(object).iloc[0]
         )
 
 
