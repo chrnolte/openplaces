@@ -27,6 +27,14 @@ assumed conservatively where it does not:
 Rules 3 and 4 over-withhold where another source filled the same layer
 (an occupancy class voted from statewide use codes on a county's parcel
 layer). That costs values, never a leak.
+
+They apply only to a source read as a layer (`layer_source`, set by
+`bundle_terms.restricted_inputs`). A source reached only through steps
+that name their columns (a permit table linked for one evidence column)
+gets those columns withheld by name and nothing else: applying the
+layer rules to a national permit source, which maps `year_built` and
+`county_fips` like any roll, emptied both across every county of a
+bundle on 2026-09-16.
 """
 
 import re
@@ -105,11 +113,18 @@ def _source_cells(frame, source, sidecars, in_scope) -> tuple[pd.Series, dict]:
         if mask.any():
             cells[column] = cells[column] | mask if column in cells else mask
 
+    # Rules 3 and 4 assume the source is its layer inside its scope. A
+    # source reached only through steps naming their columns (a permit
+    # table linked for one evidence column) is not: its `attributes`
+    # already list the only columns it can land, and a layer-only token
+    # there says nothing about it.
+    as_layer = bool(source.get('layer_source', True))
+
     for column, sidecar in sidecars.items():
         if column in skip or column not in frame.columns:
             continue
         mark(column, _test_tokens(frame[sidecar], names_source))
-        if in_scope.any() and entity_type:
+        if as_layer and in_scope.any() and entity_type:
             mark(column, in_scope & _test_tokens(frame[sidecar], layer_only))
 
     if in_scope.any():
@@ -120,6 +135,20 @@ def _source_cells(frame, source, sidecars, in_scope) -> tuple[pd.Series, dict]:
                 ):
                     continue
                 sidecar = sidecars.get(column) or sidecars.get(attribute)
+                if not as_layer:
+                    # Only the columns it was linked for, and only where
+                    # nothing says another source filled them; without a
+                    # sidecar the column is its own evidence column.
+                    if column != attribute:
+                        continue
+                    if sidecar:
+                        mark(
+                            column,
+                            in_scope & _test_tokens(frame[sidecar], names_source),
+                        )
+                    else:
+                        mark(column, in_scope)
+                    continue
                 exonerated = (
                     _test_tokens(frame[sidecar], other_source)
                     if sidecar

@@ -128,25 +128,92 @@ def _mapped_attributes(recipe: dict) -> list[str]:
     return sorted(names)
 
 
+def _referencing_specs(node, upstream_id: str) -> list[dict]:
+    """Mappings in *node* that name *upstream_id* as their `recipe_id`."""
+    found: list[dict] = []
+    if isinstance(node, dict):
+        if node.get('recipe_id') == upstream_id:
+            found.append(node)
+        for value in node.values():
+            found.extend(_referencing_specs(value, upstream_id))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_referencing_specs(item, upstream_id))
+    return found
+
+
+def _explicit_outputs(recipe: dict, upstream_id: str) -> set[str] | None:
+    """Column names *recipe* takes from *upstream_id*, or None for a layer.
+
+    A step that names the upstream with an explicit `columns` mapping
+    (a `link_by_id` pulling one field, a `merge_enrichments` entry) lets
+    exactly those outputs into the recipe's table; `count_as` adds a
+    count column. Any reference without such a list (an `entity_recipe`,
+    a spine source, an auto-discovered layer) can carry every attribute
+    the upstream maps, which None reports.
+    """
+    specs = _referencing_specs(recipe.get('pipeline'), upstream_id)
+    if not specs:
+        return None
+    outputs: set[str] = set()
+    for spec in specs:
+        columns = spec.get('columns')
+        if isinstance(columns, dict):
+            outputs.update(str(name) for name in columns.values())
+        elif isinstance(columns, list | tuple):
+            outputs.update(str(name) for name in columns)
+        else:
+            return None
+        if spec.get('count_as'):
+            outputs.add(str(spec['count_as']))
+    return outputs
+
+
 def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
-    """Add the terms of every recipe upstream of *recipe* for one unit."""
-    seen: set[str] = set()
-    frontier = [recipe]
+    """Add the terms of every recipe upstream of *recipe* for one unit.
+
+    Each entry also records how far the source's data can reach: a
+    source read as a layer (a spine or an auto-discovered county roll)
+    can land any attribute it maps, and `io.redaction` withholds those by
+    name inside the source's scope. A source reached only through steps
+    that name their columns (a permit table linked for one evidence
+    column) can land nothing else, so its entry carries just those
+    columns and `layer_source` False. Before this distinction a
+    national-scope permit source, mapping `year_built` and `county_fips`
+    like any roll, emptied both across every county of a bundle.
+    """
+    # Each recipe reached, with the columns through which everything
+    # upstream of it reaches the bundle, or None when it is read as a
+    # layer. A recipe met again on a wider path (a layer path after a
+    # column path) is walked again so its own inputs widen too; met
+    # again on another column path, the columns are merged in place.
+    reached: dict[str, set[str] | None] = {}
+    frontier: list[tuple[dict, set[str] | None]] = [(recipe, None)]
 
     while frontier:
-        current = frontier.pop()
+        current, cap = frontier.pop()
         for edge in get_recipe_dependencies(current, admin_id=admin_id):
             upstream_id = getattr(edge, 'upstream_recipe_id', None)
-            if not upstream_id or upstream_id in seen:
-                # Unresolved auto-discovery cannot be attributed; a repeat
-                # is a diamond in the graph, not new information.
+            if not upstream_id:
+                # Unresolved auto-discovery cannot be attributed.
                 continue
-            seen.add(upstream_id)
+            explicit = _explicit_outputs(current, upstream_id)
+            if explicit is not None:
+                reach = explicit if cap is None else explicit & cap
+            else:
+                reach = cap
+            if upstream_id in reached:
+                prior = reached[upstream_id]
+                if prior is None or reach == prior:
+                    continue
+                if reach is not None:
+                    reach = prior | reach
+            reached[upstream_id] = reach
             try:
                 upstream = get_recipe_by_id(upstream_id)
             except Exception:
                 continue
-            frontier.append(upstream)
+            frontier.append((upstream, reach))
 
             entity = upstream.get('entity') or upstream.get('dataset') or {}
             source = getattr(entity, 'source', None) or (
@@ -172,12 +239,26 @@ def _walk_source_terms(recipe, admin_id, terms: dict, key=_terms_key) -> None:
                 # io.redaction to withhold exactly its values.
                 'entity_type': str(getattr(entity, 'entity_type', '') or '') or None,
                 'admin_id': str(upstream.get('admin_id') or '') or None,
-                'attributes': _mapped_attributes(upstream),
+                'attributes': (
+                    _mapped_attributes(upstream) if reach is None else sorted(reach)
+                ),
+                'layer_source': reach is None,
                 'team_sharing_permitted': getattr(
                     source, 'team_sharing_permitted', None
                 ),
             }
-            terms.setdefault(key(entry), entry)
+            existing = terms.get(key(entry))
+            if existing is None:
+                terms[key(entry)] = entry
+            elif entry['layer_source'] or not existing['layer_source']:
+                # Reached again by a wider or another column path: it
+                # can land whatever either path lets through.
+                existing['attributes'] = sorted(
+                    set(existing['attributes']) | set(entry['attributes'])
+                )
+                existing['layer_source'] = (
+                    existing['layer_source'] or entry['layer_source']
+                )
 
 
 def _usage_conditions(requirement) -> list[str]:
@@ -246,6 +327,7 @@ def restricted_inputs(recipe, admin_ids=None) -> list[dict]:
                     'entity_type': entry.get('entity_type'),
                     'admin_id': entry.get('admin_id'),
                     'attributes': entry.get('attributes') or [],
+                    'layer_source': entry.get('layer_source', True),
                     'team_sharing_permitted': entry.get('team_sharing_permitted'),
                 }
             )

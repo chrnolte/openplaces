@@ -305,3 +305,108 @@ def test_the_notice_names_the_recipe_roots(terms):
     assert 'Recipes' in text
     assert 'openplaces' in text
     assert str(BUNDLED_RECIPES_DIR) in text
+
+
+# How far a restricted source's data can reach.
+
+
+def _fake_recipes(monkeypatch, recipes, edges):
+    """Stand up a small recipe graph for the source walk."""
+    from types import SimpleNamespace
+
+    import openplaces.io.bundle_terms as module
+
+    def get_recipe_by_id(recipe_id):
+        return recipes[recipe_id]
+
+    def get_recipe_dependencies(recipe, admin_id=None):
+        return [
+            SimpleNamespace(upstream_recipe_id=up, resolved=True)
+            for up in edges.get(recipe['id'], [])
+        ]
+
+    monkeypatch.setattr(module, 'get_recipe_by_id', get_recipe_by_id)
+    monkeypatch.setattr(module, 'get_recipe_dependencies', get_recipe_dependencies)
+    monkeypatch.setattr(module, '_catalog_terms', lambda: {})
+
+
+def _restricted_recipe(recipe_id, entity_type, columns):
+    from types import SimpleNamespace
+
+    source = SimpleNamespace(
+        source_id='closedvendor',
+        license='fabricated: no redistribution',
+        terms_url='https://example.org/terms',
+        portal_url=None,
+        redistribution_restricted=True,
+        resale_restricted=None,
+        usage_requirement=None,
+        team_sharing_permitted=None,
+    )
+    entity = SimpleNamespace(entity_type=entity_type, source=source)
+    return {
+        'id': recipe_id,
+        'admin_id': 'US',
+        'entity': entity,
+        'columns': columns,
+    }
+
+
+def test_a_source_linked_for_named_columns_reaches_only_those(monkeypatch):
+    from openplaces.io.bundle_terms import restricted_inputs
+
+    vendor = _restricted_recipe(
+        'US_property-closedvendor-2026',
+        'property',
+        {'year_built': 'YB', 'county_fips': 'FIPS', 'occupancy_type_raw': 'USE'},
+    )
+    spine = {
+        'id': 'US_footprint-spine-2026',
+        'pipeline': [
+            {
+                'step': 'link_by_id',
+                'recipe_id': 'US_property-closedvendor-2026',
+                'columns': {'occupancy_type_raw': 'occupancy_type_property_vendor'},
+                'count_as': 'n_permits_per_footprint',
+            }
+        ],
+    }
+    curate = {'id': 'US_footprint-openplaces-2026', 'entity_recipe': spine['id']}
+    _fake_recipes(
+        monkeypatch,
+        {r['id']: r for r in (vendor, spine, curate)},
+        {curate['id']: [spine['id']], spine['id']: [vendor['id']]},
+    )
+
+    (entry,) = restricted_inputs(curate)
+
+    assert entry['layer_source'] is False
+    assert entry['attributes'] == [
+        'n_permits_per_footprint',
+        'occupancy_type_property_vendor',
+    ]
+
+
+def test_a_source_read_as_a_layer_reaches_everything_it_maps(monkeypatch):
+    from openplaces.io.bundle_terms import restricted_inputs
+
+    roll = _restricted_recipe(
+        'US-NC-XX_parcel-closedvendor-2026',
+        'parcel',
+        {'year_built': 'YB', 'land_value': 'LV'},
+    )
+    geospine = {
+        'id': 'US_parcel-geospine-2026',
+        'pipeline': [{'step': 'resolve_spine'}],
+    }
+    curate = {'id': 'US_parcel-openplaces-2026', 'entity_recipe': geospine['id']}
+    _fake_recipes(
+        monkeypatch,
+        {r['id']: r for r in (roll, geospine, curate)},
+        {curate['id']: [geospine['id']], geospine['id']: [roll['id']]},
+    )
+
+    (entry,) = restricted_inputs(curate)
+
+    assert entry['layer_source'] is True
+    assert entry['attributes'] == ['land_value', 'year_built']
