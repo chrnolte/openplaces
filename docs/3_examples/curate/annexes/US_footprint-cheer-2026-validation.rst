@@ -38,8 +38,33 @@ rows). Construction years compare the inventory's ``year_built``
 against the most recent permit record's year; permit years are partly
 assessor-derived, so that comparison is not fully independent.
 
+**Reading the matrices.** Rows are the reference class and columns
+the class a source asserted. Beside the three residential classes,
+Secondary counts outbuildings, Non-residential counts any other
+asserted class, and No class counts rows where the source asserted
+nothing. Producer's accuracy (recall) is the share of a reference
+class's answered rows that a source classed correctly; consumer's
+accuracy (precision) is the share of rows a source assigned to a class
+that belong to it. A Secondary or Non-residential assertion counts as
+an answer, and as a miss.
+
+**NSI on survey points.** NSI's No class on survey points is partly a
+linkage effect: an NSI point counts only where it falls on the
+footprint the survey point linked to. Of the 108 surveyed manufactured
+homes with no NSI point on the linked footprint, 104 have an NSI point
+within 100 m (median distance 29 m), and 29 of those nearest points are
+classed Manufactured Home. NSI also classes 46 surveyed New Hanover
+manufactured homes as Professional Technical Services, which the
+matrices count as Non-residential.
+
 Occupancy type against the survey (North Carolina)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Generated replacement pending: once the validate job has written
+   this table's confusion CSVs, replace the hand-typed tables of this
+   section with:
+
+   .. include:: _generated/cheer-eastern-nc_US_footprint-openplaces-2026_occupancy-survey.rst
 
 Overall accuracy 0.756, macro-F1 0.783, a residential class on 1,292
 of the 1,370 points.
@@ -139,6 +164,12 @@ of the 1,370 points.
 Occupancy type against permits (North Carolina)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. Generated replacement pending: once the validate job has written
+   this table's confusion CSVs, replace the hand-typed tables of this
+   section with:
+
+   .. include:: _generated/cheer-eastern-nc_US_footprint-openplaces-2026_permit-occupancy.rst
+
 Agreement 93.7 percent on 136,666 scored footprints in 39 counties;
 96.6 percent on single-footprint parcels.
 
@@ -168,6 +199,12 @@ Agreement 93.7 percent on 136,666 scored footprints in 39 counties;
 
 Occupancy type against permits (Texas)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Generated replacement pending: once the validate job has written
+   this table's confusion CSVs, replace the hand-typed tables of this
+   section with:
+
+   .. include:: _generated/cheer-coastal-tx_US_footprint-openplaces-2026_permit-occupancy.rst
 
 Agreement 94.9 percent on 357,969 scored footprints in the eight
 permit-covered metro counties; 96.7 percent on single-footprint
@@ -201,6 +238,13 @@ Multi-Family conflicts.
 
 Year built against permits
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Generated replacement pending: once the validate job has written
+   this table's confusion CSVs, replace the hand-typed tables of this
+   section with:
+
+   .. include:: _generated/cheer-eastern-nc_US_footprint-openplaces-2026_permit-year-built.rst
+   .. include:: _generated/cheer-coastal-tx_US_footprint-openplaces-2026_permit-year-built.rst
 
 .. list-table::
    :header-rows: 1
