@@ -714,6 +714,26 @@ fallback; because a house and its shed share one address, callers break the
 resulting ties with `prefer_column`/`prefer_values` (e.g. rank
 `priority_on_parcel == 'primary'` first) rather than letting row order decide.
 
+**Every validation step writes a confusion matrix.** `confusion_matrix` keeps
+reference classes as rows and predictions as columns, then `Secondary`,
+`Non-residential` (any other asserted class; `(other class)` for a recipe
+declaring no residential classes) and `No class`, so no row is dropped and
+"said nothing" stays apart from "said something else". NSI and FEMA derived
+sources set `keep_unmapped: true`, keeping a raw class their residential-only
+class map does not cover instead of scoring it as no prediction;
+`accuracy_from_matrix` derives producer's (recall) and consumer's (precision)
+accuracy, kappa and the abstention rate, and `score_classification` is
+computed from the same matrix. `write_confusion_report` (and
+`write_year_agreement_report`, whose "matrix" is one reference row of
+exact/within 1/within 5/more than 5 years bins) writes
+`{name}_confusion.csv` (long form, pooled plus strata),
+`{name}_accuracy.csv` and a JSON sidecar into the delivery's `accuracies/`
+folder, refusing any stratum under 10 rows so no cell points at one building.
+`ValidationContext.score_sources(linked, out_dir)` writes them for every
+survey source; the permit notebooks call the writer directly. Only these
+aggregates may leave memory: permit modes per footprint are restricted
+row-level data.
+
 `provenance.py` carries one invariant worth knowing before writing any step
 that produces a value: **a cell openplaces itself filled must say so**, by
 carrying the `imputed` marker in its `{col}_source`. Tokens are therefore
@@ -890,6 +910,18 @@ region, a run naming a region (or covering every member of it) ships that one,
 and a narrower debug run stops at curate so a one-county rebuild cannot
 overwrite a shipped regional file. `--config deliver=true|false` overrides
 either way, `true` still limited to the regions the run touches.
+
+A **`validate`** job follows each delivery, one per shipped region whose
+recipe lists notebooks for it (`validation: notebooks:`, each naming the
+reference it scores; `ground_truth` or a sidecar `references:` key resolves to
+a region). It shares the delivery's recipe, unit and region, so `node_key`
+adds the stage as a fourth part. `run_stage validate <recipe> <region>`
+executes the notebooks with `jupyter nbconvert --execute`, passing arguments
+through `OPENPLACES_NOTEBOOK_ARGS` (read in each notebook's test-arguments
+cell), writes executed copies to the cache `_logs/validate/` tree, runs
+`docs/_ext/generate_validation_tables.py`, and records a
+`{recipe}_validation-run.json` manifest as its output. It follows `deliver`'s
+scope; `--config validate=false|true` overrides it.
 
 ### File layout on disk
 

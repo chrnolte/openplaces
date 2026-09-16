@@ -86,9 +86,14 @@ validation:
   # order_columns drops the derived class columns from published output;
   # they are reconstructed from raw evidence through the same rulesets
   # the vote used, so scoring cannot silently lose those blocks.
+  # `keep_unmapped` keeps a raw value the class map leaves unmapped (a
+  # non-residential NSI or FEMA class), so the matrices score it as a
+  # Non-residential assertion rather than as no prediction. The keyword
+  # lane does not set it: assessor text no keyword matched asserts
+  # nothing.
   derived_source_columns:
-    nsi: {column: occupancy_type_building_nsi}
-    fema: {column: group_footprint_fema}
+    nsi: {column: occupancy_type_building_nsi, keep_unmapped: true}
+    fema: {column: group_footprint_fema, keep_unmapped: true}
     keyword:
       column: use_group_combined_parcel
       ruleset: parcel-occupancy-keywords.csv
@@ -101,9 +106,27 @@ validation:
     version: summerscholars2026
     admin_id: US-NC
     filename: US-NC_footprint-cheer-summerscholars.csv
+    # The delivery region whose accuracies/ folder the survey scores
+    # land in, and whose `validate` job runs the survey notebooks.
+    region: cheer-eastern-nc
     regenerate_hint: >-
       Run notebooks/02_ingest/footprints/prepare_cheer_ground_truth.ipynb
       to regenerate it from the source workbook.
+  # Notebooks the orchestrated `validate` job executes after a region
+  # ships (flow.dag, run_stage validate). `reference` is `ground_truth`
+  # or a key of the sidecar's `references:`; each resolves to the
+  # delivery region it scores, and an entry whose reference is not
+  # declared on this machine is skipped. Every notebook writes its
+  # confusion matrices through io.curator.validation.
+  notebooks:
+    - notebook: notebooks/05_curate/validate_occupancy.ipynb
+      reference: ground_truth
+    - notebook: notebooks/05_curate/validate_delivery.ipynb
+      reference: NC
+    - notebook: notebooks/05_curate/validate_occupancy_against_permits.ipynb
+      reference: NC
+    - notebook: notebooks/05_curate/validate_occupancy_against_permits_tx.ipynb
+      reference: TX
 
 
 share:

@@ -29,6 +29,13 @@
 # without anyone remembering to. A narrower run gets no delivery job;
 # --config deliver=true forces one, deliver=false suppresses it.
 #
+# Each shipped region whose recipe declares validation notebooks for it
+# (`validation: notebooks:`) is then re-scored by a 'validate' job: it
+# executes those notebooks headless, which write confusion matrices and
+# accuracies into the region's accuracies/ folder, and regenerates the
+# docs tables from them. It follows deliver's scope by default;
+# --config validate=false skips it, validate=true forces it.
+#
 # An unscoped run seeds its admin units from the declared members, which
 # means walking the recipe tree once per member: measured at ~7 minutes
 # of graph construction for the 45-county CHEER region, before any job
@@ -74,12 +81,14 @@ if isinstance(exclude_recipe_ids, str):
 # parsing lives in flow.dag so it can be tested: Snakemake types a
 # config value by its literal form, so `deliver=0` is an integer.
 deliver = parse_deliver_config(config.get('deliver'))
+validate = parse_deliver_config(config.get('validate'))
 
 dag = RecipeDAG(
     TARGET,
     admin_ids=ADMIN_IDS,
     exclude_recipe_ids=set(exclude_recipe_ids) or None,
     deliver=deliver,
+    validate=validate,
 )
 
 
@@ -143,6 +152,7 @@ STAGE_RUNTIME_MIN = {
     'enrich': 720,
     'curate': 240,
     'deliver': 60,
+    'validate': 240,
 }
 
 
@@ -207,10 +217,11 @@ for node in dag.nodes():
         )
     _extra = [str(p) for p in dag.extra_outputs(*_job)]
     _inputs = [str(p) for p in dag.input_paths(*_job)]
-    # A deliver job is addressed by region, not by admin unit: that is
-    # what run_stage forwards to export_delivery. Every other stage takes
-    # the admin unit it processes.
-    if node.stage == 'deliver':
+    # A deliver or validate job is addressed by region, not by admin
+    # unit: that is what run_stage forwards to export_delivery and to
+    # the validation notebooks. Every other stage takes the admin unit
+    # it processes.
+    if node.stage in ('deliver', 'validate'):
         _stage_arg = dag.delivery_region(node.recipe_id, node.admin_id, node.region)
     else:
         _stage_arg = node.admin_id

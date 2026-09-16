@@ -22,10 +22,17 @@ Two things this module insists on that a naive accuracy check gets wrong:
   labels almost everything one class scores excellent recall for it, and an
   aggregate agreement figure hides the whole problem: it is entirely possible
   for overall agreement to rise while two of three classes get worse.
+- **The full confusion matrix is the default output.** Every scoring
+  path builds one (:func:`confusion_matrix`, reference rows, predicted
+  columns, abstentions and off-vocabulary predictions kept) and derives
+  producer's and consumer's accuracy from it
+  (:func:`accuracy_from_matrix`); :func:`write_confusion_report` writes
+  both, aggregates only, into a delivery's accuracies folder.
 """
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 
 import numpy as np
@@ -342,6 +349,343 @@ def compare_classifications_paired(
     return pd.DataFrame(rows)
 
 
+# Sentinel labels of a confusion matrix. 'No class' means the source
+# asserted nothing; an asserted class outside the scored vocabulary is
+# 'Non-residential' where the recipe declares its residential classes,
+# and the generic '(other class)' where it does not.
+ABSTAIN_LABEL = 'No class'
+OTHER_LABEL = '(other class)'
+NON_RESIDENTIAL_LABEL = 'Non-residential'
+NO_REFERENCE_LABEL = '(no reference)'
+
+# A year-agreement report files every scored entity under one reference
+# row: the reference carries a year, not a class, so the columns say how
+# far the prediction lands from it.
+YEAR_REFERENCE_LABEL = 'reference year'
+YEAR_AGREEMENT_BINS = (
+    'exact',
+    'within 1 year',
+    'within 5 years',
+    'more than 5 years',
+)
+
+# Rows a stratum must hold before any of its cells is written. A matrix
+# cell over a handful of rows can point at one surveyed address.
+MIN_STRATUM_ROWS = 10
+
+
+def confusion_matrix(
+    truth: pd.Series,
+    predicted: pd.Series,
+    classes: list[str],
+    *,
+    abstain: str = ABSTAIN_LABEL,
+    other: str = OTHER_LABEL,
+    secondary: str | None = None,
+    collapse_other: bool = True,
+) -> pd.DataFrame:
+    """Count matrix of reference classes (rows) by predicted classes (columns).
+
+    Every input row lands in exactly one cell, so the matrix total is the
+    number of rows passed in. Columns separate, in order, the scored
+    *classes*, the *secondary* class (an outbuilding, where one is
+    named), every other asserted class (*other*, e.g. `Non-residential`)
+    and no assertion at all (*abstain*). Dropping or merging those would
+    hide whether a source declined to answer or answered outside the
+    vocabulary, which call for different fixes.
+
+    Parameters
+    ----------
+    truth : pandas.Series
+        Reference class per row.
+    predicted : pandas.Series
+        Predicted class per row, positionally aligned to *truth*.
+    classes : list of str
+        Classes in report order. Always present as rows and columns, so a
+        class never predicted, or with no reference support, shows up as
+        zeros rather than disappearing.
+    abstain : str, optional
+        Column label for rows with no prediction.
+    other : str, optional
+        Row and column label for asserted labels outside *classes* and
+        *secondary*.
+    secondary : str, optional
+        A class kept in a row and column of its own rather than folded
+        into *other* (the recipe's `occupancy: secondary_class`).
+    collapse_other : bool, optional
+        True (default) folds every label outside *classes* and
+        *secondary* into *other*. False keeps each such label as its own
+        row and column, after *classes* in order of first appearance,
+        which is what an exact label-equality agreement needs.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Integer counts. Rows are *classes*, then *secondary* and *other*
+        (or the extra labels) where a reference falls outside *classes*,
+        then `(no reference)` where a reference is missing. Columns are
+        *classes*, *secondary* when given, *other* (or the extra labels),
+        then *abstain*.
+    """
+    truth = pd.Series(truth).astype(object).reset_index(drop=True)
+    predicted = pd.Series(predicted).astype(object).reset_index(drop=True)
+    if len(truth) != len(predicted):
+        raise ValueError(
+            f'confusion_matrix needs aligned inputs; got {len(truth)} '
+            f'reference and {len(predicted)} predicted rows.'
+        )
+    classes = list(classes)
+    known = set(classes)
+
+    reference = truth.where(truth.notna(), NO_REFERENCE_LABEL)
+    answer = predicted.where(predicted.notna(), abstain)
+    if collapse_other:
+        kept = known | ({secondary} if secondary else set())
+        reference = reference.where(
+            reference.isin(kept) | reference.eq(NO_REFERENCE_LABEL), other
+        )
+        answer = answer.where(answer.isin(kept) | answer.eq(abstain), other)
+        extra_columns = [*([secondary] if secondary else []), other]
+        in_reference = set(reference)
+        extra_rows = [label for label in extra_columns if label in in_reference]
+    else:
+        sentinels = {NO_REFERENCE_LABEL, abstain}
+        extra_columns = [
+            label
+            for label in dict.fromkeys([*reference, *answer])
+            if label not in known and label not in sentinels
+        ]
+        in_reference = set(reference)
+        extra_rows = [label for label in extra_columns if label in in_reference]
+    rows = classes + extra_rows
+    if reference.eq(NO_REFERENCE_LABEL).any():
+        rows.append(NO_REFERENCE_LABEL)
+    columns = classes + extra_columns + [abstain]
+
+    counts = (
+        pd.DataFrame({'reference': reference, 'predicted': answer})
+        .groupby(['reference', 'predicted'], sort=False)
+        .size()
+    )
+    matrix = pd.DataFrame(0, index=rows, columns=columns, dtype=int)
+    for (row, column), n in counts.items():
+        matrix.loc[row, column] = int(n)
+    matrix.index.name = 'reference'
+    matrix.columns.name = 'predicted'
+    return matrix
+
+
+def _ratio(numerator, denominator):
+    """A share, or None where the denominator is zero."""
+    return numerator / denominator if denominator else None
+
+
+def _f1(precision, recall):
+    """F1 from a precision and recall that may each be undefined (None)."""
+    # A real zero is a score, not a missing measurement. Testing the
+    # floats for truthiness collapsed the two, so a class we got
+    # entirely wrong reported None (NaN), and
+    # compare_classifications_paired's np.isfinite filter then dropped
+    # every bootstrap draw of it, leaving the regression gate blind to
+    # exactly the collapse it exists to catch. F1 is undefined only
+    # where precision and recall are both undefined: no truth support
+    # and nothing predicted.
+    if precision is None and recall is None:
+        return None
+    # sklearn's zero_division convention: an undefined half counts as 0
+    # once the other half is measurable, because a class we found none
+    # of, or predicted only wrongly, scored zero rather than went
+    # unmeasured.
+    hit = (precision or 0.0, recall or 0.0)
+    return 2 * hit[0] * hit[1] / sum(hit) if sum(hit) else 0.0
+
+
+def _class_counts(matrix: pd.DataFrame, cls, abstain: str) -> dict:
+    """Row, column and diagonal counts of one class in a matrix."""
+    in_rows = cls in matrix.index
+    in_columns = cls in matrix.columns
+    n_reference = int(matrix.loc[cls].sum()) if in_rows else 0
+    n_abstained = (
+        int(matrix.loc[cls, abstain]) if in_rows and abstain in matrix.columns else 0
+    )
+    return {
+        'n_reference': n_reference,
+        'n_answered': n_reference - n_abstained,
+        'n_correct': int(matrix.loc[cls, cls]) if in_rows and in_columns else 0,
+        'n_predicted': int(matrix[cls].sum()) if in_columns else 0,
+    }
+
+
+def _matrix_classes(matrix, classes, *, abstain, other, secondary=None):
+    """The reference classes of a matrix: given, or every non-sentinel row."""
+    if classes is not None:
+        return list(classes)
+    sentinels = {abstain, other, secondary, NO_REFERENCE_LABEL}
+    return [label for label in matrix.index if label not in sentinels]
+
+
+def cohens_kappa(
+    matrix: pd.DataFrame,
+    classes: list[str] | None = None,
+    *,
+    abstain: str = ABSTAIN_LABEL,
+    other: str = OTHER_LABEL,
+    secondary: str | None = None,
+) -> float:
+    """Cohen's kappa over the answered rows of a confusion matrix.
+
+    Agreement beyond what the two margins alone would produce by chance.
+    It is computed over the reference rows in *classes* and every
+    answered column. A row is answered when the source asserted any
+    class, a secondary or non-residential one included; only *abstain*
+    is excluded, and the *secondary* and *other* columns count as
+    categories whose reference margin is zero. A classifier that
+    abstains is therefore neither rewarded nor punished here, which is
+    why the abstention rate is reported beside it.
+
+    Parameters
+    ----------
+    matrix : pandas.DataFrame
+        Output of :func:`confusion_matrix`.
+    classes : list of str, optional
+        Reference classes to include. Default: every non-sentinel row.
+    abstain, other, secondary : str, optional
+        Sentinel labels, as passed to :func:`confusion_matrix`.
+
+    Returns
+    -------
+    float
+        Kappa, or NaN when no row was answered or chance agreement is
+        total.
+    """
+    classes = _matrix_classes(
+        matrix, classes, abstain=abstain, other=other, secondary=secondary
+    )
+    answered = [column for column in matrix.columns if column != abstain]
+    block = matrix.reindex(index=classes, columns=answered, fill_value=0)
+    n = int(block.to_numpy().sum())
+    if not n:
+        return float('nan')
+    labels = list(dict.fromkeys([*classes, *answered]))
+    row_margin = block.sum(axis=1).reindex(labels, fill_value=0)
+    column_margin = block.sum(axis=0).reindex(labels, fill_value=0)
+    observed = sum(int(block.loc[c, c]) for c in classes if c in answered) / n
+    expected = float((row_margin * column_margin).sum()) / n**2
+    if expected >= 1:
+        return float('nan')
+    return (observed - expected) / (1 - expected)
+
+
+# Column order of accuracy_from_matrix, shared with the report writer.
+ACCURACY_COLUMNS = (
+    'class',
+    'n_reference',
+    'n_answered',
+    'n_correct',
+    'n_predicted',
+    'producers_accuracy_recall',
+    'producers_accuracy_all_rows',
+    'consumers_accuracy_precision',
+    'f1',
+    'overall_accuracy_answered',
+    'overall_accuracy_all_rows',
+    'macro_f1',
+    'kappa',
+    'abstention_rate',
+)
+
+
+def accuracy_from_matrix(
+    matrix: pd.DataFrame,
+    classes: list[str] | None = None,
+    *,
+    abstain: str = ABSTAIN_LABEL,
+    other: str = OTHER_LABEL,
+    secondary: str | None = None,
+) -> pd.DataFrame:
+    """Producer's and consumer's accuracy per class, plus overall figures.
+
+    Producer's accuracy is row-based: of the reference rows of a class
+    that the classifier answered, the share it got right (recall). A
+    row is answered when the source asserted any class, including a
+    secondary or non-residential one, which therefore counts as a miss;
+    only the *abstain* column is left out.
+    Consumer's accuracy is column-based: of the rows it called a class,
+    the share that really are (precision). A map producer reads the
+    first, a map user the second, and a classifier can be excellent at
+    one while failing the other.
+
+    Parameters
+    ----------
+    matrix : pandas.DataFrame
+        Output of :func:`confusion_matrix`.
+    classes : list of str, optional
+        Reference classes to score, in report order. Default: every
+        non-sentinel row.
+    abstain, other, secondary : str, optional
+        Sentinel labels, as passed to :func:`confusion_matrix`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per class and a final `ALL` row, with the columns of
+        `ACCURACY_COLUMNS`. Class rows carry the counts,
+        `producers_accuracy_recall` (over answered rows),
+        `producers_accuracy_all_rows` (abstentions counted as misses),
+        `consumers_accuracy_precision` and `f1`. The `ALL` row carries
+        the counts pooled over the class rows, and
+        `overall_accuracy_answered`, `overall_accuracy_all_rows`,
+        `macro_f1` (mean over classes whose F1 is defined), `kappa`
+        (:func:`cohens_kappa`) and `abstention_rate`. Undefined shares
+        are NaN.
+    """
+    classes = _matrix_classes(
+        matrix, classes, abstain=abstain, other=other, secondary=secondary
+    )
+    records = []
+    for cls in classes:
+        counts = _class_counts(matrix, cls, abstain)
+        recall = _ratio(counts['n_correct'], counts['n_answered'])
+        precision = _ratio(counts['n_correct'], counts['n_predicted'])
+        records.append(
+            {
+                'class': cls,
+                **counts,
+                'producers_accuracy_recall': recall,
+                'producers_accuracy_all_rows': _ratio(
+                    counts['n_correct'], counts['n_reference']
+                ),
+                'consumers_accuracy_precision': precision,
+                'f1': _f1(precision, recall),
+            }
+        )
+
+    n_reference = sum(record['n_reference'] for record in records)
+    n_answered = sum(record['n_answered'] for record in records)
+    n_correct = sum(record['n_correct'] for record in records)
+    defined_f1 = [record['f1'] for record in records if record['f1'] is not None]
+    records.append(
+        {
+            'class': 'ALL',
+            'n_reference': n_reference,
+            'n_answered': n_answered,
+            'n_correct': n_correct,
+            'n_predicted': n_answered,
+            'overall_accuracy_answered': _ratio(n_correct, n_answered),
+            'overall_accuracy_all_rows': _ratio(n_correct, n_reference),
+            'macro_f1': float(np.mean(defined_f1)) if defined_f1 else None,
+            'kappa': cohens_kappa(
+                matrix, classes, abstain=abstain, other=other, secondary=secondary
+            ),
+            'abstention_rate': (1 - n_answered / n_reference if n_reference else None),
+        }
+    )
+    table = pd.DataFrame.from_records(records, columns=list(ACCURACY_COLUMNS))
+    for column in ACCURACY_COLUMNS[5:]:
+        table[column] = pd.to_numeric(table[column], errors='coerce').astype(float)
+    return table
+
+
 def score_classification(
     truth: pd.Series, predicted: pd.Series, classes: list[str]
 ) -> pd.DataFrame:
@@ -350,68 +694,582 @@ def score_classification(
     Recall answers "of the real Xs, how many did we find"; precision answers
     "of those we called X, how many really are". Reporting only one invites
     the failure this whole module exists to prevent.
+
+    Computed from :func:`confusion_matrix` with every label kept apart
+    (`collapse_other=False`), so each number here has the same definition
+    as the matching one in :func:`accuracy_from_matrix`. The `ALL` row is
+    exact label agreement over every answered row, whatever its class.
     """
-    truth = truth.astype(object)
-    predicted = predicted.astype(object)
-    present = predicted.notna()
+    matrix = confusion_matrix(truth, predicted, classes, collapse_other=False)
+
+    def _rounded(value):
+        return round(value, 4) if value is not None else None
 
     records = []
     for cls in classes:
-        is_class = truth == cls
-        scored = is_class & present
-        called = present & (predicted == cls)
-        n_correct = int((predicted[scored] == cls).sum())
-        n_called = int(called.sum())
-        recall = n_correct / scored.sum() if scored.sum() else None
-        precision = int((truth[called] == cls).sum()) / n_called if n_called else None
-        # A real zero is a score, not a missing measurement. Testing the
-        # floats for truthiness collapsed the two, so a class we got
-        # entirely wrong reported None (NaN), and
-        # compare_classifications_paired's np.isfinite filter then dropped
-        # every bootstrap draw of it, leaving the regression gate blind to
-        # exactly the collapse it exists to catch. F1 is undefined only
-        # where precision and recall are both undefined: no truth support
-        # and nothing predicted.
-        if precision is None and recall is None:
-            f1 = None
-        else:
-            # sklearn's zero_division convention: an undefined half
-            # counts as 0 once the other half is measurable, because a
-            # class we found none of, or predicted only wrongly, scored
-            # zero rather than went unmeasured.
-            hit = (precision or 0.0, recall or 0.0)
-            f1 = 2 * hit[0] * hit[1] / sum(hit) if sum(hit) else 0.0
+        counts = _class_counts(matrix, cls, ABSTAIN_LABEL)
+        recall = _ratio(counts['n_correct'], counts['n_answered'])
+        precision = _ratio(counts['n_correct'], counts['n_predicted'])
         records.append(
             {
                 'class': cls,
-                'n_truth': int(is_class.sum()),
-                'n_scored': int(scored.sum()),
-                'n_correct': n_correct,
-                'n_predicted': n_called,
-                'recall': round(recall, 4) if recall is not None else None,
-                'precision': round(precision, 4) if precision is not None else None,
-                'f1': round(f1, 4) if f1 is not None else None,
+                'n_truth': counts['n_reference'],
+                'n_scored': counts['n_answered'],
+                'n_correct': counts['n_correct'],
+                'n_predicted': counts['n_predicted'],
+                'recall': _rounded(recall),
+                'precision': _rounded(precision),
+                'f1': _rounded(_f1(precision, recall)),
             }
         )
 
-    agreement = (
-        (predicted[present] == truth[present]).sum() / present.sum()
-        if present.sum()
-        else None
+    answered = [column for column in matrix.columns if column != ABSTAIN_LABEL]
+    n_scored = int(matrix[answered].to_numpy().sum())
+    n_correct = sum(
+        int(matrix.loc[label, label]) for label in matrix.index if label in answered
     )
+    agreement = _rounded(_ratio(n_correct, n_scored))
     records.append(
         {
             'class': 'ALL',
-            'n_truth': int(len(truth)),
-            'n_scored': int(present.sum()),
-            'n_correct': int((predicted[present] == truth[present]).sum()),
-            'n_predicted': int(present.sum()),
-            'recall': round(agreement, 4) if agreement is not None else None,
-            'precision': round(agreement, 4) if agreement is not None else None,
-            'f1': round(agreement, 4) if agreement is not None else None,
+            'n_truth': int(matrix.to_numpy().sum()),
+            'n_scored': n_scored,
+            'n_correct': n_correct,
+            'n_predicted': n_scored,
+            'recall': agreement,
+            'precision': agreement,
+            'f1': agreement,
         }
     )
     return pd.DataFrame(records)
+
+
+def paired_disagreement(
+    truth: pd.Series, a: pd.Series, b: pd.Series
+) -> dict[str, float]:
+    """McNemar's test of two classifiers scored on the same rows.
+
+    Only the rows where exactly one of the two is right carry information
+    about which is better; rows both get right or both get wrong cancel.
+    A missing prediction counts as wrong, and rows without a reference
+    are dropped.
+
+    Parameters
+    ----------
+    truth : pandas.Series
+        Reference class per row.
+    a, b : pandas.Series
+        The two predictions, positionally aligned to *truth*.
+
+    Returns
+    -------
+    dict
+        `n` (rows with a reference), `n_both_right`, `n_a_only`
+        (a right, b wrong), `n_b_only`, `n_both_wrong`, `exact_p` (the
+        two-sided binomial test on the discordant rows), and
+        `chi_square` with `chi_square_p` (continuity-corrected, one
+        degree of freedom). The p-values are NaN when no row is
+        discordant.
+    """
+    import math
+
+    truth = pd.Series(truth).astype(object).reset_index(drop=True)
+    a = pd.Series(a).astype(object).reset_index(drop=True)
+    b = pd.Series(b).astype(object).reset_index(drop=True)
+    if not (len(truth) == len(a) == len(b)):
+        raise ValueError(
+            f'paired_disagreement needs aligned inputs; got {len(truth)}, '
+            f'{len(a)} and {len(b)} rows.'
+        )
+    keep = truth.notna()
+    truth, a, b = truth[keep], a[keep], b[keep]
+    a_right = (a.notna() & a.eq(truth)).to_numpy(dtype=bool)
+    b_right = (b.notna() & b.eq(truth)).to_numpy(dtype=bool)
+    a_only = int((a_right & ~b_right).sum())
+    b_only = int((b_right & ~a_right).sum())
+    discordant = a_only + b_only
+    if discordant:
+        tail = sum(math.comb(discordant, k) for k in range(min(a_only, b_only) + 1))
+        exact_p = min(1.0, 2 * tail / 2**discordant)
+        chi_square = (abs(a_only - b_only) - 1) ** 2 / discordant
+        chi_square_p = math.erfc(math.sqrt(chi_square / 2))
+    else:
+        exact_p = chi_square = chi_square_p = float('nan')
+    return {
+        'n': int(keep.sum()),
+        'n_both_right': int((a_right & b_right).sum()),
+        'n_a_only': a_only,
+        'n_b_only': b_only,
+        'n_both_wrong': int((~a_right & ~b_right).sum()),
+        'exact_p': exact_p,
+        'chi_square': chi_square,
+        'chi_square_p': chi_square_p,
+    }
+
+
+def bin_year_agreement(
+    reference_year: pd.Series, predicted_year: pd.Series
+) -> pd.Series:
+    """Label how far each predicted year lands from its reference year.
+
+    Parameters
+    ----------
+    reference_year, predicted_year : pandas.Series
+        Years, aligned on the same index. Non-numeric values read as
+        missing.
+
+    Returns
+    -------
+    pandas.Series
+        One of `YEAR_AGREEMENT_BINS` (`exact`, `within 1 year` for a
+        difference above 0 and at most 1, `within 5 years` above 1 and at
+        most 5, `more than 5 years`), or missing where either year is.
+    """
+    reference = pd.to_numeric(reference_year, errors='coerce').astype(float)
+    predicted = pd.to_numeric(predicted_year, errors='coerce').astype(float)
+    distance = (predicted - reference).abs()
+    labels = pd.Series(None, index=reference.index, dtype=object)
+    exact, within_1, within_5, beyond = YEAR_AGREEMENT_BINS
+    labels[distance.eq(0)] = exact
+    labels[distance.gt(0) & distance.le(1)] = within_1
+    labels[distance.gt(1) & distance.le(5)] = within_5
+    labels[distance.gt(5)] = beyond
+    return labels
+
+
+def year_error_summary(reference_year: pd.Series, predicted_year: pd.Series) -> dict:
+    """Agreement-bin counts and error statistics for one year prediction.
+
+    Parameters
+    ----------
+    reference_year, predicted_year : pandas.Series
+        Years, aligned on the same index. Rows without a reference year
+        are not counted at all.
+
+    Returns
+    -------
+    dict
+        `n_reference`, `n_answered`, one `n_` count per agreement bin,
+        the cumulative shares `share_exact`, `share_within_1_year` and
+        `share_within_5_years` over answered rows, `mean_absolute_error`,
+        `median_absolute_error`, `bias` (mean of predicted minus
+        reference, so positive means the prediction is later) and
+        `abstention_rate`.
+    """
+    reference = pd.to_numeric(reference_year, errors='coerce').astype(float)
+    predicted = pd.to_numeric(predicted_year, errors='coerce').astype(float)
+    has_reference = reference.notna()
+    reference, predicted = reference[has_reference], predicted[has_reference]
+    answered = predicted.notna()
+    error = (predicted - reference)[answered]
+    distance = error.abs()
+    n_answered = int(answered.sum())
+    bins = bin_year_agreement(reference, predicted).value_counts()
+    summary = {
+        'n_reference': int(len(reference)),
+        'n_answered': n_answered,
+        **{
+            'n_' + label.replace(' ', '_'): int(bins.get(label, 0))
+            for label in YEAR_AGREEMENT_BINS
+        },
+        'share_exact': _ratio(int(distance.eq(0).sum()), n_answered),
+        'share_within_1_year': _ratio(int(distance.le(1).sum()), n_answered),
+        'share_within_5_years': _ratio(int(distance.le(5).sum()), n_answered),
+        'mean_absolute_error': float(distance.mean()) if n_answered else None,
+        'median_absolute_error': float(distance.median()) if n_answered else None,
+        'bias': float(error.mean()) if n_answered else None,
+        'abstention_rate': (
+            1 - n_answered / len(reference) if len(reference) else None
+        ),
+    }
+    return summary
+
+
+def _as_strata(strata) -> dict[str, pd.Series]:
+    """Normalize a strata argument to {stratum kind: labels}."""
+    if strata is None:
+        return {}
+    if isinstance(strata, pd.Series):
+        return {str(strata.name or 'stratum'): strata}
+    return {str(kind): labels for kind, labels in strata.items()}
+
+
+def _positional(values, n_rows: int, what: str) -> pd.Series:
+    """A Series of *values* reset to positions, checked against *n_rows*."""
+    series = pd.Series(values).reset_index(drop=True)
+    if len(series) != n_rows:
+        raise ValueError(
+            f'{what} has {len(series)} rows; the reference has {n_rows}. '
+            'Pass them positionally aligned.'
+        )
+    return series
+
+
+def _stratum_masks(strata: dict[str, pd.Series], keep: np.ndarray, min_rows: int):
+    """Pooled and per-stratum row masks, and the strata held back.
+
+    Returns
+    -------
+    tuple of (list, list)
+        `(stratum_by, stratum, mask)` for every stratum written, pooled
+        first, and a `{stratum_by, stratum, n}` record for every stratum
+        refused for holding fewer than *min_rows* rows.
+    """
+    n_pooled = int(keep.sum())
+    if n_pooled < min_rows:
+        raise ValueError(
+            f'Only {n_pooled} rows carry a reference, fewer than the '
+            f'minimum of {min_rows} a written stratum needs.'
+        )
+    groups = [('all', 'all', keep)]
+    refused = []
+    for kind, labels in strata.items():
+        labels = labels.astype(object).where(labels.notna(), '(missing)')
+        for value in sorted(labels[keep].unique(), key=str):
+            mask = keep & labels.eq(value).to_numpy(dtype=bool)
+            n = int(mask.sum())
+            if n < min_rows:
+                refused.append({'stratum_by': kind, 'stratum': str(value), 'n': n})
+                continue
+            groups.append((kind, str(value), mask))
+    return groups, refused
+
+
+def _long_form(matrix: pd.DataFrame, **labels) -> list[dict]:
+    """Matrix cells as long-form records, in row-then-column order."""
+    return [
+        {**labels, 'reference': row, 'predicted': column, 'n': int(n)}
+        for row, values in matrix.iterrows()
+        for column, n in values.items()
+    ]
+
+
+def _write_report(
+    out_dir,
+    name: str,
+    confusion: list[dict],
+    accuracy: pd.DataFrame,
+    metadata: dict,
+) -> dict[str, Path]:
+    """Write the long-form matrix, the accuracy table and the JSON sidecar."""
+    import json
+    from datetime import datetime
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        'confusion': out_dir / f'{name}_confusion.csv',
+        'accuracy': out_dir / f'{name}_accuracy.csv',
+        'metadata': out_dir / f'{name}_confusion.json',
+    }
+    pd.DataFrame.from_records(
+        confusion,
+        columns=['source', 'stratum_by', 'stratum', 'reference', 'predicted', 'n'],
+    ).to_csv(paths['confusion'], index=False)
+    accuracy.round(6).to_csv(paths['accuracy'], index=False)
+
+    try:
+        from openplaces.path import recipe_roots_footer
+
+        recipe_roots = json.loads(recipe_roots_footer())
+    except Exception:  # noqa: BLE001 - provenance is best effort
+        recipe_roots = None
+    record = {
+        'name': name,
+        **metadata,
+        'orientation': 'rows are the reference, columns the prediction',
+        'generated_at': datetime.now(UTC).isoformat(timespec='seconds'),
+        'recipe_roots': recipe_roots,
+        'files': {role: path.name for role, path in paths.items()},
+    }
+    paths['metadata'].write_text(
+        json.dumps(record, indent=2, default=str) + '\n', encoding='utf-8'
+    )
+    return paths
+
+
+def write_confusion_report(
+    truth: pd.Series,
+    predictions: dict[str, pd.Series],
+    classes: list[str],
+    out_dir,
+    name: str,
+    *,
+    strata=None,
+    reference: str | None = None,
+    notes: str | None = None,
+    tier: str | None = None,
+    min_rows: int = MIN_STRATUM_ROWS,
+    abstain: str = ABSTAIN_LABEL,
+    other: str = OTHER_LABEL,
+    secondary: str | None = None,
+) -> dict[str, Path]:
+    """Write confusion matrices and accuracies for every prediction source.
+
+    The default output of every validation step. For each source, and
+    for the pooled rows plus every stratum, it writes the full matrix
+    (reference rows, predicted columns, abstentions and off-vocabulary
+    predictions included) and the table of
+    :func:`accuracy_from_matrix`. Aggregates only: nothing row-level is
+    written, and a stratum with fewer than *min_rows* reference rows is
+    refused and listed in the sidecar instead, so no cell can point at
+    one surveyed building.
+
+    Parameters
+    ----------
+    truth : pandas.Series
+        Reference class per row. Rows without one are left out.
+    predictions : dict of str to pandas.Series
+        Source label to predicted classes, each positionally aligned to
+        *truth*.
+    classes : list of str
+        Reference classes, in report order.
+    out_dir : str or pathlib.Path
+        Directory to write into, created if missing (normally
+        `io.delivery.delivery_accuracy_dir`).
+    name : str
+        File stem shared by the three outputs.
+    strata : pandas.Series or dict of str to pandas.Series, optional
+        Stratum labels per row (a county id, a geometry source),
+        positionally aligned to *truth*. A Series is named by its own
+        name; a dict names each kind by its key.
+    reference : str, optional
+        What the reference is, recorded in the sidecar.
+    notes : str, optional
+        Free text recorded in the sidecar.
+    tier : str, optional
+        The match tier the rows were selected at, recorded in the
+        sidecar.
+    min_rows : int, optional
+        Fewest reference rows a written stratum may hold (default 10).
+    abstain, other, secondary : str, optional
+        Sentinel labels, as in :func:`confusion_matrix`. Pass
+        :meth:`ValidationContext.matrix_labels` to follow the recipe.
+
+    Returns
+    -------
+    dict of str to pathlib.Path
+        `confusion` (`{name}_confusion.csv`, long form: `source`,
+        `stratum_by`, `stratum`, `reference`, `predicted`, `n`),
+        `accuracy` (`{name}_accuracy.csv`, one row per source, stratum
+        and class) and `metadata` (`{name}_confusion.json`).
+
+    Raises
+    ------
+    ValueError
+        If fewer than *min_rows* rows carry a reference, or a prediction
+        or stratum is not aligned to *truth*.
+    """
+    truth = pd.Series(truth).astype(object).reset_index(drop=True)
+    n_rows = len(truth)
+    keep = truth.notna().to_numpy(dtype=bool)
+    predictions = {
+        str(label): _positional(values, n_rows, f'prediction {label!r}')
+        for label, values in predictions.items()
+    }
+    strata = {
+        kind: _positional(labels, n_rows, f'stratum {kind!r}')
+        for kind, labels in _as_strata(strata).items()
+    }
+    groups, refused = _stratum_masks(strata, keep, min_rows)
+
+    confusion: list[dict] = []
+    tables = []
+    for source, values in predictions.items():
+        for stratum_by, stratum, mask in groups:
+            matrix = confusion_matrix(
+                truth[mask],
+                values[mask],
+                classes,
+                abstain=abstain,
+                other=other,
+                secondary=secondary,
+            )
+            confusion += _long_form(
+                matrix, source=source, stratum_by=stratum_by, stratum=stratum
+            )
+            table = accuracy_from_matrix(
+                matrix, classes, abstain=abstain, other=other, secondary=secondary
+            )
+            table.insert(0, 'stratum', stratum)
+            table.insert(0, 'stratum_by', stratum_by)
+            table.insert(0, 'source', source)
+            tables.append(table)
+
+    return _write_report(
+        out_dir,
+        name,
+        confusion,
+        pd.concat(tables, ignore_index=True),
+        {
+            'kind': 'classification',
+            'reference': reference,
+            'notes': notes,
+            'tier': tier,
+            'classes': list(classes),
+            'sources': list(predictions),
+            'abstain_label': abstain,
+            'other_label': other,
+            'secondary_label': secondary,
+            'n_rows': int(keep.sum()),
+            'n_rows_without_reference': int(n_rows - keep.sum()),
+            'min_rows': min_rows,
+            'strata': sorted({kind for kind, _, _ in groups[1:]}),
+            'refused_strata': refused,
+        },
+    )
+
+
+def write_year_agreement_report(
+    reference_year: pd.Series,
+    predictions: dict[str, pd.Series],
+    out_dir,
+    name: str,
+    *,
+    strata=None,
+    reference: str | None = None,
+    notes: str | None = None,
+    tier: str | None = None,
+    min_rows: int = MIN_STRATUM_ROWS,
+) -> dict[str, Path]:
+    """Write year-built agreement bins and error statistics per source.
+
+    A year is not a class, so the matrix has a single reference row
+    (`reference year`) whose columns are the agreement bins of
+    :func:`bin_year_agreement` plus the abstention column; the accuracy
+    file holds :func:`year_error_summary` (bin counts, cumulative shares,
+    mean and median absolute error, bias) instead of producer's and
+    consumer's accuracy. Files, sidecar and the minimum-stratum guard are
+    those of :func:`write_confusion_report`.
+
+    Parameters
+    ----------
+    reference_year : pandas.Series
+        Reference year per row. Rows without one are left out.
+    predictions : dict of str to pandas.Series
+        Source label to predicted years, positionally aligned.
+    out_dir : str or pathlib.Path
+        Directory to write into.
+    name : str
+        File stem shared by the three outputs.
+    strata, reference, notes, tier, min_rows
+        As in :func:`write_confusion_report`.
+
+    Returns
+    -------
+    dict of str to pathlib.Path
+        `confusion`, `accuracy` and `metadata`, as in
+        :func:`write_confusion_report`.
+    """
+    reference_year = pd.to_numeric(
+        pd.Series(reference_year).reset_index(drop=True), errors='coerce'
+    )
+    n_rows = len(reference_year)
+    keep = reference_year.notna().to_numpy(dtype=bool)
+    predictions = {
+        str(label): pd.to_numeric(
+            _positional(values, n_rows, f'prediction {label!r}'), errors='coerce'
+        )
+        for label, values in predictions.items()
+    }
+    strata = {
+        kind: _positional(labels, n_rows, f'stratum {kind!r}')
+        for kind, labels in _as_strata(strata).items()
+    }
+    groups, refused = _stratum_masks(strata, keep, min_rows)
+
+    columns = [*YEAR_AGREEMENT_BINS, ABSTAIN_LABEL]
+    confusion: list[dict] = []
+    records = []
+    for source, values in predictions.items():
+        for stratum_by, stratum, mask in groups:
+            bins = bin_year_agreement(reference_year[mask], values[mask])
+            counts = bins.fillna(ABSTAIN_LABEL).value_counts()
+            matrix = pd.DataFrame(
+                [[int(counts.get(column, 0)) for column in columns]],
+                index=pd.Index([YEAR_REFERENCE_LABEL], name='reference'),
+                columns=pd.Index(columns, name='predicted'),
+            )
+            confusion += _long_form(
+                matrix, source=source, stratum_by=stratum_by, stratum=stratum
+            )
+            records.append(
+                {
+                    'source': source,
+                    'stratum_by': stratum_by,
+                    'stratum': stratum,
+                    **year_error_summary(reference_year[mask], values[mask]),
+                }
+            )
+
+    return _write_report(
+        out_dir,
+        name,
+        confusion,
+        pd.DataFrame.from_records(records),
+        {
+            'kind': 'year_agreement',
+            'reference': reference,
+            'notes': notes,
+            'tier': tier,
+            'classes': list(YEAR_AGREEMENT_BINS),
+            'sources': list(predictions),
+            'abstain_label': ABSTAIN_LABEL,
+            'other_label': None,
+            'secondary_label': None,
+            'n_rows': int(keep.sum()),
+            'n_rows_without_reference': int(n_rows - keep.sum()),
+            'min_rows': min_rows,
+            'strata': sorted({kind for kind, _, _ in groups[1:]}),
+            'refused_strata': refused,
+        },
+    )
+
+
+def read_confusion_matrix(
+    confusion, source: str, *, stratum_by: str = 'all', stratum: str = 'all'
+) -> pd.DataFrame:
+    """Rebuild one wide matrix from a long-form `{name}_confusion.csv`.
+
+    Parameters
+    ----------
+    confusion : pandas.DataFrame or str or pathlib.Path
+        The long-form table, or the path of the CSV holding it.
+    source : str
+        Prediction source to select.
+    stratum_by, stratum : str, optional
+        Stratum to select; the pooled matrix by default.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Counts with reference rows and predicted columns, in the order
+        they were written.
+
+    Raises
+    ------
+    KeyError
+        If the file holds no such source and stratum.
+    """
+    if not isinstance(confusion, pd.DataFrame):
+        confusion = pd.read_csv(confusion, keep_default_na=False)
+    block = confusion[
+        confusion['source'].astype(str).eq(str(source))
+        & confusion['stratum_by'].astype(str).eq(str(stratum_by))
+        & confusion['stratum'].astype(str).eq(str(stratum))
+    ]
+    if block.empty:
+        raise KeyError(
+            f'No matrix for source {source!r}, stratum {stratum_by}={stratum}.'
+        )
+    matrix = block.pivot(index='reference', columns='predicted', values='n')
+    matrix = matrix.reindex(
+        index=list(dict.fromkeys(block['reference'])),
+        columns=list(dict.fromkeys(block['predicted'])),
+    ).astype(int)
+    matrix.index.name = 'reference'
+    matrix.columns.name = 'predicted'
+    return matrix
 
 
 def class_from_ruleset(
@@ -570,6 +1428,9 @@ class ValidationContext:
         self.derived_source_columns = dict(config.get('derived_source_columns') or {})
         self.dwelling_count_column = config.get('dwelling_count_column')
         self.inventory_suffix = config.get('inventory_suffix', '_inv')
+        occupancy = dict(recipe.get('occupancy') or {})
+        self.secondary_class = occupancy.get('secondary_class')
+        self.residential_classes = tuple(occupancy.get('residential_classes') or ())
         self.references_state = references_state
         self.reference = None
         if references_state is not None:
@@ -893,7 +1754,12 @@ class ValidationContext:
         Returns
         -------
         dict of str to pandas.Series
-            Source label to comparable class values, bands collapsed.
+            Source label to comparable class values, bands collapsed. A
+            derived source declaring `keep_unmapped: true` keeps its raw
+            evidence value wherever the ruleset maps it to no class, so
+            a source that asserts a class outside the ruleset (NSI's
+            `Agricultural`, say) scores as that assertion rather than as
+            no prediction; a row without raw evidence stays missing.
         """
         values = {
             label: self.collapse_bands(linked[column])
@@ -902,15 +1768,27 @@ class ValidationContext:
         }
         for label, spec in self.derived_source_columns.items():
             column = spec['column'] + self.inventory_suffix
-            if label in values or column not in linked.columns:
+            if column not in linked.columns:
                 continue
+            keep_unmapped = spec.get('keep_unmapped', False)
+            if label in values and not keep_unmapped:
+                continue
+            ruleset = spec.get('ruleset', self.class_map)
             derived = self.class_from_ruleset(
                 linked[column],
-                spec.get('ruleset', self.class_map),
+                ruleset,
                 reviewed_only=spec.get('reviewed_only', False),
             )
-            if derived is not None:
-                values[label] = self.collapse_bands(derived)
+            if label in values:
+                # A class column, where present, already holds this
+                # ruleset's answer; only its unmapped rows are filled.
+                derived = values[label]
+            elif derived is None:
+                continue
+            derived = self.collapse_bands(derived).astype(object)
+            if keep_unmapped:
+                derived = self._with_unmapped_evidence(derived, linked[column], ruleset)
+            values[label] = derived
         count_col = self.dwelling_count_column
         if count_col and count_col in linked.columns:
             dwellings = pd.to_numeric(linked[count_col], errors='coerce')
@@ -927,16 +1805,191 @@ class ValidationContext:
             values['overture'] = implied
         return values
 
-    def score_sources(self, linked):
-        """Score the vote and each of its inputs against the hand labels."""
+    def _with_unmapped_evidence(self, classes, raw, ruleset):
+        """Fill rows no rule matched with the raw evidence value itself.
+
+        Before this, a class map covering residential classes only
+        turned every non-residential assertion (NSI's `Professional
+        Technical Services` on a surveyed manufactured home) into a
+        missing prediction, so the matrices could not tell "the source
+        said nothing" from "the source said something non-residential".
+        Rows a rule matched keep the ruleset's answer, even one nulled
+        for being unreviewed, and blank raw values stay missing.
+        """
+        raw = raw.astype(object)
+        present = raw.notna() & raw.astype(str).str.strip().ne('')
+        matched = self.class_from_ruleset(raw, ruleset)
+        unmatched = (
+            matched.isna() if matched is not None else pd.Series(True, raw.index)
+        )
+        fill = classes.isna() & unmatched & present
+        return classes.mask(fill, raw)
+
+    def matrix_labels(self):
+        """Confusion-matrix sentinel labels that follow this recipe.
+
+        Returns
+        -------
+        dict
+            `secondary` (the recipe's `occupancy: secondary_class`) and
+            `other`, which reads `Non-residential` when the recipe
+            declares its residential classes. Pass as keyword arguments
+            to :func:`write_confusion_report` or
+            :func:`confusion_matrix`.
+        """
+        residential = getattr(self, 'residential_classes', ())
+        return {
+            'secondary': getattr(self, 'secondary_class', None),
+            'other': NON_RESIDENTIAL_LABEL if residential else OTHER_LABEL,
+        }
+
+    def entity_source_values(self, entities):
+        """:meth:`source_values` for curated entities read straight from disk.
+
+        Scoring against an entity-keyed reference (permits) starts from
+        the curated table itself rather than a survey linkage, so its
+        columns carry no inventory suffix. Suffixing them here lets both
+        references score exactly the same sources, reconstructed the same
+        way.
+
+        Parameters
+        ----------
+        entities : pandas.DataFrame
+            Curated entity columns, unsuffixed. `occupancy_type` becomes
+            the vote.
+
+        Returns
+        -------
+        dict of str to pandas.Series
+            As :meth:`source_values`, indexed like *entities*.
+        """
+        frame = pd.DataFrame(entities).drop(columns='geometry', errors='ignore')
+        frame = frame.add_suffix(self.inventory_suffix)
+        if 'occupancy_type' in entities.columns:
+            frame['predicted'] = self.collapse_bands(entities['occupancy_type'])
+        return self.source_values(frame)
+
+    def survey_strata(self, linked):
+        """Strata the survey matrices are split by, where present.
+
+        The county the point was surveyed in, and the source of the
+        footprint geometry it matched (a building outline traced from
+        imagery and a parcel-derived placeholder fail differently).
+        """
+        strata = {}
+        if 'admin_id' in linked.columns:
+            strata['county'] = linked['admin_id']
+        geometry_source = f'geometry_source{self.inventory_suffix}'
+        if geometry_source in linked.columns:
+            strata['geometry_source'] = linked[geometry_source]
+        return strata
+
+    def score_sources(
+        self,
+        linked,
+        out_dir=None,
+        *,
+        name=None,
+        strata=None,
+        min_rows=MIN_STRATUM_ROWS,
+        notes=None,
+    ):
+        """Score the vote and each of its inputs against the hand labels.
+
+        Parameters
+        ----------
+        linked : pandas.DataFrame
+            Output of :meth:`link_ground_truth`.
+        out_dir : str or pathlib.Path, optional
+            When given, confusion matrices and producer's/consumer's
+            accuracies for every scored source are written there through
+            :func:`write_confusion_report`, pooled and per stratum. This
+            is the default output of a validation run; the return value
+            is unchanged either way.
+        name : str, optional
+            File stem, default `{recipe_id}_occupancy-survey`.
+        strata : dict of str to pandas.Series, optional
+            Default :meth:`survey_strata`.
+        min_rows : int, optional
+            Fewest points a written stratum may hold (default 10).
+        notes : str, optional
+            Recorded in the report's JSON sidecar.
+
+        Returns
+        -------
+        pandas.DataFrame
+            :func:`score_classification` per source, with a `source`
+            column in front.
+        """
+        truth = linked['occupancy_type_canonical']
+        sources = self.source_values(linked)
         tables = []
-        for label, values in self.source_values(linked).items():
-            table = score_classification(
-                linked['occupancy_type_canonical'], values, list(self.classes)
-            )
+        for label, values in sources.items():
+            table = score_classification(truth, values, list(self.classes))
             table.insert(0, 'source', label)
             tables.append(table)
+        if out_dir is not None:
+            spec = dict(self.config.get('ground_truth') or {})
+            write_confusion_report(
+                truth,
+                sources,
+                list(self.classes),
+                out_dir,
+                name or f'{self.recipe_id}_occupancy-survey',
+                strata=self.survey_strata(linked) if strata is None else strata,
+                reference=' '.join(
+                    str(part)
+                    for part in ('survey', spec.get('source'), spec.get('version'))
+                    if part
+                ),
+                notes=notes,
+                min_rows=min_rows,
+                **self.matrix_labels(),
+            )
         return pd.concat(tables, ignore_index=True)
+
+    # Which notebooks score which delivered region
+
+    def reference_regions(self):
+        """Delivery region each declared reference scores, by reference key.
+
+        `ground_truth` maps to the survey's `region`; every entry of the
+        sidecar's `references:` to its own `region`. A reference without a
+        region, or a sidecar that is absent, contributes nothing.
+        """
+        regions = {}
+        survey_region = (self.config.get('ground_truth') or {}).get('region')
+        if survey_region:
+            regions['ground_truth'] = str(survey_region)
+        for key, spec in (self.config.get('references') or {}).items():
+            if (spec or {}).get('region'):
+                regions[str(key)] = str(spec['region'])
+        return regions
+
+    def notebooks_for_region(self, region):
+        """Validation notebooks that score one delivered region.
+
+        Read from the `notebooks:` list of the `validation:` block, each
+        entry naming a notebook (relative to the repository root) and
+        the reference it scores against. A notebook whose reference is
+        not available (the untracked sidecar is absent) is not listed.
+
+        Parameters
+        ----------
+        region : str
+            A delivery region id.
+
+        Returns
+        -------
+        list of str
+            Notebook paths, in declared order.
+        """
+        regions = self.reference_regions()
+        return [
+            str(entry['notebook'])
+            for entry in self.config.get('notebooks') or []
+            if regions.get(str(entry.get('reference'))) == str(region)
+        ]
 
     # Baseline bookkeeping for the paired gate
 
@@ -1012,3 +2065,27 @@ class ValidationContext:
 def validation_context(recipe, references_state=None):
     """Build a :class:`ValidationContext`; see the class docstring."""
     return ValidationContext(recipe, references_state)
+
+
+def validation_notebooks(recipe, region) -> list[str]:
+    """Validation notebooks declared for one delivery region of a recipe.
+
+    Parameters
+    ----------
+    recipe : str or dict
+        Curate recipe id or dict.
+    region : str
+        Delivery region id.
+
+    Returns
+    -------
+    list of str
+        Notebook paths relative to the repository root; empty when the
+        recipe declares no `validation:` block or nothing scores
+        *region*.
+    """
+    try:
+        context = ValidationContext(recipe)
+    except ValueError:
+        return []
+    return context.notebooks_for_region(region)

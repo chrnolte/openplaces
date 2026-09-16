@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from openplaces.flow import RecipeDAG
-from openplaces.flow.dag import node_key, parse_deliver_config, rule_name
+from openplaces.flow.dag import (
+    node_key,
+    parse_deliver_config,
+    rule_name,
+    validation_manifest_path,
+)
 from openplaces.geo.link import get_entity_link_path
 from openplaces.io.delivery import (
     delivery_members,
@@ -192,6 +197,8 @@ def test_target_paths_are_the_bundle_when_shipping(shipping_dag):
     assert shipping_dag.target_paths() == [
         *delivery_paths(TARGET, region=REGION).values(),
         *delivery_paths(TARGET, region=TEAM_REGION).values(),
+        # Then the job that re-scores the public region once it ships.
+        validation_manifest_path(TARGET, REGION),
     ]
 
 
@@ -440,6 +447,8 @@ def test_a_run_scoped_to_one_region_ships_only_that_region(shipping_dag):
     assert shipping_dag.target_paths() == [
         *delivery_paths(TARGET, region=REGION).values(),
         *delivery_paths(TARGET, region=TEAM_REGION).values(),
+        # Then the job that re-scores the public region once it ships.
+        validation_manifest_path(TARGET, REGION),
     ]
 
 
