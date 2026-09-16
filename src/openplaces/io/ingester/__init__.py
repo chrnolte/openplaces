@@ -2070,7 +2070,17 @@ class Ingester:
             if self.verbose:
                 print('Unzipping...')
 
-            unzip(self.download_partition['downloaded_path'], self.recipe_heap_dir)
+            # `extract_members` names the members this recipe reads,
+            # so a roll whose archive also holds multi-GB tables no
+            # recipe reads does not unpack them into the heap, where
+            # the cleanup below (which deletes only `data_path`)
+            # would leave them behind.
+            unzip(
+                self.download_partition['downloaded_path'],
+                self.recipe_heap_dir,
+                members=self.recipe.get('extract_members'),
+                verbose=self.verbose,
+            )
             self.timer.mark(f'Unzip{_dl_suffix}')
 
         # If the expected flat path wasn't created by extraction, search

@@ -57,6 +57,15 @@ Three mutually exclusive routes, in order of preference:
 when `uncompressed_file_name` is set, the download is saved under that name
 regardless of the URL's shape, so a query-string URL is fine.
 
+A zip inside the download (a roll shipped as one zip per table, or a file
+host wrapping the download in a zip of its own) is extracted in turn, into
+the same heap directory, so `uncompressed_file_name` names the file inside
+it, never the inner `.zip`. When the archive also holds large members the
+recipe does not read, list what it reads under `extract_members` (names or
+glob patterns, matched case-insensitively on the file name); nothing else
+is unpacked into the heap. List every file a reader needs: a shapefile's
+`*.dbf`, `*.shx` and `*.prj` too.
+
 Prefer bulk — REST paging costs the county's server hundreds of sequential
 requests. But **verify the bulk export carries the same attributes as the REST
 layer** before committing to it; see the equivalence test in
