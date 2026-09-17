@@ -1,0 +1,80 @@
+# Recipe: Cameron County, TX certified appraisal roll, residence
+# homestead exemption per property (PACS File #2). Same download and
+# member as US-TX-CAM_property-cameroncad-2026; read that roll's header
+# for the source, its terms and the owner-row repetition.
+#
+# Why: a Texas residence homestead exemption is granted only on the
+# owner's principal residence, which makes it the roll's one direct
+# statement that a unit is lived in year-round. The travel-trailer
+# plan reads it as occupancy evidence for travel trailers and park
+# models (plans/travel-trailers-in-building-inventory.md, section 5.1:
+# 49.7% of trailers and 59.1% of park models carry homestead value).
+# Kept as a supplement of its own rather than a new field on the roll
+# so that adding it did not rewrite the roll's output.
+#
+# FIELD. hs_exempt, position 2609 of the 8.0.33 layout ('T' or 'F'),
+# mapped to has_homestead_exemption (true on 'T'). The roll repeats a
+# property once per partial owner with identical exemption flags, so
+# the per-property reduction takes the maximum.
+
+description: >-
+  Cameron County, TX certified appraisal roll: residence homestead
+  exemption flag per property.
+
+admin_id: US-TX-CAM
+
+entity:
+  entity_type: property
+  source:
+    source_id: cameroncad
+    # Same download as the roll; see its terms note.
+    license: "public domain (district data disclaimer; without warranty)"
+    terms_url: "https://ftp.cameroncad.org/Pages/Data"
+    redistribution_restricted: false
+    portal_url: "https://ftp.cameroncad.org/Pages/Data"
+    download_url: "https://ftp.cameroncad.org/cad/exports/certified/2026/cameron-2026-certified-appraisal-export-20260723.zip"
+  version: 2026
+
+compressed_file_name: "cameron-2026-certified-appraisal-export-20260723.zip"
+uncompressed_file_name: "2026-07-23_2026_APPRAISAL_INFO.TXT"
+extract_members:
+  - "2026-07-23_2026_APPRAISAL_INFO.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.33 File #2 (Property), read up to hs_exempt only.
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 2596]
+  - [hs_exempt, 1]
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: expression
+    expression: "hs_exempt == 'T'"
+    inputs: [hs_exempt]
+    output: has_homestead_exemption
+
+drop_columns:
+  - hs_exempt
+
+aggregation_function:
+  has_homestead_exemption: max
+
+supplements: US-TX-CAM_property-cameroncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: homestead

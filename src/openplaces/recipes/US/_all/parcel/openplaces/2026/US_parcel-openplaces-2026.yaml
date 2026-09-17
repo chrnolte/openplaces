@@ -73,6 +73,29 @@ pipeline:
       n_half_bathrooms: sum
       n_rooms: sum
       n_dwellings: sum
+      # Dwelling kinds the roll or building record lists (added
+      # 2026-09-16, plans/travel-trailers-in-building-inventory.md).
+      # Summed over the parcel's properties; missing where no property
+      # on the parcel states them, 0 where they do and list none. The
+      # footprint recipe reads the mobile-home count in its second
+      # occupancy pass and the RV counts in its RV Dwelling decision.
+      n_manufactured_home_units: sum
+      n_travel_trailers: sum
+      n_park_models: sum
+      n_residential_buildings: sum
+      has_homestead_exemption: max
+
+  # The dwelling-kind counts above exist only where a county's roll or
+  # building record carries unit types (a few TX districts and NC
+  # counties today). Declared so that the footprint recipe's
+  # link_curated_entity finds them in every county, all-null elsewhere.
+  - step: declare_columns
+    columns:
+      - n_manufactured_home_units
+      - n_travel_trailers
+      - n_park_models
+      - n_residential_buildings
+      - has_homestead_exemption
 
   # These parcel_id_assessor values are non-taxable placeholders, not real
   # parcels (found empirically in Carteret County, NC): WATER (water

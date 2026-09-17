@@ -75,6 +75,14 @@
 #   commercial buildings read "1.0 Story"), and their height lives in
 #   WallHeight, not a story count.
 #
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of buildings whose ValuationModelDescription is MANUFACTURED HOME
+# (6,926 of the file's buildings, see ROW SHAPE), summed per property.
+# A property with buildings but none of that model gets 0; the roll's
+# properties with no building row (26,002 parcels, mostly homes held
+# as personal property) stay missing, not 0.
+#
 # NOT MAPPED: UnitCount (n_dwellings) is filled on 1,101 buildings
 # (591 of 1,060 apartment buildings, 254 of 45,450 single family), so
 # a per-property sum would silently undercount; NumberOfFloors is
@@ -223,6 +231,12 @@ transformations:
     expression: "n_stories * is_residential_model"
     inputs: [n_stories, is_residential_model]
     output: n_stories
+  # One per building of the manufactured-home valuation model; see
+  # MOBILE-HOME UNITS.
+  - type: expression
+    expression: "(valuation_model == 'MANUFACTURED HOME').astype('float64')"
+    inputs: [valuation_model]
+    output: n_manufactured_home_units
 
 drop_columns:
   - dwelling_style
@@ -231,8 +245,9 @@ drop_columns:
 
 # Several buildings on one property: heated area sums, year built
 # takes the earliest building, effective year the latest, stories the
-# tallest.
+# tallest, mobile-home units the sum.
 aggregation_function:
+  n_manufactured_home_units: sum
   living_area_sqft: sum
   year_built: min
   effective_year_built: max

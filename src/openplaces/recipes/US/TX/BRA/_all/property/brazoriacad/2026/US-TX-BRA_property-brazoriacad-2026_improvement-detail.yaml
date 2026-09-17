@@ -66,6 +66,13 @@
 # only storage buildings, pole barns, lean-tos, canopies and
 # bulkheads. 69.6% of TxGIO's Brazoria parcel ids have a living area
 # here; 90.8% of properties with one are in TxGIO.
+#
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of improvements (imprv_id) carrying an MAMH1, MAMH2 or MH component,
+# summed per property. MEASURED on the 2026 export: 16,187 improvements
+# carry one; a single row on 16,160, two to four on 27. A property with
+# listed components but no mobile home gets 0; one absent stays missing.
 
 description: >-
   Brazoria County, TX certified appraisal roll, improvement detail member:
@@ -99,7 +106,7 @@ encoding: latin-1
 fixed_width:
   - [prop_id, 12]
   - [filler, 4] # prop_val_yr
-  - [filler, 12] # imprv_id
+  - [imprv_id, 12]
   - [filler, 12] # imprv_det_id
   - [imprv_det_type_cd, 10]
   - [filler, 25] # Imprv_det_type_desc
@@ -160,12 +167,22 @@ transformations:
       '352', '451']) & (year_built > 1800) & (year_built <= 2027))
     inputs: [year_built, imprv_det_type_cd]
     output: year_built
+  # One per improvement holding a mobile home; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: >-
+      (imprv_det_type_cd.isin(['MAMH1', 'MAMH2', 'MH']) &
+      ~imprv_id.where(imprv_det_type_cd.isin(['MAMH1', 'MAMH2',
+      'MH'])).duplicated()).astype('float64')
+    inputs: [imprv_det_type_cd, imprv_id]
+    output: n_manufactured_home_units
 
 drop_columns:
+  - imprv_id
   - imprv_det_type_cd
   - imprv_det_area
 
 aggregation_function:
+  n_manufactured_home_units: sum
   living_area_sqft: sum
   gross_floor_area_sqft: sum
   detached_garage_area_sqft: sum
