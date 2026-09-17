@@ -116,8 +116,39 @@ transformations:
     output: last_sale_date
 ```
 
-Useful ops: `null_if_equal`, `to_numeric`, `to_datetime`, `parse_currency`,
-`resolve_century` (2-digit years), `split_take`, `concat`, `zfill`.
+Useful ops: `null_if_equal`, `set_null` (empty a whole column, keeping its
+dtype), `to_numeric`, `to_datetime`, `parse_currency`, `resolve_century`
+(2-digit years), `split_take`, `concat`, `zfill`.
+
+### One county's defect in a statewide source: `admin_ids`
+
+Any `transformations` or `transformation_patterns` entry may list
+`admin_ids`. It then runs only on a chunk whose admin unit is a listed id or
+a descendant of one, and is skipped everywhere else. Use it where a statewide
+layer is wrong in one county: the correction stays in the recipe, scoped to
+that county, and no code learns any geography.
+
+```yaml
+transformations:
+  - type: unary                    # this county's field is not a land use
+    operation: set_null
+    input: use_subgroup
+    output: use_subgroup
+    admin_ids: [US-NC-HAR]
+```
+
+The unit checked is the process chunk's (`process_by`), falling back to the
+download partition's. The decision is per chunk, never per row, so the
+recipe must be processed at the listed level or finer: a chunk coarser than a
+listed id (the whole state, when a county is listed) mixes rows inside and
+outside the scope, and the entry is skipped with a warning. Entries run in
+order, and `transformations` run before `transformation_patterns`, so a
+scoped step doing arithmetic on text columns must cast them itself.
+
+Blank a wrong value with `set_null` rather than overwriting it from
+another source here: curate's `aggregate_from_entities` fills only cells the
+parcel layer left empty, and a sparse `link_by_id` source only fills gaps,
+so a correct roll value does not reliably replace a wrong one still present.
 
 ### Dates are the most common silent corruption
 
