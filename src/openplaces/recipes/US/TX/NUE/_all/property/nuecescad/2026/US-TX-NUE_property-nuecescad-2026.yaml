@@ -53,6 +53,9 @@ entity:
 
 compressed_file_name: "Certified-Public-Export-2026.zip"
 uncompressed_file_name: "2026-08-06_001254_APPRAISAL_INFO.TXT"
+# Only the member read here; the archive unpacks to 7.1 GB otherwise.
+extract_members:
+  - "2026-08-06_001254_APPRAISAL_INFO.TXT"
 
 process_by:
   admin_level: 3

@@ -45,6 +45,13 @@
 #   type. A commercial property therefore has no gross area unless it
 #   also has one of the listed types (a garage, enclosed porch or
 #   utility room is enough), and then the figure covers those rows only.
+# - detached_garage_area_sqft (decided 2026-09-16) sums the detached
+#   garage types DGAR, RG1, RG2, RGB, RGF, RGH and RGM, kept out of
+#   gross area because a detached garage is usually its own footprint;
+#   curate adds it back where the parcel has no separate footprint for
+#   it. GAR 'GARAGE' stays in gross area: it is built in the house's
+#   year on 99% of rows (the detached types 25% to 60%). Measured
+#   2026-09-16: > 0 on 10.2% of class A properties, median 560.
 # - An area of 0 or 1 reads as missing, as for the other areas.
 # - MEASURED 2026-09-16 on the 2026 export, per property with state
 #   class A (28,149): living_area_sqft 95.3%, p10/p50/p90 954, 1,520,
@@ -185,6 +192,12 @@ transformations:
       1))
     inputs: [imprv_det_area, imprv_det_type_cd]
     output: garage_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['DGAR', 'RG1', 'RG2', 'RGB',
+      'RGF', 'RGH', 'RGM']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: detached_garage_area_sqft
   - type: remap_conditional
     input: imprv_det_type_cd
     conditions:
@@ -273,6 +286,7 @@ aggregation_function:
   living_area_sqft: sum
   gross_floor_area_sqft: sum
   garage_area_sqft: sum
+  detached_garage_area_sqft: sum
   has_garage: max
   garage_type: first
   has_carport: max

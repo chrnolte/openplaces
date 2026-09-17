@@ -32,7 +32,8 @@
 # component its own improvement id, so attachment cannot be read from
 # the grouping either. The sum of all components is not gross area: it
 # includes DW 'DRIVEWAY', S66PL 'DRIVE WAY / PARKING LOT', POR 'PORCH'
-# and PAT 'PATIO DECK BALCONY'.
+# and PAT 'PATIO DECK BALCONY'. No type says detached garage, so
+# detached_garage_area_sqft (decided 2026-09-16) is not mapped either.
 #
 # MAIN AREA. quality_grade is imprv_det_class_cd, year_built yr_built
 # and effective_year_built depreciation_yr, all read on the living-area

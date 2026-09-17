@@ -35,6 +35,12 @@
 # sit on commercial improvements (3,874 of 31,313 MA rows): on those
 # accounts the figure is building area, not dwelling space.
 #
+# DETACHED GARAGES (detached_garage_area_sqft, decided 2026-09-16): 127
+# and RG1 'DETACHED GARAGE', kept out of gross area because a detached
+# garage is usually its own footprint; curate adds it back where the
+# parcel has no separate footprint for it. Measured 2026-09-16: > 0 on
+# 7.6% of class A properties, median 616.
+#
 # MAIN AREA. quality_grade is imprv_det_class_cd, year_built yr_built
 # and effective_year_built depreciation_yr, all read on the living-area
 # components only; the first living-area component's class stands for
@@ -122,6 +128,12 @@ transformations:
     output: gross_floor_area_sqft
   - type: expression
     expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['127', 'RG1']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: detached_garage_area_sqft
+  - type: expression
+    expression: >-
       quality_grade.where(imprv_det_type_cd.isin(['MA', 'MA1', 'MA2', 'MA5',
       'RM1', 'RM2', 'RM3', 'SM6']))
     inputs: [quality_grade, imprv_det_type_cd]
@@ -155,6 +167,7 @@ drop_columns:
 aggregation_function:
   living_area_sqft: sum
   gross_floor_area_sqft: sum
+  detached_garage_area_sqft: sum
   quality_grade: first
   year_built: min
   effective_year_built: min

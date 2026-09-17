@@ -52,6 +52,13 @@
 # subarea area.
 # A subarea with an excluded code contributes null, so a property with
 # no enclosed subarea has no gross area, not 0.
+#
+# DETACHED GARAGES (detached_garage_area_sqft, decided 2026-09-16): the
+# ActualArea of FDG and UDG ('Garage, Finished/Unfinished, Detached'),
+# kept out of gross area because a detached garage is usually its own
+# footprint; curate adds it back where the parcel has no separate
+# footprint for it. Measured 2026-09-16: > 0 on 207 properties (0.3% of
+# residential ones), median 576.
 
 description: >-
   Harnett County, NC gross floor area (sum of enclosed building subarea
@@ -142,6 +149,22 @@ transformations:
     operation: to_numeric
     input: is_enclosed
     output: is_enclosed
+  # 1 for a detached garage (see DETACHED GARAGES), else null.
+  - type: remap_conditional
+    input: subarea_code
+    conditions:
+      - condition: in
+        values: [FDG, UDG]
+        output: 1.0
+    output: is_detached_garage
+  - type: unary
+    operation: to_numeric
+    input: is_detached_garage
+    output: is_detached_garage
+  - type: expression
+    expression: "gross_floor_area_sqft * is_detached_garage"
+    inputs: [gross_floor_area_sqft, is_detached_garage]
+    output: detached_garage_area_sqft
   - type: expression
     expression: "gross_floor_area_sqft * is_enclosed"
     inputs: [gross_floor_area_sqft, is_enclosed]
@@ -150,9 +173,11 @@ transformations:
 drop_columns:
   - subarea_code
   - is_enclosed
+  - is_detached_garage
 
 aggregation_function:
   gross_floor_area_sqft: sum
+  detached_garage_area_sqft: sum
 
 # Joined on the raw parcel number; see the buildings supplement.
 supplements: US-NC-HAR_property-harnettcounty-2026

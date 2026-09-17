@@ -50,6 +50,9 @@ entity:
 
 compressed_file_name: "CERTIFIED-2026_0_PUBLIC.zip"
 uncompressed_file_name: "CERTIFIED-2026_0_PUBLIC/2026-07-21_002178_APPRAISAL_INFO.TXT"
+# Only the member read here; the archive unpacks to 5.5 GB otherwise.
+extract_members:
+  - "2026-07-21_002178_APPRAISAL_INFO.TXT"
 
 process_by:
   admin_level: 3

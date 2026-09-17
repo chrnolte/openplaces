@@ -33,15 +33,23 @@
 # community are lodging, institutional, or not separable from retail.
 #
 # GROSS FLOOR AREA (gross_floor_area_sqft): the living types plus
-# garages (BG brick garage, FG frame garage, DFG and DBG detached, RG1
-# and RG2, YRG4 and YRG5 detached, CRG1 and CRG2 attached, 153
-# residential garage attached), enclosed porches (EFP, EFPU, EFPL,
-# EMP, EMPU, CRP2, CRP4), attached storage (AS1, AS2, AS3), AU attic
-# unfinished, BT1 basement, SM2 mobile-home addition. Open porches,
-# patios, decks, carports, canopies, lean-tos, pole buildings, storage
-# buildings (RS1 to RS3), utility sheds (FU, MU), barns, pools, paving,
-# skirting and commercial building types are excluded: never a sum of
-# all segments.
+# attached garages (BG brick garage and FG frame garage, on the house's
+# improvement on 98% to 100% of rows and built its year on 92% to 99%;
+# CRG1 and CRG2 attached, 153 residential garage attached), enclosed
+# porches (EFP, EFPU, EFPL, EMP, EMPU, CRP2, CRP4), attached storage
+# (AS1, AS2, AS3), AU attic unfinished, BT1 basement, SM2 mobile-home
+# addition. Open porches, patios, decks, carports, canopies, lean-tos,
+# pole buildings, storage buildings (RS1 to RS3), utility sheds (FU,
+# MU), barns, pools, paving, skirting, detached garages and commercial
+# building types are excluded: never a sum of all segments.
+#
+# DETACHED GARAGES (detached_garage_area_sqft, decided 2026-09-16): a
+# detached garage is usually its own footprint, so its area stays out
+# of gross area and is carried here; curate adds it back where the
+# parcel has no separate footprint for it. Types: DFG detached frame
+# garage, DBG detached brick garage, RG1 frame-det garage, RG2
+# brick-det garage, YRG4 detached frame garage, YRG5 detached masonry
+# garage.
 #
 # YEAR BUILT. year_built is yr_built of the living-area components, the
 # earliest per property.
@@ -51,8 +59,10 @@
 # roll's properties with living area > 0, by improvement state class
 # (roll imprv_state_cd): A 97.6% of 119,853, B 97.9%, E 54.9% of
 # 6,359, M 99.6%. Class A per-property living area p10/p50/p90 1,170 /
-# 2,024 / 3,307; gross 1,344 / 2,497 / 3,960 (median gross/living
-# 1.21). Properties without living area, class E especially, carry
+# 2,024 / 3,307; gross 1,280 / 2,390 / 3,762 without detached garages
+# (1,344 / 2,497 / 3,960 with them; median gross/living 1.18, was
+# 1.21), never below living; detached_garage_area_sqft > 0 on 16.6%,
+# median 600. Properties without living area, class E especially, carry
 # only storage buildings, pole barns, lean-tos, canopies and
 # bulkheads. 69.6% of TxGIO's Brazoria parcel ids have a living area
 # here; 90.8% of properties with one are in TxGIO.
@@ -129,9 +139,16 @@ transformations:
     output: living_area_sqft
   - type: expression
     expression: >-
-      imprv_det_area.where(imprv_det_area > 1)
-    inputs: [imprv_det_area]
+      imprv_det_area.where(~imprv_det_type_cd.isin(['DFG', 'DBG', 'RG1', 'RG2',
+      'YRG4', 'YRG5']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
     output: gross_floor_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['DFG', 'DBG', 'RG1', 'RG2',
+      'YRG4', 'YRG5']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: detached_garage_area_sqft
   - type: unary
     operation: to_numeric
     input: year_built
@@ -151,6 +168,7 @@ drop_columns:
 aggregation_function:
   living_area_sqft: sum
   gross_floor_area_sqft: sum
+  detached_garage_area_sqft: sum
   year_built: min
 
 supplements: US-TX-BRA_property-brazoriacad-2026
