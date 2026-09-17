@@ -38,6 +38,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from openplaces.core.attribute_registry import get_agg_func
+
 #: Recipe key that turns the split off for one parcel table.
 OPT_OUT_KEY = 'stacked_units'
 #: Recipe key naming the column that identifies a lot; default `geo_id`.
@@ -95,7 +97,11 @@ def split_stacked_units(
     unchanged. A group left with several distinct rows is a stack: the
     parcel row keeps the first member's index and geometry and only the
     attribute values every member agrees on (a varying value is left
-    missing, so nothing is double-counted), and every member goes,
+    missing, so nothing is double-counted). A column the attribute
+    registry aggregates by `sum` (floor areas, values, dwelling counts)
+    is left missing on a stack's parcel row even where the members
+    agree: one unit's value is not the lot's total, and the total is
+    the property layer's to supply. Every member goes,
     unchanged, to the property table with *link_key* set to the parcel
     row's value so that the property spine and the curate aggregation
     reach it.
@@ -150,6 +156,15 @@ def split_stacked_units(
     # agreed, since nothing contradicts it.
     agreed = grouped[attribute_columns].nunique(dropna=True).le(1)
     agreed.index = agreed.index.astype(object)
+    # Agreement is not a total for an additive column: a building of
+    # identical condo units agrees on one unit's living area, and
+    # keeping it would stand in for the lot's sum. Curate's
+    # aggregate_from_entities fills only empty cells, so a kept value
+    # would also block the true sum from the property layer
+    # (measured 2026-09-16, plans/floor-area-onto-footprints.md).
+    additive = [c for c in attribute_columns if get_agg_func(c) == 'sum']
+    if additive:
+        agreed[additive] = False
     parcel_rows = first.copy()
     parcel_lots = lot.loc[parcel_rows.index]
     for column in attribute_columns:

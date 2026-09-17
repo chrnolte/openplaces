@@ -41,9 +41,11 @@ def test_a_stack_becomes_one_parcel_and_its_members_become_properties():
     assert list(parcels.index) == ['r1', 'r3', 'r4', 'r6']
     assert result.n_stacks == 1 and result.n_rows_to_properties == 2
     assert result.n_exact_duplicates == 1 and result.n_lots == 4
-    # The stack's parcel keeps what its members agree on and nothing else.
+    # The stack's parcel keeps what its members agree on and nothing else;
+    # an additive column stays empty even where the members agree.
     lot_a = parcels.loc['r1']
-    assert lot_a['land_value'] == 1000.0 and lot_a['use_group'] == 'Condo'
+    assert lot_a['use_group'] == 'Condo'
+    assert pd.isna(lot_a['land_value'])
     assert pd.isna(lot_a['improvement_value'])
     assert pd.isna(lot_a['parcel_id_assessor'])
     # The members disagreed on the link key, so the lot key stands in.
@@ -52,6 +54,27 @@ def test_a_stack_becomes_one_parcel_and_its_members_become_properties():
     assert properties['parcel_id_local'].tolist() == ['A', 'A']
     assert properties['improvement_value'].tolist() == [90000.0, 80000.0]
     assert 'geometry' not in properties.columns
+
+
+def test_identical_units_do_not_stand_in_for_the_lot_total():
+    # Three identical condo units on one outline: every member agrees on
+    # its own floor area and dwelling count, which is not the lot's sum.
+    rows = pd.DataFrame(
+        {
+            'geo_id': ['L', 'L', 'L'],
+            'parcel_id_local': ['L1', 'L2', 'L3'],
+            'living_area_sqft': [900.0, 900.0, 900.0],
+            'n_dwellings': [1.0, 1.0, 1.0],
+            'use_group': ['Condo', 'Condo', 'Condo'],
+        },
+        index=pd.Index(['u1', 'u2', 'u3'], name='parcel_id'),
+    )
+    table = gpd.GeoDataFrame(rows, geometry=[box(0, 0, 1, 1)] * 3, crs='EPSG:4326')
+    result = split_stacked_units(table)
+    lot = result.parcels.loc['u1']
+    assert pd.isna(lot['living_area_sqft']) and pd.isna(lot['n_dwellings'])
+    assert lot['use_group'] == 'Condo'
+    assert result.properties['living_area_sqft'].sum() == 2700.0
 
 
 def test_singletons_and_the_unkeyed_row_pass_through_unchanged():
