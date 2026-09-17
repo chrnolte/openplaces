@@ -938,11 +938,20 @@ class TableIngester:
             # a download partition (several tests drive `process` directly
             # on a prepared frame).
             partition = getattr(self, 'download_partition', None) or {}
+            partition_admin_id = partition.get(
+                'admin_id_to_download'
+            ) or self.recipe.get('admin_id')
+            # The chunk's own admin unit decides an entry's `admin_ids`
+            # scope: a statewide file split per county by `process_by`
+            # downloads as the state, and only the chunk knows the
+            # county. Without a process chunk the frame covers the
+            # partition, so that is its unit.
+            chunk = getattr(self, 'processing_chunk', None) or {}
             df = apply_transformations(
                 df,
                 self.recipe,
-                admin_id=partition.get('admin_id_to_download')
-                or self.recipe.get('admin_id'),
+                admin_id=partition_admin_id,
+                process_admin_id=chunk.get('admin_id_to_process') or partition_admin_id,
             )
             cols_added = [v for v in df if v not in cols_before]
         else:

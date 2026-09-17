@@ -53,7 +53,7 @@
 # 38.9% of accounts and the export does not say which is the certified
 # figure; TxGIO already carries Orange's values. No state class, year
 # built or story count is in this member (see the Segment sibling for
-# years). Owner names and mailing addresses live in the Owner member,
+# years, and the ..._state-codes sibling for the state class). Owner names and mailing addresses live in the Owner member,
 # which no recipe reads.
 #
 # NOTE on coverage, measured on the 2026 export (65,098 accounts):
