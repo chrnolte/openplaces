@@ -297,6 +297,17 @@ pipeline:
       # second name. Only the rule route may carry weight downstream.
       land_use_class_source: land_use_class_source_parcel
 
+  # The roll's structure description, read by the style_keyword_class
+  # indicator below. A separate step because only some rolls publish
+  # one (building_style is mapped for a handful of NC counties), so
+  # the column is allowed to be absent from a county's curated parcels
+  # without relaxing the strictness of the link above.
+  - step: link_curated_entity
+    recipe_id: US_parcel-openplaces-2026
+    allow_missing: true
+    columns:
+      building_style: building_style_parcel
+
   # Apportion curated parcel values to footprints:
   # - improvement_value is split by footprint overlap-area share (residential splitting
   #   excludes secondary structures; non-residential splits share among all structures).
@@ -474,6 +485,25 @@ pipeline:
         column: use_group_combined_labeled_parcel
         ruleset: parcel-occupancy-keywords.csv
         reviewed_only: true
+
+      # The same ruleset over the roll's structure description, only
+      # where the land use named no class (where_null): both are
+      # readings of one assessor record, so they must not add up to a
+      # decision's min_score on their own. Carteret County, NC is the
+      # measured case. Its land-use text is a land class (RESIDENTIAL
+      # PRIMARY, OCEANFRONT) that names no occupancy, while its dwelling
+      # style names duplexes, condos and townhouses. On the summer
+      # scholars survey 50 of the 57 Carteret points whose parcel style
+      # reads Duplex/Triplex are Multi-Family, and NSI's duplex claim
+      # there, which the multi decision does not trust elsewhere (17%
+      # Multi-Family outside Carteret), is right 84% of the time. See
+      # plans/carteret-multi-family-called-single-family.md.
+      - output: style_keyword_class
+        type: ruleset_class
+        column: building_style_parcel
+        ruleset: parcel-occupancy-keywords.csv
+        reviewed_only: true
+        where_null: occupancy_keyword_class
 
       # The section count the assessor already stated, read out of the same
       # land-use string. parcel-occupancy-keywords.csv matches SINGLE WIDE,
@@ -685,8 +715,14 @@ pipeline:
           # label lanes actively say single-dwelling AND a present story
           # count agrees with them -- silence from any lane keeps the
           # old behavior, so coverage gaps cannot flip rows.
+          #
+          # Labeled, like every indicator of this decision, so
+          # dwelling_multiplicity_source names the evidence that made a
+          # footprint multi-dwelling; the Multi-Family decision below
+          # carries that token into occupancy_type_source.
           - type: all_of
             weight: 2
+            label: overture_count
             indicators:
               - type: numeric_at_least
                 column: n_dwellings_overture
@@ -715,12 +751,28 @@ pipeline:
           # county (the keyword's measured precision there is untouched),
           # and 2.1-2.4% of multi-family moves in healthy TX counties,
           # all of them assessor-only claims with no corroboration.
+          #
+          # The structure-description lane (style_keyword_class, speaking
+          # only where the land use is silent) joins the land-use keyword
+          # here as one assessor claim under the same guard. Measured
+          # offline 2026-09-16 on the summer scholars survey, with
+          # Carteret's dwelling style read from its source roll: 50 rows
+          # move, 43 surveyed Multi-Family and 7 Single-Family, all in
+          # Carteret (no other surveyed county maps a style). Multi-Family
+          # F1 0.785 to 0.828 (paired 95% CI +0.030 to +0.059),
+          # Single-Family F1 0.732 to 0.758 (+0.014 to +0.041).
           - type: all_of
             weight: 2
+            label: assessor_keyword
             indicators:
-              - type: equals
-                column: occupancy_keyword_class
-                value: Multi-Family
+              - type: any_of
+                indicators:
+                  - type: equals
+                    column: occupancy_keyword_class
+                    value: Multi-Family
+                  - type: equals
+                    column: style_keyword_class
+                    value: Multi-Family
               - type: any_of
                 indicators:
                   - {type: numeric_at_least, column: n_dwellings_overture, min: 2}
@@ -737,6 +789,7 @@ pipeline:
           # coverage is complete -- measured against CHEER, rows where
           # 'multi' rested on this pair alone were 50% Single-Family.
           - type: any_of
+            label: nsi_fema
             indicators:
               - {type: equals, column: occupancy_type_nsi_class, value: Multi-Family}
               - {type: equals, column: occupancy_type_fema_class, value: Multi-Family}
@@ -749,6 +802,7 @@ pipeline:
           - type: keyword
             column: occupancy_type_building_nsi
             pattern: 'MULTI-FAMILY, (?:3-4|5-10|10-19|20-50|50 PLUS) UNITS'
+            label: nsi_units
 
       - class: single
         source: single_dwelling
@@ -808,6 +862,47 @@ pipeline:
             indicators:
               - {type: numeric_at_least, column: aspect_ratio, min: *mh_aspect_min}
               - {type: numeric_at_most, column: area_m2, max: *mh_area_max_m2}
+          # The multi-section band. The morphology indicator above is a
+          # single-wide detector: in the TDHCA title registry single-wides
+          # sit at aspect p5 3.50 and double-wides at p95 2.71, so the 2.5
+          # cutoff lands in the gap and sees 4.3% of multi-section homes,
+          # which are a third of Texas's and most of North Carolina's
+          # labelled ones. This band catches the upper half of the
+          # double-wide distribution. On the 783 single-dwelling survey
+          # buildings it is 80.2% precise (lift 1.73), and the union with
+          # morphology reaches precision 0.915 and recall 0.854 against
+          # 0.959 and 0.643 for morphology alone. 2.0 is the knee: 2.2
+          # gives up 15 recall points, 1.8 costs 7 precision points for 3
+          # recall, and 1.5 carries no information (lift 1.02). The
+          # 220 m2 ceiling is not 185 because double-wides cluster at
+          # 135-178 m2.
+          #
+          # Weight 1, so a double-wide still needs one corroborating
+          # source; promote to 2 only on a Texas re-measure. It is a
+          # parent-class recall aid, not a section detector: inside the
+          # manufactured-home population it is 88.6% multi-section against
+          # an 82.6% base rate (lift 1.07). Half-open at the morphology
+          # cutoff so no footprint scores in both. Measured offline
+          # 2026-09-16 on the shipped survey linkage, p_manufactured_home
+          # unknown so bracketed: 17 to 36 rows move to Manufactured Home;
+          # at the lower bound its F1 goes 0.829 to 0.834 and
+          # Single-Family 0.732 to 0.737, at the upper 0.829 to 0.818 and
+          # 0.732 to 0.731, no class significantly worse either way.
+          #
+          # Interactions. A home it newly claims enters the n_sections
+          # vote below with aspect <= 2.5 already true, so it records 2
+          # sections where width_m >= 7 m and no count otherwise; it never
+          # reads as single-wide. The parcel_park indicator's harmonize
+          # cousin counts aspect >= 2.0 shapes (<= 185 m2), so on a park
+          # parcel this band and parcel_park together reach min_score.
+          # The section keyword is unaffected: n_sections is gated on the
+          # class, not on this indicator.
+          - type: all_of
+            label: shape_band
+            indicators:
+              - {type: numeric_at_least, column: aspect_ratio, min: &mh_band_aspect_min 2.0}
+              - {type: numeric_below, column: aspect_ratio, max: *mh_aspect_min}
+              - {type: numeric_at_most, column: area_m2, max: &mh_band_area_max_m2 220}
           - {type: numeric_at_least, column: p_manufactured_home, min: 0.75,
              label: keyword_probability}
           - {type: equals, column: occupancy_type_nsi_class,
@@ -940,8 +1035,16 @@ pipeline:
               - {type: is_null, column: occupancy_type_prevote}
         indicators:
           # Question 1 already decided this; the indicator simply carries that
-          # decision through so the class is written.
-          - {type: equals, column: dwelling_multiplicity, value: multi, label: dwellings}
+          # decision through so the class is written. Its provenance is
+          # question 1's (label_column), so occupancy_type_source names the
+          # evidence that made the footprint multi-dwelling
+          # (overture_count, assessor_keyword, nsi_fema, nsi_units) rather
+          # than the relay. dwelling_multiplicity_source is dropped from
+          # the output, which is why it has to be carried here.
+          - type: equals
+            column: dwelling_multiplicity
+            value: multi
+            label_column: dwelling_multiplicity_source
 
       # Single-family is the residual of the single-dwelling group: one
       # dwelling and no manufactured-home evidence is a site-built house.
@@ -992,10 +1095,18 @@ pipeline:
   # A two-story building satisfies both the 3 and the 7 bound and takes
   # Low-Rise; a footprint with no story count satisfies none, so no decision
   # is eligible and preserve_base leaves it as plain Multi-Family.
+  #
+  # append_source: the band is a refinement of a class already decided,
+  # so its token is appended to that decision's rather than replacing
+  # it (overture_count+nsi_fema+height_band). Replacing it made every
+  # banded Multi-Family read `height_band`, so a wrong call could not be
+  # traced to the evidence that made it (Harris County, TX: permits
+  # agree 5.6% where the inventory overrides NSI's Single-Family).
   - step: resolve_by_vote
     target: occupancy_type
     base_output: occupancy_type_base
     default_source: height_band
+    append_source: true
     decisions:
       - class: Low-Rise Multi-Family
         require:
@@ -1203,6 +1314,7 @@ pipeline:
       - occupancy_type_nsi_class
       - occupancy_type_fema_class
       - occupancy_keyword_class
+      - style_keyword_class
       - group_parcel
       - land_use_class_source_parcel
       # Evidence-only: postal_city fed into `address`/`city` at harmonize

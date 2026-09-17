@@ -339,3 +339,104 @@ def test_score_decisions_is_pure_and_returns_requested_scores():
     assert winner.tolist()[0] == 'A' and pd.isna(winner.iloc[1])
     # A lone winner has no runner-up: second_score is missing, not -1.
     assert second.isna().all()
+
+
+def test_numeric_below_is_strict():
+    from openplaces.io.curator.indicators import evaluate_indicator
+
+    df = pd.DataFrame({'aspect_ratio': [2.0, 2.4999, 2.5, None]})
+    matched = evaluate_indicator(
+        df, {'type': 'numeric_below', 'column': 'aspect_ratio', 'max': 2.5}
+    )
+    assert matched.tolist() == [True, True, False, False]
+
+
+def test_label_column_carries_an_earlier_votes_evidence():
+    # A relay decision names what the earlier vote recorded; where that
+    # record is missing it falls back to its own source.
+    decisions = [
+        {
+            'class': 'Multi-Family',
+            'source': 'relay',
+            'indicators': [
+                {
+                    'type': 'equals',
+                    'column': 'multiplicity',
+                    'value': 'multi',
+                    'label_column': 'multiplicity_source',
+                }
+            ],
+        }
+    ]
+    df = pd.DataFrame(
+        {
+            'occupancy_type': [None, None, None],
+            'multiplicity': ['multi', 'multi', 'single'],
+            'multiplicity_source': ['count+survey', None, 'count'],
+        }
+    )
+    out = resolve_by_vote(
+        _state(df), target='occupancy_type', decisions=decisions
+    ).curated
+    source = out['occupancy_type_source'].astype(object)
+    assert source.iloc[0] == 'count+survey'
+    assert source.iloc[1] == 'relay'
+    assert pd.isna(source.iloc[2])
+
+
+def test_append_source_keeps_the_refined_decisions_token():
+    decisions = [
+        {
+            'class': 'Low-Rise',
+            'require': [{'type': 'equals', 'column': 'base', 'value': 'MF'}],
+            'indicators': [
+                {'type': 'numeric_at_most', 'column': 'n_stories', 'max': 3}
+            ],
+        }
+    ]
+    df = pd.DataFrame(
+        {
+            'occupancy_type': ['MF', 'MF', 'MF'],
+            'base': ['MF', 'MF', 'MF'],
+            'n_stories': [2, 2, None],
+            'occupancy_type_source': ['overture_count', None, 'keyword'],
+        }
+    )
+    out = resolve_by_vote(
+        _state(df),
+        target='occupancy_type',
+        decisions=decisions,
+        default_source='height_band',
+        append_source=True,
+    ).curated
+    source = out['occupancy_type_source'].astype(object).tolist()
+    # Refined rows keep what decided them; a row with no earlier token
+    # gets the band alone; an unrefined row is untouched.
+    assert source == ['overture_count+height_band', 'height_band', 'keyword']
+    assert out['occupancy_type'].astype(object).tolist() == [
+        'Low-Rise',
+        'Low-Rise',
+        'MF',
+    ]
+
+
+def test_default_source_mode_still_replaces_the_token():
+    decisions = [
+        {
+            'class': 'Low-Rise',
+            'indicators': [
+                {'type': 'numeric_at_most', 'column': 'n_stories', 'max': 3}
+            ],
+        }
+    ]
+    df = pd.DataFrame(
+        {
+            'occupancy_type': ['MF'],
+            'n_stories': [2],
+            'occupancy_type_source': ['overture_count'],
+        }
+    )
+    out = resolve_by_vote(
+        _state(df), target='occupancy_type', decisions=decisions, default_source='band'
+    ).curated
+    assert out['occupancy_type_source'].astype(object).iloc[0] == 'band'

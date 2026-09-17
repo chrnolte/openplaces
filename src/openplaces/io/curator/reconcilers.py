@@ -800,6 +800,7 @@ def resolve_by_vote(
     review_margin: float = 1.0,
     flag_column: str | None = None,
     flag_class: str | None = None,
+    append_source: bool = False,
 ) -> CurateState:
     """Set *target* by tallying weighted votes from independent indicators.
 
@@ -859,9 +860,24 @@ def resolve_by_vote(
     flag_column, flag_class : str, optional
         When both are given, write a boolean *flag_column* set where the
         vote's winner equals *flag_class*.
+    append_source : bool, optional
+        When True, a row this vote decides keeps the token already in
+        ``{target}_source`` and gains this vote's token after a ``+``
+        (``overture_count+nsi_fema+height_band``) instead of having it
+        replaced. For a vote that refines an earlier decision rather
+        than making a new one, such as a height band splitting a
+        Multi-Family class: the refinement is worth recording, but
+        overwriting the token would erase the evidence that decided the
+        class it refines. A row with no earlier token gets this vote's
+        token alone. Default False.
     """
     from openplaces.io.curator.indicators import score_decisions
-    from openplaces.io.curator.provenance import record_source
+    from openplaces.io.curator.provenance import (
+        TOKEN_SEPARATOR,
+        record_source,
+        record_sources,
+        source_column,
+    )
 
     curated = state.curated
     if not decisions:
@@ -888,8 +904,17 @@ def resolve_by_vote(
         curated[target] = pd.Categorical(base)
     else:
         curated[target] = pd.Categorical(winner)
-    for tok in token[assign].dropna().unique():
-        record_source(curated, target, assign & token.eq(tok), tok)
+    side = source_column(target)
+    if append_source and side in curated.columns:
+        earlier = curated[side].astype(object)
+        has_earlier = earlier.notna() & earlier.astype(str).ne('')
+        combined = token.astype(object).where(
+            ~has_earlier, earlier.astype(str) + TOKEN_SEPARATOR + token.astype(str)
+        )
+        record_sources(curated, target, combined, mask=assign)
+    else:
+        for tok in token[assign].dropna().unique():
+            record_source(curated, target, assign & token.eq(tok), tok)
 
     if flag_column and flag_class is not None:
         curated[flag_column] = winner.eq(flag_class).fillna(False).to_numpy()

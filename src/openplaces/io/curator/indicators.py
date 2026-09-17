@@ -91,6 +91,11 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
       all-False like every other type, not all-True.
     - ``numeric_at_least`` (alias ``count_at_least``): ``column >= min``.
     - ``numeric_at_most``: ``column <= max``.
+    - ``numeric_below``: ``column < max``, the strict bound. For a band
+      that must stop short of a cutoff another indicator starts at, so
+      a value sitting exactly on the cutoff scores once rather than in
+      both (the footprint recipe's ``shape_band`` below the
+      ``morphology`` aspect cutoff).
     - ``any_of``: true where any of the nested ``indicators`` matches. Lets a
       backing signal corroborate an existing indicator (e.g. an independent
       source agreeing with a generic column) without contributing an extra
@@ -186,6 +191,11 @@ def evaluate_indicator(curated: pd.DataFrame, indicator: dict) -> pd.Series:
             pd.to_numeric(curated[col], errors='coerce') <= float(indicator['max'])
         ).fillna(False)
 
+    if kind == 'numeric_below':
+        return (
+            pd.to_numeric(curated[col], errors='coerce') < float(indicator['max'])
+        ).fillna(False)
+
     raise ValueError(f'Unknown voting indicator type: {kind!r}.')
 
 
@@ -229,11 +239,15 @@ def score_decisions(
     token : pandas.Series
         How the winning decision was carried: the ``label`` of every one of
         its indicators that actually fired for that row, joined with ``+``
-        in recipe order. Falls back to the decision's declared ``source``
-        where it labeled no indicators (or none of them matched), and is
-        missing where it set neither -- callers apply their own default.
-        Labeling indicators is therefore opt-in per recipe, and an
-        unannotated recipe keeps its previous behavior.
+        in recipe order. An indicator may name a ``label_column`` instead
+        (or as well), whose own per-row value is used as the label, so a
+        decision relaying an earlier vote's answer can report that vote's
+        recorded evidence; a missing value there adds nothing. Falls back
+        to the decision's declared ``source`` where it labeled no
+        indicators (or none of them matched), and is missing where it
+        set neither -- callers apply their own default. Labeling
+        indicators is therefore opt-in per recipe, and an unannotated
+        recipe keeps its previous behavior.
     best_score, second_score : pandas.Series
         Winning and runner-up scores among decisions that individually
         reached their own ``min_score``. ``second_score`` is missing where
@@ -265,6 +279,15 @@ def score_decisions(
             label = indicator.get('label')
             if label:
                 fired = fired + np.where(matched.to_numpy(), f'{label}+', '')
+            label_column = indicator.get('label_column')
+            if label_column and label_column in curated.columns:
+                # The evidence an earlier vote recorded, carried forward
+                # so a decision that only relays that vote names what
+                # actually decided it rather than the relay.
+                carried = curated[label_column].astype('string')
+                usable = matched & carried.notna() & carried.str.len().gt(0)
+                usable = usable.fillna(False).astype(bool)
+                fired = fired.where(~usable, fired + carried.fillna('') + '+')
         if score_classes and decision['class'] in score_classes:
             scores[decision['class']] = score
         fired = fired.str.rstrip('+')

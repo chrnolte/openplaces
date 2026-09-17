@@ -26,6 +26,7 @@ def link_curated_entity(
     columns: dict,
     entity_key: str = 'parcel_id',
     ref_key: str = 'parcel_id',
+    allow_missing: bool = False,
 ) -> CurateState:
     """Join another curated entity's attributes onto the current one by a shared id.
 
@@ -58,6 +59,13 @@ def link_curated_entity(
     ref_key : str, optional
         Id column on the referenced entity's own curated output (default
         ``parcel_id`` — that entity's own key, not a cross-attributed one).
+    allow_missing : bool, optional
+        When True, a mapped column the reference's curated output does
+        not carry is written all-missing instead of raising. For an
+        attribute only some admin units' sources publish (a structure
+        description on one county's roll), where absence is expected
+        rather than a recipe error. Default False, so a misspelled
+        column still fails loudly.
     """
     ref_recipe = get_recipe_by_id(recipe_id)
     if ref_recipe.get('stage') != 'curate':
@@ -79,6 +87,9 @@ def link_curated_entity(
     lookup.index = lookup[ref_key].astype('string')
     key = curated[entity_key].astype('string')
     for ref_col, entity_col in columns.items():
+        if ref_col not in lookup.columns and allow_missing:
+            curated[entity_col] = pd.Series(pd.NA, index=curated.index, dtype=object)
+            continue
         if ref_col not in lookup.columns:
             raise ValueError(
                 f"Column '{ref_col}' missing from curated reference '{recipe_id}'."
