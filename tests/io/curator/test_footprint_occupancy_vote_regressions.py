@@ -45,6 +45,8 @@ DEFAULTS = {
     'occupancy_type': None,
     'use_group_combined_parcel': None,
     'use_group_combined_labeled_parcel': None,
+    # The roll's structure description; most rolls publish none.
+    'building_style_parcel': None,
     'group_parcel': None,
     'group_footprint_fema': None,
     'occupancy_type_building_nsi': None,
@@ -154,6 +156,7 @@ def _run(recipe, rows: list[dict]) -> pd.DataFrame:
                 preserve_base=step.get('preserve_base', True),
                 base_output=step.get('base_output'),
                 default_source=step.get('default_source', 'vote'),
+                append_source=step.get('append_source', False),
             )
     return state.curated
 
@@ -1264,3 +1267,138 @@ class TestRvDwelling:
         )
         order = [d['class'] for d in vote['decisions']]
         assert order.index('RV Dwelling') < order.index('Manufactured Home')
+
+
+class TestMultiSectionShapeBand:
+    """The double-wide band: aspect in [2.0, 2.5), area <= 220 m2, weight 1.
+
+    Fabricated boxes: 18.2 m by 8.3 m is aspect ~2.2 and ~151 m2, a
+    typical double-wide; 23.5 m by 10.7 m has the same aspect at ~251 m2.
+    """
+
+    DOUBLE_WIDE = {'length_m': 18.2, 'width_m': 8.3}
+    TOO_LARGE = {'length_m': 23.5, 'width_m': 10.7}
+
+    def test_band_plus_one_source_is_a_manufactured_home(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Manufactured Home',
+                    **self.DOUBLE_WIDE,
+                }
+            ],
+        )
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Manufactured Home'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source.split('+') == ['shape_band', 'nsi']
+        # A double-wide's width puts it in the multi-section class.
+        assert str(out['n_sections'].astype(object).iloc[0]) == '2'
+
+    def test_band_alone_does_not_reach_the_threshold(self, recipe):
+        result = _classify(recipe, [{'n_dwellings_overture': 1, **self.DOUBLE_WIDE}])
+        assert result.iloc[0] == 'Single-Family'
+
+    def test_band_does_not_fire_above_its_area_ceiling(self, recipe):
+        result = _classify(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Manufactured Home',
+                    **self.TOO_LARGE,
+                }
+            ],
+        )
+        assert result.iloc[0] == 'Single-Family'
+
+    def test_band_and_morphology_never_score_together(self, recipe):
+        """Half-open at the morphology cutoff, so a value on it scores once."""
+        mh = next(
+            d
+            for v in _votes(recipe, 'occupancy_type')
+            for d in v['decisions']
+            if d['class'] == 'Manufactured Home'
+        )
+        band = next(i for i in mh['indicators'] if i.get('label') == 'shape_band')
+        morph = next(i for i in mh['indicators'] if i.get('label') == 'morphology')
+        upper = next(
+            i
+            for i in band['indicators']
+            if i['column'] == 'aspect_ratio' and i['type'] != 'numeric_at_least'
+        )
+        lower = next(i for i in morph['indicators'] if i['column'] == 'aspect_ratio')
+        assert upper['type'] == 'numeric_below'
+        assert float(upper['max']) == float(lower['min'])
+        assert float(band.get('weight', 1)) < float(mh['min_score'])
+
+
+class TestMultiFamilyProvenance:
+    """occupancy_type_source keeps the evidence that decided Multi-Family."""
+
+    def test_height_band_appends_to_the_deciding_evidence(self, recipe):
+        out = _run(recipe, [{'n_dwellings_overture': 4, 'n_stories': 2}])
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Low-Rise Multi-Family'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source == 'overture_count+height_band'
+        # A classification vote is never marked as an imputed value.
+        assert 'imputed' not in source.split('+')
+
+    def test_unbanded_multi_family_keeps_its_evidence_alone(self, recipe):
+        out = _run(recipe, [{'n_dwellings_overture': 4, 'n_stories': None}])
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source == 'overture_count'
+
+    def test_every_carried_label_is_named(self, recipe):
+        out = _run(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'occupancy_type_building_nsi': 'Multi-Family, 10-19 units',
+                    'group_footprint_fema': 'Multi-Family',
+                    'n_stories': 3,
+                }
+            ],
+        )
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source == 'nsi_fema+nsi_units+height_band'
+
+
+class TestStructureDescriptionLane:
+    """The roll's dwelling style speaks where the land use is silent."""
+
+    DUPLEX = {
+        'use_group_combined_parcel': 'RESIDENTIAL PRIMARY',
+        'building_style_parcel': 'Duplex/Triplex',
+        'occupancy_type_building_nsi': 'Multi-Family, 2 units',
+        'group_footprint_fema': 'Multi-Family',
+        'n_dwellings_overture': 1,
+    }
+
+    def test_duplex_style_with_nsi_agreement_is_multi_family(self, recipe):
+        out = _run(recipe, [dict(self.DUPLEX)])
+        assert out['dwelling_multiplicity'].astype(object).iloc[0] == 'multi'
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Multi-Family'
+        source = str(out['occupancy_type_source'].astype(object).iloc[0])
+        assert source.split('+')[:2] == ['assessor_keyword', 'nsi_fema']
+
+    def test_style_is_ignored_where_the_land_use_names_a_class(self, recipe):
+        row = {**self.DUPLEX, 'use_group_combined_parcel': 'SINGLE FAMILY'}
+        out = _run(recipe, [row])
+        assert out['style_keyword_class'].isna().iloc[0]
+        assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+    def test_style_alone_does_not_decide(self, recipe):
+        """The keyword guard still applies: one story, one dwelling and
+        NSI saying single-family keep the row single."""
+        row = {
+            **self.DUPLEX,
+            'occupancy_type_building_nsi': 'Single Family, 1 story, no basement',
+            'group_footprint_fema': 'Single Family',
+            'n_stories': 1,
+        }
+        result = _classify(recipe, [row])
+        assert result.iloc[0] == 'Single-Family'
