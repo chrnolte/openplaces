@@ -151,11 +151,29 @@ pipeline:
   # Ending on the APN pass makes it the one that wins on rows both sources
   # matched, with the address pass's matches surviving only as a gap-fill
   # for rows the APN pass missed.
+  #
+  # The address pass reads the permit table itself, not the property
+  # spine: the property spine discovers only recipes scoped below its
+  # own US scope, so it never held a permit (0 rows in all 44 eastern
+  # NC counties, 2026-09-16), and it must not: a permit is not a
+  # property, and property-spine rows are summed into curated parcels.
+  # The permit table carries no town id, so both sides are keyed on
+  # street and number within the county being processed, derived for
+  # this join only (no key column is persisted).
   - step: link_by_id
-    recipe_id: US_property-spine-2026
+    recipe_id: US_property-shovels-2026
     mode: aggregate
-    spine_key: address_id_local
-    ref_key: address_id_local
+    spine_key: address_id_local_county
+    ref_key: address_id_local_county
+    spine_address_key: &permit_address_key
+      admin4_column: null
+      city_column: null
+      output_column: address_id_local_county
+      output_column_city: null
+    ref_address_key:
+      <<: *permit_address_key
+      street_column: street
+      number_column: street_no
     columns:
       occupancy_type_raw: occupancy_type_property_shovels
     ref_sort_by: permit_start_date

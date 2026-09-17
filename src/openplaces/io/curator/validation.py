@@ -481,6 +481,9 @@ def reference_confidence_tier(
     reference reached the entity (an id join beats an address or point
     match) and whether its records agree (a unanimous mode over at
     least two label-bearing records beats a single uncorroborated one).
+    A point match scores in the `addr` tiers, with an address match:
+    both locate the parcel rather than naming it, which is why
+    `id_match_value` names only the id route.
 
     Parameters
     ----------

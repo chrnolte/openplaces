@@ -28,9 +28,12 @@
 # but that is an empirical question about predictive value, not a reason to
 # dismiss it: unlike group_parcel it is not derived from NSI, so testing it
 # against NSI would not be circular. Two things block the test today --
-# `zoning_code` does not survive to the curated parcel entity, and this
-# recipe's `parcel_id_assessor: PIN` yields '0' for every row (raw PIN samples
-# null), so a source join fails. Both are worth fixing before judging zoning.
+# `zoning_code` does not survive to the curated parcel entity, and the
+# source join has been failing. This recipe's PIN is filled (99.4%,
+# checked 2026-09-16); the '0' seen on the parcel geospine of 2026-09-08
+# is NC OneMap's assessor id for Pender, copied over this recipe's key
+# by the punctuation-free link pass (fixed in link_by_id, needs a
+# geospine rerun). Both are worth fixing before judging zoning.
 
 description: >-
   Pender County, NC parcel roll (assessed land/building/total values,

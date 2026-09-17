@@ -72,6 +72,10 @@ from openplaces.table import require_unique_index
 # resolves its own key per match; anything else here is a caller override.
 DEFAULT_LINK_KEY = 'parcel_id_local'
 
+# Matching keys an auto-discovered link never copies onto the spine by
+# default (see link_by_id's auto_discover branch).
+_LINK_KEY_COLUMNS = frozenset({DEFAULT_LINK_KEY, *PARCEL_ID_ALNUM_KEYS})
+
 # Columns carried in spine-reference crosswalk tables (index levels excluded).
 _CROSSWALK_COLS = [
     'area_intersection_m2',
@@ -2186,6 +2190,53 @@ def _write_prioritized(
         _record_source(spine, name, changed, provenance_token)
 
 
+#: Columns *ref_address_key* needs on the reference: keyword name of
+#: add_address_id_local and its default column.
+_REF_ADDRESS_COLUMNS = (
+    ('street_column', 'address_street'),
+    ('number_column', 'address_number'),
+)
+
+
+def _derive_address_key(frame, admin_id, spec, key):
+    """Derive one address matching key for a join, without keeping it.
+
+    Parameters
+    ----------
+    frame : pandas.DataFrame
+        Spine or reference table.
+    admin_id : str or AdminId
+        Admin unit being processed.
+    spec : dict
+        Keyword arguments of
+        :func:`~openplaces.io.harmonizer.addresses.add_address_id_local`.
+    key : str
+        Which derived column to return (the plain or city-inclusive key).
+
+    Returns
+    -------
+    pandas.Series or None
+        The key aligned to *frame*, or None when *frame* lacks the street
+        or number column or *key* is not one of the derived columns.
+    """
+    from openplaces.io.harmonizer.addresses import add_address_id_local
+
+    spec = dict(spec)
+    needed = [spec.get(k, d) for k, d in _REF_ADDRESS_COLUMNS]
+    if not all(c in frame.columns for c in needed):
+        return None
+    optional = [spec.get(k, d) for k, d in _ADDRESS_SCOPE_COLUMNS]
+    columns = needed + [c for c in optional if c and c in frame.columns]
+    keyed = add_address_id_local(
+        frame[list(dict.fromkeys(columns))].copy(), admin_id, **spec
+    )
+    return keyed[key] if key in keyed.columns else None
+
+
+#: Optional scope columns of add_address_id_local and their defaults.
+_ADDRESS_SCOPE_COLUMNS = (('city_column', 'city'), ('admin4_column', 'admin4_id'))
+
+
 #: Count columns already written during this harmonize run, so a
 #: run's first source replaces whatever a restored spine carried and
 #: every later source adds to it (see :func:`_accumulate_count`).
@@ -2417,6 +2468,8 @@ def link_by_id(
     track_provenance: list[str] | None = None,
     fill_only: bool = False,
     supplements_only: bool = False,
+    ref_address_key: dict | None = None,
+    spine_address_key: dict | None = None,
     _protect_own_columns: set[str] | None = None,
     _supplement_of: str | None = None,
 ) -> HarmonizeState:
@@ -2598,6 +2651,24 @@ def link_by_id(
         on either side raises instead of warning: the recipes promise the
         column (see :func:`~openplaces.recipe.get_supplements_key`), so
         its absence means an output written before the recipe changed.
+    ref_address_key : dict, optional
+        Derive the address matching key on the reference before joining,
+        with the arguments of
+        :func:`~openplaces.io.harmonizer.addresses.derive_address_id_local`
+        (e.g. ``{street_column: street, number_column: street_no,
+        admin4_column: null, output_column: address_id_local_county}``),
+        so a reference that was never harmonized is keyed with exactly the
+        normalization the spine's own key used. *ref_key* must name one of
+        the derived columns. Exists for sources whose rows are not the
+        entity of any spine (building permits: one row per permit, not per
+        property), which therefore never pass through a harmonized table
+        that would key them.
+    spine_address_key : dict, optional
+        The same derivation on the spine, used for this join only and not
+        written to the spine, so a key a single link needs (an address
+        key without the town scope a permit source cannot supply) does
+        not become a persisted column. Ignored where the spine already
+        carries *spine_key*.
     """
     if auto_discover:
         # A standalone roll that is also one of the spine's own geometry
@@ -2629,9 +2700,19 @@ def link_by_id(
                 # something else there. Its attributes reach other
                 # entities in curate, from the property spine.
                 continue
-            match_columns = columns or list(
-                get_attributes(match['layer'] or entity_type).index
-            )
+            # The registry default lists the matching keys too, and
+            # copying a matched source's key over the spine's own is
+            # never what a link means: the key is how the rows met.
+            # Pender County NC (geospine of 2026-09-08) lost its county
+            # key on 99.8% of parcels to one placeholder value this way,
+            # when a punctuation-free fallback pass matched a statewide
+            # layer whose assessor id is '0' on every row. An explicit
+            # *columns* list is left as the caller wrote it.
+            match_columns = columns or [
+                c
+                for c in get_attributes(match['layer'] or entity_type).index
+                if c not in _LINK_KEY_COLUMNS
+            ]
             protect_columns: set[str] | None = None
             if match['layer'] is None and match['recipe_id'] in spine_source_ids:
                 keep_overlap = {c for c in match_columns if c in spine_keep_columns}
@@ -2715,7 +2796,12 @@ def link_by_id(
             f'supplements_key {spine_key!r}, but the spine has no such '
             f'column. Re-ingest {_supplement_of}: its output predates the key.'
         )
-    if spine_key not in state.spine.columns:
+    derived_spine_key = None
+    if spine_address_key and spine_key not in state.spine.columns:
+        derived_spine_key = _derive_address_key(
+            state.spine, state.admin_id, spine_address_key, spine_key
+        )
+    if spine_key not in state.spine.columns and derived_spine_key is None:
         warnings.warn(
             f'link_by_id: spine has no {spine_key!r}; skipping {recipe_id}. '
             'Was the spine source ingested with a parcel_id_local directive '
@@ -2739,6 +2825,10 @@ def link_by_id(
         # restrict it here so a per-county aggregate isn't silently pooled
         # across the whole state.
         ref = restrict_to_admin_by_name(ref, recipe_id, state.admin_id)
+    if ref is not None and ref_address_key:
+        keyed = _derive_address_key(ref, state.admin_id, ref_address_key, ref_key)
+        if keyed is not None:
+            ref = ref.assign(**{ref_key: keyed})
     if ref is not None and ref_key in PARCEL_ID_ALNUM_KEYS:
         ref = add_parcel_id_alnum(ref, key=ref_key)
     if _supplement_of and ref is not None and ref_key not in ref.columns:
@@ -2765,7 +2855,9 @@ def link_by_id(
         ref = ref.sort_values(ref_sort_by, ascending=ref_sort_ascending, kind='stable')
 
     spine = state.spine
-    skey = spine[spine_key].astype('string')
+    skey = (
+        derived_spine_key if derived_spine_key is not None else spine[spine_key]
+    ).astype('string')
     if _supplement_of and 'source' in spine.columns:
         # A supplements_key is a source's own id, unique only among its
         # roll's rows; another source unioned onto the same spine may
