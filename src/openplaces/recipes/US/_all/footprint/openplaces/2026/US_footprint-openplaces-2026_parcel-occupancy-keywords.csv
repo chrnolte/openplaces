@@ -8,7 +8,7 @@ MAN-HOU,contains,Manufactured Home,false
 MULTI[- ]?SECTION,regex,Manufactured Home,true
 TOWNHOME|TOWNHOUSE|DUPLEX|TRIPLEX|QUADPLEX|APARTMENT|CONDO|MULTI|\bAPT\b|APART|TWO[ -]?FAM|\b2[ -]FAMILY\b,regex,Multi-Family,true
 MULT-FAM,contains,Multi-Family,false
-SINGL[E]?[ -]?FAM|SGL[ -]?FAM|\bSFH\b,regex,Single-Family,true
+SINGL?E[ -]?FAM|SGL[ -]?FAM|\bSFH\b,regex,Single-Family,true
 \b(?:ONE|1)[ -]FAMILY\b,regex,Single-Family,true
 SFR,contains,Single-Family,true
 \bMH\b,regex,Manufactured Home,false
