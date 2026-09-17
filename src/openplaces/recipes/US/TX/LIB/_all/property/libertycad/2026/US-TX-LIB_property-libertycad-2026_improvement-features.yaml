@@ -47,6 +47,15 @@
 # the property and the years take the earliest. Both years read as
 # missing outside 1801 to 2027 (0 is the district's blank).
 #
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of improvements (imprv_id) carrying an RM1, RM2 or RM3 component,
+# summed per property. MA5 (tag-along section) and SM6 are parts of
+# such a home, not homes. MEASURED on the 2026 export: 21,972
+# improvements carry RM1-RM3 or MA5; one RM row on 21,842, MA5 beside
+# an RM on 68, two or more RM rows on 62. A property with components
+# but no mobile home gets 0; one absent from this member stays missing.
+#
 # MEASURED on the 2026 export (231,615 components over 55,929
 # properties; aggregates only). A is the 34,126 single-family
 # properties (improvement state class A, File #2). living_area_sqft A
@@ -85,7 +94,7 @@ encoding: latin-1
 fixed_width:
   - [prop_id, 12]
   - [filler, 4] # prop_val_yr
-  - [filler, 12] # imprv_id
+  - [imprv_id, 12]
   - [filler, 12] # imprv_det_id
   - [imprv_det_type_cd, 10]
   - [filler, 25] # Imprv_det_type_desc
@@ -159,12 +168,22 @@ transformations:
       (effective_year_built <= 2027))
     inputs: [effective_year_built, imprv_det_type_cd]
     output: effective_year_built
+  # One per improvement holding a mobile home; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: >-
+      (imprv_det_type_cd.isin(['RM1', 'RM2', 'RM3']) &
+      ~imprv_id.where(imprv_det_type_cd.isin(['RM1', 'RM2',
+      'RM3'])).duplicated()).astype('float64')
+    inputs: [imprv_det_type_cd, imprv_id]
+    output: n_manufactured_home_units
 
 drop_columns:
+  - imprv_id
   - imprv_det_type_cd
   - imprv_det_area
 
 aggregation_function:
+  n_manufactured_home_units: sum
   living_area_sqft: sum
   gross_floor_area_sqft: sum
   detached_garage_area_sqft: sum

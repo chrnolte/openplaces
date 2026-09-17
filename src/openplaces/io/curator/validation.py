@@ -383,16 +383,17 @@ def confusion_matrix(
     other: str = OTHER_LABEL,
     secondary: str | None = None,
     collapse_other: bool = True,
+    kept_classes: list[str] | tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     """Count matrix of reference classes (rows) by predicted classes (columns).
 
     Every input row lands in exactly one cell, so the matrix total is the
     number of rows passed in. Columns separate, in order, the scored
-    *classes*, the *secondary* class (an outbuilding, where one is
-    named), every other asserted class (*other*, e.g. `Non-residential`)
-    and no assertion at all (*abstain*). Dropping or merging those would
-    hide whether a source declined to answer or answered outside the
-    vocabulary, which call for different fixes.
+    *classes*, any *kept_classes*, the *secondary* class (an outbuilding,
+    where one is named), every other asserted class (*other*, e.g.
+    `Non-residential`) and no assertion at all (*abstain*). Dropping or
+    merging those would hide whether a source declined to answer or
+    answered outside the vocabulary, which call for different fixes.
 
     Parameters
     ----------
@@ -417,15 +418,23 @@ def confusion_matrix(
         *secondary* into *other*. False keeps each such label as its own
         row and column, after *classes* in order of first appearance,
         which is what an exact label-equality agreement needs.
+    kept_classes : list of str, optional
+        Classes the reference does not score but that must not be
+        folded into *other*: a residential class of the recipe that
+        this reference never labels (`RV Dwelling` against a survey or
+        permits that have no such class). Each is a column of its own,
+        and a row only where the reference uses it. Being outside
+        *classes*, a prediction of one counts as an answered miss in
+        :func:`accuracy_from_matrix`, never as a non-residential one.
 
     Returns
     -------
     pandas.DataFrame
-        Integer counts. Rows are *classes*, then *secondary* and *other*
-        (or the extra labels) where a reference falls outside *classes*,
-        then `(no reference)` where a reference is missing. Columns are
-        *classes*, *secondary* when given, *other* (or the extra labels),
-        then *abstain*.
+        Integer counts. Rows are *classes*, then *kept_classes*,
+        *secondary* and *other* (or the extra labels) where a reference
+        falls outside *classes*, then `(no reference)` where a reference
+        is missing. Columns are *classes*, *kept_classes*, *secondary*
+        when given, *other* (or the extra labels), then *abstain*.
     """
     truth = pd.Series(truth).astype(object).reset_index(drop=True)
     predicted = pd.Series(predicted).astype(object).reset_index(drop=True)
@@ -436,16 +445,21 @@ def confusion_matrix(
         )
     classes = list(classes)
     known = set(classes)
+    extra_classes = [
+        label
+        for label in dict.fromkeys(kept_classes or ())
+        if label not in known and label != secondary
+    ]
 
     reference = truth.where(truth.notna(), NO_REFERENCE_LABEL)
     answer = predicted.where(predicted.notna(), abstain)
     if collapse_other:
-        kept = known | ({secondary} if secondary else set())
+        kept = known | set(extra_classes) | ({secondary} if secondary else set())
         reference = reference.where(
             reference.isin(kept) | reference.eq(NO_REFERENCE_LABEL), other
         )
         answer = answer.where(answer.isin(kept) | answer.eq(abstain), other)
-        extra_columns = [*([secondary] if secondary else []), other]
+        extra_columns = [*extra_classes, *([secondary] if secondary else []), other]
         in_reference = set(reference)
         extra_rows = [label for label in extra_columns if label in in_reference]
     else:
@@ -1003,6 +1017,7 @@ def write_confusion_report(
     abstain: str = ABSTAIN_LABEL,
     other: str = OTHER_LABEL,
     secondary: str | None = None,
+    kept_classes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Path]:
     """Write confusion matrices and accuracies for every prediction source.
 
@@ -1045,6 +1060,9 @@ def write_confusion_report(
     abstain, other, secondary : str, optional
         Sentinel labels, as in :func:`confusion_matrix`. Pass
         :meth:`ValidationContext.matrix_labels` to follow the recipe.
+    kept_classes : list of str, optional
+        Unscored classes kept apart from *other*, as in
+        :func:`confusion_matrix`.
 
     Returns
     -------
@@ -1084,6 +1102,7 @@ def write_confusion_report(
                 abstain=abstain,
                 other=other,
                 secondary=secondary,
+                kept_classes=kept_classes,
             )
             confusion += _long_form(
                 matrix, source=source, stratum_by=stratum_by, stratum=stratum
@@ -1111,6 +1130,7 @@ def write_confusion_report(
             'abstain_label': abstain,
             'other_label': other,
             'secondary_label': secondary,
+            'kept_classes': list(kept_classes or ()),
             'n_rows': int(keep.sum()),
             'n_rows_without_reference': int(n_rows - keep.sum()),
             'min_rows': min_rows,
@@ -1834,16 +1854,29 @@ class ValidationContext:
         Returns
         -------
         dict
-            `secondary` (the recipe's `occupancy: secondary_class`) and
+            `secondary` (the recipe's `occupancy: secondary_class`),
             `other`, which reads `Non-residential` when the recipe
-            declares its residential classes. Pass as keyword arguments
-            to :func:`write_confusion_report` or
+            declares its residential classes, and `kept_classes`, the
+            recipe's residential classes (collapsed as the validation
+            block collapses them) that `validation: classes` does not
+            score, such as `RV Dwelling` against a reference with no
+            such class. Kept apart, a prediction of one is never
+            reported as a non-residential assertion. Pass as keyword
+            arguments to :func:`write_confusion_report` or
             :func:`confusion_matrix`.
         """
         residential = getattr(self, 'residential_classes', ())
+        scored = set(getattr(self, 'classes', ()))
+        collapse = dict(getattr(self, 'collapse', None) or {})
+        kept = [
+            label
+            for label in dict.fromkeys(collapse.get(c, c) for c in residential)
+            if label not in scored
+        ]
         return {
             'secondary': getattr(self, 'secondary_class', None),
             'other': NON_RESIDENTIAL_LABEL if residential else OTHER_LABEL,
+            'kept_classes': kept,
         }
 
     def entity_source_values(self, entities):

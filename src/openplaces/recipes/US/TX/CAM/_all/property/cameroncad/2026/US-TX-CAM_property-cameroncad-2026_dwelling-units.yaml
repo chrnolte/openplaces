@@ -1,0 +1,159 @@
+# Recipe: Cameron County, TX certified appraisal roll, dwelling units
+# by kind, from the improvement detail member (PACS File #8, one row
+# per building component). Same download as
+# US-TX-CAM_property-cameroncad-2026; read that roll's header for the
+# source and its terms, and the _improvement-detail sibling's header
+# for the class families.
+#
+# Why: the occupancy vote of US_footprint-openplaces-2026 needs to know
+# what kind of dwelling the roll lists on a parcel. Cameron is the one
+# CHEER district whose roll codes travel trailers and park-model RVs
+# as dwellings (plans/travel-trailers-in-building-inventory.md,
+# sections 2 and 4), and its mobile-home count also feeds the second
+# occupancy pass on small secondary footprints.
+#
+# RULE. One count per improvement (File #8 imprv_id), read from the
+# class code (imprv_det_class_cd) of its main-area row (type MA, the
+# row every Cameron building carries once), per property:
+# - n_travel_trailers: class TTn or XTTn ('TRAVEL TRAILER'; the X
+#   prefix marks a trailer on a mobile-home personal-property account,
+#   usually a park space).
+# - n_park_models: class PKn or XPKn ('PARK MODEL').
+# - n_manufactured_home_units: class MH, MHn or MHA (mobile homes).
+# - n_residential_buildings: any residential class family of the
+#   sibling's header (residences, townhouses, condominiums, plexes,
+#   multiplex apartments, mobile homes, park models, travel trailers),
+#   so a count of 1 marks a property whose roll lists one dwelling
+#   structure and nothing else residential.
+# The codes are kept as the district defines them; this recipe only
+# counts them. No kind is inferred from area or shape.
+#
+# MEASURED on the 2026 export (aggregates only): 162,815 improvements
+# carry an MA row, 106 of them more than one (counted once each). With
+# a single MA row: travel trailer 2,865 improvements, park model 1,669,
+# mobile home 14,526, every other class 143,649. With two or more:
+# 25 hold a travel trailer class, 8 a mobile home class. A building
+# with a kind's class on any of its MA rows counts once for that kind.
+#
+# KEYS. Counts are per property (prop_id). Only real-property accounts
+# whose prop_id TxGIO also carries reach a parcel; the separate
+# mobile-home personal-property accounts (X classes, mostly park
+# spaces) have no polygon and stay unplaced. Placing them by situs
+# address is deferred (see the plan, section 7, decision 5, and the
+# patent constraints recorded there).
+#
+# ZERO VERSUS MISSING. A property with an MA row gets 0 for every kind
+# it does not hold; a property with no MA row at all (land only,
+# personal property without a building) is absent here and stays
+# missing downstream, so a 0 always means "the roll lists buildings
+# and none of this kind".
+
+description: >-
+  Cameron County, TX certified appraisal roll: travel trailers, park models,
+  mobile homes and residential buildings counted per property.
+
+admin_id: US-TX-CAM
+
+entity:
+  entity_type: property
+  source:
+    source_id: cameroncad
+    # Same download as the roll; see its terms note.
+    license: "public domain (district data disclaimer; without warranty)"
+    terms_url: "https://ftp.cameroncad.org/Pages/Data"
+    redistribution_restricted: false
+    portal_url: "https://ftp.cameroncad.org/Pages/Data"
+    download_url: "https://ftp.cameroncad.org/cad/exports/certified/2026/cameron-2026-certified-appraisal-export-20260723.zip"
+  version: 2026
+
+compressed_file_name: "cameron-2026-certified-appraisal-export-20260723.zip"
+uncompressed_file_name: "2026-07-23_2026_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+extract_members:
+  - "2026-07-23_2026_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.33 File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [imprv_id, 12]
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+
+# The class code '*' is the district's blank.
+null_value_strings: ['*']
+
+# Main-area rows only: one per building.
+query: "imprv_det_type_cd == 'MA'"
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  # The first MA row of each improvement; see MEASURED.
+  - type: expression
+    expression: "~imprv_id.duplicated()"
+    inputs: [imprv_id]
+    output: first_main_area
+  # Each kind is decided per improvement (any of its MA rows) and
+  # written on its first MA row only, so a building counts once.
+  - type: expression
+    expression: >-
+      (imprv_det_class_cd.str.fullmatch('X?TT[0-9]',
+      na=False).groupby(imprv_id).transform('max') &
+      first_main_area).astype('float64')
+    inputs: [first_main_area, imprv_det_class_cd, imprv_id]
+    output: n_travel_trailers
+  - type: expression
+    expression: >-
+      (imprv_det_class_cd.str.fullmatch('X?PK[0-9]',
+      na=False).groupby(imprv_id).transform('max') &
+      first_main_area).astype('float64')
+    inputs: [first_main_area, imprv_det_class_cd, imprv_id]
+    output: n_park_models
+  - type: expression
+    expression: >-
+      (imprv_det_class_cd.str.fullmatch('MH[0-9]?|MHA',
+      na=False).groupby(imprv_id).transform('max') &
+      first_main_area).astype('float64')
+    inputs: [first_main_area, imprv_det_class_cd, imprv_id]
+    output: n_manufactured_home_units
+  # The residential class families of the _improvement-detail sibling.
+  - type: expression
+    expression: >-
+      (imprv_det_class_cd.str.match('(R[FMSV][0-9][MP]?|RTH[FMSV][0-9]|C[FMV][0-9]|[2-4]P[FMV][0-9]|MP[FMV][0-9]|RRMP[FMV][0-9]|MH[0-9]?|MHA|X?PK[0-9]|X?TT[0-9]|MA2|MAA)$',
+      na=False).groupby(imprv_id).transform('max') &
+      first_main_area).astype('float64')
+    inputs: [first_main_area, imprv_det_class_cd, imprv_id]
+    output: n_residential_buildings
+
+drop_columns:
+  - imprv_id
+  - imprv_det_type_cd
+  - imprv_det_class_cd
+  - first_main_area
+
+aggregation_function:
+  n_travel_trailers: sum
+  n_park_models: sum
+  n_manufactured_home_units: sum
+  n_residential_buildings: sum
+
+supplements: US-TX-CAM_property-cameroncad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: dwelling-units

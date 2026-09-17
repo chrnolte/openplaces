@@ -49,6 +49,16 @@
 #                         CodeDescriptions.pdf); the first card's
 #                         code is taken.
 #
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of cards whose Design Style is M (MANUF SINGLE) or N (MANUF MULTI),
+# summed per REID. A REID with cards but no manufactured style gets 0.
+# Land classes M (MFG HOME) and T (MOBILE HOME PK) mostly have no
+# manufactured-style card (2,256 REIDs against 2, measured 2026-09-16
+# in plans/travel-trailers-in-building-inventory.md): their homes are
+# personal property, and a 0 there means the card file does not list
+# them, not that the parcel holds none.
+#
 # Not mapped: "# of Rooms" (460) is 0 on every card. Bath (533) is a
 # letter code whose top classes read "THREE BATH" and "3 1/2 BATH"
 # with nothing above, so a count would be top-coded; Bath Fixtures is
@@ -172,6 +182,11 @@ transformations:
     operation: to_numeric
     input: n_stories
     output: n_stories
+  # One per card of a manufactured design style; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: "building_style.isin(['M', 'N']).astype('float64')"
+    inputs: [building_style]
+    output: n_manufactured_home_units
 
 drop_columns:
   - story_height
@@ -189,6 +204,7 @@ columns_to_categorical:
 aggregation_function:
   living_area_sqft: sum
   n_dwellings: sum
+  n_manufactured_home_units: sum
   n_stories: max
   year_built: min
   effective_year_built: max

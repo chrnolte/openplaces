@@ -47,6 +47,16 @@
 # YEAR BUILT. year_built is yr_built of the living-area components, the
 # earliest per property (the original structure, not an addition).
 #
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of improvements (imprv_id) carrying an MBH or FEMAMBH component,
+# summed per property. LAMBH and MBHA are additions to such a home, not
+# homes. Counted per improvement, not per row. MEASURED on the 2026
+# export: 3,146 improvements carry one of the four mobile-home types;
+# MBH alone on 3,043, with LAMBH or MBHA beside MBH on 78, FEMAMBH on
+# 18, two to four MBH rows on 6. A property with listed components but
+# no mobile home gets 0; one absent from this member stays missing.
+#
 # MEASURED on the 2026 export (aggregates only): File #8 holds 381,605
 # rows over 92,893 properties; 158,369 are listed types. Share of the
 # roll's properties with living area > 0, by improvement state class
@@ -91,7 +101,7 @@ encoding: latin-1
 fixed_width:
   - [prop_id, 12]
   - [filler, 4] # prop_val_yr
-  - [filler, 12] # imprv_id
+  - [imprv_id, 12]
   - [filler, 12] # imprv_det_id
   - [imprv_det_type_cd, 10]
   - [filler, 25] # Imprv_det_type_desc
@@ -148,12 +158,22 @@ transformations:
       (year_built <= 2027))
     inputs: [year_built, imprv_det_type_cd]
     output: year_built
+  # One per improvement holding a mobile home; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: >-
+      (imprv_det_type_cd.isin(['MBH', 'FEMAMBH']) &
+      ~imprv_id.where(imprv_det_type_cd.isin(['MBH',
+      'FEMAMBH'])).duplicated()).astype('float64')
+    inputs: [imprv_det_type_cd, imprv_id]
+    output: n_manufactured_home_units
 
 drop_columns:
+  - imprv_id
   - imprv_det_type_cd
   - imprv_det_area
 
 aggregation_function:
+  n_manufactured_home_units: sum
   living_area_sqft: sum
   gross_floor_area_sqft: sum
   detached_garage_area_sqft: sum

@@ -41,6 +41,14 @@
 # the property and the years take the earliest. Both years read as
 # missing outside 1801 to 2027 (0 is the district's blank).
 #
+# MOBILE-HOME UNITS (n_manufactured_home_units, added 2026-09-16 for
+# the second occupancy pass on small secondary footprints): the number
+# of improvements (imprv_id) carrying an MH or MTS component, summed per
+# property. MEASURED on the 2026 export: 2,767 improvements carry one;
+# a single MH row on 2,722, MTS on 1, two to four MH rows on 44. A
+# property with components but no mobile home gets 0; one absent from
+# this member stays missing.
+#
 # MEASURED on the 2026 export (164,120 components over 29,186
 # properties; aggregates only). A is the 19,956 single-family
 # properties (improvement state class A, File #2). living_area_sqft A
@@ -77,7 +85,7 @@ encoding: latin-1
 fixed_width:
   - [prop_id, 12]
   - [filler, 4] # prop_val_yr
-  - [filler, 12] # imprv_id
+  - [imprv_id, 12]
   - [filler, 12] # imprv_det_id
   - [imprv_det_type_cd, 10]
   - [filler, 25] # Imprv_det_type_desc
@@ -138,12 +146,22 @@ transformations:
       (effective_year_built <= 2027))
     inputs: [effective_year_built, imprv_det_type_cd]
     output: effective_year_built
+  # One per improvement holding a mobile home; see MOBILE-HOME UNITS.
+  - type: expression
+    expression: >-
+      (imprv_det_type_cd.isin(['MH', 'MTS']) &
+      ~imprv_id.where(imprv_det_type_cd.isin(['MH',
+      'MTS'])).duplicated()).astype('float64')
+    inputs: [imprv_det_type_cd, imprv_id]
+    output: n_manufactured_home_units
 
 drop_columns:
+  - imprv_id
   - imprv_det_type_cd
   - imprv_det_area
 
 aggregation_function:
+  n_manufactured_home_units: sum
   living_area_sqft: sum
   quality_grade: first
   year_built: min

@@ -431,7 +431,11 @@ def test_an_asserted_non_residential_class_is_not_no_class(tmp_path):
     assert values['keyword'].isna().all()
 
     labels = context.matrix_labels()
-    assert labels == {'secondary': 'Shed', 'other': NON_RESIDENTIAL_LABEL}
+    assert labels == {
+        'secondary': 'Shed',
+        'other': NON_RESIDENTIAL_LABEL,
+        'kept_classes': [],
+    }
     nsi = confusion_matrix(
         linked['occupancy_type_canonical'], values['nsi'], ['A', 'B'], **labels
     )
@@ -450,3 +454,47 @@ def test_an_asserted_non_residential_class_is_not_no_class(tmp_path):
         keep_default_na=False,
     )
     assert {'Shed', NON_RESIDENTIAL_LABEL, ABSTAIN_LABEL} <= set(confusion['predicted'])
+
+
+class _UnscoredResidentialContext(_RulesetContext):
+    """A recipe with a residential class the reference never labels."""
+
+    def __init__(self):
+        super().__init__()
+        self.residential_classes = ('A', 'B', 'C')
+
+
+def test_an_unscored_residential_class_is_not_non_residential(tmp_path):
+    linked = pd.DataFrame(
+        {
+            'occupancy_type_canonical': ['A'] * 11 + ['C'],
+            'predicted': ['A'] * 8 + ['C', 'C', 'Office', 'C'],
+            'nsi_raw_inv': ['type a home'] * 12,
+            'text_raw_inv': ['free text'] * 12,
+        }
+    )
+    context = _UnscoredResidentialContext()
+    labels = context.matrix_labels()
+    assert labels['kept_classes'] == ['C']
+
+    matrix = confusion_matrix(
+        linked['occupancy_type_canonical'], linked['predicted'], ['A', 'B'], **labels
+    )
+    # Its own column, never folded into Non-residential, and its own
+    # row where the reference uses it.
+    assert matrix.loc['A', 'C'] == 2
+    assert matrix.loc['A', NON_RESIDENTIAL_LABEL] == 1
+    assert matrix.loc['C', 'C'] == 1
+    table = accuracy_from_matrix(
+        matrix, ['A', 'B'], secondary='Shed', other=NON_RESIDENTIAL_LABEL
+    ).set_index('class')
+    # A C prediction on an A is an answered miss.
+    assert table.loc['A', 'n_answered'] == 11
+    assert table.loc['A', 'n_correct'] == 8
+
+    context.score_sources(linked, tmp_path)
+    confusion = pd.read_csv(
+        tmp_path / 'fabricated_recipe_occupancy-survey_confusion.csv',
+        keep_default_na=False,
+    )
+    assert 'C' in set(confusion['predicted'])
