@@ -1321,6 +1321,22 @@ class TestMultiSectionShapeBand:
         # A double-wide's width puts it in the multi-section class.
         assert str(out['n_sections'].astype(object).iloc[0]) == '2'
 
+    def test_band_with_no_improvement_value_alone_is_not_enough(self, recipe):
+        """Permit-scored: this pairing was mostly site-built houses."""
+        result = _classify(
+            recipe,
+            [
+                {
+                    'n_dwellings_overture': 1,
+                    'improvement_value_parcel': 0.0,
+                    'improvement_value_parcel_whole': 0.0,
+                    'improvement_value_parcel_total': 0.0,
+                    **self.DOUBLE_WIDE,
+                }
+            ],
+        )
+        assert result.iloc[0] != 'Manufactured Home'
+
     def test_band_alone_does_not_reach_the_threshold(self, recipe):
         result = _classify(recipe, [{'n_dwellings_overture': 1, **self.DOUBLE_WIDE}])
         assert result.iloc[0] == 'Single-Family'

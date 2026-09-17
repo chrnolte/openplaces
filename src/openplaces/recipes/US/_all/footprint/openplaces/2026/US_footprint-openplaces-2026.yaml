@@ -1007,12 +1007,28 @@ pipeline:
           # parcel this band and parcel_park together reach min_score.
           # The section keyword is unaffected: n_sections is gated on the
           # class, not on this indicator.
+          #
+          # It counts only beside NSI, FEMA or the assessor keyword. Shipped
+          # 2026-09-17 without that condition, it paired with
+          # no_improvement_value or keyword_probability alone and reached
+          # min_score on buildings the permits call site-built: of 2,803
+          # permit-scored primaries whose only partner was
+          # no_improvement_value, 124 were manufactured homes and 2,181
+          # single-family houses (Harris TX permit agreement fell 0.942 to
+          # 0.919). With NSI, FEMA or the keyword as partner the same calls
+          # were 95-100% manufactured homes. Those partners are not all
+          # independent of each other, but none reads footprint shape.
           - type: all_of
             label: shape_band
             indicators:
               - {type: numeric_at_least, column: aspect_ratio, min: &mh_band_aspect_min 2.0}
               - {type: numeric_below, column: aspect_ratio, max: *mh_aspect_min}
               - {type: numeric_at_most, column: area_m2, max: &mh_band_area_max_m2 220}
+              - type: any_of
+                indicators:
+                  - {type: equals, column: occupancy_type_nsi_class, value: Manufactured Home}
+                  - {type: equals, column: occupancy_type_fema_class, value: Manufactured Home}
+                  - {type: equals, column: occupancy_keyword_class, value: Manufactured Home}
           - {type: numeric_at_least, column: p_manufactured_home, min: 0.75,
              label: keyword_probability}
           - {type: equals, column: occupancy_type_nsi_class,
