@@ -1,0 +1,140 @@
+# Recipe: Orange County, TX certified appraisal roll (Orange CAD).
+#
+# FORMAT. Not PACS: Orange CAD runs Tyler Orion, and its 2026 certified
+# download is a ZIP of ZIPs. Seven inner archives, each holding one
+# quoted, comma-separated text file with a header row. The "Property
+# Data Export" set (Property, Improvement, Segment, Land, Owner, Sales)
+# is one row per account, improvement or segment; the "Certified
+# Export Vendor" archive is the Orion vendor layout, keyed on
+# QuickRefID only. This recipe reads the Property member
+# (PropertyDataExport856468.txt); the sibling ..._improvement-features
+# reads the Segment member. The numeric member names are per export
+# and change when the roll is re-exported.
+#
+# NESTED ZIP. The ingester extracts the inner archives too, so
+# uncompressed_file_name names the text file inside "Property Data
+# Export - Property.zip", and extract_members keeps the other six
+# tables out of the heap.
+#
+# NOTE on the join key, the trap here. TxGIO's Prop_ID is QuickRefID
+# with its leading "R" and zeros stripped, not PropertyID. The two
+# numbers never agree on one account but share a number range, so each
+# joins most TxGIO ids. Measured on the 2026 export against TxGIO
+# 2025, per route: TxGIO polygon area within 25% of LegalAcres 95.6%
+# via QuickRefID, 14.3% via PropertyID; situs number equal 98.9%
+# against 0.0%; land value within 10% 97.4% against 5.6%; and
+# PropertyNumber, the geographic id (99.6% of TxGIO's GEO_IDs), sits on
+# the QuickRefID account on 100.0% of rows. The PropertyID route agrees
+# only on TxGIO's improvement fields (state class 99.5%, year built
+# 99.7%): TxGIO's own Orange class and year built are attached to the
+# account whose PropertyID equals the parcel's Prop_ID, which is a
+# different property. An earlier survey chose PropertyID from that
+# class agreement alone. Within this export PropertyID is the internal
+# key: every member carries PropertyID, QuickRefID and PropertyNumber,
+# consistent on 100% of rows.
+#
+# QuickRefID prefixes: R real property (48,501 accounts, all with a
+# key), M manufactured homes as separate accounts (3,389, every one
+# with SquareFootage), P personal property (5,925), N (7,283, with no
+# area, acreage or improvement). Only R is stripped, so M, P and N
+# accounts carry no parcel_id_local: an M account's number would
+# otherwise collide with an unrelated R parcel. Their living area does
+# not reach a parcel. 99.3% of TxGIO's 45,893 Orange ids are in the
+# roll.
+#
+# LIVING AREA. SquareFootage is the account's living area: on
+# single-family (A) accounts it equals the sum of the "MA" (Main Area)
+# segments of the Segment member on 98.2%, and it is empty on commercial
+# accounts (0.3% of F). Where the two differ it is smaller than the
+# segment sum (median ratio 0.55): accounts with a second main area
+# whose SquareFootage counts one of them. 0 reads as missing.
+#
+# NOT MAPPED. Values: MarketValue and CurrMarketValue agree on only
+# 38.9% of accounts and the export does not say which is the certified
+# figure; TxGIO already carries Orange's values. No state class, year
+# built or story count is in this member (see the Segment sibling for
+# years). Owner names and mailing addresses live in the Owner member,
+# which no recipe reads.
+#
+# NOTE on coverage, measured on the 2026 export (65,098 accounts):
+#   SquareFootage > 0  50.6% (A 93.7%, M 99.5%, E 81.9%, B 80.1%)
+#   NbhdCode           86.1%   LegalAcres  76.6%   SitusStreetName 83.6%
+# The classes are the improvement state codes of this export's own
+# Improvement member (A 31,118 accounts); 27,621 accounts have no
+# improvement.
+
+description: >-
+  Orange County, TX certified appraisal roll (Tyler Orion property export):
+  living area, legal acreage, neighborhood and situs keyed by property.
+
+admin_id: US-TX-ORA
+
+entity:
+  entity_type: property
+  source:
+    source_id: orangecad
+    # Checked 2026-09-16: the data-downloads page states no terms for
+    # the exports. The site's disclaimer page disclaims warranty and
+    # liability only; no licence, no attribution requirement, nothing
+    # on redistribution or resale.
+    license: "unknown (site disclaimer of warranty only; no terms on the data)"
+    terms_url: "https://orangecad.net/disclaimer/"
+    redistribution_restricted: null
+    portal_url: "https://orangecad.net/data-downloads/"
+    download_url: "https://orangecad.net/wp-content/uploads/2026/07/2026-Certified-Appraisal-Roll-Export-Files.zip"
+  version: 2026
+
+compressed_file_name: "2026-Certified-Appraisal-Roll-Export-Files.zip"
+uncompressed_file_name: "PropertyDataExport856468.txt"
+extract_members:
+  - "PropertyDataExport856468.txt"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# All-digit ids: read everything as text.
+csv_dtype: str
+
+transformations:
+  # "R" prefix and zero padding off QuickRefID; see the join-key note.
+  - type: string
+    operation: lstrip
+    input: QuickRefID
+    args:
+      chars: "R0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: living_area_sqft
+    output: living_area_sqft
+  - type: expression
+    expression: "living_area_sqft.where(living_area_sqft > 1)"
+    inputs: [living_area_sqft]
+    output: living_area_sqft
+  - type: unary
+    operation: to_numeric
+    input: land_area_ac
+    output: land_area_ac
+
+columns:
+  parcel_id_admin2_2: PropertyNumber
+  living_area_sqft: SquareFootage
+  land_area_ac: LegalAcres
+  tax_neighborhood_code: NbhdCode
+  legal_description: LegalDesc
+  address_number: SitusStreetNumber
+  address_street: SitusStreetName
+  city: SitusCity
+  postal_code: SitusZip
+
+columns_to_categorical:
+  - tax_neighborhood_code
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache

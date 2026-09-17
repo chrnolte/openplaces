@@ -1,0 +1,131 @@
+# Recipe: Brunswick County, NC property records (heated area of all
+# buildings, year built, effective year, bedrooms) from the county's
+# inspections parcel service.
+#
+# SOURCE. Layer 1 ("Parcels") of the county's
+# Inspections/InspectionParcels_labels MapServer on
+# bcgis.brunswickcountync.gov: parcel polygons with the county's
+# BI-TEK ITS CAMA record joined on. The service declares no
+# description, copyright or licence. No bulk export was reachable:
+# the county website's Data Download page
+# (brunswickcountync.gov/321/Data-Download) dropped the TLS
+# connection from this network on 2026-09-16 (the research machine's
+# IP geolocates outside the US; recorded, not worked around). So the
+# REST scraper pages the layer attribute-only (returnGeometry false,
+# the six fields below): 174,166 rows at 2,000 per page, about 88
+# light requests. Parcel geometry for Brunswick is NC OneMap's.
+#
+# ROW SHAPE, measured 2026-09-16 on the downloaded layer: 174,166
+# rows. PIN is a twelve-digit parcel number on 165,553 rows and a
+# condominium unit number (the twelve digits, a dot, four digits) on
+# 7,199; 1,413 rows carry a blank PIN (26 of them with a heated area)
+# and one a word, and the query below drops those. The 172,752 kept
+# rows carry 172,617 distinct PINs (135 repeats, which
+# drop_duplicates removes): one row per property, a property roll.
+# After ingest, living_area_sqft is filled on 108,782 rows (63.0%),
+# p10/p50/p90 1,120/1,772/2,983 sqft.
+# Condominium units are rows of this layer:
+# a sample of 200 PINs from the county's separate unit layer
+# (Mapping/DataViewerLive/MapServer/42, 7,195 units) were all found
+# here, so that layer adds no rows and is not read.
+#
+# FLOOR AREA. TotalAcutalAreaHeated (the county's spelling) maps to
+# living_area_sqft: > 0 on 108,808 rows, every one PARCELTYPE 1. It
+# is the heated area over all of the property's building cards:
+# HeatedAreaCard, the first card's heated area, is smaller on 1,916
+# rows, and BuildingCount exceeds 1 on 1,263. HeatedAreaCard is
+# therefore not mapped. TotalActualArea is >= the heated total on
+# every row, but what it adds is not documented (in Johnston
+# County's equivalent schema the total includes open porches, decks
+# and patios), so gross_floor_area_sqft is not set.
+#
+# OTHER FIELDS. ActualYearBuilt (> 0 on 108,811 rows; 0 nulled by
+# the registry), EffectiveYearBuilt, BedroomCountTotal. The bath
+# counts (BathCountTotal, HalfBathCountTotal) are not mapped: whether
+# the total includes the half baths is undocumented.
+#
+# NOT MAPPED, deliberately: owner names and mailing addresses (never
+# requested: out_fields names only the columns below); values, land
+# use, situs address (NC OneMap carries values and use for the
+# county).
+
+description: >-
+  Brunswick County, NC property records (heated area summed over
+  buildings, year built, effective year, bedrooms) from the county's
+  CAMA-joined inspections parcel service.
+
+admin_id: US-NC-BRU
+
+entity:
+  entity_type: property
+  source:
+    source_id: brunswickcounty
+    # Checked 2026-09-16: the service declares an empty description
+    # and copyright text; the county website did not answer from this
+    # network, so no terms were read.
+    license: >-
+      unknown (service declares no copyright or licence; county
+      website unreachable on 2026-09-16)
+    terms_url: "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer"
+    redistribution_restricted: null
+    portal_url: "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer/1"
+    download_url_scraper: arcgis_rest_scraper
+  version: "2026"
+
+uncompressed_file_name: "brunswick_inspection_parcels_area.geojson"
+
+scraper_options:
+  layer_url: "https://bcgis.brunswickcountync.gov/arcgis/rest/services/Inspections/InspectionParcels_labels/MapServer/1"
+  where: "1=1"
+  out_fields: "OBJECTID_1,PIN,TotalAcutalAreaHeated,ActualYearBuilt,EffectiveYearBuilt,BedroomCountTotal"
+  extra_params:
+    returnGeometry: "false"
+
+columns:
+  parcel_id_assessor: PIN
+  living_area_sqft: TotalAcutalAreaHeated
+  year_built: ActualYearBuilt
+  effective_year_built: EffectiveYearBuilt
+  n_bedrooms: BedroomCountTotal
+
+# Drop blank and placeholder PINs; see ROW SHAPE.
+query: "parcel_id_assessor.str.strip().str.len() >= 12"
+
+drop_duplicates: [parcel_id_assessor]
+
+transformations:
+  - type: unary
+    operation: null_if_equal
+    input: living_area_sqft
+    args:
+      value: 0
+    output: living_area_sqft
+  # Bedrooms and effective year only where a heated area exists: the
+  # layer carries 0 on vacant parcels.
+  - type: expression
+    expression: "n_bedrooms * living_area_sqft / living_area_sqft"
+    inputs: [n_bedrooms, living_area_sqft]
+    output: n_bedrooms
+  - type: expression
+    expression: "effective_year_built * living_area_sqft / living_area_sqft"
+    inputs: [effective_year_built, living_area_sqft]
+    output: effective_year_built
+
+# NC OneMap's Brunswick parcel_id_local comes from altparno under the
+# bundled `simple` conversion; PIN has altparno's twelve-digit form.
+# Measured 2026-09-16 after ingest: 97.8% of NC OneMap's Brunswick
+# parcels find a key here, but only 85.9% of this recipe's keys find
+# a parcel. The gap is not the key: 7,198 are condominium unit PINs,
+# which have no polygon of their own (and whose twelve-digit parent
+# is a statewide parcel for only 1% of them), and the other 17,075
+# are twelve-digit PINs absent from the statewide snapshot (dated
+# 2025-07-11), skewed to new construction (median year built 2023
+# against 2006 for matched rows; 21% built 2024 or later against
+# 6.1%). None of them is found in the statewide parno or nparno
+# either.
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: core

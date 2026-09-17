@@ -642,7 +642,12 @@ class TableIngester:
                 )
                 extracted_path = extracted_paths.get(str(data_path))
                 if extracted_path is None:
-                    unzip(data_path, self.recipe_heap_dir)
+                    unzip(
+                        data_path,
+                        self.recipe_heap_dir,
+                        members=self.recipe.get('extract_members'),
+                        verbose=self.verbose,
+                    )
                     extracted_path = find_latest_file_or_gdb(self.recipe_heap_dir)
                     if extracted_path is None:
                         raise OSError(

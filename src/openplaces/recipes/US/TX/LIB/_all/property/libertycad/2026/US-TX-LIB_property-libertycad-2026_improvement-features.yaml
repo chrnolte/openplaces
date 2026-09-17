@@ -1,0 +1,183 @@
+# Recipe: Liberty County, TX certified appraisal roll, improvement
+# features from the improvement detail member (PACS File #8, one row per
+# building component). Same download as
+# US-TX-LIB_property-libertycad-2026; read that roll's header for the
+# source and its terms.
+#
+# RULE. Each component type below was assigned from the district's own
+# type code and description (listed, never crosswalked, never a code
+# prefix). The file ships 74 distinct types, read in full (codes and
+# descriptions, with rows, properties, median area and the File #7
+# improvement type each sits on). Areas are the component's
+# imprv_det_area in square feet, summed over the property's components;
+# an area of 0 or 1 reads as missing (generators, outdoor kitchens and
+# site improvements carry 1).
+#
+# LIVING AREA. MA 'MAIN AREA'; MA1 '1ST STORY MAIN AREA', an added
+# one-story section on the same improvement as an MA row (on 99.98% of
+# its improvements, median 448 against the MA's 1,200, built later than
+# the MA on 52.5%), not a copy of it; MA2 '2ND STORY MAIN AREA'; the
+# mobile-home types RM1 'STANDARD M HOME', RM2 'DOUBLE-WIDE M HOME',
+# RM3 'TRIPLE-WIDE M HOME' and MA5 'MH TAG-A-LONG SECTION'; SM6 'WF
+# ADDITION', a wood-frame room built onto a mobile home (on a
+# mobile-home improvement for 99.3% of rows, median 360).
+#
+# GROSS FLOOR AREA sums living area plus the enclosed attached types:
+# 128 'ATTACHED GARAGE', 112 'ENCLOSED FRAME PORCH', 122 'ENCLOSED MA
+# PORCH', 136 'SOLAR ROOM' and SM2 'WOOD,METAL,GLASS ADDITION' (an
+# enclosed, unconditioned addition to a mobile home). Left out: 127 and
+# RG1 'DETACHED GARAGE'; 114 'FRAME UTILITY' and 124 'MASONRY UTILITY',
+# which may stand apart from the house (detached garages sit on the
+# same improvement id as the house too, so the grouping says nothing
+# about attachment); open and screen porches, decks, patios, canopies,
+# carports, storage, barns, pools and paving. MZ1 and MZ2 (mezzanines,
+# commercial only, 5 rows) are in neither list. MA, MA1 and MA2 also
+# sit on commercial improvements (3,874 of 31,313 MA rows): on those
+# accounts the figure is building area, not dwelling space.
+#
+# DETACHED GARAGES (detached_garage_area_sqft, decided 2026-09-16): 127
+# and RG1 'DETACHED GARAGE', kept out of gross area because a detached
+# garage is usually its own footprint; curate adds it back where the
+# parcel has no separate footprint for it. Measured 2026-09-16: > 0 on
+# 7.6% of class A properties, median 616.
+#
+# MAIN AREA. quality_grade is imprv_det_class_cd, year_built yr_built
+# and effective_year_built depreciation_yr, all read on the living-area
+# components only; the first living-area component's class stands for
+# the property and the years take the earliest. Both years read as
+# missing outside 1801 to 2027 (0 is the district's blank).
+#
+# MEASURED on the 2026 export (231,615 components over 55,929
+# properties; aggregates only). A is the 34,126 single-family
+# properties (improvement state class A, File #2). living_area_sqft A
+# 82.8% (M 99.8%, E 73.6%, B 98.8%, F 83.5%), per-property median
+# 1,584 on A (p10 825, p90 2,580). The A properties without it mostly
+# carry storage, canopies, barns and detached garages only (no dwelling
+# component on the account). gross_floor_area_sqft is on the same
+# properties; median ratio to living area on A is 1.0.
+
+description: >-
+  Liberty County, TX certified appraisal roll, improvement detail member:
+  living and gross floor area, construction class and year built per property.
+
+admin_id: US-TX-LIB
+
+entity:
+  entity_type: property
+  source:
+    source_id: libertycad
+    # Same download as the roll; see its terms note.
+    license: "unknown (site-footer copyright only; no terms on the data)"
+    redistribution_restricted: null
+    portal_url: "https://libertycad.com/"
+    download_url: "https://libertycad.com/wp-content/uploads/2026/07/2026-CERTIFIED-APPRAISAL-ROLL-ALL-ENTITIES.zip"
+  version: 2026
+
+compressed_file_name: "2026-CERTIFIED-APPRAISAL-ROLL-ALL-ENTITIES.zip"
+uncompressed_file_name: "2026-07-16_002152_APPRAISAL_IMPROVEMENT_DETAIL.TXT"
+
+process_by:
+  admin_level: 3
+
+encoding: latin-1
+
+# PACS 8.0.34 File #8 (Improvement Detail).
+fixed_width:
+  - [prop_id, 12]
+  - [filler, 4] # prop_val_yr
+  - [filler, 12] # imprv_id
+  - [filler, 12] # imprv_det_id
+  - [imprv_det_type_cd, 10]
+  - [filler, 25] # Imprv_det_type_desc
+  - [imprv_det_class_cd, 10]
+  - [yr_built, 4]
+  - [depreciation_yr, 4]
+  - [imprv_det_area, 15]
+
+columns:
+  quality_grade: imprv_det_class_cd
+  year_built: yr_built
+  effective_year_built: depreciation_yr
+
+# The class code '*' is the PACS blank.
+null_value_strings: ['*']
+
+transformations:
+  - type: string
+    operation: lstrip
+    input: prop_id
+    args:
+      chars: "0"
+    output: parcel_id_assessor
+  - type: unary
+    operation: to_numeric
+    input: imprv_det_area
+    output: imprv_det_area
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA1', 'MA2', 'MA5',
+      'RM1', 'RM2', 'RM3', 'SM6']) & (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: living_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['MA', 'MA1', 'MA2', 'MA5',
+      'RM1', 'RM2', 'RM3', 'SM6', '128', '112', '122', '136', 'SM2']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: gross_floor_area_sqft
+  - type: expression
+    expression: >-
+      imprv_det_area.where(imprv_det_type_cd.isin(['127', 'RG1']) &
+      (imprv_det_area > 1))
+    inputs: [imprv_det_area, imprv_det_type_cd]
+    output: detached_garage_area_sqft
+  - type: expression
+    expression: >-
+      quality_grade.where(imprv_det_type_cd.isin(['MA', 'MA1', 'MA2', 'MA5',
+      'RM1', 'RM2', 'RM3', 'SM6']))
+    inputs: [quality_grade, imprv_det_type_cd]
+    output: quality_grade
+  - type: unary
+    operation: to_numeric
+    input: year_built
+    output: year_built
+  - type: expression
+    expression: >-
+      year_built.where(imprv_det_type_cd.isin(['MA', 'MA1', 'MA2', 'MA5', 'RM1',
+      'RM2', 'RM3', 'SM6']) & (year_built > 1800) & (year_built <= 2027))
+    inputs: [year_built, imprv_det_type_cd]
+    output: year_built
+  - type: unary
+    operation: to_numeric
+    input: effective_year_built
+    output: effective_year_built
+  - type: expression
+    expression: >-
+      effective_year_built.where(imprv_det_type_cd.isin(['MA', 'MA1', 'MA2',
+      'MA5', 'RM1', 'RM2', 'RM3', 'SM6']) & (effective_year_built > 1800) &
+      (effective_year_built <= 2027))
+    inputs: [effective_year_built, imprv_det_type_cd]
+    output: effective_year_built
+
+drop_columns:
+  - imprv_det_type_cd
+  - imprv_det_area
+
+aggregation_function:
+  living_area_sqft: sum
+  gross_floor_area_sqft: sum
+  detached_garage_area_sqft: sum
+  quality_grade: first
+  year_built: min
+  effective_year_built: min
+
+supplements: US-TX-LIB_property-libertycad-2026
+
+parcel_id_local:
+  source: parcel_id_assessor
+  kind: parcel
+
+save_to:
+  data_dir: cache
+  filename: improvement-features
