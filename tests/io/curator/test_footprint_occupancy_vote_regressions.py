@@ -688,6 +688,31 @@ def test_site_built_house_gets_no_section_count(recipe):
     assert pd.isna(out['n_sections'].astype(object).iloc[0])
 
 
+def test_single_family_keyword_reads_a_dropped_l(recipe):
+    """A county vocabulary spelling SINGE FAMILY still names the class.
+
+    One eastern NC county's land-use text reads 'SINGE FAMILY
+    RESIDENTIAL' throughout. Its only other Single-Family word came from
+    an address-type list that was removed at ingest (2026-09-16), after
+    which 1,084 permit-confirmed houses fell to NSI's Agricultural class.
+    """
+    label = 'RURAL HOME SITE -  SINGE FAMILY RESIDENTIAL'
+    out = _run(
+        recipe,
+        [
+            {
+                'use_group_combined_parcel': label,
+                'use_group_combined_labeled_parcel': label,
+                'n_dwellings_overture': 1,
+                'length_m': 15.0,
+                'width_m': 12.0,
+            }
+        ],
+    )
+    assert out['occupancy_keyword_class'].astype(object).iloc[0] == 'Single-Family'
+    assert out['occupancy_type'].astype(object).iloc[0] == 'Single-Family'
+
+
 def test_raw_code_does_not_fire_a_text_rule(recipe):
     """A code-only county's land use must not match keyword patterns.
 
